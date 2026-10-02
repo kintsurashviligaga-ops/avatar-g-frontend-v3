@@ -44,6 +44,9 @@ export function parseThumbArgs(argv, root = process.cwd()) {
     work: resolve(root, arg('--work') ?? dirname(manifest)),
     out,
     templates: resolve(root, arg('--templates') ?? 'lib/studio/templates.ts'),
+    // The Interior designer's and the Photographer's cards (their own files, so the hot templates.ts stays untouched): searched
+    // for the `thumb:` lines of `interior/…` and `photoshoot/…` takes, and scanned for the blur map.
+    extraTemplates: [resolve(root, 'lib/studio/templates.interior.ts'), resolve(root, 'lib/studio/templates.photoshoot.ts')],
     // The real map only for the real folder: a fixture build (`--out` alone) must never rewrite the committed module.
     blurOut: blurOut ? resolve(root, blurOut)
       : out === resolve(root, 'public/templates') ? resolve(root, 'lib/studio/templateThumbs.generated.ts') : null,
@@ -56,7 +59,7 @@ export function parseThumbArgs(argv, root = process.cwd()) {
  */
 export function blurMapOptsFor(opts) {
   if (!opts.blurOut || basename(opts.out) !== 'templates') return null;
-  return { publicDir: dirname(opts.out), templates: opts.templates, out: opts.blurOut, check: false };
+  return { publicDir: dirname(opts.out), templates: opts.templates, extraTemplates: opts.extraTemplates ?? [], out: opts.blurOut, check: false };
 }
 
 /** A path as the operator reads it: repo-relative inside the repo, absolute outside (a fixture in a temp dir). */
@@ -148,7 +151,18 @@ export async function buildThumbs(opts, sharp, log = console.log) {
       log(`✗ ${job.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  const changes = existsSync(opts.templates) ? thumbLineChanges(readFileSync(opts.templates, 'utf8'), built.map((b) => b.id)) : [];
+  const ids = built.map((b) => b.id);
+  const changes = existsSync(opts.templates) ? thumbLineChanges(readFileSync(opts.templates, 'utf8'), ids) : [];
+  // An id the main file has no card for may be a card in one of the extra files (interior/…, photoshoot/…).
+  for (const extra of opts.extraTemplates ?? []) {
+    if (!existsSync(extra)) continue;
+    const missing = changes.filter((c) => c.state === 'missing').map((c) => c.id);
+    if (!missing.length) break;
+    for (const c of thumbLineChanges(readFileSync(extra, 'utf8'), missing)) {
+      if (c.state === 'missing') continue;
+      Object.assign(changes.find((x) => x.id === c.id), { ...c, file: extra });
+    }
+  }
   return { built, refused, failed, changes };
 }
 
@@ -158,8 +172,9 @@ export function formatChanges(changes, templatesPath) {
   const out = [];
   const todo = changes.filter((c) => c.state === 'change');
   if (todo.length) out.push(`thumb: lines to change in ${where} (${todo.length}):`);
-  for (const c of todo) out.push(`${where}:${c.line}  ${c.id}`, `  - ${c.before.trim()}`, `  + ${c.after.trim()}`);
-  for (const c of changes.filter((x) => x.state === 'already')) out.push(`${where}:${c.line}  ${c.id} already points at ${publicThumbPath(c.id)}`);
+  const at = (c) => (c.file ? shown(c.file) : where);
+  for (const c of todo) out.push(`${at(c)}:${c.line}  ${c.id}`, `  - ${c.before.trim()}`, `  + ${c.after.trim()}`);
+  for (const c of changes.filter((x) => x.state === 'already')) out.push(`${at(c)}:${c.line}  ${c.id} already points at ${publicThumbPath(c.id)}`);
   for (const c of changes.filter((x) => x.state === 'missing')) out.push(`${c.id}: no card with a thumb: line found in ${where} — set it by hand`);
   return out;
 }

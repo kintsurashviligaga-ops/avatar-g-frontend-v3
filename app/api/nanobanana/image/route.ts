@@ -22,6 +22,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
+import { resolveShootDirective } from '@/lib/studio/shootContext';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -129,6 +130,8 @@ export async function POST(req: NextRequest) {
       batchTile?: number;
       /** The template card the request's values select (lib/studio/templates) — an ID; its context is resolved here. */
       templateId?: unknown;
+      /** The Interior designer's / Photographer's choices as IDs (lib/studio/shootWire) — resolved to a directive here. */
+      studio?: unknown;
     };
     const clientJobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : '';
 
@@ -146,6 +149,11 @@ export async function POST(req: NextRequest) {
     // Only when THIS request's aspect, quality and style still select the card; anything else resolves to null and
     // the render is exactly what the controls say. Resolved before the mutex key, which hashes the id it applied.
     const template = resolveTemplateContext('image', body.templateId, { aspect: body.aspectRatio ?? '1:1', quality, style: styleLabel });
+    // ⚠️ THE INTERIOR DESIGNER AND THE PHOTOGRAPHER RIDE THIS ROUTE — one charge path, one refund path (lib/studio/shootContext).
+    // Their style / room / camera arrive as IDs and resolve to server text; `refGiven` is what the BODY carries, not what the
+    // client claims. Null (no `studio`, or an unknown kind) leaves the render exactly as the image tool's controls say.
+    const refGiven = typeof body.referenceImage === 'string' && body.referenceImage.trim() !== '';
+    const shoot = resolveShootDirective(body.studio, { hasReference: refGiven });
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -169,7 +177,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}) })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
@@ -227,11 +235,13 @@ export async function POST(req: NextRequest) {
     const activeImageCfg = await getActiveConfig('image').catch(() => null);
     // The assembly (style directive or quality boost → template suffix → exclusion clause → learned directive) is the
     // pure lib/studio/composeImagePrompt. `knownStyle` is the ONLY value forwarded as the provider's `style` field.
+    // A studio request's lead (the task, what stays identical) goes BEFORE the brief; its look / camera ride as the suffix and
+    // its "avoid" joins the exclusion clause. An image-tool request has no `shoot`, so every value below is what it was.
     const { finalPrompt, knownStyle } = composeImagePrompt({
-      promptEn,
+      promptEn: shoot ? `${shoot.lead} ${promptEn}` : promptEn,
       styleLabel,
-      templateSuffix: template?.suffix ?? null,
-      negativeEn: negative,
+      templateSuffix: shoot ? shoot.suffix : (template?.suffix ?? null),
+      negativeEn: shoot ? [negative, shoot.avoid].filter(Boolean).join(', ') : negative,
       learnedDirective: activeImageCfg?.prompt ?? null,
     });
 
@@ -242,6 +252,19 @@ export async function POST(req: NextRequest) {
     const ref = typeof body.referenceImage === 'string' ? body.referenceImage.trim() : '';
     if (ref.startsWith('data:')) referenceImageUrl = (await hostReferenceImage(ref)) || undefined;
     else if (/^https?:\/\//i.test(ref)) referenceImageUrl = ref;
+    // ⚠️ A STUDIO PHOTO THAT COULD NOT BE HOSTED MUST NOT BECOME A TEXT-TO-IMAGE RENDER. For the image tool a lost reference
+    // degrades to a fresh picture; for the Interior designer that is a different room, for the Photographer a different
+    // subject — charged as if it were theirs. Refuse and refund before any provider is called.
+    if (shoot && ref && !referenceImageUrl) {
+      const refunded = await refundReserve();
+      return NextResponse.json({
+        success: false,
+        code:    'reference_unavailable',
+        refunded,
+        message: `ფოტო ვერ წავიკითხე${refunded ? ' — კრედიტი დაბრუნდა' : ''}. სცადე სხვა JPG ან PNG. / We could not read your photo${refunded ? ' — your credit was returned' : ''}. Try another JPG or PNG.`,
+        error:   'reference_unavailable',
+      }, { status: 502 });
+    }
 
     // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to the primary
     // image provider. If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and

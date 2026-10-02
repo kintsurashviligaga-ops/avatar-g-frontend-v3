@@ -1,6 +1,6 @@
 import {
-  Aperture, Box, Film, Image as ImageIcon, Languages, MessageSquare, Music2, Package, PersonStanding, Presentation, Repeat,
-  ScanFace, Scissors, Wand2, type LucideIcon,
+  Aperture, Armchair, Box, Camera, Film, Image as ImageIcon, Languages, MessageSquare, Music2, Package, PersonStanding, Presentation,
+  Repeat, ScanFace, Scissors, Wand2, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -15,12 +15,15 @@ import {
  */
 export type ToolId =
   | 'video' | 'image' | 'music' | 'avatar' | 'remix' | 'chat'
-  | 'product' | 'swap' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation' | 'photo';
+  | 'product' | 'swap' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation' | 'photo'
+  | 'interior' | 'photoshoot';
 
 type L10n = { ka: string; en: string; ru: string };
 export type ToolLang = 'ka' | 'en' | 'ru';
 
-export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'music', 'avatar', 'remix'];
+// ⚠️ `photoshoot` (the photographer) and `interior` (the interior designer) are PRIMARY on purpose: they were lost from the
+// studio once, and a tool one level down is a tool people do not find. They sit beside `image`, the tool they specialise.
+export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix'];
 /** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
 export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
@@ -42,6 +45,10 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   // ⚠️ The line IS the promise: culling runs on the device (components/studio/photo — a same-origin worker, no
   // upload, no credits). Anything that ever sends a photo off the device must change this line in the same commit.
   photo: { Icon: Aperture, name: { ka: 'ფოტოების შერჩევა', en: 'Photo culling', ru: 'Отбор фото' }, sub: { ka: 'ფოტოები შენს მოწყობილობას არ ტოვებს', en: 'Photos never leave your device', ru: 'Фото не покидают ваше устройство' } },
+  // `photoshoot` is NOT `photo`: `photo` is on-device culling (no upload, no credits) and stays untouched; this one makes new
+  // pictures from yours (components/studio/create/PhotoshootCreatePanel.tsx) and spends credits per image.
+  interior: { Icon: Armchair, name: { ka: 'ინტერიერის დიზაინერი', en: 'Interior designer', ru: 'Дизайнер интерьеров' }, sub: { ka: 'გადააპროექტე ოთახი ფოტოდან', en: 'Redesign a room from a photo', ru: 'Новый дизайн комнаты по фото' } },
+  photoshoot: { Icon: Camera, name: { ka: 'ფოტოგრაფი', en: 'Photographer', ru: 'Фотограф' }, sub: { ka: 'სტუდიური ფოტოსესია AI-სგან', en: 'A studio photoshoot by AI', ru: 'Студийная фотосессия от ИИ' } },
 };
 
 export const toolLang = (locale: string): ToolLang => (locale === 'en' || locale === 'ru' ? locale : 'ka');

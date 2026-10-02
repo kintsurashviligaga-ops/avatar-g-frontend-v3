@@ -42,6 +42,8 @@ export function parseBlurArgs(argv, root = process.cwd()) {
     root: base,
     publicDir: join(base, 'public'),
     templates: resolve(base, arg('--templates') ?? 'lib/studio/templates.ts'),
+    // The Interior designer's and the Photographer's cards (lib/studio/templates.interior.ts / .photoshoot.ts).
+    extraTemplates: [resolve(base, 'lib/studio/templates.interior.ts'), resolve(base, 'lib/studio/templates.photoshoot.ts')],
     out: resolve(base, arg('--out') ?? GENERATED),
     check: argv.includes('--check'),
   };
@@ -124,7 +126,9 @@ export function parseBlurModule(text) {
  * what was added / changed / removed against the existing file, what failed to read, and whether it is (now) current.
  */
 export async function buildBlurMap(opts, sharp) {
-  const templatesSource = existsSync(opts.templates) ? readFileSync(opts.templates, 'utf8') : '';
+  const templatesSource = [opts.templates, ...(opts.extraTemplates ?? [])]
+    .map((f) => (existsSync(f) ? readFileSync(f, 'utf8') : ''))
+    .join('\n');
   const { paths, missing, refused } = collectThumbPaths({ publicDir: opts.publicDir, templatesSource });
   const entries = {};
   const failed = [];

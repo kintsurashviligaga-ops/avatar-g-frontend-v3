@@ -68,7 +68,8 @@ describe('references and money', () => {
 });
 
 describe('the template thumbnails pack', () => {
-  const shots = parseShots(readFileSync(join(process.cwd(), 'scripts/templates/thumbs.md'), 'utf8'));
+  // The interior/ and photoshoot/ shots (the two image workspaces) have their own checks: scripts/templates/thumbs.shoot.test.ts.
+  const shots = parseShots(readFileSync(join(process.cwd(), 'scripts/templates/thumbs.md'), 'utf8')).filter((s) => !/^(interior|photoshoot)\//.test(s.id));
   const cards = new Map(Object.entries(TEMPLATES_BY_TOOL).flatMap(([tool, list]) => list.map((t) => [`${tool}/${t.id}`, t.thumb] as const)));
 
   test('thumbs.md has one shot for each of the 20 cards without a thumbnail, and nothing else', () => {
@@ -220,7 +221,7 @@ describe('a run — the provider and fetch stood in for, nothing leaves the mach
 
 // ─── The provider seam (docs/SUPER_APP_PLAN.md 2c) ──────────────────────────────────────────────────────────────
 
-const templateShots = parseShots(readFileSync(join(process.cwd(), 'scripts/templates/thumbs.md'), 'utf8'));
+const templateShots = parseShots(readFileSync(join(process.cwd(), 'scripts/templates/thumbs.md'), 'utf8')).filter((s) => !/^(interior|photoshoot)\//.test(s.id)); // the original 20 (the new ones: thumbs.shoot.test.ts)
 const brandShots = parseShots(readFileSync(join(process.cwd(), 'scripts/hf-art-pack.md'), 'utf8'));
 const byId = (id: string) => {
   const s = templateShots.find((x) => x.id === id);

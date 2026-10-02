@@ -394,3 +394,457 @@ for the card's label, and never any text, logo or UI — the label is set by the
   }
 }
 ```
+
+## ── Interior designer + Photographer styles (the `interior/` and `photoshoot/` cards) ──
+
+Added with the two image workspaces (components/studio/create). Same format, same 3:4, same rules: no text in the picture. The prompts are FLUX-safe (plain descriptive English, no style tokens) so `--provider replicate` carries them over. After the run: `--select <id>:<attempt> --output <n>`, then `node scripts/templates/build-thumbs.mjs` (it writes `public/templates/<tool>/<id>.jpg` and prints the `thumb:` lines to change in lib/studio/templates.interior.ts / templates.photoshoot.ts).
+
+## Interior Scandinavian
+
+```json shot
+{
+  "id": "interior/scandinavian",
+  "title": "Interior Scandinavian",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A bright Scandinavian living room: white walls, pale oak flooring, a light linen sofa with a wool throw, a birch side table, a few green plants, a large window with soft overcast daylight, calm hygge atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior modern
+
+```json shot
+{
+  "id": "interior/modern",
+  "title": "Interior modern",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A contemporary modern living room: clean geometric lines, a low greige sectional sofa, a sculptural coffee table, matte black and brushed brass accents, a statement floor lamp, large abstract art, soft recessed lighting, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior minimalist
+
+```json shot
+{
+  "id": "interior/minimalist",
+  "title": "Interior minimalist",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A minimalist living room: plain white walls, only one sofa and one low table, a monochrome white-grey-black palette with a single natural wood accent, bare uncluttered surfaces, generous empty floor, serene gallery-like calm, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior Japandi
+
+```json shot
+{
+  "id": "interior/japandi",
+  "title": "Interior Japandi",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A Japandi living room: low oak and walnut furniture, a woven rug, a rice-paper lantern light, a muted palette of oatmeal, clay and charcoal, a ceramic vase with bare branches, natural linen, quiet balanced emptiness, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior industrial loft
+
+```json shot
+{
+  "id": "interior/loft",
+  "title": "Interior industrial loft",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "An industrial loft living room: exposed red brick wall, raw concrete, black steel-framed windows, a worn cognac leather sofa, reclaimed wood, Edison-bulb pendant lights, tall ceilings, warm urban evening atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior classic
+
+```json shot
+{
+  "id": "interior/classic",
+  "title": "Interior classic",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A classic traditional living room: white wainscoting and crown mouldings, a symmetrical layout, a tufted sofa and two wingback chairs in deep blue fabric, a carved wood coffee table, a crystal chandelier, heavy drapes, a patterned wool rug, timeless elegance, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior Art Deco
+
+```json shot
+{
+  "id": "interior/art-deco",
+  "title": "Interior Art Deco",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "An Art Deco living room: bold geometric patterns, brass and gold inlays, deep emerald velvet sofa, a sunburst mirror, black lacquer and marble surfaces, fluted glass, a sculptural chandelier, 1920s glamour, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior boho
+
+```json shot
+{
+  "id": "interior/boho",
+  "title": "Interior boho",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A bohemian living room: layered kilim rugs, rattan and wicker furniture, a macrame wall hanging, a low sofa with patterned cushions, many trailing plants, warm terracotta and mustard tones, soft golden light, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior Mediterranean
+
+```json shot
+{
+  "id": "interior/mediterranean",
+  "title": "Interior Mediterranean",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A Mediterranean villa living room: whitewashed rough-plaster walls, terracotta floor tiles, an arched opening to a sunlit terrace, dark timber beams, blue and ochre ceramics, linen curtains, olive-green accents, warm sunlit atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior Georgian traditional
+
+```json shot
+{
+  "id": "interior/georgian-traditional",
+  "title": "Interior Georgian traditional",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A traditional Georgian living room: carved dark walnut woodwork, arched niches, handwoven kilim and carpets in deep red and indigo, a low wooden sofa with embroidered cushions, painted ceramics and clay qvevri vessels, warm timber and stone, brass and copper details, cosy and hospitable, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior mid-century modern
+
+```json shot
+{
+  "id": "interior/mid-century",
+  "title": "Interior mid-century modern",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A mid-century modern living room: walnut furniture with tapered legs, a low-slung sofa, a moulded lounge chair, a teak sideboard, a geometric rug, mustard and teal accents, globe pendant lights, 1960s optimism, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Interior luxury
+
+```json shot
+{
+  "id": "interior/luxury",
+  "title": "Interior luxury",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A luxury contemporary living room: book-matched marble, brass and champagne-gold details, plush velvet and silk upholstery, a bespoke chandelier, high-gloss lacquer, layered ambient lighting, a rich neutral palette with deep jewel accents, five-star hotel finish, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot e-commerce white
+
+```json shot
+{
+  "id": "photoshoot/ecom-white",
+  "title": "Photoshoot e-commerce white",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A single stylish white sneaker photographed for an online store on a pure white seamless background, even soft shadowless studio light, a subtle contact shadow, the whole product centred and crisp, catalogue photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot lifestyle
+
+```json shot
+{
+  "id": "photoshoot/lifestyle",
+  "title": "Photoshoot lifestyle",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A young woman laughing at a sunlit kitchen table with a cup of coffee and a notebook, natural window light, shallow depth of field, warm authentic lifestyle photography, candid composition, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot editorial fashion
+
+```json shot
+{
+  "id": "photoshoot/editorial-fashion",
+  "title": "Photoshoot editorial fashion",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A high-fashion editorial photograph of a model in a sculptural red coat against a seamless pale blue backdrop, a striking pose, dramatic directional light, magazine-cover polish, fine film grain, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot luxury product
+
+```json shot
+{
+  "id": "photoshoot/luxury-product",
+  "title": "Photoshoot luxury product",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A glass perfume bottle on a black glossy surface with a soft mirror reflection, a dark moody backdrop, dramatic rim light with a single soft key, rich contrast, premium advertising photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot food
+
+```json shot
+{
+  "id": "photoshoot/food",
+  "title": "Photoshoot food",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A rustic wooden table with a freshly baked khachapuri, melting cheese and a soft egg yolk, a little steam, natural side light, shallow depth of field, rich warm colour, appetising food photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot jewelry
+
+```json shot
+{
+  "id": "photoshoot/jewelry",
+  "title": "Photoshoot jewelry",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A gold ring with a diamond on dark blue velvet, fine-jewelry macro photography, crisp facets and metal highlights, soft gradient reflections, controlled sparkle, extreme detail, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot cosmetics
+
+```json shot
+{
+  "id": "photoshoot/cosmetics",
+  "title": "Photoshoot cosmetics",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A frosted skincare jar and a dropper bottle on a clean pastel pink gradient backdrop with water droplets, soft glowing light, a fresh dewy feel, minimal elegant styling, cosmetics product photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot headshot
+
+```json shot
+{
+  "id": "photoshoot/headshot",
+  "title": "Photoshoot headshot",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A professional corporate headshot of a confident smiling man in a navy blazer, soft flattering studio light, a neutral blurred grey office backdrop, sharp eyes, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot real-estate exterior
+
+```json shot
+{
+  "id": "photoshoot/real-estate-exterior",
+  "title": "Photoshoot real-estate exterior",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A modern two-storey house with a manicured lawn photographed in a wide level view, a bright blue sky, soft golden daylight, straight vertical lines, sharp from front to back, real-estate exterior photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot street
+
+```json shot
+{
+  "id": "photoshoot/street",
+  "title": "Photoshoot street",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A candid street photograph of a woman crossing a narrow old-town street in Tbilisi at golden hour, natural available light, a dynamic composition, cinematic city colours, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot studio portrait
+
+```json shot
+{
+  "id": "photoshoot/studio-portrait",
+  "title": "Photoshoot studio portrait",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A classic studio portrait of a woman against a seamless dark-grey backdrop, Rembrandt key light with a soft fill, expressive eyes, natural skin texture, a timeless fine-art look, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot film noir
+
+```json shot
+{
+  "id": "photoshoot/film-noir",
+  "title": "Photoshoot film noir",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A black-and-white film noir photograph of a man in a trench coat and fedora in a doorway, hard single-source light, venetian-blind shadow patterns, deep chiaroscuro, a smoky atmosphere, 1940s cinema grain, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```
+
+## Photoshoot flat lay
+
+```json shot
+{
+  "id": "photoshoot/flat-lay",
+  "title": "Photoshoot flat lay",
+  "endpoint": "higgsfield-ai/soul/v2/standard",
+  "input": {
+    "prompt": "A styled flat-lay photograph from directly above: a notebook, a pair of sunglasses, a ceramic mug and dried flowers arranged neatly on a textured linen surface, soft even daylight, balanced negative space, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "aspect_ratio": "3:4",
+    "resolution": "1080p",
+    "batch_size": 4,
+    "enhance_prompt": false,
+    "seed": 261003
+  }
+}
+```

@@ -109,7 +109,7 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
   });
 
   test('the sheet\'s generic header gives way to the panel\'s own (tool name ▾ · ✕) — not rendered, because a hidden ✕ would swallow the dialog\'s initial focus', () => {
-    expect(src).toMatch(/\{!\(imageCreate && !isDesktop\) && !videoCreate && \(\s*<div className=\{isDesktop\s*\? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border\/10 pl-5 pr-2'/);
+    expect(src).toMatch(/\{!\(imageCreate && !isDesktop\) && !videoCreate && \(\s*<div className=\{`\$\{shootActive \? 'hidden ' : ''\}\$\{isDesktop\s*\? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border\/10 pl-5 pr-2'/);
     expect(mounted).toMatch(/\{\.\.\.\(isDesktop \? \{\} : \{ onClose: \(\) => setOptionsOpen\(false\) \}\)\}/);
     // …and it is a real removal, never a `hidden` class on the header.
     expect(studio).not.toMatch(/imageCreate \? 'hidden'/);
@@ -133,7 +133,7 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
 
   test('the thread is hidden, never mounted twice: the feed keeps its node, renders nothing, and the jump button waits', () => {
     expect(src).toContain("${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
-    expect(src).toContain('{imageDesk ? null : messages.length === 0 ? (');
+    expect(src).toContain(') : imageDesk ? null : messages.length === 0 ? (');
     expect(src).toContain('{showJump && !imageDesk && messages.length > 0 && (');
   });
 });
