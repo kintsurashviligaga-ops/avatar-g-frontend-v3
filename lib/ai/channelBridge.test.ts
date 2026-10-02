@@ -31,7 +31,7 @@ test('Google-only (the default): Gemini answers with the history, the style note
     channel: 'whatsapp', userId: UID, externalId: '995555000111', text: 'აქ ხარ?', locale: 'ka',
     history: [{ role: 'assistant', content: 'prev' }], systemNote: 'WA STYLE',
   });
-  expect(gemini).toHaveBeenCalledWith([{ role: 'assistant', content: 'prev' }, { role: 'user', content: 'აქ ხარ?' }], UID, expect.any(AbortSignal), 'WA STYLE');
+  expect(gemini).toHaveBeenCalledWith([{ role: 'assistant', content: 'prev' }, { role: 'user', content: 'აქ ხარ?' }], UID, expect.any(AbortSignal), { systemNote: 'WA STYLE', locale: 'ka' });
   expect(execute).not.toHaveBeenCalled();
   expect(out).toMatchObject({ reply: 'გამარჯობა!', model: 'gemini-x', answered: true });
 });

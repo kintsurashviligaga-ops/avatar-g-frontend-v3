@@ -1116,7 +1116,7 @@ export const OMNI_RESUME_KEY = 'myavatar-omni-resume';
 const HISTORY_MAX = 80;  // max turns kept per conversation
 const CONV_MAX = 40;     // max conversations kept overall
 
-interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number; /** Supabase chat_sessions.session_id — set once a conversation is persisted/hydrated; enables cross-device merge + lazy transcript load. */ serverSid?: string }
+interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number; /** Supabase chat_sessions.session_id — set once a conversation is persisted/hydrated; enables cross-device merge + lazy transcript load. */ serverSid?: string; /** The service this session belongs to (the tool it was started in) — opening it from History returns to that tool. */ tool?: string }
 
 function newConversationId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1215,7 +1215,7 @@ function loadConversationMessages(id: string): Msg[] {
   return loadConversations().find((c) => c.id === id)?.messages ?? [];
 }
 /** Save/update the active conversation; an emptied conversation is removed. */
-function upsertConversation(id: string, messages: Msg[]): void {
+function upsertConversation(id: string, messages: Msg[], tool?: string): void {
   const lean = leanMessages(messages);
   const list = loadConversations();
   const idx = list.findIndex((c) => c.id === id);
@@ -1231,6 +1231,8 @@ function upsertConversation(id: string, messages: Msg[]): void {
   const conv: Conversation = {
     id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now(),
     ...(idx >= 0 && list[idx]?.serverSid ? { serverSid: list[idx].serverSid } : {}),
+    // The FIRST tool a session was saved under stays its tool (a thread that spanned a switch made mid-render keeps it).
+    ...((idx >= 0 && list[idx]?.tool) || tool ? { tool: (idx >= 0 && list[idx]?.tool) || tool } : {}),
   };
   if (idx >= 0) list[idx] = conv; else list.unshift(conv);
   list.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -1238,6 +1240,22 @@ function upsertConversation(id: string, messages: Msg[]): void {
 }
 function deleteConversation(id: string): void {
   saveConversations(loadConversations().filter((c) => c.id !== id));
+}
+/**
+ * Which session each service has open in THIS visit (sessionStorage, per account). A new visit starts every service on
+ * a fresh session; within a visit, going back to a service brings back the thread you were in there.
+ */
+function toolSessionsKey(): string { return `myavatar:tool-sessions:${currentUid() ?? 'anon'}`; }
+function readToolSessions(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const v = JSON.parse(window.sessionStorage.getItem(toolSessionsKey()) ?? '{}') as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {};
+  } catch { return {}; }
+}
+function writeToolSessions(map: Record<string, string>): void {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.setItem(toolSessionsKey(), JSON.stringify(map)); } catch { /* private mode: one thread per visit */ }
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
@@ -1737,6 +1755,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // stale-closure / exhaustive-deps churn).
   const messagesRef = useRef<Msg[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // The tool on screen (assigned where `activeTool` is derived) and the mode switch behind a tool pick — read by the session
+  // code below, which runs before either is declared.
+  const activeToolRef = useRef<ToolId>('chat');
+  const applyToolRef = useRef<((id: ToolId) => void) | null>(null);
   // Chat-history panel (list of past conversations) open state.
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
@@ -2504,7 +2526,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
     if (!busy) {
-      upsertConversation(conversationId, messages);
+      upsertConversation(conversationId, messages, activeToolRef.current);
       // Notify the left sidebar's history list (ChatChrome) to refresh.
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
     }
@@ -2515,10 +2537,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // instead of letting it render over — and then overwrite — a message in the thread being opened.
     const settle = endChatStream();
     if (settle) { genIdRef.current += 1; setBusy(false); }
-    upsertConversation(conversationId, settle ? settle(messages) : messages); // save current before leaving
+    upsertConversation(conversationId, settle ? settle(messages) : messages, activeToolRef.current); // save current before leaving
     setConversationId(id);
     setCurrentConversationId(id);
     const convo = loadConversations().find((c) => c.id === id);
+    // A session opened from History returns to the service it belongs to, and becomes that service's open session.
+    if (convo?.tool && isToolId(convo.tool) && convo.tool !== activeToolRef.current) applyToolRef.current?.(convo.tool);
+    if (convo?.tool && isToolId(convo.tool)) writeToolSessions({ ...readToolSessions(), [convo.tool]: id });
     // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
     if (convo?.serverSid && (convo.messages?.length ?? 0) === 0) {
@@ -2535,8 +2560,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMessages(loadConversationMessages(id));
     }
   }, [conversationId, messages, endChatStream]);
-  const startNewConversation = useCallback(() => {
-    upsertConversation(conversationId, messages); // save current
+  const startNewConversation = useCallback((): string => {
+    upsertConversation(conversationId, messages, activeToolRef.current); // save current
     const id = newConversationId();
     setConversationId(id);
     setCurrentConversationId(id);
@@ -2549,6 +2574,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // moment it started working.
     chatSessionIdRef.current = null;
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
+    // "New session" is new for the service on screen: going back to it later in this visit opens this one.
+    writeToolSessions({ ...readToolSessions(), [activeToolRef.current]: id });
+    return id;
   }, [conversationId, messages]);
   const removeConversation = useCallback((id: string) => {
     // ⚠️ TOMBSTONE + SERVER DELETE BEFORE THE LOCAL ONE. Removing the local row erases its serverSid,
@@ -2669,13 +2697,44 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * ⚠️ Keyed on the TOOL, never on `mode`: dubbing, 3D and presentation park `mode` at 'chat' while their controls live
    * in the settings panel — a rule on `mode` would hide those studios' only controls.
    */
+  activeToolRef.current = activeTool;
   const chatOnly = activeTool === 'chat';
   /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
   const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
   // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks, but
   // the `chatOnly` effect below closes the sheet again when `next dev`'s Strict Mode re-runs the mount effects after a deep link.
   useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
-  const selectTool = useCallback((id: ToolId) => {
+  // ── EVERY SERVICE ITS OWN SESSION ────────────────────────────────────────────────────────────────────────────
+  // ⚠️ ONE THREAD FOR EVERY TOOL. A chat, then Video, then the Photographer all landed in ONE conversation: image results
+  // under the chat's answers, a storyboard under those, one History entry titled after the first chat line. Picking a tool
+  // now saves the thread you were in and opens that tool's own session — the one it had in this visit, or a fresh one —
+  // so every service has its own conversation, and History lists them separately.
+  //   · Only an explicit pick swaps (the sidebar, the „+" sheet, the panel's tool switcher, a deep link). A mode change
+  //     inside a flow — a sentence that releases a sticky mode, a result sent on to Video — stays in its thread.
+  //   · Never while something renders: its bubble lives in this thread, and a swap would strand it mid-progress. The
+  //     pick still changes the tool; the next pick after it finishes swaps.
+  //   · An empty thread is simply handed to the new tool (no empty sessions pile up in History).
+  const switchToolSession = useCallback((to: ToolId) => {
+    const from = activeToolRef.current;
+    if (to === from) return;
+    const rendering = busy || genActiveRef.current || useJobQueue.getState().jobs.some((j) => j.status === 'rendering' || j.status === 'queued');
+    if (rendering) return;
+    const map = readToolSessions();
+    const hasThread = messagesRef.current.length > 0;
+    if (hasThread) map[from] = conversationId;
+    else if (map[from] === conversationId) delete map[from];
+    const own = map[to];
+    if (own && own !== conversationId && loadConversations().some((c) => c.id === own)) {
+      writeToolSessions(map);
+      void resumeConversation(own);
+      return;
+    }
+    if (!hasThread) { map[to] = conversationId; writeToolSessions(map); return; }
+    const fresh = startNewConversation();
+    // startNewConversation files the new session under the tool still on screen (`from`): put both right.
+    writeToolSessions({ ...map, [to]: fresh });
+  }, [busy, conversationId, resumeConversation, startNewConversation]);
+  const applyTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
       case 'product': setMode('video'); setVideoTab('product'); break;
@@ -2697,6 +2756,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
     if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
   }, [setMode, setPanelService]);
+  applyToolRef.current = applyTool;
+  const selectTool = useCallback((id: ToolId) => {
+    switchToolSession(id);
+    applyTool(id);
+  }, [switchToolSession, applyTool]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
   // closed only on request. Below `lg` they are a sheet (Gemini) that opens on demand.

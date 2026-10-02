@@ -8,15 +8,17 @@
  *   · Fast only — the Pro allowance is per ACCOUNT (lib/api/rate-limit `CHAT_PRO_USER`); a guest has none.
  *   · Text only — files and photos are for signed-in users (a guest turn carrying media is answered with a sign-in
  *     notice, never sent to the model).
- *   · No Google Search grounding unless CHAT_GUEST_SEARCH=1 — grounding is billed per query, and it is the one cost a
- *     guest turn can multiply.
+ *   · Google Search grounding ON, like the Gemini app (CHAT_GUEST_SEARCH=0 turns it off). It was off by default, and an
+ *     ungrounded turn is told it cannot search — so a visitor asking about today's news, a score or an exchange rate was
+ *     answered "I cannot provide real-time information". Grounding is billed per query; the two daily caps below bound
+ *     how many guest turns there can be.
  *   · A shorter answer (GUEST_MAX_OUTPUT_TOKENS) and a bounded message (GUEST_MAX_MESSAGE_CHARS).
  *   · Two daily caps: per IP (CHAT_GUEST_DAILY_LIMIT, default 10) and for ALL guests together
  *     (CHAT_GUEST_GLOBAL_DAILY_LIMIT, default 250).
  *
  * ⚠️ THE GLOBAL CAP IS WHAT PROTECTS PAYING USERS. The platform's daily budget guard (chatBudgetAllows, $10/day by
  * default) is shared by everyone; rotating IPs defeats any per-IP cap, so without a ceiling on guests as a group a
- * scripted flood could spend the day's budget and every signed-in user would be refused. 250 Fast turns with no
+ * scripted flood could spend the day's budget and every signed-in user would be refused. 250 Fast turns with
  * grounding and ≤ 2,048 output tokens is a few dollars at worst — a bounded marketing cost, not an open tap.
  *
  * ⚠️ A SPENT CAP IS A SIGN-IN PROMPT, NOT AN ERROR. The route answers it in-stream with code `auth_required`, which
@@ -26,7 +28,7 @@
  * CHAT_GUEST_ENABLED=0 closes guest chat (the route then answers 401 as before). FILM_ALLOW_ANONYMOUS=1 (a demo
  * deployment) keeps its old, looser meaning and bypasses this policy.
  */
-import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import type { RateLimitConfig } from '@/lib/api/rate-limit';
 import type { WireMessage } from './historySerializer';
 
@@ -51,7 +53,7 @@ export function guestChatEnabled(env: NodeJS.ProcessEnv = process.env): boolean 
 }
 
 export function guestSearchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return isTruthyFlag(env.CHAT_GUEST_SEARCH);
+  return isEnabledByDefault(env.CHAT_GUEST_SEARCH);
 }
 
 /** A whole number within [0, max] from the env, else the default. 0 is honoured ("no guest turns"). */

@@ -246,7 +246,7 @@ export async function POST(req: NextRequest) {
 
     // GOOGLE ONLY (the default): the product Gemini chain answers; the OpenAI-backed chatEngine is not called.
     if (isAiGoogleOnly()) {
-      const g = await geminiReply(messageHistory, verifiedId, req.signal);
+      const g = await geminiReply(messageHistory, verifiedId, req.signal, { locale: loc });
       return apiSuccess({
         response: g ? g.text : UNAVAILABLE[loc],
         provider: g ? 'gemini' : 'provider-fallback',

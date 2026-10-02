@@ -207,7 +207,8 @@ export const BUILT_IN_PERSONAS: readonly Persona[] = [
     preferredServices: ['chat'],
     temperature: 0.2,
     thinking: 'high',
-    googleSearch: false,
+    // Searching is ON here too: a coder is asked about the latest release of a library as often as anyone, and a turn
+    // without the tool is told to say its information may be out of date. The model decides when a search is worth it.
   },
 ] as const;
 

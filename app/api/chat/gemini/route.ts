@@ -562,8 +562,8 @@ export async function POST(req: NextRequest) {
     personaId: typeof body.personaId === 'string' ? body.personaId : null,
     customPersona: body.customPersona,
   });
-  // A guest's turn is never grounded unless CHAT_GUEST_SEARCH=1 (lib/chat/guestChat) — the prompt must not promise
-  // a search the config will not run.
+  // A guest's turn is grounded too, like the Gemini app (CHAT_GUEST_SEARCH=0 turns it off — lib/chat/guestChat), and the
+  // prompt follows the config: it must not promise a search the config will not run, nor deny one it will.
   const groundingOn = profile.googleSearch && (!guest || guestSearchEnabled());
   const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn });
   const modelMessages = toModelMessages(wire);

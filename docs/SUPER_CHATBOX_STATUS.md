@@ -39,7 +39,7 @@ The Master Directive of 2026-10-01 asked for four phases: Phase 1 (fix and deplo
 - **Caps:** 10 turns per day per IP and **250 per day across all guests**. The global ceiling stops a flood from rotating IPs from spending the shared $10/day budget.
 - **Refusals:** a cap, a file or an over-long message is answered in-stream with `auth_required`, which opens the sign-in sheet.
 - **In the browser:** `send()` lets only a plain chat turn through. Any paid tool, file, "make me a video" request or studio intent opens sign-in before anything is sent, and the composer keeps the text. Read-aloud, dictation and Live behave the same way.
-- **Switches:** `CHAT_GUEST_ENABLED=0` turns guest chat off, `CHAT_GUEST_SEARCH=1` allows grounding, and `CHAT_GUEST_DAILY_LIMIT` and `CHAT_GUEST_GLOBAL_DAILY_LIMIT` set the caps.
+- **Switches:** `CHAT_GUEST_ENABLED=0` turns guest chat off, `CHAT_GUEST_SEARCH=0` turns grounding off (it is on by default), and `CHAT_GUEST_DAILY_LIMIT` and `CHAT_GUEST_GLOBAL_DAILY_LIMIT` set the caps.
 
 ### 3.3 Brand
 - **Colours.** The background is true black (`#000`). The accent is the rocket's blue, `#338FE8`: it reads 6.2:1 as text on black, and the existing dark text on accent fills reads 6.2:1 too. `--app-accent-deep` (`#1873CA`) is for glows. The light theme uses `#1873CA` (4.8:1).

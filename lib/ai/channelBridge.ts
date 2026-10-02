@@ -80,7 +80,7 @@ export async function generateChannelReply(req: ChannelAIRequest): Promise<Chann
         messages,
         UUID_RE.test(req.userId) ? req.userId : null, // a Telegram/phone id is not an account — book it unattributed
         AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-        req.systemNote,
+        { systemNote: req.systemNote, locale: req.locale },
       );
       if (!g) return fallback('fallback');
       return {

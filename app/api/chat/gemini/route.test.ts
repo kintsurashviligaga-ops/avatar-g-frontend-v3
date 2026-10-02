@@ -233,7 +233,7 @@ describe('guest chat', () => {
     mockUser = null;
   });
 
-  test('a guest turn is answered: Fast chain, no grounding, a short answer, no memory, booked with no user', async () => {
+  test('a guest turn is answered: Fast chain, Google Search grounding, a short answer, no memory, booked with no user', async () => {
     mockStream.mockImplementation(
       gemini([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'გამარჯობა' }], { text: 'გამარჯობა', usage: { inputTokens: 9, outputTokens: 3 } }),
     );
@@ -243,7 +243,7 @@ describe('guest chat', () => {
     expect(frames).toContainEqual({ text: 'გამარჯობა' });
     const input = lastStreamInput();
     expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]); // asked for Pro, got Fast — Pro is per account
-    expect(input.config.googleSearch).toBe(false);
+    expect(input.config.googleSearch).toBe(true);
     expect(input.config.maxOutputTokens).toBeLessThanOrEqual(GUEST_MAX_OUTPUT_TOKENS);
     expect(embed).not.toHaveBeenCalled();
     expect(bookChatUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: null }));
@@ -253,10 +253,10 @@ describe('guest chat', () => {
     expect(checkRateLimit).not.toHaveBeenCalledWith(expect.anything(), RATE_LIMITS.CHAT_USER);
   });
 
-  test('CHAT_GUEST_SEARCH=1 grounds guest turns too', async () => {
-    process.env.CHAT_GUEST_SEARCH = '1';
+  test('CHAT_GUEST_SEARCH=0 turns guest grounding off — and the prompt then does not promise a search', async () => {
+    process.env.CHAT_GUEST_SEARCH = '0';
     await (await POST(post(userTurn('ამინდი თბილისში')))).text();
-    expect(lastStreamInput().config.googleSearch).toBe(true);
+    expect(lastStreamInput().config.googleSearch).toBe(false);
   });
 
   test('a guest turn with a photo is a sign-in notice — the model, the budget and the caps are never touched', async () => {
@@ -752,7 +752,7 @@ describe('chat modes', () => {
     expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.2, maxOutputTokens: 4096 });
     await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'pro' }))).text();
     const pro = lastCall().config;
-    expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 8192, googleSearch: false });
+    expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 8192, googleSearch: true });
     expect(pro.temperature).toBeUndefined();
     expect(pro.system).toMatch(/PERSONA — /); // the persona still shapes the answer
   });

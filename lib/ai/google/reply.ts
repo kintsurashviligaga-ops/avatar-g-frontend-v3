@@ -1,38 +1,49 @@
 /**
  * lib/ai/google/reply.ts — ONE non-streamed answer from the product Gemini chain, booked with real usage.
  *
- * Lifted out of /api/chat so the channel doors (WhatsApp, Telegram — lib/ai/channelBridge.ts) answer from the same
- * chain, the same Agent G prompt and the same usage booking as the website. Before this, channels went through the
- * OpenAI-backed chatEngine, which production never calls while AI_GOOGLE_ONLY is on (the default): a channel reply
- * could only ever have been the fallback apology.
+ * The same chain, the same platform prompt and the same Google Search grounding as the product chat
+ * (/api/chat/gemini), for every door that wants a whole answer at once: /api/chat (the service widgets) and the
+ * channels — WhatsApp, Telegram, phone (lib/ai/channelBridge.ts). Before this, channels went through the OpenAI-backed
+ * chatEngine (which production never calls while AI_GOOGLE_ONLY is on), and /api/chat sent the legacy 13.7 KB
+ * AGENT_G_SYSTEM_PROMPT instead of lib/chat/platformPrompt — two different Agent Gs depending on the door.
  */
 import 'server-only';
-import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { bookChatUsage } from '@/lib/services/billing/chatBudget';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { streamGeminiChat, unbookedAttempts } from '@/lib/ai/google/chatStream';
 import { resolveAgentProfile, toGeminiChatConfig } from '@/lib/agents/profile';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
+import { detectReplyLocale, type ReplyLocale } from '@/lib/chat/replyLocale';
 
 const hasTokens = (u?: { inputTokens?: number; outputTokens?: number; totalTokens?: number }): boolean =>
   !!u && ((u.inputTokens ?? 0) > 0 || (u.outputTokens ?? 0) > 0 || (u.totalTokens ?? 0) > 0);
 
+export interface GeminiReplyOptions {
+  /** A door's own style rules, appended to the platform prompt (e.g. WhatsApp formatting). */
+  systemNote?: string;
+  /** The reply language; default: the latest message's script (lib/chat/replyLocale), as the product chat does. */
+  locale?: ReplyLocale;
+}
+
 /**
- * Never throws; null when no model answered. `systemNote` is appended to the Agent G prompt (a channel's own style
- * rules); `userId` must be a real account id or null — it keys the usage booking.
+ * Never throws; null when no model answered. `userId` must be a real account id or null — it keys the usage booking.
  */
 export async function geminiReply(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   userId: string | null,
   signal?: AbortSignal,
-  systemNote?: string,
+  opts: GeminiReplyOptions = {},
 ): Promise<{ text: string; model: string } | null> {
-  const system = systemNote ? `${AGENT_G_SYSTEM_PROMPT}\n\n${systemNote}` : AGENT_G_SYSTEM_PROMPT;
+  const profile = resolveAgentProfile({});
+  const locale = opts.locale ?? detectReplyLocale(messages);
+  const platform = buildPlatformPrompt({ locale, googleSearch: profile.googleSearch });
+  const system = opts.systemNote ? `${platform}\n\n${opts.systemNote}` : platform;
   const result = await streamGeminiChat({
     apiKey: resolveGeminiKey(),
     models: chatModelChain('standard'),
     messages,
-    config: toGeminiChatConfig(resolveAgentProfile({}), system),
+    config: toGeminiChatConfig(profile, system),
     abortSignal: signal,
     onFrame: () => { /* collected into result.text */ },
   });
