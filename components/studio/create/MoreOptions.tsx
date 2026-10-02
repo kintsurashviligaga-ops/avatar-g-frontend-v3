@@ -2,20 +2,20 @@
 
 /**
  * "More Options" (ref2): Vocal Gender (i) as a segmented control, Weirdness and Style Influence (i) as sliders with tick
- * marks and an accent thumb — and, below them, everything else the Music tool has always had and the server still reads:
- * the track length, the tempo, and the templates gallery (thumbnails and all), so nothing that existed is out of reach.
+ * marks and an accent thumb — and, below them, the templates gallery (thumbnails and all). The track length and the tempo are
+ * the two tiles beside Create (CreateBar), on screen in both modes, so they are not repeated here.
  *
  * The sliders say what they are. On Lyria and ElevenLabs they only add a sentence to the text brief ("approximate", the
  * hint lib/ai/musicControls insists on); on an engine that takes them as parameters (MusicGen) the hint says so instead.
  */
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { Chip, Slider } from '@/components/studio/ui/controls';
+import { Slider } from '@/components/studio/ui/controls';
 import { TemplateGallery, type TemplateCardItem } from '@/components/studio/ui/TemplateGallery';
 import { musicControlsCopy } from '@/components/studio/ui/musicControlsCopy';
 import type { MusicControlMode, VocalGender } from '@/lib/ai/musicControls';
-import { MUSIC_DURATIONS, type MusicDuration } from '@/lib/studio/musicQuote';
-import { MUSIC_TEMPOS, musicCreateCopy, tempoName, type MusicTempo } from './musicCreateCopy';
+import type { MusicDuration } from '@/lib/studio/musicQuote';
+import { musicCreateCopy, type MusicTempo } from './musicCreateCopy';
 import { PillSegmented } from './PillSegmented';
 import { InfoButton, PanelCard, cx, useInfoTip } from './primitives';
 
@@ -102,28 +102,8 @@ export function MoreOptions(p: MoreOptionsProps) {
           </p>
         </div>
 
-        {/* Length — a chip here, a tile beside Create */}
-        <div className="border-t border-app-border/10 pt-3">
-          <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{cc.length}</span>
-          <div role="group" aria-label={cc.length} data-testid="music-length" className="flex flex-wrap gap-1.5">
-            {MUSIC_DURATIONS.map((d) => (
-              <Chip key={d} active={p.duration === d} disabled={p.lengthLocked} onClick={() => p.onDuration(d)}>
-                {d === 0 ? cc.lengthFull : `${d} ${cc.secondsShort}`}
-              </Chip>
-            ))}
-          </div>
-          {p.lengthLocked && <p className="mt-1 text-[11.5px] leading-snug text-app-muted">{cc.lengthFixed}</p>}
-        </div>
-
-        {/* Tempo — the server folds it into the brief as a BPM hint */}
-        <div>
-          <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{cc.tempo}</span>
-          <div role="group" aria-label={cc.tempo} data-testid="music-tempo" className="flex flex-wrap gap-1.5">
-            {MUSIC_TEMPOS.map((t) => (
-              <Chip key={t} active={p.tempo === t} onClick={() => p.onTempo(t)}>{tempoName(p.locale, t)}</Chip>
-            ))}
-          </div>
-        </div>
+        {/* Length and tempo are NOT repeated here: they are the two tiles beside Create, on screen in both modes (they were also
+            chips in this card — the same two choices twice on one screen). */}
 
         {/* Templates — the one-tap vibes, with their pictures */}
         <div className="border-t border-app-border/10 pt-1">

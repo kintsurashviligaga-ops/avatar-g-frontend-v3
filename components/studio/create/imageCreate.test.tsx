@@ -57,7 +57,7 @@ describe('the rows, in the reference\'s order', () => {
   test('the header is the tool name with a chevron that opens the tool switcher, and a ✕ where the sheet can close', () => {
     const { p } = show();
     const sw = screen.getByTestId('create-tool-switch');
-    expect(sw.textContent).toContain('Create image');
+    expect(sw.textContent).toContain('Image');
     expect(sw.getAttribute('aria-haspopup')).toBe('dialog');
     fireEvent.click(sw);
     expect(p.onOpenTools).toHaveBeenCalledTimes(1);
@@ -514,7 +514,7 @@ describe('ka · en · ru', () => {
     }
   });
 
-  test.each([['ka', 'სურათის შექმნა', 'შექმნა'], ['ru', 'Создать изображение', 'Создать']] as const)('%s: the header and the button speak the language', (locale, title, button) => {
+  test.each([['ka', 'სურათი', 'შექმნა'], ['ru', 'Изображение', 'Создать']] as const)('%s: the header and the button speak the language', (locale, title, button) => {
     show({ locale });
     expect(screen.getByTestId('create-tool-switch').textContent).toContain(title);
     expect(generate().textContent).toContain(button);

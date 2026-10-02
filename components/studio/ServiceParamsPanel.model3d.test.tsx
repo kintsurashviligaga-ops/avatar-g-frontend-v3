@@ -57,7 +57,7 @@ describe('3D prefill', () => {
     const box = await screen.findByPlaceholderText('Describe the object — a single item, plain background');
     await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('an old clay jug'));
     // …which is what makes Run usable without retyping the request.
-    expect((screen.getByRole('button', { name: 'Run' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('still fills the deck topic for a presentation', async () => {
@@ -70,7 +70,7 @@ describe('3D prefill', () => {
 describe('3D delivery', () => {
   async function runOnce(onDelivered = jest.fn()) {
     render(<ServiceParamsPanel service="model3d" locale="en" onClose={() => {}} prefill={{ topic: 'an old clay jug' }} onDelivered={onDelivered} />);
-    const run = screen.getByRole('button', { name: 'Run' });
+    const run = screen.getByRole('button', { name: 'Create' });
     await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
     await act(async () => { fireEvent.click(run); });
     await waitFor(() => expect(onDelivered).toHaveBeenCalled());
@@ -93,6 +93,6 @@ describe('3D delivery', () => {
     expect(await screen.findByText('The 3D preview could not load — you can still download the model.')).toBeTruthy();
     // The panel is still mounted around it — the close control and the run button are still there.
     expect(screen.getByRole('button', { name: /Close/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Run' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeTruthy();
   });
 });

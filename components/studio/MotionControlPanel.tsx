@@ -6,44 +6,44 @@
  * inside OmniStudio's Lip-sync mode.
  */
 import { useRef, useState } from 'react';
-import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
   ka: { char: 'პერსონაჟი', motion: 'მოძრაობა (არჩევითი)', upload: 'ატვირთე', optional: 'სურვილისამებრ',
-    ph: 'მოძრაობის აღწერა… (ქართულად ან ინგლისურად)', gen: 'მოძრაობის გენერაცია', working: 'გენერირდება…',
+    ph: 'მოძრაობის აღწერა… (ქართულად ან ინგლისურად)', gen: 'შექმნა', working: 'გენერირდება…',
     done: 'მზადაა', dl: 'ჩამოტვირთვა', need: 'ატვირთე ფოტო და დაწერე მოძრაობა', failed: 'მოძრაობის გენერაცია ვერ მოხერხდა. სცადე ხელახლა.' },
   en: { char: 'Character', motion: 'Motion (optional)', upload: 'Upload', optional: 'optional',
-    ph: 'Describe the motion… (Georgian or English)', gen: 'Generate motion', working: 'Generating…',
+    ph: 'Describe the motion… (Georgian or English)', gen: 'Create', working: 'Generating…',
     done: 'Ready', dl: 'Download', need: 'Upload a photo and describe the motion', failed: 'The motion could not be generated. Please try again.' },
   ru: { char: 'Персонаж', motion: 'Движение (опц.)', upload: 'Загрузить', optional: 'опционально',
-    ph: 'Опишите движение…', gen: 'Генерация движения', working: 'Генерация…',
+    ph: 'Опишите движение…', gen: 'Создать', working: 'Генерация…',
     done: 'Готово', dl: 'Скачать', need: 'Загрузите фото и опишите движение', failed: 'Не удалось сгенерировать движение. Попробуйте снова.' },
 };
 
 const QUICK: Record<Lang, { label: string; v: string }[]> = {
   ka: [
-    { label: '💃 ცეკვა', v: 'dancing energetically, fluid graceful movements' },
-    { label: '🚶 სვლა', v: 'walking confidently forward, cinematic tracking, natural gait' },
-    { label: '😊 ემოცია', v: 'expressing joy, natural facial expressions, looking at camera' },
-    { label: '🎤 სიმღერა', v: 'singing emotionally, mouth moving, expressive' },
-    { label: '🌊 ნელი', v: 'slow graceful ethereal movement, cinematic' },
+    { label: 'ცეკვა', v: 'dancing energetically, fluid graceful movements' },
+    { label: 'სვლა', v: 'walking confidently forward, cinematic tracking, natural gait' },
+    { label: 'ემოცია', v: 'expressing joy, natural facial expressions, looking at camera' },
+    { label: 'სიმღერა', v: 'singing emotionally, mouth moving, expressive' },
+    { label: 'ნელი', v: 'slow graceful ethereal movement, cinematic' },
   ],
   en: [
-    { label: '💃 Dance', v: 'dancing energetically, fluid graceful movements' },
-    { label: '🚶 Walk', v: 'walking confidently forward, cinematic tracking, natural gait' },
-    { label: '😊 Emotion', v: 'expressing joy, natural facial expressions, looking at camera' },
-    { label: '🎤 Sing', v: 'singing emotionally, mouth moving, expressive' },
-    { label: '🌊 Slow', v: 'slow graceful ethereal movement, cinematic' },
+    { label: 'Dance', v: 'dancing energetically, fluid graceful movements' },
+    { label: 'Walk', v: 'walking confidently forward, cinematic tracking, natural gait' },
+    { label: 'Emotion', v: 'expressing joy, natural facial expressions, looking at camera' },
+    { label: 'Sing', v: 'singing emotionally, mouth moving, expressive' },
+    { label: 'Slow', v: 'slow graceful ethereal movement, cinematic' },
   ],
   ru: [
-    { label: '💃 Танец', v: 'dancing energetically, fluid graceful movements' },
-    { label: '🚶 Шаг', v: 'walking confidently forward, cinematic tracking, natural gait' },
-    { label: '😊 Эмоция', v: 'expressing joy, natural facial expressions, looking at camera' },
-    { label: '🎤 Песня', v: 'singing emotionally, mouth moving, expressive' },
-    { label: '🌊 Плавно', v: 'slow graceful ethereal movement, cinematic' },
+    { label: 'Танец', v: 'dancing energetically, fluid graceful movements' },
+    { label: 'Шаг', v: 'walking confidently forward, cinematic tracking, natural gait' },
+    { label: 'Эмоция', v: 'expressing joy, natural facial expressions, looking at camera' },
+    { label: 'Песня', v: 'singing emotionally, mouth moving, expressive' },
+    { label: 'Плавно', v: 'slow graceful ethereal movement, cinematic' },
   ],
 };
 
@@ -220,7 +220,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       <div className="grid grid-cols-2 gap-2.5">
         {/* Character photo */}
         <div className="space-y-1">
-          <span className="text-[11px] uppercase tracking-wider text-app-muted">📸 {t.char} *</span>
+          <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.char} *</span>
           <button type="button" onClick={() => imgRef.current?.click()}
             className={`relative aspect-[3/4] w-full overflow-hidden rounded-2xl border-2 border-dashed transition ${charImage ? 'border-app-accent/40 bg-app-accent/5' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/30'}`}>
             {charImage ? (
@@ -241,7 +241,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         </div>
         {/* Reference video */}
         <div className="space-y-1">
-          <span className="text-[11px] uppercase tracking-wider text-app-muted">📹 {t.motion}</span>
+          <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.motion}</span>
           <button type="button" onClick={() => vidRef.current?.click()}
             className={`relative aspect-[3/4] w-full overflow-hidden rounded-2xl border-2 border-dashed transition ${refVideo ? 'border-app-accent/40 bg-app-accent/5' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/30'}`}>
             {refVideo ? (
@@ -263,7 +263,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
 
       {/* Aspect ratio — passed to Kling so the clip renders at the chosen format. */}
       <div className="space-y-1.5">
-        <span className="text-[11px] uppercase tracking-wider text-app-muted">📐 {lang === 'en' ? 'Format' : lang === 'ru' ? 'Формат' : 'ფორმატი'}</span>
+        <span className="text-[11px] uppercase tracking-wider text-app-muted">{lang === 'en' ? 'Format' : lang === 'ru' ? 'Формат' : 'ფორმატი'}</span>
         <div className="grid grid-cols-3 gap-1.5">
           {RATIOS.map((r) => (
             <button key={r.id} type="button" onClick={() => setAspectRatio(r.id)}
@@ -292,7 +292,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       <div className="space-y-2 border-t border-app-border/10 pt-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-base">🎵</span>
+            <Music2 size={18} aria-hidden="true" className="shrink-0 text-app-muted" />
             <div>
               <p className="text-xs font-medium text-app-text">{lang === 'en' ? 'Background music' : lang === 'ru' ? 'Фоновая музыка' : 'ფონური მუსიკა'}</p>
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI-generated, instrumental' : lang === 'ru' ? 'ИИ, инструментал' : 'AI, ინსტრუმენტალი'}</p>
@@ -305,7 +305,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             {MOODS.map((m) => (
               <button key={m.id} type="button" onClick={() => setMusicMood(m.id)}
                 className={`flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs transition ${musicMood === m.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:text-app-text'}`}>
-                <span>{m.emoji}</span><span>{m[lang]}</span>
+                <span>{m[lang]}</span>
               </button>
             ))}
           </div>
@@ -317,7 +317,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       <div className="space-y-2 border-t border-app-border/10 pt-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-base">👄</span>
+            <Mic size={18} aria-hidden="true" className="shrink-0 text-app-muted" />
             <div>
               <p className="text-xs font-medium text-app-text">Lip-Sync</p>
               <p className="text-[10px] text-app-muted">{lang === 'en' ? 'AI voice + mouth sync' : lang === 'ru' ? 'ИИ-голос + синхрон губ' : 'AI ხმა + ტუჩების სინქრონი'}</p>
@@ -339,7 +339,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
 
       {/* Speed vs quality — picks the Kling model server-side. */}
       <div className="space-y-1.5 border-t border-app-border/10 pt-3">
-        <span className="text-[11px] uppercase tracking-wider text-app-muted">⚡ {lang === 'en' ? 'Speed / Quality' : lang === 'ru' ? 'Скорость / Качество' : 'სიჩქარე / ხარისხი'}</span>
+        <span className="text-[11px] uppercase tracking-wider text-app-muted">{lang === 'en' ? 'Speed / Quality' : lang === 'ru' ? 'Скорость / Качество' : 'სიჩქარე / ხარისხი'}</span>
         <div className="grid grid-cols-2 gap-1.5">
           {([
             { id: 'fast' as const, emoji: '🚀', ka: 'სწრაფი', en: 'Fast', ru: 'Быстро', eta: '~3წთ', etaEn: '~3 min', etaRu: '~3 мин' },
@@ -347,7 +347,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           ]).map((m) => (
             <button key={m.id} type="button" onClick={() => setQualityMode(m.id)} disabled={busy}
               className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 transition disabled:opacity-50 ${qualityMode === m.id ? 'border-app-accent/50 bg-app-accent/15 text-app-accent' : 'border-app-border/20 bg-app-bg/40 text-app-muted hover:border-app-border/40'}`}>
-              <span className="text-[13px] font-medium">{m.emoji} {m[lang]}</span>
+              <span className="text-[13px] font-medium">{m[lang]}</span>
               <span className="text-[10px] opacity-70">{lang === 'en' ? m.etaEn : lang === 'ru' ? m.etaRu : m.eta}</span>
             </button>
           ))}

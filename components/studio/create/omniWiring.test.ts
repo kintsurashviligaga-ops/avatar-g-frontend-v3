@@ -40,8 +40,9 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
     expect(src).toMatch(/from '@\/lib\/studio\/imageCreate'/);
   });
 
-  test('the generic "service card" is not drawn for the image tool (the panel\'s header is the tool switcher)', () => {
-    expect(src).toMatch(/\{!imageCreate && !videoCreate && mode !== 'music' && <button type="button" onClick=\{\(\) => \{ setToolPickOnly\(true\)/);
+  test('no generic "service card" for any tool: the panel\'s ONE header is the tool switcher (the Image screen draws its own)', () => {
+    expect(src).not.toContain("<span className=\"shrink-0 text-[12.5px] font-medium text-app-accent\">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>");
+    expect(src).toContain('data-testid="panel-tool-switch"');
     expect(mounted).toMatch(/onOpenTools=\{\(\) => \{ setToolPickOnly\(true\); setToolSheetOpen\(true\); \}\}/);
   });
 
@@ -110,8 +111,9 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
   });
 
   test('the sheet\'s generic header gives way to the panel\'s own (tool name ▾ · ✕) — not rendered, because a hidden ✕ would swallow the dialog\'s initial focus', () => {
-    expect(src).toMatch(/\{!\(imageCreate && !isDesktop\) && !videoCreate && \(\s*<div className=\{`\$\{shootActive \? 'hidden ' : ''\}\$\{isDesktop\s*\? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border\/10 pl-5 pr-2'/);
-    expect(mounted).toMatch(/\{\.\.\.\(isDesktop \? \{\} : \{ onClose: \(\) => setOptionsOpen\(false\) \}\)\}/);
+    expect(src).toMatch(/\{!imageCreate && !videoCreate && \(\s*<div data-testid="panel-header" className=\{`\$\{shootActive \? 'hidden ' : ''\}\$\{isDesktop/);
+    // The Image screen's own ✕ closes the panel on a desktop and the sheet on a phone.
+    expect(mounted).toContain('onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}');
     // …and it is a real removal, never a `hidden` class on the header.
     expect(studio).not.toMatch(/imageCreate \? 'hidden'/);
   });

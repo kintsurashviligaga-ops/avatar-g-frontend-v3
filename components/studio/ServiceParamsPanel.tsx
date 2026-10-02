@@ -16,7 +16,7 @@
  * budget guarding — this component is deliberately dumb about all of that.
  */
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
 import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '@/lib/services/montage/montagePlan';
 import { MontageEditor, type EditorClip } from './MontageEditor';
@@ -35,7 +35,7 @@ import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckThe
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 import { describeServiceError } from './ui/serviceError';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { Boxes } from 'lucide-react';
+import { Boxes, Film, Image as ImageIcon } from 'lucide-react';
 import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
 import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
@@ -62,7 +62,7 @@ type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
-    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
+    close: 'დახურვა', run: 'შექმნა', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
     montage: 'მონტაჟი', dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
     shots: 'კადრები', addShot: '+ კადრი', aspect: 'ფორმატი', music: 'მუსიკა (არჩევითი)',
@@ -89,7 +89,7 @@ const COPY = {
     sceneRefused: 'სცენაზე ვერ დაემატა — სცენაში მაქსიმუმ {n} ობიექტი ეტევა.',
   },
   en: {
-    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
+    close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
     montage: 'Montage', dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
     shots: 'Shots', addShot: '+ Shot', aspect: 'Aspect', music: 'Music (optional)',
@@ -116,7 +116,7 @@ const COPY = {
     sceneRefused: 'Could not add it to the scene — it holds up to {n} objects.',
   },
   ru: {
-    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
+    close: 'Закрыть', run: 'Создать', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
     montage: 'Монтаж', dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
     shots: 'Кадры', addShot: '+ Кадр', aspect: 'Формат', music: 'Музыка (необязательно)',
@@ -267,6 +267,7 @@ export function ServiceParamsPanel({
   onOpenFullEditor,
   prefill,
   onDelivered,
+  embedded = false,
 }: {
   service: PanelService;
   locale: string;
@@ -281,6 +282,12 @@ export function ServiceParamsPanel({
    * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
    */
   prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
+  /**
+   * Drawn inside the studio's settings panel, which already has the tool's header, its ✕ and its own scroll. Then this
+   * panel draws no second frame, no second header with its own „Close ✕“ and no 52vh inner scroll — a box that scrolled
+   * inside a panel that scrolls, with the Create button below the fold of the inner one.
+   */
+  embedded?: boolean;
   /**
    * Hand a finished result to the conversation.
    *
@@ -588,14 +595,7 @@ export function ServiceParamsPanel({
     : [];
 
   return (
-    // HEIGHT IS CAPPED and the panel scrolls inside itself. A twelve-shot timeline is taller than the
-    // viewport, and letting it grow pushed the message input off screen — the one control that must
-    // never leave, since this panel sits INSIDE the chat rather than on a page of its own.
-    <Panel className="mb-2" maxHeight="52vh">
-      <PanelHeader
-        title={t[service]}
-        action={<GhostButton onClick={onClose} className="px-2">{t.close} ✕</GhostButton>}
-      />
+    <SppFrame embedded={embedded} title={t[service]} closeLabel={t.close} onClose={onClose}>
 
       {service === 'montage' && (
         <MontageEditor
@@ -615,14 +615,14 @@ export function ServiceParamsPanel({
       {service === 'dubbing' && (
         <div className="space-y-2.5">
           {/* SOURCE first, then TARGET, then options — the order the task is actually thought about. */}
-          <Group title={`🎬 ${t.sourceVideo}`}>
+          <Group title={t.sourceVideo}>
             {/* A FILE PICKER, not a URL box. Asking for "https://…/video.mp4" required the user to host
                 their own video somewhere public first — a step most people cannot take at all, which
                 made the whole service unreachable no matter how well the pipeline worked. */}
             <Dropzone
               id="dub-source"
               accept="video/*"
-              icon={<span aria-hidden>🎬</span>}
+              icon={<Film size={20} aria-hidden="true" />}
               title={dubFile ? dubFile : t.pickVideo}
               hint={t.dubSourceHint}
               filled={Boolean(sourceVideoUrl)}
@@ -657,7 +657,7 @@ export function ServiceParamsPanel({
               </Note>
             )}
           </Group>
-          <Group title={`🗣 ${t.targetLang}`}>
+          <Group title={t.targetLang}>
             <ChipGroup
               value={targetLanguage}
               onChange={setTargetLanguage}
@@ -693,12 +693,12 @@ export function ServiceParamsPanel({
 
       {service === 'presentation' && (
         <div className="space-y-2.5">
-          <Group title={`📝 ${t.topic}`}>
+          <Group>
             <LabelledField label={t.topic} maxLength={MAX_TOPIC_CHARS} value={topic}>
               <TextArea rows={3} value={topic} maxLength={MAX_TOPIC_CHARS} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPh} />
             </LabelledField>
           </Group>
-          <Group title={`⚙️ ${t.deckOptions}`}>
+          <Group title={t.deckOptions}>
             {/* The slide count was a bare number input — a spinner is a poor control on a phone and
                 gave no sense of the allowed range. The range is the control now. */}
             <div className="min-w-0">
@@ -738,11 +738,11 @@ export function ServiceParamsPanel({
 
       {service === 'model3d' && (
         <div className="space-y-2.5">
-          <Group title={`🧊 ${t.model3d}`}>
+          <Group>
             <ChipGroup
               value={mode3d}
               onChange={setMode3d}
-              options={[{ id: 'text' as const, label: `✍️ ${t.fromText}` }, { id: 'image' as const, label: `🖼 ${t.fromImage}` }]}
+              options={[{ id: 'text' as const, label: t.fromText }, { id: 'image' as const, label: t.fromImage }]}
             />
             {mode3d === 'text' ? (
               <LabelledField label={t.describe} maxLength={MAX_PROMPT_CHARS} value={prompt3d} hint={t.describeHint}>
@@ -755,7 +755,7 @@ export function ServiceParamsPanel({
                 <Dropzone
                   id="model3d-image"
                   accept="image/*"
-                  icon={<span aria-hidden>🖼</span>}
+                  icon={<ImageIcon size={20} aria-hidden="true" />}
                   title={img3dFile ? img3dFile : t.pickPhoto}
                   hint={t.photoHint}
                   filled={Boolean(imageUrl3d)}
@@ -775,7 +775,7 @@ export function ServiceParamsPanel({
               </div>
             )}
           </Group>
-          <Group title={`⚙️ ${t.quality}`}>
+          <Group title={t.quality}>
             <ChipGroup
               value={quality3d}
               onChange={setQuality3d}
@@ -952,6 +952,25 @@ export function ServiceParamsPanel({
           )}
         </div>
       )}
+    </SppFrame>
+  );
+}
+
+/** Standalone: the capped, closable card. Inside the settings panel (`embedded`): the parameters only. */
+function SppFrame({ embedded, title, closeLabel, onClose, children }: {
+  embedded: boolean;
+  title: string;
+  closeLabel: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (embedded) return <div className="min-w-0 space-y-3" data-testid="service-params">{children}</div>;
+  return (
+    // HEIGHT IS CAPPED and the panel scrolls inside itself: standalone, it sits INSIDE a column with the message input
+    // under it, and a twelve-shot timeline taller than the viewport would push that input off screen.
+    <Panel className="mb-2" maxHeight="52vh">
+      <PanelHeader title={title} action={<GhostButton onClick={onClose} className="px-2">{closeLabel} ✕</GhostButton>} />
+      {children}
     </Panel>
   );
 }

@@ -7408,6 +7408,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting (the owner's screenshots); a panel and a sheet each own their own layer.
   const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
   const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
+  const changeToolWord = locale === 'en' ? 'Change tool' : locale === 'ru' ? 'Сменить инструмент' : 'ხელსაწყოს შეცვლა';
   // The video tool brings its OWN header (tool name + switcher + ✕), model card and price, so the generic service card below
   // and the sheet's „Settings" header step aside for it (components/studio/create/VideoCreatePanel).
   const videoCreate = activeTool === 'video';
@@ -7511,16 +7512,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   ) : null;
   const settingsBody = (
     <div className="space-y-3">
-      {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
-      {!imageCreate && !videoCreate && mode !== 'music' && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
-        className={`${shootActive ? 'hidden' : 'flex'} w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated`}>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-semibold leading-tight text-app-text">{toolLabel}</span>
-          <span className="mt-0.5 block truncate text-[12px] text-app-muted">{toolSub(activeTool, locale)}</span>
-        </span>
-        <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
-      </button>}
+      {/* No service card here any more: the panel's ONE header (below, in the surface) names the tool and switches it. */}
         {/* INTERIOR DESIGNER · PHOTOGRAPHER — their own panels (components/studio/create), driven by useShootStudio. The ✕ closes
             the settings like the generic header's; the name + chevron open the tool picker like the service card. */}
         {activeTool === 'interior' && (
@@ -7537,7 +7529,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             locale={locale}
             desktop={isDesktop}
             onOpenTools={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
-            {...(isDesktop ? {} : { onClose: () => setOptionsOpen(false) })}
+            onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}
             references={attachments.filter((a) => isImage(a.mimeType)).map((a) => ({ src: a.dataUrl, ...(a.name ? { name: a.name } : {}) }))}
             // ONE reference: the route reads a single `referenceImage`, so a new pick REPLACES the picture in the tray.
             onAddReference={(files) => { setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType))); void ingestFiles(files, { scriptInVideo: false }); }}
@@ -7704,7 +7696,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
                 <div className="mt-1.5 flex gap-1.5">
-                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი']] as const).map(([g, label]) => (
+                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი']] as const).map(([g, label]) => (
                     <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
                       className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
                   ))}
@@ -8304,9 +8296,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    <Chip active={productDuration === 8} onClick={() => setProductDuration(8)}>8{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 24} onClick={() => setProductDuration(24)}>24{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 8} onClick={() => setProductDuration(8)}>8{secsWord}</Chip>
+                    <Chip active={productDuration === 24} onClick={() => setProductDuration(24)}>24{secsWord}</Chip>
+                    <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{secsWord}</Chip>
                   </div>
                 </div>
                 {/* Upload hint — Run is gated on a product photo (the locked foreground); say so instead of leaving
@@ -8553,6 +8545,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <ServiceParamsPanel
             service={panelService}
             locale={locale}
+            embedded
             prefill={studioPrefill}
             // ⚠️ FOUR LIVE SERVICES DELIVERED INTO A DISMISSIBLE BOX. Montage, dubbing, decks and 3D all
             // rendered into the panel's own local state, and the panel has a ✕ on it — so a user could
@@ -8830,6 +8823,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
                   background a clipped gradient needs and would leave the page's one heading invisible. */}
               <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
+              {/* In a TOOL (never the chat home, whose screen stays the greeting and the box): one quiet line saying where you
+                  are and what this tool does — the panel beside it is the how. Without it every tool without a result pane of
+                  its own opened on the home page's words alone. */}
+              {!chatOnly && (
+                <p data-testid="tool-hint" className="mx-auto inline-flex max-w-full items-center gap-2 rounded-full bg-app-elevated/50 px-3.5 py-1.5 text-[14px] leading-[1.5] text-app-muted ring-1 ring-app-border/10">
+                  <ToolIcon size={16} aria-hidden="true" className="shrink-0 text-app-accent" />
+                  <span className="min-w-0 truncate"><span className="font-medium text-app-text">{toolLabel}</span> — {toolSub(activeTool, locale)}</span>
+                </p>
+              )}
             </div>
           </div>
         )) : messageList}
@@ -9149,7 +9151,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
               // Not drawn in the Image or Music tool below `lg`: its prompt IS the Create screen's prompt card (same `input`), and the
-              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's.
+              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's: it is where Agent G
+              // is talked to (it answers, asks, confirms with the price) while the panel's Generate runs at once — and the video
+              // tool's composer placeholder is locked copy (docs/DESIGN.md §7).
               : `${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
@@ -9571,15 +9575,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
-        {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
-            hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
-        {!(imageCreate && !isDesktop) && !videoCreate && (
-        <div className={`${shootActive ? 'hidden ' : ''}${isDesktop
-          ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
-          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}`}>
-          <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
+        {/* ONE HEADER PER PANEL: the tool's icon and name (▾ switches the tool) and ✕ — the grammar the Image, Video, Interior and
+            Photographer screens draw for themselves. It used to be a „Settings" title with a SECOND header under it (a service card:
+            icon · name · sub-line · „Change"), and for dubbing / 3D / decks a third („Dubbing — Close ✕"). The Create screens that
+            draw their own header get none here — not merely hidden: a display:none ✕ is still the "first focusable"
+            useDialogA11y tries to focus, and focus would never enter the sheet. */}
+        {!imageCreate && !videoCreate && (
+        <div data-testid="panel-header" className={`${shootActive ? 'hidden ' : ''}${isDesktop
+          ? 'flex h-14 shrink-0 items-center justify-between gap-2 border-b border-app-border/10 pl-3 pr-2'
+          : 'flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-2 sm:pt-4'}`}>
+          <h2 className="min-w-0 flex-1">
+            <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+              aria-label={`${toolLabel} — ${changeToolWord}`} title={changeToolWord} data-testid="panel-tool-switch"
+              className="flex min-h-[44px] w-full min-w-0 touch-manipulation items-center gap-2.5 rounded-2xl px-1 text-left transition-colors hover:bg-app-elevated/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent"><ToolIcon size={18} aria-hidden="true" /></span>
+              <span className="min-w-0 truncate text-[16px] font-bold tracking-tight text-app-text">{toolLabel}</span>
+              <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted" />
+            </button>
+          </h2>
           <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
-            className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} aria-hidden="true" />
           </button>
         </div>

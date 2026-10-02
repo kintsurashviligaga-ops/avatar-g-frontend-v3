@@ -2,14 +2,14 @@
 
 /**
  * The Create screen's text cards (ref2): LYRICS — a collapsible header with the round wand button, the textarea, and a
- * bottom row [library] [✓ Instrumental] [camera] … [expand]; STYLES — the same card with a description and, under it, a
+ * bottom row [library] [✓ Instrumental] … [expand]; STYLES — the same card with a description and, under it, a
  * horizontally scrolling chip row with [library] at its left and [expand] at its right; and the single SIMPLE card.
  *
  * These are views. The words live in OmniStudio's own states (the lyrics box; the composer's text, which `send()` reads
  * as the song's description), the chips are `musicStyles`, and every real action — the wands, the saved lists, the
- * full-screen editor — is a callback. Locked controls (the camera) are `aria-disabled` and have no handler at all.
+ * full-screen editor — is a callback. A control that would do nothing yet is not drawn.
  */
-import { Camera, Check, Library, Maximize2, Wand2 } from 'lucide-react';
+import { Check, Library, Maximize2, Wand2 } from 'lucide-react';
 import { MAX_STYLES, toggleStyle } from '@/lib/ai/musicControls';
 import { musicCreateCopy } from './musicCreateCopy';
 import { PanelCard, PillButton, RoundButton, cx } from './primitives';
@@ -172,7 +172,6 @@ export function LyricsCard(p: LyricsCardProps) {
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
         <RoundButton testId="music-lyrics-library" icon={<Library size={18} aria-hidden="true" />} label={cc.lyricsLibrary} onClick={p.onLibrary} haspopup="dialog" />
         <InstrumentalPill locale={p.locale} on={p.instrumental} onToggle={p.onInstrumental} />
-        <RoundButton testId="music-camera" icon={<Camera size={18} aria-hidden="true" />} label={cc.camera} locked lockedNote={cc.cameraSoon} />
         <RoundButton className="ml-auto" testId="music-lyrics-expand" icon={<Maximize2 size={17} aria-hidden="true" />} label={cc.expand} onClick={p.onExpand} haspopup="dialog" />
       </div>
     </PanelCard>

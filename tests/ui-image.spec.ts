@@ -94,7 +94,7 @@ test.describe('phone 375×812 — ref3', () => {
     const tops = await Promise.all(['header', 'upload', 'prompt', 'options', 'generate'].map((r) => panel.locator(`[data-create-row="${r}"]`).evaluate((n) => n.getBoundingClientRect().top)));
     expect([...tops].sort((a, b) => a - b)).toEqual(tops);
 
-    await expect(page.getByTestId('create-tool-switch')).toContainText('Create image');
+    await expect(page.getByTestId('create-tool-switch')).toContainText('Image');
     await expect(page.getByTestId('create-close')).toBeVisible();
     await expect(panel.locator('[data-create-row="upload"]')).toContainText('Choose an image to upload');
     await expect(panel.locator('[data-create-row="upload"]')).toContainText('(max 1)');
@@ -313,7 +313,7 @@ test.describe('phone 375×812 — ref3', () => {
   });
 
   test('Georgian and Russian: the screen speaks the language and still has no horizontal scroll', async ({ page }) => {
-    for (const [locale, title, generate] of [['ka', 'სურათის შექმნა', 'შექმნა'], ['ru', 'Создать изображение', 'Создать']] as const) {
+    for (const [locale, title, generate] of [['ka', 'სურათი', 'შექმნა'], ['ru', 'Изображение', 'Создать']] as const) {
       await openImage(page, locale);
       await expect(page.getByTestId('create-tool-switch')).toContainText(title);
       await expect(page.getByTestId('create-generate')).toContainText(generate);
@@ -355,7 +355,9 @@ test.describe('desktop 1280×800 — ref6', () => {
     const panel = page.getByTestId('settings-panel').getByTestId('image-create-panel');
     await expect(panel.getByTestId('templates-toggle')).toHaveAttribute('aria-expanded', 'true');
     await expect(panel.getByTestId('image-templates').getByRole('radio')).toHaveCount(IMAGE_TEMPLATES.length);
-    await expect(panel.getByTestId('create-close')).toHaveCount(0); // the column has its own close
+    // ONE header: the Create screen's own (tool name ▾ · ✕) closes the column — the column draws no second „Settings ✕" over it.
+    await expect(panel.getByTestId('create-close')).toBeVisible();
+    await expect(page.getByTestId('settings-panel').getByTestId('panel-header')).toHaveCount(0);
 
     await panel.getByTestId('chip-aspect').click();
     await expect(page.getByTestId('picker-popover')).toBeVisible();

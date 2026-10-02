@@ -83,7 +83,7 @@ test.describe('music create · phone 375×812', () => {
     await expect(create).toHaveAttribute('data-price', '12');
 
     // 44 px targets on the round buttons, the pill and Create.
-    for (const id of ['music-lyrics-wand', 'music-lyrics-library', 'music-instrumental', 'music-camera', 'music-lyrics-expand', 'music-engine-pill', 'music-mode-toggle', 'music-create']) {
+    for (const id of ['music-lyrics-wand', 'music-lyrics-library', 'music-instrumental', 'music-lyrics-expand', 'music-engine-pill', 'music-mode-simple', 'music-mode-advanced', 'music-create']) {
       const box = (await page.getByTestId(id).boundingBox())!;
       expect(box.height, id).toBeGreaterThanOrEqual(43.5);
       expect(box.width, id).toBeGreaterThanOrEqual(43.5);
@@ -91,12 +91,10 @@ test.describe('music create · phone 375×812', () => {
     await noHorizontalScroll(page);
   });
 
-  test('the camera is locked ("soon") and inert; Simple is one card; the engine pill lists only what the server can run', async ({ page }) => {
+  test('no dead camera button; Simple is one card; the engine pill lists only what the server can run', async ({ page }) => {
     await open(page);
     await expect(page.getByTestId('options-sheet')).toBeVisible({ timeout: 45_000 });
-    const camera = page.getByTestId('music-camera');
-    await expect(camera).toHaveAttribute('aria-disabled', 'true');
-    await expect(camera).toHaveAttribute('title', /soon/i);
+    await expect(page.getByTestId('music-camera')).toHaveCount(0);
 
     await page.getByTestId('music-engine-pill').click();
     await expect(page.getByTestId('engine-auto')).toHaveAttribute('aria-checked', 'true');
@@ -107,7 +105,6 @@ test.describe('music create · phone 375×812', () => {
     await expect(page.getByTestId('music-engine-menu')).toHaveCount(0);
     await expect(page.getByTestId('options-sheet')).toBeVisible();
 
-    await page.getByTestId('music-mode-toggle').click();
     await page.getByTestId('music-mode-simple').click();
     await expect(page.getByTestId('music-simple')).toBeVisible();
     await expect(page.getByTestId('music-lyrics')).toHaveCount(0);

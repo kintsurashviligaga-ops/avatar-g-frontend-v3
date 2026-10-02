@@ -42,8 +42,9 @@ export const VIDEO_COPY = {
   elementsEmpty: T('ჯერ დაამატე რეფერენს-სურათი', 'Add a reference image first', 'Сначала добавьте изображение-референс'),
   elementsAdd: T('სურათის დამატება', 'Add an image', 'Добавить изображение'),
   sound: T('ხმა', 'Sound', 'Звук'),
-  on: T('ჩართ.', 'On', 'Вкл'),
-  off: T('გამორთ.', 'Off', 'Выкл'),
+  // The sound chip's own words (beside a speaker icon): what the clip will be, not a bare „On." / „Off.".
+  on: T('ხმით', 'With sound', 'Со звуком'),
+  off: T('უხმოდ', 'Muted', 'Без звука'),
   soundLocked: T('ამ კავშირზე Veo ხმას ყოველთვის ქმნის', 'On this connection Veo always renders sound', 'В этом режиме Veo всегда создаёт звук'),
   promptNeeded: T('ჯერ აღწერე ვიდეო', 'Describe your video first', 'Сначала опишите видео'),
 
