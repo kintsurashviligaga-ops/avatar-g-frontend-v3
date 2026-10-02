@@ -39,6 +39,7 @@ import { Boxes } from 'lucide-react';
 import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
 import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
+import { LiveStatus, generationAnnouncement } from './ui/LiveStatus';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -814,6 +815,12 @@ export function ServiceParamsPanel({
       <PrimaryButton onClick={run} disabled={!canRun} loading={busy} full className="mt-3">
         {busy ? t.working : t.run}
       </PrimaryButton>
+      {/* What a screen reader hears about the job: started, then ready or failed (never the percentage ticks). A 3D
+          model is ready when its mesh is — the reference image that arrives first is still part of the wait. */}
+      <LiveStatus text={generationAnnouncement(
+        t[service], busy ? 'started' : error ? 'failed' : (service === 'model3d' ? result?.glbUrl : result) ? 'done' : 'idle', lang,
+        error && error !== t.failed ? error : null, // the bare fallback would only repeat "failed"
+      )} />
 
       {busy && (
         <div className="mt-2.5 space-y-1.5">
@@ -939,7 +946,7 @@ export function ServiceParamsPanel({
                   whole studio with "Something went wrong". Contained here; keyed on the url so a new model
                   gets a fresh boundary. The download above does not depend on the viewer. */}
               <ErrorBoundary key={result.glbUrl} fallback={<Note tone="warn">{t.viewerFailed}</Note>}>
-                <GlbViewer url={result.glbUrl} />
+                <GlbViewer url={result.glbUrl} locale={lang} />
               </ErrorBoundary>
             </>
           )}

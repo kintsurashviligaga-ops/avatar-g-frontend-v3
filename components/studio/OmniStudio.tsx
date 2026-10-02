@@ -35,9 +35,12 @@ import {
   matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
 import { TemplateGallery, TemplateThumbImage } from '@/components/studio/ui/TemplateGallery';
-const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
+import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
+// The two full-panel workspaces hold the panel with a skeleton of its own shape while their chunk loads (it was a blank
+// 96 px strip that then jumped to full height).
+const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
-const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <div className="h-24" /> });
+const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
@@ -4696,7 +4699,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         saveConversations(merged);
         if (!alive) return;
         window.dispatchEvent(new Event('myavatar:conversations-updated')); // refresh the persistent sidebar
-      } catch { /* fail-open → localStorage sidebar */ }
+      } catch { /* fail-open → localStorage sidebar */ } finally {
+        // The sidebar shows skeleton rows (not "no conversations yet") until the account's answer is in — say it is
+        // in, whatever it was: a guest, an empty account, an error. Published on <html> like data-authed, plus an event.
+        if (alive) {
+          document.documentElement.dataset.historySync = 'done';
+          window.dispatchEvent(new Event('myavatar:history-synced'));
+        }
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -8795,8 +8805,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             focus ring may be the accent), and ONE row — „+“ · the text · mic · Live / Send — while the text fits a
             line; wrapped text, an attachment or a persona chip move the controls onto their own row below.
             ⚠️ The textarea stays this pill's DIRECT child in every shape (tests measure `textarea/..` as the pill),
-            so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it. */}
-        <div className={chatOnly
+            so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it.
+            data-tour: the first-run tour's step 1 points here, and focusComposer finds the box through it (lib/onboarding). */}
+        <div data-tour="composer" className={chatOnly
           ? `flex min-h-[64px] bg-app-elevated px-2 py-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.16)] ring-1 ring-app-border/10 transition-shadow duration-200 focus-within:ring-app-accent/40 ${chatSingleRow ? 'items-center gap-1 rounded-[32px]' : 'flex-col rounded-[28px]'}`
           : 'rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40'}>
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a

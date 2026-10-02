@@ -51,6 +51,9 @@ const ConversationalFilmStudio = dynamic(() => import('./ConversationalFilmStudi
 // One Window: the STEP 3 agent + its live process mount IN-PLACE here (inside the same
 // ChatChrome shell as the assistant), not on a separate /agent-terminal or /services/agent-g route.
 const AgentTerminal = dynamic(() => import('@/components/agent/AgentTerminal'), { ssr: false, loading: InShellLoading });
+// The first-run tour (composer → Avatar tool). Its own small chunk, fetched after hydration, so it adds nothing to the
+// dashboard's first load; for a returning visitor it reads one localStorage key and renders nothing.
+const OnboardingTour = dynamic(() => import('@/components/onboarding/OnboardingTour'), { ssr: false });
 
 type Lang = 'ka' | 'en' | 'ru';
 type Service = 'hub' | 'film' | 'omni' | 'lipsync' | 'agent';
@@ -173,6 +176,7 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
             : service === 'lipsync' ? <LipsyncStudio locale={lang} />
             : <AgentTerminal embedded locale={lang} onExit={() => go('omni')} />}
         </ErrorBoundary>
+        {service === 'omni' && <OnboardingTour locale={lang} />}
       </ChatChrome>
     );
   }

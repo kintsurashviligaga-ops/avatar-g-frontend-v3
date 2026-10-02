@@ -13,7 +13,7 @@
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Check, Download, Eye, ImagePlus, Layers, Loader2, RotateCcw, ShieldCheck, Star, Trash2, Wand2, X,
+  AlertTriangle, ArrowLeft, Check, Download, Eye, Filter, ImagePlus, Layers, Loader2, RotateCcw, ShieldCheck, Star, Trash2, Wand2, X,
 } from 'lucide-react';
 import { toolName, toolSub } from '@/lib/studio/tools';
 import { ACCEPTED_PHOTO_TYPES, MAX_PHOTOS } from '@/lib/photo/exportPlan';
@@ -22,6 +22,8 @@ import {
   GRADE_PRESETS, GRADE_RANGE, NEUTRAL_GRADE, applyGrade, autoGrade, gradeCssFilter, isNeutralGrade, sameGrade, type Grade,
 } from '@/lib/photo/grade';
 import { BTN_PRIMARY, BTN_SECONDARY, CHIP_BASE, CHIP_OFF, CHIP_ON, DROPZONE, DROPZONE_IDLE, DROPZONE_OVER, HINT, ICON_BTN } from '@/components/studio/ui/tokens';
+import { EmptyState } from '@/components/studio/ui/EmptyState';
+import { LiveStatus } from '@/components/studio/ui/LiveStatus';
 import { PHOTO_COPY, photoLang, type PhotoCopy } from './copy';
 import { domCanvas, offscreenCanvas, previewPixels } from './pipeline';
 import { exportPicks } from './exportPicks';
@@ -90,6 +92,18 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
     }
     return c;
   }, [items, cull]);
+
+  // ── What a screen reader hears (one polite region): the analysis starting and finishing, an export starting. ────
+  // ⚠️ NOT the per-photo counter: "Analysing… 3/50" in a live region spoke fifty times over everything else. The
+  // export's outcome is the notice below (role="status"), so it is not said twice.
+  const [live, setLive] = useState('');
+  const analysingNow = items.length > 0 && analysed < items.length;
+  const wasAnalysing = useRef(false);
+  useEffect(() => {
+    if (analysingNow && !wasAnalysing.current) setLive(t.analysing(analysed, items.length));
+    else if (!analysingNow && wasAnalysing.current && items.length > 0) setLive(t.analysisDone(items.length));
+    wasAnalysing.current = analysingNow;
+  }, [analysingNow, analysed, items.length, t]);
 
   const flash = useCallback((msg: string | null) => setNotice(msg), []);
   useEffect(() => {
@@ -205,6 +219,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
     if (!picks.length) { flash(t.noPicks); return; }
     if (exporting) return;
     setExporting({ done: 0, total: picks.length });
+    setLive(t.exporting(0, picks.length));
     try {
       const o = await exportPicks(picks, s.client(), { onProgress: (p) => setExporting(p) });
       s.markExported();
@@ -250,7 +265,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-[15px] font-semibold leading-tight">{toolName('photo', locale)}</h1>
             {!empty && (
-              <p className="truncate text-[12px] text-app-muted" aria-live="polite">
+              <p className="truncate text-[12px] text-app-muted">
                 {analysed < items.length ? t.analysing(analysed, items.length) : t.photos(items.length)}
               </p>
             )}
@@ -275,6 +290,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
           <span>{toolSub('photo', locale)}</span>
         </p>
       </header>
+      <LiveStatus text={live} testId="photo-live" />
 
       {notice && (
         <p role="status" className="mx-3 mt-2 shrink-0 rounded-lg bg-app-elevated px-3 py-2 text-[12.5px] leading-snug text-app-text sm:mx-4">
@@ -283,7 +299,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
       )}
 
       {empty ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <button type="button" onClick={() => fileRef.current?.click()} data-testid="photo-dropzone"
             className={`${DROPZONE} ${dragOver ? DROPZONE_OVER : DROPZONE_IDLE} min-h-[240px] max-w-xl`}>
             <ImagePlus size={30} aria-hidden="true" className="text-app-accent" />
@@ -334,9 +350,11 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
           </section>
 
           {/* ── The shoot: filters, the selected burst, the grid. ── */}
-          <section aria-label={toolName('photo', locale)} className="min-w-0 px-3 pb-6 pt-2 sm:px-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto">
+          {/* pb: the grid's last row clears the home indicator — the studio shell runs under it (viewport-fit=cover). */}
+          <section aria-label={toolName('photo', locale)} className="min-w-0 px-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 sm:px-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex items-center gap-2">
-              <div role="group" aria-label={t.filter} className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {/* p-1 / -m-1: a scroller clips at its edge, and the first chip's focus ring sat exactly on it. */}
+              <div role="group" aria-label={t.filter} className="-m-1 flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {FILTERS.map((f) => (
                   <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)}
                     className={`${CHIP_BASE} ${filter === f ? CHIP_ON : CHIP_OFF}`}>
@@ -355,7 +373,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
                 <p className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-app-muted">
                   <Layers size={13} aria-hidden="true" />{t.burst(burstItems.length)}
                 </p>
-                <ul className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <ul className="-m-1 flex gap-1.5 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {burstItems.map((it) => {
                     const info = cull.get(it.id);
                     const on = it.id === selectedId;
@@ -379,7 +397,7 @@ export function PhotoWorkspace({ locale, onExit, session }: { locale: string; on
             )}
 
             {visible.length === 0 ? (
-              <p className="py-10 text-center text-[13px] text-app-muted">{t.empty}</p>
+              <EmptyState icon={Filter} line={t.emptyFilter} actionLabel={t.showAll} onAction={() => setFilter('all')} testId="photo-filter-empty" />
             ) : (
               <ul ref={gridRef} role="list" data-testid="photo-grid" className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6">
                 {visible.map((it, i) => {

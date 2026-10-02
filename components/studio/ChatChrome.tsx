@@ -81,6 +81,7 @@ import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePerso
 import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
+import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -896,6 +897,28 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [avatarError]);
 
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
+  const tStartChat = locale === 'en' ? 'Start a chat' : locale === 'ru' ? 'Начать чат' : 'დაიწყე ჩატი';
+  /**
+   * ⚠️ "NO CONVERSATIONS YET" WAS A LIE FOR A SIGNED-IN USER ON A NEW DEVICE. The list starts from this device's
+   * localStorage, and the account's own chats arrive a beat later (OmniStudio's cross-device sync) — so the sidebar
+   * said there were none, then they popped in under it. Until the sync answers (data-history-sync on <html>, plus
+   * an event), a signed-in studio shows skeleton rows of the rows' own height instead. Off the studio nothing syncs,
+   * and a cap makes sure a hung request can never leave skeletons up for good.
+   */
+  const [historySynced, setHistorySynced] = useState(false);
+  useEffect(() => {
+    const read = () => { if (document.documentElement.dataset.historySync === 'done') setHistorySynced(true); };
+    read();
+    window.addEventListener('myavatar:history-synced', read);
+    const cap = window.setTimeout(() => setHistorySynced(true), 8000);
+    return () => { window.removeEventListener('myavatar:history-synced', read); window.clearTimeout(cap); };
+  }, []);
+  // The empty history's one next step: the chat, with the caret in its composer — once the phone drawer has slid away
+  // (200 ms) and handed focus back; focusComposer refuses a box that is still covered.
+  const startChat = useCallback(() => {
+    selectTool('chat');
+    window.setTimeout(() => { focusComposer(); }, 250);
+  }, [selectTool]);
   const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
   const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
@@ -1100,7 +1123,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
+                // data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar).
+                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                   className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
                   <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
                   <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
@@ -1145,8 +1169,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
             />
           )}
-          {conversations.length === 0 ? (
-            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
+          {authed && onStudioHome && !historySynced && conversations.length === 0 ? (
+            <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg [@media(pointer:fine)]:h-[38px]" className="space-y-0.5 pb-2" testId="history-skeleton" />
+          ) : conversations.length === 0 ? (
+            <EmptyState compact icon={ChatIcon} line={tNoHistory} actionLabel={tStartChat} onAction={startChat} testId="history-empty" />
           ) : convMatches.length === 0 ? (
             <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
@@ -1245,7 +1271,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             const on = onStudioHome && activeTool === id;
             const name = TOOL_META[id].name[lang];
             return (
-              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined}
+              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                 className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
             );
           })}
@@ -1263,7 +1289,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       />
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* data-skip-target: AppShell's "Skip to main content" lands HERE, past the sidebar (a <div>: AppShell's <main>
+          already wraps the shell, and a main inside a main is an a11y error). */}
+      <div id="studio-main" data-skip-target="" className="flex min-w-0 flex-1 flex-col focus:outline-none">
         {/* The header is a phone's (and a tablet's): [☰] name … [new session] [you] — Gemini's row, nothing else.
             On a desktop the studio draws its own title bar inside the centre column (AI Studio), so this one steps
             aside there; secondary surfaces (/library) keep it for their back control. */}
@@ -1383,7 +1411,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (

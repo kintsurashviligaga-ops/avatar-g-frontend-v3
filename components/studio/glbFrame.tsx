@@ -6,7 +6,8 @@
  * ⚠️ A LIGHT MODULE ON PURPOSE. A parent must never value-import anything from GlbViewer.tsx — even a constant would put
  * three.js back into the parent's chunk — so the box and the placeholder live here.
  */
-export const GLB_VIEWER_FRAME = 'h-[min(48vh,240px)] w-full overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated/40 sm:h-[420px]';
+// `relative` is part of the shared box: the viewer's "tap to turn" cover and Done button are absolutely positioned inside it.
+export const GLB_VIEWER_FRAME = 'relative h-[min(48vh,240px)] w-full overflow-hidden rounded-xl border border-app-border/15 bg-app-elevated/40 sm:h-[420px]';
 
 /** The viewer's box, pulsing until next/dynamic swaps the canvas in. Decorative: the panel's own text says what is coming. */
 export function GlbViewerSkeleton() {
