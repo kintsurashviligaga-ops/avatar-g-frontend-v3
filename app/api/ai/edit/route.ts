@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { providerErrorBody } from '@/lib/api/providerError';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { trimClip } from '@/lib/video/trimClip';
@@ -317,14 +318,19 @@ export async function POST(req: NextRequest) {
   const ref = `edit:inpaint:${guard.userId}:${Date.now()}`;
   // Reserve-before-render: debit FIRST and HONOR the result. The pre-gate is fail-OPEN (a transient balance
   // read-miss lets a user through), so a genuinely broke user can reach here — an insufficient debit must block
-  // the paid provider call, not fall through to a free inpaint. Only a POSITIVE 'insufficient' blocks; a
-  // 'skipped' (RPC absent) or transient 'error' degrades to proceeding (the ledger's documented behavior).
+  // the paid provider call, not fall through to a free inpaint.
   const debit = await deductCredits(guard.userId, cost, ref);
   if (!debit.ok && debit.reason === 'insufficient') {
     return NextResponse.json(
       { url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) },
       { status: 402 },
     );
+  }
+  // ⚠️ A LEDGER THAT DEFINITIVELY FAILED NO LONGER RENDERS FOR FREE. Only `insufficient` used to stop the paid call;
+  // an `error` debit (ledger unreachable / write refused) proceeded unbilled. Now: 503 billing_unavailable, nothing
+  // charged, nothing rendered. `skipped` (no ledger RPC at all) still proceeds uncharged — the documented degrade.
+  if (!debit.ok && debit.reason === 'error') {
+    return NextResponse.json({ url: null, ...ledgerUnavailableBody(guard.locale) }, { status: 503 });
   }
   try {
     // The inpaint prompt DESCRIBES what to synthesise inside the mask ("ზღვის ფონი დაუყენე") and the
