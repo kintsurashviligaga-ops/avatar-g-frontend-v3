@@ -16,6 +16,7 @@ jest.mock('../../components/studio/FilmStudioHome', () => ({ FilmStudioHome: () 
 jest.mock('../../components/landing/Landing', () => ({ Landing: () => null }));
 jest.mock('../../components/PricingSection', () => ({ PricingSection: () => null }));
 jest.mock('../../components/studio/StudioPageShell', () => ({ StudioPageShell: () => null }));
+jest.mock('../../components/support/SupportChat', () => ({ SupportChat: () => null }));
 jest.mock('../../lib/supabase/server', () => ({ createServerClient: jest.fn() }));
 // The layouts' providers and shells — only their metadata is under test.
 jest.mock('../../app/providers', () => ({ __esModule: true, default: () => null }));
@@ -95,7 +96,7 @@ describe('the share image the metadata points at', () => {
  * Every public page the launch puts in front of a stranger: its post-locale path (the module is
  * app/[locale]{path}/page.tsx — a relative import, because next/jest rewrites the `@/` alias only in static imports).
  */
-const PUBLIC_PAGES = ['', '/landing', '/dashboard', '/pricing', '/terms', '/privacy', '/refund', '/cookies', '/licenses'];
+const PUBLIC_PAGES = ['', '/landing', '/dashboard', '/pricing', '/terms', '/privacy', '/refund', '/cookies', '/licenses', '/support'];
 
 describe.each(PUBLIC_PAGES)('/{lang}%s', (path) => {
   let byLang: Record<string, Metadata>;
