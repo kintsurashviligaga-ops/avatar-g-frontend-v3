@@ -2,21 +2,21 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { faqSchema } from '@/lib/seo/schema';
-import { localeAlternates } from '@/lib/seo/hreflang';
+import { pageMetadata, seoLang } from '@/lib/seo/metadata';
 import { SupportChat } from '@/components/support/SupportChat';
 
-// Iteration 2 — was inheriting the homepage title + homepage-level hreflang (locale root). Give it a
-// distinct localized title + a self-canonical /support hreflang cluster.
+// Its own title, description, self-canonical/hreflang and share card — with a title alone it inherited the home
+// page's description (lib/seo/metadata.ts).
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  return { title: copy[lang].title, alternates: localeAlternates(locale, '/support') };
+  const lang = seoLang((await params).locale);
+  return pageMetadata({ locale: lang, path: '/support', title: copy[lang].title, description: copy[lang].description });
 }
 
 type Lang = 'ka' | 'en' | 'ru';
 
 const copy: Record<Lang, {
   title: string;
+  description: string;
   subtitle: string;
   back: string;
   faq: { title: string; items: Array<{ q: string; a: string }> };
@@ -26,6 +26,7 @@ const copy: Record<Lang, {
 }> = {
   ka: {
     title: 'მხარდაჭერა',
+    description: 'MyAvatar-ის მხარდაჭერა: ხშირად დასმული კითხვები, პირდაპირი კონტაქტი და სისტემის სტატუსი.',
     subtitle: 'ხშირად დასმული კითხვები, კონტაქტი და სისტემის სტატუსი',
     back: '← მთავარზე დაბრუნება',
     faq: {
@@ -85,6 +86,7 @@ const copy: Record<Lang, {
   },
   en: {
     title: 'Support',
+    description: 'MyAvatar support: frequently asked questions, direct contact with the team and the system status.',
     subtitle: 'Frequently asked questions, direct contact, and system status',
     back: '← Back home',
     faq: {
@@ -144,6 +146,7 @@ const copy: Record<Lang, {
   },
   ru: {
     title: 'Поддержка',
+    description: 'Поддержка MyAvatar: частые вопросы, прямой контакт с командой и состояние сервиса.',
     subtitle: 'Частые вопросы, прямой контакт и состояние сервиса',
     back: '← Назад на главную',
     faq: {
