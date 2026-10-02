@@ -3,14 +3,19 @@ import { PricingSection } from '@/components/PricingSection';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { productSchemas } from '@/lib/seo/schema';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
-import { localeAlternates } from '@/lib/seo/hreflang';
+import { pageMetadata, seoLang } from '@/lib/seo/metadata';
 
-// Iteration 2 — commercial-intent page; was inheriting the homepage title + homepage-level hreflang
-// (locale root). Give it a distinct localized title + a self-canonical /pricing hreflang cluster.
-const PRICING_TITLE: Record<string, string> = { ka: 'ფასები', en: 'Pricing', ru: 'Цены' };
+// A primary conversion and search-landing page: its own localized title and description, the self-canonical /pricing
+// hreflang cluster and its own share card. (The metadata used to be split between this page and pricing/layout.tsx —
+// written there when this page was a client component — with the two titles disagreeing.)
+const PRICING_META: Record<'ka' | 'en' | 'ru', { title: string; description: string }> = {
+  ka: { title: 'ფასები და კრედიტები', description: 'გამჭვირვალე pay-as-you-go ფასები. დაიწყე უფასოდ, გადაიხადე მხოლოდ იმაში, რასაც აგენერირებ.' },
+  en: { title: 'Pricing & Credits', description: 'Transparent pay-as-you-go pricing. Start free and pay only for what you generate.' },
+  ru: { title: 'Цены и кредиты', description: 'Прозрачные цены pay-as-you-go. Начните бесплатно — платите только за то, что генерируете.' },
+};
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  return { title: PRICING_TITLE[locale] ?? PRICING_TITLE['en']!, alternates: localeAlternates(locale, '/pricing') };
+  const lang = seoLang((await params).locale);
+  return pageMetadata({ locale: lang, path: '/pricing', ...PRICING_META[lang] });
 }
 
 // Server component (Iteration 5): the page has no client logic — it only renders the (client)

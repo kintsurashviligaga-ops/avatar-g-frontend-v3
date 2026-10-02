@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { LegalDocChrome } from '@/components/legal/LegalDocChrome';
 import type { Metadata } from 'next';
-import { localeAlternates } from '@/lib/seo/hreflang';
+import { pageMetadata, seoLang } from '@/lib/seo/metadata';
 
-// Iteration 2 — DISTINCT localized title (was inheriting the homepage title) + per-route hreflang/self-canonical.
+// Its own title, description, self-canonical/hreflang and share card (lib/seo/metadata.ts).
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  return { title: copy[lang].title, alternates: localeAlternates(locale, '/refund') };
+  const lang = seoLang((await params).locale);
+  return pageMetadata({ locale: lang, path: '/refund', title: copy[lang].title, description: copy[lang].description });
 }
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -17,6 +16,7 @@ type Lang = 'ka' | 'en' | 'ru';
 // evaluated individually, and credit balances are non-transferable. Mirrors the /terms page structure.
 const copy: Record<Lang, {
   title: string;
+  description: string;
   effective: string;
   intro: string;
   back: string;
@@ -25,6 +25,7 @@ const copy: Record<Lang, {
 }> = {
   ka: {
     title: 'თანხის დაბრუნების პოლიტიკა',
+    description: 'MyAvatar-ის თანხის დაბრუნების პოლიტიკა: როდის ბრუნდება კრედიტი ან თანხა, ჩავარდნილი გენერაციის ავტომატური დაბრუნება და როგორ მოითხოვოთ დაბრუნება.',
     effective: 'მოქმედებს: 2026 წლის 16 ივლისიდან',
     intro: 'ეს პოლიტიკა განმარტავს, თუ როგორ განიხილება თანხის დაბრუნების მოთხოვნები MyAvatar-ზე. გთხოვთ, ყურადღებით გაეცნოთ ვიდრე შეიძენთ კრედიტს ან ხელმოწერას.',
     back: '← მთავარზე დაბრუნება',
@@ -62,6 +63,7 @@ const copy: Record<Lang, {
   },
   en: {
     title: 'Refund Policy',
+    description: 'MyAvatar refund policy: when credits or money are returned, automatic refunds for failed generations, and how to request a refund.',
     effective: 'Effective: July 16, 2026',
     intro: 'This policy explains how refund requests are handled at MyAvatar. Please read it carefully before purchasing credits or a subscription.',
     back: '← Back home',
@@ -99,6 +101,7 @@ const copy: Record<Lang, {
   },
   ru: {
     title: 'Политика возврата средств',
+    description: 'Политика возврата средств MyAvatar: когда возвращаются кредиты или деньги, автоматический возврат за неудачные генерации и как запросить возврат.',
     effective: 'Действует с 16 июля 2026 г.',
     intro: 'Эта политика объясняет, как обрабатываются запросы на возврат средств в MyAvatar. Пожалуйста, внимательно ознакомьтесь перед покупкой кредитов или подписки.',
     back: '← Назад на главную',

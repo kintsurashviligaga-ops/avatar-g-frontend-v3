@@ -1,26 +1,27 @@
 import Link from 'next/link';
 import { LegalDocChrome } from '@/components/legal/LegalDocChrome';
 import type { Metadata } from 'next';
-import { localeAlternates } from '@/lib/seo/hreflang';
+import { pageMetadata, seoLang } from '@/lib/seo/metadata';
 
-// Iteration 2 — a DISTINCT localized title (was inheriting the homepage title.default → duplicate-title
-// URL) + per-route hreflang/self-canonical (was inheriting the layout's locale-ROOT cluster).
+// Its own title, description, self-canonical/hreflang and share card — a page that set only a title inherited the
+// home page's description and og:url (lib/seo/metadata.ts).
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  return { title: copy[lang].title, alternates: localeAlternates(locale, '/terms') };
+  const lang = seoLang((await params).locale);
+  return pageMetadata({ locale: lang, path: '/terms', title: copy[lang].title, description: copy[lang].description });
 }
 
 type Lang = 'ka' | 'en' | 'ru';
 
 const copy: Record<Lang, {
   title: string;
+  description: string;
   effective: string;
   back: string;
   sections: Array<{ title: string; body: string }>;
 }> = {
   ka: {
     title: 'მომსახურების პირობები',
+    description: 'MyAvatar-ის მომსახურების პირობები: ანგარიში, გადახდები და კრედიტები, კრედიტის ავტომატური დაბრუნება ჩავარდნილი გენერაციისას, დაშვებული გამოყენება და ვის ეკუთვნის შექმნილი კონტენტი.',
     effective: 'მოქმედებს: 2026 წლის 18 მაისიდან',
     back: '← მთავარზე დაბრუნება',
     sections: [
@@ -68,6 +69,7 @@ const copy: Record<Lang, {
   },
   en: {
     title: 'Terms of Service',
+    description: 'MyAvatar Terms of Service: your account, payments and credits, automatic credit refunds when a generation fails, acceptable use and who owns what you create.',
     effective: 'Effective: May 18, 2026',
     back: '← Back home',
     sections: [
@@ -115,6 +117,7 @@ const copy: Record<Lang, {
   },
   ru: {
     title: 'Условия использования',
+    description: 'Условия использования MyAvatar: аккаунт, оплата и кредиты, автоматический возврат кредитов при сбое генерации, допустимое использование и права на созданный вами контент.',
     effective: 'Действует с 18 мая 2026 г.',
     back: '← Назад на главную',
     sections: [

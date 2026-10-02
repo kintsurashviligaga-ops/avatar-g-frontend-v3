@@ -8,6 +8,8 @@ import { studioV2Enabled } from "@/lib/studio/flags";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { PostHogProvider } from "@/components/analytics/PostHogProvider";
+import { SITE_URL } from "@/lib/seo/site";
+import { OG_IMAGE, SITE_NAME } from "@/lib/seo/metadata";
 
 const inter = Inter({
 	subsets: ["latin", "cyrillic"],
@@ -44,14 +46,9 @@ const notoGeorgian = Noto_Sans_Georgian({
 // Inter's geometry) and is already loaded above. We alias it as --font-geist
 // so app code can reference it consistently.
 
-const metadataBaseUrl = (
-	process.env.NEXT_PUBLIC_BASE_URL ||
-	process.env.BASE_URL ||
-	process.env.NEXT_PUBLIC_SITE_URL ||
-	process.env.NEXT_PUBLIC_APP_URL ||
-	"https://myavatar.ge"
-).replace(/\/+$/, ""); // strip trailing slash(es) — MUST stay byte-identical to lib/seo/site.ts SITE_URL so
-// the layout's JSON-LD @ids (#organization/#website/…) match the @id references page schemas emit off SITE_URL.
+// The site origin IS lib/seo/site.ts SITE_URL (it used to be a copy of its env chain here, kept "byte-identical" by
+// hand): metadataBase, every canonical/hreflang and the JSON-LD @ids below must agree on one origin.
+const metadataBaseUrl = SITE_URL;
 
 
 export const viewport: Viewport = {
@@ -86,8 +83,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
 	metadataBase: new URL(metadataBaseUrl),
 	applicationName: 'MyAvatar.ge',
-	// Next.js dynamic manifest at app/manifest.ts is served at /manifest.webmanifest.
-	manifest: '/manifest.webmanifest',
+	// ⚠️ NO `manifest` AND NO `icons` HERE (nor in any layout or page). The file conventions are the one source:
+	// app/manifest.ts → <link rel="manifest" href="/manifest.webmanifest">, app/favicon.ico, app/icon.png and
+	// app/apple-icon.png → the icon links (all built by scripts/brand/build-assets.mjs). Next ignores app/icon.png and
+	// app/apple-icon.png whenever a config `icons` resolves anywhere — that is how a hand-written list pointing at
+	// stale files kept winning over the real icons, and how the [locale] layout served a second manifest.
 	appleWebApp: {
 		capable: true,
 		statusBarStyle: 'black-translucent',
@@ -95,11 +95,6 @@ export const metadata: Metadata = {
 	},
 	formatDetection: {
 		telephone: false,
-	},
-	icons: {
-		icon: '/icons/favicon.ico',
-		shortcut: '/icons/favicon.ico',
-		apple: '/apple-touch-icon.png',
 	},
 	other: {
 		'mobile-web-app-capable': 'yes',
@@ -114,23 +109,18 @@ export const metadata: Metadata = {
 	description: "შექმენი ავატარები, ვიდეო, სურათები და მუსიკა AI-ით",
 	keywords: ["AI", "ავატარი", "ვიდეო გენერაცია", "სურათის გენერაცია", "მუსიკის გენერაცია"],
 	authors: [{ name: "MyAvatar Team" }],
+	// No og:url here: a default URL would be claimed by every page that does not set its own.
 	openGraph: {
 		type: "website",
 		locale: "ka_GE",
-		url: metadataBaseUrl,
-		siteName: "MyAvatar",
-		images: [{
-			url: "/og-image.png",
-			width: 1200,
-			height: 630,
-			alt: "MyAvatar — Georgian AI Studio, one window"
-		}]
+		siteName: SITE_NAME,
+		images: [{ ...OG_IMAGE }]
 	},
 	twitter: {
 		card: "summary_large_image",
 		title: "MyAvatar — AI Chat",
 		description: "Georgian AI creative studio — chat, image, video, music, voice, avatar, interior, app builder in one window.",
-		images: ["/og-image.png"]
+		images: [OG_IMAGE.url]
 	},
 	robots: {
 		index: true,
@@ -192,7 +182,7 @@ const structuredData = {
 			"@type": "LocalBusiness",
 			"@id": `${metadataBaseUrl}/#localbusiness`,
 			name: "MyAvatar",
-			image: `${metadataBaseUrl}/og-image.png`,
+			image: `${metadataBaseUrl}${OG_IMAGE.url}`,
 			url: metadataBaseUrl,
 			email: "support@myavatar.ge",
 			address: { "@type": "PostalAddress", addressCountry: "GE" },
@@ -219,7 +209,7 @@ const structuredData = {
 			operatingSystem: "Web, iOS, Android",
 			browserRequirements: "Requires JavaScript. Runs in any modern browser.",
 			inLanguage: ["ka", "en", "ru"],
-			image: `${metadataBaseUrl}/og-image.png`,
+			image: `${metadataBaseUrl}${OG_IMAGE.url}`,
 			featureList: [
 				"AI chat assistant",
 				"AI image generation",

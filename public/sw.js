@@ -1,10 +1,11 @@
 const CACHE_NAME = 'avatar-g-shell-base';
+// The manifest and its icons (app/manifest.ts — the one manifest; /manifest.json and the 180 px icon are gone).
 const CORE_ASSETS = [
   '/offline.html',
-  '/manifest.json',
-  '/icons/icon-180x180.png',
+  '/manifest.webmanifest',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
+  '/icons/icon-maskable-512.png',
 ];
 
 // Cache one request/response pair, swallowing any failure. cache.put() throws a
@@ -102,7 +103,7 @@ self.addEventListener('fetch', (event) => {
   // App-shell icons: cache-first for instant standalone launch. These are
   // immutable, versioned assets, so a cached copy is always safe; we still
   // revalidate in the background to pick up a new icon set on next load.
-  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.json' || url.pathname === '/favicon.png') {
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.webmanifest' || url.pathname === '/favicon.png') {
     event.respondWith(
       caches.match(request).then((cached) => {
         const network = fetch(request)

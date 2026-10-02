@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { publicEnv } from "@/lib/env/public";
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { i18n } from "@/i18n.config";
@@ -8,11 +7,7 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { PageTransitionWrapper } from "@/components/layout/PageTransitionWrapper";
 import { AppProviders } from "@/components/providers/AppProviders";
 import HtmlLangSync from "@/components/i18n/HtmlLangSync";
-
-// Fallback aligned with the ROOT layout + app/sitemap.ts (both resolve to myavatar.ge). The previous
-// vercel.app fallback split the canonical/OG/hreflang domain on exactly the [locale] subtree that emits
-// per-page alternates whenever NEXT_PUBLIC_APP_URL was unset. Fallback only — a no-op when the env is set.
-const metadataBaseUrl = publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge";
+import { seoLang, shareCards } from "@/lib/seo/metadata";
 
 // ISR (Iteration 3): the previous `force-dynamic` + `revalidate=0` forced `Cache-Control: no-store` on
 // the ENTIRE locale subtree — even the user-agnostic, build-prerendered marketing/pricing pages — so
@@ -25,75 +20,45 @@ export const revalidate = 3600;
 
 // Localized SEO copy per market. The metadata was previously HARD-CODED Georgian, so /en and /ru
 // pages served Georgian titles/descriptions/OpenGraph — a direct international-SEO loss (Iteration 2).
-// generateMetadata now emits the right language per locale + an hreflang cluster (en/ka/ru + x-default).
-type LocaleSeo = { title: string; description: string; ogDesc: string; keywords: string[]; ogLocale: string };
+// generateMetadata emits the right language per locale (each public page adds its own hreflang cluster).
+type LocaleSeo = { title: string; description: string; ogDesc: string; keywords: string[] };
 const LOCALE_SEO: Record<string, LocaleSeo> = {
   ka: {
     title: "MyAvatar — AI ვიდეო, მუსიკა და სურათების გენერაცია",
     description: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა — შექმენი ვიდეო, მუსიკა და სურათები ხელოვნური ინტელექტით, წამებში.",
     ogDesc: "საქართველოს პირველი AI კონტენტის შემქმნელი პლატფორმა.",
     keywords: ["AI ვიდეო", "AI მუსიკა", "AI სურათი", "ხელოვნური ინტელექტი", "AI კონტენტი", "MyAvatar", "ვიდეოს გენერაცია"],
-    ogLocale: "ka_GE",
   },
   en: {
     title: "MyAvatar — AI Video, Music & Image Generation",
     description: "Create studio-quality videos, music, and images with AI in seconds. The AI content platform born in Georgia — now for creators worldwide.",
     ogDesc: "Create studio-quality video, music, and images with AI in seconds.",
     keywords: ["AI video", "AI music", "AI image generator", "AI content creator", "text to video", "MyAvatar", "video generation"],
-    ogLocale: "en_US",
   },
   ru: {
     title: "MyAvatar — Генерация видео, музыки и изображений с ИИ",
     description: "Создавайте видео, музыку и изображения студийного качества с помощью ИИ за секунды. Первая AI-платформа для контента из Грузии.",
     ogDesc: "Создавайте видео, музыку и изображения студийного качества с помощью ИИ.",
     keywords: ["ИИ видео", "ИИ музыка", "ИИ генератор изображений", "AI контент", "текст в видео", "MyAvatar", "генерация видео"],
-    ogLocale: "ru_RU",
   },
 };
-const OG_ALTERNATE: Record<string, string[]> = { ka: ["en_US", "ru_RU"], en: ["ka_GE", "ru_RU"], ru: ["ka_GE", "en_US"] };
 
 export async function generateMetadata({ params }: { params: { locale: string } }): Promise<Metadata> {
-  const locale = i18n.locales.includes(params.locale as (typeof i18n.locales)[number]) ? params.locale : "ka";
-  const seo: LocaleSeo = LOCALE_SEO[locale] ?? LOCALE_SEO.ka!;
-  const base = metadataBaseUrl;
+  const lang = seoLang(params.locale);
+  const seo: LocaleSeo = LOCALE_SEO[lang] ?? LOCALE_SEO.ka!;
   return {
-    metadataBase: new URL(base),
-    manifest: '/manifest.json',
-    appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'MyAvatar' },
-    formatDetection: { telephone: false },
-    icons: { icon: '/icons/favicon.ico', shortcut: '/icons/favicon.ico', apple: '/apple-touch-icon.png' },
+    // metadataBase, appleWebApp and formatDetection come from the root layout; the manifest and the icons from the
+    // app/ file conventions. ⚠️ Declaring them again here is how this subtree served its OWN manifest (/manifest.json)
+    // and an icon list that made Next drop app/icon.png — and how its metadataBase drifted from SITE_URL.
     title: { default: seo.title, template: "%s · MyAvatar" },
     description: seo.description,
     keywords: seo.keywords,
     authors: [{ name: "MyAvatar" }],
-    // hreflang cluster (HTML). The homepage set is return-tag-correct across all three locales; precise
-    // PER-PAGE hreflang for sub-pages is emitted authoritatively via the sitemap (app/sitemap.ts). No
-    // fixed canonical here — a layout-level canonical would wrongly collapse every sub-page to the locale root.
-    alternates: {
-      languages: {
-        en: `${base}/en`,
-        ka: `${base}/ka`,
-        ru: `${base}/ru`,
-        "x-default": `${base}/ka`,
-      },
-    },
-    openGraph: {
-      type: "website",
-      locale: seo.ogLocale,
-      alternateLocale: OG_ALTERNATE[locale] ?? OG_ALTERNATE.ka!,
-      url: `${base}/${locale}`,
-      siteName: "MyAvatar",
-      title: seo.title,
-      description: seo.ogDesc,
-      // 1200×630 landscape card — summary_large_image / Facebook / LinkedIn crop a 512² square badly.
-      images: [{ url: "/og-image.png", width: 1200, height: 630, alt: seo.title }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: seo.title,
-      description: seo.ogDesc,
-      images: ["/og-image.png"],
-    },
+    // ⚠️ No `alternates` and no og:url at this level. Both are per-URL facts, and a layout's values are inherited by
+    // every page under it that does not set its own: the old homepage hreflang cluster and og:url = /{locale} told
+    // crawlers that /ka/support (and every page like it) was the locale root. Public pages set the full set
+    // themselves (lib/seo/metadata.ts pageMetadata); the share card (1200×630) is the default for the rest.
+    ...shareCards(lang, seo.title, seo.ogDesc),
     robots: { index: true, follow: true },
   };
 }
