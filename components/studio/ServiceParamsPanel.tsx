@@ -38,6 +38,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import { Boxes } from 'lucide-react';
 import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
 import { useSceneStore } from './scene/sceneStore';
+import { GlbViewerSkeleton } from './glbFrame';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -51,7 +52,9 @@ const MAX_TOPIC_CHARS = 300;
 /** One style for every download link in the panel — they were three different inline strings. */
 const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font-medium text-app-accent hover:underline';
 
-const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false });
+// three.js + R3F: a ~245 kB (gzip) chunk, fetched only once a model is on screen. ⚠️ THE PLACEHOLDER IS THE VIEWER'S
+// OWN BOX — with no `loading` the panel showed nothing, then jumped by the canvas's height when the chunk landed.
+const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false, loading: () => <GlbViewerSkeleton /> });
 
 export type PanelService = 'montage' | 'dubbing' | 'presentation' | 'model3d';
 type Lang = 'ka' | 'en' | 'ru';
