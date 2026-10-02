@@ -128,6 +128,9 @@ test.describe('375 px phone', () => {
     const drawer = page.locator('aside[aria-label="მენიუ"]');
     const legal = drawer.getByTestId('sidebar-legal');
     await expect(legal).toBeVisible();
+    // The drawer slides in (transition-transform, 200 ms): measure it where it STOPS, not mid-slide — a box read during the
+    // slide puts the drawer's right edge left of links laid out a frame later.
+    await expect.poll(async () => (await drawer.boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
     const box = (await drawer.boundingBox())!;
     for (const link of await legal.getByRole('link').all()) {
       const l = (await link.boundingBox())!;
