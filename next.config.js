@@ -211,9 +211,9 @@ const nextConfig = {
       },
       // Template thumbnails (lib/studio/templateThumbs): the gallery requests `<path>?v=<sha>`, so the bytes behind a
       // versioned URL never change — cache them for a year (the optimizer inherits that max-age for its variants).
-      // ⚠️ ONLY WITH ?v=. An unversioned request (the lipsync panel's plain <img> of a preset face) keeps the default
-      // revalidation: these files are replaced in place under the same name, and `immutable` on a bare path would pin
-      // the old picture in returning browsers for a year.
+      // ⚠️ ONLY WITH ?v=. An unversioned request (a preset face shown in a chat bubble, the lipsync send path re-fetching
+      // it) keeps the default revalidation: these files are replaced in place under the same name, and `immutable` on a
+      // bare path would pin the old picture in returning browsers for a year.
       ...['/templates/:path*', '/avatars/:path*'].map((source) => ({
         source,
         has: [{ type: 'query', key: 'v' }],
