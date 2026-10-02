@@ -4,6 +4,7 @@
  * context-files port, and a harness that wires them to the real store over the in-memory FakeDb. Imported by no
  * production code.
  */
+import { randomUUID } from 'node:crypto';
 import type { ResearchContextFile } from '../context';
 import type { CancelOutcome, InteractionsClient, PollOutcome, StartOutcome } from '../interactionsClient';
 import { parseInteraction } from '../parse';
@@ -123,6 +124,11 @@ export class FakeFiles implements ContextFilesPort {
 export const RESEARCH_DB_OPTIONS = {
   unique: { research_jobs: [['user_id', 'client_request_id']] },
   touchUpdatedAt: ['research_jobs'],
+  // The columns the database fills in for research_context_files (id, created_at).
+  defaults: {
+    research_context_files: (now: string) => ({ id: randomUUID(), created_at: now }),
+    notifications: (now: string) => ({ id: randomUUID(), read: false, created_at: now }),
+  },
 };
 
 export interface Harness {
