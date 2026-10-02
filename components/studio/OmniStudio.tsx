@@ -115,6 +115,7 @@ import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { useHiddenTools, visibleToolIds } from './hub';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
@@ -2751,6 +2752,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [toolPickOnly, setToolPickOnly] = useState(false);
   // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
   const researchExtras = useResearchToolExtras(locale, () => input);
+  // Tools switched off in the hub's Plugins tab leave the „+" sheet (never the active one). ⚠️ A menu row only — not access control.
+  const hiddenTools = useHiddenTools();
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -9429,8 +9432,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
       {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
-      tools={PRIMARY_TOOLS.map(toolEntry)}
-      studios={MORE_TOOLS.map(toolEntry)}
+      tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
+      studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id); }}

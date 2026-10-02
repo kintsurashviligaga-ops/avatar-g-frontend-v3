@@ -83,6 +83,7 @@ import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
+import { HubHost, HubRailButton, HubSidebarRow, useHiddenTools, visibleToolIds } from '@/components/studio/hub';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -745,6 +746,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     window.addEventListener('myavatar:open-new-chat', on);
     return () => window.removeEventListener('myavatar:open-new-chat', on);
   }, [handleNewChat]);
+  // The tools the user switched off in the hub's Plugins tab leave the sidebar and the rail (never the one they are on).
+  // ⚠️ Menus only — selectTool, ?tool= and the studio still open a hidden tool (lib/plugins/catalog.ts).
+  const hiddenTools = useHiddenTools();
+  const navPrimary = useMemo(() => visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
+  const navMore = useMemo(() => visibleToolIds(MORE_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
   const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => { if (activeTool && (MORE_TOOLS as readonly string[]).includes(activeTool)) setMoreOpen(true); }, [activeTool]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1106,6 +1112,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
           </button>
           <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
+          <HubSidebarRow locale={lang} className={sideRow} onPicked={() => setSidebarOpen(false)} />
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
             {activePersonaName
@@ -1121,7 +1128,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               reads the same list, so a service can never be reachable from one door and missing from the other. */}
           <p className={sideHdr}>{t.services}</p>
           <div className="space-y-0.5">
-            {PRIMARY_TOOLS.filter((id) => id !== 'chat').map((id) => {
+            {navPrimary.filter((id) => id !== 'chat').map((id) => {
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
@@ -1133,10 +1140,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                 </button>
               );
             })}
+            {/* „მეტი“ only while there is something under it — every one of them may be switched off in Plugins. */}
+            {navMore.length > 0 && (
             <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} className={`${sideRow} text-app-muted`}>
               <ChevronRight className={`h-[17px] w-[17px] transition-transform ${moreOpen ? 'rotate-90' : ''}`} aria-hidden="true" /> {tMore}
             </button>
-            {moreOpen && MORE_TOOLS.map((id) => {
+            )}
+            {moreOpen && navMore.map((id) => {
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
@@ -1268,7 +1278,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={tExpand} title={tExpand} className={railBtn}><PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession} className={railBtn}><PenSquare className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <span className="my-1 h-px w-6 bg-app-border/15" aria-hidden="true" />
-          {PRIMARY_TOOLS.map((id) => {
+          {navPrimary.map((id) => {
             const { Icon } = TOOL_META[id];
             const on = onStudioHome && activeTool === id;
             const name = TOOL_META[id].name[lang];
@@ -1279,6 +1289,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           })}
           <span className="flex-1" aria-hidden="true" />
           <button type="button" onClick={() => router.push(`/${locale}/library`)} aria-label={tLibrary} title={tLibrary} className={railBtn}><FolderOpen className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+          <HubRailButton locale={lang} className={railBtn} />
           <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.settings} title={t.settings} className={railBtn}><Settings className="h-[18px] w-[18px]" aria-hidden="true" /></button>
         </nav>
       )}
@@ -1524,6 +1535,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* Deep Research: the watcher, toasts, start sheet, report viewer, Connectors and the report's Live call
           (components/studio/research). Renders nothing until the server says the feature exists here. */}
       <ResearchHost locale={lang} authed={authed} userId={userId} />
+
+      {/* Connectors · Plugins · Skills (components/studio/hub): the user's switched-off tools (read on sign-in, so the menus
+          above hide them) and the hub sheet, opened from the sidebar row, the rail or `myavatar:hub-open`. */}
+      <HubHost locale={lang} authed={authed} userId={userId} />
 
       {/* DAY-5 real-time voice overlay. The launcher moved INTO the composer (OmniStudio's
           Gemini-style live-voice chip, right of the dictation mic), which dispatches
