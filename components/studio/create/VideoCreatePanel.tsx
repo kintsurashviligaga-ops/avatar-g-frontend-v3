@@ -4,7 +4,7 @@
  * VideoCreatePanel — the video tool's create screen (ref4 / ref5), one component for the phone's sheet and the desktop's
  * right column (the same element, only the surrounding scroll container differs).
  *
- * Order, top to bottom: header (tool name + tool switcher, ✕) → HERO model card ("✎ Change") → Create | Extend →
+ * Order, top to bottom: header (tool name + tool switcher, ✕) → HERO model card ("✎ Change") →
  * "Add references" (images → the film's reference frames, audio → the soundtrack) → Prompt (+ "@ Elements", 🔊 On/Off) →
  * Model row → [length] [format] [resolution] tiles → quality (Economy · Fast · Max quality, each with its price) →
  * disclosures (Story & style · Voice & music · Advanced) → Generate ✦ N, pinned.
@@ -41,10 +41,9 @@ import type { VideoMode } from '@/lib/credits/videoPricing';
 import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
-import { VideoExtendTab } from './VideoExtendTab';
 import {
-  VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoModelRow, VideoPromptCard, VideoQualityRow, VideoRefsCard, VideoTabs,
-  VideoTiles, type VideoTab,
+  VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoPromptCard, VideoQualityRow, VideoRefsCard,
+  VideoTiles,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
 
@@ -116,7 +115,6 @@ const FILM_RUNNERS: readonly ModelRunner[] = ['film', 'studio'];
 
 export function VideoCreatePanel(p: VideoCreatePanelProps) {
   const { locale, plan, dispatch, mode, seconds, format, prompt, refs, generate, caps } = p;
-  const [tab, setTab] = useState<VideoTab>('create');
   const [sheet, setSheet] = useState<Sheet>(null);
   const [needed, setNeeded] = useState(false);
   const promptRef = useRef<HTMLTextAreaElement>(null);
@@ -186,12 +184,9 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     <div data-testid="video-create-panel" className="space-y-3">
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
       <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
-      <VideoTabs locale={locale} value={tab} onChange={setTab} />
-
-      {tab === 'extend' ? (
-        <VideoExtendTab locale={locale} surface={p.surface} />
-      ) : (
-        <div id="video-tabpanel-create" role="tabpanel" aria-labelledby="video-tab-create" className="space-y-3">
+      {/* No Create | Extend tabs: Extend is not open yet (Veo continues a clip from its last frame; until that path is ready a
+          long film is made with the length picker), and a whole tab that only said „soon" was the first thing under the model. */}
+      <div className="space-y-3">
           <VideoRefsCard locale={locale} images={refs.images} maxImages={refs.max} onAddImage={refs.onAddImage} onRemoveImage={refs.onRemoveImage}
             audio={refs.audio} audioBusy={refs.audioBusy} onAddAudio={refs.onAddAudio} onRemoveAudio={refs.onRemoveAudio} />
           <VideoPromptCard
@@ -199,7 +194,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
             images={refs.images} onInsertToken={insertToken} onAddImage={refs.onAddImage}
             soundOn={plan.nativeAudio || !audioToggle} soundLocked={!audioToggle}
             onToggleSound={() => dispatch({ type: 'nativeAudio', on: !plan.nativeAudio })} needed={needed} />
-          <VideoModelRow locale={locale} tier={tier} mode={mode} onOpen={() => setSheet('model')} {...(hfName ? { name: hfName } : {})} />
+          {/* No separate „Model ›" row: the hero card above names the model and its „Change" opens the same picker. */}
           <VideoTiles locale={locale} seconds={seconds} format={format} resolution={videoResolution(seconds)}
             onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} onResolution={() => setSheet('model')} />
           {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
@@ -220,7 +215,6 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
             )}
           </VideoGenerateBar>
         </div>
-      )}
 
       <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} />
       <VideoFormatSheet open={sheet === 'format'} onClose={() => setSheet(null)} locale={locale} format={format} onChange={p.onFormat} musicVideo={mode === 'musicvideo'} notes={croppedNotes} />

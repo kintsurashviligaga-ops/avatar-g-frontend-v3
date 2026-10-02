@@ -70,7 +70,7 @@ async function makeModel({ withScene = true } = {}) {
       {withScene && <SceneDock locale="en" />}
     </>,
   );
-  const run = screen.getByRole('button', { name: 'Run' });
+  const run = screen.getByRole('button', { name: 'Create' });
   await waitFor(() => expect((run as HTMLButtonElement).disabled).toBe(false));
   await act(async () => { fireEvent.click(run); });
   // The download/share row is the sign the model arrived.

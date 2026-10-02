@@ -71,6 +71,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = { id: 'user-1' };
   delete process.env.AI_GOOGLE_ONLY;
+  delete process.env.VOICE_GOOGLE_SEARCH;
   budgetMock.mockResolvedValue(true);
   llmMock.mockResolvedValue('Sure — here is a short answer.');
 });
@@ -109,6 +110,20 @@ test('Google-only by default; AI_GOOGLE_ONLY=0 restores the multi-vendor chain',
   process.env.AI_GOOGLE_ONLY = '0';
   await POST(post({ text: 'hello there', locale: 'en' }));
   expect(lastOpts().googleOnly).toBe(false);
+});
+
+test('Google Search grounds the Gemini voice turn by default, and the prompt says so; VOICE_GOOGLE_SEARCH=0 turns it off', async () => {
+  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
+  expect(lastOpts().googleSearch).toBe(true);
+  expect(lastOpts().system).toMatch(/LIVE FACTS: you can search the web/);
+  process.env.VOICE_GOOGLE_SEARCH = '0';
+  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
+  expect(lastOpts().googleSearch).toBeUndefined();
+  expect(lastOpts().system).not.toMatch(/LIVE FACTS/);
+  delete process.env.VOICE_GOOGLE_SEARCH;
+  process.env.AI_GOOGLE_ONLY = '0'; // the legacy multi-vendor chain has no grounding leg
+  await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
+  expect(lastOpts().googleSearch).toBeUndefined();
 });
 
 test('no persona: the fuller Live persona + the spoken-length rule, no ≤20-word cap, the old temperature', async () => {

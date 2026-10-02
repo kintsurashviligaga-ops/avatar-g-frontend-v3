@@ -82,6 +82,7 @@ function harness(opts: HarnessOpts = {}) {
   const getUserMedia = jest.fn(async () => stream);
   const fetchMock = jest.fn(async (..._args: unknown[]) => jsonRes({ text: 'გამარჯობა' }));
   const onAuthRequired = jest.fn();
+  const saveLang = jest.fn();
   let now = 0;
   const cap = fakeCapture();
   const allDeps: Partial<DictationDeps> = {
@@ -92,6 +93,8 @@ function harness(opts: HarnessOpts = {}) {
     fetch: fetchMock as unknown as typeof fetch,
     now: () => now,
     isGuest: () => false,
+    loadSpeechLang: () => null,
+    saveSpeechLang: saveLang,
     ...deps,
   };
   const hook = renderHook(() => {
@@ -99,7 +102,7 @@ function harness(opts: HarnessOpts = {}) {
     const d = useDictation({ locale: 'ka', value, setValue, onAuthRequired, deps: allDeps, ...rest });
     return { value, setValue, d };
   });
-  return { ...hook, getUserMedia, fetchMock, onAuthRequired, track, cap, setNow: (t: number) => { now = t; } };
+  return { ...hook, getUserMedia, fetchMock, onAuthRequired, saveLang, track, cap, setNow: (t: number) => { now = t; } };
 }
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
@@ -296,7 +299,7 @@ describe('recorder path (WAV)', () => {
   });
 
   test('Apple engine + English keeps Web Speech', async () => {
-    const h = harness({ locale: 'en', deps: { userAgent: () => SAFARI_UA } });
+    const h = harness({ locale: 'en', deps: { userAgent: () => SAFARI_UA, loadSpeechLang: () => 'en-US' } });
     await act(async () => { await h.result.current.d.toggle(); });
     expect(FakeSR.instances[0]!.lang).toBe('en-US');
   });
@@ -438,6 +441,45 @@ describe('recorder path (WAV)', () => {
 });
 
 // ─── Sharing the mic with Live voice (lib/voice/micBus) ────────────────────────────────────────────────────
+
+describe('the language the user SPEAKS, not the UI’s (lib/voice/speechLang)', () => {
+  const langPosted = (h: { fetchMock: jest.Mock }, i: number) =>
+    ((h.fetchMock.mock.calls[i] as unknown as [string, RequestInit])[1].body as FormData).get('language');
+
+  test('English UI, nothing known yet: no Web Speech guess — the recorder asks for auto-detect, then remembers and pins what it heard', async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn(async () => jsonRes({ text: 'გამარჯობა', language: 'ka-GE' }));
+    const h = harness({ locale: 'en', deps: { fetch: fetchMock as unknown as typeof fetch } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    expect(FakeSR.instances).toHaveLength(0);
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(langPosted({ fetchMock }, 0)).toBe('auto');
+    expect(h.saveLang).toHaveBeenCalledWith('ka-GE');
+    expect(h.result.current.value).toBe('გამარჯობა');
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(langPosted({ fetchMock }, 1)).toBe('ka-GE'); // pinned for the rest of the clip
+  });
+
+  test('a language heard before is used by the instant engine, whatever the UI', async () => {
+    const h = harness({ locale: 'ka', deps: { loadSpeechLang: () => 'ru-RU' } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    expect(FakeSR.instances[0]!.lang).toBe('ru-RU');
+  });
+
+  test('the typed native script wins over everything (the user is writing Georgian → listen in Georgian)', async () => {
+    const h = harness({ locale: 'en', speechLang: 'ka-GE', deps: { loadSpeechLang: () => 'en-US' } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    expect(FakeSR.instances[0]!.lang).toBe('ka-GE');
+  });
+
+  test('a Georgian UI with nothing known stays Georgian (and a transcript without a language saves nothing)', async () => {
+    const h = harness({ deps: { speechRecognition: () => undefined } });
+    await act(async () => { await h.result.current.d.toggle(); await flush(); });
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    expect(langPosted(h, 0)).toBe('ka-GE');
+    expect(h.saveLang).not.toHaveBeenCalled();
+  });
+});
 
 describe('mic release (Live voice opening)', () => {
   test('Web Speech: the recognizer stops for good and what was dictated stays in the box', async () => {

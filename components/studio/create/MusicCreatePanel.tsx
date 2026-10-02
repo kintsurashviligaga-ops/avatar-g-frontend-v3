@@ -3,7 +3,7 @@
 /**
  * MusicCreatePanel — the Music tool's Create screen, element for element as ref2:
  *
- *   title row  "Advanced ▾" over the balance · the engine pill (the real engine, or "Auto")
+ *   title row  a Simple | Advanced switch · the engine pill (the real engine, or "Auto")
  *   "+ Audio | + Voice"
  *   LYRICS card   — wand · textarea · [library] [✓ Instrumental] [camera] … [expand]
  *   STYLES card   — wand · textarea · [library] ‹style chips› [expand]
@@ -249,9 +249,7 @@ export function MusicCreatePanel(p: MusicCreatePanelProps) {
         locale={locale}
         uiMode={uiMode}
         onUiMode={setUiMode}
-        balance={p.guest ? null : balance}
-        guest={p.guest}
-        onSignIn={signIn}
+        showEngine={!p.isDesktop}
         engine={{
           label: enginePillLabel({ locale, pref, reference }),
           status,

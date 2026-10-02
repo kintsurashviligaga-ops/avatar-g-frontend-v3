@@ -11,6 +11,19 @@
 
 export type MontageAspect = '16:9' | '9:16' | '1:1';
 export type MontageTransition = 'cut' | 'crossfade' | 'fade';
+/** Where a shot's caption sits: a subtitle along the bottom, or a title in the middle of the frame. */
+export type MontageCaptionPos = 'bottom' | 'center';
+
+/**
+ * One colour grade over the whole master — the editor's Filters and Adjust. The same units as the Surgical
+ * Editor's sliders (lib/video/surgicalOps GradeParams): percentages with 100 = neutral, temperature ±100.
+ */
+export interface MontageGrade {
+  saturation: number;
+  contrast: number;
+  brightness: number;
+  temperature: number;
+}
 
 /** One shot on the timeline. `kind` decides whether it needs the still→clip bridge before stitching. */
 export interface MontageShot {
@@ -24,6 +37,8 @@ export interface MontageShot {
   transition: MontageTransition;
   /** Optional burned-in caption for this shot. */
   caption?: string;
+  /** Where the caption sits. Absent = 'bottom', the subtitle position every montage had before. */
+  captionPos?: MontageCaptionPos;
 }
 
 export interface MontageRequest {
@@ -35,6 +50,8 @@ export interface MontageRequest {
   musicDuckDb: number;
   /** Drop every source's own audio and keep only the bed. */
   musicOnly: boolean;
+  /** Optional colour grade over the whole master. Absent when neutral, so an ungraded edit encodes as before. */
+  grade?: MontageGrade;
 }
 
 export interface ValidationResult {
@@ -51,7 +68,12 @@ export interface ValidationResult {
  * rather than inheriting that one.
  */
 export const MAX_SHOTS = 12;
-export const MIN_SHOTS = 2;
+/**
+ * ONE shot is a real edit. It used to be two ("one clip is a trim, not a montage"), but the editor sets a format,
+ * a music bed, captions and a grade, and all of that is worth exporting on a single clip — a Reel is often one
+ * shot with a song under it. The pipeline never needed two: renderConcat folds a one-entry sequence fine.
+ */
+export const MIN_SHOTS = 1;
 
 /** Per-shot bounds. Under 0.4s a crossfade has nothing to work with; over 60s it is not a montage shot. */
 export const MIN_SHOT_SEC = 0.4;
@@ -82,6 +104,26 @@ export function isMontageAspect(v: unknown): v is MontageAspect {
 
 export function isMontageTransition(v: unknown): v is MontageTransition {
   return v === 'cut' || v === 'crossfade' || v === 'fade';
+}
+
+const clampNum = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/**
+ * A grade from untrusted input, or undefined when it is absent or neutral. Bounds match what ffmpeg's `eq` can
+ * take without crushing the frame to black or white; an omitted field is neutral, never NaN.
+ */
+export function coerceGrade(raw: unknown): MontageGrade | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const g: MontageGrade = {
+    saturation: Math.round(clampNum(num(r.saturation, 100), 0, 200)),
+    contrast: Math.round(clampNum(num(r.contrast, 100), 50, 200)),
+    brightness: Math.round(clampNum(num(r.brightness, 100), 50, 150)),
+    temperature: Math.round(clampNum(num(r.temperature, 0), -100, 100)),
+  };
+  const neutral = g.saturation === 100 && g.contrast === 100 && g.brightness === 100 && g.temperature === 0;
+  return neutral ? undefined : g;
 }
 
 /** Output length of one shot, after trimming. */
@@ -166,6 +208,7 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
   if (dur > MAX_SHOT_SEC) return { error: `shot ${index + 1} is longer than ${MAX_SHOT_SEC}s` };
 
   const caption = typeof r.caption === 'string' ? r.caption.trim().slice(0, 120) : '';
+  const captionPos: MontageCaptionPos = r.captionPos === 'center' ? 'center' : 'bottom';
 
   return {
     shot: {
@@ -176,7 +219,7 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
       // A still image carries no audio track at all; marking it muted keeps the audio graph honest.
       muted: kind === 'image' ? true : r.muted === true,
       transition: isMontageTransition(r.transition) ? r.transition : 'cut',
-      ...(caption ? { caption } : {}),
+      ...(caption ? { caption, ...(captionPos === 'center' ? { captionPos } : {}) } : {}),
     },
   };
 }
@@ -191,7 +234,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
 
   const rawShots = Array.isArray(b.shots) ? b.shots : null;
   if (!rawShots) return { ok: false, error: 'shots must be an array' };
-  if (rawShots.length < MIN_SHOTS) return { ok: false, error: `a montage needs at least ${MIN_SHOTS} shots` };
+  if (rawShots.length < MIN_SHOTS) return { ok: false, error: 'a montage needs at least one shot' };
   if (rawShots.length > MAX_SHOTS) return { ok: false, error: `a montage takes at most ${MAX_SHOTS} shots` };
 
   const shots: MontageShot[] = [];
@@ -219,6 +262,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
   }
 
   const duckRaw = Number(b.musicDuckDb);
+  const grade = coerceGrade(b.grade);
   return {
     ok: true,
     request: {
@@ -228,6 +272,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       // Clamped to a sane duck range; 0 would bury the dialogue, -40 would silence the bed's purpose.
       musicDuckDb: Number.isFinite(duckRaw) ? Math.max(-30, Math.min(0, duckRaw)) : -12,
       musicOnly: b.musicOnly === true,
+      ...(grade ? { grade } : {}),
     },
   };
 }
@@ -254,20 +299,24 @@ export interface ConcatEntryPlan {
   end: number;
   muted: boolean;
   transition?: 'crossfade' | 'fade';
-  textOverlay?: { text: string; position: 'bottom-center'; fontSize: number; fontColor: string };
+  textOverlay?: { text: string; position: 'bottom-center' | 'center'; fontSize: number; fontColor: string };
 }
 
-/** Caption size relative to frame height — a fixed px size is illegible on 9:16 and huge on 1:1. */
-export function captionFontSize(aspect: MontageAspect): number {
-  return Math.round(ASPECT_DIMS[aspect].h * 0.045);
+/**
+ * Caption size relative to frame height — a fixed px size is illegible on 9:16 and huge on 1:1. A centred title
+ * is half again as large as a subtitle. The editor's preview sizes its overlay from the same numbers.
+ */
+export function captionFontSize(aspect: MontageAspect, pos: MontageCaptionPos = 'bottom'): number {
+  return Math.round(ASPECT_DIMS[aspect].h * (pos === 'center' ? 0.068 : 0.045));
 }
 
 export function buildConcatPlan(
   shots: readonly MontageShot[],
   opts: { musicOnly?: boolean; aspect?: MontageAspect } = {},
 ): ConcatEntryPlan[] {
-  const fontSize = captionFontSize(opts.aspect ?? '16:9');
+  const aspect = opts.aspect ?? '16:9';
   return shots.map((shot, i) => {
+    const pos: MontageCaptionPos = shot.captionPos === 'center' ? 'center' : 'bottom';
     // A bridged still starts at 0 in its generated clip, not at the still's notional source offset.
     const dur = shotDuration(shot);
     const start = shot.kind === 'image' ? 0 : shot.startSec;
@@ -282,7 +331,14 @@ export function buildConcatPlan(
       // The first shot never carries a transition — validate() already normalized it to 'cut'.
       ...(shot.transition !== 'cut' ? { transition: shot.transition } : {}),
       ...(shot.caption
-        ? { textOverlay: { text: shot.caption, position: 'bottom-center' as const, fontSize, fontColor: '#FFFFFF' } }
+        ? {
+            textOverlay: {
+              text: shot.caption,
+              position: pos === 'center' ? ('center' as const) : ('bottom-center' as const),
+              fontSize: captionFontSize(aspect, pos),
+              fontColor: '#FFFFFF',
+            },
+          }
         : {}),
     };
   });

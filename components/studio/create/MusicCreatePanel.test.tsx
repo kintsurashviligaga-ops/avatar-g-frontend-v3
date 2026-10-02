@@ -85,7 +85,7 @@ test('the elements are ref2\'s, in ref2\'s order: title · + Audio | + Voice · 
   expect(inOrder([
     within(lyrics).getByTestId('music-lyrics-wand'), within(lyrics).getByTestId('music-lyrics-input'),
     within(lyrics).getByTestId('music-lyrics-library'), within(lyrics).getByTestId('music-instrumental'),
-    within(lyrics).getByTestId('music-camera'), within(lyrics).getByTestId('music-lyrics-expand'),
+    within(lyrics).getByTestId('music-lyrics-expand'),
   ])).toBe(true);
   const styles = screen.getByTestId('music-styles-card');
   expect(inOrder([
@@ -94,13 +94,13 @@ test('the elements are ref2\'s, in ref2\'s order: title · + Audio | + Voice · 
     within(styles).getByTestId('music-styles-expand'),
   ])).toBe(true);
   expect(screen.getByPlaceholderText('Describe what you want your song to sound like')).toBeTruthy();
-  expect(screen.getByTestId('music-balance').textContent).toBe('50 credits'); // the shell's own balance
+  expect(screen.queryByTestId('music-balance')).toBeNull(); // the balance is the shell's; the price is on Create
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/ai/music/engines', expect.anything()));
 });
 
 test('Simple is one prompt card + Create; Advanced is the whole screen; the choice is remembered', () => {
   const { unmount } = render(<Host />);
-  fireEvent.click(screen.getByTestId('music-mode-toggle'));
+  expect(screen.getByTestId('music-mode-advanced').getAttribute('aria-checked')).toBe('true'); // both options on screen, no menu
   fireEvent.click(screen.getByTestId('music-mode-simple'));
   expect(screen.getByTestId('music-simple')).toBeTruthy();
   for (const gone of ['music-lyrics', 'music-styles-card', 'music-more']) expect(screen.queryByTestId(gone)).toBeNull();
@@ -162,29 +162,24 @@ test('a cover is a flat 30 s: the price ignores the length picker and the length
   expect(screen.getByTestId('music-tile-length').getAttribute('aria-disabled')).toBe('true');
 });
 
-describe('locked controls are inert', () => {
-  test('the camera: aria-disabled, says "soon", and pressing it does nothing', () => {
-    const onCreate = jest.fn();
-    const onPickAudio = jest.fn();
-    render(<Host spy={{ onCreate, onPickAudio }} />);
-    const camera = screen.getByTestId('music-camera');
-    expect(camera.getAttribute('aria-disabled')).toBe('true');
-    expect(camera.getAttribute('data-locked')).toBe('true');
-    expect(camera.getAttribute('title')).toMatch(/soon/i);
-    fireEvent.click(camera);
-    expect(onCreate).not.toHaveBeenCalled();
-    expect(onPickAudio).not.toHaveBeenCalled();
-    expect(fetchMock.mock.calls.filter(([u]) => !String(u).includes('/engines'))).toHaveLength(0); // no request either
+describe('controls that would do nothing are not drawn', () => {
+  test('no camera button (it was a permanently locked "soon")', () => {
+    render(<Host />);
+    expect(screen.queryByTestId('music-camera')).toBeNull();
   });
 
-  test('"+ Audio" is locked when this deployment has no provider for it, and the picker is never opened', async () => {
+  test('"+ Audio" / "+ Voice" with no provider on this deployment are not drawn — no dead buttons, no picker', async () => {
     fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, references: { cover: false, voice: false } }) : respond({})));
-    const onPickAudio = jest.fn();
-    render(<Host spy={{ onPickAudio }} />);
-    await waitFor(() => expect(screen.getByTestId('music-add-audio').getAttribute('data-locked')).toBe('true'));
-    fireEvent.click(screen.getByTestId('music-add-audio'));
-    expect(onPickAudio).not.toHaveBeenCalled();
-    expect(screen.getByTestId('music-add-audio').textContent).toMatch(/not available/i);
+    render(<Host />);
+    await waitFor(() => expect(screen.queryByTestId('music-add-audio')).toBeNull());
+    expect(screen.queryByTestId('music-add-voice')).toBeNull();
+  });
+
+  test('only the half that works is drawn', async () => {
+    fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, references: { cover: false, voice: true } }) : respond({})));
+    render(<Host />);
+    await waitFor(() => expect(screen.queryByTestId('music-add-audio')).toBeNull());
+    expect(screen.getByTestId('music-add-voice')).toBeTruthy();
   });
 
   test('an unconfigured engine (Udio) and MusicGen-for-a-song are listed but cannot be picked', async () => {

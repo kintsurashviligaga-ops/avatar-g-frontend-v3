@@ -8,16 +8,33 @@
  * word or two". Shared by the composer read-aloud (OmniStudio, MyAvatarChatV2) and the real-time
  * voice node (VoiceConversation).
  */
-export function chunkForTts(text: string, maxChars = 600): string[] {
+export interface ChunkForTtsOptions {
+  /**
+   * Speak sooner: the FIRST sentence becomes a chunk of its own when it is at most `leadMax` characters. Synthesis
+   * time grows with length, so a one-sentence first request returns its audio in a fraction of a 600-char one, and
+   * the rest is synthesised while it plays. It also makes the first chunk FINAL as soon as the second sentence has
+   * begun — which is what lets a streaming reply pre-synthesise it before the stream ends (OmniStudio).
+   */
+  leadSentence?: boolean;
+  /** Default 220. */
+  leadMax?: number;
+}
+
+export function chunkForTts(text: string, maxChars = 600, opts: ChunkForTtsOptions = {}): string[] {
   const clean = (text || '').replace(/\s+/g, ' ').trim();
   if (!clean) return [];
   const sentences = clean.match(/[^.!?。！？\n]+[.!?。！？]+|\S[^.!?。！？\n]*$/g) || [clean];
   const MAX = maxChars;
   const chunks: string[] = [];
   let buf = '';
+  let first = true;
   for (const raw of sentences) {
     const s = raw.trim();
     if (!s) continue;
+    if (first) {
+      first = false;
+      if (opts.leadSentence && s.length <= (opts.leadMax ?? 220)) { chunks.push(s); continue; }
+    }
     if (`${buf} ${s}`.trim().length > MAX) {
       if (buf) { chunks.push(buf.trim()); buf = ''; }
       if (s.length > MAX) { for (let k = 0; k < s.length; k += MAX) chunks.push(s.slice(k, k + MAX)); }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { acceptTranscript } from '@/lib/voice/sttAccept';
+import { transcriptSpeechLang } from '@/lib/voice/speechLang';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
 import {
   geminiAudioInput,
@@ -29,10 +30,13 @@ export const maxDuration = 30;
  *
  * Request: multipart/form-data with:
  *   - audio:    Blob (WAV / OGG / FLAC / MP3 / AAC / AIFF preferred; WebM / MP4 best effort — see geminiStt.ts)
- *   - language: optional 'ka-GE' | 'en-US' | 'ru-RU' (default 'ka-GE')
+ *   - language: optional 'ka-GE' | 'en-US' | 'ru-RU' | 'auto' (default 'ka-GE'). A HINT: the transcript is written in
+ *               the language actually spoken, never translated (geminiStt.sttPrompt). 'auto' = no hint at all.
  *
- * Response: { text: string, provider: string, code?: 'unsupported_format' | 'stt_unavailable' }. Always 200 on a
- * provider miss — an empty string is a valid "heard nothing" the client handles without wedging the mic.
+ * Response: { text: string, provider: string, language?: 'ka-GE' | 'en-US' | 'ru-RU', code?: 'unsupported_format' |
+ * 'stt_unavailable' }. `language` is the script the transcript came back in — the browser remembers it for the next
+ * dictation (lib/voice/speechLang). Always 200 on a provider miss — an empty string is a valid "heard nothing" the
+ * client handles without wedging the mic.
  *
  * ⚠️ IT WAS ANONYMOUS. The only gate was the per-IP READ bucket, and every request could spend Replicate, OpenAI,
  * Deepgram and Gemini credit — and `?diag=1` handed upstream error text to anyone. Now: signed in (the generation
@@ -51,7 +55,7 @@ const GEMINI_INLINE_MAX_BYTES = 14 * 1024 * 1024;
 /** Whisper's API hard limit (the legacy cascade). */
 const LEGACY_MAX_BYTES = 25 * 1024 * 1024;
 
-type SttLanguage = 'ka-GE' | 'en-US' | 'ru-RU';
+type SttLanguage = 'ka-GE' | 'en-US' | 'ru-RU' | 'auto';
 
 /** The sign-in message language, before the form (and its `language` field) has been read. Georgian by default. */
 function localeFromHeader(acceptLanguage: string | null): 'ka' | 'en' | 'ru' {
@@ -118,7 +122,9 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
     const audio = form.get('audio');
     const langInput = String(form.get('language') || 'ka-GE');
-    const language: SttLanguage = langInput === 'en-US' || langInput === 'ru-RU' ? langInput : 'ka-GE';
+    const language: SttLanguage = langInput === 'en-US' || langInput === 'ru-RU' || langInput === 'auto' ? langInput : 'ka-GE';
+    // The legacy providers take a fixed language; 'auto' reaches them as their old default.
+    const legacyLanguage = language === 'auto' ? 'ka-GE' : language;
 
     if (!audio || typeof audio === 'string') {
       return NextResponse.json({ error: 'audio is required' }, { status: 400 });
@@ -198,7 +204,7 @@ export async function POST(req: NextRequest) {
       // Skipped entirely when the ka-first leg already produced an ACCEPTED transcript.
       if (!text) {
         try {
-          const result = await transcribeRealtimePcmChunk({ audioBase64, language, mimeType });
+          const result = await transcribeRealtimePcmChunk({ audioBase64, language: legacyLanguage, mimeType });
           const t = (result.text ?? '').trim();
           // ⚠️ NON-EMPTY IS NOT SUCCESS FOR GEORGIAN — see lib/voice/sttAccept. A transliteration or an
           // English rendering is a MISS, and treating it as an answer is what buried the working engine.
@@ -226,7 +232,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (text) code = undefined;
-    const payload = { text, provider, ...(code ? { code } : {}) };
+    const heard = text ? transcriptSpeechLang(text) : null;
+    const payload = { text, provider, ...(heard ? { language: heard } : {}), ...(code ? { code } : {}) };
     if (diagAllowed) {
       return NextResponse.json({
         ...payload,

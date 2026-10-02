@@ -16,8 +16,8 @@ import { createBrowserClient } from '@/lib/supabase/browser';
  * bytes have landed. Every v2 route resolves the path server-side at the moment it needs to fetch
  * (see lib/services/resolveUpload).
  *
- * WHY THIS IS A SHARED HOOK. Four surfaces had grown their own copy of this — OmniStudio,
- * MontageEditor, SurgicalEditor and LipsyncStudio — and they had drifted: different timeouts, different
+ * WHY THIS IS A SHARED HOOK. Four surfaces had grown their own copy of this — OmniStudio, the old
+ * montage form, SurgicalEditor and LipsyncStudio — and they had drifted: different timeouts, different
  * error handling, and only some of them distinguished "you are signed out" from "the file failed".
  * That last one matters, because since /api/upload/sign started requiring a session, being signed out
  * became the commonest cause, and telling the user to re-encode their video does not help them.

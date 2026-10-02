@@ -98,7 +98,8 @@ beforeEach(() => {
   delete process.env.GEMINI_LIVE_ENABLED;
   delete process.env.GEMINI_LIVE_MODEL;
   delete process.env.GEMINI_LIVE_LOCK_SETUP;
-  delete process.env.GEMINI_LIVE_GOOGLE_SEARCH;
+  // Search is default ON; the tests below that pin other parts of the lock switch it off, the search tests turn it back on.
+  process.env.GEMINI_LIVE_GOOGLE_SEARCH = '0';
   delete process.env.GEMINI_LIVE_ACTIONS;
   delete process.env.GEMINI_API_KEYS;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -262,11 +263,14 @@ describe('the mint', () => {
     expect(mintBody().bidiGenerateContentSetup.sessionResumption).toEqual({});
   });
 
-  test('Google Search in Live is opt-in (GEMINI_LIVE_GOOGLE_SEARCH=1)', async () => {
-    process.env.GEMINI_LIVE_GOOGLE_SEARCH = '1';
+  test('Google Search in Live is ON by default (unset); GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill switch', async () => {
+    delete process.env.GEMINI_LIVE_GOOGLE_SEARCH;
     await POST(post({ locale: 'en' }));
-    expect(mintBody().bidiGenerateContentSetup.tools).toEqual([{ googleSearch: {} }]);
+    expect(mintBody(0).bidiGenerateContentSetup.tools).toEqual([{ googleSearch: {} }]);
     expect(lockedText()).not.toMatch(/cannot search the web/);
+    process.env.GEMINI_LIVE_GOOGLE_SEARCH = '0';
+    await POST(post({ locale: 'en' }));
+    expect(mintBody(1).bidiGenerateContentSetup.tools).toBeUndefined();
   });
 
   test('a 400 on the full lock falls back to the server-owned LEGACY lock, and the browser gets that same frame', async () => {

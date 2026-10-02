@@ -83,7 +83,7 @@ const plural = (n: number, one: string, few: string, many: string) => {
 
 export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
   ka: {
-    title: 'სურათის შექმნა',
+    title: 'სურათი',
     changeTool: 'ხელსაწყოს შეცვლა',
     close: 'დახურვა',
     uploadTitle: 'აირჩიე სურათი ასატვირთად',
@@ -143,7 +143,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     workingOn: 'მზადდება',
   },
   en: {
-    title: 'Create image',
+    title: 'Image',
     changeTool: 'Change tool',
     close: 'Close',
     uploadTitle: 'Choose an image to upload',
@@ -203,7 +203,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     workingOn: 'Rendering',
   },
   ru: {
-    title: 'Создать изображение',
+    title: 'Изображение',
     changeTool: 'Сменить инструмент',
     close: 'Закрыть',
     uploadTitle: 'Выберите изображение для загрузки',

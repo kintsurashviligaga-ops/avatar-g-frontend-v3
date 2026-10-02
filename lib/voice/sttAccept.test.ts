@@ -23,6 +23,20 @@ describe('THE BUG: a confident non-Georgian answer used to end the cascade', () 
   });
 });
 
+describe('a Georgian request keeps a RUSSIAN speaker’s words as spoken', () => {
+  it('accepts Cyrillic (Russian speech in a Georgian session — never translated into Georgian)', () => {
+    expect(acceptTranscript('привет, как дела?', 'ka-GE')).toBe(true);
+  });
+  it('a single stray Cyrillic letter is not enough', () => {
+    expect(acceptTranscript('hello д', 'ka-GE')).toBe(false);
+  });
+  it("'auto' accepts any language", () => {
+    expect(acceptTranscript('hello there', 'auto')).toBe(true);
+    expect(acceptTranscript('გამარჯობა', 'auto')).toBe(true);
+    expect(acceptTranscript('  ', 'auto')).toBe(false);
+  });
+});
+
 describe('every other language is untouched', () => {
   it.each([['en-US'], ['ru-RU']])('%s accepts any non-empty string, exactly as before', (lang) => {
     expect(acceptTranscript('hello there', lang)).toBe(true);

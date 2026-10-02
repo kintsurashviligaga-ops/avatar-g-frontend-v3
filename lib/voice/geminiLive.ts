@@ -447,7 +447,58 @@ export type LiveServerEvent =
   | { kind: 'usage'; totalTokens?: number }
   | { kind: 'toolCall'; calls: Array<{ id: string; name: string; args: unknown }> }
   | { kind: 'toolCallCancellation'; ids: string[] }
+  /** The model started a Google Search (an `executableCode` part calling google_search) — the queries it asked. */
+  | { kind: 'searchStart'; queries: string[] }
+  /** serverContent.groundingMetadata: what was searched and the pages the answer stands on. */
+  | { kind: 'grounding'; queries: string[]; sources: LiveSource[] }
   | { kind: 'error'; message: string };
+
+export interface LiveSource { title: string; uri: string }
+
+const MAX_QUERIES = 4;
+const MAX_SOURCES = 6;
+
+function cleanQueries(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const q of raw) {
+    if (typeof q !== 'string') continue;
+    const t = q.replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= MAX_QUERIES) break;
+  }
+  return out;
+}
+
+/** `print(google_search.search(queries=["a", "b"]))` → ['a', 'b']. Bounded; anything else → []. */
+export function searchQueriesFromCode(code: unknown): string[] {
+  if (typeof code !== 'string' || code.length > 4000 || !/google_search/.test(code)) return [];
+  const list = /queries\s*=\s*\[([^\]]{0,2000})\]/.exec(code);
+  const single = list ? null : /query\s*=\s*("(?:[^"\\]|\\.){0,300}"|'(?:[^'\\]|\\.){0,300}')/.exec(code);
+  const body = list?.[1] ?? single?.[1] ?? '';
+  const found: string[] = [];
+  const re = /"((?:[^"\\]|\\.){0,300})"|'((?:[^'\\]|\\.){0,300})'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null && found.length < MAX_QUERIES * 2) found.push((m[1] ?? m[2] ?? '').replace(/\\(.)/g, '$1'));
+  return cleanQueries(found);
+}
+
+/** groundingMetadata → the queries and the web sources (http(s) only, de-duplicated, bounded). */
+export function groundingOf(raw: unknown): { queries: string[]; sources: LiveSource[] } | null {
+  if (!isObj(raw)) return null;
+  const queries = cleanQueries(raw.webSearchQueries);
+  const sources: LiveSource[] = [];
+  const chunks = Array.isArray(raw.groundingChunks) ? raw.groundingChunks : [];
+  for (const c of chunks) {
+    const web = isObj(c) && isObj(c.web) ? c.web : null;
+    const uri = web && typeof web.uri === 'string' ? web.uri.trim() : '';
+    if (!/^https?:\/\//i.test(uri) || uri.length > 2048 || sources.some((x) => x.uri === uri)) continue;
+    const title = web && typeof web.title === 'string' && web.title.trim() ? web.title.trim().slice(0, 120) : '';
+    sources.push({ title, uri });
+    if (sources.length >= MAX_SOURCES) break;
+  }
+  return queries.length || sources.length ? { queries, sources } : null;
+}
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -508,7 +559,15 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
       // ⚠️ Text parts are NOT surfaced: native-audio sessions answer in AUDIO only (the words arrive as
       // outputTranscription), and the text parts a thinking model does emit are thought summaries — a
       // reasoning trace must never become a caption or a chat-thread message.
+      // A Google Search the model is about to run arrives as generated code; only its QUERIES are surfaced.
+      if (isObj(p.executableCode)) {
+        const queries = searchQueriesFromCode(p.executableCode.code);
+        if (queries.length) events.push({ kind: 'searchStart', queries });
+      }
     }
+
+    const grounding = groundingOf(sc.groundingMetadata);
+    if (grounding) events.push({ kind: 'grounding', ...grounding });
 
     const output = transcriptOf(sc.outputTranscription);
     if (output) events.push({ kind: 'outputTranscript', ...output });
@@ -571,9 +630,9 @@ function parseMessageObject(msg: Obj): LiveServerEvent[] {
 
 /**
  * Parse ONE server frame (the JSON object, or its raw JSON string) into parity events, in the order a
- * player should apply them: setupComplete, interrupted, inputTranscript, audio…, outputTranscript,
- * turnComplete, toolCall, toolCallCancellation, goAway, resumption, usage, error. A frame can yield several (e.g.
- * audio + turnComplete + usage). Unknown kinds (generationComplete, groundingMetadata, waitingForInput, …) yield
+ * player should apply them: setupComplete, interrupted, inputTranscript, audio…, searchStart, outputTranscript,
+ * grounding, turnComplete, toolCall, toolCallCancellation, goAway, resumption, usage, error. A frame can yield several
+ * (e.g. audio + turnComplete + usage). Unknown kinds (generationComplete, waitingForInput, …) yield
  * nothing. Malformed input → []. Never throws.
  */
 export function parseLiveServerMessage(raw: unknown): LiveServerEvent[] {

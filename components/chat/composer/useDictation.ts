@@ -7,6 +7,9 @@
  *  · Web Speech first where it can do the language (Chrome's engine is Google's and handles Georgian), with the
  *    8 s / 2.5 s-after-`onspeechstart` watchdog, the restart budget for Chrome's self-ending `onend`,
  *    `no-speech` as non-fatal, and a session memory of languages the engine rejected.
+ *  · The language is the one the user SPEAKS (lib/voice/speechLang): their typed native script, else the language the
+ *    server heard last time, else Georgian for a Georgian UI, else 'auto' — the recorder, where Gemini identifies it
+ *    (Web Speech cannot) and the answer is remembered for the next dictation. Never a translation.
  *  · Apple's engine (iOS and macOS Safari) has no Georgian, so `ka` there goes straight to the recorder.
  *  · Otherwise, record and POST to /api/voice/transcribe, streaming interim passes into the box on the
  *    `lib/voice/interimCadence` back-off, then one final pass on Stop.
@@ -51,6 +54,14 @@ import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'reac
 import { audioExtFor } from '@/lib/voice/audioExt';
 import { shouldRunInterim } from '@/lib/voice/interimCadence';
 import { useMicRelease } from '@/lib/voice/micBus';
+import {
+  isSpeechLang,
+  loadLearnedSpeechLang,
+  resolveSpeechLang,
+  saveLearnedSpeechLang,
+  type SpeechLang,
+  type SttRequestLang,
+} from '@/lib/voice/speechLang';
 
 // ─── Web Speech shapes (not in the TS DOM lib) ───────────────────────────────────────────────────────────
 
@@ -75,7 +86,7 @@ export type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 // ─── Capture ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export type DictationEngine = 'webspeech' | 'wav' | 'mediarecorder';
-export type SpeechLang = 'ka-GE' | 'en-US' | 'ru-RU';
+export type { SpeechLang } from '@/lib/voice/speechLang';
 
 /** One recording. `snapshot()` is the whole clip so far as a decodable file; `finish()` stops and returns it. */
 export interface CaptureSession {
@@ -100,10 +111,19 @@ export interface DictationDeps {
   now(): number;
   /** Used when `authed` is not passed: `<html data-authed="0">` (published by ChatChrome) means a guest. */
   isGuest(): boolean;
+  /** The language the server heard on an earlier clip (lib/voice/speechLang; localStorage by default). */
+  loadSpeechLang(): SpeechLang | null;
+  saveSpeechLang(lang: SpeechLang): void;
 }
 
 export interface UseDictationOptions {
   locale?: string;
+  /**
+   * The language the user is evidently using — their latest TYPED message's native script (lib/voice/speechLang
+   * `typedSpeechLang`). Wins over everything else; null/undefined = unknown (the remembered language, a Georgian UI,
+   * or the recorder's auto-detect decide — see resolveSpeechLang).
+   */
+  speechLang?: SpeechLang | null;
   /** The composer text now; dictation appends after it. */
   value: string;
   setValue: Dispatch<SetStateAction<string>>;
@@ -424,12 +444,15 @@ const defaultDeps = (): DictationDeps => ({
   fetch: (...args) => fetch(...args),
   now: () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
   isGuest: () => typeof document !== 'undefined' && document.documentElement?.dataset?.authed === '0',
+  loadSpeechLang: loadLearnedSpeechLang,
+  saveSpeechLang: saveLearnedSpeechLang,
 });
 
 // ─── The hook ────────────────────────────────────────────────────────────────────────────────────────────
 
 interface RecorderState {
-  lang: SpeechLang;
+  /** 'auto' until the first transcript names the language; then that language, for the rest of the clip. */
+  lang: SttRequestLang;
   base: string;
   stream: MediaStream;
   session: CaptureSession | null;
@@ -499,9 +522,15 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         return;
       }
       if (!res.ok) throw new Error(`transcribe HTTP ${res.status}`);
-      const j = (await res.json().catch(() => ({}))) as { text?: unknown };
+      const j = (await res.json().catch(() => ({}))) as { text?: unknown; language?: unknown };
       if (sttDiscardRef.current) return;
       const t = typeof j.text === 'string' ? j.text.trim() : '';
+      // The language the server HEARD: remembered for the next dictation (which can then use the instant Web Speech
+      // engine in it), and pinned for the rest of an auto-detected clip so its passes stay consistent.
+      if (t && isSpeechLang(j.language)) {
+        if (r.lang === 'auto') r.lang = j.language;
+        try { d.saveSpeechLang(j.language); } catch { /* a convenience */ }
+      }
       if (t) {
         const next = r.base + t;
         // Read the LIVE box: if the user typed since our last write, keep their edit and do not re-tag it as
@@ -554,7 +583,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   }, [setRec, setTrans, transcribe]);
   stopRecorderRef.current = stopRecorder;
 
-  const startRecorder = useCallback(async (lang: SpeechLang): Promise<void> => {
+  const startRecorder = useCallback(async (lang: SttRequestLang): Promise<void> => {
     const d = depsRef.current;
     sttDiscardRef.current = false; // a fresh dictation accepts transcription again
     // Reentrancy guard: a double tap must not open two mics (the loser stream would stay HOT).
@@ -656,7 +685,13 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     // Instant capture UI: flip to "recording" on the tap, before the recognizer / getUserMedia spins up.
     // Every failure path below reverts it.
     setRec(true);
-    const lang = speechLangFor(o.locale);
+    // The language the user SPEAKS, not merely the UI's (lib/voice/speechLang): typed native script → heard before →
+    // Georgian UI → 'auto'. Web Speech cannot detect a language, so 'auto' goes to the recorder, where Gemini does.
+    let learned: SpeechLang | null = null;
+    try { learned = d.loadSpeechLang(); } catch { /* unknown */ }
+    const want = resolveSpeechLang({ locale: o.locale, typed: o.speechLang ?? null, learned });
+    if (want === 'auto') { await startRecorder('auto'); return; }
+    const lang: SpeechLang = want;
     const SR = d.speechRecognition();
     if (SR && !(isAppleSpeechEngine(d.userAgent()) && lang.startsWith('ka')) && !unsupportedLangsRef.current.has(lang)) {
       try {

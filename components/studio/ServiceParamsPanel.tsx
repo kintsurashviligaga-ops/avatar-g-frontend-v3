@@ -3,23 +3,21 @@
 /**
  * components/studio/ServiceParamsPanel.tsx — per-service parameter controls, INSIDE the chat box.
  *
- * The four services that own a full route (Montage, Dubbing, Presentation, 3D) are also driveable without
- * leaving the conversation: pick one in the composer's service menu and its own controls open right above
- * the input. The standalone /montage, /dubbing, /slides and /3d pages still exist and share these exact
- * API contracts — this is a second front-end onto the same routes, not a reimplementation of the work.
+ * The three services that own a full route (Dubbing, Presentation, 3D) are driveable without leaving the
+ * conversation: pick one in the composer's service menu and its own controls open right above the input.
+ * (Montage used to be the fourth. It is a timeline editor now — components/studio/montage/MontageStudio —
+ * and every way into it, the tool, a „montage" request and „Open in editor", opens that one editor.)
  *
- * Each service shows ONLY the parameters that matter to it. A montage needs shots and an aspect; a deck
+ * Each service shows ONLY the parameters that matter to it. A dub needs a video and a language; a deck
  * needs a topic and a slide count; they have nothing in common, so a shared "options" blob would be a
- * worse fit than four small purpose-built forms.
+ * worse fit than small purpose-built forms.
  *
  * Every submit is a plain fetch to the v2 route, which does its own auth, validation, SSRF checks and
  * budget guarding — this component is deliberately dumb about all of that.
  */
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { DUBBING_LANGUAGES, type DubbingLanguage } from '@/lib/services/dubbing/dubbingPlan';
-import { MIN_SHOTS, MAX_TOTAL_SEC, timelineDuration, type MontageAspect } from '@/lib/services/montage/montagePlan';
-import { MontageEditor, type EditorClip } from './MontageEditor';
 import {
   Panel, PanelHeader, Group, Row, Label, TextArea, LabelledField,
   ChipGroup, ToggleRow, PrimaryButton, SecondaryButton, GhostButton, Note, ProgressBar, Dropzone, CardSelect, Disclosure, TextArea as UiTextArea,
@@ -35,7 +33,7 @@ import { MAX_SLIDES, MIN_SLIDES, DEFAULT_SLIDES, type DeckLanguage, type DeckThe
 import { pollDelayMs, MAX_POLL_ATTEMPTS, MAX_PROMPT_CHARS, type Model3dMode, type Model3dQuality } from '@/lib/services/model3d/model3dPlan';
 import { describeServiceError } from './ui/serviceError';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { Boxes } from 'lucide-react';
+import { Boxes, Film, Image as ImageIcon } from 'lucide-react';
 import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } from '@/lib/studio/scene3d';
 import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
@@ -57,18 +55,14 @@ const DOWNLOAD_LINK = 'tap-44 relative inline-flex items-center text-[12px] font
 // OWN BOX — with no `loading` the panel showed nothing, then jumped by the canvas's height when the chunk landed.
 const GlbViewer = dynamic(() => import('./GlbViewer'), { ssr: false, loading: () => <GlbViewerSkeleton /> });
 
-export type PanelService = 'montage' | 'dubbing' | 'presentation' | 'model3d';
+export type PanelService = 'dubbing' | 'presentation' | 'model3d';
 type Lang = 'ka' | 'en' | 'ru';
 
 const COPY = {
   ka: {
-    close: 'დახურვა', run: 'გაშვება', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
+    close: 'დახურვა', run: 'შექმნა', working: 'მიმდინარეობს…', failed: 'ვერ შესრულდა', downloadDeck: '⬇ სლაიდების ჩამოტვირთვა (ZIP)', deckTheme: 'იერსახე', themeDark: 'მუქი', themeLight: 'ღია', advanced: 'დამატებითი პარამეტრები', exclude: 'რა არ გინდა', excludeHint: 'მაგ. ტექსტი, ადამიანი, ფონი…', excludeSet: 'მითითებულია', sourceLang: 'ორიგინალის ენა', autoDetect: 'ავტომატური',
     keepOpen: 'რამდენიმე წუთი სჭირდება — არ დახუროთ გვერდი.',
-    montage: 'მონტაჟი', dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
-    shots: 'კადრები', addShot: '+ კადრი', aspect: 'ფორმატი', music: 'მუსიკა (არჩევითი)',
-    trimFrom: 'დან', trimTo: 'მდე', transition: 'გადასვლა', cut: 'მკვეთრი', crossfade: 'გადადნობა',
-    fadeBlack: 'შავში', caption: 'წარწერა', mute: 'ხმის გარეშე', musicOnly: 'მხოლოდ მუსიკა',
-    fullEditor: 'სრული რედაქტორი →',
+    dubbing: 'დუბლაჟი', presentation: 'პრეზენტაცია', model3d: '3D მოდელი',
     duration: 'ხანგრძლივობა', sourceVideo: 'ვიდეოს ბმული', targetLang: 'სამიზნე ენა', keepBg: 'ფონური ხმა', subs: 'სუბტიტრები',
     topic: 'თემა', slides: 'სლაიდები', deckLang: 'ენა', withImages: 'სურათებით',
     fromText: 'ტექსტიდან', fromImage: 'ფოტოდან', describe: 'აღწერა', photoUrl: 'ფოტოს ბმული',
@@ -89,13 +83,9 @@ const COPY = {
     sceneRefused: 'სცენაზე ვერ დაემატა — სცენაში მაქსიმუმ {n} ობიექტი ეტევა.',
   },
   en: {
-    close: 'Close', run: 'Run', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
+    close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
-    montage: 'Montage', dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
-    shots: 'Shots', addShot: '+ Shot', aspect: 'Aspect', music: 'Music (optional)',
-    trimFrom: 'From', trimTo: 'To', transition: 'Transition', cut: 'Cut', crossfade: 'Crossfade',
-    fadeBlack: 'Through black', caption: 'Caption', mute: 'Mute', musicOnly: 'Music only',
-    fullEditor: 'Full editor →',
+    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
     duration: 'Duration', sourceVideo: 'Video URL', targetLang: 'Target language', keepBg: 'Background audio', subs: 'Subtitles',
     topic: 'Topic', slides: 'Slides', deckLang: 'Language', withImages: 'With images',
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
@@ -116,13 +106,9 @@ const COPY = {
     sceneRefused: 'Could not add it to the scene — it holds up to {n} objects.',
   },
   ru: {
-    close: 'Закрыть', run: 'Запустить', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
+    close: 'Закрыть', run: 'Создать', working: 'Выполняется…', failed: 'Не удалось', downloadDeck: '⬇ Скачать слайды (ZIP)', deckTheme: 'Оформление', themeDark: 'Тёмное', themeLight: 'Светлое', advanced: 'Дополнительно', exclude: 'Исключить', excludeHint: 'напр. текст, люди, фон…', excludeSet: 'задано', sourceLang: 'Язык оригинала', autoDetect: 'Автоопределение',
     keepOpen: 'Это займёт несколько минут — не закрывайте страницу.',
-    montage: 'Монтаж', dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
-    shots: 'Кадры', addShot: '+ Кадр', aspect: 'Формат', music: 'Музыка (необязательно)',
-    trimFrom: 'От', trimTo: 'До', transition: 'Переход', cut: 'Резкий', crossfade: 'Наплыв',
-    fadeBlack: 'Через чёрное', caption: 'Подпись', mute: 'Без звука', musicOnly: 'Только музыка',
-    fullEditor: 'Полный редактор →',
+    dubbing: 'Дубляж', presentation: 'Презентация', model3d: '3D-модель',
     duration: 'Длительность', sourceVideo: 'Ссылка на видео', targetLang: 'Целевой язык', keepBg: 'Фоновый звук', subs: 'Субтитры',
     topic: 'Тема', slides: 'Слайды', deckLang: 'Язык', withImages: 'С изображениями',
     fromText: 'Из текста', fromImage: 'Из фото', describe: 'Описание', photoUrl: 'Ссылка на фото',
@@ -151,7 +137,6 @@ const COPY = {
  */
 /** Each panel service's progress vocabulary and wall-clock pacing. */
 const PROGRESS_KIND = {
-  montage: 'montage',
   dubbing: 'dubbing',
   presentation: 'presentation',
   model3d: 'model3d',
@@ -160,24 +145,18 @@ const PROGRESS_KIND = {
 const STAGE_LABELS: Record<Lang, Record<string, string>> = {
   ka: {
     queued: 'რიგში…',
-    resolve: 'ფაილები მოწმდება…', bridge: 'ფოტოები კადრებად…', normalize: 'ფორმატი ერთდება…',
-    stitch: 'კადრები იკერება…', music: 'მუსიკა ედება…',
     extract_audio: 'ხმა გამოიყოფა…', transcribe: 'ტექსტი იშიფრება…', translate: 'ითარგმნება…',
     synthesize: 'ხმა იწერება…', sync: 'დრო ეწყობა…', mix: 'მიქსი…',
     outline: 'გეგმა იწერება…', visuals: 'სურათები იქმნება…', render: 'სლაიდები იხატება…',
   },
   en: {
     queued: 'Queued…',
-    resolve: 'Checking files…', bridge: 'Turning photos into shots…', normalize: 'Matching formats…',
-    stitch: 'Stitching the clips…', music: 'Laying the music…',
     extract_audio: 'Extracting audio…', transcribe: 'Transcribing…', translate: 'Translating…',
     synthesize: 'Recording the voices…', sync: 'Fitting the timing…', mix: 'Mixing…',
     outline: 'Writing the outline…', visuals: 'Generating visuals…', render: 'Drawing the slides…',
   },
   ru: {
     queued: 'В очереди…',
-    resolve: 'Проверяем файлы…', bridge: 'Фото в кадры…', normalize: 'Приводим форматы…',
-    stitch: 'Склеиваем кадры…', music: 'Добавляем музыку…',
     extract_audio: 'Извлекаем звук…', transcribe: 'Расшифровываем…', translate: 'Переводим…',
     synthesize: 'Записываем голоса…', sync: 'Подгоняем тайминг…', mix: 'Сводим…',
     outline: 'Пишем план…', visuals: 'Создаём изображения…', render: 'Рисуем слайды…',
@@ -264,15 +243,13 @@ export function ServiceParamsPanel({
   service,
   locale,
   onClose,
-  onOpenFullEditor,
   prefill,
   onDelivered,
+  embedded = false,
 }: {
   service: PanelService;
   locale: string;
   onClose: () => void;
-  /** Escalate into the full-screen clip editor (trim/crop/grade/audio). */
-  onOpenFullEditor?: () => void;
   /**
    * Parameters mined from the chat sentence that opened this panel (lib/chat/studioIntent).
    *
@@ -281,6 +258,12 @@ export function ServiceParamsPanel({
    * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
    */
   prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
+  /**
+   * Drawn inside the studio's settings panel, which already has the tool's header, its ✕ and its own scroll. Then this
+   * panel draws no second frame, no second header with its own „Close ✕“ and no 52vh inner scroll — a box that scrolled
+   * inside a panel that scrolls, with the Create button below the fold of the inner one.
+   */
+  embedded?: boolean;
   /**
    * Hand a finished result to the conversation.
    *
@@ -327,12 +310,6 @@ export function ServiceParamsPanel({
     return () => window.clearInterval(id);
   }, [busy]);
 
-  // Montage — clips carry a stable uid and the source's true duration; MontageEditor owns the UI.
-  // Starts EMPTY: two blank rows were placeholders for a form, but this surface asks for files.
-  const [shots, setShots] = useState<EditorClip[]>([]);
-  const [aspect, setAspect] = useState<MontageAspect>('16:9');
-  const [musicUrl, setMusicUrl] = useState('');
-  const [musicOnly, setMusicOnly] = useState(false);
   // Dubbing
   const [sourceVideoUrl, setSourceVideoUrl] = useState('');
   // Measured from the local file before upload. null = we could not measure; see videoDuration.ts —
@@ -462,9 +439,6 @@ export function ServiceParamsPanel({
     setError(t.failed);
   }, [t]);
 
-  // Same pure function the server bills and encodes against, so this number is not an approximation.
-  const montageTotal = timelineDuration(shots);
-
   async function run() {
     if (busy) return;
     setBusy(true);
@@ -482,17 +456,7 @@ export function ServiceParamsPanel({
       let endpoint = '';
       let body: Record<string, unknown> = {};
 
-      if (service === 'montage') {
-        endpoint = '/api/v2/montage/render';
-        // uid/sourceSec/previewUrl are client-only; the validator would ignore them but sending a local
-        // blob: url in `previewUrl` has no business leaving the browser.
-        body = {
-          shots: shots.filter((s) => s.url.trim()).map(({ uid: _u, sourceSec: _s, previewUrl: _p, ...shot }) => shot),
-          aspect,
-          ...(musicUrl.trim() ? { musicUrl: musicUrl.trim() } : {}),
-          musicOnly,
-        };
-      } else if (service === 'dubbing') {
+      if (service === 'dubbing') {
         endpoint = '/api/v2/dubbing/start';
         // durationSec was NEVER SENT. The route then fell back to 60, which killed its own 5-minute cap
         // and billed every dub — however long — as a single minute. Sent only when actually measured.
@@ -568,8 +532,7 @@ export function ServiceParamsPanel({
   }
 
   const canRun = !busy && (
-    service === 'montage' ? shots.filter((s) => s.url.trim()).length >= MIN_SHOTS && montageTotal <= MAX_TOTAL_SEC
-      : service === 'dubbing' ? Boolean(sourceVideoUrl.trim())
+    service === 'dubbing' ? Boolean(sourceVideoUrl.trim())
       : service === 'presentation' ? topic.trim().length >= 3
       : mode3d === 'text' ? prompt3d.trim().length >= 3 : Boolean(imageUrl3d.trim())
   );
@@ -588,41 +551,19 @@ export function ServiceParamsPanel({
     : [];
 
   return (
-    // HEIGHT IS CAPPED and the panel scrolls inside itself. A twelve-shot timeline is taller than the
-    // viewport, and letting it grow pushed the message input off screen — the one control that must
-    // never leave, since this panel sits INSIDE the chat rather than on a page of its own.
-    <Panel className="mb-2" maxHeight="52vh">
-      <PanelHeader
-        title={t[service]}
-        action={<GhostButton onClick={onClose} className="px-2">{t.close} ✕</GhostButton>}
-      />
-
-      {service === 'montage' && (
-        <MontageEditor
-          locale={locale}
-          clips={shots}
-          setClips={setShots}
-          aspect={aspect}
-          setAspect={setAspect}
-          musicUrl={musicUrl}
-          setMusicUrl={setMusicUrl}
-          musicOnly={musicOnly}
-          setMusicOnly={setMusicOnly}
-          onOpenFullEditor={onOpenFullEditor}
-        />
-      )}
+    <SppFrame embedded={embedded} title={t[service]} closeLabel={t.close} onClose={onClose}>
 
       {service === 'dubbing' && (
         <div className="space-y-2.5">
           {/* SOURCE first, then TARGET, then options — the order the task is actually thought about. */}
-          <Group title={`🎬 ${t.sourceVideo}`}>
+          <Group title={t.sourceVideo}>
             {/* A FILE PICKER, not a URL box. Asking for "https://…/video.mp4" required the user to host
                 their own video somewhere public first — a step most people cannot take at all, which
                 made the whole service unreachable no matter how well the pipeline worked. */}
             <Dropzone
               id="dub-source"
               accept="video/*"
-              icon={<span aria-hidden>🎬</span>}
+              icon={<Film size={20} aria-hidden="true" />}
               title={dubFile ? dubFile : t.pickVideo}
               hint={t.dubSourceHint}
               filled={Boolean(sourceVideoUrl)}
@@ -657,7 +598,7 @@ export function ServiceParamsPanel({
               </Note>
             )}
           </Group>
-          <Group title={`🗣 ${t.targetLang}`}>
+          <Group title={t.targetLang}>
             <ChipGroup
               value={targetLanguage}
               onChange={setTargetLanguage}
@@ -693,12 +634,12 @@ export function ServiceParamsPanel({
 
       {service === 'presentation' && (
         <div className="space-y-2.5">
-          <Group title={`📝 ${t.topic}`}>
+          <Group>
             <LabelledField label={t.topic} maxLength={MAX_TOPIC_CHARS} value={topic}>
               <TextArea rows={3} value={topic} maxLength={MAX_TOPIC_CHARS} onChange={(e) => setTopic(e.target.value)} placeholder={t.topicPh} />
             </LabelledField>
           </Group>
-          <Group title={`⚙️ ${t.deckOptions}`}>
+          <Group title={t.deckOptions}>
             {/* The slide count was a bare number input — a spinner is a poor control on a phone and
                 gave no sense of the allowed range. The range is the control now. */}
             <div className="min-w-0">
@@ -738,11 +679,11 @@ export function ServiceParamsPanel({
 
       {service === 'model3d' && (
         <div className="space-y-2.5">
-          <Group title={`🧊 ${t.model3d}`}>
+          <Group>
             <ChipGroup
               value={mode3d}
               onChange={setMode3d}
-              options={[{ id: 'text' as const, label: `✍️ ${t.fromText}` }, { id: 'image' as const, label: `🖼 ${t.fromImage}` }]}
+              options={[{ id: 'text' as const, label: t.fromText }, { id: 'image' as const, label: t.fromImage }]}
             />
             {mode3d === 'text' ? (
               <LabelledField label={t.describe} maxLength={MAX_PROMPT_CHARS} value={prompt3d} hint={t.describeHint}>
@@ -755,7 +696,7 @@ export function ServiceParamsPanel({
                 <Dropzone
                   id="model3d-image"
                   accept="image/*"
-                  icon={<span aria-hidden>🖼</span>}
+                  icon={<ImageIcon size={20} aria-hidden="true" />}
                   title={img3dFile ? img3dFile : t.pickPhoto}
                   hint={t.photoHint}
                   filled={Boolean(imageUrl3d)}
@@ -775,7 +716,7 @@ export function ServiceParamsPanel({
               </div>
             )}
           </Group>
-          <Group title={`⚙️ ${t.quality}`}>
+          <Group title={t.quality}>
             <ChipGroup
               value={quality3d}
               onChange={setQuality3d}
@@ -952,6 +893,25 @@ export function ServiceParamsPanel({
           )}
         </div>
       )}
+    </SppFrame>
+  );
+}
+
+/** Standalone: the capped, closable card. Inside the settings panel (`embedded`): the parameters only. */
+function SppFrame({ embedded, title, closeLabel, onClose, children }: {
+  embedded: boolean;
+  title: string;
+  closeLabel: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (embedded) return <div className="min-w-0 space-y-3" data-testid="service-params">{children}</div>;
+  return (
+    // HEIGHT IS CAPPED and the panel scrolls inside itself: standalone, it sits INSIDE a column with the message input
+    // under it, and a twelve-shot timeline taller than the viewport would push that input off screen.
+    <Panel className="mb-2" maxHeight="52vh">
+      <PanelHeader title={title} action={<GhostButton onClick={onClose} className="px-2">{closeLabel} ✕</GhostButton>} />
+      {children}
     </Panel>
   );
 }

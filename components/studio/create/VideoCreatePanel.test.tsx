@@ -57,10 +57,10 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
 const gen = () => screen.getByTestId('video-generate') as HTMLButtonElement;
 const price = () => gen().getAttribute('data-price');
 
-describe('element order — header → hero → tabs → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
+describe('element order — header → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
   test('the DOM order is the reference’s', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-hero', 'video-tabs', 'video-references', 'video-prompt', 'video-model-row', 'video-tiles', 'video-quality',
+    const ids = ['video-tool-switch', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
       'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
@@ -327,16 +327,16 @@ describe('format and model pickers', () => {
     fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
   });
 
-  test('a Higgsfield model this deployment runs is a real choice: the hero and the Model row name it, the Veo tiers step aside, Generate is the saga\'s', async () => {
+  test('a Higgsfield model this deployment runs is a real choice: the hero names it, the Veo tiers step aside, Generate is the saga\'s', async () => {
     deployment(['hf/kling-3-std-t2v']);
     const { calls } = setup({ seconds: 24, prompt: '' });
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
     const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
     await waitFor(() => expect(kling().getAttribute('aria-disabled')).toBeNull());
@@ -344,14 +344,14 @@ describe('format and model pickers', () => {
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
     expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
     expect(screen.getByTestId('video-hero-title').textContent).toBe('Kling 3 — text to video');
-    expect(screen.getByTestId('video-model-row').textContent).toContain('Kling 3 — text to video');
+    expect(screen.queryByTestId('video-model-row')).toBeNull(); // the hero is the one place the model is named
     expect(screen.queryByTestId('video-quality')).toBeNull();
     expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
     expect(screen.getByTestId('video-generate')).toBeTruthy();
     // 24 s is not a length Kling renders: the line above the button says the 15 s it will.
     await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — text to video · 15 s · 9:16 · sound on'));
     // Back to Google in one tap: a Veo model is the film again.
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     fireEvent.click(within(screen.getByTestId('video-model-sheet')).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');
@@ -437,32 +437,13 @@ describe('references, @ Elements and sound', () => {
   });
 });
 
-describe('Create | Extend, and the disclosures', () => {
-  test('Extend is drawn complete and LOCKED: a plain "soon" line, nothing clickable, a "Soon" button with no price', () => {
+describe('no Extend tab yet, and the disclosures', () => {
+  test('there is no Create | Extend tab row while Extend is not open — the panel IS Create', () => {
     setup();
-    fireEvent.click(screen.getByRole('tab', { name: 'Extend' }));
-    expect(screen.getByTestId('video-extend-soon').textContent).toContain('opening soon');
-    const soon = screen.getByTestId('video-extend-generate') as HTMLButtonElement;
-    expect(soon.disabled).toBe(true);
-    expect(soon.textContent).toContain('Soon');
-    expect(soon.hasAttribute('data-price')).toBe(false);
-    expect(screen.queryByTestId('video-generate')).toBeNull();
-    const dir = screen.getByLabelText('Direction') as HTMLSelectElement;
-    expect(dir.disabled).toBe(true);
-    expect(Array.from(dir.options).map((o) => [o.value, o.disabled])).toEqual([['sequel', false], ['prequel', true]]);
-    fireEvent.click(screen.getByRole('tab', { name: 'Create' }));
+    expect(screen.queryByRole('tab', { name: 'Extend' })).toBeNull();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByTestId('video-extend-generate')).toBeNull();
     expect(screen.getByTestId('video-generate')).toBeTruthy();
-  });
-
-  test('the tabs are a real tablist: one tab stop, arrows move the selection', () => {
-    setup();
-    const create = screen.getByRole('tab', { name: 'Create' });
-    const extend = screen.getByRole('tab', { name: 'Extend' });
-    expect(create.getAttribute('aria-selected')).toBe('true');
-    expect(create.tabIndex).toBe(0);
-    expect(extend.tabIndex).toBe(-1);
-    fireEvent.keyDown(create, { key: 'ArrowRight' });
-    expect(screen.getByRole('tab', { name: 'Extend' }).getAttribute('aria-selected')).toBe('true');
   });
 
   test('Story & style · Voice & music · Advanced start closed (their content is not even mounted) and open on a tap', () => {
@@ -493,7 +474,7 @@ describe('Create | Extend, and the disclosures', () => {
 describe('the other languages', () => {
   test.each(['ka', 'ru'])('%s: the panel renders its own words, and the price is the same number', (locale) => {
     setup({ locale });
-    expect(screen.getByRole('tab', { name: locale === 'ka' ? 'შექმნა' : 'Создать' })).toBeTruthy();
+    expect(screen.getByTestId('video-sound').textContent).toBe(locale === 'ka' ? 'ხმით' : 'Со звуком');
     expect(price()).toBe('75');
     expect(screen.getByTestId('video-prompt-input').getAttribute('placeholder')).not.toMatch(/Describe the shot/);
   });

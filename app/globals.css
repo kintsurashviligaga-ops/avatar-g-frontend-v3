@@ -1083,6 +1083,15 @@ a {
   to { opacity: 1; transform: none; }
 }
 
+/* A full-screen workspace (Montage, like CapCut) brings its own top bar with ✕ — the shell's header steps aside. */
+html[data-immersive] [data-chrome-header] { display: none; }
+
+/* Montage preview: a photo drifts in the way the export's Ken Burns pass moves it (1.0 → 1.15). */
+@keyframes montageKenBurns {
+  from { transform: scale(1); }
+  to { transform: scale(1.15); }
+}
+
 /* Right-side settings drawer entrance (ConversationalFilmStudio hamburger). */
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(100%); }

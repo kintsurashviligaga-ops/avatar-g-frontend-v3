@@ -38,6 +38,7 @@ import {
   type VadState,
 } from '@/lib/voice/vad';
 import { useMicRelease } from '@/lib/voice/micBus';
+import { isSpeechLang, loadLearnedSpeechLang, resolveSpeechLang, saveLearnedSpeechLang, transcriptSpeechLang } from '@/lib/voice/speechLang';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Status = 'connecting' | 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
@@ -376,12 +377,16 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       // 1) STT — label the upload with the container's real extension (iOS records mp4, not webm).
       const fd = new FormData();
       fd.append('audio', audio, `speech.${extForMime(audio.type)}`);
-      fd.append('language', lang === 'en' ? 'en-US' : lang === 'ru' ? 'ru-RU' : 'ka-GE');
+      // The language the user SPEAKS (lib/voice/speechLang): this call's last transcript, else the one heard before,
+      // else Georgian for a Georgian UI, else 'auto' (Gemini identifies it). A hint only — never a translation target.
+      const lastSaid = [...historyRef.current].reverse().find((h) => h.role === 'user')?.content ?? '';
+      fd.append('language', resolveSpeechLang({ locale: lang, typed: transcriptSpeechLang(lastSaid), learned: loadLearnedSpeechLang() }));
       const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include', signal: turnSignal(30_000, turnSig) }).catch(() => null);
       if (stale()) return;
       if (sr && sr.status === 429) { go('error'); setError(t.rateLimited); return; } // back off, don't hammer the throttled route
-      const sj = sr ? ((await sr.json().catch(() => null)) as { text?: string } | null) : null;
+      const sj = sr ? ((await sr.json().catch(() => null)) as { text?: string; language?: unknown } | null) : null;
       const said = (sj?.text || '').trim();
+      if (said && isSpeechLang(sj?.language)) saveLearnedSpeechLang(sj.language);
       if (stale()) return;
       if (!said) { armListenRef.current?.(); return; } // heard nothing → listen again (no chat/tts spend)
       setTranscript(said); setReply('');

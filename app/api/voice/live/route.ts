@@ -34,8 +34,9 @@
  * setup on the Constrained endpoint; one turn returned audio, a Georgian outputTranscription and a resumption handle,
  * and a FRESH token minted with that handle resumed the session. The browser sends the returned `setupMessage`, so the
  * frame always matches the lock.
- *   ⚠️ googleSearch is NOT part of the default lock: it also minted and completed setup in that probe, but no
- *   search-grounded answer has been verified, so it stays OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1 — the `search` gate in POST).
+ *   googleSearch IS part of the default lock (it minted and completed setup in that same probe): a voice call answers
+ *   news, prices, scores and weather from the web like the text chat does. GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill
+ *   switch. A session that rejects it costs nothing extra: the browser's legacy retry mints with `tools: false`.
  * Fallback if Google ever rejects the lock (HTTP 400): the verified LEGACY lock (model + generationConfig +
  * systemInstruction — still server-owned, no tools) and `setupMessage` becomes that legacy frame; only if that is
  * rejected too does it drop to the {model}-only lock (`setupLocked: false`). Each step logs
@@ -57,7 +58,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
-import { isEnabledByDefault, isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { structuredLog } from '@/lib/logger';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { requireUser } from '@/lib/supabase/server';
@@ -203,11 +204,10 @@ export async function POST(request: NextRequest) {
     }
     // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
     const toolsAllowed = body.tools !== false;
-    // ⚠️ Google Search in Live is OPT-IN (GEMINI_LIVE_GOOGLE_SEARCH=1) until a search-grounded answer is verified live on
-    // the Constrained endpoint (the 2026-09-30 probe got only as far as setupComplete with it): a setup field the
-    // session rejects fails the WHOLE call after the token is spent, with no fallback. (scripts/probe-live-actions.mjs
-    // --search re-checks the setup half only.)
-    const search = toolsAllowed && profile.googleSearch && isTruthyFlag(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
+    // Google Search in Live: default ON, like the text chat (GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill switch). The
+    // 2026-09-30 probe minted and completed setup with it; a session that still refuses it ends in the browser's
+    // `tools: false` retry, which locks no tools at all — the call survives, only the web lookup is lost.
+    const search = toolsAllowed && profile.googleSearch && isEnabledByDefault(process.env.GEMINI_LIVE_GOOGLE_SEARCH);
     // Voice-to-action: default ON (GEMINI_LIVE_ACTIONS=0 is the kill switch), and only for a client that executes them.
     const actionsWanted = toolsAllowed && body.actions === true && isEnabledByDefault(process.env.GEMINI_LIVE_ACTIONS);
     const voice = voiceFor(profile, body.voice, body.gender);

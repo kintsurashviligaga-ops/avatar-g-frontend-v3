@@ -39,6 +39,8 @@ import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
 // The two full-panel workspaces hold the panel with a skeleton of its own shape while their chunk loads (it was a blank
 // 96 px strip that then jumped to full height).
 const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
+// Montage — the CapCut-style timeline editor. Every video edit opens here (the tool, a „montage" request, „Open in editor").
+const MontageStudio = dynamic(() => import('@/components/studio/montage/MontageStudio'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
 const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
@@ -133,6 +135,7 @@ import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
+import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 import { documentToText } from '@/lib/chat/documentText';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
@@ -175,6 +178,28 @@ const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
  * state is explicit. Reused by every generation entry point (chat/image/music/video,
  * product ad, character swap).
  */
+/**
+ * One TTS request → an object URL of the spoken audio, or null. Shared by read-aloud (speakMsg) and the voice-turn
+ * pre-synthesis in streamChat. Bounded so a HUNG TTS call can't keep the read-aloud spinner up indefinitely.
+ */
+async function synthTtsUrl(chunk: string, locale: Lang): Promise<string | null> {
+  try {
+    const res = await fetch('/api/tts/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: chunk, locale }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch { return null; }
+}
+
+/** Revoke a pending synthesis's URL once it lands (an abandoned read must not leak its blob). */
+function dropTtsUrl(p: Promise<string | null> | null | undefined): void {
+  void p?.then((u) => { if (u) URL.revokeObjectURL(u); });
+}
+
 function busyToastMessage(locale: Lang): string {
   return locale === 'en'
     ? 'Another generation is currently in progress. Please wait for it to complete.'
@@ -1787,6 +1812,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [editorAsset, setEditorAsset] = useState<{ url: string; kind: 'video' | 'image' | 'audio'; autoActions?: string[] } | null>(null);
   // Which workspace the editor should open in, when the caller already knows (see SurgicalEditor).
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
+  // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
+  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string }[] | null>(null);
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
@@ -1997,6 +2024,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // defined AFTER streamChat) without a temporal-dead-zone reference.
   const autoPlayReplyRef = useRef(false);
   const speakMsgRef = useRef<((text: string, i: number) => void) | null>(null);
+  // SPEAK SOONER: a voice turn's reply starts synthesising its FIRST sentence while the rest still streams
+  // (chunkForTts leadSentence — that chunk is final once the second sentence begins). speakMsg takes it when its own
+  // first chunk is the same text, so the reply's voice starts the moment the stream ends instead of a TTS later.
+  const ttsPrefetchRef = useRef<{ text: string; url: Promise<string | null> } | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -2009,8 +2040,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Dictation (mic → composer): Web Speech where the engine can do the language, otherwise record → 16 kHz WAV →
   // /api/voice/transcribe (Gemini STT). The hook owns both recognizers, the echo guard and the takeover guard;
   // `inputSourceRef` is 'voice' while the box text came from the mic (send() tags the turn + auto-plays the reply).
+  // The language the user is evidently using: the newest of their recent turns written in a native script (Georgian
+  // or Cyrillic). The mic then listens in THAT language, whatever the UI's — Latin is no signal (see speechLang).
+  const typedLang = useMemo(() => {
+    for (let i = messages.length - 1, seen = 0; i >= 0 && seen < 8; i--) {
+      const m = messages[i];
+      if (m?.role !== 'user') continue;
+      seen += 1;
+      const l = typedSpeechLang(m.text);
+      if (l) return l;
+    }
+    return null;
+  }, [messages]);
   const dictation = useDictation({
     locale,
+    speechLang: typedLang,
     value: input,
     setValue: setInput,
     textareaRef: taRef,
@@ -2751,7 +2795,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
-      case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
+      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); setMode('surgical'); break;
       case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
@@ -4924,6 +4968,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
     const autoPlayReply = autoPlayReplyRef.current;
     autoPlayReplyRef.current = false;
+    dropTtsUrl(ttsPrefetchRef.current?.url);
+    ttsPrefetchRef.current = null;
+    // A voice turn: watch the stream and pre-synthesise its first sentence as soon as that sentence is complete.
+    const stopPrefetch = autoPlayReply
+      ? chat.store.subscribe(() => {
+        if (ttsPrefetchRef.current || !mine()) return;
+        const lead = chunkForTts(chat.store.getSnapshot().text, 600, { leadSentence: true });
+        if (lead.length >= 2 && lead[0]) ttsPrefetchRef.current = { text: lead[0], url: synthTtsUrl(lead[0], locale) };
+      })
+      : null;
     const sid = `chat-${myGen}-${Date.now().toString(36)}`;
     setMessages([...history, { role: 'assistant', text: '', id: sid }]);
     streamingIdRef.current = sid;
@@ -5005,6 +5059,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
     } finally {
+      stopPrefetch?.();
+      // Not spoken (an error, a stop, a superseded turn): the pre-synthesised sentence goes unused — release it.
+      // (speakMsg takes it synchronously, so a reply that IS being spoken has already emptied the ref.)
+      // (Read through a cast: TS keeps the `= null` above narrowed, but the stream's subscriber set it since.)
+      const unused = ttsPrefetchRef.current as { url: Promise<string | null> } | null;
+      if (autoPlayReply && unused) { dropTtsUrl(unused.url); ttsPrefetchRef.current = null; }
       if (streamingIdRef.current === sid) streamingIdRef.current = null;
       setStreamingId((cur) => (cur === sid ? null : cur));
       if (mine()) setBusy(false);
@@ -5335,6 +5395,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // is not a recoverable surprise. Routing is conservative by construction (see lib/chat/studioIntent):
     // a question about a service never opens its form.
     const studio = mode === 'chat' ? detectStudioIntent(text) : null;
+    if (studio?.service === 'montage') {
+      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with the
+      // videos and photos the user attached already on its timeline, instead of a second, form-shaped montage.
+      const media = attachments
+        .filter((a) => isVideo(a.mimeType) || isImage(a.mimeType))
+        .map((a) => ({ url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const), ...(a.name ? { name: a.name } : {}) }));
+      const en = locale === 'en', ru = locale === 'ru';
+      const reply = media.length
+        ? (en ? `Opened **Montage** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **Монтаж** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **მონტაჟი** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
+        : (en ? 'Opened **Montage** — add your videos or photos.' : ru ? 'Открыл **Монтаж** — добавьте видео или фото.' : 'გავხსენი **მონტაჟი** — დაამატე ვიდეოები ან ფოტოები.');
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
+      setMontageSeed(media.length ? media : null);
+      if (media.length) setAttachments([]);
+      setInput(''); stopDictationEcho();
+      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+      return;
+    }
     if (studio) {
       if (studio.service === 'avatar') {
         // Avatar was RECOGNISED and then dropped: detectIntent scores avatar_generation at 0.85, the
@@ -6236,28 +6313,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // the WHOLE message is read and the FIRST sentence starts fast (the next chunk is pre-fetched while
     // the current one plays). Now on Gemini NATIVE audio (/api/tts/gemini) — no ElevenLabs, no lag, and
     // it no longer stops after one word.
-    const chunks = chunkForTts(text);
-    if (!chunks.length) { setSpeakingIdx(null); setSpeakPhase(null); return; }
+    // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
+    // request, and the rest is synthesised while it plays.
+    const chunks = chunkForTts(text, 600, { leadSentence: true });
+    // Taken synchronously (before any await): a voice turn's reply may already be synthesising its first sentence.
+    const pre = ttsPrefetchRef.current;
+    ttsPrefetchRef.current = null;
+    if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
 
-    const synth = async (chunk: string): Promise<string | null> => {
-      try {
-        const res = await fetch('/api/tts/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: chunk, locale }),
-          // Bound the request so a HUNG TTS call can't keep the read-aloud spinner up indefinitely; on
-          // timeout the fetch aborts → null → the loop clears/continues.
-          signal: AbortSignal.timeout(25_000),
-        });
-        if (!res.ok) return null;
-        return URL.createObjectURL(await res.blob());
-      } catch { return null; }
-    };
+    const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale);
 
     // Revoke a still-pending prefetched chunk URL so an aborted read never leaks its blob.
-    const drainNext = (pr: Promise<string | null>) => { void pr.then((u) => { if (u) URL.revokeObjectURL(u); }); };
+    const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
     try {
-      let nextUrlPromise: Promise<string | null> = synth(chunks[0]!);
+      const first = pre && pre.text === chunks[0] ? pre.url : null;
+      if (pre && !first) drainNext(pre.url);
+      let nextUrlPromise: Promise<string | null> = first ?? synth(chunks[0]!);
       for (let idx = 0; idx < chunks.length; idx++) {
         const url = await nextUrlPromise;
         if (!live()) { if (url) URL.revokeObjectURL(url); return; }
@@ -7274,7 +7345,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {modelLabel && (
                         <span data-testid="reply-model" title={modelLabel}
                           className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">
-                          {modelLabel}
+                          {/* A phone's action row has six icons before it: „Gemini 3.8 Flash" was cut to „Gemini 3…". There the
+                              family name steps aside (the header says „3.8 Flash" the same way); the text and the tooltip keep it. */}
+                          {modelLabel.startsWith('Gemini ')
+                            ? <><span className="hidden sm:inline">Gemini </span>{modelLabel.slice('Gemini '.length)}</>
+                            : modelLabel}
                         </span>
                       )}
                     </div>
@@ -7331,6 +7406,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a `useState`/`useMemo`/`useCallback`/`useEffect` placed after this `if` is a guaranteed white screen
   // the moment `mode === 'surgical'`. New hooks go ABOVE, next to messageList.
   if (mode === 'surgical') {
+    // Video goes to Montage (the CapCut timeline); photos and audio keep the Surgical Editor's studios.
+    if (editorMode === 'video' || editorAsset?.kind === 'video') {
+      const seed = editorAsset?.kind === 'video' ? [{ url: editorAsset.url, kind: 'video' as const }] : montageSeed ?? undefined;
+      return (
+        <div className="flex h-full w-full min-w-0 flex-col overflow-hidden text-app-text">
+          <MontageStudio
+            locale={locale}
+            {...(seed ? { initialMedia: seed } : {})}
+            onDelivered={(videoUrl, aspect) => {
+              const label = SERVICE_LABEL.montage?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? 'Montage';
+              const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
+              // The edit's own format, so a 9:16 Reel is drawn as a 9:16 player (not in the video tool's current shape).
+              const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
+              setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
+            }}
+            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMode('chat'); }}
+          />
+        </div>
+      );
+    }
     return (
       <div className="mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden text-app-text">
         <SurgicalEditor
@@ -7338,6 +7433,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           initialAsset={editorAsset}
           {...(editorMode ? { initialMode: editorMode } : {})}
           onReturnToChat={handleReturnToChat}
+          onOpenVideo={() => { setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); }}
           onExit={() => { setEditorAsset(null); setEditorMode(null); setMode('chat'); }}
         />
       </div>
@@ -7358,6 +7454,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting (the owner's screenshots); a panel and a sheet each own their own layer.
   const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
   const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
+  const changeToolWord = locale === 'en' ? 'Change tool' : locale === 'ru' ? 'Сменить инструмент' : 'ხელსაწყოს შეცვლა';
   // The video tool brings its OWN header (tool name + switcher + ✕), model card and price, so the generic service card below
   // and the sheet's „Settings" header step aside for it (components/studio/create/VideoCreatePanel).
   const videoCreate = activeTool === 'video';
@@ -7461,16 +7558,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   ) : null;
   const settingsBody = (
     <div className="space-y-3">
-      {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
-      {!imageCreate && !videoCreate && mode !== 'music' && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
-        className={`${shootActive ? 'hidden' : 'flex'} w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated`}>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14.5px] font-semibold leading-tight text-app-text">{toolLabel}</span>
-          <span className="mt-0.5 block truncate text-[12px] text-app-muted">{toolSub(activeTool, locale)}</span>
-        </span>
-        <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
-      </button>}
+      {/* No service card here any more: the panel's ONE header (below, in the surface) names the tool and switches it. */}
         {/* INTERIOR DESIGNER · PHOTOGRAPHER — their own panels (components/studio/create), driven by useShootStudio. The ✕ closes
             the settings like the generic header's; the name + chevron open the tool picker like the service card. */}
         {activeTool === 'interior' && (
@@ -7487,7 +7575,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             locale={locale}
             desktop={isDesktop}
             onOpenTools={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
-            {...(isDesktop ? {} : { onClose: () => setOptionsOpen(false) })}
+            onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}
             references={attachments.filter((a) => isImage(a.mimeType)).map((a) => ({ src: a.dataUrl, ...(a.name ? { name: a.name } : {}) }))}
             // ONE reference: the route reads a single `referenceImage`, so a new pick REPLACES the picture in the tray.
             onAddReference={(files) => { setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType))); void ingestFiles(files, { scriptInVideo: false }); }}
@@ -7654,7 +7742,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
                 <span className="block text-[11px] font-semibold uppercase tracking-wide text-app-muted">{locale === 'en' ? 'Voice' : locale === 'ru' ? 'Голос' : 'ხმა'}</span>
                 <div className="mt-1.5 flex gap-1.5">
-                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Жен.' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Муж.' : 'კაცი']] as const).map(([g, label]) => (
+                  {([['female', locale === 'en' ? 'Female' : locale === 'ru' ? 'Женский' : 'ქალი'], ['male', locale === 'en' ? 'Male' : locale === 'ru' ? 'Мужской' : 'კაცი']] as const).map(([g, label]) => (
                     <button key={g} type="button" onClick={() => setLipGender(g)} aria-pressed={lipGender === g}
                       className={`min-h-[44px] flex-1 rounded-lg px-2 py-2 text-[12px] font-semibold transition active:scale-[0.98] ${lipGender === g ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-bg/40 text-app-text/80 hover:bg-app-bg/60'}`}>{label}</button>
                   ))}
@@ -8254,9 +8342,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 <div>
                   <span className="mb-1.5 block text-[11px] text-app-muted">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
                   <div className="flex flex-wrap gap-1.5">
-                    <Chip active={productDuration === 8} onClick={() => setProductDuration(8)}>8{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 24} onClick={() => setProductDuration(24)}>24{locale === 'en' ? 's' : 'წმ'}</Chip>
-                    <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{locale === 'en' ? 's' : 'წმ'}</Chip>
+                    <Chip active={productDuration === 8} onClick={() => setProductDuration(8)}>8{secsWord}</Chip>
+                    <Chip active={productDuration === 24} onClick={() => setProductDuration(24)}>24{secsWord}</Chip>
+                    <Chip active={productDuration === 48} onClick={() => setProductDuration(48)}>48{secsWord}</Chip>
                   </div>
                 </div>
                 {/* Upload hint — Run is gated on a product photo (the locked foreground); say so instead of leaving
@@ -8503,6 +8591,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <ServiceParamsPanel
             service={panelService}
             locale={locale}
+            embedded
             prefill={studioPrefill}
             // ⚠️ FOUR LIVE SERVICES DELIVERED INTO A DISMISSIBLE BOX. Montage, dubbing, decks and 3D all
             // rendered into the panel's own local state, and the panel has a ✕ on it — so a user could
@@ -8537,12 +8626,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               }
             }}
             onClose={() => { setPanelService(null); setStudioPrefill(undefined); setOptionsOpen(false); }}
-            // Montage's "full editor" button opens the same SurgicalEditor the menu used to list
-            // separately — one entry, both depths of editing.
-            // Straight into the VIDEO workspace. Choosing Montage and pressing "full editor" has already
-            // said "video" — making the user pick it again from a three-card menu was a step that
-            // answered a question they had just answered.
-            onOpenFullEditor={() => { setPanelService(null); setEditorMode('video'); setMode('surgical'); }}
           />
         )}
 
@@ -8780,6 +8863,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
                   background a clipped gradient needs and would leave the page's one heading invisible. */}
               <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
+              {/* In a TOOL (never the chat home, whose screen stays the greeting and the box): one quiet line saying where you
+                  are and what this tool does — the panel beside it is the how. Without it every tool without a result pane of
+                  its own opened on the home page's words alone. */}
+              {!chatOnly && (
+                <p data-testid="tool-hint" className="mx-auto inline-flex max-w-full items-center gap-2 rounded-full bg-app-elevated/50 px-3.5 py-1.5 text-[14px] leading-[1.5] text-app-muted ring-1 ring-app-border/10">
+                  <ToolIcon size={16} aria-hidden="true" className="shrink-0 text-app-accent" />
+                  <span className="min-w-0 truncate"><span className="font-medium text-app-text">{toolLabel}</span> — {toolSub(activeTool, locale)}</span>
+                </p>
+              )}
             </div>
           </div>
         )) : messageList}
@@ -9099,7 +9191,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
               // Not drawn in the Image or Music tool below `lg`: its prompt IS the Create screen's prompt card (same `input`), and the
-              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's.
+              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's: it is where Agent G
+              // is talked to (it answers, asks, confirms with the price) while the panel's Generate runs at once — and the video
+              // tool's composer placeholder is locked copy (docs/DESIGN.md §7).
               : `${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
@@ -9521,15 +9615,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
-        {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
-            hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
-        {!(imageCreate && !isDesktop) && !videoCreate && (
-        <div className={`${shootActive ? 'hidden ' : ''}${isDesktop
-          ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
-          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}`}>
-          <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
+        {/* ONE HEADER PER PANEL: the tool's icon and name (▾ switches the tool) and ✕ — the grammar the Image, Video, Interior and
+            Photographer screens draw for themselves. It used to be a „Settings" title with a SECOND header under it (a service card:
+            icon · name · sub-line · „Change"), and for dubbing / 3D / decks a third („Dubbing — Close ✕"). The Create screens that
+            draw their own header get none here — not merely hidden: a display:none ✕ is still the "first focusable"
+            useDialogA11y tries to focus, and focus would never enter the sheet. */}
+        {!imageCreate && !videoCreate && (
+        <div data-testid="panel-header" className={`${shootActive ? 'hidden ' : ''}${isDesktop
+          ? 'flex h-14 shrink-0 items-center justify-between gap-2 border-b border-app-border/10 pl-3 pr-2'
+          : 'flex shrink-0 items-center justify-between gap-2 px-3 pb-1 pt-2 sm:pt-4'}`}>
+          <h2 className="min-w-0 flex-1">
+            <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+              aria-label={`${toolLabel} — ${changeToolWord}`} title={changeToolWord} data-testid="panel-tool-switch"
+              className="flex min-h-[44px] w-full min-w-0 touch-manipulation items-center gap-2.5 rounded-2xl px-1 text-left transition-colors hover:bg-app-elevated/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent"><ToolIcon size={18} aria-hidden="true" /></span>
+              <span className="min-w-0 truncate text-[16px] font-bold tracking-tight text-app-text">{toolLabel}</span>
+              <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted" />
+            </button>
+          </h2>
           <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
-            className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} aria-hidden="true" />
           </button>
         </div>

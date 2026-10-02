@@ -467,7 +467,9 @@ test.describe('guest dashboard · desktop is a studio', () => {
     const title = (await bar.boundingBox())!;
     const settings = page.locator('#studio-settings');
     await expect(settings).toBeVisible();
-    await expect(settings.getByRole('heading', { name: 'პარამეტრები' })).toBeVisible();
+    // ONE header: the tool's name (▾ switches the tool) — not a „Settings" title with the tool on a card under it.
+    await expect(settings.getByRole('heading', { name: /რემიქსი/ })).toBeVisible();
+    await expect(settings.getByRole('heading', { name: 'პარამეტრები' })).toHaveCount(0);
     const right = (await settings.boundingBox())!;
     expect(nav.x + nav.width).toBeLessThanOrEqual(title.x + 1);
     expect(title.x + title.width).toBeLessThanOrEqual(right.x + 1);

@@ -86,11 +86,13 @@ export function MusicRefs(p: MusicRefsProps) {
 
   return (
     <div data-testid="music-refs" className="space-y-2">
-      {p.showPill !== false && (
+      {/* A half the server would refuse right now is NOT DRAWN (it used to sit there greyed out, saying „not available right
+          now" — two dead buttons at the top of the screen when both paths were off). Both off → no row at all. */}
+      {p.showPill !== false && !(coverLocked && voiceLocked) && (
         <div className="flex items-stretch overflow-hidden rounded-[22px] bg-app-elevated/45 ring-1 ring-app-border/10">
-          {half('cover', cc.addAudio, coverLocked, () => p.onPick('cover'), !!p.audio && p.audioMode === 'cover')}
-          <span aria-hidden="true" className="my-3 w-px shrink-0 bg-app-border/15" />
-          {half('voice', cc.addVoice, voiceLocked, () => p.onVoiceSheet(true), (!!p.audio && p.audioMode === 'voice') || trainedOn)}
+          {!coverLocked && half('cover', cc.addAudio, false, () => p.onPick('cover'), !!p.audio && p.audioMode === 'cover')}
+          {!coverLocked && !voiceLocked && <span aria-hidden="true" className="my-3 w-px shrink-0 bg-app-border/15" />}
+          {!voiceLocked && half('voice', cc.addVoice, false, () => p.onVoiceSheet(true), (!!p.audio && p.audioMode === 'voice') || trainedOn)}
         </div>
       )}
 

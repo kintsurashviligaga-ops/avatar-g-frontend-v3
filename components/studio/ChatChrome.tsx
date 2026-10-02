@@ -1308,7 +1308,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {/* The header is a phone's (and a tablet's): [☰] name … [new session] [you] — Gemini's row, nothing else.
             On a desktop the studio draws its own title bar inside the centre column (AI Studio), so this one steps
             aside there; secondary surfaces (/library) keep it for their back control. */}
-        <header className={`sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl ${onStudioHome && activeTool !== 'montage' ? 'lg:hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        {/* data-chrome-header: a full-screen workspace (Montage) hides this bar with <html data-immersive> — see globals.css. */}
+        <header data-chrome-header className={`sticky top-0 z-30 shrink-0 bg-app-bg/85 backdrop-blur-xl ${onStudioHome && activeTool !== 'montage' ? 'lg:hidden' : ''}`} style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
           <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-2 px-3">
             <div className="flex min-w-0 items-center gap-1.5">
               {/* Back to chat / hub — shown on a secondary surface (e.g. /library) or

@@ -197,13 +197,13 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await shot(page, `${phone ? 'phone' : 'desktop'}-higgsfield-done`);
     });
 
-    test('video: the Model row opens the same picker (mode on top); a Veo pick changes the film\'s model and survives a reload', async ({ page }) => {
+    test('video: the hero\'s Change opens the model picker (mode on top); a Veo pick changes the film\'s model and survives a reload', async ({ page }) => {
       await mockCatalogue(page);
       await openTool(page, 'video', 'video-create-panel');
       const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
       await expect(panel.getByTestId('video-hero-title')).toHaveText('VEO 3.1 FAST');
 
-      await panel.getByTestId('video-model-row').click();
+      await panel.getByTestId('video-hero-change').click();
       const sheet = page.getByRole('dialog', { name: 'Model' });
       await expect(sheet.getByTestId('video-mode-choice')).toBeVisible();
       await expect(sheet.locator('[data-model="google/veo-3.1-fast"]')).toHaveAttribute('aria-checked', 'true');
@@ -215,7 +215,7 @@ for (const [name, viewport, phone] of [['phone 390×844', PHONE, true], ['deskto
       await sheet.locator('[data-model="google/veo-3.1-lite"]').click();
       await expect(sheet).toBeHidden();
       await expect(panel.getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');
-      await expect(panel.getByTestId('video-model-row')).toContainText('Veo 3.1 Lite');
+      await expect(panel.getByTestId('video-model-row')).toHaveCount(0); // one place names the model: the hero
 
       await openTool(page, 'video', 'video-create-panel');
       await expect(page.getByTestId('video-create-panel').filter({ visible: true }).first().getByTestId('video-hero-title')).toHaveText('VEO 3.1 LITE');

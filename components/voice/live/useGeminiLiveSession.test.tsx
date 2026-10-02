@@ -603,6 +603,32 @@ test('actions: the mint asks for the declarations; the host answers each call by
   unmount();
 });
 
+test('activity: a search shows its queries then its pages, a tool step runs then completes — and a new call starts empty', async () => {
+  const h = harness();
+  const onToolCall = jest.fn((calls: Array<{ id: string; name: string }>) =>
+    calls.map((c) => ({ id: c.id, name: c.name, response: c.name === 'show_code' ? { error: 'bad_args' } : { ok: true } })));
+  const { result, ws, unmount } = await connected({ deps: h.deps, actions: true, onToolCall });
+  expect(result.current.activity).toEqual([]);
+
+  act(() => ws.receive({ serverContent: { modelTurn: { parts: [
+    { executableCode: { language: 'PYTHON', code: 'print(google_search.search(queries=["weather Tbilisi"]))' } },
+  ] } } }));
+  expect(result.current.activity).toEqual([{ id: 'search:1', kind: 'search', state: 'running', queries: ['weather Tbilisi'] }]);
+  act(() => ws.receive({ serverContent: { groundingMetadata: {
+    webSearchQueries: ['weather Tbilisi'], groundingChunks: [{ web: { uri: 'https://weather.ge/tbilisi', title: 'weather.ge' } }],
+  } } }));
+  expect(result.current.activity[0]).toMatchObject({ state: 'done', sources: [{ uri: 'https://weather.ge/tbilisi', title: 'weather.ge' }] });
+
+  act(() => ws.receive({ toolCall: { functionCalls: [
+    { id: 'c1', name: 'prepare_generation', args: {} },
+    { id: 'c2', name: 'show_code', args: {} },
+  ] } }));
+  await waitFor(() => expect(result.current.activity.map((a) => [a.id, a.state])).toEqual([
+    ['search:1', 'done'], ['c1', 'done'], ['c2', 'failed'],
+  ]));
+  unmount();
+});
+
 // ─── Talk to a research report (lib/research/liveContext.ts) ───────────────────
 
 test('researchId: ONLY the id rides in the mint (the server loads the report for the owner); without it the field is absent', async () => {

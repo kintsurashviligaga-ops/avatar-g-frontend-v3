@@ -3,7 +3,7 @@ import {
   parseLiveServerEvents, DEFAULT_LIVE_MODEL, GEMINI_LIVE_VOICES,
   buildLiveSetup, toLiveModelResource, parseLiveServerMessage, parseDurationMs,
   buildRealtimeAudio, buildRealtimeVideo, buildRealtimeText, buildAudioStreamEnd, buildToolResponse,
-  GeminiLiveSession, type LiveServerEvent, type LiveSetup,
+  GeminiLiveSession, type LiveServerEvent, type LiveSetup, groundingOf, searchQueriesFromCode,
 } from './geminiLive';
 import { DEFAULT_LIVE_MODEL as BARE_DEFAULT_LIVE_MODEL } from '../ai/google/models';
 import { LIVE_FUNCTION_DECLARATIONS } from './liveTools';
@@ -239,6 +239,43 @@ describe('geminiLive — realtime / tool builders', () => {
       { id: 5 as unknown as string, name: 'bad', response: {} },
       null as never,
     ])).toEqual({ toolResponse: { functionResponses: [{ id: 'c1', name: 'open_studio', response: { result: 'ok' } }] } });
+  });
+});
+
+describe('geminiLive — search activity (searchStart, grounding)', () => {
+  it('a google_search call in generated code → its queries, before the answer audio', () => {
+    expect(parseLiveServerMessage({
+      serverContent: { modelTurn: { parts: [
+        { executableCode: { language: 'PYTHON', code: 'print(google_search.search(queries=["weather in Tbilisi", \'ამინდი\']))' } },
+        { inlineData: { mimeType: 'audio/pcm;rate=24000', data: 'PCM' } },
+      ] } },
+    })).toEqual([
+      { kind: 'searchStart', queries: ['weather in Tbilisi', 'ამინდი'] },
+      { kind: 'audio', data: 'PCM', mimeType: 'audio/pcm;rate=24000' },
+    ]);
+  });
+
+  it('other generated code is not a search', () => {
+    expect(searchQueriesFromCode('print(1 + 1)')).toEqual([]);
+    expect(searchQueriesFromCode(42)).toEqual([]);
+    expect(searchQueriesFromCode('google_search.search(query="one")')).toEqual(['one']);
+  });
+
+  it('groundingMetadata → queries + http(s) web sources, de-duplicated and bounded', () => {
+    expect(parseLiveServerMessage({
+      serverContent: { groundingMetadata: {
+        webSearchQueries: ['weather Tbilisi', 'weather Tbilisi', ''],
+        groundingChunks: [
+          { web: { uri: 'https://a.ge/x', title: 'a.ge' } },
+          { web: { uri: 'https://a.ge/x', title: 'dup' } },
+          { web: { uri: 'javascript:alert(1)', title: 'bad' } },
+          { retrievedContext: {} },
+          { web: { uri: 'https://b.com/y' } },
+        ],
+      } },
+    })).toEqual([{ kind: 'grounding', queries: ['weather Tbilisi'], sources: [{ title: 'a.ge', uri: 'https://a.ge/x' }, { title: '', uri: 'https://b.com/y' }] }]);
+    expect(groundingOf({})).toBeNull();
+    expect(groundingOf('x')).toBeNull();
   });
 });
 

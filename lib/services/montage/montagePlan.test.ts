@@ -41,8 +41,38 @@ describe('validation', () => {
     expect(r.request?.shots).toHaveLength(2);
   });
 
-  it('rejects fewer than two shots — one clip is a trim, not a montage', () => {
-    expect(validateMontageRequest({ shots: [body().shots[0]] }).ok).toBe(false);
+  it('accepts ONE shot — a single clip with a format, music, a caption or a grade is a real edit', () => {
+    const r = validateMontageRequest({ shots: [body().shots[0]] });
+    expect(r.ok).toBe(true);
+    expect(r.request?.shots).toHaveLength(1);
+  });
+
+  it('rejects an empty timeline', () => {
+    expect(validateMontageRequest({ shots: [] }).ok).toBe(false);
+  });
+
+  it('carries a grade only when it changes the picture, clamped to what eq can take', () => {
+    expect(validateMontageRequest(body()).request?.grade).toBeUndefined();
+    expect(validateMontageRequest(body({ grade: { saturation: 100, contrast: 100, brightness: 100, temperature: 0 } })).request?.grade).toBeUndefined();
+    expect(validateMontageRequest(body({ grade: { saturation: 999, contrast: 0, brightness: 300, temperature: -500 } })).request?.grade)
+      .toEqual({ saturation: 200, contrast: 50, brightness: 150, temperature: -100 });
+    // An omitted field is neutral, never NaN.
+    expect(validateMontageRequest(body({ grade: { saturation: 0 } })).request?.grade)
+      .toEqual({ saturation: 0, contrast: 100, brightness: 100, temperature: 0 });
+    expect(validateMontageRequest(body({ grade: 'vivid' })).request?.grade).toBeUndefined();
+  });
+
+  it('keeps a centred caption, and only on a shot that has one', () => {
+    const r = validateMontageRequest({
+      shots: [
+        { url: 'https://cdn.example.com/a.mp4', startSec: 0, endSec: 5, caption: 'სათაური', captionPos: 'center' },
+        { url: 'https://cdn.example.com/b.mp4', startSec: 0, endSec: 5, caption: 'ქვედა', captionPos: 'sideways' },
+        { url: 'https://cdn.example.com/c.mp4', startSec: 0, endSec: 5, captionPos: 'center' },
+      ],
+    });
+    expect(r.request?.shots[0]?.captionPos).toBe('center');
+    expect(r.request?.shots[1]?.captionPos).toBeUndefined();
+    expect(r.request?.shots[2]?.captionPos).toBeUndefined();
   });
 
   it('rejects more than the shot cap', () => {
@@ -171,6 +201,14 @@ describe('concat plan', () => {
 
   it('scales caption size to the frame, so 9:16 is not illegible', () => {
     expect(captionFontSize('9:16')).toBeGreaterThan(captionFontSize('16:9'));
+  });
+
+  it('centres a title and sets it larger than a subtitle', () => {
+    const plan = buildConcatPlan([shot({ caption: 'სათაური', captionPos: 'center' }), shot({ caption: 'ქვედა' })], { aspect: '9:16' });
+    expect(plan[0]?.textOverlay?.position).toBe('center');
+    expect(plan[0]?.textOverlay?.fontSize).toBe(captionFontSize('9:16', 'center'));
+    expect(plan[1]?.textOverlay?.position).toBe('bottom-center');
+    expect(captionFontSize('9:16', 'center')).toBeGreaterThan(captionFontSize('9:16'));
   });
 });
 
