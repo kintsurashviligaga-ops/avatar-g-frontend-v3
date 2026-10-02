@@ -80,7 +80,9 @@ const PROVIDER_MODULE_SIGNALS: RegExp[] = [
   /api\.replicate\.com|from\s+['"]replicate['"]/,
   /api\.elevenlabs\.io|from\s+['"]@elevenlabs\//,
   /api\.heygen\.com|upload\.heygen\.com|api\.liveavatar\.com/,
-  /klingai\.com|runwayml\.com|higgsfield\.ai|from\s+['"]@higgsfield\//,
+  // A DOCS link is a citation, not a client: lib/providers/catalogue cites docs.higgsfield.ai pages as each model's source and
+  // calls nothing. The API host (api.higgsfield.ai, in lib/providers/higgsfield/client) is still a provider signal.
+  /klingai\.com|runwayml\.com|(?<!docs\.)higgsfield\.ai|from\s+['"]@higgsfield\//,
   /udioapi|UDIO_API_KEY|fal\.run|from\s+['"]@fal-ai\//,
   /api\.stability\.ai|lumalabs\.ai|api\.ltx\.video|api\.worldlabs\.ai|api\.x\.ai|api\.cartesia\.ai|api\.tavily\.com/,
   /api\.deepgram\.com|api\.vapi\.ai|api\.twilio\.com|verify\.twilio\.com|api\.resend\.com|from\s+['"]resend['"]/,
@@ -138,6 +140,7 @@ const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
   'app/api/connectors/route.ts': 'Connectors states — static registry + a table probe; no provider call; a guest sees statuses only (IP READ bucket)',
   'app/api/genjutsu/capabilities/route.ts': 'VFX open/soon flags (env + credential-PRESENCE reads only: it builds no request and calls no provider); coarse open|soon on the wire',
   'app/api/ai/music/engines/route.ts': 'music engine availability (env presence checks + the circuit-breaker flags), booleans only, no provider call — IP READ bucket',
+  'app/api/studio/catalogue/route.ts': 'model-picker availability: ids + yes/no + a reason word from env / flags / credential PRESENCE (hfAuthHeaderFromEnv builds no request) and the music breakers; no provider call — IP READ bucket',
 };
 
 const ROUTES = FILES.filter((f) => /^app\/api\/.+\/route\.[jt]sx?$/.test(rel(f)));
