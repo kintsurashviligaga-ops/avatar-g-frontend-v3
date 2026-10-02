@@ -16,7 +16,8 @@ import { blurMapOptsFor, parseThumbArgs, publicThumbPath, thumbJobs, thumbLineCh
 const ROOT = process.cwd();
 const SCRIPT = join(ROOT, 'scripts/templates/build-thumbs.mjs');
 const TEMPLATES_TS = join(ROOT, 'lib/studio/templates.ts');
-const templateIds = parseShots(readFileSync(join(ROOT, 'scripts/templates/thumbs.md'), 'utf8')).map((s) => s.id);
+// The original 20 (video / image / music) — the interior/ and photoshoot/ shots are checked in thumbs.shoot.test.ts.
+const templateIds = parseShots(readFileSync(join(ROOT, 'scripts/templates/thumbs.md'), 'utf8')).map((s) => s.id).filter((id) => !/^(interior|photoshoot)\//.test(id));
 
 type Change = { id: string; state: 'change' | 'already' | 'missing'; line: number | null; before: string | null; after: string | null };
 
@@ -134,6 +135,8 @@ describe('a run against a fixture manifest', () => {
     expect(blurMapOptsFor(parseThumbArgs(['--out', join(dir, 'out')]))).toBeNull();
     expect(blurMapOptsFor(parseThumbArgs([], ROOT))).toEqual({
       publicDir: join(ROOT, 'public'), templates: TEMPLATES_TS, out: REAL_MAP, check: false,
+      // …and the Interior designer's / Photographer's card files are scanned for `thumb:` lines too.
+      extraTemplates: [join(ROOT, 'lib/studio/templates.interior.ts'), join(ROOT, 'lib/studio/templates.photoshoot.ts')],
     });
   });
 
