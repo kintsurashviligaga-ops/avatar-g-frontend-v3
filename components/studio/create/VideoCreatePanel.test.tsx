@@ -60,7 +60,7 @@ const price = () => gen().getAttribute('data-price');
 describe('element order — header → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
   test('the DOM order is the reference’s', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-hero', 'video-references', 'video-prompt', 'video-model-row', 'video-tiles', 'video-quality',
+    const ids = ['video-tool-switch', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
       'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
@@ -327,16 +327,16 @@ describe('format and model pickers', () => {
     fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
   });
 
-  test('a Higgsfield model this deployment runs is a real choice: the hero and the Model row name it, the Veo tiers step aside, Generate is the saga\'s', async () => {
+  test('a Higgsfield model this deployment runs is a real choice: the hero names it, the Veo tiers step aside, Generate is the saga\'s', async () => {
     deployment(['hf/kling-3-std-t2v']);
     const { calls } = setup({ seconds: 24, prompt: '' });
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
     const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
     await waitFor(() => expect(kling().getAttribute('aria-disabled')).toBeNull());
@@ -344,14 +344,14 @@ describe('format and model pickers', () => {
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
     expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
     expect(screen.getByTestId('video-hero-title').textContent).toBe('Kling 3 — text to video');
-    expect(screen.getByTestId('video-model-row').textContent).toContain('Kling 3 — text to video');
+    expect(screen.queryByTestId('video-model-row')).toBeNull(); // the hero is the one place the model is named
     expect(screen.queryByTestId('video-quality')).toBeNull();
     expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
     expect(screen.getByTestId('video-generate')).toBeTruthy();
     // 24 s is not a length Kling renders: the line above the button says the 15 s it will.
     await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — text to video · 15 s · 9:16 · sound on'));
     // Back to Google in one tap: a Veo model is the film again.
-    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(screen.getByTestId('video-hero-change'));
     fireEvent.click(within(screen.getByTestId('video-model-sheet')).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');

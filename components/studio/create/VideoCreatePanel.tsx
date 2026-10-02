@@ -42,7 +42,7 @@ import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
 import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import {
-  VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoModelRow, VideoPromptCard, VideoQualityRow, VideoRefsCard,
+  VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoPromptCard, VideoQualityRow, VideoRefsCard,
   VideoTiles,
 } from './videoCreateParts';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
@@ -194,7 +194,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
             images={refs.images} onInsertToken={insertToken} onAddImage={refs.onAddImage}
             soundOn={plan.nativeAudio || !audioToggle} soundLocked={!audioToggle}
             onToggleSound={() => dispatch({ type: 'nativeAudio', on: !plan.nativeAudio })} needed={needed} />
-          <VideoModelRow locale={locale} tier={tier} mode={mode} onOpen={() => setSheet('model')} {...(hfName ? { name: hfName } : {})} />
+          {/* No separate „Model ›" row: the hero card above names the model and its „Change" opens the same picker. */}
           <VideoTiles locale={locale} seconds={seconds} format={format} resolution={videoResolution(seconds)}
             onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} onResolution={() => setSheet('model')} />
           {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
