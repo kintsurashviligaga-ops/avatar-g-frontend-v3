@@ -115,6 +115,7 @@ import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
+import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
@@ -6199,6 +6200,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : activeTool === 'swap' ? (locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა')
             : activeTool === 'remix' ? (REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en)
               : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა');
+  // The composer's run button carries its price for the tools that have NO Generate button of their own — the avatar, the
+  // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
+  // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
+  const composerQuote = activeTool === 'avatar' || activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
+    ? quoteCredits({ tool: activeTool }) || null
+    : null;
+  const runAria = composerQuote ? `${runLabel} — ${creditsLabel(composerQuote, locale)}` : runLabel;
   const composerPlaceholder = recording ? t.recording
     // The chat asks like Gemini's prompt bar ("Ask Gemini") — in our name.
     : activeTool === 'chat' ? (locale === 'en' ? 'Ask MyAvatar' : locale === 'ru' ? 'Спросите MyAvatar' : 'ჰკითხე MyAvatar-ს')
@@ -8926,9 +8934,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
-                      className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
-                      <Send size={17} />
+                    <button type="button" onClick={runTool} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}
+                      className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
+                      {composerQuote ? (
+                        <>
+                          <Sparkle size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                          <span className="text-[14px] font-bold tabular-nums leading-none">{composerQuote}</span>
+                        </>
+                      ) : <Send size={17} />}
                     </button>
                   )
                 )}

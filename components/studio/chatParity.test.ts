@@ -110,6 +110,19 @@ describe('the chat takes everything a person can bring', () => {
   });
 });
 
+describe('the price is on the button that spends', () => {
+  it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
+    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(\{ tool: activeTool \}\)/);
+    expect(omni).toContain('data-price={composerQuote ?? undefined}');
+    // the accessible name says the price too, from the same function the route charges with
+    expect(omni).toContain('${runLabel} — ${creditsLabel(composerQuote, locale)}');
+  });
+
+  it('and there is still no caption anywhere under a composer', () => {
+    expect(omni).not.toContain('data-testid="price-tag"');
+  });
+});
+
 describe('Live gets the microphone', () => {
   it('the Live chip primes Live INSIDE the tap, before it asks ChatChrome to open, and never for a guest', () => {
     expect(omni).toMatch(/if \(document\.documentElement\.dataset\.authed !== '0'\) primeLive\(\);\s*window\.dispatchEvent\(new CustomEvent\('myavatar:voice-open'\)\);/);
