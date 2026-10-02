@@ -380,23 +380,19 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('result-card')).toHaveCount(0);
     });
 
-    test('the price sits under the composer, once, and follows the length set in the settings', async ({ page }) => {
+    test('nothing sits under the composer (the price is on the Generate button), and the length set in the settings shows on the tool chip', async ({ page }) => {
       await openDashboard(page);
-      const price = page.getByTestId('price-tag');
-      await expect(price).toHaveCount(1);
-      await expect(price).toContainText('კრედიტი');
+      // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its Generate button.
+      await expect(page.getByTestId('price-tag')).toHaveCount(0);
       const pill = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).locator('xpath=..').boundingBox())!;
       const chip = (await page.getByTestId('options-toggle').boundingBox())!;
-      const tag = (await price.boundingBox())!;
       expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
-      expect(tag.y).toBeGreaterThanOrEqual(pill.y + pill.height - 1); // the price is under it
       const settings = await openSettings(page);
       const length = settings.getByRole('radiogroup', { name: 'ხანგრძლივობა' });
       await length.getByRole('radio', { name: '8წმ', exact: true }).click();
-      await expect(price).toContainText('~2 წთ');
+      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 8წმ');
       await length.getByRole('radio', { name: '48წმ', exact: true }).click();
-      await expect(price).toContainText('~7 წთ');
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 48წმ');
     });
 

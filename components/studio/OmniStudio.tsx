@@ -112,7 +112,7 @@ import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type Mus
 import { Slider } from './ui/controls';
 import { StyleChips } from './ui/StyleChips';
 import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
-import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
+import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -6117,36 +6117,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const canSend = (!!input.trim() && !onlyStarter) || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
 
   /**
-   * ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE. A cost line was added for
-   * image and nowhere else, so video, music, avatar and remix still charged an amount the user could only discover
-   * by watching the balance drop afterwards. One expression covers all five, so a new mode cannot quietly ship
-   * without a price. It now lives INSIDE the composer, next to what sets it (format, length, count), instead of a
-   * separate line above it; and a video's wait follows its length — it said "~440s" for an 8-second clip.
-   */
-  const priceTag = (() => {
-    if (busy) return null;
-    const priced: Partial<Record<ToolId, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }>> = {
-      image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
-      music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
-      video: { kind: 'video', n: 1, secs: videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video },
-      avatar: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
-      remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
-      // A character swap is the remix route's `character` op — priced and timed as a remix.
-      swap: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
-    };
-    const p = priced[activeTool];
-    if (!p) return null;
-    const credits = creditCostFor(p.kind, activeTool === 'video' ? { seconds: videoDuration } : undefined) * p.n;
-    if (credits <= 0) return null;
-    const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
-    const wait = p.secs >= 90
-      ? `~${Math.round(p.secs / 60)} ${locale === 'en' ? 'min' : locale === 'ru' ? 'мин' : 'წთ'}`
-      : `~${p.secs} ${locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ'}`;
-    const label = `${credits} ${unit} · ${wait}`;
-    return { label, long: `${locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: ${label}` };
-  })();
-
-  /**
    * The composer's tool chip — WHAT you make and in what SHAPE, in one control: „ვიდეო · 9:16 · 24წმ ⌄". It opens
    * the settings (the sheet on a phone, the right panel on a desktop). The shape itself is chosen THERE, once —
    * the composer used to carry its own ratio and length selects, a second copy of the same two controls.
@@ -8580,7 +8550,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
-        {/* The price moved INTO the composer (see `priceTag`) — same rule, one block instead of three. */}
         {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
             canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
             that never send; see their definition for why the old prompt chips were removed). */}
@@ -8997,14 +8966,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             )}
           </div>
         </div>
-        {/* The price, once, under the composer — on screen before the spend, for every priced tool. The chat is not
-            priced and carries NOTHING under it: the home is the composer and the starter chips, no disclaimer and no
-            explanation (owner, 2026-10-02 — "minimalist, premium"). The AI notice lives in the Terms. */}
-        {!chatOnly && priceTag && (
-          <p data-testid="price-tag" title={priceTag.long} className="mt-1.5 px-3 text-center text-[12px] tabular-nums text-app-muted">
-            <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
-          </p>
-        )}
+        {/* NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he had the
+            „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
+            the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}
       </div>
       {/* The centred empty chat (desktop): the starter chips UNDER the composer, closing the centred group. */}
       {centred && <div className="flex w-full flex-1 basis-0 items-start justify-center pt-6">{starterChips}</div>}

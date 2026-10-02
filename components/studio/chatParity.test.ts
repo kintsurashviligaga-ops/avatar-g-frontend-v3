@@ -90,8 +90,9 @@ describe('the Gemini chat surface', () => {
     expect(omni).not.toContain('chat-disclaimer');
     expect(omni).not.toContain('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
     expect(omni).not.toContain('MyAvatar is AI and can make mistakes.');
-    // The only line under the composer is a priced tool's price, and never in the chat.
-    expect(omni).toMatch(/\{!chatOnly && priceTag && \(\s*<p data-testid="price-tag"/);
+    // …and no price caption either: a tool's price is on its Generate button, never a line under the box.
+    expect(omni).not.toContain('data-testid="price-tag"');
+    expect(omni).not.toContain('const priceTag');
   });
 });
 
