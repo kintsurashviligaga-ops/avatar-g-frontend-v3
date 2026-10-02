@@ -198,9 +198,8 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await page.locator('input[type=file][accept="image/*"][multiple]').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
     await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(4096) });
     await page.locator('input[type=file][accept*="application/pdf"][multiple]').setInputFiles({ name: 'brief.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 brief') });
-    // A video in the chat opens the „edit this video“ chips; the PDF shows as a chip with its type; the image as a thumbnail.
-    await expect(page.getByText('PDF', { exact: true })).toBeVisible();
-    await expect(page.locator('video').first()).toBeVisible();
+    // All three are in the tray under their own names, and a video in the chat opens the „edit this video“ chips.
+    for (const name of ['photo.png', 'clip.mp4', 'brief.pdf']) await expect(page.getByTitle(name)).toBeVisible();
     await expect(page.getByRole('button', { name: 'სუბტიტრები' })).toBeVisible();
   });
 
