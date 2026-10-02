@@ -282,9 +282,10 @@ export async function POST(req: NextRequest) {
   // write-lock / RPC cliff) is logged LOUDLY with the op + uid + jobId so ops can reconcile
   // a stranded charge from the logs. Fail-open: a refund miss never changes the response.
   let refunded = false;
-  const refundCharge = async (why: string): Promise<void> => {
+  /** …resolves TRUE only when THIS call's refund landed — the only case a failure body may say `refunded: true`. */
+  const refundCharge = async (why: string): Promise<boolean> => {
     await releaseIdem(); // always free the in-flight mutex on a failure path
-    if (!charged || refunded || !remixUid) return;
+    if (!charged || refunded || !remixUid) return false;
     // ⚠️ A PRIMARY WHOSE SECONDARIES WERE ALREADY ADMITTED IS NOT REFUNDED. The secondaries render free ON this charge;
     // refunding it afterwards (a primary sent to fail late) turned the whole ad into free clips. The claim is a
     // read-and-set: true = no secondary had claimed it, so the refund proceeds and any later secondary then finds the
@@ -294,7 +295,7 @@ export async function POST(req: NextRequest) {
       if (!noSecondaryAdmitted) {
         // eslint-disable-next-line no-console
         console.warn(`[video/remix] primary ${jobId} failed (${why}) after its secondary clips were admitted — charge kept`);
-        return;
+        return false;
       }
     }
     refunded = true;
@@ -309,15 +310,18 @@ export async function POST(req: NextRequest) {
         // eslint-disable-next-line no-console
         console.error(`[video/remix] REFUND FAILED op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why} reason=${r.reason} — ${chargeAmount} credit(s) may be STRANDED, manual reconcile needed`);
       }
+      return r.ok;
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(`[video/remix] REFUND THREW op=${op} uid=${remixUid} jobId=${jobId ?? '-'} why=${why}:`, e instanceof Error ? e.message : e);
+      return false;
     }
   };
-  /** Refund the up-front charge (if any) then return the standard failure body. */
+  /** Refund the up-front charge (if any) then return the standard failure body — with `refunded: true` only when the
+   *  credits actually went back (the studio turns that, and only that, into its refund notice). */
   const failRefund = async (error: string, why = 'render-miss'): Promise<NextResponse> => {
-    await refundCharge(why);
-    return fail(error);
+    const back = await refundCharge(why);
+    return NextResponse.json({ url: null, error, ...(back ? { refunded: true } : {}) });
   };
 
   // PHASE 2 L1 — Product-Ad: a PHOTO (not a source video) → commercial i2v clip.

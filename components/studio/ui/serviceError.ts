@@ -154,6 +154,17 @@ function knownFor(text: string): Known | null {
  * A route's own MACHINE CODE (`code`, then `error`) is read before its prose: a sentence the table does not know
  * falls back to generic copy, and `billing_unavailable` / `duplicate_request` arrive as codes beside a sentence.
  */
+/**
+ * The refund notice when a failed body reports `refunded: true`; otherwise the caller's own existing line, untouched.
+ * For surfaces whose failure copy is already right (a route's human sentence via describeOpFailure) and only needs the
+ * refund said when — and only when — the server confirms it.
+ */
+export function refundNoticeOr(body: unknown, locale: string, otherwise: string): string {
+  const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown };
+  return b.refunded === true && b.success !== true ? COPY[lang].generation_refunded : otherwise;
+}
+
 export function describeGenerationFailure(body: unknown, locale: string, fallback: string): string {
   const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown };

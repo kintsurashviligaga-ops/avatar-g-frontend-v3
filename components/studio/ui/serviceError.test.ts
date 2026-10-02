@@ -9,7 +9,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeServiceError, describeGenerationFailure } from './serviceError';
+import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './serviceError';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
 
@@ -149,6 +149,15 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
     expect(describeGenerationFailure({ error: 'TypeError: x is undefined' }, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
     expect(describeGenerationFailure(null, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
     expect(describeGenerationFailure('oops', 'en', 'x')).toBe('x');
+  });
+
+  it('refundNoticeOr keeps a surface’s own failure line unless the server confirmed a refund', () => {
+    expect(refundNoticeOr({ url: null, error: 'Add a music track.' }, 'en', 'Remix failed — Add a music track.')).toBe('Remix failed — Add a music track.');
+    expect(refundNoticeOr({ url: null, error: 'x', refunded: true }, 'ru', 'other')).toBe(NOTICE.ru);
+    expect(refundNoticeOr({ success: true, refunded: true }, 'en', 'other')).toBe('other');
+    const omni = readFileSync(join(__dirname, '..', 'OmniStudio.tsx'), 'utf8');
+    // The three video-remix failure sites (remix panel, chat-attached remix, character swap).
+    expect(omni.match(/refundNoticeOr\(j, locale, describeOpFailure\(j, t\.remixFailed\)\)/g)?.length).toBe(3);
   });
 
   it('the product chat routes every image/music failure through it (so a server refund is actually shown)', () => {

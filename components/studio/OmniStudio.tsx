@@ -109,7 +109,7 @@ import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type Mus
 import { Slider } from './ui/controls';
 import { StyleChips } from './ui/StyleChips';
 import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
-import { describeServiceError, describeGenerationFailure } from './ui/serviceError';
+import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -5256,7 +5256,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const next = [...prev]; const last = next[next.length - 1];
           // A silent engine downgrade is stated instead of being passed off as a clean result — a
           // Ken-Burns pan over one still is not the restyled video that was asked for.
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
           return next;
         });
         if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5641,7 +5641,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') next[next.length - 1] = j.url
           ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
-          : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
         return next;
       });
       if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5704,7 +5704,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
-        updateBubble(bubbleId, { text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` });
+        updateBubble(bubbleId, { text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` });
         throw new Error(j.error || 'character swap failed');
       },
     });
