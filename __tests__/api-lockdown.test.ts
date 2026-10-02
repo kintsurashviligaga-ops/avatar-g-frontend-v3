@@ -189,12 +189,23 @@ const DEBUG_GUARDS: RegExp[] = [
   /process\.env\.(ADMIN_API_TOKEN|ADMIN_KEY|CRON_SECRET)\b/,
 ];
 
+/**
+ * User FEATURES whose name only looks like a debug endpoint. Each is a reviewed decision with its reason, and the
+ * exemption holds only while the route verifies a session in its own code (it acts for the signed-in user alone).
+ */
+const DEBUG_NAMED_USER_FEATURES: Record<string, string> = {
+  'app/api/push/test/route.ts':
+    '"Send me a test notification" on the push opt-in card — session required, reaches only the caller\'s own devices, per-account limit (PUSH_TEST_USER)',
+};
+const SESSION_GATE = /\b(getAuthenticatedUser|requireAuthenticatedUser|requireUser|authedClientFromRequest)\s*\(/;
+
 describe('API lockdown — debug / test / diag endpoints never answer the public in production', () => {
   it('every debug-named route is production-guarded', () => {
     const offenders: string[] = [];
     for (const f of ROUTES) {
       const segs = rel(f).replace(/^app\/api\//, '').split('/').slice(0, -1);
       if (!segs.some((s) => DEBUG_SEGMENT.test(s))) continue;
+      if (rel(f) in DEBUG_NAMED_USER_FEATURES && SESSION_GATE.test(SRC.get(f)!)) continue;
       if (!DEBUG_GUARDS.some((r) => r.test(SRC.get(f)!))) offenders.push(rel(f));
     }
     // Remove the endpoint when nothing calls it; otherwise return 404 in production unless the caller is an admin
@@ -245,6 +256,9 @@ describe('API lockdown — trust rules', () => {
   it('no secret-looking NEXT_PUBLIC_* variable is referenced (Next inlines them into browser bundles)', () => {
     const PUBLIC_BY_DESIGN = new Set([
       'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', 'NEXT_PUBLIC_VAPI_PUBLIC_KEY', 'NEXT_PUBLIC_POSTHOG_KEY',
+      // The Web Push applicationServerKey: every subscribing browser and every push service receives it. Its private half
+      // is VAPID_PRIVATE_KEY (server-only).
+      'NEXT_PUBLIC_VAPID_PUBLIC_KEY',
     ]);
     const offenders: string[] = [];
     for (const f of [...FILES, ...walk(path.join(ROOT, 'components')), ...walk(path.join(ROOT, 'hooks'))]) {
