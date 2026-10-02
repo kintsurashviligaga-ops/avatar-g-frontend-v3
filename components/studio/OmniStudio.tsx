@@ -9268,16 +9268,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
+        {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
+            hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
+        {!(imageCreate && !isDesktop) && (
         <div className={isDesktop
           ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
-          // The Image Create screen's own header (tool name ▾ · ✕) takes this one's place in the sheet.
-          : imageCreate ? 'hidden' : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
+          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
           <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
           <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
             className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} aria-hidden="true" />
           </button>
         </div>
+        )}
         <div className={isDesktop
           ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin]'
           : 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>
