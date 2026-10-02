@@ -126,6 +126,8 @@ drop policy if exists agent_g_connect_codes_owner_crud on public.agent_g_connect
 revoke insert, update, delete, truncate on public.agent_g_channels       from anon, authenticated;
 revoke insert, update, delete, truncate on public.agent_g_channel_events from anon, authenticated;
 revoke all                              on public.agent_g_connect_codes  from anon, authenticated;
+-- A signed-out visitor has no row to read; RLS already returns nothing, the privilege goes too.
+revoke all on public.agent_g_channels, public.agent_g_channel_events from anon;
 revoke all on function public.agent_g_touch_updated_at() from public, anon, authenticated;
 
 commit;
