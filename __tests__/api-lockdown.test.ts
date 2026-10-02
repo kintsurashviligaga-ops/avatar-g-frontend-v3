@@ -134,6 +134,7 @@ const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
   'app/api/health/public/route.ts': 'aggregate status pings of provider status endpoints (no generation), 60 s cache',
   'app/api/support/route.ts': 'public support form (Resend e-mail to our own inbox) — per-IP SUPPORT bucket',
   'app/api/video/engine/route.ts': 'Veo capability flags (env reads only), no provider call',
+  'app/api/genjutsu/capabilities/route.ts': 'VFX open/soon flags (env + credential-PRESENCE reads only: it builds no request and calls no provider); coarse open|soon on the wire',
 };
 
 const ROUTES = FILES.filter((f) => /^app\/api\/.+\/route\.[jt]sx?$/.test(rel(f)));
