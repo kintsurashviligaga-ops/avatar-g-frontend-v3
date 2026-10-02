@@ -1,0 +1,33 @@
+{
+  "id": "v1_ChdkZWVwLXJlc2VhcmNoLWZpeHR1cmU",
+  "agent": "deep-research-preview-04-2026",
+  "status": "in_progress",
+  "created": "2026-10-02T09:00:00Z",
+  "updated": "2026-10-02T09:07:41Z",
+  "steps": [
+    {
+      "type": "thought",
+      "summary": [
+        { "type": "text", "text": "**Scoping the market**\n\nI'm outlining the segments to compare: import volumes, price bands and the main distributors." }
+      ]
+    },
+    {
+      "type": "google_search_call",
+      "id": "call_1",
+      "arguments": { "queries": ["georgian wine export volumes 2025", "wine export destinations georgia national wine agency"] }
+    },
+    { "type": "google_search_result", "call_id": "call_1", "result": [{ "search_suggestions": "<div>...</div>" }] },
+    {
+      "type": "thought",
+      "summary": [
+        { "type": "text", "text": "**Reading the agency's statistics**\n\nThe latest release gives destination shares; I'm cross-checking them against customs data." }
+      ]
+    },
+    {
+      "type": "google_search_call",
+      "id": "call_2",
+      "arguments": { "queries": ["georgia wine exports by country 2025 customs"] }
+    },
+    { "type": "url_context_call", "id": "call_3", "arguments": { "urls": ["https://example.org/wine-statistics"] } }
+  ]
+}

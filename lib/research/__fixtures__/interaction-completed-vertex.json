@@ -1,0 +1,16 @@
+{
+  "name": "projects/p/locations/global/interactions/v-77",
+  "done": true,
+  "response": {
+    "id": "v-77",
+    "state": "SUCCEEDED",
+    "steps": [
+      { "type": "thought", "summary": [{ "type": "text", "text": "Thinking" }] },
+      { "type": "model_output", "content": [{ "type": "text", "text": "# Vertex-wrapped report\n\nBody text." }] }
+    ],
+    "citations": [
+      { "uri": "https://example.com/vertex-1", "title": "Vertex source one" },
+      { "uri": "https://example.com/vertex-2" }
+    ]
+  }
+}

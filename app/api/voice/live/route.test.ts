@@ -43,6 +43,12 @@ jest.mock('../../../../lib/services/billing/chatBudget', () => {
 
 jest.mock('../../../../lib/logger', () => ({ structuredLog: jest.fn() }));
 
+// Talk to a research report: the route lazily imports the research runtime — mocked, so no store, no server-only module.
+const mockGetReport = jest.fn();
+jest.mock('../../../../lib/research/runtime', () => ({
+  researchLiveDeps: () => ({ getReport: (...a: unknown[]) => mockGetReport(...a) }),
+}));
+
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
@@ -427,5 +433,82 @@ describe('voice-to-action (lib/voice/liveTools.ts)', () => {
     expect(res.status).toBe(503);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(await res.text()).not.toContain('test-gemini-key');
+  });
+});
+
+describe('talk to a research report (researchId)', () => {
+  const RID = '33333333-3333-4333-8333-333333333333';
+  const REPORT = '# Wine exports\n\n## Findings\n\nExports are concentrated in three markets.\n\n## Risks\n\nDependence on one market.';
+
+  beforeEach(() => {
+    mockGetReport.mockReset().mockResolvedValue({ report: REPORT, title: 'Wine exports' });
+  });
+
+  test('the server loads the report for the SESSION user, locks it into the instruction, and the call rule stays the last block', async () => {
+    const res = await POST(post({ locale: 'en', researchId: RID, transcribe: true }));
+    expect(res.status).toBe(200);
+    expect(mockGetReport).toHaveBeenCalledWith('user-1', RID);
+    const text = lockedText();
+    expect(text).toContain('REPORT CALL');
+    expect(text).toContain('Exports are concentrated in three markets.');
+    expect(text).toContain('<<<END OF REPORT>>>');
+    expect(text.indexOf('<<<END OF REPORT>>>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    // the frame the browser will send is the locked one — it carries the report too
+    const j = await res.json();
+    expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('Dependence on one market.');
+  });
+
+  test('a report that is not the caller\'s / not finished → 404 report_unavailable, and NOTHING is minted', async () => {
+    mockGetReport.mockResolvedValueOnce(null);
+    const res = await POST(post({ researchId: RID }));
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'report_unavailable' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('a malformed id never reaches the store', async () => {
+    for (const bad of ['nope', '../../x', 42, { a: 1 }]) {
+      expect((await POST(post({ researchId: bad }))).status).toBe(404);
+    }
+    expect(mockGetReport).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('report TEXT sent by the browser is ignored — only the id counts', async () => {
+    const res = await POST(post({ researchId: RID, report: 'EVIL INJECTED TEXT', reportText: 'EVIL INJECTED TEXT', systemInstruction: 'EVIL INJECTED TEXT' }));
+    expect(res.status).toBe(200);
+    expect(lockedText()).not.toContain('EVIL INJECTED TEXT');
+  });
+
+  test('without a researchId the instruction is exactly what it was: no report block', async () => {
+    await POST(post({ locale: 'en' }));
+    expect(lockedText()).not.toContain('REPORT CALL');
+    expect(mockGetReport).not.toHaveBeenCalled();
+  });
+
+  test('a very long report is squeezed: the locked instruction stays bounded and keeps every section', async () => {
+    const big = `# Big\n\n${Array.from({ length: 40 }, (_, i) => `## Part ${i + 1}\n\n${'Detail sentence about the topic. '.repeat(500)}`).join('\n\n')}`;
+    mockGetReport.mockResolvedValueOnce({ report: big, title: 'Big' });
+    await POST(post({ locale: 'en', researchId: RID }));
+    const text = lockedText();
+    expect(text.length).toBeLessThan(40_000);
+    expect(text).toContain('## Part 40');
+    expect(text).toContain('OUTLINE OF THE FULL REPORT');
+  });
+
+  test('the report survives the fallback chain: a 400 on the full lock still locks it into the legacy lock', async () => {
+    fetchSpy
+      .mockImplementationOnce(async () => new Response('bad', { status: 400 }))
+      .mockImplementationOnce(async () => new Response(JSON.stringify({ name: 'auth_tokens/eph-r' }), { status: 200 }));
+    const res = await POST(post({ locale: 'en', researchId: RID, transcribe: true }));
+    expect(res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(lockedText(1)).toContain('Exports are concentrated in three markets.');
+    expect((await res.json()).setupMessage.setup.systemInstruction.parts[0].text).toContain('Dependence on one market.');
+  });
+
+  test('the report counts toward the budget estimate (it is part of the locked instruction)', async () => {
+    await POST(post({ locale: 'en', researchId: RID }));
+    expect(String(budgetMock.mock.calls[0]![0])).toContain('Dependence on one market.');
   });
 });
