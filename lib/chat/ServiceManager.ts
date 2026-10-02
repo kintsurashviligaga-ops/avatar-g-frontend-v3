@@ -27,7 +27,8 @@ import { createVeoClip, pollVeoClip, transportOf, veoTransport } from '@/lib/veo
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
 import { nativeCameraControl } from '@/lib/veo/cinematography';
-import { costPerSecondUsd, DEFAULT_TIER as DEFAULT_VEO_TIER, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
+import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
@@ -940,7 +941,7 @@ export class ServiceManager {
     const opts = request.selectedOptions || {};
     const transport = veoTransport() ?? 'gemini';
     const tierRaw = this.getOption(opts, ['veoTier']);
-    const tier: VeoTier = tierRaw === 'fast' || tierRaw === 'lite' || tierRaw === 'standard' ? tierRaw : DEFAULT_VEO_TIER;
+    const tier: VeoTier = tierRaw === 'fast' || tierRaw === 'lite' || tierRaw === 'standard' ? tierRaw : STUDIO_DEFAULT_VEO_TIER;
     const model = resolveVeoModel(transport, tier);
     const raw = Number(this.getOption(opts, ['duration', 'durationSec', 'duration_seconds']));
     const asked = Number.isFinite(raw) && raw > 0 ? raw : 8;
@@ -1016,7 +1017,8 @@ export class ServiceManager {
       return v === '1' ? true : v === '0' ? false : undefined;
     };
     const tierRaw = this.getOption(opts, ['veoTier']);
-    const tier: VeoTier | undefined = tierRaw === 'standard' || tierRaw === 'fast' || tierRaw === 'lite' ? tierRaw : undefined;
+    // No tier asked → the STUDIO default (Fast, the price anchor), not the engine's Standard — see STUDIO_DEFAULT_VEO_TIER.
+    const tier: VeoTier = tierRaw === 'standard' || tierRaw === 'fast' || tierRaw === 'lite' ? tierRaw : STUDIO_DEFAULT_VEO_TIER;
     // The OUTPUT format (1:1 / 4:5 render at 9:16 and are cropped by the assembler); else the clip's own aspect.
     const formatRaw = this.getOption(opts, ['veoFormat']);
     const format: OutputFormat = formatRaw === '9:16' || formatRaw === '16:9' || formatRaw === '1:1' || formatRaw === '4:5'

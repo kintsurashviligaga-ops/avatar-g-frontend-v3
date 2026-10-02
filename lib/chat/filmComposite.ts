@@ -33,7 +33,10 @@ import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
-import { refundDebitByRef } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
+import { videoCredits, perSceneCredits, STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
+import { TRIAL } from '@/lib/billing/tiers';
+import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
 import { isAdminEmail } from '@/lib/auth/adminGuard';
 import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { PipelineTimer } from '@/lib/pipeline/timing';
@@ -41,7 +44,7 @@ import { selectClipVideoModel } from '@/lib/pipeline/modelSelection';
 import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
-import { deriveFilmTokenId, recordFreeFilmWaiver } from './filmStatusStore';
+import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid } from './filmStatusStore';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import { enrichSfxBrief } from './sfxTriggers';
@@ -854,6 +857,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const forecast = forecastFilm(sceneCount);
   const clipForecast = forecastMarginForAction('video_film');
 
+  // ⚠️ NO VEO PLAN SENT (an older client, a direct caller) → render on the STUDIO default tier, explicitly. Left unset the engine
+  // falls to its own default (Standard, $0.40/s) while the film is priced on Fast — a $3.20 render sold for ~$0.93 a clip.
+  if (googleOnly && !plan.shared.veo) {
+    plan.shared.veo = { tier: STUDIO_DEFAULT_VEO_TIER, format: orientation === 'vertical' ? '9:16' : '16:9', referenceMode: 'first_frame', generateAudio: true, seedLock: true, enhancePrompt: false };
+  }
+
   // Stable per-request id; namespaces per-leg debit refs for idempotent retries.
   const compositeId = `film:${input.sessionId}:${Date.now()}`;
 
@@ -863,6 +872,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   let clipBillingWaived = false;
   // Tracked so a film that dispatches nothing can hand the slot back (see the restore below).
   let freeFilmConsumed = false;
+  // ⚠️ THE FILM IS CHARGED ONCE, UP FRONT, AT ITS QUOTE (lib/credits/videoPricing — the number on the Generate button).
+  // It used to be charged almost nothing: each clip's debit called `debit_wallet_gel`, which does not exist on the production
+  // database (so every clip was free), and the stitch took a flat 20 credits whatever the length — a 48 s film cost the
+  // platform ~$5.76 of Veo and the customer 20 credits. `filmCharged` is what is currently held against this film (net of any
+  // dispatch-time refund); the ref makes every debit/refund of it idempotent.
+  let filmCharged = 0;
+  const filmChargeRef = `${compositeId}:charge`;
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
     // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
@@ -879,7 +895,12 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // broken render never eats someone's only free video. The waiver is then recorded SERVER-SIDE
     // (recordFreeFilmWaiver) so /assemble honours the same slot for the stitch rather than taking a
     // second one; that marker deliberately does not travel in the client-held `film:` token.
-    const consumed = await consumeFreeFilm(input.userId).catch(() => null);
+    // ⚠️ THE FREE VIDEO IS ONE SHORT CLIP (TRIAL.freeFilmMaxSeconds = 8 s), NOT "A FILM OF ANY LENGTH". The slot was spent on
+    // whatever the user asked for, so a new account's free film could be 48 s ($5.76 of Veo) — and with the studio now
+    // offering up to 4 minutes, an e-mail address would buy $28. A longer film simply isn't the free one: it is a paid film and
+    // the slot stays for a short clip.
+    const freeEligible = grid.totalSec <= TRIAL.freeFilmMaxSeconds;
+    const consumed = freeEligible ? await consumeFreeFilm(input.userId).catch(() => null) : null;
     const hasFreeFilm = typeof consumed === 'number' && consumed >= 0;
     freeFilmConsumed = hasFreeFilm;
     // Founder/admin renders on the platform's own provider budget → bypass the
@@ -897,20 +918,27 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         : { tier: 'fast', format: orientation === 'vertical' ? '9:16' : '16:9', referenceMode: 'first_frame', generateAudio: true, seedLock: true, enhancePrompt: false };
     }
     const balance = (hasFreeFilm || founderBypass) ? null : await readWalletBalanceGel(input.userId);
-    if (!hasFreeFilm && !founderBypass && filmBalanceDecision(balance, forecast.totalRetailGel) === 'insufficient') {
-      return {
-        success: false,
-        intent: 'video_generation',
-        responseType: 'text',
-        message: `Insufficient balance for the 30-second film pipeline. Required: ${forecast.totalRetailGel.toFixed(2)} ₾. Current: ${(balance ?? 0).toFixed(2)} ₾.`,
-        metadata: {
-          provider: 'composite',
-          composite: true,
-          insufficientBalance: true,
-          requiredGel: forecast.totalRetailGel,
-          balanceGel: balance ?? 0,
-        },
-      };
+    if (!hasFreeFilm && !founderBypass) {
+      // The price is the quote for THIS film's real length, Veo tier and mode — the same function the button shows.
+      const filmQuote = videoCredits({
+        seconds: grid.totalSec,
+        quality: plan.shared.veo?.tier ?? STUDIO_DEFAULT_VEO_TIER,
+        mode: input.metadata?.musicVideoMode ? 'musicvideo' : 'documentary',
+      });
+      // The pre-flight gate (credits against credits — it compared credits with ₾, ten times too lax) stops the obvious
+      // case before anything is touched; the debit below is the real, atomic guard.
+      if (filmBalanceDecision(balance, filmQuote) === 'insufficient') {
+        return insufficientCreditsResponse('video_generation', filmQuote, input.locale);
+      }
+      const debit = await deductCredits(input.userId, filmQuote, filmChargeRef);
+      if (!debit.ok) {
+        // 'insufficient' is the honest top-up answer; anything else (ledger down, RPC absent) FAILS CLOSED — a render we
+        // cannot charge for must not start, and nothing was taken, so nothing needs refunding.
+        return debit.reason === 'insufficient'
+          ? insufficientCreditsResponse('video_generation', filmQuote, input.locale)
+          : chargeRefusedResponse('video_generation', filmQuote, 'error', input.locale);
+      }
+      filmCharged = filmQuote;
     }
   }
 
@@ -937,6 +965,25 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         refundDebitByRef(input.userId as string, `${compositeId}:clip:${c.ordinal}`).catch(() => null),
       ),
     );
+  };
+
+  // ⚠️ GIVE BACK WHAT THIS REQUEST CAN PROVE IT DID NOT DELIVER — AND ONLY THAT. Decided from state THIS request owns (its own
+  // synchronous dispatch results), never from a client-held token or a later poll: `film:` is unsigned and a transient 429 can
+  // read as 'failed', so refunding on a poll result would let anyone mint credits (the long-standing reason async failures are
+  // not refunded). `scenes` = how many of the film's scenes produced nothing at dispatch; 'all' = the whole film.
+  // Idempotent on the film's own refs, and what is returned stays out of the amount /assemble is later told was paid.
+  const refundFilmScenes = async (scenes: number | 'all'): Promise<void> => {
+    if (!realUser || filmCharged <= 0 || !input.userId) return;
+    const total = Math.max(1, plan.scenes.length);
+    const amount = scenes === 'all'
+      ? filmCharged
+      : Math.min(filmCharged, perSceneCredits(filmCharged, total) * Math.max(0, scenes));
+    if (amount <= 0) return;
+    const ref = scenes === 'all' ? `${filmChargeRef}:refund` : `${filmChargeRef}:refund:dispatch`;
+    const r = await refundCredits(input.userId, amount, ref).catch(() => null);
+    if (r?.ok) filmCharged -= amount;
+    // eslint-disable-next-line no-console
+    else console.error(`[film] REFUND FAILED ref=${ref} user=${input.userId} amount=${amount} — needs manual credit`);
   };
 
   const connectionFailed = (diagnostic?: string | null): ChatResponse => ({
@@ -1037,12 +1084,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
         clipForecast.wholesaleGel,
         clipForecast.retailGel,
         sceneFrames[i] ?? null,
-        clipBillingWaived, // a free/founder film charges no clip legs
+        true, // no per-clip legs: the film was charged ONCE up front (filmCharged) — `debit_wallet_gel` is not on prod, and if it ever is, this keeps it from charging twice
       ),
     );
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[film] scene synthesis threw — protecting balance:', err instanceof Error ? err.message : err);
+    await refundFilmScenes('all');
+    if (freeFilmConsumed && input.userId) await restoreFreeFilm(input.userId).catch(() => {});
     return connectionFailed(err instanceof Error ? err.message : String(err));
   }
   const anyClip = clips.some((c) => c.status === 'queued');
@@ -1052,6 +1101,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // localized "balance protected" halt instead of a half-charged dead pipeline.
   if (!anyClip) {
     await rollbackFilmDebits(clips);
+    await refundFilmScenes('all');
     // ⚠️ HAND THE FREE VIDEO BACK. The slot is spent up front (see the waiver above) so it cannot be
     // reused, which means a film that dispatched nothing must return it — otherwise a provider outage
     // silently costs the user their only free video and they have nothing to show for it.
@@ -1079,6 +1129,10 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // record; it is not a missing function call.
   const strandedLegs = clips.filter((c) => c.debited && c.status !== 'queued');
   if (strandedLegs.length) await rollbackFilmDebits(strandedLegs);
+  // The up-front charge's share for every scene that produced nothing AT DISPATCH (a refused / exhausted request — state this
+  // request owns). A scene that queues and dies later is the async case above: deliberately not refunded here.
+  const deadAtDispatch = clips.filter((c) => c.status === 'failed').length;
+  if (deadAtDispatch > 0) await refundFilmScenes(deadAtDispatch);
 
   // ── DOUBLE-VOICE GUARD ──────────────────────────────────────────────────────
   // The stitch PRESERVES each clip's native audio (nativeAudio[] → the filtergraph's diegetic lane), so a
@@ -1343,6 +1397,14 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     await recordFreeFilmWaiver(
       deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
       input.userId,
+    ).catch(() => {});
+  }
+  // The same for a PAID film: the whole price is already taken, so the stitch must not charge it again (its own key — see
+  // recordFilmPaid). Fail-open: a store miss makes /assemble bill the stitch by the film's length, the safe direction.
+  if (filmCharged > 0 && input.userId) {
+    await recordFilmPaid(
+      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
+      { uid: input.userId, credits: filmCharged, ref: filmChargeRef },
     ).catch(() => {});
   }
 

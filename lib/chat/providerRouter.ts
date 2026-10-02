@@ -35,7 +35,7 @@ import { billableCreditCost, chargeRefusedResponse, insufficientCreditsResponse 
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
-import { deriveFilmTokenId, buildFilmSnapshot, putFilmStatus } from './filmStatusStore';
+import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -644,14 +644,19 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   // Best-effort + fail-open: a tracking write must never break the poll.
   const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
   try {
+    // ⚠️ FOLD, DON'T OVERWRITE: the snapshot knows the clips, not who paid or whether the master landed — a bare put here
+    // erased the free-film waiver and the finished master on the very next tick (see foldFilmSnapshot).
     await putFilmStatus(
-      buildFilmSnapshot({
-        tokenId: statusTokenId,
-        clips: clipStates.map((c) => ({ ordinal: c.ordinal, status: filmLegToClientStatus(c.status), url: c.url })),
-        audioStatus,
-        readyToStitch,
-        filmStatus,
-      }),
+      foldFilmSnapshot(
+        await getFilmStatus(statusTokenId),
+        buildFilmSnapshot({
+          tokenId: statusTokenId,
+          clips: clipStates.map((c) => ({ ordinal: c.ordinal, status: filmLegToClientStatus(c.status), url: c.url })),
+          audioStatus,
+          readyToStitch,
+          filmStatus,
+        }),
+      ),
     );
   } catch {
     /* fail-open — tracking is best-effort, the render is the source of truth */

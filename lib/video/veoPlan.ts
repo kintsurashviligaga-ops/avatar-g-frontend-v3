@@ -90,7 +90,7 @@ export function initialVeoPlan(overrides: Partial<Omit<VeoPlan, 'scenes'>> = {})
   const base: VeoPlan = {
     format: '9:16',
     lengthSec: 24,
-    tier: 'standard',
+    tier: 'fast', // the price anchor (lib/credits/videoPricing) — Standard is the 3.3× opt-in
     referenceMode: 'first_frame',
     nativeAudio: true,
     seedLock: true,

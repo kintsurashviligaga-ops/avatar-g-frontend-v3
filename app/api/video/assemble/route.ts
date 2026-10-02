@@ -39,7 +39,8 @@ import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { type QaReport } from '@/lib/orchestrator/masterQa';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
 import { deriveMarketingFromBrief } from '@/lib/pipeline/marketing-from-brief';
@@ -60,7 +61,11 @@ export const runtime = 'nodejs';
 // rejects it, fall back to 300 — the concurrent audio bed still recovers most of the gap.
 export const maxDuration = 600; // CPU FFmpeg stitch of a 30s master needs headroom (Pro/Fluid)
 
-const ASSEMBLE_COST = 20; // credits to stitch a composition
+// ⚠️ THERE IS NO FLAT STITCH PRICE ANY MORE. It was 20 credits whatever the film's length while every clip cost Veo money, so a
+// 48 s film took 20 credits against ~$5.76 of render. A film is now charged ONCE, when it STARTS (lib/chat/filmComposite →
+// recordFilmPaid), at the quote for its real length — and this route skips the charge when that payment is on record. What
+// is left here is the FALLBACK for a film with no payment on record (a token that expired, an in-flight film from before this
+// change, a direct API caller): the stitch is billed at the same quote, by the seconds of the clips it was handed, below.
 
 /** True when the brief reads as a music video — drives the branded lower-third. */
 function isMusicVideoBrief(brief: string | null | undefined): boolean {
@@ -251,6 +256,11 @@ async function assembleImpl(req: NextRequest) {
   if (segments.length < 1) {
     return NextResponse.json({ error: 'at least 1 ready segment required' }, { status: 400 });
   }
+  // The fallback stitch price: the film quote for the seconds actually handed over (lib/credits/videoPricing).
+  const assembleCost = videoCredits({
+    seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
+    mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
+  });
 
   // Anonymous trial renders are allowed. The expensive part — rendering the 5
   // clips — already runs for anonymous callers (dispatch is open), so gating ONLY
@@ -292,15 +302,15 @@ async function assembleImpl(req: NextRequest) {
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;
   if (billedTokenForCheck && uid) {
-    const prior = await getFilmStatus(billedTokenForCheck);
-    // ⚠️ TWO WAYS A FILM CAN ARRIVE ALREADY PAID FOR, AND BOTH ARE OWNER-BOUND + SINGLE-USE:
+    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
+    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
     //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
     //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
     //     Without honouring it, the free film would either consume a SECOND slot here or be charged
-    //     ASSEMBLE_COST (20 credits) — for a film the product told the user is free.
-    // Both markers live in the server-side status store, never in the client-held `film:` token.
-    const paidUpstream = !!prior?.masterUrl || prior?.freeFilmWaived === true;
-    filmAlreadyBilled = paidUpstream && prior?.payerUid === uid && prior?.billingConsumed !== true;
+    //     the stitch — for a film the product told the user is free.
+    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
+    // All markers live in the server-side store, never in the client-held `film:` token.
+    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid);
     // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
     if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
   }
@@ -481,12 +491,12 @@ async function assembleImpl(req: NextRequest) {
     // `${ref}:refund`: idempotent per attempt, and readable by refundDebitByRef.
     const scRef = `assemble-single:${idemKey}:${crypto.randomUUID()}`;
     if (!scSkipBilling && uid) {
-      scLock = await lockTokens(uid, ASSEMBLE_COST, 900);
+      scLock = await lockTokens(uid, assembleCost, 900);
       const freeFilm = await consumeFreeFilm(uid);
       if (typeof freeFilm === 'number' && freeFilm >= 0) {
         scFreeFilm = true; // first free film waives the charge (fail-safe: only when the DB confirms)
       } else {
-        const debit = await deductCredits(uid, ASSEMBLE_COST, scRef);
+        const debit = await deductCredits(uid, assembleCost, scRef);
         scDebited = debit.ok;
         // 'skipped' (ledger RPC absent) is the only non-fatal miss — charge best-effort like the saga.
         if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
@@ -580,7 +590,7 @@ async function assembleImpl(req: NextRequest) {
       // ⚠️ NOTHING CHANGED MEANS NOTHING TO CHARGE FOR. This used to commit the reservation
       // unconditionally, and every step above it is fail-open: the conform, the music mux, the
       // voiceover, the overlay, the captions. When they all missed, `master` was still `clipUrl` — the
-      // route handed back the caller's own file, byte for byte, and kept ASSEMBLE_COST (20 credits) for
+      // route handed back the caller's own file, byte for byte, and kept the stitch charge for
       // it. The log line beside this even computed `master !== clipUrl` to describe the outcome while
       // the billing ignored it.
       //
@@ -593,7 +603,7 @@ async function assembleImpl(req: NextRequest) {
       } else if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
-        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `${scRef}:refund`).catch(() => {});
+        else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
       }
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
@@ -606,7 +616,7 @@ async function assembleImpl(req: NextRequest) {
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
-        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `${scRef}:refund`).catch(() => {});
+        else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
       }
       await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});
@@ -718,7 +728,7 @@ async function assembleImpl(req: NextRequest) {
           return null;
         }
         if (uid === null) return null; // unreachable past skipBilling — narrows uid to string
-        const lock = await lockTokens(uid, ASSEMBLE_COST, 900);
+        const lock = await lockTokens(uid, assembleCost, 900);
         ctx.bag.lock = lock;
 
         // FOUNDER PROMO — the user's FIRST 30-second film is free. consume_free_film
@@ -733,7 +743,7 @@ async function assembleImpl(req: NextRequest) {
           return lock;
         }
 
-        const debit = await deductCredits(uid, ASSEMBLE_COST, `assemble:${ctx.sagaId}`);
+        const debit = await deductCredits(uid, assembleCost, `assemble:${ctx.sagaId}`);
         ctx.bag.debited = debit.ok;
         // Fail-fast on a real rejection so we never dispatch a paid render
         // the user can't afford or that the DB couldn't record. 'skipped'
@@ -746,7 +756,7 @@ async function assembleImpl(req: NextRequest) {
         // ⚠️ THIS MUST RUN BEFORE THE skipBilling EARLY RETURN — skipBilling is TRUE in exactly the case
         // that spent the waiver. consumeFilmBilling() burns the token's one-time billing skip up front so
         // a replay cannot reuse it, but nothing ever handed it back: a stitch that then failed left the
-        // marker spent, and the retry the user was invited to make was charged ASSEMBLE_COST (20 credits)
+        // marker spent, and the retry the user was invited to make was charged the stitch charge
         // for a film the product had told them was free. Returning it restores only the consumed flag —
         // the masterUrl / freeFilmWaived evidence of the upstream payment is untouched.
         if (filmAlreadyBilled && billedTokenForCheck) {
@@ -759,7 +769,7 @@ async function assembleImpl(req: NextRequest) {
         // broken render never silently burns the user's one free film. Only ONE
         // of these branches runs — a free render never also debited credits.
         if (ctx.bag.freeFilm) await restoreFreeFilm(uid);
-        else if (ctx.bag.debited) await refundCredits(uid, ASSEMBLE_COST, `assemble-rollback:${ctx.sagaId}`);
+        else if (ctx.bag.debited) await refundCredits(uid, assembleCost, `assemble-rollback:${ctx.sagaId}`);
       },
     },
     {

@@ -41,7 +41,9 @@ import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
-import { refundDebitByRef } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { videoCredits } from '@/lib/credits/videoPricing';
+import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
 
 const serviceManager = new ServiceManager();
 
@@ -137,26 +139,28 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   // is idempotent and concurrent users never collide on the same ref.
   const compositeId = `composite:${input.sessionId}:${Date.now()}`;
 
-  // ── Pre-flight: do we have enough balance? ─────────────────────────────
-  // For anonymous users (userId === 'anonymous'), skip the check — the
-  // existing per-action billing gate handles them downstream.
-  if (input.userId && input.userId !== 'anonymous') {
+  // ── Pre-flight + the ONE up-front charge ────────────────────────────────
+  // ⚠️ THIS PATH CHARGED NOTHING. Its three legs asked withTrace to debit through `debit_wallet_gel`, which does not exist on the
+  // production database — so a free-text chat message ("make a music video of…") bought lyrics, a song and a Veo clip for free.
+  // It is now charged once, up front, at the music-video quote for what it renders (one short clip + the song), the same
+  // function the studio's price button uses; the legs no longer debit (deduct: false), so nothing is charged twice if that
+  // function is ever created. Anonymous callers never get here (providerRouter refuses them first).
+  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
+  const mvRef = `${compositeId}:charge`;
+  let mvCharged = 0;
+  if (realUser && input.userId) {
+    const mvQuote = videoCredits({ seconds: 8, mode: 'musicvideo' });
     const balance = await readWalletBalanceGel(input.userId);
-    if (balance !== null && balance < forecast.totalRetailGel) {
-      return {
-        success: false,
-        intent: 'music_generation',
-        responseType: 'text',
-        message: `Insufficient balance for the music-video pipeline. Required: ${forecast.totalRetailGel.toFixed(2)} ₾. Current: ${balance.toFixed(2)} ₾.`,
-        metadata: {
-          provider: 'composite',
-          composite: true,
-          insufficientBalance: true,
-          requiredGel: forecast.totalRetailGel,
-          balanceGel: balance,
-        },
-      };
+    if (balance !== null && balance < mvQuote) {
+      return insufficientCreditsResponse('music_generation', mvQuote, input.locale);
     }
+    const debit = await deductCredits(input.userId, mvQuote, mvRef);
+    if (!debit.ok) {
+      return debit.reason === 'insufficient'
+        ? insufficientCreditsResponse('music_generation', mvQuote, input.locale)
+        : chargeRefusedResponse('music_generation', mvQuote, 'error', input.locale);
+    }
+    mvCharged = mvQuote;
   }
 
   const plan: CompositePlan = {
@@ -188,7 +192,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.lyrics.wholesale,
           costRetailGel: forecast.legs.lyrics.retail,
           metadata: { composite: true, leg: 'lyrics' },
-          deduct: true,
+          deduct: false, // the composite is charged once, up front (mvCharged) — never per leg
           deductRef: `${compositeId}:lyrics`,
         },
         () => generateWithGemini({ prompt: lyricsPrompt, tier: 'flash' }),
@@ -206,17 +210,6 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
-  // ⚠️ A LEG THAT RESOLVES WITH NOTHING HAS STILL BEEN CHARGED. withTrace issues its debit the moment the
-  // inner call RESOLVES — it never looks at what came back — so a provider that answers without a task
-  // reference bills the user and then returns null here. These flags record that a debit actually
-  // happened, so the refund below can tell three cases apart that all look like `null`:
-  //   · provider not configured  → the ternary never ran the traced call, nothing was charged
-  //   · the call THREW           → withTrace marks the trace failed and issues no debit
-  //   · the call RESOLVED EMPTY  → CHARGED, and nothing was produced ← the only one to refund
-  // Refunding on `null` alone would credit users who were never billed.
-  let musicDebited = false;
-  let videoDebited = false;
-
   // Music leg — Udio.
   const musicPromise: Promise<string | null> = hasUdioApiKey()
     ? withTrace(
@@ -229,7 +222,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.music.wholesale,
           costRetailGel: forecast.legs.music.retail,
           metadata: { composite: true, leg: 'music', style: baseStyle },
-          deduct: true,
+          deduct: false, // the composite is charged once, up front (mvCharged) — never per leg
           deductRef: `${compositeId}:music`,
         },
         // ⚠️ THE USER'S BRIEF WAS INTERPOLATED INTO AN ENGLISH SENTENCE IN WHATEVER ALPHABET THEY TYPED.
@@ -248,7 +241,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
             makeInstrumental: false,
           }),
       )
-        .then((r) => { musicDebited = true; return r.workId; })
+        .then((r) => r.workId)
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[composite] music leg failed:', err instanceof Error ? err.message : err);
@@ -274,7 +267,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           costWholesaleGel: forecast.legs.video.wholesale,
           costRetailGel: forecast.legs.video.retail,
           metadata: { composite: true, leg: 'video', style: baseStyle, durationSec: 30 },
-          deduct: true,
+          deduct: false, // the composite is charged once, up front (mvCharged) — never per leg
           deductRef: `${compositeId}:video`,
         },
         () =>
@@ -292,7 +285,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
           }),
         (r) => r.assetUrl || r.predictionId || null,
       )
-        .then((r) => { videoDebited = true; return r.predictionId || r.assetUrl || null; })
+        .then((r) => r.predictionId || r.assetUrl || null)
         .catch((err) => {
           // eslint-disable-next-line no-console
           console.warn('[composite] video leg failed:', err instanceof Error ? err.message : err);
@@ -302,29 +295,19 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
 
   const [musicWorkId, videoTaskRef] = await Promise.all([musicPromise, videoPromise]);
 
-  // ── Refund the legs that were billed and produced nothing ────────────────
-  //
-  // ⚠️ THIS FILE HAD NO REFUND OF ANY KIND. Both legs are debited by withTrace the instant their inner
-  // call resolves, and both then map the result down to `null` when no task reference came back — at
-  // which point the user is told the video was "skipped" and keeps paying for it. A music-video where
-  // the video leg answered empty charged for a clip that was never queued, every time.
-  //
-  // Server-authoritative and safe: the decision uses only what THIS request did — whether it issued a
-  // debit, and whether that call produced a reference. No client token, nothing to farm. The refs carry
-  // a `:refund` suffix and credit_wallet_gel is idempotent on its ref, so a retry cannot over-credit.
-  const realUser = Boolean(input.userId && input.userId !== 'anonymous');
-  if (realUser) {
-    const stranded: string[] = [];
-    if (musicDebited && !musicWorkId) stranded.push('music');
-    if (videoDebited && !videoTaskRef) stranded.push('video');
-    if (stranded.length) {
+  // ── Give back the share of the charge for a leg that produced nothing ───
+  // Decided from state THIS request owns — whether each leg came back with a task reference — never a client token (nothing
+  // to farm). The song and the clip are the two paid legs (lyrics are a cheap extra): neither delivered → the whole charge
+  // returns; one delivered → half (rounded down, never more than was taken). Idempotent on the composite's own refund ref.
+  if (realUser && input.userId && mvCharged > 0) {
+    const delivered = (musicWorkId ? 1 : 0) + (videoTaskRef ? 1 : 0);
+    const back = delivered === 0 ? mvCharged : delivered === 1 ? Math.floor(mvCharged / 2) : 0;
+    if (back > 0) {
       // eslint-disable-next-line no-console
-      console.warn(`[composite] refunding ${stranded.join('+')} leg(s) billed with no output for ${input.userId}`);
-      // Exactly what the ledger shows was taken under the leg's deductRef — never the GEL forecast, which
-      // credit_wallet_gel multiplies by 10 into credits (a refund that pays out more than was charged).
-      await Promise.all(
-        stranded.map((leg) => refundDebitByRef(input.userId as string, `${compositeId}:${leg}`).catch(() => null)),
-      );
+      console.warn(`[composite] refunding ${back}/${mvCharged} credits — ${2 - delivered} paid leg(s) produced nothing for ${input.userId}`);
+      const r = await refundCredits(input.userId, back, `${mvRef}:refund`).catch(() => null);
+      // eslint-disable-next-line no-console
+      if (!r?.ok) console.error(`[composite] REFUND FAILED ref=${mvRef}:refund user=${input.userId} amount=${back} — needs manual credit`);
     }
   }
 

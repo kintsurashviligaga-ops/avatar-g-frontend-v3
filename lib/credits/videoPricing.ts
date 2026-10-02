@@ -25,6 +25,16 @@ export const VIDEO_CREDITS_PER_SEC = 25 / 8;
 
 export type VideoQuality = 'lite' | 'fast' | 'standard';
 
+/**
+ * The Veo tier every PRICED film / clip renders on unless the caller picks another.
+ *
+ * ⚠️ THE ENGINE'S OWN DEFAULT (lib/veo/capabilities DEFAULT_TIER) IS STANDARD — $0.40/s, 3.3× Fast — and it stays that way for
+ * the engine's own callers and tests. But every PRICE in this file is anchored on Fast (25 credits per 8 s clip), so a priced
+ * request that fell through to the engine default sold a $3.20 render for ~$0.93. Priced call sites therefore pass THIS
+ * explicitly. Standard is one tap away ("Max quality") at the Standard multiplier.
+ */
+export const STUDIO_DEFAULT_VEO_TIER: VideoQuality = 'fast';
+
 /** Price ratio to Fast, from the published per-second rates (Standard 0.40 vs Fast 0.12; Lite 0.08 vs 0.12 → ~0.6). */
 export const VIDEO_QUALITY_MULT: Readonly<Record<VideoQuality, number>> = { lite: 0.6, fast: 1, standard: 3.3 };
 

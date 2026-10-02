@@ -149,6 +149,35 @@ export function buildFilmSnapshot(input: FilmSnapshotInput): FilmStatusRecord {
 }
 
 /**
+ * Lay a poll tick's snapshot over the record already stored for this film.
+ *
+ * ⚠️ THE POLL USED TO OVERWRITE THE WHOLE RECORD. providerRouter wrote `putFilmStatus(buildFilmSnapshot(...))` on every
+ * tick, and a snapshot carries none of the billing evidence — so the first poll after dispatch erased `freeFilmWaived` +
+ * `payerUid` (the free-film waiver /assemble honours), and any poll after the stitch erased `masterUrl` and demoted
+ * 'assembled' back to 'ready'. A free film then billed 20 credits at the stitch; a late tick hid the finished master.
+ * The snapshot owns the CLIP view (clips, audio, readiness); everything else is carried over from `prev`.
+ */
+export function foldFilmSnapshot(prev: FilmStatusRecord | null | undefined, snap: FilmStatusRecord): FilmStatusRecord {
+  if (!prev) return snap;
+  const masterUrl = snap.masterUrl ?? prev.masterUrl ?? null;
+  // A stitch in flight or done is never demoted by a slower poll; a snapshot that proves the master keeps 'assembled'.
+  const phase: FilmStatusPhase = masterUrl || prev.phase === 'assembled'
+    ? 'assembled'
+    : prev.phase === 'assembling' && snap.phase !== 'failed'
+      ? 'assembling'
+      : snap.phase;
+  return {
+    ...snap,
+    phase,
+    masterUrl,
+    qa: snap.qa ?? prev.qa ?? null,
+    ...(prev.payerUid !== undefined ? { payerUid: prev.payerUid } : {}),
+    ...(prev.billingConsumed !== undefined ? { billingConsumed: prev.billingConsumed } : {}),
+    ...(prev.freeFilmWaived ? { freeFilmWaived: true } : {}),
+  };
+}
+
+/**
  * Pure merge: stamp a finished master onto an existing record (or synthesize a
  * minimal one), promoting the phase to 'assembled'. Used by the assemble route
  * so a completed stitch is recoverable by any client.
@@ -254,9 +283,96 @@ export async function recordFreeFilmWaiver(tokenId: string, payerUid: string): P
   await putFilmStatus({ ...base, freeFilmWaived: true, payerUid, billingConsumed: false, updatedAt: Date.now() });
 }
 
+// ─── Up-front payment (its own key) ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * ⚠️ THE FILM'S PRICE IS TAKEN WHEN IT STARTS (lib/chat/filmComposite) — and /assemble must know, or it charges the stitch a
+ * second time. The evidence lives under ITS OWN KEY, not on the status record: the poll rewrites the status record every
+ * few seconds (foldFilmSnapshot carries the waiver fields over, but a read-modify-write race can still drop one), and losing
+ * THIS marker is a DOUBLE CHARGE. Same trust model as `freeFilmWaived`: server-written, never in the client-held `film:`
+ * token, owner-bound by `uid`, and spent once by /assemble.
+ */
+export interface FilmPaidRecord {
+  tokenId: string;
+  /** The payer — /assemble honours the marker only for this user. */
+  uid: string;
+  /** What was taken up front, in credits (the quote: lib/credits/videoPricing). */
+  credits: number;
+  /** The ledger ref of that charge, for support. */
+  ref: string;
+  /** True once the first assemble has used the marker. */
+  consumed: boolean;
+  at: number;
+}
+
+const PAID_PREFIX = 'film:paid:';
+const PAID_TTL_SEC = 6 * 60 * 60; // a long render + a retry window; the status record's 1 h is too short to carry a payment
+const paidMemory = new Map<string, FilmPaidRecord>();
+
+async function putFilmPaid(rec: FilmPaidRecord): Promise<void> {
+  paidMemory.set(rec.tokenId, rec);
+  const r = redis();
+  if (!r) return;
+  try {
+    await r.set(`${PAID_PREFIX}${rec.tokenId}`, JSON.stringify(rec), { ex: PAID_TTL_SEC });
+  } catch {
+    /* fail open — the in-memory copy answers reads from this instance */
+  }
+}
+
+/** The up-front payment marker for a film, or null. */
+export async function getFilmPaid(tokenId: string): Promise<FilmPaidRecord | null> {
+  const r = redis();
+  if (r) {
+    try {
+      const raw = await r.get(`${PAID_PREFIX}${tokenId}`);
+      if (raw) {
+        const parsed = typeof raw === 'string' ? (JSON.parse(raw) as FilmPaidRecord) : (raw as FilmPaidRecord);
+        if (parsed && typeof parsed === 'object' && parsed.tokenId === tokenId && typeof parsed.uid === 'string') {
+          paidMemory.set(tokenId, parsed);
+          return parsed;
+        }
+      }
+    } catch {
+      /* fall through to the in-memory copy */
+    }
+  }
+  return paidMemory.get(tokenId) ?? null;
+}
+
+/**
+ * Record that the film's whole price was taken up front. Fails open: a store miss means /assemble bills the stitch by the
+ * film's length — the safe direction (a double charge is a refund away; a free film is not).
+ */
+export async function recordFilmPaid(tokenId: string, paid: { uid: string; credits: number; ref: string }): Promise<void> {
+  await putFilmPaid({ tokenId, uid: paid.uid, credits: paid.credits, ref: paid.ref, consumed: false, at: Date.now() });
+}
+
+/**
+ * THE one predicate /api/video/assemble uses for "this film was already paid for upstream", from the status record AND the
+ * payment record: a master exists (a product ad / a re-stitch), the free-video slot covered it, or the whole price was taken
+ * at start — AND the caller is the payer, AND that waiver has not been spent. Extracted from the route so tests exercise
+ * the real thing.
+ */
+export function isFilmPaidUpstream(prior: FilmStatusRecord | null | undefined, paid: FilmPaidRecord | null | undefined, uid: string | null): boolean {
+  if (uid === null) return false;
+  const viaStatus = (!!prior?.masterUrl || prior?.freeFilmWaived === true) && prior?.payerUid === uid && prior?.billingConsumed !== true;
+  const viaPayment = !!paid && paid.uid === uid && paid.consumed !== true && paid.credits > 0;
+  return viaStatus || viaPayment;
+}
+
 /** Spend a token's ONE assemble-waiver (single-use billing skip). Idempotent; fails open. After
  *  this, getFilmStatus(...).billingConsumed === true, so the token can no longer waive a charge. */
 export async function consumeFilmBilling(tokenId: string): Promise<void> {
+  // ⚠️ THE UP-FRONT PAYMENT IS SPENT FIRST. The first assemble of a paid film uses it; the status record's waiver is left
+  // alone so, once that stitch stamps the master, a lip-sync / composite RE-STITCH (a second assemble of the same film) is
+  // waived once more — exactly what a film paid at the stitch always had. Spending the status flag here instead would bill
+  // every lip-synced music video twice.
+  const paid = await getFilmPaid(tokenId);
+  if (paid && paid.consumed !== true) {
+    await putFilmPaid({ ...paid, consumed: true });
+    return;
+  }
   const prev = await getFilmStatus(tokenId);
   if (!prev || prev.billingConsumed === true) return;
   await putFilmStatus({ ...prev, billingConsumed: true, updatedAt: Date.now() });
@@ -277,6 +393,13 @@ export async function consumeFilmBilling(tokenId: string): Promise<void> {
  */
 export async function restoreFilmBilling(tokenId: string): Promise<void> {
   const prev = await getFilmStatus(tokenId);
+  // The payment marker was spent by a FIRST assemble that never produced a master → hand it back. Once a master exists the
+  // marker's job is done, and a failed RE-STITCH hands back the status waiver below instead.
+  const paid = await getFilmPaid(tokenId);
+  if (paid?.consumed === true && !prev?.masterUrl) {
+    await putFilmPaid({ ...paid, consumed: false });
+    return;
+  }
   if (!prev || prev.billingConsumed !== true) return;
   await putFilmStatus({ ...prev, billingConsumed: false, updatedAt: Date.now() });
 }

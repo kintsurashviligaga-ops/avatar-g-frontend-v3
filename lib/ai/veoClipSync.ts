@@ -1,6 +1,7 @@
 import 'server-only';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
-import { costPerSecondUsd, DEFAULT_TIER, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
+import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
@@ -185,8 +186,8 @@ export async function renderVeoClipSync(args: VeoSyncArgs): Promise<VeoSyncResul
     ? Math.min(VEO_MAX_SEC, Math.max(VEO_MIN_SEC, Math.round(args.durationSec as number)))
     : VEO_MAX_SEC;
   const seconds = renderedSeconds(durationSec);
-  // The default tier is what the legacy client rendered (veo-3.1-generate-preview, GEMINI_VEO_MODEL honoured).
-  const model = resolveModel(transport, DEFAULT_TIER);
+  // The STUDIO default tier (Fast — the anchor of the clip's 25-credit price), not the engine's Standard ($0.40/s).
+  const model = resolveModel(transport, STUDIO_DEFAULT_VEO_TIER);
   const folder = (args.folder || 'veo').replace(/[^a-z0-9/_-]/gi, '');
   const negativePrompt = negativeFor(args.negativePrompt);
 
@@ -213,6 +214,8 @@ export async function renderVeoClipSync(args: VeoSyncArgs): Promise<VeoSyncResul
             ...(negativePrompt ? { negativePrompt } : {}),
             ...(args.startImage ? { startImage: { kind: 'url' as const, url: args.startImage } } : {}),
           },
+          // The tier the guard above PRICED — passed explicitly, or the engine renders its own default (Standard, 3.3× dearer).
+          tier: STUDIO_DEFAULT_VEO_TIER,
           sessionId: folder,
           ordinal: 0,
         }),

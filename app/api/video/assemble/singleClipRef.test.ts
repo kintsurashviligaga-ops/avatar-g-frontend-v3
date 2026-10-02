@@ -17,12 +17,12 @@ const src = readFileSync(join(__dirname, 'route.ts'), 'utf8');
 
 test('the charge ref carries a fresh UUID per attempt', () => {
   expect(src).toMatch(/const scRef = `assemble-single:\$\{idemKey\}:\$\{crypto\.randomUUID\(\)\}`;/);
-  expect(src).toMatch(/await deductCredits\(uid, ASSEMBLE_COST, scRef\)/);
-  expect(src).not.toMatch(/deductCredits\(uid, ASSEMBLE_COST, `assemble-single:\$\{idemKey\}`\)/);
+  expect(src).toMatch(/await deductCredits\(uid, assembleCost, scRef\)/);
+  expect(src).not.toMatch(/deductCredits\(uid, assembleCost, `assemble-single:\$\{idemKey\}`\)/);
 });
 
 test('every rollback refunds exactly that attempt’s ref, as `${ref}:refund`', () => {
-  const rollbacks = src.match(/refundCredits\(uid, ASSEMBLE_COST, `\$\{scRef\}:refund`\)/g) ?? [];
+  const rollbacks = src.match(/refundCredits\(uid, assembleCost, `\$\{scRef\}:refund`\)/g) ?? [];
   expect(rollbacks.length).toBe(2); // the "nothing produced" branch and the catch
   expect(src).not.toMatch(/assemble-single-rollback:/);
 });
