@@ -62,7 +62,7 @@ import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './Pers
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
-import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
+import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
@@ -245,13 +245,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
   const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  // Library opens IN-WINDOW in this slide-over. Legal (Privacy/Terms) no longer use
-  // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
-  // they paint in one frame instead of flashing an iframe-loaded page.
+  // Library opens IN-WINDOW in this slide-over. The legal documents open as their own pages in a new tab
+  // (lib/legal/links.ts) — the real localized text, never an iframe or a placeholder modal.
   const [sheet, setSheet] = useState<null | 'library'>(null);
   const router = useRouter();
   const pathname = usePathname();
-  const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   // Seeded from the SERVER-rendered session (dashboard page.tsx → ServiceHub → here) so the generation
   // gate on <html> is never published as '0' while the client-side getUser() round-trip is in flight —
   // that window made an ALREADY-SIGNED-IN user who tapped send get the sign-in modal. getUser() and
@@ -1196,6 +1194,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <InstallAppButton locale={lang} iconOnly />
             <LanguageSwitcher locale={locale} up />
           </div>
+          {/* The legal documents, on screen from the first visit: a guest can chat before signing anything, so the terms
+              that chat runs under are one tap away. A new tab — the studio keeps its jobs and its draft. */}
+          <nav aria-label={t.legal} data-testid="sidebar-legal" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pb-0.5">
+            {LEGAL_LINKS.map((doc) => (
+              <a key={doc.id} href={legalHref(lang, doc.id)} target="_blank" rel="noopener noreferrer"
+                className="tap-44 relative text-[11.5px] leading-4 text-app-muted underline-offset-2 transition-colors hover:text-app-text hover:underline">
+                {doc.short[lang]}
+              </a>
+            ))}
+          </nav>
         </div>
       </aside>
 
@@ -1377,11 +1385,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </div>
 
               <div className={settingsDivider} />
-              {/* SECTION 3 — ABOUT (instant legal modals · the support page: FAQ, the support chat, the email) */}
+              {/* SECTION 3 — ABOUT (the legal documents · the support page: FAQ, the support chat, the email).
+                  ⚠️ The documents themselves, in the visitor's language, in a new tab (the studio keeps its jobs and
+                  draft) — these rows used to open LegalModal, a four-line English placeholder dated June 2024. */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
               <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
-              <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
-              <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
+              <a href={legalHref(lang, 'privacy')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</a>
+              <a href={legalHref(lang, 'terms')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</a>
+              <a href={legalHref(lang, 'refund')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><Wallet className="h-[18px] w-[18px] text-app-muted" /> {legalDoc('refund').title[lang]}</a>
               <a href={`/${lang}/support`} onClick={() => setMenuOpen(false)} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
               {authed && (
                 <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
@@ -1402,8 +1413,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
         onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
       />
-      {/* Instant Privacy / Terms modals — pure client, no iframe/network (FIX 1). */}
-      <LegalModal kind={legalOpen} onClose={() => setLegalOpen(null)} />
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
@@ -1452,7 +1461,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {authed && !welcomed && (
         <WelcomeOnboarding locale={locale} balanceGel={balanceGel} onComplete={() => setWelcomed(true)} />
       )}
-      {/* Library-only sheet now — Privacy/Terms moved to the instant LegalModal above. */}
+      {/* Library-only sheet — the legal documents open as pages (lib/legal/links.ts). */}
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} onClose={() => setSheet(null)} /> : null}
       </StudioSheet>
