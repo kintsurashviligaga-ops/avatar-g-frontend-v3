@@ -117,6 +117,13 @@ import { useDictation } from '@/components/chat/composer/useDictation';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
+// The Image tool's Create screen (Higgsfield grammar): a view over the state below. Its option lists and price live in lib/studio/imageCreate.
+import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
+import { ImageDesk } from '@/components/studio/create/ImageDesk';
+import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
+import { useCreditsBalance } from '@/store/useCreditsBalance';
+import { type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
+import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -673,22 +680,7 @@ function parseRemixScenes(text: string, total: number): number[] {
 }
 
 // ── Per-service options (real backend capabilities) ──────────────────────────
-/**
- * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist —
- * it forwards `body.aspectRatio` straight through — and the FLUX 1.1 Pro fallback accepts eleven
- * (FLUX_ASPECTS, lib/ai/fluxImage.ts:16). The four added here are the ones people actually ask for and
- * could not select: 4:5 is the Instagram feed ratio, 3:4 the standard portrait print, 5:4 its landscape
- * counterpart, and 21:9 cinemascope. Every one already rendered correctly end to end; nothing but this
- * list stood between the user and them.
- *
- * Ordered by how often they are wanted, not numerically, because the strip wraps and the first row is
- * what most people will ever read.
- */
-const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
-type ImgAspect = (typeof IMG_ASPECTS)[number];
-const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
-type ImgQuality = (typeof IMG_QUALITIES)[number][0];
-const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
+// The Image tool's ratios, sizes and styles (and why there are ten ratios) live in lib/studio/imageCreate, next to its price.
 // Curated style set for the redesigned Music panel (Section A). Each entry maps a
 // user-facing label (per locale) to a genre value the score engine understands.
 const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru: string }]> = [
@@ -2044,7 +2036,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // is the server's auto-detect — the two never-set useStates that used to sit here (language, tier) are gone.
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
-  const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
+  // The Create screen's prompt box (the panel hands focus to it, e.g. "edit this image") and the balance its Generate button
+  // checks — the SAME number the header chip shows (store/useCreditsBalance; ChatChrome keeps it fresh after every spend).
+  const imgPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const creditsBalance = useCreditsBalance((s) => s.balance);
   // PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script + pick a duration; the storyboard route
   // decomposes it into N identity-anchored scenes, then "Export to Video Studio" bridges the whole grid.
   const [imgBoardOpen, setImgBoardOpen] = useState(false);
@@ -2603,6 +2598,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
+    // ⚠️ The Image tool's Create screen hides this box on a phone (its prompt lives in the sheet). A hidden box measures 0 px,
+    // and that would stay as its inline height when the box comes back in another tool — so nothing is measured while it
+    // is hidden, and a mode change (what hides it) measures again.
+    if (el.offsetParent === null) { el.style.height = ''; return; }
     el.style.height = 'auto';
     // ⚠️ An EMPTY box keeps its one-line CSS height: Chrome counts a WRAPPED placeholder in scrollHeight, so sizing an
     // empty box from it grew the phone composer to two lines around nothing (83 px pill, placeholder off the controls).
@@ -2610,7 +2609,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!input) setComposerWrapped(false);
     // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
     else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
-  }, [input]);
+  }, [input, mode]);
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
   // Not new state: derived from what the studio already has — the mode, the video tab (cinema · product ·
@@ -2645,7 +2644,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
-    if (id === 'product' || id === 'swap' || id === 'remix' || id === 'motion') setOptionsOpen(true);
+    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer.
+    if (id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image') setOptionsOpen(true);
   }, [setMode, setPanelService]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -4145,7 +4145,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setMode('image');
     setAttachments([{ dataUrl: url, mimeType: 'image/png' }]);
     setLightbox(null);
-    setTimeout(() => { try { taRef.current?.focus(); } catch { /* noop */ } }, 60);
+    setOptionsOpen(true); // the Create screen holds the prompt (a desktop reveals its panel instead)
+    setTimeout(() => { try { (imgPromptRef.current ?? taRef.current)?.focus(); } catch { /* noop */ } }, 60);
   }, []);
 
   // ×2 / ×4 image batch: generate N variations of the SAME prompt in parallel into
@@ -7023,10 +7024,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
             : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
               : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
+  // The Image tool has its own Create screen (components/studio/create): its header IS the tool switcher, so the generic card is not drawn.
+  const imageCreate = activeTool === 'image';
+  // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
+  // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
+  // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
+  const imageDesk = imageCreate && isDesktop;
+  const imageDeskResults = imageDesk ? deriveImageResults(messages, { busy }) : [];
+  const sameMsg = (m: Msg) => (pm: Msg) => (m.id ? pm.id === m.id : pm === m);
+  const imageDeskActions: ImageResultActions | null = imageDesk ? {
+    open: setLightbox,
+    download: (u) => void dl(u, 'myavatar-image.png'),
+    share: (u) => void share(u, 'myavatar-image.png'),
+    upscale: (u) => void upscale(u),
+    reroll: (i) => { const spec = messages[i]?.regen; if (spec) void regenerate(spec); },
+    edit: startImageEdit,
+    toVideo: sendImageToVideo,
+    renderSave: (u, p) => saveLibButton(u, 'image', p || undefined),
+    renderEditor: (u) => editButton(u, 'image'),
+    cancel: (i) => { const m = messages[i]; if (m) cancelBubbleJob(m); },
+    cancelJob: cancelQueueJob,
+    retryTile: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, 1); },
+    rerollBatch: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, b.tiles.length); },
+    dismiss: (i, tile) => {
+      const m = messages[i];
+      if (!m) return;
+      if (tile === undefined) setMessages((prev) => prev.filter((pm) => !sameMsg(m)(pm)));
+      else setMessages((prev) => prev.map((pm) => (sameMsg(m)(pm) && pm.batch ? { ...pm, batch: { ...pm.batch, tiles: pm.batch.tiles.filter((_, j) => j !== tile) } } : pm)));
+    },
+    topUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
+  } : null;
   const settingsBody = (
     <div className="space-y-3">
       {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
-      <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+      {!imageCreate && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
         className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
@@ -7034,91 +7065,47 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           <span className="mt-0.5 block truncate text-[12px] text-app-muted">{toolSub(activeTool, locale)}</span>
         </span>
         <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
-      </button>
-        {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
+      </button>}
+        {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
+            queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
+            slotted into its Advanced section below, unchanged. */}
         {mode === 'image' && (
-          <div className="mb-2 space-y-2">
-            {/* START HERE — sets aspect, quality and style together. Quality is the field users
-                understand least ("1K / 2K / 4K" says nothing about what it is FOR) and the one where a
-                wrong guess costs the most render time; a preset answers it from the use case instead.
-                `count` is deliberately NOT part of any preset: it fans out into N separately billed
-                requests, and a chip that quadruples a bill is not a chip. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <TemplateGallery
-                testId="image-templates"
-                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-                items={IMAGE_TEMPLATES.map((tp) => ({
-                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                  thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
-                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-                }))}
-                activeId={activeImagePreset}
-                onPick={applyImagePreset}
-              />
-            </div>
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
-              {/* WRAPS rather than scrolls. A horizontal scroller was survivable at six ratios; at ten it
-                  hides four of them behind the edge with no affordance that they exist, on exactly the
-                  narrow screens where discoverability matters most. Two rows on a phone, one on desktop. */}
-              <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1.5 pb-1">
-                {IMG_ASPECTS.map((a) => {
-                  const [aw, ah] = a.split(':').map(Number) as [number, number];
-                  const max = 26;
-                  const bw = aw >= ah ? max : Math.round((max * aw) / ah);
-                  const bh = ah >= aw ? max : Math.round((max * ah) / aw);
-                  const on = imgAspect === a;
-                  return (
-                    <button key={a} type="button" onClick={() => setImgAspect(a)} aria-label={a} className="flex min-h-[44px] min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 transition active:scale-95 touch-manipulation">
-                      <span className="flex h-7 w-7 items-center justify-center">
-                        <span className={`block rounded-[2px] border-2 transition-colors ${on ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: bw, height: bh }} />
-                      </span>
-                      <span className={`text-[10px] font-medium ${on ? 'text-app-accent' : 'text-app-muted'}`}>{a}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Count' : locale === 'ru' ? 'Количество' : 'რაოდენობა'}</span>
-                <div className="flex gap-1.5">
-                  {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
-                </div>
-              </div>
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
-              {/* Horizontal-scroll strip (13 styles) — one calm row instead of a 4-5 row wrap wall.
-                  Chips are shrink-0 so they scroll; matches the music Style + aspect strips. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-            {/* P7 — Negative prompt (expandable) */}
-            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
-                style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
-                <span className="inline-flex items-center gap-1.5">{locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
-                <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {imgNegativeOpen && (
-                <textarea
-                  value={imgNegative}
-                  onChange={(e) => setImgNegative(e.target.value)}
-                  placeholder={locale === 'en' ? 'What to avoid in the image…' : locale === 'ru' ? 'Что исключить из изображения…' : 'რა ავიცილოთ სურათში…'}
-                  rows={2}
-                  className="mt-2 w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none placeholder:text-app-muted/60 focus:border-app-accent/50"
-                />
-              )}
-            </div>
-            {/* PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script → N identity-anchored scenes → Video */}
+          <ImageCreatePanel
+            locale={locale}
+            desktop={isDesktop}
+            onOpenTools={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+            {...(isDesktop ? {} : { onClose: () => setOptionsOpen(false) })}
+            references={attachments.filter((a) => isImage(a.mimeType)).map((a) => ({ src: a.dataUrl, ...(a.name ? { name: a.name } : {}) }))}
+            // ONE reference: the route reads a single `referenceImage`, so a new pick REPLACES the picture in the tray.
+            onAddReference={(files) => { setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType))); void ingestFiles(files, { scriptInVideo: false }); }}
+            onRemoveReference={(i) => setAttachments((prev) => { let k = -1; return prev.filter((a) => !(isImage(a.mimeType) && ++k === i)); })}
+            foreignFileCount={attachments.filter((a) => !isImage(a.mimeType)).length}
+            onClearForeignFiles={() => setAttachments((prev) => prev.filter((a) => isImage(a.mimeType)))}
+            prompt={input}
+            onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
+            promptRef={imgPromptRef}
+            onEnhance={() => void magicEnhance()}
+            enhancing={enhancing}
+            onMic={() => void toggleMic()}
+            micState={recording ? 'recording' : transcribing ? 'transcribing' : 'idle'}
+            templates={IMAGE_TEMPLATES.map((tp) => ({
+              id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+              thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
+              adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
+            }))}
+            activeTemplate={activeImagePreset}
+            onPickTemplate={applyImagePreset}
+            aspect={imgAspect} onAspect={setImgAspect}
+            quality={imgQuality} onQuality={setImgQuality}
+            count={imgCount} onCount={setImgCount}
+            style={imgStyle} onStyle={setImgStyle} styleLabel={(s) => styleLabel(s, locale)}
+            negative={imgNegative} onNegative={setImgNegative}
+            advancedExtraDirty={!!imgBoardScript.trim()}
+            balance={creditsBalance}
+            onGenerate={runTool}
+            // The one top-up the studio has: ChatChrome owns CreditsModal and opens it on this event.
+            onTopUp={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
+            advancedExtra={(
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
                 style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
@@ -7183,7 +7170,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               )}
             </div>
-          </div>
+            )}
+          />
         )}
 
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
@@ -8443,9 +8431,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {messages.length === 0 ? (
+        {imageDesk ? null : messages.length === 0 ? (
           <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -8471,9 +8459,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           </div>
         ) : messageList}
       </div>
+      {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
+          one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
+          keyboard re-pin all keep a node to talk to, and the thread is never mounted twice. */}
+      {imageDesk && imageDeskActions && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
+          <ImageDesk
+            locale={locale}
+            results={imageDeskResults}
+            notice={latestNotice(messages, imageDeskResults)}
+            aspect={imgAspect}
+            quality={imgQuality}
+            onQuality={setImgQuality}
+            elapsedSec={elapsed}
+            capSecFor={imgTargetFor}
+            actions={imageDeskActions}
+            busy={busy}
+            upscaling={upscaling}
+            conversation={messageList}
+            messageCount={messages.length}
+          />
+        </div>
+      )}
 
       {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && messages.length > 0 && (
+      {showJump && !imageDesk && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom()}
@@ -8755,7 +8765,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             placeholder={composerPlaceholder}
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
-              : 'max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60'}
+              // Not drawn in the Image tool below `lg`: its prompt IS the Create screen's prompt card (same `input`), and the
+              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's.
+              : `${imageCreate && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
@@ -9169,6 +9181,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
+        {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
+            hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
+        {!(imageCreate && !isDesktop) && (
         <div className={isDesktop
           ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
           : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
@@ -9178,6 +9193,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <X size={17} aria-hidden="true" />
           </button>
         </div>
+        )}
         <div className={isDesktop
           ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin]'
           : 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>
