@@ -72,7 +72,7 @@ export function PanelCard({
  * it and hear WHY ("soon"), and it carries no handler at all — pressing it does nothing, by construction.
  */
 export function RoundButton({
-  icon, label, onClick, tone = 'soft', busy = false, locked = false, lockedNote, disabled = false, testId, pressed, expanded, haspopup,
+  icon, label, onClick, tone = 'soft', busy = false, locked = false, lockedNote, disabled = false, testId, pressed, expanded, haspopup, className,
 }: {
   icon: ReactNode;
   label: string;
@@ -87,6 +87,7 @@ export function RoundButton({
   pressed?: boolean;
   expanded?: boolean;
   haspopup?: 'dialog' | 'menu' | 'listbox';
+  className?: string;
 }) {
   const inert = locked || disabled || busy;
   return (
@@ -108,6 +109,7 @@ export function RoundButton({
           ? 'bg-app-text text-app-bg hover:opacity-90 active:scale-95'
           : 'bg-app-bg/50 text-app-muted ring-1 ring-app-border/10 hover:text-app-text active:scale-95',
         (locked || disabled) && 'cursor-not-allowed opacity-45 hover:opacity-45 active:scale-100',
+        className,
       )}
     >
       {busy ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : icon}

@@ -617,10 +617,12 @@ export function CardSelect<T extends string>({
  * Both are opt-in: without them the markup is exactly what it was.
  */
 export function Slider({
-  icon, label, min, max, value, step = 1, suffix = '%', onChange, hint, ends, disabled, stacked = false, ticks, accentThumb = false,
+  icon, label, labelAfter, min, max, value, step = 1, suffix = '%', onChange, hint, ends, disabled, stacked = false, ticks, accentThumb = false,
 }: {
   icon?: ReactNode;
   label: string;
+  /** Something that belongs right after the label text — the (i) of a Create-screen option. */
+  labelAfter?: ReactNode;
   min: number;
   max: number;
   value: number;
@@ -668,7 +670,7 @@ export function Slider({
     return (
       <div className="min-w-0">
         <div className="flex min-w-0 items-baseline justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-app-text">{icon}<span className="min-w-0 break-words">{label}</span></span>
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium text-app-text">{icon}<span className="min-w-0 break-words">{label}</span>{labelAfter}</span>
           <span className="shrink-0 text-[11px] tabular-nums text-app-muted">{shown}</span>
         </div>
         {input}
@@ -679,7 +681,7 @@ export function Slider({
   }
   const row = (
     <div className="flex items-center gap-3">
-      <span className="flex w-20 shrink-0 items-center gap-1.5 text-[11.5px] leading-tight text-app-text/80 sm:w-24">{icon}<span className="min-w-0 break-words">{label}</span></span>
+      <span className="flex w-20 shrink-0 items-center gap-1.5 text-[11.5px] leading-tight text-app-text/80 sm:w-24">{icon}<span className="min-w-0 break-words">{label}</span>{labelAfter}</span>
       {input}
       <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-app-muted">{shown}</span>
     </div>

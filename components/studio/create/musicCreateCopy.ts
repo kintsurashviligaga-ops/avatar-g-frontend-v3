@@ -22,6 +22,8 @@ export interface MusicCreateCopy {
   signInToCreate: string;
   engine: string;
   engineSheetTitle: string;
+  /** A reference track fixes the engine: "A reference file runs on its own engine: MusicGen · cover". */
+  engineFixed: (name: string) => string;
   // + Audio | + Voice
   addAudio: string;
   addVoice: string;
@@ -57,6 +59,7 @@ export interface MusicCreateCopy {
   expandLyrics: string;
   expandStyles: string;
   done: string;
+  close: string;
   collapse: string;
   // styles card
   styles: string;
@@ -92,6 +95,8 @@ export interface MusicCreateCopy {
   native: string;
   length: string;
   lengthFull: string;
+  /** Under the length chips while a cover is attached (the route bills it as a flat 30 s). */
+  lengthFixed: string;
   tempo: string;
   templates: string;
   // create bar
@@ -124,6 +129,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'შედი შესაქმნელად',
     engine: 'ძრავა',
     engineSheetTitle: 'მუსიკის ძრავა',
+    engineFixed: (n) => `რეფერენს-ფაილი საკუთარ ძრავას იყენებს: ${n}`,
     addAudio: '+ აუდიო',
     addVoice: '+ ხმა',
     soon: 'მალე',
@@ -157,6 +163,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     expandLyrics: 'ლირიკა',
     expandStyles: 'სტილები',
     done: 'მზადაა',
+    close: 'დახურვა',
     collapse: 'ჩაკეცვა',
     styles: 'სტილები',
     stylesPlaceholder: 'აღწერე, როგორ უნდა ჟღერდეს შენი სიმღერა',
@@ -188,6 +195,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     native: 'სლაიდერები ამ ძრავაზე რეალურ პარამეტრებად გადადის.',
     length: 'ხანგრძლივობა',
     lengthFull: 'სრული სიმღერა',
+    lengthFixed: 'ქავერი ყოველთვის 30 წმ-ია',
     tempo: 'ტემპი',
     templates: 'შაბლონები',
     create: 'შექმნა',
@@ -215,6 +223,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'Sign in to create',
     engine: 'Engine',
     engineSheetTitle: 'Music engine',
+    engineFixed: (n) => `A reference file runs on its own engine: ${n}`,
     addAudio: '+ Audio',
     addVoice: '+ Voice',
     soon: 'Soon',
@@ -248,6 +257,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     expandLyrics: 'Lyrics',
     expandStyles: 'Styles',
     done: 'Done',
+    close: 'Close',
     collapse: 'Collapse',
     styles: 'Styles',
     stylesPlaceholder: 'Describe what you want your song to sound like',
@@ -279,6 +289,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     native: 'On this engine the sliders are real engine parameters.',
     length: 'Length',
     lengthFull: 'Full song',
+    lengthFixed: 'A cover is always 30 s',
     tempo: 'Tempo',
     templates: 'Templates',
     create: 'Create',
@@ -306,6 +317,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     signInToCreate: 'Войдите, чтобы создавать',
     engine: 'Движок',
     engineSheetTitle: 'Музыкальный движок',
+    engineFixed: (n) => `Референс-файл идёт через свой движок: ${n}`,
     addAudio: '+ Аудио',
     addVoice: '+ Голос',
     soon: 'Скоро',
@@ -339,6 +351,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     expandLyrics: 'Текст',
     expandStyles: 'Стили',
     done: 'Готово',
+    close: 'Закрыть',
     collapse: 'Свернуть',
     styles: 'Стили',
     stylesPlaceholder: 'Опишите, как должна звучать ваша песня',
@@ -370,6 +383,7 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
     native: 'На этом движке ползунки — реальные параметры движка.',
     length: 'Длина',
     lengthFull: 'Полная песня',
+    lengthFixed: 'Кавер всегда 30 с',
     tempo: 'Темп',
     templates: 'Шаблоны',
     create: 'Создать',
@@ -391,3 +405,14 @@ export const MUSIC_CREATE_COPY: Readonly<Record<CreateLang, MusicCreateCopy>> = 
 };
 
 export const musicCreateCopy = (locale: string): MusicCreateCopy => MUSIC_CREATE_COPY[createLang(locale)];
+
+export type MusicTempo = 'slow' | 'medium' | 'fast';
+export const MUSIC_TEMPOS: readonly MusicTempo[] = ['slow', 'medium', 'fast'];
+
+const TEMPO_NAMES: Readonly<Record<CreateLang, Record<MusicTempo, string>>> = {
+  ka: { slow: 'ნელი', medium: 'საშუალო', fast: 'სწრაფი' },
+  en: { slow: 'Slow', medium: 'Medium', fast: 'Fast' },
+  ru: { slow: 'Медленно', medium: 'Средне', fast: 'Быстро' },
+};
+
+export const tempoName = (locale: string, t: MusicTempo): string => TEMPO_NAMES[createLang(locale)][t];

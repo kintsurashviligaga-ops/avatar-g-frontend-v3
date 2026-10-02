@@ -108,10 +108,12 @@ import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
-import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
-import { Slider } from './ui/controls';
-import { StyleChips } from './ui/StyleChips';
-import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
+import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
+import { MusicCreatePanel } from './create/MusicCreatePanel';
+import { MusicCentrePane } from './create/MusicCentrePane';
+import type { MusicTrack } from './create/MusicResult';
+import { musicEngineField } from '@/lib/studio/musicEnginePref';
+import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
@@ -2131,8 +2133,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // and a toggle to sing with it instead of a one-shot upload.
   const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
   const [useMyVoice, setUseMyVoice] = useState(false);
-  // Auto-write lyrics from a theme (removes the "I don't have lyrics" friction).
-  const [writingLyrics, setWritingLyrics] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
   // 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait. The render pipeline
@@ -2701,6 +2701,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (activeTool === 'chat') return;
     if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
   }, [isDesktop, activeTool]);
+  // The Music tool's Create screen IS its settings: choosing the tool (a deep link, the + sheet, the sidebar) opens them on a
+  // phone. An effect on the derived tool, not a line in selectTool: on a `?tool=music` deep link selectTool runs inside the
+  // mount effects, and a StrictMode re-run of the chat-only effect below (still holding the first render's chatOnly = true)
+  // would close a sheet opened there in the same pass. This one fires once the tool HAS changed, after that settles.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the TOOL changes; a viewport change must not re-open it
+  useEffect(() => { if (activeTool === 'music' && !isDesktop) setOptionsOpen(true); }, [activeTool]);
   useEffect(() => { if (mode === 'surgical' || mode === 'photo') setOptionsOpen(false); }, [mode]);
   // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
   // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
@@ -4471,6 +4477,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // `styles` is the list the route reads (lib/ai/musicControls); `style` is the same line, for anything older.
             prompt: m.prompt, style: m.genre, styles: stylesFromLine(m.genre), durationSec: m.duration, tempo: m.tempo, jobId,
             weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,
+            ...musicEngineField(), // the model pill's pick (lib/studio/musicEnginePref); Auto sends nothing
             ...(templateId ? { templateId } : {}),
             ...(m.useTrained ? { useMyVoice: true } : {}),
             instrumental: (m.useTrained || isVoiceClone) ? false : m.instrumental,
@@ -6349,25 +6356,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     );
   }, [openInEditor, locale]);
 
-  // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
-  const writeLyrics = useCallback(async () => {
-    if (writingLyrics) return;
-    // Theme priority: the Music panel's own Prompt (Section C) → the shared composer input →
-    // any lyrics already typed → the genre. The panel's prompt is the field the user actually
-    // fills, so a "✨ Write lyrics" tap writes ABOUT their song, not a generic genre stub.
-    const theme = input.trim() || musicLyrics.trim() || musicGenre;
-    setWritingLyrics(true);
-    try {
-      const r = await fetch('/api/ai/lyrics', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme, language: locale, style: musicGenre }),
-      });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; lyrics?: string };
-      if (j.success && j.lyrics) setMusicLyrics(j.lyrics);
-    } catch { /* fail-soft */ }
-    setWritingLyrics(false);
-  }, [writingLyrics, input, musicLyrics, musicGenre, locale]);
-
   // ⬆ Upscale a generated image to HD (Real-ESRGAN) → a fresh image bubble.
   const upscale = useCallback(async (url: string) => {
     if (upscaling) return;
@@ -7086,9 +7074,42 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
             : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
               : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
+  // ── The Music tool's latest track, its attached audio and its action row — read by the Create sheet (phone) and the
+  // desktop centre pane. The action row mirrors the feed bubble's: download · share · re-roll · save · edit · music video.
+  const lastMusic = mode === 'music' ? [...messages].reverse().find((m) => m.audioUrl) : undefined;
+  const musicAudioAtt = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType)) : undefined;
+  const musicTrack: MusicTrack | null = lastMusic?.audioUrl
+    ? { url: lastMusic.audioUrl, coverUrl: lastMusic.coverUrl, engine: lastMusic.engine, note: musicControlsNote(lastMusic.musicControlsMode, lastMusic.regen?.kind === 'music' ? lastMusic.regen : undefined, locale) }
+    : null;
+  const musicActionBtn = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40';
+  const musicActions = lastMusic?.audioUrl ? (
+    <>
+      <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90">
+        <Download size={16} />
+      </button>
+      <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share} className={musicActionBtn}>
+        <Share2 size={16} />
+      </button>
+      {lastMusic.regen && (
+        <button type="button" onClick={() => void regenerate(lastMusic.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate} className={musicActionBtn}>
+          <RotateCcw size={16} />
+        </button>
+      )}
+      {saveLibButton(lastMusic.audioUrl, 'music', lastMusic.regen?.kind === 'music' ? lastMusic.regen.prompt : undefined)}
+      {editButton(lastMusic.audioUrl, 'audio')}
+      {/* Cross-service bridge — turn this track into a music video. */}
+      <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, lastMusic.regen?.kind === 'music' ? (lastMusic.regen.prompt || 'Generated Track') : 'Generated Track')}
+        title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
+        className={musicActionBtn}>
+        <Clapperboard size={16} aria-hidden="true" />
+      </button>
+    </>
+  ) : null;
   const settingsBody = (
     <div className="space-y-3">
       {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
+      {mode !== 'music' && (
       <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
         className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
@@ -7098,6 +7119,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         </span>
         <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
       </button>
+      )}
         {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
         {mode === 'image' && (
           <div className="mb-2 space-y-2">
@@ -7997,20 +8019,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           </div>
         )}
 
-        {/* ── Music panel · 5 clean sections (A Style · B Duration+Tempo · C Prompt · D Generate · E Result) ── */}
+        {/* ── Music · the Create screen (components/studio/create/MusicCreatePanel) — ref2's elements in ref2's order. A view
+             only: every value is OmniStudio's own state and Create runs `send()`, the same path as the composer's Send. ── */}
         {mode === 'music' && (() => {
-          const lastMusic = [...messages].reverse().find((m) => m.audioUrl);
-          // A voice SAMPLE (recorded or uploaded) rides `attachments` as an audio entry — its
-          // presence flips the panel into cover/clone territory and enables Generate with no prompt.
-          const hasVoiceSample = attachments.some((a) => isAudio(a.mimeType));
-          const tempos = [
-            ['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'],
-            ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'],
-            ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი'],
-          ] as const;
-          // PHASE 31 — apply a preset in one tap: write the full parameter set. The active pill is
-          // DERIVED from live state (below), so there is no "clear on manual edit" bookkeeping —
-          // editing any dial simply stops matching.
+          // A preset writes the whole parameter set in one tap; the lit card is DERIVED from the live values (activeMusicPreset).
           const applyMusicPreset = (id: string) => {
             const p = musicTemplateValues(id);
             if (!p) return;
@@ -8023,198 +8035,48 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // A tap is the only thing that makes a card's descriptor ride on the request (hooks/usePickedTemplate).
             pickMusicTemplate(id);
           };
-          // A chip is active when every core dial matches; instrumental presets exclude vocal from
-          // the match (gender is hidden/moot for a bed), so their highlight stays stable.
-          const activePresetId = activeMusicPreset;
-          // Fine-tune accordion badge — a glanceable 3-part summary of the collapsed dials, e.g.
-          // "30s · Medium · ♀" (song) or "Full · Slow · 🎹" (instrumental; gender is moot so the
-          // vocal glyph becomes 🎹, keeping a stable shape). Locale-aware.
-          const durBadge = musicDuration === 0
-            ? (locale === 'en' ? 'Full' : locale === 'ru' ? 'Полная' : 'სრული')
-            : `${musicDuration}${locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}`;
-          const tempoBadge = tempos.find(([v]) => v === musicTempo)?.[1] ?? musicTempo;
-          // The granular controls' copy (ka/en/ru): the singer's four stops, the sliders and their „approximate" hint.
-          const mc = musicControlsCopy(locale);
-          const vocalBadge = musicInstrumental ? mc.instrumentalShort : mc.vocalShort[musicVoiceType];
-          // …plus only the sliders someone moved ("Weirdness 80"), so an untouched panel's badge reads as before.
-          const fineTuneBadge = [durBadge, tempoBadge, vocalBadge, ...sliderBadgeParts(musicSliders, locale)].join(' · ');
           return (
-          <div className="mb-2 space-y-4">
-            {/* ✨ Presets — one-tap vibe row (horizontal scroll). Sets every dial at once; the active
-                pill is derived from the live parameter state. Above Style so most users tap a vibe
-                and never need to open Fine-tune. */}
-            <TemplateGallery
-              testId="music-templates"
-              label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-              items={MUSIC_TEMPLATES.map((tp) => ({
-                id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                thumb: tp.thumb, palette: tp.palette, Icon: Music2,
-                meta: tp.hint[templateLang(locale)],
-                adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-              }))}
-              activeId={activePresetId}
-              onPick={applyMusicPreset}
+            <MusicCreatePanel
+              locale={locale}
+              isDesktop={isDesktop}
+              guest={guest}
+              styleText={input}
+              onStyleText={(v) => { dictation.markTyped(); setInput(v); }}
+              lyrics={musicLyrics}
+              onLyrics={setMusicLyrics}
+              instrumental={musicInstrumental}
+              onInstrumental={setMusicInstrumental}
+              styles={musicStyles}
+              onStyles={setMusicStyles}
+              styleOptions={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
+              vocal={musicVoiceType}
+              onVocal={setMusicVoiceType}
+              sliders={musicSliders}
+              onSliders={setMusicSliders}
+              duration={musicDuration}
+              onDuration={setMusicDuration}
+              tempo={musicTempo}
+              onTempo={setMusicTempo}
+              templates={{
+                items: MUSIC_TEMPLATES.map((tp) => ({
+                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                  thumb: tp.thumb, palette: tp.palette, Icon: Music2,
+                  meta: tp.hint[templateLang(locale)],
+                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
+                })),
+                activeId: activeMusicPreset,
+                onPick: applyMusicPreset,
+              }}
+              audio={musicAudioAtt ? { name: musicAudioAtt.name ?? null } : null}
+              audioMode={musicAudioMode}
+              onAudioMode={setMusicAudioMode}
+              onPickAudio={() => voiceFileRef.current?.click()}
+              onClearAudio={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}
+              recording={{ active: voiceRecording, sec: voiceRecSec, start: () => void startVoiceRecording(), stop: stopVoiceRecording }}
+              trainedVoice={{ available: hasTrainedVoice, on: useMyVoice, onChange: setUseMyVoice }}
+              onCreate={(prompt) => { void send({ promptOverride: prompt }); }}
+              result={{ track: musicTrack, actions: musicActions, label: t.modeMusic }}
             />
-
-            {/* A — Style: up to three, in the order picked (the engines read them as one line, the first leading). */}
-            <StyleChips
-              testId="music-styles"
-              label={mc.styles}
-              options={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
-              value={musicStyles}
-              onChange={setMusicStyles}
-            />
-
-            {/* Track type (Lyrics | Instrumental) — kept PRIMARY: it gates whether the Lyrics /
-                Your-voice / Vocal subtrees render below, so hiding it would hide the cause of those
-                sections appearing and disappearing. */}
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.trackType}</span>
-              <div className="flex gap-1.5">
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{mc.lyrics}</Chip>
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{mc.instrumental}</Chip>
-              </div>
-            </div>
-
-            {/* ⚙️ Fine-tune — the set-once dials (Duration · Tempo · Vocal · Weirdness · Style influence) folded behind one collapsed
-                Section so the default panel stays calm. Every preset already writes these, so most users
-                never open it; the badge surfaces the live values. The Vocal sub-row renders only for a
-                sung track (the same !instrumental gate as before). */}
-            <Section title={<>{locale === 'en' ? 'Fine-tune' : locale === 'ru' ? 'Настройка' : 'დახვეწა'}</>} badge={fineTuneBadge}>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
-                      {/* FIX 2 — full song: duration 0 (billed at the 90s tier; see musicDuration). */}
-                      <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>{locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
-                    </div>
-                  </div>
-                </div>
-                {/* Vocal gender — only meaningful for a sung track. Auto / Female / Male / Duet (decision A-e). */}
-              {!musicInstrumental && (
-                <div>
-                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.vocal}</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {VOCAL_GENDERS.map((id) => (
-                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{mc.vocalGender[id]}</Chip>
-                    ))}
-                  </div>
-                </div>
-              )}
-                {/* Weirdness (Variety merged in — decision A-d) and Style influence. Labelled approximate, because on
-                    Lyria and ElevenLabs they can only add a sentence to the brief (lib/ai/musicControls). Stacked: the
-                    settings column is 300px on desktop. */}
-                <div className="space-y-2" data-testid="music-sliders">
-                  <Slider stacked label={mc.weirdness} min={0} max={100} suffix="" value={musicSliders.weirdness}
-                    onChange={(v) => setMusicSliders((s) => ({ ...s, weirdness: v }))} ends={mc.weirdnessEnds} />
-                  <Slider stacked label={mc.styleInfluence} min={0} max={100} suffix="" value={musicSliders.styleInfluence}
-                    onChange={(v) => setMusicSliders((s) => ({ ...s, styleInfluence: v }))} ends={mc.styleInfluenceEnds} hint={mc.approximate} />
-                </div>
-            </div>
-            </Section>
-
-            {/* B3 — Lyrics (song only): type your own words OR one-tap ✨ AI writer.
-                Empty = the model auto-writes lyrics from the prompt. Threaded to /api/ai/music
-                as `lyrics` via send()→runMusicJob (vocal / cover / clone / trained paths). */}
-            {!musicInstrumental && (
-              <div>
-                <span className="mb-1.5 flex items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
-                  <span>{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
-                  <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics}
-                    className="inline-flex shrink-0 items-center gap-1 min-h-[44px] rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
-                    {writingLyrics ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t.writeLyricsBtn}
-                  </button>
-                </span>
-                <textarea
-                  value={musicLyrics}
-                  onChange={(e) => setMusicLyrics(e.target.value.slice(0, 1200))}
-                  maxLength={1200}
-                  rows={3}
-                  placeholder={t.lyricsPlaceholder}
-                  className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-                />
-              </div>
-            )}
-
-            {/* B4 — Your voice (song only): record or upload a ≥15s sample → the song is sung
-                in YOUR cloned voice (music-01). A sample can instead be used as a COVER source
-                (remix its melody) via the cover/voice switch. With a completed TRAINED RVC model,
-                a toggle sings in your faithful trained voice (overrides the one-shot clone). The
-                attached sample renders as a removable chip in the composer tray above. */}
-            {!musicInstrumental && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="block text-[12.5px] font-semibold text-app-text">{t.voiceSecTitle}</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {/* Record (toggle) — live seconds while capturing; ≥15s hint until enough. */}
-                  {voiceRecording ? (
-                    <button type="button" onClick={stopVoiceRecording}
-                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-300 transition-colors hover:bg-red-500/20">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
-                      {voiceRecSec}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'} · {locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'}{voiceRecSec < 15 ? ` (${t.need15})` : ''}
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => void startVoiceRecording()}
-                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                      <Mic size={13} /> {t.voiceRec}
-                    </button>
-                  )}
-                  {/* Upload a voice file (mp3/wav/m4a, ≤50MB). */}
-                  <button type="button" onClick={() => voiceFileRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                    <Upload size={13} /> {t.voiceUp}
-                  </button>
-                  {/* Trained RVC toggle — ONLY when a completed trained model exists (probed on mount). */}
-                  {hasTrainedVoice && (
-                    <Chip active={useMyVoice} onClick={() => setUseMyVoice((v) => !v)}>{t.voiceMode}</Chip>
-                  )}
-                </div>
-                {/* With a sample attached (and NOT overridden by the trained toggle): pick how it's used. */}
-                {hasVoiceSample && !(useMyVoice && hasTrainedVoice) && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip active={musicAudioMode === 'voice'} onClick={() => setMusicAudioMode('voice')}>{t.voiceMode}</Chip>
-                    <Chip active={musicAudioMode === 'cover'} onClick={() => setMusicAudioMode('cover')}>{t.coverMode}</Chip>
-                  </div>
-                )}
-                <span className="block text-[11px] leading-relaxed text-app-muted/70">
-                  {(useMyVoice && hasTrainedVoice) || hasVoiceSample ? t.voiceReady : t.voiceRecHint}
-                </span>
-              </div>
-            )}
-
-            {/* E — Result (hidden until a track exists): audio player + download/share */}
-            {lastMusic?.audioUrl && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
-                {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
-                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} note={musicControlsNote(lastMusic.musicControlsMode, lastMusic.regen?.kind === 'music' ? lastMusic.regen : undefined, locale)} />
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                    <Download size={16} />
-                  </button>
-                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                    <Share2 size={16} />
-                  </button>
-                  {saveLibButton(lastMusic.audioUrl, 'music')}
-                  {/* Cross-service bridge — turn this track into a music video. The 🎤 IS the icon. */}
-                  <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')}
-                    title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-text transition-colors hover:bg-app-elevated sm:h-9 sm:w-9">
-                    <Clapperboard size={16} aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
           );
         })()}
 
@@ -8364,6 +8226,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
+  // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
+  // cards, failures, top-up buttons — continues under them.
+  const musicPane = isDesktop && mode === 'music' ? (
+    <MusicCentrePane
+      locale={locale}
+      track={musicTrack}
+      actions={musicActions}
+      label={t.modeMusic}
+      instrumental={musicInstrumental}
+      reference={musicAudioAtt && !(hasTrainedVoice && useMyVoice && !musicInstrumental) ? musicAudioMode : null}
+    />
+  ) : null;
   // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
   // Desktop only: Gemini's PHONE composer is two rows (the text full width on top, the controls under it) — squeezing
   // „+“, mic and Live beside the text left a ~180 px box that wrapped even the placeholder.
@@ -8529,7 +8403,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }}
         className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-[54px]' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {messages.length === 0 ? (
+        {musicPane}
+        {messages.length === 0 && !musicPane ? (
           <div className={`relative flex flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'mt-auto w-full pb-7 pt-6' : 'min-h-full py-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
@@ -8831,7 +8706,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             placeholder={composerPlaceholder}
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
-              : 'max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60'}
+              : `${mode === 'music' && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
