@@ -7094,7 +7094,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
   // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
   const imageDesk = imageCreate && isDesktop;
-  const imageDeskResults = imageDesk ? deriveImageResults(messages) : [];
+  const imageDeskResults = imageDesk ? deriveImageResults(messages, { busy }) : [];
   const sameMsg = (m: Msg) => (pm: Msg) => (m.id ? pm.id === m.id : pm === m);
   const imageDeskActions: ImageResultActions | null = imageDesk ? {
     open: setLightbox,

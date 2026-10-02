@@ -240,16 +240,42 @@ test.describe('phone 375×812 — ref3', () => {
     await page.getByTestId('chip-quality').click();
     await page.getByRole('dialog', { name: 'Quality' }).getByRole('radio', { name: /4K/ }).click();
     await page.getByTestId('advanced-toggle').click();
+    await page.getByRole('group', { name: 'Style' }).getByRole('button', { name: 'Anime' }).click();
     await page.getByTestId('create-negative').fill('blurry, watermark');
     await page.getByTestId('create-prompt').fill('A lighthouse on a cliff at sunset');
     await page.getByTestId('create-generate').click();
 
     await expect(page.getByTestId('image-create-panel')).toBeHidden(); // the studio closes the sheet on a send
     await expect.poll(() => calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '9:16', quality: 'ultra', negativePrompt: 'blurry, watermark' });
+    expect(calls[0]).toMatchObject({ prompt: 'A lighthouse on a cliff at sunset', aspectRatio: '9:16', quality: 'ultra', style: 'Anime', negativePrompt: 'blurry, watermark' });
     expect(calls[0]!.referenceImage).toBeUndefined();
     await expect(page.locator('img[alt="Generated image"]').first()).toBeVisible({ timeout: 20_000 });
     await shot(page, 'phone-result');
+  });
+
+  test('a PICKED card travels with the request; editing a value it set forgets it (a lit card is not a picked card)', async ({ page }) => {
+    const calls: ImageRequest[] = [];
+    await mockImageRoute(page, calls);
+    await openImage(page);
+    await pretendSignedIn(page);
+
+    await page.getByTestId('templates-toggle').click();
+    await page.getByTestId('image-templates').locator('[data-template="poster"]').click();
+    await expect(page.getByTestId('chip-aspect')).toHaveText('3:4');
+    await page.getByTestId('create-prompt').fill('A knight before a burning castle');
+    await page.getByTestId('create-generate').click();
+    await expect.poll(() => calls.length).toBe(1);
+    expect(calls[0]).toMatchObject({ templateId: 'poster', aspectRatio: '3:4', quality: 'high', style: 'Cinematic' });
+
+    // The sheet closed on send. Back in, one value the card set is changed: the card is no longer what the controls say.
+    await page.getByTestId('options-toggle').click();
+    await page.getByTestId('chip-aspect').click();
+    await page.getByRole('dialog', { name: 'Aspect ratio' }).getByRole('radio').filter({ hasText: '1:1' }).click();
+    await page.getByTestId('create-prompt').fill('A knight before a burning castle, wide');
+    await page.getByTestId('create-generate').click();
+    await expect.poll(() => calls.length).toBe(2);
+    expect(calls[1]!.templateId).toBeUndefined();
+    expect(calls[1]).toMatchObject({ aspectRatio: '1:1' });
   });
 
   test('an empty prompt is not sent: Generate focuses the prompt and says why', async ({ page }) => {

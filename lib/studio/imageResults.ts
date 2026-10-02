@@ -65,8 +65,15 @@ const specOf = (m: ImageMsgLike): { aspect: string; quality: string } => ({
   quality: (m.regen?.kind === 'image' ? m.regen.quality : undefined) ?? m.batch?.spec.quality ?? DEFAULT_QUALITY,
 });
 
-/** Every image result in the thread, oldest first. */
-export function deriveImageResults(messages: readonly ImageMsgLike[]): ImageResultView[] {
+/**
+ * Every image result in the thread, oldest first.
+ *
+ * `busy` is the studio's foreground-render flag. It matters for ONE bubble: a re-roll (`regenerate`) pushes an EMPTY assistant
+ * bubble and fills it when the picture lands — no `genKind`, no job, nothing to tell it from any other empty bubble except that
+ * it is the last message and the studio is busy. While that holds it is a result in flight, so the pane shows progress instead of
+ * the picture being re-rolled sitting there as if nothing had been asked.
+ */
+export function deriveImageResults(messages: readonly ImageMsgLike[], opts: { busy?: boolean } = {}): ImageResultView[] {
   const out: ImageResultView[] = [];
   messages.forEach((m, index) => {
     if (m.role !== 'assistant') return;
@@ -82,6 +89,13 @@ export function deriveImageResults(messages: readonly ImageMsgLike[]): ImageResu
       } else {
         out.push({ ...base, state: 'rendering', ...(m.jobId ? { jobId: m.jobId } : {}), stage: m.text });
       }
+    } else if (opts.busy && index === messages.length - 1 && !m.genKind && m.text === '' && !m.regen) {
+      // The re-roll's placeholder: it has no spec of its own, so it inherits the shape and prompt of the picture before it.
+      const prev = [...out].reverse().find((r) => r.state === 'ready' || r.state === 'batch');
+      out.push({
+        key: m.id ?? `m${index}`, index, aspect: prev?.aspect ?? DEFAULT_ASPECT, quality: prev?.quality ?? DEFAULT_QUALITY, prompt: prev?.prompt ?? '',
+        state: 'rendering', stage: '',
+      });
     }
   });
   return out;

@@ -46,6 +46,28 @@ describe('deriveImageResults — the Result pane reads the thread', () => {
     expect(out.map((r) => [r.key, r.state])).toEqual([['a', 'ready'], ['b', 'rendering']]);
   });
 
+  test('a re-roll in flight: the empty last bubble, while the studio is busy, is a result in flight that inherits the shape of the picture before it', () => {
+    const msgs: ImageMsgLike[] = [
+      { role: 'user', text: 'a red fox' },
+      { role: 'assistant', text: '', id: 'img1', imageUrl: 'u', regen: spec },
+      { role: 'assistant', text: '' }, // regenerate()'s placeholder
+    ];
+    const idle = deriveImageResults(msgs);
+    expect(idle.map((r) => r.state)).toEqual(['ready']); // not busy: just an empty bubble
+    const busy = deriveImageResults(msgs, { busy: true });
+    expect(busy.map((r) => r.state)).toEqual(['ready', 'rendering']);
+    expect(busy[1]).toMatchObject({ index: 2, aspect: '4:5', quality: 'ultra', prompt: 'a red fox' });
+  });
+
+  test('…but not any empty bubble: only the LAST one, only without a spec / job kind, and never over a chat reply', () => {
+    const busy = { busy: true };
+    expect(deriveImageResults([{ role: 'assistant', text: '' }, { role: 'assistant', text: 'hello' }], busy)).toEqual([]); // not last
+    expect(deriveImageResults([{ role: 'assistant', text: '', genKind: 'music' }], busy)).toEqual([]);
+    expect(deriveImageResults([{ role: 'assistant', text: 'typing…' }], busy)).toEqual([]);
+    // With no earlier picture it falls back to the defaults.
+    expect(deriveImageResults([{ role: 'assistant', text: '' }], busy)[0]).toMatchObject({ state: 'rendering', aspect: '1:1', quality: 'high' });
+  });
+
   test('a 3D reference picture, a cover and a poster are NOT image results', () => {
     expect(deriveImageResults([
       { role: 'assistant', text: 'model', glbUrl: 'x.glb', imageUrl: 'ref.png' },

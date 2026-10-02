@@ -123,7 +123,7 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
 
   test('the Result pane + Models & prices stand where the thread would, fed by the same messages and handlers', () => {
     expect(src).toMatch(/const imageDesk = imageCreate && isDesktop;/);
-    expect(src).toMatch(/const imageDeskResults = imageDesk \? deriveImageResults\(messages\) : \[\];/);
+    expect(src).toMatch(/const imageDeskResults = imageDesk \? deriveImageResults\(messages, \{ busy \}\) : \[\];/);
     expect(src).toMatch(/\{imageDesk && imageDeskActions && \(\s*<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">\s*<ImageDesk/);
     for (const handler of ['regenerate(spec)', 'cancelBubbleJob(m)', 'runImageBatch(b.spec', 'startImageEdit', 'sendImageToVideo', "saveLibButton(u, 'image'", "editButton(u, 'image')", 'void upscale(u)', "dl(u, 'myavatar-image.png')"]) {
       expect(src).toContain(handler);
