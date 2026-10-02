@@ -202,3 +202,27 @@ export function newBogOrderId(kind: 'topup' | 'plan'): string {
 export function isBogOrderId(id: unknown): id is string {
   return typeof id === 'string' && /^myavatar-(topup|plan|renew)-[a-z0-9-]{8,64}$/.test(id);
 }
+
+/**
+ * Is migration 20261002a in this database? Probed once per instance (5 min cache, 30 s after a miss) by reading a
+ * column only it adds. Gates the "Pay with Bank of Georgia" offer: credentials set before the migration would
+ * otherwise show a button whose every checkout fails (safely — no order row, no order — but visibly).
+ */
+let schemaProbe: { at: number; ready: boolean } | null = null;
+export async function bogSchemaReady(db: Db, now: number = Date.now()): Promise<boolean> {
+  if (schemaProbe && now - schemaProbe.at < (schemaProbe.ready ? 300_000 : 30_000)) return schemaProbe.ready;
+  let ready = false;
+  try {
+    const { error } = await db.from('bog_orders').select('kind').limit(1);
+    ready = !error;
+  } catch {
+    ready = false;
+  }
+  schemaProbe = { at: now, ready };
+  return ready;
+}
+
+/** Test hook. */
+export function resetBogSchemaProbe(): void {
+  schemaProbe = null;
+}

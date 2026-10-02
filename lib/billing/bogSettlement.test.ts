@@ -222,3 +222,23 @@ describe('ids + callback url', () => {
     if (app !== undefined) process.env.NEXT_PUBLIC_APP_URL = app;
   });
 });
+
+describe('bogSchemaReady', () => {
+  const { bogSchemaReady, resetBogSchemaProbe } = jest.requireActual('./bogSettlement') as typeof import('./bogSettlement');
+  const probeDb = (error: unknown) => {
+    const select = jest.fn(() => ({ limit: async () => ({ data: [], error }) }));
+    return { db: { from: () => ({ select }) } as never, select };
+  };
+
+  test('ready only when the migration’s column is readable; a miss is re-probed after 30 s, a hit cached 5 min', async () => {
+    resetBogSchemaProbe();
+    const missing = probeDb({ message: 'column bog_orders.kind does not exist' });
+    expect(await bogSchemaReady(missing.db, 0)).toBe(false);
+    expect(await bogSchemaReady(missing.db, 10_000)).toBe(false);
+    expect(missing.select).toHaveBeenCalledTimes(1);
+    const present = probeDb(null);
+    expect(await bogSchemaReady(present.db, 40_000)).toBe(true);
+    expect(await bogSchemaReady(present.db, 200_000)).toBe(true);
+    expect(present.select).toHaveBeenCalledTimes(1);
+  });
+});
