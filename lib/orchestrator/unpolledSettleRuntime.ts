@@ -25,14 +25,14 @@ const MODEL3D_BUCKET = 'renders';
 const model3dPath = (predictionId: string) => `models3d/${predictionId}.glb`;
 
 /** Download a finished provider video and store it as a 7-day signed object. null on any miss (retried next tick). */
-async function rehostVideo(url: string, path: string): Promise<string | null> {
+async function rehostVideo(url: string, path: string, bucket = 'uploads'): Promise<string | null> {
   if (!/^https:\/\//i.test(url)) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
     if (!r.ok) return null;
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.byteLength < 1024 || buf.byteLength > MAX_VIDEO_BYTES) return null;
-    return await uploadBufferAndSign('uploads', path, buf, 'video/mp4', WEEK_SEC);
+    return await uploadBufferAndSign(bucket, path, buf, 'video/mp4', WEEK_SEC);
   } catch {
     return null;
   }
@@ -83,7 +83,8 @@ async function deliverSettle(row: SettleRow, rec: SettleRecord, url: string): Pr
       return recordCompletedFilm({ id: row.id, userId, url: hosted, orientation: 'vertical', subtype: rec.kind });
     }
     case 'motion': {
-      const hosted = await rehostVideo(url, `motion-control/${userId}/${stamp}.mp4`);
+      // Same bucket + prefix the motion /status route re-hosts into.
+      const hosted = await rehostVideo(url, `motion-control/${userId}/${stamp}.mp4`, 'renders');
       if (!hosted) return false;
       return recordCompletedAsset({ id: row.id, userId, serviceType: 'film', url: hosted, source: 'motion-control', subtype: 'motion' });
     }
