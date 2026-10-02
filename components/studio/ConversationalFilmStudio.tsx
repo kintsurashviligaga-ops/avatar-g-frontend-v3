@@ -67,6 +67,7 @@ import {
   type FilmQaSummary,
 } from '@/lib/chat/filmStudioClient';
 import { looksLikeFilmEdit } from '@/lib/chat/remixPlanner';
+import { describeGenerationFailure } from './ui/serviceError';
 import { composeMusicVideoPrompt, MV_GENRES, MV_SHOTS, MV_CAMERA_MOVES, MV_LIGHTING } from '@/lib/chat/musicVideoPresets';
 import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioStages';
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
@@ -1028,10 +1029,13 @@ export function ConversationalFilmStudio({
             ...(progress?.matrix?.clipSec ? { clipSec: progress.matrix.clipSec } : {}),
           }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string | null; restitch?: string; message?: string };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string | null; restitch?: string; message?: string; refunded?: boolean };
         if (j?.success && typeof j.masterUrl === 'string' && j.masterUrl) {
           setMasterUrl(j.masterUrl);
           pushMessage('system', j.restitch ?? tx('Edit applied.', 'ცვლილება გამოყენებულია.', 'Правка применена.'));
+        } else if (j?.refunded === true) {
+          // The route refunded the reservation (and said so) — one polite notice, in the user's language.
+          pushMessage('system', describeGenerationFailure(j, locale, tx('Couldn’t apply that edit — the film is unchanged.', 'ვერ მოვახერხე ცვლილება — ფილმი უცვლელია.', 'Не удалось применить правку — фильм без изменений.')));
         } else {
           pushMessage('system', j?.message ?? tx('Couldn’t apply that edit — the film is unchanged.', 'ვერ მოვახერხე ცვლილება — ფილმი უცვლელია.', 'Не удалось применить правку — фильм без изменений.'));
         }

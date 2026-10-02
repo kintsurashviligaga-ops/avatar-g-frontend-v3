@@ -3755,7 +3755,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips, ...(clipSec ? { clipSec } : {}) }),
       });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string; refunded?: boolean };
       const url = j.success ? (j.masterUrl || j.url || null) : null;
       setMessages((prev) => {
         const next = [...prev];
@@ -3763,7 +3763,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (last && last.role === 'assistant') {
           next[next.length - 1] = url
             ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt, ...(clipSec ? { filmClipSec: clipSec } : {}) }
-            : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
+            // A failed re-cut whose reservation the route confirmed refunded reads as the one refund notice.
+            : { role: 'assistant', text: `⚠️ ${j.refunded === true ? describeGenerationFailure(j, locale, t.videoFailed) : (j.message || t.videoFailed)}` };
         }
         return next;
       });
@@ -3777,7 +3778,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setRemixBusyIdx(null);
     }
-  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed]);
+  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed, locale]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
