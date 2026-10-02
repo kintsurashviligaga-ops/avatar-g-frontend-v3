@@ -40,7 +40,7 @@ import { templateThumb } from '@/lib/studio/templateThumbs';
  * which would force a 384 px file onto a 130 px desktop card.
  */
 export const TEMPLATE_CARD_SIZES = '(min-width: 1280px) 150px, (min-width: 1024px) 130px, (min-width: 640px) 205px, calc(50vw - 16px)';
-/** Two columns: the first row is on screen whenever a gallery mounts (each sits at the top of its panel). */
+/** Two columns: the first row is within the first screen of its panel whenever a gallery mounts (checked at 375 px). */
 const FIRST_ROW = 2;
 
 export interface TemplateCardItem {
@@ -104,7 +104,7 @@ export function TemplateGallery({
           const description = t.adds ? `${t.hint}. ${t.adds}` : t.hint;
           const pic = templateThumb(t.thumb);
           // The gallery never renders on the first paint (it mounts when a tool's settings open), but when it does its
-          // first row IS the top of the panel — the one place `priority` (eager + fetchpriority=high) earns its keep.
+          // first row is on that first screen — the one place `priority` (eager + fetchpriority=high) earns its keep.
           const firstRow = i < FIRST_ROW;
           return (
             <motion.button
