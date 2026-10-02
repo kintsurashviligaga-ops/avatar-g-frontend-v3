@@ -45,6 +45,7 @@ jest.mock('../../../../../lib/services/resolveUpload', () => ({ resolveUploadRef
 jest.mock('../../../../../lib/orchestrator/jobs', () => ({
   createJob: jest.fn(async () => true),
   failJob: jest.fn(async () => undefined),
+  recordJobSettle: jest.fn(async () => true),
 }));
 jest.mock('../../../../../lib/orchestrator/ledger', () => ({
   deductCredits: jest.fn(async () => ({ ok: true, balance: 95 })),
@@ -60,7 +61,7 @@ import { resolveUploadRef } from '../../../../../lib/services/resolveUpload';
 import { submitReconstruction } from '../../../../../lib/services/model3d/replicate3dClient';
 import { generateImagenImages } from '../../../../../lib/ai/geminiImagen';
 import { guardedCall, BudgetExceededError } from '../../../../../lib/services/billing/guardedCall';
-import { createJob, failJob } from '../../../../../lib/orchestrator/jobs';
+import { createJob, failJob, recordJobSettle } from '../../../../../lib/orchestrator/jobs';
 import { deductCredits, refundDebitByRef } from '../../../../../lib/orchestrator/ledger';
 import { creditCostFor } from '../../../../../lib/credits/pricing';
 import { verifyModel3dCharge } from '../../../../../lib/services/model3d/chargeToken';
@@ -238,5 +239,23 @@ describe('sign-in', () => {
     expect(res.status).toBe(401);
     expect(deduct).not.toHaveBeenCalled();
     expect(submit).not.toHaveBeenCalled();
+  });
+});
+
+describe('an unpolled job is still settled — `_settle`, stamped after a charged submit', () => {
+  it('records what the cron needs to ask Replicate and refund through the ledger: the prediction, the ref, the cap', async () => {
+    const j = await (await POST(post(IMAGE))).json();
+    expect(recordJobSettle).toHaveBeenCalledTimes(1);
+    expect(recordJobSettle).toHaveBeenCalledWith(j.jobId, {
+      _settle: { v: 1, kind: 'model3d', job: 'pred123', ref: `model3d:charge:${j.jobId}`, credits: creditCostFor('model3d') },
+    });
+  });
+
+  it('nothing is stamped when nothing was charged (skipped), nor when the submit failed', async () => {
+    deduct.mockResolvedValueOnce({ ok: false, reason: 'skipped' });
+    await POST(post(IMAGE));
+    submit.mockResolvedValueOnce({ ok: false, error: 'replicate_http_500: boom', retryable: true });
+    await POST(post(IMAGE));
+    expect(recordJobSettle).not.toHaveBeenCalled();
   });
 });

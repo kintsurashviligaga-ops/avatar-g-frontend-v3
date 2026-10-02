@@ -20,6 +20,8 @@ import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
 import { reportError } from '@/lib/observability/report-error';
 import { opsMarker } from '@/lib/observability/reliability';
+import { isSettleOwned, settleUnpolled, unpolledSettleEnabled, type SettleReport } from '@/lib/orchestrator/unpolledSettle';
+import { createSettleDeps } from '@/lib/orchestrator/unpolledSettleRuntime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,10 +36,35 @@ function authorized(req: NextRequest): boolean {
   return req.headers.get('authorization') === `Bearer ${secret}` || req.headers.get('x-cron-token') === secret;
 }
 
+/**
+ * LEG 1 — SETTLE PAID ASYNC JOBS NOBODY POLLED (lib/orchestrator/unpolledSettle). Avatar, Motion Control and 3D
+ * reserve at submit and leave the refund-on-failure and the delivery-on-success to the browser's own poll; close the
+ * tab and neither ever happened. Each such job files `params._settle`, and this leg asks the PROVIDER for the verdict:
+ * deliver a success, refund a failure through the ledger (idempotent with the poll routes' own refund), refund+fail a
+ * job still unfinished after 3 h. Verdict-based, so it cannot kill a live render — it runs by default (kill switch
+ * UNPOLLED_SETTLE=0), independently of the age-based reap below, which stays behind RENDER_DRAINER_ENABLED.
+ */
+async function settleLeg(): Promise<SettleReport | null> {
+  if (!unpolledSettleEnabled()) return null;
+  try {
+    const deps = createSettleDeps();
+    if (!deps) return null;
+    // Bounded well inside the cron's 60 s ceiling, leaving the reap leg its own time.
+    const report = await settleUnpolled(deps, { limit: 10, budgetMs: 35_000 });
+    if (report.errors > 0) opsMarker('warn', 'unpolled_settle', { ...report });
+    else if (report.refunded > 0 || report.delivered > 0) opsMarker('info', 'unpolled_settle', { ...report });
+    return report;
+  } catch (e) {
+    reportError(e, { route: '/api/cron/drain-renders', leg: 'unpolled_settle' });
+    return null;
+  }
+}
+
 async function handle(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  // INERT unless explicitly opted in — a mis-timed claim can never kill a live render on main.
-  if (!drainerEnabled()) return NextResponse.json({ ok: true, enabled: false, drained: 0 });
+  const settle = await settleLeg();
+  // The REAP leg is INERT unless explicitly opted in — a mis-timed claim can never kill a live render on main.
+  if (!drainerEnabled()) return NextResponse.json({ ok: true, enabled: false, drained: 0, settle });
 
   let reaped = 0;
   let refunded = 0;
@@ -52,7 +79,9 @@ async function handle(req: NextRequest) {
       .order('updated_at', { ascending: true })
       .limit(MAX_REAP_PER_TICK);
     // Double-guard: the SQL filter AND the pure invariant must both agree a row is abandoned.
-    const reapable = selectReapable((data ?? []) as DrainJobRow[], Date.now());
+    // ⚠️ A `_settle` row belongs to leg 1. Failing it here on age alone would end a job whose provider may still be
+    // working — and the settle leg only reads LIVE rows, so its refund (or delivery) could then never happen.
+    const reapable = selectReapable((data ?? []) as DrainJobRow[], Date.now()).filter((j) => !isSettleOwned(j));
     for (const j of reapable) {
       // Refund the up-front reservation FIRST — while the row is still `processing`. If failJob landed
       // first and the refund then failed, the next tick could no longer re-reap (status → failed) and the
@@ -84,7 +113,7 @@ async function handle(req: NextRequest) {
     reportError(e, { route: '/api/cron/drain-renders', reaped, refunded });
     opsMarker('error', 'render_drainer_failure', { reaped, refunded, error: e instanceof Error ? e.message : String(e) });
   }
-  return NextResponse.json({ ok: true, enabled: true, drained: reaped, refunded });
+  return NextResponse.json({ ok: true, enabled: true, drained: reaped, refunded, settle });
 }
 
 export async function GET(req: NextRequest) { return handle(req); }

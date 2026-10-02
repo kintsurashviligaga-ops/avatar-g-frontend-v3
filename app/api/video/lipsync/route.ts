@@ -28,8 +28,9 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
 import { randomUUID } from 'crypto';
-import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { createJob, failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { reportError } from '@/lib/observability/report-error';
+import { settleParams } from '@/lib/orchestrator/unpolledSettle';
 
 // Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
 const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
@@ -83,10 +84,14 @@ export async function GET(req: NextRequest) {
   // A job started by the current POST carries its charge token inside the id (lib/billing/avatarCharge). `id` is
   // the bare provider job; `charge` is non-null only for an authentic token bound to exactly this job.
   const { jobId: id, charge } = chargeForPolledId(polledId, 'lipsync');
-  // Terminal failure of a RESERVED job → give the reservation back. Net-capped by the ledger and idempotent
-  // (`${ref}:refund`), so the client's repeated polls of a dead job refund once.
-  const refundReserved = async (): Promise<void> => {
-    if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
+  // Terminal failure of a RESERVED job → give the reservation back, THEN close the durable row (so the settle cron,
+  // which only reads live rows, retries a refund that did not land). Net-capped by the ledger and idempotent
+  // (`${ref}:refund`), so repeated polls — and the cron — refund once. Resolves TRUE only when credits went back.
+  const refundReserved = async (reason: string): Promise<boolean> => {
+    if (!charge) return false;
+    const r = await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
+    if (r?.ok || r?.reason === 'skipped') await failJob(`lipsync:${id}`, reason).catch(() => undefined);
+    return !!r?.ok;
   };
 
   const { status, url, error } = await lipsyncFetch(id);
@@ -146,8 +151,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ done: true, url: hosted });
   }
   if (status === 'failed' || status === 'canceled') {
-    await refundReserved();
-    return NextResponse.json({ done: true, url: null, error });
+    const refunded = await refundReserved(error || 'render failed');
+    // ⚠️ `error` STAYS THE PROVIDER'S RAW TEXT HERE, DELIBERATELY: it is MACHINE INPUT, not copy. The avatar composer
+    // reads it to tell SadTalker's known transient crash ('ANTIALIAS', CUDA/OOM — lib/avatar/renderAttempts) from a
+    // real failure and retries only the former; a sanitised code would silently end every such retry. No client
+    // renders it verbatim (OmniStudio ignores it, LipsyncStudio/MotionControlPanel map it through their own copy).
+    return NextResponse.json({ done: true, url: null, error, refunded });
   }
   // ⚠️ A TERMINAL STATUS WITH NO URL USED TO FALL THROUGH TO `{done:false}` FOREVER. `lipsyncFetch`
   // populates `url` only when the provider both SUCCEEDED and yielded a resolvable output — Replicate
@@ -161,11 +170,8 @@ export async function GET(req: NextRequest) {
   // completed and was paid for. This is the identical dead end that /api/v2/model3d/status documents and
   // fixed ("TERMINAL WITHOUT A MESH IS A FAILURE, NOT 'STILL WORKING'"); it was never applied here.
   if (status === 'succeeded') {
-    await refundReserved();
-    return NextResponse.json({
-      done: true, url: null,
-      error: error || 'the provider finished without a usable video file',
-    });
+    const refunded = await refundReserved('the provider finished without a usable video file');
+    return NextResponse.json({ done: true, url: null, error: 'provider_unavailable', refunded });
   }
   return NextResponse.json({ done: false });
 }
@@ -305,6 +311,16 @@ export async function POST(req: NextRequest) {
       await releaseCharge();
       return NextResponse.json({ jobId });
     }
+    // ⚠️ THE REFUND USED TO EXIST ONLY IN THE BROWSER'S POLL. Close the tab mid-render and a failed job kept the
+    // reservation forever (and a successful one was never filed in the Library). The durable row — same id the GET's
+    // success write uses — carries `_settle`, so the cron asks the provider for the verdict and settles it: deliver,
+    // or refund through the ledger under this same ref (idempotent with the GET's own refund). Awaited: a write
+    // dropped by a frozen lambda would leave nothing to settle.
+    const filed = await createJob({
+      id: `lipsync:${jobId}`, userId, serviceType: 'film', status: 'processing',
+      params: { subtype: 'lipsync', ...settleParams({ kind: 'lipsync', job: jobId, ref: chargeRef, credits: cost }) },
+    });
+    if (!filed) reportError(new Error('lipsync settle row not filed'), { route: 'video.lipsync', step: 'settle-row', ref: chargeRef });
     return NextResponse.json({ jobId: withChargeToken(jobId, chargeToken), chargeToken });
   } catch (e) {
     await releaseCharge();

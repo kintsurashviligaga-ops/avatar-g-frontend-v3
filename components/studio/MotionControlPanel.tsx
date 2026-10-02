@@ -8,18 +8,19 @@
 import { useRef, useState } from 'react';
 import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
+import { describeGenerationFailure } from './ui/serviceError';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
   ka: { char: 'პერსონაჟი', motion: 'მოძრაობა (არჩევითი)', upload: 'ატვირთე', optional: 'სურვილისამებრ',
     ph: 'მოძრაობის აღწერა… (ქართულად ან ინგლისურად)', gen: 'მოძრაობის გენერაცია', working: 'გენერირდება…',
-    done: 'მზადაა', dl: 'ჩამოტვირთვა', need: 'ატვირთე ფოტო და დაწერე მოძრაობა' },
+    done: 'მზადაა', dl: 'ჩამოტვირთვა', need: 'ატვირთე ფოტო და დაწერე მოძრაობა', failed: 'მოძრაობის გენერაცია ვერ მოხერხდა. სცადე ხელახლა.' },
   en: { char: 'Character', motion: 'Motion (optional)', upload: 'Upload', optional: 'optional',
     ph: 'Describe the motion… (Georgian or English)', gen: 'Generate motion', working: 'Generating…',
-    done: 'Ready', dl: 'Download', need: 'Upload a photo and describe the motion' },
+    done: 'Ready', dl: 'Download', need: 'Upload a photo and describe the motion', failed: 'The motion could not be generated. Please try again.' },
   ru: { char: 'Персонаж', motion: 'Движение (опц.)', upload: 'Загрузить', optional: 'опционально',
     ph: 'Опишите движение…', gen: 'Генерация движения', working: 'Генерация…',
-    done: 'Готово', dl: 'Скачать', need: 'Загрузите фото и опишите движение' },
+    done: 'Готово', dl: 'Скачать', need: 'Загрузите фото и опишите движение', failed: 'Не удалось сгенерировать движение. Попробуйте снова.' },
 };
 
 const QUICK: Record<Lang, { label: string; v: string }[]> = {
@@ -156,13 +157,15 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           qualityMode,
         }),
       });
-      const sub = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
+      const sub = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string; refunded?: boolean };
       // A paid render now reserves credits at submit — surface a clean "top up" message on 402 instead of
       // a raw error code, and don't leave the user thinking it silently failed.
       if (res.status === 402) {
         throw new Error(lang === 'en' ? 'Not enough credits — top up to generate.' : lang === 'ru' ? 'Недостаточно кредитов — пополните баланс.' : 'არასაკმარისი კრედიტი — შეავსე ბალანსი.');
       }
-      if (!res.ok || !sub.jobId) throw new Error(sub.error || `HTTP ${res.status}`);
+      // ⚠️ The route's `error` is a machine code (or, before, Replicate's raw text) — never shown as-is. A submit that
+      // failed after the reservation says `refunded: true` only when the credits actually came back.
+      if (!res.ok || !sub.jobId) throw new Error(describeGenerationFailure(sub, lang, t.failed ?? ''));
 
       // 2) POLL SEQUENTIALLY until done. Each request is short (never times out); the
       //    single "succeeded" poll re-hosts + muxes music server-side, so it can take
@@ -177,9 +180,13 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
       for (let i = 0; i < maxPolls; i++) {
         await new Promise((r) => setTimeout(r, 7000));
         const pr = await fetch(`/api/motion-control/status?${qs.toString()}`, { credentials: 'include' });
-        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string };
+        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; videoUrl?: string; error?: string; refunded?: boolean };
         if (pj.done) {
-          if (pj.error || !pj.videoUrl) throw new Error(pj.error || 'generation failed');
+          // One line: the refund notice when /status confirmed the credits came back, else the neutral mapped failure.
+          if (pj.error || !pj.videoUrl) {
+            if (pj.refunded) { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } }
+            throw new Error(describeGenerationFailure(pj, lang, t.failed ?? ''));
+          }
           url = pj.videoUrl;
           break;
         }

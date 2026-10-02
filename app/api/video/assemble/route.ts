@@ -472,13 +472,21 @@ async function assembleImpl(req: NextRequest) {
     let scFreeFilm = false;
     let scDebited = false;
     let scLock: TokenLock | null = null;
+    // ⚠️ ONE CHARGE REF PER ATTEMPT, NOT PER COMPOSITION. This was `assemble-single:${idemKey}` — a hash of the inputs —
+    // and deduct_credits answers a replayed ref with SUCCESS and no new debit. So once an attempt had been charged and
+    // refunded (a failed stitch), every retry of the same composition was "charged" without a debit and rendered free;
+    // and a replay of a SUCCESSFUL one that then failed paid back the first, legitimate charge through the rollback.
+    // Double-submits are already stopped by the 60 s in-flight claim above, and a re-stitch of a delivered film skips
+    // billing through filmAlreadyBilled — so a fresh ref per attempt costs no one twice for one film. The rollback is
+    // `${ref}:refund`: idempotent per attempt, and readable by refundDebitByRef.
+    const scRef = `assemble-single:${idemKey}:${crypto.randomUUID()}`;
     if (!scSkipBilling && uid) {
       scLock = await lockTokens(uid, ASSEMBLE_COST, 900);
       const freeFilm = await consumeFreeFilm(uid);
       if (typeof freeFilm === 'number' && freeFilm >= 0) {
         scFreeFilm = true; // first free film waives the charge (fail-safe: only when the DB confirms)
       } else {
-        const debit = await deductCredits(uid, ASSEMBLE_COST, `assemble-single:${idemKey}`);
+        const debit = await deductCredits(uid, ASSEMBLE_COST, scRef);
         scDebited = debit.ok;
         // 'skipped' (ledger RPC absent) is the only non-fatal miss — charge best-effort like the saga.
         if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
@@ -585,7 +593,7 @@ async function assembleImpl(req: NextRequest) {
       } else if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
-        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `assemble-single-rollback:${idemKey}`).catch(() => {});
+        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `${scRef}:refund`).catch(() => {});
       }
       // eslint-disable-next-line no-console
       console.log('[assemble] single-clip (6s) path →', JSON.stringify({ music: musicUrl ? (fallback ?? 'present') : 'SILENT', voiceover: voUrl ? 'present' : 'none', overlay: Boolean(body.marketing && hasOverlayContent(body.marketing)), captions: Boolean(body.captionAlignment), muxed: master !== clipUrl && !conformed, aspectConformed: conformed, billed: producedSomething && !scSkipBilling && !scFreeFilm }));
@@ -598,7 +606,7 @@ async function assembleImpl(req: NextRequest) {
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
         if (scFreeFilm) await restoreFreeFilm(uid).catch(() => {});
-        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `assemble-single-rollback:${idemKey}`).catch(() => {});
+        else if (scDebited) await refundCredits(uid, ASSEMBLE_COST, `${scRef}:refund`).catch(() => {});
       }
       await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});

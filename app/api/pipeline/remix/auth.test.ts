@@ -163,7 +163,9 @@ describe('signed in', () => {
   it('a re-cut the assembler could not host is not charged', async () => {
     assembleMock.mockResolvedValue(null as never);
     const res = await POST(post(REMIX_BODY).req);
-    expect((await res.json()).success).toBe(false);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.refunded).toBe(true); // the studio's refund notice reads this — only when the ledger gave it back
     expect(refundMock).toHaveBeenCalledWith('user-42', expect.stringMatching(REMIX_REF));
   });
 });

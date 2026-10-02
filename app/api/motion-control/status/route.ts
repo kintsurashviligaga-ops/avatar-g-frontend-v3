@@ -21,8 +21,10 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingPoll } from '@/lib/ai/klingClient';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { failJob, recordCompletedAsset, jobOwnerId } from '@/lib/orchestrator/jobs';
-import { refundCredits } from '@/lib/orchestrator/ledger';
+import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { motionChargeForPolledId } from '@/lib/services/motion/chargeToken';
+import { classifyProviderError } from '@/lib/api/providerError';
 import { generateMusic } from '@/lib/ai/replicate';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { reportError } from '@/lib/observability/report-error';
@@ -42,15 +44,39 @@ export const maxDuration = 300; // the finalizing poll re-hosts + (optionally) m
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const id = searchParams.get('id');
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const polledId = searchParams.get('id');
+  if (!polledId) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
+  // A job started by the current POST carries its signed charge token inside the id (lib/services/motion/chargeToken):
+  // `id` is the bare Kling prediction, `charge` names the reservation ref — non-null only when authentic and bound to
+  // exactly this prediction.
+  const { jobId: id, charge } = motionChargeForPolledId(polledId);
+
   const poll = await klingPoll(id);
   if (poll.status === 'processing') return NextResponse.json({ done: false });
   if (poll.status === 'failed' || !poll.url) {
+    // ⚠️ THE REFUND USED TO BE FIRE-AND-FORGET (`void refundCredits(...)`) next to a `void failJob(...)`. A serverless
+    // function can be frozen the moment it responds, and this is the poll that ends the client's loop — so a dropped
+    // refund was never retried, and the row it would have been retried from had already been failed. It is AWAITED
+    // now, BEFORE the row turns terminal, and paid from the ledger (refundDebitByRef: net under the ref, idempotent
+    // on `${ref}:refund`, so this poll, a repeat poll and the settle cron collapse to ONE credit-back).
+    let refunded = false;
+    if (charge) {
+      // The token says who paid and under which ref; only the payer's own poll collects it.
+      if (charge.u === user.id) {
+        const r = await refundDebitByRef(charge.u, charge.r, creditCostFor('remix')).catch(() => null);
+        refunded = !!r?.ok;
+        if (!r?.ok && r?.reason !== 'skipped') reportError(new Error('motion refund did not land'), { route: 'motion-control.status', ref: charge.r });
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn(`[motion.status] refund refused — ${user.id} polled a job charged to another user`);
+      }
+      await failJob(`motion:${id}`, poll.error || 'motion generation failed');
+      return NextResponse.json({ done: true, error: classifyProviderError(poll.error || 'motion generation failed'), refunded });
+    }
     // TRACK 1 — close the motion telemetry lifecycle (the pending row from POST) as failed. Fail-open.
     // ⚠️ THE REFUND USED TO GO TO WHOEVER POLLED. There was no link at all between `id` — a raw query
     // parameter — and the user who paid for it, and `klingPoll` reads ANY prediction on the shared
@@ -61,19 +87,23 @@ export async function GET(req: Request) {
     // the claimant was never checked.
     //
     // The charge wrote a job row (`motion:<jobId>`, user_id = the payer). That row is now the authority.
+    // LEGACY id (no token): a render submitted before the reservation moved ahead of the submit, charged AFTER it
+    // under `motion:charge:<predictionId>`. Its owner row is the authority.
     const owner = await jobOwnerId(`motion:${id}`);
-    // Telemetry is closed regardless — a failed render is a failed render whoever asked about it.
-    void failJob(`motion:${id}`, poll.error || 'motion generation failed');
     // FAIL-CLOSED on money. No row, or a row belonging to somebody else, means this caller cannot be
     // shown to have paid — and an unissued refund is recoverable by support, while minted credits are
     // not. Refund only the user the charge is recorded against, never the one holding the id.
     if (owner && owner === user.id) {
-      void refundCredits(user.id, creditCostFor('remix'), `motion:charge:${id}:refund`).catch(() => {});
+      const r = await refundDebitByRef(user.id, `motion:charge:${id}`, creditCostFor('remix')).catch(() => null);
+      refunded = !!r?.ok;
     } else if (owner && owner !== user.id) {
       // eslint-disable-next-line no-console
       console.warn(`[motion.status] refund refused — ${user.id} polled a job owned by another user`);
     }
-    return NextResponse.json({ done: true, error: poll.error || 'motion generation failed' });
+    // Telemetry is closed regardless — a failed render is a failed render whoever asked about it. After the refund.
+    await failJob(`motion:${id}`, poll.error || 'motion generation failed');
+    // The provider's raw text stays out of the body: a code the studio maps, plus whether the credits came back.
+    return NextResponse.json({ done: true, error: classifyProviderError(poll.error || 'motion generation failed'), refunded });
   }
 
   // ─── Succeeded → finalize (this is the single finalizing poll) ───────────────
@@ -130,9 +160,12 @@ export async function GET(req: Request) {
     }
   }
 
-  // TRACK 1 — complete the motion telemetry lifecycle (upserts the POST's pending row → completed +
-  // files it into the Library). service_type stays 'film'; params.subtype='motion' is the dashboard label.
-  void recordCompletedAsset({ id: `motion:${id}`, userId: user.id, serviceType: 'film', url: finalUrl, source: 'motion-control', subtype: 'motion' });
+  // TRACK 1 — complete the motion telemetry lifecycle (upserts the POST's row → completed + files it into the
+  // Library). service_type stays 'film'; params.subtype='motion' is the dashboard label.
+  // ⚠️ AWAITED, NOT `void`: a dropped write left the row `processing`, and the settle cron would then find a job the
+  // user had already received. (It asks Kling first and delivers rather than refunds — but the Library entry, and
+  // the end of the lifecycle, belong to this poll.)
+  await recordCompletedAsset({ id: `motion:${id}`, userId: charge?.u ?? user.id, serviceType: 'film', url: finalUrl, source: 'motion-control', subtype: 'motion' });
 
   return NextResponse.json({ done: true, videoUrl: finalUrl, music });
 }

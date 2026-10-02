@@ -109,7 +109,7 @@ import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type Mus
 import { Slider } from './ui/controls';
 import { StyleChips } from './ui/StyleChips';
 import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
-import { describeServiceError } from './ui/serviceError';
+import { describeServiceError, describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -3755,7 +3755,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips, ...(clipSec ? { clipSec } : {}) }),
       });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string; refunded?: boolean };
       const url = j.success ? (j.masterUrl || j.url || null) : null;
       setMessages((prev) => {
         const next = [...prev];
@@ -3763,7 +3763,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (last && last.role === 'assistant') {
           next[next.length - 1] = url
             ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt, ...(clipSec ? { filmClipSec: clipSec } : {}) }
-            : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
+            // A failed re-cut whose reservation the route confirmed refunded reads as the one refund notice.
+            : { role: 'assistant', text: `⚠️ ${j.refunded === true ? describeGenerationFailure(j, locale, t.videoFailed) : (j.message || t.videoFailed)}` };
         }
         return next;
       });
@@ -3777,7 +3778,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setRemixBusyIdx(null);
     }
-  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed]);
+  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed, locale]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -4142,7 +4143,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
             // wired into the Surgical Editor only, so the same failure read properly in one surface and
             // as a token dump in the other.
-            : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, failMsg)}` };
+            // A failed re-roll reads like a failed first render: `refunded: true` (only when the route's refund landed)
+            // selects the one refund notice; otherwise the neutral mapped failure.
+            : { role: 'assistant', text: `⚠️ ${describeGenerationFailure(j, locale, failMsg)}` };
         }
         return next;
       });
@@ -4161,7 +4164,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [busy, t.imageFailed, t.musicFailed, notifyCredit]);
+  }, [busy, t.imageFailed, t.musicFailed, notifyCredit, locale]);
 
   // Edit a generated/attached image with img2img: load it as the source + switch to
   // Image mode; the next prompt transforms it. https URLs feed NanoBanana directly,
@@ -4254,7 +4257,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // which is how English provider prose and codes like `insufficient_credits` landed in a Georgian
         // chat bubble. describeServiceError keeps the specificity and drops the wrong voice; anything it
         // does not recognise falls back rather than being echoed.
-        const reason = describeServiceError(j.message || j.error, locale, t.imageFailed);
+        // `refunded: true` — sent only when the route's refund landed — becomes the one refund notice.
+        const reason = describeGenerationFailure(j, locale, t.imageFailed);
         // A refusal for want of credits is the one failure with an obvious next step — offer it.
         updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
@@ -4323,8 +4327,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // floating tray that would have shown it unmounts once the batch stops being active, which
             // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
             // The tile shows this to the user — same rule as the bubble above.
-            updateTile(tileIdx, { status: 'failed', jobId, error: describeServiceError(j.message || j.error, locale, t.imageFailed) });
-            throw new Error(j.error || 'image failed');
+            const reason = describeGenerationFailure(j, locale, t.imageFailed);
+            updateTile(tileIdx, { status: 'failed', jobId, error: reason });
+            // The catch below re-stamps the tile with the thrown message — throw the MAPPED line, not `j.error`
+            // (a raw code such as `provider_unavailable` used to overwrite the sentence the tile had just shown).
+            throw new Error(reason);
           } catch (e) {
             updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
             throw e;
@@ -4494,7 +4501,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The copyright case keeps its own copy — it is the one refusal with a specific, already-written
         // Georgian explanation. Everything else goes through the shared mapper instead of printing
         // whatever the music provider wrote in English.
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeServiceError(j.error, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeGenerationFailure(j, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
     });
@@ -5249,7 +5256,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const next = [...prev]; const last = next[next.length - 1];
           // A silent engine downgrade is stated instead of being passed off as a clean result — a
           // Ken-Burns pan over one still is not the restyled video that was asked for.
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
           return next;
         });
         if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5403,7 +5410,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
+              // `refunded: true` (the GET's refund landed) → the one refund notice; otherwise the mapped failure code.
+              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
             }
             // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
             // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
@@ -5420,15 +5428,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
               // media_unresolved) instead of the generic "lip-sync failed".
-              if (!fb.jobId && fb.error) failReason = fb.error;
+              if (!fb.jobId && fb.error) failReason = describeGenerationFailure(fb, locale, t.lipsyncFailed);
               if (fb.jobId) {
                 failReason = null;
                 for (let i = 0; i < 90 && !url; i++) {
                   if (!mine()) return;
                   await new Promise((r) => setTimeout(r, 6000));
                   const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(fb.jobId)}`, { credentials: 'include', signal: ac.signal });
-                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-                  if (pj.done) { if (pj.url) url = pj.url; break; }
+                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; refunded?: boolean };
+                  if (pj.done) { if (pj.url) url = pj.url; else if (pj.refunded) failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
                 }
               }
             } catch { /* keep the HeyGen failure below */ }
@@ -5495,8 +5503,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
         let forceSadTalker = false;
         let stillRendering = false;
+        // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
+        // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
+        let lastRefunded = false;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
+          lastRefunded = false;
           const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
           const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
@@ -5508,8 +5520,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             if (!mine()) return;
             await new Promise((r) => setTimeout(r, 6000));
             const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
+            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; lastRefunded = pj.refunded === true; break; }
           }
           // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
           // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
@@ -5528,7 +5540,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
               : stillRendering
                 ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
-                : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
+                : lastRefunded
+                  ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure({ refunded: true }, locale, t.lipsyncFailed)}` }
+                  : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });
@@ -5627,7 +5641,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') next[next.length - 1] = j.url
           ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
-          : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
         return next;
       });
       if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5690,7 +5704,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
-        updateBubble(bubbleId, { text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` });
+        updateBubble(bubbleId, { text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` });
         throw new Error(j.error || 'character swap failed');
       },
     });

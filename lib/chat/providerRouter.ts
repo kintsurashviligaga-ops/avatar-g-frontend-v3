@@ -31,7 +31,7 @@ import { isMusicVideoComposite, handleMusicVideoComposite } from './musicVideoCo
 import { isThirtySecondFilm, handleFilmComposite } from './filmComposite';
 import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
-import { billableCreditCost, insufficientCreditsResponse } from './chatBilling';
+import { billableCreditCost, chargeRefusedResponse, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
@@ -426,7 +426,9 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
     // Charge here on terminal success, idempotent on `poll:udio:<workId>` (repeat polls no-op), post-success only.
     const res = await pollUdioTask(udioWorkId, predictionId);
     if (userId && userId !== 'anonymous' && res.predictionStatus !== 'processing' && res.assetUrl) {
-      await deductCredits(userId, billableCreditCost('music_generation'), `poll:udio:${udioWorkId}`).catch(() => { /* best-effort */ });
+      // ⚠️ THE TRACK IS HANDED OVER ONLY ONCE ITS CHARGE LANDED (this was `.catch(() => {})` and a delivery regardless).
+      const debit = await deductCredits(userId, billableCreditCost('music_generation'), `poll:udio:${udioWorkId}`);
+      if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse('music_generation', billableCreditCost('music_generation'), debit.reason ?? 'error');
     }
     return res;
   }
@@ -449,7 +451,12 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
       : (mapped.assetType === 'video' || mapped.responseType === 'video') ? 'video_generation'
       : null;
     const cost = intent ? billableCreditCost(intent) : 0;
-    if (cost > 0) await deductCredits(userId, cost, `poll:${predictionId}`).catch(() => { /* best-effort */ });
+    if (cost > 0 && intent) {
+      // ⚠️ DELIVERED ONLY ONCE PAID. An async render charged at acceptance dedupes here (same ref) and passes; one whose
+      // charge never landed is withheld rather than handed out free, as it was behind `.catch(() => {})`.
+      const debit = await deductCredits(userId, cost, `poll:${predictionId}`);
+      if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse(intent, cost, debit.reason ?? 'error');
+    }
   }
   // A render charged at acceptance (handleDeterministicIntent) that ends in a terminal failure is paid back — exactly
   // what the ledger shows under its ref, so a poller who was never charged gets nothing. ('error' is a routing blip,
@@ -1409,8 +1416,11 @@ async function handleDeterministicIntent(
     const uid = input.userId;
     const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
     if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
-      await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`)
-        .catch(() => { /* best-effort — the asset is already delivered */ });
+      // ⚠️ "the asset is already delivered" was the excuse for `.catch(() => {})` — but it is not delivered until this
+      // function returns it. A charge that did not land now withholds the asset (top-up / retry reply) instead of
+      // handing it out free; `skipped` (no ledger RPC at all) still delivers, the documented degrade.
+      const debit = await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`);
+      if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse(detected.intent, billCost, debit.reason ?? 'error', input.locale);
     }
     // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
     // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
@@ -1418,7 +1428,10 @@ async function handleDeterministicIntent(
     // path charges under, so its charge dedupes into this one; a terminal failure there refunds it through the ledger.
     const acceptedAsync = response.success && response.predictionStatus === 'processing' && !!response.predictionId;
     if (uid && uid !== 'anonymous' && billCost > 0 && acceptedAsync) {
-      await deductCredits(uid, billCost, `poll:${response.predictionId}`).catch(() => { /* the poll-path charge is the backstop */ });
+      // A refused acceptance charge withholds the task handle: with no predictionId the render can never be polled into
+      // a free delivery (and the poll path refuses an unpaid one anyway).
+      const debit = await deductCredits(uid, billCost, `poll:${response.predictionId}`);
+      if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse(detected.intent, billCost, debit.reason ?? 'error', input.locale);
     }
 
     const mapped = toChatResponse(response, detected.intent);

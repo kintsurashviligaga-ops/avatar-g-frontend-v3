@@ -41,7 +41,15 @@ describe('Ken-Burns fallback is not charged', () => {
     // refundCharge guards on an in-request `refunded` flag AND a single `${txnRef}:refund` ref, so a
     // request that falls back and then fails later cannot refund twice.
     expect(src).toMatch(/const r = await refundCredits\(remixUid, chargeAmount, `\$\{txnRef\}:refund`\)/);
-    expect(src).toMatch(/if \(!charged \|\| refunded \|\| !remixUid\) return;/);
+    expect(src).toMatch(/if \(!charged \|\| refunded \|\| !remixUid\) return false;/);
+  });
+
+  it('a failure body says `refunded: true` only when THIS refund landed (the studio’s refund notice reads it)', () => {
+    // refundCharge resolves the ledger's own answer; failRefund spreads the flag only on a confirmed refund, so a
+    // kept charge (secondaries admitted) or a refund that failed never reads "your credits were refunded".
+    expect(src).toMatch(/return r\.ok;/);
+    expect(src).toMatch(/const back = await refundCharge\(why\);\s*return NextResponse\.json\(\{ url: null, error, \.\.\.\(back \? \{ refunded: true \} : \{\}\) \}\);/);
+    expect(src).toMatch(/charge kept`\);\s*return false;/);
   });
 
   it('still delivers the clip — the fallback is free, not withheld', () => {

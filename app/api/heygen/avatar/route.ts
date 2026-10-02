@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { guardGeneration } from '@/lib/api/generationGuard';
+import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits } from '@/lib/orchestrator/ledger';
+import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -345,9 +346,19 @@ export async function GET(req: NextRequest) {
     // reason; this one was simply never given the same treatment.
     let delivered: string | null = d.video_url ?? null;
     if (d.status === 'completed' && d.video_url) {
+      // ⚠️ THE VIDEO IS HANDED OVER ONLY ONCE ITS CHARGE LANDED. This was `void deductCredits(...).catch(() => {})`
+      // beside a delivery that happened regardless — so a deduct that failed (parallel POSTs that all passed one stale
+      // balance read, or a ledger error) was a FREE avatar video, and a frozen lambda could drop the `void` charge
+      // outright. Awaited now, before the re-host: a short balance withholds the video (402 — the next poll after a
+      // top-up delivers it, same idempotent ref), a ledger failure 503s; `skipped` (no ledger RPC) still delivers.
+      const debit = await deductCredits(guard.userId, creditCostFor('avatar'), `avatar:${videoId}`);
+      if (!debit.ok && debit.reason === 'insufficient') {
+        return NextResponse.json({ status: 'payment_required', url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
+      }
+      if (!debit.ok && debit.reason === 'error') {
+        return NextResponse.json({ status: 'processing', url: null, ...ledgerUnavailableBody(guard.locale) }, { status: 503 });
+      }
       delivered = await rehostAvatarVideo(d.video_url);
-      void deductCredits(guard.userId, creditCostFor('avatar'), `avatar:${videoId}`)
-        .catch(() => { /* best-effort — asset already delivered */ });
       // Deterministic id per videoId, so the client's repeated polls UPSERT ONE row.
       // service_type stays 'film' — the DB CHECK allows only film|avatar|interior|image|music|voice,
       // so the descriptive label rides in `subtype`.

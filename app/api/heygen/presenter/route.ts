@@ -5,7 +5,10 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
-import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { createJob, failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs';
+import { settleParams } from '@/lib/orchestrator/unpolledSettle';
+import { classifyProviderError } from '@/lib/api/providerError';
+import { reportError } from '@/lib/observability/report-error';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { PRESENTER_DEFAULT_FACE_URL, audioFingerprint, avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
@@ -206,10 +209,29 @@ export async function POST(req: NextRequest) {
       if (chargeRef) await refundDebitByRef(userId, chargeRef, cost).catch(() => null);
       return NextResponse.json({ success: true, videoId, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
     }
+    // ⚠️ THE REFUND (AND THE LIBRARY FILING) USED TO LIVE ONLY IN THE BROWSER'S POLL: close the tab mid-render and a
+    // failed presenter kept its reservation forever. The durable row — the id the GET's success write uses — carries
+    // `_settle`, so the cron asks HeyGen for the verdict and delivers or refunds (same ref, idempotent with the GET).
+    const filed = await createJob({
+      id: `presenter:${videoId}`, userId, serviceType: 'film', status: 'processing',
+      params: { subtype: 'presenter', ...settleParams({ kind: 'presenter', job: `heygen:${videoId}`, ref: chargeRef, credits: cost }) },
+    });
+    if (!filed) reportError(new Error('presenter settle row not filed'), { route: 'heygen.presenter', ref: chargeRef });
     return NextResponse.json({ success: true, videoId: withChargeToken(videoId, chargeToken), chargeToken, audioUrl, voiceProvider: 'elevenlabs:cloned-ka' });
   } catch {
     return fail({ success: false, error: 'presenter start failed' }, 500);
   }
+}
+
+/**
+ * Refund a RESERVED presenter whose HeyGen render ended without a video, then close its durable row — in that order,
+ * so a refund that did not land leaves the row live for the settle cron to retry. TRUE only when credits went back.
+ */
+async function refundReserved(charge: { u: string; r: string } | null, videoId: string, reason: string): Promise<boolean> {
+  if (!charge) return false;
+  const r = await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
+  if (r?.ok || r?.reason === 'skipped') await failJob(`presenter:${videoId}`, reason).catch(() => undefined);
+  return !!r?.ok;
 }
 
 export async function GET(req: NextRequest) {
@@ -269,16 +291,17 @@ export async function GET(req: NextRequest) {
       const reason = e ? (typeof e === 'string' ? e : JSON.stringify(e)) : 'render failed';
       // Terminal failure of a RESERVED render → give the reservation back. HeyGen's own verdict for the video the
       // signed token is bound to — never a client claim — and net-capped + idempotent, so repeated polls refund once.
-      if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
-      return NextResponse.json({ done: true, error: reason.slice(0, 300) });
+      const refunded = await refundReserved(charge, id, reason);
+      // HeyGen's own words stay server-side; the client maps the code and says "refunded" only when it was.
+      return NextResponse.json({ done: true, error: classifyProviderError(reason), refunded });
     }
     // ⚠️ COMPLETED WITHOUT A FILE IS A FAILURE, NOT "STILL WORKING". It missed the `completed && video_url` branch
     // above and used to fall through to `{done:false}` on every poll: the reservation was never refunded, and after
     // ~9 min the client gave up on a render that had in fact ended. Same rule as the lip-sync GET's `succeeded`
     // without a url.
     if (status === 'completed') {
-      if (charge) await refundDebitByRef(charge.u, charge.r, creditCostFor('avatar')).catch(() => null);
-      return NextResponse.json({ done: true, error: 'the provider finished without a usable video file' });
+      const refunded = await refundReserved(charge, id, 'the provider finished without a usable video file');
+      return NextResponse.json({ done: true, error: 'provider_unavailable', refunded });
     }
     return NextResponse.json({ done: false });
   } catch {
