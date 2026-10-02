@@ -18,7 +18,7 @@ import { markWhatsAppRead, sendWhatsAppText, whatsappConfig } from './whatsapp-c
 const handle = handleInbound as jest.MockedFunction<typeof handleInbound>;
 const send = sendWhatsAppText as jest.MockedFunction<typeof sendWhatsAppText>;
 const cfgFn = whatsappConfig as jest.MockedFunction<typeof whatsappConfig>;
-const CFG = { token: 't', phoneNumberId: 'p', graphVersion: 'v21.0' };
+const CFG = { token: 't', phoneNumberId: 'p', graphVersion: 'v25.0' };
 
 const now = () => Math.floor(Date.now() / 1000);
 const payload = (messages: unknown[], extra: Record<string, unknown> = {}) => ({

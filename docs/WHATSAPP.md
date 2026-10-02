@@ -29,7 +29,7 @@ An unlinked number never reaches a model: it gets a fixed "how to link" text, at
 | `WHATSAPP_VERIFY_TOKEN` | Any random string you choose; the same value goes into Meta's webhook form (step 3). | yes |
 | `WHATSAPP_BUSINESS_NUMBER` | The business number in international digits (e.g. `99532…`) for the wa.me button. Optional: when unset it is read from Graph. | no |
 | `WHATSAPP_ALERT_TEMPLATE` / `WHATSAPP_ALERT_TEMPLATE_LANG` | An approved **Utility** template (body: `{{1}}` = title, `{{2}}` = details/link) used for alerts when the user has not written in the last 24 h. Without it those alerts are skipped (bell + push still fire). | no |
-| `WHATSAPP_GRAPH_VERSION` | Graph API version, default `v21.0`. | no |
+| `WHATSAPP_GRAPH_VERSION` | Graph API version, default `v25.0` (the version in Meta's API Setup sample). | no |
 | `CRON_SECRET` | Already used by the other crons; the worker tick that drains queued deliveries needs it. | yes (exists) |
 
 Production's public status endpoint `/api/agent-g/channels` reports `whatsapp: { connected, ready, note }` — `note`
@@ -54,6 +54,14 @@ Meta app → WhatsApp → Configuration → Webhook:
 1. `https://myavatar.ge/api/agent-g/channels` → whatsapp `ready: true`, note "Webhook ready".
 2. Settings → WhatsApp → Get code → Open WhatsApp → send. The card turns to "Linked".
 3. Write "აქ ხარ?" → Agent G answers.
+
+### 5. Send a test template (Meta's `hello_world`)
+
+- From any machine: `WHATSAPP_ACCESS_TOKEN=… WHATSAPP_PHONE_NUMBER_ID=… node scripts/whatsapp/send-template.mjs 995571333194`
+- From production (admin): `curl -X POST https://myavatar.ge/api/agent-g/whatsapp/send -H "x-admin-key: $ADMIN_KEY" -H "content-type: application/json" -d '{"to":"995571333194","template":{"name":"hello_world","language":"en_US"}}'`
+
+Both send exactly Meta's sample body to `graph.facebook.com/v25.0/{phone-number-id}/messages`. While the Meta app is in
+development, the recipient must be on the API Setup page's recipients list.
 
 ## How it is built
 

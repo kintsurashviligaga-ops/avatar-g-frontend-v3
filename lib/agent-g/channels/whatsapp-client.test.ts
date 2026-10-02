@@ -12,7 +12,7 @@ import {
   whatsappConfig,
 } from './whatsapp-client';
 
-const CFG = { token: 'tok', phoneNumberId: '123', graphVersion: 'v21.0' };
+const CFG = { token: 'tok', phoneNumberId: '123', graphVersion: 'v25.0' };
 type Call = [string, RequestInit];
 let fetchMock: jest.Mock;
 const ok = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: async () => body } as Response);
@@ -29,14 +29,14 @@ const bodyOf = (i: number) => JSON.parse(String((fetchMock.mock.calls[i] as Call
 
 describe('whatsappConfig', () => {
   test('the documented names, and the aliases a token is often saved under', () => {
-    expect(whatsappConfig({ WHATSAPP_ACCESS_TOKEN: 'a', WHATSAPP_PHONE_NUMBER_ID: '1' } as NodeJS.ProcessEnv)).toEqual({ token: 'a', phoneNumberId: '1', graphVersion: 'v21.0' });
+    expect(whatsappConfig({ WHATSAPP_ACCESS_TOKEN: 'a', WHATSAPP_PHONE_NUMBER_ID: '1' } as NodeJS.ProcessEnv)).toEqual({ token: 'a', phoneNumberId: '1', graphVersion: 'v25.0' });
     expect(whatsappConfig({ WHATSAPP_TOKEN: ' b ', WHATSAPP_PHONE_ID: '2' } as NodeJS.ProcessEnv)?.token).toBe('b');
-    expect(whatsappConfig({ META_WHATSAPP_TOKEN: 'c', WHATSAPP_PHONE_NUMBER_ID: '3', WHATSAPP_GRAPH_VERSION: 'v22.0' } as NodeJS.ProcessEnv)?.graphVersion).toBe('v22.0');
+    expect(whatsappConfig({ META_WHATSAPP_TOKEN: 'c', WHATSAPP_PHONE_NUMBER_ID: '3', WHATSAPP_GRAPH_VERSION: 'v26.0' } as NodeJS.ProcessEnv)?.graphVersion).toBe('v26.0');
   });
   test('a token without a phone number id (or the reverse) is not a configuration; a junk version falls back', () => {
     expect(whatsappConfig({ WHATSAPP_ACCESS_TOKEN: 'a' } as NodeJS.ProcessEnv)).toBeNull();
     expect(whatsappConfig({ WHATSAPP_PHONE_NUMBER_ID: '1' } as NodeJS.ProcessEnv)).toBeNull();
-    expect(whatsappConfig({ WHATSAPP_ACCESS_TOKEN: 'a', WHATSAPP_PHONE_NUMBER_ID: '1', WHATSAPP_GRAPH_VERSION: 'latest' } as NodeJS.ProcessEnv)?.graphVersion).toBe('v21.0');
+    expect(whatsappConfig({ WHATSAPP_ACCESS_TOKEN: 'a', WHATSAPP_PHONE_NUMBER_ID: '1', WHATSAPP_GRAPH_VERSION: 'latest' } as NodeJS.ProcessEnv)?.graphVersion).toBe('v25.0');
   });
 });
 
@@ -45,7 +45,7 @@ describe('sendWhatsAppText', () => {
     const res = await sendWhatsAppText('995555000111', 'hello', CFG);
     expect(res).toEqual({ ok: true, status: 200, errorCode: null, messageIds: ['wamid.x'] });
     const [url, init] = fetchMock.mock.calls[0] as Call;
-    expect(url).toBe('https://graph.facebook.com/v21.0/123/messages');
+    expect(url).toBe('https://graph.facebook.com/v25.0/123/messages');
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
     expect(bodyOf(0)).toEqual({
       messaging_product: 'whatsapp', recipient_type: 'individual', to: '995555000111', type: 'text', text: { body: 'hello', preview_url: true },
@@ -87,6 +87,14 @@ test('a template fills {{1}}, {{2}} with cleaned parameters (no newlines/tabs, c
   });
 });
 
+test('a template with no parameters is exactly Meta\'s own sample: hello_world, en_US, no components', async () => {
+  await sendWhatsAppTemplate('995571333194', { name: 'hello_world', language: 'en_US' }, [], CFG);
+  expect((fetchMock.mock.calls[0] as Call)[0]).toBe('https://graph.facebook.com/v25.0/123/messages');
+  expect(bodyOf(0)).toEqual({
+    messaging_product: 'whatsapp', to: '995571333194', type: 'template', template: { name: 'hello_world', language: { code: 'en_US' } },
+  });
+});
+
 test('read receipt with typing; when Meta refuses the typing indicator, the plain receipt is sent', async () => {
   fetchMock.mockImplementationOnce(() => ok({ error: { code: 100 } }, 400));
   await markWhatsAppRead('wamid.in', CFG);
@@ -104,7 +112,7 @@ describe('businessNumber', () => {
     expect(await businessNumber(CFG, {} as NodeJS.ProcessEnv)).toBe('995322111111');
     expect(await businessNumber(CFG, {} as NodeJS.ProcessEnv)).toBe('995322111111');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect((fetchMock.mock.calls[0] as Call)[0]).toBe('https://graph.facebook.com/v21.0/123?fields=display_phone_number');
+    expect((fetchMock.mock.calls[0] as Call)[0]).toBe('https://graph.facebook.com/v25.0/123?fields=display_phone_number');
   });
   test('nothing configured and Graph silent → null', async () => {
     fetchMock.mockImplementation(() => ok({}, 400));

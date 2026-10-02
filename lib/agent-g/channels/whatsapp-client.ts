@@ -7,6 +7,9 @@
  */
 import { chunkForWhatsApp } from './whatsapp-text';
 
+/** The Graph API version the owner's WhatsApp app is set up on (Meta's API Setup page: graph.facebook.com/v25.0/…). */
+export const GRAPH_VERSION_DEFAULT = 'v25.0';
+
 export interface WhatsAppConfig {
   token: string;
   phoneNumberId: string;
@@ -30,7 +33,7 @@ export function whatsappConfig(env: NodeJS.ProcessEnv = process.env): WhatsAppCo
   const phoneNumberId = first(env.WHATSAPP_PHONE_NUMBER_ID, env.WHATSAPP_PHONE_ID, env.META_WHATSAPP_PHONE_NUMBER_ID);
   if (!token || !phoneNumberId) return null;
   const v = first(env.WHATSAPP_GRAPH_VERSION);
-  return { token, phoneNumberId, graphVersion: /^v\d+\.\d+$/.test(v) ? v : 'v21.0' };
+  return { token, phoneNumberId, graphVersion: /^v\d+\.\d+$/.test(v) ? v : GRAPH_VERSION_DEFAULT };
 }
 
 export interface SendResult {
@@ -98,7 +101,8 @@ export async function sendWhatsAppTemplate(
     template: {
       name: template.name,
       language: { code: template.language },
-      components: clean.length ? [{ type: 'body', parameters: clean.map((text) => ({ type: 'text', text })) }] : [],
+      // No parameters → no `components` at all: exactly Meta's own sample (`hello_world`, en_US).
+      ...(clean.length ? { components: [{ type: 'body', parameters: clean.map((text) => ({ type: 'text', text })) }] } : {}),
     },
   });
 }
