@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+import { opsCallerAllowed } from '@/lib/security/opsAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -186,9 +187,23 @@ function stripeMode(): 'test' | 'live' | 'unset' {
 
 /**
  * GET /api/health
- * Public health check endpoint
+ * Public liveness for everyone; the full posture (provider keys, payments mode, missing env, Redis) for operators.
+ *
+ * ⚠️ THE DETAIL WAS PUBLIC. Every anonymous hit answered which provider keys this deployment holds, whether payments
+ * are live or test (read off the Stripe key prefix), which critical env vars are missing — reconnaissance — and ran a
+ * Redis SET/GET/DEL round trip (three billed Upstash commands per request, unmetered). A monitor only needs "the app
+ * answers": that is `{ ok, status, service, commit, version, time, ts }`, with no I/O at all. The detail is for a
+ * signed-in admin, a CRON_SECRET bearer, or local dev (lib/security/opsAccess).
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const detailed = await opsCallerAllowed(req).catch(() => false);
+  if (!detailed) {
+    const ts = Date.now();
+    return NextResponse.json(
+      { ok: true, status: 'healthy', service: 'backend', commit: getVersion(), version: getVersion(), time: new Date(ts).toISOString(), ts },
+      { status: 200 },
+    );
+  }
   try {
     const redisStatus = await verifyRedis();
     const missing = getMissingEnvVars();
@@ -255,5 +270,5 @@ export async function POST(req: NextRequest) {
   }
 
   // Delegate to GET
-  return GET();
+  return GET(req);
 }

@@ -1,0 +1,7 @@
+{
+  "id": "v1_incomplete",
+  "status": "incomplete",
+  "steps": [
+    { "type": "thought", "summary": [{ "type": "text", "text": "I ran out of budget before writing." }] }
+  ]
+}

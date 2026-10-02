@@ -29,7 +29,7 @@ import { useCallback, useEffect, useId, useState, useSyncExternalStore, type Rea
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp, CopyPlus, Minus, Plus, RotateCcw, RotateCw, Trash2, X,
+  AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Box, ChevronDown, ChevronUp, CopyPlus, Minus, Plus, RotateCcw, RotateCw, Trash2, X,
 } from 'lucide-react';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -39,6 +39,7 @@ import {
   type SceneObject, type SceneShape,
 } from '@/lib/studio/scene3d';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON, ICON_BTN } from '../ui/tokens';
+import { EmptyState, focusComposer } from '../ui/EmptyState';
 import { useSceneStore } from './sceneStore';
 import type { SceneCanvasProps } from './SceneCanvas';
 
@@ -54,6 +55,8 @@ interface DockLabels {
   count: (n: number, of: number) => string;
   close: string;
   empty: string;
+  /** The empty scene's one next step: write the model you want in the composer. */
+  describe: string;
   objects: string;
   model: string;
   shapes: Record<SceneShape, string>;
@@ -82,6 +85,7 @@ const LABELS: Record<Locale, DockLabels> = {
     count: (n, of) => `${n} ობიექტი ${of}-დან`,
     close: 'დახურვა',
     empty: 'სცენა ცარიელია. შექმენი 3D მოდელი და დააჭირე „სცენაზე დამატება“.',
+    describe: 'აღწერე მოდელი',
     objects: 'ობიექტები',
     model: '3D მოდელი',
     shapes: { cube: 'კუბი', sphere: 'სფერო', cylinder: 'ცილინდრი', cone: 'კონუსი', torus: 'ტორი' },
@@ -108,6 +112,7 @@ const LABELS: Record<Locale, DockLabels> = {
     count: (n, of) => `${n} of ${of} objects`,
     close: 'Close',
     empty: 'The scene is empty. Make a 3D model, then press “Add to scene”.',
+    describe: 'Describe a model',
     objects: 'Objects',
     model: '3D model',
     shapes: { cube: 'Cube', sphere: 'Sphere', cylinder: 'Cylinder', cone: 'Cone', torus: 'Torus' },
@@ -134,6 +139,7 @@ const LABELS: Record<Locale, DockLabels> = {
     count: (n, of) => `${n} из ${of} объектов`,
     close: 'Закрыть',
     empty: 'Сцена пуста. Создайте 3D-модель и нажмите «Добавить в сцену».',
+    describe: 'Опишите модель',
     objects: 'Объекты',
     model: '3D-модель',
     shapes: { cube: 'Куб', sphere: 'Сфера', cylinder: 'Цилиндр', cone: 'Конус', torus: 'Тор' },
@@ -260,6 +266,13 @@ function SceneBody({ labels, headingId, locale, phone }: { labels: DockLabels; h
   const isBroken = (o: SceneObject) => broken.get(o.id) === sourceKey(o);
   const selectedIndex = objects.findIndex((o) => o.id === selectedId);
   const selected = selectedIndex >= 0 ? objects[selectedIndex]! : null;
+  // An empty scene's way forward is the composer ("a 3D model of an old clay jug" opens the 3D tool with it filled).
+  // On a phone the sheet covers the composer: close it first, and focus once it has slid away and handed focus back.
+  const describe = useCallback(() => {
+    if (!phone) { focusComposer(); return; }
+    apply({ type: 'close_scene' });
+    window.setTimeout(() => { focusComposer(); }, 320);
+  }, [phone, apply]);
 
   return (
     <>
@@ -281,7 +294,7 @@ function SceneBody({ labels, headingId, locale, phone }: { labels: DockLabels; h
 
       <div className={`space-y-3 border-t border-app-border/10 px-4 py-3 ${phone ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain' : 'max-h-[45%] shrink-0 overflow-y-auto overscroll-contain'}`}>
         {objects.length === 0 ? (
-          <p className="text-[13px] leading-[1.6] text-app-muted">{labels.empty}</p>
+          <EmptyState icon={Box} line={labels.empty} actionLabel={labels.describe} onAction={describe} className="py-4" testId="scene-empty" />
         ) : (
           <>
             <div role="group" aria-label={labels.objects} className="flex flex-wrap gap-1.5" data-scene-objects="">
@@ -410,7 +423,12 @@ export function SceneDock({ locale = 'ka' }: SceneDockProps) {
                 exit={reduceMotion ? { opacity: 0 } : { y: '100%' }}
                 transition={slide}
                 className="relative flex h-[88svh] w-full flex-col overflow-hidden rounded-t-[28px] border border-app-border/10 bg-app-surface shadow-[0_-12px_40px_rgba(0,0,0,0.35)]"
-                style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+                // Every fixed edge clears the safe area: the home indicator below, the notch's side in landscape.
+                style={{
+                  paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                  paddingLeft: 'env(safe-area-inset-left, 0px)',
+                  paddingRight: 'env(safe-area-inset-right, 0px)',
+                }}
               >
                 <div className="flex shrink-0 justify-center pt-2.5" aria-hidden="true">
                   <span className="h-1 w-10 rounded-full bg-app-border/25" />

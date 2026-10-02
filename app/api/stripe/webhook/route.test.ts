@@ -290,7 +290,7 @@ describe('pre-existing paths are unchanged', () => {
     expect(mockGrantSubscriptionAllowance).not.toHaveBeenCalled();
   });
 
-  it('KNOWN BUG kept as-is: a failed tier-pack grant is still answered 200 (Stripe does not retry) — docs/billing/TIERS.md', async () => {
+  it('a failed tier-pack grant answers 500 so Stripe redelivers (was the known bug: 200, never retried)', async () => {
     mockGrantPurchasedCredits.mockResolvedValue(null);
     const r = await deliver({
       id: 'evt_cs_2',
@@ -299,8 +299,15 @@ describe('pre-existing paths are unchanged', () => {
       created: PERIOD_START,
       data: { object: { id: 'cs_2', mode: 'payment', customer: 'cus_1', metadata: { kind: 'tier_topup', user_id: USER, credits: '525' } } },
     });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(500);
     expect(mockReportError).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed wallet top-up credit answers 500 so Stripe redelivers (the ref keeps it exactly-once)', async () => {
+    mockCreditWalletGel.mockResolvedValue(null);
+    const r = await deliver(topup({ id: 'cs_9', metadata: { kind: 'wallet_topup', amount_gel: '29', user_id: USER } }));
+    expect(r.status).toBe(500);
+    expect(mockCreditWalletGel).toHaveBeenCalledWith(USER, 29, 'stripe:cs_9');
   });
 
   const topup = (object: Record<string, unknown>) => ({

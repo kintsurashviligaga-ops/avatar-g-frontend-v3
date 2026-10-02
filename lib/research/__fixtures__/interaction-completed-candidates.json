@@ -1,0 +1,16 @@
+{
+  "id": "cand-1",
+  "status": "completed",
+  "candidates": [
+    {
+      "content": { "parts": [{ "text": "# Candidate-shaped report\n\n" }, { "text": "Second part." }] },
+      "groundingMetadata": {
+        "groundingChunks": [
+          { "web": { "uri": "https://example.com/g1", "title": "Grounded one" } },
+          { "web": { "uri": "https://example.com/g1", "title": "Grounded one again" } },
+          { "web": { "uri": "https://example.com/g2", "title": "example.com" } }
+        ]
+      }
+    }
+  ]
+}

@@ -138,6 +138,36 @@ export async function POST(req: NextRequest): Promise<Response> {
     return json({ success: false, error: 'landed_clips_required', message: 'A remix needs the film\u2019s rendered clips (at least two).' }, 400);
   }
 
+  // 1. Re-derive the EXACT original scene plan (deterministic → same seed + prompts).
+  // The GRID has to be re-derived too, from the clips that actually landed: a film is no longer always
+  // 3 × 8s (a script written as 4 × 6s renders as 4 × 6s). Re-planning at the default grid gave a
+  // 3-scene plan for a 4-scene film, so ordinal 4 had no scene and was silently dropped from the
+  // re-stitch. Fail-safe: with fewer than 2 landed clips there is nothing to infer, so the default holds.
+  // ⚠️ PLANNED BEFORE THE CHARGE, NOT AFTER IT. Both steps are pure and free; they used to run after the reservation,
+  // so an edit that mapped to no scene charged and refunded for nothing, and a throw here (an odd body) left the
+  // reservation stranded with no refund at all.
+  let plan: ReturnType<typeof planFilmScenes>;
+  let remix: ReturnType<typeof planRemixFromText>;
+  let gridClipSec: number;
+  try {
+    const landedCount = landedClips.length >= 2 ? Math.max(...landedClips.map((c) => c.ordinal)) : 0;
+    gridClipSec = clampClipSec(body.clipSec, FILM_CLIP_SEC);
+    plan = planFilmScenes(originalPrompt, {
+      avatarReference: typeof body.avatarReference === 'string' ? body.avatarReference : undefined,
+      style: typeof body.style === 'string' ? body.style : undefined,
+      clipSec: gridClipSec,
+      ...(landedCount >= 2 ? { totalSec: landedCount * gridClipSec } : {}),
+    });
+    // 2. Interpret the edit → affected ordinals (+ per-scene instruction).
+    remix = planRemixFromText(editRequest, plan.scenes.length);
+  } catch {
+    return json({ success: false, error: 'invalid_request', message: 'The remix request could not be planned.' }, 400);
+  }
+  const sceneCount = plan.scenes.length;
+  if (remix.editedScenes.length === 0) {
+    return json({ success: false, message: `I couldn’t map “${editRequest}” to a scene. Try e.g. “make scene 2 darker” or “change the ending’s lighting”.` }, 200);
+  }
+
   // Reserve the remix price up front (deduct_credits refuses an overdraw). Admin/demo callers without a user id pay
   // nothing. The ref is per request; the refund below pays back exactly what the ledger shows under it.
   const chargeRef = user?.id ? `pipeline-remix:${user.id}:${stamp}` : null;
@@ -150,31 +180,16 @@ export async function POST(req: NextRequest): Promise<Response> {
       return json({ success: false, error: 'ledger_unavailable', message: 'Credit ledger unavailable — please retry.' }, 503);
     }
   }
-  const releaseCharge = async (): Promise<void> => {
-    if (user?.id && chargeRef) await refundDebitByRef(user.id, chargeRef).catch(() => null);
+  /** Give the reservation back (ledger-capped, once). TRUE only when credits actually went back. */
+  const releaseCharge = async (): Promise<boolean> => {
+    if (!user?.id || !chargeRef) return false;
+    const r = await refundDebitByRef(user.id, chargeRef).catch(() => null);
+    return !!r?.ok;
   };
 
-  // 1. Re-derive the EXACT original scene plan (deterministic → same seed + prompts).
-  // The GRID has to be re-derived too, from the clips that actually landed: a film is no longer always
-  // 3 × 8s (a script written as 4 × 6s renders as 4 × 6s). Re-planning at the default grid gave a
-  // 3-scene plan for a 4-scene film, so ordinal 4 had no scene and was silently dropped from the
-  // re-stitch. Fail-safe: with fewer than 2 landed clips there is nothing to infer, so the default holds.
-  const landedCount = landedClips.length >= 2 ? Math.max(...landedClips.map((c) => c.ordinal)) : 0;
-  const gridClipSec = clampClipSec(body.clipSec, FILM_CLIP_SEC);
-  const plan = planFilmScenes(originalPrompt, {
-    avatarReference: body.avatarReference ?? undefined,
-    style: body.style ?? undefined,
-    clipSec: gridClipSec,
-    ...(landedCount >= 2 ? { totalSec: landedCount * gridClipSec } : {}),
-  });
-  const sceneCount = plan.scenes.length;
-
-  // 2. Interpret the edit → affected ordinals (+ per-scene instruction).
-  const remix = planRemixFromText(editRequest, sceneCount);
-  if (remix.editedScenes.length === 0) {
-    await releaseCharge();
-    return json({ success: false, message: `I couldn’t map “${editRequest}” to a scene. Try e.g. “make scene 2 darker” or “change the ending’s lighting”.` }, 200);
-  }
+  // ⚠️ EVERYTHING BETWEEN THE CHARGE AND THE ANSWER IS GUARDED: a throw anywhere below used to escape as a bare 500
+  // with the reservation still taken. It now gives the credits back first.
+  try {
 
   // 3. Re-render ONLY the edited scenes (the rest are reused verbatim). Capped +
   //    run in PARALLEL so wall-clock ≈ one scene's render (not the sum), keeping
@@ -216,12 +231,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (segments.length < 2) {
-    await releaseCharge();
+    const refunded = await releaseCharge();
     // No clip URLs in this answer: a re-rendered clip is part of the paid re-cut, never a free hand-out.
     return json({
       success: false,
       message: 'Not enough clips to re-stitch the edited film (need ≥2). The edited scene couldn’t render in this environment — the original film is unchanged.',
       summary: remix.summary,
+      refunded,
     }, 200);
   }
 
@@ -248,7 +264,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // History instead of being lost. Best-effort + signed-in only (anonymous trials
   // have no account to file it under); keyed by the remix session for idempotency.
   // The reservation stands only for a delivered re-cut that actually changed a scene.
-  if (!masterUrl || rerendered.size === 0) await releaseCharge();
+  const refunded = !masterUrl || rerendered.size === 0 ? await releaseCharge() : false;
   if (masterUrl) {
     try {
       if (user?.id) {
@@ -278,5 +294,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       total: cut.total,
       scenes: cut.scenes.map((s) => ({ ordinal: s.ordinal, action: s.action })),
     },
+    ...(masterUrl ? {} : { refunded }),
   }, 200);
+  } catch {
+    const refunded = await releaseCharge();
+    return json({ success: false, error: 'remix_failed', refunded }, 500);
+  }
 }

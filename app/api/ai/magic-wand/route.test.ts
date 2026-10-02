@@ -101,3 +101,33 @@ test('an empty prompt is a 400', async () => {
   expect(res.status).toBe(400);
   expect(mockGemini).not.toHaveBeenCalled();
 });
+
+test('kind "music": the song-brief system prompt (no camera or lighting), a short token budget, the reply cut to a brief', async () => {
+  mockGemini.mockResolvedValueOnce({ text: ` ${'x'.repeat(900)} `, model: 'gemini-2.5-flash', tier: 'flash' });
+  const res = await POST(post({ prompt: 'dreamy lofi for studying', kind: 'music' }));
+  const body = await res.json();
+  expect(body.enhanced).toHaveLength(400);
+  const req = mockGemini.mock.calls[0][0];
+  expect(req.systemPrompt).toMatch(/music/i);
+  expect(req.systemPrompt).toMatch(/sound/i);
+  expect(req.systemPrompt).not.toMatch(/camera movement|colour-palette/i);
+  expect(req.maxTokens).toBeLessThanOrEqual(400);
+});
+
+test('any other `kind` (or none) is the generic enhancer, byte for byte as before', async () => {
+  mockGemini.mockResolvedValue({ text: 'A golden-hour cat', model: 'gemini-2.5-flash', tier: 'flash' });
+  await POST(post({ prompt: 'a cat' }));
+  await POST(post({ prompt: 'a cat', kind: 'image' }));
+  for (const [req] of mockGemini.mock.calls) {
+    expect(req.systemPrompt).toMatch(/camera movement/);
+    expect(req.maxTokens).toBe(1024);
+  }
+});
+
+test('kind "music" is still signed-in only and still fail-soft', async () => {
+  mockUser = null;
+  expect((await POST(post({ prompt: 'a beat', kind: 'music' }))).status).toBe(401);
+  mockUser = { id: USER };
+  mockGemini.mockRejectedValueOnce(new Error('503'));
+  expect(await (await POST(post({ prompt: 'a beat', kind: 'music' }))).json()).toEqual({ enhanced: 'a beat' });
+});

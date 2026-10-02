@@ -96,21 +96,47 @@ export async function createJob(input: {
   userId: string;
   serviceType: ProduceKind;
   params?: Record<string, unknown>;
+  /** A job already submitted to its provider is born `processing` (default `pending` — queued, not yet started). */
+  status?: 'pending' | 'processing';
 }): Promise<boolean> {
   const sb = client();
   if (!sb) return false;
+  const processing = input.status === 'processing';
   try {
     const { error } = await sb.from(TABLE).insert({
       id: input.id,
       user_id: input.userId,
       service_type: input.serviceType,
-      status: 'pending',
-      current_stage: 'queued',
-      pct: 0,
+      status: processing ? 'processing' : 'pending',
+      current_stage: processing ? 'rendering' : 'queued',
+      pct: processing ? 5 : 0,
       params: input.params ?? {},
     });
     return !error;
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Merge a `_settle` record (lib/orchestrator/unpolledSettle) into an EXISTING job row and mark it `processing`, so
+ * the cron can settle the job if its browser never polls again. Best-effort and never throws; returns true on a
+ * confirmed write. Only call once credits were actually charged — the record names the ref to refund.
+ */
+export async function recordJobSettle(id: string, settle: Record<string, unknown>): Promise<boolean> {
+  const sb = client();
+  if (!sb || !id) return false;
+  try {
+    const { data } = await sb.from(TABLE).select('params').eq('id', id).maybeSingle();
+    const raw = (data as { params?: unknown } | null)?.params;
+    const prev = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const { error } = await sb
+      .from(TABLE)
+      .update({ status: 'processing', current_stage: 'rendering', params: { ...prev, ...settle } })
+      .eq('id', id);
+    return !error;
+  } catch (e) {
+    reportError(e, { fn: 'recordJobSettle', id });
     return false;
   }
 }

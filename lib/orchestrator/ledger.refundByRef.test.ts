@@ -13,7 +13,7 @@ type Row = { user_id: string; delta: number; reason?: string; metadata: { ref?: 
 let db: ReturnType<typeof makeDb>;
 jest.mock('../supabase/server', () => ({ createServiceRoleClient: () => db.client }));
 
-import { grantCredits, netDebitedForRef, refundDebitByRef } from './ledger';
+import { debitExistsForRef, grantCredits, netDebitedForRef, refundDebitByRef } from './ledger';
 
 /** LIKE pattern → RegExp, honouring backslash escapes the way Postgres does. */
 function likeToRegex(pattern: string): RegExp {
@@ -41,6 +41,7 @@ function makeDb(initial: Row[], opts: { failReads?: boolean } = {}) {
       lt: (col: string, v: number) => { filters.push((r) => Number(get(r, col)) < v); return b; },
       gt: (col: string, v: number) => { filters.push((r) => Number(get(r, col)) > v); return b; },
       like: (col: string, p: string) => { const re = likeToRegex(p); filters.push((r) => re.test(String(get(r, col) ?? ''))); return b; },
+      limit: () => b,
       insert: async (row: Row) => {
         if (row.delta > 0 && rows.some((r) => r.user_id === row.user_id && r.delta > 0 && r.metadata?.ref === row.metadata?.ref)) {
           return { error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
@@ -155,5 +156,33 @@ describe('grantCredits — bonuses go through the ledger, once per ref', () => {
     expect((await grantCredits(U, 0, 'r', 's')).ok).toBe(false);
     expect((await grantCredits(U, 10, '', 's')).ok).toBe(false);
     expect(db.rows).toHaveLength(0);
+  });
+});
+
+describe('debitExistsForRef — a replayed ref is recognised BEFORE deduct_credits answers it with a silent success', () => {
+  test('no debit under the ref → false (a genuine first attempt)', async () => {
+    db = makeDb([{ user_id: U, delta: -2, metadata: { ref: 'image:other' } }]);
+    expect(await debitExistsForRef(U, 'image:job-1:fp:user-1')).toBe(false);
+  });
+
+  test('a debit under the ref → true, even after it was refunded (the replay must still be refused)', async () => {
+    db = makeDb([
+      { user_id: U, delta: -5, metadata: { ref: 'music:job-1:fp:user-1' } },
+      { user_id: U, delta: 5, metadata: { ref: 'music:job-1:fp:user-1:refund' } },
+    ]);
+    expect(await debitExistsForRef(U, 'music:job-1:fp:user-1')).toBe(true);
+  });
+
+  test('a credit-back alone is not a debit, and another user’s debit is not mine', async () => {
+    db = makeDb([
+      { user_id: U, delta: 5, metadata: { ref: 'r1' } },
+      { user_id: 'someone-else', delta: -5, metadata: { ref: 'r1' } },
+    ]);
+    expect(await debitExistsForRef(U, 'r1')).toBe(false);
+  });
+
+  test('an unreadable ledger answers null (unknown), never a guess', async () => {
+    db = makeDb([{ user_id: U, delta: -5, metadata: { ref: 'r1' } }], { failReads: true });
+    expect(await debitExistsForRef(U, 'r1')).toBeNull();
   });
 });

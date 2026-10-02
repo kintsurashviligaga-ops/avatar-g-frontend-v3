@@ -1,5 +1,5 @@
 import { MetadataRoute } from "next";
-import { publicEnv } from "@/lib/env/public";
+import { SITE_URL } from "@/lib/seo/site";
 
 /**
  * Dynamic sitemap. Every entry MUST be a canonical, 200-returning URL — a
@@ -13,9 +13,9 @@ import { publicEnv } from "@/lib/env/public";
  * `/dashboard/billing` route (it 404s), so it is intentionally omitted.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  // strip trailing slash(es) so a base like "https://myavatar.ge/" can't double the slash in every entry
-  // (matches lib/seo/site.ts SITE_URL, which hreflang.ts mirrors — the two hreflang sources must agree).
-  const baseUrl = (publicEnv.NEXT_PUBLIC_APP_URL || "https://myavatar.ge").replace(/\/+$/, "");
+  // ⚠️ SITE_URL itself, not a copy of its env chain: this file's hreflang and the pages' own (lib/seo/hreflang.ts,
+  // lib/seo/metadata.ts) must agree, and a separate `NEXT_PUBLIC_APP_URL || …` here could name another origin.
+  const baseUrl = SITE_URL;
   const now = new Date();
   const locales = ['ka', 'en', 'ru'] as const;
 

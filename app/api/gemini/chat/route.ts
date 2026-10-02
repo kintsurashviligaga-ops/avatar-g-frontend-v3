@@ -4,6 +4,12 @@ import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, getServiceCreditCost, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { providerErrorBody } from '@/lib/api/providerError';
+
+/** The longest message one turn may carry — a pasted book is not a chat turn, and every character is billed. */
+const MAX_MESSAGE_CHARS = 16_000;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -35,6 +41,9 @@ const RequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Per-IP burst guard before anything else (the magic-wand order: WRITE per IP → sign-in → per-account cap → budget).
+  const ipLimited = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (ipLimited) return ipLimited;
   try {
     const body = await req.json();
     const parsed = RequestSchema.safeParse(body);
@@ -57,6 +66,21 @@ export async function POST(req: NextRequest) {
     // The persisted owner. Null only in a FILM_ALLOW_ANONYMOUS demo deployment, where nothing is written.
     const userId = user?.id ?? null;
 
+    // ⚠️ SIGNED-IN WAS THE ONLY GUARD. Sign-up is self-service, so one account could loop this — Pro tier whenever an
+    // attachment or a long history rides along — with no cap, no budget check and nothing booked. Per-ACCOUNT daily
+    // chat cap (the CHAT_USER bucket the product chat shares), a bounded message, the platform budget gate, and every
+    // call booked against that budget.
+    if (userId) {
+      const capped = await checkRateLimitByKey(userId, RATE_LIMITS.CHAT_USER);
+      if (capped) return capped;
+    }
+    if (message.length > MAX_MESSAGE_CHARS) {
+      return NextResponse.json({ error: 'message_too_long', maxChars: MAX_MESSAGE_CHARS }, { status: 413 });
+    }
+    if (!(await chatBudgetAllows(message))) {
+      return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
+    }
+
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
     }
@@ -70,6 +94,15 @@ export async function POST(req: NextRequest) {
       tier,
       attachments: attachments as GeminiAttachment[] | undefined,
       history,
+    });
+
+    void bookChatUsage({
+      model: response.model,
+      inputTokens: response.tokensIn,
+      outputTokens: response.tokensOut,
+      inputChars: systemPrompt.length + message.length,
+      chars: (response.text || '').length,
+      userId,
     });
 
     const creditsUsed = getServiceCreditCost(serviceContext as GeminiServiceContext, tier);
@@ -145,6 +178,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('[gemini/chat] error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    // `String(err)` used to go straight back — a provider's raw error text. The sanitised class only (providerError).
+    const safe = providerErrorBody(err);
+    return NextResponse.json({ error: safe.error, message: safe.message }, { status: safe.status });
   }
 }

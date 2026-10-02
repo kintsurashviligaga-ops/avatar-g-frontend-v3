@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       // Most commonly: the Stripe account does not support GEL settlement.
       return NextResponse.json(
-        { error: 'gel_unsupported', message: e instanceof Error ? e.message.slice(0, 200) : 'wallet top-up failed' },
+        { error: 'gel_unsupported', message: 'wallet top-up failed' },
         { status: 502 },
       );
     }
@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof BillingProviderUnavailableError) {
       return NextResponse.json({ error: 'Billing provider unavailable', error_code: error.code }, { status: 503 });
     }
-    return NextResponse.json({ error: 'Failed to create wallet top-up', message: error instanceof Error ? error.message : 'unknown' }, { status: 500 });
+    console.error('[wallet-topup] failed:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: 'Failed to create wallet top-up' }, { status: 500 });
   }
 }

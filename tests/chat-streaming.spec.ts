@@ -168,7 +168,10 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await expect(page.getByTestId('settings-panel-toggle')).toHaveCount(0);
     await expect(page.getByTestId('options-toggle')).toHaveCount(0); // the composer's tool chip is not in the chat
     await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();
-    await expect(page.getByTestId('chat-disclaimer')).toHaveText('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+    // The premium-minimal home: nothing but the starter chips under the composer — no disclaimer, no explanation.
+    await expect(page.getByTestId('chat-disclaimer')).toHaveCount(0);
+    await expect(page.getByText('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.')).toHaveCount(0);
+    await expect(page.getByTestId('price-tag')).toHaveCount(0);
     await expect(page.locator('header').filter({ visible: true })).toHaveCount(1);
 
     await page.locator('aside[aria-label="მენიუ"]').getByRole('button', { name: 'ვიდეო', exact: true }).click();
@@ -176,6 +179,28 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await expect(page.getByTestId('settings-panel-toggle')).toHaveCount(1);
     await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
     await expect(switcher(page)).toHaveCount(0);
+  });
+
+  test('„+“ in the chat offers photos, video, camera and files — and a photo, a video and a PDF each land in the tray', async ({ page }) => {
+    await openChat(page);
+    await page.getByTestId('plus').click();
+    const sheet = page.getByTestId('tool-sheet');
+    await expect(sheet).toBeVisible();
+    for (const tile of ['ფოტოები', 'ვიდეო', 'კამერა', 'ფაილები']) {
+      // „ვიდეო“ is also a TOOL below the tiles: the tile is the first button of that name.
+      await expect(sheet.getByRole('button', { name: tile, exact: true }).first()).toBeVisible();
+    }
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    // Each tile feeds its own hidden input: photos take images only, the video input takes video only.
+    await page.locator('input[type=file][accept="image/*"][multiple]').setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+    await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(4096) });
+    await page.locator('input[type=file][accept*="application/pdf"][multiple]').setInputFiles({ name: 'brief.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 brief') });
+    // All three are in the tray under their own names, and a video in the chat opens the „edit this video“ chips.
+    for (const name of ['photo.png', 'clip.mp4', 'brief.pdf']) await expect(page.getByTitle(name)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'სუბტიტრები' })).toBeVisible();
   });
 
   test('choosing Pro in the switcher sends the NEXT turn as Pro — no reload, no new session', async ({ page }) => {
@@ -218,7 +243,7 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     expect(await page.evaluate(() => window.localStorage.getItem('myavatar:chat-mode'))).toBe('pro');
   });
 
-  test('the empty chat centres the composer: greeting above, chips below, Gemini’s 64 px pill', async ({ page }) => {
+  test('the empty chat is the greeting and the box: the composer sits near the middle with nothing under it, Gemini’s 64 px pill', async ({ page }) => {
     await openChat(page);
     const pillLoc = page.getByTestId('composer-input').locator('xpath=..');
     const pill = (await pillLoc.boundingBox())!;
@@ -226,9 +251,10 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     expect(centre).toBeGreaterThan(800 * 0.35);
     expect(centre).toBeLessThan(800 * 0.65);
     const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
-    const chips = (await page.getByRole('group', { name: 'დაიწყე' }).boundingBox())!;
     expect(h1.y + h1.height).toBeLessThanOrEqual(pill.y);
-    expect(chips.y).toBeGreaterThanOrEqual(pill.y + pill.height);
+    // Owner, 2026-10-02: nothing but the greeting and the box — no sub line, no starter chips, nothing under the pill.
+    await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
+    await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
     expect(pill.height).toBeGreaterThanOrEqual(63);
     expect(await pillLoc.evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('32px');
     // With text: Send is the filled accent circle, and it takes the Live slot.

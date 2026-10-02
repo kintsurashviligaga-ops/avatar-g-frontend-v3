@@ -48,17 +48,19 @@ const REHOST_RETRY_WINDOW_MS = 10 * 60_000;
  * lost the difference on a model they never got. The ref is per job and create is its only debit, so the
  * ledger's net under it is exactly what this job took.
  */
-async function refundUndelivered(userId: string, jobId: string, predictionId: string, charge: string): Promise<boolean> {
+async function refundUndelivered(userId: string, jobId: string, predictionId: string, charge: string): Promise<{ refunded: boolean; settled: boolean }> {
   if (!verifyModel3dCharge(charge, { userId, jobId, predictionId })) {
     if (charge) console.warn('[model3d.status] refund refused — the charge signature does not match this job and prediction');
-    return false;
+    return { refunded: false, settled: false };
   }
   const ref = model3dChargeRef(jobId);
   const r = await refundDebitByRef(userId, ref).catch(() => null);
   // 'skipped' = nothing left to give back (already refunded, or never charged) — quiet. Anything else is a
   // user who paid for a failed job and was not refunded, which support must be able to see.
   if (!r?.ok && r?.reason !== 'skipped') reportError(new Error('model3d refund did not land'), { route: 'model3d.status', ref, reason: r?.reason ?? 'threw' });
-  return Boolean(r?.ok);
+  // `settled` = the money question is closed (credits back, or nothing left to give). Only then may the row turn
+  // terminal — a row left live is one the settle cron (`_settle`) can still refund through the ledger.
+  return { refunded: Boolean(r?.ok), settled: Boolean(r?.ok) || r?.reason === 'skipped' };
 }
 
 /**
@@ -130,8 +132,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const poll = await pollReconstruction(`https://api.replicate.com/v1/predictions/${predictionId}`);
 
   if (poll.status === 'failed') {
-    if (ownsJob) await failJob(jobId, poll.error || 'replicate reported failure').catch(() => {});
-    const refunded = await refundUndelivered(user.id, jobId, predictionId, charge);
+    // REFUND FIRST: a refund that did not land must leave the row live for the settle cron to retry.
+    const { refunded, settled } = await refundUndelivered(user.id, jobId, predictionId, charge);
+    if (ownsJob && settled) await failJob(jobId, poll.error || 'replicate reported failure').catch(() => {});
     // 'generation_failed' is the code the panel renders as "did not finish — you were refunded"; it is only
     // sent when the refund actually landed, so the sentence is never a promise the ledger did not keep.
     return NextResponse.json({ status: 'failed', message: refunded ? 'generation_failed' : (poll.error || 'generation failed'), refunded });
@@ -156,8 +159,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // field falls back to our own hosted copy: confirmed absent means nothing was ever delivered.
     const neverHadModel = poll.dataRemoved === false
       || (poll.dataRemoved === undefined && (await storageObjectExists(HOST_BUCKET, hostedPath(predictionId))) === false);
-    if (ownsJob) await failJob(jobId, 'the provider finished without a usable model file').catch(() => {});
-    const refunded = neverHadModel ? await refundUndelivered(user.id, jobId, predictionId, charge) : false;
+    const outcome = neverHadModel ? await refundUndelivered(user.id, jobId, predictionId, charge) : { refunded: false, settled: true };
+    const refunded = outcome.refunded;
+    if (ownsJob && outcome.settled) await failJob(jobId, 'the provider finished without a usable model file').catch(() => {});
     // Reported even when refunded: a model version or output shape that pickGlbUrl no longer reads makes EVERY
     // job end here, and with the refund working that outage would otherwise be silent.
     reportError(new Error('model3d finished without a usable model file'), {
@@ -238,10 +242,10 @@ async function rehostFailed(c: {
     return NextResponse.json({ status: 'processing' });
   }
 
-  if (c.ownsJob) {
+  const { refunded, settled } = await refundUndelivered(c.userId, c.jobId, c.predictionId, c.charge);
+  if (c.ownsJob && settled) {
     await failJob(c.jobId, c.stage === 'download' ? 'could not download the generated model' : 'could not store the generated model').catch(() => {});
   }
-  const refunded = await refundUndelivered(c.userId, c.jobId, c.predictionId, c.charge);
   reportError(new Error(`model3d ${c.stage} failed`), { route: 'model3d.status', ref, predictionId: c.predictionId, retrying: false, refunded });
   return NextResponse.json(
     {

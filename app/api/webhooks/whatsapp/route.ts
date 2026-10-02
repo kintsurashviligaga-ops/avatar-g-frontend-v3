@@ -48,8 +48,11 @@ function safeLog(event: string, payload: Record<string, unknown>): void {
 
 function verifyMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
   const appSecret = normalize(process.env.WHATSAPP_APP_SECRET);
+  // ⚠️ FAIL CLOSED. This returned `true` when WHATSAPP_APP_SECRET was unset, so every unsigned POST was accepted as a
+  // Meta delivery, queued, and drained by the worker tick into an LLM reply on the platform keys. Meta signs every
+  // delivery with the app secret; without one configured nothing can be verified, so nothing is accepted.
   if (!appSecret) {
-    return true;
+    return false;
   }
 
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {

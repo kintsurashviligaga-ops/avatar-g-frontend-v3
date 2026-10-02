@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { FilmStudioHome } from '@/components/studio/FilmStudioHome';
 import { LANDING_COPY, landingLang } from '@/components/landing/copy';
-import { BRAND_V1 } from '@/lib/brand/v1';
+import { pageMetadata } from '@/lib/seo/metadata';
 
 /**
  * /{lang} — the home page IS the chat (docs/DESIGN.md §9), the way gemini.google.com and chatgpt.com open: a visitor
@@ -17,24 +17,8 @@ type Props = { params: { locale: string } };
 export function generateMetadata({ params }: Props): Metadata {
   const lang = landingLang(params.locale);
   const t = LANDING_COPY[lang];
-  return {
-    title: { absolute: t.metaTitle },
-    description: t.metaDescription,
-    alternates: {
-      canonical: `/${lang}`,
-      languages: { ka: '/ka', en: '/en', ru: '/ru', 'x-default': '/ka' },
-    },
-    openGraph: {
-      type: 'website',
-      title: t.metaTitle,
-      description: t.metaDescription,
-      url: `/${lang}`,
-      siteName: 'MyAvatar.ge',
-      locale: lang === 'ka' ? 'ka_GE' : lang === 'ru' ? 'ru_RU' : 'en_US',
-      images: [{ url: BRAND_V1.og.src, width: BRAND_V1.og.width, height: BRAND_V1.og.height, alt: t.metaTitle }],
-    },
-    twitter: { card: 'summary_large_image', title: t.metaTitle, description: t.metaDescription, images: [BRAND_V1.og.src] },
-  };
+  // The title already leads with the brand — no " · MyAvatar" suffix.
+  return pageMetadata({ locale: lang, path: '', title: t.metaTitle, description: t.metaDescription, brandSuffix: false });
 }
 
 export default function LocaleHome({ params }: Props) {

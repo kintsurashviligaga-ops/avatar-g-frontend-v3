@@ -82,6 +82,9 @@ describe('classifyFile / mimeForFile', () => {
     [{ name: 'clip.mov', type: '' }, 'video', 'video/quicktime'],
     [{ name: 'paper.pdf', type: 'application/pdf' }, 'pdf', 'application/pdf'],
     [{ name: 'data.csv', type: 'text/csv' }, 'file', 'text/csv'],
+    [{ name: 'app.py', type: '' }, 'text', 'text/plain'],
+    [{ name: 'main.tsx', type: 'application/octet-stream' }, 'text', 'text/plain'],
+    [{ name: 'talk.srt', type: '' }, 'text', 'text/plain'],
     [{ name: 'archive.zip', type: 'application/zip' }, 'file', 'application/zip'],
   ])('%j → %s (%s)', (file, kind, mime) => {
     expect(classifyFile(file)).toBe(kind);

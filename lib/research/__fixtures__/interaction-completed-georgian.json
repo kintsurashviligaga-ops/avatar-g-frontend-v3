@@ -1,0 +1,19 @@
+{
+  "id": "v1_ChdkZWVwLXJlc2VhcmNoLWdlb3JnaWFu",
+  "agent": "deep-research-preview-04-2026",
+  "status": "completed",
+  "steps": [
+    {
+      "type": "model_output",
+      "content": [
+        {
+          "type": "text",
+          "text": "# ტესტ-ანგარიში: ღვინის ექსპორტი\n\n## მთავარი დასკვნები\n\n- ექსპორტი სამ ბაზარზეა კონცენტრირებული.\n- ქვევრის ღვინო უფრო სწრაფად იზრდება.\n\n## წყაროები\n\n[ეროვნული ღვინის სააგენტო](https://example.org/ge/stats)\n",
+          "annotations": [
+            { "type": "url_citation", "url": "https://example.org/ge/stats", "title": "ეროვნული ღვინის სააგენტო", "start_index": 62, "end_index": 140 }
+          ]
+        }
+      ]
+    }
+  ]
+}

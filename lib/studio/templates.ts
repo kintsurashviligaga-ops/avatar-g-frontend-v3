@@ -31,6 +31,8 @@
  * Thumbnails: `thumb` is set ONLY when the file exists under public/ (a test enforces it), so a missing image is never
  * shipped as a broken <img> or a 404. A card without one renders its palette as a gradient tile. The generated set is
  * produced by `scripts/templates/thumbs.md` + the hf-art-pack runner (`npm run art:templates`, hard-capped spend).
+ * Every shipped thumbnail also needs its blur placeholder + content version in lib/studio/templateThumbs.generated.ts:
+ * `node scripts/templates/build-thumb-blur.mjs` (build-thumbs.mjs runs it; lib/studio/templateThumbs.test.ts enforces it).
  *
  * Pure and isomorphic: no React, no env.
  */
@@ -110,7 +112,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('თიზერი · 8 წმ', 'Teaser · 8s', 'Тизер · 8 с'),
     hint: T('ერთი სცენა — იდეის სწრაფი და იაფი ტესტი', 'One scene — the fastest, cheapest test of an idea', 'Одна сцена — быстро и дёшево проверить идею'),
     adds: T('ერთი ძლიერი კადრი, ერთი იდეა', 'One striking shot built around a single idea', 'Один яркий кадр вокруг одной идеи'),
-    thumb: null, palette: ['#06121F', '#4DB6FF'],
+    thumb: '/templates/video/teaser.jpg', palette: ['#06121F', '#4DB6FF'],
     values: { mode: 'documentary', duration: 8, orientation: 'vertical', style: 'Cinematic' },
   },
   {
@@ -118,7 +120,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('ანიმე', 'Anime', 'Аниме'),
     hint: T('ანიმაციური სტილი, 9:16, 24 წმ', 'Hand-drawn anime look, 9:16, 24s', 'Аниме-стиль, 9:16, 24 с'),
     adds: T('ხელით დახატული ანიმეს ლუქი', 'A hand-drawn anime look', 'Рисованный аниме-лук'),
-    thumb: null, palette: ['#1B0F2E', '#FF7AB6'],
+    thumb: '/templates/video/anime.jpg', palette: ['#1B0F2E', '#FF7AB6'],
     values: { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Anime' },
   },
   {
@@ -126,7 +128,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('ნეონის ღამე', 'Neon Nights', 'Неоновая ночь'),
     hint: T('ღამის ქალაქი, ნეონის შუქი, 9:16', 'A city at night in neon light, 9:16', 'Ночной город в неоне, 9:16'),
     adds: T('ნეონით განათებული ღამის ქალაქი', 'A neon-lit city at night', 'Ночной город в неоновом свете'),
-    thumb: null, palette: ['#120624', '#B44CFF'],
+    thumb: '/templates/video/neon-nights.jpg', palette: ['#120624', '#B44CFF'],
     values: { mode: 'documentary', duration: 24, orientation: 'vertical', style: 'Neon' },
   },
   {
@@ -134,7 +136,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('ბუნების დოკუმენტური', 'Nature Documentary', 'Природа, документалка'),
     hint: T('48 წმ, 16:9 — მთები, ტყე, ცოცხალი სამყარო', '48s 16:9 — mountains, forests, wildlife', '48 с, 16:9 — горы, леса, дикая природа'),
     adds: T('ბუნების დოკუმენტურის ლუქი და ბუნებრივი შუქი', 'A wildlife-documentary look in natural light', 'Лук документалки о природе, естественный свет'),
-    thumb: null, palette: ['#07170D', '#4CC27A'],
+    thumb: '/templates/video/nature-doc.jpg', palette: ['#07170D', '#4CC27A'],
     values: { mode: 'documentary', duration: 48, orientation: 'landscape', style: 'Nature' },
   },
   {
@@ -142,7 +144,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('ნუარი', 'Film Noir', 'Нуар'),
     hint: T('შავ-თეთრი, მკვეთრი ჩრდილები, 16:9', 'Black and white, hard shadows, 16:9', 'Чёрно-белое, резкие тени, 16:9'),
     adds: T('შავ-თეთრი ნუარის ლუქი, მკვეთრი ჩრდილები', 'A black-and-white noir look with hard shadows', 'Чёрно-белый нуар с резкими тенями'),
-    thumb: null, palette: ['#0A0A0A', '#BDBDBD'],
+    thumb: '/templates/video/noir.jpg', palette: ['#0A0A0A', '#BDBDBD'],
     values: { mode: 'documentary', duration: 24, orientation: 'landscape', style: 'Noir' },
   },
   {
@@ -150,7 +152,7 @@ export const VIDEO_TEMPLATES: readonly VideoTemplate[] = [
     label: T('მუსიკალური კლიპი', 'Music Video', 'Клип'),
     hint: T('სიმღერის კლიპი, 9:16, ნეონი', 'A clip cut to your song, 9:16, neon', 'Клип под вашу песню, 9:16, неон'),
     adds: T('სცენის ნეონის შუქი და რიტმული მონტაჟი', 'Neon stage light and cuts on the beat', 'Неоновый сценический свет и монтаж в ритм'),
-    thumb: null, palette: ['#14061C', '#338FE8'],
+    thumb: '/templates/video/music-video.jpg', palette: ['#14061C', '#338FE8'],
     values: { mode: 'musicvideo', duration: 24, orientation: 'vertical', style: 'Neon' },
   },
 ];
@@ -174,7 +176,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('სოციალური პოსტი', 'Social Post', 'Пост для соцсетей'),
     hint: T('4:5 — Instagram-ის ლენტა, 2K', '4:5 for the Instagram feed, 2K', '4:5 — лента Instagram, 2K'),
     adds: T('ცოცხალი ლაიფსთაილ კადრი ლენტისთვის', 'A bright lifestyle look made for the feed', 'Яркий лайфстайл-кадр для ленты'),
-    thumb: null, palette: ['#0C1424', '#5BA6F0'],
+    thumb: '/templates/image/social.jpg', palette: ['#0C1424', '#5BA6F0'],
     values: { aspect: '4:5', quality: 'high', style: 'Photorealistic' },
   },
   {
@@ -182,7 +184,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('კინოპოსტერი', 'Cinematic Poster', 'Киноафиша'),
     hint: T('3:4, 2K — დიდი ბეჭდვისთვის აირჩიე 4K', '3:4 at 2K — pick 4K for large prints', '3:4, 2K — для крупной печати выберите 4K'),
     adds: T('პოსტერის კომპოზიცია, ადგილი სათაურისთვის', 'Poster composition with room for a title', 'Композиция афиши с местом для названия'),
-    thumb: null, palette: ['#1A0C08', '#FF8A4C'],
+    thumb: '/templates/image/poster.jpg', palette: ['#1A0C08', '#FF8A4C'],
     values: { aspect: '3:4', quality: 'high', style: 'Cinematic' },
   },
   {
@@ -190,7 +192,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('ფონი', 'Wallpaper', 'Обои'),
     hint: T('16:9, 2K', '16:9 widescreen at 2K', '16:9, 2K'),
     adds: T('ფართო ხედი, თავისუფალი ცენტრით', 'A wide vista with an uncluttered centre', 'Широкий вид со свободным центром'),
-    thumb: null, palette: ['#06101C', '#3FA9F5'],
+    thumb: '/templates/image/wallpaper.jpg', palette: ['#06101C', '#3FA9F5'],
     values: { aspect: '16:9', quality: 'high', style: 'Cinematic' },
   },
   {
@@ -198,7 +200,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('კონცეპტ-არტი', 'Concept Art', 'Концепт-арт'),
     hint: T('16:9 — სამყაროები და პერსონაჟები', '16:9 — worlds and characters', '16:9 — миры и персонажи'),
     adds: T('მასშტაბური სამყაროს კონცეპტ-არტი', 'World-building concept art at epic scale', 'Концепт-арт мира с эпическим размахом'),
-    thumb: null, palette: ['#0E1A1A', '#3FD0C9'],
+    thumb: '/templates/image/concept.jpg', palette: ['#0E1A1A', '#3FD0C9'],
     values: { aspect: '16:9', quality: 'high', style: 'Digital Art' },
   },
   {
@@ -206,7 +208,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('ანიმე', 'Anime', 'Аниме'),
     hint: T('9:16 — ანიმე-ილუსტრაცია', '9:16 anime illustration', '9:16 — аниме-иллюстрация'),
     adds: T('ანიმეს პოსტერის კომპოზიცია', 'An anime key-visual composition', 'Композиция аниме-постера'),
-    thumb: null, palette: ['#1B0F2E', '#FF7AB6'],
+    thumb: '/templates/image/anime.jpg', palette: ['#1B0F2E', '#FF7AB6'],
     values: { aspect: '9:16', quality: 'high', style: 'Anime' },
   },
   {
@@ -214,7 +216,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('ზეთის ფერწერა', 'Oil Painting', 'Масло'),
     hint: T('3:4 — ტილო და ფუნჯის მონასმი', '3:4 — canvas and brushwork', '3:4 — холст и мазок'),
     adds: T('მუზეუმის ფერწერის სქელი მონასმი', 'Museum-style impasto brushwork', 'Густой мазок музейной живописи'),
-    thumb: null, palette: ['#1C1208', '#C98A3A'],
+    thumb: '/templates/image/oil-painting.jpg', palette: ['#1C1208', '#C98A3A'],
     values: { aspect: '3:4', quality: 'high', style: 'Oil Painting' },
   },
   {
@@ -222,7 +224,7 @@ export const IMAGE_TEMPLATES: readonly ImageTemplate[] = [
     label: T('3D რენდერი', '3D Render', '3D-рендер'),
     hint: T('1:1 — სუფთა სტუდიური 3D', '1:1 clean studio 3D', '1:1 — чистый студийный 3D'),
     adds: T('რბილი სტუდიური განათება და პასტელური ფონი', 'Soft studio lighting on a pastel backdrop', 'Мягкий студийный свет и пастельный фон'),
-    thumb: null, palette: ['#0A1220', '#7FB8FF'],
+    thumb: '/templates/image/3d-render.jpg', palette: ['#0A1220', '#7FB8FF'],
     values: { aspect: '1:1', quality: 'high', style: '3D Render' },
   },
 ];
@@ -235,7 +237,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('ჰოლივუდური კინო', 'Cinematic Score', 'Кино-саундтрек'),
     hint: T('ინსტრუმენტული, ნელი, 90 წმ', 'Instrumental, slow, 90s', 'Инструментал, медленно, 90 с'),
     adds: T('ორკესტრი: სიმები, სპილენძი, ტიმპანი', 'An orchestra: strings, brass and timpani', 'Оркестр: струнные, медные, литавры'),
-    thumb: null, palette: ['#140D05', '#E3B04B'],
+    thumb: '/templates/music/hollywood-cinematic.jpg', palette: ['#140D05', '#E3B04B'],
     values: { genre: 'classical', tempo: 'slow', duration: 90, instrumental: true, voiceType: 'female' },
   },
   {
@@ -243,7 +245,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('R&B ბითი', 'R&B Beat', 'R&B-бит'),
     hint: T('ინსტრუმენტული ბითი, საშუალო ტემპი, 30 წმ', 'Instrumental beat, mid-tempo, 30s', 'Инструментальный бит, средний темп, 30 с'),
     adds: T('თბილი Rhodes და ღრმა 808 ბასი', 'Warm Rhodes keys and a deep 808 bass', 'Тёплые Rhodes и глубокий бас 808'),
-    thumb: null, palette: ['#1A0A16', '#E0569B'],
+    thumb: '/templates/music/rnb-beat.jpg', palette: ['#1A0A16', '#E0569B'],
     values: { genre: 'r&b', tempo: 'medium', duration: 30, instrumental: true, voiceType: 'female' },
   },
   {
@@ -251,7 +253,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('R&B / ჰიპ-ჰოპი', 'R&B / Hip-Hop', 'R&B / Хип-хоп'),
     hint: T('კაცის ვოკალი, საშუალო ტემპი, 30 წმ', 'Male vocal, mid-tempo, 30s', 'Мужской вокал, средний темп, 30 с'),
     adds: T('მკვრივი დრამები და მელოდიური მისამღერი', 'Punchy drums and a melodic hook', 'Плотные барабаны и мелодичный хук'),
-    thumb: null, palette: ['#120A1E', '#8E6CFF'],
+    thumb: '/templates/music/rnb-hiphop-core.jpg', palette: ['#120A1E', '#8E6CFF'],
     values: { genre: 'hip-hop', tempo: 'medium', duration: 30, instrumental: false, voiceType: 'male' },
   },
   {
@@ -259,7 +261,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('ქართული ფოლკი', 'Georgian Folk', 'Грузинский фолк'),
     hint: T('ქალის ვოკალი, საშუალო ტემპი, 60 წმ', 'Female vocal, mid-tempo, 60s', 'Женский вокал, средний темп, 60 с'),
     adds: T('ქართული მრავალხმიანი გუნდი, ფანდური', 'Georgian polyphonic choir and panduri', 'Грузинский многоголосный хор и пандури'),
-    thumb: null, palette: ['#160A06', '#D46A3A'],
+    thumb: '/templates/music/georgian-folk.jpg', palette: ['#160A06', '#D46A3A'],
     // ⚠️ 'georgian folk', not 'folk': the chip and the card both SAY Georgian Folk, but the engines read the value, and
     // "Style: folk." says nothing about Georgia. The value is what reaches the brief (OmniStudio MUSIC_STYLES too).
     values: { genre: 'georgian folk', tempo: 'medium', duration: 60, instrumental: false, voiceType: 'female' },
@@ -277,7 +279,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('ელექტრონული კიბერ', 'Electronic Cyber', 'Электронный кибер'),
     hint: T('ინსტრუმენტული, სწრაფი, 60 წმ', 'Instrumental, fast, 60s', 'Инструментал, быстро, 60 с'),
     adds: T('სინთების არპეჯიო და მაჯისცემის ბასი', 'Arpeggiated synths and a pulsing bass', 'Арпеджио синтов и пульсирующий бас'),
-    thumb: null, palette: ['#05101E', '#338FE8'],
+    thumb: '/templates/music/electronic-cyber.jpg', palette: ['#05101E', '#338FE8'],
     values: { genre: 'electronic', tempo: 'fast', duration: 60, instrumental: true, voiceType: 'female' },
   },
   {
@@ -285,7 +287,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('ჯაზ-ლაუნჯი', 'Jazz Lounge', 'Джаз-лаунж'),
     hint: T('ქალის ვოკალი, ნელი, 60 წმ', 'Female vocal, slow, 60s', 'Женский вокал, медленно, 60 с'),
     adds: T('კონტრაბასი, ჯაგრისის დრამი, ჩახშობილი საყვირი', 'Upright bass, brushed drums, muted trumpet', 'Контрабас, щётки, труба с сурдиной'),
-    thumb: null, palette: ['#160E04', '#C8913A'],
+    thumb: '/templates/music/retro-jazz-lounge.jpg', palette: ['#160E04', '#C8913A'],
     values: { genre: 'jazz', tempo: 'slow', duration: 60, instrumental: false, voiceType: 'female' },
   },
   {
@@ -293,7 +295,7 @@ export const MUSIC_TEMPLATES: readonly MusicTemplate[] = [
     label: T('დოკუმენტური ემბიენტი', 'Documentary Ambient', 'Эмбиент для документалки'),
     hint: T('ინსტრუმენტული ფონი, ნელი, სრული სიგრძე', 'Instrumental bed, slow, full length', 'Инструментальный фон, медленно, полная длина'),
     adds: T('ნელა ცვალებადი ფონი და იშვიათი ფორტეპიანო', 'Slowly evolving pads and sparse piano', 'Медленные пэды и редкое фортепиано'),
-    thumb: null, palette: ['#081216', '#6FA8B8'],
+    thumb: '/templates/music/documentary-ambient.jpg', palette: ['#081216', '#6FA8B8'],
     values: { genre: 'ambient', tempo: 'slow', duration: 0, instrumental: true, voiceType: 'female' },
   },
 ];

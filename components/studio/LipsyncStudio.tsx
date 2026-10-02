@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { UploadCloud, Film, Music2, Wand2, Loader2, X, AlertTriangle } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
-import { describeServiceError } from './ui/serviceError';
+import { describeServiceError, describeGenerationFailure } from './ui/serviceError';
 import { ResultActions } from './ui/ResultActions';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -200,14 +200,15 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
       for (let i = 0; i < 120; i++) {
         await new Promise((r) => setTimeout(r, 5000));
         const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include' });
-        const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
+        const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
         if (pj.done) {
           settled = true;
           if (pj.url && pj.url.startsWith('https://')) setResultUrl(pj.url);
           // ⚠️ THE START PATH WAS HARDENED AGAINST RAW CODES TWENTY LINES ABOVE AND THIS ONE WAS NOT.
           // A poll failure printed the server's string verbatim, so a Georgian screen showed English
-          // provider prose or a bare code like duplicate_request.
-          else setError(describeServiceError(pj.error, locale, t.failed));
+          // provider prose or a bare code like duplicate_request. `refunded: true` (the GET's refund landed)
+          // reads as the one refund notice.
+          else setError(describeGenerationFailure(pj, locale, t.failed));
           break;
         }
       }

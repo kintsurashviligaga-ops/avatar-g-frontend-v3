@@ -1,0 +1,1855 @@
+{
+  "job": "template gallery thumbnails",
+  "capUsd": 5,
+  "stopAtUsd": 4.5,
+  "spentUsd": 0.54,
+  "attempts": [
+    {
+      "shot": "video/teaser",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A single striking cinematic frame: a lone figure on a rain-soaked rooftop in Old Tbilisi at blue hour, holding an umbrella, city lights blurred far below, vertical composition, anamorphic lens flare, teal-and-amber grade. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "w2d894m6t9rp40d0zg6ac06t2g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/llKknabKLUqGMJ8BON30YKdOpgF8Ue51d5mSlcQEA4mUkppLA/out-0.png",
+          "file": "raw/video/teaser-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/lnhGPTH1OhahNhuKQ3rEyL1qY67WsXZ3jNSpYxcaxndKy00F/out-1.png",
+          "file": "raw/video/teaser-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/nprf9GLPmpwgByL27xeu5FlMKuqbgkWEtchJBOLnV78pITTXA/out-2.png",
+          "file": "raw/video/teaser-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/sBqOe2TkGOzzNydoOleU9GFRI9UrfrQoaZjWlqmwxzGSRmmuA/out-3.png",
+          "file": "raw/video/teaser-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:57:52.159Z"
+    },
+    {
+      "shot": "video/anime",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Hand-drawn anime film still: a young woman on a hillside above a glowing night city, wind in her hair, a meteor streaking across a star-filled indigo sky, cel shading, soft painterly background, Studio-style animation quality, vertical composition. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "89zfw3dn15rp40d0zg691v8d28",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/q2fKklndNiTDDSs5DjnV1ZxReDGJSeh47YLraxUI77YiRmmuA/out-0.png",
+          "file": "raw/video/anime-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/DlUisTKqBUqTL9fZRFbz0RVN0hKDiqI2c842jjSzLdkYkppLA/out-1.png",
+          "file": "raw/video/anime-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/FIMfz3HgLAV2PKCuUxuMbbeDDjxl7pqfc30KUx3gDV2iRmmuA/out-2.png",
+          "file": "raw/video/anime-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9pP1SCXMoFbeeksqKoUf468ZBYFnFijbJseA3P2MB8ZGjMNdB/out-3.png",
+          "file": "raw/video/anime-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:04.775Z"
+    },
+    {
+      "shot": "video/neon-nights",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A narrow city street at night drenched in magenta and electric blue neon reflections on wet asphalt, a motorcyclist passing in motion blur, haze and rain, cyberpunk mood, vertical composition, cinematic. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "rrma8nye55rp40d0zg6b63nw94",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/m5yt8FOMZYqfdKmVmrvDo3DMjweL9KOlToGJ8lcmOenvRmmuA/out-0.png",
+          "file": "raw/video/neon-nights-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/TujSJs6Z60oCM5xxlZLLEn8sNPcKSG8pf0zFtzCIp9hbkppLA/out-1.png",
+          "file": "raw/video/neon-nights-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uTHzB11j5HY3JB1nOx5jypXcu96o0hVgfZjygJVNRiZckppLA/out-2.png",
+          "file": "raw/video/neon-nights-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/tDhNhEXcH1a1IJoMmPWza5l4hSAJeSHXGV2wC93VdrLckppLA/out-3.png",
+          "file": "raw/video/neon-nights-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:12.522Z"
+    },
+    {
+      "shot": "video/nature-doc",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A snow leopard on a rocky ridge in the Caucasus mountains at golden hour, mist in the valleys behind, telephoto wildlife documentary photography, crisp detail on the fur, epic and calm. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "zwywdbzc8srp40d0zg6agab5h4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/hhDLr9Gf1NWvZqjWDW32YhwLuknBRGftOArehAWNahCESmmuA/out-0.png",
+          "file": "raw/video/nature-doc-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/TzVdiQNI10o3ItpEbr7iceWn6J1ySzfIWeTBfEHjpmeUIZa6C/out-1.png",
+          "file": "raw/video/nature-doc-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3PiafWlFUDUcAiwb6JM6OfESeDX5RQ3xFE1sW3k1KPeLkMNdB/out-2.png",
+          "file": "raw/video/nature-doc-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/he6SuNwx4KyUeEpBQdcBRb6jlVxU8rT9tuIeiYwsAbDFSmmuA/out-3.png",
+          "file": "raw/video/nature-doc-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:20.228Z"
+    },
+    {
+      "shot": "video/noir",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Black-and-white film noir still: a detective in a fedora and trench coat under a single streetlamp, venetian-blind shadows across a brick wall, cigarette smoke curling, hard high-contrast lighting, 1940s cinema. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "9mhtqrrgdnrp20d0zg6smq2eac",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/sIUBj3Xcfk0nCKS2fFxsmJJUcAelCZBnOGByhc33y10YSmmuA/out-0.png",
+          "file": "raw/video/noir-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uVp31aMBD34UKl6EaGHQa6UQtEdEN4Zfj3Zwg0epyfcYSmmuA/out-1.png",
+          "file": "raw/video/noir-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bFz9y04IUuZREFsFO4kzvnQIv4QwzhCd0p2EWxluFDKTy00F/out-2.png",
+          "file": "raw/video/noir-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/EmCtbVm0D75VOxfgiP8aAhr291PxZ5pJaFF8uXq1YREmkppLA/out-3.png",
+          "file": "raw/video/noir-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:29.487Z"
+    },
+    {
+      "shot": "video/music-video",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A singer performing on a dark stage in a cloud of haze, backlit by sweeping electric-blue and violet light beams, microphone in hand, dynamic music-video energy, vertical composition, cinematic. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "1p12hyhp8nrp40d0zg6tedq1k0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/v2qf2OClfBpNQUWVvJo0ctydMahvwAx7JOnw1sICxvqTJTTXA/out-0.png",
+          "file": "raw/video/music-video-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9e1rTYBfVggMNUf6V1l48fvftHeoLCOmVFZp6QbXjiu6Uy00F/out-1.png",
+          "file": "raw/video/music-video-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Esztxw3uz4oJF5ljivrGaekIWibetoiGc8M20ZRjXzenSmmuA/out-2.png",
+          "file": "raw/video/music-video-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bk1QVAFVZgZRDptX6f5Myiasw1Q9vLNLwCkQ9FIuTPopkppLA/out-3.png",
+          "file": "raw/video/music-video-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:39.170Z"
+    },
+    {
+      "shot": "image/social",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A stylish young woman at a sunlit Tbilisi café terrace holding a coffee cup, laughing, warm natural light, shallow depth of field, lifestyle social-media photography, candid and premium. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "nj1d5tajv9rp00d0zg6vphnv7g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/zcCdDn3eWgS5eUVjxflZ6V3xiVozSYa3LtYyXRoj3xW4SmmuA/out-0.png",
+          "file": "raw/image/social-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/y48PM9j5mNIiBtgUyz3HIop7WjFPZDHFYeNeBidw2kjcJTTXA/out-1.png",
+          "file": "raw/image/social-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/a66xQOkzK7bxKRGjfMRSlIwSjoD588YhdrB4nwyh0xFukppLA/out-2.png",
+          "file": "raw/image/social-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3PEd3LkIj4KIIpZWwRU0LVhcsfXUgLjvwfjpDhJxgMLdJTTXA/out-3.png",
+          "file": "raw/image/social-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:46.471Z"
+    },
+    {
+      "shot": "image/poster",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A cinematic movie-poster image without any text: a silhouetted hero standing before a vast burning orange sky and a lone mountain fortress, dramatic scale, volumetric smoke, epic composition. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "zhh8h13nxdrp20d0zg6t7gbe9m",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/S3MXgLfncv1LcSXYRffqC9oN0D66St08l1vNW1tyARCITmmuA/out-0.png",
+          "file": "raw/image/poster-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/J0xryeA6Duw1JCiVaE9nK00eznFFFWYDf7MeDf5wTg3gMZa6C/out-1.png",
+          "file": "raw/image/poster-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xVwAgVtkQHqDKRq6fF79VpmOoRe0r5to6Li96wqXUE6kJTTXA/out-2.png",
+          "file": "raw/image/poster-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/goMlBDFXBk7vE1SFkzfVYltGbSvsQBlPSHP9FWb6o6PykppLA/out-3.png",
+          "file": "raw/image/poster-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:58:55.464Z"
+    },
+    {
+      "shot": "image/wallpaper",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A breathtaking widescreen landscape wallpaper: the Caucasus mountains under the aurora at night, a glassy alpine lake reflecting the peaks and stars, ultra-detailed, serene. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "cdzk1vmn0nrp40d0zg6v95r94g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/JwsBBNG3YjYGM1IWACtsZuhOBKnV0sclMGWoNMWx6vNcy00F/out-0.png",
+          "file": "raw/image/wallpaper-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/GzfSN6MieymZqkyCVoAt9VtXL1OVXtPsqZgfrvZLnKTgTmmuA/out-1.png",
+          "file": "raw/image/wallpaper-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/l61e4A5b4Jy3HCdSrBPVKjv9h1b5dOfPh4TP1U6MOUSwJTTXA/out-2.png",
+          "file": "raw/image/wallpaper-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ghnRDRWFWHZQLxeNpa50ljvNWnHNV7zQTqEBuZw3v3g4kppLA/out-3.png",
+          "file": "raw/image/wallpaper-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:59:03.326Z"
+    },
+    {
+      "shot": "image/concept",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Digital concept art of a floating city of glass towers above a sea of clouds at sunrise, airships drifting between spires, painterly sci-fi worldbuilding, detailed matte painting. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "zrd7xfe2t9rp00d0zg6r3g273w",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/hpzPf0sY11TxTStILXiPqhfrfmvAhBGLxanu9e9eMoqJQZa6C/out-0.png",
+          "file": "raw/image/concept-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/vSC51UUbBY45D5rIqf0yeNJHyY6pgWy1rP7gyOe97C1DUmmuA/out-1.png",
+          "file": "raw/image/concept-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/fu5lneyITzpAmEdFbFA0xxRcaeydeH5Y4XoEFIWh8yBEoMNdB/out-2.png",
+          "file": "raw/image/concept-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/scxVXsfTfNv6OEkUidceqSIjxNQu5EqvwreHSg9YfqNPQZa6C/out-3.png",
+          "file": "raw/image/concept-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:59:15.147Z"
+    },
+    {
+      "shot": "image/anime",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Anime illustration of a girl with short silver hair in a school uniform under falling cherry blossoms at dusk, glowing lanterns, clean line art, vibrant cel-shaded colours. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "1thcezg6nhrp00d0zg7bvry57r",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/76mPaSRqeaXe7Up76wrPQwuwm1T0YmumElmXsEe1mwwaUmmuA/out-0.png",
+          "file": "raw/image/anime-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/t9zfCumQQF3WfUn3rejbeYcLf4UTDtC6BIpMVogbQYZuRZa6C/out-1.png",
+          "file": "raw/image/anime-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/unXUKwSezm2xciLrakN4KX11XLAYXrArGmLhCweKnexaUmmuA/out-2.png",
+          "file": "raw/image/anime-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3nkkHgz30XL0G1QFGASsupfOjf8yv8Ysp3bAsHTSmqONKTTXA/out-3.png",
+          "file": "raw/image/anime-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:59:32.361Z"
+    },
+    {
+      "shot": "image/oil-painting",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A classical oil painting of an old Georgian winemaker holding a clay qvevri cup by candlelight, thick visible brush strokes on canvas, Rembrandt-like chiaroscuro, warm umber palette. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "yxymgm9nnsrp00d0zg7bp7a4dc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/ftPv5OW9NqTxXqlgADuQezqEvAWmzpbeuN001emZT3JmpMNdB/out-0.png",
+          "file": "raw/image/oil-painting-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/betnevurY9kytEz6b2i6wBahQRVvWQu70Og6pvTcItCZKTTXA/out-1.png",
+          "file": "raw/image/oil-painting-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/6s2nR6Oen2zNOCsSXeMLgKXiqB1xIv1DEvzAsYsytPpZKTTXA/out-2.png",
+          "file": "raw/image/oil-painting-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Q9dx8VeZrUwtSytARn5RauTDvktkqXYLT1eBk8R66cXZKTTXA/out-3.png",
+          "file": "raw/image/oil-painting-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:59:44.494Z"
+    },
+    {
+      "shot": "image/3d-render",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A glossy 3D render of a cute stylised blue rocket toy on a matte black pedestal, soft studio lighting with a rim light, subsurface highlights, clean product-render look. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "ftxk99k4f9rp00d0zg78r9fafg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/zF6DtDsXc8IeI6UdFbewFFd8pCQDYz1nPiZXkKhNSKinKTTXA/out-0.png",
+          "file": "raw/image/3d-render-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4fegIeoh8lJPOJJUNsSpVaiucd7ThT49AbBKokvfwaucqMNdB/out-1.png",
+          "file": "raw/image/3d-render-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/soQXCPjunl4HL5e2ea0AIxDSeGVfmnFHcjloNbwf2Vc4UZa6C/out-2.png",
+          "file": "raw/image/3d-render-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3vnd9bZUAexeW0xVAFcF2rTktCTk7fFxuF66atVPfyJdqMNdB/out-3.png",
+          "file": "raw/image/3d-render-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T09:59:56.481Z"
+    },
+    {
+      "shot": "music/hollywood-cinematic",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A grand symphony orchestra on a dark concert-hall stage seen from behind the conductor, golden stage light on violins and brass, dust floating in the beams, epic and emotional. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "q1t81rn0e5rp20d0zg79tw60tg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/ZPu3sKpN8wKyI1IeWfF5uvPkH9Xn9AfFURRGf5eMrZ2mWZa6C/out-0.png",
+          "file": "raw/music/hollywood-cinematic-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/XEP2CWvfHp1dQ6oXgo2FZftfhVZMzWmU6DQiD7HrhoPpVmmuA/out-1.png",
+          "file": "raw/music/hollywood-cinematic-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/fgu9OZXrX3TVdKosa2XzjGZQIDlC5iLkkyNuFDWrPCRalppLA/out-2.png",
+          "file": "raw/music/hollywood-cinematic-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/HlyVzOa5E4ofDCyy17p2rppgmetoVFRzvfQkJbSTy3apVmmuA/out-3.png",
+          "file": "raw/music/hollywood-cinematic-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:00:11.831Z"
+    },
+    {
+      "shot": "music/rnb-beat",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Late-night recording-studio still life: a glowing beat-making pad and studio monitors, a vinyl record and headphones on a desk, warm magenta and amber light, smooth R&B mood. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "527dvyygfdrp40d0zg78sbmk30",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/HN5Q2ZrYhPKeaaXCKMeqiE8aqZL3hfa3I9APn92mcPnRWmmuA/out-0.png",
+          "file": "raw/music/rnb-beat-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/qsKZngyKdoZVLByZjrqo2UShAqzIe0iWiayoVgMQObcklppLA/out-1.png",
+          "file": "raw/music/rnb-beat-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/RG7afsoefqCfhR8gTWRPIEPX1Ugr74NsOaM9WrsEAMJgsMNdB/out-2.png",
+          "file": "raw/music/rnb-beat-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/PjJ5tBy0zJosKB2YemfksZJF2WGJwKYem4xOcWrTpE0RWmmuA/out-3.png",
+          "file": "raw/music/rnb-beat-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:00:24.127Z"
+    },
+    {
+      "shot": "music/rnb-hiphop-core",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A hip-hop artist in a hooded jacket performing to a crowd in a smoky club, purple and gold spotlights, raised hands in silhouette, gritty energetic concert photography. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "52kbkk0xw5rp20d0zg7tyb3z9m",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/RuLJIwesk3x8WKqARV0LEJFWDXQxfUxfWPvczcUEQ6e3tMNdB/out-0.png",
+          "file": "raw/music/rnb-hiphop-core-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/22FkI6zfaJUIAyqFLt70CUa2qnl1b4SIOqT0Vml0CV9ulppLA/out-1.png",
+          "file": "raw/music/rnb-hiphop-core-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xVRdeVMrRizMXKHoA6aT4oC5Rmmj1HVZMUR4xs5ZW2yulppLA/out-2.png",
+          "file": "raw/music/rnb-hiphop-core-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/AOHYzeOfYZvSVUxMgcCb1hLiqL4ZrCkmq479PDqDCgVdLTTXA/out-3.png",
+          "file": "raw/music/rnb-hiphop-core-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:00:43.930Z"
+    },
+    {
+      "shot": "music/georgian-folk",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A Georgian folk musician playing a panduri in a candlelit stone cellar, traditional chokha costume, warm firelight, wooden beams and clay qvevri jars in the background, intimate and timeless. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "37fqc1bdm5rp00d0zg7rmfmcer",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/fnhCy0JsBWw0CCaFqQerIrdGOe58ZPPggsjCbjXRzNKIXmmuA/out-0.png",
+          "file": "raw/music/georgian-folk-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/zeStIoe4Akt3RE4YqnftIXs09rNovMXsjwSlxFHhgAvJXmmuA/out-1.png",
+          "file": "raw/music/georgian-folk-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/SFEIFrSNt26CPF1kwgdwIeRUScUGRv68tC1odRAe4TrkLTTXA/out-2.png",
+          "file": "raw/music/georgian-folk-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3pecIC0WWS3QUievtYdzxwivaNaPoMeRnfz9sPVXFO7SuMNdB/out-3.png",
+          "file": "raw/music/georgian-folk-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:01:04.334Z"
+    },
+    {
+      "shot": "music/electronic-cyber",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A DJ silhouetted behind a booth facing a crowd, a wall of laser beams in electric blue and cyan cutting through haze, festival night, high energy electronic music. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "j7pwzqccf1rp20d0zg7v6a2mz4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/hsF6ZTkPf70Tcigiee7OtPfmgFJEHje6iRxWf3xohfcF2lppLA/out-0.png",
+          "file": "raw/music/electronic-cyber-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xqyfi4h6PFzzOycKDKS3cnKKBhDlyf1rFAyQgMlypUVsLTTXA/out-1.png",
+          "file": "raw/music/electronic-cyber-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/aG7jdsWvizK4ERSXJBr6IMEO4fYAermoJusgRdsdFteZXmmuA/out-2.png",
+          "file": "raw/music/electronic-cyber-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/kiPytBvybOZHEJb2n0tIU5MTqOgTIkbLPQgoach1WvB7y00F/out-3.png",
+          "file": "raw/music/electronic-cyber-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:01:12.245Z"
+    },
+    {
+      "shot": "music/retro-jazz-lounge",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A smoky 1950s jazz lounge: a saxophonist under a warm amber spotlight, a stand-up bass and a grand piano in soft focus, red velvet booths, vintage film grain. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "zn326nn4nxrp60d0zg7s8mz1x0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/T7v4m3R3KE4MIBTyfG2T9FutwXRwGDk1neBZtM2KhuqxLTTXA/out-0.png",
+          "file": "raw/music/retro-jazz-lounge-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rXA6rKVUPSrfQqmKfKyWfAn7tqEYx2ZUmOXyCXDeovfJey00F/out-1.png",
+          "file": "raw/music/retro-jazz-lounge-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/o0z7TGc20kIEC1c6S10EQeum5RIrXfJLwv2Lo0HplaBxLTTXA/out-2.png",
+          "file": "raw/music/retro-jazz-lounge-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/JPgoWeXeS5ifKpyY1rSJ8Zrj5MNlNhjiLt0C4wTrFKfFvMNdB/out-3.png",
+          "file": "raw/music/retro-jazz-lounge-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:01:18.242Z"
+    },
+    {
+      "shot": "music/documentary-ambient",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A misty pine forest at dawn with soft light rays filtering through the fog, a calm river in the foreground, meditative ambient atmosphere, muted teal and grey tones. Premium dark cinematic thumbnail art for a creative app: deep true blacks, rich contrast, one clear subject, generous negative space at the bottom third, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261001,
+        "output_format": "png"
+      },
+      "requestId": "ydg6nfdwsnrp00d0zg7v7kn0nm",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/lM5Pmrq1nGICFVft2ElixiwDkkbkzl1mLezc8dQePdUuXmmuA/out-0.png",
+          "file": "raw/music/documentary-ambient-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/LiB9cyuFZZLlHxptdsHcOwrOKlIxPLLQNeBPtoW1ASi7lppLA/out-1.png",
+          "file": "raw/music/documentary-ambient-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/71ijZDDSku45BJKsAODHIfiT88q3XcFqfSZ7BHQR1rn3LTTXA/out-2.png",
+          "file": "raw/music/documentary-ambient-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/6hewQPOQuR2iNaWZz3IDyNLeyfeBJLIKYgCYo2VoFMwcvMNdB/out-3.png",
+          "file": "raw/music/documentary-ambient-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T10:01:24.630Z"
+    },
+    {
+      "shot": "interior/scandinavian",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A bright Scandinavian living room: white walls, pale oak flooring, a light linen sofa with a wool throw, a birch side table, a few green plants, a large window with soft overcast daylight, calm hygge atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "1h2wdew311rne0d0zktsa92p58",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/z2qrwLUqkTIeXq8h3mYfHeccPqWvtTpQffajwRWKBilm52a6C/out-0.png",
+          "file": "raw/interior/scandinavian-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/ExRcQWEyb7LHN5osUJyLoFvW62JOd5aerS2j7SR8diYmbrpLA/out-1.png",
+          "file": "raw/interior/scandinavian-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/9V6fycbjzvxXV6nLCLXhFQ9dkRs2y6vgwPHZtghshOfM3WTXA/out-2.png",
+          "file": "raw/interior/scandinavian-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/wNGjpclVV5baIdZptedr2VpQPtvwVJECfhmNSXLzYSfYutmuA/out-3.png",
+          "file": "raw/interior/scandinavian-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:12:21.039Z"
+    },
+    {
+      "shot": "interior/modern",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A contemporary modern living room: clean geometric lines, a low greige sectional sofa, a sculptural coffee table, matte black and brushed brass accents, a statement floor lamp, large abstract art, soft recessed lighting, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "fbggm5dr0srnc0d0zktr8w2wbw",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/sXpLNYMPzIa0HVXIzHgBRIdYZ2BlXrXBOlLfNwJwKiPtbrpLA/out-0.png",
+          "file": "raw/interior/modern-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/vdGgeV3yMY0FZaslCkIMKV8TnzzQyrqXjPE5uCFFUHItbrpLA/out-1.png",
+          "file": "raw/interior/modern-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/CSZsRFoTve0Te0lvrhTzQewnwnpW6xfV9EfzEGRadrZT72a6C/out-2.png",
+          "file": "raw/interior/modern-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/NjIWXeADHjTvUCchwfcOLqiM0ldyju23vbSxNgrNnM3a3WTXA/out-3.png",
+          "file": "raw/interior/modern-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:12:36.623Z"
+    },
+    {
+      "shot": "interior/minimalist",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A minimalist living room: plain white walls, only one sofa and one low table, a monochrome white-grey-black palette with a single natural wood accent, bare uncluttered surfaces, generous empty floor, serene gallery-like calm, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "419d3z76a5rne0d0zkttsb9pa4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/SaWzBQeIo2WAdiiQCpVeN5GZNUIxyigwlgPbWsFYty6j3WTXA/out-0.png",
+          "file": "raw/interior/minimalist-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/MlRMdrIti9ZUHZf5dNpgXyAxzv88tuJw8eQ9fadST9EHvtmuA/out-1.png",
+          "file": "raw/interior/minimalist-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/s2ElQXh3bXqzBFf8sIsSdMgNnFzrupe1WkfWoeaBtPvOe2a6C/out-2.png",
+          "file": "raw/interior/minimalist-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/O4UHc7fe9EjzfJixZltWaiDEcbc0OiOjNOh5uZ4gPpIGvtmuA/out-3.png",
+          "file": "raw/interior/minimalist-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:12:48.480Z"
+    },
+    {
+      "shot": "interior/japandi",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A Japandi living room: low oak and walnut furniture, a woven rug, a rice-paper lantern light, a muted palette of oatmeal, clay and charcoal, a ceramic vase with bare branches, natural linen, quiet balanced emptiness, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "nycvb6r6adrn80d0zkvas7j0jg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/xz6nzDGC7f2gAaCnutqtWT1xRcwaPW880EFtYef9hhPXvtmuA/out-0.png",
+          "file": "raw/interior/japandi-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/DSyZZQPlWwpBPxgHsOAhpObGWXlUYyiC4V7jjUqhzRx6t10F/out-1.png",
+          "file": "raw/interior/japandi-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/CeMAUQNiuX2cKyzE1jnXyiHeRi4VPgi1DpqD9pNotXos3WTXA/out-2.png",
+          "file": "raw/interior/japandi-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/T3mht5sgfvWgNatNZw1nlzlwFJFMQk81g7VK7c2bwGR2brpLA/out-3.png",
+          "file": "raw/interior/japandi-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:12:55.944Z"
+    },
+    {
+      "shot": "interior/loft",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An industrial loft living room: exposed red brick wall, raw concrete, black steel-framed windows, a worn cognac leather sofa, reclaimed wood, Edison-bulb pendant lights, tall ceilings, warm urban evening atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "62tcrchchdrne0d0zkv8ynzsd4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/6rEOEC024vKfNKhKpi6kd4snlalwqgisvyoMOUfdWUervtmuA/out-0.png",
+          "file": "raw/interior/loft-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/Vsges83zeEtHfop6Lk8dfO0LkBt3q86qzEpGGvAfUtFset10F/out-1.png",
+          "file": "raw/interior/loft-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/TDDDKf4rvnR9dSf0iZeNspp4unrQAFcT5NhekbHDCEkbf2a6C/out-2.png",
+          "file": "raw/interior/loft-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/EfNhdFavThXAHKXHDwdCaxSYLai7bqxr089bo4kyLZV7brpLA/out-3.png",
+          "file": "raw/interior/loft-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:06.459Z"
+    },
+    {
+      "shot": "interior/classic",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A classic traditional living room: white wainscoting and crown mouldings, a symmetrical layout, a tufted sofa and two wingback chairs in deep blue fabric, a carved wood coffee table, a crystal chandelier, heavy drapes, a patterned wool rug, timeless elegance, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "92tw35tmfnrnc0d0zkvb15xr18",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/DX6zoUWfqIVGH6C7DrcyrjtDyS3heR6JsIpTY0Lzx2afvtmuA/out-0.png",
+          "file": "raw/interior/classic-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/t8n90oeALj2pfUrSvlBjxc6Wyd2mfZQvc6tad44oSSlff2a6C/out-1.png",
+          "file": "raw/interior/classic-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/ILQUKizy3PInAdTaYaH02LrtyBoMCzqgSWOh1er283BAcrpLA/out-2.png",
+          "file": "raw/interior/classic-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/RAvQy0dv7U75OheFeBFZQ7XkOTAUwNwzkzNeITfVaLeEA3a6C/out-3.png",
+          "file": "raw/interior/classic-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:16.700Z"
+    },
+    {
+      "shot": "interior/art-deco",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An Art Deco living room: bold geometric patterns, brass and gold inlays, deep emerald velvet sofa, a sunburst mirror, black lacquer and marble surfaces, fluted glass, a sculptural chandelier, 1920s glamour, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "6sw7x43vh9rn80d0zkvaz8qfw0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/t7bEzREFsW7LCdTwK3fPRche0XIHU4kItLqitCB2aMkJ4WTXA/out-0.png",
+          "file": "raw/interior/art-deco-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/XBdJaRfURp1eJkKli3OJTrQn80UB61BfyCkhRwNDSkvUwtmuA/out-1.png",
+          "file": "raw/interior/art-deco-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/tfXzsJyaDYRFT6DP4eUNesxaWftNkKWbO78sczbrhSbogbNdB/out-2.png",
+          "file": "raw/interior/art-deco-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/Ovs4XEXImgLVLJKUHFifGYuAhgiX7foz9HTzXrI9vezUwtmuA/out-3.png",
+          "file": "raw/interior/art-deco-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:26.703Z"
+    },
+    {
+      "shot": "interior/boho",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A bohemian living room: layered kilim rugs, rattan and wicker furniture, a macrame wall hanging, a low sofa with patterned cushions, many trailing plants, warm terracotta and mustard tones, soft golden light, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "9j43t24y59rna0d0zkv8phch90",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/DiaVXymKUOLaLdb6kkoNp6MNN12uFeJ7keENwtBLbQ8V4WTXA/out-0.png",
+          "file": "raw/interior/boho-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/OiEDcPY5x851F9cuA7qnOyYqeuKBbcFVrNY3U3SN4FjKcrpLA/out-1.png",
+          "file": "raw/interior/boho-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/wkj7ZHxaH2J9IJTVqE92oqPqf4QhdRfa5UfdGz5tkT2qwtmuA/out-2.png",
+          "file": "raw/interior/boho-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/PMPpxdQ22VbAFtfZP6Q2FKV8WvlKDUZt8YupCwc3kVvKcrpLA/out-3.png",
+          "file": "raw/interior/boho-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:35.585Z"
+    },
+    {
+      "shot": "interior/mediterranean",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A Mediterranean villa living room: whitewashed rough-plaster walls, terracotta floor tiles, an arched opening to a sunlit terrace, dark timber beams, blue and ochre ceramics, linen curtains, olive-green accents, warm sunlit atmosphere, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "8vsptzebmdrnc0d0zkv8mgj2hm",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/efAJJ34FeCKjjp2AuJNHVfnDsoWNzyFS5S30pBw2Df80D3a6C/out-0.png",
+          "file": "raw/interior/mediterranean-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/Mu3kIemmwnXCKaQXG1HVAN3wuo6bm12PGNxD4fXUi5ZewtmuA/out-1.png",
+          "file": "raw/interior/mediterranean-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/NRsm4bds62LoKpoMhgkbEJfhyHd24fnRnfCeP7cZ9Wz8hbNdB/out-2.png",
+          "file": "raw/interior/mediterranean-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/n7oEgxCvjbIEHRfF2WOeTyZLas3ePRvnqPSsUH5TAvVfhbNdB/out-3.png",
+          "file": "raw/interior/mediterranean-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:47.177Z"
+    },
+    {
+      "shot": "interior/georgian-traditional",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A traditional Georgian living room: carved dark walnut woodwork, arched niches, handwoven kilim and carpets in deep red and indigo, a low wooden sofa with embroidered cushions, painted ceramics and clay qvevri vessels, warm timber and stone, brass and copper details, cosy and hospitable, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "1ry9ne7b4xrne0d0zkvaknxvpr",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/7CLToPU8hgo7GV7Xkq0a87kRX9fb0eAWv7x15x64S8eMxtmuA/out-0.png",
+          "file": "raw/interior/georgian-traditional-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/52E8HglTdIrlJFZnc5VC0eIdQdTcnkMzyicjiMRm4GVTcrpLA/out-1.png",
+          "file": "raw/interior/georgian-traditional-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/1nKTHo5sn4b8Jh8GHxu0JUqJTGQqdzVs6Sr71vlrKfLTcrpLA/out-2.png",
+          "file": "raw/interior/georgian-traditional-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/R6gvz5W8b3KAKZ1LNi1Fif9aCooR4pSkbMjvAjt1M4lTcrpLA/out-3.png",
+          "file": "raw/interior/georgian-traditional-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:13:55.290Z"
+    },
+    {
+      "shot": "interior/mid-century",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A mid-century modern living room: walnut furniture with tapered legs, a low-slung sofa, a moulded lounge chair, a teak sideboard, a geometric rug, mustard and teal accents, globe pendant lights, 1960s optimism, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "yfggwhrag9rnc0d0zkvs1ehmw8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/RfTrMSH6D9UwSSzPOFphSYZo0SBe4zvGrnYRdLKbnbZu4WTXA/out-0.png",
+          "file": "raw/interior/mid-century-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/2BPvkZQ6FoKyCN3fwWnhpE6o2pAWDlWbXswkRfzCpWGu4WTXA/out-1.png",
+          "file": "raw/interior/mid-century-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/nCKkoDl8sR7vPFBfdRtyjhpQfkx4szfTxDtjNDmXjmtdxtmuA/out-2.png",
+          "file": "raw/interior/mid-century-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/CFM223MVuGaEF5swGUHc7knTu7VNDbQSKqZxmeFwgfuu4WTXA/out-3.png",
+          "file": "raw/interior/mid-century-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:03.319Z"
+    },
+    {
+      "shot": "interior/luxury",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A luxury contemporary living room: book-matched marble, brass and champagne-gold details, plush velvet and silk upholstery, a bespoke chandelier, high-gloss lacquer, layered ambient lighting, a rich neutral palette with deep jewel accents, five-star hotel finish, interior-design photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "b6ccye96kdrna0d0zkvrcf7b6c",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/J7bxH7ifRwUzBqkG7ikI4i8WCP4MvgzXM6retVKUp4024WTXA/out-0.png",
+          "file": "raw/interior/luxury-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/vEIsRd9wUYJLGtf5oPzNPDyIhDSPBjlw1D1S5DQxebB24WTXA/out-1.png",
+          "file": "raw/interior/luxury-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/9WfudksHN5WGXKAt9EWVqtSu17zByFyvfijzJBxO8Oi34WTXA/out-2.png",
+          "file": "raw/interior/luxury-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/KRiHjzdLrcIiDJ7m35hfBIK7PT4CdxtaJf17Wp53YNO34WTXA/out-3.png",
+          "file": "raw/interior/luxury-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:10.520Z"
+    },
+    {
+      "shot": "photoshoot/ecom-white",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A single stylish white sneaker photographed for an online store on a pure white seamless background, even soft shadowless studio light, a subtle contact shadow, the whole product centred and crisp, catalogue photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "7d9y2dj7a1rnc0d0zkvvxane1w",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/SH6WxTivQb5aJt75StKJoF07WQhpe01U7eCetf8oEky9jbNdB/out-0.png",
+          "file": "raw/photoshoot/ecom-white-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/HimeceJeRJSPLpeu30eqgd7iFrQsJ4tF3OC7o4zm1NG8H3a6C/out-1.png",
+          "file": "raw/photoshoot/ecom-white-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/A6weejRXTpmJdEvcMnm3owlz9GbSemoxSVWhPJbB4aLejbNdB/out-2.png",
+          "file": "raw/photoshoot/ecom-white-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/wrQUbjkwOmrtONdM3LuS21hCpVE6YpFhfom9RQT4jTvf4WTXA/out-3.png",
+          "file": "raw/photoshoot/ecom-white-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:18.882Z"
+    },
+    {
+      "shot": "photoshoot/lifestyle",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A young woman laughing at a sunlit kitchen table with a cup of coffee and a notebook, natural window light, shallow depth of field, warm authentic lifestyle photography, candid composition, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "ryev5v34q1rne0d0zkvsc75hr8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/ZgufeyLNBcqFukR3SzaCYV44vBG7NT5tLePWoF5Dbi7KytmuA/out-0.png",
+          "file": "raw/photoshoot/lifestyle-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/7G0oy76ZUw7dNhMPmuG0n4E8IPojTbaroIe519UlWW9icrpLA/out-1.png",
+          "file": "raw/photoshoot/lifestyle-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/ckR0KIbS5HrlBBA4Re2cMzYiyZO210scrOV8ee7Csf8WkbNdB/out-2.png",
+          "file": "raw/photoshoot/lifestyle-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/EaEqHQCHuzqiIBxYIGDCHJ6my4CdrVkTQB60yjld8NficrpLA/out-3.png",
+          "file": "raw/photoshoot/lifestyle-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:26.154Z"
+    },
+    {
+      "shot": "photoshoot/editorial-fashion",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A high-fashion editorial photograph of a model in a sculptural red coat against a seamless pale blue backdrop, a striking pose, dramatic directional light, magazine-cover polish, fine film grain, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "vkjm9km021rn80d0zkvs56qt0c",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/aDdnxWHBiTq0ExbKwzPDCmlny0Xf0GXFoMfJUvv3FCyN5WTXA/out-0.png",
+          "file": "raw/photoshoot/editorial-fashion-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/UNEKaeakoLSJF6V6ElAKMdtQrl5GCW88NNcwZFC6KHfN5WTXA/out-1.png",
+          "file": "raw/photoshoot/editorial-fashion-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/HjnORAQymNbTJ1RUJKeZF6XaJecDdri4UuLd76Bf6EcdytmuA/out-2.png",
+          "file": "raw/photoshoot/editorial-fashion-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/gAQEh66iSNIBDxT9nDar5VoyNTQUqA3uXVIfXoafTMRO5WTXA/out-3.png",
+          "file": "raw/photoshoot/editorial-fashion-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:33.418Z"
+    },
+    {
+      "shot": "photoshoot/luxury-product",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A glass perfume bottle on a black glossy surface with a soft mirror reflection, a dark moody backdrop, dramatic rim light with a single soft key, rich contrast, premium advertising photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "14datyn2phrne0d0zkvvm6txp4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/gohe3Rzffe120QmhllbrfNnKsVYTlZ9S28yctreUEa6dVu10F/out-0.png",
+          "file": "raw/photoshoot/luxury-product-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/mqn1VP5VQF54O568WV2oul862xeGtccBQ3dgcfXvC7WV5WTXA/out-1.png",
+          "file": "raw/photoshoot/luxury-product-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/MIWf8xvkN6X7OKSMfrKYd9xTSeDX4MwbDgXvG9hgfp1VlbNdB/out-2.png",
+          "file": "raw/photoshoot/luxury-product-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/iwdqs0d8qKrZGxf1Dhd6eZdDq3OmMLoeU91BmJqmGWbqytmuA/out-3.png",
+          "file": "raw/photoshoot/luxury-product-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:42.275Z"
+    },
+    {
+      "shot": "photoshoot/food",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A rustic wooden table with a freshly baked khachapuri, melting cheese and a soft egg yolk, a little steam, natural side light, shallow depth of field, rich warm colour, appetising food photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "1349b663bxrn80d0zkvr2dyxhc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/zau0GNL7IyI1JtC8c33SyttZA2J7o1gnJw23zPf1QN8ucrpLA/out-0.png",
+          "file": "raw/photoshoot/food-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/8zz119DfhNSdMKgoFCNDT0TGFoH5QFtOh2zELYedvTld5WTXA/out-1.png",
+          "file": "raw/photoshoot/food-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/rufFbBNDqzSfs0w5FUxLBU2NDPHrgMuerNdDeQnwVpR7lbNdB/out-2.png",
+          "file": "raw/photoshoot/food-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/vtBVIb6mTa6sFxwiYe5JZlrNxt0KMRdzQM4XpEqtOkIvcrpLA/out-3.png",
+          "file": "raw/photoshoot/food-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:49.519Z"
+    },
+    {
+      "shot": "photoshoot/jewelry",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A gold ring with a diamond on dark blue velvet, fine-jewelry macro photography, crisp facets and metal highlights, soft gradient reflections, controlled sparkle, extreme detail, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "yqcebq6y2nrn80d0zkvtxs1b8g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/JcWznecTKy1zeEDgBkFtfliwjvDay8e8aZzzf1rW9LElM3a6C/out-0.png",
+          "file": "raw/photoshoot/jewelry-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/68YNRkk1ixZ0HJQqc109cLdhucy8lNq0cuhC74RsqSFZu10F/out-1.png",
+          "file": "raw/photoshoot/jewelry-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/eVfxwsleUnMzHo0l9QaoZgRWeF05TmT0lpef3sLB5dYFZu10F/out-2.png",
+          "file": "raw/photoshoot/jewelry-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/npw4Nje7V5Rcf07jOdR9Qci3sRLIxWeZupEQeG3biWpSmbNdB/out-3.png",
+          "file": "raw/photoshoot/jewelry-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:14:56.882Z"
+    },
+    {
+      "shot": "photoshoot/cosmetics",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A frosted skincare jar and a dropper bottle on a clean pastel pink gradient backdrop with water droplets, soft glowing light, a fresh dewy feel, minimal elegant styling, cosmetics product photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "k8kv1mfsy9rp60d0zkvrnteghc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/VkBf58nzY1wdCCxN9clTtGXWuqyaj4A6Rvs9rTstTGJ3crpLA/out-0.png",
+          "file": "raw/photoshoot/cosmetics-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/AsLzwAyBkbqCANvti68pnl7QxljoWe63l6oCf0fCKy5cztmuA/out-1.png",
+          "file": "raw/photoshoot/cosmetics-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/jsvlJUqi6NLKBJA1ENINmhgBe3VMgadYVeDfxm66L0IcztmuA/out-2.png",
+          "file": "raw/photoshoot/cosmetics-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/r7oo8Vi4Z5oCIJmHNfuCDBvaIVCW4CBORVeMvOQH6S6u5WTXA/out-3.png",
+          "file": "raw/photoshoot/cosmetics-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:03.763Z"
+    },
+    {
+      "shot": "photoshoot/headshot",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A professional corporate headshot of a confident smiling man in a navy blazer, soft flattering studio light, a neutral blurred grey office backdrop, sharp eyes, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "db81xs8ws5rn80d0zkwbk8zwym",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/m8HIKS6peEWOUa2zcT1LvSHUCJfBoksJM3Iq4dZmLVN05WTXA/out-0.png",
+          "file": "raw/photoshoot/headshot-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/E9tXI5VN8xo2AxHYvluCiAKM3aNO4okdovHAxp9SVsJdu10F/out-1.png",
+          "file": "raw/photoshoot/headshot-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/SZpKRLRAVH7dD5NMtW1CfNkIYO6pxWHN7ZJHXkZtSk46crpLA/out-2.png",
+          "file": "raw/photoshoot/headshot-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/jdkbP0wGeeliRkPmBVGImK8ZpAPWWBLsjWDaN9febF4UnbNdB/out-3.png",
+          "file": "raw/photoshoot/headshot-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:13.536Z"
+    },
+    {
+      "shot": "photoshoot/real-estate-exterior",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A modern two-storey house with a manicured lawn photographed in a wide level view, a bright blue sky, soft golden daylight, straight vertical lines, sharp from front to back, real-estate exterior photography, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "sef0hmsppxrp40d0zkw8x88am4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/JeuITkMA0q1CWKzcs0ApKEkehyjhAWEOCQKHWGAQdmWB6WTXA/out-0.png",
+          "file": "raw/photoshoot/real-estate-exterior-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/RVgJEPAyEXKHCdMNMkucMVYFqkcfNRVKiELJ9SVcpkiAdrpLA/out-1.png",
+          "file": "raw/photoshoot/real-estate-exterior-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/cerYkwtNYi23Papcs9KzJwtQQrZKFbeGepHi0eFHjVGEobNdB/out-2.png",
+          "file": "raw/photoshoot/real-estate-exterior-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/kaWRJLRaed1tbqL56hPCZtYY41xeY3hvnPAgXXTfoCDD0tmuA/out-3.png",
+          "file": "raw/photoshoot/real-estate-exterior-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:20.202Z"
+    },
+    {
+      "shot": "photoshoot/street",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A candid street photograph of a woman crossing a narrow old-town street in Tbilisi at golden hour, natural available light, a dynamic composition, cinematic city colours, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "avhfwnv979rnc0d0zkwa7zdekc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/Iwq3efmy1kg81k60FandWnzaJdC3QSIeYpIKINz994ehobNdB/out-0.png",
+          "file": "raw/photoshoot/street-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/fZdVqCoJJ03ddCiZe92sQWiyuSlGGEY2P1BVz2v96n2I6WTXA/out-1.png",
+          "file": "raw/photoshoot/street-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/aboNf4OzOr1qYSPuCQHcL1NwfG2kIp844NjznnqqZLfQ0tmuA/out-2.png",
+          "file": "raw/photoshoot/street-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/lgRqEqoG8G44EVOgGJy4uYPu2NEKsF9vsUHL3gP98dXiu10F/out-3.png",
+          "file": "raw/photoshoot/street-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:33.109Z"
+    },
+    {
+      "shot": "photoshoot/studio-portrait",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A classic studio portrait of a woman against a seamless dark-grey backdrop, Rembrandt key light with a soft fill, expressive eyes, natural skin texture, a timeless fine-art look, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "yjcx9c43vhrnc0d0zkwa9xt2xc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/5PMdcZGMGfRpRKfdliuHzSGaWRlexDyfei9hQJ4Pcyl5R3a6C/out-0.png",
+          "file": "raw/photoshoot/studio-portrait-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/xPTtjL1wfD33VSOxOmVzQHgHZ5bXChOQ8Y0f7DUfqSceobNdB/out-1.png",
+          "file": "raw/photoshoot/studio-portrait-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/WM0xsFV9aK7AOhP4fPnIyE8KteCKiHeWNwpISSCrc2FfobNdB/out-2.png",
+          "file": "raw/photoshoot/studio-portrait-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/XDLUhhXrAp7ECVheAqezAH9GCzqOAyyakZokwQLNkC8P6WTXA/out-3.png",
+          "file": "raw/photoshoot/studio-portrait-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:39.924Z"
+    },
+    {
+      "shot": "photoshoot/film-noir",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A black-and-white film noir photograph of a man in a trench coat and fedora in a doorway, hard single-source light, venetian-blind shadow patterns, deep chiaroscuro, a smoky atmosphere, 1940s cinema grain, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "fhxyz54xj9rnc0d0zkwax5g8pg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/cpjnHFxey5yeAUrEWvkinbaSFyNl606N22zAIan6fImr0tmuA/out-0.png",
+          "file": "raw/photoshoot/film-noir-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/T07F8gaEJq5oHBlR3b3uVWMsnsM4uTFiSXvNfiLoTi2KdrpLA/out-1.png",
+          "file": "raw/photoshoot/film-noir-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/3FklyHzsKzJBMlD4ybWVA2ly38eUcMQiHGvHLhYjsSuKdrpLA/out-2.png",
+          "file": "raw/photoshoot/film-noir-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/pqwGw801jYZWIxa5ApYZTvTRHxyvtMleo95gv8PvTbkKdrpLA/out-3.png",
+          "file": "raw/photoshoot/film-noir-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:46.476Z"
+    },
+    {
+      "shot": "photoshoot/flat-lay",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A styled flat-lay photograph from directly above: a notebook, a pair of sunglasses, a ceramic mug and dried flowers arranged neatly on a textured linen surface, soft even daylight, balanced negative space, vertical composition. Premium editorial thumbnail art for a creative app: one clear subject, a calm uncluttered composition with an empty lower third for the card's label, photographic polish. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261003,
+        "output_format": "png"
+      },
+      "requestId": "8y4mfz5jvxrnc0d0zkw92ktvmm",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/yhqm/Du2vov642fUWaaGBVG0mQtQ8Wwn4KdmOeeEH4OMLM4B20tmuA/out-0.png",
+          "file": "raw/photoshoot/flat-lay-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/e0XXFQF9Qs2ubqeaaV8FBC8tL3dBF9G5w5MvpkEIE5kb6WTXA/out-1.png",
+          "file": "raw/photoshoot/flat-lay-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/NRK4qLaB5o7UJZseCNrZXTVO3TmsEHTpZRNhxJAGTAqNdrpLA/out-2.png",
+          "file": "raw/photoshoot/flat-lay-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/yhqm/vtF8gJWNfv1qOCUakn3bsxGjxNcDq9ac2He6XFdRFPf20tmuA/out-3.png",
+          "file": "raw/photoshoot/flat-lay-1-3.png"
+        }
+      ],
+      "at": "2026-10-02T14:15:51.963Z"
+    }
+  ],
+  "selected": {
+    "video/anime": {
+      "url": "https://replicate.delivery/xezq/DlUisTKqBUqTL9fZRFbz0RVN0hKDiqI2c842jjSzLdkYkppLA/out-1.png",
+      "file": "raw/video/anime-1-1.png",
+      "attempt": 1
+    },
+    "video/music-video": {
+      "url": "https://replicate.delivery/xezq/9e1rTYBfVggMNUf6V1l48fvftHeoLCOmVFZp6QbXjiu6Uy00F/out-1.png",
+      "file": "raw/video/music-video-1-1.png",
+      "attempt": 1
+    },
+    "video/nature-doc": {
+      "url": "https://replicate.delivery/xezq/3PiafWlFUDUcAiwb6JM6OfESeDX5RQ3xFE1sW3k1KPeLkMNdB/out-2.png",
+      "file": "raw/video/nature-doc-1-2.png",
+      "attempt": 1
+    },
+    "video/neon-nights": {
+      "url": "https://replicate.delivery/xezq/TujSJs6Z60oCM5xxlZLLEn8sNPcKSG8pf0zFtzCIp9hbkppLA/out-1.png",
+      "file": "raw/video/neon-nights-1-1.png",
+      "attempt": 1
+    },
+    "video/noir": {
+      "url": "https://replicate.delivery/xezq/uVp31aMBD34UKl6EaGHQa6UQtEdEN4Zfj3Zwg0epyfcYSmmuA/out-1.png",
+      "file": "raw/video/noir-1-1.png",
+      "attempt": 1
+    },
+    "video/teaser": {
+      "url": "https://replicate.delivery/xezq/lnhGPTH1OhahNhuKQ3rEyL1qY67WsXZ3jNSpYxcaxndKy00F/out-1.png",
+      "file": "raw/video/teaser-1-1.png",
+      "attempt": 1
+    },
+    "image/3d-render": {
+      "url": "https://replicate.delivery/xezq/3vnd9bZUAexeW0xVAFcF2rTktCTk7fFxuF66atVPfyJdqMNdB/out-3.png",
+      "file": "raw/image/3d-render-1-3.png",
+      "attempt": 1
+    },
+    "image/anime": {
+      "url": "https://replicate.delivery/xezq/t9zfCumQQF3WfUn3rejbeYcLf4UTDtC6BIpMVogbQYZuRZa6C/out-1.png",
+      "file": "raw/image/anime-1-1.png",
+      "attempt": 1
+    },
+    "image/concept": {
+      "url": "https://replicate.delivery/xezq/vSC51UUbBY45D5rIqf0yeNJHyY6pgWy1rP7gyOe97C1DUmmuA/out-1.png",
+      "file": "raw/image/concept-1-1.png",
+      "attempt": 1
+    },
+    "image/oil-painting": {
+      "url": "https://replicate.delivery/xezq/betnevurY9kytEz6b2i6wBahQRVvWQu70Og6pvTcItCZKTTXA/out-1.png",
+      "file": "raw/image/oil-painting-1-1.png",
+      "attempt": 1
+    },
+    "image/poster": {
+      "url": "https://replicate.delivery/xezq/J0xryeA6Duw1JCiVaE9nK00eznFFFWYDf7MeDf5wTg3gMZa6C/out-1.png",
+      "file": "raw/image/poster-1-1.png",
+      "attempt": 1
+    },
+    "image/social": {
+      "url": "https://replicate.delivery/xezq/y48PM9j5mNIiBtgUyz3HIop7WjFPZDHFYeNeBidw2kjcJTTXA/out-1.png",
+      "file": "raw/image/social-1-1.png",
+      "attempt": 1
+    },
+    "image/wallpaper": {
+      "url": "https://replicate.delivery/xezq/GzfSN6MieymZqkyCVoAt9VtXL1OVXtPsqZgfrvZLnKTgTmmuA/out-1.png",
+      "file": "raw/image/wallpaper-1-1.png",
+      "attempt": 1
+    },
+    "music/documentary-ambient": {
+      "url": "https://replicate.delivery/xezq/LiB9cyuFZZLlHxptdsHcOwrOKlIxPLLQNeBPtoW1ASi7lppLA/out-1.png",
+      "file": "raw/music/documentary-ambient-1-1.png",
+      "attempt": 1
+    },
+    "music/electronic-cyber": {
+      "url": "https://replicate.delivery/xezq/aG7jdsWvizK4ERSXJBr6IMEO4fYAermoJusgRdsdFteZXmmuA/out-2.png",
+      "file": "raw/music/electronic-cyber-1-2.png",
+      "attempt": 1
+    },
+    "music/georgian-folk": {
+      "url": "https://replicate.delivery/xezq/zeStIoe4Akt3RE4YqnftIXs09rNovMXsjwSlxFHhgAvJXmmuA/out-1.png",
+      "file": "raw/music/georgian-folk-1-1.png",
+      "attempt": 1
+    },
+    "music/hollywood-cinematic": {
+      "url": "https://replicate.delivery/xezq/XEP2CWvfHp1dQ6oXgo2FZftfhVZMzWmU6DQiD7HrhoPpVmmuA/out-1.png",
+      "file": "raw/music/hollywood-cinematic-1-1.png",
+      "attempt": 1
+    },
+    "music/retro-jazz-lounge": {
+      "url": "https://replicate.delivery/xezq/o0z7TGc20kIEC1c6S10EQeum5RIrXfJLwv2Lo0HplaBxLTTXA/out-2.png",
+      "file": "raw/music/retro-jazz-lounge-1-2.png",
+      "attempt": 1
+    },
+    "music/rnb-beat": {
+      "url": "https://replicate.delivery/xezq/RG7afsoefqCfhR8gTWRPIEPX1Ugr74NsOaM9WrsEAMJgsMNdB/out-2.png",
+      "file": "raw/music/rnb-beat-1-2.png",
+      "attempt": 1
+    },
+    "music/rnb-hiphop-core": {
+      "url": "https://replicate.delivery/xezq/22FkI6zfaJUIAyqFLt70CUa2qnl1b4SIOqT0Vml0CV9ulppLA/out-1.png",
+      "file": "raw/music/rnb-hiphop-core-1-1.png",
+      "attempt": 1
+    },
+    "interior/art-deco": {
+      "url": "https://replicate.delivery/yhqm/Ovs4XEXImgLVLJKUHFifGYuAhgiX7foz9HTzXrI9vezUwtmuA/out-3.png",
+      "file": "raw/interior/art-deco-1-3.png",
+      "attempt": 1
+    },
+    "interior/boho": {
+      "url": "https://replicate.delivery/yhqm/DiaVXymKUOLaLdb6kkoNp6MNN12uFeJ7keENwtBLbQ8V4WTXA/out-0.png",
+      "file": "raw/interior/boho-1-0.png",
+      "attempt": 1
+    },
+    "interior/classic": {
+      "url": "https://replicate.delivery/yhqm/DX6zoUWfqIVGH6C7DrcyrjtDyS3heR6JsIpTY0Lzx2afvtmuA/out-0.png",
+      "file": "raw/interior/classic-1-0.png",
+      "attempt": 1
+    },
+    "interior/georgian-traditional": {
+      "url": "https://replicate.delivery/yhqm/52E8HglTdIrlJFZnc5VC0eIdQdTcnkMzyicjiMRm4GVTcrpLA/out-1.png",
+      "file": "raw/interior/georgian-traditional-1-1.png",
+      "attempt": 1
+    },
+    "interior/japandi": {
+      "url": "https://replicate.delivery/yhqm/DSyZZQPlWwpBPxgHsOAhpObGWXlUYyiC4V7jjUqhzRx6t10F/out-1.png",
+      "file": "raw/interior/japandi-1-1.png",
+      "attempt": 1
+    },
+    "interior/loft": {
+      "url": "https://replicate.delivery/yhqm/6rEOEC024vKfNKhKpi6kd4snlalwqgisvyoMOUfdWUervtmuA/out-0.png",
+      "file": "raw/interior/loft-1-0.png",
+      "attempt": 1
+    },
+    "interior/luxury": {
+      "url": "https://replicate.delivery/yhqm/KRiHjzdLrcIiDJ7m35hfBIK7PT4CdxtaJf17Wp53YNO34WTXA/out-3.png",
+      "file": "raw/interior/luxury-1-3.png",
+      "attempt": 1
+    },
+    "interior/mediterranean": {
+      "url": "https://replicate.delivery/yhqm/NRsm4bds62LoKpoMhgkbEJfhyHd24fnRnfCeP7cZ9Wz8hbNdB/out-2.png",
+      "file": "raw/interior/mediterranean-1-2.png",
+      "attempt": 1
+    },
+    "interior/mid-century": {
+      "url": "https://replicate.delivery/yhqm/RfTrMSH6D9UwSSzPOFphSYZo0SBe4zvGrnYRdLKbnbZu4WTXA/out-0.png",
+      "file": "raw/interior/mid-century-1-0.png",
+      "attempt": 1
+    },
+    "interior/minimalist": {
+      "url": "https://replicate.delivery/yhqm/MlRMdrIti9ZUHZf5dNpgXyAxzv88tuJw8eQ9fadST9EHvtmuA/out-1.png",
+      "file": "raw/interior/minimalist-1-1.png",
+      "attempt": 1
+    },
+    "interior/modern": {
+      "url": "https://replicate.delivery/yhqm/sXpLNYMPzIa0HVXIzHgBRIdYZ2BlXrXBOlLfNwJwKiPtbrpLA/out-0.png",
+      "file": "raw/interior/modern-1-0.png",
+      "attempt": 1
+    },
+    "interior/scandinavian": {
+      "url": "https://replicate.delivery/yhqm/z2qrwLUqkTIeXq8h3mYfHeccPqWvtTpQffajwRWKBilm52a6C/out-0.png",
+      "file": "raw/interior/scandinavian-1-0.png",
+      "attempt": 1
+    },
+    "photoshoot/cosmetics": {
+      "url": "https://replicate.delivery/xezq/jsvlJUqi6NLKBJA1ENINmhgBe3VMgadYVeDfxm66L0IcztmuA/out-2.png",
+      "file": "raw/photoshoot/cosmetics-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/ecom-white": {
+      "url": "https://replicate.delivery/yhqm/A6weejRXTpmJdEvcMnm3owlz9GbSemoxSVWhPJbB4aLejbNdB/out-2.png",
+      "file": "raw/photoshoot/ecom-white-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/editorial-fashion": {
+      "url": "https://replicate.delivery/yhqm/gAQEh66iSNIBDxT9nDar5VoyNTQUqA3uXVIfXoafTMRO5WTXA/out-3.png",
+      "file": "raw/photoshoot/editorial-fashion-1-3.png",
+      "attempt": 1
+    },
+    "photoshoot/film-noir": {
+      "url": "https://replicate.delivery/yhqm/pqwGw801jYZWIxa5ApYZTvTRHxyvtMleo95gv8PvTbkKdrpLA/out-3.png",
+      "file": "raw/photoshoot/film-noir-1-3.png",
+      "attempt": 1
+    },
+    "photoshoot/flat-lay": {
+      "url": "https://replicate.delivery/yhqm/NRK4qLaB5o7UJZseCNrZXTVO3TmsEHTpZRNhxJAGTAqNdrpLA/out-2.png",
+      "file": "raw/photoshoot/flat-lay-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/food": {
+      "url": "https://replicate.delivery/yhqm/rufFbBNDqzSfs0w5FUxLBU2NDPHrgMuerNdDeQnwVpR7lbNdB/out-2.png",
+      "file": "raw/photoshoot/food-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/headshot": {
+      "url": "https://replicate.delivery/yhqm/jdkbP0wGeeliRkPmBVGImK8ZpAPWWBLsjWDaN9febF4UnbNdB/out-3.png",
+      "file": "raw/photoshoot/headshot-1-3.png",
+      "attempt": 1
+    },
+    "photoshoot/jewelry": {
+      "url": "https://replicate.delivery/yhqm/68YNRkk1ixZ0HJQqc109cLdhucy8lNq0cuhC74RsqSFZu10F/out-1.png",
+      "file": "raw/photoshoot/jewelry-1-1.png",
+      "attempt": 1
+    },
+    "photoshoot/lifestyle": {
+      "url": "https://replicate.delivery/yhqm/ZgufeyLNBcqFukR3SzaCYV44vBG7NT5tLePWoF5Dbi7KytmuA/out-0.png",
+      "file": "raw/photoshoot/lifestyle-1-0.png",
+      "attempt": 1
+    },
+    "photoshoot/luxury-product": {
+      "url": "https://replicate.delivery/yhqm/MIWf8xvkN6X7OKSMfrKYd9xTSeDX4MwbDgXvG9hgfp1VlbNdB/out-2.png",
+      "file": "raw/photoshoot/luxury-product-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/real-estate-exterior": {
+      "url": "https://replicate.delivery/xezq/cerYkwtNYi23Papcs9KzJwtQQrZKFbeGepHi0eFHjVGEobNdB/out-2.png",
+      "file": "raw/photoshoot/real-estate-exterior-1-2.png",
+      "attempt": 1
+    },
+    "photoshoot/street": {
+      "url": "https://replicate.delivery/yhqm/fZdVqCoJJ03ddCiZe92sQWiyuSlGGEY2P1BVz2v96n2I6WTXA/out-1.png",
+      "file": "raw/photoshoot/street-1-1.png",
+      "attempt": 1
+    },
+    "photoshoot/studio-portrait": {
+      "url": "https://replicate.delivery/yhqm/XDLUhhXrAp7ECVheAqezAH9GCzqOAyyakZokwQLNkC8P6WTXA/out-3.png",
+      "file": "raw/photoshoot/studio-portrait-1-3.png",
+      "attempt": 1
+    }
+  }
+}

@@ -65,7 +65,7 @@ export async function POST(_request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to create customer portal session',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: 'internal_error'
       },
       { status: 500 }
     );

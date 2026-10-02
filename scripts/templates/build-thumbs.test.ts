@@ -1,26 +1,37 @@
 /** @jest-environment node */
 /**
  * scripts/templates/build-thumbs.mjs — selected art-pack takes → the 600×800 card JPEGs, plus the `thumb:` lines to
- * change. Run here against a fixture manifest in a temp dir (the real lib/studio/templates.ts is only READ); nothing
- * touches public/ or the network.
+ * change. Run here against a fixture manifest in a temp dir; nothing touches public/ or the network.
+ *
+ * ⚠️ The card source it reads is lib/studio/templates.ts with the 20 shot cards' `thumb:` put back to null — the state a
+ * build STARTS from. Once the pictures are built and the lines applied (they are), the real file says "already points at"
+ * and a test that pinned it would fail for the right work; the fixture keeps this suite about the script, not about
+ * which pictures happen to exist today.
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
 import { parseShots } from '../hf-art-pack';
-import { publicThumbPath, thumbJobs, thumbLineChanges } from './build-thumbs.mjs';
+import { blurMapOptsFor, parseThumbArgs, publicThumbPath, thumbJobs, thumbLineChanges } from './build-thumbs.mjs';
 
 const ROOT = process.cwd();
 const SCRIPT = join(ROOT, 'scripts/templates/build-thumbs.mjs');
 const TEMPLATES_TS = join(ROOT, 'lib/studio/templates.ts');
-const templateIds = parseShots(readFileSync(join(ROOT, 'scripts/templates/thumbs.md'), 'utf8')).map((s) => s.id);
+// The original 20 (video / image / music) — the interior/ and photoshoot/ shots are checked in thumbs.shoot.test.ts.
+const templateIds = parseShots(readFileSync(join(ROOT, 'scripts/templates/thumbs.md'), 'utf8')).map((s) => s.id).filter((id) => !/^(interior|photoshoot)\//.test(id));
+
+/** templates.ts as a build finds it: every shot card's `thumb: '/templates/<id>.jpg'` put back to `thumb: null`. */
+const beforeBuild = (source: string): string =>
+  templateIds.reduce((acc, id) => acc.replace(`thumb: '/templates/${id}.jpg',`, 'thumb: null,'), source);
+const BEFORE_SOURCE = beforeBuild(readFileSync(TEMPLATES_TS, 'utf8'));
 
 type Change = { id: string; state: 'change' | 'already' | 'missing'; line: number | null; before: string | null; after: string | null };
 
 describe('the thumb: lines it prints', () => {
-  const source = readFileSync(TEMPLATES_TS, 'utf8');
+  const source = BEFORE_SOURCE;
   const lines = source.split('\n');
 
   test('every one of the 20 thumbnail shots finds its own card\'s thumb: line, with the exact edit', () => {
@@ -60,7 +71,12 @@ describe('the selected takes it will read', () => {
 
 describe('a run against a fixture manifest', () => {
   let dir: string;
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'build-thumbs-')); });
+  let templatesTs: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'build-thumbs-'));
+    templatesTs = join(dir, 'templates.before.ts');
+    writeFileSync(templatesTs, BEFORE_SOURCE);
+  });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   const take = async (rel: string, width: number, height: number, format: 'png' | 'jpeg') => {
@@ -71,7 +87,7 @@ describe('a run against a fixture manifest', () => {
   };
   const run = (manifest: unknown) => {
     writeFileSync(join(dir, 'work/manifest.json'), JSON.stringify(manifest));
-    return spawnSync(process.execPath, [SCRIPT, '--manifest', join(dir, 'work/manifest.json'), '--out', join(dir, 'out'), '--templates', TEMPLATES_TS], {
+    return spawnSync(process.execPath, [SCRIPT, '--manifest', join(dir, 'work/manifest.json'), '--out', join(dir, 'out'), '--templates', templatesTs], {
       cwd: ROOT, encoding: 'utf8', timeout: 60_000,
     });
   };
@@ -90,11 +106,11 @@ describe('a run against a fixture manifest', () => {
       const meta = await sharp(join(dir, 'out', `${id}.jpg`)).metadata();
       expect(meta).toMatchObject({ format: 'jpeg', width: 600, height: 800 });
     }
-    expect(r.stdout).toMatch(/lib\/studio\/templates\.ts:\d+ {2}video\/teaser\n {2}- thumb: null, palette: \['#06121F', '#4DB6FF'\],\n {2}\+ thumb: '\/templates\/video\/teaser\.jpg', palette: \['#06121F', '#4DB6FF'\],/);
+    expect(r.stdout).toMatch(/templates\.before\.ts:\d+ {2}video\/teaser\n {2}- thumb: null, palette: \['#06121F', '#4DB6FF'\],\n {2}\+ thumb: '\/templates\/video\/teaser\.jpg', palette: \['#06121F', '#4DB6FF'\],/);
     expect(r.stdout).toContain("+ thumb: '/templates/image/poster.jpg',");
     expect(r.stdout).toContain('built 2 · skipped 0 · failed 0');
     // It printed the edit; it did not make it.
-    expect(readFileSync(TEMPLATES_TS, 'utf8')).toContain("thumb: null, palette: ['#06121F', '#4DB6FF'],");
+    expect(readFileSync(templatesTs, 'utf8')).toBe(BEFORE_SOURCE);
   });
 
   test('a bad entry is refused and a missing file is reported — the run says so and exits 2; nothing escapes out/', async () => {
@@ -112,6 +128,30 @@ describe('a run against a fixture manifest', () => {
     expect(r.stdout).toContain('built 1 · skipped 1 · failed 1');
     expect(readdirSync(join(dir, 'out'))).toEqual(['music']);
     expect(existsSync(join(dir, 'out/music/rnb-beat.jpg'))).toBe(true);
+  });
+
+  test('a build into <public>/templates refreshes the blur/version map; a fixture `--out` alone never touches the real one', async () => {
+    const REAL_MAP = join(ROOT, 'lib/studio/templateThumbs.generated.ts');
+    const realBefore = readFileSync(REAL_MAP, 'utf8');
+    await take('raw/video/teaser-1-0.png', 880, 1168, 'png');
+    writeFileSync(join(dir, 'work/manifest.json'), JSON.stringify({
+      selected: { 'video/teaser': { url: 'u', file: 'raw/video/teaser-1-0.png', attempt: 1 } },
+    }));
+    const r = spawnSync(process.execPath, [SCRIPT, '--manifest', join(dir, 'work/manifest.json'), '--out', join(dir, 'public/templates'),
+      '--blur-out', join(dir, 'map.ts'), '--templates', templatesTs], { cwd: ROOT, encoding: 'utf8', timeout: 60_000 });
+    expect({ status: r.status, stderr: r.stderr }).toMatchObject({ status: 0 });
+    expect(r.stdout).toMatch(/blur map .*map\.ts: \d+ pictures? \(\+\d+ new/);
+    const map = readFileSync(join(dir, 'map.ts'), 'utf8');
+    const v = createHash('sha256').update(readFileSync(join(dir, 'public/templates/video/teaser.jpg'))).digest('hex').slice(0, 10);
+    expect(map).toContain(`'/templates/video/teaser.jpg': { v: '${v}', blur: 'data:image/webp;base64,`);
+    // The `--out`-only runs above built into a fixture folder: the committed map is untouched.
+    expect(readFileSync(REAL_MAP, 'utf8')).toBe(realBefore);
+    expect(blurMapOptsFor(parseThumbArgs(['--out', join(dir, 'out')]))).toBeNull();
+    expect(blurMapOptsFor(parseThumbArgs([], ROOT))).toEqual({
+      publicDir: join(ROOT, 'public'), templates: TEMPLATES_TS, out: REAL_MAP, check: false,
+      // …and the Interior designer's / Photographer's card files are scanned for `thumb:` lines too.
+      extraTemplates: [join(ROOT, 'lib/studio/templates.interior.ts'), join(ROOT, 'lib/studio/templates.photoshoot.ts')],
+    });
   });
 
   test('no manifest: a configuration error, nothing built', () => {

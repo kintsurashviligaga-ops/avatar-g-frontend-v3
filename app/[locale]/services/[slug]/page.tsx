@@ -4,6 +4,7 @@ import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata'
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceSchema, breadcrumbSchema } from '@/lib/seo/schema';
 import { localeAlternates } from '@/lib/seo/hreflang';
+import { OG_IMAGE } from '@/lib/seo/metadata';
 import ServicePageClient from './ServicePageClient';
 
 /** Localized "Services" breadcrumb crumb (leaf uses the service's own headline). */
@@ -69,13 +70,13 @@ export async function generateMetadata({ params }: ServiceDetailPageProps): Prom
       url: canonical,
       siteName: 'MyAvatar',
       locale: OG_LOCALE[locale] ?? 'en_US',
-      images: [{ url: '/og-image.png', width: 1200, height: 630, alt: meta.headline }],
+      images: [{ ...OG_IMAGE, alt: meta.headline }],
     },
     twitter: {
       card: 'summary_large_image',
       title: meta.headline,
       description: meta.description,
-      images: ['/og-image.png'],
+      images: [OG_IMAGE.url],
     },
   };
 }

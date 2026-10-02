@@ -8,7 +8,8 @@
  * Fail-open at every step → { text: '' } so a parser hiccup never blocks generation
  * (the caller then proceeds with no script, exactly as before).
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,11 @@ function decodeDataUrl(dataUrl: string): Buffer | null {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // No provider spend (local unpdf / mammoth), so it stays open to the composer — but each call parses an arbitrary
+  // document on our CPU for up to 30 s, so it is metered per IP (its own bucket inside WRITE).
+  const limited = await checkRateLimit(req, RATE_LIMITS.WRITE, 'extract-text');
+  if (limited) return limited;
   try {
     const body = (await req.json().catch(() => ({}))) as { dataUrl?: unknown; mimeType?: unknown };
     if (typeof body.dataUrl !== 'string') return NextResponse.json({ text: '' });

@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       // Most commonly: the Stripe account does not support USD settlement.
       return NextResponse.json(
-        { error: 'usd_unsupported', message: e instanceof Error ? e.message.slice(0, 200) : 'tier checkout failed' },
+        { error: 'usd_unsupported', message: 'tier checkout failed' },
         { status: 502 },
       );
     }
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof BillingProviderUnavailableError) {
       return NextResponse.json({ error: 'Billing provider unavailable', error_code: error.code }, { status: 503 });
     }
-    return NextResponse.json({ error: 'Failed to create tier checkout', message: error instanceof Error ? error.message : 'unknown' }, { status: 500 });
+    console.error('[tier-checkout] failed:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: 'Failed to create tier checkout' }, { status: 500 });
   }
 }

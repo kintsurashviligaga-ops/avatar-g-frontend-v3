@@ -108,7 +108,8 @@ test('a generated image lands in the feed, in the same window (no new tab)', asy
   await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
   const pagesBefore = context.pages().length;
   await box.fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
-  await page.getByRole('button', { name: 'სურათის შექმნა' }).click();
+  // The composer's run button (the Create panel beside it has its own Generate button with the price).
+  await page.getByTestId('run-button').click();
   await expect(page.locator(`img[src="${RESULT}"]`).first()).toBeVisible({ timeout: 20_000 });
   expect(context.pages().length).toBe(pagesBefore);
 });

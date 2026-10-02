@@ -3864,6 +3864,26 @@ input[type="range"].appearance-none::-moz-range-thumb {
   border: none;
   cursor: pointer;
 }
+/* KEYBOARD FOCUS. The `outline: none` above (specificity 0,2,1) beats the global :focus-visible ring, so a slider
+   reached with Tab showed no focus at all — the photo grade, the music sliders, every one of them. The thumb carries the
+   accent ring instead (WCAG 2.4.7). */
+input[type="range"].appearance-none:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgb(var(--app-accent)), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+input[type="range"].appearance-none:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgb(var(--app-accent)), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+/* The Create screens' sliders (Slider `accentThumb`): the thumb in the accent colour instead of white — one hue. ⚠️ The
+   keyboard focus ring above is accent too, which would vanish around an accent thumb, so these sliders ring in the text
+   colour instead (WCAG 2.4.7 stays met). */
+input[type="range"].appearance-none.slider-accent::-webkit-slider-thumb { background: rgb(var(--app-accent)); }
+input[type="range"].appearance-none.slider-accent::-moz-range-thumb { background: rgb(var(--app-accent)); }
+input[type="range"].appearance-none.slider-accent:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgb(var(--app-text) / 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+input[type="range"].appearance-none.slider-accent:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgb(var(--app-text) / 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
 
 /* ── Service chat scrollbar ── */
 .service-chat-shell ::-webkit-scrollbar {

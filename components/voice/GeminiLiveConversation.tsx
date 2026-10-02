@@ -77,6 +77,8 @@ interface Props {
   /** Active persona (PersonaPicker). Custom personas are re-validated by lib/agents/profile.ts. */
   personaId?: string | null;
   customPersona?: unknown;
+  /** Talk to a finished research report (its id): the server loads it for the owner and gives it to the model. */
+  researchId?: string | null;
   /** Transcript sink — one call per closed turn, user first. Default: the 'myavatar:live-transcript' window event. */
   onTurn?: (turn: LiveTurn) => void;
   onUsage?: (usage: LiveUsage) => void;
@@ -93,6 +95,7 @@ export default function GeminiLiveConversation({
   onUnavailable,
   personaId,
   customPersona,
+  researchId,
   onTurn,
   onUsage,
 }: Props) {
@@ -123,6 +126,7 @@ export default function GeminiLiveConversation({
     parity: geminiLiveParityEnabled(),
     personaId,
     customPersona,
+    researchId,
     onTurn,
     onUsage,
     onUnavailable,

@@ -11,8 +11,10 @@
  * and the documentary / music-video mode. Those shape the edit after Veo, not the Veo request.
  */
 import type { CameraSpec, OutputFormat, Transition, VeoTier } from '@/lib/veo/types';
+import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 
-export type VeoLength = 8 | 24 | 48;
+/** A film length in seconds — any stop of lib/video/duration.ts (4, 6, 8, then every 8 s to 240). */
+export type VeoLength = number;
 
 /**
  * How the character photos condition Veo:
@@ -22,10 +24,10 @@ export type VeoLength = 8 | 24 | 48;
  */
 export type ReferenceMode = 'first_frame' | 'reference';
 
-/** Every clip is 8 s: 1080p, reference images and the 8/24/48 grid all need it (Veo contract). */
+/** Every scene of a film is 8 s: 1080p, reference images and the 8 s scene grid all need it (Veo contract). A 4 s or 6 s film is ONE shorter clip. */
 export const VEO_CLIP_SEC = 8 as const;
 
-export const VEO_LENGTHS: readonly VeoLength[] = [8, 24, 48];
+export const VEO_LENGTHS: readonly VeoLength[] = VIDEO_DURATION_STOPS;
 
 export const DEFAULT_CAMERA: CameraSpec = { move: 'auto', intensity: 5, shot: 'auto', angle: 'auto', lens: 'auto' };
 
@@ -90,7 +92,7 @@ export function initialVeoPlan(overrides: Partial<Omit<VeoPlan, 'scenes'>> = {})
   const base: VeoPlan = {
     format: '9:16',
     lengthSec: 24,
-    tier: 'standard',
+    tier: 'fast', // the price anchor (lib/credits/videoPricing) — Standard is the 3.3× opt-in
     referenceMode: 'first_frame',
     nativeAudio: true,
     seedLock: true,

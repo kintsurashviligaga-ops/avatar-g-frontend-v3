@@ -146,3 +146,51 @@ describe('chat video billing', () => {
     expect(refundDebitByRef).not.toHaveBeenCalled();
   });
 });
+
+describe('an asset is handed over only once its charge LANDED (it used to be `.catch(() => {})` and delivered anyway)', () => {
+  const DONE = {
+    success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video', message: 'done',
+    assetUrl: 'https://x.supabase.co/clip.mp4', assetType: 'video', predictionId: TASK, predictionStatus: 'succeeded',
+    metadata: { provider: 'replicate', operation: 'video-avatar', sessionId: 's1', promptHash: 'h' },
+  };
+
+  it.each([
+    ['insufficient', 'insufficientCredits'],
+    ['error', 'billingUnavailable'],
+  ])('a %s acceptance charge withholds the task handle (no predictionId to poll into a free clip)', async (reason, flag) => {
+    (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: false, reason });
+    const res = await orchestrate(input());
+    expect(res.success).toBe(false);
+    expect(res.predictionId).toBeUndefined();
+    expect(res.metadata[flag]).toBe(true);
+    expect(releaseIdempotencyKey).toHaveBeenCalled(); // the per-user dispatch lock is still released
+  });
+
+  it('a poll whose charge does not land withholds the asset', async () => {
+    sm.poll.mockResolvedValue(DONE);
+    (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: false, reason: 'insufficient' });
+    const res = await pollOrchestrationTask(TASK, 's1', 'user-7');
+    expect(res.assetUrl).toBeUndefined();
+    expect(JSON.stringify(res)).not.toContain('clip.mp4');
+    expect(res.metadata.insufficientCredits).toBe(true);
+  });
+
+  it('no ledger RPC at all (skipped) still delivers — the documented degrade', async () => {
+    sm.poll.mockResolvedValue(DONE);
+    (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: false, reason: 'skipped' });
+    expect((await pollOrchestrationTask(TASK, 's1', 'user-7')).assetUrl).toBe('https://x.supabase.co/clip.mp4');
+  });
+
+  it('a synchronous image whose charge does not land is withheld, not handed out free', async () => {
+    sm.execute.mockResolvedValueOnce({
+      success: true, provider: 'nanobanana', operation: 'image', responseType: 'image', message: 'done',
+      assetUrl: 'https://x.supabase.co/img.png', assetType: 'image', predictionStatus: 'succeeded',
+      metadata: { provider: 'nanobanana', operation: 'image', sessionId: 's1', promptHash: 'h' },
+    });
+    (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: false, reason: 'error' });
+    const res = await orchestrate(input({ message: 'generate an image of a red fox in the snow' }));
+    expect(res.success).toBe(false);
+    expect(JSON.stringify(res)).not.toContain('img.png');
+    expect(res.metadata.billingUnavailable).toBe(true);
+  });
+});

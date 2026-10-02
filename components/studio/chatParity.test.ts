@@ -84,7 +84,70 @@ describe('the Gemini chat surface', () => {
     expect(omni.match(/data-testid="composer-input"/g)).toHaveLength(1);
     expect(omni).toContain("<div className={chatSingleRow ? 'contents' :");
     expect(omni).toContain("'ჰკითხე MyAvatar-ს'");
-    expect(omni).toContain('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+  });
+
+  it('nothing sits under the chat composer — no disclaimer, no explanation (the premium-minimal home)', () => {
+    expect(omni).not.toContain('chat-disclaimer');
+    expect(omni).not.toContain('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+    expect(omni).not.toContain('MyAvatar is AI and can make mistakes.');
+    // …and no price caption either: a tool's price is on its Generate button, never a line under the box.
+    expect(omni).not.toContain('data-testid="price-tag"');
+    expect(omni).not.toContain('const priceTag');
+  });
+});
+
+describe('the chat takes everything a person can bring', () => {
+  it('its „+" offers photos, a video, the camera and files — each to its own input', () => {
+    expect(omni).toMatch(/activeTool === 'chat' \? \{ onPhotos: \(\) => photoRef\.current\?\.click\(\), onVideo: \(\) => videoPickRef\.current\?\.click\(\), onCamera: \(\) => cameraRef\.current\?\.click\(\), onFiles: \(\) => fileRef\.current\?\.click\(\) \}/);
+    // the video input takes video only, several at once, and goes through the one intake
+    expect(omni).toMatch(/<input ref=\{videoPickRef\} type="file" multiple accept="video\/\*"/);
+  });
+
+  it('a file that would overflow the platform\'s request body is refused at the picker, not at Send', () => {
+    expect(omni).toContain("import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES,");
+    expect(omni).toMatch(/kind !== 'video' && inlineBytesRef\.current \+ dataUrl\.length > DEFAULT_TOTAL_CAP_BYTES/);
+    expect(omni).toContain("rejectionMessage('total_too_large'");
+  });
+});
+
+describe('the chat can USE what it is given', () => {
+  it('a video + a question (or no words) is read as frames + soundtrack; only an edit request reaches the paid remix', () => {
+    expect(omni).toMatch(/if \(mode === 'chat' && attachments\.some\(\(a\) => isVideo\(a\.mimeType\)\) && !isVideoEditRequest\(text\)\) \{/);
+    expect(omni).toContain('digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob())');
+    // the analysis turn is answered by the chat stream, and the remix branch comes AFTER it
+    expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeGreaterThan(0);
+    expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeLessThan(omni.indexOf('VIDEO REMIX (chat-attached)'));
+    expect(omni).toContain('await streamChat([...messages, videoTurn]);');
+  });
+
+  it('the model gets the digest, the bubble keeps the clip: payloads read modelMedias first, and it is never persisted', () => {
+    expect(omni).toContain('...((m.modelMedias ?? m.medias)?.length ? { medias: (m.modelMedias ?? m.medias)! } : {}),');
+    const lean = omni.slice(omni.indexOf('function leanMessages'), omni.indexOf('function leanMessages') + 1400);
+    expect(lean).not.toContain('modelMedias');
+    expect(lean).not.toContain('medias:');
+  });
+
+  it('Word and text files are read as text, and the tray names every document with its size', () => {
+    expect(omni).toContain("const doc = await documentToText(f, kind, { readText: (file) => file.text(), readDataUrl: fileToDataUrl, fetch: (...a) => fetch(...a) });");
+    expect(omni).toContain('{formatBytes(a.size)}');
+    expect(omni).toContain('size: f.size');
+  });
+
+  it('the Files picker offers documents, data and source text — not only the five formats it used to list', () => {
+    expect(omni).toMatch(/accept="image\/\*,audio\/\*,video\/\*,application\/pdf,text\/\*,\.txt,\.md,\.pdf,\.docx,\.doc,\.rtf,\.csv,\.tsv,\.json/);
+  });
+});
+
+describe('the price is on the button that spends', () => {
+  it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
+    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(\{ tool: activeTool \}\)/);
+    expect(omni).toContain('data-price={composerQuote ?? undefined}');
+    // the accessible name says the price too, from the same function the route charges with
+    expect(omni).toContain('${runLabel} — ${creditsLabel(composerQuote, locale)}');
+  });
+
+  it('and there is still no caption anywhere under a composer', () => {
+    expect(omni).not.toContain('data-testid="price-tag"');
   });
 });
 

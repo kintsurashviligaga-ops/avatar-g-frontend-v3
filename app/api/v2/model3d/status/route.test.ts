@@ -115,6 +115,22 @@ describe('a provider-failed prediction refunds the 3D charge', () => {
     expect(reportError).toHaveBeenCalled();
   });
 
+  it('REFUND FIRST: the row turns failed only after the money is settled — a missed refund leaves it live for the settle cron', async () => {
+    await GET(get({ predictionId: PRED, jobId: JOB, charge: signed() }));
+    expect(refund.mock.invocationCallOrder[0]).toBeLessThan((failJob as jest.Mock).mock.invocationCallOrder[0]!);
+
+    jest.clearAllMocks();
+    refund.mockResolvedValueOnce({ ok: false, reason: 'error', refunded: 0 });
+    await GET(get({ predictionId: PRED, jobId: JOB, charge: signed() }));
+    expect(failJob).not.toHaveBeenCalled(); // the cron (params._settle) retries the refund through the ledger
+  });
+
+  it('nothing left to refund (already refunded) still closes the row', async () => {
+    refund.mockResolvedValueOnce({ ok: false, reason: 'skipped', refunded: 0 });
+    await GET(get({ predictionId: PRED, jobId: JOB, charge: signed() }));
+    expect(failJob).toHaveBeenCalledWith(JOB, 'CUDA out of memory');
+  });
+
   it.each([
     ['no signature', ''],
     ['a forged signature', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'],

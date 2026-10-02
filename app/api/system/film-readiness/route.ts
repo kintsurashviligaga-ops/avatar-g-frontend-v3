@@ -28,6 +28,7 @@ import {
   NANOBANANA_API_KEY_ALIASES,
 } from '@/lib/chat/mediaKeys';
 import { computeEditorReadiness, editorVerdict, editorSyncInstructions } from '@/lib/chat/filmReadiness';
+import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -70,7 +71,10 @@ function describe(
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // ⚠️ OPERATORS ONLY (lib/security/opsAccess). Names-only is still a map of exactly which credentials this deployment
+  // lacks — reconnaissance, not product data. Non-admins get a 404 in production.
+  if (!(await opsCallerAllowed(req))) return opsNotFound();
   const providers: ProviderReadiness[] = [
     describe('storyboard', 'nanobanana', 'Nano Banana — 5-beat storyboard architect', NANOBANANA_API_KEY_ALIASES),
     describe('director', 'ltx', 'LTX Director — clip render + characterReference', LTX_API_KEY_ALIASES),

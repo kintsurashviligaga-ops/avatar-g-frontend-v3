@@ -19,7 +19,9 @@ import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idem
 import { randomUUID } from 'node:crypto';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { settleMusicCharge } from '@/lib/credits/musicSettlement';
@@ -32,6 +34,8 @@ import {
   musicControlsReport, musicStyleLine, musicgenParams, parseMusicControls, promptDirectives, udioParams,
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
+import { isAcceptableMusicReference } from '@/lib/ai/musicReference';
+import { isMusicEngineId } from '@/lib/studio/musicEngines';
 
 /**
  * Assistant music generation.
@@ -127,7 +131,7 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 // `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
 // others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
-async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
+async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls, preferred?: MusicEngineId | null): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
   const prompt = flattenMusicBrief(brief);
@@ -235,6 +239,14 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
   }
   providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
+  // ⚠️ THE USER'S PICK GOES FIRST, THE REST STAY BEHIND IT. `engine` (the Create screen's model pill) moves one engine to
+  // the front of the chain — it never removes the others, so a busy or failing pick still ends in a track via the
+  // fallbacks, exactly like Auto. An engine that is not in the chain (no key, or MUSIC_PROVIDER dropped it) is a no-op,
+  // and MusicGen — which makes no vocals — is never put ahead for a SONG: it would return an instrumental.
+  if (preferred && !(preferred === 'musicgen' && !instrumental)) {
+    const at = providers.findIndex((p) => p.name === preferred);
+    if (at > 0) providers.unshift(...providers.splice(at, 1));
+  }
 
   // Pre-read the Redis circuit breaker ONCE (it's async; the failover's isTripped is sync)
   // so a provider already tripped by recent failures is skipped without spending its budget.
@@ -303,9 +315,12 @@ export async function POST(req: NextRequest) {
   let bodyFp = '';
   // The template card's id, as sent (an ID, never text) — resolved against the request's own values below.
   let rawTemplateId: unknown;
+  // The engine the user asked to try first (lib/studio/musicEngines) — null = Auto, the chain as it stands.
+  let preferredEngine: MusicEngineId | null = null;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown; engine?: unknown };
     rawTemplateId = body.templateId;
+    if (isMusicEngineId(body.engine)) preferredEngine = body.engine;
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -387,14 +402,27 @@ export async function POST(req: NextRequest) {
   let reservedUid: string | null = null;
   let reserveRef = '';
   let reserved = false;
+  // Credits already handed back by the success-path settlement (`${reserveRef}:settle`), so a later failure refund
+  // returns only what is still held — never more than was taken.
+  let settledBack = 0;
   let idemOwner = '';
   let idemKey = '';
-  const refundReserve = async (): Promise<void> => {
+  /**
+   * Give the reserved credit back (at most once) and release the mutex. Resolves TRUE only when the refund actually
+   * landed — that, and nothing else, is what a failure response may report as `refunded: true`.
+   */
+  const refundReserve = async (): Promise<boolean> => {
+    let refunded = false;
     if (reserved && reservedUid) {
       reserved = false; // idempotent
-      await refundCredits(reservedUid, creditCostFor('music', { seconds: billSeconds }), `${reserveRef}:refund`).catch(() => {});
+      const amount = creditCostFor('music', { seconds: billSeconds }) - settledBack;
+      if (amount > 0) {
+        const r = await refundCredits(reservedUid, amount, `${reserveRef}:refund`).catch(() => null);
+        refunded = !!r?.ok;
+      }
     }
     if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
+    return refunded;
   };
   /**
    * Drop the in-flight mutex once the render has SETTLED, without touching credits.
@@ -437,11 +465,24 @@ export async function POST(req: NextRequest) {
   const musicGate = requireAuthForGeneration(rUser?.id ?? null);
   if (musicGate.response) return musicGate.response;
 
+  // ⚠️ A REFERENCE IS CLIENT INPUT THE SERVER SIGNS OR FETCHES, AND NOTHING CHECKED IT. A bare path was signed with the
+  // service role for ANY object in the bucket (another account's audio included), and a voice sample's URL was fetched by
+  // our own ffmpeg step from whatever host the body named. lib/ai/musicReference states the rule; it runs before the
+  // mutex or the ledger is touched, so a refusal has nothing to unwind.
+  if (
+    !isAcceptableMusicReference(audioReference, rUser?.id ?? '', 'audio') ||
+    !isAcceptableMusicReference(voiceReference, rUser?.id ?? '', 'voice')
+  ) {
+    return NextResponse.json({ success: false, error: 'invalid_reference' }, { status: 400 });
+  }
+
+  // The in-flight MUTEX stays fail-open: a Redis blip only loses the double-click guard, never money. (Neither helper
+  // throws today; the guard is for a future one that does.)
   try {
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
     // `st` is the joined style line, so it covers the picked styles; `w` / `si` the sliders — a changed control is a
     // new request, not a duplicate of the one in flight.
-    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null, w: controls.weirdness, si: controls.styleInfluence })}`;
+    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null, w: controls.weirdness, si: controls.styleInfluence, pe: preferredEngine })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
     // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
     // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
@@ -451,20 +492,39 @@ export async function POST(req: NextRequest) {
       idemKey = ''; // the winning request holds it
       return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This track is already being generated.' }, { status: 409 });
     }
-    if (rUser?.id) {
-      reservedUid = rUser.id;
-      // ⚠️ CLIENT-KEYED BILLING REF — see produceBilling.idemRef. A fixed clientJobId with a changed
-      // brief was charged once and free forever after; the server-derived fingerprint closes that while
-      // preserving genuine retry collapsing.
-      reserveRef = `music:${clientJobId || randomUUID()}:${bodyFp}:${rUser.id}`;
-      const debit = await deductCredits(rUser.id, creditCostFor('music', { seconds: billSeconds }), reserveRef);
-      if (!debit.ok && debit.reason === 'insufficient') {
-        await refundReserve(); // releases the mutex (nothing reserved) so a top-up retry works
-        return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
-      }
-      reserved = debit.ok;
+  } catch { idemKey = ''; /* mutex unavailable — proceed without the double-click guard */ }
+
+  // ── THE CHARGE FAILS CLOSED. ─────────────────────────────────────────────────────────────────────────────────
+  // ⚠️ THIS USED TO SIT IN THE SAME FAIL-OPEN `try` AS THE MUTEX ("a ledger/Redis blip never blocks a paid render"),
+  // and only `insufficient` stopped the render — so a deduct that came back `error` (the ledger unreachable or
+  // refusing the write) let the track render UNBILLED, for everyone, for as long as the ledger stayed down. A ledger
+  // that definitively failed now refuses with a friendly retry (503 billing_unavailable — nothing charged, nothing
+  // rendered). Only `skipped` (the RPC not provisioned at all — a deployment without the ledger) still proceeds
+  // uncharged, exactly as reserveProduce documents for every other paid route.
+  if (rUser?.id) {
+    reservedUid = rUser.id;
+    // ⚠️ CLIENT-KEYED BILLING REF — see produceBilling.idemRef. A fixed clientJobId with a changed
+    // brief was charged once and free forever after; the server-derived fingerprint closes that.
+    reserveRef = `music:${clientJobId || randomUUID()}:${bodyFp}:${rUser.id}`;
+    // ⚠️ …AND THE SAME jobId WITH THE SAME BODY IS A REPLAY, NOT A RETRY. deduct_credits answers a replayed ref with
+    // SUCCESS and no new debit, so a byte-identical resubmit (the mutex is released on success) rendered a fresh track
+    // for nothing — every time — and a failed replay's `${ref}:refund` paid back the first track's legitimate charge.
+    // The studio mints a new jobId for every job and every re-roll, so only a replayed request ever lands here.
+    if ((await debitExistsForRef(rUser.id, reserveRef)) === true) {
+      await releaseMutex();
+      return NextResponse.json({ ...replayRefusedBody(), message: 'This track was already generated.' }, { status: 409 });
     }
-  } catch { /* fail-open — a ledger/Redis blip never blocks a paid render */ }
+    const debit = await deductCredits(rUser.id, creditCostFor('music', { seconds: billSeconds }), reserveRef);
+    if (!debit.ok && debit.reason === 'insufficient') {
+      await refundReserve(); // releases the mutex (nothing reserved) so a top-up retry works
+      return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+    }
+    if (!debit.ok && debit.reason === 'error') {
+      await releaseMutex(); // nothing was reserved — let the retry through
+      return NextResponse.json(ledgerUnavailableBody(billingLocale(req)), { status: 503 });
+    }
+    reserved = debit.ok;
+  }
 
   try {
     // Suno-style cover art — generated in PARALLEL with the track (it's the faster of
@@ -506,7 +566,7 @@ export async function POST(req: NextRequest) {
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
       const composed = await composeTrackUrl(
         buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false, directives }),
-        style, false, durationSec, controls,
+        style, false, durationSec, controls, preferredEngine,
       );
       controlsReport = composed.controls;
       try {
@@ -526,8 +586,8 @@ export async function POST(req: NextRequest) {
           ? voiceReference
           : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceReference, 3600);
       if (!voiceUrl) {
-        await refundReserve();
-        return NextResponse.json({ success: false, error: 'Could not process the voice file.' }, { status: 502 });
+        const refunded = await refundReserve();
+        return NextResponse.json({ success: false, error: 'Could not process the voice file.', refunded }, { status: 502 });
       }
       // Normalize the clip to MP3 first — the browser records webm/mp4 and users upload
       // m4a/ogg, none of which MiniMax reliably accepts ("doesn't generate"). Fail-open:
@@ -550,8 +610,8 @@ export async function POST(req: NextRequest) {
           ? audioReference
           : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', audioReference, 3600);
       if (!melodyUrl) {
-        await refundReserve();
-        return NextResponse.json({ success: false, error: 'Could not process the reference audio.' }, { status: 502 });
+        const refunded = await refundReserve();
+        return NextResponse.json({ success: false, error: 'Could not process the reference audio.', refunded }, { status: 502 });
       }
       const styledPrompt = style ? `${capped}, ${style} style` : capped;
       const cover = await generateMusicCover(styledPrompt, melodyUrl, 30);
@@ -568,7 +628,7 @@ export async function POST(req: NextRequest) {
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
       briefTruncated = brief.truncated;
-      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls);
+      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls, preferredEngine);
       providerAudioUrl = composed.url;
       engine = composed.engine;
       controlsReport = composed.controls;
@@ -618,8 +678,10 @@ export async function POST(req: NextRequest) {
       if (settlement.overcharged) {
         const back = creditCostFor('music', { seconds: billSeconds }) - creditCostFor('music', { seconds: settlement.settledSec });
         if (back > 0) {
-          // Its own ref, distinct from `${reserveRef}:refund`, so the failure refund can still fire later.
-          await refundCredits(reservedUid, back, `${reserveRef}:settle`).catch(() => {});
+          // Its own ref, distinct from `${reserveRef}:refund`, so the failure refund can still fire later — for
+          // what is still held only (settledBack), so a late throw can never refund more than was charged.
+          const settled = await refundCredits(reservedUid, back, `${reserveRef}:settle`).catch(() => null);
+          if (settled?.ok) settledBack = back;
           // eslint-disable-next-line no-console
           console.warn(`[ai/music] ${engine} delivered ${deliveredSec.toFixed(1)}s against a ${billSeconds}s charge — refunded ${back} credits`);
         }
@@ -673,10 +735,20 @@ export async function POST(req: NextRequest) {
       translation: lastTranslateOutcome('music') ?? 'unknown',
     });
   } catch (err) {
-    await refundReserve(); // mid-render throw → give the reserved credit back + release the mutex
+    const charged = reserved; // captured before refundReserve clears it
+    const refunded = await refundReserve(); // mid-render throw → give the reserved credit back + release the mutex
     const message = err instanceof Error ? err.message : 'Music generation failed';
     // eslint-disable-next-line no-console
     console.error('[ai/music]', message);
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    // ⚠️ THE PROVIDER'S OWN WORDS NEVER REACH THE USER (lib/api/providerError). This answered `error: err.message`
+    // — "Voice song failed: Replicate API 402: {…billing…}" in a Georgian chat bubble. The raw text stays in the log
+    // line above. And the sanitiser's sentences all say "you were not charged", so they are used only when that is
+    // TRUE: nothing was charged, or the refund landed. A charge whose refund did not land gets a neutral code (the
+    // studio shows its generic failure copy) — and refundCredits has already reported the miss for reconciliation.
+    const safe = providerErrorBody(err, billingLocale(req));
+    const body = charged && !refunded
+      ? { success: false, error: 'music_failed', refunded: false }
+      : { success: false, error: safe.error, message: safe.message, refunded };
+    return NextResponse.json(body, { status: 502 });
   }
 }

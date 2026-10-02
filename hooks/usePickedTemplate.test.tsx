@@ -115,7 +115,8 @@ describe('the studio reads every request\'s templateId from the PICKED id, never
       'useState<ImgQuality>(IMAGE_PANEL_DEFAULTS.quality)',
       'useState<string>(IMAGE_PANEL_DEFAULTS.style)',
       'useState<string>(VIDEO_PANEL_DEFAULTS.style)',
-      'useState<8 | 24 | 48>(VIDEO_PANEL_DEFAULTS.duration)',
+      // The length is any stop of lib/video/duration (4 s … 4 min), no longer one of three chips.
+      'useState<number>(VIDEO_PANEL_DEFAULTS.duration)',
       "useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode)",
       "useState<'landscape' | 'vertical' | 'square' | 'portrait'>(VIDEO_PANEL_DEFAULTS.orientation)",
       // Music styles are a list now (up to three, lib/ai/musicControls); the default panel holds the one default genre.

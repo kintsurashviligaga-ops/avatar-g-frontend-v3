@@ -14,12 +14,15 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
 import { generateFluxProImage } from '@/lib/ai/fluxImage';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { sanitizeStyle } from '@/lib/studio/style';
 import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
+import { resolveShootDirective } from '@/lib/studio/shootContext';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -89,11 +92,19 @@ export async function POST(req: NextRequest) {
   // genuine retry isn't locked out. Fail-open (the helper no-ops without Redis).
   let idemOwner = '';
   let idemKey = '';
-  const refundReserve = async (): Promise<void> => {
+  /** Refund (at most once) + release the mutex. TRUE only when the refund actually landed — the only thing a failure
+   *  response may report as `refunded: true` (or put "your credit was returned" in its message). */
+  const refundReserve = async (): Promise<boolean> => {
+    let refunded = false;
     if (reserved && reservedUid) {
       reserved = false; // idempotent: refund at most once
-      await refundCredits(reservedUid, creditCostFor('image'), `${reserveRef}:refund`).catch(() => {});
+      const r = await refundCredits(reservedUid, creditCostFor('image'), `${reserveRef}:refund`).catch(() => null);
+      refunded = !!r?.ok;
     }
+    if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
+    return refunded;
+  };
+  const releaseMutex = async (): Promise<void> => {
     if (idemOwner && idemKey) { const k = idemKey; idemKey = ''; await releaseIdempotencyKey(idemOwner, k).catch(() => {}); }
   };
 
@@ -119,6 +130,8 @@ export async function POST(req: NextRequest) {
       batchTile?: number;
       /** The template card the request's values select (lib/studio/templates) — an ID; its context is resolved here. */
       templateId?: unknown;
+      /** The Interior designer's / Photographer's choices as IDs (lib/studio/shootWire) — resolved to a directive here. */
+      studio?: unknown;
     };
     const clientJobId = typeof body.jobId === 'string' ? body.jobId.slice(0, 120) : '';
 
@@ -136,6 +149,11 @@ export async function POST(req: NextRequest) {
     // Only when THIS request's aspect, quality and style still select the card; anything else resolves to null and
     // the render is exactly what the controls say. Resolved before the mutex key, which hashes the id it applied.
     const template = resolveTemplateContext('image', body.templateId, { aspect: body.aspectRatio ?? '1:1', quality, style: styleLabel });
+    // ⚠️ THE INTERIOR DESIGNER AND THE PHOTOGRAPHER RIDE THIS ROUTE — one charge path, one refund path (lib/studio/shootContext).
+    // Their style / room / camera arrive as IDs and resolve to server text; `refGiven` is what the BODY carries, not what the
+    // client claims. Null (no `studio`, or an unknown kind) leaves the render exactly as the image tool's controls say.
+    const refGiven = typeof body.referenceImage === 'string' && body.referenceImage.trim() !== '';
+    const shoot = resolveShootDirective(body.studio, { hasReference: refGiven });
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -148,39 +166,53 @@ export async function POST(req: NextRequest) {
 
     // RESERVE the credit up front (state declared above). The atomic deduct serialises a
     // concurrent ×4 batch: only tiles the wallet can actually fund proceed; the rest 402 WITHOUT
-    // a paid render (fixes the free-image TOCTOU leak). Per-tile idempotency ref — a retry of the
-    // SAME tile dedupes, a new tile charges. Authed only (anon/preview stays free-to-try). 402 ONLY
-    // on a true insufficient balance; a ledger 'error'/'skipped' fails OPEN (proceed unbilled) to
-    // preserve this route's try-to-generate behaviour, exactly as the old read-gate did.
+    // a paid render (fixes the free-image TOCTOU leak). Authed only (a FILM_ALLOW_ANONYMOUS demo stays unbilled).
+    // ⚠️ SECOND NETWORK VALIDATION OF THE SAME JWT. applyApiGuards above already resolved the cookie
+    // session through auth.getUser(), which is a real round trip to GoTrue and not a local decode.
+    // Reuse its answer when it has one; fall back to the full resolver otherwise, because getAuthContext
+    // only reads cookies and this route must still accept the Authorization: Bearer path unchanged.
+    const rUser = sessionUserId ? { id: sessionUserId } : null;
+    // The in-flight MUTEX stays fail-open: a Redis blip only loses the double-click guard, never money.
     try {
-      // ⚠️ SECOND NETWORK VALIDATION OF THE SAME JWT. applyApiGuards above already resolved the cookie
-      // session through auth.getUser(), which is a real round trip to GoTrue and not a local decode.
-      // Reuse its answer when it has one; fall back to the full resolver otherwise, because getAuthContext
-      // only reads cookies and this route must still accept the Authorization: Bearer path unchanged.
-      const rUser = sessionUserId ? { id: sessionUserId } : null;
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}) })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
       }
-      if (rUser?.id) {
-        reservedUid = rUser.id;
-        // ⚠️ CLIENT-KEYED BILLING REF — same exploit shape as produceBilling.idemRef: deduct_credits
-        // dedupes on (user_id, ref) forever, so a constant clientJobId with a changing prompt was
-        // charged once and rendered free thereafter. The body fingerprint is server-derived, so a real
-        // retry (same job, same request) still collapses while a new render always pays.
-        reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${bodyFingerprint(body)}:${rUser.id}`;
-        const debit = await deductCredits(rUser.id, creditCostFor('image'), reserveRef);
-        if (!debit.ok && debit.reason === 'insufficient') {
-          await refundReserve(); // releases the mutex (nothing reserved yet) so a top-up retry works
-          return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
-        }
-        reserved = debit.ok;
+    } catch { idemKey = ''; /* mutex unavailable — proceed without the double-click guard */ }
+    // ── THE CHARGE FAILS CLOSED. ──────────────────────────────────────────────────────────────────────────────
+    // ⚠️ THIS USED TO SHARE THE MUTEX'S FAIL-OPEN `try`, and only `insufficient` stopped the render: a deduct that
+    // came back `error` (the ledger unreachable or refusing the write) rendered the image UNBILLED, for everyone,
+    // for as long as the ledger was down. A definitive ledger failure now refuses (503 billing_unavailable, nothing
+    // charged, nothing rendered). Only `skipped` (the RPC not provisioned at all) still proceeds uncharged, exactly
+    // as reserveProduce documents for every other paid route.
+    if (rUser?.id) {
+      reservedUid = rUser.id;
+      // ⚠️ CLIENT-KEYED BILLING REF — same exploit shape as produceBilling.idemRef: deduct_credits
+      // dedupes on (user_id, ref) forever, so a constant clientJobId with a changing prompt was
+      // charged once and rendered free thereafter. The body fingerprint is server-derived.
+      reserveRef = `image:nanobanana:${clientJobId || randomUUID()}:${bodyFingerprint(body)}:${rUser.id}`;
+      // ⚠️ …AND THE SAME jobId + BODY IS A REPLAY. deduct_credits answers it with SUCCESS and no new debit, so a
+      // replay once the 60 s mutex lapsed rendered a fresh image for nothing — every time. The studio mints a new
+      // jobId per job and per tile, so only a replayed request lands here; it is refused before any charge or render.
+      if ((await debitExistsForRef(rUser.id, reserveRef)) === true) {
+        await releaseMutex();
+        return NextResponse.json({ ...replayRefusedBody(), message: 'This image was already generated.' }, { status: 409 });
       }
-    } catch { /* fail-open — a ledger hiccup never blocks a paid render */ }
+      const debit = await deductCredits(rUser.id, creditCostFor('image'), reserveRef);
+      if (!debit.ok && debit.reason === 'insufficient') {
+        await refundReserve(); // releases the mutex (nothing reserved yet) so a top-up retry works
+        return NextResponse.json({ success: false, error: 'არასაკმარისი კრედიტი — შეავსე ბალანსი. / Not enough credits — please top up.', code: 'insufficient_credits' }, { status: 402 });
+      }
+      if (!debit.ok && debit.reason === 'error') {
+        await releaseMutex(); // nothing was reserved — let the retry through
+        return NextResponse.json(ledgerUnavailableBody(billingLocale(req)), { status: 503 });
+      }
+      reserved = debit.ok;
+    }
 
     const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
     // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
@@ -203,11 +235,13 @@ export async function POST(req: NextRequest) {
     const activeImageCfg = await getActiveConfig('image').catch(() => null);
     // The assembly (style directive or quality boost → template suffix → exclusion clause → learned directive) is the
     // pure lib/studio/composeImagePrompt. `knownStyle` is the ONLY value forwarded as the provider's `style` field.
+    // A studio request's lead (the task, what stays identical) goes BEFORE the brief; its look / camera ride as the suffix and
+    // its "avoid" joins the exclusion clause. An image-tool request has no `shoot`, so every value below is what it was.
     const { finalPrompt, knownStyle } = composeImagePrompt({
-      promptEn,
+      promptEn: shoot ? `${shoot.lead} ${promptEn}` : promptEn,
       styleLabel,
-      templateSuffix: template?.suffix ?? null,
-      negativeEn: negative,
+      templateSuffix: shoot ? shoot.suffix : (template?.suffix ?? null),
+      negativeEn: shoot ? [negative, shoot.avoid].filter(Boolean).join(', ') : negative,
       learnedDirective: activeImageCfg?.prompt ?? null,
     });
 
@@ -218,6 +252,19 @@ export async function POST(req: NextRequest) {
     const ref = typeof body.referenceImage === 'string' ? body.referenceImage.trim() : '';
     if (ref.startsWith('data:')) referenceImageUrl = (await hostReferenceImage(ref)) || undefined;
     else if (/^https?:\/\//i.test(ref)) referenceImageUrl = ref;
+    // ⚠️ A STUDIO PHOTO THAT COULD NOT BE HOSTED MUST NOT BECOME A TEXT-TO-IMAGE RENDER. For the image tool a lost reference
+    // degrades to a fresh picture; for the Interior designer that is a different room, for the Photographer a different
+    // subject — charged as if it were theirs. Refuse and refund before any provider is called.
+    if (shoot && ref && !referenceImageUrl) {
+      const refunded = await refundReserve();
+      return NextResponse.json({
+        success: false,
+        code:    'reference_unavailable',
+        refunded,
+        message: `ფოტო ვერ წავიკითხე${refunded ? ' — კრედიტი დაბრუნდა' : ''}. სცადე სხვა JPG ან PNG. / We could not read your photo${refunded ? ' — your credit was returned' : ''}. Try another JPG or PNG.`,
+        error:   'reference_unavailable',
+      }, { status: 502 });
+    }
 
     // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to the primary
     // image provider. If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and
@@ -295,16 +342,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (!providerUrl && !backupB64) {
-      const refunded = reserved;   // capture BEFORE refundReserve() clears the flag
-      await refundReserve();       // paid for nothing → give the reserved credit back
+      // ⚠️ THE MESSAGE USED TO SAY "your credit was returned" WHENEVER A CREDIT HAD BEEN RESERVED — before the refund
+      // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
+      const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
+      console.error('[nanobanana/image] every engine missed:', (providerText ?? 'no image URL').slice(0, 300));
       return NextResponse.json({
         success: false,
         code:    'provider_unavailable',
+        refunded,
         // ⚠️ THE CLIENT SHOWS `message` AND DROPS `error` for every code except insufficient_credits
         // (OmniStudio.runImageJob; describeOpFailure does the same). Without this field the honest
         // reason — and the fact that the credit was returned — was replaced by "Image generation failed".
         message: `ვერ შევქმენი სურათი — ყველა ძრავა დროებით მიუწვდომელია${refunded ? ', კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / Every image engine is unavailable right now${refunded ? ' — your credit was returned' : ''}. Please try again.`,
-        error:   providerText ?? 'Image provider returned no image URL',
+        // The engines' own failure text (providerText) stays server-side; the body carries only our code.
+        error:   'provider_unavailable',
       }, { status: 502 });
     }
 
@@ -348,11 +399,11 @@ export async function POST(req: NextRequest) {
 
     // A backup-b64 upload miss can leave no usable URL → treat as a provider miss (502).
     if (!hostedUrl) {
-      const refunded = reserved;   // capture BEFORE refundReserve() clears the flag
-      await refundReserve();       // no deliverable asset → give the reserved credit back
+      const refunded = await refundReserve(); // no deliverable asset → give the reserved credit back
       return NextResponse.json({
         success: false,
         code:    'host_failed',
+        refunded,
         message: `სურათი შეიქმნა, მაგრამ ატვირთვა ვერ მოხერხდა${refunded ? ' — კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / The image was generated but could not be stored${refunded ? ' — your credit was returned' : ''}. Please try again.`,
         error:   'Image host failed',
       }, { status: 502 });
@@ -377,9 +428,16 @@ export async function POST(req: NextRequest) {
       credits,
     });
   } catch (err) {
-    await refundReserve(); // mid-render throw → give the reserved credit back
+    const charged = reserved; // captured before refundReserve clears it
+    const refunded = await refundReserve(); // mid-render throw → give the reserved credit back
     const message = err instanceof Error ? err.message : 'Image generation failed';
     console.error('[nanobanana/image]', message);
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    // ⚠️ NEVER THE PROVIDER'S OWN WORDS (lib/api/providerError) — and the sanitiser's "you were not charged" only when
+    // it is true: nothing was charged, or the refund landed. A charge whose refund did not land gets a neutral code.
+    const safe = providerErrorBody(err, billingLocale(req));
+    const failBody = charged && !refunded
+      ? { success: false, error: 'image_failed', refunded: false }
+      : { success: false, error: safe.error, message: safe.message, refunded };
+    return NextResponse.json(failBody, { status: 502 });
   }
 }

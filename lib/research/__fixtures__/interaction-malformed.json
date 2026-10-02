@@ -1,0 +1,8 @@
+{
+  "id": 12345,
+  "status": { "nested": true },
+  "steps": [null, 7, "x", { "type": "model_output", "content": "not-an-array" }, { "type": "model_output", "content": [null, { "type": "text", "text": 42 }, { "type": "text", "text": "   " }] }],
+  "usage": { "total_tokens": "many", "total_input_tokens": -5 },
+  "citations": [null, 3, { "url": 99 }],
+  "errors": [null, { "code": 7 }, "plain error text"]
+}

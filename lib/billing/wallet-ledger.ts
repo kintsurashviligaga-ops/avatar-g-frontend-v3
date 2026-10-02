@@ -264,3 +264,122 @@ export async function getOnboardingState(userId: string): Promise<OnboardingStat
     return null;
   }
 }
+
+// ─── Bank of Georgia (migration 20261002a) ─────────────────────────────────────────────────────────────────────
+// The BOG settlement engine (lib/billing/bogSettlement.ts) moves money ONLY through these three RPCs. Each is one
+// transaction keyed on our own order id, so a callback, a reconcile and the cron settling the same order at once
+// credit exactly once.
+
+export interface BogFulfillment {
+  /** false = this order had already been fulfilled (a redelivery) — that is success, not failure. */
+  granted: boolean;
+  kind: 'topup' | 'subscription' | 'renewal';
+  credits: number;
+  balance: number;
+  subscriptionId: string | null;
+  tier: string | null;
+  periodEnd: string | null;
+  /** Plans only: whether the card was saved and the plan renews. */
+  autoRenew: boolean | null;
+  /** Saved cards of the plans this purchase replaced — the caller deletes them at BOG (best effort). */
+  supersededParentOrders: string[];
+}
+
+/**
+ * Fulfil a PAID BOG order: a top-up credits its GEL through credit_wallet_gel (ref `bog:<order>`); a plan payment
+ * grants the month's allowance through grant_subscription_allowance (invoice `bog:<order>`) and starts/extends the
+ * subscription. null = nothing happened (RPC missing, DB error) and the caller must retry; never read it as paid.
+ */
+export async function fulfillBogOrder(p: {
+  shopOrderId: string;
+  bogOrderId: string | null;
+  cardMask: string | null;
+  cardSaved: boolean;
+}): Promise<BogFulfillment | null> {
+  const sb = client();
+  if (!sb || !p.shopOrderId) return null;
+  try {
+    const { data, error } = await sb.rpc('bog_fulfill_order', {
+      p_shop_order_id: p.shopOrderId,
+      p_bog_order_id: p.bogOrderId,
+      p_card_mask: p.cardMask,
+      p_card_saved: p.cardSaved,
+    });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[wallet-ledger] bog_fulfill_order failed:', (error as { message?: string }).message ?? error);
+      return null;
+    }
+    const r = (data ?? null) as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object' || typeof r.kind !== 'string') return null;
+    const superseded = Array.isArray(r.superseded_parent_orders)
+      ? (r.superseded_parent_orders as unknown[]).filter((x): x is string => typeof x === 'string' && x.length > 0)
+      : [];
+    return {
+      granted: r.granted === true,
+      kind: r.kind as BogFulfillment['kind'],
+      credits: Number(r.credits) || 0,
+      balance: Number(r.balance) || 0,
+      subscriptionId: typeof r.subscription_id === 'string' ? r.subscription_id : null,
+      tier: typeof r.tier === 'string' ? r.tier : null,
+      periodEnd: typeof r.period_end === 'string' ? r.period_end : null,
+      autoRenew: typeof r.auto_renew === 'boolean' ? r.auto_renew : null,
+      supersededParentOrders: superseded,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface BogRenewalClaim {
+  claimed: boolean;
+  /** not_bog | inactive | canceled | no_saved_card | not_due | backoff | exhausted | in_flight | conflict */
+  reason: string | null;
+  shopOrderId: string | null;
+  parentOrderId: string | null;
+  /** in_flight only: the BOG id of the pending charge (null = the charge request never got an answer). */
+  bogOrderId: string | null;
+  status: string | null;
+}
+
+/**
+ * Claim the renewal of one BOG subscription: if it is due, insert its renewal order (deterministic id per period
+ * and attempt) under the subscription's row lock. Two overlapping cron ticks cannot both claim a period.
+ */
+export async function claimBogRenewal(subscriptionId: string, credits: number): Promise<BogRenewalClaim | null> {
+  const sb = client();
+  if (!sb || !subscriptionId || !Number.isInteger(credits) || credits <= 0) return null;
+  try {
+    const { data, error } = await sb.rpc('bog_claim_renewal', { p_subscription_id: subscriptionId, p_credits: credits });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[wallet-ledger] bog_claim_renewal failed:', (error as { message?: string }).message ?? error);
+      return null;
+    }
+    const r = (data ?? null) as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') return null;
+    const s = (k: string) => (typeof r[k] === 'string' ? (r[k] as string) : null);
+    return { claimed: r.claimed === true, reason: s('reason'), shopOrderId: s('shop_order_id'), parentOrderId: s('parent_order_id'), bogOrderId: s('bog_order_id'), status: s('status') };
+  } catch {
+    return null;
+  }
+}
+
+/** A renewal charge was declined: mark the order rejected and back the subscription off (3 strikes → past_due). */
+export async function recordBogRenewalFailure(shopOrderId: string, reason: string): Promise<{ recorded: boolean; failures: number } | null> {
+  const sb = client();
+  if (!sb || !shopOrderId) return null;
+  try {
+    const { data, error } = await sb.rpc('bog_record_renewal_failure', { p_shop_order_id: shopOrderId, p_reason: reason.slice(0, 200) });
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[wallet-ledger] bog_record_renewal_failure failed:', (error as { message?: string }).message ?? error);
+      return null;
+    }
+    const r = (data ?? null) as Record<string, unknown> | null;
+    if (!r || typeof r !== 'object') return null;
+    return { recorded: r.recorded === true, failures: Number(r.failures) || 0 };
+  } catch {
+    return null;
+  }
+}

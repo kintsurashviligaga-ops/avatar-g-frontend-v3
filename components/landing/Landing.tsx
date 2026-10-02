@@ -144,7 +144,8 @@ export function Landing({ locale }: { locale: string }) {
           </div>
         </header>
 
-        <div className="relative z-10 mx-auto mt-auto w-full max-w-6xl px-4 pb-[max(40px,env(safe-area-inset-bottom))] sm:px-6 md:pb-24">
+        {/* data-skip-target: "Skip to main content" (AppShell) lands on the headline, past the header's links. */}
+        <div id="landing-main" data-skip-target="" className="relative z-10 mx-auto mt-auto w-full max-w-6xl px-4 pb-[max(40px,env(safe-area-inset-bottom))] focus:outline-none sm:px-6 md:pb-24">
           <p className="landing-rise text-[13px] font-medium uppercase tracking-[0.18em] text-white/70">{t.hero.eyebrow}</p>
           <h1 className="landing-rise mt-4 max-w-[13ch] font-display text-[44px] font-bold leading-[1.08] tracking-[-0.01em] text-white sm:text-[60px] lg:text-[76px]">
             {t.hero.title}
@@ -162,7 +163,9 @@ export function Landing({ locale }: { locale: string }) {
         </div>
       </section>
 
-      <main>
+      {/* A <div>, not a <main>: AppShell already wraps every page in <main id="main-content">, and a main inside a main
+          is an a11y error (two "main" landmarks, one nested). */}
+      <div>
         {/* ── Reels — the first proof after the hero: this studio makes VIDEO. Three 5 s vertical loops (brand/v1.1,
             scripts/hf-art-pack.md R1–R3), each a photo that moves. Played only while on screen, never under reduced
             motion; the copy says exactly what they are — three photos, three five-second shots. ──────────────── */}
@@ -268,7 +271,7 @@ export function Landing({ locale }: { locale: string }) {
             </Link>
           </div>
         </section>
-      </main>
+      </div>
 
       {/* ── Footer ───────────────────────────────────────────────────────────────────────── */}
       <footer className="border-t border-white/10">

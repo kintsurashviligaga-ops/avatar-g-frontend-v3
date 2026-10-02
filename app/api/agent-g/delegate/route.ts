@@ -10,6 +10,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -269,9 +270,11 @@ async function dispatchAgent(
 
 export async function POST(request: NextRequest) {
   try {
-    // Internal secret check
-    const secret = process.env.AGENT_G_INTERNAL_SECRET;
-    if (secret && request.headers.get('x-agent-g-secret') !== secret) {
+    // Internal secret check.
+    // ⚠️ FAIL CLOSED. This read `if (secret && header !== secret)` — so with AGENT_G_INTERNAL_SECRET unset the check was
+    // SKIPPED and anyone could make the server dispatch Agent G sub-tasks (each one an LLM call on the platform key, or a
+    // forwarded media call). No secret now means no access, never "no check" (the lib/api/cronAuth reading).
+    if (!secretMatches(request.headers.get('x-agent-g-secret'), process.env.AGENT_G_INTERNAL_SECRET)) {
       return apiError(new Error('Forbidden'), 403, 'წვდომა აკრძალულია');
     }
 

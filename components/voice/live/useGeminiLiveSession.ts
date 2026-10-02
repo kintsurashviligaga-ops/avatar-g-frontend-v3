@@ -192,6 +192,11 @@ export interface UseGeminiLiveSessionOptions {
   /** Forwarded to the mint so the server can resolve the profile itself. */
   personaId?: string | null;
   customPersona?: unknown;
+  /**
+   * Talk to a finished research report: the id of the caller's own report. Only the ID travels — the server loads the report
+   * for the signed-in owner and appends it to the instruction it locks into the token (app/api/voice/live).
+   */
+  researchId?: string | null;
   endpoint?: string;
   setupTimeoutMs?: number;
   /** Transcript sink: called once per closed turn, user first. */
@@ -802,6 +807,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           voice: o.voiceName,
           personaId: o.personaId ?? null,
           customPersona: o.customPersona ?? null,
+          ...(typeof o.researchId === 'string' && o.researchId ? { researchId: o.researchId } : {}),
           transcribe: parity,
           ...(parity ? { compression: true } : {}),
           ...(parity && handle !== undefined ? { resumptionHandle: handle } : {}),

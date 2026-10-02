@@ -63,3 +63,33 @@ test('disabled is honoured', () => {
   render(<Slider label="Weirdness" min={0} max={100} value={50} onChange={jest.fn()} disabled />);
   expect((screen.getByRole('slider') as HTMLInputElement).disabled).toBe(true);
 });
+
+describe('Create-screen options: tick marks and an accent thumb', () => {
+  test('ticks draws ticks + 1 decorative lines behind the track; the range keeps its name, value and onChange', () => {
+    const onChange = jest.fn();
+    render(<Slider stacked ticks={10} accentThumb label="Weirdness" min={0} max={100} value={50} suffix="%" onChange={onChange} />);
+    const marks = screen.getByTestId('slider-ticks');
+    expect(marks.getAttribute('aria-hidden')).toBe('true');
+    expect(marks.children).toHaveLength(11);
+    const input = screen.getByRole('slider', { name: 'Weirdness' }) as HTMLInputElement;
+    expect(input.className).toContain('slider-accent');
+    expect(input.className).toContain('appearance-none'); // globals.css keys the 44px strip and the thumb on it
+    expect(input.className).toContain('relative'); // above the ticks, so the thumb is what a finger grabs
+    expect(screen.getByText('50%')).toBeTruthy();
+    fireEvent.change(input, { target: { value: '80' } });
+    expect(onChange).toHaveBeenCalledWith(80);
+  });
+
+  test('without them the markup is exactly what it was — no ticks, no accent class', () => {
+    const { container } = render(<Slider label="Weirdness" min={0} max={100} value={50} onChange={jest.fn()} />);
+    expect(screen.queryByTestId('slider-ticks')).toBeNull();
+    expect(screen.getByRole('slider').className).not.toContain('slider-accent');
+    expect(container.firstElementChild!.className).toBe('flex items-center gap-3');
+  });
+
+  test('inline (not stacked) with ticks still lets the track take the row', () => {
+    render(<Slider ticks={4} label="Weirdness" min={0} max={100} value={50} onChange={jest.fn()} />);
+    expect(screen.getByTestId('slider-ticks').children).toHaveLength(5);
+    expect(screen.getByTestId('slider-ticks').parentElement!.className).toContain('flex-1');
+  });
+});

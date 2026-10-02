@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Wallet, X, Loader2 } from 'lucide-react';
 import { REFILL_TIERS_GEL, MIN_REFILL_GEL, formatWalletBalance, insufficientBalanceMessage } from '@/lib/billing/gel';
+import { startBogCheckout } from '@/lib/billing/bogCheckoutClient';
 
 export function BalanceChip({ balanceGel, locale = 'en', onClick }: { balanceGel: number | null; locale?: string; onClick: () => void }) {
   // Theme-aware chip: app-bg base, app-border hairline, app-text label, soft
@@ -113,14 +114,10 @@ export function WalletRefillModal({
       // it never hits Stripe's GEL-settlement gating. Returns { redirectUrl }. On ANY BOG init failure
       // (auth/order/unconfigured) transparently fall back to Stripe so the user is never left unable to pay.
       if (bogAvailable) {
-        const res = await fetch('/api/checkout/bog/initiate', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-          body: JSON.stringify({ amountGel }),
-        });
-        const j = await res.json().catch(() => ({})) as { redirectUrl?: string };
-        if (res.ok && j.redirectUrl) { window.location.href = j.redirectUrl; return; }
-        if (res.status === 401) { setError(msgAuth); return; }
-        if (await tryStripe()) return;   // BOG down → Stripe fallback
+        const r = await startBogCheckout({ kind: 'topup', amountGel, locale });
+        if (r.ok) { window.location.href = r.redirectUrl; return; }
+        if (r.reason === 'auth') { setError(msgAuth); return; }
+        if (await tryStripe()) return;   // BOG down → the older card checkout
         setError(msgGeneric);
         return;
       }
@@ -131,7 +128,7 @@ export function WalletRefillModal({
     } finally {
       setBusy(null);
     }
-  }, [bogAvailable, msgAuth, msgGeneric, msgNetwork]);
+  }, [bogAvailable, locale, msgAuth, msgGeneric, msgNetwork]);
 
   if (!open) return null;
   const title = locale === 'ka' ? 'შეავსე საფულე' : locale === 'ru' ? 'Пополнить кошелёк' : 'Top up wallet';
@@ -142,7 +139,7 @@ export function WalletRefillModal({
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center p-3 bg-black/80 backdrop-blur-md"
         onClick={onClose}
-        // Apple IAP compliance: the entire Stripe (₾/GEL) refill modal is hidden
+        // Apple IAP compliance: the entire (₾/GEL) refill modal is hidden
         // inside the native iOS shell — digital top-ups are a web purchase.
         data-iap-external
       >
@@ -203,7 +200,7 @@ export function WalletRefillModal({
               ? (locale === 'ka' ? 'გადახდა დროებით მიუწვდომელია. სცადე მოგვიანებით.' : locale === 'ru' ? 'Оплата временно недоступна. Попробуйте позже.' : 'Payment is temporarily unavailable. Please try again later.')
               : bogAvailable
                 ? (locale === 'ka' ? 'უსაფრთხო გადახდა ბარათით — Bank of Georgia (₾).' : locale === 'ru' ? 'Безопасная оплата картой — Bank of Georgia (₾).' : 'Secure card payment via Bank of Georgia (₾).')
-                : (locale === 'ka' ? 'გადახდა მუშავდება Stripe-ით (₾ / GEL).' : locale === 'ru' ? 'Оплата через Stripe (₾ / GEL).' : 'Secure checkout via Stripe (₾ / GEL).')}
+                : (locale === 'ka' ? 'უსაფრთხო გადახდა ბარათით (₾).' : locale === 'ru' ? 'Безопасная оплата картой (₾).' : 'Secure card payment (₾).')}
           </p>
         </motion.div>
       </motion.div>

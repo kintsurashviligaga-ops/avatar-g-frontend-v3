@@ -15,12 +15,9 @@ import 'server-only';
 
 import { Redis } from '@upstash/redis';
 
-export type ProduceKind = 'film' | 'avatar' | 'interior' | 'image' | 'music' | 'voice';
-
-/** Credits charged per successful produce (relative provider expense). */
-export const PRODUCE_COST: Record<ProduceKind, number> = {
-  film: 20, avatar: 15, interior: 8, image: 2, music: 6, voice: 2,
-};
+// The per-pipeline prices live in ./produceCost (isomorphic, so a button can quote the SAME number a route charges);
+// re-exported here so every existing importer keeps working.
+export { PRODUCE_COST, type ProduceKind } from './produceCost';
 
 /** Fixed-window caps per authenticated user. */
 export const RATE_PER_MIN = 6;

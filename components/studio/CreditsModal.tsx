@@ -1,24 +1,36 @@
 'use client';
 
 /**
- * CreditsModal — the billing / top-up surface behind the top-bar "X.XX ₾" chip.
+ * CreditsModal — THE billing surface (the balance chip and the pricing page both open it).
  *
- * Signed-out → a "please sign in" gate with a Sign In button (defers to AuthModal
- * via onSignIn). Signed-in → the live GEL balance, free-films remaining (X / 3),
- * and three top-up packages. Card payment IS wired: "გადახდა" POSTs the package's GEL
- * amount to /api/billing/wallet-topup and full-redirects to Stripe Checkout. Failures
- * surface in a self-contained local toast (there is no ToastProvider in this tree, so
- * the toast is local state — never call useToast() here).
+ * Signed-out → a sign-in gate. Signed-in → the balance, the live plan (with "cancel auto-renewal"), the three
+ * monthly plans and PAYG top-ups.
  *
- * Closable by ✕ · backdrop click · Escape. Rendered through a portal so it wins
- * the z-stack over the chat shell + cookie banner (mirrors AuthModal).
+ * Payment rail, probed from the secretless /api/checkout/capabilities when the modal opens:
+ *   · Bank of Georgia (live) — prices shown in ₾, because ₾ is what BOG charges; plans renew monthly on the card
+ *     saved at the first payment (/api/billing/bog/checkout). The return trip is handled in ChatChrome (?bog=…).
+ *   · otherwise the older card checkout keeps working as it did (USD tier packs / GEL wallet top-up), unannounced;
+ *   · neither → the buttons are disabled with a plain notice, never a click that 503s.
+ *
+ * Failures surface in a self-contained local toast (there is no ToastProvider in this tree, so never useToast()).
+ * Closable by ✕ · backdrop click · Escape. Rendered through a portal so it wins the z-stack (mirrors AuthModal).
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check } from 'lucide-react';
+import { X, Sparkles, Loader2, LogIn, CreditCard, AlertCircle, Check, ShieldCheck } from 'lucide-react';
 import { PRICING_TIERS, type PricingTierId } from '@/lib/billing/pricingConfig';
 import { formatCreditBalance } from '@/lib/billing/gel';
+import { BOG_TOPUP_PACKS_GEL, bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import {
+  cancelBogRenewal,
+  fetchBogPlan,
+  formatPlanDate,
+  navigateToPayment,
+  planName,
+  startBogCheckout,
+  type BogPlanSummary,
+} from '@/lib/billing/bogCheckoutClient';
 import { track } from '@/lib/analytics/track';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -26,7 +38,7 @@ type Lang = 'ka' | 'en' | 'ru';
 interface CreditsModalProps {
   open: boolean;
   locale: string;
-  /** Live GEL wallet balance (from /api/credits/balance), or null while loading. */
+  /** Live balance (from /api/credits/balance), or null while loading. */
   balanceGel: number | null;
   /** Whether a Supabase session exists (gates the billing body vs. the sign-in CTA). */
   authed: boolean;
@@ -35,48 +47,66 @@ interface CreditsModalProps {
   onSignIn: () => void;
 }
 
-// DAY-6 — the credits modal now renders the SINGLE SOURCE OF TRUTH tiers (PRICING_TIERS: Starter 38/140 ·
-// Pro Creator 299/700 · Studio Annual 899/3250) — the SAME data the /pricing page shows — instead of the legacy
-// 9/29/89 top-up packs. The per-item "tetri" cost guide is removed (see TODO(GG) below).
+/** The paid rungs of the pricing page's ladder — the SAME data the /pricing page renders. */
 const PACKAGES = PRICING_TIERS.filter((t) => t.priceUsd > 0);
 
-const COPY: Record<Lang, {
-  title: string; balance: string; freeVideos: string; pay: string; cardHint: string;
-  comingSoon: string; payError: string; redirecting: string; signInNeeded: string; signIn: string; credits: string; close: string;
-  starter: string; pro: string; max: string;
-  videos: string; images: string;
-  guideTitle: string; perCredit: string; viewAllPlans: string;
-  gImage: string; gMusic: string; gVideo: string; gAvatar: string;
-}> = {
+interface Copy {
+  title: string; balance: string; freeVideos: string; pay: string; cardHint: string; secureBog: string; unavailable: string;
+  payError: string; redirecting: string; redirectingBog: string; signInNeeded: string; signIn: string; credits: string;
+  close: string; viewAllPlans: string; plansTitle: string; topupTitle: string; subscribe: string; perMonth: string;
+  monthlyCredits: (n: number) => string; yourPlan: string; currentPlan: string; renewsOn: (d: string) => string;
+  activeUntil: (d: string) => string; cancelRenewal: string; cancelConfirm: (d: string) => string; yesCancel: string;
+  keep: string; renewalCanceled: string; cancelError: string; alreadySubscribed: string; popular: string;
+}
+
+const COPY: Record<Lang, Copy> = {
   ka: {
     title: 'კრედიტები', balance: 'ბალანსი', freeVideos: 'უფასო ვიდეო', pay: 'გადახდა',
-    cardHint: 'უსაფრთხო გადახდა ბარათით', comingSoon: 'მალე — გადახდა მალე დაემატება',
+    cardHint: 'უსაფრთხო გადახდა ბარათით', secureBog: 'უსაფრთხო გადახდა — საქართველოს ბანკი (₾)',
+    unavailable: 'გადახდა დროებით მიუწვდომელია. სცადეთ მოგვიანებით.',
     payError: 'გადახდა ვერ დაიწყო — სცადეთ თავიდან', redirecting: 'გადამისამართება…',
-    signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა',
-    starter: '📦 სტარტერი', pro: '💎 პრო', max: '🚀 მაქსი',
-    videos: 'ვიდეო', images: 'სურათი',
-    guideTitle: 'რას შეძლებ კრედიტებით?', perCredit: '1 კრედიტი = 0.10 ₾', viewAllPlans: 'ყველა გეგმის ნახვა →',
-    gImage: '🖼 სურათი', gMusic: '🎵 მუსიკა 30წმ', gVideo: '🎬 ვიდეო 30წმ', gAvatar: '🎭 ავატარი',
+    redirectingBog: 'საქართველოს ბანკზე გადასვლა…',
+    signInNeeded: 'შესვლა საჭიროა', signIn: 'შესვლა', credits: 'კრედიტი', close: 'დახურვა', viewAllPlans: 'ყველა გეგმის ნახვა →',
+    plansTitle: 'ყოველთვიური გეგმები', topupTitle: 'კრედიტების შევსება', subscribe: 'გამოწერა', perMonth: '/ თვე',
+    monthlyCredits: (n) => `${n} კრედიტი ყოველთვიურად`,
+    yourPlan: 'თქვენი გეგმა', currentPlan: 'მიმდინარე გეგმა',
+    renewsOn: (d) => `განახლდება ${d}`, activeUntil: (d) => `აქტიურია ${d}-მდე`,
+    cancelRenewal: 'ავტომატური განახლების გაუქმება',
+    cancelConfirm: (d) => `გეგმა აქტიური დარჩება ${d}-მდე და თანხა აღარ ჩამოგეჭრებათ. გავაუქმოთ განახლება?`,
+    yesCancel: 'დიახ, გაუქმება', keep: 'დატოვება', renewalCanceled: 'ავტომატური განახლება გაუქმდა.',
+    cancelError: 'გაუქმება ვერ მოხერხდა — სცადეთ თავიდან.', alreadySubscribed: 'ეს გეგმა უკვე აქტიურია.', popular: 'პოპულარული',
   },
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
-    cardHint: 'Secure card checkout', comingSoon: 'Coming soon — payments arrive shortly',
+    cardHint: 'Secure card checkout', secureBog: 'Secure payment by Bank of Georgia (₾)',
+    unavailable: 'Payments are temporarily unavailable. Please try again later.',
     payError: 'Could not start checkout — please try again', redirecting: 'Redirecting…',
-    signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close',
-    starter: '📦 Starter', pro: '💎 Pro', max: '🚀 Max',
-    videos: 'videos', images: 'images',
-    guideTitle: 'What can you do with credits?', perCredit: '1 credit = 0.10 ₾', viewAllPlans: 'View all plans →',
-    gImage: '🖼 Image', gMusic: '🎵 Music 30s', gVideo: '🎬 Video 30s', gAvatar: '🎭 Avatar',
+    redirectingBog: 'Opening Bank of Georgia…',
+    signInNeeded: 'Please sign in first', signIn: 'Sign In', credits: 'credits', close: 'Close', viewAllPlans: 'View all plans →',
+    plansTitle: 'Monthly plans', topupTitle: 'Top up credits', subscribe: 'Subscribe', perMonth: '/ mo',
+    monthlyCredits: (n) => `${n} credits every month`,
+    yourPlan: 'Your plan', currentPlan: 'Current plan',
+    renewsOn: (d) => `Renews ${d}`, activeUntil: (d) => `Active until ${d}`,
+    cancelRenewal: 'Cancel auto-renewal',
+    cancelConfirm: (d) => `Your plan stays active until ${d} and you won’t be charged again. Cancel renewal?`,
+    yesCancel: 'Yes, cancel', keep: 'Keep plan', renewalCanceled: 'Auto-renewal cancelled.',
+    cancelError: 'Could not cancel — please try again.', alreadySubscribed: 'This plan is already active.', popular: 'Popular',
   },
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
-    cardHint: 'Безопасная оплата картой', comingSoon: 'Скоро — оплата появится в ближайшее время',
+    cardHint: 'Безопасная оплата картой', secureBog: 'Безопасная оплата — Bank of Georgia (₾)',
+    unavailable: 'Оплата временно недоступна. Попробуйте позже.',
     payError: 'Не удалось начать оплату — попробуйте снова', redirecting: 'Перенаправление…',
-    signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть',
-    starter: '📦 Стартер', pro: '💎 Про', max: '🚀 Макс',
-    videos: 'видео', images: 'фото',
-    guideTitle: 'Что можно сделать за кредиты?', perCredit: '1 кредит = 0.10 ₾', viewAllPlans: 'Все тарифы →',
-    gImage: '🖼 Фото', gMusic: '🎵 Музыка 30с', gVideo: '🎬 Видео 30с', gAvatar: '🎭 Аватар',
+    redirectingBog: 'Переход в Bank of Georgia…',
+    signInNeeded: 'Сначала войдите', signIn: 'Войти', credits: 'кред.', close: 'Закрыть', viewAllPlans: 'Все тарифы →',
+    plansTitle: 'Ежемесячные тарифы', topupTitle: 'Пополнить кредиты', subscribe: 'Подписаться', perMonth: '/ мес',
+    monthlyCredits: (n) => `${n} кредитов ежемесячно`,
+    yourPlan: 'Ваш тариф', currentPlan: 'Текущий тариф',
+    renewsOn: (d) => `Продлится ${d}`, activeUntil: (d) => `Активен до ${d}`,
+    cancelRenewal: 'Отменить автопродление',
+    cancelConfirm: (d) => `Тариф останется активным до ${d}, повторных списаний не будет. Отменить продление?`,
+    yesCancel: 'Да, отменить', keep: 'Оставить', renewalCanceled: 'Автопродление отменено.',
+    cancelError: 'Не удалось отменить — попробуйте снова.', alreadySubscribed: 'Этот тариф уже активен.', popular: 'Популярный',
   },
 };
 
@@ -131,6 +161,8 @@ export const TIER_FEATURES: Record<PricingTierId, Record<Lang, string[]>> = {
   },
 };
 
+type Rails = { bog: boolean; card: boolean };
+
 export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSignIn }: CreditsModalProps) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = COPY[lang];
@@ -140,9 +172,19 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
 
   const [freeFilms, setFreeFilms] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  // Per-package in-flight state for the checkout redirect (disables that Pay button).
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  // In-flight checkout: `plan:<rung id>` or `topup:<₾>` — disables every pay button while the redirect starts.
   const [busyId, setBusyId] = useState<string | null>(null);
+  // null = still probing. Optimistic default for the legacy card rail mirrors WalletRefill.
+  const [rails, setRails] = useState<Rails | null>(null);
+  const [plan, setPlan] = useState<BogPlanSummary | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+
+  const showToast = useCallback((text: string, ok = false) => {
+    setToast({ text, ok });
+    window.setTimeout(() => setToast(null), 3200);
+  }, []);
 
   // Pull the authoritative free-films count when the modal opens for a signed-in user.
   useEffect(() => {
@@ -154,8 +196,27 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       .then((j: { state?: { freeFilmsRemaining?: number } | null } | null) => {
         if (alive && typeof j?.state?.freeFilmsRemaining === 'number') setFreeFilms(j.state.freeFilmsRemaining);
       })
-      .catch(() => { /* fail-soft — the line just shows — / 3 */ })
+      .catch(() => { /* fail-soft — the line just shows — */ })
       .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [open, authed]);
+
+  // Which rail can take a payment, and (with BOG) the plan the user already has.
+  useEffect(() => {
+    if (!open || !authed) return;
+    let alive = true;
+    fetch('/api/checkout/capabilities', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(async (j: { bog?: boolean; stripe?: boolean } | null) => {
+        const next: Rails = { bog: Boolean(j?.bog), card: j ? Boolean(j.stripe) : true };
+        if (!alive) return;
+        setRails(next);
+        if (next.bog) {
+          const p = await fetchBogPlan();
+          if (alive) setPlan(p);
+        }
+      })
+      .catch(() => { if (alive) setRails({ bog: false, card: true }); });
     return () => { alive = false; };
   }, [open, authed]);
 
@@ -168,43 +229,83 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [open, onClose]);
 
-  // Start a Stripe Checkout for a launch USD tier. POSTs the tier ID to /api/billing/tier-checkout,
-  // which builds a USD-denominated Checkout Session ($15/$99/$299) and returns its URL. On success the
-  // user lands on /dashboard?tier=success and the webhook grants the tier's credit pool.
-  // CHECKOUT-BLOCKER FIX: the old path POSTed the tier's GEL amount to /wallet-topup, which only accepts
-  // the small refill amounts → 400 → plans were unpurchasable. Fail-open: 401 → sign-in, else error toast.
-  const startCheckout = useCallback(async (pkg: { id: string; priceUsd: number }) => {
-    if (busyId) return;
-    setBusyId(pkg.id);
-    track('payment_initiated', { package: pkg.id, amount: pkg.priceUsd }); // PHASE 4 Task 1
+  const bog = rails?.bog === true;
+  const noRail = rails !== null && !rails.bog && !rails.card;
+
+  /** The older card checkout, used only when BOG is not live. Returns true when it redirected or handled auth. */
+  const legacyCardCheckout = useCallback(async (path: string, body: Record<string, unknown>): Promise<boolean> => {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+    if (res.status === 401) { onClose(); onSignIn(); return true; }
+    const j = (await res.json().catch(() => null)) as { url?: string } | null;
+    if (res.ok && j?.url) { navigateToPayment(j.url); return true; }
+    return false;
+  }, [onClose, onSignIn]);
+
+  const startPlan = useCallback(async (pkg: { id: PricingTierId; priceUsd: number }) => {
+    if (busyId || noRail) return;
+    const offer = bogPlanOffer(pkg.id);
+    setBusyId(`plan:${pkg.id}`);
+    track('payment_initiated', { package: pkg.id, amount: bog && offer ? offer.amountGel : pkg.priceUsd, rail: bog ? 'bog' : 'card' });
     try {
-      const res = await fetch('/api/billing/tier-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ tierId: pkg.id }),
-      });
-      if (res.status === 401) { setBusyId(null); onClose(); onSignIn(); return; }
-      const j = (await res.json().catch(() => null)) as { url?: string } | null;
-      if (res.ok && j?.url) { window.location.assign(j.url); return; } // full redirect to Stripe
+      if (bog && offer) {
+        const r = await startBogCheckout({ kind: 'plan', tierId: offer.tier, locale: lang });
+        if (r.ok) { navigateToPayment(r.redirectUrl); return; } // keep the spinner through the navigation
+        setBusyId(null);
+        if (r.reason === 'auth') { onClose(); onSignIn(); return; }
+        showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : t.payError);
+        return;
+      }
+      if (await legacyCardCheckout('/api/billing/tier-checkout', { tierId: pkg.id })) return;
       setBusyId(null);
-      setToast(t.payError);
-      window.setTimeout(() => setToast(null), 2600);
+      showToast(t.payError);
     } catch {
       setBusyId(null);
-      setToast(t.payError);
-      window.setTimeout(() => setToast(null), 2600);
+      showToast(t.payError);
     }
-  }, [busyId, onClose, onSignIn, t.payError]);
+  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.alreadySubscribed, t.payError, legacyCardCheckout]);
+
+  const startTopup = useCallback(async (amountGel: number) => {
+    if (busyId || noRail) return;
+    setBusyId(`topup:${amountGel}`);
+    track('payment_initiated', { package: `topup_${amountGel}`, amount: amountGel, rail: bog ? 'bog' : 'card' });
+    try {
+      if (bog) {
+        const r = await startBogCheckout({ kind: 'topup', amountGel, locale: lang });
+        if (r.ok) { navigateToPayment(r.redirectUrl); return; }
+        setBusyId(null);
+        if (r.reason === 'auth') { onClose(); onSignIn(); return; }
+        showToast(t.payError);
+        return;
+      }
+      if (await legacyCardCheckout('/api/billing/wallet-topup', { amountGel })) return;
+      setBusyId(null);
+      showToast(t.payError);
+    } catch {
+      setBusyId(null);
+      showToast(t.payError);
+    }
+  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.payError, legacyCardCheckout]);
+
+  const doCancelRenewal = useCallback(async () => {
+    if (canceling) return;
+    setCanceling(true);
+    const ok = await cancelBogRenewal();
+    setCanceling(false);
+    setConfirmCancel(false);
+    if (!ok) { showToast(t.cancelError); return; }
+    showToast(t.renewalCanceled, true);
+    setPlan(await fetchBogPlan());
+  }, [canceling, showToast, t.cancelError, t.renewalCanceled]);
 
   if (!mounted || typeof document === 'undefined' || !open) return null;
+
+  const planDate = formatPlanDate(plan?.currentPeriodEnd, lang);
 
   return createPortal(
     <div
       onClick={onClose}
-      // FIX 4 — backdrop is rgba(0,0,0,0.6) with NO blur, so the sidebar + chat stay
-      // visible (dimmed) behind the modal instead of the page going black. z-[110] keeps
-      // it above the app's cookie banner (z-[60]); the panel below stacks above this.
+      // Backdrop is rgba(0,0,0,0.6) with NO blur, so the sidebar + chat stay visible (dimmed) behind the modal.
+      // z-[110] keeps it above the cookie banner (z-[60]); the panel below stacks above this.
       className="fixed inset-0 z-[110] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
@@ -224,7 +325,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             <h2 className="text-[17px] font-bold tracking-tight text-app-text">{t.title}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label={t.close}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
+            className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} />
           </button>
         </div>
@@ -237,7 +338,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
             </span>
             <p className="text-[14px] font-medium text-app-text">{t.signInNeeded}</p>
             <button type="button" onClick={() => { onClose(); onSignIn(); }}
-              className="inline-flex items-center gap-2 rounded-xl bg-app-accent px-5 py-2.5 text-[14px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-app-accent px-5 py-2.5 text-[14px] font-semibold text-app-bg transition-opacity hover:opacity-90">
               <LogIn size={16} /> {t.signIn}
             </button>
             <a href={`/${lang}/pricing`} className="text-[12.5px] font-medium text-app-accent underline-offset-2 hover:underline">{t.viewAllPlans}</a>
@@ -255,52 +356,80 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
               </p>
             </div>
 
-            {/* PHASE 39 (Master Contract V1/V2) — ULTRA-PREMIUM USD tier cards. Priced in $ (the display), with
-                the exact launch feature bullets per tier. The whole flow stays INSIDE this modal — no "view all
-                plans →" redirect (deleted), no external testing-domain leak. The Pro tier is elevated. */}
-            <div className="mt-4 space-y-3">
+            {/* The live BOG plan — what renews, when, on which card; cancelling is two taps and says what happens. */}
+            {plan && (
+              <div className="mt-4 rounded-2xl border border-app-accent/25 bg-app-accent/10 px-4 py-3" aria-live="polite">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-app-muted">{t.yourPlan}</p>
+                <p className="mt-0.5 text-[15px] font-bold text-app-text">{planName(plan.tier, lang)}</p>
+                <p className="mt-0.5 text-[12px] text-app-muted">
+                  {plan.autoRenew ? t.renewsOn(planDate) : t.activeUntil(planDate)}
+                  {plan.cardMask ? ` · •••• ${plan.cardMask.slice(-4)}` : ''}
+                </p>
+                {plan.autoRenew && !confirmCancel && (
+                  <button type="button" onClick={() => setConfirmCancel(true)}
+                    className="mt-1.5 min-h-[44px] text-[12.5px] font-medium text-app-muted underline underline-offset-2 hover:text-app-text">
+                    {t.cancelRenewal}
+                  </button>
+                )}
+                {confirmCancel && (
+                  <div className="mt-2">
+                    <p className="text-[12.5px] leading-snug text-app-text">{t.cancelConfirm(planDate)}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void doCancelRenewal()} disabled={canceling}
+                        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-app-elevated px-3.5 text-[12.5px] font-semibold text-app-text ring-1 ring-app-border/20 disabled:opacity-60">
+                        {canceling && <Loader2 size={13} className="animate-spin" />} {t.yesCancel}
+                      </button>
+                      <button type="button" onClick={() => setConfirmCancel(false)} disabled={canceling}
+                        className="inline-flex min-h-[44px] items-center rounded-xl bg-app-accent px-3.5 text-[12.5px] font-semibold text-app-bg disabled:opacity-60">
+                        {t.keep}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Monthly plans. With BOG the price is the ₾ amount BOG charges each month; the $ figure is for reference. */}
+            <p className="mb-2 mt-5 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.plansTitle}</p>
+            <div className="space-y-3">
               {PACKAGES.map((p) => {
+                const offer = bogPlanOffer(p.id);
                 const highlight = p.id === 'pro';
-                const period = p.billing === 'annual'
-                  ? (lang === 'en' ? '/ yr' : lang === 'ru' ? '/ год' : '/ წელიწადში')
-                  : (lang === 'en' ? '/ mo' : lang === 'ru' ? '/ мес' : '/ თვეში');
-                const popular = lang === 'en' ? 'Popular' : lang === 'ru' ? 'Популярный' : 'პოპულარული';
+                const isCurrent = Boolean(plan && offer && plan.tier === offer.tier);
+                const busy = busyId === `plan:${p.id}`;
+                const disabled = busyId !== null || noRail || isCurrent || rails === null;
+                const main = bog && offer ? `${offer.amountGel} ₾` : `$${p.priceUsd}`;
+                const sub = bog ? `≈ $${p.priceUsd}` : `≈ ${p.priceGel} ₾`;
                 return (
-                  // ⚠️ THE WHOLE CARD IS THE TARGET, NOT JUST THE BUTTON. On a phone the button is a ~46px
-                  // strip at the bottom of a ~200px card; everything above it looked tappable and did
-                  // nothing. The inner <button> stays the ACCESSIBLE control (keyboard, screen reader,
-                  // disabled state) and stops its own click from bubbling, so exactly one checkout starts
-                  // whether the finger lands on the button or anywhere else on the card.
+                  // ⚠️ THE WHOLE CARD IS THE TARGET, NOT JUST THE BUTTON. On a phone the button is a ~46px strip at the
+                  // bottom of a ~200px card; everything above it looked tappable and did nothing. The inner <button>
+                  // stays the ACCESSIBLE control and stops its own click from bubbling, so exactly one checkout starts.
                   <div key={p.id}
                     role="button"
-                    tabIndex={busyId !== null ? -1 : 0}
-                    onClick={() => { if (busyId === null) void startCheckout(p); }}
-                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && busyId === null) { e.preventDefault(); void startCheckout(p); } }}
-                    aria-label={`${TIER_NAME[p.id][lang]} — $${p.priceUsd}`}
-                    // ⚠️ THE MIDDLE CARD USED TO BE A DIFFERENT COMPONENT TO LOOK AT. Only `pro` got the cyan
-                    // border, the lifted background and a 48px glow, while its neighbours sat flat and grey —
-                    // so the three packages read as one offer and two afterthoughts, and the row looked
-                    // unbalanced rather than deliberate. All three now share one frame and one elevation;
-                    // the ONLY thing that still marks the popular tier is the small badge above it, which is
-                    // information rather than a different visual class.
-                    className="relative min-w-0 cursor-pointer rounded-2xl border border-app-border/15 bg-app-elevated p-4 transition-transform active:scale-[0.99]"
+                    tabIndex={disabled ? -1 : 0}
+                    aria-disabled={disabled}
+                    onClick={() => { if (!disabled) void startPlan(p); }}
+                    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !disabled) { e.preventDefault(); void startPlan(p); } }}
+                    aria-label={`${TIER_NAME[p.id][lang]} — ${main} ${t.perMonth}`}
+                    // All three share one frame and one elevation; only the badge marks the popular tier.
+                    className={`relative min-w-0 rounded-2xl border bg-app-elevated p-4 transition-transform ${isCurrent ? 'border-app-accent/40' : 'border-app-border/15'} ${disabled ? '' : 'cursor-pointer active:scale-[0.99]'}`}
                     style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 0 1px rgb(var(--app-accent) / 0.14), 0 22px 48px -26px rgb(var(--app-accent-deep) / 0.45)' }}>
-                    {highlight && (
+                    {(highlight || isCurrent) && (
                       <span className="absolute -top-2.5 left-4 inline-flex max-w-[calc(100%-2rem)] items-center gap-1 overflow-hidden whitespace-nowrap rounded-full px-2.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-app-bg"
                         style={{ background: 'linear-gradient(180deg, rgb(var(--app-accent)), rgb(var(--app-accent-deep)))', boxShadow: '0 6px 16px -5px rgb(var(--app-accent) / 0.6)' }}>
-                        <Sparkles size={10} strokeWidth={2.6} /> {popular}
+                        {isCurrent ? <Check size={10} strokeWidth={3} /> : <Sparkles size={10} strokeWidth={2.6} />} {isCurrent ? t.currentPlan : t.popular}
                       </span>
                     )}
-                    {/* Name left, price right — the NAME gives way (wraps) and the price never splits: min-w-0 on the
-                        flexible side, shrink-0 + nowrap on the fixed one, so nothing can push past the card's edge. */}
+                    {/* Name left, price right — the NAME wraps and the price never splits. */}
                     <div className="flex min-w-0 items-baseline justify-between gap-3">
                       <span className="min-w-0 break-words text-[14.5px] font-bold leading-snug tracking-tight text-app-text">{TIER_NAME[p.id][lang]}</span>
                       <span className="flex shrink-0 flex-col items-end">
-                        <span className="whitespace-nowrap text-[21px] font-black leading-none tabular-nums text-app-text">${p.priceUsd}<span className="ml-1 text-[11px] font-medium text-app-muted">{period}</span></span>
-                        <span className="mt-1 text-[10.5px] font-medium tabular-nums text-app-muted">≈ {p.priceGel} ₾</span>
+                        <span className="whitespace-nowrap text-[21px] font-black leading-none tabular-nums text-app-text">{main}<span className="ml-1 text-[11px] font-medium text-app-muted">{t.perMonth}</span></span>
+                        <span className="mt-1 text-[10.5px] font-medium tabular-nums text-app-muted">{sub}</span>
                       </span>
                     </div>
-                    <ul className="mt-3 space-y-1.5">
+                    {offer && <p className="mt-2 text-[12px] font-semibold text-app-accent">{t.monthlyCredits(offer.credits)}</p>}
+                    <ul className="mt-2.5 space-y-1.5">
                       {TIER_FEATURES[p.id][lang].map((f) => (
                         <li key={f} className="flex min-w-0 items-start gap-2 text-[12px] leading-snug text-app-text/80">
                           <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={{ background: 'rgb(var(--app-accent) / 0.14)' }}>
@@ -310,17 +439,45 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
                         </li>
                       ))}
                     </ul>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); void startCheckout(p); }} disabled={busyId !== null}
-                      // Same accent treatment on every tier — a muted button on two of three cards was the
-                      // other half of the imbalance, and it made the cheaper packages look unavailable.
+                    <button type="button" onClick={(e) => { e.stopPropagation(); void startPlan(p); }} disabled={disabled}
                       className="mt-3.5 inline-flex min-h-[46px] w-full min-w-0 touch-manipulation items-center justify-center gap-1.5 rounded-xl bg-app-accent px-3 py-2 text-center text-[13px] font-semibold leading-snug text-app-bg transition-opacity hover:opacity-90 disabled:opacity-60">
-                      {busyId === p.id ? <><Loader2 size={13} className="animate-spin" /> {t.redirecting}</> : <>{t.pay} · ${p.priceUsd}</>}
+                      {busy
+                        ? <><Loader2 size={13} className="animate-spin" /> {bog ? t.redirectingBog : t.redirecting}</>
+                        : isCurrent
+                          ? <>{plan?.autoRenew ? t.renewsOn(planDate) : t.activeUntil(planDate)}</>
+                          : bog && offer
+                            ? <>{t.subscribe} · {offer.amountGel} ₾ {t.perMonth}</>
+                            : <>{t.pay} · ${p.priceUsd}</>}
                     </button>
                   </div>
                 );
               })}
-              <p className="pt-0.5 text-center text-[10.5px] text-app-muted">{t.cardHint}</p>
             </div>
+
+            {/* PAYG top-ups — credits that never expire, no plan needed. */}
+            <p className="mb-2 mt-5 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.topupTitle}</p>
+            <div className="grid grid-cols-3 gap-2">
+              {BOG_TOPUP_PACKS_GEL.map((g) => (
+                <button key={g} type="button" onClick={() => void startTopup(g)} disabled={busyId !== null || noRail || rails === null}
+                  aria-label={`${g} ₾ — ${topupCredits(g)} ${t.credits}`}
+                  className="flex min-h-[56px] min-w-0 touch-manipulation flex-col items-center justify-center rounded-xl border border-app-border/15 bg-app-elevated px-2 py-2 text-app-text transition hover:border-app-border/30 disabled:opacity-60">
+                  {busyId === `topup:${g}` ? <Loader2 size={16} className="animate-spin" /> : (
+                    <>
+                      <span className="text-[15px] font-bold tabular-nums">{g} ₾</span>
+                      <span className="text-[11px] tabular-nums text-app-muted">{topupCredits(g)} {t.credits}</span>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Only once the rail is known — a "card checkout" line flashing before "Bank of Georgia" reads as a switch. */}
+            {rails !== null && (
+              <p className={`mt-3 inline-flex w-full items-center justify-center gap-1.5 text-center text-[10.5px] ${noRail ? 'text-rose-500' : 'text-app-muted'}`}>
+                {!noRail && <ShieldCheck size={12} className="shrink-0" />}
+                {noRail ? t.unavailable : bog ? t.secureBog : t.cardHint}
+              </p>
+            )}
           </div>
         )}
 
@@ -349,8 +506,10 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
 
         {/* Self-contained toast (no ToastProvider in this tree) */}
         {toast && (
-          <div className="mx-5 mb-5 flex items-center gap-2 rounded-xl bg-app-elevated px-3.5 py-2.5 text-[12.5px] font-medium text-app-text ring-1 ring-app-border/15">
-            <AlertCircle size={14} className="shrink-0 text-rose-400" /> {toast}
+          <div role="status" className="mx-5 mb-5 flex items-center gap-2 rounded-xl bg-app-elevated px-3.5 py-2.5 text-[12.5px] font-medium text-app-text ring-1 ring-app-border/15">
+            {toast.ok
+              ? <Check size={14} className="shrink-0 text-emerald-500" />
+              : <AlertCircle size={14} className="shrink-0 text-rose-400" />} {toast.text}
           </div>
         )}
       </div>

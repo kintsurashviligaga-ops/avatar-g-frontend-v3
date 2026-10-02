@@ -195,10 +195,10 @@ export function getEnvWarnings(): string[] {
  * schema's own runtimeEnv entry already aliases the two; this helper bypassed that and read the bare
  * name, so a correctly-configured deployment reported Stripe as MISSING.
  *
- * It matters precisely now: the sole consumer is /api/validate-env, the endpoint used to verify a
- * production deploy. Going live with Stripe and then being told by your own health check that Stripe is
- * not configured is the kind of false negative that gets chased for an hour, or worse, gets "fixed" by
- * changing something that was already right.
+ * Its only route consumer was /api/validate-env, removed 2026-10-02 (its production "token" check accepted ANY
+ * non-empty header and published which env vars were missing). Going live with Stripe and then being told by your own
+ * health check that Stripe is not configured is the kind of false negative that gets chased for an hour, or worse,
+ * gets "fixed" by changing something that was already right.
  *
  * Both names are accepted so neither spelling can break it again.
  */

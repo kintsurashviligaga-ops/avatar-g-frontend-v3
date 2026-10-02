@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -34,10 +34,13 @@ import {
   VIDEO_TEMPLATES, avatarTemplateValues, imageTemplateValues, matchAvatarTemplate, matchImageTemplate, matchMusicTemplate,
   matchVideoTemplate, musicTemplateValues, templateAddsLine, templateLang, videoTemplateValues,
 } from '@/lib/studio/templates';
-import { TemplateGallery } from '@/components/studio/ui/TemplateGallery';
-const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <div className="h-24" /> });
+import { TemplateGallery, TemplateThumbImage } from '@/components/studio/ui/TemplateGallery';
+import { WorkspaceSkeleton } from '@/components/studio/ui/EmptyState';
+// The two full-panel workspaces hold the panel with a skeleton of its own shape while their chunk loads (it was a blank
+// 96 px strip that then jumped to full height).
+const SurgicalEditor = dynamic(() => import('@/components/studio/SurgicalEditor'), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 // Photo culling — local only (workers, canvas, blob downloads); loaded when the tool is opened.
-const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <div className="h-24" /> });
+const PhotoWorkspace = dynamic(() => import('./photo/PhotoWorkspace').then((m) => m.PhotoWorkspace), { ssr: false, loading: () => <WorkspaceSkeleton /> });
 import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
@@ -46,8 +49,13 @@ import { driveFilmStudio, type FilmStudioMatrix, type SceneMetaWire } from '@/li
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
-import type { Transition, VeoTier } from '@/lib/veo/types';
+import type { Transition } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { VideoCreatePanel } from './create/VideoCreatePanel';
+import { VideoStage } from './create/VideoStage';
+import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
+import { freeSlotApplies, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
+import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds, snapVideoSeconds } from '@/lib/video/duration';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
@@ -69,6 +77,8 @@ import { deriveFilmRoster, deriveFilmLog, type FilmAgentVM, type FilmLogLine, ty
 import { TrackPlayer } from './TrackPlayer';
 import { Markdown } from './Markdown';
 const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m) => m.MotionControlPanel), { ssr: false, loading: () => <div className="h-24" /> });
+// VFX (Genjutsu): three.js-free, loaded only when the VFX tool opens; the skeleton is the panel's first-paint height.
+const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { extractOverlayText } from '@/lib/video/remixCaption';
@@ -100,20 +110,40 @@ import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
 import { SERVICE_CATALOGUE } from '@/lib/services/serviceCatalogue';
-import type { PanelService } from './ServiceParamsPanel';
+import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
+// …plus the two image workspaces (interior · photoshoot), which draw their own panel (components/studio/create) and park the mode at chat like a studio panel.
+type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
+import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
-import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
-import { Slider } from './ui/controls';
-import { StyleChips } from './ui/StyleChips';
-import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
-import { describeServiceError } from './ui/serviceError';
+import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
+import { MusicCreatePanel } from './create/MusicCreatePanel';
+import { MusicCentrePane } from './create/MusicCentrePane';
+import type { MusicTrack } from './create/MusicResult';
+import { musicEngineField } from '@/lib/studio/musicEnginePref';
+import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
+import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
-import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
+import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
+import { documentToText } from '@/lib/chat/documentText';
+import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
+import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
+import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
+// The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
+const InteriorCreatePanel = dynamic(() => import('@/components/studio/create/InteriorCreatePanel').then((m) => m.InteriorCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
+const PhotoshootCreatePanel = dynamic(() => import('@/components/studio/create/PhotoshootCreatePanel').then((m) => m.PhotoshootCreatePanel), { ssr: false, loading: () => <div className="h-24" /> });
+const ShootResultPane = dynamic(() => import('@/components/studio/create/newtools/ShootResultPane').then((m) => m.ShootResultPane), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
+// The Image tool's Create screen (Higgsfield grammar): a view over the state below. Its option lists and price live in lib/studio/imageCreate.
+import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
+import { ImageDesk } from '@/components/studio/create/ImageDesk';
+import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
+import { useCreditsBalance } from '@/store/useCreditsBalance';
+import { type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
+import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -400,30 +430,8 @@ const StreamProCapNotice = memo(function StreamProCapNotice({ store, lang }: { s
 });
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
-/** The Veo 3.1 tiers as the Quality control names them (Standard · Fast · Lite). */
-const VEO_TIER_LABEL: Record<VeoTier, Record<Lang, string>> = {
-  standard: { ka: 'უმაღლესი', en: 'Best', ru: 'Лучшее' },
-  fast: { ka: 'სწრაფი', en: 'Fast', ru: 'Быстро' },
-  lite: { ka: 'ეკონომი', en: 'Economy', ru: 'Эконом' },
-};
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
 
-
-/**
- * The four starter chips of the empty state (the owner's 2026-09-29 brief, docs/DESIGN.md §8), video first.
- *
- * ⚠️ THEY NEVER SEND AND NEVER SPEND. The previous chips (removed in 23b2c6e) were three pre-written image
- * prompts that called runImageJob directly: one tap SPENT credits, skipped the guest gate, and made the
- * user's first creation somebody else's idea. A chip here selects the service (and, for the reel, 9:16) and
- * writes a STARTER into an empty box — a frame the user completes ("კინო რილი 9:16 — სცენა: …"), not an idea.
- * An untouched starter cannot be sent (see `chipStarter` / canSend): Send appears once the words are theirs.
- */
-const STARTER_CHIPS: ReadonlyArray<{ id: string; mode: 'video' | 'image' | 'music' | 'lipsync'; Icon: LucideIcon; ka: string; en: string; ru: string; fill: Record<'ka' | 'en' | 'ru', string> }> = [
-  { id: 'reel', mode: 'video', Icon: Film, ka: 'კინო რილი 9:16', en: 'Cinematic reel 9:16', ru: 'Кино-рилс 9:16', fill: { ka: 'კინო რილი 9:16 — სცენა: ', en: 'Cinematic reel 9:16 — scene: ', ru: 'Кино-рилс 9:16 — сцена: ' } },
-  { id: 'product', mode: 'image', Icon: ImageIcon, ka: 'პროდუქტის სურათი', en: 'Product image', ru: 'Фото продукта', fill: { ka: 'პროდუქტის სურათი — პროდუქტი: ', en: 'Product image — product: ', ru: 'Фото продукта — продукт: ' } },
-  { id: 'soundtrack', mode: 'music', Icon: Music2, ka: 'საუნდთრექი', en: 'Soundtrack', ru: 'Саундтрек', fill: { ka: 'საუნდთრექი — განწყობა: ', en: 'Soundtrack — mood: ', ru: 'Саундтрек — настроение: ' } },
-  { id: 'avatar', mode: 'lipsync', Icon: ScanFace, ka: 'ავატარის პორტრეტი', en: 'Avatar portrait', ru: 'Портрет-аватар', fill: { ka: 'ავატარის პორტრეტი — რას ამბობს: ', en: 'Avatar portrait — what it says: ', ru: 'Портрет-аватар — что говорит: ' } },
-];
 
 /** The composer's format pill, both ways: a video's orientation ⇄ the ratio label the pill shows. */
 const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portrait'> = { '9:16': 'vertical', '16:9': 'landscape', '1:1': 'square', '4:5': 'portrait' };
@@ -686,22 +694,7 @@ function parseRemixScenes(text: string, total: number): number[] {
 }
 
 // ── Per-service options (real backend capabilities) ──────────────────────────
-/**
- * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist —
- * it forwards `body.aspectRatio` straight through — and the FLUX 1.1 Pro fallback accepts eleven
- * (FLUX_ASPECTS, lib/ai/fluxImage.ts:16). The four added here are the ones people actually ask for and
- * could not select: 4:5 is the Instagram feed ratio, 3:4 the standard portrait print, 5:4 its landscape
- * counterpart, and 21:9 cinemascope. Every one already rendered correctly end to end; nothing but this
- * list stood between the user and them.
- *
- * Ordered by how often they are wanted, not numerically, because the strip wraps and the first row is
- * what most people will ever read.
- */
-const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
-type ImgAspect = (typeof IMG_ASPECTS)[number];
-const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
-type ImgQuality = (typeof IMG_QUALITIES)[number][0];
-const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
+// The Image tool's ratios, sizes and styles (and why there are ten ratios) live in lib/studio/imageCreate, next to its price.
 // Curated style set for the redesigned Music panel (Section A). Each entry maps a
 // user-facing label (per locale) to a genre value the score engine understands.
 const MUSIC_STYLES: ReadonlyArray<readonly [string, { ka: string; en: string; ru: string }]> = [
@@ -869,7 +862,7 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
 }
 
 
-interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -900,7 +893,7 @@ interface FilmSnap {
   videoTransition: Transition;
   videoMode: 'musicvideo' | 'documentary';
   videoStyle: string;
-  videoDuration: 8 | 24 | 48;
+  videoDuration: number;
   videoVocalGender: 'male' | 'female' | 'duet';
   videoLipsync: boolean;
   videoSoundtrack: { name: string; url: string; durationSec?: number; peaks?: number[]; previewUrl?: string } | null;
@@ -935,7 +928,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -947,7 +940,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Googl
   chatMode?: ChatModeId;
   /** A one-line notice above the reply: 'pro_cap' = Pro's daily allowance was spent and Flash answered instead. */
   chatNotice?: 'pro_cap';
-  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -1549,11 +1542,15 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
   busy: boolean;
+  /** What approving costs — videoQuote for this board's scenes × clip length (the number the film is charged). */
+  price?: number;
+  /** The first-video slot pays for it (one short clip while a slot is left). */
+  free?: boolean;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
   onGenerate: () => void;
@@ -1582,7 +1579,8 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
   // machine): early → Deep Azure (planning/optimizing), mid → Emerald (identity-locked frames
   // landing), near-done → Amber (ready to compile the video). Honest signal → honest colour.
   const coreColor = prog >= 0.8 ? '#f59e0b' : prog >= 0.4 ? '#10b981' : '#2563eb';
-  const pkgSec = total * FILM_CLIP_SEC; // package length: 1→~5s · 6→30s · 12→60s
+  const boardClipSec = sb.clipSec ?? FILM_CLIP_SEC; // 8 s unless the script (or a 4 s / 6 s pick) sets its own
+  const pkgSec = total * boardClipSec; // the film's real length: scenes × clip
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-app-bg/95 backdrop-blur-md" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }} onClick={onCancel}>
       <div onClick={(e) => e.stopPropagation()} className="mx-auto flex h-full w-full max-w-3xl flex-col">
@@ -1591,7 +1589,7 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
             <div className="flex items-center gap-2">
               <h2 className="text-[15px] font-semibold tracking-tight text-app-text">📋 {t.sbTitle}</h2>
               {/* Package length chip — makes the 6s / 30s / 60s worktree explicit. */}
-              <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{FILM_CLIP_SEC}s</span>
+              <span className="rounded-full bg-app-elevated px-2 py-0.5 text-[10.5px] font-semibold tabular-nums text-app-muted ring-1 ring-app-border/15">{pkgSec}s · {total}×{boardClipSec}s</span>
             </div>
             {streaming ? (
               // V2 — Cinematic Compiling Core: a pulsing radial glow whose hue tracks real progress.
@@ -1656,7 +1654,7 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
               />
             ))}
             {/* P9 — append a new scene (max 8). Disabled while frames are still streaming. */}
-            {!streaming && total < 8 && (
+            {!streaming && total < FILM_MAX_SCENES && (
               <button
                 type="button"
                 onClick={onAddScene}
@@ -1685,8 +1683,14 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, regenningOrdinal, onG
           <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-all duration-200 hover:bg-app-border/10 active:scale-95 disabled:opacity-50">
             <RotateCcw size={15} /> {t.sbRegen}
           </button>
-          <button type="button" onClick={onGenerate} disabled={busy} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
+          <button type="button" onClick={onGenerate} disabled={busy} data-testid="storyboard-generate" data-price={free ? 'free' : typeof price === 'number' && price > 0 ? price : undefined}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-app-accent px-4 py-2.5 text-[13.5px] font-semibold text-app-bg transition-all duration-200 hover:opacity-90 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50">
             <Film size={16} /> {t.sbGenerate}
+            {free
+              ? <span className="rounded-full bg-app-bg/20 px-2 py-0.5 text-[11.5px] font-bold">{_locale === 'en' ? 'Free' : _locale === 'ru' ? 'Бесплатно' : 'უფასო'}</span>
+              : typeof price === 'number' && price > 0 && (
+                <span className="inline-flex items-center gap-1 tabular-nums" aria-hidden="true"><Sparkle size={13} fill="currentColor" strokeWidth={0} />{price}</span>
+              )}
           </button>
         </div>
       </div>
@@ -1797,33 +1801,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // one shows them — it used to close the options because the panel rendered in a separate box of its own.
     if (svc) { setModeRaw('chat'); setOptionsOpen(true); }
   }, []);
-  /** The starter a chip wrote into the box, while it is still untouched — such a box has nothing to send. */
-  const [chipStarter, setChipStarter] = useState<string | null>(null);
-  // send() reads it through a ref — its dependency list is long and it must not go stale on this one value.
-  const chipStarterRef = useRef<string | null>(null);
-  /**
-   * A starter chip: select the service (+ 9:16 for the reel), write its starter into an EMPTY box (never over
-   * the user's own words) and hand the cursor to the end of it. Never sends, never spends.
-   */
-  const startChip = useCallback((chip: (typeof STARTER_CHIPS)[number]) => {
-    setMode(chip.mode);
-    if (chip.id === 'reel') setVideoOrientation('vertical');
-    const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-    const current = taRef.current?.value ?? '';
-    const fill = chip.fill[lang];
-    if (!current.trim() || STARTER_CHIPS.some((c) => c.fill[lang] === current)) {
-      setInput(fill);
-      setChipStarter(fill);
-      chipStarterRef.current = fill;
-    }
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.focus();
-      const end = ta.value.length;
-      try { ta.setSelectionRange(end, end); } catch { /* not a text control yet */ }
-    });
-  }, [setMode, locale]);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
@@ -1867,8 +1844,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Credit-deduction toast for a finished generation. Pricing lives in
   // lib/credits/pricing.ts (single source of truth); the GEL wallet stays the real
   // balance. Declared above renderFilm/send so both can reference it.
-  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number }) => {
-    const credits = creditCostFor(kind, opts);
+  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number; credits?: number }) => {
+    // A film passes its exact quote (videoQuote — the number on its Generate button); every other call keeps the table.
+    const credits = typeof opts?.credits === 'number' ? opts.credits : creditCostFor(kind, opts);
     if (credits <= 0) return;
     // PHASE 4 Task 1 — track the generation (fail-silent). One hook covers every kind.
     // notifyCredit is declared before the video panel state, so only call params are
@@ -2084,7 +2062,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // is the server's auto-detect — the two never-set useStates that used to sit here (language, tier) are gone.
   // P7 — negative prompt (what to avoid), expandable below the main prompt.
   const [imgNegative, setImgNegative] = useState('');
-  const [imgNegativeOpen, setImgNegativeOpen] = useState(false);
+  // The Create screen's prompt box (the panel hands focus to it, e.g. "edit this image") and the balance its Generate button
+  // checks — the SAME number the header chip shows (store/useCreditsBalance; ChatChrome keeps it fresh after every spend).
+  const imgPromptRef = useRef<HTMLTextAreaElement | null>(null);
+  const creditsBalance = useCreditsBalance((s) => s.balance);
   // PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script + pick a duration; the storyboard route
   // decomposes it into N identity-anchored scenes, then "Export to Video Studio" bridges the whole grid.
   const [imgBoardOpen, setImgBoardOpen] = useState(false);
@@ -2128,8 +2109,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // and a toggle to sing with it instead of a one-shot upload.
   const [hasTrainedVoice, setHasTrainedVoice] = useState(false);
   const [useMyVoice, setUseMyVoice] = useState(false);
-  // Auto-write lyrics from a theme (removes the "I don't have lyrics" friction).
-  const [writingLyrics, setWritingLyrics] = useState(false);
   const [upscaling, setUpscaling] = useState(false);
   // v330 — default to 9:16 vertical (mobile-first full-screen); Music Video Mode forces it.
   // 16:9 landscape · 9:16 vertical · 1:1 square · 4:5 portrait. The render pipeline
@@ -2167,7 +2146,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // storyboard scene count. 60s = a cinematic intro (first scenes establishing) →
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
-  const [videoDuration, setVideoDuration] = useState<8 | 24 | 48>(VIDEO_PANEL_DEFAULTS.duration);
+  const [videoDuration, setVideoDuration] = useState<number>(VIDEO_PANEL_DEFAULTS.duration);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
@@ -2177,7 +2156,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
-  const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap'>('cinema');
+  const [videoTab, setVideoTab] = useState<'cinema' | 'product' | 'videoswap' | 'vfx'>('cinema');
   const [swapSourceVideo, setSwapSourceVideo] = useState<{ name: string; url: string; previewUrl?: string } | null>(null);
   const [swapSourceVideoBusy, setSwapSourceVideoBusy] = useState(false);
   const swapVideoRef = useRef<HTMLInputElement | null>(null);
@@ -2188,7 +2167,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // THE GOOGLE VEO PLAN (lib/video/veoPlan) — quality tier, how the photos condition Veo, Veo's own sound, seed lock,
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
-  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24 }));
+  const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
   useEffect(() => { dispatchVeo({ type: 'format', format: formatForOrientation(videoOrientation) }); }, [videoOrientation]);
@@ -2214,7 +2193,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // assembler was told each was 5s, which also sized the music bed for a film 18 seconds shorter than
   // the one it scored. Same grid as Cinema now (sceneCountForDuration: 8→1, 24→3, 48→6), so the chip
   // the user taps is the length they receive.
-  const [productDuration, setProductDuration] = useState<8 | 24 | 48>(8);
+  const [productDuration, setProductDuration] = useState<number>(8);
   // Product-Ad context — brand/price/hook + CTA + Georgian voiceover. Optional; when set
   // they feed the EXISTING assemble marketing overlay (price chip + CTA pill + brand
   // lower-third) and an auto voiceover script (TTS'd server-side on the cloned KA voice).
@@ -2291,7 +2270,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   });
   const { templateId: pickedMusicTemplateId, pick: pickMusicTemplate } = usePickedTemplate(activeMusicPreset);
 
-  const sceneFrameCount = sceneCountForDuration(videoDuration);
+  const sceneFrameCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
   // Shrinking the film length drops scene frames beyond the new count (kept in order).
   useEffect(() => {
     setVideoCharacterRefs((prev) => (prev.length > sceneFrameCount ? prev.slice(0, sceneFrameCount) : prev));
@@ -2391,6 +2370,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Each refusal (too large · empty/iCloud placeholder · unreadable · tray full) is a toast, never a silent drop.
   const attachmentCountRef = useRef(0);
   attachmentCountRef.current = attachments.length;
+  // What the tray already carries INLINE (a video is not inline: it is uploaded to storage when its request runs).
+  const inlineBytesRef = useRef(0);
+  inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) ? sum : sum + a.dataUrl.length), 0);
   const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
     const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
     let room = MAX_ATTACHMENTS - attachmentCountRef.current;
@@ -2404,12 +2386,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (f.size === 0) { toast.error(rejectionMessage('empty', lang, label)); continue; }
       try {
         const mime = mimeForFile(f);
-        // Header from the extension first (an untyped .heic/.png reads as octet-stream), then downscale.
-        const raw = withDataUrlMime(await fileToDataUrl(f), mime);
-        const dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
-        const mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        let dataUrl: string;
+        let mimeType: string;
+        let truncated = false;
+        if (kind === 'text' || kind === 'doc') {
+          // A document the model can READ: Word through the extractor, .txt/.md decoded here — both travel as text/plain.
+          const doc = await documentToText(f, kind, { readText: (file) => file.text(), readDataUrl: fileToDataUrl, fetch: (...a) => fetch(...a) });
+          if (!doc) { toast.error(rejectionMessage('unreadable', lang, label)); continue; }
+          dataUrl = doc.dataUrl; mimeType = doc.mimeType; truncated = doc.truncated;
+        } else {
+          // Header from the extension first (an untyped .heic/.png reads as octet-stream), then downscale.
+          const raw = withDataUrlMime(await fileToDataUrl(f), mime);
+          dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
+          mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        }
+        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
+        // song passed the caps above and then failed at Send with only a generic error. Everything except a video
+        // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
+        if (kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES) {
+          toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES));
+          continue;
+        }
+        if (kind !== 'video') inlineBytesRef.current += dataUrl.length;
         room -= 1;
-        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, ...(f.name ? { name: f.name } : {}) }]);
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
       } catch {
         toast.error(rejectionMessage('unreadable', lang, label));
       }
@@ -2632,6 +2632,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
+    // ⚠️ The Image tool's Create screen hides this box on a phone (its prompt lives in the sheet). A hidden box measures 0 px,
+    // and that would stay as its inline height when the box comes back in another tool — so nothing is measured while it
+    // is hidden, and a mode change (what hides it) measures again.
+    if (el.offsetParent === null) { el.style.height = ''; return; }
     el.style.height = 'auto';
     // ⚠️ An EMPTY box keeps its one-line CSS height: Chrome counts a WRAPPED placeholder in scrollHeight, so sizing an
     // empty box from it grew the phone composer to two lines around nothing (83 px pill, placeholder off the controls).
@@ -2639,7 +2643,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!input) setComposerWrapped(false);
     // One line is 44 px (24 px line + 20 px padding); anything taller has wrapped.
     else if (input.includes('\n') || el.scrollHeight > 48) setComposerWrapped(true);
-  }, [input]);
+  }, [input, mode]);
 
   // ── THE ACTIVE TOOL (docs/DESIGN.md §8) ─────────────────────────────────────────────────────────────────
   // Not new state: derived from what the studio already has — the mode, the video tab (cinema · product ·
@@ -2647,7 +2651,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // it: the sidebar's „სერვისები", the composer's „+" sheet and chip, and the settings' service card.
   const activeTool: ToolId = mode === 'surgical' ? 'montage'
     : panelService ? panelService
-      : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : 'video')
+      : mode === 'video' ? (videoTab === 'product' ? 'product' : videoTab === 'videoswap' ? 'swap' : videoTab === 'vfx' ? 'vfx' : 'video')
         : mode === 'lipsync' ? (lipTab === 'motion' ? 'motion' : 'avatar')
           : mode;
   /**
@@ -2656,15 +2660,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * in the settings panel — a rule on `mode` would hide those studios' only controls.
    */
   const chatOnly = activeTool === 'chat';
+  /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
+  const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
+  // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks, but
+  // the `chatOnly` effect below closes the sheet again when `next dev`'s Strict Mode re-runs the mount effects after a deep link.
+  useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
   const selectTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
       case 'product': setMode('video'); setVideoTab('product'); break;
       case 'swap': setMode('video'); setVideoTab('videoswap'); break;
+      case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
       case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
-      case 'dubbing': case 'model3d': case 'presentation': setStudioPrefill(undefined); setPanelService(id); break;
+      case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
       case 'chat': setPanelService(null); setStudioPrefill(undefined); setMode('chat'); break;
@@ -2674,7 +2684,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     // Tools whose inputs are uploads rather than words (a product photo, a source video, a motion reference)
     // open their settings, so the next step is on screen instead of behind a second tap.
-    if (id === 'product' || id === 'swap' || id === 'remix' || id === 'motion') setOptionsOpen(true);
+    // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
+    if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
   }, [setMode, setPanelService]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -2698,6 +2709,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (activeTool === 'chat') return;
     if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
   }, [isDesktop, activeTool]);
+  // The Music tool's Create screen IS its settings: choosing the tool (a deep link, the + sheet, the sidebar) opens them on a
+  // phone. An effect on the derived tool, not a line in selectTool: on a `?tool=music` deep link selectTool runs inside the
+  // mount effects, and a StrictMode re-run of the chat-only effect below (still holding the first render's chatOnly = true)
+  // would close a sheet opened there in the same pass. This one fires once the tool HAS changed, after that settles.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the TOOL changes; a viewport change must not re-open it
+  useEffect(() => { if (activeTool === 'music' && !isDesktop) setOptionsOpen(true); }, [activeTool]);
   useEffect(() => { if (mode === 'surgical' || mode === 'photo') setOptionsOpen(false); }, [mode]);
   // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
   // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
@@ -2726,6 +2743,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
+  const videoPickRef = useRef<HTMLInputElement | null>(null);
   const productPhotoRef = useRef<HTMLInputElement | null>(null);
   const remixVideoRef = useRef<HTMLInputElement | null>(null);
   // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
@@ -2743,6 +2761,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
     return () => mo.disconnect();
   }, []);
+  // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
+  // while the Video tool is the active one, cached, and fail-safe (a lock is never wrongly opened, a free chip never wrongly
+  // shown). The price itself is pure: lib/video/createPanel.videoQuote.
+  const videoCaps = useVideoCapabilities(activeTool === 'video').effective;
+  const videoBalanceCredits = useCreditsAvailable(!guest && activeTool === 'video');
+  const videoFreeFilms = useFreeFilmsRemaining(!guest && activeTool === 'video');
   // The persona in use — named on the chat composer's chip (Gemini shows the chosen Gem there). Same store as the
   // sidebar row and the switcher's persona row; ✕ on the chip returns to the default assistant.
   const activePersona = useActivePersona(locale);
@@ -2847,6 +2871,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // right Video slot, switch to video mode, flash a welcome toast, then clear the store.
   // Strictly additive — no-op unless a bridge button fired.
   const { sendImageToVideo, sendMusicToMusicVideo } = useServiceBridge();
+  // THE INTERIOR DESIGNER AND THE PHOTOGRAPHER (components/studio/create): their forms, runs and handlers are ONE hook; the two
+  // panels and the centre pane are views over it. Above the early returns like every hook. „Walkthrough" hands the picture to
+  // the Video studio (8 s) and puts its prompt in the composer; the Video studio prices and charges it.
+  const shoot = useShootStudio({
+    locale,
+    notifyCredit,
+    onStarted: () => setOptionsOpen(false),
+    onWalkthrough: (url, prompt) => { sendImageToVideo(url); setInput(prompt); },
+  });
   const { transitCharacterUrl, transitAudioUrl, transitAudioMeta, transitStoryboard, setTransitStoryboard, clearCharacter, clearAudio, clearStoryboard } = useStudioBridge();
   // Capped-parallel render queue (Phase 1: the fast IMAGE flow runs 3-at-a-time through
   // it while the tray shows live progress + queue positions).
@@ -2949,7 +2982,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMode('video');
       setOptionsOpen(true);
       // Duration FIRST so the videoCharacterRefs/scenePrompts clamp effect settles to the right count.
-      { const d = Number(sb.duration); setVideoDuration(d >= 45 ? 48 : d >= 20 ? 24 : 8); }
+      setVideoDuration(snapVideoSeconds(Number(sb.duration)));
       setVideoOrientation(sb.orientation);
       if (sb.musicVideoMode) setVideoMode('musicvideo');
       // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
@@ -3101,6 +3134,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (j.url) kaSoundtrack = j.url;
         } catch { /* fail-open → EL Music (English) */ }
       }
+      // The film's real size: the approved board's scenes (or the scripts', or the length's grid) × the clip length.
+      const filmScenes = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(snap.videoDuration);
       const res = await driveFilmStudio({
         prompt: filmPrompt,
         referenceImages: refs,
@@ -3153,7 +3188,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // PIN the render's clip count to the user's package so a scriptless/raced dispatch can never default to the
         // 30s/6-scene fallback (which also discards a single approved selfie frame). Prefer the approved storyboard /
         // script count; else derive from the chosen duration (8s→1 · 24s→3 · 48s→6) captured in the submit snapshot.
-        sceneCount: storyboardScenes?.length || sceneScripts?.length || sceneCountForDuration(snap.videoDuration),
+        sceneCount: filmScenes,
         // PIN the per-scene length too when the storyboard derived one from the script's timecodes
         // (4-8s). filmComposite honours metadata.clipSec, so the render grid matches the board exactly.
         ...(clipSec ? { clipSec } : {}),
@@ -3247,7 +3282,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
-      if (mine() && res.ok && res.masterUrl) { notifyCredit('video', { seconds: videoDuration }); finalUrl = res.masterUrl; }
+      if (mine() && res.ok && res.masterUrl) {
+        const filmSeconds = filmScenes * (clipSec ?? FILM_CLIP_SEC);
+        notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }) });
+        finalUrl = res.masterUrl;
+      }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
       // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
       if (jobCtx && !(res.ok && res.masterUrl)) throw new Error(res.error || 'video failed');
@@ -3266,7 +3305,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (characterPortrait && /^https?:/i.test(characterPortrait)) return characterPortrait;
         if (mine()) {
           try {
-            const sc = sceneCountForDuration(videoDuration);
+            const sc = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
             const ar = await fetch('/api/film/storyboard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ prompt: filmPrompt, orientation: isMusicVideo ? 'vertical' : orientation, style: videoStyle, ...(videoTemplateId ? { templateId: videoTemplateId } : {}), locale, sceneCount: sc, characterAnchor: true }) });
             const aj = (await ar.json().catch(() => ({}))) as { anchorUrl?: string | null };
             if (aj.anchorUrl && /^https?:/i.test(aj.anchorUrl)) return aj.anchorUrl;
@@ -3390,7 +3429,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             : (locale === 'ka' ? 'ცოცხალი შესრულება' : locale === 'ru' ? 'ЖИВОЙ ЭФИР' : 'LIVE');
           const gr = await fetch('/api/video/graphics', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal,
-            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: videoDuration <= 8 ? 2 : videoDuration === 48 ? 13 : 10, musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
+            body: JSON.stringify({ videoUrl: graphicsInput, title: theme, lang: locale, introSec: musicVideoIntroSec(videoDuration), musicBug: { artist: locale === 'ka' ? 'ავატარი' : 'MyAvatar', track: theme, producer: 'MyAvatar.ge Originals', lang: locale }, ...(videoSpeech.trim() ? { dialogue: videoSpeech.trim() } : {}) }),
           });
           const gj = (await gr.json().catch(() => ({}))) as { url?: string | null };
           if (gj.url) setResultVideo(gj.url);
@@ -3442,7 +3481,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // later edit made for the next film. Mirrors generateProductAd / runVideoSwap.
     // The Veo plan is fitted to the scenes that will ACTUALLY render (the same count renderFilm pins), and a
     // music video is 9:16 whatever the Format control last held (renderFilm forces the orientation the same way).
-    const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForDuration(videoDuration);
+    const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(videoDuration);
+    // ⚠️ A 4 s or 6 s film is ONE shorter Veo clip. Without its real length the render (and its price) would be the 8 s default.
+    const filmClipSec = clipSec ?? (videoDuration < FILM_CLIP_SEC ? clipSecForSeconds(videoDuration) : undefined);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
@@ -3452,7 +3493,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // the panel holds now); a music video is 9:16 whatever either says.
       veo: toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount),
       motionIntensity: veoPlan.cameraDefault.intensity,
-      ...(clipSec ? { clipSec } : {}),
+      ...(filmClipSec ? { clipSec: filmClipSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
       // The PICKED card only (a default panel lights the Reel without anyone choosing it).
       ...(pickedVideoTemplateId ? { videoTemplateId: pickedVideoTemplateId } : {}),
@@ -3755,7 +3796,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ originalPrompt: prompt, editRequest: edit, landedClips: clips, ...(clipSec ? { clipSec } : {}) }),
       });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string };
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean; masterUrl?: string; url?: string; message?: string; refunded?: boolean };
       const url = j.success ? (j.masterUrl || j.url || null) : null;
       setMessages((prev) => {
         const next = [...prev];
@@ -3763,7 +3804,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (last && last.role === 'assistant') {
           next[next.length - 1] = url
             ? { role: 'assistant', text: '', videoUrl: url, filmClips: clips, filmPrompt: prompt, ...(clipSec ? { filmClipSec: clipSec } : {}) }
-            : { role: 'assistant', text: `⚠️ ${j.message || t.videoFailed}` };
+            // A failed re-cut whose reservation the route confirmed refunded reads as the one refund notice.
+            : { role: 'assistant', text: `⚠️ ${j.refunded === true ? describeGenerationFailure(j, locale, t.videoFailed) : (j.message || t.videoFailed)}` };
         }
         return next;
       });
@@ -3777,7 +3819,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       setRemixBusyIdx(null);
     }
-  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed]);
+  }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed, locale]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
   // Fail-open: a storyboard miss falls back to a direct render so the user is
@@ -3790,7 +3832,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setStoryboardBusy(true);
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
-    const sceneCount = sceneCountForDuration(videoDuration);
+    const sceneCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
     // The PICKED template card's id on every storyboard call, so the board is planned with the look the render will use.
     const templateRef = pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {};
     try {
@@ -3847,8 +3889,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         filmPrompt, refs, orientation,
         seed: j.seed ?? 0,
         scenes,
-        // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render.
-        ...(typeof j.clipSec === 'number' && j.clipSec > 0 ? { clipSec: j.clipSec } : {}),
+        // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render. The route plans on 8 s
+        // unless the script has its own cadence: a 4 s / 6 s pick is ONE shorter clip, and the board must say so.
+        ...(() => {
+          const picked = clipSecForSeconds(videoDuration);
+          const routeClip = typeof j.clipSec === 'number' && j.clipSec > 0 ? j.clipSec : undefined;
+          const clip = picked < FILM_CLIP_SEC && (routeClip ?? FILM_CLIP_SEC) === FILM_CLIP_SEC ? picked : routeClip;
+          return clip ? { clipSec: clip } : {};
+        })(),
         sceneScripts: Array.isArray(j.sceneScripts) ? j.sceneScripts : null,
         framePrompts,
         pending: ordinals,
@@ -4086,12 +4134,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     });
   }, []);
 
-  // P9 — append a blank scene (max 8). Seeded with the film idea as its prompt so a
+  // P9 — append a blank scene (up to the film pipeline's 12). Seeded with the film idea as its prompt so a
   // re-roll produces a frame even before the user edits it; it has no frame yet, so
   // the user re-rolls (or edits then re-rolls) before generating.
   const addScene = useCallback(() => {
     setStoryboard((prev) => {
-      if (!prev || prev.scenes.length >= 8) return prev;
+      if (!prev || prev.scenes.length >= FILM_MAX_SCENES) return prev;
       const beat = locale === 'en' ? 'New scene' : locale === 'ru' ? 'Новая сцена' : 'ახალი სცენა';
       const blank: StoryboardScene = { uid: nextSceneUid(), ordinal: 90000 + prev.scenes.length, beat, prompt: prev.filmPrompt, frameUrl: null, edited: true };
       return commitSceneOrder(prev, [...prev.scenes, blank]);
@@ -4142,7 +4190,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
             // wired into the Surgical Editor only, so the same failure read properly in one surface and
             // as a token dump in the other.
-            : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, failMsg)}` };
+            // A failed re-roll reads like a failed first render: `refunded: true` (only when the route's refund landed)
+            // selects the one refund notice; otherwise the neutral mapped failure.
+            : { role: 'assistant', text: `⚠️ ${describeGenerationFailure(j, locale, failMsg)}` };
         }
         return next;
       });
@@ -4161,7 +4211,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [busy, t.imageFailed, t.musicFailed, notifyCredit]);
+  }, [busy, t.imageFailed, t.musicFailed, notifyCredit, locale]);
 
   // Edit a generated/attached image with img2img: load it as the source + switch to
   // Image mode; the next prompt transforms it. https URLs feed NanoBanana directly,
@@ -4170,7 +4220,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setMode('image');
     setAttachments([{ dataUrl: url, mimeType: 'image/png' }]);
     setLightbox(null);
-    setTimeout(() => { try { taRef.current?.focus(); } catch { /* noop */ } }, 60);
+    setOptionsOpen(true); // the Create screen holds the prompt (a desktop reveals its panel instead)
+    setTimeout(() => { try { (imgPromptRef.current ?? taRef.current)?.focus(); } catch { /* noop */ } }, 60);
   }, []);
 
   // ×2 / ×4 image batch: generate N variations of the SAME prompt in parallel into
@@ -4190,7 +4241,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const runImageJob = useCallback((prompt: string, imgRef: string | undefined, spec: ImageRegenSpec) => {
     const bubbleId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image' }]);
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image', genAspect: spec.aspect, genQuality: spec.quality }]);
     const imageJobId = submitJob({
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),
@@ -4254,7 +4305,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // which is how English provider prose and codes like `insufficient_credits` landed in a Georgian
         // chat bubble. describeServiceError keeps the specificity and drops the wrong voice; anything it
         // does not recognise falls back rather than being echoed.
-        const reason = describeServiceError(j.message || j.error, locale, t.imageFailed);
+        // `refunded: true` — sent only when the route's refund landed — becomes the one refund notice.
+        const reason = describeGenerationFailure(j, locale, t.imageFailed);
         // A refusal for want of credits is the one failure with an obvious next step — offer it.
         updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
@@ -4323,8 +4375,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // floating tray that would have shown it unmounts once the batch stops being active, which
             // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
             // The tile shows this to the user — same rule as the bubble above.
-            updateTile(tileIdx, { status: 'failed', jobId, error: describeServiceError(j.message || j.error, locale, t.imageFailed) });
-            throw new Error(j.error || 'image failed');
+            const reason = describeGenerationFailure(j, locale, t.imageFailed);
+            updateTile(tileIdx, { status: 'failed', jobId, error: reason });
+            // The catch below re-stamps the tile with the thrown message — throw the MAPPED line, not `j.error`
+            // (a raw code such as `provider_unavailable` used to overwrite the sentence the tile had just shown).
+            throw new Error(reason);
           } catch (e) {
             updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
             throw e;
@@ -4461,6 +4516,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // `styles` is the list the route reads (lib/ai/musicControls); `style` is the same line, for anything older.
             prompt: m.prompt, style: m.genre, styles: stylesFromLine(m.genre), durationSec: m.duration, tempo: m.tempo, jobId,
             weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,
+            ...musicEngineField(), // the model pill's pick (lib/studio/musicEnginePref); Auto sends nothing
             ...(templateId ? { templateId } : {}),
             ...(m.useTrained ? { useMyVoice: true } : {}),
             instrumental: (m.useTrained || isVoiceClone) ? false : m.instrumental,
@@ -4494,7 +4550,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The copyright case keeps its own copy — it is the one refusal with a specific, already-written
         // Georgian explanation. Everything else goes through the shared mapper instead of printing
         // whatever the music provider wrote in English.
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeServiceError(j.error, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeGenerationFailure(j, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
     });
@@ -4689,7 +4745,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         saveConversations(merged);
         if (!alive) return;
         window.dispatchEvent(new Event('myavatar:conversations-updated')); // refresh the persistent sidebar
-      } catch { /* fail-open → localStorage sidebar */ }
+      } catch { /* fail-open → localStorage sidebar */ } finally {
+        // The sidebar shows skeleton rows (not "no conversations yet") until the account's answer is in — say it is
+        // in, whatever it was: a guest, an empty account, an error. Published on <html> like data-authed, plus an event.
+        if (alive) {
+          document.documentElement.dataset.historySync = 'done';
+          window.dispatchEvent(new Event('myavatar:history-synced'));
+        }
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -4762,7 +4825,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const payload = serializeHistory(history.map((m) => ({
       role: m.role,
       text: m.text,
-      ...(m.medias?.length ? { medias: m.medias } : {}),
+      // A video turn carries its frames + soundtrack for the model, not the clip itself (lib/chat/videoDigest).
+      ...((m.modelMedias ?? m.medias)?.length ? { medias: (m.modelMedias ?? m.medias)! } : {}),
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
@@ -4946,10 +5010,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
     // attachment — otherwise this guard silently blocked a script-only run from starting.
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-    // An untouched chip starter counts as an empty box — Enter must not send what the button would not.
-    const starterOnly = !opts?.promptOverride && !!chipStarterRef.current && text === chipStarterRef.current.trim();
     // Nothing to send → return quietly (no toast for an empty box).
-    if ((!text || starterOnly) && attachments.length === 0 && !videoOnlyInputs) return;
+    if (!text && attachments.length === 0 && !videoOnlyInputs) return;
     // ⚠️ `mode` IS STICKY, AND THE MODE INTERCEPTS BELOW CLAIM EVERY TURN WITHOUT READING THE MESSAGE.
     // `mode` is plain component state (declared ~1497) that persists until something sets it back, and the
     // avatar branch begins with a bare `if (mode === 'lipsync')` — no intent check of any kind. So once
@@ -5183,6 +5245,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
 
+    // ── VIDEO UNDERSTANDING (chat-attached) ────────────────────────────────────
+    // A video + a QUESTION (or no words) is not an edit: it used to be classified as one and, when nothing matched, spent
+    // credits on a colour grade. The clip is read here, in the browser, as frames + the start of its soundtrack
+    // (lib/chat/videoDigest) and answered by the chat model like any other turn — no upload, no charge. Edit requests
+    // ("add subtitles", "make it vintage", the chips' phrases) still go to the remix pipeline below.
+    if (mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && !isVideoEditRequest(text)) {
+      const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      setBusy(true);
+      let digest: Awaited<ReturnType<typeof captureVideoDigest>> = null;
+      try { digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob()); } catch { digest = null; }
+      if (!digest) {
+        setBusy(false);
+        toast.error(locale === 'en' ? 'This browser cannot read that video — try an MP4 (H.264) or WebM clip'
+          : locale === 'ru' ? 'Браузер не может прочитать это видео — попробуйте MP4 (H.264) или WebM'
+            : 'ამ ბრაუზერმა ვიდეო ვერ წაიკითხა — სცადე MP4 (H.264) ან WebM');
+        return;
+      }
+      const others = attachments.filter((a) => !isVideo(a.mimeType));
+      const budget = Math.max(400_000, DEFAULT_TOTAL_CAP_BYTES - others.reduce((n, a) => n + a.dataUrl.length, 0));
+      const parts = digestToMedia(videoAtt.name || 'video', fitDigest(digest, budget));
+      const asked = text || defaultVideoQuestion(locale);
+      const videoTurn: Msg = { role: 'user', text: asked, inputMethod: viaVoice ? 'voice' : 'text', medias: attachments, modelMedias: [...others, ...parts] };
+      setInput(''); setAttachments([]);
+      inputSourceRef.current = 'text';
+      persistChatTurn('user', asked);
+      autoPlayReplyRef.current = viaVoice;
+      setBusy(false);
+      await streamChat([...messages, videoTurn]);
+      return;
+    }
+
     // ── VIDEO REMIX (chat-attached) ────────────────────────────────────────────
     // A video attached in chat + a text request = "edit this video", NOT the film
     // pipeline. Claude (with a keyword fallback) classifies the intent, then the
@@ -5249,7 +5342,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const next = [...prev]; const last = next[next.length - 1];
           // A silent engine downgrade is stated instead of being passed off as a clean result — a
           // Ken-Burns pan over one still is not the restyled video that was asked for.
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
           return next;
         });
         if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5403,7 +5496,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const pr = await fetch(`/api/heygen/presenter?id=${encodeURIComponent(heygenVideoId)}`, { credentials: 'include', signal: ac.signal });
               const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
               // Surface HeyGen's real rejection reason instead of conflating it with a timeout.
-              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeOpFailure(pj, t.lipsyncFailed); break; }
+              // `refunded: true` (the GET's refund landed) → the one refund notice; otherwise the mapped failure code.
+              if (pj.done) { heygenSettled = true; if (pj.url) url = pj.url; else failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
             }
             // ⚠️ Out of polls with no verdict = the HeyGen video is STILL RENDERING, and it is paid for. Falling back
             // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
@@ -5420,15 +5514,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
               // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
               // media_unresolved) instead of the generic "lip-sync failed".
-              if (!fb.jobId && fb.error) failReason = fb.error;
+              if (!fb.jobId && fb.error) failReason = describeGenerationFailure(fb, locale, t.lipsyncFailed);
               if (fb.jobId) {
                 failReason = null;
                 for (let i = 0; i < 90 && !url; i++) {
                   if (!mine()) return;
                   await new Promise((r) => setTimeout(r, 6000));
                   const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(fb.jobId)}`, { credentials: 'include', signal: ac.signal });
-                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-                  if (pj.done) { if (pj.url) url = pj.url; break; }
+                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; refunded?: boolean };
+                  if (pj.done) { if (pj.url) url = pj.url; else if (pj.refunded) failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
                 }
               }
             } catch { /* keep the HeyGen failure below */ }
@@ -5495,8 +5589,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
         let forceSadTalker = false;
         let stillRendering = false;
+        // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
+        // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
+        let lastRefunded = false;
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
+          lastRefunded = false;
           const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
           const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
@@ -5508,8 +5606,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             if (!mine()) return;
             await new Promise((r) => setTimeout(r, 6000));
             const pollRes = await fetch(`/api/video/lipsync?id=${encodeURIComponent(startJson.jobId)}`, { credentials: 'include', signal: ac.signal });
-            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null };
-            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; break; }
+            const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
+            if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; lastRefunded = pj.refunded === true; break; }
           }
           // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
           // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
@@ -5528,7 +5626,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               ? { role: 'assistant', text: '', videoUrl: resultUrl, genKind: 'lipsync', orientation: lipResultOrientation }
               : stillRendering
                 ? { role: 'assistant', text: `⚠️ ${lipStillRendering}` }
-                : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
+                : lastRefunded
+                  ? { role: 'assistant', text: `⚠️ ${describeGenerationFailure({ refunded: true }, locale, t.lipsyncFailed)}` }
+                  : { role: 'assistant', text: `⚠️ ${t.lipsyncFailed} ${locale === 'en' ? 'Please try again — re-attach the photo and resend.' : locale === 'ru' ? 'Попробуйте ещё раз — прикрепите фото и отправьте снова.' : 'სცადე თავიდან — ფოტო ხელახლა მიამაგრე და გააგზავნე.'}` };
           }
           return next;
         });
@@ -5627,7 +5727,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const last = next[next.length - 1];
         if (last && last.role === 'assistant') next[next.length - 1] = j.url
           ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: remixAspect === '16:9' ? 'landscape' : 'vertical' }
-          : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` };
+          : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
         return next;
       });
       if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
@@ -5690,7 +5790,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
-        updateBubble(bubbleId, { text: `⚠️ ${describeOpFailure(j, t.remixFailed)}` });
+        updateBubble(bubbleId, { text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` });
         throw new Error(j.error || 'character swap failed');
       },
     });
@@ -6088,39 +6188,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // In VIDEO mode a loaded SCRIPT or uploaded scene frames are enough to generate — without
   // this the Send button hid when the text box was empty, so a script-only run couldn't START.
   const videoReadyToSend = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-  // An untouched chip starter ("კინო რილი 9:16 — სცენა: ") is a frame, not a prompt: Send waits for the user's words.
-  const onlyStarter = chipStarter !== null && input.trim() === chipStarter.trim();
-  const canSend = (!!input.trim() && !onlyStarter) || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
-
-  /**
-   * ⚠️ THE PRICE MUST BE ON SCREEN BEFORE THE SPEND, IN EVERY STUDIO — NOT JUST IMAGE. A cost line was added for
-   * image and nowhere else, so video, music, avatar and remix still charged an amount the user could only discover
-   * by watching the balance drop afterwards. One expression covers all five, so a new mode cannot quietly ship
-   * without a price. It now lives INSIDE the composer, next to what sets it (format, length, count), instead of a
-   * separate line above it; and a video's wait follows its length — it said "~440s" for an 8-second clip.
-   */
-  const priceTag = (() => {
-    if (busy) return null;
-    const priced: Partial<Record<ToolId, { kind: 'image' | 'music' | 'video' | 'avatar' | 'remix'; n: number; secs: number }>> = {
-      image: { kind: 'image', n: imgCount, secs: imgTargetFor(imgQuality) },
-      music: { kind: 'music', n: 1, secs: PROGRESS_TARGET.music },
-      video: { kind: 'video', n: 1, secs: videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video },
-      avatar: { kind: 'avatar', n: 1, secs: PROGRESS_TARGET.lipsync },
-      remix: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
-      // A character swap is the remix route's `character` op — priced and timed as a remix.
-      swap: { kind: 'remix', n: 1, secs: PROGRESS_TARGET.remix },
-    };
-    const p = priced[activeTool];
-    if (!p) return null;
-    const credits = creditCostFor(p.kind, activeTool === 'video' ? { seconds: videoDuration } : undefined) * p.n;
-    if (credits <= 0) return null;
-    const unit = locale === 'en' ? 'credits' : locale === 'ru' ? 'кредитов' : 'კრედიტი';
-    const wait = p.secs >= 90
-      ? `~${Math.round(p.secs / 60)} ${locale === 'en' ? 'min' : locale === 'ru' ? 'мин' : 'წთ'}`
-      : `~${p.secs} ${locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ'}`;
-    const label = `${credits} ${unit} · ${wait}`;
-    return { label, long: `${locale === 'en' ? 'Cost' : locale === 'ru' ? 'Стоимость' : 'ღირებულება'}: ${label}` };
-  })();
+  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
 
   /**
    * The composer's tool chip — WHAT you make and in what SHAPE, in one control: „ვიდეო · 9:16 · 24წმ ⌄". It opens
@@ -6130,12 +6198,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const ToolIcon = TOOL_META[activeTool].Icon;
   const toolLabel = toolName(activeTool, locale);
   const secsWord = locale === 'en' ? 's' : locale === 'ru' ? 'с' : 'წმ';
-  const toolSummary = activeTool === 'video' ? `${ORIENT_ASPECT[videoOrientation]} · ${videoDuration}${secsWord}`
+  const toolSummary = activeTool === 'video' ? `${ORIENT_ASPECT[videoOrientation]} · ${formatVideoDuration(videoDuration, locale)}`
     : activeTool === 'swap' ? ORIENT_ASPECT[videoOrientation]
     : activeTool === 'image' ? `${imgAspect}${imgCount > 1 ? ` · ×${imgCount}` : ''}`
       : activeTool === 'avatar' ? lipFormat
         : activeTool === 'product' ? `${productAspect} · ${productDuration}${secsWord}`
-          : '';
+          : activeTool === 'interior' || activeTool === 'photoshoot' ? shoot.summary(activeTool)
+            : '';
 
   /**
    * ONE Run for every tool (AI Studio's grammar: the composer runs, the panel configures). Product ad, character
@@ -6147,7 +6216,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const canRun = activeTool === 'product' ? !!productImage
     : activeTool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
-        : activeTool === 'motion' || mode === 'surgical' ? false
+        : activeTool === 'motion' || activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
           : canSend;
   const runTool = () => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
@@ -6166,7 +6235,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       stopDictationEcho();
       return;
     }
-    if (activeTool === 'motion') { openSettings(); return; }
+    if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
     void send();
   };
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
@@ -6176,12 +6245,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : activeTool === 'swap' ? (locale === 'en' ? 'Swap character' : locale === 'ru' ? 'Заменить персонажа' : 'პერსონაჟის შეცვლა')
             : activeTool === 'remix' ? (REMIX_OP_LABELS[remixOp][locale] ?? REMIX_OP_LABELS[remixOp].en)
               : (locale === 'en' ? 'Send' : locale === 'ru' ? 'Отправить' : 'გაგზავნა');
+  // The composer's run button carries its price for the tools that have NO Generate button of their own — the avatar, the
+  // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
+  // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
+  const composerQuote = activeTool === 'avatar' || activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
+    ? quoteCredits({ tool: activeTool }) || null
+    : null;
+  const runAria = composerQuote ? `${runLabel} — ${creditsLabel(composerQuote, locale)}` : runLabel;
   const composerPlaceholder = recording ? t.recording
     // The chat asks like Gemini's prompt bar ("Ask Gemini") — in our name.
     : activeTool === 'chat' ? (locale === 'en' ? 'Ask MyAvatar' : locale === 'ru' ? 'Спросите MyAvatar' : 'ჰკითხე MyAvatar-ს')
     : activeTool === 'product' ? (locale === 'en' ? 'A tagline (optional) — the product photo goes in with „+“' : locale === 'ru' ? 'Слоган (необязательно) — фото товара через „+“' : 'სლოგანი (არასავალდებულო) — პროდუქტის ფოტო „+“-ით')
       : activeTool === 'swap' ? (locale === 'en' ? 'Add the video and the new face with „+“' : locale === 'ru' ? 'Добавьте видео и новое лицо через „+“' : 'დაამატე ვიდეო და ახალი სახე „+“-ით')
+        : activeTool === 'vfx' ? (locale === 'en' ? 'VFX runs from its settings — pick an effect there' : locale === 'ru' ? 'VFX запускается в настройках — выберите эффект там' : 'VFX პარამეტრებიდან იწყება — ეფექტი იქ აირჩიე')
         : activeTool === 'motion' ? (locale === 'en' ? 'Motion runs from its settings' : locale === 'ru' ? 'Движение запускается в настройках' : 'მოძრაობა პარამეტრებიდან იწყება')
+          : shootActive ? (locale === 'en' ? 'It runs from the settings panel' : locale === 'ru' ? 'Запускается из панели настроек' : 'იწყება პარამეტრების პანელიდან')
           : activeTool === 'remix' ? (
             remixOp === 'restyle' ? (locale === 'en' ? 'New look (e.g. cinematic, anime, vintage)…' : locale === 'ru' ? 'Новый стиль (кино, аниме, винтаж)…' : 'ახალი სტილი (კინო, ანიმე, ვინტაჟი)…')
               : remixOp === 'character' ? (locale === 'en' ? 'Describe the character to swap in / insert…' : locale === 'ru' ? 'Опишите нового персонажа…' : 'აღწერე ახალი პერსონაჟი…')
@@ -6324,25 +6402,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       </button>
     );
   }, [openInEditor, locale]);
-
-  // ✨ Auto-write lyrics from the typed vibe (or the genre) and drop them into the box.
-  const writeLyrics = useCallback(async () => {
-    if (writingLyrics) return;
-    // Theme priority: the Music panel's own Prompt (Section C) → the shared composer input →
-    // any lyrics already typed → the genre. The panel's prompt is the field the user actually
-    // fills, so a "✨ Write lyrics" tap writes ABOUT their song, not a generic genre stub.
-    const theme = input.trim() || musicLyrics.trim() || musicGenre;
-    setWritingLyrics(true);
-    try {
-      const r = await fetch('/api/ai/lyrics', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme, language: locale, style: musicGenre }),
-      });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; lyrics?: string };
-      if (j.success && j.lyrics) setMusicLyrics(j.lyrics);
-    } catch { /* fail-soft */ }
-    setWritingLyrics(false);
-  }, [writingLyrics, input, musicLyrics, musicGenre, locale]);
 
   // ⬆ Upscale a generated image to HD (Real-ESRGAN) → a fresh image bubble.
   const upscale = useCallback(async (url: string) => {
@@ -6711,7 +6770,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       : kind === 'lipsync' ? lipFormat : '1:1';
                     // A real percent when the pipeline reports one (the film poll's videoProgress); otherwise the
                     // card paces elapsed against the same measured caps the old card used, and holds at 92.
-                    const cardCap = kind === 'video' ? (videoDuration <= 8 ? 120 : videoDuration === 24 ? 300 : PROGRESS_TARGET.video)
+                    const cardCap = kind === 'video' ? videoWaitSecs(videoDuration)
                       : kind === 'image' ? imgTarget : PROGRESS_TARGET[kind];
                     const cardPct = kind === 'video' && typeof m.videoProgress === 'number' ? m.videoProgress : undefined;
                     return (
@@ -7046,13 +7105,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting (the owner's screenshots); a panel and a sheet each own their own layer.
   const settingsWord = locale === 'en' ? 'Settings' : locale === 'ru' ? 'Настройки' : 'პარამეტრები';
   const closeWord = locale === 'en' ? 'Close' : locale === 'ru' ? 'Закрыть' : 'დახურვა';
+  // The video tool brings its OWN header (tool name + switcher + ✕), model card and price, so the generic service card below
+  // and the sheet's „Settings" header step aside for it (components/studio/create/VideoCreatePanel).
+  const videoCreate = activeTool === 'video';
   const liveTool = (id: ToolId) => studioServices.find((sv) => sv.id === id)?.live ?? true;
   const toolEntry = (id: ToolId): ToolEntry => ({
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
   });
-  const attachTargets: { onPhotos?: () => void; onCamera?: () => void; onFiles?: () => void } =
-    activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
+  const attachTargets: { onPhotos?: () => void; onVideo?: () => void; onCamera?: () => void; onFiles?: () => void } =
+    // THE CHAT TAKES EVERYTHING: photos, a video, the camera, and files (documents, audio, anything else readable).
+    activeTool === 'chat' ? { onPhotos: () => photoRef.current?.click(), onVideo: () => videoPickRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
+    : activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
       : activeTool === 'swap' ? { onPhotos: () => { charReplaceRef.current = true; charFileRef.current?.click(); }, onFiles: () => swapVideoRef.current?.click() }
         : activeTool === 'avatar' ? { onPhotos: () => lipsyncFaceRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
           // Music reads an AUDIO attachment (a voice or a cover source) — a photo would turn the song into a chat reply.
@@ -7060,104 +7124,132 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // An image request needs every attachment to be an image; a PDF or audio would turn it into chat.
             : activeTool === 'image' ? { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click() }
           : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
-            : activeTool === 'motion' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+            : activeTool === 'motion' || activeTool === 'vfx' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
+              // The Interior designer / Photographer read their OWN photos (the panel's upload card), not the composer's attachments.
+              : shootActive ? { onPhotos: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), onCamera: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'camera' })) }
               : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
+  // The Image tool has its own Create screen (components/studio/create): its header IS the tool switcher, so the generic card is not drawn.
+  const imageCreate = activeTool === 'image';
+  // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
+  // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
+  // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
+  const imageDesk = imageCreate && isDesktop;
+  const imageDeskResults = imageDesk ? deriveImageResults(messages, { busy }) : [];
+  const sameMsg = (m: Msg) => (pm: Msg) => (m.id ? pm.id === m.id : pm === m);
+  const imageDeskActions: ImageResultActions | null = imageDesk ? {
+    open: setLightbox,
+    download: (u) => void dl(u, 'myavatar-image.png'),
+    share: (u) => void share(u, 'myavatar-image.png'),
+    upscale: (u) => void upscale(u),
+    reroll: (i) => { const spec = messages[i]?.regen; if (spec) void regenerate(spec); },
+    edit: startImageEdit,
+    toVideo: sendImageToVideo,
+    renderSave: (u, p) => saveLibButton(u, 'image', p || undefined),
+    renderEditor: (u) => editButton(u, 'image'),
+    cancel: (i) => { const m = messages[i]; if (m) cancelBubbleJob(m); },
+    cancelJob: cancelQueueJob,
+    retryTile: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, 1); },
+    rerollBatch: (i) => { const b = messages[i]?.batch; if (b) void runImageBatch(b.spec, b.tiles.length); },
+    dismiss: (i, tile) => {
+      const m = messages[i];
+      if (!m) return;
+      if (tile === undefined) setMessages((prev) => prev.filter((pm) => !sameMsg(m)(pm)));
+      else setMessages((prev) => prev.map((pm) => (sameMsg(m)(pm) && pm.batch ? { ...pm, batch: { ...pm.batch, tiles: pm.batch.tiles.filter((_, j) => j !== tile) } } : pm)));
+    },
+    topUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
+  } : null;
+  // ── The Music tool's latest track, its attached audio and its action row — read by the Create sheet (phone) and the
+  // desktop centre pane. The action row mirrors the feed bubble's: download · share · re-roll · save · edit · music video.
+  const lastMusic = mode === 'music' ? [...messages].reverse().find((m) => m.audioUrl) : undefined;
+  const musicAudioAtt = mode === 'music' ? attachments.find((a) => isAudio(a.mimeType)) : undefined;
+  const musicTrack: MusicTrack | null = lastMusic?.audioUrl
+    ? { url: lastMusic.audioUrl, coverUrl: lastMusic.coverUrl, engine: lastMusic.engine, note: musicControlsNote(lastMusic.musicControlsMode, lastMusic.regen?.kind === 'music' ? lastMusic.regen : undefined, locale) }
+    : null;
+  const musicActionBtn = 'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 disabled:opacity-40';
+  const musicActions = lastMusic?.audioUrl ? (
+    <>
+      <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90">
+        <Download size={16} />
+      </button>
+      <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share} className={musicActionBtn}>
+        <Share2 size={16} />
+      </button>
+      {lastMusic.regen && (
+        <button type="button" onClick={() => void regenerate(lastMusic.regen!)} disabled={busy} title={t.regenerate} aria-label={t.regenerate} className={musicActionBtn}>
+          <RotateCcw size={16} />
+        </button>
+      )}
+      {saveLibButton(lastMusic.audioUrl, 'music', lastMusic.regen?.kind === 'music' ? lastMusic.regen.prompt : undefined)}
+      {editButton(lastMusic.audioUrl, 'audio')}
+      {/* Cross-service bridge — turn this track into a music video. */}
+      <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, lastMusic.regen?.kind === 'music' ? (lastMusic.regen.prompt || 'Generated Track') : 'Generated Track')}
+        title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
+        className={musicActionBtn}>
+        <Clapperboard size={16} aria-hidden="true" />
+      </button>
+    </>
+  ) : null;
   const settingsBody = (
     <div className="space-y-3">
       {/* The service card — AI Studio's model picker: what this run makes, and the way to change it. */}
-      <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
-        className="flex w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated">
+      {!imageCreate && !videoCreate && mode !== 'music' && <button type="button" onClick={() => { setToolPickOnly(true); setToolSheetOpen(true); }} aria-haspopup="dialog"
+        className={`${shootActive ? 'hidden' : 'flex'} w-full items-center gap-3 rounded-2xl border border-app-border/15 bg-app-elevated/50 p-3 text-left transition-colors hover:bg-app-elevated`}>
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-bg/60 text-app-accent"><ToolIcon size={19} aria-hidden="true" /></span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14.5px] font-semibold leading-tight text-app-text">{toolLabel}</span>
           <span className="mt-0.5 block truncate text-[12px] text-app-muted">{toolSub(activeTool, locale)}</span>
         </span>
         <span className="shrink-0 text-[12.5px] font-medium text-app-accent">{locale === 'en' ? 'Change' : locale === 'ru' ? 'Сменить' : 'შეცვლა'}</span>
-      </button>
-        {/* IMAGE — dedicated card panel: aspect (visual previews) · count · quality · style */}
+      </button>}
+        {/* INTERIOR DESIGNER · PHOTOGRAPHER — their own panels (components/studio/create), driven by useShootStudio. The ✕ closes
+            the settings like the generic header's; the name + chevron open the tool picker like the service card. */}
+        {activeTool === 'interior' && (
+          <InteriorCreatePanel {...shoot.interiorProps} onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }} />
+        )}
+        {activeTool === 'photoshoot' && (
+          <PhotoshootCreatePanel {...shoot.photoshootProps} onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }} />
+        )}
+        {/* IMAGE — the Create screen (components/studio/create/ImageCreatePanel): a VIEW over the state above. Generation, the
+            queue, billing and the template-pick semantics stay in this file; the screen only draws them. Script → Storyboard is
+            slotted into its Advanced section below, unchanged. */}
         {mode === 'image' && (
-          <div className="mb-2 space-y-2">
-            {/* START HERE — sets aspect, quality and style together. Quality is the field users
-                understand least ("1K / 2K / 4K" says nothing about what it is FOR) and the one where a
-                wrong guess costs the most render time; a preset answers it from the use case instead.
-                `count` is deliberately NOT part of any preset: it fans out into N separately billed
-                requests, and a chip that quadruples a bill is not a chip. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <TemplateGallery
-                testId="image-templates"
-                label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-                items={IMAGE_TEMPLATES.map((tp) => ({
-                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                  thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
-                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-                }))}
-                activeId={activeImagePreset}
-                onPick={applyImagePreset}
-              />
-            </div>
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Aspect ratio' : locale === 'ru' ? 'Соотношение' : 'პროპორცია'}</span>
-              {/* WRAPS rather than scrolls. A horizontal scroller was survivable at six ratios; at ten it
-                  hides four of them behind the edge with no affordance that they exist, on exactly the
-                  narrow screens where discoverability matters most. Two rows on a phone, one on desktop. */}
-              <div className="flex flex-wrap items-end gap-x-2.5 gap-y-1.5 pb-1">
-                {IMG_ASPECTS.map((a) => {
-                  const [aw, ah] = a.split(':').map(Number) as [number, number];
-                  const max = 26;
-                  const bw = aw >= ah ? max : Math.round((max * aw) / ah);
-                  const bh = ah >= aw ? max : Math.round((max * ah) / aw);
-                  const on = imgAspect === a;
-                  return (
-                    <button key={a} type="button" onClick={() => setImgAspect(a)} aria-label={a} className="flex min-h-[44px] min-w-[44px] shrink-0 flex-col items-center justify-center gap-1 transition active:scale-95 touch-manipulation">
-                      <span className="flex h-7 w-7 items-center justify-center">
-                        <span className={`block rounded-[2px] border-2 transition-colors ${on ? 'border-app-accent bg-app-accent/25' : 'border-app-border/40'}`} style={{ width: bw, height: bh }} />
-                      </span>
-                      <span className={`text-[10px] font-medium ${on ? 'text-app-accent' : 'text-app-muted'}`}>{a}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Count' : locale === 'ru' ? 'Количество' : 'რაოდენობა'}</span>
-                <div className="flex gap-1.5">
-                  {([1, 2, 4] as const).map((n) => <Chip key={n} active={imgCount === n} onClick={() => setImgCount(n)}>{n === 1 ? '1' : `×${n}`}</Chip>)}
-                </div>
-              </div>
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'}</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {IMG_QUALITIES.map(([q, lbl]) => <Chip key={q} active={imgQuality === q} onClick={() => setImgQuality(q)}>{lbl}</Chip>)}
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Style' : locale === 'ru' ? 'Стиль' : 'სტილი'}</span>
-              {/* Horizontal-scroll strip (13 styles) — one calm row instead of a 4-5 row wrap wall.
-                  Chips are shrink-0 so they scroll; matches the music Style + aspect strips. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {IMG_STYLES.map((s) => <Chip key={s} active={imgStyle === s} onClick={() => setImgStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-            {/* P7 — Negative prompt (expandable) */}
-            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <button type="button" onClick={() => setImgNegativeOpen((v) => !v)} aria-expanded={imgNegativeOpen}
-                style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
-                <span className="inline-flex items-center gap-1.5">{locale === 'en' ? 'Negative prompt' : locale === 'ru' ? 'Негативный промпт' : 'ნეგატიური პრომპტი'}{imgNegative.trim() && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-app-accent" />}</span>
-                <ChevronDown size={15} className={`transition-transform ${imgNegativeOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {imgNegativeOpen && (
-                <textarea
-                  value={imgNegative}
-                  onChange={(e) => setImgNegative(e.target.value)}
-                  placeholder={locale === 'en' ? 'What to avoid in the image…' : locale === 'ru' ? 'Что исключить из изображения…' : 'რა ავიცილოთ სურათში…'}
-                  rows={2}
-                  className="mt-2 w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-3 py-2 text-[13px] text-app-text outline-none placeholder:text-app-muted/60 focus:border-app-accent/50"
-                />
-              )}
-            </div>
-            {/* PHASE 29 (VECTOR 1) — Script-to-Storyboard: paste a script → N identity-anchored scenes → Video */}
+          <ImageCreatePanel
+            locale={locale}
+            desktop={isDesktop}
+            onOpenTools={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+            {...(isDesktop ? {} : { onClose: () => setOptionsOpen(false) })}
+            references={attachments.filter((a) => isImage(a.mimeType)).map((a) => ({ src: a.dataUrl, ...(a.name ? { name: a.name } : {}) }))}
+            // ONE reference: the route reads a single `referenceImage`, so a new pick REPLACES the picture in the tray.
+            onAddReference={(files) => { setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType))); void ingestFiles(files, { scriptInVideo: false }); }}
+            onRemoveReference={(i) => setAttachments((prev) => { let k = -1; return prev.filter((a) => !(isImage(a.mimeType) && ++k === i)); })}
+            foreignFileCount={attachments.filter((a) => !isImage(a.mimeType)).length}
+            onClearForeignFiles={() => setAttachments((prev) => prev.filter((a) => isImage(a.mimeType)))}
+            prompt={input}
+            onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
+            promptRef={imgPromptRef}
+            onEnhance={() => void magicEnhance()}
+            enhancing={enhancing}
+            onMic={() => void toggleMic()}
+            micState={recording ? 'recording' : transcribing ? 'transcribing' : 'idle'}
+            templates={IMAGE_TEMPLATES.map((tp) => ({
+              id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+              thumb: tp.thumb, palette: tp.palette, Icon: ImageIcon, meta: `${tp.values.aspect} · ${tp.values.quality === 'ultra' ? '4K' : tp.values.quality === 'high' ? '2K' : '1K'}`,
+              adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
+            }))}
+            activeTemplate={activeImagePreset}
+            onPickTemplate={applyImagePreset}
+            aspect={imgAspect} onAspect={setImgAspect}
+            quality={imgQuality} onQuality={setImgQuality}
+            count={imgCount} onCount={setImgCount}
+            style={imgStyle} onStyle={setImgStyle} styleLabel={(s) => styleLabel(s, locale)}
+            negative={imgNegative} onNegative={setImgNegative}
+            advancedExtraDirty={!!imgBoardScript.trim()}
+            balance={creditsBalance}
+            onGenerate={runTool}
+            // The one top-up the studio has: ChatChrome owns CreditsModal and opens it on this event.
+            onTopUp={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
+            advancedExtra={(
             <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
               <button type="button" onClick={() => setImgBoardOpen((v) => !v)} aria-expanded={imgBoardOpen}
                 style={{ minHeight: TAP_MIN_PX }} className="-my-2 flex w-full items-center justify-between py-2 text-left text-[12.5px] font-semibold text-app-text">
@@ -7222,7 +7314,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 </div>
               )}
             </div>
-          </div>
+            )}
+          />
         )}
 
         {/* LIPSYNC — dedicated card panel: character photo (+ hint) · voice */}
@@ -7244,8 +7337,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {face && !isImage(face.mimeType) ? (
                         <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-app-bg/60 text-app-accent ring-1 ring-app-accent/40"><Film size={18} /></span>
                       ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={face ? face.dataUrl : presetSrc!} alt="" loading="lazy" decoding="async" className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
+                        <TemplateThumbImage src={face ? face.dataUrl : presetSrc!} size={48} className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
                       <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
@@ -7331,24 +7423,53 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             audio controls, effect/transition. Optimized for mobile touch. */}
         {mode === 'video' && (
           <div className="mb-2 space-y-2">
-            {videoTab === 'cinema' && (<>
-            {/* Essentials — the two choices every video makes: its shape and its length (the Veo scene grid's
-                real lengths, 8 / 24 / 48 s). They were composer selects; the composer now names them in its chip
-                and this is the one place they are set. A music video is always vertical. */}
-            <div className="space-y-3 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5">
-              <Segmented label={locale === 'en' ? 'Format' : locale === 'ru' ? 'Формат' : 'ფორმატი'} cols="grid-cols-4"
-                options={['9:16', '1:1', '16:9', '4:5'] as const} value={ORIENT_ASPECT[videoOrientation] as '9:16' | '1:1' | '16:9' | '4:5'}
-                isDisabled={(a) => videoMode === 'musicvideo' && a !== '9:16'}
-                onChange={(a) => { const o = ASPECT_ORIENT[a]; if (o) setVideoOrientation(o); }} />
-              <Segmented label={locale === 'en' ? 'Length' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'} cols="grid-cols-3"
-                options={[8, 24, 48] as const} value={videoDuration} onChange={setVideoDuration} format={(d) => `${d}${secsWord}`} />
-              {/* The Veo model tier: Veo 3.1 · Veo 3.1 Fast · Veo 3.1 Lite. Economy takes no reference photos — picking
-                  it hands a reference-mode film back to the first-frame path (the reducer), never a silent drop. */}
-              <Segmented label={locale === 'en' ? 'Quality' : locale === 'ru' ? 'Качество' : 'ხარისხი'} cols="grid-cols-3"
-                options={['standard', 'fast', 'lite'] as const} value={veoPlan.tier}
-                onChange={(tier: VeoTier) => dispatchVeo({ type: 'tier', tier })}
-                format={(tier) => VEO_TIER_LABEL[tier][locale]} />
-            </div>
+            {videoTab === 'cinema' && (
+            // ⚠️ THE CREATE SCREEN (components/studio/create — ref4 / ref5) owns what every video decides first: the model, the
+            // references, the prompt, the length / format / quality tiles and the price on its Generate button. EVERYTHING the
+            // cinema tab always had is passed in below as its three disclosures — the SAME blocks, so their state and
+            // behaviour are untouched: a first-time user meets the path to a film (model → photos → words → length →
+            // Generate), and a script, a track, a voice or a camera is one tap away (and opens by itself when it matters).
+            <VideoCreatePanel
+              locale={locale}
+              surface={isDesktop ? 'panel' : 'sheet'}
+              toolName={toolLabel}
+              onSwitchTool={() => { setToolPickOnly(true); setToolSheetOpen(true); }}
+              onClose={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))}
+              plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan}
+              dispatch={dispatchVeo}
+              engine={veoEngine}
+              mode={videoMode}
+              onMode={setVideoMode}
+              seconds={videoDuration}
+              onSeconds={setVideoDuration}
+              format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
+              onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
+              prompt={input}
+              onPrompt={(v) => { dictation.markTyped(); setInput(v); }}
+              refs={{
+                images: videoCharacterRefs,
+                max: sceneFrameCount,
+                onAddImage: () => { charReplaceRef.current = false; charFileRef.current?.click(); },
+                onRemoveImage: (i) => setVideoCharacterRefs((prev) => prev.filter((_, k) => k !== i)),
+                audio: videoSoundtrack ? { name: videoSoundtrack.name } : null,
+                audioBusy: videoSoundtrackBusy,
+                onAddAudio: () => audioFileRef.current?.click(),
+                onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
+              }}
+              generate={{
+                onGenerate: runTool,
+                busy: busy || storyboardBusy,
+                canGenerate: canRun,
+                balanceCredits: videoBalanceCredits,
+                freeFilmsRemaining: videoFreeFilms,
+                onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
+              }}
+              caps={videoCaps}
+              storySummary={styleLabel(videoStyle, locale)}
+              voiceSummary={videoSoundtrack?.name}
+              storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
+              voiceOpenWhen={videoMode === 'musicvideo' || !!videoSoundtrack}
+              story={<>
             {/* 0 · START HERE — one tap sets mode, length, format and look together.
                 The panel has 57 controls. Each is reasonable; the combination is not, because a
                 first-time user must decide four things before anything happens and has no opinion yet
@@ -7447,17 +7568,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 : (locale === 'en' ? 'One frame per scene (optional, in order). Empty scenes are filled by the storyboard AI.' : locale === 'ru' ? 'По кадру на сцену (опц., по порядку). Пустые сцены добавит ИИ-раскадровка.' : 'თითო ფრეიმი თითო სცენისთვის (არჩევით, თანმიმდევრობით). ცარიელ სცენებს Storyboard-ის AI შეავსებს.')}</p>
             </div>
 
-            {/* ⚠️ THE PANEL WAS FIFTEEN SECTIONS DEEP, all open at once — script, track, mix, voices, ducking, master
-                script — so a first-time user met the whole film pipeline before writing a word. The path to a
-                film is: preset → mode → photos → effect → Generate. Everything below is still here, one tap
-                away, and opens by itself when it matters: a music video needs its track, and anything already
-                loaded (a script, a track, a master script) stays in view. */}
-            <details className="group/adv" open={videoMode === 'musicvideo' || !!videoScriptDoc || !!videoSoundtrack || !!videoMasterScript.trim()}>
-              <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between rounded-xl border border-app-border/15 px-3.5 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated/60 [&::-webkit-details-marker]:hidden">
-                <span>{locale === 'en' ? 'Script, audio and voices' : locale === 'ru' ? 'Сценарий, звук и голоса' : 'სცენარი, აუდიო და ხმები'}</span>
-                <ChevronDown size={15} aria-hidden="true" className="text-app-muted transition-transform group-open/adv:rotate-180" />
-              </summary>
-              <div className="mt-2 space-y-2">
             {/* 2-script · SCRIPT ingest slot — the Director follows this verbatim. Lives in the
                 video panel (not the chat composer) so the script ALWAYS reaches the storyboard,
                 independent of chat mode. .txt/.md/.pdf/.docx. */}
@@ -7486,6 +7596,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
 
+            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
+                It was documentary-only, so a music video had no way to supply a timecoded scene script —
+                the storyboard then invented its own. When filled it drives the scenes + per-speaker
+                casting; empty = auto. Folded into the brief in send() for every video mode. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
+              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
+              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
+                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
+                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
+            </div>
+
+            {/* 5 · Effect — the primary creative control, kept fully visible. */}
+            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
+              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
+                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
+              </div>
+            </div>
+
+              </>}
+              voice={<>
             {/* 2a · Audio Track ingest slot (full width) */}
             <div className="grid grid-cols-1 gap-2">
               <div role="button" tabIndex={0} onClick={() => { if (!videoSoundtrackBusy) audioFileRef.current?.click(); }}
@@ -7721,38 +7855,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </>
             )}
 
-            {/* PHASE 19 — MASTER SCRIPT / STORYBOARD, now UNIVERSAL (both documentary AND music-video).
-                It was documentary-only, so a music video had no way to supply a timecoded scene script —
-                the storyboard then invented its own. When filled it drives the scenes + per-speaker
-                casting; empty = auto. Folded into the brief in send() for every video mode. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Master script / storyboard' : locale === 'ru' ? 'Мастер-сценарий / раскадровка' : 'მასტერ-სცენარი / სცენარი'}</span>
-              <span className="block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'Paste a full timecoded script — its scenes + per-speaker dialogue drive the film. Empty = auto.' : locale === 'ru' ? 'Вставьте сценарий с таймкодами — его сцены и реплики управляют фильмом. Пусто = авто.' : 'ჩასვი დროით მონიშნული სცენარი — მისი სცენები და დიალოგი მართავს ფილმს. ცარიელი = ავტომატური.'}</span>
-              <textarea id="master-script-input" data-testid="master-script-input" value={videoMasterScript} onChange={(e) => setVideoMasterScript(e.target.value)} rows={4}
-                placeholder={locale === 'en' ? 'SCENE 1 (00:00–00:05): a quiet street at dawn…\n[00:02] Speaker 1: Are you ready?\n[00:04] Speaker 2: Almost.' : 'SCENE 1 (00:00–00:05): მშვიდი ქუჩა გამთენიისას…\n[00:02] მოსაუბრე 1: მზად ხარ?\n[00:04] მოსაუბრე 2: თითქმის.'}
-                className="w-full resize-none rounded-lg border border-app-border/15 bg-app-bg/40 px-2.5 py-2 text-[12px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25" />
-            </div>
-
-              </div>
-            </details>
-
-            {/* 5 · Effect — the primary creative control, kept fully visible. */}
-            <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Effect' : locale === 'ru' ? 'Эффект' : 'ეფექტი'}</span>
-              {/* Horizontal-scroll strip (17 effects) — the primary creative control stays fully
-                  reachable but collapses to one calm row instead of ~6 wrapped rows on mobile. */}
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {VIDEO_STYLES.map((s) => <Chip key={s} active={videoStyle === s} onClick={() => setVideoStyle(s)}>{styleLabel(s, locale)}</Chip>)}
-              </div>
-            </div>
-
+              </>}
+              advanced={<>
             {/* GOOGLE VEO — scenes & camera, identity, Veo's own sound, advanced. Every control maps to a field of the Veo
                 request or to the edit (docs/VEO_ENGINE.md §2): the camera is compiled into each clip's prompt, the joins
                 are made by the assembler. Zoom / Slide joins and the engine badge are gone — Veo is the only engine and
                 those joins do not exist in its pipeline. */}
             <VeoParametersPanel plan={videoMode === 'musicvideo' ? { ...veoPlan, format: '9:16' } : veoPlan} dispatch={dispatchVeo} locale={locale} engine={veoEngine}
               sceneTexts={scenePrompts} onTransitionAll={setVideoTransition} />
-            </>)}
+              </>}
+            />
+            )}
 
             {/* PHASE 2 L1 — Product-Ad mode: product photo → commercial preset → i2v clip */}
             {videoTab === 'product' && (
@@ -7971,23 +8084,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
               </div>
             )}
+
+            {videoTab === 'vfx' && <GenjutsuPanel locale={locale} />}
           </div>
         )}
 
-        {/* ── Music panel · 5 clean sections (A Style · B Duration+Tempo · C Prompt · D Generate · E Result) ── */}
+        {/* ── Music · the Create screen (components/studio/create/MusicCreatePanel) — ref2's elements in ref2's order. A view
+             only: every value is OmniStudio's own state and Create runs `send()`, the same path as the composer's Send. ── */}
         {mode === 'music' && (() => {
-          const lastMusic = [...messages].reverse().find((m) => m.audioUrl);
-          // A voice SAMPLE (recorded or uploaded) rides `attachments` as an audio entry — its
-          // presence flips the panel into cover/clone territory and enables Generate with no prompt.
-          const hasVoiceSample = attachments.some((a) => isAudio(a.mimeType));
-          const tempos = [
-            ['slow', locale === 'en' ? 'Slow' : locale === 'ru' ? 'Медленно' : 'ნელი'],
-            ['medium', locale === 'en' ? 'Medium' : locale === 'ru' ? 'Средне' : 'საშუალო'],
-            ['fast', locale === 'en' ? 'Fast' : locale === 'ru' ? 'Быстро' : 'სწრაფი'],
-          ] as const;
-          // PHASE 31 — apply a preset in one tap: write the full parameter set. The active pill is
-          // DERIVED from live state (below), so there is no "clear on manual edit" bookkeeping —
-          // editing any dial simply stops matching.
+          // A preset writes the whole parameter set in one tap; the lit card is DERIVED from the live values (activeMusicPreset).
           const applyMusicPreset = (id: string) => {
             const p = musicTemplateValues(id);
             if (!p) return;
@@ -8000,198 +8105,48 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // A tap is the only thing that makes a card's descriptor ride on the request (hooks/usePickedTemplate).
             pickMusicTemplate(id);
           };
-          // A chip is active when every core dial matches; instrumental presets exclude vocal from
-          // the match (gender is hidden/moot for a bed), so their highlight stays stable.
-          const activePresetId = activeMusicPreset;
-          // Fine-tune accordion badge — a glanceable 3-part summary of the collapsed dials, e.g.
-          // "30s · Medium · ♀" (song) or "Full · Slow · 🎹" (instrumental; gender is moot so the
-          // vocal glyph becomes 🎹, keeping a stable shape). Locale-aware.
-          const durBadge = musicDuration === 0
-            ? (locale === 'en' ? 'Full' : locale === 'ru' ? 'Полная' : 'სრული')
-            : `${musicDuration}${locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}`;
-          const tempoBadge = tempos.find(([v]) => v === musicTempo)?.[1] ?? musicTempo;
-          // The granular controls' copy (ka/en/ru): the singer's four stops, the sliders and their „approximate" hint.
-          const mc = musicControlsCopy(locale);
-          const vocalBadge = musicInstrumental ? mc.instrumentalShort : mc.vocalShort[musicVoiceType];
-          // …plus only the sliders someone moved ("Weirdness 80"), so an untouched panel's badge reads as before.
-          const fineTuneBadge = [durBadge, tempoBadge, vocalBadge, ...sliderBadgeParts(musicSliders, locale)].join(' · ');
           return (
-          <div className="mb-2 space-y-4">
-            {/* ✨ Presets — one-tap vibe row (horizontal scroll). Sets every dial at once; the active
-                pill is derived from the live parameter state. Above Style so most users tap a vibe
-                and never need to open Fine-tune. */}
-            <TemplateGallery
-              testId="music-templates"
-              label={locale === 'en' ? 'Templates' : locale === 'ru' ? 'Шаблоны' : 'შაბლონები'}
-              items={MUSIC_TEMPLATES.map((tp) => ({
-                id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
-                thumb: tp.thumb, palette: tp.palette, Icon: Music2,
-                meta: tp.hint[templateLang(locale)],
-                adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
-              }))}
-              activeId={activePresetId}
-              onPick={applyMusicPreset}
+            <MusicCreatePanel
+              locale={locale}
+              isDesktop={isDesktop}
+              guest={guest}
+              styleText={input}
+              onStyleText={(v) => { dictation.markTyped(); setInput(v); }}
+              lyrics={musicLyrics}
+              onLyrics={setMusicLyrics}
+              instrumental={musicInstrumental}
+              onInstrumental={setMusicInstrumental}
+              styles={musicStyles}
+              onStyles={setMusicStyles}
+              styleOptions={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
+              vocal={musicVoiceType}
+              onVocal={setMusicVoiceType}
+              sliders={musicSliders}
+              onSliders={setMusicSliders}
+              duration={musicDuration}
+              onDuration={setMusicDuration}
+              tempo={musicTempo}
+              onTempo={setMusicTempo}
+              templates={{
+                items: MUSIC_TEMPLATES.map((tp) => ({
+                  id: tp.id, label: tp.label[templateLang(locale)], hint: tp.hint[templateLang(locale)],
+                  thumb: tp.thumb, palette: tp.palette, Icon: Music2,
+                  meta: tp.hint[templateLang(locale)],
+                  adds: templateAddsLine(tp, templateLang(locale)) ?? undefined,
+                })),
+                activeId: activeMusicPreset,
+                onPick: applyMusicPreset,
+              }}
+              audio={musicAudioAtt ? { name: musicAudioAtt.name ?? null } : null}
+              audioMode={musicAudioMode}
+              onAudioMode={setMusicAudioMode}
+              onPickAudio={() => voiceFileRef.current?.click()}
+              onClearAudio={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}
+              recording={{ active: voiceRecording, sec: voiceRecSec, start: () => void startVoiceRecording(), stop: stopVoiceRecording }}
+              trainedVoice={{ available: hasTrainedVoice, on: useMyVoice, onChange: setUseMyVoice }}
+              onCreate={(prompt) => { void send({ promptOverride: prompt }); }}
+              result={{ track: musicTrack, actions: musicActions, label: t.modeMusic }}
             />
-
-            {/* A — Style: up to three, in the order picked (the engines read them as one line, the first leading). */}
-            <StyleChips
-              testId="music-styles"
-              label={mc.styles}
-              options={MUSIC_STYLES.map(([val, label]) => ({ id: val, label: label[locale] ?? label.en }))}
-              value={musicStyles}
-              onChange={setMusicStyles}
-            />
-
-            {/* Track type (Lyrics | Instrumental) — kept PRIMARY: it gates whether the Lyrics /
-                Your-voice / Vocal subtrees render below, so hiding it would hide the cause of those
-                sections appearing and disappearing. */}
-            <div>
-              <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.trackType}</span>
-              <div className="flex gap-1.5">
-                <Chip active={!musicInstrumental} onClick={() => setMusicInstrumental(false)}>{mc.lyrics}</Chip>
-                <Chip active={musicInstrumental} onClick={() => setMusicInstrumental(true)}>{mc.instrumental}</Chip>
-              </div>
-            </div>
-
-            {/* ⚙️ Fine-tune — the set-once dials (Duration · Tempo · Vocal · Weirdness · Style influence) folded behind one collapsed
-                Section so the default panel stays calm. Every preset already writes these, so most users
-                never open it; the badge surfaces the live values. The Vocal sub-row renders only for a
-                sung track (the same !instrumental gate as before). */}
-            <Section title={<>{locale === 'en' ? 'Fine-tune' : locale === 'ru' ? 'Настройка' : 'დახვეწა'}</>} badge={fineTuneBadge}>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Duration' : locale === 'ru' ? 'Длительность' : 'ხანგრძლივობა'}</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {([30, 60, 90] as const).map((d) => <Chip key={d} active={musicDuration === d} onClick={() => setMusicDuration(d)}>{d}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'}</Chip>)}
-                      {/* FIX 2 — full song: duration 0 (billed at the 90s tier; see musicDuration). */}
-                      <Chip active={musicDuration === 0} onClick={() => setMusicDuration(0)}>{locale === 'en' ? 'Full song' : locale === 'ru' ? 'Полная' : 'სრული სიმღერა'}</Chip>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Tempo' : locale === 'ru' ? 'Темп' : 'ტემპი'}</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tempos.map(([v, label]) => <Chip key={v} active={musicTempo === v} onClick={() => setMusicTempo(v)}>{label}</Chip>)}
-                    </div>
-                  </div>
-                </div>
-                {/* Vocal gender — only meaningful for a sung track. Auto / Female / Male / Duet (decision A-e). */}
-              {!musicInstrumental && (
-                <div>
-                  <span className="mb-1.5 block text-[12.5px] font-semibold text-app-text">{mc.vocal}</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {VOCAL_GENDERS.map((id) => (
-                      <Chip key={id} active={musicVoiceType === id} onClick={() => setMusicVoiceType(id)}>{mc.vocalGender[id]}</Chip>
-                    ))}
-                  </div>
-                </div>
-              )}
-                {/* Weirdness (Variety merged in — decision A-d) and Style influence. Labelled approximate, because on
-                    Lyria and ElevenLabs they can only add a sentence to the brief (lib/ai/musicControls). Stacked: the
-                    settings column is 300px on desktop. */}
-                <div className="space-y-2" data-testid="music-sliders">
-                  <Slider stacked label={mc.weirdness} min={0} max={100} suffix="" value={musicSliders.weirdness}
-                    onChange={(v) => setMusicSliders((s) => ({ ...s, weirdness: v }))} ends={mc.weirdnessEnds} />
-                  <Slider stacked label={mc.styleInfluence} min={0} max={100} suffix="" value={musicSliders.styleInfluence}
-                    onChange={(v) => setMusicSliders((s) => ({ ...s, styleInfluence: v }))} ends={mc.styleInfluenceEnds} hint={mc.approximate} />
-                </div>
-            </div>
-            </Section>
-
-            {/* B3 — Lyrics (song only): type your own words OR one-tap ✨ AI writer.
-                Empty = the model auto-writes lyrics from the prompt. Threaded to /api/ai/music
-                as `lyrics` via send()→runMusicJob (vocal / cover / clone / trained paths). */}
-            {!musicInstrumental && (
-              <div>
-                <span className="mb-1.5 flex items-center justify-between gap-2 text-[12.5px] font-semibold text-app-text">
-                  <span>{locale === 'en' ? 'Lyrics' : locale === 'ru' ? 'Текст' : 'ლირიკა'} <span className="font-normal text-app-muted/60">({locale === 'en' ? 'optional' : locale === 'ru' ? 'необязательно' : 'არჩევითი'})</span></span>
-                  <button type="button" onClick={() => void writeLyrics()} disabled={writingLyrics}
-                    className="inline-flex shrink-0 items-center gap-1 min-h-[44px] rounded-full border border-app-accent/40 px-2.5 py-1 text-[11px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 disabled:opacity-50">
-                    {writingLyrics ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {t.writeLyricsBtn}
-                  </button>
-                </span>
-                <textarea
-                  value={musicLyrics}
-                  onChange={(e) => setMusicLyrics(e.target.value.slice(0, 1200))}
-                  maxLength={1200}
-                  rows={3}
-                  placeholder={t.lyricsPlaceholder}
-                  className="w-full resize-none rounded-xl border border-app-border/15 bg-app-bg/40 px-3 py-2.5 text-[13px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted/45 focus:border-app-accent/60 focus:bg-app-bg/70 focus:ring-2 focus:ring-app-accent/25"
-                />
-              </div>
-            )}
-
-            {/* B4 — Your voice (song only): record or upload a ≥15s sample → the song is sung
-                in YOUR cloned voice (music-01). A sample can instead be used as a COVER source
-                (remix its melody) via the cover/voice switch. With a completed TRAINED RVC model,
-                a toggle sings in your faithful trained voice (overrides the one-shot clone). The
-                attached sample renders as a removable chip in the composer tray above. */}
-            {!musicInstrumental && (
-              <div className="space-y-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="block text-[12.5px] font-semibold text-app-text">{t.voiceSecTitle}</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {/* Record (toggle) — live seconds while capturing; ≥15s hint until enough. */}
-                  {voiceRecording ? (
-                    <button type="button" onClick={stopVoiceRecording}
-                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-red-400/50 bg-red-500/10 px-3 py-1.5 text-[12px] font-semibold text-red-300 transition-colors hover:bg-red-500/20">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-red-400" />
-                      {voiceRecSec}{locale === 'en' ? 's' : locale === 'ru' ? 'с' : ' წმ'} · {locale === 'en' ? 'Stop' : locale === 'ru' ? 'Стоп' : 'გაჩერება'}{voiceRecSec < 15 ? ` (${t.need15})` : ''}
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => void startVoiceRecording()}
-                      className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                      <Mic size={13} /> {t.voiceRec}
-                    </button>
-                  )}
-                  {/* Upload a voice file (mp3/wav/m4a, ≤50MB). */}
-                  <button type="button" onClick={() => voiceFileRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 min-h-[44px] rounded-full border border-app-border/25 px-3 py-1.5 text-[12px] font-medium text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
-                    <Upload size={13} /> {t.voiceUp}
-                  </button>
-                  {/* Trained RVC toggle — ONLY when a completed trained model exists (probed on mount). */}
-                  {hasTrainedVoice && (
-                    <Chip active={useMyVoice} onClick={() => setUseMyVoice((v) => !v)}>{t.voiceMode}</Chip>
-                  )}
-                </div>
-                {/* With a sample attached (and NOT overridden by the trained toggle): pick how it's used. */}
-                {hasVoiceSample && !(useMyVoice && hasTrainedVoice) && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Chip active={musicAudioMode === 'voice'} onClick={() => setMusicAudioMode('voice')}>{t.voiceMode}</Chip>
-                    <Chip active={musicAudioMode === 'cover'} onClick={() => setMusicAudioMode('cover')}>{t.coverMode}</Chip>
-                  </div>
-                )}
-                <span className="block text-[11px] leading-relaxed text-app-muted/70">
-                  {(useMyVoice && hasTrainedVoice) || hasVoiceSample ? t.voiceReady : t.voiceRecHint}
-                </span>
-              </div>
-            )}
-
-            {/* E — Result (hidden until a track exists): audio player + download/share */}
-            {lastMusic?.audioUrl && (
-              <div className="space-y-2.5 rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-                <span className="block text-[12.5px] font-semibold text-app-text">{locale === 'en' ? 'Result' : locale === 'ru' ? 'Результат' : 'შედეგი'}</span>
-                {/* Polished Suno-style player (album art + scrub/time + provenance badge). */}
-                <TrackPlayer url={lastMusic.audioUrl} coverUrl={lastMusic.coverUrl} label={t.modeMusic} engine={lastMusic.engine} note={musicControlsNote(lastMusic.musicControlsMode, lastMusic.regen?.kind === 'music' ? lastMusic.regen : undefined, locale)} />
-                <div className="flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => void dl(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.imgDownload} aria-label={t.imgDownload}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                    <Download size={16} />
-                  </button>
-                  <button type="button" onClick={() => void share(lastMusic.audioUrl!, 'myavatar-track.mp3')} title={t.share} aria-label={t.share}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-muted transition hover:bg-app-elevated hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
-                    <Share2 size={16} />
-                  </button>
-                  {saveLibButton(lastMusic.audioUrl, 'music')}
-                  {/* Cross-service bridge — turn this track into a music video. The 🎤 IS the icon. */}
-                  <button type="button" onClick={() => sendMusicToMusicVideo(lastMusic.audioUrl!, 0, 'Generated Track')}
-                    title={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'} aria-label={locale === 'en' ? 'Music video' : locale === 'ru' ? 'Клип' : 'მუსიკალური კლიპი'}
-                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-app-border/20 text-app-text transition-colors hover:bg-app-elevated sm:h-9 sm:w-9">
-                    <Clapperboard size={16} aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
           );
         })()}
 
@@ -8275,7 +8230,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
             Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
-        {panelService && (
+        {panelService && panelService !== 'interior' && panelService !== 'photoshoot' && (
           <ServiceParamsPanel
             service={panelService}
             locale={locale}
@@ -8330,48 +8285,67 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return first.length > 90 ? `${first.slice(0, 90)}…` : first;
   })();
   /**
-   * Gemini's empty chat on a desktop: the greeting, the composer in the MIDDLE of the screen, the starter chips under
-   * it. Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold that node). The feed
-   * above and the chips wrapper below are two EQUAL flex halves (`flex-1 basis-0`), so the composer block sits on the
-   * centre line. Both halves start from their padding (flex-basis 0 cannot go below it): the chips wrapper's 24 px,
-   * and the feed's 54 px = those same 24 px + the 30 px the composer block adds UNDER the pill beyond what it adds above
-   * (the disclaimer's 34 px vs the block's 4 px top padding) — so it is the PILL itself, not pill + disclaimer, that
-   * lands on the centre line (measured: ±1 px at 1280 × 800). The greeting is pushed to the bottom of its half with an auto
-   * margin (never `justify-end`, whose overflow on a short screen would be unreachable by scrolling). Phones keep the
+   * Gemini's empty chat on a desktop: the greeting and, under it, the composer — nothing else (owner, 2026-10-02: no sub
+   * line, no starter chips). Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold
+   * that node). The feed above and an empty spacer below are two EQUAL flex halves (`flex-1 basis-0`), so the composer
+   * block sits on the centre line; the feed starts from its 48 px of bottom padding (flex-basis 0 cannot go below it),
+   * which lowers the PILL 24 px under that line — the optical centre of a greeting-and-box pair, which reads as centred
+   * where the geometric middle reads as high. The greeting is pushed to the bottom of its half with an auto margin
+   * (never `justify-end`, whose overflow on a short screen would be unreachable by scrolling). Phones keep the
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
+  // Music on a desktop: the latest track and the engines-and-prices list (ref6) lead the centre column; the feed — progress
+  // cards, failures, top-up buttons — continues under them.
+  const musicPane = isDesktop && mode === 'music' ? (
+    <MusicCentrePane
+      locale={locale}
+      track={musicTrack}
+      actions={musicActions}
+      label={t.modeMusic}
+      instrumental={musicInstrumental}
+      reference={musicAudioAtt && !(hasTrainedVoice && useMyVoice && !musicInstrumental) ? musicAudioMode : null}
+    />
+  ) : null;
   // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
   // Desktop only: Gemini's PHONE composer is two rows (the text full width on top, the controls under it) — squeezing
   // „+“, mic and Live beside the text left a ~180 px box that wrapped even the placeholder.
   const chatSingleRow = chatOnly && isDesktop && attachments.length === 0 && !composerWrapped && !activePersona.name;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
-  // Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a phone that
-  // keeps the composer above the fold (what got the old chips removed); on a desktop a free-wrapping row broke 3 + 1,
-  // which reads as an accident. ONE column from 1024 to 1279 — there the centre sits between the navigation and the
-  // open settings (~400 px) and „ავატარის პორტრეტი" clipped — except in the chat, which has no settings column.
-  const starterChips = (
-    <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-      className={`relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem] ${chatOnly ? '' : 'lg:max-w-[22rem] lg:grid-cols-1 xl:max-w-[34rem] xl:grid-cols-2'}`}>
-      {STARTER_CHIPS.map((chip) => {
-        // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
-        const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
-        return (
-          <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
-            className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
-            <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
-            <span className="min-w-0 sm:truncate">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
   // „გამარჯობა, {name}" — Gemini's personal line above the greeting, for a signed-in user in the chat. Cyan fading
   // into the text colour: one hue, no second accent (docs/DESIGN.md §6–§7).
   const personalGreeting = chatOnly && firstName
     ? (locale === 'en' ? `Hi, ${firstName}` : locale === 'ru' ? `Здравствуйте, ${firstName}` : `გამარჯობა, ${firstName}`)
     : '';
+  // ── The desktop's centre for the video tool (ref6): the RESULT pane — the latest video of this tool in the thread, or its
+  // progress while one renders — and "Models & prices" (the Veo tiers priced per length, which also pick the model). Phones
+  // have the create sheet only; the thread below the stage is unchanged.
+  const videoStage = (() => {
+    if (activeTool !== 'video' || !isDesktop) return null;
+    const lastIdx = (pred: (m: Msg) => boolean) => {
+      for (let i = messages.length - 1; i >= 0; i -= 1) { const m = messages[i]; if (m && pred(m)) return i; }
+      return -1;
+    };
+    const done = lastIdx((m) => m.role === 'assistant' && !!m.videoUrl && m.genKind !== 'lipsync');
+    const doing = lastIdx((m) => m.role === 'assistant' && m.genKind === 'video' && !m.videoUrl && !m.text.startsWith('⚠️'));
+    const doneMsg = done >= 0 ? messages[done] : undefined;
+    const doingMsg = doing > done ? messages[doing] : undefined;
+    const asked = done > 0 ? [...messages.slice(0, done)].reverse().find((m) => m.role === 'user')?.text : undefined;
+    return (
+      <VideoStage
+        locale={locale}
+        latest={doneMsg?.videoUrl ? { url: doneMsg.videoUrl, aspect: ORIENT_ASPECT[doneMsg.orientation ?? videoOrientation] as string, ...(asked ? { prompt: asked } : {}) } : null}
+        progress={doingMsg ? { aspect: ORIENT_ASPECT[doingMsg.orientation ?? videoOrientation] as string, ...(typeof doingMsg.videoProgress === 'number' ? { pct: doingMsg.videoProgress } : {}), stage: doingMsg.text, elapsedSec: elapsed, capSec: videoWaitSecs(videoDuration) } : null}
+        tier={veoPlan.tier}
+        mode={videoMode}
+        seconds={videoDuration}
+        onTier={(tier) => dispatchVeo({ type: 'tier', tier })}
+        onOpenInEditor={(url) => openInEditor(url, 'video')}
+        onNote={(msg) => { setShareToast(msg); setTimeout(() => setShareToast((x) => (x === msg ? null : x)), 2200); }}
+      />
+    );
+  })();
 
   return (
     // Drag-and-drop covers the whole studio. ⚠️ With the settings beside the centre column, a video dropped on the
@@ -8504,34 +8478,68 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-[54px]' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
-        {messages.length === 0 ? (
-          <div className={`relative flex flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'mt-auto w-full pb-7 pt-6' : 'min-h-full py-6'}`}>
+        {videoStage}
+        {musicPane}
+        {shootActive ? (
+          <ShootResultPane
+            tool={activeTool === 'photoshoot' ? 'photoshoot' : 'interior'} locale={locale} runs={shoot.runs} prices={shoot.prices}
+            onOpenImage={setLightbox} onRetry={shoot.retry} onCancel={shoot.cancel} onAnother={shoot.another} onPlan3d={shoot.plan3d}
+            onWalkthrough={shoot.walkthrough} onUseAsReference={shoot.useAsReference} onDismissRun={shoot.dismissRun}
+            onDismissTile={shoot.dismissTile} onClear={shoot.clearRuns} onOpenSettings={openSettings}
+          />
+        ) : imageDesk ? null : messages.length === 0 && !musicPane ? (videoStage ? null : (
+          <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
             </div>
-            <div className="relative space-y-2">
+            {/* THE HOME IS THE GREETING AND THE BOX — nothing else (owner, 2026-10-02: no sub line, no starter chips).
+                The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
+                (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
+                of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
+                reduced motion. */}
+            <div className="relative space-y-3 motion-safe:[animation:agSlideUp_0.7s_cubic-bezier(0.2,0.7,0.2,1)_both]">
               {personalGreeting && (
                 <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
                   {personalGreeting}
                 </p>
               )}
-              {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
-              <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
-              <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
+              {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
+                  background a clipped gradient needs and would leave the page's one heading invisible. */}
+              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
             </div>
-            {/* In the centred chat the chips sit UNDER the composer (rendered after it, below). */}
-            {!centred && starterChips}
           </div>
-        ) : messageList}
+        )) : messageList}
       </div>
+      {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
+          one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
+          keyboard re-pin all keep a node to talk to, and the thread is never mounted twice. */}
+      {imageDesk && imageDeskActions && (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
+          <ImageDesk
+            locale={locale}
+            results={imageDeskResults}
+            notice={latestNotice(messages, imageDeskResults)}
+            aspect={imgAspect}
+            quality={imgQuality}
+            onQuality={setImgQuality}
+            elapsedSec={elapsed}
+            capSecFor={imgTargetFor}
+            actions={imageDeskActions}
+            busy={busy}
+            upscaling={upscaling}
+            conversation={messageList}
+            messageCount={messages.length}
+          />
+        </div>
+      )}
 
       {/* Scroll-to-bottom — appears only when the user has scrolled up. */}
-      {showJump && messages.length > 0 && (
+      {showJump && !imageDesk && messages.length > 0 && (
         <button
           type="button"
           onClick={() => scrollToBottom()}
@@ -8557,10 +8565,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
-        {/* The price moved INTO the composer (see `priceTag`) — same rule, one block instead of three. */}
-        {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
-            canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
-            that never send; see their definition for why the old prompt chips were removed). */}
+        {/* No service shortcuts IN the composer or on the empty home — the tool chip and the navigation are how a
+            service is chosen. */}
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
@@ -8604,11 +8610,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
                 ) : (
-                  <span className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-xl bg-app-surface text-app-accent">
-                    {isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
-                    {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) && (
-                      <span className="max-w-[3.25rem] truncate text-[9px] font-semibold uppercase leading-none text-app-muted">{a.name.split('.').pop()}</span>
-                    )}
+                  // A document or a sound: its icon, its NAME and its size (a 56 px square said only "pdf") — and, when its
+                  // text was cut at the cap, that it was.
+                  <span className="flex h-14 max-w-[13rem] items-center gap-2 rounded-xl bg-app-surface px-3 text-app-accent">
+                    {isAudio(a.mimeType) ? <Music2 size={18} className="shrink-0" /> : <FileText size={18} className="shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="block max-w-[9.5rem] truncate text-[12px] font-medium leading-tight text-app-text">{a.name || (isAudio(a.mimeType) ? 'audio' : 'file')}</span>
+                      <span className="block truncate text-[10.5px] uppercase leading-tight text-app-muted">
+                        {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : ''}
+                        {a.size ? `${a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? ' · ' : ''}${formatBytes(a.size)}` : ''}
+                        {a.truncated ? ` · ${locale === 'en' ? 'shortened' : locale === 'ru' ? 'сокращён' : 'შეკვეცილია'}` : ''}
+                      </span>
+                    </span>
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
@@ -8620,7 +8633,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* Input surface — one clean rounded pill. The picker accepts MULTIPLE files
             (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
-        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,.txt,.md,.pdf,.docx,.doc,.rtf" className="hidden" onChange={(e) => {
+        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,text/*,.txt,.md,.pdf,.docx,.doc,.rtf,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml,.log,.srt,.vtt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.cs,.go,.rs,.rb,.php,.sh,.sql,.css" className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
           // In VIDEO mode a document attached via the "+" IS the film script → ingestFiles loads it into
@@ -8763,6 +8776,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           e.target.value = '';
           void ingestFiles(files, { scriptInVideo: false });
         }} />
+        {/* „+" → Video: a clip from the library — or one recorded on the spot, which is what a phone's own video picker
+            offers first. It rides as an attachment exactly like a file (the chat's „edit this video" path reads it). */}
+        <input ref={videoPickRef} type="file" multiple accept="video/*" className="hidden" onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          void ingestFiles(files, { scriptInVideo: false });
+        }} />
         {/* „+" → Photos on the product tool: the product photo (then extra angles). */}
         <input ref={productPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
           const f = e.target.files?.[0];
@@ -8782,8 +8802,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             focus ring may be the accent), and ONE row — „+“ · the text · mic · Live / Send — while the text fits a
             line; wrapped text, an attachment or a persona chip move the controls onto their own row below.
             ⚠️ The textarea stays this pill's DIRECT child in every shape (tests measure `textarea/..` as the pill),
-            so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it. */}
-        <div className={chatOnly
+            so the one-row shape is made by `display: contents` on the control row and `order`, never by moving it.
+            data-tour: the first-run tour's step 1 points here, and focusComposer finds the box through it (lib/onboarding). */}
+        <div data-tour="composer" className={chatOnly
           ? `flex min-h-[64px] bg-app-elevated px-2 py-2 shadow-[0_2px_8px_-2px_rgba(0,0,0,0.16)] ring-1 ring-app-border/10 transition-shadow duration-200 focus-within:ring-app-accent/40 ${chatSingleRow ? 'items-center gap-1 rounded-[32px]' : 'flex-col rounded-[28px]'}`
           : 'rounded-[24px] border border-app-border/15 bg-app-elevated px-3 py-3 min-h-[52px] sm:px-4 shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-colors focus-within:border-app-accent/40'}>
           {/* Full-width prompt on its own line — a long prompt is never squeezed into a
@@ -8807,7 +8828,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             placeholder={composerPlaceholder}
             className={chatOnly
               ? `max-h-40 resize-none border-0 bg-transparent text-[16px] leading-6 text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60 ${chatSingleRow ? 'min-h-[44px] min-w-0 flex-1 px-2 py-2.5' : 'min-h-[40px] w-full px-3 py-2'}`
-              : 'max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60'}
+              // Not drawn in the Image or Music tool below `lg`: its prompt IS the Create screen's prompt card (same `input`), and the
+              // pill keeps [+] · the tool chip · mic · send. On a desktop the box stays, mirroring the panel's.
+              : `${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none border-0 bg-transparent px-1 py-1.5 text-[16px] text-app-text placeholder:text-app-muted outline-none focus:ring-0 disabled:opacity-60`}
           />
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
@@ -8946,7 +8969,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
-                {input.trim() && !onlyStarter && !chatOnly && (
+                {input.trim() && !chatOnly && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
                   // Not in the chat: it rewrites a GENERATION prompt; a question to the assistant is not one.
@@ -8963,9 +8986,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
-                      className="ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
-                      <Send size={17} />
+                    <button type="button" onClick={runTool} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}
+                      className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
+                      {composerQuote ? (
+                        <>
+                          <Sparkle size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                          <span className="text-[14px] font-bold tabular-nums leading-none">{composerQuote}</span>
+                        </>
+                      ) : <Send size={17} />}
                     </button>
                   )
                 )}
@@ -8973,22 +9001,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             )}
           </div>
         </div>
-        {/* The price, once, under the composer — on screen before the spend, for every priced tool. The chat is not
-            priced; there the line is Gemini's disclaimer instead. */}
-        {chatOnly ? (
-          <p data-testid="chat-disclaimer" className={`mt-2 px-3 text-center text-app-muted ${chatSmallText(locale)}`}>
-            {locale === 'en' ? 'MyAvatar is AI and can make mistakes.'
-              : locale === 'ru' ? 'MyAvatar — это ИИ, и он может ошибаться.'
-                : 'MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.'}
-          </p>
-        ) : priceTag && (
-          <p data-testid="price-tag" title={priceTag.long} className="mt-1.5 px-3 text-center text-[12px] tabular-nums text-app-muted">
-            <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
-          </p>
-        )}
+        {/* NOTHING under the composer — in the chat or in any tool (owner, 2026-10-02: "minimalist, premium"; he had the
+            „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
+            the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}
       </div>
-      {/* The centred empty chat (desktop): the starter chips UNDER the composer, closing the centred group. */}
-      {centred && <div className="flex w-full flex-1 basis-0 items-start justify-center pt-6">{starterChips}</div>}
+      {/* The centred empty chat (desktop): an empty half under the composer, equal to the feed above it. */}
+      {centred && <div aria-hidden="true" className="w-full flex-1 basis-0" />}
 
       {/* All full-screen overlays portal to document.body so they render above
           root-level chrome (the cookie banner) instead of being trapped in the chat
@@ -9148,6 +9166,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           t={t}
           locale={locale}
           busy={busy}
+          price={videoQuote({ seconds: storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC), tier: veoPlan.tier, mode: videoMode })}
+          free={freeSlotApplies(videoFreeFilms, storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC))}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}
@@ -9231,15 +9251,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <span className="h-1 w-10 rounded-full bg-app-border/25" />
           </div>
         )}
-        <div className={isDesktop
+        {/* The Image Create screen draws its own header in the sheet (tool name ▾ · ✕), so this one is NOT RENDERED there — not merely
+            hidden: a display:none ✕ is still the "first focusable" useDialogA11y tries to focus, and focus would never enter the sheet. */}
+        {!(imageCreate && !isDesktop) && !videoCreate && (
+        <div className={`${shootActive ? 'hidden ' : ''}${isDesktop
           ? 'flex h-14 shrink-0 items-center justify-between border-b border-app-border/10 pl-5 pr-2'
-          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}>
+          : 'flex shrink-0 items-center justify-between px-5 pb-1 pt-2 sm:pt-4'}`}>
           <h2 className="text-[14.5px] font-semibold text-app-text">{settingsWord}</h2>
           <button type="button" onClick={() => (isDesktop ? setPanelOpen(false) : setOptionsOpen(false))} aria-label={closeWord} title={closeWord}
             className="-mr-1 flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text">
             <X size={17} aria-hidden="true" />
           </button>
         </div>
+        )}
         <div className={isDesktop
           ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin]'
           : 'min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>

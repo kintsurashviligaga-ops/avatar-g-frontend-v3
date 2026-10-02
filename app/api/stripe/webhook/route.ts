@@ -377,7 +377,13 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
         }
         const userId = payer?.userId ?? null;
         if (userId) {
-          await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+          // ⚠️ A FAILED CREDIT MUST MAKE STRIPE REDELIVER. creditWalletGel returns null when the RPC failed; this used
+          // to log "credited" either way and mark the event processed — a paid top-up, never credited, never retried.
+          // The ref keeps the redelivery exactly-once.
+          const balance = await creditWalletGel(userId, amountGel, `stripe:${session.id}`);
+          if (balance === null) {
+            throw new RetryableWebhookError(`wallet top-up credit failed for ${session.id}`);
+          }
           console.info('[Stripe Webhook] wallet top-up credited', { userId, amountGel, sessionId: session.id, via: payer?.via });
           // PHASE 3 Task 3 — payment-success notification (service role; fail-open).
           try {
@@ -416,7 +422,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
           // migration-008 unique index). THROW so the event is NOT marked processed and Stripe retries: the retry
           // finds the committed grant via the idempotency check and no-ops, or finally succeeds after a transient
           // blip. Never leaves the customer "paid but no credits".
-          throw new Error('tier credit grant failed — signalling Stripe to retry');
+          // ⚠️ MUST be a RetryableWebhookError: a plain Error is answered 200 below, so Stripe never retried and the
+          // paid pack was never granted (the "known bug" docs/billing/TIERS.md recorded).
+          throw new RetryableWebhookError('tier credit grant failed — signalling Stripe to retry');
         }
         console.info('[Stripe Webhook] tier credits granted', { userId, credits, tier: session.metadata?.tier_id, sessionId: session.id });
         try {

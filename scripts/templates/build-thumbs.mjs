@@ -11,6 +11,11 @@
  * Offline and free: no provider, no network. sharp is used only if it resolves from node_modules (it is a
  * devDependency); nothing is installed.
  *
+ * After a build it refreshes the gallery's blur/version map (build-thumb-blur.mjs → lib/studio/templateThumbs.generated
+ * .ts) — a derived file like the JPEGs themselves, so a new picture never ships without its placeholder and its
+ * cache-busting version. Only for a build into a `…/templates` folder under a public/ root: the default, or `--out` +
+ * `--blur-out` together (a fixture).
+ *
  * Usage (from the repo root):
  *   node scripts/templates/build-thumbs.mjs
  *   node scripts/templates/build-thumbs.mjs --manifest <file> --out <dir> --templates <file>   # e.g. a fixture
@@ -19,7 +24,8 @@
  * Exit codes: 0 every selected take was built · 1 configuration error (no sharp, no manifest) · 2 a take failed.
  */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { buildBlurMap, formatBlurSummary } from './build-thumb-blur.mjs';
 
 export const THUMB_WIDTH = 600;
 export const THUMB_HEIGHT = 800;
@@ -31,12 +37,29 @@ const THUMB_LOOKAHEAD = 12;
 export function parseThumbArgs(argv, root = process.cwd()) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
   const manifest = resolve(root, arg('--manifest') ?? 'scripts/templates/manifest.json');
+  const out = resolve(root, arg('--out') ?? 'public/templates');
+  const blurOut = arg('--blur-out');
   return {
     manifest,
     work: resolve(root, arg('--work') ?? dirname(manifest)),
-    out: resolve(root, arg('--out') ?? 'public/templates'),
+    out,
     templates: resolve(root, arg('--templates') ?? 'lib/studio/templates.ts'),
+    // The Interior designer's and the Photographer's cards (their own files, so the hot templates.ts stays untouched): searched
+    // for the `thumb:` lines of `interior/…` and `photoshoot/…` takes, and scanned for the blur map.
+    extraTemplates: [resolve(root, 'lib/studio/templates.interior.ts'), resolve(root, 'lib/studio/templates.photoshoot.ts')],
+    // The real map only for the real folder: a fixture build (`--out` alone) must never rewrite the committed module.
+    blurOut: blurOut ? resolve(root, blurOut)
+      : out === resolve(root, 'public/templates') ? resolve(root, 'lib/studio/templateThumbs.generated.ts') : null,
   };
+}
+
+/**
+ * The blur map's options for a build, or null when there is none to refresh: the map's keys are site paths
+ * (`/templates/…`), so the thumbnails must land in a folder named `templates` whose parent is the public root.
+ */
+export function blurMapOptsFor(opts) {
+  if (!opts.blurOut || basename(opts.out) !== 'templates') return null;
+  return { publicDir: dirname(opts.out), templates: opts.templates, extraTemplates: opts.extraTemplates ?? [], out: opts.blurOut, check: false };
 }
 
 /** A path as the operator reads it: repo-relative inside the repo, absolute outside (a fixture in a temp dir). */
@@ -128,7 +151,18 @@ export async function buildThumbs(opts, sharp, log = console.log) {
       log(`✗ ${job.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  const changes = existsSync(opts.templates) ? thumbLineChanges(readFileSync(opts.templates, 'utf8'), built.map((b) => b.id)) : [];
+  const ids = built.map((b) => b.id);
+  const changes = existsSync(opts.templates) ? thumbLineChanges(readFileSync(opts.templates, 'utf8'), ids) : [];
+  // An id the main file has no card for may be a card in one of the extra files (interior/…, photoshoot/…).
+  for (const extra of opts.extraTemplates ?? []) {
+    if (!existsSync(extra)) continue;
+    const missing = changes.filter((c) => c.state === 'missing').map((c) => c.id);
+    if (!missing.length) break;
+    for (const c of thumbLineChanges(readFileSync(extra, 'utf8'), missing)) {
+      if (c.state === 'missing') continue;
+      Object.assign(changes.find((x) => x.id === c.id), { ...c, file: extra });
+    }
+  }
   return { built, refused, failed, changes };
 }
 
@@ -138,8 +172,9 @@ export function formatChanges(changes, templatesPath) {
   const out = [];
   const todo = changes.filter((c) => c.state === 'change');
   if (todo.length) out.push(`thumb: lines to change in ${where} (${todo.length}):`);
-  for (const c of todo) out.push(`${where}:${c.line}  ${c.id}`, `  - ${c.before.trim()}`, `  + ${c.after.trim()}`);
-  for (const c of changes.filter((x) => x.state === 'already')) out.push(`${where}:${c.line}  ${c.id} already points at ${publicThumbPath(c.id)}`);
+  const at = (c) => (c.file ? shown(c.file) : where);
+  for (const c of todo) out.push(`${at(c)}:${c.line}  ${c.id}`, `  - ${c.before.trim()}`, `  + ${c.after.trim()}`);
+  for (const c of changes.filter((x) => x.state === 'already')) out.push(`${at(c)}:${c.line}  ${c.id} already points at ${publicThumbPath(c.id)}`);
   for (const c of changes.filter((x) => x.state === 'missing')) out.push(`${c.id}: no card with a thumb: line found in ${where} — set it by hand`);
   return out;
 }
@@ -159,7 +194,10 @@ async function main() {
   if (!r.built.length && !r.failed.length) console.log('nothing selected yet — pick takes with `npm run art:templates -- --select <id>:<attempt> --output <n>`');
   for (const line of formatChanges(r.changes, opts.templates)) console.log(line);
   console.log(`built ${r.built.length} · skipped ${r.refused.length} · failed ${r.failed.length}`);
-  process.exit(r.failed.length || r.refused.length ? 2 : 0);
+  const blurOpts = blurMapOptsFor(opts);
+  const blur = blurOpts ? await buildBlurMap(blurOpts, sharp) : null;
+  if (blur) for (const line of formatBlurSummary(blur, blurOpts.out)) console.log(line);
+  process.exit(r.failed.length || r.refused.length || blur?.failed.length ? 2 : 0);
 }
 
 // Runs only as a script, never when a test imports the helpers above.

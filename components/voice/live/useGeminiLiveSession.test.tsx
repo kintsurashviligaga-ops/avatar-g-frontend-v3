@@ -603,6 +603,26 @@ test('actions: the mint asks for the declarations; the host answers each call by
   unmount();
 });
 
+// ─── Talk to a research report (lib/research/liveContext.ts) ───────────────────
+
+test('researchId: ONLY the id rides in the mint (the server loads the report for the owner); without it the field is absent', async () => {
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps, researchId: '22222222-2222-4222-8222-222222222222' });
+  expect(h.mintBodies[0]).toMatchObject({ researchId: '22222222-2222-4222-8222-222222222222', transcribe: true });
+  expect(JSON.stringify(h.mintBodies[0])).not.toMatch(/report/i);
+  unmount();
+  FakeSocket.all = [];
+  const h2 = harness();
+  const { unmount: u2 } = await connected({ deps: h2.deps });
+  expect(h2.mintBodies[0]).not.toHaveProperty('researchId');
+  u2();
+  FakeSocket.all = [];
+  const h3 = harness();
+  const { unmount: u3 } = await connected({ deps: h3.deps, researchId: '' });
+  expect(h3.mintBodies[0]).not.toHaveProperty('researchId');
+  u3();
+});
+
 test('without the opt-in nothing asks for actions; parity:false mints with tools:false (lock = the tool-less frame)', async () => {
   const h = harness();
   const { unmount } = await connected({ deps: h.deps, onToolCall: () => [] });

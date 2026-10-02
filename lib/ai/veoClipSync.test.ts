@@ -12,6 +12,7 @@
  * so the guard is priced by the same table the engine renders by. Fake timers drive the 5 s poll cadence.
  */
 import { costPerSecondUsd, resolveModel } from '../veo/capabilities';
+import { STUDIO_DEFAULT_VEO_TIER } from '../credits/videoPricing';
 import { renderVeoClipSync, veoCanRender } from './veoClipSync';
 
 const veoTransport = jest.fn();
@@ -134,7 +135,7 @@ describe('what Veo is asked to render', () => {
     await render({ ...ARGS, durationSec: 5, userId: 'u1' });
 
     expect(guardedCall).toHaveBeenCalledTimes(1);
-    const model = resolveModel('gemini', 'standard');
+    const model = resolveModel('gemini', STUDIO_DEFAULT_VEO_TIER);
     // 5 s snaps UP to 6 s (720p — above 720p needs an 8 s clip); the budget never under-counts.
     expect(guardOpts()).toEqual(expect.objectContaining({ service: 'video', model, units: 6, userId: 'u1' }));
     expect(guardOpts().unitCostUsd).toBeCloseTo(costPerSecondUsd(model, '720p', true, 'gemini'));
@@ -148,6 +149,7 @@ describe('what Veo is asked to render', () => {
         generateAudio: true,
         startImage: { kind: 'url', url: ARGS.startImage },
       },
+      tier: STUDIO_DEFAULT_VEO_TIER, // the tier the guard priced — never the engine's dearer default
       sessionId: 'product-ad/u1',
       ordinal: 0,
     });
@@ -184,7 +186,7 @@ describe('delivery', () => {
     expect(downloadGeminiVideo).not.toHaveBeenCalled();
     expect(stripBottomWatermark).not.toHaveBeenCalled();
     // The Vertex price, not the Gemini one.
-    const model = resolveModel('vertex', 'standard');
+    const model = resolveModel('vertex', STUDIO_DEFAULT_VEO_TIER);
     expect(guardOpts().model).toBe(model);
     expect(guardOpts().unitCostUsd).toBeCloseTo(costPerSecondUsd(model, '1080p', true, 'vertex'));
   });

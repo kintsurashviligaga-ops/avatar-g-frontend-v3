@@ -76,7 +76,7 @@ export async function GET(_request: NextRequest) {
   } catch (error) {
     console.error('[Connect] Error fetching status:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch status' },
+      { error: 'Failed to fetch status' },
       { status: 500 }
     );
   }

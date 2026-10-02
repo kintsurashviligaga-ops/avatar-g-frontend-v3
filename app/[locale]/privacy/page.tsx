@@ -1,19 +1,19 @@
 import Link from 'next/link';
 import { LegalDocChrome } from '@/components/legal/LegalDocChrome';
 import type { Metadata } from 'next';
-import { localeAlternates } from '@/lib/seo/hreflang';
+import { pageMetadata, seoLang } from '@/lib/seo/metadata';
 
-// Iteration 2 — DISTINCT localized title (was inheriting the homepage title) + per-route hreflang/self-canonical.
+// Its own title, description, self-canonical/hreflang and share card (lib/seo/metadata.ts).
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
-  const { locale } = await params;
-  const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-  return { title: copy[lang].title, alternates: localeAlternates(locale, '/privacy') };
+  const lang = seoLang((await params).locale);
+  return pageMetadata({ locale: lang, path: '/privacy', title: copy[lang].title, description: copy[lang].description });
 }
 
 type Lang = 'ka' | 'en' | 'ru';
 
 const copy: Record<Lang, {
   title: string;
+  description: string;
   effective: string;
   back: string;
   controller: { title: string; body: string };
@@ -28,6 +28,7 @@ const copy: Record<Lang, {
 }> = {
   ka: {
     title: 'კონფიდენციალურობის პოლიტიკა',
+    description: 'როგორ აგროვებს, იყენებს და იცავს MyAvatar თქვენს მონაცემებს: რას ვაგროვებთ და რატომ, ვის ვუზიარებთ, რამდენ ხანს ვინახავთ და რა უფლებები გაქვთ.',
     effective: 'მოქმედებს: 2026 წლის 18 მაისიდან',
     back: '← მთავარზე დაბრუნება',
     controller: {
@@ -99,6 +100,7 @@ const copy: Record<Lang, {
   },
   en: {
     title: 'Privacy Policy',
+    description: 'How MyAvatar collects, uses and protects your data: what we collect and why, who we share it with, how long we keep it and the rights you have.',
     effective: 'Effective: May 18, 2026',
     back: '← Back home',
     controller: {
@@ -170,6 +172,7 @@ const copy: Record<Lang, {
   },
   ru: {
     title: 'Политика конфиденциальности',
+    description: 'Как MyAvatar собирает, использует и защищает ваши данные: что мы собираем и зачем, кому передаём, как долго храним и какие у вас есть права.',
     effective: 'Действует с 18 мая 2026 г.',
     back: '← Назад на главную',
     controller: {

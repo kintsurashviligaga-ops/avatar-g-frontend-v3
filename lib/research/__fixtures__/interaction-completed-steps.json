@@ -1,0 +1,58 @@
+{
+  "id": "v1_ChdkZWVwLXJlc2VhcmNoLWZpeHR1cmU",
+  "agent": "deep-research-preview-04-2026",
+  "object": "interaction",
+  "status": "completed",
+  "created": "2026-10-02T09:00:00Z",
+  "updated": "2026-10-02T09:19:12Z",
+  "steps": [
+    {
+      "type": "thought",
+      "summary": [{ "type": "text", "text": "**Planning**\n\nI will compare the three largest destination markets." }]
+    },
+    {
+      "type": "google_search_call",
+      "id": "call_1",
+      "arguments": { "queries": ["georgian wine export volumes 2025", "wine export destinations national wine agency"] }
+    },
+    { "type": "google_search_result", "call_id": "call_1", "result": [{ "search_suggestions": "<div>...</div>" }] },
+    {
+      "type": "model_output",
+      "content": [
+        { "type": "text", "text": "I have gathered the sources and will now write the report." }
+      ]
+    },
+    {
+      "type": "thought",
+      "summary": [{ "type": "text", "text": "**Writing the report**\n\nStructure: summary, market table, risks, sources." }]
+    },
+    {
+      "type": "model_output",
+      "content": [
+        {
+          "type": "text",
+          "text": "# Georgian wine exports: market analysis\n\n## Key findings\n\n- Exports are concentrated in three markets.\n- Premium qvevri wines grew faster than the category.\n\n## Market table\n\n| Market | Share | Trend |\n| --- | --- | --- |\n| Market A | 41% | up |\n| Market B | 22% | flat |\n| Market C | 9% | up |\n\n## Risks\n\nDependence on one market is the main exposure.\n\n## Sources\n\n1. National Wine Agency statistics\n2. Customs service release\n",
+          "annotations": [
+            { "type": "url_citation", "url": "https://www.example-wine-agency.org/statistics/2025", "title": "Export statistics 2025", "start_index": 40, "end_index": 120 },
+            { "type": "url_citation", "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbCdEf123", "title": "customs.example.org", "start_index": 121, "end_index": 200 },
+            { "type": "url_citation", "url": "https://www.example-wine-agency.org/statistics/2025#table-2", "title": "Export statistics 2025 (table 2)", "start_index": 201, "end_index": 260 },
+            { "type": "url_citation", "url": "javascript:alert(1)", "title": "bad", "start_index": 1, "end_index": 2 },
+            { "type": "url_citation", "url": "https://news.example.com/qvevri-premium", "title": "  Qvevri wines   climb  ", "start_index": 261, "end_index": 300 },
+            { "type": "file_citation", "document_uri": "https://files.example.com/brief.pdf", "file_name": "brief.pdf", "page_number": 3 },
+            { "type": "place_citation", "name": "Wine cellar", "url": "https://maps.example.com/p/123" }
+          ]
+        },
+        { "type": "image", "data": "iVBORw0KGgo=" }
+      ]
+    }
+  ],
+  "usage": {
+    "total_input_tokens": 251234,
+    "total_cached_tokens": 150000,
+    "total_output_tokens": 59876,
+    "total_thought_tokens": 4100,
+    "total_tool_use_tokens": 1200,
+    "total_tokens": 316410,
+    "grounding_tool_count": [{ "type": "google_search", "count": 81 }]
+  }
+}

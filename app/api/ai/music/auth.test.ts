@@ -43,6 +43,7 @@ jest.mock('../../../../lib/orchestrator/idempotency', () => ({
   hashPayload: jest.fn(async () => 'hash'),
 }));
 jest.mock('../../../../lib/orchestrator/ledger', () => ({
+  debitExistsForRef: jest.fn(async () => false),
   deductCredits: jest.fn(async () => ({ ok: true })),
   refundCredits: jest.fn(async () => ({ ok: true })),
 }));

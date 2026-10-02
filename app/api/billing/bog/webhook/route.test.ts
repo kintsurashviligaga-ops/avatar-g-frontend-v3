@@ -1,169 +1,116 @@
 /** @jest-environment node */
 /**
- * Route-level regression tests for the BOG webhook — lock the fixes from the adversarial review:
- *  • signature is REQUIRED to credit (no IP-only bypass);
- *  • the idempotency ref is keyed on our own shop_order_id, IDENTICAL across callback envelope shapes
- *    (the double-credit hole);
- *  • a callback amount/currency mismatch refuses to credit;
- *  • an unmapped or unconfigured callback never credits.
+ * POST /api/billing/bog/webhook — nothing is read, let alone settled, without BOG's signature over the raw body.
+ * Real RSA keys (a test pair passed as BOG_CALLBACK_PUBLIC_KEY); the settlement engine is mocked — it has its own
+ * suite (lib/billing/bogSettlement.test.ts).
  */
 jest.mock('server-only', () => ({}));
 
-import { generateKeyPairSync, createSign } from 'node:crypto';
+import { createSign, generateKeyPairSync } from 'node:crypto';
 
-// NB: jest.mock factories may only reference `mock`-prefixed outer vars (babel-jest hoist allowlist),
-// and use RELATIVE paths (matching lib/billing/wallet-ledger.test.ts — `@/` isn't mapped for jest.mock).
-const mockCreditWalletGel = jest.fn();
-jest.mock('../../../../../lib/billing/wallet-ledger', () => ({
-  creditWalletGel: (...args: unknown[]) => mockCreditWalletGel(...args),
+const mockLoad = jest.fn();
+const mockSettle = jest.fn();
+jest.mock('../../../../../lib/billing/bogSettlement', () => ({
+  loadBogOrder: (...a: unknown[]) => mockLoad(...a),
+  settleBogOrder: (...a: unknown[]) => mockSettle(...a),
 }));
-
-const mockState: { orderRow: Record<string, unknown> | null; updates: Array<{ patch: Record<string, unknown>; id: string }> } = {
-  orderRow: null,
-  updates: [],
-};
-jest.mock('../../../../../lib/supabase/server', () => ({
-  createServiceRoleClient: () => ({
-    from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: mockState.orderRow, error: null }) }) }),
-      update: (patch: Record<string, unknown>) => ({
-        eq: (_col: string, id: string) => {
-          mockState.updates.push({ patch, id });
-          return Promise.resolve({ error: null });
-        },
-      }),
-    }),
-  }),
-}));
+jest.mock('../../../../../lib/supabase/server', () => ({ createServiceRoleClient: () => ({ from: jest.fn() }) }));
+jest.mock('../../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
 import { POST } from './route';
 
 const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const PUB_PEM = publicKey.export({ type: 'spki', format: 'pem' }).toString();
-
-function sign(body: string): string {
+const PUB = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+const sign = (body: string) => {
   const s = createSign('RSA-SHA256');
   s.update(body, 'utf8');
   s.end();
   return s.sign(privateKey, 'base64');
-}
-
-function fakeReq(body: string, headers: Record<string, string> = {}) {
+};
+const ENV = { ...process.env };
+const BODY = JSON.stringify({
+  event: 'order_payment',
+  zoned_request_time: '2026-10-02T10:00:00.000000Z',
+  body: {
+    order_id: 'bog-1',
+    external_order_id: 'myavatar-topup-0123456789abcdef',
+    order_status: { key: 'completed' },
+    purchase_units: { request_amount: '20.0', transfer_amount: '20.0', currency_code: 'GEL' },
+    payment_detail: { transfer_method: { key: 'card' }, payer_identifier: '548888xxxxxx9893', code: '100' },
+  },
+});
+const req = (body: string, headers: Record<string, string> = {}) => {
   const h = new Map(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
   return { text: async () => body, headers: { get: (k: string) => h.get(k.toLowerCase()) ?? null } } as never;
-}
-
-async function callWebhook(body: string, headers: Record<string, string> = {}) {
-  const res = await POST(fakeReq(body, headers));
+};
+const call = async (body: string, headers: Record<string, string> = {}) => {
+  const res = await POST(req(body, headers));
   return { status: res.status, json: (await res.json()) as Record<string, unknown> };
-}
-
-const APPROVED = (extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ order_id: 'BOG_1', shop_order_id: 'shop_uuid_1', order_status: { key: 'completed' }, ...extra });
-
-beforeAll(() => {
-  process.env.BOG_CLIENT_ID = 'c';
-  process.env.BOG_SECRET_KEY = 's';
-  process.env.BOG_CALLBACK_PUBLIC_KEY = PUB_PEM;
-});
+};
+const ORDER = { shop_order_id: 'myavatar-topup-0123456789abcdef', bog_order_id: 'bog-1', user_id: 'u1', amount_gel: 20, status: 'pending', kind: 'topup' };
 
 beforeEach(() => {
-  mockCreditWalletGel.mockReset().mockResolvedValue(99);
-  mockState.updates.length = 0;
-  mockState.orderRow = { shop_order_id: 'shop_uuid_1', user_id: 'user_1', amount_gel: 10, status: 'pending' };
+  jest.clearAllMocks();
+  process.env = { ...ENV, BOG_CLIENT_ID: 'c', BOG_SECRET_KEY: 's', BOG_CALLBACK_PUBLIC_KEY: PUB };
+  delete process.env.BOG_CALLBACK_IP_ALLOWLIST;
+  mockLoad.mockResolvedValue(ORDER);
+  mockSettle.mockResolvedValue({ status: 'completed', granted: true, kind: 'topup', credits: 200, tier: null, periodEnd: null, autoRenew: null });
+  jest.spyOn(console, 'info').mockImplementation(() => undefined);
+  jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => {
+  process.env = { ...ENV };
+  jest.restoreAllMocks();
 });
 
-describe('auth', () => {
-  it('401s a callback with no signature (never IP-only) and credits nothing', async () => {
-    const r = await callWebhook(APPROVED());
-    expect(r.status).toBe(401);
-    expect(r.json.reason).toBe('signature');
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-  });
-
-  it('401s a wrong-key signature', async () => {
-    const other = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
-    const body = APPROVED();
-    const s = createSign('RSA-SHA256'); s.update(body); s.end();
-    const r = await callWebhook(body, { 'Callback-Signature': s.sign(other, 'base64') });
-    expect(r.status).toBe(401);
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-  });
-
-  it('401s when no public key is configured (no credit on an unverifiable callback)', async () => {
-    const saved = process.env.BOG_CALLBACK_PUBLIC_KEY;
-    delete process.env.BOG_CALLBACK_PUBLIC_KEY;
-    const body = APPROVED();
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(401);
-    expect(r.json.error).toBe('callback_auth_not_configured');
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-    process.env.BOG_CALLBACK_PUBLIC_KEY = saved;
-  });
+test('503 when BOG is not configured', async () => {
+  delete process.env.BOG_CLIENT_ID;
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY) })).status).toBe(503);
 });
 
-describe('credit', () => {
-  it('credits exactly once on a signed APPROVED callback, ref keyed on shop_order_id', async () => {
-    const body = APPROVED({ purchase_units: { transferred_amount: '10.00', currency_code: 'GEL' } });
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ credited: true, status: 'APPROVED' });
-    expect(mockCreditWalletGel).toHaveBeenCalledTimes(1);
-    expect(mockCreditWalletGel).toHaveBeenCalledWith('user_1', 10, 'bog:shop_uuid_1');
-  });
+test('unsigned, wrongly signed or tampered → 401 and nothing is looked up', async () => {
+  expect((await call(BODY)).status).toBe(401);
+  expect((await call(BODY, { 'Callback-Signature': 'AAAA' })).status).toBe(401);
+  expect((await call(BODY.replace('20.0', '2000.0'), { 'Callback-Signature': sign(BODY) })).status).toBe(401);
+  expect(mockLoad).not.toHaveBeenCalled();
+  expect(mockSettle).not.toHaveBeenCalled();
+});
 
-  it('REGRESSION: a credit that did NOT land is not reported as paid — 5xx so BOG re-delivers', async () => {
-    // From 2026-08-02 creditWalletGel returned null on every call (ambiguous RPC overload). The route marked
-    // the order `paid` and answered `credited: true` anyway, so the customer paid and got nothing, forever.
-    mockCreditWalletGel.mockResolvedValue(null);
-    const body = APPROVED({ purchase_units: { transferred_amount: '10.00', currency_code: 'GEL' } });
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(500);
-    expect(r.json).toMatchObject({ credited: false, reason: 'credit_failed' });
-    expect(mockState.updates.filter((u) => u.patch.status === 'paid')).toHaveLength(0);
-  });
+test('the published BOG key is used when no override is set — a callback signed by anyone else is refused', async () => {
+  delete process.env.BOG_CALLBACK_PUBLIC_KEY;
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY) })).status).toBe(401);
+});
 
-  it('REGRESSION: same order in two DIFFERENT envelopes yields the SAME ref (no double-credit window)', async () => {
-    // Delivery A carries order_id; delivery B carries ONLY shop_order_id. Pre-fix these produced
-    // bog:BOG_1 vs bog:shop_uuid_1 → the ref PK failed to dedupe. Now both must be bog:shop_uuid_1.
-    const bodyA = JSON.stringify({ order_id: 'BOG_1', shop_order_id: 'shop_uuid_1', order_status: { key: 'approved' } });
-    const bodyB = JSON.stringify({ shop_order_id: 'shop_uuid_1', status: 'completed' });
-    await callWebhook(bodyA, { 'Callback-Signature': sign(bodyA) });
-    await callWebhook(bodyB, { 'Callback-Signature': sign(bodyB) });
-    expect(mockCreditWalletGel).toHaveBeenCalledTimes(2);
-    const refs = mockCreditWalletGel.mock.calls.map((c) => c[2]);
-    expect(refs).toEqual(['bog:shop_uuid_1', 'bog:shop_uuid_1']); // identical → wallet_topups.ref dedupes
-  });
+test('signed → the order is found by our id / BOG’s id and settled', async () => {
+  const r = await call(BODY, { 'Callback-Signature': sign(BODY) });
+  expect(r).toEqual({ status: 200, json: { received: true, status: 'completed' } });
+  expect(mockLoad).toHaveBeenCalledWith(expect.anything(), { shopOrderId: 'myavatar-topup-0123456789abcdef', bogOrderId: 'bog-1' });
+  const [, order, receipt] = mockSettle.mock.calls[0];
+  expect(order).toBe(ORDER);
+  expect(receipt).toMatchObject({ orderId: 'bog-1', state: 'completed', requestAmount: 20, currency: 'GEL' });
+});
 
-  it('refuses to credit when the callback amount mismatches the recorded order', async () => {
-    const body = APPROVED({ purchase_units: { transferred_amount: '5.00', currency_code: 'GEL' } });
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ credited: false, reason: 'amount_mismatch' });
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-    expect(mockState.updates.some((u) => u.patch.status === 'amount_mismatch')).toBe(true);
-  });
+test('a signed callback for an order we never created is acknowledged and ignored', async () => {
+  mockLoad.mockResolvedValueOnce(null);
+  const r = await call(BODY, { 'Callback-Signature': sign(BODY) });
+  expect(r).toEqual({ status: 200, json: { received: true, ignored: 'unknown_order' } });
+  expect(mockSettle).not.toHaveBeenCalled();
+});
 
-  it('refuses to credit a non-GEL currency', async () => {
-    const body = APPROVED({ purchase_units: { transferred_amount: '10.00', currency_code: 'USD' } });
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.json).toMatchObject({ credited: false, reason: 'amount_mismatch' });
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-  });
+test('a settlement failure answers 500 (logged; the cron reconciles — BOG does not retry)', async () => {
+  mockSettle.mockResolvedValueOnce({ status: 'error', reason: 'fulfill_failed' });
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY) })).status).toBe(500);
+});
 
-  it('404s (no credit) when there is no order mapping', async () => {
-    mockState.orderRow = null;
-    const body = APPROVED();
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(404);
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-  });
+test('the optional IP allowlist is an extra gate on top of the signature', async () => {
+  process.env.BOG_CALLBACK_IP_ALLOWLIST = '1.2.3.4';
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY), 'x-forwarded-for': '9.9.9.9' })).status).toBe(401);
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY), 'x-forwarded-for': '1.2.3.4' })).status).toBe(200);
+});
 
-  it('acknowledges a REJECTED callback without crediting', async () => {
-    const body = JSON.stringify({ order_id: 'BOG_1', shop_order_id: 'shop_uuid_1', order_status: { key: 'rejected' } });
-    const r = await callWebhook(body, { 'Callback-Signature': sign(body) });
-    expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ credited: false, status: 'REJECTED' });
-    expect(mockCreditWalletGel).not.toHaveBeenCalled();
-  });
+test('another event type is acknowledged without settling', async () => {
+  const other = BODY.replace('order_payment', 'something_else');
+  expect((await call(other, { 'Callback-Signature': sign(other) })).json).toEqual({ received: true, ignored: 'event' });
+  expect(mockSettle).not.toHaveBeenCalled();
 });

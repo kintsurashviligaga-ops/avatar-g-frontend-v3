@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
+import { isAdmin } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,20 +30,11 @@ function json(payload: Record<string, unknown>, status = 200): NextResponse {
 }
 
 export async function GET(req: Request) {
-  const expectedAdminKey = normalize(process.env.ADMIN_KEY);
-  if (expectedAdminKey) {
-    const url = new URL(req.url);
-    const providedHeader = normalize(req.headers.get('x-admin-key'));
-    const providedQuery = normalize(url.searchParams.get('key'));
-    const provided = providedHeader || providedQuery;
-
-    if (!provided) {
-      return json({ ok: false, error: 'Unauthorized' }, 401);
-    }
-
-    if (provided !== expectedAdminKey) {
-      return json({ ok: false, error: 'Forbidden' }, 403);
-    }
+  // ⚠️ FAIL CLOSED, HEADER ONLY. With ADMIN_KEY unset this used to skip the check entirely and show anyone the bot's
+  // webhook URL and last delivery error; it also took the key as `?key=` (a URL lands in logs). Now: the `x-admin-key`
+  // header (constant-time) or a signed-in admin — and an unset ADMIN_KEY matches nothing.
+  if (!adminKeyHeaderMatches(req) && !(await isAdmin().catch(() => false))) {
+    return json({ ok: false, error: 'Unauthorized' }, 401);
   }
 
   const token = normalize(process.env.TELEGRAM_BOT_TOKEN);

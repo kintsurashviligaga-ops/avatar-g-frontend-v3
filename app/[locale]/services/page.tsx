@@ -8,6 +8,7 @@ import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceItemListSchema } from '@/lib/seo/schema';
 import { localeAlternates } from '@/lib/seo/hreflang';
+import { OG_IMAGE } from '@/lib/seo/metadata';
 import { getLocalizedMeta } from '@/lib/services/metadata';
 
 // The 14 canonical AI service landing pages (matches app/sitemap.ts) — for the ItemList structured data.
@@ -78,9 +79,9 @@ export async function generateMetadata({ params }: ServicesPageProps): Promise<M
       url: canonical,
       siteName: 'MyAvatar',
       locale: SERVICES_OG_LOCALE[locale] ?? 'en_US',
-      images: [{ url: '/og-image.png', width: 1200, height: 630, alt: m.title }],
+      images: [{ ...OG_IMAGE, alt: m.title }],
     },
-    twitter: { card: 'summary_large_image', title: m.title, description: m.description, images: ['/og-image.png'] },
+    twitter: { card: 'summary_large_image', title: m.title, description: m.description, images: [OG_IMAGE.url] },
   };
 }
 

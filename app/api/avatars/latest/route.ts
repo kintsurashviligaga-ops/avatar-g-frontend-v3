@@ -1,15 +1,17 @@
 /**
  * GET /api/avatars/latest
- * Fetch the latest avatar for a user (authenticated or anonymous)
- * 
- * Query params:
- * - owner_id: Required. User ID (auth) or anonymous UUID
+ * Fetch the latest avatar of the SIGNED-IN user.
+ *
+ * ⚠️ IDOR: this read ANY user's latest avatar row (`select *`, through the service-role client) for whatever
+ * `owner_id` the query named, with no session at all. Now the owner is the verified session user; a query
+ * `owner_id` naming someone else is refused, and a signed-out caller gets `{ avatar: null }`.
  */
 
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { apiSuccess } from '@/lib/api/response';
+import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +20,20 @@ export async function GET(request: NextRequest) {
     const rateLimitError = await checkRateLimit(request, RATE_LIMITS.READ);
     if (rateLimitError) return rateLimitError;
 
-    const { searchParams } = new URL(request.url);
-    const ownerId = searchParams?.get?.('owner_id');
-    if (!ownerId) {
-      return apiSuccess({ avatar: null });
+    let sessionUserId: string | null = null;
+    try {
+      sessionUserId = (await authedClientFromRequest(request)).user?.id ?? null;
+    } catch {
+      sessionUserId = null;
     }
+    if (!sessionUserId) return apiSuccess({ avatar: null });
+
+    const { searchParams } = new URL(request.url);
+    const requested = searchParams?.get?.('owner_id');
+    if (requested && requested !== sessionUserId) {
+      return apiError(new Error('Forbidden'), 403, 'Access denied');
+    }
+    const ownerId = sessionUserId;
 
     // Get Supabase service role client (server-side only)
     const supabase = createClient(

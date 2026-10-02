@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Connect] Error creating account:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create account' },
+      { error: 'Failed to create account' },
       { status: 500 }
     );
   }

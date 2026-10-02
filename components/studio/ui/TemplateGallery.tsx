@@ -19,10 +19,29 @@
  * word ("კინო რ…"). Every card is 3:4 with its label on a scrim, so mixed thumbnails and no-image tiles
  * (the template's palette as a gradient) line up as one grid. Motion is opacity/transform only and stops under
  * prefers-reduced-motion.
+ *
+ * Pictures (lib/studio/templateThumbs): a shipped thumbnail goes through next/image — `fill` inside the card's own 3:4
+ * box, so the picture never takes part in layout — sized by TEMPLATE_CARD_SIZES, with its real ≤ 16 px blur and a
+ * content-versioned URL. The palette is painted under EVERY card, so a picture still loading (or failing) shows the
+ * tile, never a hole. ⚠️ A REMOTE thumb (the „My twin" signed URL) stays a plain <img>: see templateThumbs.ts.
  */
+import Image from 'next/image';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Check, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { templateThumb } from '@/lib/studio/templateThumbs';
+
+/**
+ * The rendered width of one card, for next/image's `sizes` (two columns, gap-2). The gallery only ever lives in the
+ * settings: the right panel from `lg` (300 px, 340 px from `xl`, px-4 → 130 / 150 px cards at most), the sheet below it
+ * (440 px max from `sm`, px-3 → ≤ 205 px; full width on a phone → ≤ 50vw − 16 px). Each is the widest of the panels'
+ * two layouts (the image and video galleries sit in an extra p-3.5 box, so theirs are a little narrower).
+ * ⚠️ `calc(50vw …)`, not a bare `50vw`: next/image drops every srcset width under 0.5 × 640 = 320 px for a bare 50vw,
+ * which would force a 384 px file onto a 130 px desktop card.
+ */
+export const TEMPLATE_CARD_SIZES = '(min-width: 1280px) 150px, (min-width: 1024px) 130px, (min-width: 640px) 205px, calc(50vw - 16px)';
+/** Two columns: the first row is within the first screen of its panel whenever a gallery mounts (checked at 375 px). */
+const FIRST_ROW = 2;
 
 export interface TemplateCardItem {
   id: string;
@@ -42,6 +61,18 @@ export interface TemplateCardItem {
    * never hidden.
    */
   adds?: string;
+}
+
+/**
+ * A small fixed-size picture of a card's thumbnail — the lipsync panel's 48 px „chosen" face. Same rule as the cards: a
+ * shipped file goes through next/image (a 48/96 px face instead of the 1024² original, ~650 KB, now that the gallery no
+ * longer pre-loads it), anything else — an upload's data: URL, the twin's signed URL — stays a plain <img>.
+ */
+export function TemplateThumbImage({ src, size, className }: { src: string; size: number; className?: string }) {
+  const pic = templateThumb(src);
+  if (pic?.kind === 'static') return <Image src={pic.src} alt="" width={size} height={size} className={className} />;
+  // eslint-disable-next-line @next/next/no-img-element -- an upload's data: URL or a private signed URL (templateThumbs.ts)
+  return <img src={src} alt="" loading="lazy" decoding="async" className={className} />;
 }
 
 /** `#RRGGBB` → `rgba(r, g, b, a)`. (An 8-digit hex is valid CSS, but some parsers — jsdom among them — drop the whole
@@ -67,10 +98,14 @@ export function TemplateGallery({
       <p className="mb-2 text-[12.5px] font-semibold text-app-text">{label}</p>
       <div role="radiogroup" aria-label={typeof label === 'string' ? label : undefined}
         className="grid grid-cols-2 gap-2">
-        {items.map((t) => {
+        {items.map((t, i) => {
           const on = activeId === t.id;
           const Icon = t.Icon;
           const description = t.adds ? `${t.hint}. ${t.adds}` : t.hint;
+          const pic = templateThumb(t.thumb);
+          // The gallery never renders on the first paint (it mounts when a tool's settings open), but when it does its
+          // first row is on that first screen — the one place `priority` (eager + fetchpriority=high) earns its keep.
+          const firstRow = i < FIRST_ROW;
           return (
             <motion.button
               key={t.id}
@@ -86,11 +121,17 @@ export function TemplateGallery({
               whileTap={reduce ? undefined : { scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 420, damping: 30 }}
               className={`group relative aspect-[3/4] min-h-[132px] w-full overflow-hidden rounded-2xl text-left outline-none ring-1 transition-shadow focus-visible:ring-2 focus-visible:ring-app-accent ${on ? 'ring-2 ring-app-accent shadow-[0_0_0_4px_rgb(var(--app-accent)/0.15)]' : 'ring-app-border/10 hover:ring-app-border/25'}`}
-              style={t.thumb ? undefined : { backgroundImage: `radial-gradient(120% 90% at 85% 10%, ${withAlpha(t.palette[1], 0.33)} 0%, transparent 55%), linear-gradient(160deg, ${t.palette[0]} 0%, #000 100%)` }}
+              style={{ backgroundImage: `radial-gradient(120% 90% at 85% 10%, ${withAlpha(t.palette[1], 0.33)} 0%, transparent 55%), linear-gradient(160deg, ${t.palette[0]} 0%, #000 100%)` }}
             >
-              {t.thumb ? (
-                // eslint-disable-next-line @next/next/no-img-element -- static 600×800 card art; next/image's wrapper fights the aspect box
-                <img src={t.thumb} alt="" loading="lazy" decoding="async" draggable={false}
+              {pic?.kind === 'static' ? (
+                // objectFit in `style`, not only the class: next/image reads it to crop the blur the way the picture is.
+                <Image src={pic.src} alt="" fill sizes={TEMPLATE_CARD_SIZES} priority={firstRow} draggable={false}
+                  {...(pic.blurDataURL ? { placeholder: 'blur' as const, blurDataURL: pic.blurDataURL } : {})}
+                  style={{ objectFit: 'cover' }}
+                  className="transition-transform duration-500 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100" />
+              ) : pic?.kind === 'remote' ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a private, expiring URL must not be cached by the optimizer (templateThumbs.ts)
+                <img src={pic.src} alt="" loading={firstRow ? 'eager' : 'lazy'} decoding="async" draggable={false}
                   className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04] motion-reduce:transition-none motion-reduce:group-hover:scale-100" />
               ) : (
                 Icon && <Icon aria-hidden="true" strokeWidth={1.25} className="absolute right-3 top-3 h-9 w-9" style={{ color: t.palette[1], opacity: 0.55 }} />
@@ -115,5 +156,3 @@ export function TemplateGallery({
     </div>
   );
 }
-
-export default TemplateGallery;

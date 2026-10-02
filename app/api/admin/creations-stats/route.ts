@@ -7,11 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { effectiveAdminAllowlist } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const ADMIN_EMAILS = ['kintsurashviligaga@gmail.com', 'kintsurashviligaga-ops@gmail.com'];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
@@ -20,7 +19,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Unauthenticated' }, { status: 401 });
     }
 
-    const isAdmin = ADMIN_EMAILS.includes(user.email ?? '');
+    // ⚠️ THE IMPORTED ALLOWLIST, NOT A LOCAL COPY. This route kept its own two-address list — the drift lib/auth/adminGuard
+    // warns about (an admin granted from the panel or via ADMIN_EMAILS was a stranger here). One list decides admin.
+    const email = (user.email ?? '').trim().toLowerCase();
+    const isAdmin = !!email && (await effectiveAdminAllowlist()).includes(email);
     // ⚠️ THE SECOND HALF OF THIS GATE WAS A FALLBACK TO `profiles.role`, A COLUMN THAT DOES NOT EXIST.
     // The select errored, `profile` came back null, and the branch always denied — so the allowlist was
     // doing all the work and the fallback was dead weight. Removed rather than repaired: a role flag on

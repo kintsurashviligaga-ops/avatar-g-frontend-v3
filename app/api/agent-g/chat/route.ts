@@ -5,7 +5,11 @@ import {
   type AgentGLocale,
 } from '@/lib/agentg/personality';
 import { readAgentGMemory, writeAgentGMemory } from '@/lib/agentg/memory';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { isAnonymousUser, anonymousGenerationAllowed } from '@/lib/auth/generationGate';
+import { spendGuestTurn, guestRefusalMessage } from '@/lib/chat/guestAllowance';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +61,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const locale = resolveLocale(parsed.data.locale);
+
+    // ⚠️ WHO IS ASKING DECIDES WHAT IT COSTS. This route answered every caller on the platform's model keys with only a
+    // per-IP-per-minute limit — a signed-out visitor of /services/* (ServiceChatLayout) got unlimited turns, around the
+    // guest policy /api/chat/gemini enforces. Now:
+    //   · Agent G's own server-to-server dispatch (/api/agent-g/delegate, holding AGENT_G_INTERNAL_SECRET) — already
+    //     authorised upstream, not capped again here;
+    //   · a signed-in account — the per-ACCOUNT daily chat cap (CHAT_USER, shared with the product chat);
+    //   · a guest — ONE turn from the shared guest allowance (lib/chat/guestAllowance), answered with a sign-in offer
+    //     once it is spent. Validation ran first, so a malformed body never spends an allowance.
+    const internal = secretMatches(request.headers.get('x-agent-g-secret'), process.env.AGENT_G_INTERNAL_SECRET);
+    if (!internal) {
+      let accountId: string | null = null;
+      try {
+        accountId = (await authedClientFromRequest(request)).user?.id ?? null;
+      } catch {
+        accountId = null; // an auth outage reads as "no session" — fail closed into the guest policy
+      }
+      if (!isAnonymousUser(accountId) && accountId) {
+        const capped = await checkRateLimitByKey(accountId, RATE_LIMITS.CHAT_USER);
+        if (capped) return capped;
+      } else if (!anonymousGenerationAllowed()) {
+        const turn = await spendGuestTurn(request);
+        if (turn !== 'ok') {
+          return NextResponse.json(
+            { reply: guestRefusalMessage(turn, locale), tone: 'neutral', meta: { authRequired: true, code: 'auth_required' } },
+            { status: 200, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
+      }
+    }
+
     const memoryUserId = parsed.data.sessionId?.trim() ? `web:${parsed.data.sessionId.trim()}` : undefined;
 
     const memory = await readAgentGMemory({

@@ -8,7 +8,7 @@ describe('studio tools', () => {
   it('chat first (the hub), video leading the generators, and every service the studio had is still here', () => {
     expect(PRIMARY_TOOLS[0]).toBe('chat');
     expect(PRIMARY_TOOLS[1]).toBe('video');
-    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'model3d', 'montage', 'motion', 'music', 'photo', 'presentation', 'product', 'remix', 'swap', 'video'].sort());
+    expect([...ALL_TOOLS].sort()).toEqual(['avatar', 'chat', 'dubbing', 'image', 'interior', 'model3d', 'montage', 'motion', 'music', 'photo', 'photoshoot', 'presentation', 'product', 'remix', 'swap', 'vfx', 'video'].sort());
     expect(new Set(ALL_TOOLS).size).toBe(PRIMARY_TOOLS.length + MORE_TOOLS.length); // no tool in both lists
   });
 
@@ -23,6 +23,15 @@ describe('studio tools', () => {
     expect(toolName('video', 'de')).toBe('ვიდეო'); // an unshipped locale falls back to Georgian
   });
 
+  it('VFX sits one level down beside the other video variants, in all three languages, and its line promises nothing that is not open', () => {
+    expect(MORE_TOOLS).toContain('vfx');
+    expect(PRIMARY_TOOLS).not.toContain('vfx');
+    expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('swap') + 1); // next to product ad and character swap, the other video tabs
+    expect(isToolId('vfx')).toBe(true);
+    expect(toolName('vfx', 'en')).toBe('VFX');
+    for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);
+  });
+
   it('photo culling sits one level down and says, in every language, that the photos stay on the device', () => {
     expect(MORE_TOOLS).toContain('photo');
     expect(PRIMARY_TOOLS).not.toContain('photo');
@@ -31,6 +40,29 @@ describe('studio tools', () => {
     expect(toolSub('photo', 'ru')).toBe('Фото не покидают ваше устройство');
     expect(toolSub('photo', 'ka')).toBe('ფოტოები შენს მოწყობილობას არ ტოვებს');
     expect(isToolId('photo')).toBe(true);
+  });
+
+  it('the interior designer and the photographer are PRIMARY tools — the two agents that were lost must be one tap away, not behind „More"', () => {
+    for (const id of ['interior', 'photoshoot'] as const) {
+      expect(PRIMARY_TOOLS).toContain(id);
+      expect(MORE_TOOLS).not.toContain(id);
+      expect(isToolId(id)).toBe(true); // …so ?tool=interior / omni:set-tool reach them
+    }
+    // They sit beside Image (the tool they specialise), and chat + video still lead the list.
+    expect(PRIMARY_TOOLS.slice(0, 5)).toEqual(['chat', 'video', 'image', 'photoshoot', 'interior']);
+    expect(toolName('interior', 'en')).toBe('Interior designer');
+    expect(toolName('interior', 'ka')).toBe('ინტერიერის დიზაინერი');
+    expect(toolName('interior', 'ru')).toBe('Дизайнер интерьеров');
+    expect(toolName('photoshoot', 'en')).toBe('Photographer');
+    expect(toolName('photoshoot', 'ka')).toBe('ფოტოგრაფი');
+    expect(toolName('photoshoot', 'ru')).toBe('Фотограф');
+  });
+
+  it('`photoshoot` is NOT `photo`: culling stays on the device and untouched, the photographer makes new pictures', () => {
+    expect(TOOL_META.photoshoot.Icon).not.toBe(TOOL_META.photo.Icon);
+    expect(toolName('photoshoot', 'en')).not.toBe(toolName('photo', 'en'));
+    expect(toolSub('photo', 'en')).toBe('Photos never leave your device'); // the culling promise is unchanged
+    expect(toolSub('photoshoot', 'en')).not.toMatch(/never leave your device/i);
   });
 
   it('isToolId accepts the ids and nothing else (it guards window events and ?tool=)', () => {

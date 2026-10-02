@@ -214,9 +214,13 @@ export const POST = compose()
     const startMs = Date.now();
 
     // 1. Auth — requires valid session (bypassed in demo mode when Supabase is not configured)
+    // ⚠️ NEVER IN PRODUCTION. A missing or 'placeholder' Supabase URL used to switch auth OFF and answer as 'demo-user'
+    // on the platform's Anthropic key — so a misconfigured production env failed OPEN into an anonymous model proxy.
+    // The demo bypass is for a local `next dev` with no Supabase at all; production always requires a session.
     const supabaseConfigured =
-      !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder');
+      process.env.NODE_ENV === 'production' ||
+      (!!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder'));
 
     let user: Awaited<ReturnType<typeof requireAuthenticatedUser>> | { id: string; email?: string };
     if (supabaseConfigured) {

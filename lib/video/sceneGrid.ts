@@ -21,16 +21,22 @@
  * is the SERVER's ceiling for a script-driven breakdown, while this is the ceiling on what the composer
  * offers. They are different limits and collapsing them would silently raise one of the two.
  */
+import { FILM_MAX_SCENES } from './duration';
 
-/** The lengths the composer offers, in seconds. */
+
+/** The three one-tap CINEMA chips. The full 4 s – 4 min range and its stops live in lib/video/duration.ts. */
 export const VIDEO_DURATIONS = [8, 24, 48] as const;
 export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
 
 /** Nominal seconds per scene — the Veo grid. Mirrors FILM_CLIP_SEC. */
 export const SCENE_SEC = 8;
 
-/** The composer's ceiling on scenes per film. */
-export const MAX_UI_SCENES = 6;
+/**
+ * The composer's ceiling on scenes per film. ⚠️ It WAS 6 (48 s). The owner's range is 4 s – 4 min (lib/video/duration.ts):
+ * the film pipeline renders up to 12 scenes (96 s) and longer films go through the long-form pipeline, so the composer's
+ * ceiling follows the film pipeline's own (FILM_MAX_SCENES).
+ */
+export const MAX_UI_SCENES = FILM_MAX_SCENES;
 
 /**
  * 8s → 1 · 24s → 3 · 48s → 6.

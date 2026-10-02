@@ -33,6 +33,7 @@ import {
 } from '@/lib/chat/mediaKeys';
 import { computeEditorReadiness } from '@/lib/chat/filmReadiness';
 import { getUdioCredits } from '@/lib/udio/client';
+import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -68,6 +69,10 @@ async function probe(
 }
 
 export async function GET(req: NextRequest) {
+  // ⚠️ OPERATORS ONLY (lib/security/opsAccess). Each anonymous hit made the server POST to two of its own routes, and
+  // ?udio=1 answered with our Udio credit balance and the provider's raw failure text. A scheduled monitor passes
+  // CRON_SECRET; everyone else gets a 404 in production.
+  if (!(await opsCallerAllowed(req))) return opsNotFound();
   const origin = new URL(req.url).origin;
 
   // ── 1. Nine-provider ecosystem map (env presence, names only) ──────────────

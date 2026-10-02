@@ -202,6 +202,11 @@ const EXT_MIME: Readonly<Record<string, string>> = {
   doc: 'application/msword',
   txt: 'text/plain', md: 'text/markdown', markdown: 'text/markdown', csv: 'text/csv', json: 'application/json',
   rtf: 'application/rtf', xml: 'text/xml', html: 'text/html', htm: 'text/html',
+  // Source and data text: Gemini reads it inline as text/plain — without an entry here the picker gave a generic type and the
+  // serializer replaced the file with "this format cannot be read here".
+  tsv: 'text/plain', yaml: 'text/plain', yml: 'text/plain', log: 'text/plain', srt: 'text/plain', vtt: 'text/plain', css: 'text/plain',
+  js: 'text/plain', jsx: 'text/plain', ts: 'text/plain', tsx: 'text/plain', py: 'text/plain', java: 'text/plain', c: 'text/plain', cpp: 'text/plain',
+  cs: 'text/plain', go: 'text/plain', rs: 'text/plain', rb: 'text/plain', php: 'text/plain', sh: 'text/plain', sql: 'text/plain',
 };
 
 const GENERIC_MIMES = new Set(['', 'application/octet-stream', 'binary/octet-stream', 'application/unknown']);

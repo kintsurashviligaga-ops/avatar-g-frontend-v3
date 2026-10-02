@@ -62,7 +62,8 @@ import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './Pers
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
-import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
+import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
+import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
@@ -80,6 +81,7 @@ import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePerso
 import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
+import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -245,13 +247,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
   const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  // Library opens IN-WINDOW in this slide-over. Legal (Privacy/Terms) no longer use
-  // it — they're INSTANT client-side modals (LegalModal) with zero network/iframe, so
-  // they paint in one frame instead of flashing an iframe-loaded page.
+  // Library opens IN-WINDOW in this slide-over. The legal documents open as their own pages in a new tab
+  // (lib/legal/links.ts) — the real localized text, never an iframe or a placeholder modal.
   const [sheet, setSheet] = useState<null | 'library'>(null);
   const router = useRouter();
   const pathname = usePathname();
-  const [legalOpen, setLegalOpen] = useState<LegalKind | null>(null);
   // Seeded from the SERVER-rendered session (dashboard page.tsx → ServiceHub → here) so the generation
   // gate on <html> is never published as '0' while the client-side getUser() round-trip is in flight —
   // that window made an ALREADY-SIGNED-IN user who tapped send get the sign-in modal. getUser() and
@@ -513,14 +513,38 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [authed]);
 
   // Checkout return handler (Iteration 4). Every rail lands back on /dashboard with a status param:
-  //   ?topup=success   — BOG or Stripe wallet-topup settled  → poll the balance (async crediting webhook)
+  //   ?bog=<order>&pay=success|failed — Bank of Georgia (top-up or plan) → ask /api/billing/bog/orders/<order>
+  //   ?topup=success   — Stripe wallet-topup settled         → poll the balance (async crediting webhook)
   //   ?tier=success    — Stripe USD tier purchased           → poll the balance too (was previously ignored)
-  //   ?topup=failed    — BOG declined / order failed         → dismissible retry notice (NON-locking)
+  //   ?topup=failed    — order failed                        → dismissible retry notice (NON-locking)
   //   ?topup=canceled  — user cancelled Stripe checkout      → dismissible cancelled notice
   // The param is always stripped so a refresh never re-triggers. Fail-soft on every step.
   useEffect(() => {
     if (typeof window === 'undefined' || !authed) return;
     const params = new URLSearchParams(window.location.search);
+    // Bank of Georgia returns with ?bog=<our order id>&pay=success|failed. The redirect proves nothing on its own (BOG:
+    // only the callback / receipt is final), so ask our server — which reconciles with BOG's receipt on the spot — and
+    // say exactly what happened. A failure reopens the plans sheet so the customer can retry where they were.
+    const bogOrder = params.get('bog');
+    if (bogOrder) {
+      const pay = params.get('pay');
+      params.delete('bog');
+      params.delete('pay');
+      const rest = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+      setPayNotice({ ok: true, text: locale === 'ka' ? 'გადახდის შემოწმება…' : locale === 'ru' ? 'Проверяем платёж…' : 'Checking your payment…' });
+      void (async () => {
+        const status = await pollBogOrder(bogOrder, { attempts: pay === 'failed' ? 2 : 6, intervalMs: 2000 });
+        const notice = paymentReturnMessage(status, pay, locale);
+        if (status?.status === 'completed') {
+          track('payment_completed', { rail: 'bog', kind: status.kind });
+          void refreshBalance(true);
+        }
+        setPayNotice({ ok: notice.ok, text: notice.text });
+        if (notice.reopenPricing) setCreditsOpen(true);
+      })();
+      return;
+    }
     const topup = params.get('topup');
     const tier = params.get('tier');
     const paidOk = topup === 'success' || tier === 'success';
@@ -873,6 +897,28 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [avatarError]);
 
   const tNoHistory = locale === 'en' ? 'No conversations yet' : locale === 'ru' ? 'Пока нет чатов' : 'ჯერ არ არის ჩატები';
+  const tStartChat = locale === 'en' ? 'Start a chat' : locale === 'ru' ? 'Начать чат' : 'დაიწყე ჩატი';
+  /**
+   * ⚠️ "NO CONVERSATIONS YET" WAS A LIE FOR A SIGNED-IN USER ON A NEW DEVICE. The list starts from this device's
+   * localStorage, and the account's own chats arrive a beat later (OmniStudio's cross-device sync) — so the sidebar
+   * said there were none, then they popped in under it. Until the sync answers (data-history-sync on <html>, plus
+   * an event), a signed-in studio shows skeleton rows of the rows' own height instead. Off the studio nothing syncs,
+   * and a cap makes sure a hung request can never leave skeletons up for good.
+   */
+  const [historySynced, setHistorySynced] = useState(false);
+  useEffect(() => {
+    const read = () => { if (document.documentElement.dataset.historySync === 'done') setHistorySynced(true); };
+    read();
+    window.addEventListener('myavatar:history-synced', read);
+    const cap = window.setTimeout(() => setHistorySynced(true), 8000);
+    return () => { window.removeEventListener('myavatar:history-synced', read); window.clearTimeout(cap); };
+  }, []);
+  // The empty history's one next step: the chat, with the caret in its composer — once the phone drawer has slid away
+  // (200 ms) and handed focus back; focusComposer refuses a box that is still covered.
+  const startChat = useCallback(() => {
+    selectTool('chat');
+    window.setTimeout(() => { focusComposer(); }, 250);
+  }, [selectTool]);
   const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
   const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
@@ -1077,7 +1123,8 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               const { Icon } = TOOL_META[id];
               const on = onStudioHome && activeTool === id;
               return (
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
+                // data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar).
+                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                   className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
                   <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
                   <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
@@ -1122,8 +1169,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
             />
           )}
-          {conversations.length === 0 ? (
-            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoHistory}</p>
+          {authed && onStudioHome && !historySynced && conversations.length === 0 ? (
+            <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg [@media(pointer:fine)]:h-[38px]" className="space-y-0.5 pb-2" testId="history-skeleton" />
+          ) : conversations.length === 0 ? (
+            <EmptyState compact icon={ChatIcon} line={tNoHistory} actionLabel={tStartChat} onAction={startChat} testId="history-empty" />
           ) : convMatches.length === 0 ? (
             <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
@@ -1196,6 +1245,16 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <InstallAppButton locale={lang} iconOnly />
             <LanguageSwitcher locale={locale} up />
           </div>
+          {/* The legal documents, on screen from the first visit: a guest can chat before signing anything, so the terms
+              that chat runs under are one tap away. A new tab — the studio keeps its jobs and its draft. */}
+          <nav aria-label={t.legal} data-testid="sidebar-legal" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pb-0.5">
+            {LEGAL_LINKS.map((doc) => (
+              <a key={doc.id} href={legalHref(lang, doc.id)} target="_blank" rel="noopener noreferrer"
+                className="tap-44 relative text-[11.5px] leading-4 text-app-muted underline-offset-2 transition-colors hover:text-app-text hover:underline">
+                {doc.short[lang]}
+              </a>
+            ))}
+          </nav>
         </div>
       </aside>
 
@@ -1212,7 +1271,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             const on = onStudioHome && activeTool === id;
             const name = TOOL_META[id].name[lang];
             return (
-              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined}
+              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                 className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
             );
           })}
@@ -1230,7 +1289,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       />
 
       {/* ── Main column (header + chat) ──────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* data-skip-target: AppShell's "Skip to main content" lands HERE, past the sidebar (a <div>: AppShell's <main>
+          already wraps the shell, and a main inside a main is an a11y error). */}
+      <div id="studio-main" data-skip-target="" className="flex min-w-0 flex-1 flex-col focus:outline-none">
         {/* The header is a phone's (and a tablet's): [☰] name … [new session] [you] — Gemini's row, nothing else.
             On a desktop the studio draws its own title bar inside the centre column (AI Studio), so this one steps
             aside there; secondary surfaces (/library) keep it for their back control. */}
@@ -1350,7 +1411,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                     </div>
                   </div>
                   <button type="button" onClick={() => { setDisplayName(userName ?? ''); setMenuOpen(false); setProfileOpen(true); }} className={drawerRow}><User className="h-[18px] w-[18px] text-app-muted" /> {locale === 'en' ? 'Edit profile' : locale === 'ru' ? 'Профиль' : 'პროფილი'}</button>
-                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); setAvatarEnrollOpen(true); }} className={drawerRow} data-tour={TWIN_ENABLED ? 'twin' : undefined}><ScanFace className="h-[18px] w-[18px] text-app-accent" /> {TWIN_ENABLED ? twinCopy(locale).menuEntry : locale === 'en' ? 'Create Live Avatar' : locale === 'ru' ? 'Создать живой аватар' : 'ცოცხალი ავატარის შექმნა'}</button>
                   <button type="button" onClick={async () => { try { await signOutAndClear(createBrowserClient()); } catch { /* listener clears state */ } setMenuOpen(false); }} className={`${drawerRow} hover:bg-app-danger/10 hover:text-app-danger`}><LogOut className="h-[18px] w-[18px] text-app-muted" /> {t.signOut}</button>
                 </>
               ) : (
@@ -1377,11 +1438,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               </div>
 
               <div className={settingsDivider} />
-              {/* SECTION 3 — ABOUT (instant legal modals · the support page: FAQ, the support chat, the email) */}
+              {/* SECTION 3 — ABOUT (the legal documents · the support page: FAQ, the support chat, the email).
+                  ⚠️ The documents themselves, in the visitor's language, in a new tab (the studio keeps its jobs and
+                  draft) — these rows used to open LegalModal, a four-line English placeholder dated June 2024. */}
               <p className={sectionHdr}>{locale === 'en' ? 'About' : locale === 'ru' ? 'О приложении' : 'შესახებ'}</p>
               <p className="px-2 pb-1 pt-0.5 text-[12px] text-app-muted">MyAvatar v{process.env.NEXT_PUBLIC_APP_VERSION || '2.0.0'}</p>
-              <button type="button" onClick={() => setLegalOpen('privacy')} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</button>
-              <button type="button" onClick={() => setLegalOpen('terms')} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</button>
+              <a href={legalHref(lang, 'privacy')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><Shield className="h-[18px] w-[18px] text-app-muted" /> {t.privacy}</a>
+              <a href={legalHref(lang, 'terms')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><FileText className="h-[18px] w-[18px] text-app-muted" /> {t.terms}</a>
+              <a href={legalHref(lang, 'refund')} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className={drawerRow}><Wallet className="h-[18px] w-[18px] text-app-muted" /> {legalDoc('refund').title[lang]}</a>
               <a href={`/${lang}/support`} onClick={() => setMenuOpen(false)} className={drawerRow}><LifeBuoy className="h-[18px] w-[18px] text-app-muted" /> {t.support}</a>
               {authed && (
                 <a href={`/${lang}/account/delete`} onClick={() => setMenuOpen(false)} className={`${drawerRow} text-app-danger hover:bg-app-danger/10`}><Trash2 className="h-[18px] w-[18px]" /> {t.deleteAccount}</a>
@@ -1402,8 +1466,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         onClose={() => { setCreditsOpen(false); void refreshBalance(); }}
         onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}
       />
-      {/* Instant Privacy / Terms modals — pure client, no iframe/network (FIX 1). */}
-      <LegalModal kind={legalOpen} onClose={() => setLegalOpen(null)} />
       {/* Edit-profile modal (#3) — display name → Supabase user_metadata. */}
       {profileOpen && (
         <div className="fixed inset-0 z-[86] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={() => setProfileOpen(false)}>
@@ -1452,7 +1514,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {authed && !welcomed && (
         <WelcomeOnboarding locale={locale} balanceGel={balanceGel} onComplete={() => setWelcomed(true)} />
       )}
-      {/* Library-only sheet now — Privacy/Terms moved to the instant LegalModal above. */}
+      {/* Library-only sheet — the legal documents open as pages (lib/legal/links.ts). */}
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} onClose={() => setSheet(null)} /> : null}
       </StudioSheet>

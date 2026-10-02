@@ -21,8 +21,11 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { sanitizePrompt } from '@/lib/security/apiGuard';
 import { reportError } from '@/lib/observability/report-error';
+import { providerErrorBody } from '@/lib/api/providerError';
 import { orchestrate, pollOrchestrationTask, type ChatResponse } from '@/lib/chat/providerRouter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { anonymousGenerationAllowed, isAnonymousUser } from '@/lib/auth/generationGate';
+import { spendGuestTurn, guestRefusalMessage } from '@/lib/chat/guestAllowance';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { retrieveContext } from '@/lib/rag/retrieve';
@@ -30,6 +33,7 @@ import { retrieveContext } from '@/lib/rag/retrieve';
 // per-scene dispatch arrays at the SAME ceiling the renderer uses so a 60s render
 // (12 scenes) isn't rejected at the API boundary with "Invalid request".
 import { MAX_SEGMENTS } from '@/lib/orchestrator/script-breakdown';
+import { snapFilmGrid } from '@/lib/video/duration';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -184,6 +188,19 @@ export async function POST(req: NextRequest) {
       return handlePoll(data.predictionId, data.sessionId, pollUserId);
     }
 
+    // ── The film's length must be one the studio offers (lib/video/duration.ts) ──
+    // ⚠️ The film is priced from `sceneCount × clipSec` before any clip is dispatched, and Veo only renders 4 / 6 / 8 s: a
+    // `clipSec: 5` used to be billed as 5 s and delivered 6 s. The pair is snapped to what will really render (5 → 6, 7 → 8)
+    // and a film this pipeline cannot hold at all (> 96 s — that is the long-form route) is refused, not clipped.
+    const filmGrid = snapFilmGrid({ sceneCount: data.sceneCount, clipSec: data.clipSec });
+    if (!filmGrid.ok) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request', details: { sceneCount: [filmGrid.reason === 'too_long' ? 'A film is at most 96 seconds here' : 'A film is at least 4 seconds'] } },
+        { status: 400 },
+      );
+    }
+    if (filmGrid.snapped) data.clipSec = filmGrid.clipSec;
+
     // The gate's auth (getAuthContext → createServerClient) only reads the SSR COOKIE
     // session — correct for the browser UI, which is how logged-in users already get the
     // premium (Kling) tier. But an API / mobile / headless caller that authenticates with
@@ -222,6 +239,27 @@ export async function POST(req: NextRequest) {
         message: `[Demo] Request received: "${routedMessage.slice(0, 80)}…"`,
         metadata: { provider: 'demo', confidence: detected.confidence },
       } satisfies ChatResponse);
+    }
+
+    // ── GUEST ALLOWANCE (anonymous TEXT turns) ───────────────────────
+    // ⚠️ A signed-out caller here used to get unlimited text answers on the platform's model keys (the /services/* chat
+    // shell posts here), capped only per IP per minute — around the guest policy /api/chat/gemini enforces. Paid MEDIA
+    // intents are already refused for anonymous callers inside orchestrate() (refuseAnonymousGeneration); the text path
+    // was the open one. So a guest's turn is charged to the SAME daily guest allowance whenever orchestrate() would route
+    // it to text — decided with the very detector orchestrate() runs, on the very message it receives, so the two can
+    // never disagree (a turn orchestrate() then refuses only over-counts, never under-counts).
+    if (isAnonymousUser(userId) && !anonymousGenerationAllowed()
+        && detectIntent(routedMessage, data.serviceContext).provider === 'text-llm') {
+      const turn = await spendGuestTurn(req);
+      if (turn !== 'ok') {
+        return NextResponse.json({
+          success: false,
+          intent: 'text_chat',
+          responseType: 'text',
+          message: guestRefusalMessage(turn, data.locale),
+          metadata: { provider: 'auth', authRequired: true },
+        } satisfies ChatResponse);
+      }
     }
 
     // ── RAG grounding (optional, fail-safe) ──────────────────────────
@@ -317,13 +355,15 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     // Detect throttle / quota errors
+    // ⚠️ `metadata.error` used to carry the raw message — a provider's own error text (its name, JSON, billing link) in
+    // the response body. Nothing on the client reads it; the full message stays in the log and Sentry above.
     if (/429|rate.limit|quota|thrott/i.test(message)) {
       return NextResponse.json({
         success: false,
         intent: 'text_chat',
         responseType: 'text',
         message: 'Service temporarily rate-limited. Please retry shortly.',
-        metadata: { provider: 'system', error: message },
+        metadata: { provider: 'system' },
       } satisfies ChatResponse);
     }
 
@@ -339,7 +379,7 @@ export async function POST(req: NextRequest) {
         message: isConfigError
           ? 'This service is temporarily unavailable (provider not configured).'
           : 'Something went wrong. Please try again.',
-        metadata: { provider: 'system', error: message },
+        metadata: { provider: 'system' },
       } satisfies ChatResponse,
       { status: 500 },
     );
@@ -353,7 +393,9 @@ async function handlePoll(predictionId: string, sessionId?: string, userId?: str
     const result = await pollOrchestrationTask(predictionId, sessionId, userId);
     return NextResponse.json(result);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Poll failed';
+    // The thrown text can be a provider's raw error body — log it, answer with the sanitised, localized class.
+    console.error('[Orchestrate Poll Error]', error instanceof Error ? error.message.slice(0, 300) : error);
+    const msg = providerErrorBody(error).message;
     return NextResponse.json({
       success: false,
       intent: 'text_chat',

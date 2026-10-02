@@ -114,8 +114,8 @@ For the "App Privacy" section in App Store Connect:
 
 | Asset | Spec | Status |
 |---|---|---|
-| App icon (1024×1024, no alpha) | `/public/icons/icon-1024x1024.png` | ✓ generated (placeholder; needs designer pass) |
-| App icon (180×180, iPhone) | `/public/apple-touch-icon.png` | ✓ generated |
+| App icon (1024×1024, no alpha) | `/public/icons/icon-1024x1024.png` | ✓ generated from the transparent rocket (`node scripts/brand/build-assets.mjs`) |
+| App icon (180×180, iPhone) | `/app/apple-icon.png` (served as `/apple-icon.png`) | ✓ generated |
 | Maskable PWA icon (512×512, safe-zone) | `/public/icons/icon-maskable-512.png` | ✓ generated |
 | iPhone 6.7" screenshots (1290×2796) ×3+ | — | ✗ TODO |
 | iPhone 6.5" screenshots (1242×2688) ×3+ | — | ✗ TODO |

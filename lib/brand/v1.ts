@@ -15,7 +15,6 @@ export const BRAND_V1 = {
     avatar: { src: '/brand/v1/card-avatar.jpg', width: 1200, height: 1500 },
   },
   world: { src: '/brand/v1/world-16x9.jpg', width: 2048, height: 1152 },
-  og: { src: '/brand/v1/og.jpg', width: 1200, height: 630 },
   /** 5 s silent loop of the hero (B1 — last frame = first frame), desktop only, off under reduced motion. */
   heroLoop: { src: '/brand/v1/hero-loop.mp4', poster: '/brand/v1/hero-16x9.jpg' } as null | { src: string; poster: string },
   /** R1–R3 — three 5 s vertical loops for the landing (scripts/hf-art-pack.md), 720×1280, poster = first frame. */

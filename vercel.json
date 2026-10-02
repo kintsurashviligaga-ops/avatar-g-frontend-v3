@@ -96,6 +96,9 @@
     "app/api/nanobanana/**": {
       "maxDuration": 300
     },
+    "app/api/research/**": {
+      "maxDuration": 60
+    },
     "app/api/**": {
       "maxDuration": 15
     }
@@ -191,6 +194,14 @@
     },
     {
       "path": "/api/cron/studio-sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/bog-billing",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/research-sweep",
       "schedule": "* * * * *"
     }
   ]

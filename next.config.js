@@ -54,6 +54,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'example.com' },
     ],
     formats: ['image/avif', 'image/webp'],
+    // ⚠️ 24 h STAYS THE FLOOR FOR EVERY OPTIMIZED IMAGE. remotePatterns admits any *.supabase.co URL, so user media —
+    // signed links to private files included — can pass through /_next/image; a longer floor would keep optimized copies
+    // reachable long after the original link expired. Shipped template thumbnails get their year from the versioned-path
+    // Cache-Control in headers() instead: the optimizer keeps the larger of the source's max-age and this floor.
     minimumCacheTTL: 86400, // 24h
   },
   experimental: {
@@ -139,9 +143,6 @@ const nextConfig = {
       // /var/task has no supabase/migrations/*.sql (ENOENT on POST). Force-trace
       // both migration dirs so the turnkey `run-migration` curl works in prod.
       '/api/admin/run-migration': ['./supabase/migrations/**', './migrations/**'],
-      // B2B marketing overlays: ffmpeg-static binary + @resvg (SVG→PNG with an EXPLICIT font
-      // buffer + its native bins) ride along so the lambda renders the overlay PNG + composites.
-      '/api/pipeline/overlay': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Music-Video graphics agent: equalizer (ffmpeg) + title/lower-third (resvg SVG→PNG).
       '/api/video/graphics': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Video Remix: EVERY ffmpeg op (color_grade/speed/trim/mux/Ken-Burns) + captions
@@ -205,6 +206,16 @@ const nextConfig = {
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
       },
+      // Template thumbnails (lib/studio/templateThumbs): the gallery requests `<path>?v=<sha>`, so the bytes behind a
+      // versioned URL never change — cache them for a year (the optimizer inherits that max-age for its variants).
+      // ⚠️ ONLY WITH ?v=. An unversioned request (a preset face shown in a chat bubble, the lipsync send path re-fetching
+      // it) keeps the default revalidation: these files are replaced in place under the same name, and `immutable` on a
+      // bare path would pin the old picture in returning browsers for a year.
+      ...['/templates/:path*', '/avatars/:path*'].map((source) => ({
+        source,
+        has: [{ type: 'query', key: 'v' }],
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      })),
       // The front doors' HTML must never outlive a deploy in a browser: the landing and the studio are where a
       // stale copy is noticed first (docs/DESIGN.md §11). `no-store` for these documents only — their JS/CSS
       // under /_next/static stays immutable and cached, and every other page keeps Next's own caching.
@@ -233,8 +244,22 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           // Referrer policy
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // Restrict browser features
-          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },
+          // Restrict browser features. camera + microphone stay allowed for OUR origin — the Digital Twin capture and
+          // voice mode use them (fullscreen/autoplay keep their browser default of self). Everything below is a
+          // powerful feature the app never uses, denied outright so an injected script or a framed page cannot
+          // request it either: payments go through hosted Stripe/BOG pages (no Payment Request API on our origin),
+          // and nothing reads motion sensors, USB/HID/serial/Bluetooth/MIDI, screen capture or WebXR.
+          // `browsing-topics=()` opts the site out of the Topics API.
+          {
+            key: 'Permissions-Policy',
+            value: [
+              'camera=(self)', 'microphone=(self)', 'geolocation=()', 'payment=()', 'usb=()', 'serial=()', 'hid=()',
+              'bluetooth=()', 'midi=()', 'magnetometer=()', 'gyroscope=()', 'accelerometer=()', 'display-capture=()',
+              'xr-spatial-tracking=()', 'browsing-topics=()',
+            ].join(', '),
+          },
+          // Legacy Flash/Acrobat cross-domain policy files: none are served, so say so.
+          { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
           // HSTS — enforce HTTPS for 1 year (enable after confirming HTTPS-only)
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
           // Content Security Policy

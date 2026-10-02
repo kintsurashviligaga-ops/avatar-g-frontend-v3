@@ -15,6 +15,7 @@ import { providerErrorBody } from '@/lib/api/providerError';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
@@ -146,6 +147,12 @@ export async function POST(req: NextRequest) {
   const debit = await deductCredits(guard.userId, totalCost, ref);
   if (!debit.ok && debit.reason === 'insufficient') {
     return NextResponse.json({ url: null, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
+  }
+  // ⚠️ A LEDGER THAT DEFINITIVELY FAILED NO LONGER RENDERS FOR FREE. Only `insufficient` used to stop the paid call;
+  // an `error` debit (ledger unreachable / write refused) proceeded unbilled. Now: 503 billing_unavailable, nothing
+  // charged, nothing rendered. `skipped` (no ledger RPC at all) still proceeds uncharged — the documented degrade.
+  if (!debit.ok && debit.reason === 'error') {
+    return NextResponse.json({ url: null, ...ledgerUnavailableBody(guard.locale) }, { status: 503 });
   }
 
   // ⚠️ ONLY `background_replace` CONSUMES THIS, AND WHAT IT CONSUMES IS A DESCRIPTION. The panel asks for

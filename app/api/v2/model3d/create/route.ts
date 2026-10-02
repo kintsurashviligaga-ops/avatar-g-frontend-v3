@@ -11,7 +11,8 @@ import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { resolveUploadRef } from '@/lib/services/resolveUpload';
-import { createJob, failJob } from '@/lib/orchestrator/jobs';
+import { createJob, failJob, recordJobSettle } from '@/lib/orchestrator/jobs';
+import { settleParams } from '@/lib/orchestrator/unpolledSettle';
 import { reserveProduce } from '@/lib/orchestrator/produceBilling';
 import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
@@ -121,7 +122,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // service_type DB CHECK ('film','avatar','interior','image','music','voice') — 3D rides as 'image'.
   // ⚠️ NO `_reserve` STAMP, ON PURPOSE. The drainer refunds stale rows that carry one, and a 3D job that
   // merely went unpolled may still have SUCCEEDED — reaping it would refund a model the user can still
-  // fetch. 3D refunds only on outcomes that can never deliver: a failed create, or a provider-failed poll.
+  // fetch. 3D refunds only on outcomes that can never deliver: a failed create, or a provider-failed verdict —
+  // read by /status while the client polls, or by the settle cron (`_settle`, stamped after the submit) after.
   await createJob({
     id: jobId,
     userId: user.id,
@@ -206,6 +208,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // The job row stays 'processing'; the status route completes it.
+    // ⚠️ …ONLY IF THE BROWSER KEEPS POLLING. The refund on a provider failure and the delivery on a success both live
+    // in /status, so a closed tab stranded the reservation (and lost the model). `_settle` — not the blind `_reserve`
+    // the drainer would refund on age (see above) — lets the cron ask Replicate for the verdict and deliver or refund
+    // through the ledger under this same ref, idempotent with /status's own refund. Only a charge that landed.
+    if (reservation.charged) {
+      const filed = await recordJobSettle(jobId, settleParams({ kind: 'model3d', job: submitted.predictionId, ref: chargeRef, credits: cost }));
+      if (!filed) reportError(new Error('model3d settle record not filed'), { route: 'model3d.create', ref: chargeRef });
+    }
     return NextResponse.json({
       jobId,
       predictionId: submitted.predictionId,
