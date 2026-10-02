@@ -12,6 +12,7 @@ import { creditsToGel } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
+import { WhatsAppLinkCard } from '@/components/agent-g/WhatsAppLinkCard';
 
 /**
  * Settings — top-level user preferences surface.
@@ -22,6 +23,7 @@ import ReferralPanel from '@/components/dashboard/ReferralPanel';
  *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as ModernShell's locale switcher)
  *   • Theme             → ThemeContext (data-theme attr + .dark class)
  *   • Profile + Usage    → /api/credits/balance (authenticated GET)
+ *   • WhatsApp           → /api/agent-g/whatsapp/link (WhatsAppLinkCard: link by code, alerts, unlink)
  *   • Delete Account    → /api/account/delete (Apple §5.1.1(v) compliant flow)
  *
  * No fakes, no mocks: every control either persists locally or hits a real endpoint.
@@ -180,6 +182,8 @@ export function SettingsView({ locale }: { locale: string }) {
           <motion.div variants={fadeUp} custom={2}><LanguageSection t={t.language} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={3}><ThemeSection t={t.theme} /></motion.div>
           <motion.div variants={fadeUp} custom={4}><ProfileSection t={t.profile} /></motion.div>
+          {/* Agent G on WhatsApp — the page every WhatsApp "link your number" reply points to (#whatsapp). */}
+          <motion.div variants={fadeUp} custom={4}><WhatsAppLinkCard locale={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
           {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}

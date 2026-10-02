@@ -55,8 +55,11 @@ describe('describeInput — the form mirrors the documented schema', () => {
     expect(g.image_urls).toMatchObject({ kind: 'mediaList', required: true, min: 1, max: 5 });
   });
 
-  test('Soul 2: a prompt and nothing else', () => {
-    expect(describeInput(soul2Input).map((s) => s.key)).toEqual(['prompt']);
+  test('Soul 2: the prompt, then the shape and the size its page documents (soul-2/generate, read 2026-10-02)', () => {
+    const specs = describeInput(soul2Input);
+    expect(specs.map((s) => s.key)).toEqual(['prompt', 'aspect_ratio', 'resolution']);
+    expect(specs[1]).toMatchObject({ kind: 'enum', default: '1:1', options: ['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2'] });
+    expect(specs[2]).toMatchObject({ kind: 'enum', default: '720p', options: ['720p', '1080p'] });
   });
 
   test('every registered model is fully describable — no field the form could not render', () => {

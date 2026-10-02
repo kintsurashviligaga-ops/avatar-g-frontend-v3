@@ -23,6 +23,7 @@ import { sanitizeStyle } from '@/lib/studio/style';
 import { composeImagePrompt } from '@/lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '@/lib/studio/templateContext';
 import { resolveShootDirective } from '@/lib/studio/shootContext';
+import { DEFAULT_MODEL, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, type DeploymentProbe } from '@/lib/providers/catalogue';
 
 export const dynamic = 'force-dynamic';
 // 300s headroom so the higher-resolution tiers (2K/4K) have time to finish on the
@@ -30,12 +31,35 @@ export const dynamic = 'force-dynamic';
 // generate" report on `high`). 1K still returns in ~50s; the poll exits on success.
 export const maxDuration = 300;
 
-// Quality → NanoBanana endpoint mapping
-const QUALITY_ENDPOINT: Record<string, NanoBananaEndpoint> = {
-  standard: 'v2-1k',  //  ~1K, 8 credits
-  high:     'v2-2k',  //  ~2K, 12 credits
-  ultra:    'pro-4k', //  4K Pro, 24 credits
-};
+/**
+ * The MODEL → NanoBanana endpoint map is the catalogue's (lib/providers/catalogue: `nb/auto` · `nb/v2` · `nb/pro`, each with
+ * its endpoint per size). Auto is exactly the old quality map — standard → v2-1k, high → v2-2k, ultra → pro-4k — so a request
+ * without `model` renders what it always rendered.
+ *
+ * ⚠️ THE CLIENT NAMES A MODEL, NEVER AN ENDPOINT. `model` must be an image entry of the catalogue that this deployment can run
+ * (availabilityOf); anything else is refused 400 BEFORE the mutex, the charge or a provider call. The legacy `endpoint` field
+ * was cast straight into the provider call (`'task-details'` included); it is now honoured only when it is one of the
+ * catalogue's own image endpoints. Every endpoint is one image's price here — the dearest (pro-4k) is what `ultra` always
+ * cost — so no pick can cost us more than a 4K Auto render already did.
+ */
+const IMAGE_ENDPOINTS: ReadonlySet<string> = new Set(
+  catalogueFor('image').flatMap((e) => (e.wire.runner === 'image' ? Object.values(e.wire.endpoints) : [])),
+);
+const NO_DEPLOYMENT_GATE: DeploymentProbe = { higgsfield: false, studioV2: false, hfEnabled: () => false, film: false, music: null };
+
+type ImageModelPick = { ok: true; modelId: string; endpoint: NanoBananaEndpoint } | { ok: false };
+
+function resolveImageModel(rawModel: unknown, rawEndpoint: unknown, quality: string): ImageModelPick {
+  const entry = catalogueEntry(rawModel === undefined || rawModel === null || rawModel === '' ? DEFAULT_MODEL.image : rawModel);
+  if (!entry || entry.service !== 'image' || entry.wire.runner !== 'image' || !availabilityOf(entry, NO_DEPLOYMENT_GATE).available) return { ok: false };
+  if (rawEndpoint !== undefined && rawEndpoint !== null && rawEndpoint !== '') {
+    return typeof rawEndpoint === 'string' && IMAGE_ENDPOINTS.has(rawEndpoint)
+      ? { ok: true, modelId: entry.id, endpoint: rawEndpoint as NanoBananaEndpoint }
+      : { ok: false };
+  }
+  const endpoint = imageEndpointFor(entry, quality);
+  return endpoint ? { ok: true, modelId: entry.id, endpoint } : { ok: false };
+}
 
 // The style directives (STYLE_SUFFIXES) and the prompt's assembly order live in lib/studio/composeImagePrompt.
 
@@ -114,7 +138,10 @@ export async function POST(req: NextRequest) {
       style?: string;
       quality?: string;
       aspectRatio?: string;
+      /** Legacy: a NanoBanana endpoint id — honoured only when it is one of the catalogue's image endpoints. */
       endpoint?: string;
+      /** The picked model (lib/providers/catalogue, service 'image'); absent = Auto. Validated before any charge. */
+      model?: unknown;
       /** Img2img / edit: a source image (data: upload OR an https URL to edit). */
       referenceImage?: string;
       /** P7 — what to AVOID in the image (folded into the prompt as a negative clause). */
@@ -145,6 +172,15 @@ export async function POST(req: NextRequest) {
     // control/bidi characters. Cleaned here, before the mutex key, so every use below sees the same value.
     const styleLabel = sanitizeStyle(body.style);
     const quality = body.quality ?? 'high';
+    const pick = resolveImageModel(body.model, body.endpoint, quality);
+    if (!pick.ok) {
+      return NextResponse.json({
+        success: false,
+        code:    'unknown_model',
+        error:   'unknown_model',
+        message: 'ეს მოდელი აქ მიუწვდომელია — აირჩიე სხვა. / This model is not available here — pick another one.',
+      }, { status: 400 });
+    }
     // ⚠️ THE TEMPLATE'S CONTEXT IS RESOLVED HERE, FROM ITS ID — never accepted as text (lib/studio/templateContext).
     // Only when THIS request's aspect, quality and style still select the card; anything else resolves to null and
     // the render is exactly what the controls say. Resolved before the mutex key, which hashes the id it applied.
@@ -177,7 +213,7 @@ export async function POST(req: NextRequest) {
       // Claim the in-flight mutex FIRST (covers authed + anon) on the deterministic request signature.
       // A concurrent identical request loses the race → 409 without a paid render or a charge.
       idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
-      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: body.endpoint ?? body.quality ?? '', ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}) })}`;
+      idemKey = `image:${await hashPayload({ u: idemOwner, p: prompt, e: pick.endpoint, ar: body.aspectRatio ?? '1:1', s: styleLabel, ref: (body.referenceImage ?? '').slice(0, 512), neg: body.negativePrompt ?? '', bt: typeof body.batchTile === 'number' ? body.batchTile : null, t: template?.id ?? null, ...(shoot ? { sh: shoot.key } : {}) })}`;
       if (!(await claimIdempotencyKey(idemOwner, idemKey, 60))) {
         idemKey = ''; // not ours to release — the winning request holds it
         return NextResponse.json({ success: false, error: 'duplicate_request', message: 'This image is already being generated.' }, { status: 409 });
@@ -214,7 +250,7 @@ export async function POST(req: NextRequest) {
       reserved = debit.ok;
     }
 
-    const endpoint    = (body.endpoint ?? QUALITY_ENDPOINT[quality] ?? 'v2-2k') as NanoBananaEndpoint;
+    const endpoint    = pick.endpoint;
     // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
     // all trained overwhelmingly on English text. Nothing here translated anything, so a Georgian brief
     // arrived as noise, each engine fell back to its priors, and the user was handed a competent image

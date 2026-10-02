@@ -26,7 +26,7 @@ const exec = promisify(execFile);
  * The exact ffmpeg arg vector for the photo+audio multiplex. Pure (no I/O) so the codec/format contract
  * (-loop 1 · -shortest · libx264 · aac · yuv420p) is unit-assertable.
  */
-export function buildPhotoVideoArgs(imagePath: string, audioPath: string, outPath: string): string[] {
+export function buildPhotoVideoArgs(imagePath: string, audioPath: string, outPath: string, audioSec?: number | null): string[] {
   return [
     '-y',
     '-loop', '1', '-framerate', '2', '-i', imagePath, // the single looped still (low fps → tiny static video)
@@ -36,6 +36,10 @@ export function buildPhotoVideoArgs(imagePath: string, audioPath: string, outPat
     // Even-dimension guard + universal 4:2:0 pixel format.
     '-vf', "scale='trunc(iw/2)*2':'trunc(ih/2)*2'", '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+    // ⚠️ -shortest ALONE OVERSHOT BY THE ENCODER'S LOOKAHEAD. With an endless looped still, libx264 has frames queued past
+    // the audio's end before the muxer stops, and how many depends on thread timing: a 2 s tone came out 27.5 s long in CI
+    // — a frozen, silent tail on a real video. The measured audio length caps the output; -shortest stays as the backstop.
+    ...(audioSec && audioSec > 0 ? ['-t', audioSec.toFixed(3)] : []),
     '-shortest', '-movflags', '+faststart',
     outPath,
   ];
@@ -66,7 +70,8 @@ export async function renderPhotoMusicVideo(imageBuffer: Buffer, audioBuffer: Bu
     const outPath = join(dir, 'music-video.mp4');
     await writeFile(imgPath, imageBuffer);
     await writeFile(audPath, audioBuffer);
-    await exec(bin, buildPhotoVideoArgs(imgPath, audPath, outPath), { maxBuffer: 1 << 28, timeout: 180_000 });
+    const audioSec = await probeDurationSec(bin, audPath);
+    await exec(bin, buildPhotoVideoArgs(imgPath, audPath, outPath, audioSec), { maxBuffer: 1 << 28, timeout: 180_000 });
     const mp4 = await readFile(outPath);
     const durationSec = await probeDurationSec(bin, outPath);
     return { mp4, durationSec };

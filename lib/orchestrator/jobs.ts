@@ -18,7 +18,8 @@
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
-import { createNotification, type NotificationType } from '@/lib/notifications/store';
+import { notifyUser } from '@/lib/notifications/dispatch';
+import type { NotifyKind } from '@/lib/notifications/types';
 import type { ProduceKind } from './rate-limit';
 
 // PHASE 7.1 — fire a completion notification (best-effort) so the bell populates when a
@@ -32,12 +33,24 @@ const NOTIF_MESSAGE: Partial<Record<ProduceKind, string>> = {
   voice: '🎤 თქვენი ხმა მზადაა!',
   interior: '🏠 თქვენი დიზაინი მზადაა!',
 };
-function notifTypeFor(kind: ProduceKind): NotificationType {
-  return kind === 'music' ? 'music' : kind === 'image' ? 'image' : 'video';
+function notifyKindFor(kind: ProduceKind): NotifyKind {
+  return kind === 'music' ? 'music' : kind === 'image' ? 'image' : kind === 'avatar' ? 'avatar' : kind === 'film' ? 'film' : 'video';
 }
-async function fireCompletionNotification(sb: ReturnType<typeof createServiceRoleClient>, userId: string, kind: ProduceKind, source?: string): Promise<void> {
+// The bell, plus Web Push and the user's linked WhatsApp (lib/notifications/dispatch.ts). `jobId` dedupes: these rows
+// are upserted by id, and a second upsert of a finished job must not tell the user twice.
+async function fireCompletionNotification(sb: ReturnType<typeof createServiceRoleClient>, userId: string, kind: ProduceKind, source?: string, jobId?: string): Promise<void> {
   if (!sb || !userId || source === 'manual-save') return;
-  try { await createNotification(sb, userId, notifTypeFor(kind), NOTIF_MESSAGE[kind] ?? '✅ თქვენი შედეგი მზადაა!'); } catch { /* fail-open */ }
+  try {
+    await notifyUser({
+      userId,
+      kind: notifyKindFor(kind),
+      title: NOTIF_MESSAGE[kind] ?? '✅ თქვენი შედეგი მზადაა!',
+      body: '',
+      url: '/library',
+      dedupeKey: jobId ? `job:${jobId}` : undefined,
+      locale: 'ka',
+    });
+  } catch { /* fail-open */ }
 }
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -319,7 +332,7 @@ export async function recordCompletedFilm(input: {
     if (error && hasCostCols) {
       ({ error } = await sb.from(TABLE).upsert(base, { onConflict: 'id' }));
     }
-    if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio');
+    if (!error) await fireCompletionNotification(sb, input.userId, 'film', 'film-studio', input.id);
     return !error;
   } catch (e) {
     reportError(e, { fn: 'recordCompletedFilm', userId: input.userId });
@@ -361,7 +374,7 @@ export async function recordCompletedAsset(input: {
       },
       { onConflict: 'id' },
     );
-    if (!error) await fireCompletionNotification(sb, input.userId, input.serviceType, input.source);
+    if (!error) await fireCompletionNotification(sb, input.userId, input.serviceType, input.source, input.id);
     return !error;
   } catch (e) {
     reportError(e, { fn: 'recordCompletedAsset', userId: input.userId });

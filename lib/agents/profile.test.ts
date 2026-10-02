@@ -99,12 +99,12 @@ describe('personas that make the per-profile config concrete', () => {
     expect(cfg.maxOutputTokens).toBe(4096);
   });
 
-  it('Strict Coder runs cold, thinks hard and does not search', () => {
+  it('Strict Coder runs cold, thinks hard — and can search, like every built-in persona', () => {
     const p = resolveAgentProfile({ personaId: 'strict-coder' });
-    expect(p).toMatchObject({ temperature: 0.2, thinking: 'high', googleSearch: false, voice: 'Aoede' });
+    expect(p).toMatchObject({ temperature: 0.2, thinking: 'high', googleSearch: true, voice: 'Aoede' });
     const cfg = toGeminiChatConfig(p, SYS);
     expect(cfg.thinking).toEqual({ level: 'high' });
-    expect(cfg.googleSearch).toBe(false);
+    expect(cfg.googleSearch).toBe(true);
     expect(cfg.safetySettings).toEqual(PLATFORM_SAFETY);
   });
 

@@ -20,9 +20,10 @@ describe('switches', () => {
     expect(guestChatEnabled(env({ CHAT_GUEST_ENABLED: '' }))).toBe(true);
     for (const off of ['0', 'false', 'off', 'no', ' OFF ']) expect(guestChatEnabled(env({ CHAT_GUEST_ENABLED: off }))).toBe(false);
   });
-  test('grounding for guests is off unless explicitly turned on', () => {
-    expect(guestSearchEnabled(env({}))).toBe(false);
+  test('grounding for guests is on unless explicitly turned off (Google Search, like the Gemini app)', () => {
+    expect(guestSearchEnabled(env({}))).toBe(true);
     expect(guestSearchEnabled(env({ CHAT_GUEST_SEARCH: 'true' }))).toBe(true);
+    for (const off of ['0', 'false', 'off']) expect(guestSearchEnabled(env({ CHAT_GUEST_SEARCH: off }))).toBe(false);
   });
 });
 

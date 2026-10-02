@@ -148,16 +148,78 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// PHASE 20 — native completion notifications. When the user taps the "your asset is ready"
-// notification (fired via registration.showNotification from lib/notify/browserNotify), focus an
-// already-open app window if there is one, else open a fresh one. Purely additive: it does NOT
-// touch CACHE_NAME (stamped from the commit SHA by next.config.js) or any caching/fetch logic.
+// ⚠️ A notification only ever opens OUR site. The push payload's `url` is a path from our own server, but the worker
+// trusts no payload: it is resolved against this origin, and anything that lands elsewhere (an absolute URL to another
+// host, `//host`, `/\host`, `javascript:`) is dropped — the tap then behaves like a notification without a link.
+function sameOriginUrl(raw) {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const u = new URL(raw, self.location.origin);
+    return u.origin === self.location.origin ? u.href : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function pushText(value, max) {
+  return typeof value === 'string' ? value.slice(0, max) : '';
+}
+
+// Web Push (lib/notifications/channels/push.ts → the browser's push service → here), payload `{ title, body, url, tag }`.
+// EVERY push shows a notification: Chrome answers a silent one with its own "This site has been updated in the
+// background", and Safari revokes the subscription after a few. Purely additive, like the click handler below: it does
+// NOT touch CACHE_NAME or any caching/fetch logic.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    const parsed = event.data ? event.data.json() : null;
+    if (parsed && typeof parsed === 'object') data = parsed;
+  } catch (_e) {
+    try {
+      data = { body: event.data ? event.data.text() : '' };
+    } catch (_e2) {
+      data = {};
+    }
+  }
+  const options = {
+    body: pushText(data.body, 300),
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: { url: sameOriginUrl(data.url) },
+  };
+  // Same tag = the OS replaces the earlier notification instead of stacking a duplicate.
+  const tag = pushText(data.tag, 64);
+  if (tag) options.tag = tag;
+  event.waitUntil(
+    self.registration.showNotification(pushText(data.title, 120) || 'MyAvatar.ge', options).catch(() => undefined),
+  );
+});
+
+// PHASE 20 — native completion notifications, and Web Push. A tap on a notification WITHOUT a link (fired via
+// registration.showNotification from lib/notify/browserNotify) focuses an already-open app window if there is one, else
+// opens a fresh one — unchanged. A push WITH a link focuses a window already on that page, else opens the page in a new
+// window: an open tab is never navigated away (it may hold a half-written prompt). Purely additive: it does NOT touch
+// CACHE_NAME (stamped from the commit SHA by next.config.js) or any caching/fetch logic.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const target = sameOriginUrl(event.notification.data && event.notification.data.url);
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
+        if (target) {
+          const path = new URL(target).pathname;
+          for (const client of clientList) {
+            let clientPath = null;
+            try {
+              clientPath = new URL(client.url).pathname;
+            } catch (_e) {
+              clientPath = null;
+            }
+            if (clientPath === path && 'focus' in client) return client.focus();
+          }
+          if (self.clients.openWindow) return self.clients.openWindow(target);
+        }
         for (const client of clientList) {
           if ('focus' in client) return client.focus();
         }

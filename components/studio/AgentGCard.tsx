@@ -16,8 +16,10 @@ import { gateButtons, type GateMode } from '@/lib/chat/focusGate';
 
 export interface AgentGCardState {
   kind: 'clarify' | 'confirm';
-  /** The focus mode this card was made in. */
+  /** The tool this card would run (the focus mode it was made in, or what a chat order asked for). */
   target: GateMode;
+  /** Made in plain chat (an order typed there): it stays live while the chat is open, and Create runs `target`. */
+  madeIn?: 'chat';
   /** The prompt Agent G will generate from (the user's words, or thin words + their answer). */
   prompt: string;
   /** What pressing the button costs, in credits; 0 = no price on this card. */

@@ -66,3 +66,12 @@ export function videoTokensUsd(input: Record<string, unknown>, description: stri
   const usd = Math.max(perSecond16x9, perSecondAspect) * duration;
   return Math.ceil(usd * 10_000) / 10_000;
 }
+
+/**
+ * Seedance 2.5 image→video: the output takes the PHOTO's shape, which is not known before the provider fetches it. So it is
+ * costed at the widest shape the family renders (21:9 — the most pixels per second at a given height), never below cost: a
+ * 16:9 or 9:16 photo is costed at the 21:9 ceiling, a 21:9 one exactly at its own. Same verified rates as `videoTokensUsd`.
+ */
+export function seedanceI2vUsd(input: Record<string, unknown>, description: string | null): number | null {
+  return videoTokensUsd({ ...input, aspect_ratio: '21:9' }, description);
+}

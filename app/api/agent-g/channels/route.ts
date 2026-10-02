@@ -53,6 +53,12 @@ export async function POST(request: NextRequest) {
 
     const payload = saveSchema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid channel payload');
+    // ⚠️ A browser may not name a WhatsApp number or a Telegram chat: that let anyone attach someone else's number to
+    // their own account and read that person's conversation with Agent G. Those links are made only by a message FROM
+    // the number (a one-time code — /api/agent-g/whatsapp/link); this route keeps the web channel's own settings.
+    if (payload.data.type !== 'web') {
+      return apiError(new Error('Channel links are made from the channel'), 400, 'Link this channel with a one-time code');
+    }
 
     const supabase = createServiceRoleClient();
 

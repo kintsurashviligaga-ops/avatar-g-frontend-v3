@@ -115,6 +115,7 @@ import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { useHiddenTools, visibleToolIds } from './hub';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
@@ -127,6 +128,8 @@ import { MusicCreatePanel } from './create/MusicCreatePanel';
 import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
+// The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
+import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -1096,6 +1099,13 @@ function deleteServerSession(sid: string): void {
   }).catch(() => { /* tombstoned locally regardless */ });
 }
 
+/** Agent G, when the model picked in the Image / Video panel is one that runs from the panel (lib/studio/modelPick). */
+const HF_PANEL_NOTE: Record<'ka' | 'en' | 'ru', string> = {
+  ka: 'შენ მიერ არჩეული მოდელი პანელიდან ეშვება — მოთხოვნა პანელის ველშია, ფასი კი „შექმნის“ ღილაკზე.',
+  en: 'The model you picked runs from the panel — your request is in its prompt box, and the price is on its Create button.',
+  ru: 'Выбранная модель запускается из панели — запрос уже в её поле, а цена на кнопке «Создать».',
+};
+
 /** The server session id behind a sidebar row — either a synced local chat or a `cloud:` entry. */
 function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined): string | null {
   if (!c) return null;
@@ -1115,7 +1125,7 @@ export const OMNI_RESUME_KEY = 'myavatar-omni-resume';
 const HISTORY_MAX = 80;  // max turns kept per conversation
 const CONV_MAX = 40;     // max conversations kept overall
 
-interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number; /** Supabase chat_sessions.session_id — set once a conversation is persisted/hydrated; enables cross-device merge + lazy transcript load. */ serverSid?: string }
+interface Conversation { id: string; title: string; messages: Msg[]; updatedAt: number; /** Supabase chat_sessions.session_id — set once a conversation is persisted/hydrated; enables cross-device merge + lazy transcript load. */ serverSid?: string; /** The service this session belongs to (the tool it was started in) — opening it from History returns to that tool. */ tool?: string }
 
 function newConversationId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -1214,7 +1224,7 @@ function loadConversationMessages(id: string): Msg[] {
   return loadConversations().find((c) => c.id === id)?.messages ?? [];
 }
 /** Save/update the active conversation; an emptied conversation is removed. */
-function upsertConversation(id: string, messages: Msg[]): void {
+function upsertConversation(id: string, messages: Msg[], tool?: string): void {
   const lean = leanMessages(messages);
   const list = loadConversations();
   const idx = list.findIndex((c) => c.id === id);
@@ -1230,6 +1240,8 @@ function upsertConversation(id: string, messages: Msg[]): void {
   const conv: Conversation = {
     id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now(),
     ...(idx >= 0 && list[idx]?.serverSid ? { serverSid: list[idx].serverSid } : {}),
+    // The FIRST tool a session was saved under stays its tool (a thread that spanned a switch made mid-render keeps it).
+    ...((idx >= 0 && list[idx]?.tool) || tool ? { tool: (idx >= 0 && list[idx]?.tool) || tool } : {}),
   };
   if (idx >= 0) list[idx] = conv; else list.unshift(conv);
   list.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -1237,6 +1249,22 @@ function upsertConversation(id: string, messages: Msg[]): void {
 }
 function deleteConversation(id: string): void {
   saveConversations(loadConversations().filter((c) => c.id !== id));
+}
+/**
+ * Which session each service has open in THIS visit (sessionStorage, per account). A new visit starts every service on
+ * a fresh session; within a visit, going back to a service brings back the thread you were in there.
+ */
+function toolSessionsKey(): string { return `myavatar:tool-sessions:${currentUid() ?? 'anon'}`; }
+function readToolSessions(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const v = JSON.parse(window.sessionStorage.getItem(toolSessionsKey()) ?? '{}') as unknown;
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, string>) : {};
+  } catch { return {}; }
+}
+function writeToolSessions(map: Record<string, string>): void {
+  if (typeof window === 'undefined') return;
+  try { window.sessionStorage.setItem(toolSessionsKey(), JSON.stringify(map)); } catch { /* private mode: one thread per visit */ }
 }
 
 // ── Storyboard preview (Video mode) ───────────────────────────────────────────
@@ -1736,6 +1764,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // stale-closure / exhaustive-deps churn).
   const messagesRef = useRef<Msg[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // The tool on screen (assigned where `activeTool` is derived) and the mode switch behind a tool pick — read by the session
+  // code below, which runs before either is declared.
+  const activeToolRef = useRef<ToolId>('chat');
+  const applyToolRef = useRef<((id: ToolId) => void) | null>(null);
   // Chat-history panel (list of past conversations) open state.
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
@@ -2035,7 +2067,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
   const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
   /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
-  const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number } | null>(null);
+  const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
   /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
   const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
@@ -2503,7 +2535,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
     if (!busy) {
-      upsertConversation(conversationId, messages);
+      upsertConversation(conversationId, messages, activeToolRef.current);
       // Notify the left sidebar's history list (ChatChrome) to refresh.
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
     }
@@ -2514,10 +2546,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // instead of letting it render over — and then overwrite — a message in the thread being opened.
     const settle = endChatStream();
     if (settle) { genIdRef.current += 1; setBusy(false); }
-    upsertConversation(conversationId, settle ? settle(messages) : messages); // save current before leaving
+    upsertConversation(conversationId, settle ? settle(messages) : messages, activeToolRef.current); // save current before leaving
     setConversationId(id);
     setCurrentConversationId(id);
     const convo = loadConversations().find((c) => c.id === id);
+    // A session opened from History returns to the service it belongs to, and becomes that service's open session.
+    if (convo?.tool && isToolId(convo.tool) && convo.tool !== activeToolRef.current) applyToolRef.current?.(convo.tool);
+    if (convo?.tool && isToolId(convo.tool)) writeToolSessions({ ...readToolSessions(), [convo.tool]: id });
     // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
     if (convo?.serverSid && (convo.messages?.length ?? 0) === 0) {
@@ -2534,8 +2569,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMessages(loadConversationMessages(id));
     }
   }, [conversationId, messages, endChatStream]);
-  const startNewConversation = useCallback(() => {
-    upsertConversation(conversationId, messages); // save current
+  const startNewConversation = useCallback((): string => {
+    upsertConversation(conversationId, messages, activeToolRef.current); // save current
     const id = newConversationId();
     setConversationId(id);
     setCurrentConversationId(id);
@@ -2548,6 +2583,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // moment it started working.
     chatSessionIdRef.current = null;
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
+    // "New session" is new for the service on screen: going back to it later in this visit opens this one.
+    writeToolSessions({ ...readToolSessions(), [activeToolRef.current]: id });
+    return id;
   }, [conversationId, messages]);
   const removeConversation = useCallback((id: string) => {
     // ⚠️ TOMBSTONE + SERVER DELETE BEFORE THE LOCAL ONE. Removing the local row erases its serverSid,
@@ -2668,13 +2706,44 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * ⚠️ Keyed on the TOOL, never on `mode`: dubbing, 3D and presentation park `mode` at 'chat' while their controls live
    * in the settings panel — a rule on `mode` would hide those studios' only controls.
    */
+  activeToolRef.current = activeTool;
   const chatOnly = activeTool === 'chat';
   /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
   const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
   // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks, but
   // the `chatOnly` effect below closes the sheet again when `next dev`'s Strict Mode re-runs the mount effects after a deep link.
   useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
-  const selectTool = useCallback((id: ToolId) => {
+  // ── EVERY SERVICE ITS OWN SESSION ────────────────────────────────────────────────────────────────────────────
+  // ⚠️ ONE THREAD FOR EVERY TOOL. A chat, then Video, then the Photographer all landed in ONE conversation: image results
+  // under the chat's answers, a storyboard under those, one History entry titled after the first chat line. Picking a tool
+  // now saves the thread you were in and opens that tool's own session — the one it had in this visit, or a fresh one —
+  // so every service has its own conversation, and History lists them separately.
+  //   · Only an explicit pick swaps (the sidebar, the „+" sheet, the panel's tool switcher, a deep link). A mode change
+  //     inside a flow — a sentence that releases a sticky mode, a result sent on to Video — stays in its thread.
+  //   · Never while something renders: its bubble lives in this thread, and a swap would strand it mid-progress. The
+  //     pick still changes the tool; the next pick after it finishes swaps.
+  //   · An empty thread is simply handed to the new tool (no empty sessions pile up in History).
+  const switchToolSession = useCallback((to: ToolId) => {
+    const from = activeToolRef.current;
+    if (to === from) return;
+    const rendering = busy || genActiveRef.current || useJobQueue.getState().jobs.some((j) => j.status === 'rendering' || j.status === 'queued');
+    if (rendering) return;
+    const map = readToolSessions();
+    const hasThread = messagesRef.current.length > 0;
+    if (hasThread) map[from] = conversationId;
+    else if (map[from] === conversationId) delete map[from];
+    const own = map[to];
+    if (own && own !== conversationId && loadConversations().some((c) => c.id === own)) {
+      writeToolSessions(map);
+      void resumeConversation(own);
+      return;
+    }
+    if (!hasThread) { map[to] = conversationId; writeToolSessions(map); return; }
+    const fresh = startNewConversation();
+    // startNewConversation files the new session under the tool still on screen (`from`): put both right.
+    writeToolSessions({ ...map, [to]: fresh });
+  }, [busy, conversationId, resumeConversation, startNewConversation]);
+  const applyTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;
       case 'product': setMode('video'); setVideoTab('product'); break;
@@ -2696,6 +2765,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // The Image tool is one of them: its prompt lives in the Create screen (the sheet), not in the composer. So is Video, and the VFX tool.
     if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
   }, [setMode, setPanelService]);
+  applyToolRef.current = applyTool;
+  const selectTool = useCallback((id: ToolId) => {
+    switchToolSession(id);
+    applyTool(id);
+  }, [switchToolSession, applyTool]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
   // closed only on request. Below `lg` they are a sheet (Gemini) that opens on demand.
@@ -2751,6 +2825,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [toolPickOnly, setToolPickOnly] = useState(false);
   // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
   const researchExtras = useResearchToolExtras(locale, () => input);
+  // Tools switched off in the hub's Plugins tab leave the „+" sheet (never the active one). ⚠️ A menu row only — not access control.
+  const hiddenTools = useHiddenTools();
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -2828,6 +2904,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMode(d);
       setOptionsOpen(true);
       url.searchParams.delete('mode');
+      // `&prompt=` — Agent G on WhatsApp hands a "make me …" over as a studio link with the request typed in. It is only
+      // TYPED: nothing is sent, so the focus gate's confirm card and the price on the Generate button still decide.
+      const pre = (url.searchParams.get('prompt') ?? '').trim().slice(0, 2000);
+      if (pre) setInput(pre);
+      url.searchParams.delete('prompt');
       window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
     } catch { /* no URL API — the chat simply opens in its default mode */ }
   }, []);
@@ -4176,7 +4257,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
             : musicRegenBody(spec),
         ),
         credentials: 'include',
@@ -4285,7 +4366,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.any([signal, deadline]),
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
           // rejection escapes, because the floating tray is hidden while only one job is active
@@ -4373,7 +4454,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
@@ -5016,7 +5097,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
 
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -5027,7 +5108,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const guestText = (opts?.promptOverride ?? input).trim();
       // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
       // says "hello" with the Image tool open gets an answer, not a sign-in wall. Anything that could spend still stops here.
-      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music') && isConversational(guestText);
+      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music' || mode === 'lipsync') && isConversational(guestText);
       const plainChat =
         (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
         !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
@@ -5083,16 +5164,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     //   confirm → Agent G shows what it understood + the price; it generates only when the user taps Create.
     //   go      → straight to the tool: the panel's own Generate button (price on it), or a film's storyboard approval.
     // The type of a prompt is decided by words alone and errs on talking: a wrong chat reply costs one more message.
-    const gateMode: GateMode | null = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
+    // Avatar ('lipsync') is gated too: its words are the script a presenter speaks — a greeting there was a paid video.
+    const focusGateMode: GateMode | null = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode
+      : effMode === 'lipsync' ? 'avatar' : null;
+    // ⚠️ PLAIN CHAT DISPATCHED A PAID RENDER ON A SENTENCE. "დამიხატე კატა" / "make a song about the sea" typed into the chat
+    // went straight to runImageJob / runMusicJob (the autonomous chat dispatch below) — no question, no price, no "shall I?".
+    // Agent G directs now: the same orders get its card first — questions when the prompt is thin, the price and Create when
+    // it is not. Exactly the two lanes that used to fire on their own are gated; a film still goes to its storyboard (its own
+    // approval step) and a studio request still only opens its panel, prefilled. A chat question is ONE-SHOT: the next
+    // message either answers it or the chat simply carries on.
+    const inChat = effMode === 'chat';
+    const chatPend = inChat && gatePendingRef.current?.inChat && Date.now() - gatePendingRef.current.at < 10 * 60_000 ? gatePendingRef.current : null;
+    if (inChat && gatePendingRef.current?.inChat) gatePendingRef.current = null;
+    const chatOrder: GateMode | null = (() => {
+      if (!inChat || !text || opts?.confirmed) return null;
+      if (chatPend) return chatPend.mode;
+      if (!isGenerativeCommand(text) || detectStudioIntent(text)) return null;
+      const lane = resolveGenerativeLane(text, detectIntent(text));
+      if (lane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) return 'image';
+      if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
+      return null;
+    })();
+    const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
-      const pend = gatePendingRef.current;
-      const pending = pend && pend.mode === gateMode && Date.now() - pend.at < 10 * 60_000 ? pend : null;
-      if (!pending) gatePendingRef.current = null;
+      const pend = inChat ? chatPend : gatePendingRef.current;
+      const pending = pend && pend.mode === gateMode && !!pend.inChat === inChat && Date.now() - pend.at < 10 * 60_000 ? pend : null;
+      if (!pending && !inChat) gatePendingRef.current = null;
       // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
       if (pending && isAffirmation(text)) {
         gatePendingRef.current = null;
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-        void send({ promptOverride: pending.base, confirmed: true });
+        void send({ promptOverride: pending.base, confirmed: true, ...(pending.inChat ? { target: pending.mode } : {}) });
         return;
       }
       const hasRef = attachments.length > 0;
@@ -5119,12 +5221,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       if (verdict.kind === 'clarify' || verdict.kind === 'confirm') {
+        // ⚠️ A HIGGSFIELD MODEL PICKED IN THE PANEL RUNS FROM THE PANEL. Its Generate carries that model's own price and runs
+        // it through the Studio β saga; this card's Create goes through send(), which would render the GOOGLE model in its
+        // place (a film) or be refused by the image route (a picture). So Agent G points there instead — the words stay in
+        // the box, which the panel's prompt shares.
+        if ((gateMode === 'image' || gateMode === 'video') && higgsfieldPicked(gateMode)) {
+          gatePendingRef.current = null;
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: HF_PANEL_NOTE[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] }]);
+          setGateFrom(messages.length);
+          if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
+          if (promptText !== text) setInput(promptText);
+          stopDictationEcho();
+          return;
+        }
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
           : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
-            : 0;
-        gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now() } : null;
-        const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits };
+            : gateMode === 'avatar' ? quoteCredits({ tool: 'avatar' })
+              : 0;
+        gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now(), inChat } : null;
+        const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
         setMessages((prev) => [
           ...prev,
           { role: 'user', text },
@@ -5276,8 +5392,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // to MAKE something, so past that gate "we could not tell which service" is not an answer.
     // resolveGenerativeLane defaults those to image (cheapest, fastest, most common) and vetoes anything
     // aimed at a TEXT deliverable, so "make me a list of ideas" still gets written, not drawn.
-    const chatLane = chatIntent ? resolveGenerativeLane(text, chatIntent) : null;
-    if (chatLane) {
+    // Only a CONFIRMED order runs here (Agent G's card above, or "yes" to its question) — and it runs the tool the card was for.
+    const chatLane = mode === 'chat' && opts?.target === 'image' ? 'image_generation'
+      : mode === 'chat' && opts?.target === 'music' ? 'music_generation'
+        : chatIntent ? resolveGenerativeLane(text, chatIntent) : null;
+    if (chatLane && opts?.confirmed) {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
         setOptionsOpen(false);
@@ -6336,6 +6455,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
+    // A Higgsfield model picked in the Image / Video panel runs from that panel's Generate (the saga's price, confirmed by the
+    // tap): the composer opens the panel, as for motion — it never renders the Google model in its place.
+    if ((activeTool === 'image' || activeTool === 'video') && higgsfieldPicked(activeTool)) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };
@@ -6558,7 +6680,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     gatePendingRef.current = null;
     setGateFrom(null);
     resolveGateCard(idx);
-    void send({ promptOverride: card.prompt, confirmed: true });
+    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });
   }, [resolveGateCard, send]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
@@ -7186,7 +7308,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   </button>
                 )}
                 {m.role === 'assistant' && m.agentG && (
-                  <AgentGCard card={m.agentG} locale={locale} stale={mode !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
+                  <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
                 )}
               </div>
             </div>
@@ -7277,7 +7399,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const agentGNote = gateMsg ? (
     <AgentGNote
       text={gateMsg.text} card={gateMsg.agentG} locale={locale}
-      stale={!!gateMsg.agentG && mode !== gateMsg.agentG.target}
+      stale={!!gateMsg.agentG && (gateMsg.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== gateMsg.agentG.target)}
       onConfirm={() => confirmGate(gateIdx)} onEdit={() => editGate(gateIdx)} onDismiss={() => setGateFrom(null)}
     />
   ) : null;
@@ -9424,8 +9546,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
       {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
-      tools={PRIMARY_TOOLS.map(toolEntry)}
-      studios={MORE_TOOLS.map(toolEntry)}
+      tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
+      studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id); }}

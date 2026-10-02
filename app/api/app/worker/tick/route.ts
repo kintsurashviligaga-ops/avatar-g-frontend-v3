@@ -9,6 +9,13 @@ import { recordRouteMetric } from '@/lib/platform/request-metrics';
 
 export const dynamic = 'force-dynamic';
 
+// ⚠️ VERCEL CRON CALLS GET. vercel.json has scheduled this path every 2 minutes for months, and every run answered 405
+// because only POST was exported — the `webhooks_ingest` queue (WhatsApp, Telegram) was never drained by the cron.
+// GET runs the same tick under the same auth (the cron sends `Authorization: Bearer $CRON_SECRET`).
+export async function GET(request: NextRequest) {
+  return POST(request);
+}
+
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
@@ -48,19 +55,10 @@ export async function POST(request: NextRequest) {
     .lt('heartbeat_at', staleThreshold)
     .limit(100);
 
+  // A failed stale-job scan (the table missing on this deployment, a transient error) must not starve the channel
+  // queues below: it used to answer 500 here, before a single WhatsApp/Telegram delivery was looked at.
   if (staleError) {
-    statusCode = 500;
-    const response = NextResponse.json({ error: staleError.message, request_id: requestId }, { status: 500 });
-    response.headers.set('x-request-id', requestId);
-    recordRouteMetric({
-      request_id: requestId,
-      route: '/api/app/worker/tick',
-      method: 'POST',
-      status: statusCode,
-      duration_ms: Date.now() - startedAt,
-      at: Date.now(),
-    });
-    return response;
+    console.error('[Worker.Tick] stale service_jobs scan failed', { request_id: requestId, message: staleError.message });
   }
 
   let recycled = 0;
@@ -71,7 +69,7 @@ export async function POST(request: NextRequest) {
 
   // Batch the two disjoint transitions into set-based updates. This replaced up to 100 SEQUENTIAL
   // per-row UPDATE round-trips — a real serverless-latency bottleneck on a hot recovery tick.
-  const jobs = staleJobs ?? [];
+  const jobs = staleError ? [] : staleJobs ?? [];
   const heartbeatAt = new Date().toISOString();
   const deadIds = jobs.filter((j) => (j.attempt_count ?? 0) >= (j.max_attempts ?? 3)).map((j) => j.id);
   const recycleIds = jobs.filter((j) => (j.attempt_count ?? 0) < (j.max_attempts ?? 3)).map((j) => j.id);
@@ -106,8 +104,12 @@ export async function POST(request: NextRequest) {
     webhooksDispatched += 1;
   }
 
-  const processingJobs = await dequeueQueueItems<Record<string, unknown>>('processing_jobs', 25);
-  for (const job of processingJobs) {
+  // One at a time under a deadline: a channel reply can take seconds (a model answer), and an item taken off the
+  // queue and then cut off by maxDuration would be lost. What is left waits for the next tick.
+  const processingDeadline = startedAt + 80_000;
+  for (let taken = 0; taken < 25 && Date.now() < processingDeadline; taken += 1) {
+    const [job] = await dequeueQueueItems<Record<string, unknown>>('processing_jobs', 1);
+    if (!job) break;
     const source = String(job.payload?.source || '');
     try {
       if (source === 'whatsapp') {

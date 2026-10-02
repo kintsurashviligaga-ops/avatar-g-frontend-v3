@@ -172,11 +172,11 @@ describe('ImageResultPane', () => {
 });
 
 describe('ImageModelsTable — Models & prices, and the size picker', () => {
+  beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom */ } });
   const setup = (over: Partial<React.ComponentProps<typeof ImageModelsTable>> = {}) => {
     const onQuality = jest.fn();
-    const onModel = jest.fn();
-    const view = render(<ImageModelsTable locale="en" quality="high" onQuality={onQuality} onModel={onModel} {...over} />);
-    return { onQuality, onModel, ...view };
+    const view = render(<ImageModelsTable locale="en" quality="high" onQuality={onQuality} {...over} />);
+    return { onQuality, ...view };
   };
 
   test('a row per model variant the route can run — Auto at 1K, 2K, 4K — each priced by the quote', () => {
@@ -199,11 +199,24 @@ describe('ImageModelsTable — Models & prices, and the size picker', () => {
     expect(checked()).toEqual(['ultra']);
   });
 
-  test('choosing a row sets that size and the model (it is the picker)', () => {
-    const { onQuality, onModel } = setup();
+  test('choosing a row sets that size (it is the size picker; the model is chosen in the panel\'s model row)', () => {
+    const { onQuality } = setup();
     fireEvent.click(screen.getAllByRole('radio')[2]!);
     expect(onQuality).toHaveBeenCalledWith('ultra');
-    expect(onModel).toHaveBeenCalledWith('auto');
+  });
+
+  test('a Higgsfield pick: the table of Nano Banana sizes and prices steps aside (that model is priced on its own button)', () => {
+    window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
+    setup();
+    expect(screen.queryByTestId('models-prices')).toBeNull();
+  });
+
+  test('it follows the picked model: Nano Banana Pro has 2K and 4K only, and says so in each row', () => {
+    setup({ model: 'nb/pro' });
+    const rows = within(screen.getByRole('radiogroup', { name: 'Models & prices' })).getAllByRole('radio');
+    expect(rows.map((r) => r.querySelector('span.truncate')?.textContent)).toEqual(['Nano Banana Pro · 2K', 'Nano Banana Pro · 4K']);
+    expect(rows.map((r) => r.getAttribute('data-quality'))).toEqual(['high', 'ultra']);
+    for (const r of rows) expect(r.textContent).toContain('Nano Banana Pro');
   });
 
   test('arrow keys move through the rows; only the checked row is a Tab stop; every row is a ≥ 44 px target', () => {

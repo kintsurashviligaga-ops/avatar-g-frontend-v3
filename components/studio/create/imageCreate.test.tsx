@@ -1,10 +1,14 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Image as ImageIcon } from 'lucide-react';
 import { ImageCreatePanel, type ImageCreatePanelProps } from './ImageCreatePanel';
 import { IMAGE_CREATE_COPY, imageCreateCopy } from './imageCreateCopy';
 import { IMAGE_TEMPLATES, templateAddsLine, templateLang } from '@/lib/studio/templates';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { IMG_ASPECTS, IMG_STYLES } from '@/lib/studio/imageCreate';
+import { catalogueFor } from '@/lib/providers/catalogue';
+import { MODELS, publicModel } from '@/lib/providers/registry';
+import { __resetCatalogueStatusCache } from '../ui/useCatalogueStatus';
+import { __resetStudioModelsCache } from './useStudioModels';
 
 /**
  * The Image tool's Create screen (ref3), as a view: rows in the reference's order, pickers that open, values that follow props,
@@ -39,6 +43,9 @@ const show = (over: Partial<ImageCreatePanelProps> = {}) => {
 };
 
 const generate = () => screen.getByTestId('create-generate');
+
+// The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not leak into the next.
+beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
 
 describe('the rows, in the reference\'s order', () => {
   test('header → upload → prompt → templates → advanced → chips → Generate', () => {
@@ -272,21 +279,101 @@ describe('the chips show the live values and open large pickers', () => {
   });
 });
 
-describe('the model row: Auto, and only what the route can really use', () => {
-  test('one entry — Auto — checked, explained, and priced from the quote', () => {
+describe('the model row: the studio\'s ModelPicker — Google first and the default, Higgsfield opt-in, no price', () => {
+  const rows = () => within(screen.getByRole('dialog', { name: 'Model' })).getAllByRole('radio');
+  const row = (id: string) => rows().find((r) => r.getAttribute('data-model') === id)!;
+  const realFetch = global.fetch;
+  /** GET /api/studio/catalogue as this deployment would answer: the listed Higgsfield models run, the rest are not enabled. */
+  const deployment = (runs: string[]) => {
+    __resetCatalogueStatusCache();
+    __resetStudioModelsCache();
+    global.fetch = jest.fn(async (url: string) => {
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+      if (url.startsWith('/api/studio/catalogue')) {
+        return ok({ models: catalogueFor('image').map((e) => (e.provider === 'higgsfield'
+          ? { id: e.id, available: runs.includes(e.id), reason: runs.includes(e.id) ? null : 'not_enabled' }
+          : { id: e.id, available: true, reason: null })) });
+      }
+      if (url.startsWith('/api/studio/models')) return ok({ models: MODELS.map(publicModel).filter((m) => runs.includes(m.id)) });
+      return ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response;
+    }) as unknown as typeof fetch;
+  };
+  afterEach(() => { global.fetch = realFetch; });
+
+  test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed, dimmed where this deployment cannot run it', async () => {
+    deployment([]);
     show();
     fireEvent.click(screen.getByTestId('model-row'));
+    const hf = catalogueFor('image').filter((e) => e.provider === 'higgsfield').map((e) => e.id);
+    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', ...hf]);
+    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
+    expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
+    expect(row('nb/auto').getAttribute('aria-checked')).toBe('true');
+    expect(row('nb/auto').textContent).toContain('V2 at 1K and 2K, Pro at 4K');
+    expect(row('nb/pro').textContent).toContain('Max quality'); // the speed/quality badge
+    for (const id of hf) expect(row(id).getAttribute('aria-disabled')).toBe('true');
+    // ⚠️ No price anywhere in the model list — the request names the model and the server quotes it.
     const dialog = screen.getByRole('dialog', { name: 'Model' });
-    const options = within(dialog).getAllByRole('radio');
-    expect(options).toHaveLength(1);
-    expect(options[0]!.getAttribute('aria-checked')).toBe('true');
-    expect(options[0]!.textContent).toContain('Auto');
-    expect(options[0]!.textContent).toContain('Nano Banana V2');
-    expect(options[0]!.textContent).toContain('backup engine');
-    expect(options[0]!.textContent).toContain(creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en'));
-    // Picking the only entry closes the picker.
-    fireEvent.click(options[0]!);
+    expect(dialog.textContent).not.toContain(creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en'));
+    expect(dialog.textContent).not.toMatch(/credit/i);
+  });
+
+  test('a pick is one tap: it closes the sheet, the row reads the model, the browser remembers it — a dimmed row does nothing', async () => {
+    deployment([]);
+    show();
+    fireEvent.click(screen.getByTestId('model-row'));
+    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
+    fireEvent.click(row('hf/soul-2'));
+    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
+    fireEvent.click(row('nb/v2'));
     expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
+    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana V2');
+    expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/v2');
+  });
+
+  test('a Higgsfield model this deployment runs is a real choice: Generate becomes the saga\'s (its own price), the ×N chip steps aside', async () => {
+    deployment(['hf/soul-2']);
+    const { p } = show({ prompt: '' }); // no prompt: nothing to price, so the test ends with no request in flight
+    fireEvent.click(screen.getByTestId('model-row'));
+    await waitFor(() => expect(row('hf/soul-2').getAttribute('aria-disabled')).toBeNull());
+    fireEvent.click(row('hf/soul-2'));
+    expect(window.localStorage.getItem('myavatar:model:image')).toBe('hf/soul-2');
+    expect(screen.getByTestId('model-row').textContent).toContain('Soul 2');
+    expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/soul-2');
+    expect(screen.queryByTestId('chip-count')).toBeNull();
+    // The panel's own Generate is not reachable for it: Cmd/Ctrl+Enter does not run the Google route.
+    fireEvent.keyDown(screen.getByTestId('create-prompt'), { key: 'Enter', ctrlKey: true });
+    expect(p.onGenerate).not.toHaveBeenCalled();
+    // It reads the model's own parameters (Studio β's description) and says what it will render.
+    await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Soul 2 — photoreal image · 1:1 · 1080p'));
+  });
+
+  test('a remembered Higgsfield pick the deployment no longer runs falls back to Google — once the server has said so', async () => {
+    window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
+    deployment([]);
+    show();
+    await waitFor(() => expect(window.localStorage.getItem('myavatar:model:image')).toBeNull());
+    expect(screen.getByTestId('model-row').textContent).toContain('Auto');
+    expect(screen.queryByTestId('hf-generate')).toBeNull();
+  });
+
+  test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {
+    const { p } = show({ quality: 'standard', model: 'nb/pro', onModel: jest.fn() });
+    expect(p.onQuality).toHaveBeenCalledWith('high');
+    fireEvent.click(screen.getByTestId('chip-quality'));
+    const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
+    expect((options[0] as HTMLButtonElement).disabled).toBe(true);
+    expect(options[0]!.textContent).toContain('Nano Banana Pro does not render this size');
+    expect(options[1]!.textContent).toContain('Nano Banana Pro');
+  });
+
+  test('controlled: `model` / `onModel` override the browser\'s pick', () => {
+    const onModel = jest.fn();
+    show({ model: 'nb/pro', onModel });
+    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana Pro');
+    fireEvent.click(screen.getByTestId('model-row'));
+    fireEvent.click(row('nb/auto'));
+    expect(onModel).toHaveBeenCalledWith('nb/auto');
   });
 });
 

@@ -57,7 +57,8 @@ describe('per-persona generation settings', () => {
 
   it('the two newer ones make the per-persona config concrete', () => {
     expect(getBuiltInPersona('creative-video-director')).toMatchObject({ temperature: 0.9, thinking: 'low', voice: 'Charon' });
-    expect(getBuiltInPersona('strict-coder')).toMatchObject({ temperature: 0.2, thinking: 'high', googleSearch: false });
+    expect(getBuiltInPersona('strict-coder')).toMatchObject({ temperature: 0.2, thinking: 'high' });
+    expect(getBuiltInPersona('strict-coder')?.googleSearch).toBeUndefined(); // → the default: Google Search on
   });
 });
 

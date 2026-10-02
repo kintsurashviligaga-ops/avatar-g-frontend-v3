@@ -131,7 +131,7 @@ function fakeProvider(script: Script = {}) {
   return { provider, calls };
 }
 
-function setup(script: Script = {}, opts: { balance?: number; slots?: number; copy?: 'ok' | 'fail' } = {}) {
+function setup(script: Script = {}, opts: { balance?: number; slots?: number; copy?: 'ok' | 'fail'; env?: Record<string, string> } = {}) {
   const { store, rows } = memoryStore();
   const ledger = fakeLedger(opts.balance);
   const sem = countingSemaphore(opts.slots);
@@ -153,7 +153,7 @@ function setup(script: Script = {}, opts: { balance?: number; slots?: number; co
     alert: (m) => { alerts.push(m); },
     now: () => clock,
     newId: () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`,
-    env: { HF_USD_GEL_RATE: '2.7', HF_GEL_MARGIN: '1.35' } as NodeJS.ProcessEnv,
+    env: { HF_USD_GEL_RATE: '2.7', HF_GEL_MARGIN: '1.35', ...opts.env } as NodeJS.ProcessEnv,
   };
   return { saga: createStudioSaga(deps), rows, ledger, sem, calls, alerts, filed, store };
 }
@@ -202,7 +202,17 @@ describe('no money moves without a confirmed price', () => {
   test('an unknown or disabled model is refused before anything else', async () => {
     const { saga, calls } = setup();
     expect(await saga.create({ userId: USER, modelId: 'hf/nope', params: {}, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
+    // A Nano Banana / Veo pick is a catalogue model but never a Higgsfield one: the saga cannot be talked into running it.
+    expect(await saga.create({ userId: USER, modelId: 'nb/pro', params: { prompt: 'x' }, confirmedGel: 1 })).toMatchObject({ ok: false, code: 'model_unavailable' });
     expect(calls.estimate).toBe(0);
+  });
+
+  test('a registered model this deployment did not enable (HF_ENABLED_MODELS) is refused before an estimate or a charge', async () => {
+    const { saga, calls, ledger } = setup({}, { env: { HF_ENABLED_MODELS: 'hf/soul-2' } });
+    expect(await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL })).toMatchObject({ ok: false, code: 'model_unavailable' });
+    expect(calls.estimate).toBe(0);
+    expect(calls.submit).toBe(0);
+    expect(ledger.entries).toEqual([]);
   });
 });
 

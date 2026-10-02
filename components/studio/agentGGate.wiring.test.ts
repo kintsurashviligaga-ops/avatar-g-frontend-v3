@@ -17,16 +17,26 @@ describe('the gate runs before anything that spends', () => {
   test.each([
     ['the image render', "if (effMode === 'image' && text &&"],
     ['the music render', "if (effMode === 'music' && (text ||"],
-    ['the chat-mode autonomous dispatch', 'const chatLane = chatIntent'],
+    ['the chat-mode autonomous dispatch', 'if (chatLane && opts?.confirmed) {'],
     ['the film storyboard', "if (effMode === 'video' && (text ||"],
     ['the avatar render', "if (effMode === 'lipsync')"],
   ])('before %s', (_what, needle) => {
     expect(at(needle)).toBeGreaterThan(0);
     expect(at('classifyFocusInput({ text, mode: gateMode')).toBeLessThan(at(needle));
   });
-  test('only Image / Video / Music are gated, and only when there are words', () => {
-    expect(sendBody).toContain("effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null");
+  test('Image / Video / Music / Avatar are gated, and only when there are words', () => {
+    expect(sendBody).toContain("effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode");
+    expect(sendBody).toContain(": effMode === 'lipsync' ? 'avatar' : null;");
+    expect(sendBody).toContain('const gateMode: GateMode | null = focusGateMode ?? chatOrder;');
     expect(sendBody).toMatch(/if \(gateMode && text && !opts\?\.confirmed\)/);
+  });
+  test('plain chat: an order to make an image or a track goes through Agent G too — and its dispatch runs only once confirmed', () => {
+    const order = sendBody.slice(at('const chatOrder: GateMode | null'), at('const gateMode: GateMode | null = focusGateMode ?? chatOrder;'));
+    expect(order).toContain("lane === 'image_generation'");
+    expect(order).toContain("lane === 'music_generation'");
+    expect(order).toContain('detectStudioIntent(text)'); // a studio request only opens its panel — never gated into a render
+    expect(at('const chatOrder: GateMode | null')).toBeLessThan(at('classifyFocusInput({ text, mode: gateMode'));
+    expect(sendBody).toContain('if (chatLane && opts?.confirmed) {');
   });
 });
 
@@ -42,7 +52,7 @@ describe('what the gate does with each verdict', () => {
     expect(card).not.toMatch(/fetch\(|runImageJob|runMusicJob|createStoryboard/);
   });
   test('only a decision lets a prompt through: a confirmed card, or the panel\'s own Generate button', () => {
-    expect(src).toContain('void send({ promptOverride: card.prompt, confirmed: true });');
+    expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });");
     expect(src).toContain('onGenerate={() => runTool(true)}');
     expect(src).toContain('onGenerate: () => runTool(true),');
     expect(src).toContain('void send({ promptOverride: prompt, explicit: true })');
