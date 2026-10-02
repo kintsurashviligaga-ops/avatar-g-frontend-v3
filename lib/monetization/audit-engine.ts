@@ -183,9 +183,12 @@ export function isFounderAuditCommand(text: string): boolean {
   return AUDIT_KEYWORDS.some((rx) => rx.test(text));
 }
 
-/** Read the comma-separated FOUNDER_USER_IDS env list. */
+/**
+ * Read the comma-separated FOUNDER_USER_IDS env list. Server-only on purpose — there used to be a
+ * NEXT_PUBLIC_FOUNDER_USER_IDS fallback, and a NEXT_PUBLIC_ value is inlined into browser bundles.
+ */
 export function getFounderUserIds(): string[] {
-  const raw = process.env.FOUNDER_USER_IDS || process.env.NEXT_PUBLIC_FOUNDER_USER_IDS || '';
+  const raw = process.env.FOUNDER_USER_IDS || '';
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
