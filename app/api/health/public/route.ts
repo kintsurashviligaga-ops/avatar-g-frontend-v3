@@ -55,8 +55,12 @@ export async function GET() {
   }
 
   const [chat, image, video, music, voice, avatar] = await Promise.all([
+    // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
     probe('chat', process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY,
-      () => pingTimeout('https://generativelanguage.googleapis.com/v1beta/models?key=' + (process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? ''))),
+      () => pingTimeout('https://generativelanguage.googleapis.com/v1beta/models', {
+        headers: { 'x-goog-api-key': process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY ?? '' },
+        redirect: 'manual',
+      })),
     probe('image', process.env.REPLICATE_API_TOKEN,
       () => pingTimeout('https://api.replicate.com/v1/account', {
         headers: { Authorization: `Token ${process.env.REPLICATE_API_TOKEN}` },

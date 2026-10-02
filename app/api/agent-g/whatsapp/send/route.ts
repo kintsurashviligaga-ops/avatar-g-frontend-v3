@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
+import { isAdmin } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +15,12 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // ⚠️ ADMIN ONLY. This sent a WhatsApp message FROM OUR BUSINESS NUMBER to any phone number, with any text, for anyone
+  // who POSTed — no session, no key, no limit (spam/phishing under our name, billed conversations, a banned number) —
+  // and wrote a service-role row on top. Only an operator may send: the x-admin-key header or an admin session.
+  if (!adminKeyHeaderMatches(request) && !(await isAdmin().catch(() => false))) {
+    return apiError(new Error('Unauthorized'), 401, 'Admin access required');
+  }
   try {
     const payload = schema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid WhatsApp send payload');

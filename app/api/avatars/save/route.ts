@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,8 @@ const isValidOptionalUrl = (value?: string | null) => {
 };
 
 const saveAvatarSchema = z.object({
-  owner_id: z.string().min(3),
+  // Accepted for backward compatibility only — the row's owner is ALWAYS the verified session user (see POST).
+  owner_id: z.string().min(3).optional(),
   model_url: z.string().optional().nullable().refine(isValidOptionalUrl, {
     message: 'Invalid model_url',
   }),
@@ -46,15 +48,30 @@ export async function POST(request: NextRequest) {
     const rateLimitError = await checkRateLimit(request, RATE_LIMITS.WRITE);
     if (rateLimitError) return rateLimitError;
 
+    // ⚠️ IDOR: THE OWNER CAME FROM THE BODY. This inserted through the SERVICE-ROLE client with whatever `owner_id` the
+    // caller sent, signed in or not — anyone could write avatar rows (with arbitrary image URLs, data: URLs included)
+    // into ANY account. The owner is now the verified session user; a body `owner_id` naming someone else is refused.
+    let sessionUserId: string | null = null;
+    try {
+      sessionUserId = (await authedClientFromRequest(request)).user?.id ?? null;
+    } catch {
+      sessionUserId = null;
+    }
+    if (!sessionUserId) return apiError(new Error('Unauthorized'), 401, 'Sign in to save an avatar');
+
     const body = await request.json();
     const parsed = saveAvatarSchema.safeParse(body);
 
     if (!parsed.success) {
       return apiError(new Error('Invalid request'), 400, 'Invalid request');
     }
-    
+    if (parsed.data.owner_id && parsed.data.owner_id !== sessionUserId) {
+      return apiError(new Error('Forbidden'), 403, 'Access denied');
+    }
+
     // Validate required fields
-    const { owner_id, model_url, preview_image_url, name } = parsed.data;
+    const { model_url, preview_image_url, name } = parsed.data;
+    const owner_id = sessionUserId;
     
     // Get Supabase service role client (server-side only)
     const supabase = createClient(

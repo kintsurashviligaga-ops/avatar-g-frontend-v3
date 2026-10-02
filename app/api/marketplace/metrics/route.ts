@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ const metricsSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // Anonymous by design (view / favorite counters) but written through the service role — so at least per-IP metered.
+  const limited = await checkRateLimit(request, RATE_LIMITS.WRITE, 'marketplace-metrics');
+  if (limited) return limited;
   try {
     const payload = metricsSchema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid metrics payload');

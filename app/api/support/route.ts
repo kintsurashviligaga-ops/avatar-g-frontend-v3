@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SUPPORT_EMAIL, validateSupportRequest, type SupportRequest } from '@/lib/support';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,11 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Public by design (a visitor must be able to reach support), but NOT unmetered: every accepted post can send an
+  // email through Resend and write a service-role row. Per-IP SUPPORT bucket — 5 per 15 minutes.
+  const limited = await checkRateLimit(req, RATE_LIMITS.SUPPORT);
+  if (limited) return limited;
+
   let body: unknown;
   try { body = await req.json(); } catch { body = null; }
 
