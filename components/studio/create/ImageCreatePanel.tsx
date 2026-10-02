@@ -9,7 +9,10 @@
  *   header        the tool's name with a chevron (the tool switcher) · ✕ where the surrounding sheet is closable
  *   upload        a dashed card: "Choose an image to upload (max N)" — N is what the image route REALLY takes (one)
  *   prompt        the prompt card; its bottom row is "◎ Model … Auto ▾" — it opens the studio's ModelPicker (components/studio/ui):
- *                 Auto · Nano Banana V2 · Nano Banana Pro, and the models this route cannot run dimmed, saying where they run
+ *                 Google's Nano Banana first (Auto · V2 · Pro, Auto the default), then the Higgsfield image models — open where
+ *                 this deployment can run them (keys · HF_ENABLED_MODELS · STUDIO_V2), dimmed with why where it cannot. A
+ *                 Higgsfield pick swaps the footer's Generate for HiggsfieldGenerate (the studio saga: the price on the button
+ *                 is the server's, the tap confirms it); a Google pick sends `model` to /api/nanobanana/image as before.
  *   templates     a collapsible gallery directly under the prompt (open on a desktop, shut on a phone)
  *   advanced      the infrequent controls, shut: style · negative prompt · whatever the studio slots in (Script → Storyboard)
  *   ─ footer (sticky) ─
@@ -34,8 +37,10 @@ import {
   IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageVariant,
   nativeQuality, tierFor, type ImgAspect, type ImgCount, type ImgQuality,
 } from '@/lib/studio/imageCreate';
-import type { ModelRunner } from '@/lib/providers/catalogue';
-import { useModelPick } from '@/lib/studio/modelPick';
+import { DEFAULT_MODEL, catalogueEntry, type ModelRunner } from '@/lib/providers/catalogue';
+import { effectivePick, pickerRows, useModelPick } from '@/lib/studio/modelPick';
+import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
+import { HiggsfieldGenerate } from './HiggsfieldGenerate';
 import { AspectGlyph } from './AspectGlyph';
 import { imageCreateCopy } from './imageCreateCopy';
 import { OptionChip, OptionChipRow } from './OptionChips';
@@ -45,8 +50,8 @@ import { ReferenceUploadCard } from './ReferenceUploadCard';
 
 type PickerId = 'model' | 'aspect' | 'quality' | 'count';
 
-/** The one route this panel sends to: /api/nanobanana/image. */
-const IMAGE_RUNNERS: readonly ModelRunner[] = ['image'];
+/** What this panel can run: /api/nanobanana/image (Google), and the studio saga (Higgsfield) where the deployment has it. */
+const IMAGE_RUNNERS: readonly ModelRunner[] = ['image', 'studio'];
 
 export interface ImageCreatePanelProps {
   locale: string;
@@ -139,20 +144,33 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   // ── what the screen quotes: the SAME functions the routes charge with ─────────────────────────────────────────────────────
   const credits = imageCredits(p.count);
   const insufficient = p.balance !== null && p.balance < credits;
+  const [picker, setPicker] = useState<PickerId | null>(null);
   const [storedModel, setStoredModel] = useModelPick('image');
-  const model = imageModelFor(p.model ?? storedModel);
+  const picked = p.model ?? storedModel;
+  const pickedIsStudio = catalogueEntry(picked)?.wire.runner === 'studio';
+  // The server's word on what runs here — asked when the sheet opens, or at once when a Higgsfield pick must be confirmed.
+  const status = useCatalogueStatus('image', picker === 'model' || pickedIsStudio);
+  const rows = useMemo(() => pickerRows('image', { runners: IMAGE_RUNNERS, status }), [status]);
+  const modelId = effectivePick('image', picked, rows);
+  const hf = catalogueEntry(modelId)?.wire.runner === 'studio' ? catalogueEntry(modelId)! : null;
+  const model = hf ?? imageModelFor(modelId);
   const pickModel = p.onModel ?? setStoredModel;
+  // A remembered Higgsfield pick this deployment can no longer run falls back to Google — said once by the server, not guessed.
+  useEffect(() => {
+    if (p.model !== undefined || !status || !pickedIsStudio || rows.some((r) => r.entry.id === picked && r.selectable)) return;
+    setStoredModel(DEFAULT_MODEL.image);
+  }, [p.model, status, pickedIsStudio, rows, picked, setStoredModel]);
   const tier = tierFor(p.quality);
   const onQuality = p.onQuality;
   // A model without the size on screen (Nano Banana Pro has no 1K) moves the chip to the nearest size it HAS — the chip never
   // reads a size the render would not be.
   useEffect(() => {
+    if (hf) return;
     const q = nativeQuality(model.id, p.quality);
     if (q !== p.quality) onQuality(q);
-  }, [model.id, p.quality, onQuality]);
+  }, [hf, model.id, p.quality, onQuality]);
 
   // ── local view state ─────────────────────────────────────────────────────────────────────────────────────────────────────
-  const [picker, setPicker] = useState<PickerId | null>(null);
   // null = "the default for this width" (open on a desktop, shut on a phone); the first tap makes it the user's choice.
   const [tplOpenChoice, setTplOpenChoice] = useState<boolean | null>(null);
   const tplOpen = tplOpenChoice ?? p.desktop;
@@ -184,7 +202,11 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   const countBtn = useRef<HTMLButtonElement | null>(null);
   const closePicker = useCallback(() => setPicker(null), []);
 
+  const needThePrompt = () => { setNeedPrompt(true); promptEl.current?.focus(); };
+  const hfHints = useMemo(() => ({ aspect: p.aspect, quality: p.quality }), [p.aspect, p.quality]);
+  const referenceSrcs = useMemo(() => p.references.map((r) => r.src), [p.references]);
   const generate = () => {
+    if (hf) return; // a Higgsfield pick runs from its own button, at the price the server put on it
     if (insufficient) { p.onTopUp(); return; }
     if (p.foreignFileCount > 0) return; // the note above the prompt already says why
     if (!p.prompt.trim()) { setNeedPrompt(true); promptEl.current?.focus(); return; }
@@ -194,13 +216,14 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   // ── picker contents ──────────────────────────────────────────────────────────────────────────────────────────────────────
   const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => IMG_ASPECTS.map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
   const qualityOptions = useMemo<PickerOption<ImgQuality>[]>(() => IMAGE_TIERS.map((t) => {
+    if (hf) return { value: t.quality, label: t.res, glyph: <Gem size={20} />, hint: `${hf.label[lang]} · ${t.note[lang]}` };
     const v = imageVariant(model.id, t.quality);
     return {
       value: t.quality, label: t.res, glyph: <Gem size={20} />, disabled: !v.native,
       hint: v.native ? `Nano Banana ${v.family} · ${t.note[lang]}` : c.qualityNotOnModel(model.label[lang]),
       trailing: creditsLabel(imageCredits(1), p.locale),
     };
-  }), [lang, p.locale, model, c]);
+  }), [lang, p.locale, model, hf, c]);
   const countOptions = useMemo<PickerOption<ImgCount>[]>(() => IMG_COUNTS.map((n) => ({
     value: n, label: c.countOption(n), glyph: <Layers size={20} />, trailing: creditsLabel(imageCredits(n), p.locale),
   })), [c, p.locale]);
@@ -339,18 +362,34 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
           <OptionChipRow label={`${c.aspect} · ${c.quality} · ${c.count}`}>
             <OptionChip ref={aspectBtn} icon={<AspectGlyph ratio={p.aspect} size={18} />} label={`${c.aspect}: ${p.aspect}`} expanded={picker === 'aspect'} onClick={() => setPicker((cur) => (cur === 'aspect' ? null : 'aspect'))} testId="chip-aspect">{p.aspect}</OptionChip>
             <OptionChip ref={qualityBtn} icon={<Gem size={18} />} label={`${c.quality}: ${tier.res}`} expanded={picker === 'quality'} onClick={() => setPicker((cur) => (cur === 'quality' ? null : 'quality'))} testId="chip-quality">{tier.res}</OptionChip>
-            <OptionChip ref={countBtn} icon={<Layers size={18} />} label={`${c.count}: ${p.count}`} expanded={picker === 'count'} onClick={() => setPicker((cur) => (cur === 'count' ? null : 'count'))} testId="chip-count">{p.count}</OptionChip>
+            {/* One Higgsfield job is one request; the ×2 / ×4 batch is the Google route's. */}
+            {!hf && <OptionChip ref={countBtn} icon={<Layers size={18} />} label={`${c.count}: ${p.count}`} expanded={picker === 'count'} onClick={() => setPicker((cur) => (cur === 'count' ? null : 'count'))} testId="chip-count">{p.count}</OptionChip>}
           </OptionChipRow>
         </div>
         <div data-create-row="generate">
-          <GenerateButton
-            label={c.generate}
-            credits={credits}
-            insufficient={insufficient}
-            locale={p.locale}
-            onClick={generate}
-            testId="create-generate"
-          />
+          {hf ? (
+            <HiggsfieldGenerate
+              locale={p.locale}
+              modelId={hf.id}
+              service="image"
+              label={c.generate}
+              prompt={p.prompt}
+              hints={hfHints}
+              images={referenceSrcs}
+              balanceCredits={p.balance}
+              onTopUp={p.onTopUp}
+              onNeedPrompt={needThePrompt}
+            />
+          ) : (
+            <GenerateButton
+              label={c.generate}
+              credits={credits}
+              insufficient={insufficient}
+              locale={p.locale}
+              onClick={generate}
+              testId="create-generate"
+            />
+          )}
         </div>
       </div>
 
@@ -365,6 +404,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
         value={model.id}
         onChange={pickModel}
         runners={IMAGE_RUNNERS}
+        status={status}
         open={picker === 'model'}
         onOpenChange={(o) => setPicker(o ? 'model' : null)}
         trigger="none"

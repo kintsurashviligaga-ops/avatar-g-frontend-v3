@@ -6,7 +6,7 @@
  */
 import { act, renderHook } from '@testing-library/react';
 import {
-  __resetModelPickMemory, effectivePick, getModelPick, imageModelField, modelPickKey, pickerRows, setModelPick, useModelPick,
+  __resetModelPickMemory, effectivePick, getModelPick, higgsfieldPicked, imageModelField, modelPickKey, pickerRows, setModelPick, useModelPick,
   type CatalogueStatus,
 } from './modelPick';
 
@@ -56,12 +56,19 @@ describe('the stored pick', () => {
   });
 });
 
-describe('the image request always names a model its route can run', () => {
-  test('the pick when the image route runs it; otherwise Auto — so the server quotes what renders', () => {
+describe('the image request always names the picked model', () => {
+  test('the Google pick (Auto by default) — so the server quotes and renders exactly what the screen says', () => {
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
     setModelPick('image', 'nb/pro');
     expect(imageModelField()).toEqual({ model: 'nb/pro' });
-    window.localStorage.setItem('myavatar:model:image', 'hf/soul-2'); // a Studio β model can never reach the image route
+    expect(higgsfieldPicked('image')).toBe(false);
+  });
+
+  test('⚠️ a Higgsfield pick is sent AS IS — the image route refuses it (nothing charged) instead of rendering Google behind the user\'s back', () => {
+    setModelPick('image', 'hf/soul-2');
+    expect(imageModelField()).toEqual({ model: 'hf/soul-2' });
+    expect(higgsfieldPicked('image')).toBe(true); // the composer opens the panel, whose own Generate runs it
+    window.localStorage.setItem('myavatar:model:image', 'google/veo-3.1'); // a hand-edited foreign id is no pick at all
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
   });
 });

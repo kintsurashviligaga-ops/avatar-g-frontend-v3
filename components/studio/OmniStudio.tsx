@@ -128,7 +128,7 @@ import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
 // The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
-import { imageModelField } from '@/lib/studio/modelPick';
+import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -6338,6 +6338,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
+    // A Higgsfield model picked in the Image / Video panel runs from that panel's Generate (the saga's price, confirmed by the
+    // tap): the composer opens the panel, as for motion — it never renders the Google model in its place.
+    if ((activeTool === 'image' || activeTool === 'video') && higgsfieldPicked(activeTool)) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };

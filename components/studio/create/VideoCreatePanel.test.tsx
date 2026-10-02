@@ -1,14 +1,36 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { quoteCredits } from '@/lib/credits/quote';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { CLOSED_CAPABILITIES, type VideoCapabilities } from '@/lib/video/createPanel';
 import { initialVeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import { VideoCreatePanel, type VideoCreatePanelProps } from './VideoCreatePanel';
+import { catalogueFor } from '@/lib/providers/catalogue';
+import { MODELS, publicModel } from '@/lib/providers/registry';
+import { __resetCatalogueStatusCache } from '../ui/useCatalogueStatus';
+import { __resetStudioModelsCache } from './useStudioModels';
 
 const OPEN: VideoCapabilities = { longform: true, maxSeconds: 240 };
 
 // The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not become the next one's mount.
 beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
+
+const realFetch = global.fetch;
+/** GET /api/studio/catalogue (and Studio β's model list) as this deployment would answer: the listed Higgsfield models run. */
+function deployment(runs: string[]) {
+  __resetCatalogueStatusCache();
+  __resetStudioModelsCache();
+  global.fetch = jest.fn(async (url: string) => {
+    const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+    if (url.startsWith('/api/studio/catalogue')) {
+      return ok({ models: catalogueFor('video').map((e) => (e.provider === 'higgsfield'
+        ? { id: e.id, available: runs.includes(e.id), reason: runs.includes(e.id) ? null : 'not_enabled' }
+        : { id: e.id, available: true, reason: null })) });
+    }
+    if (url.startsWith('/api/studio/models')) return ok({ models: MODELS.map(publicModel).filter((m) => runs.includes(m.id)) });
+    return ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response;
+  }) as unknown as typeof fetch;
+}
+afterEach(() => { global.fetch = realFetch; });
 
 function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCreatePanelProps['generate']> = {}, refs: Partial<VideoCreatePanelProps['refs']> = {}) {
   const calls = {
@@ -279,10 +301,12 @@ describe('format and model pickers', () => {
     expect(screen.queryByTestId('video-format-sheet')).toBeNull();
   });
 
-  test('"Change" on the hero and the Model row both open the model picker: mode, then the catalogue\'s models — no prices', () => {
+  test('"Change" on the hero and the Model row both open the model picker: mode, then the catalogue\'s models — no prices', async () => {
+    deployment([]);
     const { calls } = setup({ seconds: 24 });
     fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
+    await waitFor(() => expect(within(sheet).getByText('Kling 3 — text to video').closest('[role="radio"]')!.textContent).toContain('Not enabled yet'));
     // The film route's three Veo models are the rows a tap may choose; the Studio β models are listed, dimmed, saying why.
     const radios = within(sheet).getAllByRole('radio').filter((r) => r.hasAttribute('data-model'));
     const open = radios.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'));
@@ -307,6 +331,30 @@ describe('format and model pickers', () => {
     expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
+  });
+
+  test('a Higgsfield model this deployment runs is a real choice: the hero and the Model row name it, the Veo tiers step aside, Generate is the saga\'s', async () => {
+    deployment(['hf/kling-3-std-t2v']);
+    const { calls } = setup({ seconds: 24, prompt: '' });
+    fireEvent.click(screen.getByTestId('video-model-row'));
+    const sheet = screen.getByTestId('video-model-sheet');
+    const kling = () => within(sheet).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
+    await waitFor(() => expect(kling().getAttribute('aria-disabled')).toBeNull());
+    fireEvent.click(kling());
+    expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
+    expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
+    expect(screen.getByTestId('video-hero-title').textContent).toBe('Kling 3 — text to video');
+    expect(screen.getByTestId('video-model-row').textContent).toContain('Kling 3 — text to video');
+    expect(screen.queryByTestId('video-quality')).toBeNull();
+    expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
+    expect(screen.getByTestId('video-generate')).toBeTruthy();
+    // 24 s is not a length Kling renders: the line above the button says the 15 s it will.
+    await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — text to video · 15 s · 9:16 · sound on'));
+    // Back to Google in one tap: a Veo model is the film again.
+    fireEvent.click(screen.getByTestId('video-model-row'));
+    fireEvent.click(within(screen.getByTestId('video-model-sheet')).getAllByRole('radio').find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
+    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
+    expect(window.localStorage.getItem('myavatar:model:video')).toBe('google/veo-3.1');
   });
 
   test('the pick is remembered in this browser: a stored Veo model is applied on mount, and a tier change is stored', () => {
