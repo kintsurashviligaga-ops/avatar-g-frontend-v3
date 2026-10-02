@@ -12,10 +12,19 @@ import type { NextRequest } from 'next/server';
 
 export type BillingLocale = 'ka' | 'en' | 'ru';
 
-/** The caller's UI language from the NEXT_LOCALE cookie — ka when absent, like the rest of the shell. */
-export function billingLocale(req: Pick<NextRequest, 'cookies'> | null | undefined): BillingLocale {
+/**
+ * The caller's UI language from the NEXT_LOCALE cookie — ka when absent, like the rest of the shell. Accepts a
+ * NextRequest (parsed cookies) or a plain Request (raw `cookie` header), since some paid routes take the latter.
+ */
+export function billingLocale(req: Pick<NextRequest, 'cookies'> | Pick<Request, 'headers'> | null | undefined): BillingLocale {
   let c: string | undefined;
-  try { c = req?.cookies?.get('NEXT_LOCALE')?.value; } catch { c = undefined; }
+  try {
+    c = (req as Partial<Pick<NextRequest, 'cookies'>> | null | undefined)?.cookies?.get('NEXT_LOCALE')?.value;
+    if (c === undefined) {
+      const raw = (req as Partial<Pick<Request, 'headers'>> | null | undefined)?.headers?.get('cookie') ?? '';
+      c = /(?:^|;\s*)NEXT_LOCALE=([^;]+)/.exec(raw)?.[1];
+    }
+  } catch { c = undefined; }
   return c === 'en' || c === 'ru' ? c : 'ka';
 }
 

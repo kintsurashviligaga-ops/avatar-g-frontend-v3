@@ -135,7 +135,7 @@ export async function POST(req: Request) {
   // The ref is a fresh server UUID; the signing key is checked FIRST so a charge can never be taken that /status
   // could not authorise a refund for.
   if (!motionChargeSigningReady()) {
-    return NextResponse.json(ledgerUnavailableBody(billingLocale(req as NextRequest)), { status: 503 });
+    return NextResponse.json(ledgerUnavailableBody(billingLocale(req)), { status: 503 });
   }
   const chargeRef = motionChargeRef(user.id, randomUUID());
   const debit = await deductCredits(user.id, MOTION_COST, chargeRef);
@@ -143,7 +143,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'insufficient_credits', needed: MOTION_COST }, { status: 402 });
   }
   if (!debit.ok && debit.reason === 'error') {
-    return NextResponse.json(ledgerUnavailableBody(billingLocale(req as NextRequest)), { status: 503 });
+    return NextResponse.json(ledgerUnavailableBody(billingLocale(req)), { status: 503 });
   }
   const charged = debit.ok;
 
