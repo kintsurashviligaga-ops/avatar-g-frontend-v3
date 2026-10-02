@@ -24,4 +24,18 @@ describe('chunkForTts', () => {
   test('Georgian sentence terminators split correctly', () => {
     expect(chunkForTts('ერთი. ორი. სამი.', 11)).toEqual(['ერთი. ორი.', 'სამი.']);
   });
+
+  test('leadSentence: the first sentence is a chunk of its own, the rest merge as before', () => {
+    expect(chunkForTts('გამარჯობა! ამინდი თბილისში თბილია. ხვალ წვიმაა.', 600, { leadSentence: true }))
+      .toEqual(['გამარჯობა!', 'ამინდი თბილისში თბილია. ხვალ წვიმაა.']);
+    // A first sentence longer than leadMax is not split out; nothing changes without the option.
+    expect(chunkForTts('A long first one. B.', 600, { leadSentence: true, leadMax: 5 })).toEqual(['A long first one. B.']);
+    expect(chunkForTts('Hi. There.', 600)).toEqual(['Hi. There.']);
+  });
+
+  test('leadSentence: the first chunk of a growing text is final once the second sentence starts', () => {
+    expect(chunkForTts('Sure, here', 600, { leadSentence: true })).toEqual(['Sure, here']);
+    expect(chunkForTts('Sure, here it is. The', 600, { leadSentence: true })).toEqual(['Sure, here it is.', 'The']);
+    expect(chunkForTts('Sure, here it is. The answer is 4.', 600, { leadSentence: true })[0]).toBe('Sure, here it is.');
+  });
 });

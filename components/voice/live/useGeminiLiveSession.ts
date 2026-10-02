@@ -49,7 +49,7 @@
  *    the tool-less frame. The hook only transports calls — the host executes them (onToolCall) and drops their UI on
  *    toolCallCancellation (onToolCallCancellation).
  */
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type MutableRefObject } from 'react';
 
 import { DEFAULT_AGENT_PROFILE_ID, LIVE_SPOKEN_RULE, resolveAgentProfile, toGeminiLiveSetup } from '@/lib/agents/profile';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
@@ -67,6 +67,7 @@ import { requestMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,11 @@ export interface UseGeminiLiveSessionResult {
   sendText: (text: string) => void;
   /** 0..1 levels for visuals; cheap enough to call every animation frame. */
   getLevels: () => LiveLevels;
+  /**
+   * What the agent is doing right now, oldest first (components/voice/live/liveActivity): a Google Search (queries,
+   * then the pages it used) and each tool step, running → done / failed / cancelled. Reset when a call starts.
+   */
+  activity: LiveActivityItem[];
 }
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────────
@@ -501,6 +507,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const [captions, setCaptions] = useState<LiveCaption[]>([]);
   const [muted, setMutedState] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  const [activity, dispatchActivity] = useReducer(liveActivityReducer, [] as LiveActivityItem[]);
 
   // Lifecycle
   const genRef = useRef(0); // bumped by every teardown: an async continuation from an older call bails out
@@ -927,6 +934,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   }, [clearGoAwayTimer, clearHandshakeTimer, flushPendingMic, isPlaying, setStatusSafe]);
 
   const answerToolCall = useCallback(async (calls: Array<{ id: string; name: string; args: unknown }>, session: GeminiLiveSession) => {
+    // On screen at once: the step runs while the host works (and while the model waits for the answer).
+    dispatchActivity({ type: 'toolStart', calls: calls.map((c) => ({ id: c.id, name: c.name })) });
     let responses: LiveFunctionResponse[] = [];
     const handler = optsRef.current.onToolCall;
     if (handler) {
@@ -936,6 +945,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     for (const c of calls) {
       if (!answered.has(c.id)) responses.push({ id: c.id, name: c.name, response: { error: 'not_supported' } });
     }
+    dispatchActivity({
+      type: 'toolDone',
+      results: responses.map((r) => ({ id: r.id, ok: !(r.response && typeof r.response === 'object' && 'error' in r.response) })),
+    });
     if (sessionRef.current === session) session.sendToolResponse(responses);
   }, []);
 
@@ -959,6 +972,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         if (ev.text) { pendingModelRef.current += ev.text; publishCaptions(); }
         return;
       case 'interrupted':
+        dispatchActivity({ type: 'turnEnd' });
         flushPlayback();
         // A local barge-in already closed this exchange; closing it again would split the user's next utterance.
         if (!dropModelAudioRef.current) flushTurn(true);
@@ -969,6 +983,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         afterTurnBoundary();
         return;
       case 'turnComplete':
+        dispatchActivity({ type: 'turnEnd' });
         flushTurn(false);
         dropModelAudioRef.current = false;
         modelTurnOpenRef.current = false;
@@ -995,7 +1010,14 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         void answerToolCall(ev.calls, session);
         return;
       case 'toolCallCancellation':
+        dispatchActivity({ type: 'toolCancel', ids: ev.ids });
         try { optsRef.current.onToolCallCancellation?.(ev.ids); } catch { /* a host bug never breaks the call */ }
+        return;
+      case 'searchStart':
+        dispatchActivity({ type: 'searchStart', queries: ev.queries });
+        return;
+      case 'grounding':
+        dispatchActivity({ type: 'grounding', queries: ev.queries, sources: ev.sources });
         return;
       default:
         return; // setupComplete arrives via onSetupComplete; 'error' frames are followed by a close
@@ -1321,6 +1343,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     finalCaptionsRef.current = [];
     turnSeqRef.current = 0;
     setCaptions([]);
+    dispatchActivity({ type: 'reset' });
     vadRef.current = createVadState();
     graceUntilRef.current = 0;
     capFallbackRef.current = false;
@@ -1516,7 +1539,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
-    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, getLevels,
+    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, getLevels, activity,
   };
 }
 

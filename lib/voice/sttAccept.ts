@@ -26,16 +26,19 @@ export function hasGeorgianScript(text: string | null | undefined): boolean {
   return typeof text === 'string' && GEORGIAN_RE.test(text);
 }
 
+const CYRILLIC_RE = /[Ѐ-ӿ].*[Ѐ-ӿ]/s;
+
 /**
  * True when this leg's output is good enough to stop the cascade.
  *
- * Non-Georgian requests keep today's behaviour exactly: any non-empty string is accepted. Only 'ka-GE'
- * gains the extra requirement, because it is the only language where a leg lies fluently instead of
- * failing.
+ * Non-Georgian requests (and 'auto') accept any non-empty string. 'ka-GE' — the language where a leg lies fluently
+ * instead of failing — needs a native script: Georgian, or Cyrillic. Cyrillic is a RUSSIAN speaker in a Georgian
+ * session, transcribed as spoken (the prompt says "never translate"); no engine renders Georgian speech in Cyrillic.
+ * Latin stays a miss: it is exactly the transliteration / English-rendering failure above.
  */
 export function acceptTranscript(text: string | null | undefined, language: string): boolean {
   const t = (text ?? '').trim();
   if (!t) return false;
   if (language !== 'ka-GE') return true;
-  return hasGeorgianScript(t);
+  return hasGeorgianScript(t) || CYRILLIC_RE.test(t);
 }

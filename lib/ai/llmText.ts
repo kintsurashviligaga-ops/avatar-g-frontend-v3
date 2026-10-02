@@ -42,6 +42,8 @@ export interface LlmTextOpts {
   geminiModel?: string;
   /** Ask Gemini for a JSON document (responseMimeType application/json) — no prose, no code fences. */
   json?: boolean;
+  /** Gemini leg only: ground the answer in Google Search (news, prices, scores, weather). Ignored with `json`. */
+  googleSearch?: boolean;
 }
 
 async function viaDeepSeek(o: LlmTextOpts): Promise<string | null> {
@@ -67,6 +69,7 @@ async function viaGemini(o: LlmTextOpts): Promise<string | null> {
       ...(o.geminiModel ? { model: o.geminiModel } : {}),
       ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}),
       ...(o.json ? { responseMimeType: 'application/json' as const } : {}),
+      ...(o.googleSearch && !o.json ? { googleSearch: true } : {}),
     });
     return r.text && r.text.trim() ? r.text : null;
   } catch { return null; }

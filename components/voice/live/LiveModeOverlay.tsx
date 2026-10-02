@@ -24,6 +24,10 @@
  * VOICE-TO-ACTION: with `onOpenAction`, a strip of LiveActionCards sits above the pill — what the agent just did
  * (prepared a prompt, opened a studio, put code on screen), newest first, at most three. While it holds cards the
  * centred content is lifted (and the orb shrinks a step) so the strip never covers the captions.
+ *
+ * LIVE ACTIVITY (LiveActivityFeed): what the agent is doing WHILE it does it — a web search with its queries and then
+ * the pages it used, each tool step running → done, and generations still rendering — under the status line. A search
+ * or a tool call used to be seconds of silence with nothing on screen.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
@@ -35,6 +39,8 @@ import {
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 import LiveActionCards from './LiveActionCards';
+import LiveActivityFeed, { type LiveJobLine } from './LiveActivityFeed';
+import type { LiveActivityItem } from './liveActivity';
 import LiveCaptions from './LiveCaptions';
 import LiveOrb, { LiveWaveform, orbStateFor } from './LiveOrb';
 import type { LiveActionCard } from './liveActions';
@@ -318,6 +324,10 @@ export interface LiveModeOverlayProps {
   actions?: readonly LiveActionCard[];
   /** A card's Open: the host ends the call and brings the prepared studio / the code canvas to the front. */
   onOpenAction?: (card: LiveActionCard) => void;
+  /** What the agent is doing now (useGeminiLiveSession().activity), oldest first. */
+  activity?: readonly LiveActivityItem[];
+  /** Generations still rendering (the job tray the call covers). */
+  jobs?: readonly LiveJobLine[];
 }
 
 const ROUND_BTN =
@@ -330,6 +340,8 @@ const SECONDARY_BTN =
   + 'ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 '
   + 'focus-visible:ring-app-accent/60';
 const NO_ACTIONS: readonly LiveActionCard[] = [];
+const NO_ACTIVITY: readonly LiveActivityItem[] = [];
+const NO_JOBS: readonly LiveJobLine[] = [];
 /** The pill: 24 px off the bottom + 64 px tall; the action strip floats 12 px above it. */
 const STRIP_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 100px)';
 
@@ -356,6 +368,8 @@ export default function LiveModeOverlay({
   showCaptions = true,
   actions = NO_ACTIONS,
   onOpenAction,
+  activity = NO_ACTIVITY,
+  jobs = NO_JOBS,
 }: LiveModeOverlayProps) {
   const t = LIVE_OVERLAY_STRINGS[locale] ?? LIVE_OVERLAY_STRINGS.ka;
   const dialogRef = useDialogA11y<HTMLDivElement>(true, onEnd);
@@ -374,6 +388,7 @@ export default function LiveModeOverlay({
   // once it holds a card — then the centred content moves up by the strip's height (~84 px).
   const showActions = !isError && !!onOpenAction;
   const actionsShown = showActions && actions.length > 0;
+  const activityShown = !isError && (activity.length > 0 || jobs.length > 0);
 
   const onCopyLink = useCallback(() => {
     void copyText(liveLink()).then((ok) => {
@@ -486,7 +501,7 @@ export default function LiveModeOverlay({
           <LiveOrb
             state={orbState}
             getLevels={getLevels}
-            size={cameraOn ? 88 : actionsShown ? 168 : 208}
+            size={cameraOn ? 88 : actionsShown || activityShown ? 168 : 208}
             imageUrl={avatarUrl}
             label={statusLabel}
             className="relative z-10 mb-6"
@@ -508,8 +523,12 @@ export default function LiveModeOverlay({
             </button>
           )}
 
+          {activityShown && (
+            <LiveActivityFeed activity={activity} jobs={jobs} locale={locale} className="relative z-10 mt-4" />
+          )}
+
           {showCaptions && captionsOn && (
-            <LiveCaptions captions={captions} locale={locale} className="relative z-10 mt-6 min-h-[5.5rem]" />
+            <LiveCaptions captions={captions} locale={locale} className={`relative z-10 min-h-[5.5rem] ${activityShown ? 'mt-4' : 'mt-6'}`} />
           )}
         </>
       )}

@@ -12,7 +12,8 @@
  * plays a single unbroken buffer — no chunk slicing, no dropped words. `llmText` is bounded (12s timeout).
  *
  * ENGINE: llmText with googleOnly = isAiGoogleOnly() — Gemini only by default (no DeepSeek / Atlas / Anthropic leg);
- * AI_GOOGLE_ONLY=0 restores the old multi-vendor chain. The budget guard runs inside llmText; this route pre-checks
+ * AI_GOOGLE_ONLY=0 restores the old multi-vendor chain. Google Search grounding rides along on the Gemini leg
+ * (VOICE_SEARCH_RULE; VOICE_GOOGLE_SEARCH=0 turns it off). The budget guard runs inside llmText; this route pre-checks
  * it too, so an exhausted budget is SPOKEN as such instead of as "sorry, I didn't catch that".
  */
 import 'server-only';
@@ -21,6 +22,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { llmText } from '@/lib/ai/llmText';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { isEnabledByDefault } from '@/lib/env/flag';
 import { resolveAgentProfile, toGeminiLiveSetup, DEFAULT_AGENT_PROFILE_ID, type AgentProfile, type LiveVoice } from '@/lib/agents/profile';
 import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
@@ -42,6 +44,15 @@ export const maxDuration = 30;
 const VOICE_LENGTH_RULE =
   'VOICE REPLY LENGTH: this reply is spoken aloud by text-to-speech and the user waits for all of it. Keep it to at '
   + 'most three short sentences (about 50 words). For a big topic, give the key point and offer to go deeper.';
+
+/**
+ * Google Search on the voice loop, like the text chat and Gemini Live (VOICE_GOOGLE_SEARCH=0 is the kill switch). The
+ * model decides when to look: a greeting costs no search, "what's the weather in Tbilisi" does one. Said in the
+ * prompt too, so the model never answers "I can't check that live".
+ */
+const VOICE_SEARCH_RULE =
+  'LIVE FACTS: you can search the web (Google Search) during this conversation. For anything current — news, '
+  + 'prices, exchange rates, scores, weather, opening hours — look it up and say the answer plainly, without links.';
 
 /**
  * Generation / spoken caps. Georgian is token-dense (the Mkhedruli script costs ~2-3× the tokens of English per
@@ -131,14 +142,23 @@ export async function POST(req: NextRequest) {
     const spoken = toGeminiLiveSetup({ ...profile, voice: voiceFor(profile, body?.voice, body?.gender) }, { locale });
     const voice = spoken.voiceName as LiveVoice;
     const gender: 'male' | 'female' = MALE_VOICES.has(voice) ? 'male' : 'female';
-    let effectiveSystem = `${spoken.systemInstruction}\n\n${VOICE_LENGTH_RULE}`;
+    const search = profile.googleSearch && isAiGoogleOnly() && isEnabledByDefault(process.env.VOICE_GOOGLE_SEARCH);
+    // The length rule stays LAST (the model weighs the last instruction most); the search rule sits before it.
+    let effectiveSystem = `${spoken.systemInstruction}\n\n${search ? `${VOICE_SEARCH_RULE}\n\n` : ''}${VOICE_LENGTH_RULE}`;
+
+    // The memory read and the budget check are independent round-trips: run them TOGETHER (a voice turn waits on
+    // every millisecond before the model starts). The budget estimate leaves out the memory preamble — a few dozen
+    // tokens, and the guard fails open anyway.
+    const [facts, budgetOk] = await Promise.all([
+      getUserProfileFacts(supabase, user.id).catch(() => null),
+      chatBudgetAllows(`${effectiveSystem} ${prompt}`),
+    ]);
 
     // VECTOR 3 — inject the user's cross-chat memory into the VOICE persona (+ extract facts), so Agent G is
     // ONE companion: the name/bio the user set in text chat carries into the voice call. Fail-open. Kept short
     // so it doesn't bloat the low-latency voice payload.
     try {
-      const facts = await getUserProfileFacts(supabase, user.id);
-      const preamble = buildProfilePreamble(facts);
+      const preamble = facts ? buildProfilePreamble(facts) : '';
       if (preamble) effectiveSystem = `${preamble}\n\n${effectiveSystem}`;
       const fresh = extractProfileFacts(text);
       if (fresh.length) void saveUserProfileFacts(supabase, user.id, fresh);
@@ -148,7 +168,7 @@ export async function POST(req: NextRequest) {
 
     // An exhausted platform budget is said out loud. (llmText re-checks it; the guard's read is cached, so the
     // second check is free.) Fails OPEN like every chatBudget call.
-    if (!(await chatBudgetAllows(`${effectiveSystem} ${prompt}`))) {
+    if (!budgetOk) {
       return NextResponse.json({ reply: BUDGET_REPLY[locale], locale, gender, voice, code: 'budget' });
     }
 
@@ -157,8 +177,10 @@ export async function POST(req: NextRequest) {
       user: prompt,
       maxTokens: MAX_TOKENS[locale],
       temperature: personaActive ? spoken.temperature : DEFAULT_VOICE_TEMPERATURE,
-      timeoutMs: 12_000,
+      // A grounded turn spends a search round-trip first; it gets a little more room inside maxDuration.
+      timeoutMs: search ? 15_000 : 12_000,
       googleOnly: isAiGoogleOnly(),
+      ...(search ? { googleSearch: true } : {}),
     }).catch(() => null);
     const cleaned = trimForSpeech(raw, SPEECH_CHAR_CAP * 2);
     const reply = capAtSentence(cleaned, SPEECH_CHAR_CAP) || voiceFallbackReply(locale);

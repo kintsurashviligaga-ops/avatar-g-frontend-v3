@@ -31,6 +31,9 @@ import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 import LiveModeOverlay from './live/LiveModeOverlay';
+import type { LiveJobLine } from './live/LiveActivityFeed';
+import { useJobQueue } from '@/store/useJobQueue';
+import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
 import {
   LIVE_END_CALL_GRACE_MS,
   LIVE_END_CALL_MAX_WAIT_MS,
@@ -135,6 +138,16 @@ export default function GeminiLiveConversation({
     onToolCallCancellation: liveActions.onToolCallCancellation,
   });
   const { start, stop, sendVideoFrame, status } = session;
+
+  // Generations still rendering: the full-screen call covers the job tray, so the call shows them itself.
+  const localJobs = useJobQueue((s) => s.jobs);
+  const durableJobs = useJobQueue((s) => s.durableJobs);
+  const jobLines = useMemo<LiveJobLine[]>(
+    () => mergeTrayJobs(localJobs, durableJobs)
+      .filter((j) => j.status === 'rendering' || j.status === 'queued')
+      .map((j) => ({ id: j.id, label: j.label, pct: j.status === 'queued' ? null : j.pct, stage: j.stage })),
+    [localJobs, durableJobs],
+  );
 
   const camera = useLiveCamera({ onFrame: sendVideoFrame });
   const stopCamera = camera.stop;
@@ -247,6 +260,8 @@ export default function GeminiLiveConversation({
       showCaptions={!session.degraded}
       actions={liveActions.cards}
       onOpenAction={openAction}
+      activity={session.activity}
+      jobs={jobLines}
     />
   );
 }

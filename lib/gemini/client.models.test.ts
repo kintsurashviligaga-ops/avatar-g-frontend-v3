@@ -59,3 +59,28 @@ describe('generateWithGemini — the model in the URL', () => {
     expect(await urlFor(undefined)).toBe(`${BASE}/${DEFAULT_REST_TIER_MODELS.pro}:generateContent`);
   });
 });
+
+describe('googleSearch: the answer may be grounded in Google Search', () => {
+  async function bodyFor(req: Parameters<typeof generateWithGemini>[0]): Promise<Record<string, unknown>> {
+    const fetchMock = jest.fn(async (_url: string, _init?: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }),
+      text: async () => '',
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    await generateWithGemini(req);
+    return JSON.parse(String(fetchMock.mock.calls[0]![1]!.body)) as Record<string, unknown>;
+  }
+
+  test('on → tools: [{ googleSearch: {} }]; off (the default) → no tools', async () => {
+    expect((await bodyFor({ prompt: 'weather in Tbilisi', googleSearch: true })).tools).toEqual([{ googleSearch: {} }]);
+    expect((await bodyFor({ prompt: 'hi' })).tools).toBeUndefined();
+  });
+
+  test('never together with a forced JSON response (the API refuses the pair)', async () => {
+    const body = await bodyFor({ prompt: 'plan', googleSearch: true, responseMimeType: 'application/json' });
+    expect(body.tools).toBeUndefined();
+    expect((body.generationConfig as Record<string, unknown>).responseMimeType).toBe('application/json');
+  });
+});

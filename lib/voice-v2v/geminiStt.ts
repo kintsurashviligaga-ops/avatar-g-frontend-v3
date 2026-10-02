@@ -150,11 +150,23 @@ const LANGUAGE_NAME: Record<string, string> = {
   'ru-RU': 'Russian',
 };
 
-/** The transcription instruction. Georgian gets an explicit script rule — lib/voice/sttAccept rejects Latin output. */
+/**
+ * The transcription instruction. The requested language is a HINT, never a target: "Transcribe this audio in
+ * English" made Gemini TRANSLATE Georgian speech into English (and "in Georgian" turned Russian speech into Georgian).
+ * Now every prompt says: write the language actually spoken, in its own script — Georgian in Mkhedruli (never Latin;
+ * lib/voice/sttAccept rejects Latin for a Georgian request), Russian in Cyrillic. 'auto' gives no hint at all.
+ */
 export function sttPrompt(language: string): string {
-  const langName = LANGUAGE_NAME[language] || 'Georgian';
-  const script = langName === 'Georgian' ? ' Write Georgian speech in the Georgian (Mkhedruli) alphabet, never in Latin letters.' : '';
-  return `Transcribe this audio in ${langName}. Output ONLY the exact spoken words — no translation, no punctuation commentary, no quotes, no extra text.${script} If silent, output nothing.`;
+  const langName = LANGUAGE_NAME[language];
+  const hint = langName
+    ? `The speaker most likely speaks ${langName}; if they speak another language, write that language instead.`
+    : 'The speaker may speak Georgian, English, Russian or any other language.';
+  return [
+    'Transcribe this audio verbatim, in the language the speaker actually uses. NEVER translate.',
+    hint,
+    'Georgian speech is written in the Georgian (Mkhedruli) alphabet, never in Latin letters; Russian in Cyrillic.',
+    'Output ONLY the exact spoken words — no commentary, no quotes, no labels, no extra text. If silent, output nothing.',
+  ].join(' ');
 }
 
 export type GeminiSttErrorCode = 'auth' | 'quota' | 'rate_limited' | 'model_missing' | 'bad_request' | 'unavailable' | 'network';

@@ -48,6 +48,8 @@ export interface GeminiRequest {
   timeoutMs?: number;
   /** 'application/json' makes the model return a JSON document (no prose, no code fences). */
   responseMimeType?: 'application/json';
+  /** Ground the answer in Google Search (`tools: [{ googleSearch: {} }]`); the model decides when to look. Ignored with JSON. */
+  googleSearch?: boolean;
 }
 
 export interface GeminiResponse {
@@ -167,6 +169,8 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
   if (req.systemPrompt) {
     body.systemInstruction = { parts: [{ text: req.systemPrompt }] };
   }
+  // Grounding and a forced JSON response cannot be combined in one request.
+  if (req.googleSearch && !req.responseMimeType) body.tools = [{ googleSearch: {} }];
 
   const res = await fetch(url, {
     method: 'POST',

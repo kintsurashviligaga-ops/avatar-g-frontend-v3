@@ -133,6 +133,7 @@ import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
+import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 import { documentToText } from '@/lib/chat/documentText';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
@@ -175,6 +176,28 @@ const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
  * state is explicit. Reused by every generation entry point (chat/image/music/video,
  * product ad, character swap).
  */
+/**
+ * One TTS request → an object URL of the spoken audio, or null. Shared by read-aloud (speakMsg) and the voice-turn
+ * pre-synthesis in streamChat. Bounded so a HUNG TTS call can't keep the read-aloud spinner up indefinitely.
+ */
+async function synthTtsUrl(chunk: string, locale: Lang): Promise<string | null> {
+  try {
+    const res = await fetch('/api/tts/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: chunk, locale }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch { return null; }
+}
+
+/** Revoke a pending synthesis's URL once it lands (an abandoned read must not leak its blob). */
+function dropTtsUrl(p: Promise<string | null> | null | undefined): void {
+  void p?.then((u) => { if (u) URL.revokeObjectURL(u); });
+}
+
 function busyToastMessage(locale: Lang): string {
   return locale === 'en'
     ? 'Another generation is currently in progress. Please wait for it to complete.'
@@ -1997,6 +2020,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // defined AFTER streamChat) without a temporal-dead-zone reference.
   const autoPlayReplyRef = useRef(false);
   const speakMsgRef = useRef<((text: string, i: number) => void) | null>(null);
+  // SPEAK SOONER: a voice turn's reply starts synthesising its FIRST sentence while the rest still streams
+  // (chunkForTts leadSentence — that chunk is final once the second sentence begins). speakMsg takes it when its own
+  // first chunk is the same text, so the reply's voice starts the moment the stream ends instead of a TTS later.
+  const ttsPrefetchRef = useRef<{ text: string; url: Promise<string | null> } | null>(null);
   // Voice-SAMPLE recorder (music "my voice") — kept fully separate from the chat
   // dictation recorder above so the two never collide.
   const voiceFileRef = useRef<HTMLInputElement | null>(null);
@@ -2009,8 +2036,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Dictation (mic → composer): Web Speech where the engine can do the language, otherwise record → 16 kHz WAV →
   // /api/voice/transcribe (Gemini STT). The hook owns both recognizers, the echo guard and the takeover guard;
   // `inputSourceRef` is 'voice' while the box text came from the mic (send() tags the turn + auto-plays the reply).
+  // The language the user is evidently using: the newest of their recent turns written in a native script (Georgian
+  // or Cyrillic). The mic then listens in THAT language, whatever the UI's — Latin is no signal (see speechLang).
+  const typedLang = useMemo(() => {
+    for (let i = messages.length - 1, seen = 0; i >= 0 && seen < 8; i--) {
+      const m = messages[i];
+      if (m?.role !== 'user') continue;
+      seen += 1;
+      const l = typedSpeechLang(m.text);
+      if (l) return l;
+    }
+    return null;
+  }, [messages]);
   const dictation = useDictation({
     locale,
+    speechLang: typedLang,
     value: input,
     setValue: setInput,
     textareaRef: taRef,
@@ -4924,6 +4964,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Captured locally so a later regenerate/typed turn — which never sets it — can't inherit it.
     const autoPlayReply = autoPlayReplyRef.current;
     autoPlayReplyRef.current = false;
+    dropTtsUrl(ttsPrefetchRef.current?.url);
+    ttsPrefetchRef.current = null;
+    // A voice turn: watch the stream and pre-synthesise its first sentence as soon as that sentence is complete.
+    const stopPrefetch = autoPlayReply
+      ? chat.store.subscribe(() => {
+        if (ttsPrefetchRef.current || !mine()) return;
+        const lead = chunkForTts(chat.store.getSnapshot().text, 600, { leadSentence: true });
+        if (lead.length >= 2 && lead[0]) ttsPrefetchRef.current = { text: lead[0], url: synthTtsUrl(lead[0], locale) };
+      })
+      : null;
     const sid = `chat-${myGen}-${Date.now().toString(36)}`;
     setMessages([...history, { role: 'assistant', text: '', id: sid }]);
     streamingIdRef.current = sid;
@@ -5005,6 +5055,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (autoPlayReply) speakMsgRef.current?.(cleaned, history.length);
       }
     } finally {
+      stopPrefetch?.();
+      // Not spoken (an error, a stop, a superseded turn): the pre-synthesised sentence goes unused — release it.
+      // (speakMsg takes it synchronously, so a reply that IS being spoken has already emptied the ref.)
+      // (Read through a cast: TS keeps the `= null` above narrowed, but the stream's subscriber set it since.)
+      const unused = ttsPrefetchRef.current as { url: Promise<string | null> } | null;
+      if (autoPlayReply && unused) { dropTtsUrl(unused.url); ttsPrefetchRef.current = null; }
       if (streamingIdRef.current === sid) streamingIdRef.current = null;
       setStreamingId((cur) => (cur === sid ? null : cur));
       if (mine()) setBusy(false);
@@ -6236,28 +6292,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // the WHOLE message is read and the FIRST sentence starts fast (the next chunk is pre-fetched while
     // the current one plays). Now on Gemini NATIVE audio (/api/tts/gemini) — no ElevenLabs, no lag, and
     // it no longer stops after one word.
-    const chunks = chunkForTts(text);
-    if (!chunks.length) { setSpeakingIdx(null); setSpeakPhase(null); return; }
+    // The first chunk is the first SENTENCE alone (when short): its audio comes back in a fraction of a 600-char
+    // request, and the rest is synthesised while it plays.
+    const chunks = chunkForTts(text, 600, { leadSentence: true });
+    // Taken synchronously (before any await): a voice turn's reply may already be synthesising its first sentence.
+    const pre = ttsPrefetchRef.current;
+    ttsPrefetchRef.current = null;
+    if (!chunks.length) { dropTtsUrl(pre?.url); setSpeakingIdx(null); setSpeakPhase(null); return; }
 
-    const synth = async (chunk: string): Promise<string | null> => {
-      try {
-        const res = await fetch('/api/tts/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: chunk, locale }),
-          // Bound the request so a HUNG TTS call can't keep the read-aloud spinner up indefinitely; on
-          // timeout the fetch aborts → null → the loop clears/continues.
-          signal: AbortSignal.timeout(25_000),
-        });
-        if (!res.ok) return null;
-        return URL.createObjectURL(await res.blob());
-      } catch { return null; }
-    };
+    const synth = (chunk: string): Promise<string | null> => synthTtsUrl(chunk, locale);
 
     // Revoke a still-pending prefetched chunk URL so an aborted read never leaks its blob.
-    const drainNext = (pr: Promise<string | null>) => { void pr.then((u) => { if (u) URL.revokeObjectURL(u); }); };
+    const drainNext = (pr: Promise<string | null>) => dropTtsUrl(pr);
     try {
-      let nextUrlPromise: Promise<string | null> = synth(chunks[0]!);
+      const first = pre && pre.text === chunks[0] ? pre.url : null;
+      if (pre && !first) drainNext(pre.url);
+      let nextUrlPromise: Promise<string | null> = first ?? synth(chunks[0]!);
       for (let idx = 0; idx < chunks.length; idx++) {
         const url = await nextUrlPromise;
         if (!live()) { if (url) URL.revokeObjectURL(url); return; }

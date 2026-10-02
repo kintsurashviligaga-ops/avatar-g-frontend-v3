@@ -128,9 +128,21 @@ describe('classifySttStatus', () => {
 
 describe('sttPrompt', () => {
   it('pins Georgian to the Mkhedruli script (sttAccept rejects Latin output)', () => {
-    expect(sttPrompt('ka-GE')).toMatch(/Georgian/);
+    expect(sttPrompt('ka-GE')).toMatch(/most likely speaks Georgian/);
     expect(sttPrompt('ka-GE')).toMatch(/Mkhedruli/);
-    expect(sttPrompt('en-US')).not.toMatch(/Mkhedruli/);
+  });
+
+  it('the language is a HINT, never a target: whatever is spoken is written as spoken, never translated', () => {
+    for (const l of ['ka-GE', 'en-US', 'ru-RU', 'auto']) {
+      expect(sttPrompt(l)).toMatch(/NEVER translate/);
+      expect(sttPrompt(l)).toMatch(/language the speaker actually uses/);
+      expect(sttPrompt(l)).toMatch(/Georgian speech is written in the Georgian \(Mkhedruli\) alphabet/);
+      expect(sttPrompt(l)).not.toMatch(/Transcribe this audio in (English|Georgian|Russian)\b/);
+    }
+    expect(sttPrompt('en-US')).toMatch(/most likely speaks English; if they speak another language, write that language/);
+    expect(sttPrompt('ru-RU')).toMatch(/most likely speaks Russian/);
+    expect(sttPrompt('auto')).not.toMatch(/most likely/);
+    expect(sttPrompt('auto')).toMatch(/Georgian, English, Russian or any other language/);
   });
 });
 

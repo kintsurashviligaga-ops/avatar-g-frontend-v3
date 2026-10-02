@@ -128,7 +128,7 @@ test('the per-user STT cap applies to a signed-in caller, keyed on the user id',
 test('Google-only (default): WAV → Gemini only, key in the header, usage booked; no other vendor', async () => {
   const res = await POST(upload({ language: 'ka-GE' }));
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini' });
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
   expect(url).toContain('/models/gemini-3.8-flash:generateContent');
@@ -168,6 +168,30 @@ test('Google-only: a Latin rendering of Georgian speech is rejected (sttAccept) 
   expect(replicateMock).not.toHaveBeenCalled();
 });
 
+test('Google-only: Russian speech in a Georgian session is kept as spoken (Cyrillic), and the answer names it', async () => {
+  fetchSpy.mockImplementationOnce(async () => geminiOk('привет, как дела'));
+  const res = await POST(upload({ language: 'ka-GE' }));
+  expect(await res.json()).toEqual({ text: 'привет, как дела', provider: 'gemini', language: 'ru-RU' });
+});
+
+test("language 'auto': no hint in the prompt, any language accepted, and the language heard comes back", async () => {
+  fetchSpy.mockImplementationOnce(async () => geminiOk('გამარჯობა, როგორ ხარ'));
+  let res = await POST(upload({ language: 'auto' }));
+  expect(await res.json()).toEqual({ text: 'გამარჯობა, როგორ ხარ', provider: 'gemini', language: 'ka-GE' });
+  const prompt = JSON.parse(String((fetchSpy.mock.calls[0]![1] as RequestInit).body)).contents[0].parts[0].text as string;
+  expect(prompt).not.toMatch(/most likely/);
+  expect(prompt).toMatch(/NEVER translate/);
+  fetchSpy.mockImplementationOnce(async () => geminiOk('what is the weather today'));
+  res = await POST(upload({ language: 'auto' }));
+  expect(await res.json()).toEqual({ text: 'what is the weather today', provider: 'gemini', language: 'en-US' });
+});
+
+test('an unknown language value is the Georgian default, as before', async () => {
+  fetchSpy.mockImplementationOnce(async () => geminiOk('hello there'));
+  const res = await POST(upload({ language: 'xx-YY' }));
+  expect(await res.json()).toEqual({ text: '', provider: 'none' }); // Latin under the ka-GE default is still a miss
+});
+
 test('Google-only: a quota outage is an empty transcript with stt_unavailable, never a vendor swap', async () => {
   fetchSpy.mockImplementation(async () => new Response('prepay depleted', { status: 402 }));
   const res = await POST(upload({ language: 'en-US' }));
@@ -188,7 +212,7 @@ test('Google-only: no Gemini key → stt_unavailable and no call at all', async 
 test('AI_GOOGLE_ONLY=0 restores the legacy cascade (Georgian → Replicate first)', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
   const res = await POST(upload({ language: 'ka-GE', type: 'audio/webm' }));
-  expect(await res.json()).toEqual({ text: 'გამარჯობა replicate', provider: 'replicate-whisper' });
+  expect(await res.json()).toEqual({ text: 'გამარჯობა replicate', provider: 'replicate-whisper', language: 'ka-GE' });
   expect(replicateMock).toHaveBeenCalledTimes(1);
   expect(fetchSpy).not.toHaveBeenCalled();
 });
@@ -196,14 +220,14 @@ test('AI_GOOGLE_ONLY=0 restores the legacy cascade (Georgian → Replicate first
 test('AI_GOOGLE_ONLY=0, English: the primary engine answers first', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
   const res = await POST(upload({ language: 'en-US' }));
-  expect(await res.json()).toEqual({ text: 'from openai', provider: 'openai' });
+  expect(await res.json()).toEqual({ text: 'from openai', provider: 'openai', language: 'en-US' });
 });
 
 test('?diag=1 from a non-admin is ignored (plain answer, no upstream detail)', async () => {
   const res = await POST(upload({ diag: true, language: 'en-US' }));
   const j = await res.json();
   expect(j.diag).toBeUndefined();
-  expect(j).toEqual({ text: 'გამარჯობა', provider: 'gemini' });
+  expect(j).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
 });
 
 test('?diag=1 from an allowlisted admin returns the breadcrumb, without the key', async () => {
