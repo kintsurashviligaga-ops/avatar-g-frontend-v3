@@ -18,7 +18,7 @@
  */
 import { NextRequest } from 'next/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { signInToGenerateBody } from '@/lib/auth/generationGate';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { getResearchCapabilities } from '@/lib/research/capabilities';
 import { callerId, json } from '@/lib/research/http';
 import { researchMessage } from '@/lib/research/messages';
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   if (limited) return limited;
 
   const userId = await callerId(req);
-  if (!userId) return json(signInToGenerateBody(), 401);
+  if (!userId || mustSignInToGenerate(userId)) return json(signInToGenerateBody(), 401);
 
   const rt = getResearchRuntime();
   const caps = await getResearchCapabilities(rt?.db ?? null);

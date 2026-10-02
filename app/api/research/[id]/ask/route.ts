@@ -12,7 +12,7 @@
  */
 import { NextRequest } from 'next/server';
 import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { signInToGenerateBody } from '@/lib/auth/generationGate';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { generateWithGemini, GEMINI_MODELS } from '@/lib/gemini/client';
 import { reportError } from '@/lib/observability/report-error';
 import { callerId, json } from '@/lib/research/http';
@@ -53,7 +53,7 @@ const askMsg = (k: keyof typeof ASK_MESSAGES, loc?: string) => ASK_MESSAGES[k][l
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const userId = await callerId(req);
-  if (!userId) return json(signInToGenerateBody(), 401);
+  if (!userId || mustSignInToGenerate(userId)) return json(signInToGenerateBody(), 401);
 
   const raw = await req.json().catch(() => null);
   const parsed = parseAskBody(raw);

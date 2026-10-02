@@ -53,11 +53,11 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const hit = cache.get(domain);
   if (hit && now - hit.at < (hit.body ? HIT_TTL : MISS_TTL)) {
-    return hit.body ? new NextResponse(hit.body, { headers: { 'Content-Type': hit.type, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' } }) : noContent();
+    return hit.body ? new NextResponse(hit.body as unknown as BodyInit, { headers: { 'Content-Type': hit.type, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' } }) : noContent();
   }
   const icon = await fetchIcon(domain);
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
   cache.set(domain, { at: now, type: icon?.type ?? '', body: icon?.body ?? null });
   if (!icon) return noContent();
-  return new NextResponse(icon.body, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' } });
+  return new NextResponse(icon.body as unknown as BodyInit, { headers: { 'Content-Type': icon.type, 'Cache-Control': 'public, max-age=604800, immutable', 'X-Content-Type-Options': 'nosniff' } });
 }

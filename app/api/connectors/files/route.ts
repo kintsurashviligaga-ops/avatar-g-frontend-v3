@@ -13,7 +13,7 @@
  */
 import { NextRequest } from 'next/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { signInToGenerateBody } from '@/lib/auth/generationGate';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { RESEARCH_ATTACH_MAX, RESEARCH_CONTEXT_MAX_CHARS, RESEARCH_FILES_MAX, RESEARCH_FILE_MAX_CHARS } from '@/lib/research/context';
 import { tableReady } from '@/lib/research/capabilities';
 import { callerId, json } from '@/lib/research/http';
@@ -42,7 +42,7 @@ const msg = (k: keyof typeof MSG, loc: unknown) => MSG[k][loc === 'en' || loc ==
 
 async function gate(req: NextRequest) {
   const userId = await callerId(req);
-  if (!userId) return { res: json(signInToGenerateBody(), 401) } as const;
+  if (!userId || mustSignInToGenerate(userId)) return { res: json(signInToGenerateBody(), 401) } as const;
   const rt = getResearchRuntime();
   if (!rt || !(await tableReady(rt.db as never, 'research_context_files'))) {
     return { res: json({ error: 'unavailable', message: researchMessage('unavailable') }, 503) } as const;
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   if (out.code === 'too_many') return json({ error: 'too_many', message: msg('too_many', body.locale) }, 409);
   if (out.code === 'empty') return json({ error: 'empty', message: msg('empty', body.locale) }, 400);
   if (out.code === 'invalid') return json({ error: 'invalid', message: msg('invalid', body.locale) }, 400);
-  return json({ error: 'unavailable', message: researchMessage('unavailable', body.locale) }, 503);
+  return json({ error: 'unavailable', message: researchMessage('unavailable', typeof body.locale === 'string' ? body.locale : null) }, 503);
 }
 
 export async function DELETE(req: NextRequest) {

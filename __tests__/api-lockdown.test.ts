@@ -134,6 +134,8 @@ const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
   'app/api/health/public/route.ts': 'aggregate status pings of provider status endpoints (no generation), 60 s cache',
   'app/api/support/route.ts': 'public support form (Resend e-mail to our own inbox) — per-IP SUPPORT bucket',
   'app/api/video/engine/route.ts': 'Veo capability flags (env reads only), no provider call',
+  'app/api/research/capabilities/route.ts': 'Deep Research availability probe — env flags + a table probe + the price; no provider call, no user data (IP READ bucket)',
+  'app/api/connectors/route.ts': 'Connectors states — static registry + a table probe; no provider call; a guest sees statuses only (IP READ bucket)',
 };
 
 const ROUTES = FILES.filter((f) => /^app\/api\/.+\/route\.[jt]sx?$/.test(rel(f)));

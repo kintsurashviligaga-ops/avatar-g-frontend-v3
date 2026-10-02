@@ -9,7 +9,7 @@
  */
 import { NextRequest } from 'next/server';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
-import { signInToGenerateBody } from '@/lib/auth/generationGate';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { reportError } from '@/lib/observability/report-error';
 import { callerId, json } from '@/lib/research/http';
 import { researchMessage } from '@/lib/research/messages';
@@ -24,7 +24,7 @@ export const maxDuration = 15;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const userId = await callerId(req);
-  if (!userId) return json(signInToGenerateBody(), 401);
+  if (!userId || mustSignInToGenerate(userId)) return json(signInToGenerateBody(), 401);
   const limited = await checkRateLimitByKey(userId, RESEARCH_CANCEL_USER);
   if (limited) return limited;
 
