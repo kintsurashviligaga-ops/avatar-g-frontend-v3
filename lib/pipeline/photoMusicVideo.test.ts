@@ -20,6 +20,15 @@ describe('buildPhotoVideoArgs — codec/format contract', () => {
     expect(s).toContain("scale='trunc(iw/2)*2':'trunc(ih/2)*2'"); // even-dimension guard for yuv420p
     expect(a[a.length - 1]).toBe('/tmp/o.mp4');                    // output path is last
     expect(a.indexOf('/tmp/i.png')).toBeLessThan(a.indexOf('/tmp/a.m4a')); // looped image before audio
+    expect(a).not.toContain('-t');                                          // no measured length → no cap
+  });
+
+  it('caps the output at the measured audio length (-shortest alone overshoots with a looped still)', () => {
+    const a = buildPhotoVideoArgs('/tmp/i.png', '/tmp/a.m4a', '/tmp/o.mp4', 2.0453);
+    expect(a.slice(a.indexOf('-t'), a.indexOf('-t') + 2)).toEqual(['-t', '2.045']);
+    expect(a.indexOf('-t')).toBeLessThan(a.indexOf('-shortest'));
+    expect(a[a.length - 1]).toBe('/tmp/o.mp4');
+    expect(buildPhotoVideoArgs('/tmp/i.png', '/tmp/a.m4a', '/tmp/o.mp4', null)).not.toContain('-t');
   });
 });
 
