@@ -192,6 +192,10 @@
     {
       "path": "/api/cron/studio-sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/bog-billing",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
