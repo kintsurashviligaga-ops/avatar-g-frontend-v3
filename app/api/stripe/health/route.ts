@@ -64,7 +64,6 @@ export async function GET(request: NextRequest) {
         appUrl: appUrl ? '✓ Set' : '⚠️ Using default',
       },
       endpoints: {
-        createCheckoutSession: '/api/stripe/create-checkout-session',
         webhook: '/api/webhooks/stripe',
         health: '/api/stripe/health',
       },

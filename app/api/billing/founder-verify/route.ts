@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ url, amountGel: FOUNDER_VERIFICATION_GEL });
     } catch (e) {
       return NextResponse.json(
-        { error: 'gel_unsupported', message: e instanceof Error ? e.message.slice(0, 200) : 'founder verification failed' },
+        { error: 'gel_unsupported', message: 'founder verification failed' },
         { status: 502 },
       );
     }
@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof BillingProviderUnavailableError) {
       return NextResponse.json({ error: 'Billing provider unavailable', error_code: error.code }, { status: 503 });
     }
-    return NextResponse.json({ error: 'founder verification failed', message: error instanceof Error ? error.message : 'unknown' }, { status: 500 });
+    console.error('[founder-verify] failed:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: 'founder verification failed' }, { status: 500 });
   }
 }

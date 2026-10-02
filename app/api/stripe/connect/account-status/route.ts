@@ -93,10 +93,7 @@ export async function GET(_request: NextRequest) {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to fetch account status',
+        error: 'Failed to fetch account status',
       },
       { status: 500 }
     );

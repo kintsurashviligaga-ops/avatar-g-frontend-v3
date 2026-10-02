@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Connect] Error creating account link:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create account link' },
+      { error: 'Failed to create account link' },
       { status: 500 }
     );
   }

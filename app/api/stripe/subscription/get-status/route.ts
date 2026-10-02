@@ -69,7 +69,7 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to fetch subscription status',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: 'internal_error'
       },
       { status: 500 }
     );

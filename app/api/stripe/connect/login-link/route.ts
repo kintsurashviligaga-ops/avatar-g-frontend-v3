@@ -36,7 +36,7 @@ export async function POST(_request: NextRequest) {
   } catch (error) {
     console.error('[Connect] Error creating login link:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create login link' },
+      { error: 'Failed to create login link' },
       { status: 500 }
     );
   }
