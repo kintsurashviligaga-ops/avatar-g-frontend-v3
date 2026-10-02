@@ -20,6 +20,14 @@ describe('deriveImageResults — the Result pane reads the thread', () => {
     expect(r).toMatchObject({ state: 'ready', key: 'm0', aspect: '1:1', quality: 'high', canReroll: false });
   });
 
+  test('a job in flight is drawn in the shape it was STARTED with — the pending bubble has no regen spec yet', () => {
+    const [r] = deriveImageResults([
+      { role: 'user', text: 'a blue door' },
+      { role: 'assistant', text: '', id: 'img_3', genKind: 'image', genAspect: '9:16', genQuality: 'ultra' },
+    ]);
+    expect(r).toMatchObject({ state: 'rendering', aspect: '9:16', quality: 'ultra' });
+  });
+
   test('a job in flight is `rendering` — the prompt comes from the user bubble before it', () => {
     const [r] = deriveImageResults([user('a blue door'), { role: 'assistant', text: '', id: 'img_2', genKind: 'image', jobId: 'job9' }]);
     expect(r).toMatchObject({ state: 'rendering', key: 'img_2', jobId: 'job9', prompt: 'a blue door' });

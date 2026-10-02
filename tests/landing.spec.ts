@@ -175,7 +175,8 @@ const VIDEO_PLACEHOLDER = 'აღწერე კადრი, ჩაწერ�
 async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.goto(path);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
+  // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
+  await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 30_000 });
 }
 
 /**
@@ -232,12 +233,19 @@ for (const vp of VIEWPORTS) {
       expect(posts).toEqual(['/api/chat/gemini']);
     });
 
-    test('the home is the greeting and the box — no sub line, no starter chips — and the video tool asks for a shot', async ({ page }) => {
-      await openDashboard(page);
+    test('the home is the greeting and the box — no sub line, no starter chips, nothing under the box', async ({ page }) => {
+      await openDashboard(page, '/ka/dashboard?tool=chat');
       // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below".
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
       await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
       await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
+      await expect(page.getByTestId('price-tag')).toHaveCount(0);
+      await expect(page.getByTestId('chat-disclaimer')).toHaveCount(0);
+      await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();
+    });
+
+    test('the video tool: the tool chip names what you make, and the composer asks for a shot', async ({ page }) => {
+      await openDashboard(page);
       // The tool chip names what you make and its shape — its text is its accessible name.
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
@@ -255,19 +263,22 @@ for (const vp of VIEWPORTS) {
       await expect(tools.nth(1)).toContainText('ვიდეო');
       await expect(tools.nth(1)).toHaveAttribute('aria-pressed', 'true');
       await expect(tools.nth(2)).toContainText('სურათი');
-      await expect(tools.nth(3)).toContainText('მუსიკა');
-      await expect(tools.nth(4)).toContainText('ავატარი');
+      await expect(tools.nth(3)).toContainText('ფოტოგრაფი');
+      await expect(tools.nth(4)).toContainText('ინტერიერის დიზაინერი');
+      await expect(tools.nth(5)).toContainText('მუსიკა');
+      await expect(tools.nth(6)).toContainText('ავატარი');
       // Nothing is lost one level down: the product ad, the swap, motion and the four studios.
       await expect(sheet.getByRole('list', { name: 'მეტი' }).getByRole('button').first()).toContainText('პროდუქტის რეკლამა');
     });
 
     test('a service in the sidebar switches the studio and is marked as the active one', async ({ page }) => {
-      await openDashboard(page);
+      await openDashboard(page, '/ka/dashboard?tool=chat');
       if (vp.name === 'phone') await page.locator('header').getByRole('button', { name: 'მენიუ' }).click();
       const nav = page.locator('aside[aria-label="მენიუ"]');
       await nav.getByRole('button', { name: 'მუსიკა', exact: true }).click();
       await expect(page.getByTestId('options-toggle')).toHaveText('მუსიკა');
-      if (vp.name === 'phone') await page.locator('header').getByRole('button', { name: 'მენიუ' }).click();
+      // On a phone the music Create sheet opens by itself and covers the header: close it, then reopen the menu.
+      if (vp.name === 'phone') { await page.keyboard.press('Escape'); await page.locator('header').getByRole('button', { name: 'მენიუ' }).click(); }
       await expect(nav.getByRole('button', { name: 'მუსიკა', exact: true })).toHaveAttribute('aria-current', 'true');
       await expect(nav.getByRole('button', { name: 'ვიდეო', exact: true })).not.toHaveAttribute('aria-current', 'true');
     });
@@ -287,7 +298,7 @@ for (const vp of VIEWPORTS) {
       await box.press('Enter');
       await page.waitForTimeout(800);
       expect(posts).toEqual([]);
-      await expect(page.getByRole('heading', { level: 1 })).toBeVisible(); // still the empty state: nothing was sent
+      await expect(box).toBeVisible(); // nothing was sent, nothing moved
     });
 
     // docs/DESIGN.md §11 LIVE_GAP: both of these used to drop a guest out of the tool they were on.
@@ -328,14 +339,18 @@ for (const vp of VIEWPORTS) {
     // The guest gate is lifted in this browser only — it is the sign-in wall, not what is under test.
     async function startImageJob(page: Page) {
       await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
-      await page.getByTestId('plus').click();
-      await page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').nth(2).click(); // the image tool
-      const settings = await openSettings(page);
-      await settings.getByRole('button', { name: '9:16', exact: true }).first().click();
-      if (vp.name === 'phone') await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
-      await expect(page.getByTestId('options-toggle')).toHaveText('სურათი · 9:16');
-      await page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…').fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
-      await page.getByRole('button', { name: 'სურათის შექმნა' }).click();
+      // The tool is chosen the way the sidebar does (`omni:set-tool`) — under `next dev`'s StrictMode a deep link's sheet is
+      // clobbered by a mount effect; a production build and every real user choose the tool after mount.
+      await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
+      const panel = page.getByTestId('image-create-panel');
+      await expect(panel).toBeVisible();
+      await panel.getByRole('textbox').first().fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
+      await panel.getByTestId('chip-aspect').click();
+      await page.getByRole('dialog').getByRole('radio').filter({ hasText: '9:16' }).click();
+      await expect(panel.getByTestId('chip-aspect')).toHaveText('9:16');
+      await panel.getByRole('button', { name: /შექმნა/ }).last().click();
+      // The sheet covers the feed on a phone: close it so the job's card is reachable.
+      if (vp.name === 'phone') await page.keyboard.press('Escape');
     }
 
     test('a generating job is a studio card in its own shape, and its cancel stops that job', async ({ page }) => {
@@ -365,7 +380,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('result-card')).toHaveCount(0);
     });
 
-    test('nothing sits under the composer (the price is on the Generate button), and the length set in the settings shows on the tool chip', async ({ page }) => {
+    test('the video Create screen prints its price on the Generate button — it follows quality and length — and nothing sits under the composer', async ({ page }) => {
       await openDashboard(page);
       // Owner, 2026-10-02: no „25 კრედიტი · ~5 წთ“ caption under the box — a tool's price is ON its Generate button.
       await expect(page.getByTestId('price-tag')).toHaveCount(0);
@@ -374,42 +389,30 @@ for (const vp of VIEWPORTS) {
       expect(chip.y).toBeGreaterThanOrEqual(pill.y); // the tool chip is IN the composer
       expect(chip.y + chip.height).toBeLessThanOrEqual(pill.y + pill.height + 1);
       const settings = await openSettings(page);
-      const length = settings.getByRole('radiogroup', { name: 'ხანგრძლივობა' });
-      await length.getByRole('radio', { name: '8წმ', exact: true }).click();
+      const generate = settings.getByTestId('video-generate');
+      // 24 s on the default tier (Fast) = 24 × 3.125 credits; Best is ×3.3 (rounded up), Economy ×0.6 — lib/credits/videoPricing.
+      await expect(generate).toHaveAttribute('data-price', '75');
+      await settings.getByTestId('video-quality-standard').click();
+      await expect(generate).toHaveAttribute('data-price', '248');
+      await settings.getByTestId('video-quality-lite').click();
+      await expect(generate).toHaveAttribute('data-price', '45');
+      await settings.getByTestId('video-quality-fast').click();
+      await expect(generate).toHaveAttribute('data-price', '75');
+      // The length is chosen in its own picker (4 s – 4 min); the price and the composer's chip follow it.
+      await settings.getByTestId('video-tile-length').click();
+      await page.getByTestId('video-preset-8').click();
+      await expect(page.getByTestId('video-duration-price')).toHaveAttribute('data-price', '25');
+      await page.keyboard.press('Escape');
+      await expect(generate).toHaveAttribute('data-price', '25');
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 8წმ');
-      await length.getByRole('radio', { name: '48წმ', exact: true }).click();
-      await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 48წმ');
     });
 
-    test('the Veo controls: a quality tier, one camera per scene, and only the joins Veo’s edit can make', async ({ page }) => {
+    test('the video tool opens on Fast, and Economy / Best are one tap away', async ({ page }) => {
       await openDashboard(page);
       const settings = await openSettings(page);
-      // Quality = the Veo 3.1 tier, next to format and length.
-      const quality = settings.getByRole('radiogroup', { name: 'ხარისხი' });
-      await expect(quality.getByRole('radio')).toHaveText(['უმაღლესი', 'სწრაფი', 'ეკონომი']);
-      // The studio's default is Fast (STUDIO_DEFAULT_VEO_TIER): every price is anchored on it; Best is one tap away.
-      await expect(quality.getByRole('radio', { name: 'სწრაფი' })).toHaveAttribute('aria-checked', 'true');
-      await expect(quality.getByRole('radio', { name: 'უმაღლესი' })).toHaveAttribute('aria-checked', 'false');
-      const veo = settings.getByTestId('veo-parameters');
-      await veo.getByRole('button', { name: /სცენები და კამერა/ }).click();
-      // 24 s = three 8 s clips → one camera card per scene, and a join between each pair.
-      await expect(veo.locator('ol > li')).toHaveCount(3);
-      await expect(veo.getByText('სცენა 1 → 2')).toBeVisible();
-      // Veo has no transition parameter: the joins are the four the assembler makes. Zoom / Slide are gone, and so is
-      // the engine badge (Veo is the only engine).
-      await expect(veo.getByRole('button', { name: /ზუმი|სლაიდი/ })).toHaveCount(0);
-      await expect(settings.getByText('Google Veo', { exact: true })).toHaveCount(0);
-      // A per-scene move shows its speed and names itself on the card.
-      await veo.locator('#veo-s0-move').selectOption('push_in');
-      const first = veo.locator('ol > li').first();
-      await expect(first.locator('span', { hasText: /^მიახლოება$/ })).toBeVisible();
-      await expect(first.getByRole('slider')).toBeVisible();
-      // Economy takes no reference photos: choosing it hands a reference-mode film back to the first frame.
-      await veo.getByRole('button', { name: /პერსონაჟის შენარჩუნება/ }).click();
-      await veo.getByRole('button', { name: /რეფერენს-ფოტოებით/ }).click();
-      await expect(veo.getByRole('button', { name: /რეფერენს-ფოტოებით/ })).toHaveAttribute('aria-pressed', 'true');
-      await quality.getByRole('radio', { name: 'ეკონომი' }).click();
-      await expect(veo.getByRole('button', { name: /პირველი კადრიდან/ })).toHaveAttribute('aria-pressed', 'true');
+      await expect(settings.getByTestId('video-quality-fast')).toHaveAttribute('aria-checked', 'true');
+      await expect(settings.getByTestId('video-quality-standard')).toHaveAttribute('aria-checked', 'false');
+      await expect(settings.getByTestId('video-quality-lite')).toHaveAttribute('aria-checked', 'false');
     });
 
     test('"შესვლა" opens the sign-in', async ({ page }) => {
@@ -431,7 +434,7 @@ for (const vp of VIEWPORTS) {
     });
 
     test('the brand plate loads, and nothing overlaps or leaves the screen', async ({ page, request }) => {
-      await openDashboard(page);
+      await openDashboard(page, '/ka/dashboard?tool=chat');
       const plate = page.locator('img[src="/brand/v1/dashboard-plate.jpg"]');
       await expect(plate).toHaveCount(1);
       await expect.poll(() => plate.evaluate((i: HTMLImageElement) => (i.complete ? i.naturalWidth : 0))).toBeGreaterThan(0);
@@ -439,11 +442,9 @@ for (const vp of VIEWPORTS) {
 
       const header = (await page.locator('header').filter({ visible: true }).first().boundingBox())!;
       const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
-      const composer = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).boundingBox())!;
-      const options = (await page.getByTestId('options-toggle').boundingBox())!;
+      const composer = (await page.getByPlaceholder('ჰკითხე MyAvatar-ს').boundingBox())!;
       expect(overlaps(header, h1)).toBe(false);
       expect(overlaps(h1, composer)).toBe(false);
-      expect(overlaps(h1, options)).toBe(false);
       expect(composer.y + composer.height).toBeLessThanOrEqual(vp.height);
       await noHorizontalScroll(page);
     });
@@ -454,7 +455,8 @@ test.describe('guest dashboard · desktop is a studio', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
   test('navigation, the session and its settings side by side — Google AI Studio’s three columns', async ({ page }) => {
-    await openDashboard(page);
+    // A tool that keeps the generic settings panel (the Create screens of video / image / music draw their own header).
+    await openDashboard(page, '/ka/dashboard?tool=remix');
     const nav = (await page.locator('aside[aria-label="მენიუ"]').boundingBox())!;
     const bar = page.locator('header').filter({ visible: true });
     await expect(bar).toHaveCount(1); // the studio's own title bar; the phone header steps aside

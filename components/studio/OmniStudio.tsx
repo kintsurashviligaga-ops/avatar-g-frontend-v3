@@ -937,7 +937,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Googl
   chatMode?: ChatModeId;
   /** A one-line notice above the reply: 'pro_cap' = Pro's daily allowance was spent and Flash answered instead. */
   chatNotice?: 'pro_cap';
-  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -4228,7 +4228,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    */
   const runImageJob = useCallback((prompt: string, imgRef: string | undefined, spec: ImageRegenSpec) => {
     const bubbleId = `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image' }]);
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: '', id: bubbleId, genKind: 'image', genAspect: spec.aspect, genQuality: spec.quality }]);
     const imageJobId = submitJob({
       kind: 'image',
       label: prompt.trim().slice(0, 42) || (locale === 'en' ? 'Image' : locale === 'ru' ? 'Изображение' : 'სურათი'),

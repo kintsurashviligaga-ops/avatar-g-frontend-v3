@@ -22,6 +22,9 @@ export interface ImageMsgLike {
   videoUrl?: string;
   glbUrl?: string;
   genKind?: string;
+  /** What an in-flight job was started with (a pending bubble has no regen spec yet). */
+  genAspect?: string;
+  genQuality?: string;
   topUp?: boolean;
   jobId?: string;
   regen?: { kind: string; prompt?: string; aspect?: string; quality?: string };
@@ -61,8 +64,8 @@ function promptOf(m: ImageMsgLike, before: ImageMsgLike | undefined): string {
 }
 
 const specOf = (m: ImageMsgLike): { aspect: string; quality: string } => ({
-  aspect: (m.regen?.kind === 'image' ? m.regen.aspect : undefined) ?? m.batch?.spec.aspect ?? DEFAULT_ASPECT,
-  quality: (m.regen?.kind === 'image' ? m.regen.quality : undefined) ?? m.batch?.spec.quality ?? DEFAULT_QUALITY,
+  aspect: (m.regen?.kind === 'image' ? m.regen.aspect : undefined) ?? m.batch?.spec.aspect ?? m.genAspect ?? DEFAULT_ASPECT,
+  quality: (m.regen?.kind === 'image' ? m.regen.quality : undefined) ?? m.batch?.spec.quality ?? m.genQuality ?? DEFAULT_QUALITY,
 });
 
 /**
