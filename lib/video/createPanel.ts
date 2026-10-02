@@ -89,6 +89,22 @@ export interface VideoCapabilities {
 /** Until the server answers — and whenever it cannot be reached — long-form is CLOSED: a lock is never wrongly opened. */
 export const CLOSED_CAPABILITIES: VideoCapabilities = Object.freeze({ longform: false, maxSeconds: FILM_MAX_SEC });
 
+/**
+ * ⚠️ THE STUDIO CANNOT ORDER A LONG-FORM FILM YET, so it keeps those lengths locked even when the server says the pipeline is
+ * open. Opening them needs four things the create screen does not have: (1) the button's price — long-form is priced per
+ * scene from LONGFORM_MARGIN (plan.creditsForUsd), not by videoCredits, so the number on the button would not be the
+ * number on the bill unless the server hands the quote to the client; (2) reference photos as public https URLs (ours are
+ * data URLs the film route hosts itself); (3) a progress/result surface for a film that takes tens of minutes and survives a
+ * closed tab (GET /api/video/longform/[id]); (4) a way to test any of it without paid calls — the pipeline's migration is
+ * unapplied and its cron is not in vercel.json. Flip this to `true` only together with all four.
+ */
+export const LONGFORM_ORDER_WIRED = false;
+
+/** What the picker actually honours: the server's answer, but never more than the studio can order. */
+export function effectiveCapabilities(server: VideoCapabilities, wired: boolean = LONGFORM_ORDER_WIRED): VideoCapabilities {
+  return wired ? server : CLOSED_CAPABILITIES;
+}
+
 /** The answer of /api/video/capabilities as the client reads it. Anything unexpected reads as closed. */
 export function parseVideoCapabilities(raw: unknown): VideoCapabilities {
   if (!raw || typeof raw !== 'object') return CLOSED_CAPABILITIES;
@@ -155,6 +171,16 @@ export function videoWaitSecs(seconds: number): number {
   if (scenes <= 3) return 120 + (scenes - 1) * 90;
   if (scenes <= 6) return 300 + Math.round((scenes - 3) * (140 / 3));
   return 440 + (scenes - 6) * 60;
+}
+
+/**
+ * Seconds of title-card intro the music video's graphics pass puts at the start (musicVideoGraphics clamps it to `length − 6`,
+ * so a short film is safe): 2 s for ONE clip, 10 s up to 48 s, 13 s from 48 s. These are the three values the panel always
+ * used for 8 / 24 / 48 s, extended to every length without moving any of them.
+ */
+export function musicVideoIntroSec(seconds: number): number {
+  if (seconds <= 8) return 2;
+  return seconds < 48 ? 10 : 13;
 }
 
 /** True when the first-video trial slot can pay for this film: a slot is left AND the film is ONE short clip (≤ 8 s). */

@@ -6,16 +6,19 @@ import { FILM_MAX_SEC, VIDEO_DURATION_STOPS, VIDEO_MAX_SEC, videoRoute } from '.
 import {
   CLOSED_CAPABILITIES,
   EXTEND_DIRECTIONS,
+  LONGFORM_ORDER_WIRED,
   MUSIC_VIDEO_SURCHARGE_PCT,
   PRICE_TABLE_LENGTHS,
   VIDEO_TIERS,
   VIDEO_TIER_TITLE,
   buildExtendRequest,
   durationOptions,
+  effectiveCapabilities,
   freeSlotApplies,
   insertPromptToken,
   isLengthLocked,
   lastOpenStopIndex,
+  musicVideoIntroSec,
   openDuration,
   parseVideoCapabilities,
   referenceToken,
@@ -122,6 +125,18 @@ describe('what is open: long-form is locked unless the server says it is open', 
     expect(openDuration('garbage', CLOSED_CAPABILITIES)).toBe(8);
   });
 
+  test('the studio cannot order a long-form film yet, so even an OPEN server leaves 1:44 – 4:00 locked until the ordering is wired', () => {
+    expect(LONGFORM_ORDER_WIRED).toBe(false);
+    const eff = effectiveCapabilities(open);
+    expect(eff).toBe(CLOSED_CAPABILITIES);
+    expect(isLengthLocked(104, eff)).toBe(true);
+    expect(isLengthLocked(240, eff)).toBe(true);
+    // …and the gate itself works the moment it is wired: the server's answer then decides, and only the server's.
+    expect(effectiveCapabilities(open, true)).toBe(open);
+    expect(isLengthLocked(240, effectiveCapabilities(open, true))).toBe(false);
+    expect(isLengthLocked(240, effectiveCapabilities(CLOSED_CAPABILITIES, true))).toBe(true);
+  });
+
   test('the capabilities answer is read strictly: only an explicit `longform: true` opens anything', () => {
     expect(parseVideoCapabilities({ longform: true, maxSeconds: 240 })).toEqual({ longform: true, maxSeconds: 240 });
     expect(parseVideoCapabilities({ longform: true, maxSeconds: 9999 })).toEqual({ longform: true, maxSeconds: 240 });
@@ -149,6 +164,15 @@ describe('the render', () => {
       expect(w).toBeGreaterThanOrEqual(prev);
       prev = w;
     }
+  });
+
+  test('the music video’s intro keeps its three old values for 8 / 24 / 48 s and is defined, and only grows, everywhere between', () => {
+    expect([8, 24, 48].map(musicVideoIntroSec)).toEqual([2, 10, 13]);
+    expect([4, 6].map(musicVideoIntroSec)).toEqual([2, 2]);
+    expect([16, 32, 40].map(musicVideoIntroSec)).toEqual([10, 10, 10]);
+    expect([56, 96, 240].map(musicVideoIntroSec)).toEqual([13, 13, 13]);
+    let prev = 0;
+    for (const s of VIDEO_DURATION_STOPS) { const v = musicVideoIntroSec(s); expect(v).toBeGreaterThanOrEqual(prev); prev = v; }
   });
 
   test('the free slot pays only for ONE short clip: a slot left AND ≤ 8 s', () => {
