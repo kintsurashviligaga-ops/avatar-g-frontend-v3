@@ -15,8 +15,9 @@ export interface PanelCopy {
   /** The upload card's title and the limit shown beside it. */
   uploadTitle: string;
   uploadLimit: string;
-  /** One quiet line under the upload card. */
+  /** One quiet line under the upload card — before a photo, and once there is one. */
   uploadNote: string;
+  uploadNoteWithPhoto: string;
   prompt: string;
   /** The template carousel's label and what it says before a card is picked. */
   carousel: string;
@@ -40,6 +41,8 @@ export interface ShootCopy {
   modelValue: string;
   aspect: string;
   quality: string;
+  /** One line per tier, in the quality sheet (the tiers differ in detail and time, NOT in price). */
+  qualityHint: { standard: string; high: string; ultra: string };
   count: string;
   auto: string;
   roomType: string;
@@ -65,6 +68,9 @@ export interface ShootCopy {
   plan3dCaption: string;
   plan3dBusy: string;
   plan3dFailed: string;
+  /** Shown instead of the viewer on a device without WebGL — the same layout, in numbers. */
+  plan3dNoWebgl: string;
+  planFacts: (floorW: number, floorD: number, ceiling: number, windows: number, doors: number) => string;
   walkthrough: string;
   walkthroughTip: string;
   walkthroughPrompt: string;
@@ -111,6 +117,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     modelValue: 'ავტო',
     aspect: 'პროპორცია',
     quality: 'ხარისხი',
+    qualityHint: { standard: 'ყველაზე სწრაფი', high: 'ბალანსი სიჩქარესა და დეტალს შორის', ultra: 'მაქსიმალური დეტალი, ყველაზე ნელი' },
     count: 'რაოდენობა',
     auto: 'ავტო',
     roomType: 'ოთახის ტიპი',
@@ -123,7 +130,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     interior: {
       uploadTitle: 'აირჩიე ოთახის ფოტოები',
       uploadLimit: '(მაქს. 3)',
-      uploadNote: 'ფოტო არ გაქვს? გამოტოვე — დიზაინერი ოთახს ტიპისა და სტილის მიხედვით წარმოიდგენს. ფანჯრები და პროპორციები ფოტოდან რჩება.',
+      uploadNote: 'ფოტო არ გაქვს? გამოტოვე — დიზაინერი ოთახს ტიპისა და სტილის მიხედვით წარმოიდგენს.',
+      uploadNoteWithPhoto: 'კედლები, ფანჯრები და პროპორციები ფოტოს მიხედვით რჩება.',
       prompt: 'აღწერე სასურველი ოთახი — ფერები, ავეჯი, განწყობა (არასავალდებულო)',
       carousel: 'სტილი',
       carouselNone: 'აირჩიე სტილი — ოთახი სწორედ ამ სტილში გადაიხედება.',
@@ -132,7 +140,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     photoshoot: {
       uploadTitle: 'დაამატე შენი პროდუქტის ან ადამიანის ფოტო',
       uploadLimit: '(არჩევითი, მაქს. 3)',
-      uploadNote: 'თითოეული ფოტო ცალკე გადაიღება და თავის იერს ინარჩუნებს. ფოტო არ გაქვს? აღწერე კადრი ქვემოთ.',
+      uploadNote: 'ფოტო არ გაქვს? აღწერე კადრი ქვემოთ.',
+      uploadNoteWithPhoto: 'თითოეული ფოტო ცალკე გადაიღება და თავის იერს ინარჩუნებს.',
       prompt: 'აღწერე კადრი — სცენა, განწყობა, რეკვიზიტი (არასავალდებულო)',
       carousel: 'ფოტოსესიის პრესეტი',
       carouselNone: 'აირჩიე პრესეტი — ან დატოვე და გამოიყენე კამერის პარამეტრები.',
@@ -149,6 +158,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     plan3dCaption: '3D გეგმა — ოთახის განლაგება, სტილის ფერებით. შეგიძლია ატრიალო.',
     plan3dBusy: '3D გეგმა მზადდება…',
     plan3dFailed: '3D გეგმა ვერ შეიქმნა. სცადე თავიდან.',
+    plan3dNoWebgl: 'ამ მოწყობილობას 3D ხედის ჩვენება არ შეუძლია — აი განლაგება რიცხვებით.',
+    planFacts: (w, d, h, win, door) => `იატაკი ${w.toFixed(1)} × ${d.toFixed(1)} მ · ჭერი ${h.toFixed(1)} მ · ${win} ფანჯარა · ${door} კარი`,
     walkthrough: 'ვიდეო-ტური',
     walkthroughTip: 'ხსნის ვიდეო სტუდიას ამ სურათით და 8 წამით; იქ დააჭირე შექმნას',
     walkthroughPrompt: 'ნელი კინემატოგრაფიული გავლა ამ ოთახში, რბილი კამერის მოძრაობა, ბუნებრივი შუქი',
@@ -199,6 +210,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     modelValue: 'Auto',
     aspect: 'Aspect ratio',
     quality: 'Quality',
+    qualityHint: { standard: 'Fastest', high: 'A balance of speed and detail', ultra: 'Maximum detail, slowest' },
     count: 'Images',
     auto: 'Auto',
     roomType: 'Room type',
@@ -211,7 +223,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     interior: {
       uploadTitle: 'Choose room photos to upload',
       uploadLimit: '(up to 3)',
-      uploadNote: 'No photo? Skip it — the designer imagines the room from its type and style. With a photo, the windows and proportions stay as photographed.',
+      uploadNote: 'No photo? Skip it — the designer imagines the room from its type and style.',
+      uploadNoteWithPhoto: 'The walls, windows and proportions stay as photographed.',
       prompt: 'Describe the room you want — colours, furniture, mood (optional)',
       carousel: 'Style',
       carouselNone: 'Pick a style — your room is redesigned in it.',
@@ -220,7 +233,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     photoshoot: {
       uploadTitle: 'Add your product or person photos',
       uploadLimit: '(optional, up to 3)',
-      uploadNote: 'Each photo is shot separately and keeps its look. No photo? Describe the shot below.',
+      uploadNote: 'No photo? Describe the shot below.',
+      uploadNoteWithPhoto: 'Each photo is shot separately and keeps its look.',
       prompt: 'Describe the shot — scene, mood, props (optional)',
       carousel: 'Shoot preset',
       carouselNone: 'Pick a preset — or leave it and use the camera controls.',
@@ -237,6 +251,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     plan3dCaption: '3D plan — the room’s layout, tinted in this style. Drag to rotate.',
     plan3dBusy: 'Building the 3D plan…',
     plan3dFailed: 'The 3D plan could not be built. Try again.',
+    plan3dNoWebgl: 'This device cannot draw the 3D view — here is the layout in numbers.',
+    planFacts: (w, d, h, win, door) => `Floor ${w.toFixed(1)} × ${d.toFixed(1)} m · ceiling ${h.toFixed(1)} m · ${win} ${win === 1 ? 'window' : 'windows'} · ${door} ${door === 1 ? 'door' : 'doors'}`,
     walkthrough: 'Walkthrough video',
     walkthroughTip: 'Opens the Video studio with this picture and 8 s — press Generate there',
     walkthroughPrompt: 'A slow cinematic walkthrough of this room, a gentle camera move, natural light',
@@ -287,6 +303,7 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     modelValue: 'Авто',
     aspect: 'Соотношение',
     quality: 'Качество',
+    qualityHint: { standard: 'Быстрее всего', high: 'Баланс скорости и деталей', ultra: 'Максимум деталей, дольше всего' },
     count: 'Количество',
     auto: 'Авто',
     roomType: 'Тип комнаты',
@@ -302,7 +319,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     interior: {
       uploadTitle: 'Выберите фото комнаты',
       uploadLimit: '(до 3)',
-      uploadNote: 'Нет фото? Пропустите — дизайнер представит комнату по типу и стилю. С фото окна и пропорции остаются как на снимке.',
+      uploadNote: 'Нет фото? Пропустите — дизайнер представит комнату по типу и стилю.',
+      uploadNoteWithPhoto: 'Стены, окна и пропорции остаются как на фото.',
       prompt: 'Опишите комнату — цвета, мебель, настроение (необязательно)',
       carousel: 'Стиль',
       carouselNone: 'Выберите стиль — комната будет оформлена в нём.',
@@ -311,7 +329,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     photoshoot: {
       uploadTitle: 'Добавьте фото товара или человека',
       uploadLimit: '(необязательно, до 3)',
-      uploadNote: 'Каждое фото снимается отдельно и сохраняет свой облик. Нет фото? Опишите кадр ниже.',
+      uploadNote: 'Нет фото? Опишите кадр ниже.',
+      uploadNoteWithPhoto: 'Каждое фото снимается отдельно и сохраняет свой облик.',
       prompt: 'Опишите кадр — сцена, настроение, реквизит (необязательно)',
       carousel: 'Пресет съёмки',
       carouselNone: 'Выберите пресет — или оставьте и используйте настройки камеры.',
@@ -328,6 +347,11 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     plan3dCaption: '3D-план — планировка комнаты в цветах стиля. Можно вращать.',
     plan3dBusy: 'Строится 3D-план…',
     plan3dFailed: 'Не удалось построить 3D-план. Попробуйте снова.',
+    plan3dNoWebgl: 'Это устройство не может показать 3D — вот планировка в цифрах.',
+    planFacts: (w, d, h, win, door) => {
+      const plural = (n: number, one: string, few: string, many: string) => (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+      return `Пол ${w.toFixed(1)} × ${d.toFixed(1)} м · потолок ${h.toFixed(1)} м · ${win} ${plural(win, 'окно', 'окна', 'окон')} · ${door} ${plural(door, 'дверь', 'двери', 'дверей')}`;
+    },
     walkthrough: 'Видео-обход',
     walkthroughTip: 'Откроет видео-студию с этой картинкой и 8 с — там нажмите «Создать»',
     walkthroughPrompt: 'Медленный кинематографичный обход этой комнаты, плавное движение камеры, естественный свет',

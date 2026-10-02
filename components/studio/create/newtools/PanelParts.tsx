@@ -9,7 +9,8 @@
  * scrolls inside itself (nothing pushes the page sideways at 375 px), every colour is a design token.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { BrainCircuit, ChevronDown, Gem, ImagePlus, Layers, Camera, X, type LucideIcon } from 'lucide-react';
+import { BrainCircuit, Check, ChevronDown, Gem, ImagePlus, Layers, X, type LucideIcon } from 'lucide-react';
+import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON, NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { SHOOT_BRIEF_MAX } from '@/lib/studio/shootQuote';
 import type { ShootPhotoRef } from './shootRuns';
@@ -21,15 +22,15 @@ export function PanelHeader({ Icon, title, copy, onSwitch, onClose, testId }: {
   Icon: LucideIcon; title: string; copy: ShootCopy; onSwitch: () => void; onClose: () => void; testId: string;
 }) {
   return (
-    <header data-testid={`${testId}-header`} className="sticky top-0 z-20 -mx-1 flex min-h-[56px] items-center justify-between gap-2 bg-app-surface/95 px-1 pb-1 pt-0.5 backdrop-blur-sm">
+    <header data-testid={`${testId}-header`} className="sticky top-0 z-20 -mx-1 flex min-h-[60px] items-center justify-between gap-2 bg-app-surface px-1 pb-1 pt-0.5 lg:bg-app-bg">
       <button type="button" onClick={onSwitch} aria-haspopup="dialog" aria-label={`${title} — ${copy.switchTool}`} data-testid={`${testId}-switch`}
         className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 rounded-2xl pr-2 text-left transition-colors hover:bg-app-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-accent text-app-bg"><Icon size={20} aria-hidden="true" /></span>
-        <span className="min-w-0 truncate text-[17px] font-semibold leading-tight tracking-tight text-app-text">{title}</span>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent"><Icon size={21} aria-hidden="true" /></span>
+        <span className="line-clamp-2 min-w-0 break-words text-[20px] font-semibold leading-tight tracking-tight text-app-text lg:text-[17px] xl:text-[18px]">{title}</span>
         <ChevronDown size={18} aria-hidden="true" className="shrink-0 text-app-muted" />
       </button>
       <button type="button" onClick={onClose} aria-label={copy.close} title={copy.close} data-testid={`${testId}-close`}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-app-elevated text-app-text transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-app-elevated text-app-text transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
         <X size={18} aria-hidden="true" />
       </button>
     </header>
@@ -66,13 +67,14 @@ export function UploadCard({ photos, max, title, limit, note, notice, copy, onFi
     <section data-testid={`${testId}-upload`} aria-describedby={noteId} className="space-y-2">
       <input ref={pick} type="file" accept="image/*" multiple className="hidden" data-testid={`${testId}-file`}
         onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
+      {/* The „+" sheet's Camera tile opens this one (the OS picker of the first input already offers „Take photo" on a phone). */}
       <input ref={cam} type="file" accept="image/*" capture="environment" className="hidden"
         onChange={(e) => { take(e.target.files); e.target.value = ''; }} />
       {photos.length === 0 ? (
         <button type="button" onClick={() => pick.current?.click()} data-testid={`${testId}-dropzone`}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); take(e.dataTransfer.files); }}
-          className={`flex min-h-[148px] w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${over ? 'border-app-accent bg-app-accent/10' : 'border-app-border/30 bg-app-elevated/30 hover:border-app-accent/40'}`}>
+          className={`flex min-h-[148px] w-full flex-col items-center justify-center gap-3 rounded-3xl border border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${over ? 'border-app-accent bg-app-accent/10' : 'border-app-border/40 bg-app-elevated/20 hover:border-app-accent/50'}`}>
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15"><ImagePlus size={24} aria-hidden="true" /></span>
           <span className="text-[15px] leading-snug text-app-text/85">{title} <span className="text-app-muted">{limit}</span></span>
         </button>
@@ -92,18 +94,12 @@ export function UploadCard({ photos, max, title, limit, note, notice, copy, onFi
           ))}
           {!full && (
             <button type="button" onClick={() => pick.current?.click()} aria-label={copy.addPhoto} data-testid={`${testId}-add`}
-              className="flex aspect-square min-h-[44px] flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-app-border/30 bg-app-elevated/30 text-app-muted transition-colors hover:border-app-accent/40 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+              className="flex aspect-square min-h-[44px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-app-border/40 bg-app-elevated/30 text-app-muted transition-colors hover:border-app-accent/40 hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
               <ImagePlus size={22} aria-hidden="true" />
               <span className="text-[12px] font-medium">{copy.addPhoto}</span>
             </button>
           )}
         </div>
-      )}
-      {!full && (
-        <button type="button" onClick={() => cam.current?.click()}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-full px-1 text-[13px] font-medium text-app-muted transition-colors hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 md:hidden">
-          <Camera size={16} aria-hidden="true" /> {copy.takePhoto}
-        </button>
       )}
       {notice && <p role="status" className={`${NOTE_BASE} ${NOTE_TONE.warn}`}>{notice}</p>}
       <p id={noteId} className="text-[12px] leading-snug text-app-muted">{note}</p>
@@ -133,59 +129,94 @@ export function PromptCard({ value, onChange, placeholder, copy, testId }: {
 }
 
 // ─── The chip row: aspect · quality · count ──────────────────────────────────────────────────────────────────────
+// Each pill opens a bottom sheet with its options (the grammar of the owner's reference: a chip is a summary, the sheet is the
+// choice) — a grid for shapes, a list for tiers and counts, the price on every row that has one.
+
+export interface ChipOption<V extends string | number> {
+  value: V;
+  label: string;
+  /** A second line (a price, a speed). */
+  sub?: string;
+  /** A picture for the option (an aspect's shape). */
+  glyph?: ReactNode;
+}
 
 export interface ChipSpec<V extends string | number> {
   id: string;
+  /** The sheet's title and the pill's accessible name. */
   label: string;
   icon: ReactNode;
   /** What the pill shows ("2K", "×2"). */
   value: string;
-  options: readonly { value: V; label: string }[];
+  layout: 'grid' | 'list';
+  options: readonly ChipOption<V>[];
   current: V;
   onSelect: (v: V) => void;
 }
 
-/** A tiny rectangle in the ratio's own shape — the aspect chip's glyph. */
-export function AspectGlyph({ ratio }: { ratio: string }) {
+/** A tiny rectangle in the ratio's own shape — the aspect chip's glyph (`box` = the longest side in px). */
+export function AspectGlyph({ ratio, box = 16 }: { ratio: string; box?: number }) {
   const m = /^(\d+):(\d+)$/.exec(ratio);
   const w = m ? Number(m[1]) : 1;
   const h = m ? Number(m[2]) : 1;
-  const k = 16 / Math.max(w, h);
+  const k = box / Math.max(w, h);
   return <span aria-hidden="true" className="inline-block shrink-0 rounded-[3px] border-[1.5px] border-current" style={{ width: Math.max(8, Math.round(w * k)), height: Math.max(8, Math.round(h * k)) }} />;
 }
 
 export const QualityGlyph = () => <Gem size={16} aria-hidden="true" />;
 export const CountGlyph = () => <Layers size={16} aria-hidden="true" />;
 
-export function ChipBar({ chips, testId }: { chips: readonly ChipSpec<string | number>[]; testId: string }) {
+const OPTION_ON = 'bg-app-accent/15 text-app-accent ring-app-accent/50';
+const OPTION_OFF = 'bg-app-elevated/70 text-app-text ring-app-border/10 hover:bg-app-elevated';
+
+export function ChipBar({ chips, closeLabel, testId }: { chips: readonly ChipSpec<string | number>[]; closeLabel: string; testId: string }) {
   const [open, setOpen] = useState<string | null>(null);
-  const openChip = chips.find((c) => c.id === open) ?? null;
-  const panelId = useId();
   return (
     <section data-testid={`${testId}-chips`} aria-label={chips.map((c) => c.label).join(' · ')}>
       <div className="flex flex-wrap gap-2">
         {chips.map((c) => (
-          <button key={c.id} type="button" aria-expanded={open === c.id} aria-controls={open === c.id ? panelId : undefined}
+          <button key={c.id} type="button" aria-haspopup="dialog" aria-expanded={open === c.id}
             aria-label={`${c.label}: ${c.value}`} data-testid={`${testId}-chip-${c.id}`}
-            onClick={() => setOpen((cur) => (cur === c.id ? null : c.id))}
-            className={`inline-flex min-h-[48px] items-center gap-2 rounded-2xl px-4 text-[15px] font-medium tabular-nums ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${open === c.id ? 'bg-app-accent/15 text-app-accent ring-app-accent/40' : 'bg-app-elevated/80 text-app-text ring-app-border/10 hover:bg-app-elevated'}`}>
+            onClick={() => setOpen(c.id)}
+            className="inline-flex min-h-[52px] items-center gap-2.5 rounded-full bg-app-elevated/80 px-5 text-[16px] font-medium tabular-nums text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
             {c.icon}
             <span>{c.value}</span>
           </button>
         ))}
       </div>
-      {openChip && (
-        <div id={panelId} role="radiogroup" aria-label={openChip.label} data-testid={`${testId}-options`} className="mt-2 flex flex-wrap gap-1.5 rounded-2xl bg-app-elevated/50 p-2">
-          {openChip.options.map((o) => {
-            const on = o.value === openChip.current;
-            return (
-              <button key={String(o.value)} type="button" role="radio" aria-checked={on} data-option={String(o.value)}
-                onClick={() => { openChip.onSelect(o.value); setOpen(null); }}
-                className={`${CHIP_BASE} ${on ? CHIP_ON : CHIP_OFF}`}>{o.label}</button>
-            );
-          })}
-        </div>
-      )}
+      {chips.map((c) => (
+        <BottomSheet key={c.id} open={open === c.id} onClose={() => setOpen(null)} title={c.label} closeLabel={closeLabel} testId={`${testId}-sheet-${c.id}`}>
+          <div role="radiogroup" aria-label={c.label} data-testid={`${testId}-options-${c.id}`}
+            className={c.layout === 'grid' ? 'grid grid-cols-5 gap-2 pb-2' : 'space-y-2 pb-2'}>
+            {c.options.map((o) => {
+              const on = o.value === c.current;
+              const look = on ? OPTION_ON : OPTION_OFF;
+              return (
+                <button key={String(o.value)} type="button" role="radio" aria-checked={on} data-option={String(o.value)}
+                  onClick={() => { c.onSelect(o.value); setOpen(null); }}
+                  className={c.layout === 'grid'
+                    ? `flex min-h-[76px] flex-col items-center justify-center gap-2 rounded-2xl px-1 text-[13px] font-medium tabular-nums ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${look}`
+                    : `flex min-h-[60px] w-full items-center gap-3 rounded-2xl px-4 text-left ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${look}`}>
+                  {c.layout === 'grid' ? (
+                    <>
+                      {o.glyph}
+                      <span>{o.label}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[16px] font-medium leading-tight">{o.label}</span>
+                        {o.sub && <span className={`mt-0.5 block text-[12.5px] leading-snug ${on ? 'text-app-accent/80' : 'text-app-muted'}`}>{o.sub}</span>}
+                      </span>
+                      {on && <Check size={18} aria-hidden="true" className="shrink-0" />}
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheet>
+      ))}
     </section>
   );
 }

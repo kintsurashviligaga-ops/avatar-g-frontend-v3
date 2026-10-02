@@ -2668,6 +2668,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatOnly = activeTool === 'chat';
   /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
   const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
+  // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks, but
+  // the `chatOnly` effect below closes the sheet again when `next dev`'s Strict Mode re-runs the mount effects after a deep link.
+  useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
   const selectTool = useCallback((id: ToolId) => {
     switch (id) {
       case 'video': setMode('video'); setVideoTab('cinema'); break;

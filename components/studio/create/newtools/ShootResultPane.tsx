@@ -15,7 +15,7 @@
  * not the redesign).
  */
 import dynamic from 'next/dynamic';
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { Clapperboard, Loader2, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X, type LucideIcon } from 'lucide-react';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
 import { ResultActions } from '@/components/studio/ui/ResultActions';
@@ -67,6 +67,18 @@ const ACTION_BTN =
 
 // ─── The 3D plan under a tile ─────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * ⚠️ A DEVICE WITHOUT WEBGL MUST NOT TAKE THE STUDIO DOWN. three.js throws „Error creating WebGL context" when the browser has no
+ * GPU context to give (older phones, some embedded browsers, a headless test) and React unmounts the nearest page up the tree.
+ * The viewer is optional garnish on a plan that is already computed, so a failure here shows the layout in numbers instead.
+ */
+class ViewerBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { /* the fallback below is the whole handling */ }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
 function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
   if (plan.status === 'running') {
     return (
@@ -81,7 +93,16 @@ function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
   if (plan.status === 'error') return <p role="alert" data-testid="plan-error" className={`${NOTE_BASE} ${NOTE_TONE.error}`}>{plan.error}</p>;
   return (
     <figure data-testid="plan-ready" className="space-y-2">
-      <RoomViewer geometry={plan.geometry} style={plan.style} />
+      <ViewerBoundary fallback={(
+        <p data-testid="plan-fallback" className={`${NOTE_BASE} ${NOTE_TONE.info}`}>
+          {copy.plan3dNoWebgl} {copy.planFacts(
+            plan.geometry.floor.widthM, plan.geometry.floor.depthM, plan.geometry.wallHeightM,
+            plan.geometry.openings.filter((o) => o.type === 'window').length, plan.geometry.openings.filter((o) => o.type === 'door').length,
+          )}
+        </p>
+      )}>
+        <RoomViewer geometry={plan.geometry} style={plan.style} />
+      </ViewerBoundary>
       <figcaption className="flex flex-wrap items-center gap-2 text-[12.5px] leading-snug text-app-muted">
         <span className="flex gap-1" aria-hidden="true">
           {plan.style.palette.slice(0, 5).map((c) => <span key={c} className="h-3.5 w-3.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: c }} />)}

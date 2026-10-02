@@ -17,7 +17,7 @@ import { templateLang } from '@/lib/studio/templates';
 import { toolName } from '@/lib/studio/tools';
 import { SHOOT_MAX_PHOTOS } from '@/lib/studio/shootQuote';
 import { PanelHeader, PromptCard, ChipScroller, UploadCard } from './newtools/PanelParts';
-import { ShootChips, ShootFooter } from './newtools/shared';
+import { ShootFooter } from './newtools/shared';
 import { TemplateCarousel } from './newtools/TemplateCarousel';
 import { SHOOT_COPY, shootLang } from './newtools/copy';
 import type { InteriorForm } from './newtools/useShootStudio';
@@ -49,7 +49,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
   return (
     <div data-testid="interior-panel" className="space-y-4 pb-1">
       <PanelHeader Icon={Armchair} title={toolName('interior', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="interior" />
-      <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={c.uploadNote}
+      <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="interior" />
       <ChipScroller label={copy.roomType} testId="interior-room"
         options={ROOM_TYPES.map((r) => ({ value: r.id, label: r.label[lang] }))}
@@ -61,10 +61,9 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
         activeId={p.form.template} onPick={(id) => p.onPatch({ template: id })}
         addsLine={picked ? interiorAddsLine(picked, tl) : null} emptyLine={c.carouselNone} />
       <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="interior" />
-      <ShootChips aspect={p.form.aspect} quality={p.form.quality} count={p.form.count} photos={p.form.photos} copy={copy}
-        onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} testId="interior" />
-      <ShootFooter copy={copy} locale={p.locale} photos={p.form.photos.length} count={p.form.count} tiles={p.tiles} credits={p.credits}
-        insufficient={p.insufficient} canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="interior" />
+      <ShootFooter copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
+        canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="interior"
+        onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} />
     </div>
   );
 }
