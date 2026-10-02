@@ -4639,6 +4639,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (!id || !prompt) return;
       const note = researchStartedNote(locale);
       setMessages((prev) => (prev.some((m) => m.researchId === id) ? prev : [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: note, researchId: id }]));
+      setInput((cur) => (cur.trim() === prompt ? '' : cur)); // the start sheet was seeded from the box: do not leave it to be sent as a chat turn too
       persistChatTurn('user', prompt);
       persistChatTurn('assistant', note);
     };
