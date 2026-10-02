@@ -6,6 +6,10 @@ import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { generateVoice } from '@/lib/ai/elevenlabs';
 import type { VoiceJob } from '@/lib/voice-lab/types';
 import { getBillingSnapshot } from '@/lib/billing/enforce';
+import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+
+/** The most text one voice job may synthesize — ElevenLabs bills per character. */
+const MAX_VOICE_TEXT_CHARS = 5000;
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +61,15 @@ export async function POST(request: NextRequest) {
     const user = await getAuthenticatedUser(request);
     if (!user) {
       return apiSuccess({ guest: true, job: null, message: 'Guest mode runs jobs locally in UI.' });
+    }
+
+    // ⚠️ Signed-in was the only guard on an ElevenLabs synthesis of UNBOUNDED text (billed per character), and sign-up
+    // is self-service. Per-ACCOUNT daily cap on unbilled paid audio (AUDIO_GEN_USER) + a text ceiling.
+    const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.AUDIO_GEN_USER);
+    if (capped) return capped;
+    const rawText = String(payload.data.input.text ?? payload.data.input.prompt ?? '');
+    if (rawText.length > MAX_VOICE_TEXT_CHARS) {
+      return apiError(new Error('text too long'), 413, `Voice text is limited to ${MAX_VOICE_TEXT_CHARS} characters`);
     }
 
     const supabase = createServiceRoleClient();

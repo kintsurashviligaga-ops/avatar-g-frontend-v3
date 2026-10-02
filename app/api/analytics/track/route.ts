@@ -6,16 +6,30 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+
+/** The largest `props` object stored per event (serialized). A real event carries a few fields. */
+const MAX_PROPS_BYTES = 4096;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  // ⚠️ Anonymous by design, but every accepted event is a SERVICE-ROLE insert: with no limit and an unbounded `props`
+  // object, one script could fill analytics_events (and the database's storage) at will. Per-IP bucket (its own,
+  // inside PUBLIC, so page trackers never touch other budgets) and a props size cap.
+  const limited = await checkRateLimit(req, RATE_LIMITS.PUBLIC, 'analytics-track');
+  if (limited) return limited;
   try {
     const body = (await req.json().catch(() => ({}))) as { event?: unknown; props?: unknown };
     const event = typeof body.event === 'string' ? body.event.trim().slice(0, 80) : '';
     if (!event) return NextResponse.json({ ok: false }, { status: 400 });
-    const props = body.props && typeof body.props === 'object' ? body.props : {};
+    let props: unknown = body.props && typeof body.props === 'object' ? body.props : {};
+    try {
+      if (Buffer.byteLength(JSON.stringify(props), 'utf8') > MAX_PROPS_BYTES) props = { truncated: true };
+    } catch {
+      props = {};
+    }
 
     // User is optional — anonymous events are allowed (user_id null).
     const { user } = await authedClientFromRequest(req);

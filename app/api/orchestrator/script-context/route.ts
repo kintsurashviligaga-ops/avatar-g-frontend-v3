@@ -18,6 +18,8 @@ import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
 import { geminiKeyPresent } from '@/lib/orchestrator/gemini-guard';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { isAdmin } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,6 +63,8 @@ const SYSTEM_PROMPT =
   + 'invent contradicting facts. Output ONLY the brief — no headings, no lists, no preamble.';
 
 export async function POST(req: NextRequest) {
+  const ipLimited = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (ipLimited) return ipLimited;
   let body: { prompt?: unknown; documents?: unknown; locale?: unknown };
   try {
     body = (await req.json()) as typeof body;
@@ -80,6 +84,11 @@ export async function POST(req: NextRequest) {
     const { user } = await authedClientFromRequest(req);
     if (mustSignInToGenerate(user?.id)) {
       return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
+    }
+    // Per-ACCOUNT daily helper cap (HELPER_USER): each call is a Gemini read of up to three documents. Fail-soft like
+    // every other miss here — the caller keeps its own prompt as the brief.
+    if (user?.id && (await checkRateLimitByKey(user.id, RATE_LIMITS.HELPER_USER))) {
+      return NextResponse.json({ brief: prompt, enriched: false, reason: 'rate_limited' });
     }
   }
 
@@ -119,9 +128,9 @@ export async function POST(req: NextRequest) {
     const brief = (r.text || '').trim();
     return NextResponse.json({ brief: brief || prompt, enriched: Boolean(brief) });
   } catch (err) {
-    // FAIL-OPEN. `?diag=1` surfaces WHY (no secret) for the "didn't enrich" probe.
+    // FAIL-OPEN. `?diag=1` surfaces WHY for the "didn't enrich" probe — the provider's raw error text, so ADMIN ONLY.
     const reason = err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200);
-    if (req.nextUrl.searchParams.get('diag') === '1') {
+    if (req.nextUrl.searchParams.get('diag') === '1' && (await isAdmin().catch(() => false))) {
       return NextResponse.json({ brief: prompt, enriched: false, diag: reason });
     }
     return NextResponse.json({ brief: prompt, enriched: false });
