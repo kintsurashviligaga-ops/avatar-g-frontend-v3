@@ -5,6 +5,8 @@
  */
 import { MODELS, fallbacksFor, getModel, isModelEnabled, listModels, parseModelInput, publicModel } from './registry';
 import { priceFromUsd, samePrice, formatGel } from './pricing';
+import { CATALOGUE, catalogueEntry } from './catalogue';
+import { describeInput } from './paramSpec';
 
 const GEORGIAN = /[Ⴀ-ჿ]/;
 
@@ -125,5 +127,85 @@ describe('pricing: the GEL on the button IS the credits taken', () => {
   });
   test('the button label', () => {
     expect(formatGel(4.2)).toBe('4.20 ₾');
+  });
+});
+
+describe('the registry and the catalogue are one list (lib/providers/catalogue — what every picker shows)', () => {
+  const CYRILLIC = /[Ѐ-ӿ]/;
+
+  test.each(listModels({ env: {} as NodeJS.ProcessEnv }).map((m) => [m.id, m] as const))(
+    '%s (enabled) is named in ka / en / ru with a "best for" line, and the registry says the catalogue\'s words',
+    (_id, m) => {
+      const c = catalogueEntry(m.id)!;
+      expect(c).not.toBeNull();
+      expect(c.label.ka).toMatch(GEORGIAN);
+      expect(c.label.ru).toMatch(CYRILLIC);
+      expect(c.label.en.trim().length).toBeGreaterThan(3);
+      expect(c.bestFor.ka).toMatch(GEORGIAN);
+      expect(c.bestFor.ru).toMatch(CYRILLIC);
+      expect(c.bestFor.en.trim().length).toBeGreaterThan(5);
+      // One set of names: the registry (Agent G, Studio β's list) copies them from the catalogue.
+      expect([m.label_ka, m.description_ka, m.label_en]).toEqual([c.label.ka, c.bestFor.ka, c.label.en]);
+      expect(c.service).toBe(m.service);
+      expect(c.tier).toBe(m.tier);
+      expect(c.provider).toBe('higgsfield');
+      expect(c.wire.runner).toBe('studio');
+    },
+  );
+
+  test('every Studio β row of the catalogue is a registered model, and every registered model has a row', () => {
+    const studio = CATALOGUE.filter((e) => e.wire.runner === 'studio').map((e) => e.id).sort();
+    expect(studio).toEqual(MODELS.map((m) => m.id).sort());
+  });
+
+  test('where a fact comes from is the same in both: a page read ↔ "docs", a sibling\'s page ↔ "family", unread ↔ "unverified"', () => {
+    const as = { page: 'docs', family: 'family', unverified: 'unverified' } as const;
+    for (const m of MODELS) expect(catalogueEntry(m.id)!.verified).toBe(as[m.schema]);
+    // Read 2026-10-02: the Pro siblings are verified by their own pages now.
+    for (const id of ['hf/kling-3-pro-t2v', 'hf/kling-3-pro-i2v', 'hf/kling-3-motion-pro']) expect(getModel(id)!.schema).toBe('page');
+  });
+
+  test.each(MODELS.map((m) => [m.id, m] as const))('%s: the capabilities the picker states ARE its schema\'s', (_id, m) => {
+    const caps = catalogueEntry(m.id)!.caps;
+    const specs = describeInput(m.input);
+    const spec = (k: string) => specs.find((p) => p.key === k);
+    const media = specs.filter((p) => p.kind === 'media' || p.kind === 'mediaList');
+    const requiredMedia = media.filter((p) => p.required || (m.requireOneOf ?? []).includes(p.key));
+    // t2v: words alone are enough — a prompt and no media the request cannot run without.
+    expect(caps.fromText).toBe(!!spec('prompt') && requiredMedia.length === 0);
+    // i2v: it takes a picture.
+    expect(caps.fromImage).toBe(media.some((p) => p.media === 'image'));
+    // references: how many pictures one list takes (a single first frame is not a reference set).
+    const imageList = media.find((p) => p.kind === 'mediaList' && p.media === 'image');
+    expect(caps.references).toBe(imageList?.max ?? 0);
+    // max duration: the schema's own bound where it has one.
+    const duration = spec('duration');
+    if (duration) expect(caps.maxDurationSec).toBe(duration.max);
+    // aspect ratios: the schema's options, in its order; none = it keeps the source's shape.
+    expect([...caps.aspectRatios]).toEqual(spec('aspect_ratio')?.options ?? []);
+    // needs: a source video for motion transfer.
+    expect(!!caps.needs?.includes('video')).toBe(media.some((p) => p.media === 'video' && p.required));
+  });
+
+  test('⚠️ a model whose schema nobody read is OFF unless HF_ENABLED_MODELS names it — never because the list is unset', () => {
+    // No such model ships today; the gate is the one isModelEnabled applies, pinned through the catalogue's own rule.
+    expect(MODELS.filter((m) => m.schema === 'unverified')).toEqual([]);
+    expect(isModelEnabled('hf/nope', {} as NodeJS.ProcessEnv)).toBe(false);
+    expect(isModelEnabled('nb/pro', {} as NodeJS.ProcessEnv)).toBe(false); // a catalogue id that is not a Higgsfield model
+    expect(isModelEnabled('google/veo-3.1', {} as NodeJS.ProcessEnv)).toBe(false);
+  });
+});
+
+describe('SOUL V2 takes the shape and the size its page documents — nothing else', () => {
+  const soul = getModel('hf/soul-2')!;
+  test('the provider\'s own defaults apply (1:1, 720p): a bare prompt renders what it always did', () => {
+    expect(parseModelInput(soul, { prompt: 'პორტრეტი' })).toEqual({ ok: true, input: { prompt: 'პორტრეტი', aspect_ratio: '1:1', resolution: '720p' } });
+    expect(parseModelInput(soul, { prompt: 'x', aspect_ratio: '9:16', resolution: '1080p' }).ok).toBe(true);
+  });
+  test('undocumented values and the fields we deliberately leave out are refused', () => {
+    expect(parseModelInput(soul, { prompt: 'x', aspect_ratio: '21:9' }).ok).toBe(false);
+    expect(parseModelInput(soul, { prompt: 'x', resolution: '4k' }).ok).toBe(false);
+    expect(parseModelInput(soul, { prompt: 'x', batch_size: 4 }).ok).toBe(false); // four images is a different price
+    expect(parseModelInput(soul, { prompt: 'x', custom_reference_id: '00000000-0000-4000-8000-000000000000' }).ok).toBe(false);
   });
 });
