@@ -205,6 +205,12 @@ describe('ImageModelsTable — Models & prices, and the size picker', () => {
     expect(onQuality).toHaveBeenCalledWith('ultra');
   });
 
+  test('a Higgsfield pick: the table of Nano Banana sizes and prices steps aside (that model is priced on its own button)', () => {
+    window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
+    setup();
+    expect(screen.queryByTestId('models-prices')).toBeNull();
+  });
+
   test('it follows the picked model: Nano Banana Pro has 2K and 4K only, and says so in each row', () => {
     setup({ model: 'nb/pro' });
     const rows = within(screen.getByRole('radiogroup', { name: 'Models & prices' })).getAllByRole('radio');

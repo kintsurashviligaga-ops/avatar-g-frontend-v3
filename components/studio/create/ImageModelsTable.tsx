@@ -10,6 +10,7 @@
  */
 import { Check } from 'lucide-react';
 import { IMAGE_TIERS, imageCredits, imageLang, imageModelFor, imageVariant, type ImgQuality } from '@/lib/studio/imageCreate';
+import { catalogueEntry } from '@/lib/providers/catalogue';
 import { useModelPick } from '@/lib/studio/modelPick';
 import { imageCreateCopy } from './imageCreateCopy';
 
@@ -25,6 +26,9 @@ export function ImageModelsTable({
   const c = imageCreateCopy(locale);
   const lang = imageLang(locale);
   const [stored] = useModelPick('image');
+  // A Higgsfield pick is priced by the server for that model, on its own Generate button: a table of Nano Banana sizes and
+  // prices beside it would describe a model the user did not pick.
+  const higgsfield = !modelProp && catalogueEntry(stored)?.wire.runner === 'studio';
   const model = imageModelFor(modelProp ?? stored);
   const rows = IMAGE_TIERS.map((tier) => ({ tier, variant: imageVariant(model.id, tier.quality) })).filter((r) => r.variant.native);
 
@@ -38,6 +42,7 @@ export function ImageModelsTable({
     radios[(at + step + radios.length) % radios.length]?.focus();
   };
 
+  if (higgsfield) return null;
   return (
     <section data-testid="models-prices" aria-labelledby="models-prices-heading" className="min-w-0 space-y-2.5">
       <h2 id="models-prices-heading" className="text-[15px] font-semibold text-app-text">{c.modelsPrices}</h2>
