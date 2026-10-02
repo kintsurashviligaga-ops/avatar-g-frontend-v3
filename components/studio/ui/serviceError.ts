@@ -22,7 +22,10 @@ type Known =
   | 'rate_limited' | 'unauthorized' | 'timeout' | 'too_large' | 'unsupported_format'
   // The studio saga's codes (lib/studio/saga.ts → /api/estimate, /api/generate).
   | 'price_changed' | 'confirmation_required' | 'model_unavailable' | 'content_rejected'
-  | 'generation_failed' | 'invalid_input' | 'provider_unavailable' | 'billing_unavailable' | 'cannot_cancel';
+  | 'generation_failed' | 'invalid_input' | 'provider_unavailable' | 'billing_unavailable' | 'cannot_cancel'
+  // A credit-priced generation that failed AFTER its charge was refunded — said only when the route reports
+  // `refunded: true` (see describeGenerationFailure).
+  | 'generation_refunded';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -43,6 +46,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     provider_unavailable: 'სერვისი დროებით მიუწვდომელია. სცადე რამდენიმე წუთში — ამ მცდელობის თანხა არ დაიკარგება.',
     billing_unavailable: 'ბალანსის შემოწმება ვერ მოხერხდა. სცადე ცოტა ხანში — ზედმეტი თანხა არ ჩამოგეჭრება.',
     cannot_cancel: 'გენერაცია უკვე დაწყებულია და ვეღარ გაუქმდება. შედეგი მალე გამოჩნდება.',
+    generation_refunded: 'გენერაცია ვერ შესრულდა — კრედიტები დაგიბრუნდათ.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -62,6 +66,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     provider_unavailable: 'The service is temporarily unavailable. Try again in a few minutes — you will not lose credits for this attempt.',
     billing_unavailable: 'We could not check your balance. Try again shortly — you will not be overcharged.',
     cannot_cancel: 'The generation has already started and can no longer be canceled. The result will appear soon.',
+    generation_refunded: 'Generation failed — your credits were refunded.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -81,6 +86,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     provider_unavailable: 'Сервис временно недоступен. Попробуйте через несколько минут — кредиты за эту попытку не пропадут.',
     billing_unavailable: 'Не удалось проверить баланс. Попробуйте чуть позже — лишнего не спишем.',
     cannot_cancel: 'Генерация уже началась и не может быть отменена. Результат скоро появится.',
+    generation_refunded: 'Не удалось сгенерировать — кредиты возвращены.',
   },
 };
 
@@ -93,6 +99,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^model_unavailable$/, 'model_unavailable'],
   [/^content_rejected$/, 'content_rejected'],
   [/^generation_failed$/, 'generation_failed'],
+  [/^generation_refunded$/, 'generation_refunded'],
   [/^invalid_input$/, 'invalid_input'],
   [/^provider_unavailable$/, 'provider_unavailable'],
   [/^billing_unavailable$/, 'billing_unavailable'],
@@ -120,11 +127,41 @@ export function describeServiceError(raw: unknown, locale: string, fallback: str
   const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const text = typeof raw === 'string' ? raw.trim() : '';
   if (!text) return fallback;
-  for (const [rx, key] of MATCHERS) {
-    if (rx.test(text)) return COPY[lang][key];
-  }
+  const key = knownFor(text);
+  if (key) return COPY[lang][key];
   // Unrecognised — keep it off the screen, but do not lose it.
   // eslint-disable-next-line no-console
   console.warn('[service] unmapped error shown as generic copy:', text.slice(0, 200));
   return fallback;
+}
+
+/** The known failure a string names, or null — no fallback, no logging. */
+function knownFor(text: string): Known | null {
+  for (const [rx, key] of MATCHERS) {
+    if (rx.test(text)) return key;
+  }
+  return null;
+}
+
+/**
+ * A failed generation's RESPONSE BODY → the one line the user reads in the result bubble/tile.
+ *
+ * ⚠️ ONLY THE SERVER MAY SAY "REFUNDED". A paid route reports `refunded: true` only after refund_credits confirmed the
+ * credit-back (app/api/ai/music, app/api/nanobanana/image, the avatar / motion / 3D polls). That flag — never a guess
+ * from a status code, never "a credit had been reserved" — is what selects the refund notice. Without it the line is
+ * the neutral mapped failure, so a refund that did not land is never promised.
+ *
+ * A route's own MACHINE CODE (`code`, then `error`) is read before its prose: a sentence the table does not know
+ * falls back to generic copy, and `billing_unavailable` / `duplicate_request` arrive as codes beside a sentence.
+ */
+export function describeGenerationFailure(body: unknown, locale: string, fallback: string): string {
+  const lang: ErrLang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+  const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; refunded?: unknown; code?: unknown; error?: unknown; message?: unknown };
+  if (b.refunded === true && b.success !== true) return COPY[lang].generation_refunded;
+  for (const field of [b.code, b.error]) {
+    const key = typeof field === 'string' && field.trim() ? knownFor(field.trim()) : null;
+    if (key) return COPY[lang][key];
+  }
+  const message = typeof b.message === 'string' && b.message.trim() ? b.message : b.error;
+  return describeServiceError(message, locale, fallback);
 }

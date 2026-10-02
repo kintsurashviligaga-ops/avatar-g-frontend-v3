@@ -9,7 +9,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeServiceError } from './serviceError';
+import { describeServiceError, describeGenerationFailure } from './serviceError';
 
 const KA_FALLBACK = 'ვერ მოხერხდა';
 
@@ -107,5 +107,55 @@ describe('no surface pastes a raw server string any more', () => {
     // A bare `setError(j.error || t.failed)` is the original defect in its smallest form.
     const offenders = files.filter((f) => /setError\((?:p?j)\.(error|message)\s*\|\|/.test(codeOf(f)));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('describeGenerationFailure — the refund notice is shown when, and only when, the server says it refunded', () => {
+  // The launch directive's exact copy, in all three languages.
+  const NOTICE = {
+    ka: 'გენერაცია ვერ შესრულდა — კრედიტები დაგიბრუნდათ.',
+    en: 'Generation failed — your credits were refunded.',
+    ru: 'Не удалось сгенерировать — кредиты возвращены.',
+  } as const;
+
+  it('a failed body with refunded:true reads as ONE polite refund notice, in the user’s language', () => {
+    for (const lang of ['ka', 'en', 'ru'] as const) {
+      expect(describeGenerationFailure({ success: false, refunded: true, error: 'provider_unavailable', message: 'x' }, lang, 'fallback'))
+        .toBe(NOTICE[lang]);
+    }
+    // A poll body (lipsync / presenter / motion) carries no `success` at all — the flag alone decides.
+    expect(describeGenerationFailure({ done: true, error: 'render failed', refunded: true }, 'en', 'x')).toBe(NOTICE.en);
+  });
+
+  it('never claims a refund the server did not report', () => {
+    expect(describeGenerationFailure({ success: false, refunded: false, error: 'music_failed' }, 'en', 'Music failed.')).toBe('Music failed.');
+    expect(describeGenerationFailure({ success: false, error: 'image_failed' }, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
+    // A SUCCESS that settled part of its charge back (music: `refunded: true` beside the track) is not a failure.
+    expect(describeGenerationFailure({ success: true, refunded: true }, 'en', 'x')).not.toBe(NOTICE.en);
+  });
+
+  it('reads the route’s machine code before its prose', () => {
+    // 503 billing_unavailable arrives with a sentence the table does not know — the code still maps.
+    const billing = { success: false, error: 'billing_unavailable', code: 'billing_unavailable', message: 'We could not reach billing — nothing was charged.' };
+    expect(describeGenerationFailure(billing, 'en', 'x')).toBe(describeServiceError('billing_unavailable', 'en', 'y'));
+    // 409 duplicate_request beside "This image is already being generated." (which no matcher knows).
+    const dup = { success: false, error: 'duplicate_request', message: 'This image is already being generated.' };
+    expect(describeGenerationFailure(dup, 'ka', KA_FALLBACK)).toContain('უკვე');
+    // insufficient_credits rides in `code` beside a bilingual sentence.
+    expect(describeGenerationFailure({ code: 'insufficient_credits', error: 'არასაკმარისი კრედიტი / Not enough credits' }, 'en', 'x')).toContain('Top up');
+  });
+
+  it('falls back like describeServiceError on anything unknown, and on junk input', () => {
+    expect(describeGenerationFailure({ error: 'TypeError: x is undefined' }, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
+    expect(describeGenerationFailure(null, 'ka', KA_FALLBACK)).toBe(KA_FALLBACK);
+    expect(describeGenerationFailure('oops', 'en', 'x')).toBe('x');
+  });
+
+  it('the product chat routes every image/music failure through it (so a server refund is actually shown)', () => {
+    const omni = readFileSync(join(__dirname, '..', 'OmniStudio.tsx'), 'utf8');
+    // runImageJob bubble, runImageBatch tile, runMusicJob bubble, and the image/music re-roll.
+    expect(omni.match(/describeGenerationFailure\(j, locale, t\.imageFailed\)/g)?.length).toBe(2);
+    expect(omni).toContain('describeGenerationFailure(j, locale, t.musicFailed)');
+    expect(omni).toContain('describeGenerationFailure(j, locale, failMsg)');
   });
 });

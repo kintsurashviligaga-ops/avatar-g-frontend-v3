@@ -109,7 +109,7 @@ import { SLIDER_DEFAULT, VOCAL_GENDERS, musicStyleLine, stylesFromLine, type Mus
 import { Slider } from './ui/controls';
 import { StyleChips } from './ui/StyleChips';
 import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
-import { describeServiceError } from './ui/serviceError';
+import { describeServiceError, describeGenerationFailure } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
 import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -4142,7 +4142,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // helper that turns a route body into a sentence already existed (lib/ui/opFailure) and was
             // wired into the Surgical Editor only, so the same failure read properly in one surface and
             // as a token dump in the other.
-            : { role: 'assistant', text: `⚠️ ${describeOpFailure(j, failMsg)}` };
+            // A failed re-roll reads like a failed first render: `refunded: true` (only when the route's refund landed)
+            // selects the one refund notice; otherwise the neutral mapped failure.
+            : { role: 'assistant', text: `⚠️ ${describeGenerationFailure(j, locale, failMsg)}` };
         }
         return next;
       });
@@ -4161,7 +4163,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } finally {
       if (mine()) setBusy(false);
     }
-  }, [busy, t.imageFailed, t.musicFailed, notifyCredit]);
+  }, [busy, t.imageFailed, t.musicFailed, notifyCredit, locale]);
 
   // Edit a generated/attached image with img2img: load it as the source + switch to
   // Image mode; the next prompt transforms it. https URLs feed NanoBanana directly,
@@ -4254,7 +4256,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // which is how English provider prose and codes like `insufficient_credits` landed in a Georgian
         // chat bubble. describeServiceError keeps the specificity and drops the wrong voice; anything it
         // does not recognise falls back rather than being echoed.
-        const reason = describeServiceError(j.message || j.error, locale, t.imageFailed);
+        // `refunded: true` — sent only when the route's refund landed — becomes the one refund notice.
+        const reason = describeGenerationFailure(j, locale, t.imageFailed);
         // A refusal for want of credits is the one failure with an obvious next step — offer it.
         updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
@@ -4323,8 +4326,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // floating tray that would have shown it unmounts once the batch stops being active, which
             // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
             // The tile shows this to the user — same rule as the bubble above.
-            updateTile(tileIdx, { status: 'failed', jobId, error: describeServiceError(j.message || j.error, locale, t.imageFailed) });
-            throw new Error(j.error || 'image failed');
+            const reason = describeGenerationFailure(j, locale, t.imageFailed);
+            updateTile(tileIdx, { status: 'failed', jobId, error: reason });
+            // The catch below re-stamps the tile with the thrown message — throw the MAPPED line, not `j.error`
+            // (a raw code such as `provider_unavailable` used to overwrite the sentence the tile had just shown).
+            throw new Error(reason);
           } catch (e) {
             updateTile(tileIdx, { status: 'failed', jobId, error: e instanceof Error ? e.message : undefined });
             throw e;
@@ -4494,7 +4500,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The copyright case keeps its own copy — it is the one refusal with a specific, already-written
         // Georgian explanation. Everything else goes through the shared mapper instead of printing
         // whatever the music provider wrote in English.
-        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeServiceError(j.error, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
+        updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeGenerationFailure(j, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
     });
