@@ -117,7 +117,7 @@ import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
-import { classifyFocusInput, gateMessage, isAffirmation, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
+import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
@@ -5025,8 +5025,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // read synchronously, and the composer keeps its text — nothing is lost by signing in and pressing send again.
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       const guestText = (opts?.promptOverride ?? input).trim();
+      // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
+      // says "hello" with the Image tool open gets an answer, not a sign-in wall. Anything that could spend still stops here.
+      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music') && isConversational(guestText);
       const plainChat =
-        mode === 'chat' && attachments.length === 0 && !!guestText &&
+        (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
         !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
       if (!plainChat) {
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));

@@ -222,3 +222,34 @@ test.describe('the same door guards Music and Video', () => {
     expect(seen.chat).toBe(0);
   });
 });
+
+// ─── A visitor without an account: talk is answered, anything that could spend asks them to sign in. ───
+
+test.describe('signed out', () => {
+  test.beforeEach(async ({ page }) => { await seed(page); });
+
+  async function openImageAsGuest(page: Page): Promise<void> {
+    await page.goto('/en/dashboard', { waitUntil: 'load' });
+    await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
+    await expect(page.getByTestId('image-create-panel')).toBeVisible({ timeout: 15_000 });
+  }
+
+  test('"hello" with the Image tool open gets Agent G\'s answer — not a sign-in wall, not a render', async ({ page }) => {
+    const calls = await mockRoutes(page);
+    await openImageAsGuest(page);
+    await type(page, 'hello');
+    await expect(page.getByTestId('agent-g-note-text')).toHaveText('Yes, I am here! What shall we create?', { timeout: 20_000 });
+    expect(calls.image).toHaveLength(0);
+    await expect(page.locator('input[type="email"]')).toHaveCount(0);
+  });
+
+  test('a real prompt still asks the visitor to sign in first, and nothing is sent', async ({ page }) => {
+    const calls = await mockRoutes(page);
+    await openImageAsGuest(page);
+    await type(page, 'a red fox in the snow, cinematic light');
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 10_000 });
+    expect(calls.image).toHaveLength(0);
+    expect(calls.chat).toHaveLength(0);
+  });
+});
