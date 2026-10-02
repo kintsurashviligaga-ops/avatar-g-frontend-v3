@@ -8,7 +8,7 @@
  * Usage:
  *   GEMINI_API_KEY=xxx node scripts/gemini-health-check.mjs
  *   node scripts/gemini-health-check.mjs            # reads from .env.local via --env-file if Node 20+
- *   GEMINI_HEALTH_MODEL=gemini-2.5-flash node scripts/gemini-health-check.mjs   # probe another model
+ *   GEMINI_HEALTH_MODEL=gemini-3.7-flash node scripts/gemini-health-check.mjs   # probe another model
  *
  * Exit codes:
  *   0 — healthy

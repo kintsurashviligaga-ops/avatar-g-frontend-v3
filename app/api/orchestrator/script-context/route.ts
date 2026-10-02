@@ -118,8 +118,8 @@ export async function POST(req: NextRequest) {
     const r = await generateWithGemini({
       prompt: instruction,
       systemPrompt: SYSTEM_PROMPT,
-      // gemini-2.5-flash is the model the chat route proves works on this key
-      // (2.5-pro can 404/quota on AI-Studio keys) and reads PDF/image/text well.
+      // The REST Flash tier (lib/ai/google/models — gemini-3.8-flash, the chat primary): it reads PDF/image/text well.
+      // The Pro tier can 404/quota on AI-Studio keys, and every 2.5 id 404s on a new project's key.
       tier: 'flash',
       attachments,
       temperature: 0.5,

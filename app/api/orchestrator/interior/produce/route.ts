@@ -15,6 +15,7 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -30,7 +31,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash';
+const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
 const CLAUDE_MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 function geminiKeys(): string[] {

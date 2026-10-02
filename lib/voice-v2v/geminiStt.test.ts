@@ -92,19 +92,23 @@ describe('geminiSttModelChain', () => {
   const ENV = { ...process.env };
   afterEach(() => { process.env = { ...ENV }; });
 
-  it('defaults to gemini-2.5-flash then flash-latest; never a retired 2.0 model', () => {
+  it('defaults to gemini-3.8-flash, then 3.7-flash and flash-latest; never a retired 2.0 model or a 2.5 one (404 on a new project)', () => {
     delete process.env.GEMINI_STT_MODEL;
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-2.5-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.'))).toBe(false);
   });
 
-  it('an allowlisted override leads; a retired / unknown one is ignored', () => {
-    process.env.GEMINI_STT_MODEL = 'gemini-3.8-flash';
-    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest']);
+  it('an allowlisted override leads and the default stays behind it; a retired / unknown one is ignored', () => {
+    process.env.GEMINI_STT_MODEL = 'gemini-3.6-flash';
+    expect(geminiSttModelChain()).toEqual(['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
     process.env.GEMINI_STT_MODEL = 'gemini-2.0-flash-lite';
     delete process.env.VOICE_V2V_GEMINI_MODEL;
-    expect(geminiSttModelChain()).toEqual(['gemini-2.5-flash', 'gemini-flash-latest']);
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
     expect(geminiSttModelChain().some((m) => m.startsWith('gemini-2.0'))).toBe(false);
+    // The legacy 2.5 default is no longer allowlisted, so an old env value cannot put a 404 first.
+    process.env.GEMINI_STT_MODEL = 'gemini-2.5-flash';
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
   });
 });
 
@@ -157,15 +161,23 @@ describe('transcribeWithGeminiDetailed', () => {
 
   it('the key rides in x-goog-api-key, never the URL; audio goes inline with the given MIME', async () => {
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE');
-    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-2.5-flash' });
+    expect(r).toEqual({ text: 'გამარჯობა', model: 'gemini-3.8-flash' });
     const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
     expect(url).not.toMatch(/key=/);
     expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('test-key');
     const b = sentBody();
     expect(b.contents[0]!.parts[1]!.inline_data).toEqual({ mime_type: 'audio/wav', data: 'QUJD' });
     expect(b.generationConfig.temperature).toBe(0);
-    expect(b.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    // gemini-3.8-flash takes `thinkingLevel` (its documented floor is 'low'; 'minimal' is a 400 on it) — never the 2.5
+    // `thinkingBudget`, and never both (sending both is a 400 too).
+    expect(b.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'low' });
+  });
+
+  it('turns thinking down with the field each verified family takes — and sends nothing for the rest', async () => {
+    process.env.GEMINI_STT_MODEL = 'gemini-3.7-flash';
+    await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
+    expect(sentBody(0).generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it('returns Google-reported usage', async () => {
@@ -186,10 +198,19 @@ describe('transcribeWithGeminiDetailed', () => {
   it('rotates on a missing model, then succeeds on the next', async () => {
     fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
     const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
-    expect(r.model).toBe('gemini-flash-latest');
+    expect(r.model).toBe('gemini-3.7-flash');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    // flash-latest is an alias whose family can change → no thinking field.
     expect(sentBody(1).generationConfig.thinkingConfig).toBeUndefined();
+  });
+
+  it('rotates all the way to the flash-latest alias when the two named models are gone', async () => {
+    fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
+    fetchSpy.mockImplementationOnce(async () => new Response('model is no longer available', { status: 404 }));
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US');
+    expect(r.model).toBe('gemini-flash-latest');
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    // flash-latest is an alias whose family can change → no thinking field.
+    expect(sentBody(2).generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it('does NOT rotate on quota / auth / bad request — throws a typed error after one call', async () => {

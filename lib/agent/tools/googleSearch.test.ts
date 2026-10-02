@@ -58,7 +58,7 @@ test('a grounded answer comes back in the Tavily shape, and the call is booked w
 
   const input = mockStream.mock.calls[0][0];
   expect(input.apiKey).toBe('test-key');
-  expect(input.models).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']);
+  expect(input.models).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
   expect(input.messages).toEqual([{ role: 'user', content: 'capital of Georgia' }]);
   expect(input.config).toMatchObject({
     system: GROUNDED_SEARCH_SYSTEM,

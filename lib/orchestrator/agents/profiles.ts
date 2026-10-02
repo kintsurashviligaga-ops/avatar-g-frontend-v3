@@ -13,6 +13,8 @@
  * Pure + client-safe (no SDK imports) → safe to re-export from the barrel.
  */
 
+import { geminiTierModel } from '@/lib/ai/google/models';
+
 export type AgentId = 'A' | 'H' | 'I' | 'J' | 'L' | 'K' | 'N' | 'V' | 'M' | 'P' | 'S';
 
 export interface AgentProfile {
@@ -140,7 +142,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     codeName: 'depth-schema-extraction',
     displayName: 'Depth & Schema Agent',
     provider: 'gemini',
-    model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
+    model: process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash'),
     role: 'Spatial & Video Geometry Architect — room 3D geometry from ≤3 photos OR a 360° video.',
     skills: [
       'monocular geometry estimation from photos (VLM; ZoeDepth/SAM/LiDAR = GPU upgrade)',

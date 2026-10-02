@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import {
   buildGeometrySystemPrompt, normalizeRoomGeometry, DEFAULT_ROOM_GEOMETRY,
@@ -22,7 +23,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 45;
 
-const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash';
+const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
 
 interface Img { base64?: string; mimeType?: string }
 interface Body { images?: Img[]; brief?: string }

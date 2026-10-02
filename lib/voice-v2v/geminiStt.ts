@@ -19,7 +19,7 @@ import 'server-only';
  * in a URL lands in every proxy log, trace and error string on the way to Google. It is never logged or returned.
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
+import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -32,9 +32,11 @@ export function hasGeminiSttKey(): boolean {
 /**
  * Step-downs after the configured STT model. Google RETIRES aliases without notice (gemini-2.0-flash went 404 and
  * silently killed Georgian dictation), so a model-missing / overloaded answer moves to the next id. Retired ids
- * (gemini-2.0-*, 1.5-*) never appear — `gemini-2.0-flash-lite` used to be the last step here.
+ * (gemini-2.0-*, 1.5-*) never appear — `gemini-2.0-flash-lite` used to be the last step here — and neither does a
+ * 2.5 id: a new Google project's key answers 404 "no longer available to new users" for them. The default leads the
+ * step-downs so an operator override that fails still falls back to it (the chain de-duplicates).
  */
-const STT_STEP_DOWNS = ['gemini-2.5-flash', 'gemini-flash-latest'] as const;
+const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash', 'gemini-flash-latest'] as const;
 
 /** [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. */
 export function geminiSttModelChain(): string[] {
@@ -205,12 +207,16 @@ export interface GeminiSttResult {
 }
 
 /**
- * Only the 2.5 Flash family gets an explicit `thinkingBudget: 0` (verified accepted repo-wide; a transcript needs no
- * reasoning and thinking adds seconds). Gemini 3 takes `thinkingLevel` instead and a wrong field is a 400 that does
- * not rotate, and `-latest` aliases can change family under us — so everything else gets the model default.
+ * A transcript needs no reasoning and thinking adds seconds, so the models we have VERIFIED get their thinking turned
+ * down with the field THEY take: the 2.5 Flash family `thinkingBudget: 0`; `gemini-3.8-flash` (the default) its
+ * documented floor `thinkingLevel: 'low'` — `'minimal'` is a 400 on it (verified live 2026-10-02, together with 200 for
+ * 'low'). A wrong field is a 400 that does not rotate, and `-latest` aliases can change family under us — so everything
+ * else gets the model default.
  */
 function thinkingFor(model: string): Record<string, unknown> | undefined {
-  return /^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model) ? { thinkingBudget: 0 } : undefined;
+  if (/^gemini-2\.5-flash(?:-lite)?(?:-|$)/i.test(model)) return { thinkingBudget: 0 };
+  if (/^gemini-3\.8-flash$/i.test(model)) return { thinkingLevel: 'low' };
+  return undefined;
 }
 
 const count = (n: unknown): number | undefined => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined);

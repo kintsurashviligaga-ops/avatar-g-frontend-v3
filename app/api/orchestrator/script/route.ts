@@ -26,6 +26,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { geminiTierModel } from '@/lib/ai/google/models';
 import {
   buildScriptSystemPrompt,
   buildScriptUserPrompt,
@@ -45,7 +46,7 @@ export const maxDuration = 60; // vision retries (503 backoff) + Claude breakdow
 const SCRIPT_MODEL =
   process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 // Gemini (multi-modal ingestion) — a vision-capable Flash model.
-const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash';
+const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
 
 interface ScriptBody {
   prompt?: string;

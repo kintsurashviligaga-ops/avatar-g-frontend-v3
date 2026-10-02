@@ -3,6 +3,7 @@ import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { geminiTierModel } from '@/lib/ai/google/models';
 
 export type AgentGChannel = 'web' | 'telegram';
 export type AgentGLocale = 'ka' | 'en' | 'ru';
@@ -64,7 +65,6 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
 const ANTHROPIC_FALLBACK = 'claude-haiku-4-5-20251001';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
@@ -229,7 +229,7 @@ async function generateWithRetry(args: {
       try {
         const google = createGoogleGenerativeAI({ apiKey: geminiKey });
         const result = await generateText({
-          model: google(GEMINI_MODEL),
+          model: google(geminiTierModel('flash')),
           system: args.systemPrompt,
           messages,
           maxOutputTokens: 600,

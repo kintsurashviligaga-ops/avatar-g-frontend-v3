@@ -131,7 +131,7 @@ test('Google-only (default): WAV → Gemini only, key in the header, usage booke
   expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini' });
   expect(fetchSpy).toHaveBeenCalledTimes(1);
   const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
-  expect(url).toContain('/models/gemini-2.5-flash:generateContent');
+  expect(url).toContain('/models/gemini-3.8-flash:generateContent');
   expect(url).not.toContain('key=');
   expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe('test-gemini-key');
   const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ inline_data?: { mime_type: string } }> }> };
@@ -139,7 +139,7 @@ test('Google-only (default): WAV → Gemini only, key in the header, usage booke
   expect(openaiMock).not.toHaveBeenCalled();
   expect(replicateMock).not.toHaveBeenCalled();
   expect(bookMock).toHaveBeenCalledWith(expect.objectContaining({
-    model: 'gemini-2.5-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
+    model: 'gemini-3.8-flash', inputTokens: 40, outputTokens: 4, totalTokens: 44, userId: USER_ID,
   }));
 });
 

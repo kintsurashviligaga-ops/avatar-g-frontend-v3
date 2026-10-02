@@ -21,6 +21,12 @@
  * ⚠️ The ids below are the ones verified on the funded key on 2026-09-30. Only the DEFAULTS are verified in
  * Georgian (Live native-audio + Aoede/Charon, flash-preview TTS). Switching Live or TTS to another allowlisted id by
  * env needs a live Georgian check first — the allowlist says "exists on the key", not "speaks Georgian well".
+ *
+ * ⚠️ NO GEMINI 2.5 TEXT MODEL IS A DEFAULT ANY MORE. A key from a NEW Google project (production moved to one on
+ * 2026-10-02) answers 404 "gemini-2.5-flash / -pro / -flash-lite is no longer available to new users" on every
+ * generateContent call — while `models.list` still LISTS them, so only a real call tells. On that key 3.1 Pro,
+ * 3.5 / 3.6 / 3.7 / 3.8 Flash, 3.1 / 3.5 Flash-Lite, all three TTS models, embeddings, Live native-audio and audio /
+ * image input answered 200. Chat, STT and the REST tiers below default to those.
  */
 
 import type { ChatModeId } from '@/lib/chat/chatModes';
@@ -67,8 +73,8 @@ export type ChatModelClass = 'flash' | 'pro' | 'lite';
  * is no longer available to new users" (3.1 / 3.5 Flash-Lite, 2.5 Flash and 2.5 Pro all answered 200 the same day).
  */
 export const DEFAULT_CHAT_MODELS: Readonly<Record<'standard' | 'pro' | 'lite', readonly string[]>> = {
-  standard: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'],
-  pro: ['gemini-3.1-pro-preview', 'gemini-2.5-pro'],
+  standard: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'],
+  pro: ['gemini-3.1-pro-preview'],
   lite: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],
 };
 
@@ -96,7 +102,7 @@ export const DEFAULT_TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 export const TTS_MODELS: readonly string[] = [DEFAULT_TTS_MODEL, 'gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview'];
 
 /** The STT default: a multimodal generateContent model given a "transcribe this audio" prompt (geminiStt.ts). */
-export const DEFAULT_STT_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_STT_MODEL = 'gemini-3.8-flash';
 
 /**
  * generateContent models that accept audio input — the only kind geminiStt.ts can call.
@@ -107,13 +113,10 @@ export const DEFAULT_STT_MODEL = 'gemini-2.5-flash';
  */
 export const STT_MODELS: readonly string[] = [
   DEFAULT_STT_MODEL,
-  'gemini-3.8-flash',
   'gemini-3.7-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-pro',
   'gemini-3.1-pro-preview',
   'gemini-pro-latest',
 ];
@@ -128,8 +131,8 @@ export type GeminiRestTier = 'pro' | 'flash';
  * GEMINI_MODEL_PRO / GEMINI_MODEL_FLASH override them; see geminiTierModel.
  */
 export const DEFAULT_REST_TIER_MODELS: Readonly<Record<GeminiRestTier, string>> = {
-  pro: 'gemini-2.5-pro',
-  flash: 'gemini-2.5-flash',
+  pro: 'gemini-3.1-pro-preview',
+  flash: 'gemini-3.8-flash',
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

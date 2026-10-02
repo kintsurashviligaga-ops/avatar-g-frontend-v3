@@ -46,7 +46,9 @@ const TABLES = ['profiles', 'credit_ledger', 'wallet_topups', 'jobs', 'job_steps
   'generation_jobs', 'agent_evolution_traces', 'music_jobs', 'avatar_builder_jobs', 'image_architect_jobs', 'transactions',
   'studio_jobs', 'provider_webhook_events', 'longform_jobs', 'longform_scenes',
   // 20261001a — subscription tiers ("no such table" until it is applied, which also counts as locked).
-  'subscriptions', 'subscription_allowance_grants'];
+  'subscriptions', 'subscription_allowance_grants',
+  // 20261002a — BOG orders decide what a payment is worth; 20261002f — the client error log (service role only).
+  'bog_orders', 'error_logs'];
 
 /** Functions an anonymous visitor must NOT be able to execute, with no-op arguments. */
 const RPCS = [
@@ -65,6 +67,11 @@ const RPCS = [
     p_user_id: ZERO, p_invoice_id: '', p_tier: 'none', p_credits: 0, p_subscription_id: null, p_customer_id: null,
     p_price_id: null, p_period_start: null, p_period_end: null,
   }],
+  // 20261002a — the BOG money calls. Each probe is a no-op even if executable: an unknown order raises 'unknown_order'
+  // (fulfil) or answers recorded:false (failure) before any write, and credits 0 raises 'invalid_claim' (claim).
+  ['bog_fulfill_order', { p_shop_order_id: 'exposure-probe', p_bog_order_id: null, p_card_mask: null, p_card_saved: false }],
+  ['bog_claim_renewal', { p_subscription_id: ZERO, p_credits: 0 }],
+  ['bog_record_renewal_failure', { p_shop_order_id: 'exposure-probe', p_reason: 'exposure-probe' }],
   // A no-op even if executable: the all-zero job has no scenes and the ordinal list is empty. (claim_longform_jobs is
   // deliberately NOT probed — were it executable, the probe itself would lease real jobs.)
   ['claim_longform_scenes', { p_job_id: ZERO, p_ordinals: [] }],

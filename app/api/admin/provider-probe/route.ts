@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
+import { geminiTierModel } from '@/lib/ai/google/models';
 import { veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // how every Veo / Lyria / TTS / chat call answered 402 for days behind a healthy-looking key. One generated
     // token (well under $0.0001) is the cheapest question the billing system actually answers.
     probe('gemini-billing', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
-      const model = (process.env.GEMINI_PROBE_MODEL || 'gemini-2.5-flash').trim();
+      const model = (process.env.GEMINI_PROBE_MODEL || geminiTierModel('flash')).trim();
       const r = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
         headers: { 'x-goog-api-key': k, 'Content-Type': 'application/json' },

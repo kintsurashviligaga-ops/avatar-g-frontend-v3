@@ -184,8 +184,8 @@ describe('parseModelList', () => {
 });
 
 describe('chatModelChain', () => {
-  const FAST = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
-  const PRO = ['gemini-3.1-pro-preview', 'gemini-2.5-pro'];
+  const FAST = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+  const PRO = ['gemini-3.1-pro-preview'];
   const LITE = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'];
 
   it('fast and thinking share the Flash chain (Thinking is the same model, thought through harder)', () => {
@@ -426,16 +426,17 @@ describe('ttsModel', () => {
 });
 
 describe('sttModel', () => {
-  it('defaults to gemini-2.5-flash', () => {
-    expect(sttModel()).toBe('gemini-2.5-flash');
-  });
-
-  it('GEMINI_STT_MODEL (allowlisted) is honoured', () => {
-    process.env.GEMINI_STT_MODEL = 'gemini-3.8-flash';
+  it('defaults to gemini-3.8-flash', () => {
     expect(sttModel()).toBe('gemini-3.8-flash');
   });
 
+  it('GEMINI_STT_MODEL (allowlisted) is honoured', () => {
+    process.env.GEMINI_STT_MODEL = 'gemini-3.7-flash';
+    expect(sttModel()).toBe('gemini-3.7-flash');
+  });
+
   it.each([
+    'gemini-2.5-flash', // 404s on a new Google project's key ("no longer available to new users") — not allowlisted
     'gemini-2.5-flash-preview-tts', // a TTS model cannot transcribe
     TRANSCRIBE_LIVE_MODEL, // Live-style; not a generateContent model
     'gemini-2.0-flash-lite', // retired (was in geminiStt.ts's list)

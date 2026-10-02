@@ -12,6 +12,8 @@ import path from 'path';
 import {
   DEFAULT_CHAT_MODELS,
   DEFAULT_REST_TIER_MODELS,
+  DEFAULT_STT_MODEL,
+  STT_MODELS,
   chatModelChain,
   geminiTierModel,
   type ChatTier,
@@ -147,6 +149,59 @@ describe('no retired Gemini id ships in source', () => {
   it('.env.example does not suggest a retired model as a value', () => {
     const lines = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8').split('\n');
     const hits = lines.filter((l) => !l.trim().startsWith('#') && RETIRED.test(l));
+    expect(hits).toEqual([]);
+  });
+});
+
+// ─── 2.5 TEXT models: still LISTED, no longer CALLABLE on a new project's key ───────────────────────────────
+
+/**
+ * 2026-10-02: a key from a NEW Google project answers 404 "gemini-2.5-flash / -pro / -flash-lite is no longer available
+ * to new users" on generateContent, while `models.list` keeps showing them — only a real call tells. Production moved to
+ * such a key, and every route that still named one of them broke: Agent G, the script and interior vision routes, the
+ * REST helper tiers (prompt translation among them), speech-to-text, the admin billing probe. Nothing shipped may
+ * default to or call them. (The 2.5 native-audio, TTS and image ids are different models and are fine.)
+ */
+const NEW_PROJECT_404 = /^gemini-2\.5-(?:flash-lite|flash|pro)$/;
+
+describe('no default is a Gemini 2.5 text model', () => {
+  it('chat chains, the REST tiers and the STT list never default to one', () => {
+    const ids = [
+      ...DEFAULT_CHAT_MODELS.standard,
+      ...DEFAULT_CHAT_MODELS.pro,
+      ...DEFAULT_CHAT_MODELS.lite,
+      ...Object.values(DEFAULT_REST_TIER_MODELS),
+      DEFAULT_STT_MODEL,
+      ...STT_MODELS,
+    ];
+    expect(ids.filter((id) => NEW_PROJECT_404.test(id))).toEqual([]);
+  });
+});
+
+/** A 2.5 TEXT model as a whole string literal, optionally `models/`-prefixed. */
+const NEW_PROJECT_404_LITERAL = /(['"`])(?:models\/)?gemini-2\.5-(?:flash-lite|flash|pro)\1/g;
+/** Display names only: chatModes maps the model id a reply header reports to its label — it never calls the model. */
+const NEW_PROJECT_404_ALLOWED = new Set(['lib/chat/chatModes.ts']);
+
+describe('no 2.5 text model is called by name in source', () => {
+  it('no source file (outside the label map) names one in a string literal', () => {
+    const files: string[] = [];
+    for (const d of SOURCE_DIRS) walk(path.join(ROOT, d), files);
+    expect(files.length).toBeGreaterThan(500);
+
+    const hits: string[] = [];
+    for (const file of files) {
+      const rel = path.relative(ROOT, file).split(path.sep).join('/');
+      if (NEW_PROJECT_404_ALLOWED.has(rel)) continue;
+      const code = stripComments(fs.readFileSync(file, 'utf8'));
+      for (const m of code.matchAll(NEW_PROJECT_404_LITERAL)) hits.push(`${rel}: ${m[0]}`);
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it('.env.example does not suggest one as a value', () => {
+    const lines = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8').split('\n');
+    const hits = lines.filter((l) => !l.trim().startsWith('#') && /gemini-2\.5-(?:flash-lite|flash|pro)\b/.test(l));
     expect(hits).toEqual([]);
   });
 });
