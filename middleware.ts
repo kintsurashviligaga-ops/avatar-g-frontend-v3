@@ -96,6 +96,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon\\.ico|brand/|placeholders/|api/webhooks).*)',
+    // templates/ + avatars/ are static images (public/); a session refresh + NEXT_LOCALE cookie on every thumbnail
+    // request was pure cost (a Supabase getUser round-trip per image for signed-in visitors). No page lives there.
+    '/((?!_next/static|_next/image|favicon\\.ico|brand/|placeholders/|templates/|avatars/|api/webhooks).*)',
   ],
 };
