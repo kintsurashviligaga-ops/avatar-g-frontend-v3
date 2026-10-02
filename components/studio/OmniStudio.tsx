@@ -103,7 +103,9 @@ import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
 // The catalogue says which studios are live (a „მალე" tag otherwise); the tool list itself is lib/studio/tools.
 import { SERVICE_CATALOGUE } from '@/lib/services/serviceCatalogue';
-import type { PanelService } from './ServiceParamsPanel';
+import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
+// …plus the two image workspaces (interior · photoshoot), which draw their own panel (components/studio/create) and park the mode at chat like a studio panel.
+type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { Segmented } from './ui/Segmented';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
@@ -2667,7 +2669,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
       case 'montage': setPanelService(null); setEditorMode('video'); setMode('surgical'); break;
-      case 'dubbing': case 'model3d': case 'presentation': setStudioPrefill(undefined); setPanelService(id); break;
+      case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
       case 'chat': setPanelService(null); setStudioPrefill(undefined); setMode('chat'); break;
@@ -8298,7 +8300,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* SERVICE PARAMETERS — opens in place when a full studio is picked from the service menu, so
             Montage/Dubbing/Presentation/3D are driven without leaving the conversation. */}
-        {panelService && (
+        {panelService && panelService !== 'interior' && panelService !== 'photoshoot' && (
           <ServiceParamsPanel
             service={panelService}
             locale={locale}
