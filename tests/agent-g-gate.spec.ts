@@ -253,3 +253,80 @@ test.describe('signed out', () => {
     expect(calls.chat).toHaveLength(0);
   });
 });
+
+// ─── Plain chat and Avatar: Agent G directs there too. An order typed in the chat gets its card (it used to start a paid
+// render on the sentence), and Avatar's words are a SCRIPT — a greeting there used to become a paid talking-head video. ───
+
+test.describe('Agent G directs plain chat and Avatar', () => {
+  test.beforeEach(async ({ page }) => { await seed(page); });
+
+  async function openChat(page: Page): Promise<void> {
+    await page.goto('/en/dashboard', { waitUntil: 'load' });
+    await expect(page.getByTestId('composer-input')).toBeAttached({ timeout: 45_000 });
+    await page.evaluate(() => {
+      const el = document.documentElement;
+      const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
+      pin();
+      new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
+    });
+  }
+
+  test('chat: "draw me …" waits for Agent G’s card — the render starts only on Create, with the words as typed', async ({ page }) => {
+    const calls = await mockRoutes(page);
+    await openChat(page);
+    await type(page, 'draw a cozy cabin in a pine forest at dawn, soft light');
+    const card = page.locator('[data-testid="agent-g-card"][data-kind="confirm"]');
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    expect(Number(await page.getByTestId('agent-g-confirm').getAttribute('data-price'))).toBeGreaterThan(0);
+    expect(calls.image).toHaveLength(0);
+    expect(calls.chat).toHaveLength(0);
+    await page.getByTestId('agent-g-confirm').click();
+    await expect.poll(() => calls.image.length, { timeout: 20_000 }).toBe(1);
+    expect(calls.image[0]?.prompt).toBe('draw a cozy cabin in a pine forest at dawn, soft light');
+  });
+
+  test('chat: a thin order gets questions; "yes" creates it as it is — and talk afterwards is just talk', async ({ page }) => {
+    const calls = await mockRoutes(page);
+    await openChat(page);
+    await type(page, 'draw a cat');
+    await expect(page.locator('[data-testid="agent-g-card"][data-kind="clarify"]')).toBeVisible({ timeout: 15_000 });
+    expect(calls.image).toHaveLength(0);
+    await type(page, 'yes');
+    await expect.poll(() => calls.image.length, { timeout: 20_000 }).toBe(1);
+    expect(calls.image[0]?.prompt).toBe('draw a cat');
+    await type(page, 'are you there?');
+    await expect.poll(() => calls.chat.length, { timeout: 20_000 }).toBe(1);
+    expect(calls.image).toHaveLength(1);
+  });
+
+  test('Avatar: "აქ ხარ?" is answered in words — no presenter video is requested', async ({ page }) => {
+    const seen = { spent: [] as string[], chat: 0 };
+    for (const glob of ['**/api/heygen/**', '**/api/video/lipsync**', '**/api/avatar/**']) {
+      await page.route(glob, (route) => {
+        if (route.request().method() !== 'POST') return route.fallback();
+        seen.spent.push(new URL(route.request().url()).pathname);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      });
+    }
+    await page.route('**/api/chat/gemini', async (route) => {
+      seen.chat += 1;
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
+        body: sse([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast' } }, { text: 'Yes, I am here! What shall we create?' }, '[DONE]']),
+      });
+    });
+    await page.route('**/api/chat/title', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
+    await openChat(page);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'avatar' })));
+    await expect(page.getByTestId('avatar-templates')).toBeAttached({ timeout: 15_000 });
+    await type(page, 'აქ ხარ?');
+    await expect(page.getByText('Yes, I am here! What shall we create?').first()).toBeVisible({ timeout: 20_000 });
+    expect(seen.chat).toBe(1);
+    expect(seen.spent).toEqual([]);
+    // A real script is confirmed first, and still nothing is requested until Create.
+    await type(page, 'Welcome to my channel, today we cook khachapuri together');
+    await expect(page.locator('[data-testid="agent-g-card"][data-kind="confirm"]')).toBeVisible({ timeout: 10_000 });
+    expect(seen.spent).toEqual([]);
+  });
+});

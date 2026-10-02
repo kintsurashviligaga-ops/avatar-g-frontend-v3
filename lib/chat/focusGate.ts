@@ -1,7 +1,7 @@
 /**
  * lib/chat/focusGate.ts — AGENT G AT THE DOOR OF EVERY FOCUS MODE. Pure, client-safe, no network.
  *
- * ⚠️ THE BUG THIS ENDS. In a focus mode (Image · Video · Music) the composer treated EVERY message as the prompt of that
+ * ⚠️ THE BUG THIS ENDS. In a focus mode (Image · Video · Music · Avatar) the composer treated EVERY message as the prompt of that
  * tool: "აქ ხარ?" ("are you here?") typed into Image mode started a paid image render — credits spent, a garbage picture,
  * and Agent G nowhere to be seen. Only plain chat had a guard (isGenerativeCommand). Now every send in a focus mode passes
  * through classifyFocusInput() first, and the answer is one of four:
@@ -22,7 +22,9 @@
  */
 import { isGenerativeCommand } from '@/lib/chat/intentDetector';
 
-export type GateMode = 'image' | 'video' | 'music';
+/** The tools Agent G stands in front of. `avatar` is the studio's 'lipsync' mode: there the words are the SCRIPT the
+ *  presenter speaks, so "აქ ხარ?" would have been rendered as a paid talking-head video saying "are you here?". */
+export type GateMode = 'image' | 'video' | 'music' | 'avatar';
 export type GateReason = 'empty' | 'greeting' | 'presence' | 'smalltalk' | 'thanks' | 'meta' | 'question';
 export type GateVerdict =
   | { kind: 'chat'; reason: GateReason }
@@ -140,6 +142,8 @@ const ENOUGH: Record<GateMode, { words: number; chars: number }> = {
   image: { words: 4, chars: 24 },
   video: { words: 5, chars: 30 },
   music: { words: 2, chars: 10 },
+  // A script shorter than a sentence is almost never what someone wants a presenter to read out.
+  avatar: { words: 3, chars: 15 },
 };
 
 // ─── The gate ───────────────────────────────────────────────────────────────────
@@ -244,6 +248,7 @@ const TARGET: Record<GateMode, Record<Lang, string>> = {
   image: { ka: 'სურათი', en: 'image', ru: 'изображение' },
   video: { ka: 'ვიდეო', en: 'video', ru: 'видео' },
   music: { ka: 'მუსიკა', en: 'track', ru: 'трек' },
+  avatar: { ka: 'ავატარის ვიდეო', en: 'avatar video', ru: 'видео с аватаром' },
 };
 
 const CLARIFY: Record<GateMode, Record<Lang, string>> = {
@@ -262,12 +267,24 @@ const CLARIFY: Record<GateMode, Record<Lang, string>> = {
     en: 'To get the right track, tell me more 🎵\n• Which genre and mood?\n• Instrumental, or with vocals/lyrics (in which language)?\nAnswer in one message — or tap the button and I will create it as it is.',
     ru: 'Чтобы получился нужный трек, уточни 🎵\n• Какой жанр и настроение?\n• Инструментал или с вокалом/текстом (на каком языке)?\nОтветь одним сообщением — или нажми кнопку, и я сделаю как есть.',
   },
+  avatar: {
+    ka: 'ავატარი ზუსტად იმას იტყვის, რასაც დაწერ 🎙️\n• დამიწერე სრული ტექსტი, რომელიც უნდა წაიკითხოს.\n• ხმა (ქალი/კაცი) და ფორმატი (9:16, 16:9) პანელში აირჩიე.\nმიპასუხე ერთ შეტყობინებაში — ან დააჭირე ღილაკს და ახლავე შევქმნი, როგორც არის.',
+    en: 'The avatar will say exactly what you write 🎙️\n• Send me the full text it should read.\n• Pick the voice (female/male) and format (9:16, 16:9) in the panel.\nAnswer in one message — or tap the button and I will create it as it is.',
+    ru: 'Аватар скажет ровно то, что ты напишешь 🎙️\n• Пришли полный текст, который он должен прочитать.\n• Голос (женский/мужской) и формат (9:16, 16:9) выбери в панели.\nОтветь одним сообщением — или нажми кнопку, и я сделаю как есть.',
+  },
 };
 
 const CONFIRM: Record<Lang, (what: string, prompt: string) => string> = {
   ka: (what, prompt) => `მზად ვარ შევქმნა ${what}:\n«${prompt}»\nდავიწყო?`,
   en: (what, prompt) => `I am ready to create the ${what}:\n“${prompt}”\nShall I start?`,
   ru: (what, prompt) => `Готова создать ${what}:\n«${prompt}»\nНачинать?`,
+};
+
+/** The avatar's prompt is a SCRIPT, so the confirmation quotes what it will SAY. */
+const CONFIRM_AVATAR: Record<Lang, (prompt: string) => string> = {
+  ka: (prompt) => `მზად ვარ, ავატარმა თქვას:\n«${prompt}»\nდავიწყო?`,
+  en: (prompt) => `I am ready to make the avatar say:\n“${prompt}”\nShall I start?`,
+  ru: (prompt) => `Готова: аватар скажет\n«${prompt}»\nНачинать?`,
 };
 
 const BUTTONS: Record<Lang, { create: string; asIs: string; edit: string; stale: string; dismiss: string }> = {
@@ -286,7 +303,9 @@ export interface GateCopyInput {
 /** The bubble Agent G posts instead of generating. */
 export function gateMessage({ kind, mode, prompt, locale }: GateCopyInput): string {
   const l = lang(locale);
-  return kind === 'clarify' ? CLARIFY[mode][l] : CONFIRM[l](TARGET[mode][l], prompt.length > 400 ? `${prompt.slice(0, 397)}…` : prompt);
+  if (kind === 'clarify') return CLARIFY[mode][l];
+  const shown = prompt.length > 400 ? `${prompt.slice(0, 397)}…` : prompt;
+  return mode === 'avatar' ? CONFIRM_AVATAR[l](shown) : CONFIRM[l](TARGET[mode][l], shown);
 }
 
 export function gateButtons(locale: string): { create: string; asIs: string; edit: string; stale: string; dismiss: string } {

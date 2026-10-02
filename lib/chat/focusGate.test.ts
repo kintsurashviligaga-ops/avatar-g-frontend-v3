@@ -121,3 +121,20 @@ describe('isConversational — the same verdict for the other doors (WhatsApp, T
     expect(isConversational(t)).toBe(false);
   });
 });
+
+describe('avatar — the words are the script the presenter speaks', () => {
+  test.each(['აქ ხარ?', 'გამარჯობა', 'hello', 'are you there?', 'Ты здесь?', 'როგორ ხარ?'])('“%s” is talk: answered in words, no video', (t) => {
+    expect(kind(t, 'avatar')).toBe('chat');
+  });
+  test('a real script is confirmed first, with the line quoted as what the avatar will SAY', () => {
+    expect(kind('Welcome to my channel, today we cook khachapuri together', 'avatar')).toBe('confirm');
+    const msg = gateMessage({ kind: 'confirm', mode: 'avatar', prompt: 'Welcome to my channel', locale: 'en' });
+    expect(msg).toContain('make the avatar say');
+    expect(msg).toContain('Welcome to my channel');
+  });
+  test('a one-word script gets questions; the panel’s own Generate button goes straight through', () => {
+    expect(kind('Welcome', 'avatar')).toBe('clarify');
+    expect(gateMessage({ kind: 'clarify', mode: 'avatar', prompt: 'Welcome', locale: 'ka' })).toContain('🎙️');
+    expect(kind('Welcome everyone to the show', 'avatar', { explicit: true })).toBe('go');
+  });
+});

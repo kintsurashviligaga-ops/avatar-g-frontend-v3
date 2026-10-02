@@ -2036,7 +2036,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
   const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
   /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
-  const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number } | null>(null);
+  const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
   /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
   const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
@@ -5024,7 +5024,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
 
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -5035,7 +5035,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const guestText = (opts?.promptOverride ?? input).trim();
       // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
       // says "hello" with the Image tool open gets an answer, not a sign-in wall. Anything that could spend still stops here.
-      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music') && isConversational(guestText);
+      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music' || mode === 'lipsync') && isConversational(guestText);
       const plainChat =
         (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
         !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
@@ -5091,16 +5091,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     //   confirm → Agent G shows what it understood + the price; it generates only when the user taps Create.
     //   go      → straight to the tool: the panel's own Generate button (price on it), or a film's storyboard approval.
     // The type of a prompt is decided by words alone and errs on talking: a wrong chat reply costs one more message.
-    const gateMode: GateMode | null = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
+    // Avatar ('lipsync') is gated too: its words are the script a presenter speaks — a greeting there was a paid video.
+    const focusGateMode: GateMode | null = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode
+      : effMode === 'lipsync' ? 'avatar' : null;
+    // ⚠️ PLAIN CHAT DISPATCHED A PAID RENDER ON A SENTENCE. "დამიხატე კატა" / "make a song about the sea" typed into the chat
+    // went straight to runImageJob / runMusicJob (the autonomous chat dispatch below) — no question, no price, no "shall I?".
+    // Agent G directs now: the same orders get its card first — questions when the prompt is thin, the price and Create when
+    // it is not. Exactly the two lanes that used to fire on their own are gated; a film still goes to its storyboard (its own
+    // approval step) and a studio request still only opens its panel, prefilled. A chat question is ONE-SHOT: the next
+    // message either answers it or the chat simply carries on.
+    const inChat = effMode === 'chat';
+    const chatPend = inChat && gatePendingRef.current?.inChat && Date.now() - gatePendingRef.current.at < 10 * 60_000 ? gatePendingRef.current : null;
+    if (inChat && gatePendingRef.current?.inChat) gatePendingRef.current = null;
+    const chatOrder: GateMode | null = (() => {
+      if (!inChat || !text || opts?.confirmed) return null;
+      if (chatPend) return chatPend.mode;
+      if (!isGenerativeCommand(text) || detectStudioIntent(text)) return null;
+      const lane = resolveGenerativeLane(text, detectIntent(text));
+      if (lane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) return 'image';
+      if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
+      return null;
+    })();
+    const gateMode: GateMode | null = focusGateMode ?? chatOrder;
     if (gateMode && text && !opts?.confirmed) {
-      const pend = gatePendingRef.current;
-      const pending = pend && pend.mode === gateMode && Date.now() - pend.at < 10 * 60_000 ? pend : null;
-      if (!pending) gatePendingRef.current = null;
+      const pend = inChat ? chatPend : gatePendingRef.current;
+      const pending = pend && pend.mode === gateMode && !!pend.inChat === inChat && Date.now() - pend.at < 10 * 60_000 ? pend : null;
+      if (!pending && !inChat) gatePendingRef.current = null;
       // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
       if (pending && isAffirmation(text)) {
         gatePendingRef.current = null;
         setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
-        void send({ promptOverride: pending.base, confirmed: true });
+        void send({ promptOverride: pending.base, confirmed: true, ...(pending.inChat ? { target: pending.mode } : {}) });
         return;
       }
       const hasRef = attachments.length > 0;
@@ -5130,9 +5151,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
           : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
-            : 0;
-        gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now() } : null;
-        const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits };
+            : gateMode === 'avatar' ? quoteCredits({ tool: 'avatar' })
+              : 0;
+        gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now(), inChat } : null;
+        const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
         setMessages((prev) => [
           ...prev,
           { role: 'user', text },
@@ -5284,8 +5306,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // to MAKE something, so past that gate "we could not tell which service" is not an answer.
     // resolveGenerativeLane defaults those to image (cheapest, fastest, most common) and vetoes anything
     // aimed at a TEXT deliverable, so "make me a list of ideas" still gets written, not drawn.
-    const chatLane = chatIntent ? resolveGenerativeLane(text, chatIntent) : null;
-    if (chatLane) {
+    // Only a CONFIRMED order runs here (Agent G's card above, or "yes" to its question) — and it runs the tool the card was for.
+    const chatLane = mode === 'chat' && opts?.target === 'image' ? 'image_generation'
+      : mode === 'chat' && opts?.target === 'music' ? 'music_generation'
+        : chatIntent ? resolveGenerativeLane(text, chatIntent) : null;
+    if (chatLane && opts?.confirmed) {
       // IMAGE — text→image; an attached image becomes an img2img ref (mirrors the Image panel).
       if (chatLane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) {
         setOptionsOpen(false);
@@ -6566,7 +6591,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     gatePendingRef.current = null;
     setGateFrom(null);
     resolveGateCard(idx);
-    void send({ promptOverride: card.prompt, confirmed: true });
+    void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });
   }, [resolveGateCard, send]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
@@ -7194,7 +7219,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   </button>
                 )}
                 {m.role === 'assistant' && m.agentG && (
-                  <AgentGCard card={m.agentG} locale={locale} stale={mode !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
+                  <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
                 )}
               </div>
             </div>
@@ -7285,7 +7310,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const agentGNote = gateMsg ? (
     <AgentGNote
       text={gateMsg.text} card={gateMsg.agentG} locale={locale}
-      stale={!!gateMsg.agentG && mode !== gateMsg.agentG.target}
+      stale={!!gateMsg.agentG && (gateMsg.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== gateMsg.agentG.target)}
       onConfirm={() => confirmGate(gateIdx)} onEdit={() => editGate(gateIdx)} onDismiss={() => setGateFrom(null)}
     />
   ) : null;
