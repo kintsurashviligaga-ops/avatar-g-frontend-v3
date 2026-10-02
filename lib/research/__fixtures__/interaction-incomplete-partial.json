@@ -1,0 +1,7 @@
+{
+  "id": "v1_incomplete_partial",
+  "status": "incomplete",
+  "steps": [
+    { "type": "model_output", "content": [{ "type": "text", "text": "# Partial report\n\nThe report stops here because the output budget ended" }] }
+  ]
+}

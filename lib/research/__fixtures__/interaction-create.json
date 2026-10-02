@@ -1,0 +1,9 @@
+{
+  "id": "v1_ChdkZWVwLXJlc2VhcmNoLWZpeHR1cmU",
+  "agent": "deep-research-preview-04-2026",
+  "object": "interaction",
+  "status": "in_progress",
+  "created": "2026-10-02T09:00:00Z",
+  "updated": "2026-10-02T09:00:00Z",
+  "agent_config": { "type": "deep-research", "thinking_summaries": "auto", "visualization": "off", "collaborative_planning": false }
+}

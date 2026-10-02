@@ -1,0 +1,8 @@
+{
+  "id": "legacy-1234",
+  "status": "completed",
+  "outputs": [
+    { "type": "text", "text": "Working notes: collecting sources." },
+    { "type": "text", "text": "# Legacy shape report\n\nThe last text output is the report.\n\n[Example source](https://example.com/legacy-source)\n" }
+  ]
+}

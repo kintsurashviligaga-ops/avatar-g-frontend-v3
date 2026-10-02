@@ -1,0 +1,10 @@
+{
+  "id": "v1_failed",
+  "status": "failed",
+  "errors": [
+    { "code": "type.googleapis.com/google.rpc.ResourceExhausted", "message": "Quota exceeded for quota metric 'deep research tasks'. Visit https://console.cloud.google.com/billing to add credit." }
+  ],
+  "steps": [
+    { "type": "thought", "summary": [{ "type": "text", "text": "Starting" }] }
+  ]
+}
