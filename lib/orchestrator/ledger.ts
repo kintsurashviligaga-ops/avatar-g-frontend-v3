@@ -192,6 +192,35 @@ export async function netDebitedForRef(userId: string, ref: string): Promise<num
 }
 
 /**
+ * Has a debit EVER been taken from this user under exactly `ref` — whatever happened to it since?
+ * true / false from the ledger; null when it cannot be read (the caller then lets deduct_credits decide).
+ *
+ * ⚠️ WHY A ROUTE MUST ASK BEFORE IT DEDUCTS. deduct_credits dedupes on (user_id, ref) FOREVER and answers a
+ * replayed ref with SUCCESS — no new row, no money moved. A route that keys its ref on a client job id plus the
+ * request body therefore treats a byte-identical replay as "charged" and renders AGAIN for free: once per replay
+ * after a success, and after a refunded failure every replay is free. Worse, if the replay then fails, its
+ * `${ref}:refund` pays back the FIRST request's legitimate charge. Asking first turns a replay into a refusal
+ * (nothing charged, nothing rendered) while a genuine first attempt is untouched.
+ */
+export async function debitExistsForRef(userId: string, ref: string): Promise<boolean | null> {
+  const sb = client();
+  if (!sb || !userId || !ref) return null;
+  try {
+    const { data, error } = await sb
+      .from('credit_ledger')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('metadata->>ref', ref)
+      .lt('delta', 0)
+      .limit(1);
+    if (error) return null;
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Refund what the LEDGER shows was taken under `ref` (as `${ref}:refund`, the same idempotency ref every
  * in-route rollback uses), capped at `claimed` when the caller has an expected amount. Never refunds more
  * than was charged, never refunds on an unreadable ledger.
