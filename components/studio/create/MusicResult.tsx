@@ -43,8 +43,7 @@ export function MusicResult({
             <TrackPlayer url={track.url} coverUrl={track.coverUrl} label={label} engine={track.engine} note={track.note} />
           </div>
           <div className="min-w-0 flex-1 space-y-2">
-            {track.engine && <p data-testid="music-result-engine" className="text-[13px] text-app-text">{track.engine}</p>}
-            {track.note && <p className="text-[12px] leading-snug text-app-muted">{track.note}</p>}
+            {/* The player already says "Generated with <engine>" (and the slider note): nothing to repeat here. */}
             <div className="flex flex-wrap items-center gap-1.5">{actions}</div>
           </div>
         </div>

@@ -228,7 +228,9 @@ export function FloatingPanel({
       aria-label={label}
       data-testid={testId}
       className={cx(
-        'absolute z-30 w-[min(20rem,calc(100vw-2rem))] max-w-full rounded-2xl bg-app-surface p-1.5 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.55)] ring-1 ring-app-border/15',
+        // ⚠️ A FIXED width, not `max-w-full`: a percentage here is the width of the ANCHOR (the pill, a tile), so the list was squeezed
+        // to its trigger's width. 18.5rem fits the 340 px settings column and a 375 px phone; the viewport cap is for narrower ones.
+        'absolute z-30 w-[18.5rem] max-w-[calc(100vw_-_1.5rem)] rounded-2xl bg-app-surface p-1.5 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.55)] ring-1 ring-app-border/15',
         placement === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5',
         align === 'right' ? 'right-0' : align === 'left' ? 'left-0' : 'left-1/2 -translate-x-1/2',
         className,

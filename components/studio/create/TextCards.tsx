@@ -246,7 +246,6 @@ export function SimpleCard(p: {
     <PanelCard
       testId="music-simple"
       title={cc.simpleCard}
-      titleExtra={`${p.chips.length}/${MAX_STYLES}`}
       action={<RoundButton tone="solid" testId="music-simple-wand" icon={<Wand2 size={18} aria-hidden="true" />} label={cc.stylesWand} busy={p.wandBusy} onClick={p.onWand} />}
     >
       <CardTextarea testId="music-simple-input" label={cc.simpleCard} value={p.value} onChange={p.onChange} maxLength={600} rows={4} placeholder={cc.simplePlaceholder} />
