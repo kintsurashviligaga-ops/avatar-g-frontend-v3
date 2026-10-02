@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration } from '@/lib/api/generationGuard';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
+import { insufficientCreditsMessage } from '@/lib/api/generationGuard';
+import { classifyProviderError } from '@/lib/api/providerError';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,6 +51,17 @@ export async function POST(req: NextRequest) {
   const guard = await guardGeneration(req, 'video');
   if (!guard.ok) return guard.response;
 
+  let charged = false;
+  let chargeRef = '';
+  let chargeAmount = 0;
+  /** Refund the reservation (once). TRUE only when the credits actually went back. */
+  const giveBack = async (): Promise<boolean> => {
+    if (!charged) return false;
+    charged = false;
+    const r = await refundCredits(guard.userId, chargeAmount, `${chargeRef}:refund`).catch(() => null);
+    return !!r?.ok;
+  };
+
   try {
     const body = await req.json();
     const {
@@ -88,6 +103,23 @@ export async function POST(req: NextRequest) {
       console.warn(`[ltx-video] Resolution ${resolution} not supported by ${model}, using ${finalResolution}`);
     }
 
+    // ⚠️ RESERVED BEFORE THE RENDER, NOT DEDUCTED AFTER IT. The old post-success `deductCredits(...).catch(() => {})`
+    // streamed the video back whether or not the charge landed — a parallel burst past one stale balance read, or a
+    // ledger error, was a free LTX render. The atomic deduct now gates it (insufficient 402, ledger error 503,
+    // `skipped` = no ledger RPC → uncharged as everywhere else); an LTX refusal or a throw gives it back.
+    const cost = creditCostFor('video');
+    const ref = `ltx:${guard.userId}:${randomUUID()}`;
+    const debit = await deductCredits(guard.userId, cost, ref);
+    if (!debit.ok && debit.reason === 'insufficient') {
+      return NextResponse.json({ error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
+    }
+    if (!debit.ok && debit.reason === 'error') {
+      return NextResponse.json(ledgerUnavailableBody(guard.locale), { status: 503 });
+    }
+    charged = debit.ok;
+    chargeRef = ref;
+    chargeAmount = cost;
+
     const ltxRes = await fetch(`${LTX_BASE}/v1/text-to-video`, {
       method: 'POST',
       headers: {
@@ -101,15 +133,12 @@ export async function POST(req: NextRequest) {
       const errText = await ltxRes.text();
       const message = parseLtxError(errText);
       console.error('[ltx-video] API error', ltxRes.status, message);
-      return NextResponse.json(
-        { error: message },
-        { status: ltxRes.status >= 400 && ltxRes.status < 600 ? ltxRes.status : 500 },
-      );
+      const refunded = await giveBack();
+      // LTX's own words stay in the log line above; the body carries a code. A provider 4xx/5xx is OUR outage (or a
+      // rejected prompt) — never the provider's status, which would let a 402 read as the user being out of credit.
+      const code = classifyProviderError({ status: ltxRes.status, message });
+      return NextResponse.json({ error: code, refunded }, { status: code === 'provider_rejected' ? 422 : 503 });
     }
-
-    // FINANCIAL SHIELD — LTX returned 200 (the render succeeded), so debit now (post-success, never bills a
-    // failure — control returned above on !ok). Best-effort + fail-open; deduct_credits rejects overdraw.
-    await deductCredits(guard.userId, creditCostFor('video'), `ltx:${guard.userId}:${Date.now()}`).catch(() => {});
 
     // Forward the video stream directly — LTX returns video/mp4 synchronously.
     // Expose the EXACT render params the client persists as truthful media meta.
@@ -124,6 +153,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('[ltx-video]', err);
-    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+    const refunded = await giveBack();
+    return NextResponse.json({ error: 'Server error', refunded }, { status: 500 });
   }
 }

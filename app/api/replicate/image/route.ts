@@ -8,9 +8,26 @@ import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { normalizeOutput } from '@/lib/replicate/normalizer';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
-import { guardGeneration } from '@/lib/api/generationGuard';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
+import { deductCredits, type LedgerResult } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { ledgerUnavailableBody, type BillingLocale } from '@/lib/api/billingCopy';
+
+/**
+ * ⚠️ THE ASSET IS HANDED OVER ONLY ONCE ITS CHARGE LANDED. This route charges on success (no reservation), and every
+ * charge was `await deductCredits(...).catch(reportError)` followed by returning the image regardless — so a deduct
+ * that failed (a parallel burst past one stale balance read, or a ledger error) delivered a FREE image. A failed
+ * charge now withholds the result: 402 for a short balance, 503 for a ledger we cannot write. `skipped` (no ledger
+ * RPC at all) still delivers uncharged, the documented degrade. A failed render was never charged and still is not.
+ * Returns the withholding response, or null when the caller may deliver.
+ */
+function withheldUnlessPaid(debit: LedgerResult, locale: BillingLocale): NextResponse | null {
+  if (debit.ok || debit.reason === 'skipped') return null;
+  if (debit.reason === 'insufficient') {
+    return NextResponse.json({ success: false, error: 'insufficient_credits', message: insufficientCreditsMessage(locale) }, { status: 402 });
+  }
+  return NextResponse.json(ledgerUnavailableBody(locale), { status: 503 });
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,7 +76,8 @@ export async function POST(req: NextRequest) {
       // receives `normalized.url`, so that is what the charge is for. This route has no refund path at
       // all, which makes not charging the only correction available here.
       if (result.status === 'succeeded' && normalized.url) {
-        await deductCredits(guard.userId, creditCostFor('image'), `image:${result.id}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
+        const withheld = withheldUnlessPaid(await deductCredits(guard.userId, creditCostFor('image'), `image:${result.id}`), guard.locale);
+        if (withheld) return withheld;
       } else if (result.status === 'succeeded') {
         // eslint-disable-next-line no-console
         console.warn(`[replicate.image] prediction ${result.id} succeeded with no readable url — NOT charging`);
@@ -116,7 +134,8 @@ export async function POST(req: NextRequest) {
 
         if (result.url) {
           // Post-success debit for the synchronous NanoBanana path (no stable provider id → per-call ref).
-          await deductCredits(guard.userId, creditCostFor('image'), `image:nb:${guard.userId}:${Date.now()}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
+          const withheld = withheldUnlessPaid(await deductCredits(guard.userId, creditCostFor('image'), `image:nb:${guard.userId}:${Date.now()}`), guard.locale);
+          if (withheld) return withheld;
           return NextResponse.json({
             success: true,
             url: result.url,
@@ -138,7 +157,8 @@ export async function POST(req: NextRequest) {
 
     if (prediction.status === 'succeeded' && prediction.output) {
       // Replicate returned a finished render inline — charge once, keyed on the prediction id (idempotent).
-      await deductCredits(guard.userId, creditCostFor('image'), `image:${prediction.id}`).catch((e) => reportError(e, { where: 'replicate.image.deduct' }));
+      const withheld = withheldUnlessPaid(await deductCredits(guard.userId, creditCostFor('image'), `image:${prediction.id}`), guard.locale);
+      if (withheld) return withheld;
       return NextResponse.json(
         normalizeOutput('image', model.label, model.outputType, prediction.id, prediction.status, prediction.output, null, prediction.metrics),
       );

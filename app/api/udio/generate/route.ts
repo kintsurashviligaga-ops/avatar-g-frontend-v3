@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration } from '@/lib/api/generationGuard';
-import { deductCredits } from '@/lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
+import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
+import { insufficientCreditsMessage } from '@/lib/api/generationGuard';
+import { providerErrorBody } from '@/lib/api/providerError';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
@@ -21,6 +25,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'UDIO_API_KEY not configured' }, { status: 500 });
   }
 
+  let charged = false;
+  let chargeRef = '';
+  let chargeAmount = 0;
+  /** Refund the reservation (once). TRUE only when the credits actually went back. */
+  const giveBack = async (): Promise<boolean> => {
+    if (!charged) return false;
+    charged = false;
+    const r = await refundCredits(guard.userId, chargeAmount, `${chargeRef}:refund`).catch(() => null);
+    return !!r?.ok;
+  };
+
   try {
     const body = await req.json() as {
       prompt?: string;
@@ -34,6 +49,23 @@ export async function POST(req: NextRequest) {
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
     }
+
+    // ⚠️ RESERVED BEFORE THE RENDER, NOT DEDUCTED AFTER IT. This charged post-success with `.catch(() => {})` and
+    // returned the track either way, so a deduct that failed — a parallel burst passing one stale balance read, or a
+    // ledger error — handed out a free Udio track. The atomic deduct now gates the render (insufficient 402, ledger
+    // error 503, `skipped` = no ledger RPC → uncharged as everywhere else), and every miss below gives it back.
+    const cost = creditCostFor('music');
+    const ref = `udio:${guard.userId}:${randomUUID()}`;
+    const debit = await deductCredits(guard.userId, cost, ref);
+    if (!debit.ok && debit.reason === 'insufficient') {
+      return NextResponse.json({ success: false, error: 'insufficient_credits', message: insufficientCreditsMessage(guard.locale) }, { status: 402 });
+    }
+    if (!debit.ok && debit.reason === 'error') {
+      return NextResponse.json(ledgerUnavailableBody(guard.locale), { status: 503 });
+    }
+    charged = debit.ok;
+    chargeRef = ref;
+    chargeAmount = cost;
 
     // ⚠️ REACHABLE FROM THE UI (CommandCenter) AND FROM AGENT G, and Udio reads English — so a Georgian
     // brief arrived as noise and the track came back unrelated to the request. Same defect as the chat
@@ -51,15 +83,12 @@ export async function POST(req: NextRequest) {
     }, { maxAttempts: 30, pollIntervalMs: 5000 });
 
     if (!result.audioUrl) {
+      const refunded = await giveBack();
       return NextResponse.json(
-        { success: false, error: 'Udio returned no audio URL', workId: result.workId },
+        { success: false, error: 'provider_unavailable', workId: result.workId, refunded },
         { status: 502 },
       );
     }
-
-    // FINANCIAL SHIELD — the track resolved successfully (this route blocks until Udio is done), so debit now.
-    // Post-success ⇒ a failed/empty render (returned above) is never billed. Best-effort; rejects overdraw.
-    await deductCredits(guard.userId, creditCostFor('music'), `udio:${guard.userId}:${Date.now()}`).catch(() => {});
 
     return NextResponse.json({
       success: true,
@@ -68,8 +97,14 @@ export async function POST(req: NextRequest) {
       model: 'Udio',
     });
   } catch (err) {
+    const refunded = await giveBack();
     const message = err instanceof Error ? err.message : 'Music generation failed';
     console.error('[udio/generate]', message);
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    // Never the provider's own words — the sanitiser's code (and its sentence only when nothing stayed charged).
+    const safe = providerErrorBody(err, guard.locale);
+    return NextResponse.json(
+      charged && !refunded ? { success: false, error: 'music_failed', refunded: false } : { success: false, error: safe.error, message: safe.message, refunded },
+      { status: 502 },
+    );
   }
 }
