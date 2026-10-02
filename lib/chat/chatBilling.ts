@@ -32,6 +32,24 @@ export function billableCreditCost(intent: IntentCategory): number {
   }
 }
 
+/**
+ * What to answer when a chat generation's charge did NOT land — instead of handing the asset over anyway.
+ *
+ * ⚠️ THE CHAT ORCHESTRATOR CHARGED WITH `.catch(() => {})` AND DELIVERED REGARDLESS. A synchronous image was billed
+ * after it rendered, an async render at acceptance and again (same ref) on the poll — and every one of those deducts
+ * swallowed its failure, so a short balance (parallel requests past the read-only gate) or a ledger error delivered
+ * the asset free. A refused charge now withholds it: 'insufficient' → the top-up reply, 'error' → a retry reply.
+ */
+export function chargeRefusedResponse(intent: IntentCategory, cost: number, reason: 'insufficient' | 'error', locale?: string): ChatResponse {
+  if (reason === 'insufficient') return insufficientCreditsResponse(intent, cost, locale);
+  const msg = locale === 'en'
+    ? 'We could not reach billing, so nothing was charged and nothing was delivered. Please try again in a moment.'
+    : locale === 'ru'
+      ? 'Не удалось связаться с биллингом — ничего не списано и не выдано. Попробуйте ещё раз через минуту.'
+      : 'ბილინგს ვერ დავუკავშირდით — არაფერი ჩამოგეჭრა და არაფერი გაიცა. სცადე ცოტა ხანში.';
+  return { success: false, intent, responseType: 'text', message: msg, metadata: { provider: 'billing', billingUnavailable: true } };
+}
+
 /** Friendly, localized "top up needed" response when a paid chat generation can't be covered by the balance. */
 export function insufficientCreditsResponse(intent: IntentCategory, cost: number, locale?: string): ChatResponse {
   const msg = locale === 'en'
