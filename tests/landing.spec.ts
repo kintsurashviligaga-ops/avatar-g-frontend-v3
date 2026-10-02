@@ -368,7 +368,10 @@ for (const vp of VIEWPORTS) {
       expect(box.height).toBeGreaterThanOrEqual(44);
       await cancel.click();
       await expect(page.getByTestId('result-card')).toHaveCount(0);
-      await expect(page.getByText('⏹ შეჩერდა')).toBeVisible();
+      // The stop is said in the thread on a phone; on a desktop the thread is behind the Result pane's „Conversation“
+      // disclosure and the pane itself goes back to its empty state.
+      if (vp.name === 'phone') await expect(page.getByText('⏹ შეჩერდა')).toBeVisible();
+      else await expect(page.getByTestId('result-empty')).toBeVisible();
     });
 
     test('when the image lands, the card gives way to it', async ({ page }) => {
