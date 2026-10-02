@@ -157,6 +157,15 @@ export const RATE_LIMITS = {
   // Per-USER daily ceiling on the small free Gemini text helpers (magic-wand prompt enhance, chat titles). One shared
   // bucket: both are a few hundred tokens, and a real day uses them dozens of times, not thousands.
   HELPER_USER: { maxRequests: 400, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:helper:user' } as const,
+  // Per-USER daily ceiling on the PAID audio helpers that bill no credits of their own — the Georgian-vocal song builder
+  // (ElevenLabs TTS + Music, up to 3 attempts per call), sound effects and the /api/orbit voice proxy. Keyed on the
+  // verified userId AFTER the sign-in gate. ⚠️ All three used to be anonymous; a georgian-song call alone is several
+  // ElevenLabs requests. 60/day is a long day of music videos, far below a scripted drain.
+  AUDIO_GEN_USER: { maxRequests: 60, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:audiogen:user' } as const,
+  // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
+  // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
+  // than any person writes to support.
+  SUPPORT:   { maxRequests: 5,   windowMs: 15 * 60_000,  keyPrefix: 'rl:support' } as const,
   // Storyboard preview = ONE logical generation that fans out into many quick
   // server calls (plan + per-scene frame stream + retries + re-rolls). Treating
   // each as EXPENSIVE (5/min) tripped a 429 mid-board, leaving frames blank. This

@@ -8,11 +8,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enhanceMusicVideoGraphics } from '@/lib/pipeline/compositing/musicVideoGraphics';
 import type { MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
+import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // CPU ffmpeg overlay pass over a 60s master
 
 export async function POST(req: NextRequest) {
+  // ⚠️ THIS WAS OPEN TO ANYONE: up to 300 s of ffmpeg per call over a URL the caller chooses, the result uploaded to OUR
+  // storage — and ffmpeg fetches that URL server-side (SSRF). The only caller is the signed-in studio's music-video
+  // finish (credentials: 'include'): per-IP burst guard → verified session → a public http(s) URL only.
+  const limited = await checkRateLimit(req, RATE_LIMITS.WRITE, 'video-graphics');
+  if (limited) return limited;
+  let userId: string | null = null;
+  try {
+    userId = (await authedClientFromRequest(req)).user?.id ?? null;
+  } catch {
+    userId = null;
+  }
+  if (mustSignInToGenerate(userId)) return NextResponse.json({ url: null, ...signInToGenerateBody() }, { status: 401 });
+
   let body: { videoUrl?: unknown; title?: unknown; subtitle?: unknown; lang?: unknown; musicBug?: unknown; introSec?: unknown; dialogue?: unknown };
   try {
     body = (await req.json()) as typeof body;
@@ -21,6 +38,7 @@ export async function POST(req: NextRequest) {
   }
   const videoUrl = typeof body.videoUrl === 'string' ? body.videoUrl : '';
   if (!/^https?:\/\//i.test(videoUrl)) return NextResponse.json({ url: null });
+  if (!isPublicHttpUrl(videoUrl)) return NextResponse.json({ url: null, error: 'invalid_url' }, { status: 400 });
   const lang = body.lang === 'ka' || body.lang === 'en' || body.lang === 'ru' ? body.lang : undefined;
   const out = await enhanceMusicVideoGraphics(videoUrl, {
     title: typeof body.title === 'string' ? body.title : undefined,

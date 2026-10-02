@@ -4,6 +4,10 @@
  * the key ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports) with
  * redirect: manual, and a probe's thrown message can never carry its own credential into the response.
  */
+jest.mock('server-only', () => ({}));
+// The admin-session leg of the gate: nobody is signed in here — only the x-admin-key header can open it.
+jest.mock('../../../../lib/auth/adminGuard', () => ({ isAdmin: jest.fn(async () => false) }));
+
 import { NextRequest } from 'next/server';
 import { GET } from './route';
 
@@ -33,10 +37,25 @@ afterEach(() => {
 });
 
 async function run(): Promise<Result[]> {
-  const res = await GET(new NextRequest(`http://localhost/api/health/services?key=${ADMIN}`));
+  const res = await GET(new NextRequest('http://localhost/api/health/services', { headers: { 'x-admin-key': ADMIN } }));
   expect(res.status).toBe(200);
   return ((await res.json()) as { results: Result[] }).results;
 }
+
+test('the admin key is accepted ONLY as a header — `?key=` (which lands in access logs) is refused', async () => {
+  const viaQuery = await GET(new NextRequest(`http://localhost/api/health/services?key=${ADMIN}`));
+  expect(viaQuery.status).toBe(403);
+  const wrong = await GET(new NextRequest('http://localhost/api/health/services', { headers: { 'x-admin-key': 'nope' } }));
+  expect(wrong.status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('an unset ADMIN_KEY matches nothing — not even an empty header', async () => {
+  delete process.env.ADMIN_KEY;
+  const res = await GET(new NextRequest('http://localhost/api/health/services', { headers: { 'x-admin-key': '' } }));
+  expect(res.status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
 
 test('the Gemini probe: no key in the URL, the key in the header, redirect: manual', async () => {
   const results = await run();

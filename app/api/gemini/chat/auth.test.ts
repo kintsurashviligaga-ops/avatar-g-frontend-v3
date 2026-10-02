@@ -14,6 +14,20 @@ jest.mock('server-only', () => ({}));
 
 let mockUser: { id: string } | null = null;
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: mockUser })) }));
+let mockCapped = false;
+let mockBudgetOk = true;
+jest.mock('../../../../lib/api/rate-limit', () => ({
+  RATE_LIMITS: {
+    WRITE: { maxRequests: 20, windowMs: 60_000, keyPrefix: 'rl:write' },
+    CHAT_USER: { maxRequests: 500, windowMs: 86_400_000, keyPrefix: 'rl:chat:user' },
+  },
+  checkRateLimit: jest.fn(async () => null),
+  checkRateLimitByKey: jest.fn(async () => (mockCapped ? new Response('{"error":"Too many requests"}', { status: 429 }) : null)),
+}));
+jest.mock('../../../../lib/services/billing/chatBudget', () => ({
+  chatBudgetAllows: jest.fn(async () => mockBudgetOk),
+  bookChatUsage: jest.fn(async () => undefined),
+}));
 jest.mock('../../../../lib/gemini/client', () => ({
   generateWithGemini: jest.fn(async () => ({ text: 'გამარჯობა!', model: 'gemini-2.5-flash', tokensIn: 3, tokensOut: 2 })),
 }));
@@ -50,6 +64,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUser = null;
   existingOwner = null;
+  mockCapped = false;
+  mockBudgetOk = true;
   delete process.env.FILM_ALLOW_ANONYMOUS;
   process.env.GEMINI_API_KEY = 'test-gemini-key';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role';
@@ -90,4 +106,29 @@ test("another account's sessionId is not taken over: the reply is returned, noth
   expect((await res.json()).text).toBe('გამარჯობა!');
   expect(upsert).not.toHaveBeenCalled();
   expect(insert).not.toHaveBeenCalled();
+});
+
+test('a signed-in caller is capped per ACCOUNT (CHAT_USER) — a spent allowance answers 429 before Gemini', async () => {
+  mockUser = { id: 'user-1' };
+  mockCapped = true;
+  const res = await POST(post({ message: 'hello', locale: 'en' }));
+  expect(res.status).toBe(429);
+  expect(generateWithGemini).not.toHaveBeenCalled();
+});
+
+test('the platform budget gate refuses before Gemini, and an over-long message is refused too', async () => {
+  mockUser = { id: 'user-1' };
+  mockBudgetOk = false;
+  expect((await POST(post({ message: 'hello', locale: 'en' }))).status).toBe(503);
+  mockBudgetOk = true;
+  expect((await POST(post({ message: 'x'.repeat(16_001), locale: 'en' }))).status).toBe(413);
+  expect(generateWithGemini).not.toHaveBeenCalled();
+});
+
+test("a Gemini failure never reaches the caller as the provider's raw text", async () => {
+  mockUser = { id: 'user-1' };
+  (generateWithGemini as jest.Mock).mockRejectedValueOnce(new Error('Gemini 429: {"error":{"message":"Quota exceeded for key AQ.secret"}}'));
+  jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  const res = await POST(post({ message: 'hello', locale: 'en' }));
+  expect(JSON.stringify(await res.json())).not.toMatch(/Quota exceeded|AQ\.secret|Gemini 429/);
 });

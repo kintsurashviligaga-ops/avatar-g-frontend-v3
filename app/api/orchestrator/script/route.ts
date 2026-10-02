@@ -35,6 +35,7 @@ import {
 } from '@/lib/orchestrator/script-breakdown';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -111,6 +112,8 @@ function geminiKeys(): string[] {
 }
 
 export async function POST(req: NextRequest) {
+  const ipLimited = await checkRateLimit(req, RATE_LIMITS.WRITE);
+  if (ipLimited) return ipLimited;
   let body: ScriptBody;
   try {
     body = (await req.json()) as ScriptBody;
@@ -131,6 +134,12 @@ export async function POST(req: NextRequest) {
   if (mustSignInToGenerate(user?.id)) {
     return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
   }
+  // ⚠️ Signed-in was the only guard: sign-up is self-service, so one account could loop Gemini vision (up to 4 retries
+  // per configured key) + a Claude breakdown with no cap. Per-ACCOUNT daily helper cap (HELPER_USER).
+  if (user?.id) {
+    const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.HELPER_USER);
+    if (capped) return capped;
+  }
   const totalSec = Number.isFinite(body.totalDurationSec) ? Number(body.totalDurationSec) : 30;
 
   // ── Stage 1: Gemini multi-modal ingestion (optional) ──────────────────────
@@ -146,7 +155,8 @@ export async function POST(req: NextRequest) {
     used: Boolean(analysis),
     model: analysis ? VISION_MODEL : null,
     analysis,
-    error: av.error ?? null,
+    // A machine code only — the provider's own error text stays server-side.
+    error: av.error ? 'vision_unavailable' : null,
   };
 
   // ── Stage 2: Claude CEO orchestrator → 6-second shot manifests ────────────

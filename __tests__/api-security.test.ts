@@ -64,6 +64,7 @@ const AUTH_SIGNALS: RegExp[] = [
   /constructEvent\s*\(/,                        // Stripe webhook signature verification
   /CRON_SECRET/,                                // cron-secret gated
   /WORKER_INTERNAL_TOKEN|x-internal-worker-token|x-internal-key/, // internal server-to-server token (telephony / worker sub-routes)
+  /opsCallerAllowed\s*\(/,                     // operators only (admin session / CRON_SECRET / non-production) — lib/security/opsAccess
 ];
 
 /**
@@ -77,7 +78,7 @@ const ALLOWLIST: Record<string, string> = {
   // ── Grandfathered gaps: user-facing PAID generation, rate-limited but not user-auth'd. Surfaced by
   //    the pre-Iteration-3 audit; user-auth is a tracked follow-up. Listed so the guard still protects
   //    NEW routes while these known gaps are worked down (goal: empty this section).
-  'app/api/elevenlabs/sound/route.ts': 'ElevenLabs SFX — rate-limited (RATE_LIMITS.WRITE); user-auth TODO (audit follow-up)',
+  // (elevenlabs/sound LEFT this list 2026-10-02: sign-in through the generation gate + a per-account AUDIO_GEN_USER cap.)
   // ── WS2: interactive voice routes. Client-facing + rate-limited; user-auth is a PRODUCT decision here, listed
   //    as a reasoned exception rather than broken. voice/realtime/session soft-auths (getAuthenticatedUser) + is
   //    inert in prod without VOICE_V2V_WS_URL + is WS-token gated. (voice/transcribe LEFT this list 2026-09-30:
@@ -86,8 +87,7 @@ const ALLOWLIST: Record<string, string> = {
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.
   'app/api/health/public/route.ts': 'Public health — pings provider status endpoints (/v1/user, /v2/voices), no generation',
-  'app/api/system/film-readiness/route.ts': 'Diagnostic — provider env-presence only, no generation',
-  'app/api/system/film-selftest/route.ts': 'Diagnostic self-test — actively probes providers; monitoring only (ideally admin-gated)',
+  // (system/film-readiness + system/film-selftest LEFT this list 2026-10-02: operators only via lib/security/opsAccess.)
 };
 
 const toRel = (abs: string) => path.relative(process.cwd(), abs).split(path.sep).join('/');

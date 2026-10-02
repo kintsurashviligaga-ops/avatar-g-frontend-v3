@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { executeStream } from '@/lib/ai/chatEngine';
 import { applyApiGuards } from '@/lib/api/guard';
-import { RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,6 +22,25 @@ const requestSchema = z.object({
 export async function POST(request: NextRequest) {
   const gate = await applyApiGuards(request, { limit: RATE_LIMITS.AI, label: 'orbit.agent' });
   if (gate.response) return gate.response;
+
+  // ⚠️ SIGNED-IN ONLY. This streamed an LLM answer on the platform key to anyone, capped only per IP per minute — an
+  // anonymous chat tap no screen uses any more (its last caller, AgentGInterface, is unreachable). Session → per-ACCOUNT
+  // daily chat cap (the same CHAT_USER bucket the product chat draws on), so rotating IPs buys nothing.
+  let userId: string | null = gate.auth?.userId ?? null;
+  if (!userId) {
+    try {
+      userId = (await authedClientFromRequest(request)).user?.id ?? null;
+    } catch {
+      userId = null;
+    }
+  }
+  if (mustSignInToChat(userId)) {
+    return new Response(JSON.stringify(signInToGenerateBody()), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (userId) {
+    const capped = await checkRateLimitByKey(userId, RATE_LIMITS.CHAT_USER);
+    if (capped) return capped;
+  }
 
   const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
@@ -39,7 +60,7 @@ export async function POST(request: NextRequest) {
       void executeStream(
         {
           agentId: 'agent-g',
-          userId: sessionId ? `dashboard:${sessionId}` : 'dashboard-anonymous',
+          userId: userId ?? (sessionId ? `dashboard:${sessionId}` : 'dashboard-anonymous'),
           sessionId: sessionId || `orbit_agent_${Date.now()}`,
           channel: 'web',
           messages: [
@@ -65,7 +86,9 @@ export async function POST(request: NextRequest) {
             controller.close();
           },
           onError(error) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`));
+            // The provider's own message stays in the server log — the stream carries a fixed, non-leaking one.
+            console.error('[orbit/agent] stream failed:', error.message.slice(0, 200));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI service temporarily unavailable' })}\n\n`));
             controller.close();
           },
         },

@@ -1,6 +1,13 @@
 import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateVoice } from '@/lib/ai/elevenlabs';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { authedClientFromRequest } from '@/lib/supabase/server';
+import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { providerErrorBody } from '@/lib/api/providerError';
+
+/** The longest text the voice proxy will synthesize in one call — ElevenLabs bills per character. */
+const MAX_VOICE_CHARS = 2500;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -191,6 +198,19 @@ export async function POST(
     return jsonError('Unknown orbit service', 404);
   }
 
+  // ⚠️ SIGN-IN, SERVER-SIDE, BEFORE ANY BRANCH. 'voice-synthesis' called ElevenLabs DIRECTLY on the platform key for
+  // anyone — no session, no rate limit, no length cap — while every other branch proxies to a route that gates itself.
+  // One gate here covers them all: per-IP burst guard → verified session → (voice) per-account daily cap.
+  const limited = await checkRateLimit(request, RATE_LIMITS.WRITE);
+  if (limited) return limited;
+  let userId: string | null = null;
+  try {
+    userId = (await authedClientFromRequest(request)).user?.id ?? null;
+  } catch {
+    userId = null; // an auth outage reads as "no session", never as a user
+  }
+  if (mustSignInToGenerate(userId)) return NextResponse.json(signInToGenerateBody(), { status: 401 });
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -208,9 +228,17 @@ export async function POST(
         if (!text) {
           return jsonError('text is required');
         }
+        if (text.length > MAX_VOICE_CHARS) {
+          return jsonError(`text is limited to ${MAX_VOICE_CHARS} characters`, 413);
+        }
 
         if (!voiceId) {
           return jsonError('Voice provider is not configured', 503);
+        }
+
+        if (userId) {
+          const capped = await checkRateLimitByKey(userId, RATE_LIMITS.AUDIO_GEN_USER);
+          if (capped) return capped;
         }
 
         const voice = await generateVoice(text, voiceId, emotion);
@@ -395,7 +423,9 @@ export async function POST(
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Orbit service failed';
-    return jsonError(message, 500);
+    // A provider's raw error (its name, its JSON, its billing link) must never reach the caller — lib/api/providerError.
+    console.error('[orbit] service failed:', error instanceof Error ? error.message.slice(0, 200) : 'unknown');
+    const safe = providerErrorBody(error);
+    return jsonError(safe.message, safe.status);
   }
 }

@@ -34,6 +34,12 @@ it('reports a non-founder account distinctly', async () => {
   expect(String(r.diagnosis)).toContain('non-founder');
 });
 
+it('never names the admin mailbox to a non-admin caller (any signed-up account can ask)', async () => {
+  mockGetUser.mockResolvedValue({ data: { user: { email: 'someone@else.com', user_metadata: {} } } });
+  const r = await whoami();
+  expect(JSON.stringify(r)).not.toMatch(/kintsurashviligaga/i);
+});
+
 it('grants isAdmin via APP_metadata role (service-role-set) for a non-founder email', async () => {
   mockGetUser.mockResolvedValue({ data: { user: { email: 'ops@x.com', app_metadata: { role: 'admin' }, user_metadata: {} } } });
   const r = await whoami();

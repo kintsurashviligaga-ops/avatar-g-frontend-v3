@@ -47,6 +47,8 @@ export async function GET() {
       ? 'Server sees NO user for this request — the session is not readable server-side. This is why /admin redirects; the fix is in the auth/session/cookie layer, NOT the admin allowlist.'
       : emailIsFounder
         ? 'Server sees you as the founder email — /admin should render. If it still redirects, it is a render/caching mismatch, not authorization.'
-        : `Server sees a non-founder account (${email ?? 'no email'}) — sign in as ${ADMIN_EMAIL} in this exact browser session.`,
+        // ⚠️ Never name the admin address to a non-admin caller: any signed-up account can call this, and the answer
+        // used to tell it exactly which mailbox to phish or credential-stuff.
+        : `Server sees a non-founder account (${email ?? 'no email'}) — sign in with the founder account in this exact browser session.`,
   });
 }

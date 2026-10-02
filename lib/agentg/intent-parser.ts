@@ -173,7 +173,9 @@ function heuristicPlan(goal: string): Omit<IntentPlan, 'main_goal' | 'estimatedS
 }
 
 export async function parseIntent(goal: string): Promise<IntentPlan> {
-  const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  // ⚠️ NEVER a NEXT_PUBLIC_* key: Next inlines those into any client bundle that references them, so the old
+  // NEXT_PUBLIC_GEMINI_API_KEY fallback invited publishing the platform's Gemini key to every browser.
+  const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY;
   const locale = detectLocale(goal);
 
   let parsed: Omit<IntentPlan, 'main_goal' | 'estimatedSeconds' | 'creditCost'> | null = null;
