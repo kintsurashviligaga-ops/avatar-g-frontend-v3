@@ -7324,7 +7324,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {modelLabel && (
                         <span data-testid="reply-model" title={modelLabel}
                           className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">
-                          {modelLabel}
+                          {/* A phone's action row has six icons before it: „Gemini 3.8 Flash" was cut to „Gemini 3…". There the
+                              family name steps aside (the header says „3.8 Flash" the same way); the text and the tooltip keep it. */}
+                          {modelLabel.startsWith('Gemini ')
+                            ? <><span className="hidden sm:inline">Gemini </span>{modelLabel.slice('Gemini '.length)}</>
+                            : modelLabel}
                         </span>
                       )}
                     </div>
