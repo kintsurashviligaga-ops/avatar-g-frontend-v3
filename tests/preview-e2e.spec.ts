@@ -110,6 +110,9 @@ test('a generated image lands in the feed, in the same window (no new tab)', asy
   await box.fill('შავი ღვინის ბოთლი სველ ქვაზე, ღამე');
   // The composer's run button (the Create panel beside it has its own Generate button with the price).
   await page.getByTestId('run-button').click();
+  // Agent G confirms before anything is spent (lib/chat/focusGate): a prompt typed in a focus mode shows its card with the
+  // price, and the render starts when Create is tapped — never from a stray message. (tests/agent-g-gate.spec.ts covers the gate.)
+  await page.getByTestId('agent-g-confirm').click();
   await expect(page.locator(`img[src="${RESULT}"]`).first()).toBeVisible({ timeout: 20_000 });
   expect(context.pages().length).toBe(pagesBefore);
 });
