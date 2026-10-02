@@ -47,11 +47,17 @@ export interface VideoStageProps {
   onNote: (msg: string) => void;
 }
 
+/** The film's width ÷ height from its "9:16" label (16:9 when unreadable). */
+const ratioOf = (aspect: string): number => {
+  const m = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(aspect.trim());
+  return m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : 16 / 9;
+};
+
 export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTier, onOpenInEditor, onNote }: VideoStageProps) {
   const lang = videoLang(locale);
   return (
     <section data-testid="video-stage" aria-label={vc(VIDEO_COPY.result, locale)} className="mx-auto w-full max-w-3xl space-y-5 pb-4 pt-2">
-      <div data-testid="video-result" className="rounded-3xl border border-app-border/10 bg-app-elevated/50 p-4">
+      <div data-testid="video-result" className="rounded-3xl border border-app-border/10 bg-app-elevated/50 p-3">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-[15px] font-semibold text-app-text">{vc(VIDEO_COPY.result, locale)}</h2>
           {latest && !progress && (
@@ -64,14 +70,16 @@ export function VideoStage({ locale, latest, progress, tier, mode, seconds, onTi
             </div>
           )}
         </div>
-        <div className="flex justify-center">
+        {/* ⚠️ The tile is capped to 44 % of the window's height (width = height × its ratio), so a 9:16 film does not push
+            "Models & prices" off the screen: the result and the table are on screen together, as in the reference. */}
+        <div className="mx-auto w-full" style={{ maxWidth: `calc(44vh * ${ratioOf(progress?.aspect ?? latest?.aspect ?? '16:9')})` }}>
           {progress ? (
-            <ResultCard kind="video" aspect={progress.aspect} state={typeof progress.pct === 'number' && progress.pct >= 96 ? 'finalizing' : 'rendering'}
+            <ResultCard kind="video" size="tile" aspect={progress.aspect} state={typeof progress.pct === 'number' && progress.pct >= 96 ? 'finalizing' : 'rendering'}
               locale={lang} pct={progress.pct} stage={progress.stage} elapsedSec={progress.elapsedSec ?? 0} capSec={progress.capSec ?? 440} />
           ) : latest ? (
-            <ResultCard kind="video" aspect={latest.aspect} state="ready" locale={lang} media={{ type: 'video', url: latest.url }} />
+            <ResultCard kind="video" size="tile" aspect={latest.aspect} state="ready" locale={lang} media={{ type: 'video', url: latest.url }} />
           ) : (
-            <div data-testid="video-result-empty" className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-app-border/25 bg-gradient-to-br from-app-accent/10 via-transparent to-transparent px-6 text-center">
+            <div data-testid="video-result-empty" className="flex aspect-[2/1] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-app-border/25 bg-gradient-to-br from-app-accent/10 via-transparent to-transparent px-6 text-center">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-app-accent/15 text-app-accent"><Film size={22} aria-hidden="true" /></span>
               <p className="text-[16px] font-medium text-app-text">{vc(VIDEO_COPY.resultEmpty, locale)}</p>
               <p className="max-w-sm text-[13px] leading-snug text-app-muted">{vc(VIDEO_COPY.resultEmptySub, locale)}</p>

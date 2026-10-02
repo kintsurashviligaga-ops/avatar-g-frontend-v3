@@ -314,7 +314,7 @@ export function VideoModelRow({ locale, tier, mode, onOpen }: { locale: string; 
 function VideoTile({ label, value, icon, onClick, testId }: { label: string; value: string; icon: ReactNode; onClick: () => void; testId: string }) {
   return (
     <button type="button" onClick={onClick} aria-haspopup="dialog" aria-label={`${label}: ${value}`} data-testid={testId}
-      className="flex min-h-[56px] min-w-0 items-center justify-center gap-2 rounded-2xl border border-app-border/10 bg-app-elevated px-2 text-[16px] font-medium tabular-nums text-app-text transition-colors hover:bg-app-elevated/70 active:scale-[0.98]">
+      className="flex min-h-[56px] min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-app-border/10 bg-app-elevated px-1 text-[15px] font-medium tabular-nums text-app-text transition-colors hover:bg-app-elevated/70 active:scale-[0.98] min-[400px]:gap-2 min-[400px]:px-2 min-[400px]:text-[16px]">
       <span aria-hidden="true" className="shrink-0 text-app-text/85">{icon}</span>
       <span className="min-w-0 truncate">{value}</span>
     </button>
@@ -333,9 +333,9 @@ export function VideoTiles({ locale, seconds, format, resolution, onLength, onFo
   const AspectIcon = format === '16:9' ? RectangleHorizontal : format === '1:1' ? Square : RectangleVertical;
   return (
     <div className="grid grid-cols-3 gap-2" data-testid="video-tiles">
-      <VideoTile testId="video-tile-length" label={vc(VIDEO_COPY.length, locale)} value={formatVideoDuration(seconds, locale)} icon={<Clock size={19} />} onClick={onLength} />
-      <VideoTile testId="video-tile-format" label={vc(VIDEO_COPY.format, locale)} value={format} icon={<AspectIcon size={19} />} onClick={onFormat} />
-      <VideoTile testId="video-tile-resolution" label={vc(VIDEO_COPY.resolution, locale)} value={resolution} icon={<Gem size={19} />} onClick={onResolution} />
+      <VideoTile testId="video-tile-length" label={vc(VIDEO_COPY.length, locale)} value={formatVideoDuration(seconds, locale)} icon={<Clock size={18} />} onClick={onLength} />
+      <VideoTile testId="video-tile-format" label={vc(VIDEO_COPY.format, locale)} value={format} icon={<AspectIcon size={18} />} onClick={onFormat} />
+      <VideoTile testId="video-tile-resolution" label={vc(VIDEO_COPY.resolution, locale)} value={resolution} icon={<Gem size={18} />} onClick={onResolution} />
     </div>
   );
 }
@@ -404,9 +404,11 @@ export function VideoDisclosure({ id, title, summary, openWhen, children }: { id
 export function VideoGenerateBar({ surface, children }: { surface: 'sheet' | 'panel'; children: ReactNode }) {
   return (
     <div data-testid="video-generate-bar"
+      // ⚠️ `sticky bottom-0` sticks INSIDE the scroller's padding (the sheet's pb-3, the column's py-4), so content scrolled
+      // behind that gap showed under the button. The shadow is a solid skirt of the surface's own colour that fills it.
       className={cx('sticky bottom-0 z-10 -mx-1 px-1 pt-3', surface === 'sheet'
-        ? 'bg-gradient-to-t from-app-surface via-app-surface/95 to-transparent'
-        : 'bg-gradient-to-t from-app-bg via-app-bg/95 to-transparent')}
+        ? 'bg-gradient-to-t from-app-surface via-app-surface/95 to-transparent shadow-[0_16px_0_0_rgb(var(--app-surface))]'
+        : 'bg-gradient-to-t from-app-bg via-app-bg/95 to-transparent shadow-[0_16px_0_0_rgb(var(--app-bg))]')}
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
       {children}
     </div>

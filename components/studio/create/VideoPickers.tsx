@@ -195,7 +195,7 @@ export function VideoModelList({ locale, tier, mode, seconds, onTier, variant }:
   if (variant === 'sheet') {
     return (
       <div role="radiogroup" aria-label={vc(VIDEO_COPY.engineLabel, locale)} className="grid gap-2" data-testid="video-model-list">
-        {[...VIDEO_TIERS].reverse().map((t) => {
+        {VIDEO_TIERS.map((t) => {
           const on = t === tier;
           return (
             <button key={t} type="button" role="radio" aria-checked={on} onClick={() => onTier(t)} data-testid={`video-model-${t}`}

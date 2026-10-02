@@ -77,9 +77,9 @@ export const VIDEO_COPY = {
   soon: T('მალე', 'Soon', 'Скоро'),
   openingSoon: T('მალე გაიხსნება', 'opening soon', 'скоро откроется'),
   longformNote: T(
-    'ფილმები 1:36-ზე გრძელი გრძელფორმატიან პაიპლაინზე იქმნება — ის მალე გაიხსნება.',
-    'Films longer than 1:36 are made by the long-form pipeline — it is opening soon.',
-    'Фильмы длиннее 1:36 делает длинный формат — он скоро откроется.',
+    'ფილმები 1:36-ზე გრძელი გრძელფორმატიან პაიპლაინზე იქმნება.',
+    'Films longer than 1:36 are made by the long-form pipeline.',
+    'Фильмы длиннее 1:36 делает длинный формат.',
   ),
   done: T('მზადაა', 'Done', 'Готово'),
 
