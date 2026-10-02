@@ -10,7 +10,8 @@
  * }
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { signInToGenerateBody } from '@/lib/auth/generationGate';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
     } catch {
       sessionUserId = null;
     }
-    if (!sessionUserId) return apiError(new Error('Unauthorized'), 401, 'Sign in to save an avatar');
+    if (!sessionUserId) return NextResponse.json(signInToGenerateBody(), { status: 401 });
 
     const body = await request.json();
     const parsed = saveAvatarSchema.safeParse(body);

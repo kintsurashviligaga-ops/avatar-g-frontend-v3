@@ -1,4 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { signInToGenerateBody } from '@/lib/auth/generationGate';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     const user = await getAuthenticatedUser(request);
     // ⚠️ SIGNED-IN ONLY. A missing session used to switch on "demo mode" and run the whole plan anyway — every sub-task
     // an LLM call (or a forwarded media call) on the platform key, for anyone who POSTed a goal. No session, no plan.
-    if (!user) return apiError(new Error('Unauthorized'), 401, 'Sign in to run Agent G tasks.');
+    if (!user) return NextResponse.json(signInToGenerateBody(), { status: 401 });
     const demoMode = false;
     const plan = buildTaskPlan(payload.data.goal);
 
