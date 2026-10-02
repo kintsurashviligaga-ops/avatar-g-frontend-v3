@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video, type LucideIcon } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -411,22 +411,6 @@ const VEO_TIER_LABEL: Record<VeoTier, Record<Lang, string>> = {
 };
 const ORIENT_ASPECT: Record<'landscape' | 'vertical' | 'square' | 'portrait', string> = { vertical: '9:16', landscape: '16:9', square: '1:1', portrait: '4:5' };
 
-
-/**
- * The four starter chips of the empty state (the owner's 2026-09-29 brief, docs/DESIGN.md §8), video first.
- *
- * ⚠️ THEY NEVER SEND AND NEVER SPEND. The previous chips (removed in 23b2c6e) were three pre-written image
- * prompts that called runImageJob directly: one tap SPENT credits, skipped the guest gate, and made the
- * user's first creation somebody else's idea. A chip here selects the service (and, for the reel, 9:16) and
- * writes a STARTER into an empty box — a frame the user completes ("კინო რილი 9:16 — სცენა: …"), not an idea.
- * An untouched starter cannot be sent (see `chipStarter` / canSend): Send appears once the words are theirs.
- */
-const STARTER_CHIPS: ReadonlyArray<{ id: string; mode: 'video' | 'image' | 'music' | 'lipsync'; Icon: LucideIcon; ka: string; en: string; ru: string; fill: Record<'ka' | 'en' | 'ru', string> }> = [
-  { id: 'reel', mode: 'video', Icon: Film, ka: 'კინო რილი 9:16', en: 'Cinematic reel 9:16', ru: 'Кино-рилс 9:16', fill: { ka: 'კინო რილი 9:16 — სცენა: ', en: 'Cinematic reel 9:16 — scene: ', ru: 'Кино-рилс 9:16 — сцена: ' } },
-  { id: 'product', mode: 'image', Icon: ImageIcon, ka: 'პროდუქტის სურათი', en: 'Product image', ru: 'Фото продукта', fill: { ka: 'პროდუქტის სურათი — პროდუქტი: ', en: 'Product image — product: ', ru: 'Фото продукта — продукт: ' } },
-  { id: 'soundtrack', mode: 'music', Icon: Music2, ka: 'საუნდთრექი', en: 'Soundtrack', ru: 'Саундтрек', fill: { ka: 'საუნდთრექი — განწყობა: ', en: 'Soundtrack — mood: ', ru: 'Саундтрек — настроение: ' } },
-  { id: 'avatar', mode: 'lipsync', Icon: ScanFace, ka: 'ავატარის პორტრეტი', en: 'Avatar portrait', ru: 'Портрет-аватар', fill: { ka: 'ავატარის პორტრეტი — რას ამბობს: ', en: 'Avatar portrait — what it says: ', ru: 'Портрет-аватар — что говорит: ' } },
-];
 
 /** The composer's format pill, both ways: a video's orientation ⇄ the ratio label the pill shows. */
 const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portrait'> = { '9:16': 'vertical', '16:9': 'landscape', '1:1': 'square', '4:5': 'portrait' };
@@ -1800,33 +1784,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // one shows them — it used to close the options because the panel rendered in a separate box of its own.
     if (svc) { setModeRaw('chat'); setOptionsOpen(true); }
   }, []);
-  /** The starter a chip wrote into the box, while it is still untouched — such a box has nothing to send. */
-  const [chipStarter, setChipStarter] = useState<string | null>(null);
-  // send() reads it through a ref — its dependency list is long and it must not go stale on this one value.
-  const chipStarterRef = useRef<string | null>(null);
-  /**
-   * A starter chip: select the service (+ 9:16 for the reel), write its starter into an EMPTY box (never over
-   * the user's own words) and hand the cursor to the end of it. Never sends, never spends.
-   */
-  const startChip = useCallback((chip: (typeof STARTER_CHIPS)[number]) => {
-    setMode(chip.mode);
-    if (chip.id === 'reel') setVideoOrientation('vertical');
-    const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
-    const current = taRef.current?.value ?? '';
-    const fill = chip.fill[lang];
-    if (!current.trim() || STARTER_CHIPS.some((c) => c.fill[lang] === current)) {
-      setInput(fill);
-      setChipStarter(fill);
-      chipStarterRef.current = fill;
-    }
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (!ta) return;
-      ta.focus();
-      const end = ta.value.length;
-      try { ta.setSelectionRange(end, end); } catch { /* not a text control yet */ }
-    });
-  }, [setMode, locale]);
   // VECTOR 3 — when the mobile keyboard is up, the shell shrinks (ChatChrome subtracts this), but a
   // dvh-based options panel does NOT, so it overflows the reduced shell and buries the composer.
   // We cap the panel to the space actually left below the keyboard (see the panel's inline style).
@@ -4963,10 +4920,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // VIDEO with a loaded script / scene frames can generate with NO typed text + NO image
     // attachment — otherwise this guard silently blocked a script-only run from starting.
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-    // An untouched chip starter counts as an empty box — Enter must not send what the button would not.
-    const starterOnly = !opts?.promptOverride && !!chipStarterRef.current && text === chipStarterRef.current.trim();
     // Nothing to send → return quietly (no toast for an empty box).
-    if ((!text || starterOnly) && attachments.length === 0 && !videoOnlyInputs) return;
+    if (!text && attachments.length === 0 && !videoOnlyInputs) return;
     // ⚠️ `mode` IS STICKY, AND THE MODE INTERCEPTS BELOW CLAIM EVERY TURN WITHOUT READING THE MESSAGE.
     // `mode` is plain component state (declared ~1497) that persists until something sets it back, and the
     // avatar branch begins with a bare `if (mode === 'lipsync')` — no intent check of any kind. So once
@@ -6112,9 +6067,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // In VIDEO mode a loaded SCRIPT or uploaded scene frames are enough to generate — without
   // this the Send button hid when the text box was empty, so a script-only run couldn't START.
   const videoReadyToSend = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
-  // An untouched chip starter ("კინო რილი 9:16 — სცენა: ") is a frame, not a prompt: Send waits for the user's words.
-  const onlyStarter = chipStarter !== null && input.trim() === chipStarter.trim();
-  const canSend = (!!input.trim() && !onlyStarter) || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
+  const canSend = !!input.trim() || attachments.length > 0 || (mode === 'music' && useMyVoice && hasTrainedVoice) || videoReadyToSend;
 
   /**
    * The composer's tool chip — WHAT you make and in what SHAPE, in one control: „ვიდეო · 9:16 · 24წმ ⌄". It opens
@@ -8323,14 +8276,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return first.length > 90 ? `${first.slice(0, 90)}…` : first;
   })();
   /**
-   * Gemini's empty chat on a desktop: the greeting, the composer in the MIDDLE of the screen, the starter chips under
-   * it. Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold that node). The feed
-   * above and the chips wrapper below are two EQUAL flex halves (`flex-1 basis-0`), so the composer block sits on the
-   * centre line. Both halves start from their padding (flex-basis 0 cannot go below it): the chips wrapper's 24 px,
-   * and the feed's 54 px = those same 24 px + the 30 px the composer block adds UNDER the pill beyond what it adds above
-   * (the disclaimer's 34 px vs the block's 4 px top padding) — so it is the PILL itself, not pill + disclaimer, that
-   * lands on the centre line (measured: ±1 px at 1280 × 800). The greeting is pushed to the bottom of its half with an auto
-   * margin (never `justify-end`, whose overflow on a short screen would be unreachable by scrolling). Phones keep the
+   * Gemini's empty chat on a desktop: the greeting and, under it, the composer — nothing else (owner, 2026-10-02: no sub
+   * line, no starter chips). Done by layout only — the composer's JSX never moves (its ResizeObserver and `taRef` hold
+   * that node). The feed above and an empty spacer below are two EQUAL flex halves (`flex-1 basis-0`), so the composer
+   * block sits on the centre line; the feed starts from its 48 px of bottom padding (flex-basis 0 cannot go below it),
+   * which lowers the PILL 24 px under that line — the optical centre of a greeting-and-box pair, which reads as centred
+   * where the geometric middle reads as high. The greeting is pushed to the bottom of its half with an auto margin
+   * (never `justify-end`, whose overflow on a short screen would be unreachable by scrolling). Phones keep the
    * composer docked at the bottom, as Gemini's phone app does.
    */
   const centred = chatOnly && messages.length === 0 && isDesktop;
@@ -8340,26 +8292,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatSingleRow = chatOnly && isDesktop && attachments.length === 0 && !composerWrapped && !activePersona.name;
   // The chat composer's round controls — Gemini's 40 px circles with a quiet state layer, 44 px on touch.
   const chatRound = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
-  // Four service shortcuts, video first — see STARTER_CHIPS for why they never send. Two rows of two: on a phone that
-  // keeps the composer above the fold (what got the old chips removed); on a desktop a free-wrapping row broke 3 + 1,
-  // which reads as an accident. ONE column from 1024 to 1279 — there the centre sits between the navigation and the
-  // open settings (~400 px) and „ავატარის პორტრეტი" clipped — except in the chat, which has no settings column.
-  const starterChips = (
-    <div role="group" aria-label={locale === 'en' ? 'Start with' : locale === 'ru' ? 'Начать с' : 'დაიწყე'}
-      className={`relative grid w-full max-w-[26rem] grid-cols-2 gap-2 sm:max-w-[34rem] ${chatOnly ? '' : 'lg:max-w-[22rem] lg:grid-cols-1 xl:max-w-[34rem] xl:grid-cols-2'}`}>
-      {STARTER_CHIPS.map((chip) => {
-        // The reel is video AND 9:16 — once the format is changed it is no longer the reel.
-        const on = chip.id === 'reel' ? mode === 'video' && videoOrientation === 'vertical' : mode === chip.mode;
-        return (
-          <button key={chip.id} type="button" onClick={() => startChip(chip)} aria-pressed={on}
-            className={`inline-flex min-h-[44px] items-center justify-start gap-2 rounded-2xl border px-3.5 py-2 text-left text-[14px] font-medium leading-tight transition-colors duration-200 sm:justify-center sm:rounded-full sm:px-4 sm:py-0 hover:border-app-text hover:bg-app-text hover:text-app-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent active:border-app-text active:bg-app-text active:text-app-bg ${on ? 'border-app-text/50 text-app-text' : 'border-app-border/15 text-app-text/85'}`}>
-            <chip.Icon size={16} aria-hidden="true" className="shrink-0" />
-            <span className="min-w-0 sm:truncate">{locale === 'en' ? chip.en : locale === 'ru' ? chip.ru : chip.ka}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
   // „გამარჯობა, {name}" — Gemini's personal line above the greeting, for a signed-in user in the chat. Cyan fading
   // into the text colour: one hue, no second accent (docs/DESIGN.md §6–§7).
   const personalGreeting = chatOnly && firstName
@@ -8497,28 +8429,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-[54px]' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        className={`min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {messages.length === 0 ? (
-          <div className={`relative flex flex-col items-center justify-center gap-6 px-2 text-center ${centred ? 'mt-auto w-full pb-7 pt-6' : 'min-h-full py-6'}`}>
+          <div className={`relative flex flex-col items-center justify-center px-2 text-center ${centred ? 'mt-auto w-full pb-3 pt-6' : 'min-h-full pb-16 pt-6'}`}>
             {/* brand/v1 A3 — the night-street atmosphere as a FAINT 8 % plate behind the greeting, faded out at
                 the edges. A mood, never a poster: the copy stays the brightest thing on the screen. */}
             <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={BRAND_V1.plate.src} alt="" decoding="async" className="h-full w-full object-cover opacity-[0.08]" />
             </div>
-            <div className="relative space-y-2">
+            {/* THE HOME IS THE GREETING AND THE BOX — nothing else (owner, 2026-10-02: no sub line, no starter chips).
+                The greeting carries its own soft halo of the brand blue as a layered text-shadow — a separate glow box
+                (tried first) made the feed scroll and cut a hard edge above the box, because anything that sticks out
+                of a scroll container is scrollable overflow and a shadow is not. It rises in once, and not at all under
+                reduced motion. */}
+            <div className="relative space-y-3 motion-safe:[animation:agSlideUp_0.7s_cubic-bezier(0.2,0.7,0.2,1)_both]">
               {personalGreeting && (
                 <p data-testid="personal-greeting" className="bg-gradient-to-r from-app-accent to-app-text bg-clip-text pb-1 text-[18px] font-medium leading-[1.4] text-transparent sm:text-[20px]">
                   {personalGreeting}
                 </p>
               )}
-              {/* The locked copy (docs/DESIGN.md §7) — the same greeting and line in every mode. */}
-              <h1 className="font-display text-[30px] font-bold leading-tight tracking-[-0.01em] text-app-text sm:text-[36px]">{t.greeting}</h1>
-              <p className="mx-auto max-w-lg text-balance text-[16px] leading-relaxed text-app-muted">{t.empty}</p>
+              {/* The locked greeting (docs/DESIGN.md §7). Solid ink, never gradient text: forced-colors mode strips the
+                  background a clipped gradient needs and would leave the page's one heading invisible. */}
+              <h1 className="text-balance font-display text-[34px] font-bold leading-[1.18] tracking-[-0.015em] text-app-text [text-shadow:0_0_28px_rgb(var(--app-accent)/0.38),0_0_80px_rgb(var(--app-accent)/0.22)] sm:text-[48px]">{t.greeting}</h1>
             </div>
-            {/* In the centred chat the chips sit UNDER the composer (rendered after it, below). */}
-            {!centred && starterChips}
           </div>
         ) : messageList}
       </div>
@@ -8550,9 +8485,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
-        {/* No service shortcuts IN the composer — the in-pill mode dropdown (Video ⌄ / Chat ⌄) is the
-            canonical mode switcher. The empty state above carries the four STARTER_CHIPS (service shortcuts
-            that never send; see their definition for why the old prompt chips were removed). */}
+        {/* No service shortcuts IN the composer or on the empty home — the tool chip and the navigation are how a
+            service is chosen. */}
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
@@ -8939,7 +8873,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
                 )}
-                {input.trim() && !onlyStarter && !chatOnly && (
+                {input.trim() && !chatOnly && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row
                   // composer keeps [mic][live][send] clean and Send never wraps. (magicEnhance stays wired.)
                   // Not in the chat: it rewrites a GENERATION prompt; a question to the assistant is not one.
@@ -8970,8 +8904,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             „25 კრედიტი · ~5 წთ“ line removed too). A priced tool's price is ON its Generate button (lib/credits/quote —
             the same number the route charges), never a caption under the box; the AI notice lives in the Terms. */}
       </div>
-      {/* The centred empty chat (desktop): the starter chips UNDER the composer, closing the centred group. */}
-      {centred && <div className="flex w-full flex-1 basis-0 items-start justify-center pt-6">{starterChips}</div>}
+      {/* The centred empty chat (desktop): an empty half under the composer, equal to the feed above it. */}
+      {centred && <div aria-hidden="true" className="w-full flex-1 basis-0" />}
 
       {/* All full-screen overlays portal to document.body so they render above
           root-level chrome (the cookie banner) instead of being trapped in the chat

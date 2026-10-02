@@ -232,23 +232,14 @@ for (const vp of VIEWPORTS) {
       expect(posts).toEqual(['/api/chat/gemini']);
     });
 
-    test('the video tool: the reel chip is first and pressed, the composer asks for a shot', async ({ page }) => {
+    test('the home is the greeting and the box — no sub line, no starter chips — and the video tool asks for a shot', async ({ page }) => {
       await openDashboard(page);
-      const sub = page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.');
-      await expect(sub).toBeVisible();
-      const line = (await sub.textContent()) ?? '';
-      expect(line.indexOf('ვიდეო')).toBeGreaterThanOrEqual(0);
-      expect(line.indexOf('ვიდეო')).toBeLessThan(line.indexOf('სურათი')); // video is named first
+      // Owner, 2026-10-02: "in the middle only რით დაგეხმარო; remove the four frames below".
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText('რით დაგეხმარო?');
+      await expect(page.getByText('შექმენი ვიდეო, სურათი ან მუსიკა — ტექსტით, ხმით ან ფაილით.')).toHaveCount(0);
+      await expect(page.getByRole('group', { name: 'დაიწყე' })).toHaveCount(0);
       // The tool chip names what you make and its shape — its text is its accessible name.
       await expect(page.getByTestId('options-toggle')).toHaveText('ვიდეო · 9:16 · 24წმ');
-      const chips = page.getByRole('group', { name: 'დაიწყე' }).getByRole('button');
-      await expect(chips).toHaveCount(4);
-      for (let i = 0; i < 4; i++) await expect(chips.nth(i)).toBeVisible();
-      await expect(chips.nth(0)).toHaveText('კინო რილი 9:16');
-      await expect(chips.nth(0)).toHaveAttribute('aria-pressed', 'true');
-      await expect(chips.nth(1)).toHaveText('პროდუქტის სურათი');
-      await expect(chips.nth(2)).toHaveText('საუნდთრექი');
-      await expect(chips.nth(3)).toHaveText('ავატარის პორტრეტი');
       await expect(page.getByPlaceholder(VIDEO_PLACEHOLDER)).toBeVisible();
     });
 
@@ -281,7 +272,7 @@ for (const vp of VIEWPORTS) {
       await expect(nav.getByRole('button', { name: 'ვიდეო', exact: true })).not.toHaveAttribute('aria-current', 'true');
     });
 
-    test('a chip switches the service and sends nothing', async ({ page }) => {
+    test('Enter on an empty box sends nothing, and the home stays the greeting and the box', async ({ page }) => {
       await openDashboard(page);
       const posts: string[] = [];
       // Background traffic is not a send: the presence heartbeat POSTs on its own schedule (it made this flaky on
@@ -291,15 +282,8 @@ for (const vp of VIEWPORTS) {
         const path = new URL(r.url()).pathname;
         if (r.method() === 'POST' && path.startsWith('/api/') && !BACKGROUND.test(path)) posts.push(r.url());
       });
-      const chips = page.getByRole('group', { name: 'დაიწყე' }).getByRole('button');
-      await chips.nth(1).click();
-      await expect(chips.nth(1)).toHaveAttribute('aria-pressed', 'true');
-      await expect(chips.nth(0)).toHaveAttribute('aria-pressed', 'false');
-      const box = page.getByPlaceholder('აღწერე სურათი, რომ დაგიხატო…');
-      await expect(box).toBeFocused();
-      // The chip writes a starter the user completes — and an untouched starter has nothing to send.
-      await expect(box).toHaveValue('პროდუქტის სურათი — პროდუქტი: ');
-      await expect(page.getByRole('button', { name: 'სურათის შექმნა' })).toHaveCount(0);
+      const box = page.getByPlaceholder(VIDEO_PLACEHOLDER);
+      await box.focus();
       await box.press('Enter');
       await page.waitForTimeout(800);
       expect(posts).toEqual([]);
@@ -344,7 +328,8 @@ for (const vp of VIEWPORTS) {
     // The guest gate is lifted in this browser only — it is the sign-in wall, not what is under test.
     async function startImageJob(page: Page) {
       await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
-      await page.getByRole('group', { name: 'დაიწყე' }).getByRole('button').nth(1).click(); // the image tool
+      await page.getByTestId('plus').click();
+      await page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').nth(2).click(); // the image tool
       const settings = await openSettings(page);
       await settings.getByRole('button', { name: '9:16', exact: true }).first().click();
       if (vp.name === 'phone') await page.getByRole('button', { name: 'დახურვა' }).filter({ visible: true }).first().click();
@@ -454,15 +439,9 @@ for (const vp of VIEWPORTS) {
       const h1 = (await page.getByRole('heading', { level: 1 }).boundingBox())!;
       const composer = (await page.getByPlaceholder(VIDEO_PLACEHOLDER).boundingBox())!;
       const options = (await page.getByTestId('options-toggle').boundingBox())!;
-      const chips = await Promise.all((await page.getByRole('group', { name: 'დაიწყე' }).getByRole('button').all()).map((c) => c.boundingBox()));
       expect(overlaps(header, h1)).toBe(false);
-      for (const c of chips) {
-        expect(overlaps(c!, h1)).toBe(false);
-        expect(overlaps(c!, options)).toBe(false);
-        expect(overlaps(c!, composer)).toBe(false);
-        expect(c!.height).toBeGreaterThanOrEqual(44); // tap target
-      }
-      for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) expect(overlaps(chips[i]!, chips[j]!)).toBe(false);
+      expect(overlaps(h1, composer)).toBe(false);
+      expect(overlaps(h1, options)).toBe(false);
       expect(composer.y + composer.height).toBeLessThanOrEqual(vp.height);
       await noHorizontalScroll(page);
     });
