@@ -126,7 +126,10 @@ import { musicEngineField } from '@/lib/studio/musicEnginePref';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
-import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
+import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
+import { documentToText } from '@/lib/chat/documentText';
+import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
+import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
 // The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
@@ -859,7 +862,7 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
 }
 
 
-interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -925,7 +928,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -2383,10 +2386,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (f.size === 0) { toast.error(rejectionMessage('empty', lang, label)); continue; }
       try {
         const mime = mimeForFile(f);
-        // Header from the extension first (an untyped .heic/.png reads as octet-stream), then downscale.
-        const raw = withDataUrlMime(await fileToDataUrl(f), mime);
-        const dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
-        const mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        let dataUrl: string;
+        let mimeType: string;
+        let truncated = false;
+        if (kind === 'text' || kind === 'doc') {
+          // A document the model can READ: Word through the extractor, .txt/.md decoded here — both travel as text/plain.
+          const doc = await documentToText(f, kind, { readText: (file) => file.text(), readDataUrl: fileToDataUrl, fetch: (...a) => fetch(...a) });
+          if (!doc) { toast.error(rejectionMessage('unreadable', lang, label)); continue; }
+          dataUrl = doc.dataUrl; mimeType = doc.mimeType; truncated = doc.truncated;
+        } else {
+          // Header from the extension first (an untyped .heic/.png reads as octet-stream), then downscale.
+          const raw = withDataUrlMime(await fileToDataUrl(f), mime);
+          dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
+          mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        }
         // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
         // song passed the caps above and then failed at Send with only a generic error. Everything except a video
         // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
@@ -2396,7 +2409,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         if (kind !== 'video') inlineBytesRef.current += dataUrl.length;
         room -= 1;
-        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, ...(f.name ? { name: f.name } : {}) }]);
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
       } catch {
         toast.error(rejectionMessage('unreadable', lang, label));
       }
@@ -4812,7 +4825,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const payload = serializeHistory(history.map((m) => ({
       role: m.role,
       text: m.text,
-      ...(m.medias?.length ? { medias: m.medias } : {}),
+      // A video turn carries its frames + soundtrack for the model, not the clip itself (lib/chat/videoDigest).
+      ...((m.modelMedias ?? m.medias)?.length ? { medias: (m.modelMedias ?? m.medias)! } : {}),
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.audioUrl ? { audioUrl: m.audioUrl } : {}),
@@ -5230,6 +5244,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const ac = new AbortController();
     abortRef.current = ac;
     const mine = () => genIdRef.current === myGen;
+
+    // ── VIDEO UNDERSTANDING (chat-attached) ────────────────────────────────────
+    // A video + a QUESTION (or no words) is not an edit: it used to be classified as one and, when nothing matched, spent
+    // credits on a colour grade. The clip is read here, in the browser, as frames + the start of its soundtrack
+    // (lib/chat/videoDigest) and answered by the chat model like any other turn — no upload, no charge. Edit requests
+    // ("add subtitles", "make it vintage", the chips' phrases) still go to the remix pipeline below.
+    if (mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && !isVideoEditRequest(text)) {
+      const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      setBusy(true);
+      let digest: Awaited<ReturnType<typeof captureVideoDigest>> = null;
+      try { digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob()); } catch { digest = null; }
+      if (!digest) {
+        setBusy(false);
+        toast.error(locale === 'en' ? 'This browser cannot read that video — try an MP4 (H.264) or WebM clip'
+          : locale === 'ru' ? 'Браузер не может прочитать это видео — попробуйте MP4 (H.264) или WebM'
+            : 'ამ ბრაუზერმა ვიდეო ვერ წაიკითხა — სცადე MP4 (H.264) ან WebM');
+        return;
+      }
+      const others = attachments.filter((a) => !isVideo(a.mimeType));
+      const budget = Math.max(400_000, DEFAULT_TOTAL_CAP_BYTES - others.reduce((n, a) => n + a.dataUrl.length, 0));
+      const parts = digestToMedia(videoAtt.name || 'video', fitDigest(digest, budget));
+      const asked = text || defaultVideoQuestion(locale);
+      const videoTurn: Msg = { role: 'user', text: asked, inputMethod: viaVoice ? 'voice' : 'text', medias: attachments, modelMedias: [...others, ...parts] };
+      setInput(''); setAttachments([]);
+      inputSourceRef.current = 'text';
+      persistChatTurn('user', asked);
+      autoPlayReplyRef.current = viaVoice;
+      setBusy(false);
+      await streamChat([...messages, videoTurn]);
+      return;
+    }
 
     // ── VIDEO REMIX (chat-attached) ────────────────────────────────────────────
     // A video attached in chat + a text request = "edit this video", NOT the film
@@ -8565,11 +8610,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
                 ) : (
-                  <span className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-xl bg-app-surface text-app-accent">
-                    {isAudio(a.mimeType) ? <Music2 size={18} /> : <FileText size={18} />}
-                    {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) && (
-                      <span className="max-w-[3.25rem] truncate text-[9px] font-semibold uppercase leading-none text-app-muted">{a.name.split('.').pop()}</span>
-                    )}
+                  // A document or a sound: its icon, its NAME and its size (a 56 px square said only "pdf") — and, when its
+                  // text was cut at the cap, that it was.
+                  <span className="flex h-14 max-w-[13rem] items-center gap-2 rounded-xl bg-app-surface px-3 text-app-accent">
+                    {isAudio(a.mimeType) ? <Music2 size={18} className="shrink-0" /> : <FileText size={18} className="shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="block max-w-[9.5rem] truncate text-[12px] font-medium leading-tight text-app-text">{a.name || (isAudio(a.mimeType) ? 'audio' : 'file')}</span>
+                      <span className="block truncate text-[10.5px] uppercase leading-tight text-app-muted">
+                        {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : ''}
+                        {a.size ? `${a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? ' · ' : ''}${formatBytes(a.size)}` : ''}
+                        {a.truncated ? ` · ${locale === 'en' ? 'shortened' : locale === 'ru' ? 'сокращён' : 'შეკვეცილია'}` : ''}
+                      </span>
+                    </span>
                   </span>
                 )}
                 <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
@@ -8581,7 +8633,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* Input surface — one clean rounded pill. The picker accepts MULTIPLE files
             (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
-        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,.txt,.md,.pdf,.docx,.doc,.rtf" className="hidden" onChange={(e) => {
+        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,text/*,.txt,.md,.pdf,.docx,.doc,.rtf,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml,.log,.srt,.vtt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.cs,.go,.rs,.rb,.php,.sh,.sql,.css" className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
           // In VIDEO mode a document attached via the "+" IS the film script → ingestFiles loads it into

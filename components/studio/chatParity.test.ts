@@ -110,6 +110,34 @@ describe('the chat takes everything a person can bring', () => {
   });
 });
 
+describe('the chat can USE what it is given', () => {
+  it('a video + a question (or no words) is read as frames + soundtrack; only an edit request reaches the paid remix', () => {
+    expect(omni).toMatch(/if \(mode === 'chat' && attachments\.some\(\(a\) => isVideo\(a\.mimeType\)\) && !isVideoEditRequest\(text\)\) \{/);
+    expect(omni).toContain('digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob())');
+    // the analysis turn is answered by the chat stream, and the remix branch comes AFTER it
+    expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeGreaterThan(0);
+    expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeLessThan(omni.indexOf('VIDEO REMIX (chat-attached)'));
+    expect(omni).toContain('await streamChat([...messages, videoTurn]);');
+  });
+
+  it('the model gets the digest, the bubble keeps the clip: payloads read modelMedias first, and it is never persisted', () => {
+    expect(omni).toContain('...((m.modelMedias ?? m.medias)?.length ? { medias: (m.modelMedias ?? m.medias)! } : {}),');
+    const lean = omni.slice(omni.indexOf('function leanMessages'), omni.indexOf('function leanMessages') + 1400);
+    expect(lean).not.toContain('modelMedias');
+    expect(lean).not.toContain('medias:');
+  });
+
+  it('Word and text files are read as text, and the tray names every document with its size', () => {
+    expect(omni).toContain("const doc = await documentToText(f, kind, { readText: (file) => file.text(), readDataUrl: fileToDataUrl, fetch: (...a) => fetch(...a) });");
+    expect(omni).toContain('{formatBytes(a.size)}');
+    expect(omni).toContain('size: f.size');
+  });
+
+  it('the Files picker offers documents, data and source text — not only the five formats it used to list', () => {
+    expect(omni).toMatch(/accept="image\/\*,audio\/\*,video\/\*,application\/pdf,text\/\*,\.txt,\.md,\.pdf,\.docx,\.doc,\.rtf,\.csv,\.tsv,\.json/);
+  });
+});
+
 describe('the price is on the button that spends', () => {
   it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
     expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(\{ tool: activeTool \}\)/);
