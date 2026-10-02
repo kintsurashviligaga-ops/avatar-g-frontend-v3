@@ -53,7 +53,9 @@ test('build-thumbs finds each card\'s `thumb:` line in its own file', () => {
     ['interior', 'lib/studio/templates.interior.ts', INTERIOR_TEMPLATES],
     ['photoshoot', 'lib/studio/templates.photoshoot.ts', PHOTOSHOOT_TEMPLATES],
   ] as const) {
-    const source = readFileSync(join(ROOT, file), 'utf8');
+    // The card file as a build finds it: every `thumb: '/templates/<id>.jpg'` put back to `thumb: null` (once the
+    // pictures are built and applied the real file says "already" — this suite is about the script, not the pictures).
+    const source = list.reduce((acc, t) => acc.replace(`thumb: '/templates/${tool}/${t.id}.jpg',`, 'thumb: null,'), readFileSync(join(ROOT, file), 'utf8'));
     const changes = thumbLineChanges(source, list.map((t) => `${tool}/${t.id}`)) as { id: string; state: string; after: string | null }[];
     for (const c of changes) {
       expect({ id: c.id, state: c.state }).toEqual({ id: c.id, state: 'change' }); // thumb: null → the shot's file
