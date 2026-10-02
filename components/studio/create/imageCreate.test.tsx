@@ -40,6 +40,9 @@ const show = (over: Partial<ImageCreatePanelProps> = {}) => {
 
 const generate = () => screen.getByTestId('create-generate');
 
+// The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not leak into the next.
+beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
+
 describe('the rows, in the reference\'s order', () => {
   test('header → upload → prompt → templates → advanced → chips → Generate', () => {
     const { container } = show();
@@ -272,21 +275,55 @@ describe('the chips show the live values and open large pickers', () => {
   });
 });
 
-describe('the model row: Auto, and only what the route can really use', () => {
-  test('one entry — Auto — checked, explained, and priced from the quote', () => {
+describe('the model row: the studio\'s ModelPicker — what this route can run, the rest dimmed with why, and no price', () => {
+  const rows = () => within(screen.getByRole('dialog', { name: 'Model' })).getAllByRole('radio');
+  const row = (id: string) => rows().find((r) => r.getAttribute('data-model') === id)!;
+
+  test('Auto, Nano Banana V2 and Pro can be picked; Soul 2 (Studio β) is listed, dimmed, saying why; Auto is checked', () => {
     show();
     fireEvent.click(screen.getByTestId('model-row'));
+    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', 'hf/soul-2']);
+    expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
+    expect(row('nb/auto').getAttribute('aria-checked')).toBe('true');
+    expect(row('nb/auto').textContent).toContain('Auto');
+    expect(row('nb/auto').textContent).toContain('V2 at 1K and 2K, Pro at 4K');
+    expect(row('nb/pro').textContent).toContain('Max quality'); // the speed/quality badge
+    expect(row('hf/soul-2').getAttribute('aria-disabled')).toBe('true');
+    expect(row('hf/soul-2').textContent).toContain('Not enabled yet');
+    // ⚠️ No price anywhere in the model list — the request names the model and the server quotes it.
     const dialog = screen.getByRole('dialog', { name: 'Model' });
-    const options = within(dialog).getAllByRole('radio');
-    expect(options).toHaveLength(1);
-    expect(options[0]!.getAttribute('aria-checked')).toBe('true');
-    expect(options[0]!.textContent).toContain('Auto');
-    expect(options[0]!.textContent).toContain('Nano Banana V2');
-    expect(options[0]!.textContent).toContain('backup engine');
-    expect(options[0]!.textContent).toContain(creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en'));
-    // Picking the only entry closes the picker.
-    fireEvent.click(options[0]!);
+    expect(dialog.textContent).not.toContain(creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en'));
+    expect(dialog.textContent).not.toMatch(/credit/i);
+  });
+
+  test('a pick is one tap: it closes the sheet, the row reads the model, the browser remembers it — a dimmed row does nothing', () => {
+    show();
+    fireEvent.click(screen.getByTestId('model-row'));
+    fireEvent.click(row('hf/soul-2'));
+    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
+    fireEvent.click(row('nb/v2'));
     expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
+    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana V2');
+    expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/v2');
+  });
+
+  test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {
+    const { p } = show({ quality: 'standard', model: 'nb/pro', onModel: jest.fn() });
+    expect(p.onQuality).toHaveBeenCalledWith('high');
+    fireEvent.click(screen.getByTestId('chip-quality'));
+    const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
+    expect((options[0] as HTMLButtonElement).disabled).toBe(true);
+    expect(options[0]!.textContent).toContain('Nano Banana Pro does not render this size');
+    expect(options[1]!.textContent).toContain('Nano Banana Pro');
+  });
+
+  test('controlled: `model` / `onModel` override the browser\'s pick', () => {
+    const onModel = jest.fn();
+    show({ model: 'nb/pro', onModel });
+    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana Pro');
+    fireEvent.click(screen.getByTestId('model-row'));
+    fireEvent.click(row('nb/auto'));
+    expect(onModel).toHaveBeenCalledWith('nb/auto');
   });
 });
 

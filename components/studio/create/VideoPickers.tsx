@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * The three pickers the create screen opens from its tiles: LENGTH (presets + a slider over the real grid, with the live
- * price), FORMAT (the four ratios), and MODEL (mode + the engine tiers with their prices). `VideoModelList` is also the
- * desktop "Models & prices" table (VideoStage) — one list, so the phone's picker and the desktop's table cannot disagree.
+ * The pickers the create screen opens from its tiles: LENGTH (presets + a slider over the real grid, with the live price) and
+ * FORMAT (the four ratios). The MODEL is chosen in the studio's one ModelPicker (components/studio/ui/ModelPicker — the
+ * catalogue's video rows, no prices); `VideoModeChoice` rides at the top of that sheet. `VideoModelList` is the desktop
+ * "Models & prices" table (VideoStage).
  *
  * ⚠️ THE SLIDER CANNOT LAND BETWEEN STOPS: it is an integer range over the INDEX of VIDEO_DURATION_STOPS (4, 6, 8, then
  * every 8 s), so every value it produces is a length the server accepts. Lengths that need the long-form pipeline stay
@@ -253,46 +254,32 @@ export function VideoModelList({ locale, tier, mode, seconds, onTier, variant }:
   );
 }
 
-export function VideoModelSheet({ open, onClose, locale, tier, mode, seconds, onTier, onMode }: {
-  open: boolean;
-  onClose: () => void;
-  locale: string;
-  tier: VideoQuality;
-  mode: VideoMode;
-  seconds: number;
-  onTier: (t: VideoQuality) => void;
-  onMode: (m: VideoMode) => void;
-}) {
+/**
+ * Documentary or music video — what the film IS, independent of the model it renders on. Shown at the top of the model
+ * sheet (where it always was), above the models.
+ */
+export function VideoModeChoice({ locale, mode, onMode }: { locale: string; mode: VideoMode; onMode: (m: VideoMode) => void }) {
   const modes: { id: VideoMode; name: string; sub: string }[] = [
     { id: 'documentary', name: modeName('documentary', locale), sub: vc(VIDEO_COPY.modeDocumentarySub, locale) },
     { id: 'musicvideo', name: modeName('musicvideo', locale), sub: vc(VIDEO_COPY.modeMusicVideoSub, locale) },
   ];
   return (
-    <BottomSheet open={open} onClose={onClose} title={vc(VIDEO_COPY.modelTitle, locale)} closeLabel={vc(VIDEO_COPY.close, locale)} testId="video-model-sheet">
-      <div className="space-y-4 px-2 pb-3 pt-1">
-        <div>
-          <p className="px-1 pb-2 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.modeLabel, locale)}</p>
-          <div role="radiogroup" aria-label={vc(VIDEO_COPY.modeLabel, locale)} className="grid grid-cols-2 gap-2">
-            {modes.map((m) => {
-              const on = m.id === mode;
-              return (
-                <button key={m.id} type="button" role="radio" aria-checked={on} onClick={() => onMode(m.id)} data-testid={`video-mode-${m.id}`}
-                  className={cx('flex min-h-[64px] min-w-0 flex-col items-start justify-center gap-0.5 rounded-2xl border px-3 py-2 text-left transition-colors',
-                    on ? 'border-app-accent/60 bg-app-accent/10' : 'border-app-border/15 bg-app-elevated hover:bg-app-elevated/70')}>
-                  <span className={cx('text-[14.5px] font-semibold', on ? 'text-app-accent' : 'text-app-text')}>{m.name}</span>
-                  <span className="text-[11.5px] leading-tight text-app-muted">{m.sub}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div>
-          <p className="px-1 pb-2 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.engineLabel, locale)}</p>
-          <VideoModelList locale={locale} tier={tier} mode={mode} seconds={seconds} onTier={onTier} variant="sheet" />
-          {mode === 'musicvideo' && <p className="px-1 pt-2 text-[12px] leading-snug text-app-muted">{vc(VIDEO_COPY.musicVideoSurcharge(MUSIC_VIDEO_SURCHARGE_PCT), locale)}</p>}
-        </div>
-        <button type="button" onClick={onClose} className={DONE_BTN}>{vc(VIDEO_COPY.done, locale)}</button>
+    <div data-testid="video-mode-choice">
+      <p className="px-1 pb-2 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.modeLabel, locale)}</p>
+      <div role="radiogroup" aria-label={vc(VIDEO_COPY.modeLabel, locale)} className="grid grid-cols-2 gap-2">
+        {modes.map((m) => {
+          const on = m.id === mode;
+          return (
+            <button key={m.id} type="button" role="radio" aria-checked={on} onClick={() => onMode(m.id)} data-testid={`video-mode-${m.id}`}
+              className={cx('flex min-h-[64px] min-w-0 flex-col items-start justify-center gap-0.5 rounded-2xl border px-3 py-2 text-left transition-colors',
+                on ? 'border-app-accent/60 bg-app-accent/10' : 'border-app-border/15 bg-app-elevated hover:bg-app-elevated/70')}>
+              <span className={cx('text-[14.5px] font-semibold', on ? 'text-app-accent' : 'text-app-text')}>{m.name}</span>
+              <span className="text-[11.5px] leading-tight text-app-muted">{m.sub}</span>
+            </button>
+          );
+        })}
       </div>
-    </BottomSheet>
+      <p className="px-1 pb-0.5 pt-4 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.modelsLabel, locale)}</p>
+    </div>
   );
 }

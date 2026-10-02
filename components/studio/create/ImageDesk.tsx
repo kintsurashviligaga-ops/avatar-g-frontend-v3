@@ -11,14 +11,14 @@
  */
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, MessagesSquare } from 'lucide-react';
-import type { ImageEngineId, ImgQuality } from '@/lib/studio/imageCreate';
+import type { ImgQuality } from '@/lib/studio/imageCreate';
 import type { ImageResultView } from '@/lib/studio/imageResults';
 import { imageCreateCopy } from './imageCreateCopy';
 import { ImageModelsTable } from './ImageModelsTable';
 import { ImageResultPane, type ImageResultActions } from './ImageResultPane';
 
 export function ImageDesk({
-  locale, results, notice, aspect, quality, onQuality, model, onModel, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
+  locale, results, notice, aspect, quality, onQuality, model, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
 }: {
   locale: string;
   results: readonly ImageResultView[];
@@ -26,8 +26,8 @@ export function ImageDesk({
   aspect: string;
   quality: ImgQuality;
   onQuality: (q: ImgQuality) => void;
-  model?: ImageEngineId;
-  onModel?: (id: ImageEngineId) => void;
+  /** The picked image model; by default the browser's pick (lib/studio/modelPick). */
+  model?: string;
   elapsedSec: number;
   capSecFor: (quality: string) => number;
   actions: ImageResultActions;
@@ -45,7 +45,7 @@ export function ImageDesk({
     <div data-testid="image-desk" className="min-w-0 space-y-7 px-0.5 pb-2 pt-2">
       {agentG}
       <ImageResultPane locale={locale} results={results} notice={notice} aspect={aspect} elapsedSec={elapsedSec} capSecFor={capSecFor} actions={actions} busy={busy} upscaling={upscaling} />
-      <ImageModelsTable locale={locale} quality={quality} onQuality={onQuality} {...(model ? { model } : {})} {...(onModel ? { onModel } : {})} />
+      <ImageModelsTable locale={locale} quality={quality} onQuality={onQuality} {...(model ? { model } : {})} />
       {messageCount > 0 && (
         <section data-testid="image-conversation">
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}

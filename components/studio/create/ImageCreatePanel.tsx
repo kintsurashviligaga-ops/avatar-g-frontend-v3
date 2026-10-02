@@ -8,7 +8,8 @@
  * Top to bottom on a 375 px phone — the order of ref3:
  *   header        the tool's name with a chevron (the tool switcher) · ✕ where the surrounding sheet is closable
  *   upload        a dashed card: "Choose an image to upload (max N)" — N is what the image route REALLY takes (one)
- *   prompt        the prompt card; its bottom row is "◎ Model … Auto ▾"
+ *   prompt        the prompt card; its bottom row is "◎ Model … Auto ▾" — it opens the studio's ModelPicker (components/studio/ui):
+ *                 Auto · Nano Banana V2 · Nano Banana Pro, and the models this route cannot run dimmed, saying where they run
  *   templates     a collapsible gallery directly under the prompt (open on a desktop, shut on a phone)
  *   advanced      the infrequent controls, shut: style · negative prompt · whatever the studio slots in (Script → Storyboard)
  *   ─ footer (sticky) ─
@@ -25,13 +26,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Cpu, Gem, Image as ImageIcon, Layers, LayoutTemplate, SlidersHorizontal, X } from 'lucide-react';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
+import { ModelPicker } from '@/components/studio/ui/ModelPicker';
 import { TemplateGallery, type TemplateCardItem } from '@/components/studio/ui/TemplateGallery';
 import { Chip, TextArea } from '@/components/studio/ui/controls';
 import { creditsLabel } from '@/lib/credits/quote';
 import {
-  IMAGE_ENGINES, IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, engineFor, imageCredits, imageLang,
-  tierFor, type ImageEngineId, type ImgAspect, type ImgCount, type ImgQuality,
+  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageVariant,
+  nativeQuality, tierFor, type ImgAspect, type ImgCount, type ImgQuality,
 } from '@/lib/studio/imageCreate';
+import type { ModelRunner } from '@/lib/providers/catalogue';
+import { useModelPick } from '@/lib/studio/modelPick';
 import { AspectGlyph } from './AspectGlyph';
 import { imageCreateCopy } from './imageCreateCopy';
 import { OptionChip, OptionChipRow } from './OptionChips';
@@ -40,6 +44,9 @@ import { PromptModelCard, type MicState } from './PromptModelCard';
 import { ReferenceUploadCard } from './ReferenceUploadCard';
 
 type PickerId = 'model' | 'aspect' | 'quality' | 'count';
+
+/** The one route this panel sends to: /api/nanobanana/image. */
+const IMAGE_RUNNERS: readonly ModelRunner[] = ['image'];
 
 export interface ImageCreatePanelProps {
   locale: string;
@@ -85,8 +92,12 @@ export interface ImageCreatePanelProps {
   /** Whether the slotted content holds something the user typed — so a shut Advanced still shows a dot. */
   advancedExtraDirty?: boolean;
   // ── model + price + run
-  model?: ImageEngineId;
-  onModel?: (id: ImageEngineId) => void;
+  /**
+   * The picked model (lib/providers/catalogue, service 'image'). Uncontrolled by default: the panel reads and writes the
+   * browser's pick itself (lib/studio/modelPick) — the same store the studio reads when it sends (`imageModelField`).
+   */
+  model?: string;
+  onModel?: (id: string) => void;
   /** The spendable balance in credits as the header chip shows it; null when unknown (a guest, or not loaded). */
   balance: number | null;
   onGenerate: () => void;
@@ -128,8 +139,17 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   // ── what the screen quotes: the SAME functions the routes charge with ─────────────────────────────────────────────────────
   const credits = imageCredits(p.count);
   const insufficient = p.balance !== null && p.balance < credits;
-  const engine = engineFor(p.model ?? 'auto');
+  const [storedModel, setStoredModel] = useModelPick('image');
+  const model = imageModelFor(p.model ?? storedModel);
+  const pickModel = p.onModel ?? setStoredModel;
   const tier = tierFor(p.quality);
+  const onQuality = p.onQuality;
+  // A model without the size on screen (Nano Banana Pro has no 1K) moves the chip to the nearest size it HAS — the chip never
+  // reads a size the render would not be.
+  useEffect(() => {
+    const q = nativeQuality(model.id, p.quality);
+    if (q !== p.quality) onQuality(q);
+  }, [model.id, p.quality, onQuality]);
 
   // ── local view state ─────────────────────────────────────────────────────────────────────────────────────────────────────
   const [picker, setPicker] = useState<PickerId | null>(null);
@@ -159,7 +179,6 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
     });
   };
 
-  const modelBtn = useRef<HTMLButtonElement | null>(null);
   const aspectBtn = useRef<HTMLButtonElement | null>(null);
   const qualityBtn = useRef<HTMLButtonElement | null>(null);
   const countBtn = useRef<HTMLButtonElement | null>(null);
@@ -174,16 +193,17 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
 
   // ── picker contents ──────────────────────────────────────────────────────────────────────────────────────────────────────
   const aspectOptions = useMemo<PickerOption<ImgAspect>[]>(() => IMG_ASPECTS.map((a) => ({ value: a, label: a, glyph: <AspectGlyph ratio={a} size={26} on={a === p.aspect} /> })), [p.aspect]);
-  const qualityOptions = useMemo<PickerOption<ImgQuality>[]>(() => IMAGE_TIERS.map((t) => ({
-    value: t.quality, label: t.res, hint: `Nano Banana ${t.family} · ${t.note[lang]}`, glyph: <Gem size={20} />,
-    trailing: creditsLabel(imageCredits(1), p.locale),
-  })), [lang, p.locale]);
+  const qualityOptions = useMemo<PickerOption<ImgQuality>[]>(() => IMAGE_TIERS.map((t) => {
+    const v = imageVariant(model.id, t.quality);
+    return {
+      value: t.quality, label: t.res, glyph: <Gem size={20} />, disabled: !v.native,
+      hint: v.native ? `Nano Banana ${v.family} · ${t.note[lang]}` : c.qualityNotOnModel(model.label[lang]),
+      trailing: creditsLabel(imageCredits(1), p.locale),
+    };
+  }), [lang, p.locale, model, c]);
   const countOptions = useMemo<PickerOption<ImgCount>[]>(() => IMG_COUNTS.map((n) => ({
     value: n, label: c.countOption(n), glyph: <Layers size={20} />, trailing: creditsLabel(imageCredits(n), p.locale),
   })), [c, p.locale]);
-  const modelOptions = useMemo<PickerOption<ImageEngineId>[]>(() => IMAGE_ENGINES.map((e) => ({
-    value: e.id, label: e.name[lang], hint: e.summary[lang], glyph: <Cpu size={20} />, trailing: creditsLabel(e.perImage(), p.locale),
-  })), [lang, p.locale]);
 
   const dirtyAdvanced = p.style !== 'Auto' || p.negative.trim().length > 0 || !!p.advancedExtraDirty;
   const activeTemplateLabel = p.templates.find((t) => t.id === p.activeTemplate)?.label;
@@ -248,9 +268,8 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
           label={c.promptLabel}
           onSubmit={generate}
           modelLabel={c.model}
-          modelValue={engine.name[lang]}
+          modelValue={model.label[lang]}
           modelIcon={<Cpu size={18} />}
-          modelButtonRef={modelBtn}
           modelOpen={picker === 'model'}
           onOpenModel={() => setPicker((cur) => (cur === 'model' ? null : 'model'))}
           {...(p.onEnhance ? { onEnhance: p.onEnhance, enhanceLabel: c.enhance } : {})}
@@ -339,16 +358,17 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
       <OptionPicker open={picker === 'aspect'} onClose={closePicker} title={c.aspect} closeLabel={c.pickerClose} options={aspectOptions} value={p.aspect} onSelect={p.onAspect} desktop={p.desktop} anchorRef={aspectBtn} columns={5} testId="picker-aspect" />
       <OptionPicker open={picker === 'quality'} onClose={closePicker} title={c.quality} closeLabel={c.pickerClose} options={qualityOptions} value={p.quality} onSelect={p.onQuality} desktop={p.desktop} anchorRef={qualityBtn} testId="picker-quality" />
       <OptionPicker open={picker === 'count'} onClose={closePicker} title={c.countTitle} closeLabel={c.pickerClose} options={countOptions} value={p.count} onSelect={p.onCount} desktop={p.desktop} anchorRef={countBtn} testId="picker-count" />
-      <OptionPicker
+      {/* ⚠️ No price in the model list: the request names the model and the server quotes it — the number is on Generate. */}
+      <ModelPicker
+        service="image"
+        locale={p.locale}
+        value={model.id}
+        onChange={pickModel}
+        runners={IMAGE_RUNNERS}
         open={picker === 'model'}
-        onClose={closePicker}
+        onOpenChange={(o) => setPicker(o ? 'model' : null)}
+        trigger="none"
         title={c.modelTitle}
-        closeLabel={c.pickerClose}
-        options={modelOptions}
-        value={engine.id}
-        onSelect={(id) => p.onModel?.(id)}
-        desktop={p.desktop}
-        anchorRef={modelBtn}
         testId="picker-model"
       />
     </div>

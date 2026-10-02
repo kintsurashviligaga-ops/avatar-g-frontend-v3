@@ -13,18 +13,27 @@
  * templates, the scene frames, the storyboard and the Veo camera controls are the three disclosures' content — OmniStudio
  * passes the very same blocks in as `story`, `voice` and `advanced`, so they keep their state and their behaviour.
  *
+ * THE MODEL is the studio's one ModelPicker (components/studio/ui/ModelPicker): the catalogue's video rows — Veo 3.1 Lite ·
+ * Fast · Max quality, which this film route runs (`veo.tier` — the tier IS the model), and the Studio β models dimmed with
+ * why. "✎ Change", the Model row and the resolution tile open it; the documentary / music-video switch rides at its top. The
+ * pick is remembered in this browser (lib/studio/modelPick) and re-applied when the panel mounts; whatever changes the tier
+ * (the quality row, the desktop table) is remembered too. No price in it — the price is on Generate.
+ *
  * ⚠️ THE NUMBER ON THE BUTTON IS THE QUOTE (lib/video/createPanel.videoQuote → quoteCredits → videoCredits) for exactly the
  * seconds, tier and mode on screen; the server charges the film through the same function. No request carries a price.
  * `free` shows only for ONE short clip (≤ 8 s) while the trial slot is left; `insufficient` turns the tap into the top-up.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
+import { ModelPicker } from '@/components/studio/ui/ModelPicker';
+import { tierForVideoModel, videoModelForTier, type ModelRunner } from '@/lib/providers/catalogue';
+import { useModelPick } from '@/lib/studio/modelPick';
 import { videoQuote, freeSlotApplies, insertPromptToken, openDuration, videoResolution, type VideoCapabilities } from '@/lib/video/createPanel';
 import { planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import type { VideoMode } from '@/lib/credits/videoPricing';
 import type { OutputFormat } from '@/lib/veo/types';
 import type { VeoEngineInfo } from '../video/VeoParametersPanel';
-import { VideoDurationSheet, VideoFormatSheet, VideoModelSheet } from './VideoPickers';
+import { VideoDurationSheet, VideoFormatSheet, VideoModeChoice } from './VideoPickers';
 import { VideoExtendTab } from './VideoExtendTab';
 import {
   VideoCreateHeader, VideoDisclosure, VideoGenerateBar, VideoHero, VideoModelRow, VideoPromptCard, VideoQualityRow, VideoRefsCard, VideoTabs,
@@ -95,6 +104,9 @@ export interface VideoCreatePanelProps {
 
 type Sheet = 'duration' | 'format' | 'model' | null;
 
+/** The one route this panel sends to: the film (/api/chat/orchestrate, `veo.tier`). */
+const FILM_RUNNERS: readonly ModelRunner[] = ['film'];
+
 export function VideoCreatePanel(p: VideoCreatePanelProps) {
   const { locale, plan, dispatch, mode, seconds, format, prompt, refs, generate, caps } = p;
   const [tab, setTab] = useState<VideoTab>('create');
@@ -113,6 +125,24 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
   const tier = plan.tier;
   const credits = videoQuote({ seconds, tier, mode });
+
+  // ── the remembered model ────────────────────────────────────────────────────────────────────────────────────────────
+  // The film's tier lives in the studio's Veo plan; this browser's pick lives in lib/studio/modelPick. A stored pick is
+  // applied when it arrives (after hydration, or from another tab); any later tier change — this sheet, the quality row,
+  // the desktop table — is stored. Neither effect writes what the other just read, so they cannot ping-pong.
+  const [storedModel, setStoredModel] = useModelPick('video');
+  useEffect(() => {
+    const t = tierForVideoModel(storedModel);
+    if (t && t !== plan.tier) dispatch({ type: 'tier', tier: t });
+    // Only a NEW stored pick is applied; the tier changing under it is the other effect's business.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedModel]);
+  const seenTier = useRef(plan.tier);
+  useEffect(() => {
+    if (seenTier.current === plan.tier) return;
+    seenTier.current = plan.tier;
+    setStoredModel(videoModelForTier(plan.tier).id);
+  }, [plan.tier, setStoredModel]);
   const free = freeSlotApplies(generate.freeFilmsRemaining, seconds);
   const insufficient = !free && generate.balanceCredits !== null && generate.balanceCredits < credits;
   const audioToggle = p.engine?.audioToggle ?? false;
@@ -168,8 +198,19 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
       <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} />
       <VideoFormatSheet open={sheet === 'format'} onClose={() => setSheet(null)} locale={locale} format={format} onChange={p.onFormat} musicVideo={mode === 'musicvideo'} notes={croppedNotes} />
-      <VideoModelSheet open={sheet === 'model'} onClose={() => setSheet(null)} locale={locale} tier={tier} mode={mode} seconds={seconds}
-        onTier={(t) => dispatch({ type: 'tier', tier: t })} onMode={p.onMode} />
+      <ModelPicker
+        service="video"
+        locale={locale}
+        value={videoModelForTier(tier).id}
+        onChange={(id) => { const t = tierForVideoModel(id); if (t) dispatch({ type: 'tier', tier: t }); }}
+        runners={FILM_RUNNERS}
+        open={sheet === 'model'}
+        onOpenChange={(o) => setSheet(o ? 'model' : null)}
+        trigger="none"
+        title={vc(VIDEO_COPY.modelTitle, locale)}
+        header={<VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />}
+        testId="video-model-sheet"
+      />
     </div>
   );
 }

@@ -7,6 +7,9 @@ import { VideoCreatePanel, type VideoCreatePanelProps } from './VideoCreatePanel
 
 const OPEN: VideoCapabilities = { longform: true, maxSeconds: 240 };
 
+// The model pick is remembered per browser (lib/studio/modelPick): one test's pick must not become the next one's mount.
+beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
+
 function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCreatePanelProps['generate']> = {}, refs: Partial<VideoCreatePanelProps['refs']> = {}) {
   const calls = {
     onSeconds: jest.fn(), onPrompt: jest.fn(), onMode: jest.fn(), onFormat: jest.fn(), dispatch: jest.fn<void, [VeoPlanAction]>(),
@@ -276,21 +279,41 @@ describe('format and model pickers', () => {
     expect(screen.queryByTestId('video-format-sheet')).toBeNull();
   });
 
-  test('"Change" on the hero and the Model row both open the model picker: mode + the tiers with their prices', () => {
+  test('"Change" on the hero and the Model row both open the model picker: mode, then the catalogue\'s models — no prices', () => {
     const { calls } = setup({ seconds: 24 });
     fireEvent.click(screen.getByTestId('video-hero-change'));
     const sheet = screen.getByTestId('video-model-sheet');
+    // The film route's three Veo models are the rows a tap may choose; the Studio β models are listed, dimmed, saying why.
+    const radios = within(sheet).getAllByRole('radio').filter((r) => r.hasAttribute('data-model'));
+    const open = radios.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'));
+    expect(open).toEqual(['google/veo-3.1-lite', 'google/veo-3.1-fast', 'google/veo-3.1']);
+    expect(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1-fast')!.getAttribute('aria-checked')).toBe('true');
+    const kling = radios.find((r) => r.getAttribute('data-model') === 'hf/kling-3-std-t2v')!;
+    expect(kling.getAttribute('aria-disabled')).toBe('true');
+    expect(kling.textContent).toContain('Not enabled yet');
+    // ⚠️ No price in the picker: the price is the server's quote, on Generate.
     for (const t of ['lite', 'fast', 'standard'] as const) {
-      expect(within(sheet).getByTestId(`video-model-${t}`).textContent).toContain(String(quoteCredits({ tool: 'video', seconds: 24, quality: t })));
+      expect(sheet.textContent).not.toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: t })}`);
     }
-    fireEvent.click(within(sheet).getByTestId('video-model-standard'));
-    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
+    expect(sheet.textContent).not.toMatch(/credit/i);
+    // The mode switch rides at the top and does not close the sheet.
     fireEvent.click(within(sheet).getByTestId('video-mode-musicvideo'));
     expect(calls.onMode).toHaveBeenCalledWith('musicvideo');
-    fireEvent.keyDown(window, { key: 'Escape' });
+    // A model is one tap: it sets the tier (the tier IS the model on the film route) and closes.
+    fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
+    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });
     expect(screen.queryByTestId('video-model-sheet')).toBeNull();
     fireEvent.click(screen.getByTestId('video-model-row'));
     expect(screen.getByTestId('video-model-sheet')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('video-model-sheet')).toBeNull();
+  });
+
+  test('the pick is remembered in this browser: a stored Veo model is applied on mount, and a tier change is stored', () => {
+    window.localStorage.setItem('myavatar:model:video', 'google/veo-3.1-lite');
+    const { calls } = setup();
+    expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'lite' });
+    window.localStorage.removeItem('myavatar:model:video');
   });
 
   test('the resolution tile opens the model picker too (the resolution is the clip length’s, the tier is the price)', () => {

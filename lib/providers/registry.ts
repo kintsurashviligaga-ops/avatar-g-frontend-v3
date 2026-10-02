@@ -8,7 +8,10 @@
  *
  * Which models are live is decided per deployment, not here: `HF_ENABLED_MODELS` (comma-separated ids)
  * narrows the set to what GG's Higgsfield account actually has (brief: "enable only what is available").
- * Unset → every registered model.
+ * Unset → every registered model — except one whose schema is `unverified`, which runs only when named.
+ *
+ * The NAMES (Georgian label, one line, English label) live in lib/providers/catalogue.ts — the list every model picker
+ * reads, Higgsfield or not — and are copied in here by id, so a picker and Agent G can never call a model two things.
  */
 import type { z } from 'zod';
 import {
@@ -22,6 +25,7 @@ import {
   soul2Input,
 } from '@/lib/providers/higgsfield/models';
 import { videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
+import { catalogueEntry } from '@/lib/providers/catalogue';
 import { describeInput } from '@/lib/providers/paramSpec';
 import type { ModelTier, OutputKind, ProviderId, StudioService } from '@/lib/providers/types';
 
@@ -44,8 +48,11 @@ export interface ModelEntry {
   /** Tried in order when this model is unavailable (404/423/503), only within `family`. */
   fallback: string[];
   input: z.ZodTypeAny;
-  /** 'page' = the workflow's own doc page was read; 'family' = a sibling's page — the smoke test confirms it. */
-  schema: 'page' | 'family';
+  /**
+   * 'page' = the workflow's own doc page was read; 'family' = a sibling's page — the smoke test confirms it;
+   * 'unverified' = not read at all: ⚠️ never enabled by default (isModelEnabled), only when HF_ENABLED_MODELS names it.
+   */
+  schema: 'page' | 'family' | 'unverified';
   /** Application deadline for one request of this model (polling / reconciliation). */
   timeoutMs: number;
   /**
@@ -62,6 +69,15 @@ export interface ModelEntry {
 
 const MIN = 60_000;
 
+type Names = Pick<ModelEntry, 'label_ka' | 'description_ka' | 'label_en'>;
+
+/** A Higgsfield model's names, from the catalogue. Throws at import if one is missing — a test-time failure, never a blank row. */
+function names(id: string): Names {
+  const c = catalogueEntry(id);
+  if (!c) throw new Error(`registry: ${id} has no catalogue entry (lib/providers/catalogue.ts)`);
+  return { label_ka: c.label.ka, description_ka: c.bestFor.ka, label_en: c.label.en };
+}
+
 export const MODELS: readonly ModelEntry[] = [
   {
     id: 'hf/soul-2',
@@ -70,9 +86,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'image',
     mode: 'text-to-image',
     family: 'soul-2',
-    label_ka: 'Soul 2 — ფოტორეალისტური სურათი',
-    description_ka: 'პორტრეტი, მოდა და რედაქციული ფოტო ბუნებრივი სინათლით.',
-    label_en: 'Soul 2 — photoreal image',
+    ...names('hf/soul-2'),
     tier: 'standard',
     output: 'images',
     fallback: [],
@@ -87,9 +101,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'text-to-video',
     family: 'kling-3-t2v',
-    label_ka: 'Kling 3 — ვიდეო ტექსტიდან',
-    description_ka: 'კინემატოგრაფიული კადრი 3–15 წამი, ხმით ან უხმოდ.',
-    label_en: 'Kling 3 — text to video',
+    ...names('hf/kling-3-std-t2v'),
     tier: 'standard',
     output: 'video',
     fallback: [],
@@ -104,14 +116,12 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'text-to-video',
     family: 'kling-3-t2v',
-    label_ka: 'Kling 3 Pro — ვიდეო ტექსტიდან',
-    description_ka: 'უმაღლესი ხარისხის კადრი რთული მოძრაობისთვის.',
-    label_en: 'Kling 3 Pro — text to video',
+    ...names('hf/kling-3-pro-t2v'),
     tier: 'pro',
     output: 'video',
     fallback: ['hf/kling-3-std-t2v'],
     input: klingT2vInput,
-    schema: 'family',
+    schema: 'page',
     timeoutMs: 25 * MIN,
   },
   {
@@ -121,9 +131,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'image-to-video',
     family: 'kling-3-i2v',
-    label_ka: 'Kling 3 — ფოტოს გაცოცხლება',
-    description_ka: 'შენი ფოტო ხდება პირველი კადრი; სურვილისამებრ — ბოლოც.',
-    label_en: 'Kling 3 — image to video',
+    ...names('hf/kling-3-std-i2v'),
     tier: 'standard',
     output: 'video',
     fallback: [],
@@ -138,14 +146,12 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'image-to-video',
     family: 'kling-3-i2v',
-    label_ka: 'Kling 3 Pro — ფოტოს გაცოცხლება',
-    description_ka: 'ფოტოდან ვიდეო უფრო ზუსტი დეტალებითა და მოძრაობით.',
-    label_en: 'Kling 3 Pro — image to video',
+    ...names('hf/kling-3-pro-i2v'),
     tier: 'pro',
     output: 'video',
     fallback: ['hf/kling-3-std-i2v'],
     input: klingI2vInput,
-    schema: 'family',
+    schema: 'page',
     timeoutMs: 25 * MIN,
   },
   {
@@ -155,9 +161,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'text-to-video',
     family: 'seedance-2.5-t2v',
-    label_ka: 'Seedance 2.5 — სწრაფი ვიდეო',
-    description_ka: 'სწრაფი ვიდეო 4–30 წამამდე, ექვსი კადრის ფორმატით.',
-    label_en: 'Seedance 2.5 — fast video',
+    ...names('hf/seedance-2.5-t2v'),
     tier: 'fast',
     output: 'video',
     fallback: [],
@@ -173,9 +177,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'video',
     mode: 'reference-to-video',
     family: 'seedance-2.5-r2v',
-    label_ka: 'Seedance 2.5 — ვიდეო რეფერენსებით',
-    description_ka: 'ფოტოები ან ხმა როგორც ნიმუში — ერთი თანმიმდევრული კადრი.',
-    label_en: 'Seedance 2.5 — reference to video',
+    ...names('hf/seedance-2.5-r2v'),
     tier: 'standard',
     output: 'video',
     fallback: [],
@@ -192,9 +194,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'motion',
     mode: 'motion-transfer',
     family: 'kling-3-motion',
-    label_ka: 'Kling 3 Motion Control — მოძრაობის გადატანა',
-    description_ka: 'ვიდეოს მოძრაობა (3–30 წამი) გადადის შენს ფოტოზე.',
-    label_en: 'Kling 3 Motion Control',
+    ...names('hf/kling-3-motion-std'),
     tier: 'standard',
     output: 'video',
     fallback: [],
@@ -209,14 +209,12 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'motion',
     mode: 'motion-transfer',
     family: 'kling-3-motion',
-    label_ka: 'Kling 3 Motion Control Pro — ზუსტი მოძრაობა',
-    description_ka: 'მოძრაობის გადატანა მაღალი სიზუსტით და დეტალებით.',
-    label_en: 'Kling 3 Motion Control Pro',
+    ...names('hf/kling-3-motion-pro'),
     tier: 'pro',
     output: 'video',
     fallback: ['hf/kling-3-motion-std'],
     input: klingMotionInput,
-    schema: 'family',
+    schema: 'page',
     timeoutMs: 30 * MIN,
   },
   {
@@ -226,9 +224,7 @@ export const MODELS: readonly ModelEntry[] = [
     service: 'motion',
     mode: 'motion-transfer',
     family: 'genjutsu-motion',
-    label_ka: 'Genjutsu — მოძრაობის გადატანა',
-    description_ka: 'მოძრაობა ვიდეოდან (მინ. 4 წამი) ერთ ან რამდენიმე ფოტოზე.',
-    label_en: 'Genjutsu — motion transfer',
+    ...names('hf/genjutsu-motion'),
     tier: 'standard',
     output: 'video',
     fallback: [],
@@ -252,8 +248,12 @@ export function getModel(id: string): ModelEntry | null {
 }
 
 export function isModelEnabled(id: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (!BY_ID.has(id)) return false;
+  const m = BY_ID.get(id);
+  if (!m) return false;
   const allow = enabledIds(env);
+  // ⚠️ A schema nobody read is a guess about what the provider accepts — a 422 after the reserve at best. It runs only
+  // where the owner has named it (after `npm run hf:smoke` against it), never because the list happens to be unset.
+  if (m.schema === 'unverified') return allow !== null && allow.has(id);
   return allow === null || allow.has(id);
 }
 

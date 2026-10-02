@@ -1,14 +1,17 @@
 /**
  * Higgsfield endpoints and input schemas — ONLY what the model documentation states.
  *
- * Source: docs.higgsfield.ai/docs/models/<model>/<workflow>.md, read 2026-09-28. Each schema below mirrors the
- * documented JSON schema; `.strict()` because several endpoints declare `additionalProperties: false` and
- * a stray key is a 422 at the provider. Where a variant's page was not read (the Pro / 4K siblings of a
- * workflow), the schema is the family's and the registry marks it `schema: 'family'` so the smoke test is
- * what confirms it.
+ * Source: docs.higgsfield.ai/docs/models/<model>/<workflow>.md, read 2026-09-28; the Pro siblings (Kling 3 Pro text→video,
+ * Pro image→video, Motion Control Pro) and SOUL V2's full page re-read 2026-10-02. Each schema below mirrors the documented
+ * JSON schema — a SUBSET where the page offers more than the studio uses (Kling's multi_shots / elements, SOUL's style_id,
+ * seed and custom_reference_id): a field we never send cannot be sent wrong. `.strict()` because several endpoints declare
+ * `additionalProperties: false` and a stray key is a 422 at the provider. Where a variant's page was not read, the schema is
+ * the family's and the registry marks it `schema: 'family'` so the smoke test is what confirms it.
  *
  * ⚠️ NOT in Higgsfield's public catalogue (16 image entries, 2026-09-22): Nano Banana, Seedream, GPT Image.
- * Soul ID (character training) is in the catalogue but its endpoint was not verified in Phase 0.
+ * Soul ID IS documented (soul-id/create-character, read 2026-10-02) — but it is TRAINING: POST /v1/custom-references with
+ * 1–100 photos returns a character id, no request_id and no media. It is not a generation this saga can run; a flow of its
+ * own would train it and then pass the id to SOUL V2 as `custom_reference_id`.
  */
 import { z } from 'zod';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
@@ -44,10 +47,21 @@ const klingDuration = z.number().int().min(3).max(15).default(5);
 const klingSound = z.enum(['on', 'off']).default('on');
 const cfgScale = z.number().min(0).max(1).optional();
 
-/** SOUL V2 — the quickstart's documented minimum body. Further fields are added once verified. */
-export const soul2Input = z.object({ prompt }).strict();
+/**
+ * SOUL V2 · text→image (soul-2/generate, read 2026-10-02): the shape and the size. Both defaults are the provider's own
+ * (1:1, 720p), so a body without them renders exactly what the quickstart's minimum body did. Left out on purpose:
+ * `batch_size` (1 or 4 — four images is a different price, which the quote has to own first), `seed`, `style_id` and
+ * `custom_reference_id` (Soul ID — see the header). `style_strength` is accepted by the provider but "has no effect".
+ */
+export const soul2Input = z
+  .object({
+    prompt,
+    aspect_ratio: z.enum(['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2']).default('1:1'),
+    resolution: z.enum(['720p', '1080p']).default('720p'),
+  })
+  .strict();
 
-/** Kling 3.0 · text→video (std page read; pro shares the family schema). */
+/** Kling 3.0 · text→video (std page read 2026-09-28, pro page 2026-10-02 — the same schema). */
 export const klingT2vInput = z
   .object({
     prompt,
