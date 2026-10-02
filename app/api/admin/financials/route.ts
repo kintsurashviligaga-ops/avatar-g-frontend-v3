@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  * GET /api/admin/financials?days=30
  *
  * Founder financial telemetry: Gross Revenue, 2.5% Bank Fees, real-time raw API costs, and Net Margin over a
- * rolling window. Aggregated live from the ledgers (wallet_topups for revenue, agent_evolution_traces for
+ * rolling window. Aggregated live from the ledgers (wallet_topups + BOG plan payments for revenue, agent_evolution_traces for
  * per-render provider spend) rather than a pre-baked snapshot.
  *
  * Locked strictly behind SERVER-SIDE admin validation: the caller's session user must pass assertAdminAccess
@@ -43,7 +43,17 @@ export async function GET(request: NextRequest) {
 
     const topupsRes = await admin.from('wallet_topups').select('amount_gel').gte('created_at', sinceIso);
     if (topupsRes.error) degraded.push('wallet_topups');
-    const topups = topupsRes.data ?? [];
+    // Bank of Georgia PLAN payments are revenue too, but they never touch wallet_topups (a paid month grants an
+    // allowance through grant_subscription_allowance, not credit_wallet_gel). BOG top-ups already ARE wallet_topups
+    // rows (ref bog:<order>) — so only plan kinds are added here, never counted twice. Refunded orders are excluded.
+    const plansRes = await admin
+      .from('bog_orders')
+      .select('amount_gel')
+      .eq('status', 'completed')
+      .in('kind', ['subscription', 'renewal'])
+      .gte('credited_at', sinceIso);
+    if (plansRes.error) degraded.push('bog_orders');
+    const topups = [...(topupsRes.data ?? []), ...(plansRes.data ?? [])];
 
     const tracesRes = await admin
       .from('agent_evolution_traces')
