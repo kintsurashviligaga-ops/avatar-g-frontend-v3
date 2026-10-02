@@ -4692,7 +4692,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         saveConversations(merged);
         if (!alive) return;
         window.dispatchEvent(new Event('myavatar:conversations-updated')); // refresh the persistent sidebar
-      } catch { /* fail-open → localStorage sidebar */ }
+      } catch { /* fail-open → localStorage sidebar */ } finally {
+        // The sidebar shows skeleton rows (not "no conversations yet") until the account's answer is in — say it is
+        // in, whatever it was: a guest, an empty account, an error. Published on <html> like data-authed, plus an event.
+        if (alive) {
+          document.documentElement.dataset.historySync = 'done';
+          window.dispatchEvent(new Event('myavatar:history-synced'));
+        }
+      }
     })();
     return () => { alive = false; };
   }, []);

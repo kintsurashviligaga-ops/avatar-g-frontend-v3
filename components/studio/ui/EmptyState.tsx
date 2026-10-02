@@ -59,24 +59,39 @@ export function EmptyState({
   className?: string;
   testId?: string;
 }) {
+  const action = actionLabel && onAction ? (
+    <button
+      type="button"
+      onClick={onAction}
+      className={compact
+        // The sidebar already carries the view's one filled CTA (sign in / top up) — a second would compete with it.
+        ? '-ml-3 inline-flex min-h-[44px] items-center rounded-full px-3 text-[13px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 touch-manipulation'
+        : `${BTN_PRIMARY} px-5`}
+    >
+      {actionLabel}
+    </button>
+  ) : null;
+  if (compact) {
+    // A row, not a stack: in a narrow list (the sidebar) a centred stack pushed its own action below the fold.
+    return (
+      <div data-testid={testId} className={`flex items-start gap-2.5 px-2.5 py-2 text-left ${className}`}>
+        <span aria-hidden="true" className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-muted">
+          <Icon size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="pt-1.5 text-[12.5px] leading-[1.5] text-app-muted">{line}</p>
+          {action}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div data-testid={testId} className={`flex flex-col items-center text-center ${compact ? 'gap-1.5 px-2 py-3' : 'gap-3 px-4 py-8'} ${className}`}>
-      <span aria-hidden="true" className={`flex shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-muted ${compact ? 'h-9 w-9' : 'h-12 w-12'}`}>
-        <Icon size={compact ? 17 : 22} />
+    <div data-testid={testId} className={`flex flex-col items-center gap-3 px-4 py-8 text-center ${className}`}>
+      <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-muted">
+        <Icon size={22} />
       </span>
-      <p className={`max-w-[34ch] text-app-muted ${compact ? 'text-[12.5px] leading-[1.5]' : 'text-[14px] leading-[1.6]'}`}>{line}</p>
-      {actionLabel && onAction && (
-        <button
-          type="button"
-          onClick={onAction}
-          className={compact
-            // The sidebar already carries the view's one filled CTA (sign in / top up) — a second would compete with it.
-            ? 'inline-flex min-h-[44px] items-center rounded-full px-3 text-[13px] font-semibold text-app-accent transition-colors hover:bg-app-accent/10 touch-manipulation'
-            : `${BTN_PRIMARY} px-5`}
-        >
-          {actionLabel}
-        </button>
-      )}
+      <p className="max-w-[34ch] text-[14px] leading-[1.6] text-app-muted">{line}</p>
+      {action}
     </div>
   );
 }
