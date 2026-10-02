@@ -82,6 +82,7 @@ import { requestMicRelease } from '@/lib/voice/micBus';
 import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
+import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -1104,6 +1105,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/library`); }} className={sideRow}>
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
           </button>
+          <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
             {activePersonaName
@@ -1518,6 +1520,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       <StudioSheet open={sheet === 'library'} title={t.library} onClose={() => setSheet(null)}>
         {sheet === 'library' ? <StudioLibraryGrid locale={lang} onClose={() => setSheet(null)} /> : null}
       </StudioSheet>
+
+      {/* Deep Research: the watcher, toasts, start sheet, report viewer, Connectors and the report's Live call
+          (components/studio/research). Renders nothing until the server says the feature exists here. */}
+      <ResearchHost locale={lang} authed={authed} userId={userId} />
 
       {/* DAY-5 real-time voice overlay. The launcher moved INTO the composer (OmniStudio's
           Gemini-style live-voice chip, right of the dictation mic), which dispatches

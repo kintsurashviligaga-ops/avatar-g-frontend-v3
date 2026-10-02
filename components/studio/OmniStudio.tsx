@@ -114,6 +114,7 @@ import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 // …plus the two image workspaces (interior · photoshoot), which draw their own panel (components/studio/create) and park the mode at chat like a studio panel.
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
+import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
@@ -928,7 +929,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1193,6 +1194,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
+      ...(m.researchId ? { researchId: m.researchId } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
@@ -2740,6 +2742,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
   const [toolPickOnly, setToolPickOnly] = useState(false);
+  // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
+  const researchExtras = useResearchToolExtras(locale, () => input);
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -4636,6 +4640,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     window.addEventListener('myavatar:live-transcript', onTurn);
     return () => window.removeEventListener('myavatar:live-transcript', onTurn);
   }, [persistChatTurn]);
+
+  // DEEP RESEARCH -> THE THREAD. The host (ChatChrome) confirms the price and starts the job on the server; once it is running it
+  // announces `research:started`, and the question + a card that follows the job by id land here. The card, not this thread,
+  // owns the job's state - a reload or a locked phone loses nothing (components/studio/research).
+  useEffect(() => {
+    const onStarted = (e: Event) => {
+      const d = (e as CustomEvent<{ job?: { id?: string }; prompt?: string }>).detail;
+      const id = d?.job?.id;
+      const prompt = (d?.prompt ?? '').trim();
+      if (!id || !prompt) return;
+      const note = researchStartedNote(locale);
+      setMessages((prev) => (prev.some((m) => m.researchId === id) ? prev : [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: note, researchId: id }]));
+      setInput((cur) => (cur.trim() === prompt ? '' : cur)); // the start sheet was seeded from the box: do not leave it to be sent as a chat turn too
+      persistChatTurn('user', prompt);
+      persistChatTurn('assistant', note);
+    };
+    window.addEventListener('research:started', onStarted);
+    return () => window.removeEventListener('research:started', onStarted);
+  }, [locale, persistChatTurn]);
 
   // LIVE → THE STUDIO (voice-to-action, lib/voice/liveTools.ts). A Live call PREPARES: the same studio switch + prompt
   // prefill as dispatchServiceBlock's video/avatar branch, for every tool — and NEVER a run (its image/music branch
@@ -6889,6 +6912,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {!pending && m.sources && m.sources.length > 0 && (
                         <SourcesChips sources={m.sources} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} className="mt-2" />
                       )}
+                      {m.researchId && <ResearchCard id={m.researchId} locale={locale} />}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
                           {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
@@ -6981,7 +7005,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     model that ACTUALLY answered, small and muted. The last reply's row is always visible (Gemini);
                     earlier ones appear on hover / keyboard focus where there is a hover, and stay visible on touch.
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
-                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
+                {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
                   const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
@@ -9278,6 +9302,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
       tools={PRIMARY_TOOLS.map(toolEntry)}
       studios={MORE_TOOLS.map(toolEntry)}
+      extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id); }}
     />
