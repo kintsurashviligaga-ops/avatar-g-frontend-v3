@@ -12,6 +12,10 @@
  *   - Typing does not re-price: models price by duration / size / sound, not by the words, so the estimate key
  *     leaves the prompt out. The server re-quotes at start anyway.
  *
+ * The model is chosen in the studio's one ModelPicker (components/studio/ui) — the catalogue's Studio β rows for the tab's
+ * service, names in ka / en / ru with a "best for" line, the ones this deployment has not enabled dimmed with why — and the
+ * pick per service is remembered in this browser (lib/studio/modelPick, the `studio` memory).
+ *
  * Layout: the five services as top tabs, motion and remix after a divider (the "rail"), the stage, and the
  * prompt dock. Georgian first; mobile first (44 px targets, safe-area, the dock never covers the stage).
  */
@@ -20,6 +24,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent,
 import { ArrowRight, ChevronDown, Film, FolderOpen, ImageIcon, Mic, Move, Music2, UserCircle2, Wand2 } from 'lucide-react';
 import { useStudioGeneration, type StudioJobView, type StudioPrice } from '@/hooks/useStudioGeneration';
 import { useUpload } from '@/components/studio/ui/useUpload';
+import { ModelPicker } from '@/components/studio/ui/ModelPicker';
+import { catalogueEntry, catalogueFor, isCatalogueService, type Availability, type ModelRunner } from '@/lib/providers/catalogue';
+import { getModelPick, setModelPick, type CatalogueStatus } from '@/lib/studio/modelPick';
 import { describeServiceError } from '@/components/studio/ui/serviceError';
 import { creditsUpdated, CREDITS_UPDATED_EVENT } from '@/lib/billing/creditsUpdated';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
@@ -42,7 +49,7 @@ import {
   type StudioModel,
   type StudioTab,
 } from '@/lib/studio/ui/dock';
-import { ELSEWHERE, FLOW, HERO, MODE_LABEL, PARAM_LABEL, T, TAB_LABEL, TIER_LABEL, VALUE_LABEL, langOf, tx, type Lang } from './copy';
+import { ELSEWHERE, FLOW, HERO, PARAM_LABEL, T, TAB_LABEL, VALUE_LABEL, langOf, tx, type Lang } from './copy';
 import { JobCard } from './JobCard';
 import { MediaSlots } from './MediaSlots';
 import { Sheet } from './Sheet';
@@ -58,7 +65,12 @@ const POLL_MS = 4_000;
 
 type JobView = StudioJobView;
 
-const modelLabel = (m: StudioModel, lang: Lang) => (lang === 'ka' ? m.label_ka : m.label_en);
+/** The catalogue's name in the UI language (Russian included); the registry's own label only for an id it does not know. */
+const modelLabel = (m: StudioModel, lang: Lang) => catalogueEntry(m.id)?.label[lang] ?? (lang === 'ka' ? m.label_ka : m.label_en);
+
+/** Studio β runs only /api/generate. */
+const STUDIO_RUNNERS: readonly ModelRunner[] = ['studio'];
+const PICK_SERVICES = ['image', 'video', 'motion'] as const;
 
 function valueLabel(spec: ParamSpec, v: unknown, lang: Lang): string {
   const byValue = VALUE_LABEL[spec.key]?.[String(v)];
@@ -148,7 +160,27 @@ export function StudioV2({ locale }: StudioV2Props) {
     try { localStorage.setItem(TAB_KEY, t); } catch { /* private mode */ }
   }, []);
 
+  // The pick per service survives a reload (this browser only; restored after mount — storage is a browser thing).
+  useEffect(() => {
+    const restored: Partial<Record<StudioTab, string>> = {};
+    for (const s of PICK_SERVICES) { const id = getModelPick(s, 'studio'); if (id) restored[s] = id; }
+    setModelByTab((cur) => ({ ...restored, ...cur }));
+  }, []);
+  const pickModel = useCallback((id: string) => {
+    setModelByTab((s) => ({ ...s, [tab]: id }));
+    if (isCatalogueService(tab)) setModelPick(tab, id, 'studio');
+  }, [tab]);
+
   const tabModels = useMemo(() => (models ? modelsForTab(models, tab) : []), [models, tab]);
+  // What the picker may offer: the models /api/studio/models returned (this deployment's enabled set) are open; every other
+  // Studio β row of the service is shown dimmed ("not enabled") — never a dead tap.
+  const pickStatus = useMemo<CatalogueStatus | null>(() => {
+    if (!models || !isCatalogueService(tab)) return null;
+    const open = new Set(tabModels.map((m) => m.id));
+    const out: Record<string, Availability> = {};
+    for (const e of catalogueFor(tab)) out[e.id] = open.has(e.id) ? { available: true, reason: null } : { available: false, reason: 'not_enabled' };
+    return out;
+  }, [models, tab, tabModels]);
   const model = useMemo(
     () => tabModels.find((m) => m.id === modelByTab[tab]) ?? tabModels[0] ?? null,
     [tabModels, modelByTab, tab],
@@ -373,6 +405,7 @@ export function StudioV2({ locale }: StudioV2Props) {
     if (!i2v) return;
     chooseTab('video');
     setModelByTab((s) => ({ ...s, video: i2v.id }));
+    setModelPick('video', i2v.id, 'studio');
     setMedia((m) => ({ ...m, image_url: url }));
     if (job.promptOriginal) setPrompt(job.promptOriginal);
     promptRef.current?.focus();
@@ -601,34 +634,23 @@ export function StudioV2({ locale }: StudioV2Props) {
         </div>
       ) : null}
 
-      {/* Model picker */}
-      <Sheet open={sheet === 'model'} title={tx(T.model, lang)} closeLabel={tx(T.close, lang)} onClose={() => setSheet(null)}>
-        <div className="space-y-4">
-          {Array.from(new Set(tabModels.map((m) => m.mode))).map((mode) => (
-            <div key={mode}>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-app-muted">{MODE_LABEL[mode] ? tx(MODE_LABEL[mode]!, lang) : mode}</p>
-              <div className="space-y-1.5">
-                {tabModels.filter((m) => m.mode === mode).map((m) => {
-                  const on = m.id === model?.id;
-                  return (
-                    <button key={m.id} type="button" aria-pressed={on}
-                      onClick={() => { setModelByTab((s) => ({ ...s, [tab]: m.id })); setSheet(null); }}
-                      className={`flex min-h-[56px] w-full items-start gap-3 rounded-2xl border px-3.5 py-3 text-left transition-colors ${on ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/10 hover:bg-app-elevated'}`}>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[14px] font-semibold text-app-text">{modelLabel(m, lang)}</span>
-                        {lang === 'ka' ? <span className="mt-0.5 block text-[12.5px] leading-snug text-app-muted">{m.description_ka}</span> : null}
-                      </span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${m.tier === 'pro' ? 'bg-brand-gold/15 text-brand-gold' : m.tier === 'fast' ? 'bg-app-accent/10 text-app-accent' : 'bg-app-elevated text-app-muted'}`}>
-                        {tx(TIER_LABEL[m.tier], lang)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Sheet>
+      {/* Model picker — the studio's one (no price in it: the price is on the button, from the server's estimate) */}
+      {model && isCatalogueService(tab) ? (
+        <ModelPicker
+          service={tab}
+          locale={locale}
+          value={model.id}
+          onChange={pickModel}
+          runners={STUDIO_RUNNERS}
+          include="runnable"
+          status={pickStatus}
+          open={sheet === 'model'}
+          onOpenChange={(o) => setSheet(o ? 'model' : null)}
+          trigger="none"
+          title={tx(T.model, lang)}
+          testId="studio-model-sheet"
+        />
+      ) : null}
 
       {/* Parameters */}
       <Sheet open={sheet === 'params'} title={tx(T.settings, lang)} closeLabel={tx(T.close, lang)} onClose={() => setSheet(null)}>

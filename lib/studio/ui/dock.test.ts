@@ -26,7 +26,8 @@ describe('initialParams / chips', () => {
     expect(initialParams(kling)).toEqual({ duration: 5, aspect_ratio: '16:9', sound: 'on' });
     expect(chipSpecs(kling).map((p) => p.key)).not.toContain('cfg_scale');
     expect(initialParams(seedance)).toEqual({ duration: 5, resolution: '720p', aspect_ratio: '16:9', generate_audio: true });
-    expect(initialParams(soul)).toEqual({});
+    // SOUL V2's documented shape and size (soul-2/generate, read 2026-10-02), at the provider's own defaults.
+    expect(initialParams(soul)).toEqual({ aspect_ratio: '1:1', resolution: '720p' });
   });
 
   test('duration choices stay inside each model’s own range', () => {
