@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Film } from 'lucide-react';
-import { TEMPLATE_CARD_SIZES, TemplateGallery, type TemplateCardItem } from './TemplateGallery';
+import { TEMPLATE_CARD_SIZES, TemplateGallery, TemplateThumbImage, type TemplateCardItem } from './TemplateGallery';
 import { AVATAR_TEMPLATES, IMAGE_TEMPLATES, MUSIC_TEMPLATES, VIDEO_TEMPLATES, templateAddsLine } from '@/lib/studio/templates';
 import { TEMPLATE_THUMB_META } from '@/lib/studio/templateThumbs.generated';
 
@@ -98,6 +98,27 @@ test('a shipped file the blur map does not know yet still loads — unversioned 
   expect(optimizedPath(container.querySelector('img')!.getAttribute('src'))).toBe('/templates/video/not-in-the-map.jpg');
   expect(mockImageProps[0]).not.toHaveProperty('placeholder');
   expect(mockImageProps[0]).not.toHaveProperty('blurDataURL');
+});
+
+describe('TemplateThumbImage — the lipsync panel\'s 48 px „chosen" face', () => {
+  test('a shipped preset goes through the optimizer at 48/96 px — never the 1024² original (~650 KB)', () => {
+    const { container } = render(<TemplateThumbImage src="/avatars/preset-4.jpg" size={48} className="h-12 w-12" />);
+    const img = container.querySelector('img')!;
+    const v = TEMPLATE_THUMB_META['/avatars/preset-4.jpg']!.v;
+    expect(optimizedPath(img.getAttribute('src'))).toBe(`/avatars/preset-4.jpg?v=${v}`);
+    expect(img.getAttribute('srcset')).toMatch(/&w=48&q=75 1x, .*&w=96&q=75 2x$/);
+    expect(img.getAttribute('loading')).toBe('lazy');
+    expect(img.getAttribute('class')).toBe('h-12 w-12');
+  });
+
+  test('an upload\'s data: URL and the twin\'s signed URL stay plain <img> (no optimizer, no cache of a private face)', () => {
+    for (const src of ['data:image/jpeg;base64,/9j/4AAQSkZJRg==', 'https://abc.supabase.co/storage/v1/object/sign/twins/u1/front.jpg?token=t']) {
+      const { container, unmount } = render(<TemplateThumbImage src={src} size={48} />);
+      expect(container.querySelector('img')!.getAttribute('src')).toBe(src);
+      unmount();
+    }
+    expect(mockImageProps).toHaveLength(0);
+  });
 });
 
 test('a card that adds context SAYS SO on its face — „Adds: …" — and in its accessible description', () => {

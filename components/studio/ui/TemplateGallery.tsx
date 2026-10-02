@@ -63,6 +63,18 @@ export interface TemplateCardItem {
   adds?: string;
 }
 
+/**
+ * A small fixed-size picture of a card's thumbnail — the lipsync panel's 48 px „chosen" face. Same rule as the cards: a
+ * shipped file goes through next/image (a 48/96 px face instead of the 1024² original, ~650 KB, now that the gallery no
+ * longer pre-loads it), anything else — an upload's data: URL, the twin's signed URL — stays a plain <img>.
+ */
+export function TemplateThumbImage({ src, size, className }: { src: string; size: number; className?: string }) {
+  const pic = templateThumb(src);
+  if (pic?.kind === 'static') return <Image src={pic.src} alt="" width={size} height={size} className={className} />;
+  // eslint-disable-next-line @next/next/no-img-element -- an upload's data: URL or a private signed URL (templateThumbs.ts)
+  return <img src={src} alt="" loading="lazy" decoding="async" className={className} />;
+}
+
 /** `#RRGGBB` → `rgba(r, g, b, a)`. (An 8-digit hex is valid CSS, but some parsers — jsdom among them — drop the whole
  *  declaration over it, and the tile would silently lose its colour.) */
 function withAlpha(hex: string, alpha: number): string {
