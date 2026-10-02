@@ -49,6 +49,15 @@ Meta app → WhatsApp → Configuration → Webhook:
 - **Verify token**: the `WHATSAPP_VERIFY_TOKEN` value
 - **Webhook fields**: subscribe to `messages`
 
+**If "Verify and save" fails:**
+
+- A change to Vercel env vars reaches production only with the NEXT deployment — redeploy after saving them.
+- The token is compared after trimming spaces/newlines and surrounding quotes, so a paste artefact no longer breaks it;
+  any other difference does. Vercel → Logs, search `verify_refused`: `token_configured: false` = the deployment has no
+  `WHATSAPP_VERIFY_TOKEN`; otherwise `expected_length` vs `received_length` shows whether the two values differ (the
+  tokens themselves are never logged).
+- Verification needs only the verify token. Message deliveries additionally need `WHATSAPP_APP_SECRET`.
+
 ### 4. Check
 
 1. `https://myavatar.ge/api/agent-g/channels` → whatsapp `ready: true`, note "Webhook ready".

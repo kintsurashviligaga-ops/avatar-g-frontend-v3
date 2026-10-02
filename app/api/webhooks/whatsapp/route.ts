@@ -71,36 +71,68 @@ function verifyMetaSignature(rawBody: string, signatureHeader: string | null): b
 }
 
 
+/**
+ * The verify token as configured: WHATSAPP_VERIFY_TOKEN (or the names Meta's guides use), with what a paste into the
+ * Vercel form commonly adds — surrounding quotes, a trailing newline, stray spaces — taken off. Meta's "Verify and
+ * save" sends the token exactly as typed in its own form; a strict `===` against a value carrying an invisible
+ * newline failed the handshake while both sides "looked" identical.
+ */
+function normalizeVerifyToken(value: string | null | undefined): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/^(["'`])([\s\S]*)\1$/, '$2')
+    .replace(/\s+/g, '');
+}
+
+function configuredVerifyToken(env: NodeJS.ProcessEnv = process.env): string {
+  for (const v of [env.WHATSAPP_VERIFY_TOKEN, env.WHATSAPP_WEBHOOK_VERIFY_TOKEN, env.META_VERIFY_TOKEN, env.META_WEBHOOK_VERIFY_TOKEN]) {
+    const t = normalizeVerifyToken(v);
+    if (t) return t;
+  }
+  return '';
+}
+
+function verifyTokenMatches(received: string, expected: string): boolean {
+  if (!expected || !received) return false;
+  const a = Buffer.from(received);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Meta's webhook verification: GET ?hub.mode=subscribe&hub.verify_token=…&hub.challenge=… → 200 with the challenge
+ * as plain text when the token matches, else 403. A mismatch is logged with LENGTHS only (never a token), so the
+ * owner can tell "not configured" from "configured but different" in the Vercel logs.
+ */
 export async function GET(req: Request): Promise<Response> {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
-  const expected = process.env.WHATSAPP_VERIFY_TOKEN;
+  const expected = configuredVerifyToken();
   const url = new URL(req.url);
-  const mode = url.searchParams.get("hub.mode");
-  const token = url.searchParams.get("hub.verify_token");
-  const challenge = url.searchParams.get("hub.challenge");
+  const mode = normalize(url.searchParams.get('hub.mode'));
+  const token = normalizeVerifyToken(url.searchParams.get('hub.verify_token'));
+  const challenge = url.searchParams.get('hub.challenge') ?? '';
 
-  if (mode === "subscribe" && token === expected) {
-    const response = new Response(challenge, { status: 200 });
-    response.headers.set('x-request-id', requestId);
-    recordRouteMetric({
+  const ok = mode === 'subscribe' && verifyTokenMatches(token, expected) && challenge.length > 0 && challenge.length <= 512;
+  if (!ok) {
+    safeLog('verify_refused', {
       request_id: requestId,
-      route: '/api/webhooks/whatsapp',
-      method: 'GET',
-      status: 200,
-      duration_ms: Date.now() - startedAt,
-      at: Date.now(),
+      mode: mode.slice(0, 20) || null,
+      token_configured: expected.length > 0,
+      expected_length: expected.length,
+      received_length: token.length,
+      has_challenge: challenge.length > 0,
     });
-    return response;
   }
-
-  const response = new Response("Forbidden", { status: 403 });
+  const response = ok
+    ? new Response(challenge, { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } })
+    : new Response('Forbidden', { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
   response.headers.set('x-request-id', requestId);
   recordRouteMetric({
     request_id: requestId,
     route: '/api/webhooks/whatsapp',
     method: 'GET',
-    status: 403,
+    status: ok ? 200 : 403,
     duration_ms: Date.now() - startedAt,
     at: Date.now(),
   });

@@ -19,7 +19,7 @@ jest.mock('../../../../lib/agent-g/channels/whatsapp-processor', () => ({
 }));
 
 import crypto from 'node:crypto';
-import { POST } from './route';
+import { GET, POST } from './route';
 import { enqueueQueueItem } from '../../../../lib/platform/queues';
 import { parseWhatsAppMessageSummary, processWhatsAppPayload } from '../../../../lib/agent-g/channels/whatsapp-processor';
 
@@ -99,4 +99,57 @@ describe('on Vercel (a request context with waitUntil): the message is answered 
     expect(waitUntil).not.toHaveBeenCalled();
     expect(enqueueQueueItem).not.toHaveBeenCalled();
   });
+});
+
+describe('GET — Meta\'s "Verify and save" handshake', () => {
+  const verify = (token: string | null, mode = 'subscribe', challenge: string | null = '1158201444') => {
+    const q = new URLSearchParams();
+    if (mode) q.set('hub.mode', mode);
+    if (token !== null) q.set('hub.verify_token', token);
+    if (challenge !== null) q.set('hub.challenge', challenge);
+    return GET(new Request(`https://myavatar.ge/api/webhooks/whatsapp?${q.toString()}`));
+  };
+  beforeEach(() => {
+    delete process.env.WHATSAPP_VERIFY_TOKEN;
+    delete process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+    delete process.env.META_VERIFY_TOKEN;
+    delete process.env.META_WEBHOOK_VERIFY_TOKEN;
+  });
+
+  test('the right token → 200 with the challenge as plain text, exactly', async () => {
+    process.env.WHATSAPP_VERIFY_TOKEN = 'myavatar-verify-123';
+    const res = await verify('myavatar-verify-123');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/^text\/plain/);
+    expect(await res.text()).toBe('1158201444');
+  });
+
+  test('what a paste into the Vercel form adds (a trailing newline, spaces, surrounding quotes) does not break it', async () => {
+    for (const stored of ['myavatar-verify-123\n', '  myavatar-verify-123  ', '"myavatar-verify-123"', "'myavatar-verify-123'\r\n", 'myavatar-verify -123']) {
+      process.env.WHATSAPP_VERIFY_TOKEN = stored;
+      const res = await verify('myavatar-verify-123');
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('1158201444');
+    }
+    process.env.WHATSAPP_VERIFY_TOKEN = 'myavatar-verify-123';
+    expect((await verify(' myavatar-verify-123 ')).status).toBe(200); // typed with a space in Meta's form
+  });
+
+  test('the names Meta\'s guides use are read too', async () => {
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN = 'alias-token';
+    expect((await verify('alias-token')).status).toBe(200);
+  });
+
+  test('a wrong token, a missing one, another mode, no challenge, or nothing configured → 403', async () => {
+    process.env.WHATSAPP_VERIFY_TOKEN = 'myavatar-verify-123';
+    for (const res of [await verify('wrong'), await verify(null), await verify('myavatar-verify-123', 'unsubscribe'), await verify('myavatar-verify-123', 'subscribe', null)]) {
+      expect(res.status).toBe(403);
+      expect(await res.text()).toBe('Forbidden');
+    }
+    delete process.env.WHATSAPP_VERIFY_TOKEN;
+    expect((await verify('')).status).toBe(403);
+    expect((await verify('anything')).status).toBe(403);
+  });
+
+
 });
