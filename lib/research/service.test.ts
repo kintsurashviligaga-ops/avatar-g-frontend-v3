@@ -406,6 +406,31 @@ describe('polling and settlement', () => {
   });
 });
 
+describe('compare-and-set — only the racer that wins a transition owns what follows', () => {
+  test('a LATE failure (stale view of a running job) cannot overwrite a job that already completed, and refunds nothing', async () => {
+    const h = makeHarness();
+    const job = await started(h);
+    h.clock.ms += POLL_EVERY_MS + 1_000;
+    h.client.pollsAs(completedAnswer());
+    await h.service.advance(job); // `job` is now a stale view: it still says 'running'
+    const lost = await h.service.failAndRefund(job, 'failed', 'timeout', 'late', ['running']);
+    expect(lost).toBeNull();
+    expect(h.job(job.id)).toMatchObject({ status: 'completed', error_code: null, refund_state: null });
+    expect(h.ledger.balance).toBe(1_000 - PRICE);
+    expect(h.ledger.refunded(job.charge_ref)).toBe(0);
+  });
+
+  test('a job whose notice was already filed is not notified again', async () => {
+    const h = makeHarness();
+    const job = await started(h);
+    h.db.rows('research_jobs')[0]!.notified_at = new Date(T0).toISOString();
+    h.clock.ms += POLL_EVERY_MS + 1_000;
+    h.client.pollsAs(completedAnswer());
+    expect((await h.service.advance(job)).status).toBe('completed');
+    expect(h.notified).toEqual([]);
+  });
+});
+
 describe('cancel — owner only, refunded, idempotent', () => {
   test('a running job: the provider is told, its own state confirms, the credits come back once', async () => {
     const h = makeHarness();
