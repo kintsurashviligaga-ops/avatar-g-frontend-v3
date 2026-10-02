@@ -387,7 +387,9 @@ for (const vp of VIEWPORTS) {
       // Quality = the Veo 3.1 tier, next to format and length.
       const quality = settings.getByRole('radiogroup', { name: 'ხარისხი' });
       await expect(quality.getByRole('radio')).toHaveText(['უმაღლესი', 'სწრაფი', 'ეკონომი']);
-      await expect(quality.getByRole('radio', { name: 'უმაღლესი' })).toHaveAttribute('aria-checked', 'true');
+      // The studio's default is Fast (STUDIO_DEFAULT_VEO_TIER): every price is anchored on it; Best is one tap away.
+      await expect(quality.getByRole('radio', { name: 'სწრაფი' })).toHaveAttribute('aria-checked', 'true');
+      await expect(quality.getByRole('radio', { name: 'უმაღლესი' })).toHaveAttribute('aria-checked', 'false');
       const veo = settings.getByTestId('veo-parameters');
       await veo.getByRole('button', { name: /სცენები და კამერა/ }).click();
       // 24 s = three 8 s clips → one camera card per scene, and a join between each pair.
