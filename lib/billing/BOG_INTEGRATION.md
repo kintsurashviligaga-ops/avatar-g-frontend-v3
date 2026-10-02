@@ -1,60 +1,66 @@
-# Bank of Georgia (BOG / iPay) — native GEL payment gateway
+# Bank of Georgia payments (api.bog.ge)
 
-Native card + Apple Pay checkout settled **strictly in GEL**, bypassing Stripe for local billing.
-Decoupled `initiate → hosted pay → signed callback → idempotent credit` flow.
+Two products, both settled in **GEL** through BOG's hosted payment page:
 
-## Components
+| Product | What the customer gets | How it's charged |
+|---|---|---|
+| **Top-up (PAYG)** — 10 / 20 / 50 ₾ (any amount in the tier store) | `floor(₾ × 10)` credits, once (1 credit = 0.10 ₾) | one payment |
+| **Plan** — Starter 54 ₾ · Creator 108 ₾ · Business 216 ₾ per month | the tier's monthly allowance (230 / 525 / 1200 credits) + the tier's entitlements | first payment on BOG's page; every month after, automatically on the card saved at that payment |
+
+Plan prices are the pricing page's `$ × GEL_PER_USD`, rounded (`lib/billing/bogCatalog.ts`; a test fails if they drift).
+
+## Where to put the credentials (never in code)
+
+BOG's business manager gives you a **client_id** and a **client_secret**. Add them as environment variables:
+
+**Vercel** → Project → Settings → Environment Variables (Production, and Preview if you want previews to take payments). Mark both **Sensitive**:
+
+| Name | Value |
+|---|---|
+| `BOG_CLIENT_ID` | your client_id |
+| `BOG_SECRET_KEY` | your client_secret |
+| `BOG_ENV` | `sandbox` while testing with BOG's sandbox credentials; remove it (or `production`) for live |
+
+Then **redeploy** (env changes apply on the next deployment). Locally, the same names go into `.env.local` (gitignored).
+
+That is all. You do **not** need `BOG_CALLBACK_PUBLIC_KEY`: BOG's published callback keys (live and sandbox) are built into `lib/billing/bogClient.ts`; set it only if BOG ever rotates the key. Optional: `BOG_CALLBACK_IP_ALLOWLIST` (comma-separated, an extra gate on top of the signature).
+
+**Ask BOG for two things:**
+1. **Automatic payments with a saved card** ("ბარათის დამახსოვრება ავტომატური გადახდებისთვის / subscriptions") enabled for your merchant. Without it plans still sell, but as one month that does not renew (the checkout logs a warning).
+2. **Sandbox credentials**, to test the whole flow with the test cards at https://api.bog.ge/docs/en/sandbox/payments/test-cards before going live.
+
+The callback URL is sent with every order: `https://<your site>/api/billing/bog/webhook` (from `NEXT_PUBLIC_SITE_URL`). Nothing to register.
+
+## How it works
+
+```
+CreditsModal ──POST /api/billing/bog/checkout──▶ bog_orders row (amount, credits, tier — server-priced)
+                                                 → BOG create order (+ save card for plans)
+             ◀── redirectUrl ──  customer pays on payment.bog.ge
+BOG ──signed callback──▶ /api/billing/bog/webhook ─▶ settleBogOrder ─▶ bog_fulfill_order (RPC, one transaction)
+customer returns ─▶ /{locale}/dashboard?bog=<order>&pay=… ─▶ GET /api/billing/bog/orders/<order> (reconciles from the receipt)
+cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expire dead checkouts · renew due plans
+```
+
+- **Exactly once.** Money moves only in `bog_fulfill_order` (migration `20261002a_bog_billing.sql`), under the order's row lock: a top-up through `credit_wallet_gel(… 'bog:<order>')` (the `wallet_topups.ref` primary key), a plan month through `grant_subscription_allowance(invoice 'bog:<order>')`. Callback, return page and cron may all settle the same order — one credits.
+- **The receipt decides whether, our row decides how much.** A receipt whose amount, currency or ids disagree with the order row is flagged `amount_mismatch` and credits nothing.
+- **Lost callbacks.** BOG documents no callback retry. The return page and the cron read `GET /receipt/:id` instead.
+- **Renewals.** `bog_claim_renewal` inserts one order per subscription period (unique index), so overlapping cron ticks cannot double-charge; the charge's `Idempotency-Key` is derived from that order id, so a retried request is not a second charge. Declined → retry after 24 h; three declines in a row → `past_due` (entitlement already ended at `current_period_end` — `resolveUserTier` gates on it).
+- **Cancel.** `DELETE /api/billing/bog/subscription` (the "Cancel auto-renewal" link in the credits modal): the plan stays active until its period ends, the saved card is deleted at BOG, nothing is charged again.
+- **Upgrade / downgrade.** Buying a different plan starts it now; older plans stop renewing (their paid period runs out).
+- **Refunds** are made in BOG's business manager. The order is marked `refunded`; credits already granted are **not** taken back automatically (adjust by hand if needed).
+
+## Files
+
 | File | Role |
 |---|---|
-| `lib/billing/bogClient.ts` | OAuth2 client-credentials token · order creation (currency forced GEL) · **RSA-SHA256 callback signature verify** · IP allowlist · status parse · `bogCreditRef` |
-| `app/api/checkout/bog/initiate/route.ts` | Authed. Validates `amountGel` ∈ `REFILL_TIERS_GEL`, records a **pending `bog_orders` mapping**, mints the BOG order, returns the hosted `redirectUrl` |
-| `app/api/billing/bog/webhook/route.ts` | Authenticates the callback, on `APPROVED` resolves the mapping → credits via `creditWalletGel(user, amount, bog:<orderId>)` |
-| `supabase/migrations/20260705_bog_orders.sql` | Additive `shop_order_id → user_id + amount` mapping table (RLS owner-select, service-write only) |
-| `lib/billing/bogClient.test.ts` | 17 tests incl. a **real RSA keypair** signing/verify accept·tamper·wrong-key proof |
+| `lib/billing/bogClient.ts` | API client (OAuth, orders, saved cards, receipt, signature) |
+| `lib/billing/bogCatalog.ts` | what can be bought, in ₾ (shared by UI and server) |
+| `lib/billing/bogSettlement.ts` | receipt → credits (shared by webhook, return page, cron) |
+| `lib/billing/wallet-ledger.ts` | the three BOG RPC wrappers (service role) |
+| `lib/billing/bogCheckoutClient.ts` | browser calls + the localized return messages |
+| `app/api/billing/bog/{checkout,webhook,orders/[id],subscription}` | routes |
+| `app/api/cron/bog-billing` | reconcile + renew (vercel.json, every 10 min) |
+| `supabase/migrations/20261002a_bog_billing.sql` | tables, functions, VERIFY block |
 
-## Environment variables
-| Var | Required | Purpose |
-|---|---|---|
-| `BOG_CLIENT_ID` / `BOG_SECRET_KEY` | ✅ | Merchant credentials → OAuth2 Basic auth. Absent → routes return `503` (never half-charge). |
-| `BOG_OAUTH_URL` | default | `https://ipay.ge/opay/api/v1/oauth2/token` (override for the `api.bog.ge` generation) |
-| `BOG_ORDER_URL` | default | `https://ipay.ge/sso/api/v1/ecommerce/orders` |
-| `BOG_CALLBACK_PUBLIC_KEY` | ✅ for signature | BOG's PEM RSA public key (`\n`-escaped ok). Primary callback guard. |
-| `BOG_CALLBACK_SIGNATURE_HEADER` | default | `Callback-Signature` |
-| `BOG_CALLBACK_IP_ALLOWLIST` | optional | Comma-list; defense-in-depth (or sole guard if no public key — logs a warning) |
-
-## Security model (signature-required)
-1. **RSA-SHA256 signature** over the raw callback body, verified against BOG's public key (asymmetric —
-   unforgeable without BOG's private key) is **REQUIRED to process any callback**. No public key → `401`,
-   credits nothing.
-2. **Source-IP allowlist** — *supplementary* AND-gate only. We never authenticate on IP alone: the source
-   IP comes from a client-supplied `X-Forwarded-For` header and is spoofable on proxied hosting (the
-   platform appends the real IP rather than overwriting the leftmost hop). A spoofed IP can therefore only
-   wrongly *reject* a signature-verified callback, never credit. *(Hardened after the adversarial review
-   flagged IP-only mode as a wallet-credit-fraud vector.)*
-
-## Idempotency (zero double-credit)
-`creditWalletGel(user, amount, 'bog:<shop_order_id>')` → `credit_wallet_gel` RPC. `wallet_topups.ref` is a
-**PRIMARY KEY** with `ON CONFLICT (ref) DO NOTHING` — a re-delivered callback is a guaranteed no-op.
-The ref is keyed on **our own immutable `shop_order_id`** (a server-minted UUID), NOT the callback-supplied
-`order_id` — so every retry/re-delivery of the same payment yields the *same* ref regardless of which
-envelope fields BOG populates (the review caught a double-credit window when these diverged). This is a
-**CREDIT** ref, deliberately distinct from the `remix:*` **DEBIT** refs (`deduct_credits`). The credited
-amount is the **server-side recorded tier** (`bog_orders.amount_gel`); if the callback reports an
-amount/currency it must match, else the credit is refused and the order is flagged `amount_mismatch`.
-
-> **Tiers stay whole GEL.** `credit_wallet_gel` reconciles at 1 credit ≈ 1 ₾; `REFILL_TIERS_GEL` are all
-> integers. Keep top-up tiers whole-GEL (or move the ledger to fractional `balance_gel`) to avoid rounding.
-
-## ⚠️ Verify before live traffic
-BOG has shipped more than one API generation (legacy `ipay.ge/opay` vs newer `api.bog.ge/payments`);
-the exact order URL, response envelope, and signature header differ. Every URL + the public key are
-**env-configurable and never hardcoded as fact**; the client parses order-id/redirect/status
-**defensively across known shapes**. Confirm all endpoints + the signature scheme against your current
-BOG merchant dashboard, then set the env vars. Nothing here transacts until `BOG_CLIENT_ID/SECRET_KEY`
-(+ a public key or IP allowlist) are configured **and** `20260705_bog_orders.sql` is applied.
-
-## Run boundary (honest)
-The **mechanism** is proven end-to-end by the jest suite (mock `fetch` + real RSA keypair). A **real
-GEL transaction** additionally needs: (a) live BOG merchant credentials + a registered callback URL;
-(b) the migration applied; (c) the account able to settle GEL. Those are outside the code — the code
-is inert and fail-closed until they exist.
+Stripe code is still present but no longer offered while BOG is configured; it remains the fallback only when BOG credentials are absent.

@@ -10,7 +10,8 @@ import { signInPath } from '@/lib/routing/signIn';
 // DAY-6 pricing reconciliation — the visible page renders the SINGLE SOURCE OF TRUTH tiers
 // (lib/billing/pricingConfig.ts: Starter 38 / Pro Creator 299 / Studio Annual 899 GEL). Features are
 // DERIVED from each tier's creditCeiling so the display can never drift from the grant. CTA routes to
-// signup (checkout charges via Stripe Price IDs, unset for now).
+// signup → the credits modal, which checks out with Bank of Georgia in ₾ (the ≈ ₾ line under each price is
+// that exact monthly charge — lib/billing/bogCatalog pins it to priceGel).
 //
 // A4 — ULTRA-MINIMALIST redesign: flat cards, one hairline border, no gradient icon tiles / glow layers /
 // bouncing badges. Mobile-first rhythm + tactile full-width CTAs. The tier NUMBERS and quota strings are
@@ -148,6 +149,9 @@ export function PricingSection() {
                     style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums', ...(isPopular ? { textShadow: '0 0 28px rgb(var(--app-accent) / 0.3)' } : {}) }}
                   >{`$${tier.priceUsd}`}</span>
                   <span className="whitespace-nowrap text-[13px] font-medium" style={{ color: 'var(--color-text-tertiary)' }}>{period}</span>
+                  {tier.priceGel > 0 && (
+                    <span className="basis-full text-[12.5px] font-medium tabular-nums" style={{ color: 'var(--color-text-tertiary)' }}>{`≈ ${tier.priceGel} ₾`}</span>
+                  )}
                 </div>
 
                 <div className="mb-6 h-px w-full" style={{ background: isPopular ? 'linear-gradient(90deg, rgb(var(--app-accent) / 0.45), transparent)' : 'var(--pricing-contour)' }} />

@@ -62,6 +62,7 @@ import PersonaPicker, { loadSelectedPersonaId, loadCustomPersonas } from './Pers
 import { BUILT_IN_PERSONAS, personaName, type Persona } from '@/lib/services/personas/personas';
 import { createBrowserClient } from '@/lib/supabase/browser';
 import { CreditsModal } from '@/components/studio/CreditsModal';
+import { paymentReturnMessage, pollBogOrder } from '@/lib/billing/bogCheckoutClient';
 import { LegalModal, type LegalKind } from '@/components/studio/LegalModal';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
@@ -513,14 +514,38 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [authed]);
 
   // Checkout return handler (Iteration 4). Every rail lands back on /dashboard with a status param:
-  //   ?topup=success   — BOG or Stripe wallet-topup settled  → poll the balance (async crediting webhook)
+  //   ?bog=<order>&pay=success|failed — Bank of Georgia (top-up or plan) → ask /api/billing/bog/orders/<order>
+  //   ?topup=success   — Stripe wallet-topup settled         → poll the balance (async crediting webhook)
   //   ?tier=success    — Stripe USD tier purchased           → poll the balance too (was previously ignored)
-  //   ?topup=failed    — BOG declined / order failed         → dismissible retry notice (NON-locking)
+  //   ?topup=failed    — order failed                        → dismissible retry notice (NON-locking)
   //   ?topup=canceled  — user cancelled Stripe checkout      → dismissible cancelled notice
   // The param is always stripped so a refresh never re-triggers. Fail-soft on every step.
   useEffect(() => {
     if (typeof window === 'undefined' || !authed) return;
     const params = new URLSearchParams(window.location.search);
+    // Bank of Georgia returns with ?bog=<our order id>&pay=success|failed. The redirect proves nothing on its own (BOG:
+    // only the callback / receipt is final), so ask our server — which reconciles with BOG's receipt on the spot — and
+    // say exactly what happened. A failure reopens the plans sheet so the customer can retry where they were.
+    const bogOrder = params.get('bog');
+    if (bogOrder) {
+      const pay = params.get('pay');
+      params.delete('bog');
+      params.delete('pay');
+      const rest = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''));
+      setPayNotice({ ok: true, text: locale === 'ka' ? 'გადახდის შემოწმება…' : locale === 'ru' ? 'Проверяем платёж…' : 'Checking your payment…' });
+      void (async () => {
+        const status = await pollBogOrder(bogOrder, { attempts: pay === 'failed' ? 2 : 6, intervalMs: 2000 });
+        const notice = paymentReturnMessage(status, pay, locale);
+        if (status?.status === 'completed') {
+          track('payment_completed', { rail: 'bog', kind: status.kind });
+          void refreshBalance(true);
+        }
+        setPayNotice({ ok: notice.ok, text: notice.text });
+        if (notice.reopenPricing) setCreditsOpen(true);
+      })();
+      return;
+    }
     const topup = params.get('topup');
     const tier = params.get('tier');
     const paidOk = topup === 'success' || tier === 'success';
