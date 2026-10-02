@@ -28,6 +28,19 @@ ADMIN_API_KEY  ADMIN_API_TOKEN  ADMIN_EMAILS  ADMIN_ID  AFFILIATE_MIN_PAYOUT_CEN
 ```
 </details>
 
+## Web Push (optional) — notifications with every tab closed
+Until both the keys below are set AND `supabase/migrations/20261003d_push_subscriptions.sql` is applied, push stays off by itself: `GET /api/push/public-key` answers `{ available: false }`, the opt-in card says "not available yet", and the push channel answers `not_configured`.
+
+| var | where | note |
+|---|---|---|
+| `VAPID_PUBLIC_KEY` | server | the public half of the VAPID pair (65-byte P-256 point, base64url). `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is read as a fallback; it is public by design (every browser receives it) |
+| `VAPID_PRIVATE_KEY` | server | 🔒 the private half (32 bytes, base64url). Never `NEXT_PUBLIC_`. |
+| `VAPID_SUBJECT` | server | optional contact the push services see; default `mailto:support@myavatar.ge`. Must be `mailto:` or `https:` (not localhost) — Apple refuses anything else, so a malformed value falls back to the default |
+
+Generate the pair ONCE: `npx web-push generate-vapid-keys` (prints a Public Key and a Private Key — set them on Vercel for Production and Preview). ⚠️ Rotating the pair orphans every existing browser subscription (they were made with the old public key): the card drops a stale one on its next visit and the user turns notifications on again.
+
+No CSP change is needed: the browser talks to its push service itself (not through `connect-src`), `/sw.js` is already served with `Service-Worker-Allowed: /` and scope `/`, and `worker-src 'self'` covers it.
+
 > Values were NOT set or pulled. Setting production env vars is a ⛔ STOP (rule 5) — only the human provides them.
 
 ## WhatsApp (Agent G) — 2026-10-03
