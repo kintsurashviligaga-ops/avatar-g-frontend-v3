@@ -7,7 +7,7 @@ const pub = (src: string) => join(process.cwd(), 'public', src);
 
 describe('brand/v1 — every file the site references exists, and the spend is on record', () => {
   const files: string[] = [
-    BRAND_V1.hero16x9.src, BRAND_V1.hero9x16.src, BRAND_V1.plate.src, BRAND_V1.world.src, BRAND_V1.og.src,
+    BRAND_V1.hero16x9.src, BRAND_V1.hero9x16.src, BRAND_V1.plate.src, BRAND_V1.world.src,
     ...Object.values(BRAND_V1.cards).map((c) => c.src),
     ...(BRAND_V1.heroLoop ? [BRAND_V1.heroLoop.src, BRAND_V1.heroLoop.poster] : []),
     ...BRAND_V1.reels.flatMap((r) => [r.src, r.poster]),

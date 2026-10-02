@@ -60,7 +60,7 @@ for (const vp of VIEWPORTS) {
         const res = await request.get(src);
         expect(res.status(), src).toBe(200);
       }
-      for (const file of ['/brand/v1/hero-16x9.jpg', '/brand/v1/hero-9x16.jpg', '/brand/v1/og.jpg']) {
+      for (const file of ['/brand/v1/hero-16x9.jpg', '/brand/v1/hero-9x16.jpg']) {
         expect((await request.get(file)).status(), file).toBe(200);
       }
     });

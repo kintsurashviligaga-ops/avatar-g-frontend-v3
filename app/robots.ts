@@ -1,9 +1,9 @@
 import { MetadataRoute } from 'next';
-import { publicEnv } from '@/lib/env/public';
+import { SITE_URL } from '@/lib/seo/site';
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl =
-    publicEnv.NEXT_PUBLIC_APP_URL || 'https://myavatar.ge';
+  // The one origin (lib/seo/site.ts) — the sitemap, the canonicals and this line must name the same host.
+  const baseUrl = SITE_URL;
 
   return {
     rules: {

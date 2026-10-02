@@ -135,6 +135,10 @@ describe('the share card', () => {
     expect([i.isPng, i.w, i.h]).toEqual([true, 1200, 630]);
     expect(i.bytes).toBeLessThan(300 * 1024);
   });
+
+  it('is the only one — the art pack\'s og.jpg (the home, landing and studio pages used it) is retired', () => {
+    expect(existsSync(at('public/brand/v1/og.jpg'))).toBe(false);
+  });
 });
 
 describe('the in-app brand mark', () => {
