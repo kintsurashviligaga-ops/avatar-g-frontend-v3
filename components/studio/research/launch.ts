@@ -45,4 +45,4 @@ export function useResearchToolExtras(locale: string, getPrompt: () => string): 
 }
 
 /** The assistant's line in the thread when a research starts (the card under it carries the progress). */
-export const researchStartedNote = (locale: string): string => researchCopy(locale).toastStarted;
+export const researchStartedNote = (locale: string): string => researchCopy(locale).threadNote;

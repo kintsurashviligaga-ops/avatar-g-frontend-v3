@@ -31,7 +31,7 @@ export interface ResearchCopy {
   statusRunning: string; statusReady: string; statusFailed: string; statusCanceled: string;
   listTitle: string; listEmpty: string; listNew: string;
   // ── toasts
-  toastStarted: string; toastReady: string; toastReadyBody: (sources: number) => string; toastFailed: string; toastOpen: string; toastDismiss: string; toastLiveOff: string;
+  toastStarted: string; threadNote: string; toastReady: string; toastReadyBody: (sources: number) => string; toastFailed: string; toastOpen: string; toastDismiss: string; toastLiveOff: string;
   // ── viewer
   readMinutes: (n: number) => string; sourcesCount: (n: number) => string; sourcesHeading: string; incompleteNote: string;
   copy: string; copied: string; download: string; goLive: string; readAloud: string; readStop: string; readPause: string; readResume: string;
@@ -57,7 +57,7 @@ const ka: ResearchCopy = {
   cardCanceling: 'ვაუქმებთ…', cardCanceled: 'კვლევა გაუქმდა.', cardLoading: 'კვლევის მდგომარეობა იტვირთება…', cardMissing: 'ეს კვლევა ვერ ვიპოვეთ.',
   statusRunning: 'მიმდინარეობს', statusReady: 'მზადაა', statusFailed: 'ვერ დასრულდა', statusCanceled: 'გაუქმდა',
   listTitle: 'კვლევები', listEmpty: 'კვლევები ჯერ არ გაქვს.', listNew: 'ახალი კვლევა',
-  toastStarted: 'კვლევა დაიწყო. მზად რომ იქნება, გაცნობებთ.', toastReady: 'ანგარიში მზადაა', toastReadyBody: (n) => `წყაროები: ${n}`, toastFailed: 'კვლევა ვერ დასრულდა', toastOpen: 'გახსნა', toastDismiss: 'დახურვა', toastLiveOff: 'ცოცხალი საუბარი ახლა მიუწვდომელია. შეკითხვა დაწერილადაც შეგიძლია დასვა.',
+  toastStarted: 'კვლევა დაიწყო. მზად რომ იქნება, გაცნობებთ.', threadNote: 'Deep Research დავიწყე. ანგარიში აქვე გამოჩნდება.', toastReady: 'ანგარიში მზადაა', toastReadyBody: (n) => `წყაროები: ${n}`, toastFailed: 'კვლევა ვერ დასრულდა', toastOpen: 'გახსნა', toastDismiss: 'დახურვა', toastLiveOff: 'ცოცხალი საუბარი ახლა მიუწვდომელია. შეკითხვა დაწერილადაც შეგიძლია დასვა.',
   readMinutes: (n) => `${n} წთ კითხვა`, sourcesCount: (n) => `წყაროები: ${n}`, sourcesHeading: 'წყაროები', incompleteNote: 'ყურადღება: აგენტმა ეს ანგარიში არასრულად მონიშნა.',
   copy: 'კოპირება', copied: 'დაკოპირდა', download: 'ჩამოტვირთვა (.md)', goLive: 'ცოცხალი საუბარი', readAloud: 'ხმამაღლა წაკითხვა', readStop: 'შეჩერება', readPause: 'პაუზა', readResume: 'გაგრძელება',
   readLoading: 'ხმა მზადდება…', readReading: 'იკითხება', readPaused: 'პაუზაზეა', readPartial: 'იკითხება ანგარიშის დასაწყისი. მთლიანის მოსასმენად გამოიყენე „შეაჯამე“ ან ცოცხალი საუბარი.', readFailed: 'წაკითხვა ვერ მოხერხდა. სცადე თავიდან.', summarize: 'შეაჯამე', takeaways: 'ამოიღე მთავარი არსი',
@@ -82,7 +82,7 @@ const en: ResearchCopy = {
   cardCanceling: 'Canceling…', cardCanceled: 'Research canceled.', cardLoading: 'Loading the research…', cardMissing: 'We could not find this research.',
   statusRunning: 'Running', statusReady: 'Ready', statusFailed: 'Could not finish', statusCanceled: 'Canceled',
   listTitle: 'Research', listEmpty: 'No research yet.', listNew: 'New research',
-  toastStarted: 'Research started. We will tell you when it is ready.', toastReady: 'Your report is ready', toastReadyBody: (n) => `${n} ${n === 1 ? 'source' : 'sources'}`, toastFailed: 'Research could not finish', toastOpen: 'Open', toastDismiss: 'Dismiss', toastLiveOff: 'Live conversation is not available right now. You can still ask in writing.',
+  toastStarted: 'Research started. We will tell you when it is ready.', threadNote: 'I started a Deep Research on this. The report will appear right here.', toastReady: 'Your report is ready', toastReadyBody: (n) => `${n} ${n === 1 ? 'source' : 'sources'}`, toastFailed: 'Research could not finish', toastOpen: 'Open', toastDismiss: 'Dismiss', toastLiveOff: 'Live conversation is not available right now. You can still ask in writing.',
   readMinutes: (n) => `${n} min read`, sourcesCount: (n) => `${n} ${n === 1 ? 'source' : 'sources'}`, sourcesHeading: 'Sources', incompleteNote: 'Heads up: the agent marked this report as incomplete.',
   copy: 'Copy', copied: 'Copied', download: 'Download (.md)', goLive: 'Go live', readAloud: 'Read aloud', readStop: 'Stop', readPause: 'Pause', readResume: 'Resume',
   readLoading: 'Preparing the voice…', readReading: 'Reading aloud', readPaused: 'Paused', readPartial: 'Reading the start of the report. To hear all of it, use Summarize or go live.', readFailed: 'Reading aloud did not work. Please try again.', summarize: 'Summarize', takeaways: 'Key takeaways',
@@ -107,7 +107,7 @@ const ru: ResearchCopy = {
   cardCanceling: 'Отменяем…', cardCanceled: 'Исследование отменено.', cardLoading: 'Загружаем исследование…', cardMissing: 'Не удалось найти это исследование.',
   statusRunning: 'Идёт', statusReady: 'Готово', statusFailed: 'Не завершилось', statusCanceled: 'Отменено',
   listTitle: 'Исследования', listEmpty: 'Исследований пока нет.', listNew: 'Новое исследование',
-  toastStarted: 'Исследование началось. Мы сообщим, когда оно будет готово.', toastReady: 'Отчёт готов', toastReadyBody: (n) => `Источников: ${n}`, toastFailed: 'Исследование не завершилось', toastOpen: 'Открыть', toastDismiss: 'Закрыть', toastLiveOff: 'Живой разговор сейчас недоступен. Вопрос можно задать письменно.',
+  toastStarted: 'Исследование началось. Мы сообщим, когда оно будет готово.', threadNote: 'Запустил Deep Research по этому вопросу. Отчёт появится здесь.', toastReady: 'Отчёт готов', toastReadyBody: (n) => `Источников: ${n}`, toastFailed: 'Исследование не завершилось', toastOpen: 'Открыть', toastDismiss: 'Закрыть', toastLiveOff: 'Живой разговор сейчас недоступен. Вопрос можно задать письменно.',
   readMinutes: (n) => `${n} мин чтения`, sourcesCount: (n) => `Источников: ${n}`, sourcesHeading: 'Источники', incompleteNote: 'Внимание: агент отметил этот отчёт как неполный.',
   copy: 'Копировать', copied: 'Скопировано', download: 'Скачать (.md)', goLive: 'Говорить вживую', readAloud: 'Прочитать вслух', readStop: 'Остановить', readPause: 'Пауза', readResume: 'Продолжить',
   readLoading: 'Готовим голос…', readReading: 'Читаю вслух', readPaused: 'На паузе', readPartial: 'Читается начало отчёта. Чтобы услышать всё, используйте «Суммируй» или живой разговор.', readFailed: 'Не удалось прочитать вслух. Попробуйте снова.', summarize: 'Суммируй', takeaways: 'Выдели главное',

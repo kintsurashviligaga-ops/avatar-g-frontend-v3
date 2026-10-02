@@ -80,7 +80,7 @@ export function ReportViewer({ id, locale, canLive }: { id: string; locale: stri
 
   useEffect(() => {
     if (entries.length === 0) return;
-    endRef.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    endRef.current?.scrollIntoView?.({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
   }, [entries.length, entries[entries.length - 1]?.loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ask = useCallback(async (mode: QaEntry['mode'], question: string, speak: boolean) => {

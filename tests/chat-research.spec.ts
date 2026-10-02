@@ -13,7 +13,7 @@ import { mkdirSync } from 'node:fs';
  *
  * The chat is sign-in only and there is no Supabase session in this run, so — like tests/chat-streaming.spec.ts — the init step
  * pins the studio's publish-once flags on <html> (`data-authed`, `data-uid`), which the studio and ResearchHost read.
- * Set SHOTS_DIR to also write screenshots there.
+ * Set SHOTS_DIR to also run the screenshot pass (phone 390×844, desktop 1280×800) and write the PNGs there.
  */
 
 const RID = '3f2b8c1e-4d5a-4b6c-9d7e-1a2b3c4d5e6f';
@@ -193,6 +193,7 @@ async function shot(page: Page, name: string): Promise<void> {
   const dir = process.env.SHOTS_DIR;
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
+  await page.waitForTimeout(600); // let the sheet-rise / fade animations settle
   await page.screenshot({ path: `${dir}/${name}.png` });
 }
 
@@ -261,7 +262,6 @@ test.describe('Deep Research · start, in the thread', () => {
     expect(sentences).not.toMatch(/\d\s*credits?/i);
     // Nothing was ordered by opening the sheet.
     expect(m.startBodies).toHaveLength(0);
-    await shot(page, 'start-sheet');
 
     await button.click();
     await expect.poll(() => m.startBodies.length).toBe(1);
@@ -278,7 +278,6 @@ test.describe('Deep Research · start, in the thread', () => {
     await expect(card).toContainText('Comparing registration statistics');
     await expect(page.getByTestId('composer-input')).toHaveValue('');
     await expect(page.getByTestId('research-toast').filter({ hasText: 'Research started' })).toBeVisible();
-    await shot(page, 'thread-card-running');
   });
 
   test('a refused start shows the server\'s sentence and keeps the question', async ({ page }) => {
@@ -311,7 +310,6 @@ test.describe('Deep Research · the finished report', () => {
     await expect(toast).toContainText('EV market in the Caucasus');
     await expect(toast).toContainText('3 sources');
     expect(m.listCalls).toBeGreaterThan(0);
-    await shot(page, 'toast-ready');
 
     await page.getByTestId('research-toast-open').click();
     const viewer = page.getByTestId('research-viewer');
@@ -336,7 +334,6 @@ test.describe('Deep Research · the finished report', () => {
     await expect(chips.nth(0).locator('img')).toHaveCount(0, { timeout: 10_000 });
     await expect(chips.nth(0).locator('span').first()).toHaveText('e');
     expect(thirdParty).toEqual([]);
-    await shot(page, 'viewer-report');
 
     // The ask box: a command button asks the report (mode), a free line is a question, a bare "stop" is neither.
     await page.getByTestId('research-summarize').click();
@@ -351,7 +348,6 @@ test.describe('Deep Research · the finished report', () => {
     await page.getByTestId('research-ask-input').press('Enter');
     await page.waitForTimeout(400);
     expect(m.askBodies).toHaveLength(2);
-    await shot(page, 'viewer-answers');
 
     // Escape closes the viewer and the toast does not come back (already told).
     await page.keyboard.press('Escape');
@@ -412,7 +408,6 @@ test.describe('Deep Research · Connectors', () => {
       // honest: nothing to press on a connector that cannot connect
       await expect(row.locator('button, a, [role="button"]')).toHaveCount(0);
     }
-    await shot(page, 'connectors');
 
     // Upload a text file: its text goes to /api/connectors/files, and it joins the list.
     await page.getByTestId('connector-file-input').setInputFiles({ name: 'brief.txt', mimeType: 'text/plain', buffer: Buffer.from('The brief says: compare the three markets.') });
@@ -434,7 +429,6 @@ test.describe('Deep Research · at 375 px', () => {
     const toast = page.getByTestId('research-toast').filter({ hasText: 'Your report is ready' });
     await expect(toast).toBeVisible({ timeout: 20_000 });
     await noHorizontalScroll(page);
-    await shot(page, 'phone-toast');
 
     // The report.
     await page.getByTestId('research-toast-open').click();
@@ -453,7 +447,6 @@ test.describe('Deep Research · at 375 px', () => {
     for (const chip of await page.getByTestId('research-source').all()) expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
     // Focus moved into the dialog.
     await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-testid="research-viewer"]'))).toBe(true);
-    await shot(page, 'phone-viewer');
     await page.getByTestId('research-viewer-close').click();
     await expect(viewer).toBeHidden();
 
@@ -464,7 +457,6 @@ test.describe('Deep Research · at 375 px', () => {
     await noHorizontalScroll(page);
     expect((await page.getByTestId('research-start-button').boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-testid="research-start-sheet"]'))).toBe(true);
-    await shot(page, 'phone-start-sheet');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('research-start-sheet')).toBeHidden();
 
@@ -474,6 +466,58 @@ test.describe('Deep Research · at 375 px', () => {
     await expect(page.getByTestId('research-connectors-sheet')).toBeVisible();
     await expect(page.getByTestId('connector-soon')).toHaveCount(4);
     await noHorizontalScroll(page);
-    await shot(page, 'phone-connectors');
   });
 });
+
+// ─── the screenshot pass (only when SHOTS_DIR is set) ─────────────────────────────────────────────────────────────
+for (const vp of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 800 }] as const) {
+  test.describe(`screenshots · ${vp.name}`, () => {
+    test.skip(!process.env.SHOTS_DIR, 'set SHOTS_DIR to write screenshots');
+    test.use({ viewport: { width: vp.width, height: vp.height } });
+
+    test(`${vp.name}: start sheet, thread card, toast, report, answers, connectors`, async ({ page }) => {
+      const m = await mockApi(page);
+      await openChat(page);
+      await pinSignedIn(page);
+
+      // 1 — the „+" sheet with the two rows, then the start sheet with the price on the button.
+      await page.getByTestId('composer-input').fill('How will EV adoption evolve in Georgia?');
+      await openPlus(page);
+      await shot(page, `${vp.name}-1-plus-sheet`);
+      await page.getByTestId('tool-extra-research').click();
+      await expect(page.getByTestId('research-start-sheet')).toBeVisible();
+      await shot(page, `${vp.name}-2-start-sheet`);
+
+      // 2 — started: the card in the thread.
+      await page.getByTestId('research-start-button').click();
+      await expect(page.getByTestId('research-card').first()).toBeVisible();
+      await page.getByTestId('research-toast').getByRole('button').last().click(); // dismiss the one-liner toast
+      await shot(page, `${vp.name}-3-thread-card`);
+
+      // 3 — the job finished while nobody was looking: the toast, then the report.
+      m.list = [finishedRow()];
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await expect(page.getByTestId('research-toast').filter({ hasText: 'Your report is ready' })).toBeVisible({ timeout: 30_000 });
+      await shot(page, `${vp.name}-4-toast-ready`);
+      await page.getByTestId('research-toast-open').click();
+      await expect(page.getByTestId('research-viewer')).toBeVisible();
+      await expect(page.getByTestId('research-source')).toHaveCount(3);
+      await shot(page, `${vp.name}-5-report`);
+      await page.getByTestId('research-report').evaluate((el) => el.scrollIntoView({ block: 'end' }));
+      await page.getByTestId('research-sources').scrollIntoViewIfNeeded();
+      await shot(page, `${vp.name}-6-sources`);
+      await page.getByTestId('research-summarize').click();
+      await expect(page.getByTestId('research-answer').first()).toContainText('Georgia leads');
+      await shot(page, `${vp.name}-7-answer`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('research-viewer')).toBeHidden();
+
+      // 4 — Connectors.
+      await openPlus(page);
+      await page.getByTestId('tool-extra-connectors').click();
+      await expect(page.getByTestId('connector-soon')).toHaveCount(4);
+      await shot(page, `${vp.name}-8-connectors`);
+    });
+  });
+}

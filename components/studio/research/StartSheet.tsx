@@ -89,10 +89,10 @@ export function StartSheet({ locale, authed }: { locale: string; authed: boolean
             data-testid="research-prompt"
             value={prompt}
             onChange={(e) => { setPrompt(e.target.value.slice(0, RESEARCH_PROMPT_MAX_CHARS)); if (error) setError(null); }}
-            rows={5}
+            rows={3}
             maxLength={RESEARCH_PROMPT_MAX_CHARS}
             placeholder={c.promptPlaceholder}
-            className="max-h-[40svh] min-h-[120px] w-full resize-none rounded-2xl border border-app-border/15 bg-app-bg/40 px-3.5 py-3 text-[15px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25"
+            className="max-h-[34svh] min-h-[96px] w-full resize-none rounded-2xl border border-app-border/15 bg-app-bg/40 px-3.5 py-3 text-[15px] leading-relaxed text-app-text outline-none transition-colors placeholder:text-app-muted focus:border-app-accent/60 focus:ring-2 focus:ring-app-accent/25"
           />
         </div>
 
