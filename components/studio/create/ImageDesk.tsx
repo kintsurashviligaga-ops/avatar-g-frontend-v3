@@ -18,7 +18,7 @@ import { ImageModelsTable } from './ImageModelsTable';
 import { ImageResultPane, type ImageResultActions } from './ImageResultPane';
 
 export function ImageDesk({
-  locale, results, notice, aspect, quality, onQuality, model, onModel, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount,
+  locale, results, notice, aspect, quality, onQuality, model, onModel, elapsedSec, capSecFor, actions, busy, upscaling, conversation, messageCount, agentG,
 }: {
   locale: string;
   results: readonly ImageResultView[];
@@ -36,11 +36,14 @@ export function ImageDesk({
   /** The thread's rendered messages (the studio's own list) — shown only when the user opens it. */
   conversation: ReactNode;
   messageCount: number;
+  /** Agent G's latest word while the thread is hidden (a reply, a question, a confirmation) — it must be SEEN, not buried in the collapsed thread. */
+  agentG?: ReactNode;
 }) {
   const c = imageCreateCopy(locale);
   const [open, setOpen] = useState(false);
   return (
     <div data-testid="image-desk" className="min-w-0 space-y-7 px-0.5 pb-2 pt-2">
+      {agentG}
       <ImageResultPane locale={locale} results={results} notice={notice} aspect={aspect} elapsedSec={elapsedSec} capSecFor={capSecFor} actions={actions} busy={busy} upscaling={upscaling} />
       <ImageModelsTable locale={locale} quality={quality} onQuality={onQuality} {...(model ? { model } : {})} {...(onModel ? { onModel } : {})} />
       {messageCount > 0 && (

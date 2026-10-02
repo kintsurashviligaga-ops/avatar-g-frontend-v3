@@ -2,6 +2,14 @@ import 'server-only';
 
 import { resolveLtxApiKey } from '@/lib/chat/ltxKey';
 import { resolveUdioApiKey } from '@/lib/chat/mediaKeys';
+import { geminiTierModel } from '@/lib/ai/google/models';
+
+/**
+ * One slow vendor must not stall the audit: every live probe gets this long, and they run side by side. Before, the
+ * probes ran one after another with no limit at all, so seven providers (HeyGen's /v2/avatars alone can take seconds)
+ * overran the route's 15 s and /api/app/health answered a runtime timeout — monitoring went blind exactly when needed.
+ */
+export const PROBE_DEADLINE_MS = 8_000;
 
 type ProviderName = 'openai' | 'udio' | 'worldlabs' | 'heygen' | 'ltx' | 'anthropic' | 'gemini';
 
@@ -188,7 +196,27 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         return { ok: false, detail: `Auth failed (${response.status})`, creditsRemaining: null };
       }
-      return { ok: response.ok, detail: response.ok ? 'Models endpoint reachable' : `HTTP ${response.status}`, creditsRemaining: null };
+      if (!response.ok) return { ok: false, detail: `HTTP ${response.status}`, creditsRemaining: null };
+
+      // ⚠️ LISTING MODELS IS FREE, SO IT STAYS GREEN WHILE THE PREPAID BALANCE IS EMPTY — that is exactly how every chat,
+      // Veo, Lyria and TTS call answered 402 for days behind a "healthy" key (and how a Production row still holding an
+      // old, empty key looked fine). One generated token (well under $0.0001) is the cheapest question billing answers.
+      const model = geminiTierModel('flash');
+      const gen = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 1 } }),
+          cache: 'no-store',
+          redirect: 'manual',
+        },
+      );
+      if (gen.status === 402) return { ok: false, detail: 'Out of credit (402): the prepaid balance is empty', creditsRemaining: null };
+      if (gen.status === 404) return { ok: false, detail: `Model ${model} is not available to this key (404)`, creditsRemaining: null };
+      if (gen.status === 429) return { ok: true, detail: 'Reachable, rate limited (429)', creditsRemaining: null };
+      if (gen.status === 401 || gen.status === 403) return { ok: false, detail: `Generation auth failed (${gen.status})`, creditsRemaining: null };
+      return { ok: gen.ok, detail: gen.ok ? 'Models and generation OK' : `Generation HTTP ${gen.status}`, creditsRemaining: null };
     }
 
     // WorldLabs probe — first try authenticated paths, then fall back to a host
@@ -245,51 +273,51 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
   }
 }
 
-export async function runProviderHealthAudit(options: { live?: boolean } = {}): Promise<{
+/** The probe's answer, or a "no answer" verdict once `ms` has passed — never hangs, never throws. */
+function withDeadline<T>(work: Promise<T>, ms: number, onTimeout: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout), ms);
+  });
+  return Promise.race([work, late]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+export async function runProviderHealthAudit(options: { live?: boolean; deadlineMs?: number } = {}): Promise<{
   routing: ServiceRoutingAudit[];
   providers: ProviderAuditEntry[];
 }> {
   const live = options.live === true;
+  const deadlineMs = options.deadlineMs ?? PROBE_DEADLINE_MS;
   const providers = Object.keys(PROVIDER_ENV) as ProviderName[];
 
-  const results: ProviderAuditEntry[] = [];
-  for (const provider of providers) {
-    const envKey = PROVIDER_ENV[provider];
-    const configured = hasKey(provider);
-    if (!configured) {
-      results.push({
-        provider,
-        envKey,
-        configured: false,
-        status: 'missing_key',
-        detail: 'API key is not configured',
+  // Side by side, in the declared order: the slowest vendor — not the sum of them — sets how long the audit takes.
+  const results: ProviderAuditEntry[] = await Promise.all(
+    providers.map(async (provider): Promise<ProviderAuditEntry> => {
+      const envKey = PROVIDER_ENV[provider];
+      const configured = hasKey(provider);
+      if (!configured) {
+        return { provider, envKey, configured: false, status: 'missing_key', detail: 'API key is not configured', creditsRemaining: null };
+      }
+      if (!live) {
+        return { provider, envKey, configured: true, status: 'configured', detail: 'Configured (live probe skipped)', creditsRemaining: null };
+      }
+      const probeResult = await withDeadline(probe(provider), deadlineMs, {
+        ok: false,
+        detail: `No answer within ${deadlineMs < 1000 ? `${deadlineMs} ms` : `${Math.round(deadlineMs / 1000)} s`}`,
         creditsRemaining: null,
       });
-      continue;
-    }
-
-    if (!live) {
-      results.push({
+      return {
         provider,
         envKey,
         configured: true,
-        status: 'configured',
-        detail: 'Configured (live probe skipped)',
-        creditsRemaining: null,
-      });
-      continue;
-    }
-
-    const probeResult = await probe(provider);
-    results.push({
-      provider,
-      envKey,
-      configured: true,
-      status: probeResult.ok ? 'healthy' : 'unhealthy',
-      detail: probeResult.detail,
-      creditsRemaining: probeResult.creditsRemaining,
-    });
-  }
+        status: probeResult.ok ? 'healthy' : 'unhealthy',
+        detail: probeResult.detail,
+        creditsRemaining: probeResult.creditsRemaining,
+      };
+    }),
+  );
 
   const routing: ServiceRoutingAudit[] = ROUTING_MATRIX.map((item) => ({
     category: item.category,

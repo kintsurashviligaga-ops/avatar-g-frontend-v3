@@ -59,3 +59,33 @@ test.each([
   const dialog = screen.getByRole('dialog');
   for (const n of names) expect(within(dialog).getByRole('button', { name: n })).toBeTruthy();
 });
+
+// ── extras: the rows that DO something instead of switching the tool (Deep Research, Connectors) ──────────────────
+test('no extras -> nothing extra is drawn (the default for every deployment without the feature)', () => {
+  sheet();
+  expect(screen.queryByTestId('tool-sheet-extras')).toBeNull();
+});
+
+test('extras are rows after the tools: each calls its own handler (not onTool) and closes the sheet', () => {
+  const onPick = jest.fn();
+  const otherPick = jest.fn();
+  const onTool = jest.fn();
+  const { onClose } = sheet({
+    onTool,
+    extras: [
+      { id: 'research', Icon: Film, title: 'Deep Research', sub: 'Searches the web', onPick },
+      { id: 'connectors', Icon: Film, title: 'Connectors', sub: 'Your documents', onPick: otherPick },
+    ],
+  });
+  const extras = screen.getByTestId('tool-sheet-extras');
+  expect(within(extras).getAllByRole('button').map((b) => b.textContent)).toEqual(['Deep ResearchSearches the web', 'ConnectorsYour documents']);
+  // They come after the tools list, in the same dialog.
+  const lists = within(screen.getByRole('dialog')).getAllByRole('list');
+  expect(lists[0]!.textContent).toContain('Chat');
+  expect(lists[1]).toBe(extras);
+  fireEvent.click(screen.getByTestId('tool-extra-research'));
+  expect(onPick).toHaveBeenCalledTimes(1);
+  expect(otherPick).not.toHaveBeenCalled();
+  expect(onTool).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
+});

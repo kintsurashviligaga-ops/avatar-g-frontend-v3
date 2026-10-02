@@ -114,8 +114,12 @@ import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 // …plus the two image workspaces (interior · photoshoot), which draw their own panel (components/studio/create) and park the mode at chat like a studio panel.
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
+import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
+import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
+import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
+import { AgentGNote } from '@/components/studio/AgentGNote';
 import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
@@ -928,7 +932,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1193,6 +1197,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
+      ...(m.researchId ? { researchId: m.researchId } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
@@ -2029,6 +2034,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // (not stranded in the composer), then sent the moment the turn finishes — see the flush effect. Carries
   // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
   const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
+  /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
+  const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number } | null>(null);
+  /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
+  const [gateFrom, setGateFrom] = useState<number | null>(null);
   // Abort handle for the (non-streaming) storyboard request, so Cancel can stop it.
   const storyboardAbortRef = useRef<AbortController | null>(null);
   // FIX 4 — the last video request (prompt + refs + orientation), captured so a failed
@@ -2740,6 +2749,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // same sheet opened from the settings' service card — the tools alone, no attachment tiles.
   const [toolSheetOpen, setToolSheetOpen] = useState(false);
   const [toolPickOnly, setToolPickOnly] = useState(false);
+  // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
+  const researchExtras = useResearchToolExtras(locale, () => input);
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -4637,6 +4648,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => window.removeEventListener('myavatar:live-transcript', onTurn);
   }, [persistChatTurn]);
 
+  // DEEP RESEARCH -> THE THREAD. The host (ChatChrome) confirms the price and starts the job on the server; once it is running it
+  // announces `research:started`, and the question + a card that follows the job by id land here. The card, not this thread,
+  // owns the job's state - a reload or a locked phone loses nothing (components/studio/research).
+  useEffect(() => {
+    const onStarted = (e: Event) => {
+      const d = (e as CustomEvent<{ job?: { id?: string }; prompt?: string }>).detail;
+      const id = d?.job?.id;
+      const prompt = (d?.prompt ?? '').trim();
+      if (!id || !prompt) return;
+      const note = researchStartedNote(locale);
+      setMessages((prev) => (prev.some((m) => m.researchId === id) ? prev : [...prev, { role: 'user', text: prompt }, { role: 'assistant', text: note, researchId: id }]));
+      setInput((cur) => (cur.trim() === prompt ? '' : cur)); // the start sheet was seeded from the box: do not leave it to be sent as a chat turn too
+      persistChatTurn('user', prompt);
+      persistChatTurn('assistant', note);
+    };
+    window.addEventListener('research:started', onStarted);
+    return () => window.removeEventListener('research:started', onStarted);
+  }, [locale, persistChatTurn]);
+
   // LIVE → THE STUDIO (voice-to-action, lib/voice/liveTools.ts). A Live call PREPARES: the same studio switch + prompt
   // prefill as dispatchServiceBlock's video/avatar branch, for every tool — and NEVER a run (its image/music branch
   // renders at once; this must not). The user reviews and taps Run. preventDefault() is the receipt the call waits for
@@ -4986,7 +5016,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
 
-  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean }) => {
+  const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
@@ -4995,8 +5025,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // read synchronously, and the composer keeps its text — nothing is lost by signing in and pressing send again.
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       const guestText = (opts?.promptOverride ?? input).trim();
+      // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
+      // says "hello" with the Image tool open gets an answer, not a sign-in wall. Anything that could spend still stops here.
+      const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music') && isConversational(guestText);
       const plainChat =
-        mode === 'chat' && attachments.length === 0 && !!guestText &&
+        (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
         !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
       if (!plainChat) {
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
@@ -5039,6 +5072,73 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       };
       const wanted = want.confidence >= 0.8 ? MODE_BY_INTENT[want.intent] : undefined;
       if (wanted && wanted !== mode) { effMode = wanted; setMode(wanted); }
+    }
+    // ── AGENT G · THE GATEKEEPER OF EVERY FOCUS MODE ───────────────────────────────────────────────────────────────
+    // ⚠️ "აქ ხარ?" ("are you here?") typed into Image mode STARTED A PAID RENDER. Everything below treats the text of a focus
+    // mode as that tool's prompt — runImageJob, runMusicJob, createStoryboard — so a greeting, a question, "thanks" cost
+    // credits and returned a garbage picture, and Agent G was invisible. Only plain chat had a guard. Now every send in
+    // Image / Video / Music is classified FIRST (lib/chat/focusGate, ka · en · ru):
+    //   chat    → Agent G answers in words (the normal chat stream). Nothing is generated, nothing is charged.
+    //   clarify → Agent G asks 2–3 short questions; the user's next message is the answer (merged into the prompt).
+    //   confirm → Agent G shows what it understood + the price; it generates only when the user taps Create.
+    //   go      → straight to the tool: the panel's own Generate button (price on it), or a film's storyboard approval.
+    // The type of a prompt is decided by words alone and errs on talking: a wrong chat reply costs one more message.
+    const gateMode: GateMode | null = effMode === 'image' || effMode === 'video' || effMode === 'music' ? effMode : null;
+    if (gateMode && text && !opts?.confirmed) {
+      const pend = gatePendingRef.current;
+      const pending = pend && pend.mode === gateMode && Date.now() - pend.at < 10 * 60_000 ? pend : null;
+      if (!pending) gatePendingRef.current = null;
+      // "yes / go ahead" to Agent G's question → create what was asked about, as it stands.
+      if (pending && isAffirmation(text)) {
+        gatePendingRef.current = null;
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        void send({ promptOverride: pending.base, confirmed: true });
+        return;
+      }
+      const hasRef = attachments.length > 0;
+      const explicit = opts?.explicit === true;
+      const first = classifyFocusInput({ text, mode: gateMode, hasAttachments: hasRef, explicit });
+      // An answer to Agent G's questions joins the thin prompt it was about; talk does not.
+      const promptText = pending && first.kind !== 'chat' ? mergePrompt(pending.base, text) : text;
+      const verdict = promptText === text ? first : classifyFocusInput({ text: promptText, mode: gateMode, hasAttachments: hasRef, explicit });
+      if (verdict.kind === 'chat') {
+        if (busy || genActiveRef.current) {
+          // A reply is still streaming: park the message (the type-ahead flush sends it when the turn ends) — never drop it.
+          pendingChatRef.current = { text, viaVoice };
+          setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+          return;
+        }
+        const chatTurn: Msg = { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' };
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        setGateFrom(messages.length);
+        // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
+        if (!isDesktop) setOptionsOpen(false);
+        persistChatTurn('user', text);
+        autoPlayReplyRef.current = viaVoice;
+        await streamChat([...messages, chatTurn]);
+        return;
+      }
+      if (verdict.kind === 'clarify' || verdict.kind === 'confirm') {
+        // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
+        const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
+          : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
+            : 0;
+        gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now() } : null;
+        const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits };
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', text },
+          { role: 'assistant', text: gateMessage({ kind: verdict.kind, mode: gateMode, prompt: promptText, locale }), agentG: card },
+        ]);
+        setGateFrom(messages.length);
+        if (!isDesktop) setOptionsOpen(false);
+        setInput(''); inputSourceRef.current = 'text'; stopDictationEcho();
+        return;
+      }
+      // 'go': straight to the tool. If the user's words were an ANSWER, run the merged prompt, not just the answer.
+      gatePendingRef.current = null;
+      setGateFrom(null);
+      if (promptText !== text) { void send({ promptOverride: promptText, confirmed: true }); return; }
     }
     // PHASE 20 — request native-notification permission on the GENERATE gesture (this click),
     // for generative modes only. Must ride a user gesture (Chrome/Firefox block mount-time
@@ -5686,7 +5786,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -6218,7 +6318,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
         : activeTool === 'motion' || activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
           : canSend;
-  const runTool = () => {
+  const runTool = (explicitFlag?: boolean) => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
       // send() stops a guest before any request; these three never pass through it, so the same gate is here.
       if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
@@ -6236,7 +6336,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
-    void send();
+    // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
+    void send(explicitFlag === true ? { explicit: true } : undefined);
   };
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
     : activeTool === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა')
@@ -6445,6 +6546,32 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
    * component declares. A missing entry here is a stale bubble — a result that never appears — so if you
    * add a binding to the block, add it here in the same edit.
    */
+  // ── AGENT G's cards (the focus-mode gate, lib/chat/focusGate) ────────────────────────────────────────────────────
+  // A card is ONE decision: Create runs the prompt Agent G showed (confirmed → the gate lets it through), Edit puts it back
+  // in the box. Either way the buttons are spent, so a second tap can never start a second paid job.
+  const resolveGateCard = useCallback((idx: number) => {
+    setMessages((prev) => prev.map((m, i) => (i === idx && m.agentG ? { ...m, agentG: { ...m.agentG, done: true } } : m)));
+  }, []);
+  const confirmGate = useCallback((idx: number) => {
+    const card = messagesRef.current[idx]?.agentG;
+    if (!card || card.done) return;
+    gatePendingRef.current = null;
+    setGateFrom(null);
+    resolveGateCard(idx);
+    void send({ promptOverride: card.prompt, confirmed: true });
+  }, [resolveGateCard, send]);
+  const editGate = useCallback((idx: number) => {
+    const card = messagesRef.current[idx]?.agentG;
+    if (!card || card.done) return;
+    gatePendingRef.current = null;
+    setGateFrom(null);
+    resolveGateCard(idx);
+    setInput(card.prompt);
+  }, [resolveGateCard]);
+
+  // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
+  useEffect(() => { setGateFrom(null); }, [mode]);
+
   const messageList = useMemo(() => (
           messages.map((m, i) => (
             <div key={i} className={`group flex motion-safe:animate-[fadeIn_0.28s_ease-out] ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -6889,6 +7016,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {!pending && m.sources && m.sources.length > 0 && (
                         <SourcesChips sources={m.sources} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} className="mt-2" />
                       )}
+                      {m.researchId && <ResearchCard id={m.researchId} locale={locale} />}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
                           {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
@@ -6981,7 +7109,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     model that ACTUALLY answered, small and muted. The last reply's row is always visible (Gemini);
                     earlier ones appear on hover / keyboard focus where there is a hover, and stay visible on touch.
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
-                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
+                {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
                   const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);
@@ -7057,10 +7185,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <Plus size={14} /> {locale === 'en' ? 'Top up balance' : locale === 'ru' ? 'Пополнить баланс' : 'ბალანსის შევსება'}
                   </button>
                 )}
+                {m.role === 'assistant' && m.agentG && (
+                  <AgentGCard card={m.agentG} locale={locale} stale={mode !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
+                )}
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
@@ -7134,6 +7265,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // greeting and the thread. It reads the same `messages` and calls the same handlers as the thread's own buttons, keyed by the
   // message's index (resolved against the thread here, so the pane and the thread cannot disagree about what a button does).
   const imageDesk = imageCreate && isDesktop;
+  // Agent G's latest word on the Image desk (its thread is hidden there): the reply to a greeting, its questions, its confirmation.
+  let gateIdx = -1;
+  if (imageDesk && gateFrom !== null) {
+    for (let i = messages.length - 1; i >= gateFrom; i--) {
+      const gm = messages[i];
+      if (gm && gm.role === 'assistant' && (gm.text || gm.agentG)) { gateIdx = i; break; }
+    }
+  }
+  const gateMsg = gateIdx >= 0 ? messages[gateIdx] : undefined;
+  const agentGNote = gateMsg ? (
+    <AgentGNote
+      text={gateMsg.text} card={gateMsg.agentG} locale={locale}
+      stale={!!gateMsg.agentG && mode !== gateMsg.agentG.target}
+      onConfirm={() => confirmGate(gateIdx)} onEdit={() => editGate(gateIdx)} onDismiss={() => setGateFrom(null)}
+    />
+  ) : null;
   const imageDeskResults = imageDesk ? deriveImageResults(messages, { busy }) : [];
   const sameMsg = (m: Msg) => (pm: Msg) => (m.id ? pm.id === m.id : pm === m);
   const imageDeskActions: ImageResultActions | null = imageDesk ? {
@@ -7246,7 +7393,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             negative={imgNegative} onNegative={setImgNegative}
             advancedExtraDirty={!!imgBoardScript.trim()}
             balance={creditsBalance}
-            onGenerate={runTool}
+            onGenerate={() => runTool(true)}
             // The one top-up the studio has: ChatChrome owns CreditsModal and opens it on this event.
             onTopUp={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
             advancedExtra={(
@@ -7457,7 +7604,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
               }}
               generate={{
-                onGenerate: runTool,
+                onGenerate: () => runTool(true),
                 busy: busy || storyboardBusy,
                 canGenerate: canRun,
                 balanceCredits: videoBalanceCredits,
@@ -8144,7 +8291,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               onClearAudio={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}
               recording={{ active: voiceRecording, sec: voiceRecSec, start: () => void startVoiceRecording(), stop: stopVoiceRecording }}
               trainedVoice={{ available: hasTrainedVoice, on: useMyVoice, onChange: setUseMyVoice }}
-              onCreate={(prompt) => { void send({ promptOverride: prompt }); }}
+              onCreate={(prompt) => { void send({ promptOverride: prompt, explicit: true }); }}
               result={{ track: musicTrack, actions: musicActions, label: t.modeMusic }}
             />
           );
@@ -8534,6 +8681,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             upscaling={upscaling}
             conversation={messageList}
             messageCount={messages.length}
+            agentG={agentGNote}
           />
         </div>
       )}
@@ -8905,7 +9053,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {/* A product ad and a swap render through the Cap-3 queue, not `busy`: their Run stays on screen beside Stop
                 while another render runs (their panel buttons never had a busy gate; Stop must not be the only choice). */}
             {busy && !recording && !transcribing && canRun && (activeTool === 'product' || activeTool === 'swap') && (
-              <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
+              <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90">
                 <Send size={17} aria-hidden="true" />
               </button>
@@ -8981,12 +9129,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {canRun && (
                   chatOnly ? (
                     // Gemini's send: a filled circle with an up-arrow — the one accent-filled control in the chat.
-                    <button type="button" onClick={runTool} aria-label={runLabel} title={runLabel}
+                    <button type="button" onClick={() => runTool()} aria-label={runLabel} title={runLabel}
                       className={`${chatRound} ml-0.5 bg-app-accent text-app-bg hover:opacity-90`}>
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={runTool} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}
+                    <button type="button" onClick={() => runTool()} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>
@@ -9278,6 +9426,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
       tools={PRIMARY_TOOLS.map(toolEntry)}
       studios={MORE_TOOLS.map(toolEntry)}
+      extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id); }}
     />

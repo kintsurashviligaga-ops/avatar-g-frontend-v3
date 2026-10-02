@@ -27,7 +27,9 @@ export function BottomSheet({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const ref = useDialogA11y<HTMLDivElement>(open, onClose);
+  // `open && mounted`: a sheet that is mounted already open (the research sheets) has no panel node until after its first
+  // commit, and the hook reads the node when its effect runs — so it must wait for the portal, or focus never moves in.
+  const ref = useDialogA11y<HTMLDivElement>(open && mounted, onClose);
   if (!mounted || !open) return null;
   return createPortal(
     <div className="fixed inset-0 z-[95] flex items-end justify-center sm:pb-28" onClick={onClose}>

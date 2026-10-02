@@ -4,6 +4,9 @@ import { opsCallerAllowed, opsNotFound } from '@/lib/security/opsAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// Probes run side by side with an 8 s deadline each (lib/system/provider-health); without this the route fell back to
+// the platform default and a live audit answered "Task timed out after 15 seconds".
+export const maxDuration = 30;
 
 /**
  * GET /api/app/health[?live=1] — provider routing audit (env-key names, configured flags; with live=1, a probe of each
