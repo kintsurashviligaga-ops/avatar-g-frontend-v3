@@ -147,6 +147,18 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   }, [p.promptRef]);
   useEffect(() => { if (p.prompt.trim()) setNeedPrompt(false); }, [p.prompt]);
 
+  // Opening a section on a phone leaves it below the fold (the footer covers the lower third): bring its header to the top.
+  const tplSection = useRef<HTMLElement | null>(null);
+  const advSection = useRef<HTMLElement | null>(null);
+  const reveal = (el: HTMLElement | null) => {
+    if (!el || typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      if (typeof el.scrollIntoView !== 'function') return; // jsdom
+      const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ block: 'start', behavior: calm ? 'auto' : 'smooth' });
+    });
+  };
+
   const modelBtn = useRef<HTMLButtonElement | null>(null);
   const aspectBtn = useRef<HTMLButtonElement | null>(null);
   const qualityBtn = useRef<HTMLButtonElement | null>(null);
@@ -175,7 +187,10 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
 
   const dirtyAdvanced = p.style !== 'Auto' || p.negative.trim().length > 0 || !!p.advancedExtraDirty;
   const activeTemplateLabel = p.templates.find((t) => t.id === p.activeTemplate)?.label;
-  const footerBleed = p.desktop ? '-mx-4 px-4' : '-mx-3 px-3';
+  // The footer sticks to the bottom of the column that scrolls it — and that column pads its content (the sheet 12 px, the
+  // desktop column 16 px). A bare `bottom-0` stops at the CONTENT edge, so the padding strip under the button showed the
+  // gallery scrolling past; the negative offset sets the footer flush with the real edge, and the same amount bleeds sideways.
+  const footerEdge = p.desktop ? '-bottom-4 -mx-4 px-4' : '-bottom-3 -mx-3 px-3';
 
   return (
     <div data-testid="image-create-panel" className="min-w-0 max-w-full space-y-3 text-app-text">
@@ -248,13 +263,13 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
       </div>
 
       {/* ── templates: directly under the prompt ── */}
-      <section data-create-row="templates" aria-label={c.templates}>
+      <section ref={tplSection} data-create-row="templates" aria-label={c.templates} className="scroll-mt-2">
         <DisclosureRow
           icon={<LayoutTemplate size={18} />}
           title={c.templates}
           summary={activeTemplateLabel ?? c.templatesPick}
           open={tplOpen}
-          onToggle={() => setTplOpenChoice(!tplOpen)}
+          onToggle={() => { setTplOpenChoice(!tplOpen); if (!tplOpen) reveal(tplSection.current); }}
           controls={tplId}
           testId="templates-toggle"
         />
@@ -266,14 +281,14 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
       </section>
 
       {/* ── advanced: everything that is not asked for on every run ── */}
-      <section data-create-row="advanced" aria-label={c.advanced}>
+      <section ref={advSection} data-create-row="advanced" aria-label={c.advanced} className="scroll-mt-2">
         <DisclosureRow
           icon={<SlidersHorizontal size={18} />}
           title={c.advanced}
           summary={p.style !== 'Auto' ? p.styleLabel(p.style) : c.advancedNone}
           dot={dirtyAdvanced}
           open={advOpen}
-          onToggle={() => setAdvOpen((v) => !v)}
+          onToggle={() => { setAdvOpen(!advOpen); if (!advOpen) reveal(advSection.current); }}
           controls={advId}
           testId="advanced-toggle"
         />
@@ -298,7 +313,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
       {/* ── the footer: the three chips and the one button, pinned to the bottom of whatever scrolls ── */}
       <div
         data-create-row="footer"
-        className={`sticky bottom-0 z-10 ${footerBleed} space-y-3 border-t border-app-border/10 bg-app-surface pt-3`}
+        className={`sticky z-10 ${footerEdge} space-y-3 border-t border-app-border/10 bg-app-surface pt-3`}
         style={{ paddingBottom: p.insetBottom ? 'calc(env(safe-area-inset-bottom, 0px) + 8px)' : 8 }}
       >
         <div data-create-row="options">

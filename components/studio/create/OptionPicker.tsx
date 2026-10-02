@@ -93,16 +93,18 @@ function PickerList<T extends string | number>({
             className={`touch-manipulation rounded-2xl text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:cursor-not-allowed disabled:opacity-40 ${
               grid
                 ? 'flex min-h-[68px] flex-col items-center justify-center gap-1.5 px-1 py-2 text-center'
-                : 'flex min-h-[56px] w-full items-center gap-3 px-3 py-2'
+                : 'flex min-h-[56px] w-full flex-col justify-center gap-1 px-3 py-2'
             } ${on ? 'bg-app-accent/15 text-app-accent ring-1 ring-app-accent/40' : 'bg-app-elevated/60 text-app-text ring-1 ring-app-border/10 hover:bg-app-elevated'}`}
           >
-            {o.glyph != null && <span className={`flex shrink-0 items-center justify-center ${grid ? 'h-8 w-8' : 'h-10 w-10'}`} aria-hidden="true">{o.glyph}</span>}
-            <span className={`min-w-0 ${grid ? '' : 'flex-1'}`}>
-              <span className={`block font-medium leading-tight ${grid ? 'text-[12.5px]' : 'text-[15px]'}`}>{o.label}</span>
-              {o.hint && !grid && <span className="mt-0.5 block text-[12.5px] leading-snug text-app-muted">{o.hint}</span>}
+            {/* The row: glyph · name · price · check. A long hint (what "Auto" uses) goes UNDER it at full width — squeezed
+                beside the price it wrapped into a column a few words wide. */}
+            <span className={grid ? 'contents' : 'flex w-full items-center gap-3'}>
+              {o.glyph != null && <span className={`flex shrink-0 items-center justify-center ${grid ? 'h-8 w-8' : 'h-10 w-10'}`} aria-hidden="true">{o.glyph}</span>}
+              <span className={`block min-w-0 font-medium leading-tight ${grid ? 'text-[12.5px]' : 'flex-1 text-[15px]'}`}>{o.label}</span>
+              {o.trailing && !grid && <span className="shrink-0 text-[13px] font-medium tabular-nums text-app-muted">{o.trailing}</span>}
+              {on && !grid && <Check size={16} aria-hidden="true" className="shrink-0 text-app-accent" />}
             </span>
-            {o.trailing && !grid && <span className="shrink-0 text-[13px] font-medium tabular-nums text-app-muted">{o.trailing}</span>}
-            {on && !grid && <Check size={16} aria-hidden="true" className="shrink-0 text-app-accent" />}
+            {o.hint && !grid && <span className={`block pb-0.5 text-[12.5px] leading-snug text-app-muted ${o.glyph != null ? 'pl-[52px]' : ''}`}>{o.hint}</span>}
           </button>
         );
       })}
