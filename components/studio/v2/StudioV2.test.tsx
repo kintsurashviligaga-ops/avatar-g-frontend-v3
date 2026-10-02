@@ -38,13 +38,15 @@ const job = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-let calls: Array<{ url: string; method: string; body: any }>;
+/** A request body as the route reads it (JSON) — only the fields the tests look at are typed. */
+type SentBody = { modelId?: string; confirmedGel?: number; params?: Record<string, unknown> } & Record<string, unknown>;
+let calls: Array<{ url: string; method: string; body: SentBody | undefined }>;
 let route: Route;
 
 function install(extra: Route = () => undefined) {
   calls = [];
   route = extra;
-  (global as any).fetch = jest.fn(async (url: string, init?: RequestInit) => {
+  (global as unknown as { fetch: unknown }).fetch = jest.fn(async (url: string, init?: RequestInit) => {
     const method = String(init?.method ?? 'GET');
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const r = route(url, init) ?? (url.startsWith('/api/studio/models') ? { status: 200, body: { models } }
@@ -123,7 +125,7 @@ test('a changed price is shown and waits for another tap — never accepted on t
   expect(posts()).toHaveLength(1); // nothing re-sent by itself
   await act(async () => { fireEvent.click(button()); });
   await waitFor(() => expect(posts()).toHaveLength(2));
-  expect(posts()[1]!.body.confirmedGel).toBe(1.6);
+  expect(posts()[1]!.body!.confirmedGel).toBe(1.6);
 });
 
 test('above 10 ₾ the dock asks once more before spending', async () => {
@@ -137,7 +139,7 @@ test('above 10 ₾ the dock asks once more before spending', async () => {
   expect(posts()).toHaveLength(0);
   await act(async () => { fireEvent.click(screen.getByText('დიახ, დაიწყე')); });
   await waitFor(() => expect(posts()).toHaveLength(1));
-  expect(posts()[0]!.body.confirmedGel).toBe(12.4);
+  expect(posts()[0]!.body!.confirmedGel).toBe(12.4);
 });
 
 test('a balance below the price goes to top-up instead of spending', async () => {
@@ -180,10 +182,10 @@ test('image→video waits for its first frame; the uploaded PATH is what gets pr
 
   const input = document.querySelector('input[type="file"]') as HTMLInputElement;
   const file = new File(['x'], 'p.jpg', { type: 'image/jpeg' });
-  (global as any).URL.createObjectURL = () => 'blob:preview';
+  (global as unknown as { URL: { createObjectURL: () => string } }).URL.createObjectURL = () => 'blob:preview';
   await act(async () => { fireEvent.change(input, { target: { files: [file] } }); });
   await waitFor(() => expect(estimates()).toHaveLength(1));
-  expect(estimates()[0]!.body.params).toMatchObject({ image_url: 'omni-uploads/user-1/1.jpg', prompt: 'ცოცხლდება' });
+  expect(estimates()[0]!.body!.params).toMatchObject({ image_url: 'omni-uploads/user-1/1.jpg', prompt: 'ცოცხლდება' });
 });
 
 test('music, voice and avatar open the flows that already work, with no dock and no spend', async () => {
@@ -207,4 +209,28 @@ test('the job list survives a reload: results play, failures say why and that th
   expect(screen.getByRole('link', { name: /ჩამოტვირთვა/ })).toHaveAttribute('href', 'https://storage.example/v.mp4');
   const alert = screen.getByRole('alert');
   expect(alert.textContent!.match(/თანხა დაგიბრუნდა/g)).toHaveLength(1); // said once, not twice
+});
+
+test('the model is chosen in the studio\'s ModelPicker: what this deployment enabled is open, the rest says why — and the pick survives a reload', async () => {
+  const enabled = models.filter((m) => m.id === 'hf/kling-3-std-t2v' || m.id === 'hf/seedance-2.5-t2v');
+  install((url) => (url.startsWith('/api/studio/models') ? { status: 200, body: { models: enabled } } : undefined));
+  const first = render(<StudioV2 locale="ka" />);
+  await waitFor(() => expect(screen.getByLabelText('აღწერა')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: /^Kling 3/ }));
+  const sheet = screen.getByRole('dialog', { name: 'მოდელი' });
+  const rows = within(sheet).getAllByRole('radio');
+  // Only Studio β's own rows (no Veo here), the enabled ones first.
+  expect(rows.every((r) => r.getAttribute('data-model')!.startsWith('hf/'))).toBe(true);
+  expect(rows.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['hf/kling-3-std-t2v', 'hf/seedance-2.5-t2v']);
+  const pro = rows.find((r) => r.getAttribute('data-model') === 'hf/kling-3-pro-t2v')!;
+  expect(pro.getAttribute('aria-disabled')).toBe('true');
+  expect(pro.textContent).toContain('ჯერ არ არის ჩართული');
+  expect(sheet.textContent).not.toMatch(/₾|კრედიტ/); // no price in the picker — it is on the button
+  fireEvent.click(rows.find((r) => r.getAttribute('data-model') === 'hf/seedance-2.5-t2v')!);
+  expect(screen.queryByRole('dialog', { name: 'მოდელი' })).toBeNull();
+  expect(localStorage.getItem('myavatar:studio:model:video')).toBe('hf/seedance-2.5-t2v');
+  first.unmount();
+
+  render(<StudioV2 locale="ka" />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Seedance 2\.5/ })).toBeInTheDocument());
 });

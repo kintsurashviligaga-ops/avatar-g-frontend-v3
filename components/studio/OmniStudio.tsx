@@ -128,6 +128,8 @@ import { MusicCreatePanel } from './create/MusicCreatePanel';
 import { MusicCentrePane } from './create/MusicCentrePane';
 import type { MusicTrack } from './create/MusicResult';
 import { musicEngineField } from '@/lib/studio/musicEnginePref';
+// The image model the panel's ModelPicker stored — read at request time like the music engine, so a re-roll uses the pick.
+import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
@@ -1096,6 +1098,13 @@ function deleteServerSession(sid: string): void {
     body: JSON.stringify({ action: 'delete', id: sid }),
   }).catch(() => { /* tombstoned locally regardless */ });
 }
+
+/** Agent G, when the model picked in the Image / Video panel is one that runs from the panel (lib/studio/modelPick). */
+const HF_PANEL_NOTE: Record<'ka' | 'en' | 'ru', string> = {
+  ka: 'შენ მიერ არჩეული მოდელი პანელიდან ეშვება — მოთხოვნა პანელის ველშია, ფასი კი „შექმნის“ ღილაკზე.',
+  en: 'The model you picked runs from the panel — your request is in its prompt box, and the price is on its Create button.',
+  ru: 'Выбранная модель запускается из панели — запрос уже в её поле, а цена на кнопке «Создать».',
+};
 
 /** The server session id behind a sidebar row — either a synced local chat or a `cloud:` entry. */
 function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined): string | null {
@@ -4248,7 +4257,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           spec.kind === 'image'
-            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
+            ? { prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }
             : musicRegenBody(spec),
         ),
         credentials: 'include',
@@ -4357,7 +4366,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           signal: AbortSignal.any([signal, deadline]),
-          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+          body: JSON.stringify({ prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, ...(imgRef ? { referenceImage: imgRef } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
         }).catch((e: unknown) => {
           // Mirrors runImageBatch's per-tile try/catch: the reason must land ON THE BUBBLE before the
           // rejection escapes, because the floating tray is hidden while only one job is active
@@ -4445,7 +4454,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               headers: { 'Content-Type': 'application/json' },
               credentials: 'include',
               signal,
-              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
+              body: JSON.stringify({ prompt: spec.prompt, quality: spec.quality, aspectRatio: spec.aspect, style: spec.style === 'Auto' ? undefined : spec.style, ...imageModelField(), jobId, batchTile: tileIdx, ...(spec.referenceImage ? { referenceImage: spec.referenceImage } : {}), ...(spec.negativePrompt ? { negativePrompt: spec.negativePrompt } : {}), ...(spec.templateId ? { templateId: spec.templateId } : {}) }),
             });
             const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; code?: string; message?: string };
             onProgress({ pct: 100 });
@@ -5212,6 +5221,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
       if (verdict.kind === 'clarify' || verdict.kind === 'confirm') {
+        // ⚠️ A HIGGSFIELD MODEL PICKED IN THE PANEL RUNS FROM THE PANEL. Its Generate carries that model's own price and runs
+        // it through the Studio β saga; this card's Create goes through send(), which would render the GOOGLE model in its
+        // place (a film) or be refused by the image route (a picture). So Agent G points there instead — the words stay in
+        // the box, which the panel's prompt shares.
+        if ((gateMode === 'image' || gateMode === 'video') && higgsfieldPicked(gateMode)) {
+          gatePendingRef.current = null;
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: HF_PANEL_NOTE[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] }]);
+          setGateFrom(messages.length);
+          if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
+          if (promptText !== text) setInput(promptText);
+          stopDictationEcho();
+          return;
+        }
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
           : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
@@ -6433,6 +6455,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return;
     }
     if (activeTool === 'motion' || activeTool === 'vfx' || shootActive) { openSettings(); return; }
+    // A Higgsfield model picked in the Image / Video panel runs from that panel's Generate (the saga's price, confirmed by the
+    // tap): the composer opens the panel, as for motion — it never renders the Google model in its place.
+    if ((activeTool === 'image' || activeTool === 'video') && higgsfieldPicked(activeTool)) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };

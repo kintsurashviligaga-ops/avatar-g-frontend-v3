@@ -79,15 +79,17 @@ function heroPicture(tier: VideoQuality, mode: VideoMode): string | null {
   return tier === 'standard' ? '/templates/video/trailer.jpg' : tier === 'fast' ? '/templates/video/reel.jpg' : null;
 }
 
-export function VideoHero({ locale, tier, mode, format, seconds, onChange }: {
+export function VideoHero({ locale, tier, mode, format, seconds, onChange, title }: {
   locale: string;
   tier: VideoQuality;
+  /** A picked model that is not a Veo tier (a Higgsfield model) names itself here. */
+  title?: string;
   mode: VideoMode;
   format: OutputFormat;
   seconds: number;
   onChange: () => void;
 }) {
-  const pic = heroPicture(tier, mode);
+  const pic = title ? null : heroPicture(tier, mode);
   return (
     <div data-testid="video-hero" className="relative isolate overflow-hidden rounded-3xl bg-app-elevated" style={{ minHeight: 140 }}>
       {pic ? (
@@ -101,7 +103,7 @@ export function VideoHero({ locale, tier, mode, format, seconds, onChange }: {
         <Pencil size={16} aria-hidden="true" /> {vc(VIDEO_COPY.change, locale)}
       </button>
       <div className="flex min-h-[140px] flex-col items-center justify-center gap-1.5 px-4 pb-3 pt-12 text-center">
-        <h2 data-testid="video-hero-title" className="font-display text-[28px] font-extrabold leading-none tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">{VIDEO_TIER_TITLE[tier]}</h2>
+        <h2 data-testid="video-hero-title" className="font-display text-[28px] font-extrabold leading-none tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">{title ?? VIDEO_TIER_TITLE[tier]}</h2>
         <p className="text-[12.5px] font-medium text-white/80">{modeName(mode, locale)} · {format} · {formatVideoDuration(seconds, locale)}</p>
       </div>
     </div>
@@ -295,14 +297,18 @@ export function VideoPromptCard({
 
 // ── Model row, tiles, quality ─────────────────────────────────────────────────────────────────────────────
 
-export function VideoModelRow({ locale, tier, mode, onOpen }: { locale: string; tier: VideoQuality; mode: VideoMode; onOpen: () => void }) {
+export function VideoModelRow({ locale, tier, mode, onOpen, name }: {
+  locale: string; tier: VideoQuality; mode: VideoMode; onOpen: () => void;
+  /** A picked model that is not a Veo tier (a Higgsfield model): its name, and no tier bars. */
+  name?: string;
+}) {
   return (
     <button type="button" onClick={onOpen} aria-haspopup="dialog" data-testid="video-model-row" className={ROW_BTN}>
       <span className="min-w-0 flex-1">
         <span className="block text-[13.5px] text-app-muted">{vc(VIDEO_COPY.model, locale)}</span>
         <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[17px] font-medium text-app-text">
-          <span className="min-w-0 truncate">{modelRowName(tier)}</span>
-          <VideoTierBars tier={tier} />
+          <span className="min-w-0 truncate">{name ?? modelRowName(tier)}</span>
+          {!name && <VideoTierBars tier={tier} />}
           <span className="min-w-0 truncate text-[13px] font-normal text-app-muted">· {modeName(mode, locale)}</span>
         </span>
       </span>

@@ -41,6 +41,8 @@ export interface ImageCreateCopy {
   // — option chips and their pickers
   aspect: string;
   quality: string;
+  /** Under a size the picked model does not render (Nano Banana Pro has no 1K). */
+  qualityNotOnModel: (model: string) => string;
   count: string;
   countTitle: string;
   countOption: (n: number) => string;
@@ -110,6 +112,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negativePlaceholder: 'რა ავიცილოთ სურათში…',
     aspect: 'პროპორცია',
     quality: 'ხარისხი',
+    qualityNotOnModel: (m) => `${m} ამ ზომას არ აკეთებს`,
     count: 'რაოდენობა',
     countTitle: 'რამდენი სურათი',
     countOption: (n) => `${n} სურათი`,
@@ -169,6 +172,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negativePlaceholder: 'What to avoid in the image…',
     aspect: 'Aspect ratio',
     quality: 'Quality',
+    qualityNotOnModel: (m) => `${m} does not render this size`,
     count: 'Count',
     countTitle: 'How many images',
     countOption: (n) => (n === 1 ? '1 image' : `${n} images`),
@@ -228,6 +232,7 @@ export const IMAGE_CREATE_COPY: Record<'ka' | 'en' | 'ru', ImageCreateCopy> = {
     negativePlaceholder: 'Что исключить из изображения…',
     aspect: 'Соотношение',
     quality: 'Качество',
+    qualityNotOnModel: (m) => `${m} не делает этот размер`,
     count: 'Количество',
     countTitle: 'Сколько изображений',
     countOption: (n) => `${n} ${plural(n, 'изображение', 'изображения', 'изображений')}`,

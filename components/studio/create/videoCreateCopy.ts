@@ -95,8 +95,9 @@ export const VIDEO_COPY = {
   portraitUse: T('Instagram-ის ლენტა', 'Instagram feed', 'Лента Instagram'),
   musicVideoLocksFormat: T('მუსიკალური კლიპი ყოველთვის 9:16-ია', 'A music video is always 9:16', 'Клип всегда 9:16'),
 
-  // model picker
-  modelTitle: T('მოდელი და ფასი', 'Model & price', 'Модель и цена'),
+  // model picker (components/studio/ui/ModelPicker — no prices: the price is on Generate)
+  modelTitle: T('მოდელი', 'Model', 'Модель'),
+  modelsLabel: T('მოდელები', 'Models', 'Модели'),
   modeLabel: T('რეჟიმი', 'Mode', 'Режим'),
   engineLabel: T('ძრავა და ფასი', 'Engine & price', 'Движок и цена'),
   liteBlurb: T('ყველაზე დაბალი ფასი', 'Lowest price', 'Самая низкая цена'),

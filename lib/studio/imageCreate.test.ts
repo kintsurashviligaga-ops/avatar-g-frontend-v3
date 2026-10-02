@@ -10,9 +10,10 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { quoteCredits } from '@/lib/credits/quote';
+import { catalogueEntry, catalogueFor, imageEndpointFor } from '@/lib/providers/catalogue';
 import {
-  IMAGE_ENGINES, IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_QUALITIES, IMG_STYLES,
-  engineFor, imageCredits, tierFor, tierModelLabel,
+  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_QUALITIES, IMG_STYLES,
+  imageCredits, imageModelFor, imageVariant, nativeQuality, tierFor, tierModelLabel,
 } from './imageCreate';
 
 const route = readFileSync(join(process.cwd(), 'app/api/nanobanana/image/route.ts'), 'utf8');
@@ -37,25 +38,36 @@ describe('the price', () => {
 });
 
 describe('the engine', () => {
-  test('each size runs on the NanoBanana endpoint the route maps it to', () => {
-    const block = /const QUALITY_ENDPOINT[^{]*\{([\s\S]*?)\};/.exec(route)?.[1] ?? '';
-    const mapped = Object.fromEntries([...block.matchAll(/(\w+):\s*'([\w-]+)'/g)].map((m) => [m[1], m[2]]));
-    expect(mapped).toEqual({ standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' });
-    for (const t of IMAGE_TIERS) expect(mapped[t.quality]).toBe(t.endpoint);
+  test('Auto runs each size on the endpoint the route always used — the route resolves it from the catalogue, nowhere else', () => {
+    const auto = catalogueEntry('nb/auto')!;
+    expect(Object.fromEntries(IMAGE_TIERS.map((t) => [t.quality, imageEndpointFor(auto, t.quality)]))).toEqual({ standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' });
+    for (const t of IMAGE_TIERS) expect(imageVariant('nb/auto', t.quality).endpoint).toBe(t.endpoint);
     // The V2 family up to 2K, Pro at 4K — the label the picker prints.
     expect(IMAGE_TIERS.map((t) => t.family)).toEqual(['V2', 'V2', 'Pro']);
     expect(tierModelLabel(tierFor('ultra'))).toBe('Nano Banana Pro · 4K');
+    expect(route).not.toMatch(/QUALITY_ENDPOINT/);
+    expect(route).toMatch(/const endpoint {4}= pick\.endpoint;/);
+    expect(route).toMatch(/imageEndpointFor\(entry, quality\)/);
   });
 
   test('the sizes the panel offers are exactly the sizes the engine has', () => {
     expect(IMG_QUALITIES.map(([q, label]) => [q, label])).toEqual(IMAGE_TIERS.map((t) => [t.quality, t.res]));
   });
 
-  test('the only engine a user can pick is Auto — the route has no engine switch — and it is priced from the quote', () => {
-    expect(IMAGE_ENGINES.map((e) => e.id)).toEqual(['auto']);
-    expect(engineFor('auto').perImage()).toBe(creditCostFor('image'));
-    // An unknown id never leaves the picker empty.
-    expect(engineFor('nope').id).toBe('auto');
+  test('the models a user can pick are the catalogue\'s image-route rows; V2 and Pro pin the family, Pro starts at 2K', () => {
+    expect(catalogueFor('image').filter((e) => e.wire.runner === 'image').map((e) => e.id)).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
+    expect(['standard', 'high', 'ultra'].map((q) => imageVariant('nb/v2', q).endpoint)).toEqual(['v2-1k', 'v2-2k', 'v2-4k']);
+    expect(['high', 'ultra'].map((q) => imageVariant('nb/pro', q).endpoint)).toEqual(['pro-1k2k', 'pro-4k']);
+    expect(imageVariant('nb/pro', 'high').res).toBe('2K'); // pro-1k2k renders 2K (lib/nanobanana/client extractResolution)
+    expect(imageVariant('nb/pro', 'standard').native).toBe(false);
+    expect(nativeQuality('nb/pro', 'standard')).toBe('high');
+    expect(nativeQuality('nb/v2', 'standard')).toBe('standard');
+    // A Studio β model, an unknown id, nothing: the image tool runs Auto — it never sends what its route cannot run.
+    expect(imageModelFor('hf/soul-2').id).toBe('nb/auto');
+    expect(imageModelFor('nope').id).toBe('nb/auto');
+    expect(imageModelFor(null).id).toBe('nb/auto');
+    // The price does not depend on the model: one image's quote at every model and size (the route's only charge).
+    expect(imageCredits(1)).toBe(creditCostFor('image'));
     // The backup legs are real in the route (and prompt-only: an edit never reaches them).
     expect(route).toMatch(/generateGrokImage\(finalPrompt\)/);
     expect(route).toMatch(/generateFluxProImage\(finalPrompt/);

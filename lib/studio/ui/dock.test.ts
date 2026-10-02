@@ -26,7 +26,8 @@ describe('initialParams / chips', () => {
     expect(initialParams(kling)).toEqual({ duration: 5, aspect_ratio: '16:9', sound: 'on' });
     expect(chipSpecs(kling).map((p) => p.key)).not.toContain('cfg_scale');
     expect(initialParams(seedance)).toEqual({ duration: 5, resolution: '720p', aspect_ratio: '16:9', generate_audio: true });
-    expect(initialParams(soul)).toEqual({});
+    // SOUL V2's documented shape and size (soul-2/generate, read 2026-10-02), at the provider's own defaults.
+    expect(initialParams(soul)).toEqual({ aspect_ratio: '1:1', resolution: '720p' });
   });
 
   test('duration choices stay inside each model’s own range', () => {
@@ -104,5 +105,7 @@ test('tabs: music and voice have no studio models (they open their own flows)', 
   const all = MODELS.map((m) => publicModel(m) as unknown as StudioModel);
   expect(modelsForTab(all, 'video').every((m) => m.service === 'video')).toBe(true);
   expect(modelsForTab(all, 'music')).toEqual([]);
-  expect(modelsForTab(all, 'motion').map((m) => m.id)).toEqual(['hf/kling-3-motion-std', 'hf/kling-3-motion-pro', 'hf/genjutsu-motion']);
+  expect(modelsForTab(all, 'motion').map((m) => m.id)).toEqual([
+    'hf/kling-3-motion-std', 'hf/kling-3-motion-pro', 'hf/genjutsu-motion', 'hf/kling-2.6-motion-std', 'hf/kling-2.6-motion-pro',
+  ]);
 });

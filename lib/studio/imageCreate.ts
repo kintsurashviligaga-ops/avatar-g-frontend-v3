@@ -9,14 +9,17 @@
  *   · PRICE — the route reserves `creditCostFor('image')` per request, for EVERY size (1K, 2K and 4K cost the same), and a
  *     ×2 / ×4 batch is N separate requests. `imageCredits` is lib/credits/quote.ts's `quoteCredits`, so the number on the
  *     Generate button is the number on the bill.
- *   · ENGINE — NanoBanana, at an endpoint chosen by the size: standard → v2-1k, high → v2-2k, ultra → pro-4k. If it
- *     misses (or its breaker is open) a TEXT-ONLY prompt falls through to Grok, then FLUX 1.1 Pro, at the same price; those
- *     two are prompt-only, so an edit of the user's own picture never leaves NanoBanana (it refunds instead). The client
- *     cannot choose an engine: there is nothing to pick but "Auto", which is why the model row has ONE entry today.
+ *   · ENGINE — NanoBanana, at the endpoint the picked MODEL renders the size at (lib/providers/catalogue: Auto is the old
+ *     size map — standard → v2-1k, high → v2-2k, ultra → pro-4k — and V2 / Pro pin the family). The request names the model
+ *     (`model`, lib/studio/modelPick imageModelField) and the route validates it against the catalogue before any charge.
+ *     If NanoBanana misses (or its breaker is open) a TEXT-ONLY prompt falls through to Grok, then FLUX 1.1 Pro, at the same
+ *     price; those two are prompt-only, so an edit of the user's own picture never leaves NanoBanana (it refunds instead).
  *   · REFERENCE — the route reads ONE `referenceImage` (a data: upload or an https URL); the send path takes the first image
  *     attachment. So the real limit is ONE reference, not the 14 a competitor's screen shows.
  */
 import { quoteCredits } from '@/lib/credits/quote';
+import { DEFAULT_MODEL, catalogueEntry, imageEndpointFor, type CatalogueEntry } from '@/lib/providers/catalogue';
+import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 
 /**
  * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist — it forwards
@@ -53,9 +56,9 @@ export const imageLang = (locale: string | null | undefined): Lang => (locale ==
 export interface ImageTier {
   quality: ImgQuality;
   res: '1K' | '2K' | '4K';
-  /** NanoBanana's own endpoint id (app/api/nanobanana/image QUALITY_ENDPOINT). */
+  /** Auto's NanoBanana endpoint at this size (lib/providers/catalogue `nb/auto`; another model: `imageVariant`). */
   endpoint: 'v2-1k' | 'v2-2k' | 'pro-4k';
-  /** The model family at that endpoint — V2 up to 2K, Pro at 4K. */
+  /** Auto's model family at that endpoint — V2 up to 2K, Pro at 4K. */
   family: 'V2' | 'Pro';
   /** One line on what the size is for. */
   note: L10n;
@@ -69,37 +72,43 @@ export const IMAGE_TIERS: readonly ImageTier[] = [
 
 export const tierFor = (quality: string): ImageTier => IMAGE_TIERS.find((t) => t.quality === quality) ?? IMAGE_TIERS[1]!;
 
-export type ImageEngineId = 'auto';
-
-export interface ImageEngine {
-  id: ImageEngineId;
-  name: L10n;
-  /** What this entry uses, in plain words — shown under its name in the model picker. */
-  summary: L10n;
-  /** Credits per image at every size (read from the quote, never typed here). */
-  perImage: () => number;
+/**
+ * The image model a pick resolves to on THIS tool: a catalogue entry the image route runs, else Auto. (A Studio β pick, or
+ * a stale id, never reaches /api/nanobanana/image — lib/studio/modelPick keeps the two memories apart anyway.)
+ */
+export function imageModelFor(id: string | null | undefined): CatalogueEntry {
+  const e = catalogueEntry(id);
+  return e && e.wire.runner === 'image' ? e : catalogueEntry(DEFAULT_MODEL.image)!;
 }
 
-/**
- * The engines a user can PICK. Exactly one today: the route has no engine switch, only the size-driven NanoBanana endpoint
- * and an automatic backup, so "Auto" is the whole list. A second entry appears here only when a route can really take it
- * (the Higgsfield Soul route behind STUDIO_V2 is not wired to this tool), and the picker and the Models & prices list grow
- * with this array — nothing else changes.
- */
-export const IMAGE_ENGINES: readonly ImageEngine[] = [
-  {
-    id: 'auto',
-    name: { ka: 'ავტო', en: 'Auto', ru: 'Авто' },
-    summary: {
-      ka: 'ძრავას ირჩევს სისტემა: 1K და 2K — Nano Banana V2, 4K — Nano Banana Pro. თუ მთავარი ძრავა დაკავებულია, ტექსტური მოთხოვნა შეიძლება იმავე ფასად სარეზერვო ძრავაზე გადავიდეს; შენი სურათის რედაქტირება — არასდროს.',
-      en: 'Picks the engine for you: Nano Banana V2 at 1K and 2K, Nano Banana Pro at 4K. If the main engine is busy, a text-only prompt may move to a backup engine at the same price; an edit of your own picture never does.',
-      ru: 'Движок выбирается автоматически: Nano Banana V2 для 1K и 2K, Nano Banana Pro для 4K. Если основной движок занят, текстовый запрос может уйти на резервный по той же цене; правка вашей картинки — никогда.',
-    },
-    perImage: () => imageCredits(1),
-  },
-];
+/** One size of one model: the endpoint it renders on, the family and the real resolution — and whether the model has it. */
+export interface ImageVariant {
+  quality: ImgQuality;
+  endpoint: NanoBananaEndpoint;
+  family: 'V2' | 'Pro';
+  res: '1K' | '2K' | '4K';
+  /** False where the model has no such size (Nano Banana Pro starts at 2K): the chip offers it disabled. */
+  native: boolean;
+}
 
-export const engineFor = (id: string | null | undefined): ImageEngine => IMAGE_ENGINES.find((e) => e.id === id) ?? IMAGE_ENGINES[0]!;
+const RES: Readonly<Partial<Record<NanoBananaEndpoint, ImageVariant['res']>>> = {
+  'v2-1k': '1K', 'v2-2k': '2K', 'v2-4k': '4K', 'pro-1k2k': '2K', 'pro-4k': '4K', 'text-to-image': '1K',
+};
+
+export function imageVariant(modelId: string | null | undefined, quality: string): ImageVariant {
+  const entry = imageModelFor(modelId);
+  const q = tierFor(quality).quality;
+  const endpoint = imageEndpointFor(entry, q) ?? tierFor(q).endpoint;
+  const native = entry.wire.runner === 'image' && !!entry.wire.endpoints[q];
+  return { quality: q, endpoint, family: endpoint.startsWith('pro') ? 'Pro' : 'V2', res: RES[endpoint] ?? tierFor(q).res, native };
+}
+
+/** The size to fall back to when a model does not have the one on screen: the nearest it has, larger first. */
+export function nativeQuality(modelId: string | null | undefined, quality: ImgQuality): ImgQuality {
+  if (imageVariant(modelId, quality).native) return quality;
+  const order: ImgQuality[] = quality === 'standard' ? ['high', 'ultra'] : quality === 'high' ? ['ultra', 'standard'] : ['high', 'standard'];
+  return order.find((q) => imageVariant(modelId, q).native) ?? quality;
+}
 
 /** "Nano Banana V2 · 2K" — the model variant a size runs on. */
 export const tierModelLabel = (t: ImageTier): string => `Nano Banana ${t.family} · ${t.res}`;

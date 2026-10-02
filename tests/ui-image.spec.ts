@@ -186,12 +186,13 @@ test.describe('phone 375×812 — ref3', () => {
     await expect(quality.nth(2)).toContainText('Nano Banana Pro');
     await page.keyboard.press('Escape');
 
-    // The model row: Auto, and nothing the route cannot run.
+    // The model row: the studio's ModelPicker — Auto checked, the route's own three models open, the rest dimmed, no price
+    // (the request names the model and the server quotes it; tests/model-picker.spec.ts follows a pick into the request).
     await page.getByTestId('model-row').click();
-    const model = page.getByRole('dialog', { name: 'Model' }).getByRole('radio');
-    await expect(model).toHaveCount(1);
-    await expect(model).toContainText('Auto');
-    await expect(model).toContainText(`${quoteCredits({ tool: 'image', count: 1 })} credits`);
+    const model = page.getByRole('dialog', { name: 'Model' });
+    await expect(model.locator('[data-model="nb/auto"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(model.locator('[role="radio"]:not([aria-disabled="true"])')).toHaveCount(3);
+    await expect(model).not.toContainText('credits');
     await shot(page, 'phone-picker-model');
   });
 
