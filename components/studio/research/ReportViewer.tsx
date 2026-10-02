@@ -300,7 +300,7 @@ export function ReportViewer({ id, locale, canLive }: { id: string; locale: stri
                 placeholder={c.askPlaceholder}
                 onChange={(e) => { setDraft(e.target.value.slice(0, 1000)); dictation.markTyped(); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(draft); } }}
-                className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent py-3 text-[16px] leading-snug text-app-text outline-none placeholder:text-app-muted"
+                className="max-h-32 min-h-[44px] flex-1 resize-none rounded-none border-0 bg-transparent py-3 text-[16px] leading-snug text-app-text shadow-none outline-none placeholder:text-app-muted focus:shadow-none"
               />
               <button type="button" onClick={() => void dictation.toggle()} aria-pressed={dictation.recording} aria-label={dictation.recording ? c.micStop : c.micStart} title={dictation.recording ? c.micStop : c.micStart}
                 className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${dictation.recording ? 'bg-app-accent text-app-bg' : 'text-app-muted hover:bg-app-elevated hover:text-app-text'}`}>

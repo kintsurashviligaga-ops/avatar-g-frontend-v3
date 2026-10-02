@@ -6960,7 +6960,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     model that ACTUALLY answered, small and muted. The last reply's row is always visible (Gemini);
                     earlier ones appear on hover / keyboard focus where there is a hover, and stay visible on touch.
                     No scale-on-hover (docs/DESIGN.md §5): a state layer and a colour, 44 px on touch. */}
-                {m.role === 'assistant' && m.text && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
+                {m.role === 'assistant' && m.text && !m.researchId && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹') && (() => {
                   const isLast = i === messages.length - 1;
                   const act = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-app-border/10 hover:text-app-text [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10';
                   const answeredBy = displayNameFor(m.chatModelId ?? m.chatModel);

@@ -75,7 +75,7 @@ export function ConnectorsSheet({ locale, authed }: { locale: string; authed: bo
     else setMessage(c.connUploadFailed);
   };
 
-  const row = 'flex min-h-[56px] items-center gap-3.5 rounded-2xl px-3';
+  const row = 'flex min-h-[48px] items-center gap-3.5 rounded-2xl px-3';
 
   return (
     <BottomSheet open onClose={researchActions.closeConnectors} title={c.connHeading} closeLabel={c.close} testId="research-connectors-sheet">
