@@ -23,8 +23,14 @@ the stop line. Run (from the repo root, after `npm run hf:credentials` — or wi
     npm run art:templates -- --yes-spend                   # run the pending shots (add --provider … to match the dry run)
     npm run art:templates -- --status                      # spend so far, takes per shot (and who was paid)
     node scripts/templates/build-thumbs.mjs                # the selected takes → public/templates/*.jpg, + the thumb: edits
+    node scripts/templates/build-thumb-blur.mjs            # blur placeholders + content versions (build-thumbs runs it too)
 
 A second `--yes-spend` skips every shot whose take is still waiting for review; add `--retry` to pay for another.
+
+A picture added or replaced BY HAND (under public/templates/, or a presenter face a card points at) needs the second
+command too: it writes lib/studio/templateThumbs.generated.ts — the ≤ 16 px blur next/image shows while the card loads,
+and the `?v=<hash>` that makes a replaced picture a new URL past the year-long cache. lib/studio/templateThumbs.test.ts
+fails until it is re-run; commit the regenerated module with the picture.
 
 Art direction (shared tail): premium dark cinematic thumbnails, deep true blacks, one clear subject, empty lower third
 for the card's label, and never any text, logo or UI — the label is set by the app, not baked into the picture.
