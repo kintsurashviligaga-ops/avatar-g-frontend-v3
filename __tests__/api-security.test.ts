@@ -77,7 +77,7 @@ const ALLOWLIST: Record<string, string> = {
   // ── Grandfathered gaps: user-facing PAID generation, rate-limited but not user-auth'd. Surfaced by
   //    the pre-Iteration-3 audit; user-auth is a tracked follow-up. Listed so the guard still protects
   //    NEW routes while these known gaps are worked down (goal: empty this section).
-  'app/api/elevenlabs/sound/route.ts': 'ElevenLabs SFX — rate-limited (RATE_LIMITS.WRITE); user-auth TODO (audit follow-up)',
+  // (elevenlabs/sound LEFT this list 2026-10-02: sign-in through the generation gate + a per-account AUDIO_GEN_USER cap.)
   // ── WS2: interactive voice routes. Client-facing + rate-limited; user-auth is a PRODUCT decision here, listed
   //    as a reasoned exception rather than broken. voice/realtime/session soft-auths (getAuthenticatedUser) + is
   //    inert in prod without VOICE_V2V_WS_URL + is WS-token gated. (voice/transcribe LEFT this list 2026-09-30:

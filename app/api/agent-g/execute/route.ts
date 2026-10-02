@@ -24,7 +24,10 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await getAuthenticatedUser(request);
-    const demoMode = !user;
+    // ⚠️ SIGNED-IN ONLY. A missing session used to switch on "demo mode" and run the whole plan anyway — every sub-task
+    // an LLM call (or a forwarded media call) on the platform key, for anyone who POSTed a goal. No session, no plan.
+    if (!user) return apiError(new Error('Unauthorized'), 401, 'Sign in to run Agent G tasks.');
+    const demoMode = false;
     const plan = buildTaskPlan(payload.data.goal);
 
     const authHeader = request.headers.get('authorization') || undefined;

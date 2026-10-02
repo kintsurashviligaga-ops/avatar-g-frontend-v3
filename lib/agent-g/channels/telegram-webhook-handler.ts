@@ -14,6 +14,7 @@ import { getUserMemory, recordEvent, upsertUserMemory } from '@/lib/agent-g/memo
 import { isAgentGVoiceEnabled, transcribeTelegramVoice } from '@/lib/agent-g/voice/stt';
 import { synthesizeTelegramVoice } from '@/lib/agent-g/voice/tts';
 import { generateChannelReply } from '@/lib/ai/channelBridge';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 type TelegramMessage = {
   message_id?: number;
@@ -548,10 +549,14 @@ export async function handleTelegramWebhook(req: Request): Promise<NextResponse>
       return json({ ok: false, error: 'rate_limited', request_id: requestId }, 429, requestId);
     }
 
-    const expectedSecret = normalize(process.env.TELEGRAM_WEBHOOK_SECRET);
-    if (expectedSecret) {
+    // ⚠️ FAIL CLOSED. This used to check the header only `if (expectedSecret)` — with TELEGRAM_WEBHOOK_SECRET unset,
+    // ANY POST was accepted as a Telegram update, queued, and drained by the worker tick into an LLM reply (and voice
+    // synthesis) on the platform keys. Telegram always sends the secret once setWebhook was given one, so an unset
+    // secret is a misconfiguration and reads as "locked" (lib/api/cronAuth), never as "no check".
+    {
+      const expectedSecret = normalize(process.env.TELEGRAM_WEBHOOK_SECRET);
       const providedSecret = normalize(req.headers.get('x-telegram-bot-api-secret-token'));
-      if (!providedSecret || providedSecret !== expectedSecret) {
+      if (!secretMatches(providedSecret, expectedSecret)) {
         recordRouteMetric({
           request_id: requestId,
           route: '/api/agent-g/telegram',

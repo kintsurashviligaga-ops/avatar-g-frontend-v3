@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -134,8 +135,8 @@ async function runStepWithRetry(
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const internalSecret = process.env.AGENT_G_INTERNAL_SECRET ?? '';
-  const providedSecret = request.headers.get('x-agent-g-secret') ?? '';
-  if (internalSecret && providedSecret !== internalSecret) {
+  // ⚠️ FAIL CLOSED: with the secret unset this used to skip the check entirely (see /api/agent-g/delegate).
+  if (!secretMatches(request.headers.get('x-agent-g-secret'), internalSecret)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
