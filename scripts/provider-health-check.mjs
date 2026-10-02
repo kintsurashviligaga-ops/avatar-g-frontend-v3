@@ -5,7 +5,9 @@ const baseUrl = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'htt
 const url = `${baseUrl.replace(/\/+$/, '')}/api/app/health${boolArg ? '?live=1' : ''}`;
 
 const run = async () => {
-  const response = await fetch(url, { cache: 'no-store' });
+  // In production /api/app/health answers 404 unless the caller is an admin or presents CRON_SECRET (lib/security/opsAccess).
+  const headers = process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {};
+  const response = await fetch(url, { cache: 'no-store', headers });
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {

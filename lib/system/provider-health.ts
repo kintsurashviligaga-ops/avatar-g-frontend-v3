@@ -238,7 +238,7 @@ async function probe(provider: ProviderName): Promise<{ ok: boolean; detail: str
   } catch (error) {
     return {
       ok: false,
-      // `detail` is served by the unauthenticated /api/app/health — a thrown message must never carry the key back.
+      // `detail` is served by /api/app/health (operators only now, but still) — a thrown message must never carry the key back.
       detail: error instanceof Error ? error.message.split(key).join('[redacted]') : 'Provider probe failed',
       creditsRemaining: null,
     };

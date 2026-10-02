@@ -64,6 +64,7 @@ const AUTH_SIGNALS: RegExp[] = [
   /constructEvent\s*\(/,                        // Stripe webhook signature verification
   /CRON_SECRET/,                                // cron-secret gated
   /WORKER_INTERNAL_TOKEN|x-internal-worker-token|x-internal-key/, // internal server-to-server token (telephony / worker sub-routes)
+  /opsCallerAllowed\s*\(/,                     // operators only (admin session / CRON_SECRET / non-production) — lib/security/opsAccess
 ];
 
 /**
@@ -86,8 +87,7 @@ const ALLOWLIST: Record<string, string> = {
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.
   'app/api/health/public/route.ts': 'Public health — pings provider status endpoints (/v1/user, /v2/voices), no generation',
-  'app/api/system/film-readiness/route.ts': 'Diagnostic — provider env-presence only, no generation',
-  'app/api/system/film-selftest/route.ts': 'Diagnostic self-test — actively probes providers; monitoring only (ideally admin-gated)',
+  // (system/film-readiness + system/film-selftest LEFT this list 2026-10-02: operators only via lib/security/opsAccess.)
 };
 
 const toRel = (abs: string) => path.relative(process.cwd(), abs).split(path.sep).join('/');

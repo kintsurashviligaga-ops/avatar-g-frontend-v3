@@ -8,14 +8,18 @@
  *     info, or HEAD request) — never burns generation credits
  *   - reports CONNECTED | UNCONFIGURED | ERROR with latency
  *
- * Protected by ADMIN_KEY query param to prevent exfiltration of integration
- * surface. Caller: `GET /api/health/services?key=<ADMIN_KEY>`
+ * Admin-only, to prevent exfiltration of integration surface: a signed-in admin (the email allowlist) or the
+ * `x-admin-key: <ADMIN_KEY>` HEADER. ⚠️ It used to take the key as `?key=` — a URL lands in access logs, traces and
+ * error reports — so the query form is no longer accepted.
+ * Caller: `curl -H "x-admin-key: $ADMIN_KEY" https://…/api/health/services`
  *
  * Returns JSON. NEVER throws — failures are encoded per-service so the matrix
  * always renders even when one provider is down.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { adminKeyHeaderMatches } from '@/lib/security/opsAccess';
+import { isAdmin } from '@/lib/auth/adminGuard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -79,10 +83,8 @@ async function probe(
 }
 
 export async function GET(req: NextRequest) {
-  // Auth gate — only admins can see the integration surface
-  const adminKey = process.env.ADMIN_KEY;
-  const provided = req.nextUrl.searchParams.get('key');
-  if (!adminKey || provided !== adminKey) {
+  // Auth gate — only admins can see the integration surface (header key, constant-time; or an admin session).
+  if (!adminKeyHeaderMatches(req) && !(await isAdmin().catch(() => false))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
