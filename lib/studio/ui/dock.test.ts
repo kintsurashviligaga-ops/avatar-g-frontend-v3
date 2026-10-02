@@ -105,5 +105,7 @@ test('tabs: music and voice have no studio models (they open their own flows)', 
   const all = MODELS.map((m) => publicModel(m) as unknown as StudioModel);
   expect(modelsForTab(all, 'video').every((m) => m.service === 'video')).toBe(true);
   expect(modelsForTab(all, 'music')).toEqual([]);
-  expect(modelsForTab(all, 'motion').map((m) => m.id)).toEqual(['hf/kling-3-motion-std', 'hf/kling-3-motion-pro', 'hf/genjutsu-motion']);
+  expect(modelsForTab(all, 'motion').map((m) => m.id)).toEqual([
+    'hf/kling-3-motion-std', 'hf/kling-3-motion-pro', 'hf/genjutsu-motion', 'hf/kling-2.6-motion-std', 'hf/kling-2.6-motion-pro',
+  ]);
 });

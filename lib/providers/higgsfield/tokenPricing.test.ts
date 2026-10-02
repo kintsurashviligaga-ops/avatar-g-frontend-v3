@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { FALLBACK_PER_SECOND_16x9, parsePer1kTokens, parsePerSecond16x9, videoTokensUsd } from './tokenPricing';
+import { FALLBACK_PER_SECOND_16x9, parsePer1kTokens, parsePerSecond16x9, seedanceI2vUsd, videoTokensUsd } from './tokenPricing';
 
 /** Verbatim from POST /estimate/bytedance/seedance-2.5/text-to-video, 2026-09-29. */
 const LIVE =
@@ -59,5 +59,18 @@ describe('videoTokensUsd — never below cost', () => {
   test('an unusable duration → null (the saga then refuses to charge)', () => {
     expect(videoTokensUsd({ duration: 0 }, LIVE)).toBeNull();
     expect(videoTokensUsd({ duration: 'x' }, LIVE)).toBeNull();
+  });
+});
+
+describe('Seedance 2.5 image→video: the photo decides the shape, so the cost is the widest shape\'s — never below cost', () => {
+  test('costed as 21:9 at the requested length and size, whatever shape the request claims', () => {
+    const wide = videoTokensUsd({ duration: 5, resolution: '720p', aspect_ratio: '21:9' }, null);
+    expect(seedanceI2vUsd({ duration: 5, resolution: '720p' }, null)).toBe(wide);
+    expect(seedanceI2vUsd({ duration: 5, resolution: '720p', aspect_ratio: '9:16' }, null)).toBe(wide);
+    for (const ar of ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9']) {
+      expect(seedanceI2vUsd({ duration: 5, resolution: '720p' }, null)!).toBeGreaterThanOrEqual(videoTokensUsd({ duration: 5, resolution: '720p', aspect_ratio: ar }, null)!);
+    }
+    expect(seedanceI2vUsd({ duration: 10, resolution: '1080p' }, null)!).toBeGreaterThan(seedanceI2vUsd({ duration: 10, resolution: '720p' }, null)!);
+    expect(seedanceI2vUsd({ duration: 0 }, null)).toBeNull();
   });
 });

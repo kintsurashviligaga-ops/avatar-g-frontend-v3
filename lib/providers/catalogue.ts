@@ -19,6 +19,10 @@
  *     character (POST /v1/custom-references → an id, no media), so it is not a generation a picker can offer. It needs its
  *     own flow; Soul 2 would then take its id as `custom_reference_id`.
  *   · avatar — the talking avatar runs one fixed pipeline; there is nothing to choose, so no service entry.
+ *   · Higgsfield's templates (SOUL styles, Marketing Studio presets) — documented, but chosen by id from an authenticated
+ *     listing we do not proxy yet; the models run on their default style until a preset picker exists.
+ *   · Documented models whose schemas our forms cannot carry yet (Hailuo 2.3's duration is an integer ENUM 6 | 10; Kling's
+ *     multi_shots / elements; Genjutsu object swap, which would also unlock lib/genjutsu's locked swap op) — not registered.
  *
  * Pure: no React, no env, no I/O. Availability (keys, HF_ENABLED_MODELS, STUDIO_V2, breakers) is computed by the server from
  * `availabilityOf` (app/api/studio/catalogue) — this file only knows what each model needs.
@@ -117,6 +121,17 @@ const NB_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5
 const SOUL2_ASPECTS = ['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2'] as const;
 const KLING_T2V_ASPECTS = ['16:9', '9:16', '1:1'] as const;
 const SEEDANCE_ASPECTS = ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'] as const;
+const SOUL_ASPECTS = ['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2'] as const;
+const GROK_ASPECTS = ['auto', '1:1', '1:2', '2:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16'] as const;
+const QWEN_Z_ASPECTS = ['1:1', '2:3', '3:2', '3:4', '4:3', '7:9', '9:7', '9:16', '16:9', '21:9'] as const;
+const RECRAFT_ASPECTS = ['1:1', '2:1', '1:2', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '6:10', '14:10', '10:14', '16:9', '9:16'] as const;
+const IDEOGRAM_ASPECTS = [
+  '1:1', '1:2', '2:1', '2:3', '3:2', '4:5', '5:4', '9:16', '16:9', '5:8', '8:5', '3:4', '4:3', '9:22', '22:9', '9:23', '23:9',
+  '3:8', '8:3', '5:12', '12:5', '1:3', '3:1',
+] as const;
+const MARKETING_ASPECTS = ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9'] as const;
+/** Pages read for the owner's "full suite" pass. */
+const READ_1002 = '(read 2026-10-02)';
 
 /** Veo's own facts per tier (lib/veo/capabilities — docs/VEO_ENGINE.md §1, Google docs verified 2026-09-29). */
 function veoCaps(tier: VeoTier): ModelCapabilities {
@@ -163,6 +178,71 @@ const IMAGE: CatalogueEntry[] = [
     caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: SOUL2_ASPECTS },
     wire: { runner: 'studio' },
     verified: 'docs', source: `${HF_DOCS}/soul-2/generate (read 2026-10-02)`,
+  },
+  // ── Higgsfield's image suite, opt-in beside Google (pages read 2026-10-02; "best for" is each page's own description) ──
+  {
+    id: 'hf/soul', service: 'image', provider: 'higgsfield', vendor: 'Higgsfield',
+    label: t('SOUL — სტილიზებული სურათი', 'SOUL — styled image', 'SOUL — стилизованное изображение'),
+    bestFor: t('სურათი SOUL-ის საფირმო სტილში, 720p ან 1080p.', 'Images in SOUL’s signature style, 720p or 1080p.', 'Изображения в фирменном стиле SOUL, 720p или 1080p.'),
+    tier: 'standard',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: SOUL_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/soul-standard/generate ${READ_1002}`,
+  },
+  {
+    id: 'hf/soul-cinema', service: 'image', provider: 'higgsfield', vendor: 'Higgsfield',
+    label: t('SOUL Cinema — კინოკადრი', 'SOUL Cinema — cinema still', 'SOUL Cinema — кинокадр'),
+    bestFor: t('კინოს სტილის კადრი ტექსტიდან.', 'Cinema-inspired stills from a text prompt.', 'Кинематографичные кадры из текста.'),
+    tier: 'standard',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: SOUL_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/soul-cinema/generate ${READ_1002}`,
+  },
+  {
+    id: 'hf/grok-image-2', service: 'image', provider: 'higgsfield', vendor: 'xAI',
+    label: t('Grok Image 2.0 — სურათი და რედაქტირება', 'Grok Image 2.0 — generate and edit', 'Grok Image 2.0 — создание и правка'),
+    bestFor: t('ახალი სურათი ან შენი ფოტოს რედაქტირება — 5-მდე რეფერენსით.', 'New images, or edits of your photos with up to 5 references.', 'Новые изображения или правка ваших фото — до 5 референсов.'),
+    tier: 'fast',
+    caps: { fromText: true, fromImage: true, references: 5, maxDurationSec: null, aspectRatios: GROK_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/grok-image-2/generate-and-edit ${READ_1002}`,
+  },
+  {
+    id: 'hf/qwen-image-3', service: 'image', provider: 'higgsfield', vendor: 'Alibaba',
+    label: t('Qwen Image 3 — სურათი ტექსტიდან', 'Qwen Image 3 — text to image', 'Qwen Image 3 — изображение из текста'),
+    bestFor: t('სურათი ტექსტიდან, პრომპტის ჩაშენებული გაუმჯობესებით.', 'Text to image, with the prompt refined by the model first.', 'Изображение из текста с встроенным улучшением промпта.'),
+    tier: 'standard',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: QWEN_Z_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/qwen-image-3/text-to-image ${READ_1002}`,
+  },
+  {
+    id: 'hf/recraft-v4.1', service: 'image', provider: 'higgsfield', vendor: 'Recraft',
+    label: t('Recraft V4.1 — სურათი ტექსტიდან', 'Recraft V4.1 — text to image', 'Recraft V4.1 — изображение из текста'),
+    bestFor: t('1K სურათი თოთხმეტ ფორმატში.', '1K images in fourteen frame shapes.', 'Изображения 1K в четырнадцати форматах.'),
+    tier: 'fast',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: RECRAFT_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/recraft-v4-1/text-to-image ${READ_1002}`,
+  },
+  {
+    id: 'hf/ideogram-4', service: 'image', provider: 'higgsfield', vendor: 'Ideogram',
+    label: t('Ideogram 4.0 — სურათი და რემიქსი', 'Ideogram 4.0 — image and remix', 'Ideogram 4.0 — изображение и ремикс'),
+    bestFor: t('სურათი ან შენი ფოტოს რემიქსი, სიჩქარის არჩევით.', 'Images, or a remix of your photo, at the speed you choose.', 'Изображения или ремикс фото с выбором скорости.'),
+    tier: 'standard',
+    caps: { fromText: true, fromImage: true, references: 0, maxDurationSec: null, aspectRatios: IDEOGRAM_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/ideogram-4/generate ${READ_1002}`,
+  },
+  {
+    id: 'hf/z-image-turbo', service: 'image', provider: 'higgsfield', vendor: 'Alibaba',
+    label: t('Z-Image Turbo — სწრაფი სურათი', 'Z-Image Turbo — fast image', 'Z-Image Turbo — быстрое изображение'),
+    bestFor: t('სწრაფი სურათი 1K ან 2K, მოკლე პრომპტით.', 'Fast images at 1K or 2K from a short prompt.', 'Быстрые изображения 1K или 2K по короткому промпту.'),
+    tier: 'fast',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: QWEN_Z_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/z-image-turbo/generate ${READ_1002}`,
+  },
+  {
+    id: 'hf/marketing-studio-image', service: 'image', provider: 'higgsfield', vendor: 'Higgsfield',
+    label: t('Marketing Studio — სარეკლამო სურათი', 'Marketing Studio — campaign image', 'Marketing Studio — рекламное изображение'),
+    bestFor: t('სარეკლამო სურათი ან შენი ფოტოების რედაქტირება, 4K-მდე.', 'Campaign images, or edits of your photos, up to 4K.', 'Рекламные изображения или правка ваших фото, до 4K.'),
+    tier: 'pro',
+    caps: { fromText: true, fromImage: true, references: 5, maxDurationSec: null, aspectRatios: MARKETING_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/marketing-studio-image/generate-and-edit ${READ_1002}`,
   },
 ];
 
@@ -236,6 +316,47 @@ const VIDEO: CatalogueEntry[] = [
     caps: { fromText: false, fromImage: true, references: 5, maxDurationSec: 30, aspectRatios: SEEDANCE_ASPECTS },
     wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/seedance-2-5/reference-to-video (read 2026-09-28)`,
   },
+  // ── more of Higgsfield's video suite (pages read 2026-10-02) ──
+  {
+    id: 'hf/kling-3-turbo-t2v', service: 'video', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 3 Turbo — ვიდეო ტექსტიდან', 'Kling 3 Turbo — text to video', 'Kling 3 Turbo — видео из текста'),
+    bestFor: t('სწრაფი კადრი 3–15 წამი, 1080p-მდე, უხმოდ.', 'Quick 3–15 s shots up to 1080p, silent.', 'Быстрые кадры 3–15 с до 1080p, без звука.'),
+    tier: 'fast',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: 15, aspectRatios: KLING_T2V_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-3/turbo-text-to-video ${READ_1002}`,
+  },
+  {
+    id: 'hf/kling-3-turbo-i2v', service: 'video', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 3 Turbo — ფოტოს გაცოცხლება', 'Kling 3 Turbo — image to video', 'Kling 3 Turbo — оживление фото'),
+    bestFor: t('შენი ფოტო მოძრაობს — სწრაფად, 1080p-მდე, უხმოდ.', 'Your photo in motion — quick, up to 1080p, silent.', 'Ваше фото в движении — быстро, до 1080p, без звука.'),
+    tier: 'fast',
+    caps: { fromText: false, fromImage: true, references: 0, maxDurationSec: 15, aspectRatios: [], needs: ['image'] },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-3/turbo-image-to-video ${READ_1002}`,
+  },
+  {
+    id: 'hf/kling-3-4k-t2v', service: 'video', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 3 4K — ვიდეო ტექსტიდან', 'Kling 3 4K — text to video', 'Kling 3 4K — видео из текста'),
+    bestFor: t('4K კადრი 3–15 წამი, ხმით ან უხმოდ.', '4K shots of 3–15 s, with or without sound.', '4K-кадры 3–15 с, со звуком или без.'),
+    tier: 'pro',
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: 15, aspectRatios: KLING_T2V_ASPECTS },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-3/4k-text-to-video ${READ_1002}`,
+  },
+  {
+    id: 'hf/kling-3-4k-i2v', service: 'video', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 3 4K — ფოტოს გაცოცხლება', 'Kling 3 4K — image to video', 'Kling 3 4K — оживление фото'),
+    bestFor: t('შენი ფოტოდან 4K ვიდეო; სურვილისამებრ — ბოლო კადრიც.', 'A 4K video from your photo — and optionally its last frame.', '4K-видео из вашего фото, по желанию — и последний кадр.'),
+    tier: 'pro',
+    caps: { fromText: false, fromImage: true, references: 0, maxDurationSec: 15, aspectRatios: [], needs: ['image'] },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-3/4k-image-to-video ${READ_1002}`,
+  },
+  {
+    id: 'hf/seedance-2.5-i2v', service: 'video', provider: 'higgsfield', vendor: 'ByteDance',
+    label: t('Seedance 2.5 — ფოტოს გაცოცხლება', 'Seedance 2.5 — image to video', 'Seedance 2.5 — оживление фото'),
+    bestFor: t('შენი ფოტოდან 4–30 წამიანი ვიდეო, 1080p-მდე.', 'Your photo becomes a 4–30 s video, up to 1080p.', 'Фото становится видео 4–30 с, до 1080p.'),
+    tier: 'standard',
+    caps: { fromText: false, fromImage: true, references: 0, maxDurationSec: 30, aspectRatios: [], needs: ['image'] },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/seedance-2-5/image-to-video ${READ_1002}`,
+  },
 ];
 
 const MOTION: CatalogueEntry[] = [
@@ -263,6 +384,22 @@ const MOTION: CatalogueEntry[] = [
     tier: 'standard',
     caps: { fromText: false, fromImage: true, references: 5, maxDurationSec: null, aspectRatios: [], needs: ['image', 'video'] },
     wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/genjutsu/motion-transfer (read 2026-09-28)`,
+  },
+  {
+    id: 'hf/kling-2.6-motion-std', service: 'motion', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 2.6 Motion Control — მოძრაობის გადატანა', 'Kling 2.6 Motion Control', 'Kling 2.6 Motion Control — перенос движения'),
+    bestFor: t('მოძრაობა 3–30 წამიანი ვიდეოდან შენს ფოტოზე.', 'Motion from a 3–30 s video onto your photo.', 'Движение из видео 3–30 с на ваше фото.'),
+    tier: 'standard',
+    caps: { fromText: false, fromImage: true, references: 0, maxDurationSec: 30, aspectRatios: [], needs: ['image', 'video'] },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-2-6-motion-control/std ${READ_1002}`,
+  },
+  {
+    id: 'hf/kling-2.6-motion-pro', service: 'motion', provider: 'higgsfield', vendor: 'Kling',
+    label: t('Kling 2.6 Motion Control Pro — ზუსტი მოძრაობა', 'Kling 2.6 Motion Control Pro', 'Kling 2.6 Motion Control Pro — точное движение'),
+    bestFor: t('იგივე გადატანა Pro დამუშავებით.', 'The same transfer with Pro processing.', 'Тот же перенос с обработкой Pro.'),
+    tier: 'pro',
+    caps: { fromText: false, fromImage: true, references: 0, maxDurationSec: 30, aspectRatios: [], needs: ['image', 'video'] },
+    wire: { runner: 'studio' }, verified: 'docs', source: `${HF_DOCS}/kling-2-6-motion-control/pro ${READ_1002}`,
   },
 ];
 

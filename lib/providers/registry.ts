@@ -17,14 +17,25 @@ import type { z } from 'zod';
 import {
   HF_ENDPOINTS,
   genjutsuMotionInput,
+  grokImage2Input,
+  ideogram4Input,
   klingI2vInput,
   klingMotionInput,
   klingT2vInput,
+  klingTurboI2vInput,
+  klingTurboT2vInput,
+  marketingStudioImageInput,
+  qwenImage3T2iInput,
+  recraftV41Input,
+  seedanceI2vInput,
   seedanceR2vInput,
   seedanceT2vInput,
   soul2Input,
+  soulCinemaInput,
+  soulStandardInput,
+  zImageTurboInput,
 } from '@/lib/providers/higgsfield/models';
-import { videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
+import { seedanceI2vUsd, videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
 import { catalogueEntry } from '@/lib/providers/catalogue';
 import { describeInput } from '@/lib/providers/paramSpec';
 import type { ModelTier, OutputKind, ProviderId, StudioService } from '@/lib/providers/types';
@@ -58,6 +69,9 @@ export interface ModelEntry {
   /**
    * Local price for a model the provider only DESCRIBES (no numeric estimate) — USD from the validated input
    * and the provider's pricing text. Absent → such a model cannot be priced and is refused (D5).
+   * TODO(pricing): the models added 2026-10-02 have none — the provider's numeric estimate prices them. Should the smoke
+   * test (`npm run hf:smoke`) show one answering with a description only, its wholesale-USD function belongs HERE (cited
+   * from that description, like tokenPricing.ts), never a guess; until then the saga refuses it, nothing is charged.
    */
   priceUsd?: (input: Record<string, unknown>, pricingDescription: string | null) => number | null;
   /**
@@ -94,6 +108,24 @@ export const MODELS: readonly ModelEntry[] = [
     schema: 'page',
     timeoutMs: 10 * MIN,
   },
+  // ── image, read 2026-10-02 ──
+  { id: 'hf/soul', provider: 'higgsfield', endpoint: HF_ENDPOINTS.soulStandard, service: 'image', mode: 'text-to-image', family: 'soul',
+    ...names('hf/soul'), tier: 'standard', output: 'images', fallback: [], input: soulStandardInput, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/soul-cinema', provider: 'higgsfield', endpoint: HF_ENDPOINTS.soulCinema, service: 'image', mode: 'text-to-image', family: 'soul-cinema',
+    ...names('hf/soul-cinema'), tier: 'standard', output: 'images', fallback: [], input: soulCinemaInput, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/grok-image-2', provider: 'higgsfield', endpoint: HF_ENDPOINTS.grokImage2, service: 'image', mode: 'text-to-image', family: 'grok-image-2',
+    ...names('hf/grok-image-2'), tier: 'fast', output: 'images', fallback: [], input: grokImage2Input, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/qwen-image-3', provider: 'higgsfield', endpoint: HF_ENDPOINTS.qwenImage3T2i, service: 'image', mode: 'text-to-image', family: 'qwen-image-3',
+    ...names('hf/qwen-image-3'), tier: 'standard', output: 'images', fallback: [], input: qwenImage3T2iInput, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/recraft-v4.1', provider: 'higgsfield', endpoint: HF_ENDPOINTS.recraftV41, service: 'image', mode: 'text-to-image', family: 'recraft-v4.1',
+    ...names('hf/recraft-v4.1'), tier: 'fast', output: 'images', fallback: [], input: recraftV41Input, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/ideogram-4', provider: 'higgsfield', endpoint: HF_ENDPOINTS.ideogram4, service: 'image', mode: 'text-to-image', family: 'ideogram-4',
+    ...names('hf/ideogram-4'), tier: 'standard', output: 'images', fallback: [], input: ideogram4Input, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/z-image-turbo', provider: 'higgsfield', endpoint: HF_ENDPOINTS.zImageTurbo, service: 'image', mode: 'text-to-image', family: 'z-image-turbo',
+    ...names('hf/z-image-turbo'), tier: 'fast', output: 'images', fallback: [], input: zImageTurboInput, schema: 'page', timeoutMs: 10 * MIN },
+  { id: 'hf/marketing-studio-image', provider: 'higgsfield', endpoint: HF_ENDPOINTS.marketingStudioImage, service: 'image', mode: 'text-to-image',
+    family: 'marketing-studio-image', ...names('hf/marketing-studio-image'), tier: 'pro', output: 'images', fallback: [], input: marketingStudioImageInput,
+    schema: 'page', timeoutMs: 10 * MIN },
   {
     id: 'hf/kling-3-std-t2v',
     provider: 'higgsfield',
@@ -187,6 +219,23 @@ export const MODELS: readonly ModelEntry[] = [
     priceUsd: videoTokensUsd,
     requireOneOf: ['image_urls', 'audio_urls'],
   },
+  // ── video, read 2026-10-02 ──
+  { id: 'hf/kling-3-turbo-t2v', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling3TurboT2v, service: 'video', mode: 'text-to-video',
+    family: 'kling-3-turbo-t2v', ...names('hf/kling-3-turbo-t2v'), tier: 'fast', output: 'video', fallback: [], input: klingTurboT2vInput,
+    schema: 'page', timeoutMs: 20 * MIN },
+  { id: 'hf/kling-3-turbo-i2v', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling3TurboI2v, service: 'video', mode: 'image-to-video',
+    family: 'kling-3-turbo-i2v', ...names('hf/kling-3-turbo-i2v'), tier: 'fast', output: 'video', fallback: [], input: klingTurboI2vInput,
+    schema: 'page', timeoutMs: 20 * MIN },
+  // 4K: the same schema as its std / pro siblings (both pages read), but never their fallback — a 4K order is not silently 1080p.
+  { id: 'hf/kling-3-4k-t2v', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling34kT2v, service: 'video', mode: 'text-to-video',
+    family: 'kling-3-4k-t2v', ...names('hf/kling-3-4k-t2v'), tier: 'pro', output: 'video', fallback: [], input: klingT2vInput,
+    schema: 'page', timeoutMs: 30 * MIN },
+  { id: 'hf/kling-3-4k-i2v', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling34kI2v, service: 'video', mode: 'image-to-video',
+    family: 'kling-3-4k-i2v', ...names('hf/kling-3-4k-i2v'), tier: 'pro', output: 'video', fallback: [], input: klingI2vInput,
+    schema: 'page', timeoutMs: 30 * MIN },
+  { id: 'hf/seedance-2.5-i2v', provider: 'higgsfield', endpoint: HF_ENDPOINTS.seedance25I2v, service: 'video', mode: 'image-to-video',
+    family: 'seedance-2.5-i2v', ...names('hf/seedance-2.5-i2v'), tier: 'standard', output: 'video', fallback: [], input: seedanceI2vInput,
+    schema: 'page', timeoutMs: 20 * MIN, priceUsd: seedanceI2vUsd },
   {
     id: 'hf/kling-3-motion-std',
     provider: 'higgsfield',
@@ -232,6 +281,13 @@ export const MODELS: readonly ModelEntry[] = [
     schema: 'page',
     timeoutMs: 30 * MIN,
   },
+  // ── motion, read 2026-10-02: Kling 2.6 Motion Control takes Kling 3.0's exact schema on its own endpoints ──
+  { id: 'hf/kling-2.6-motion-std', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling26McStd, service: 'motion', mode: 'motion-transfer',
+    family: 'kling-2.6-motion', ...names('hf/kling-2.6-motion-std'), tier: 'standard', output: 'video', fallback: [], input: klingMotionInput,
+    schema: 'page', timeoutMs: 30 * MIN },
+  { id: 'hf/kling-2.6-motion-pro', provider: 'higgsfield', endpoint: HF_ENDPOINTS.kling26McPro, service: 'motion', mode: 'motion-transfer',
+    family: 'kling-2.6-motion', ...names('hf/kling-2.6-motion-pro'), tier: 'pro', output: 'video', fallback: ['hf/kling-2.6-motion-std'], input: klingMotionInput,
+    schema: 'page', timeoutMs: 30 * MIN },
 ];
 
 const BY_ID = new Map(MODELS.map((m) => [m.id, m]));
