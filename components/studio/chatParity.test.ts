@@ -96,6 +96,20 @@ describe('the Gemini chat surface', () => {
   });
 });
 
+describe('the chat takes everything a person can bring', () => {
+  it('its „+" offers photos, a video, the camera and files — each to its own input', () => {
+    expect(omni).toMatch(/activeTool === 'chat' \? \{ onPhotos: \(\) => photoRef\.current\?\.click\(\), onVideo: \(\) => videoPickRef\.current\?\.click\(\), onCamera: \(\) => cameraRef\.current\?\.click\(\), onFiles: \(\) => fileRef\.current\?\.click\(\) \}/);
+    // the video input takes video only, several at once, and goes through the one intake
+    expect(omni).toMatch(/<input ref=\{videoPickRef\} type="file" multiple accept="video\/\*"/);
+  });
+
+  it('a file that would overflow the platform\'s request body is refused at the picker, not at Send', () => {
+    expect(omni).toContain("import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES,");
+    expect(omni).toMatch(/kind !== 'video' && inlineBytesRef\.current \+ dataUrl\.length > DEFAULT_TOTAL_CAP_BYTES/);
+    expect(omni).toContain("rejectionMessage('total_too_large'");
+  });
+});
+
 describe('Live gets the microphone', () => {
   it('the Live chip primes Live INSIDE the tap, before it asks ChatChrome to open, and never for a guest', () => {
     expect(omni).toMatch(/if \(document\.documentElement\.dataset\.authed !== '0'\) primeLive\(\);\s*window\.dispatchEvent\(new CustomEvent\('myavatar:voice-open'\)\);/);

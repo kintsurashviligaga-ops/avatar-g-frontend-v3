@@ -1,11 +1,11 @@
 'use client';
 
-import { Camera, Check, Image as ImageIcon, Paperclip, type LucideIcon } from 'lucide-react';
+import { Camera, Check, Image as ImageIcon, Paperclip, Video, type LucideIcon } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 
 /**
- * What the composer's „+" opens — the Gemini grammar (docs/DESIGN.md §8): three large tiles for what you bring
- * (photos, camera, files), then the tools, each a line icon, a name and one line of what it does. Choosing a
+ * What the composer's „+" opens — the Gemini grammar (docs/DESIGN.md §8): large tiles for what you bring
+ * (photos, video, camera, files), then the tools, each a line icon, a name and one line of what it does. Choosing a
  * tool closes the sheet and puts it in the composer as a chip. One entry point replaces what used to be four
  * controls in the composer row (+, camera, the mode dropdown and the options toggle).
  */
@@ -21,14 +21,14 @@ export interface ToolEntry {
 
 type Lang = 'ka' | 'en' | 'ru';
 
-const COPY: Record<Lang, { title: string; close: string; photos: string; camera: string; files: string; tools: string; more: string }> = {
-  ka: { title: 'დამატება და ხელსაწყოები', close: 'დახურვა', photos: 'ფოტოები', camera: 'კამერა', files: 'ფაილები', tools: 'ხელსაწყოები', more: 'მეტი' },
-  en: { title: 'Add and tools', close: 'Close', photos: 'Photos', camera: 'Camera', files: 'Files', tools: 'Tools', more: 'More' },
-  ru: { title: 'Добавить и инструменты', close: 'Закрыть', photos: 'Фото', camera: 'Камера', files: 'Файлы', tools: 'Инструменты', more: 'Ещё' },
+const COPY: Record<Lang, { title: string; close: string; photos: string; video: string; camera: string; files: string; tools: string; more: string }> = {
+  ka: { title: 'დამატება და ხელსაწყოები', close: 'დახურვა', photos: 'ფოტოები', video: 'ვიდეო', camera: 'კამერა', files: 'ფაილები', tools: 'ხელსაწყოები', more: 'მეტი' },
+  en: { title: 'Add and tools', close: 'Close', photos: 'Photos', video: 'Video', camera: 'Camera', files: 'Files', tools: 'Tools', more: 'More' },
+  ru: { title: 'Добавить и инструменты', close: 'Закрыть', photos: 'Фото', video: 'Видео', camera: 'Камера', files: 'Файлы', tools: 'Инструменты', more: 'Ещё' },
 };
 
 export function ToolSheet({
-  open, onClose, locale, title, tools, studios = [], activeId, onTool, onPhotos, onCamera, onFiles,
+  open, onClose, locale, title, tools, studios = [], activeId, onTool, onPhotos, onVideo, onCamera, onFiles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,6 +43,8 @@ export function ToolSheet({
   onTool: (id: string) => void;
   /** Each tile shows only when the active tool can take it — a remix takes a video, not a photo; a studio neither. */
   onPhotos?: () => void;
+  /** A video from the library (or one recorded on the spot — the phone's own picker offers both). */
+  onVideo?: () => void;
   onCamera?: () => void;
   onFiles?: () => void;
 }) {
@@ -68,11 +70,16 @@ export function ToolSheet({
   };
   return (
     <BottomSheet open={open} onClose={onClose} closeLabel={c.close} testId="tool-sheet" title={title ?? c.title} showHeader={false}>
-      {(onPhotos || onCamera || onFiles) && (
+      {(onPhotos || onVideo || onCamera || onFiles) && (
         <div className="flex gap-2.5 px-1 pb-3 pt-1">
           {onPhotos && (
             <button type="button" className={tile} onClick={() => { onPhotos(); onClose(); }}>
               <ImageIcon size={22} aria-hidden="true" /> {c.photos}
+            </button>
+          )}
+          {onVideo && (
+            <button type="button" className={tile} onClick={() => { onVideo(); onClose(); }}>
+              <Video size={22} aria-hidden="true" /> {c.video}
             </button>
           )}
           {onCamera && (

@@ -114,7 +114,7 @@ import { StyleChips } from './ui/StyleChips';
 import { musicControlsCopy, musicControlsModeOf, musicControlsNote, sliderBadgeParts } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
-import { PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
+import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { toast } from 'sonner';
 
@@ -2351,6 +2351,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Each refusal (too large · empty/iCloud placeholder · unreadable · tray full) is a toast, never a silent drop.
   const attachmentCountRef = useRef(0);
   attachmentCountRef.current = attachments.length;
+  // What the tray already carries INLINE (a video is not inline: it is uploaded to storage when its request runs).
+  const inlineBytesRef = useRef(0);
+  inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) ? sum : sum + a.dataUrl.length), 0);
   const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
     const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
     let room = MAX_ATTACHMENTS - attachmentCountRef.current;
@@ -2368,6 +2371,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const raw = withDataUrlMime(await fileToDataUrl(f), mime);
         const dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
         const mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
+        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
+        // song passed the caps above and then failed at Send with only a generic error. Everything except a video
+        // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
+        if (kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES) {
+          toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES));
+          continue;
+        }
+        if (kind !== 'video') inlineBytesRef.current += dataUrl.length;
         room -= 1;
         setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, ...(f.name ? { name: f.name } : {}) }]);
       } catch {
@@ -2686,6 +2697,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
+  const videoPickRef = useRef<HTMLInputElement | null>(null);
   const productPhotoRef = useRef<HTMLInputElement | null>(null);
   const remixVideoRef = useRef<HTMLInputElement | null>(null);
   // A guest sees „შესვლა" in the desktop title bar. ChatChrome publishes the session on <html data-authed>.
@@ -6998,8 +7010,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
   });
-  const attachTargets: { onPhotos?: () => void; onCamera?: () => void; onFiles?: () => void } =
-    activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
+  const attachTargets: { onPhotos?: () => void; onVideo?: () => void; onCamera?: () => void; onFiles?: () => void } =
+    // THE CHAT TAKES EVERYTHING: photos, a video, the camera, and files (documents, audio, anything else readable).
+    activeTool === 'chat' ? { onPhotos: () => photoRef.current?.click(), onVideo: () => videoPickRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
+    : activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
       : activeTool === 'swap' ? { onPhotos: () => { charReplaceRef.current = true; charFileRef.current?.click(); }, onFiles: () => swapVideoRef.current?.click() }
         : activeTool === 'avatar' ? { onPhotos: () => lipsyncFaceRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
           // Music reads an AUDIO attachment (a voice or a cover source) — a photo would turn the song into a chat reply.
@@ -8685,6 +8699,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }} />
         {/* „+" → Photos: images into the composer's attachments (the tools that read them). */}
         <input ref={photoRef} type="file" multiple accept="image/*" className="hidden" onChange={async (e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          void ingestFiles(files, { scriptInVideo: false });
+        }} />
+        {/* „+" → Video: a clip from the library — or one recorded on the spot, which is what a phone's own video picker
+            offers first. It rides as an attachment exactly like a file (the chat's „edit this video" path reads it). */}
+        <input ref={videoPickRef} type="file" multiple accept="video/*" className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
           void ingestFiles(files, { scriptInVideo: false });
