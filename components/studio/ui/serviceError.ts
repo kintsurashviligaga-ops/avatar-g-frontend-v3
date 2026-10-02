@@ -103,6 +103,8 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^invalid_input$/, 'invalid_input'],
   [/^provider_unavailable$/, 'provider_unavailable'],
   [/^billing_unavailable$/, 'billing_unavailable'],
+  // The avatar / presenter / film-remix routes name the same outage `ledger_unavailable`.
+  [/^ledger_unavailable$/, 'billing_unavailable'],
   [/^cannot_cancel$/, 'cannot_cancel'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often

@@ -143,6 +143,9 @@ describe('describeGenerationFailure — the refund notice is shown when, and onl
     expect(describeGenerationFailure(dup, 'ka', KA_FALLBACK)).toContain('უკვე');
     // insufficient_credits rides in `code` beside a bilingual sentence.
     expect(describeGenerationFailure({ code: 'insufficient_credits', error: 'არასაკმარისი კრედიტი / Not enough credits' }, 'en', 'x')).toContain('Top up');
+    // The avatar routes' name for the same outage reads the same.
+    expect(describeGenerationFailure({ jobId: null, error: 'ledger_unavailable', code: 'ledger_unavailable' }, 'en', 'x'))
+      .toBe(describeServiceError('billing_unavailable', 'en', 'y'));
   });
 
   it('falls back like describeServiceError on anything unknown, and on junk input', () => {
