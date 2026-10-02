@@ -56,6 +56,27 @@ describe('templateThumb — how a card loads its picture', () => {
   });
 });
 
+describe('next.config.js: a year of cache for VERSIONED thumbnails only', () => {
+  type Rule = { source: string; has?: Array<{ type: string; key: string }>; headers: Array<{ key: string; value: string }> };
+  const cacheOf = (r: Rule) => r.headers.find((h) => h.key.toLowerCase() === 'cache-control')?.value;
+
+  test('/templates and /avatars with ?v= are immutable for a year; nothing makes the bare (replaceable) paths immutable', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const config = require('../../next.config.js') as { headers: () => Promise<Rule[]>; images: { formats: string[]; minimumCacheTTL: number } };
+    const rules = await config.headers();
+    for (const dir of ['/templates', '/avatars']) {
+      const mine = rules.filter((r) => r.source.startsWith(dir));
+      expect(mine.map((r) => ({ source: r.source, has: r.has, cache: cacheOf(r) }))).toEqual([
+        { source: `${dir}/:path*`, has: [{ type: 'query', key: 'v' }], cache: 'public, max-age=31536000, immutable' },
+      ]);
+    }
+    // No other rule (the catch-all included) sets an immutable Cache-Control that a bare thumbnail path could match.
+    expect(rules.filter((r) => /immutable/.test(cacheOf(r) ?? '') && !r.has?.some((h) => h.type === 'query' && h.key === 'v'))).toEqual([]);
+    expect(config.images.formats).toEqual(['image/avif', 'image/webp']);
+    expect(config.images.minimumCacheTTL).toBe(86400);
+  });
+});
+
 describe('the committed map is current', () => {
   const cardThumbs = [...new Set(Object.values(TEMPLATES_BY_TOOL).flat().map((t) => t.thumb).filter(isStaticThumb))].sort();
   const imagesUnder = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir, { withFileTypes: true }) : []).flatMap((e) =>
