@@ -23,33 +23,28 @@ const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8')
 describe('music-video composite', () => {
   const src = read('lib/chat/musicVideoComposite.ts');
 
-  it('records whether each leg was ACTUALLY debited', () => {
-    // Refunding on a null result alone would credit users who were never charged: a leg is also null
-    // when the provider is unconfigured (the traced call never ran) and when it threw (withTrace marks
-    // the trace failed and issues no debit).
-    expect(src).toContain('musicDebited = true');
-    expect(src).toContain('videoDebited = true');
+  // ⚠️ SUPERSEDED DESIGN. This path used to charge per leg through withTrace (→ debit_wallet_gel, which is not on the production
+  // database, so it charged NOTHING) and refund per leg by ref. It is now charged ONCE up front and refunded by delivered legs;
+  // lib/chat/musicVideoCompositeCharge.test.ts drives it for real. These structural guards keep the shape from drifting back.
+  it('no leg debits on its own any more (a per-leg debit calls a function that does not exist, and would double-charge if it did)', () => {
+    expect(src).not.toMatch(/deduct: true/);
+    expect((src.match(/^\s+deduct: false,/gm) ?? []).length).toBe(3);
   });
 
-  it('refunds a leg that was debited and produced nothing — what the LEDGER took, never a forecast', () => {
-    // credit_wallet_gel converts GEL ×10 into credits: refunding a 2 ₾ forecast paid back 20 credits for a debit
-    // that (debit_wallet_gel being undefined on the production database) never happened. refundDebitByRef pays
-    // back exactly the net debit under the leg's own ref.
-    expect(src).toContain('refundDebitByRef');
+  it('is charged once, up front, through the ledger — and never credits through the GEL wallet RPC', () => {
+    expect(src).toMatch(/deductCredits\(input\.userId, mvQuote, mvRef\)/);
     expect(src).not.toMatch(/creditWalletGel\(/);
-    expect(src).toMatch(/musicDebited && !musicWorkId/);
-    expect(src).toMatch(/videoDebited && !videoTaskRef/);
+    expect(src).toContain('videoCredits({ seconds: 8, mode: \'musicvideo\' })');
+  });
+
+  it('refunds from what THIS request delivered, under the composite\'s own idempotent refund ref', () => {
+    expect(src).toMatch(/refundCredits\(input\.userId, back, `\$\{mvRef\}:refund`\)/);
+    expect(src).toMatch(/\(musicWorkId \? 1 : 0\) \+ \(videoTaskRef \? 1 : 0\)/);
   });
 
   it('never refunds an anonymous caller', () => {
     // Anonymous requests are not billed through this wallet at all.
     expect(src).toMatch(/const realUser = Boolean\(input\.userId && input\.userId !== 'anonymous'\)/);
-  });
-
-  it('refunds under the leg\'s own debit ref (refundDebitByRef appends the idempotent :refund)', () => {
-    expect(src).toMatch(/refundDebitByRef\(input\.userId as string, `\$\{compositeId\}:\$\{leg\}`\)/);
-    expect(src).toContain('deductRef: `${compositeId}:music`');
-    expect(src).toContain('deductRef: `${compositeId}:video`');
   });
 });
 
