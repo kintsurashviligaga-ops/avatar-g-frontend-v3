@@ -28,7 +28,7 @@ const COPY: Record<Lang, { title: string; close: string; photos: string; video: 
 };
 
 export function ToolSheet({
-  open, onClose, locale, title, tools, studios = [], activeId, onTool, onPhotos, onVideo, onCamera, onFiles,
+  open, onClose, locale, title, tools, studios = [], extras = [], activeId, onTool, onPhotos, onVideo, onCamera, onFiles,
 }: {
   open: boolean;
   onClose: () => void;
@@ -39,6 +39,8 @@ export function ToolSheet({
   tools: ToolEntry[];
   /** The tools one level down: video variants, motion, and the full studios (montage, dubbing, 3D, presentation). */
   studios?: ToolEntry[];
+  /** Rows that DO something instead of switching the active tool (Deep Research, Connectors). Empty = nothing is drawn. */
+  extras?: Array<ToolEntry & { onPick: () => void }>;
   activeId: string | null;
   onTool: (id: string) => void;
   /** Each tile shows only when the active tool can take it — a remix takes a video, not a photo; a studio neither. */
@@ -96,6 +98,22 @@ export function ToolSheet({
       )}
       <p className="px-3 pb-1 pt-1 text-[12px] font-medium text-app-muted">{c.tools}</p>
       <ul className="space-y-0.5" aria-label={c.tools}>{tools.map(row)}</ul>
+      {extras.length > 0 && (
+        <ul className="mt-0.5 space-y-0.5" aria-label={c.tools} data-testid="tool-sheet-extras">
+          {extras.map((t) => (
+            <li key={t.id}>
+              <button type="button" data-testid={`tool-extra-${t.id}`} onClick={() => { t.onPick(); onClose(); }}
+                className="flex min-h-[56px] w-full items-center gap-3.5 rounded-2xl px-3 text-left transition-colors hover:bg-app-elevated/70">
+                <t.Icon size={20} aria-hidden="true" className="shrink-0 text-app-text/80" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-medium leading-tight text-app-text">{t.title}</span>
+                  <span className="mt-0.5 block truncate text-[12.5px] leading-tight text-app-muted">{t.sub}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {studios.length > 0 && (
         <>
           <p className="px-3 pb-1 pt-3 text-[12px] font-medium text-app-muted">{c.more}</p>
