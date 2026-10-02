@@ -41,7 +41,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   });
 
   test('the generic "service card" is not drawn for the image tool (the panel\'s header is the tool switcher)', () => {
-    expect(src).toMatch(/\{!imageCreate && !videoCreate && <button type="button" onClick=\{\(\) => \{ setToolPickOnly\(true\)/);
+    expect(src).toMatch(/\{!imageCreate && !videoCreate && mode !== 'music' && <button type="button" onClick=\{\(\) => \{ setToolPickOnly\(true\)/);
     expect(mounted).toMatch(/onOpenTools=\{\(\) => \{ setToolPickOnly\(true\); setToolSheetOpen\(true\); \}\}/);
   });
 
@@ -99,8 +99,8 @@ describe('the phone: the sheet opens by itself and the composer\'s text box step
     expect(edit).toContain('imgPromptRef.current ?? taRef.current');
   });
 
-  test('the composer\'s textarea is hidden below lg in the image tool, and only there', () => {
-    expect(src).toContain("`${imageCreate && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
+  test('the composer\'s textarea is hidden below lg in the image and music tools (their prompt is the Create screen\'s), and only there', () => {
+    expect(src).toContain("`${(imageCreate || mode === 'music') && !isDesktop ? 'hidden ' : ''}max-h-40 min-h-[28px] w-full resize-none");
   });
 
   test('a hidden box is not measured (0 px would stick as its inline height in the next tool)', () => {
@@ -133,7 +133,7 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
 
   test('the thread is hidden, never mounted twice: the feed keeps its node, renders nothing, and the jump button waits', () => {
     expect(src).toContain("${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
-    expect(src).toContain(') : imageDesk ? null : messages.length === 0 ? (');
+    expect(src).toContain(') : imageDesk ? null : messages.length === 0 && !musicPane ? (');
     expect(src).toContain('{showJump && !imageDesk && messages.length > 0 && (');
   });
 });

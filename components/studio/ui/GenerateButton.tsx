@@ -38,11 +38,13 @@ export interface GenerateButtonProps {
   stickyBottom?: boolean;
   className?: string;
   testId?: string;
+  /** A glyph before the label ("♪✦ Create" on the Music screen). Decorative: the accessible name is unchanged. */
+  icon?: React.ReactNode;
 }
 
 export function GenerateButton({
   label, credits, free = false, loading = false, loadingLabel, disabled = false, insufficient = false,
-  locale = 'en', onClick, stickyBottom = false, className = '', testId,
+  locale = 'en', onClick, stickyBottom = false, className = '', testId, icon,
 }: GenerateButtonProps) {
   const c = COPY[lang(locale)];
   const priced = typeof credits === 'number' && credits > 0 && !free;
@@ -73,6 +75,7 @@ export function GenerateButton({
           </>
         ) : (
           <>
+            {icon != null && <span aria-hidden="true" className="inline-flex shrink-0 items-center">{icon}</span>}
             <span>{text}</span>
             {free && <span className="rounded-full bg-app-bg/20 px-2.5 py-1 text-[12.5px] font-bold">{c.free}</span>}
             {priced && (

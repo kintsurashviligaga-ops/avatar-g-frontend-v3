@@ -61,3 +61,14 @@ test('insufficient balance: the price stays, the call to action becomes top-up, 
   fireEvent.click(btn);
   expect(onClick).toHaveBeenCalledTimes(1);
 });
+
+test('an optional leading icon is decorative: shown before the label, never part of the accessible name', () => {
+  const { btn } = setup({ credits: 5, icon: <svg data-testid="lead" /> });
+  const lead = btn.querySelector('[data-testid="lead"]') as SVGElement;
+  expect(lead).toBeTruthy();
+  expect(lead.parentElement!.getAttribute('aria-hidden')).toBe('true');
+  expect(btn.firstElementChild).toBe(lead.parentElement); // before the label
+  expect(btn.getAttribute('aria-label')).toBe('Generate — 5 credits');
+  const { btn: plain } = setup({ credits: 5 });
+  expect(plain.querySelector('[aria-hidden="true"] svg[data-testid="lead"]')).toBeNull();
+});

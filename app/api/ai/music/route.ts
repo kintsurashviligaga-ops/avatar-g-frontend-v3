@@ -34,6 +34,8 @@ import {
   musicControlsReport, musicStyleLine, musicgenParams, parseMusicControls, promptDirectives, udioParams,
   type MusicControls, type MusicControlsReport, type MusicEngineId,
 } from '@/lib/ai/musicControls';
+import { isAcceptableMusicReference } from '@/lib/ai/musicReference';
+import { isMusicEngineId } from '@/lib/studio/musicEngines';
 
 /**
  * Assistant music generation.
@@ -129,7 +131,7 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
 // fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 // `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
 // others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
-async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
+async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls, preferred?: MusicEngineId | null): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
   // Engines that accept only one string get the flattened form, which trims the DESCRIPTION before the
   // user's own words. Lyria gets the structured form, where lyrics have their own field and budget.
   const prompt = flattenMusicBrief(brief);
@@ -237,6 +239,14 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
   }
   providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
+  // ⚠️ THE USER'S PICK GOES FIRST, THE REST STAY BEHIND IT. `engine` (the Create screen's model pill) moves one engine to
+  // the front of the chain — it never removes the others, so a busy or failing pick still ends in a track via the
+  // fallbacks, exactly like Auto. An engine that is not in the chain (no key, or MUSIC_PROVIDER dropped it) is a no-op,
+  // and MusicGen — which makes no vocals — is never put ahead for a SONG: it would return an instrumental.
+  if (preferred && !(preferred === 'musicgen' && !instrumental)) {
+    const at = providers.findIndex((p) => p.name === preferred);
+    if (at > 0) providers.unshift(...providers.splice(at, 1));
+  }
 
   // Pre-read the Redis circuit breaker ONCE (it's async; the failover's isTripped is sync)
   // so a provider already tripped by recent failures is skipped without spending its budget.
@@ -305,9 +315,12 @@ export async function POST(req: NextRequest) {
   let bodyFp = '';
   // The template card's id, as sent (an ID, never text) — resolved against the request's own values below.
   let rawTemplateId: unknown;
+  // The engine the user asked to try first (lib/studio/musicEngines) — null = Auto, the chain as it stands.
+  let preferredEngine: MusicEngineId | null = null;
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { prompt?: unknown; style?: unknown; styles?: unknown; instrumental?: unknown; lyrics?: unknown; audioReference?: unknown; voiceReference?: unknown; useMyVoice?: unknown; durationSec?: unknown; tempo?: unknown; voiceType?: unknown; vocalGender?: unknown; weirdness?: unknown; styleInfluence?: unknown; jobId?: unknown; templateId?: unknown; engine?: unknown };
     rawTemplateId = body.templateId;
+    if (isMusicEngineId(body.engine)) preferredEngine = body.engine;
     if (typeof body.jobId === 'string') clientJobId = body.jobId.slice(0, 120);
     bodyFp = bodyFingerprint(body);
     prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -452,13 +465,24 @@ export async function POST(req: NextRequest) {
   const musicGate = requireAuthForGeneration(rUser?.id ?? null);
   if (musicGate.response) return musicGate.response;
 
+  // ⚠️ A REFERENCE IS CLIENT INPUT THE SERVER SIGNS OR FETCHES, AND NOTHING CHECKED IT. A bare path was signed with the
+  // service role for ANY object in the bucket (another account's audio included), and a voice sample's URL was fetched by
+  // our own ffmpeg step from whatever host the body named. lib/ai/musicReference states the rule; it runs before the
+  // mutex or the ledger is touched, so a refusal has nothing to unwind.
+  if (
+    !isAcceptableMusicReference(audioReference, rUser?.id ?? '', 'audio') ||
+    !isAcceptableMusicReference(voiceReference, rUser?.id ?? '', 'voice')
+  ) {
+    return NextResponse.json({ success: false, error: 'invalid_reference' }, { status: 400 });
+  }
+
   // The in-flight MUTEX stays fail-open: a Redis blip only loses the double-click guard, never money. (Neither helper
   // throws today; the guard is for a future one that does.)
   try {
     idemOwner = rUser?.id ?? `anon:${clientJobId || 'session'}`;
     // `st` is the joined style line, so it covers the picked styles; `w` / `si` the sliders — a changed control is a
     // new request, not a duplicate of the one in flight.
-    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null, w: controls.weirdness, si: controls.styleInfluence })}`;
+    idemKey = `music:${await hashPayload({ u: idemOwner, p: capped, st: style, i: makeInstrumental, d: durationSec, vt: voiceType, ly: lyrics.slice(0, 200), ar: audioReference ? 1 : 0, vr: voiceReference ? 1 : 0, t: template?.id ?? null, w: controls.weirdness, si: controls.styleInfluence, pe: preferredEngine })}`;
     // Window MUST cover the render ceiling (maxDuration=300s; Udio budget alone is ~190s), or the mutex
     // lapses mid-render and a byte-identical resubmit past the window mints a FRESH reserveRef → a second
     // deductCredits → DOUBLE-CHARGE. The key hashes the full brief, so only an identical duplicate submit
@@ -542,7 +566,7 @@ export async function POST(req: NextRequest) {
       // Fail-open: if the convert misses, return the composed song so the user still gets a track.
       const composed = await composeTrackUrl(
         buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false, directives }),
-        style, false, durationSec, controls,
+        style, false, durationSec, controls, preferredEngine,
       );
       controlsReport = composed.controls;
       try {
@@ -604,7 +628,7 @@ export async function POST(req: NextRequest) {
       // deliberately and then handing back a track that does not match them is the whole failure mode
       // this rewrite exists to end.
       briefTruncated = brief.truncated;
-      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls);
+      const composed = await composeTrackUrl(brief, style, makeInstrumental, durationSec, controls, preferredEngine);
       providerAudioUrl = composed.url;
       engine = composed.engine;
       controlsReport = composed.controls;
