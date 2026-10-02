@@ -1,6 +1,6 @@
 import {
   Aperture, Box, Film, Image as ImageIcon, Languages, MessageSquare, Music2, Package, PersonStanding, Presentation, Repeat,
-  ScanFace, Scissors, Wand2, type LucideIcon,
+  ScanFace, Scissors, Sparkles, Wand2, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -15,14 +15,14 @@ import {
  */
 export type ToolId =
   | 'video' | 'image' | 'music' | 'avatar' | 'remix' | 'chat'
-  | 'product' | 'swap' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation' | 'photo';
+  | 'product' | 'swap' | 'vfx' | 'motion' | 'montage' | 'dubbing' | 'model3d' | 'presentation' | 'photo';
 
 type L10n = { ka: string; en: string; ru: string };
 export type ToolLang = 'ka' | 'en' | 'ru';
 
 export const PRIMARY_TOOLS: readonly ToolId[] = ['chat', 'video', 'image', 'music', 'avatar', 'remix'];
 /** Tools that live one level down: video variants, motion, the four full studios and the photo culling workspace. */
-export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
+export const MORE_TOOLS: readonly ToolId[] = ['product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo'];
 export const ALL_TOOLS: readonly ToolId[] = [...PRIMARY_TOOLS, ...MORE_TOOLS];
 
 export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n }> = {
@@ -34,6 +34,8 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   chat: { Icon: MessageSquare, name: { ka: 'ჩატი', en: 'Chat', ru: 'Чат' }, sub: { ka: 'ჰკითხე ნებისმიერი რამ', en: 'Ask anything', ru: 'Спросите что угодно' } },
   product: { Icon: Package, name: { ka: 'პროდუქტის რეკლამა', en: 'Product ad', ru: 'Реклама продукта' }, sub: { ka: 'ფოტოდან სარეკლამო რილი', en: 'An ad reel from a product photo', ru: 'Рекламный рилс из фото' } },
   swap: { Icon: Repeat, name: { ka: 'პერსონაჟის შეცვლა', en: 'Character swap', ru: 'Замена персонажа' }, sub: { ka: 'ვიდეოში სხვა სახე', en: 'Put another face in a video', ru: 'Другое лицо в видео' } },
+  // ⚠️ The line says only what is open: today a photo becomes an 8 s VFX scene; motion transfer and swaps unlock in the panel itself.
+  vfx: { Icon: Sparkles, name: { ka: 'VFX', en: 'VFX', ru: 'VFX' }, sub: { ka: 'ერთი შეხებით VFX ეფექტები შენი ფოტოებისთვის', en: 'One-tap VFX effects for your photos', ru: 'VFX-эффекты в одно касание для ваших фото' } },
   motion: { Icon: PersonStanding, name: { ka: 'მოძრაობა', en: 'Motion', ru: 'Движение' }, sub: { ka: 'ფოტო იმოძრავებს ვიდეოს მიხედვით', en: 'A photo moves like a reference', ru: 'Фото двигается по образцу' } },
   montage: { Icon: Scissors, name: { ka: 'მონტაჟი', en: 'Montage', ru: 'Монтаж' }, sub: { ka: 'კადრებიდან ერთი ფილმი', en: 'One film from your clips', ru: 'Один фильм из ваших клипов' } },
   dubbing: { Icon: Languages, name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' }, sub: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' } },
