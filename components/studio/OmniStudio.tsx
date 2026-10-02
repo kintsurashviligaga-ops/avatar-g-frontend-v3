@@ -8998,14 +8998,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           </div>
         </div>
         {/* The price, once, under the composer — on screen before the spend, for every priced tool. The chat is not
-            priced; there the line is Gemini's disclaimer instead. */}
-        {chatOnly ? (
-          <p data-testid="chat-disclaimer" className={`mt-2 px-3 text-center text-app-muted ${chatSmallText(locale)}`}>
-            {locale === 'en' ? 'MyAvatar is AI and can make mistakes.'
-              : locale === 'ru' ? 'MyAvatar — это ИИ, и он может ошибаться.'
-                : 'MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.'}
-          </p>
-        ) : priceTag && (
+            priced and carries NOTHING under it: the home is the composer and the starter chips, no disclaimer and no
+            explanation (owner, 2026-10-02 — "minimalist, premium"). The AI notice lives in the Terms. */}
+        {!chatOnly && priceTag && (
           <p data-testid="price-tag" title={priceTag.long} className="mt-1.5 px-3 text-center text-[12px] tabular-nums text-app-muted">
             <span className="sr-only">{priceTag.long}</span><span aria-hidden="true">{priceTag.label}</span>
           </p>

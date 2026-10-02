@@ -84,7 +84,14 @@ describe('the Gemini chat surface', () => {
     expect(omni.match(/data-testid="composer-input"/g)).toHaveLength(1);
     expect(omni).toContain("<div className={chatSingleRow ? 'contents' :");
     expect(omni).toContain("'ჰკითხე MyAvatar-ს'");
-    expect(omni).toContain('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+  });
+
+  it('nothing sits under the chat composer — no disclaimer, no explanation (the premium-minimal home)', () => {
+    expect(omni).not.toContain('chat-disclaimer');
+    expect(omni).not.toContain('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+    expect(omni).not.toContain('MyAvatar is AI and can make mistakes.');
+    // The only line under the composer is a priced tool's price, and never in the chat.
+    expect(omni).toMatch(/\{!chatOnly && priceTag && \(\s*<p data-testid="price-tag"/);
   });
 });
 

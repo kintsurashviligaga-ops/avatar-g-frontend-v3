@@ -168,7 +168,10 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await expect(page.getByTestId('settings-panel-toggle')).toHaveCount(0);
     await expect(page.getByTestId('options-toggle')).toHaveCount(0); // the composer's tool chip is not in the chat
     await expect(page.getByPlaceholder('ჰკითხე MyAvatar-ს')).toBeVisible();
-    await expect(page.getByTestId('chat-disclaimer')).toHaveText('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.');
+    // The premium-minimal home: nothing but the starter chips under the composer — no disclaimer, no explanation.
+    await expect(page.getByTestId('chat-disclaimer')).toHaveCount(0);
+    await expect(page.getByText('MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.')).toHaveCount(0);
+    await expect(page.getByTestId('price-tag')).toHaveCount(0);
     await expect(page.locator('header').filter({ visible: true })).toHaveCount(1);
 
     await page.locator('aside[aria-label="მენიუ"]').getByRole('button', { name: 'ვიდეო', exact: true }).click();

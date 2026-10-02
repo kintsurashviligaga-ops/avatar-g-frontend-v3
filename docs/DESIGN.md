@@ -83,7 +83,7 @@ Every still is the same world with the same grade and the same seed family. Shot
 
 Only the ka column is locked by the brief; en and ru keep the product's existing greeting and translate the rest. In en and ru, video is always named first. Russian uses «вы» on every surface, the landing included.
 
-**Chat additions (2026-09-30, §12).** Above the locked H1, a signed-in user in the chat sees one personal line — „გამარჯობა, {სახელი}“ / "Hi, {name}" / «Здравствуйте, {name}» — in a cyan-to-text gradient (one hue). The locked H1 and sub line do not change. The chat's placeholder is „ჰკითხე MyAvatar-ს“ / "Ask MyAvatar" / «Спросите MyAvatar», and its disclaimer „MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.“ / "MyAvatar is AI and can make mistakes." / «MyAvatar — это ИИ, и он может ошибаться.»
+**Chat additions (2026-09-30, §12).** Above the locked H1, a signed-in user in the chat sees one personal line — „გამარჯობა, {სახელი}“ / "Hi, {name}" / «Здравствуйте, {name}» — in a cyan-to-text gradient (one hue). The locked H1 and sub line do not change. The chat's placeholder is „ჰკითხე MyAvatar-ს“ / "Ask MyAvatar" / «Спросите MyAvatar». **Nothing sits under the chat composer** (owner, 2026-10-02: premium, clean, minimal) — the Gemini-style „MyAvatar ხელოვნური ინტელექტია და შეიძლება შეცდეს.“ disclaimer was removed from the chat; the AI notice lives in the Terms. The only line ever under a composer is a priced tool's price (`price-tag`), never in the chat.
 
 **Landing, above the fold.** The ka copy leads; en and ru translate it.
 - The H1 says video: **„ვიდეო ერთი იდეიდან.“**
