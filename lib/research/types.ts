@@ -53,6 +53,8 @@ export type ResearchErrorCode =
   | 'empty_report'
   | 'timeout'
   | 'stuck'
+  // an attached document was deleted between the charge and the send of a resumed run
+  | 'context_missing'
   // the user
   | 'user_canceled';
 
@@ -102,7 +104,10 @@ export interface ResearchJobRow {
   provider_started_at: string | null;
   progress: ResearchProgress;
   report_md: string | null;
+  /** Denormalised so the LIST never has to read the report or the sources. */
+  report_chars: number;
   sources: ResearchSource[];
+  sources_count: number;
   usage: Record<string, number>;
   incomplete: boolean;
   title: string | null;
@@ -111,8 +116,10 @@ export interface ResearchJobRow {
   error_detail: string | null;
   cancel_requested: boolean;
   poll_failures: number;
-  last_polled_at: string | null;
-  next_poll_at: string | null;
+  /** When a poller last took the job (the epoch until the first poll) — the compare-and-set that spaces provider polls. */
+  last_polled_at: string;
+  /** When the sweeper should poll it next. */
+  next_poll_at: string;
   notified_at: string | null;
   created_at: string;
   updated_at: string;
@@ -147,6 +154,8 @@ export interface ResearchJobPublic {
   errorCode: ResearchErrorCode | null;
   /** The credits went back to the user (failure or cancel after the debit). */
   refunded: boolean;
+  /** A refund is owed and on its way (the sweeper retries until the ledger confirms). */
+  refundPending: boolean;
   cancelRequested: boolean;
   contextFiles: ResearchContextRef[];
   report?: string | null;
