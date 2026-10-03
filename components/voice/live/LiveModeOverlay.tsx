@@ -542,11 +542,13 @@ export default function LiveModeOverlay({
             type="button"
             onClick={onToggleDock}
             data-testid="live-show-screen"
-            className={`inline-flex h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-4 ${quiet} font-medium text-app-text transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
+            className={`inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full bg-white/[0.08] min-[430px]:w-auto min-[430px]:px-4 ${quiet} font-medium text-app-text transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
           >
             <Minimize2 size={18} aria-hidden />
-            <span className="hidden min-[380px]:inline">{t.showScreen}</span>
-            <span className="sr-only min-[380px]:hidden">{t.showScreen}</span>
+            {/* The words only where they fit beside „ცოცხალი ზარი" and the captions toggle (~413 px in Georgian, plus room to breathe): at
+                390–414 they pushed the toggle 14 px off the screen and broke the label in two (2026-10-03). */}
+            <span className="hidden whitespace-nowrap min-[430px]:inline">{t.showScreen}</span>
+            <span className="sr-only min-[430px]:hidden">{t.showScreen}</span>
           </button>
         )}
         {showCaptions && !isError && (

@@ -99,14 +99,14 @@ export function LiveTopBar({ label, live = true, children }: LiveTopBarProps) {
       className="absolute inset-x-0 z-20 flex h-16 items-center justify-between px-3"
       style={{ top: 'env(safe-area-inset-top, 0px)' }}
     >
-      <span data-testid="live-call-label" className="inline-flex items-center gap-2 pl-2 text-[16px] font-medium text-app-text">
+      <span data-testid="live-call-label" className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap pl-2 text-[16px] font-medium text-app-text">
         <span aria-hidden className="relative flex h-2 w-2">
           {live && <span className="absolute inline-flex h-full w-full rounded-full bg-app-accent opacity-60 motion-safe:animate-ping" />}
           <span className="relative inline-flex h-2 w-2 rounded-full bg-app-accent" />
         </span>
         {label}
       </span>
-      <span className="flex items-center gap-1.5">{children}</span>
+      <span className="flex shrink-0 items-center gap-1.5">{children}</span>
     </div>
   );
 }
