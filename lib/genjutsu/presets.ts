@@ -11,8 +11,11 @@
  * `becomes` is the object swap's noun phrase ("a sleek chrome mecha robot…"), used when the op is `swap`, where the
  * instruction must say what is replaced and that the rest of the shot stays.
  *
- * `palette` paints the preset's tile (dark base → the effect's accent), the same placeholder convention as
- * lib/studio/templates: no thumbnail file to ship, no broken image, and a tile that already says what it is.
+ * `thumb` is the effect's still (public/vfx/<id>.jpg, 600×800 — the `site` art pack, scripts/site-art/shots.md, built
+ * from `scene` itself in the studio's one world and grade, docs/DESIGN.md §4). `palette` paints the tile under it (dark
+ * base → the effect's accent): the placeholder while the still loads — and the whole tile for a preset that has none, the
+ * same convention as lib/studio/templates, so a missing file is never a broken image. lib/genjutsu/presets.test.ts fails
+ * on a `thumb` whose file does not exist.
  *
  * Pure and client-safe.
  */
@@ -39,6 +42,8 @@ export interface GenjutsuPreset {
   hint: L10n;
   /** Dark base → the effect's accent. */
   palette: readonly [string, string];
+  /** `/vfx/<id>.jpg` — the effect's 3:4 still; absent = the palette tile alone. */
+  thumb?: string;
   /** English: the look / scene the model builds. */
   scene: string;
   /** English noun phrase for an object swap. */
@@ -62,6 +67,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('კინო გმირი', 'Cinematic hero', 'Кино-герой'),
     hint: P('ეპიკური ეკრანული გმირი — ბექლაითი, მტვერი, ფართო ლინზა', 'An epic action-film hero — backlight, dust, anamorphic glow', 'Эпичный герой боевика — контровой свет, пыль, анаморфный блик'),
     palette: ['#1A1206', '#F2B544'],
+    thumb: '/vfx/hero-cinematic.jpg',
     scene: 'An epic cinematic action-film moment: dramatic backlight, drifting dust and embers, shallow depth of field, anamorphic lens flare, slow heroic camera push-in, rich film grade.',
   },
   {
@@ -69,6 +75,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ნეონის სცენა', 'Neon stage', 'Неоновая сцена'),
     hint: P('ცეკვა ნეონის სცენაზე, ბურუსსა და ლაზერებში', 'A dance on a neon stage in haze and lasers', 'Танец на неоновой сцене в дыму и лазерах'),
     palette: ['#14061F', '#FF3DB8'],
+    thumb: '/vfx/neon-stage.jpg',
     scene: 'A dance performance on a neon-lit stage: coloured laser beams cutting through stage haze, a pulsing LED wall, glossy floor reflections, energetic dynamic camera, saturated magenta and cyan light.',
   },
   {
@@ -76,6 +83,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('წვიმიანი ქუჩა', 'Rain street', 'Дождливая улица'),
     hint: P('ღამის ქალაქი, სველი ასფალტი, არეკვლები', 'A night city, wet asphalt, neon reflections', 'Ночной город, мокрый асфальт, отражения'),
     palette: ['#05121C', '#2FB5C9'],
+    thumb: '/vfx/rain-street.jpg',
     scene: 'A night city street in heavy rain: wet asphalt full of neon reflections, steam rising from vents, passing headlights, handheld cinematic camera, moody teal-and-orange grade.',
   },
   {
@@ -83,6 +91,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('უწონადობა', 'Zero gravity', 'Невесомость'),
     hint: P('მცურავი მოძრაობა კოსმოსურ სადგურში', 'Weightless motion inside a space station', 'Плавное движение на космической станции'),
     palette: ['#060B1A', '#7C9CFF'],
+    thumb: '/vfx/zero-gravity.jpg',
     scene: 'Weightless motion inside a space station: loose objects and water droplets floating slowly in the air, soft cool light from the windows with Earth glowing outside, smooth floating camera.',
   },
 
@@ -92,6 +101,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('მეხა რობოტი', 'Mecha robot', 'Меха-робот'),
     hint: P('ქრომის რობოტი მანათობელი სახსრებით', 'A chrome robot with glowing joints', 'Хромированный робот со светящимися суставами'),
     palette: ['#0A1018', '#5AA9FF'],
+    thumb: '/vfx/mecha-robot.jpg',
     becomes: 'a sleek chrome mecha robot with articulated armour plates and glowing blue joints',
     scene: 'The subject transformed into a sleek chrome mecha robot with articulated armour plates, glowing blue joints, reflective hard-surface metal and cinematic sci-fi lighting.',
   },
@@ -100,6 +110,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ქვის გოლემი', 'Stone golem', 'Каменный голем'),
     hint: P('ნაკვეთი გრანიტი და მანათობელი რუნები', 'Carved granite with glowing runes', 'Резной гранит со светящимися рунами'),
     palette: ['#16100A', '#FF8A3D'],
+    thumb: '/vfx/stone-golem.jpg',
     becomes: 'a towering stone golem carved from rough granite with glowing orange runes and moss in its cracks',
     scene: 'The subject transformed into a towering stone golem carved from rough granite, glowing orange runes, moss in the cracks, dust falling from every heavy movement, cinematic fantasy lighting.',
   },
@@ -108,6 +119,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('მინის კრისტალი', 'Glass crystal', 'Стеклянный кристалл'),
     hint: P('გამჭვირვალე სხეული, რომელიც სინათლეს არღვევს', 'A translucent body that bends the light', 'Прозрачное тело, преломляющее свет'),
     palette: ['#071418', '#6FE3E0'],
+    thumb: '/vfx/glass-crystal.jpg',
     becomes: 'a translucent glass crystal figure that bends and refracts the light',
     scene: 'The subject transformed into a translucent glass crystal body that refracts and bends the light, internal caustics, prismatic highlights and crisp reflections.',
   },
@@ -116,6 +128,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ოქროს ქანდაკება', 'Gold statue', 'Золотая статуя'),
     hint: P('გაპრიალებული თხევადი ოქრო', 'Polished liquid gold', 'Полированное жидкое золото'),
     palette: ['#1A1304', '#E8B93A'],
+    thumb: '/vfx/gold-statue.jpg',
     becomes: 'a polished liquid-gold statue with mirror-like reflections',
     scene: 'The subject transformed into a polished liquid-gold statue with mirror-like reflections, molten highlights and slowly dripping gold under luxurious warm light.',
   },
@@ -126,6 +139,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ტოკიოს ღამე', 'Tokyo night', 'Токио ночью'),
     hint: P('ნეონით სავსე ვიწრო ქუჩა, ორთქლი, აბრები', 'A neon alley with signs and steam', 'Неоновый переулок, вывески, пар'),
     palette: ['#12061A', '#FF4F9A'],
+    thumb: '/vfx/tokyo-night.jpg',
     scene: 'A narrow Tokyo alley at night: layers of glowing neon signs, steam from street-food stalls, light drizzle, reflective wet ground, cinematic shallow depth of field, vivid yet realistic colour.',
   },
   {
@@ -133,6 +147,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('უცხოპლანეტელი უდაბნო', 'Alien desert', 'Инопланетная пустыня'),
     hint: P('ორი მზე, წითელი დიუნები, მცურავი კლდეები', 'Twin suns, red dunes, floating rocks', 'Два солнца, красные дюны, парящие скалы'),
     palette: ['#1F0C06', '#FF7A45'],
+    thumb: '/vfx/alien-desert.jpg',
     scene: 'An alien desert world: two suns low on the horizon, red dunes with long shadows, enormous rocks floating in the sky, dust drifting in warm light, epic widescreen sci-fi look.',
   },
   {
@@ -140,6 +155,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('წყალქვეშა ქალაქი', 'Underwater city', 'Подводный город'),
     hint: P('მანათობელი მარჯანი, სინათლის სვეტები, ბუშტები', 'Glowing coral, light shafts, bubbles', 'Светящиеся кораллы, лучи света, пузыри'),
     palette: ['#041620', '#2BC4B4'],
+    thumb: '/vfx/underwater-city.jpg',
     scene: 'A sunken city deep underwater: glowing coral towers, shafts of light from the surface, drifting bubbles and fish, soft blue-green haze, slow floating camera, photoreal.',
   },
   {
@@ -147,6 +163,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('არქტიკული მწვერვალი', 'Arctic peak', 'Арктическая вершина'),
     hint: P('ქარბუქი მწვერვალზე მზის ამოსვლისას', 'A blizzard on a summit at sunrise', 'Метель на вершине на рассвете'),
     palette: ['#08121C', '#BFE3FF'],
+    thumb: '/vfx/arctic-peak.jpg',
     scene: 'A blizzard on an arctic mountain summit at sunrise: swirling snow, golden light breaking through the clouds, ice-crusted rocks, strong wind, dramatic wide landscape.',
   },
 
@@ -156,6 +173,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ანიმე', 'Anime', 'Аниме'),
     hint: P('ხელით დახატული ცელი, მკვეთრი კონტური', 'Hand-drawn cel shading, bold outlines', 'Рисованная графика, чёткие контуры'),
     palette: ['#10101F', '#FF7AAE'],
+    thumb: '/vfx/anime.jpg',
     scene: 'Hand-drawn Japanese anime: clean cel shading, bold outlines, expressive speed lines, painterly sky backgrounds, saturated colours, 24 fps animation feel.',
   },
   {
@@ -163,6 +181,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('კლეიმეიშენი', 'Claymation', 'Клеймейшн'),
     hint: P('პლასტილინის სტოპ-მოუშენი თითის კვალით', 'Stop-motion clay with fingerprints', 'Пластилиновая покадровая анимация'),
     palette: ['#1C1208', '#E9955B'],
+    thumb: '/vfx/claymation.jpg',
     scene: 'Stop-motion claymation: every surface hand-sculpted from clay with visible fingerprints and tool marks, slightly jittery frame-by-frame motion, warm miniature-set lighting.',
   },
   {
@@ -170,6 +189,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ფილმ-ნუარი', 'Film noir', 'Фильм-нуар'),
     hint: P('შავ-თეთრი, მკაცრი ჩრდილები, კვამლი', 'Black and white, hard shadows, smoke', 'Чёрно-белое, жёсткие тени, дым'),
     palette: ['#0B0B0B', '#C9C9C9'],
+    thumb: '/vfx/film-noir.jpg',
     scene: 'Classic film noir: high-contrast black and white, hard venetian-blind shadows, drifting cigarette smoke, 1940s cinematography, low-key dramatic lighting, fine film grain.',
   },
   {
@@ -177,6 +197,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('კიბერპანკი', 'Cyberpunk', 'Киберпанк'),
     hint: P('ნეონი წვიმაში, ჰოლოგრამები', 'Neon in the rain, holograms', 'Неон под дождём, голограммы'),
     palette: ['#0C0620', '#18F0FF'],
+    thumb: '/vfx/cyberpunk.jpg',
     scene: 'Cyberpunk look: magenta and cyan neon, rain-soaked surfaces, floating holographic signs, lens flares, dense futuristic city atmosphere, high-contrast cinematic grade.',
   },
   {
@@ -184,6 +205,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('აკვარელი', 'Watercolour', 'Акварель'),
     hint: P('დაღვრილი საღებავი ქაღალდის ტექსტურაზე', 'Flowing paint on paper texture', 'Растекающаяся краска на бумаге'),
     palette: ['#0F1418', '#8FB8E8'],
+    thumb: '/vfx/watercolor.jpg',
     scene: 'Animated watercolour painting: translucent washes of paint bleeding and flowing, visible paper texture, soft pigment edges, gentle hand-painted motion.',
   },
   {
@@ -191,6 +213,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('3D სათამაშო', '3D toy', '3D-игрушка'),
     hint: P('პრიალა პლასტმასის კოლექციური ფიგურა', 'A glossy collectible plastic figure', 'Глянцевая коллекционная фигурка'),
     palette: ['#0D1424', '#FFC857'],
+    thumb: '/vfx/toy-3d.jpg',
     scene: 'Glossy 3D collectible-toy style: soft rounded forms, smooth plastic with subtle reflections, bright studio lighting, charming animated-feature look.',
   },
 
@@ -200,6 +223,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ცეცხლი', 'Fire', 'Огонь'),
     hint: P('სხეული ალში, ნაპერწკლები', 'Wreathed in flames and embers', 'В пламени и искрах'),
     palette: ['#220803', '#FF6A1A'],
+    thumb: '/vfx/fire.jpg',
     scene: 'Fire VFX: the subject wreathed in roaring flames, embers and sparks streaming upward, heat haze distorting the air, flickering orange light on the surroundings, photoreal.',
   },
   {
@@ -207,6 +231,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ყინული', 'Ice', 'Лёд'),
     hint: P('ყინვა ვრცელდება, კრისტალები იზრდება', 'Frost spreading, ice crystals growing', 'Расползается иней, растут кристаллы'),
     palette: ['#061622', '#8FD8FF'],
+    thumb: '/vfx/ice.jpg',
     scene: 'Ice VFX: frost spreading across the subject and surroundings, jagged ice crystals growing, cold breath mist, cold blue light, glittering particles, photoreal.',
   },
   {
@@ -214,6 +239,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('კვამლი', 'Smoke', 'Дым'),
     hint: P('იფანტება კვამლად და ისევ იკრიბება', 'Dissolves into smoke and reforms', 'Рассеивается дымом и собирается вновь'),
     palette: ['#0E0E10', '#9AA3B2'],
+    thumb: '/vfx/smoke.jpg',
     scene: 'Smoke VFX: the subject dissolving into thick drifting smoke and reforming, soft volumetric trails following every movement, moody dramatic light, photoreal.',
   },
   {
@@ -221,6 +247,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('ელვა', 'Lightning', 'Молния'),
     hint: P('ელექტრო რკალები და ციმციმა სინათლე', 'Electric arcs and flickering light', 'Электрические дуги и мерцающий свет'),
     palette: ['#080B1E', '#B7C8FF'],
+    thumb: '/vfx/lightning.jpg',
     scene: 'Lightning VFX: bright electric arcs crackling around the subject and through the air, flickering white-blue light across the scene, sparks and brief flashes, photoreal.',
   },
   {
@@ -228,6 +255,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('გლიჩი', 'Glitch', 'Глитч'),
     hint: P('RGB გაყოფა, პიქსელები, სკანხაზები', 'RGB split, pixel tearing, scanlines', 'RGB-сдвиг, пиксели, строчки'),
     palette: ['#0A0A0A', '#2DFF9A'],
+    thumb: '/vfx/glitch.jpg',
     scene: 'Digital glitch VFX: RGB channel splitting, pixel tearing and datamosh blocks, scanlines and signal noise, the image stuttering and re-forming, neon-tinted highlights.',
   },
   {
@@ -235,6 +263,7 @@ export const GENJUTSU_PRESETS: readonly GenjutsuPreset[] = [
     label: P('პორტალი', 'Portal', 'Портал'),
     hint: P('ენერგიის მორევი იხსნება და ანათებს', 'A swirling energy portal opens', 'Открывается светящийся портал энергии'),
     palette: ['#0B0620', '#9B6BFF'],
+    thumb: '/vfx/portal.jpg',
     scene: 'Portal VFX: a swirling energy portal opens with a bright rim of light and sparks, wind pulling dust and debris toward its centre, glowing light spilling onto the subject, cinematic.',
   },
 ];

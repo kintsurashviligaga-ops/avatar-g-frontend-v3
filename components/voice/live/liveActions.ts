@@ -31,6 +31,7 @@ import {
   LIVE_ACTION_EVENT,
   LIVE_RUN_EVENT,
   LIVE_START_COUNTDOWN_MS,
+  MONTAGE_COMMAND_EVENT,
   OPEN_ARTIFACT_EVENT,
   liveUrlHost,
   validateLiveToolCall,
@@ -42,6 +43,20 @@ import {
   type LiveStudioReply,
   type OpenArtifactDetail,
 } from '@/lib/voice/liveTools';
+import {
+  controlName,
+  findControl,
+  guardOf,
+  isTextField,
+  linkKind,
+  pressControl,
+  snapshotControls,
+  submitField,
+  typeInto,
+  type LiveControl,
+  type LiveGuard,
+  type LinkKind,
+} from '@/lib/voice/liveUi';
 
 /** The strip shows the last few things the agent did — more would bury the call. */
 export const LIVE_ACTION_CARDS_MAX = 3;
@@ -78,6 +93,71 @@ export interface LiveActionEnv {
   setChatModel?: (model: LiveChatModel) => void;
   /** The countdown ran out: the studio runs what was prepared. True when a studio took it. */
   runGeneration?: () => boolean;
+  /** The screen's hands (lib/voice/liveUi) — the document in the app, a fake in tests. */
+  ui?: LiveUiPort;
+  /** read_webpage: POST /api/voice/web-read. */
+  readPage?: (url: string) => Promise<WebReadAnswer>;
+  /** montage set_music_start / export / state: the editor's own hook (`myavatar:montage-command`); true = it answered. */
+  montageCommand?: (detail: MontageCommandDetail) => boolean;
+}
+
+/** What click / type_text / get_screen_state need from the screen. */
+export interface LiveUiPort {
+  snapshot: () => { controls: LiveControl[]; sheet?: string };
+  find: (target: string) => HTMLElement | null;
+  guard: (el: HTMLElement) => LiveGuard | null;
+  name: (el: HTMLElement) => string;
+  link: (el: HTMLElement) => LinkKind;
+  press: (el: HTMLElement) => void;
+  isField: (el: HTMLElement) => boolean;
+  type: (el: HTMLElement, text: string) => boolean;
+  submit: (el: HTMLElement) => void;
+  /** The tool on screen (`<html data-tool>`), for the composer's Enter rule. */
+  tool: () => string;
+}
+
+export const browserLiveUi: LiveUiPort = {
+  snapshot: () => snapshotControls(document),
+  find: (t) => findControl(t, document),
+  guard: (el) => guardOf(el),
+  name: (el) => controlName(el),
+  link: (el) => linkKind(el, window.location),
+  press: (el) => pressControl(el),
+  isField: (el) => isTextField(el),
+  type: (el, text) => typeInto(el, text),
+  submit: (el) => submitField(el),
+  tool: () => (typeof document !== 'undefined' ? document.documentElement.dataset.tool ?? '' : ''),
+};
+
+export type WebReadAnswer =
+  | { ok: true; page: { url: string; title: string; description: string; text: string; links: Array<{ text: string; url: string }>; truncated?: boolean } }
+  | { ok: false; error: string; status?: number };
+
+/** POST /api/voice/web-read with a timeout (a page that never answers must not hold the call's turn forever). */
+export async function fetchWebRead(url: string): Promise<WebReadAnswer> {
+  try {
+    const res = await fetch('/api/voice/web-read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ url }), signal: AbortSignal.timeout(15_000),
+    });
+    const j = (await res.json().catch(() => null)) as WebReadAnswer | null;
+    if (j && typeof j === 'object' && 'ok' in j) return j;
+    return { ok: false, error: res.status === 429 ? 'rate_limited' : 'fetch_failed' };
+  } catch {
+    return { ok: false, error: 'timeout' };
+  }
+}
+
+/** The Montage editor's voice hook (components/studio/montage). */
+export type MontageCommandDetail =
+  | { command: 'export'; reply?: MontageCommandReply }
+  | { command: 'set_music_start'; sec: number; reply?: MontageCommandReply }
+  | { command: 'state'; reply?: MontageCommandReply };
+export interface MontageCommandReply {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  state?: Record<string, unknown>;
 }
 
 function dispatchCancelable<T>(type: string, detail: T): boolean {
@@ -106,11 +186,18 @@ export function dispatchLiveRun(): boolean {
   return dispatchCancelable(LIVE_RUN_EVENT, {});
 }
 
+export function dispatchMontageCommand(detail: MontageCommandDetail): boolean {
+  return dispatchCancelable(MONTAGE_COMMAND_EVENT, detail);
+}
+
 export const browserLiveActionEnv: LiveActionEnv = {
   dispatchAction: dispatchLiveAction,
   openArtifact: dispatchOpenArtifact,
   setChatModel: (m) => setChatMode(m),
   runGeneration: dispatchLiveRun,
+  ui: browserLiveUi,
+  readPage: fetchWebRead,
+  montageCommand: dispatchMontageCommand,
 };
 
 const STUDIO_NAME: Record<string, string> = {
@@ -159,6 +246,40 @@ export interface LiveCallOutcome {
   view?: LiveCallView;
   /** start_generation was accepted: the countdown to run it (the host shows it with Cancel). */
   run?: { tool: string; priceCredits?: number };
+  /** read_webpage: the answer arrives after the network (the step spinner runs meanwhile); `response` is a placeholder. */
+  pending?: Promise<LiveFunctionResponse>;
+}
+
+/** Why the call does not press it — in words the model repeats to the user. */
+const GUARD_MESSAGE: Record<LiveGuard, (name: string) => string> = {
+  spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music or avatar use `
+    + 'prepare_generation, say the price, and after a clear yes call start_generation; for any other tool ask the user to tap it '
+    + '(its price is on the button).',
+  pay: (n) => `"${n}" pays money: only the user can do that. Tell them to tap it themselves.`,
+  destructive: (n) => `"${n}" deletes or signs out: only the user can do that. Ask them to tap it if they want to.`,
+  file: (n) => `"${n}" opens the device's file picker, which only the user's own tap can open. Tell them to tap it.`,
+  call: () => 'That is part of this call\'s own screen: use call_view or end_call instead.',
+  password: () => 'Passwords are never typed by the call. Ask the user to type it themselves.',
+};
+
+const WEB_READ_ERRORS: Record<string, string> = {
+  invalid_url: 'That is not a valid public web address.',
+  blocked_host: 'That address is not a public website (or points into a private network), so it was not read.',
+  too_many_redirects: 'The site kept redirecting, so it could not be read.',
+  http_error: 'The site answered with an error (it may need a sign-in, or the page does not exist).',
+  not_html: 'That address is not a web page (it is a file or an app), so it could not be read.',
+  too_large: 'That page is too large to read.',
+  timeout: 'The site did not answer in time.',
+  fetch_failed: 'The site could not be reached.',
+  unauthenticated: 'Reading websites needs the user to be signed in.',
+  rate_limited: 'Too many pages were read in a short time; wait a minute.',
+};
+const WEB_TEXT_MAX = 3500;
+const WEB_LINKS_MAX = 25;
+
+/** The page's controls, never throwing (a snapshot is a nice-to-have; the studio's state still goes out). */
+function safeSnapshot(ui: LiveUiPort): { controls: LiveControl[]; sheet?: string } | null {
+  try { return ui.snapshot(); } catch { return null; }
 }
 
 /**
@@ -181,8 +302,20 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   switch (action.type) {
     case 'get_screen_state': {
       const detail: LiveActionEventDetail = { ...action };
-      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
-      return { response: answer({ ok: true, state: detail.reply?.state ?? {} }) };
+      const studio = env.dispatchAction(detail);
+      // The controls come from the PAGE, not the studio: they are what the user could tap on any page (the library, a
+      // settings page) — so the call can act there too.
+      const ui = env.ui ? safeSnapshot(env.ui) : null;
+      if (!studio && !ui) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      return {
+        response: answer({
+          ok: true,
+          state: {
+            ...(studio ? detail.reply?.state ?? {} : { studio: 'none on this page — only the controls below' }),
+            ...(ui ? { controls: ui.controls, ...(ui.sheet ? { openSheet: ui.sheet } : {}) } : {}),
+          },
+        }),
+      };
     }
     case 'prepare_generation': {
       const detail: LiveActionEventDetail = { ...action };
@@ -325,6 +458,117 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
     case 'end_call':
       env.dispatchAction(action);
       return { response: answer({ ok: true, summary: 'The call ends right after your reply: say a short goodbye now.' }), endCall: true };
+
+    case 'click': {
+      const ui = env.ui;
+      if (!ui) return { response: answer({ ok: false, error: 'unavailable', message: 'The screen cannot be operated here.' }) };
+      const el = ui.find(action.target);
+      if (!el) return { response: answer({ ok: false, error: 'not_found', message: `No control "${action.target}" is on screen now. Call get_screen_state for the current controls and ids.` }) };
+      const name = ui.name(el) || action.target;
+      const guard = ui.guard(el);
+      if (guard) return { response: answer({ ok: false, error: `needs_user_${guard}`, message: GUARD_MESSAGE[guard](name) }) };
+      const link = ui.link(el);
+      if (link === 'external') {
+        const href = (el.closest('a[href]') as HTMLAnchorElement | null)?.href ?? '';
+        const checked = validateLiveUrl(href);
+        if (!checked.ok) return { response: answer({ ok: false, error: 'invalid_link', message: 'That link does not go to a public website.' }) };
+        return {
+          response: answer({ ok: true, summary: `"${name}" goes to ${checked.host}: a link is on the user's screen to tap (a call cannot open tabs). Tell them to tap it.` }),
+          card: card({ type: 'open_url', url: checked.url, title: name }),
+        };
+      }
+      if (link === 'other_page') {
+        return { response: answer({ ok: false, error: 'would_end_call', message: `"${name}" opens another page, which would end this call. Tell the user to tap it themselves when they are ready.` }) };
+      }
+      ui.press(el);
+      return {
+        response: answer({ ok: true, summary: `Pressed "${name}". The screen may have changed: call get_screen_state before the next click.` }),
+        screen: true,
+      };
+    }
+    case 'type_text': {
+      const ui = env.ui;
+      if (!ui) return { response: answer({ ok: false, error: 'unavailable', message: 'The screen cannot be operated here.' }) };
+      const el = ui.find(action.target);
+      if (!el) return { response: answer({ ok: false, error: 'not_found', message: `No field "${action.target}" is on screen now. Call get_screen_state for the current controls and ids.` }) };
+      const name = ui.name(el) || action.target;
+      const guard = ui.guard(el);
+      if (guard === 'password' || guard === 'call') return { response: answer({ ok: false, error: `needs_user_${guard}`, message: GUARD_MESSAGE[guard](name) }) };
+      if (!ui.isField(el)) return { response: answer({ ok: false, error: 'not_a_field', message: `"${name}" is not a text field; use click for buttons.` }) };
+      if (!ui.type(el, action.text)) return { response: answer({ ok: false, error: 'not_a_field', message: `Could not type into "${name}".` }) };
+      let submitted = false;
+      let held = '';
+      if (action.submit) {
+        // ⚠️ Enter in the studio's composer RUNS the open tool — a paid generation everywhere but the chat.
+        const composer = el.getAttribute('data-testid') === 'composer-input';
+        const form = el.closest('form');
+        const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
+        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — use start_generation after a yes to the price.';
+        else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
+        else { ui.submit(el); submitted = true; }
+      }
+      return {
+        response: answer({ ok: true, summary: `Typed into "${name}"${submitted ? ' and submitted it' : ''}.${held}` }),
+        screen: true,
+      };
+    }
+    case 'download':
+    case 'use_result': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'That result could not be used.');
+      return {
+        response: answer({ ok: true, summary: detail.reply?.message ?? (action.type === 'download' ? 'The download started.' : 'Done.') }),
+        screen: true,
+      };
+    }
+    case 'montage': {
+      if (action.action === 'open') {
+        const detail: LiveActionEventDetail = { ...action };
+        if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+        if (detail.reply?.ok === false) return refused(answer, detail.reply, 'Montage could not be opened with those results.');
+        return { response: answer({ ok: true, summary: detail.reply?.message ?? 'Montage is open with those results.' }), screen: true };
+      }
+      const command: MontageCommandDetail = action.action === 'export' ? { command: 'export' }
+        : action.action === 'set_music_start' ? { command: 'set_music_start', sec: action.musicStartSec ?? 0 }
+          : { command: 'state' };
+      if (!(env.montageCommand ?? dispatchMontageCommand)(command)) {
+        return { response: answer({ ok: false, error: 'montage_closed', message: 'Montage is not open. Use montage with action "open" first.' }) };
+      }
+      const r = command.reply;
+      if (!r || r.ok === false) {
+        return { response: answer({ ok: false, error: r?.error ?? 'refused', message: r?.message ?? 'Montage could not do that.' }) };
+      }
+      const summary = r.message
+        ?? (action.action === 'export' ? 'Montage is exporting the edit (free); the finished video will appear in the chat — you will get an [App] note when it is ready.'
+          : action.action === 'set_music_start' ? `The music now starts ${action.musicStartSec ?? 0} s into the song.` : 'Here is the edit.');
+      return { response: answer({ ok: true, summary, ...(r.state ? { state: r.state } : {}) }), ...(action.action !== 'state' ? { screen: true as const } : {}) };
+    }
+    case 'read_webpage': {
+      const read = env.readPage ?? fetchWebRead;
+      const host = liveUrlHost(action.url) || 'the website';
+      const pending = read(action.url).then((r): LiveFunctionResponse => {
+        if (!r.ok) {
+          return answer({ ok: false, error: r.error, message: `${WEB_READ_ERRORS[r.error] ?? 'The page could not be read.'}${r.status ? ` (HTTP ${r.status})` : ''}` });
+        }
+        const p = r.page;
+        const text = p.text.length > WEB_TEXT_MAX ? `${p.text.slice(0, WEB_TEXT_MAX)} …` : p.text;
+        return answer({
+          ok: true,
+          url: p.url,
+          title: p.title,
+          ...(p.description ? { description: p.description } : {}),
+          text,
+          links: p.links.slice(0, WEB_LINKS_MAX).map((l) => `${l.text} — ${l.url}`),
+          note: 'Answer from this text in the user\'s language. To follow a link, call read_webpage with its url. A link to the page is on the user\'s screen to tap.',
+        });
+      }).catch(() => answer({ ok: false, error: 'fetch_failed', message: WEB_READ_ERRORS.fetch_failed! }));
+      return {
+        response: answer({ ok: true, pending: true }),
+        pending,
+        card: card({ type: 'open_url', url: action.url, title: host }),
+      };
+    }
     default:
       return { response: answer({ ok: false, error: 'unknown_tool', message: 'No such function.' }) };
   }
@@ -381,8 +625,8 @@ export interface UseLiveActionsResult {
   pendingRun: LivePendingRun | null;
   /** The user's Cancel on the countdown. */
   cancelRun: () => void;
-  /** useGeminiLiveSession `onToolCall`: answers every call, synchronously. */
-  onToolCall: (calls: LiveToolCall[]) => LiveFunctionResponse[];
+  /** useGeminiLiveSession `onToolCall`: answers every call — synchronously, or (a read_webpage in the batch) once the page is read. */
+  onToolCall: (calls: LiveToolCall[]) => LiveFunctionResponse[] | Promise<LiveFunctionResponse[]>;
   /** useGeminiLiveSession `onToolCallCancellation`: the user barged in — drop those cards (and a countdown it started). */
   onToolCallCancellation: (ids: string[]) => void;
 }
@@ -439,13 +683,14 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
     settleRun('cancelled');
   }, [settleRun]);
 
-  const onToolCall = useCallback((calls: LiveToolCall[]): LiveFunctionResponse[] => {
+  const onToolCall = useCallback((calls: LiveToolCall[]): LiveFunctionResponse[] | Promise<LiveFunctionResponse[]> => {
     const responses: LiveFunctionResponse[] = [];
     const added: LiveActionCard[] = [];
     let end = false;
     let screen = false;
     let view: LiveCallView | null = null;
     let run: { id: string; tool: string; priceCredits?: number } | null = null;
+    const pendings: Array<{ index: number; promise: Promise<LiveFunctionResponse> }> = [];
     for (const call of Array.isArray(calls) ? calls : []) {
       if (countRef.current >= LIVE_ACTIONS_PER_CALL_MAX) {
         responses.push({
@@ -459,6 +704,7 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       seqRef.current += 1;
       const localId = `live-action-${seqRef.current}`;
       const out = executeLiveToolCall(call, envRef.current ?? browserLiveActionEnv, localId);
+      if (out.pending) pendings.push({ index: responses.length, promise: out.pending });
       responses.push(out.response);
       if (out.card) added.unshift(out.card); // newest first
       if (out.endCall) end = true;
@@ -478,7 +724,13 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       if (view) { const v = view; setViewRequest((p) => ({ view: v, seq: (p?.seq ?? 0) + 1 })); }
       if (run) armRun(run.id, run);
     }
-    return responses;
+    // A read_webpage answers after the network: the whole batch is answered together (the session awaits it; the step
+    // spinner on screen runs meanwhile). Everything else in the batch has already happened.
+    if (!pendings.length) return responses;
+    return Promise.all(pendings.map((p) => p.promise)).then((done) => {
+      done.forEach((r, i) => { responses[pendings[i]!.index] = r; });
+      return responses;
+    });
   }, [armRun]);
 
   const onToolCallCancellation = useCallback((ids: string[]) => {

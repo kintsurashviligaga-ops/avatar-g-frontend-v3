@@ -12,9 +12,12 @@
  * group is ONE tab stop (roving tabindex) with the arrow keys moving the choice — the same pattern as Segmented, so a
  * keyboard user reaches Generate in a few Tab presses, not 24.
  *
- * Tiles are 128×168 px (≥ 44 px on both axes); chips are honestly 44 px tall (CHIP_BASE). Colours come from the preset's
- * own palette — the tile is the effect's thumbnail — and the label sits on a scrim so it stays readable on any of them.
+ * Tiles are 128×168 px (≥ 44 px on both axes); chips are honestly 44 px tall (CHIP_BASE). A tile shows the effect's own
+ * still (public/vfx/<id>.jpg, 3:4 — a desktop's 4:3 tile crops its middle) over the preset's palette, which is the
+ * placeholder while it loads (with the still's own blur) and the whole tile for a preset without one; the label sits on a
+ * scrim so it stays readable on any of them.
  */
+import Image from 'next/image';
 import { Check } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
@@ -22,7 +25,7 @@ import { GENJUTSU_PRESETS, KIND_LABEL, PRESET_KINDS, type GenjutsuPreset, type P
 import { toLang } from '@/lib/genjutsu/types';
 import { CHIP_BASE, CHIP_OFF, CHIP_ON } from '@/components/studio/ui/tokens';
 import { copyFor } from './copy';
-import { iconFor, tileBackground } from './presetVisual';
+import { iconFor, presetThumb, tileBackground } from './presetVisual';
 
 export interface PresetCarouselProps {
   locale: string;
@@ -93,6 +96,7 @@ export function PresetCarousel({ locale, activeId, onPick, presets = GENJUTSU_PR
         {shown.map((p, i) => {
           const on = p.id === activeId;
           const Icon = iconFor(p);
+          const still = presetThumb(p);
           return (
             <motion.button
               key={p.id}
@@ -112,7 +116,18 @@ export function PresetCarousel({ locale, activeId, onPick, presets = GENJUTSU_PR
               className={`group relative h-[168px] w-[128px] shrink-0 snap-start overflow-hidden rounded-2xl text-left outline-none ring-1 transition-shadow focus-visible:ring-2 focus-visible:ring-app-accent lg:h-auto lg:w-auto lg:aspect-[4/3] ${on ? 'ring-2 ring-app-accent shadow-[0_0_0_4px_rgb(var(--app-accent)/0.15)]' : 'ring-app-border/10 hover:ring-app-border/25'}`}
               style={{ backgroundImage: tileBackground(p.palette) }}
             >
-              <Icon aria-hidden="true" strokeWidth={1.25} className="absolute right-2.5 top-2.5 h-9 w-9" style={{ color: p.palette[1], opacity: 0.6 }} />
+              {still ? (
+                <Image
+                  src={still.src}
+                  alt=""
+                  fill
+                  sizes="(min-width: 1024px) 160px, 128px"
+                  {...(still.blurDataURL ? { placeholder: 'blur' as const, blurDataURL: still.blurDataURL } : {})}
+                  className="object-cover"
+                />
+              ) : (
+                <Icon aria-hidden="true" strokeWidth={1.25} className="absolute right-2.5 top-2.5 h-9 w-9" style={{ color: p.palette[1], opacity: 0.6 }} />
+              )}
               <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
               <span className="absolute inset-x-0 bottom-0 p-2.5">
                 <span className="block text-[10px] font-semibold uppercase tracking-wide text-white/60">{KIND_LABEL[p.kind][lang]}</span>

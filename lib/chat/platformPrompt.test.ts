@@ -184,7 +184,7 @@ describe('buildPlatformPrompt — locale variants', () => {
   it.each(LOCALES)('points at the %s labels of the real buttons', (locale) => {
     const p = build(locale);
     const ui = PLATFORM_UI_LABELS[locale];
-    for (const label of [ui.toolsSheet, ui.services, ui.liveVoice, ui.topUp]) expect(p).toContain(`"${label}"`);
+    for (const label of [ui.toolsSheet, ui.attach, ui.services, ui.liveVoice, ui.topUp]) expect(p).toContain(`"${label}"`);
   });
 
   it('falls back to Georgian for an unknown locale', () => {
@@ -214,7 +214,7 @@ describe('PLATFORM_UI_LABELS stay in sync with the UI', () => {
 
   it.each(LOCALES)('every %s button label exists verbatim in components/', (locale) => {
     const ui = PLATFORM_UI_LABELS[locale];
-    for (const label of [ui.toolsSheet, ui.services, ui.liveVoice, ui.topUp]) {
+    for (const label of [ui.toolsSheet, ui.attach, ui.services, ui.liveVoice, ui.topUp]) {
       expect({ label, found: corpus.includes(`'${label}'`) }).toEqual({ label, found: true });
     }
   });

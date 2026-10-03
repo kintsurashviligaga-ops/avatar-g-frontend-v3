@@ -33,6 +33,7 @@ Every function but one is free. `start_generation` is the only one that spends c
 | Dock: the call as a floating capsule at the top; the step line, the link chip, the run banner | `components/voice/live/LiveDock.tsx` |
 | Full screen: the control row, the action cards (a link's Open), the run banner, "Show the screen", stop-speaking | `LiveActionCards.tsx`, `LiveModeOverlay.tsx` |
 | The agent's face: the rocket in the orb, and behind it on the full call | `components/voice/live/LiveOrb.tsx` |
+| The call screen's shared chrome (frame, top bar, status line, error panel, control row) — also the fallback's | `components/voice/live/LiveCallChrome.tsx` |
 | The agent's steps (running → done) for both screens | `components/voice/live/LiveActivityFeed.tsx` (`liveCurrentStep`) |
 | Host: dock/full view, the call flag, `end_call` and Open | `components/voice/GeminiLiveConversation.tsx` |
 | Studio: one listener that does each action and writes the reply | `components/studio/OmniStudio.tsx` |
@@ -62,6 +63,20 @@ rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"o
 | `show_code` | `title`, `language` (allowlist, aliases mapped), `code` (≤ 200 KB) | `myavatar:open-artifact` with `{ title, language, code }`. |
 | `open_url` | `url` (≤ 2,048 chars, http/https only), `title?` (≤ 120 chars) | A card with the link (and a chip under the dock); **the user's tap** opens it in a new tab. The call never opens it itself. |
 | `end_call` | none | The call hangs up after the model's goodbye. |
+| `click` | `target` (a control id from `get_screen_state`, e.g. `c12`, or its visible label) | Presses that control like the user's tap (`lib/voice/liveUi.ts`). Refused — with words the model repeats — for anything that spends credits, pays, deletes or signs out, for file pickers, and for the call's own screen. A link to another site becomes a link card the user taps; a link to another page of the app is refused (it would end the call). |
+| `type_text` | `target`, `text` (≤ 4,000 chars), `submit?` (`on`/`off`) | Fills a field the way React notices (the native setter + `input`). `submit` presses Enter / submits the form — except in a studio's composer (Enter runs a paid tool) and in a form whose button spends. Never a password. |
+| `download` | `result?` (`latest` · a result number · `image` / `video` / `music`) | The studio saves that result (fetch → blob → a file named for its kind). |
+| `use_result` | `result?`, `to` (`video` · `music_video` · `montage` · `editor` · `chat`) | Moves a result into another tool with nothing generated: an image → the next video's start frame, a track → a music video's soundtrack or Montage's music, a video → the Montage timeline, image / audio → the editor, anything → a chat attachment. |
+| `montage` | `action` (`open` · `set_music_start` · `export` · `state`), `videos?`, `music?`, `musicStartSec?` (0–3,600), `aspectRatio?` (9:16 · 16:9 · 1:1) | `open` (the studio): the editor with those videos on the timeline and that track as its music, starting `musicStartSec` into the song (the trim of its beginning; the end is cut to the picture). The rest go to the editor's own hook, `myavatar:montage-command` (cancelable, `detail.reply` written synchronously): move the music start, export (free), read the edit. No editor open → `montage_closed`. |
+| `read_webpage` | `url` (a public http(s) address) | `/api/voice/web-read` (signed-in, `WEB_READ` per user) reads the page with every SSRF rule in `lib/web/readPage.ts` — public addresses only, DNS-checked (no rebinding), redirects re-checked by hand, a 1.5 MB cap, a timeout, HTML / text only — and the model gets the title, ≤ 3,500 characters of text and ≤ 25 links (`text — url`). It answers AFTER the network (the step spinner runs meanwhile; the session awaits the batch), and a link to the page goes on screen. The model may follow links by reading them; it cannot press buttons, fill forms, sign in or pay on other sites, and says so. |
+
+### The hands (2026-10-03)
+
+The owner asked that „click", „open", „download" and several steps in a row simply work, and that the agent can "go to a site". Three pieces make that safe:
+
+- **The screen is listed, not guessed.** `get_screen_state` now carries `controls` — the visible buttons, tabs, links, switches, menu items and fields (at most 45; only the open sheet's when one is open; never the call's own), each with an id stamped on the element (`data-live-id`, stable across snapshots), its role, its accessible name, its state and, when it has one, its **guard** — and `results`, the user's media numbered newest first (1 = the latest). The model clicks and types by id.
+- **The guards.** `spend`: `data-live-guard="spend"` (every priced `GenerateButton`, the composer's run button outside the chat), a `data-price` that is not `free`, or a name with a credit price („✦ 25", „25 კრედიტი"). `pay`: everything in `data-live-guard="pay"` (the credits / checkout sheet) but Close, or a name like Pay / Buy / Checkout. `destructive`: delete, sign out. `file`: a file input or anything that holds one (only the user's own tap opens a picker). `call`: the dock and the full call (`data-live-status`). `password`: never typed into.
+- **[App] notes.** OmniStudio announces each NEW result (keyed by its media URL — a result usually fills a bubble that was already there) and each failure (`myavatar:live-result`) while a call is on; the call queues it and, the moment the agent is listening, sends it to the model as text that is not shown as the user's words (`sendNote`): „[App] A new music track is ready on screen: … — it is now result 1. If the user asked for more steps, continue with the next one now". So „make music, then a video, then put the music on it from 0:30" runs as: prepare + yes + start (music) → [App] → prepare + yes + start (video) → [App] → `montage` open (videos latest, music latest, musicStartSec 30) → `montage` export → [App].
 
 ### `open_url`: a link the user taps
 
@@ -155,6 +170,18 @@ model's turn, so a slow answer would be dead air.
   each with an **Open** button (a link's Open opens the site and keeps the call). One visually hidden `role="status"`
   line announces each new card once. Framer Motion animates the cards; they simply appear under
   `prefers-reduced-motion`. Georgian reading text is at least 16 px.
+- **Connecting.** The status reads „უკავშირდება…" / "Connecting…" / «Подключение…» in the UI language (the owner's
+  English screenshot was the `/en` locale; the Georgian copy was there). The rocket orb breathes — scale and opacity
+  within 3 %, one 2 s cycle (`connectBreath`) — and the arc around it runs over a faint accent track, growing with the
+  time spent connecting: a tenth at once, 63 % of the way in 3 s, held at 92 % until the call is up (`connectProgress`,
+  the elapsed ÷ cap pattern of DESIGN.md §8). Under `prefers-reduced-motion`: a still quarter arc on the track, no breath.
+- **The fallback wears the same screen.** When Gemini Live is unavailable for a user, ChatChrome mounts the ElevenLabs
+  `VoiceConversation`; it draws the same pieces (`LiveCallChrome`) around the same `LiveOrb`, fed by its own analysers:
+  the rocket orb and the faint rocket behind it, „ცოცხალი ზარი", the captions toggle, the status line with the waveform,
+  the captions (the last thing said and the answer) and the row Mute · End. A tap on the orb ends the turn while it
+  listens; before a start (iOS needs one tap) and after a pause, a labelled button under the status starts or resumes.
+  Mute switches the mic track off, so a muted user neither ends a turn nor barges in. Its old canvas orb (crimson →
+  violet while speaking, `lib/voice/orbViz.ts`) is gone.
 
 ## Switches and fallbacks
 

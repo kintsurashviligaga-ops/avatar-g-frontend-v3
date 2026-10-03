@@ -2,7 +2,10 @@
 
 /**
  * LiveOrb — the Live call's one visual signal. It swells with the USER's voice while listening and with the MODEL's
- * voice while speaking, breathes while connecting, turns a slow arc while thinking, and goes still on error.
+ * voice while speaking, turns a slow arc while thinking, and goes still on error. While CONNECTING the rocket orb
+ * breathes (scale and opacity within 3 %, one 2 s cycle) and the arc around it runs over a faint track, growing with
+ * the time spent connecting — the wait reads as progress, not as a frozen screen. Both the Gemini Live call and the
+ * ElevenLabs fallback (VoiceConversation) draw this orb, so every user sees the same agent.
  * LiveWaveform — the five accent bars in the control pill, driven by the same levels.
  *
  * Performance contract: one requestAnimationFrame loop per component that writes `transform` on refs — no React state
@@ -58,14 +61,42 @@ export function orbTarget(state: LiveOrbState, levels: LiveLevels, ts: number): 
     case 'speaking':
       // A small floor so the orb visibly "talks" through the quiet gaps between syllables.
       return Math.min(1, Math.max(0.06, levels.output));
-    case 'connecting':
-      return 0.08 + 0.06 * Math.sin(ts / 420);
     case 'thinking':
       return 0.05 + 0.04 * Math.sin(ts / 260);
+    // Connecting has no voice to follow: the orb breathes instead (connectBreath, applied on top in the loop).
     default:
       return 0;
   }
 }
+
+/** One breath while connecting (docs/voice/LIVE_ACTIONS.md, "The screen"): a 2 s cycle … */
+export const CONNECT_BREATH_MS = 2000;
+/** … that swells the orb and lifts its opacity by at most 3 % — alive, never pulsing (DESIGN.md §5/§6). */
+export const CONNECT_BREATH_DEPTH = 0.03;
+
+/** The breath at time `ts` (ms), 0..1: a cosine, so it starts and ends at rest and has no edge to snap on. */
+export function connectBreath(ts: number): number {
+  if (!Number.isFinite(ts)) return 0;
+  return 0.5 - 0.5 * Math.cos((2 * Math.PI * ts) / CONNECT_BREATH_MS);
+}
+
+const CONNECT_ARC_MIN = 0.1;
+const CONNECT_ARC_MAX = 0.92;
+const CONNECT_ARC_TAU_MS = 3000;
+
+/**
+ * How much of the ring the arc covers while connecting (0..1), from the time spent connecting: a tenth at once, fast
+ * at first and slower after (63 % of the way in 3 s), held at 92 % until the call is up — the product's elapsed ÷ cap
+ * progress (DESIGN.md §8, ResultCard). A connect that takes a while visibly advances instead of spinning in place.
+ */
+export function connectProgress(elapsedMs: number): number {
+  const e = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+  return Math.min(CONNECT_ARC_MAX, CONNECT_ARC_MIN + (CONNECT_ARC_MAX - CONNECT_ARC_MIN) * (1 - Math.exp(-e / CONNECT_ARC_TAU_MS)));
+}
+
+/** The arc's length while thinking, and under reduced motion (a still spinner): a quarter of the ring. */
+const ARC_REST = 0.25;
+const dash = (fraction: number) => `${(fraction * 100).toFixed(1)} 100`;
 
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -150,6 +181,7 @@ const HALO_TONE: Record<LiveOrbState, string> = {
 export default function LiveOrb({ state, getLevels, size = 208, label, backdrop = false, className = '' }: LiveOrbProps) {
   const haloRef = useRef<HTMLDivElement | null>(null);
   const ringRef = useRef<HTMLDivElement | null>(null);
+  const arcRef = useRef<SVGCircleElement | null>(null);
   const coreRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -161,11 +193,13 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
   useEffect(() => {
     const halo = haloRef.current;
     const ring = ringRef.current;
+    const arc = arcRef.current;
     const core = coreRef.current;
     const reset = () => {
       if (halo) halo.style.transform = 'translateZ(0) scale(1)';
-      if (core) core.style.transform = 'translateZ(0) scale(1)';
+      if (core) { core.style.transform = 'translateZ(0) scale(1)'; core.style.opacity = ''; }
       if (ring) ring.style.transform = 'rotate(0deg)';
+      if (arc) arc.setAttribute('stroke-dasharray', dash(ARC_REST));
     };
     if (!animated || typeof requestAnimationFrame !== 'function') { reset(); return undefined; }
 
@@ -173,6 +207,11 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
     let eased = 0;
     let angle = 0;
     let last = -1;
+    // How much of the connecting breath applies (0..1). It eases in and out with the state, so arriving at
+    // "listening" mid-breath settles over a few frames instead of snapping back 3 %.
+    let breathWeight = 0;
+    let connectSince = -1;
+    let arcDash = '';
     const tick = (ts: number) => {
       const dt = last < 0 ? 16 : Math.min(64, ts - last);
       last = ts;
@@ -182,11 +221,29 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
       const target = orbTarget(st, levels, ts);
       // Fast attack, slow release: syllables pop, silence settles instead of snapping shut.
       eased += (target - eased) * (target > eased ? 0.45 : 0.14);
-      if (core) core.style.transform = `translateZ(0) scale(${(1 + eased * 0.22).toFixed(4)})`;
-      if (halo) halo.style.transform = `translateZ(0) scale(${(1 + eased * 0.7).toFixed(4)})`;
+      breathWeight += ((st === 'connecting' ? 1 : 0) - breathWeight) * 0.12;
+      const breathing = breathWeight > 0.001;
+      const breath = breathing ? connectBreath(ts) * breathWeight : 0;
+      const swell = 1 + CONNECT_BREATH_DEPTH * breath;
+      if (core) {
+        core.style.transform = `translateZ(0) scale(${((1 + eased * 0.22) * swell).toFixed(4)})`;
+        // At rest the disc sits 3 % down and breathes up to full; outside a connect the style is left alone.
+        core.style.opacity = breathing ? (1 - CONNECT_BREATH_DEPTH * breathWeight + CONNECT_BREATH_DEPTH * breath).toFixed(4) : '';
+      }
+      if (halo) halo.style.transform = `translateZ(0) scale(${((1 + eased * 0.7) * swell).toFixed(4)})`;
+      if (st === 'connecting') {
+        if (connectSince < 0) connectSince = ts;
+      } else {
+        connectSince = -1;
+      }
       if (ring && (st === 'thinking' || st === 'connecting')) {
-        angle = (angle + dt * (st === 'thinking' ? 0.24 : 0.12)) % 360;
+        // One turn per breath while connecting (2 s), faster while thinking.
+        angle = (angle + dt * (st === 'thinking' ? 0.24 : 360 / CONNECT_BREATH_MS)) % 360;
         ring.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+      }
+      if (arc) {
+        const next = dash(st === 'connecting' ? connectProgress(ts - connectSince) : ARC_REST);
+        if (next !== arcDash) { arc.setAttribute('stroke-dasharray', next); arcDash = next; }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -195,6 +252,9 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
   }, [animated]);
 
   const showArc = state === 'thinking' || state === 'connecting';
+  // The arc is 2 px at every size: the ring box is the orb plus 6 px each side, drawn in a 100-unit viewBox.
+  const arcStroke = Math.round((2 * 100 * 1000) / (size + 12)) / 1000;
+  const arcRadius = Math.round((50 - arcStroke / 2) * 1000) / 1000;
   // The rocket's rendered width in CSS px: `sizes` lets the browser take the 256 px raster for the dock and the 512 px
   // one for the full call on a 3x screen — crisp at both ends without shipping 512 px to a 40 px orb.
   const rocketPx = Math.max(16, Math.round(size * CORE_FILL * ROCKET_FILL));
@@ -235,13 +295,37 @@ export default function LiveOrb({ state, getLevels, size = 208, label, backdrop 
         className={`absolute inset-0 rounded-full blur-3xl transition-colors duration-300 ${HALO_TONE[state]}`}
         style={{ willChange: animated ? 'transform' : undefined }}
       />
-      {/* Arc: a quarter ring that turns while connecting / thinking. */}
+      {/* Arc: turns while connecting / thinking. Connecting, it runs over a faint track and grows with the time spent
+          connecting (connectProgress), so the wait shows progress; thinking, it is a quarter ring. Still under reduced
+          motion (a quarter, on the track while connecting). One hue: the accent and a faint accent track. */}
       <div
         ref={ringRef}
         aria-hidden
-        className={`absolute -inset-1.5 rounded-full border-2 border-transparent transition-opacity duration-300 ${showArc ? 'border-t-app-accent/80 opacity-100' : 'opacity-0'}`}
+        data-testid="live-orb-arc"
+        className={`absolute -inset-1.5 rounded-full transition-opacity duration-300 ${showArc ? 'opacity-100' : 'opacity-0'}`}
         style={{ willChange: animated && showArc ? 'transform' : undefined }}
-      />
+      >
+        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90 overflow-visible" fill="none">
+          <circle
+            cx="50"
+            cy="50"
+            r={arcRadius}
+            strokeWidth={arcStroke}
+            className={`stroke-app-accent/15 transition-opacity duration-300 ${state === 'connecting' ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <circle
+            ref={arcRef}
+            cx="50"
+            cy="50"
+            r={arcRadius}
+            strokeWidth={arcStroke}
+            pathLength={100}
+            strokeDasharray={dash(ARC_REST)}
+            strokeLinecap="round"
+            className="stroke-app-accent/80"
+          />
+        </svg>
+      </div>
       {/* Core: the dark glass disc with the rocket on it. No shadow — the halo is the only glow. */}
       <div
         ref={coreRef}

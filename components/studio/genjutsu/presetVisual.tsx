@@ -1,15 +1,17 @@
 'use client';
 
 /**
- * The look of a preset: its tile's gradient (dark base → the effect's accent, the same placeholder convention as
- * lib/studio/templates) and the lucide icon its data names. No thumbnail files to ship, no broken images, and a tile
- * that already says what it is.
+ * The look of a preset: its still (public/vfx/<id>.jpg with its blur placeholder — site imagery v2), the tile's gradient
+ * under it (dark base → the effect's accent: the placeholder while the still loads, and the whole tile for a preset with
+ * none, the convention of lib/studio/templates) and the lucide icon its data names — shown only where there is no still,
+ * so a tile always says what it is and never shows a broken image.
  */
 import {
   Bot, Box, Building2, ChevronsUpDown, Cpu, CloudFog, CloudRain, Crown, Droplets, Flame, Gem, Moon, MonitorX, Mountain,
   MountainSnow, Music2, Orbit, Rocket, Shapes, Smile, Snowflake, Sun, Swords, Waves, Zap, type LucideIcon,
 } from 'lucide-react';
 import type { GenjutsuPreset, PresetIcon } from '@/lib/genjutsu/presets';
+import { siteArt, type SiteArtImage } from '@/lib/brand/siteArt';
 
 export const PRESET_ICONS: Record<PresetIcon, LucideIcon> = {
   Swords, Music2, CloudRain, Rocket, Bot, Mountain, Gem, Crown, Building2, Sun, Waves, MountainSnow,
@@ -29,4 +31,9 @@ export function withAlpha(hex: string, alpha: number): string {
 /** The tile's background: a soft accent glow from the top right over the dark base fading to black. */
 export function tileBackground(palette: readonly [string, string]): string {
   return `radial-gradient(120% 90% at 85% 10%, ${withAlpha(palette[1], 0.42)} 0%, transparent 58%), linear-gradient(160deg, ${palette[0]} 0%, #000 100%)`;
+}
+
+/** The preset's still and its blur placeholder, or null — the tile is then its palette and icon alone. */
+export function presetThumb(p: Pick<GenjutsuPreset, 'thumb'>): SiteArtImage | null {
+  return p.thumb ? siteArt(p.thumb) : null;
 }

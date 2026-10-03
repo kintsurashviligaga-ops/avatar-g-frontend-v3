@@ -46,6 +46,11 @@ export interface MontageRequest {
   aspect: MontageAspect;
   /** Optional music bed laid under the whole master. */
   musicUrl?: string;
+  /**
+   * Where in the music bed the master's first frame lands, in seconds („start the song at 0:42"). Absent = the top
+   * of the song. Only ever set alongside `musicUrl`; the mux applies it as input seeking on the song.
+   */
+  musicStartSec?: number;
   /** How far the ORIGINAL clip audio is pushed down under the bed, in dB. */
   musicDuckDb: number;
   /** Drop every source's own audio and keep only the bed. */
@@ -81,6 +86,22 @@ export const MAX_SHOT_SEC = 60;
 
 /** Total master ceiling, in seconds — the encode budget, not an artistic limit. */
 export const MAX_TOTAL_SEC = 300;
+
+/** The latest a music bed may start, in seconds. An hour-long track is the outer case; past it is garbage input. */
+export const MAX_MUSIC_START_SEC = 3600;
+
+/**
+ * `musicStartSec` from untrusted input. Absent (undefined/null) is the top of the song; anything else must be a
+ * finite number of seconds in [0, MAX_MUSIC_START_SEC]. A string, a negative or an out-of-range value is REFUSED
+ * rather than clamped: a bed that silently starts somewhere else is a wrong edit the user only hears after the encode.
+ */
+export function coerceMusicStartSec(raw: unknown): { ok: true; value: number } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: 0 };
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0 || raw > MAX_MUSIC_START_SEC) {
+    return { ok: false, error: `musicStartSec must be a number of seconds from 0 to ${MAX_MUSIC_START_SEC}` };
+  }
+  return { ok: true, value: Number(raw.toFixed(3)) };
+}
 
 /**
  * Maximum crossfade/fade length, in seconds.
@@ -261,6 +282,9 @@ export function validateMontageRequest(body: unknown): ValidationResult {
     return { ok: false, error: 'musicUrl must be an http(s) url' };
   }
 
+  const musicStart = coerceMusicStartSec(b.musicStartSec);
+  if (!musicStart.ok) return { ok: false, error: musicStart.error };
+
   const duckRaw = Number(b.musicDuckDb);
   const grade = coerceGrade(b.grade);
   return {
@@ -269,6 +293,9 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       shots,
       aspect: isMontageAspect(b.aspect) ? b.aspect : '16:9',
       ...(musicUrl ? { musicUrl } : {}),
+      // Meaningless without a bed, and 0 is the default: only a real offset rides along, so an edit without one
+      // reaches the mux exactly as it did before there was a start.
+      ...(musicUrl && musicStart.value > 0 ? { musicStartSec: musicStart.value } : {}),
       // Clamped to a sane duck range; 0 would bury the dialogue, -40 would silence the bed's purpose.
       musicDuckDb: Number.isFinite(duckRaw) ? Math.max(-30, Math.min(0, duckRaw)) : -12,
       musicOnly: b.musicOnly === true,

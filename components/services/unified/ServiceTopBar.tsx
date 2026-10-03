@@ -10,7 +10,9 @@
  */
 
 import { motion } from 'framer-motion'
+import Image from 'next/image'
 import Link from 'next/link'
+import { serviceCardImage } from '@/lib/services/cardImage'
 
 interface ServiceItem {
   slug: string
@@ -90,7 +92,14 @@ export function ServiceTopBar({ activeService, onCommandBar, onDockToggle, local
                 <path d="m9 18 6-6-6-6" />
               </svg>
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm leading-none">{activeService.icon}</span>
+                {/* The service's card still (lib/services/cardImage), not its registry emoji (docs/DESIGN.md §6). */}
+                {serviceCardImage(activeService.slug) ? (
+                  <span aria-hidden="true" className="relative block h-4 w-4 shrink-0 overflow-hidden rounded">
+                    <Image src={serviceCardImage(activeService.slug)!} alt="" fill sizes="16px" className="object-cover" />
+                  </span>
+                ) : (
+                  <span className="text-sm leading-none">{activeService.icon}</span>
+                )}
                 <motion.span
                   key={activeService.slug}
                   initial={{ opacity: 0, x: -4 }}

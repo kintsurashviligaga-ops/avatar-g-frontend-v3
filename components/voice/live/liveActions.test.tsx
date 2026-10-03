@@ -421,3 +421,156 @@ describe('prepare_generation for a deck or a 3D model', () => {
     expect(r.summary).toMatch(/start_generation does not run this studio/);
   });
 });
+
+// ── 2026-10-03: the call's hands ─────────────────────────────────────────────────────────────────────────────────
+import { browserLiveUi, type MontageCommandDetail, type WebReadAnswer } from './liveActions';
+
+describe('the hands: click · type_text · download · use_result · montage · read_webpage', () => {
+  afterEach(() => { document.body.innerHTML = ''; delete document.documentElement.dataset.tool; });
+
+  /** The real screen helper on jsdom's document, plus spies for the studio, the page reader and Montage. */
+  function handsEnv(opts: { studio?: boolean; reply?: LiveActionEventDetail['reply']; page?: WebReadAnswer; montage?: false | MontageCommandDetail['reply'] } = {}) {
+    const actions: LiveActionEventDetail[] = [];
+    const montage: MontageCommandDetail[] = [];
+    const reads: string[] = [];
+    const env: LiveActionEnv = {
+      dispatchAction: (d) => { actions.push(d); if (opts.reply) d.reply = opts.reply; return opts.studio ?? true; },
+      openArtifact: () => true,
+      ui: browserLiveUi,
+      readPage: async (url) => { reads.push(url); return opts.page ?? { ok: false, error: 'fetch_failed' }; },
+      montageCommand: (d) => { montage.push(d); if (opts.montage === false) return false; d.reply = opts.montage ?? { ok: true }; return true; },
+    };
+    return { env, actions, montage, reads };
+  }
+
+  test('get_screen_state hands the model the controls it may press (and the studio state)', () => {
+    document.body.innerHTML = '<button>ვიდეო</button><button data-price="25">შექმნა ✦ 25</button>';
+    const { env } = handsEnv({ reply: { ok: true, state: { tool: 'chat' } } });
+    const out = executeLiveToolCall(call('s', 'get_screen_state'), env);
+    const state = out.response.response.state as { tool: string; controls: Array<{ name: string; guard?: string }> };
+    expect(state.tool).toBe('chat');
+    expect(state.controls.map((c) => c.name)).toEqual(['ვიდეო', 'შექმნა ✦ 25']);
+    expect(state.controls[1]!.guard).toBe('spend');
+    // A page without a studio (the library) still lists its controls.
+    const bare = executeLiveToolCall(call('s2', 'get_screen_state'), handsEnv({ studio: false }).env);
+    expect(bare.response.response).toMatchObject({ ok: true, state: { studio: expect.stringMatching(/none/) } });
+  });
+
+  test('click presses an ordinary control — by id or by label — and the call docks to show it', () => {
+    document.body.innerHTML = '<button id="b">მუსიკა</button>';
+    const pressed = jest.fn();
+    document.getElementById('b')!.addEventListener('click', pressed);
+    const { env } = handsEnv();
+    const out = executeLiveToolCall(call('k', 'click', { target: 'მუსიკა' }), env);
+    expect(pressed).toHaveBeenCalledTimes(1);
+    expect(out.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed "მუსიკა"/) });
+    expect(out.screen).toBe(true);
+  });
+
+  test.each([
+    ['<button data-price="40">შექმნა ✦ 40</button>', 'შექმნა', 'needs_user_spend', /start_generation/],
+    ['<div data-live-guard="pay"><button>₾ 20</button></div>', '₾ 20', 'needs_user_pay', /only the user/],
+    ['<button>ანგარიშის წაშლა</button>', 'ანგარიშის წაშლა', 'needs_user_destructive', /only the user/],
+    ['<label><input type="file" hidden/><button>ატვირთვა</button></label>', 'ატვირთვა', 'needs_user_file', /own tap/],
+  ])('click refuses %s — nothing is pressed', (html, target, error, message) => {
+    document.body.innerHTML = html;
+    const pressed = jest.fn();
+    document.querySelector('button')!.addEventListener('click', pressed);
+    const out = executeLiveToolCall(call('k', 'click', { target }), handsEnv().env);
+    expect(pressed).not.toHaveBeenCalled();
+    expect(out.response.response).toMatchObject({ ok: false, error, message: expect.stringMatching(message) });
+  });
+
+  test('click on a link: another website becomes a link the user taps; another page of the app is left to the user', () => {
+    document.body.innerHTML = '<a href="https://www.youtube.com/watch?v=1">YouTube</a><a href="/ka/library">ბიბლიოთეკა</a>';
+    const ext = executeLiveToolCall(call('k1', 'click', { target: 'YouTube' }), handsEnv().env);
+    expect(ext.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/youtube\.com/) });
+    expect(ext.card?.action).toEqual({ type: 'open_url', url: 'https://www.youtube.com/watch?v=1', title: 'YouTube' });
+    const inApp = executeLiveToolCall(call('k2', 'click', { target: 'ბიბლიოთეკა' }), handsEnv().env);
+    expect(inApp.response.response).toMatchObject({ ok: false, error: 'would_end_call' });
+  });
+
+  test('click on something that is not there sends the model back to read the screen', () => {
+    const out = executeLiveToolCall(call('k', 'click', { target: 'c999' }), handsEnv().env);
+    expect(out.response.response).toMatchObject({ ok: false, error: 'not_found', message: expect.stringMatching(/get_screen_state/) });
+  });
+
+  test('type_text fills a field; Enter in the studio composer is held unless the chat is open', () => {
+    document.body.innerHTML = '<textarea data-testid="composer-input" aria-label="Prompt"></textarea>';
+    const ta = document.querySelector('textarea')!;
+    const keys: string[] = [];
+    ta.addEventListener('keydown', (e) => keys.push((e as KeyboardEvent).key));
+    document.documentElement.dataset.tool = 'video';
+    const held = executeLiveToolCall(call('t1', 'type_text', { target: 'Prompt', text: 'ზღვა მზის ჩასვლისას', submit: 'on' }), handsEnv().env);
+    expect(ta.value).toBe('ზღვა მზის ჩასვლისას');
+    expect(keys).toEqual([]);
+    expect(held.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted.*start_generation/) });
+    document.documentElement.dataset.tool = 'chat';
+    const sent = executeLiveToolCall(call('t2', 'type_text', { target: 'Prompt', text: 'გამარჯობა', submit: 'on' }), handsEnv().env);
+    expect(keys).toEqual(['Enter']);
+    expect(sent.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/submitted/) });
+  });
+
+  test('type_text never fills a password', () => {
+    document.body.innerHTML = '<input type="password" aria-label="Password" />';
+    const out = executeLiveToolCall(call('t', 'type_text', { target: 'Password', text: 'hunter2' }), handsEnv().env);
+    expect(out.response.response).toMatchObject({ ok: false, error: 'needs_user_password' });
+    expect((document.querySelector('input') as HTMLInputElement).value).toBe('');
+  });
+
+  test('download and use_result go to the studio, and its words go back to the model', () => {
+    const ok = handsEnv({ reply: { ok: true, message: 'Downloading result 1 (the video).' } });
+    const d = executeLiveToolCall(call('d', 'download', { result: 'video' }), ok.env);
+    expect(ok.actions[0]).toMatchObject({ type: 'download', result: { kind: 'video' } });
+    expect(d.response.response).toEqual({ ok: true, summary: 'Downloading result 1 (the video).' });
+    const no = handsEnv({ reply: { ok: false, error: 'no_result', message: 'There is no such result.' } });
+    expect(executeLiveToolCall(call('u', 'use_result', { result: '3', to: 'montage' }), no.env).response.response)
+      .toEqual({ ok: false, error: 'no_result', message: 'There is no such result.' });
+  });
+
+  test('montage: open is the studio\'s; export goes to the editor\'s own hook — and a closed editor says so', () => {
+    const open = handsEnv({ reply: { ok: true, message: 'Montage is open.' } });
+    expect(executeLiveToolCall(call('m1', 'montage', { action: 'open', videos: 'latest', music: 'latest', musicStartSec: 30 }), open.env).response.response)
+      .toEqual({ ok: true, summary: 'Montage is open.' });
+    expect(open.actions[0]).toMatchObject({ type: 'montage', action: 'open', music: { kind: 'audio' }, musicStartSec: 30 });
+
+    const exp = handsEnv({ montage: { ok: true } });
+    const out = executeLiveToolCall(call('m2', 'montage', { action: 'export' }), exp.env);
+    expect(exp.montage[0]).toMatchObject({ command: 'export' });
+    expect(out.response.response).toMatchObject({ ok: true, summary: expect.stringMatching(/exporting.*\[App\]/) });
+
+    const blocked = handsEnv({ montage: { ok: false, error: 'blocked', message: 'Uploads are still running.' } });
+    expect(executeLiveToolCall(call('m3', 'montage', { action: 'export' }), blocked.env).response.response)
+      .toEqual({ ok: false, error: 'blocked', message: 'Uploads are still running.' });
+
+    const closed = handsEnv({ montage: false });
+    expect(executeLiveToolCall(call('m4', 'montage', { action: 'set_music_start', musicStartSec: 12 }), closed.env).response.response)
+      .toMatchObject({ ok: false, error: 'montage_closed' });
+  });
+
+  test('read_webpage answers after the page is read: the text, the links, and a link on screen', async () => {
+    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }] } };
+    const h = handsEnv({ page });
+    const out = executeLiveToolCall(call('w', 'read_webpage', { url: 'example.ge' }), h.env);
+    expect(h.reads).toEqual(['https://example.ge/']);
+    expect(out.card?.action).toEqual({ type: 'open_url', url: 'https://example.ge/', title: 'example.ge' });
+    const done = await out.pending!;
+    expect(done).toMatchObject({ id: 'w', name: 'read_webpage', response: { ok: true, title: 'Example', text: 'Hello', links: ['More — https://example.ge/more'] } });
+
+    const bad = await executeLiveToolCall(call('w2', 'read_webpage', { url: 'https://down.example.com' }), handsEnv({ page: { ok: false, error: 'http_error', status: 503 } }).env).pending!;
+    expect(bad.response).toMatchObject({ ok: false, error: 'http_error', message: expect.stringMatching(/HTTP 503/) });
+  });
+
+  test('a batch with a page read is answered as a whole once the page is in', async () => {
+    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'T', description: '', text: 'x', links: [] } };
+    const { env } = handsEnv({ page, reply: { ok: true, state: {} } });
+    const { result } = renderHook(() => useLiveActions(env));
+    let answers: unknown;
+    await act(async () => {
+      answers = await result.current.onToolCall([call('a', 'get_screen_state'), call('b', 'read_webpage', { url: 'example.ge' })]);
+    });
+    const list = answers as Array<{ id: string; response: Record<string, unknown> }>;
+    expect(list.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(list[1]!.response).toMatchObject({ ok: true, title: 'T' });
+  });
+});

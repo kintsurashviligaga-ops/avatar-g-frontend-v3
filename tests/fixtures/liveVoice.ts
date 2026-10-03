@@ -7,7 +7,12 @@ import { expect, type Page, type WebSocketRoute } from '@playwright/test';
  * `openLiveCall` signs in, mocks the token mint, opens the chat and starts a call from the composer's Live button.
  */
 
-const SUPABASE_URL = 'https://dummy.supabase.co';
+// The Supabase project the dev server under test runs with: its cookie name and its auth host both come from it.
+// ⚠️ It was hard-coded to dummy.supabase.co, so against `npm run dev:ui` (example.supabase.co) the session cookie had the
+// wrong name and the mocked /auth/v1/user the wrong host — every test here stopped at „signed in" (2026-10-03).
+// PLAYWRIGHT_SUPABASE_URL names it explicitly; NEXT_PUBLIC_SUPABASE_URL is used when the runner shares the app's env.
+const SUPABASE_URL = (process.env.PLAYWRIGHT_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy.supabase.co').replace(/\/$/, '');
+const AUTH_COOKIE = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
 const USER = {
   id: '00000000-0000-4000-8000-0000000000e2',
   aud: 'authenticated',
@@ -69,6 +74,11 @@ export class FakeLive {
     return found!;
   }
 
+  /** The app's own notes to the model ("[App] A new image is ready…"), however the session framed the text. */
+  notes(): string[] {
+    return this.sent.map((s) => JSON.stringify(s)).filter((t) => t.includes('[App]'));
+  }
+
   /** The model speaking: an output transcription, as the dock and captions show it. */
   say(text: string): void {
     this.ws?.send(JSON.stringify({ serverContent: { outputTranscription: { text } } }));
@@ -76,7 +86,7 @@ export class FakeLive {
 }
 
 async function signIn(page: Page, baseURL: string | undefined): Promise<void> {
-  await page.context().addCookies([{ name: 'sb-dummy-auth-token', value: sessionCookieValue(), url: baseURL ?? 'http://localhost:3000' }]);
+  await page.context().addCookies([{ name: AUTH_COOKIE, value: sessionCookieValue(), url: baseURL ?? 'http://localhost:3000' }]);
   await page.route(`${SUPABASE_URL}/auth/v1/user`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(USER) }));
   await page.route(`${SUPABASE_URL}/auth/v1/token**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'x', token_type: 'bearer', expires_in: 3600, refresh_token: 'y', user: USER }) }));
   await page.route(`${SUPABASE_URL}/rest/v1/**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
@@ -107,8 +117,21 @@ async function fakeMicrophone(page: Page): Promise<void> {
   });
 }
 
-/** Requests that would cost money if they ran. None may leave the browser in this test. */
-const SPEND = /\/api\/(image|images|video|music|lipsync|generate|gen|orchestrator|jobs)(\/|$|\?)/;
+/**
+ * Requests that would cost money if they ran — every generation family the studio calls (nanobanana is the image
+ * engine, ai/music the music one, film/heygen/genjutsu the video ones). None may leave the browser in these tests.
+ * The free routes (chat, voice, presence, the Montage cut, a job's progress note) are deliberately not here.
+ */
+const SPEND = new RegExp(
+  '^/api/(' + [
+    'image', 'images', 'video', 'videos', 'music', 'lipsync', 'generate', 'gen', 'orchestrate', 'jobs(?:/create)?$',
+    // the orchestrator's produce routes render; its /jobs is the free progress note every image job writes
+    'orchestrator/(?:produce|music|image|voice|avatar|interior)',
+    'nanobanana', 'film', 'heygen', 'genjutsu', 'ltx-video', 'motion-control', 'pipeline', 'udio', 'replicate',
+    'audio', 'elevenlabs', 'ai/(?:music|upscale|magic-wand|edit|edit-audio|edit-photo)',
+    'avatar/(?:create|generate|enroll)', 'v2/(?:dubbing|model3d|presentation)',
+  ].join('|') + ')(/|$)',
+);
 
 export async function openLiveCall(page: Page, baseURL: string | undefined, live: FakeLive): Promise<string[]> {
   const spend: string[] = [];

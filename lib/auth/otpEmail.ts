@@ -17,27 +17,32 @@
  */
 
 /**
- * - `signup`   — the old two-field registration (email + chosen password); refuses a known address.
- * - `signin`   — a code for an EXISTING account only; an unknown address gets no mail (and an OK answer).
- * - `continue` — THE ONE-FIELD FLOW (2026-10-01): a code for anyone. An existing account gets a sign-in code; an
- *                unknown address gets an account created and a confirmation code — and the caller cannot tell which
- *                (no enumeration). Either code verifies with `type: 'email'`.
+ * - `signup`   — the old two-field registration (email + chosen password); RETIRED (the route answers 410).
+ * - `signin`   — a code for an EXISTING account only. An unknown address gets no mail and `no_account`
+ *                (2026-10-03: the sheet says „no account — create one" instead of leaving people waiting for a code).
+ * - `continue` — the 2026-10-01 one-field flow, kept for tabs still running that build: a code for anyone (an
+ *                unknown address gets an account), and the answer never says which.
+ * - `register` — SIGN-UP (2026-10-03, the owner: an address that already has an account must not register again).
+ *                A new address gets an UNCONFIRMED account and a confirmation code; a confirmed one is refused with
+ *                `account_exists`, and the sheet sends the person to log in.
+ * - `recovery` — „forgot password": a 6-digit RESET code for an existing account. It verifies with
+ *                `type: 'recovery'` and the sheet then asks for the new password.
  */
-export type OtpPurpose = 'signup' | 'signin' | 'continue';
+export type OtpPurpose = 'signup' | 'signin' | 'continue' | 'register' | 'recovery';
 export type OtpLocale = 'ka' | 'en' | 'ru';
 
 /** Supabase's admin link types, mapped from our product-level purpose. */
-export function linkTypeFor(purpose: OtpPurpose): 'signup' | 'magiclink' {
-  return purpose === 'signup' ? 'signup' : 'magiclink';
+export function linkTypeFor(purpose: OtpPurpose): 'signup' | 'magiclink' | 'recovery' {
+  return purpose === 'signup' || purpose === 'register' ? 'signup' : purpose === 'recovery' ? 'recovery' : 'magiclink';
 }
 
 /** The `verifyOtp` type the CLIENT must use for a code produced by this purpose. Mismatch = rejection. */
-export function verifyTypeFor(purpose: OtpPurpose): 'signup' | 'email' {
-  return purpose === 'signup' ? 'signup' : 'email';
+export function verifyTypeFor(purpose: OtpPurpose): 'signup' | 'email' | 'recovery' {
+  return purpose === 'signup' ? 'signup' : purpose === 'recovery' ? 'recovery' : 'email';
 }
 
 export function isOtpPurpose(v: unknown): v is OtpPurpose {
-  return v === 'signup' || v === 'signin' || v === 'continue';
+  return v === 'signup' || v === 'signin' || v === 'continue' || v === 'register' || v === 'recovery';
 }
 
 /** Exactly six digits. Anything else means the provider response changed and must not be mailed. */
@@ -129,6 +134,20 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       expires: 'კოდი მოქმედებს 1 საათი და მხოლოდ ერთხელ გამოიყენება.',
       ignore: 'თუ ეს თქვენ არ ყოფილხართ, უბრალოდ იგნორირება გაუკეთეთ ამ წერილს.',
     },
+    register: {
+      subject: (c) => `${c} — დაადასტურეთ ელფოსტა`,
+      heading: 'დაადასტურეთ ელფოსტა',
+      lead: 'შეიყვანეთ ეს კოდი MyAvatar-ში რეგისტრაციის დასასრულებლად:',
+      expires: 'კოდი მოქმედებს 1 საათი და მხოლოდ ერთხელ გამოიყენება.',
+      ignore: 'თუ რეგისტრაციას არ ცდილობდით, უბრალოდ იგნორირება გაუკეთეთ ამ წერილს.',
+    },
+    recovery: {
+      subject: (c) => `${c} — პაროლის აღდგენის კოდი`,
+      heading: 'პაროლის აღდგენა',
+      lead: 'შეიყვანეთ ეს კოდი MyAvatar-ში და შემდეგ აირჩიეთ ახალი პაროლი:',
+      expires: 'კოდი მოქმედებს 1 საათი და მხოლოდ ერთხელ გამოიყენება.',
+      ignore: 'თუ პაროლის აღდგენას არ ცდილობდით, იგნორირება გაუკეთეთ ამ წერილს — პაროლი არ შეცვლილა.',
+    },
   },
   en: {
     signup: {
@@ -152,6 +171,20 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       expires: 'The code is valid for 1 hour and can be used once.',
       ignore: "If this wasn't you, just ignore this email.",
     },
+    register: {
+      subject: (c) => `${c} — confirm your email`,
+      heading: 'Confirm your email',
+      lead: 'Enter this code in MyAvatar to finish creating your account:',
+      expires: 'The code is valid for 1 hour and can be used once.',
+      ignore: "If you weren't signing up, just ignore this email.",
+    },
+    recovery: {
+      subject: (c) => `${c} — your password reset code`,
+      heading: 'Reset your password',
+      lead: 'Enter this code in MyAvatar, then choose a new password:',
+      expires: 'The code is valid for 1 hour and can be used once.',
+      ignore: "If you didn't ask to reset your password, ignore this email — your password has not changed.",
+    },
   },
   ru: {
     signup: {
@@ -174,6 +207,20 @@ const COPY: Record<OtpLocale, Record<OtpPurpose, Copy>> = {
       lead: 'Введите этот код в MyAvatar — он выполнит вход или создаст аккаунт, если вы новый пользователь:',
       expires: 'Код действует 1 час и используется один раз.',
       ignore: 'Если это были не вы, просто проигнорируйте письмо.',
+    },
+    register: {
+      subject: (c) => `${c} — подтвердите почту`,
+      heading: 'Подтвердите почту',
+      lead: 'Введите этот код в MyAvatar, чтобы завершить регистрацию:',
+      expires: 'Код действует 1 час и используется один раз.',
+      ignore: 'Если вы не регистрировались, просто проигнорируйте письмо.',
+    },
+    recovery: {
+      subject: (c) => `${c} — код для сброса пароля`,
+      heading: 'Сброс пароля',
+      lead: 'Введите этот код в MyAvatar, затем придумайте новый пароль:',
+      expires: 'Код действует 1 час и используется один раз.',
+      ignore: 'Если вы не запрашивали сброс пароля, проигнорируйте письмо — пароль не изменился.',
     },
   },
 };

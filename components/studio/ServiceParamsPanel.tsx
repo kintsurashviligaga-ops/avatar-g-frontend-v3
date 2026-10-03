@@ -668,8 +668,8 @@ export function ServiceParamsPanel({
               onChange={setDeckTheme}
               cols={2}
               options={[
-                { id: 'dark' as const, label: t.themeDark, icon: '🌙' },
-                { id: 'light' as const, label: t.themeLight, icon: '☀️' },
+                { id: 'dark' as const, label: t.themeDark, icon: <SlideThemeSwatch theme="dark" /> },
+                { id: 'light' as const, label: t.themeLight, icon: <SlideThemeSwatch theme="light" /> },
               ]}
             />
             <ToggleRow on={withImages} onChange={setWithImages} label={t.withImages} hint={t.withImagesHint} />
@@ -898,6 +898,29 @@ export function ServiceParamsPanel({
 }
 
 /** Standalone: the capped, closable card. Inside the settings panel (`embedded`): the parameters only. */
+/**
+ * A tiny slide in the deck's own look — a title bar and two body lines on the slide's ground (the grounds of
+ * lib/services/presentation/slideSvg THEMES) — for the theme choice.
+ * It was 🌙 / ☀️: emoji as UI (docs/DESIGN.md §6), and a moon says nothing about how the slides will LOOK. A hairline,
+ * never a coloured border; decorative (the label beside it names the theme).
+ */
+function SlideThemeSwatch({ theme }: { theme: DeckTheme }) {
+  const dark = theme === 'dark';
+  const ink = dark ? 'bg-white/80' : 'bg-black/75';
+  const body = dark ? 'bg-white/35' : 'bg-black/30';
+  return (
+    <span
+      aria-hidden="true"
+      data-testid={`deck-theme-swatch-${theme}`}
+      className={`flex h-[18px] w-7 flex-col justify-center gap-[2px] rounded-[3px] px-[4px] ring-1 ${dark ? 'bg-[#0B0B0F] ring-white/20' : 'bg-white ring-black/10'}`}
+    >
+      <span className={`h-[2.5px] w-3.5 rounded-full ${ink}`} />
+      <span className={`h-[1.5px] w-full rounded-full ${body}`} />
+      <span className={`h-[1.5px] w-2/3 rounded-full ${body}`} />
+    </span>
+  );
+}
+
 function SppFrame({ embedded, title, closeLabel, onClose, children }: {
   embedded: boolean;
   title: string;

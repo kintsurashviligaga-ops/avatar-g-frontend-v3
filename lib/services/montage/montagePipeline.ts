@@ -5,7 +5,7 @@
  *   2 bridge    stills → Ken Burns clips (renderConcat needs real video streams, not JPEGs)
  *   3 normalize every source scaled/padded to ONE aspect BEFORE the graph — see ROTATION below
  *   4 stitch    renderConcat, VBV-capped and hosted through a non-base64 sink
- *   5 music     optional bed mixed under the master
+ *   5 music     optional bed mixed under the master, from `musicStartSec` into the song
  *
  * ⚠️ ROTATION: `renderConcat` builds a `-filter_complex` graph, and ffmpeg does NOT apply a source's
  * rotation side-data metadata when the stream goes through filter_complex. A phone clip shot in portrait
@@ -152,7 +152,15 @@ export async function runMontage(
       // the same trap that silently removed Veo's native dialogue in the film pipeline.
       // Music only takes 'bed', not 'replace': replace ends at the SHORTER stream, so a 30 s song under a
       // 60 s edit cut the video in half. 'bed' pads the song with silence and the picture keeps its length.
-      const mixed = await muxAudioOntoVideo(master, req.musicUrl, req.musicOnly ? 'bed' : 'under', Math.abs(req.musicDuckDb));
+      // `musicStartSec` is where in the song the first frame lands (the editor's „start at"); it seeks the song's input
+      // in whichever branch runs, so the picture's length still decides the end.
+      const mixed = await muxAudioOntoVideo(
+        master,
+        req.musicUrl,
+        req.musicOnly ? 'bed' : 'under',
+        Math.abs(req.musicDuckDb),
+        req.musicStartSec ?? 0,
+      );
       // A failed bed is not worth throwing away a good edit — the master is still exactly what was asked
       // for, minus music, and the caller is told.
       if (mixed) {

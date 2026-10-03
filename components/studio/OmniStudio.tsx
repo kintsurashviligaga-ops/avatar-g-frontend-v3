@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -67,7 +67,7 @@ import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@
 import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
-import { LIVE_ACTION_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
+import { LIVE_ACTION_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveResultNote, type LiveResultRef, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
@@ -1879,6 +1879,12 @@ function Portal({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
+/** A result's few words for a voice call (get_screen_state `results`, the [App] note): its prompt, else its caption. */
+function liveWhat(m: Msg): string {
+  const p = (m.regen as { prompt?: string } | undefined)?.prompt;
+  return (p || m.text || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
 export default function OmniStudio({ locale = 'ka', initialTool }: {
   locale?: Lang;
   /**
@@ -1930,6 +1936,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
   const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string }[] | null>(null);
+  /** A voice call's montage open (lib/voice/liveTools `montage`): the music bed and where in the song it starts, and the format. */
+  const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number } | null>(null);
+  const [montageAspectSeed, setMontageAspectSeed] = useState<'9:16' | '16:9' | '1:1' | null>(null);
+  /** Bumped by a voice montage open: a NEW edit with those seeds, even when Montage is already on screen (it reads its seeds at mount). */
+  const [montageSessionKey, setMontageSessionKey] = useState(0);
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
@@ -2937,7 +2948,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
-      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); setMode('surgical'); break;
+      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setEditorMode('video'); setMode('surgical'); break;
       case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
@@ -4970,6 +4981,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.removeEventListener(LIVE_RUN_EVENT, onRun);
     };
   }, []);
+  // LIVE ← THE STUDIO: every NEW result (and a failure) while a call is on is announced (LIVE_RESULT_EVENT); the call
+  // passes it to the model as an [App] note, so a plan of several steps goes on by itself — „make music, then the video,
+  // then put them together" (owner, 2026-10-03). Keyed by the media URL, because a result usually FILLS a bubble that was
+  // already there (the generating card gets its image / video in place), which a message count would miss.
+  const announcedRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const keyOf = (m: Msg, i: number): string => m.videoUrl || m.imageUrl || m.audioUrl
+      || (m.role === 'assistant' && /^⚠️/.test(m.text ?? '') ? `failed:${i}:${(m.text ?? '').slice(0, 60)}` : '');
+    if (!announcedRef.current) { announcedRef.current = new Set(messages.map(keyOf).filter(Boolean)); return; }
+    const seen = announcedRef.current;
+    const onCall = typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1';
+    messages.forEach((m, i) => {
+      if (m.role !== 'assistant') return;
+      const key = keyOf(m, i);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      if (!onCall) return;
+      const kind = m.videoUrl ? 'video' as const : m.imageUrl ? 'image' as const : m.audioUrl ? 'audio' as const : null;
+      const note: LiveResultNote = kind
+        ? { kind, what: liveWhat(m) }
+        : { kind: 'failed', what: (m.text ?? '').replace(/^⚠️\s*/, '').replace(/\*\*/g, '').slice(0, 200) };
+      try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: note })); } catch { /* old engines */ }
+    });
+  }, [messages]);
   useEffect(() => {
     if (activeTool !== 'chat' || !pendingLiveChatRef.current) return;
     const text = pendingLiveChatRef.current;
@@ -6767,6 +6802,28 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     return { applied, ...(musicSec !== undefined ? { musicSec } : {}) };
   };
+  /**
+   * The user's results in this chat, NEWEST FIRST (n 1 = the latest) — what download / use_result / montage name. A
+   * result is an assistant bubble with its media (an image, a video, a track).
+   */
+  const liveResults = (): Array<{ n: number; kind: 'image' | 'video' | 'audio'; url: string; what: string }> => {
+    const out: Array<{ n: number; kind: 'image' | 'video' | 'audio'; url: string; what: string }> = [];
+    for (let i = messages.length - 1; i >= 0 && out.length < 50; i--) {
+      const m = messages[i]!;
+      if (m.role !== 'assistant') continue;
+      const kind = m.videoUrl ? 'video' as const : m.imageUrl ? 'image' as const : m.audioUrl ? 'audio' as const : null;
+      if (!kind) continue;
+      out.push({ n: out.length + 1, kind, url: (m.videoUrl || m.imageUrl || m.audioUrl)!, what: liveWhat(m) });
+    }
+    return out;
+  };
+  const resolveLiveResult = (ref: LiveResultRef | undefined) => {
+    const all = liveResults();
+    if (ref?.n) return all.find((r) => r.n === ref.n) ?? null;
+    if (ref?.kind) return all.find((r) => r.kind === ref.kind) ?? null;
+    return all[0] ?? null;
+  };
+  const kindWord = (k: 'image' | 'video' | 'audio') => (k === 'audio' ? 'music track' : k);
   /** What a call may know about the screen (get_screen_state). Short strings only — it is spoken context, not a dump. */
   const liveScreenState = (): Record<string, unknown> => {
     const settings: Record<string, unknown> | undefined =
@@ -6790,6 +6847,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
       ...(lastMedia ? { lastResult: lastMedia.videoUrl ? 'a video' : lastMedia.imageUrl ? 'an image' : 'audio' } : {}),
       runningGenerations: jobs,
+      results: liveResults().slice(0, 8).map((r) => ({ n: r.n, kind: r.kind === 'audio' ? 'music' : r.kind, ...(r.what ? { what: r.what } : {}) })),
       messagesInThisChat: messages.length,
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
@@ -6886,6 +6944,74 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         else if (d.panel === 'connectors') window.dispatchEvent(new CustomEvent('myavatar:hub-open'));
         else if (d.panel === 'search') window.dispatchEvent(new CustomEvent('myavatar:open-search'));
         else if (d.panel === 'history') window.dispatchEvent(new CustomEvent('myavatar:open-sidebar'));
+        return true;
+      }
+      case 'download': {
+        const r = resolveLiveResult(d.result);
+        if (!r) { reply({ ok: false, error: 'no_result', message: 'There is no such result in this chat yet. Call get_screen_state to see the results.' }); return true; }
+        void dl(r.url, `myavatar-${r.kind === 'audio' ? 'music' : r.kind}`);
+        reply({ ok: true, message: `Downloading result ${r.n} (the ${kindWord(r.kind)}${r.what ? ` "${r.what}"` : ''}). If the browser asks, the user confirms; on some phones they tap the download button under the result instead.` });
+        return true;
+      }
+      case 'use_result': {
+        const r = resolveLiveResult(d.result);
+        if (!r) { reply({ ok: false, error: 'no_result', message: 'There is no such result in this chat yet. Call get_screen_state to see the results.' }); return true; }
+        const label = `result ${r.n} (the ${kindWord(r.kind)})`;
+        const to = d.to === 'video' && r.kind === 'audio' ? 'music_video' : d.to;
+        if (to === 'video') {
+          if (r.kind !== 'image') { reply({ ok: false, error: 'wrong_kind', message: `A ${kindWord(r.kind)} cannot start a video. Use an image, or put a video into montage.` }); return true; }
+          sendImageToVideo(r.url);
+          reply({ ok: true, message: `${label} is now the start frame / character of the Video studio. Next: prepare_generation with tool video and the user's idea.` });
+          return true;
+        }
+        if (to === 'music_video') {
+          if (r.kind !== 'audio') { reply({ ok: false, error: 'wrong_kind', message: `Only a music track can be a music video's soundtrack; ${label} is not one.` }); return true; }
+          sendMusicToMusicVideo(r.url, 0, r.what || 'Generated Track');
+          reply({ ok: true, message: `${label} is now the soundtrack of a music video in the Video studio. Next: prepare_generation with tool video describing the visuals.` });
+          return true;
+        }
+        if (to === 'montage') {
+          if (r.kind === 'audio') {
+            setMontageSeed(null); setMontageMusicSeed({ url: r.url, name: r.what || 'Music' }); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+          } else {
+            setMontageSeed([{ url: r.url, kind: r.kind }]); setMontageMusicSeed(null); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+          }
+          setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+          reply({ ok: true, message: `Opened Montage with ${label}${r.kind === 'audio' ? ' as its music' : ' on the timeline'}. Use montage open with videos and music to combine several results.` });
+          return true;
+        }
+        if (to === 'editor') {
+          if (r.kind === 'video') {
+            setMontageSeed([{ url: r.url, kind: 'video' }]); setMontageMusicSeed(null); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
+            setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+          } else openInEditor(r.url, r.kind);
+          reply({ ok: true, message: `Opened ${label} in the ${r.kind === 'video' ? 'Montage editor' : 'editor'}.` });
+          return true;
+        }
+        // to === 'chat'
+        void handleReturnToChat({ url: r.url, kind: r.kind });
+        reply({ ok: true, message: `${label} is attached to the chat composer. Ask the user what to do with it, or use chat_send.` });
+        return true;
+      }
+      case 'montage': {
+        if (d.action !== 'open') return false; // export / set_music_start / state: the editor's own hook answers
+        const videos = (d.videos?.length ? d.videos : [{ kind: 'video' as const }])
+          .map((ref) => resolveLiveResult(ref))
+          .filter((r): r is NonNullable<typeof r> => !!r && (r.kind === 'video' || r.kind === 'image'));
+        if (!videos.length) { reply({ ok: false, error: 'no_video', message: 'There is no video (or photo) result in this chat yet to put on the timeline. Make one first.' }); return true; }
+        const music = d.music === null || d.music === undefined ? null : resolveLiveResult(d.music);
+        if (d.music && (!music || music.kind !== 'audio')) { reply({ ok: false, error: 'no_music', message: 'There is no such music track in this chat. Call get_screen_state to see the results.' }); return true; }
+        const startSec = music ? Math.max(0, d.musicStartSec ?? 0) : 0;
+        setMontageSeed(videos.map((v) => ({ url: v.url, kind: v.kind as 'video' | 'image' })));
+        setMontageMusicSeed(music ? { url: music.url, name: music.what || 'Music', startSec } : null);
+        setMontageAspectSeed(d.aspectRatio ?? null); setMontageSessionKey((k) => k + 1);
+        setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+        reply({
+          ok: true,
+          message: `Montage is open with ${videos.map((v) => `result ${v.n}`).join(', ')} on the timeline`
+            + `${music ? ` and result ${music.n} as the music${startSec ? `, starting ${startSec} s into the song` : ''}` : ''}`
+            + `${d.aspectRatio ? ` in ${d.aspectRatio}` : ''}. Its files load for a moment; then montage export renders it for free.`,
+        });
         return true;
       }
       default:
@@ -7797,8 +7923,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return (
         <div className="flex h-full w-full min-w-0 flex-col overflow-hidden text-app-text">
           <MontageStudio
+            key={montageSessionKey}
             locale={locale}
             {...(seed ? { initialMedia: seed } : {})}
+            {...(montageMusicSeed ? { initialMusic: montageMusicSeed } : {})}
+            {...(montageAspectSeed ? { initialAspect: montageAspectSeed } : {})}
             onDelivered={(videoUrl, aspect) => {
               const label = SERVICE_LABEL.montage?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? 'Montage';
               const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
@@ -7806,7 +7935,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
               setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
             }}
-            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMode('chat'); }}
+            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat'); }}
           />
         </div>
       );
@@ -7848,10 +7977,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
   });
-  // THE ONE ATTACH BUTTON (components/studio/ui/ToolSheet): one picker per tool — the phone's own picker offers the
-  // library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
+  // THE ONE ATTACH BUTTON — the composer's paperclip, beside „+" (it used to sit inside the „+" sheet, two taps away):
+  // one picker per tool — the phone's own picker offers the library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
   // one picker for both, and each file is handed to the input that has always handled its kind (routeAttach).
   const hint = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+  const attachWord = hint('ფაილის მიმაგრება', 'Attach files', 'Прикрепить файлы');
   const attachTarget: { onAttach?: () => void; attachHint?: string } =
     // THE CHAT TAKES EVERYTHING: photos, a video, the camera, documents, audio — `fileRef` accepts every kind it reads.
     activeTool === 'chat' ? { onAttach: () => fileRef.current?.click() }
@@ -9111,11 +9241,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ) : (
           <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text" title={sessionTitle}>{sessionTitle}</h2>
         )}
+        {/* A guest: „Log in" (solid) and „Sign up for free" (outline) — the owner's ChatGPT reference (2026-10-03). */}
         {guest && (
-          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
-            className="tap-44 relative mr-1 inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
-            {locale === 'en' ? 'Sign in' : locale === 'ru' ? 'Войти' : 'შესვლა'}
-          </button>
+          <div className="mr-1 flex items-center gap-2">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
+              data-testid="titlebar-login"
+              className="tap-44 relative inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+              {locale === 'en' ? 'Log in' : locale === 'ru' ? 'Войти' : 'შესვლა'}
+            </button>
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'signup' }))}
+              data-testid="titlebar-signup"
+              className="tap-44 relative inline-flex h-9 items-center rounded-full border border-app-border/25 px-4 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated">
+              {locale === 'en' ? 'Sign up for free' : locale === 'ru' ? 'Регистрация бесплатно' : 'დარეგისტრირდი უფასოდ'}
+            </button>
+          </div>
         )}
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-new-chat'))}
           aria-label={locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია'}
@@ -9603,27 +9742,51 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1`}>
+          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1 max-[389px]:gap-0.5`}>
             <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
-              aria-label={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
-              title={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
+              aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
+              title={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               className={chatOnly
                 ? `group flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
                 : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
+            {/* Attach — the paperclip right beside „+", where people look for it (owner, 2026-10-03); it used to be the
+                first row of the „+" sheet. Drawn only for a tool that takes files; the tooltip says what this one takes. */}
+            {attachTarget.onAttach && (
+              <button type="button" onClick={attachTarget.onAttach} data-testid="composer-attach"
+                aria-label={attachWord}
+                title={attachTarget.attachHint ? `${attachWord} — ${attachTarget.attachHint}` : attachWord}
+                className={chatOnly
+                  ? `${chatRound} text-app-text/90 hover:bg-app-border/10 ${chatSingleRow ? 'order-first' : ''}`
+                  : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+                <Paperclip size={chatOnly ? 20 : 19} aria-hidden="true" />
+              </button>
+            )}
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
               <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
                 aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
                 data-testid="options-toggle" title={settingsWord}
-                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface sm:px-3.5 sm:text-[13px]">
+                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface max-[389px]:px-2 max-[359px]:w-11 max-[359px]:shrink-0 max-[359px]:justify-center max-[359px]:px-0 sm:px-3.5 sm:text-[13px]">
                 <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
-                <span className="min-w-0 truncate whitespace-nowrap">{toolLabel}{toolSummary ? <span className="text-app-muted"> · {toolSummary}</span> : null}</span>
-                {/* The chevron is from `sm` up: on a 390 px phone its 19 px is what keeps „ვიდეო · 9:16 · 24წმ" whole. */}
+                {/* ⚠️ ON A PHONE THE CHIP IS TWO LINES — the tool, and under it its shape („9:16 · 24წმ"), small and muted. With
+                    the paperclip beside „+" (owner, 2026-10-03) one line left ~136 px at 390 and cut it to „ვიდეო · …". The
+                    „ · " stays in the text (screen-reader-only on a phone), so the chip's text and accessible name are
+                    still „ვიდეო · 9:16 · 24წმ". Under 360 px the words go screen-reader-only too: the icon is the chip. */}
+                <span className="flex min-w-0 flex-col items-start leading-[1.15] max-[359px]:sr-only sm:flex-row sm:items-center sm:leading-normal">
+                  <span className="max-w-full truncate whitespace-nowrap">{toolLabel}</span>
+                  {toolSummary ? (
+                    <>
+                      <span className="sr-only whitespace-pre text-app-muted sm:not-sr-only"> · </span>
+                      <span className="max-w-full truncate whitespace-nowrap text-[11px] text-app-muted sm:text-[13px]">{toolSummary}</span>
+                    </>
+                  ) : null}
+                </span>
+                {/* The chevron is from `sm` up: a phone's width goes to the words. */}
                 <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
               </button>
             )}
@@ -9754,7 +9917,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       <ArrowUp size={20} strokeWidth={2.25} aria-hidden="true" />
                     </button>
                   ) : (
-                    <button type="button" onClick={() => runTool()} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined}
+                    <button type="button" onClick={() => runTool()} aria-label={runAria} title={runAria} data-testid="run-button" data-price={composerQuote ?? undefined} data-live-guard="spend"
                       className={`ml-0.5 flex h-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg transition-opacity duration-200 hover:opacity-90 ${composerQuote ? 'min-w-11 gap-1 px-3.5' : 'w-11'}`}>
                       {composerQuote ? (
                         <>
@@ -10054,7 +10217,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       open={toolSheetOpen}
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
-      {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTarget)}
+      title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
       tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}

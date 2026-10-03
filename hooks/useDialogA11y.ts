@@ -50,7 +50,9 @@ export function useDialogA11y<T extends HTMLElement = HTMLElement>(
     // dialog is laid out and its children are focusable.
     const raf = requestAnimationFrame(() => {
       if (!node) return;
-      const first = node.querySelector<HTMLElement>(FOCUSABLE);
+      // A dialog can name the control a person starts with (`data-autofocus`, e.g. the sign-in sheet's email field);
+      // otherwise the first focusable — which in most sheets is the ✕, so the field still had to be tapped first.
+      const first = node.querySelector<HTMLElement>('[data-autofocus]') ?? node.querySelector<HTMLElement>(FOCUSABLE);
       (first ?? node).focus({ preventScroll: true });
     });
 

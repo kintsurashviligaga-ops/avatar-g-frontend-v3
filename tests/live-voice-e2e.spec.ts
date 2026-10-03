@@ -123,6 +123,101 @@ test.describe('voice mode, end to end', () => {
     expect(spend).toEqual([]);
   });
 
+  test('the agent\'s hands: it presses and types what it is asked to and reads a website — and refuses what would spend', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    await page.route('**/api/voice/web-read', (r) => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, page: { url: 'https://example.ge/', title: 'Example — news', description: '', text: 'Hello from Tbilisi.', links: [{ text: 'More', url: 'https://example.ge/more' }] } }),
+    }));
+    const spend = await openLiveCall(page, baseURL, live);
+    type Control = { id: string; role: string; name: string; state?: string; guard?: string };
+    const screen = async () => (await live.call('get_screen_state')).state as { tool: string; controls: Control[]; results: unknown[] };
+
+    // 1 — the screen as the model sees it: controls with ids, and no results yet.
+    const s1 = await screen();
+    expect(s1.controls.length).toBeGreaterThan(3);
+    expect(s1.results).toEqual([]);
+
+    // 2 — „click Music": the sidebar's row is pressed like a tap, the call docks, the music studio opens.
+    const clicked = await live.call('click', { target: 'მუსიკა' });
+    expect(clicked).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed/) });
+    await expect(page.getByTestId('live-dock')).toBeVisible();
+    await expect.poll(async () => (await screen()).tool).toBe('music');
+
+    // 3 — the priced Generate is never pressed by voice: it is marked, and refused.
+    const priced = (await screen()).controls.find((c) => c.guard === 'spend');
+    expect(priced).toBeTruthy();
+    const refused = await live.call('click', { target: priced!.id });
+    expect(refused).toMatchObject({ ok: false, error: 'needs_user_spend' });
+
+    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held.
+    const placeholder = (await page.getByTestId('composer-input').getAttribute('placeholder')) ?? '';
+    const box = (await screen()).controls.find((c) => c.role === 'textbox' && placeholder.startsWith(c.name.replace(/…$/, '')));
+    expect(box).toBeTruthy();
+    const typed = await live.call('type_text', { target: box!.id, text: 'მშვიდი პიანინო წვიმაში', submit: 'on' });
+    expect(typed).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted/) });
+    await expect(page.getByTestId('composer-input')).toHaveValue('მშვიდი პიანინო წვიმაში');
+
+    // 5 — a website is read (title, text, links) and put on screen as a link to tap.
+    const read = await live.call('read_webpage', { url: 'example.ge' });
+    expect(read).toMatchObject({ ok: true, title: 'Example — news', text: 'Hello from Tbilisi.', links: ['More — https://example.ge/more'] });
+    await expect(page.getByTestId('live-dock')).toContainText('example.ge');
+
+    // 6 — nothing to download yet: the model hears the truth.
+    expect(await live.call('download', { result: 'latest' })).toMatchObject({ ok: false, error: 'no_result' });
+
+    expect(spend).toEqual([]);
+  });
+
+  test('the agent drives Montage through the editor\'s own hook — and an empty edit is not exported', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    const spend = await openLiveCall(page, baseURL, live);
+    // No result yet: „put the latest video in Montage" is answered with the truth.
+    expect(await live.call('montage', { action: 'open', videos: 'latest' })).toMatchObject({ ok: false, error: 'no_video' });
+    // Commands need an open editor.
+    expect(await live.call('montage', { action: 'state' })).toMatchObject({ ok: false, error: 'montage_closed' });
+    // Open it (as the user's „open Montage"), then read and drive it by voice.
+    expect(await live.call('open_studio', { tool: 'montage' })).toMatchObject({ ok: true });
+    await expect.poll(async () => (await live.call('montage', { action: 'state' })).ok, { timeout: 15_000 }).toBe(true);
+    const state = await live.call('montage', { action: 'state' });
+    expect(state.state).toMatchObject({ clips: 0, hasMusic: false, exporting: false });
+    expect(await live.call('montage', { action: 'export' })).toMatchObject({ ok: false, error: 'blocked' });
+    expect(await live.call('montage', { action: 'set_music_start', musicStartSec: 30 })).toMatchObject({ ok: false, error: 'no_music' });
+    expect(spend).toEqual([]);
+  });
+
+  test('a chain by voice: the confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    const FOX = 'https://e2e-media.example/fox.png';
+    // A 1×1 PNG stands in for the provider's file; the image engine is the only paid call and it is answered here.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+    await page.context().route('https://e2e-media.example/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png }));
+    await page.route('**/api/nanobanana/image', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: FOX }) }));
+    const spend = await openLiveCall(page, baseURL, live);
+
+    // 1 — prepare, the user says yes, the countdown runs out: exactly one paid request leaves the browser.
+    expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' })).toMatchObject({ ok: true });
+    await expect.poll(() => toolOnScreen(live)).toBe('image');
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    await expect.poll(() => spend, { timeout: 15_000 }).toEqual(['/api/nanobanana/image']);
+
+    // 2 — nobody asked, yet the agent hears it: the app's note says the image is ready, so a plan of steps goes on.
+    await expect.poll(() => live.notes().some((n) => /new image is ready/.test(n)), { timeout: 15_000 }).toBe(true);
+    const s = (await live.call('get_screen_state')).state as { results: Array<{ n: number; kind: string }> };
+    expect(s.results[0]).toMatchObject({ n: 1, kind: 'image' });
+
+    // 3 — „download it": the file is saved under our name, with the extension of what it really is.
+    const [file] = await Promise.all([page.waitForEvent('download'), live.call('download', { result: 'latest' })]);
+    expect(file.suggestedFilename()).toBe('myavatar-image.png');
+
+    // 4 — „now make a video of it": the image becomes the Video studio's start frame. Still free.
+    expect(await live.call('use_result', { result: 'latest', to: 'video' })).toMatchObject({ ok: true });
+    await expect.poll(() => toolOnScreen(live)).toBe('video');
+    // A video result cannot be asked for yet, and the agent is told so instead of guessing.
+    expect(await live.call('use_result', { result: 'video', to: 'montage' })).toMatchObject({ ok: false, error: 'no_result' });
+    expect(spend).toEqual(['/api/nanobanana/image']);
+  });
+
   test('a function the app does not have is refused honestly, and the call keeps going', async ({ page, baseURL }) => {
     const live = new FakeLive();
     await openLiveCall(page, baseURL, live);

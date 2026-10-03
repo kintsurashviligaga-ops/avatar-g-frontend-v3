@@ -313,6 +313,8 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         role="dialog"
         aria-modal="true"
         aria-label={t.title}
+        // Payment: a voice call may open this sheet but never press anything in it but Close (lib/voice/liveUi).
+        data-live-guard="pay"
         onClick={(e) => e.stopPropagation()}
         className="relative z-[111] max-h-[90dvh] w-full max-w-[420px] overflow-y-auto overscroll-contain rounded-t-3xl border border-app-border/15 bg-app-surface shadow-[0_24px_80px_-24px_rgba(0,0,0,0.6)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:rounded-3xl"
       >

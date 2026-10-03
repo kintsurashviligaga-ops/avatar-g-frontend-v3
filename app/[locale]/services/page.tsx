@@ -648,19 +648,20 @@ export default async function LocalizedServicesPage({ params }: ServicesPageProp
               {text.ctaDescription}
             </p>
 
-            {/* Service orbit — floating icons */}
-            <div className='mt-10 flex flex-wrap items-center justify-center gap-3 max-w-lg'>
-              {['🎭', '🎬', '🎵', '📸', '🖼️', '✍️', '🔍', '⚡', '🛒', '🤖', '💻', '💼', '✈️', '🎮', '🛋️'].map((emoji, i) => (
+            {/* Service orbit — the modules as line icons. They were fifteen emoji (🎭 🎬 🎵 …): emoji as UI, banned by
+                docs/DESIGN.md §6, and drawn differently on every platform. Decorative: the cards above name them. */}
+            <div className='mt-10 flex flex-wrap items-center justify-center gap-3 max-w-lg' aria-hidden='true'>
+              {[VenetianMask, Clapperboard, Music2, Camera, ImageIcon, PenLine, Eye, Zap, ShoppingCart, Cpu, Code2, Briefcase, Plane, Gamepad2, Sofa].map((OrbitIcon, i) => (
                 <div
                   key={i}
-                  className='flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl text-lg sm:text-xl transition-transform hover:scale-125'
+                  className='flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl'
                   style={{
                     background: 'rgba(255,255,255,0.03)',
                     border: '1px solid rgba(255,255,255,0.06)',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                    color: 'rgba(255,255,255,0.6)',
                   }}
                 >
-                  {emoji}
+                  <OrbitIcon className='h-[18px] w-[18px]' strokeWidth={1.5} />
                 </div>
               ))}
             </div>

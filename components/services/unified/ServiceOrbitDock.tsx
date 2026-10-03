@@ -11,7 +11,9 @@
  */
 
 import { useState, useMemo, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
+import { serviceCardImage } from '@/lib/services/cardImage'
 
 interface ServiceItem {
   slug: string
@@ -318,19 +320,25 @@ const ServiceDockItem = forwardRef<HTMLButtonElement, ServiceDockItemProps>(
             />
           )}
 
-          {/* Icon */}
+          {/* Icon — the service's own card still (lib/services/cardImage) where one ships. It was the registry's emoji
+              (🎬 ✂️ 🎵 …): emoji as UI (docs/DESIGN.md §6), drawn differently on every platform. The glyph stays only
+              for a service without a still. Decorative: the button's aria-label names the service. */}
           <div
-            className="flex items-center justify-center shrink-0 rounded-lg transition-all duration-150"
+            className="relative flex items-center justify-center shrink-0 overflow-hidden rounded-lg transition-all duration-150"
             style={{
               width: 36,
               height: 36,
               fontSize: 18,
               background: active ? 'rgba(51,143,232,0.1)' : 'rgba(255,255,255,0.03)',
-              border: active ? '1px solid rgba(51,143,232,0.2)' : '1px solid rgba(255,255,255,0.04)',
-              boxShadow: active ? '0 0 12px rgba(51,143,232,0.15)' : 'none',
+              // A brighter hairline marks the active one (with the accent bar beside it) — never a coloured border.
+              border: active ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.06)',
             }}
           >
-            {service.icon}
+            {serviceCardImage(service.slug) ? (
+              <Image src={serviceCardImage(service.slug)!} alt="" fill sizes="36px" className="object-cover" />
+            ) : (
+              service.icon
+            )}
           </div>
 
           {/* Label (expanded only) */}

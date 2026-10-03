@@ -2,22 +2,25 @@
 
 /**
  * HeroCard — the big rounded card at the top of the panel (Higgsfield's grammar: the chosen model / look, a „Change"
- * button at its corner). Here it shows the chosen EFFECT: its palette, its icon, its name and its one-line hint — so
- * the user always sees what a press of Generate will make, with no prompt anywhere on screen.
+ * button at its corner). Here it shows the chosen EFFECT: its still (or, without one, its palette and icon), its name and
+ * its one-line hint — so the user always sees what a press of Generate will make, with no prompt anywhere on screen.
+ * The still is the tile's 3:4 picture cropped to the card's middle band, under a left-to-right scrim for the text.
  *
  * With nothing picked it is an invitation, not a form: a dashed card that says "Pick an effect — one tap, no prompt to
  * write" and whose button takes the user to the presets below.
  */
+import Image from 'next/image';
 import { Pencil, Sparkles } from 'lucide-react';
 import { KIND_LABEL, type GenjutsuPreset } from '@/lib/genjutsu/presets';
 import { toLang } from '@/lib/genjutsu/types';
 import { copyFor } from './copy';
-import { iconFor, tileBackground } from './presetVisual';
+import { iconFor, presetThumb, tileBackground } from './presetVisual';
 
 export function HeroCard({ locale, preset, onChange }: { locale: string; preset: GenjutsuPreset | null; onChange: () => void }) {
   const lang = toLang(locale);
   const c = copyFor(locale);
   const Icon = preset ? iconFor(preset) : Sparkles;
+  const still = preset ? presetThumb(preset) : null;
   return (
     <div
       data-testid="vfx-hero"
@@ -25,12 +28,29 @@ export function HeroCard({ locale, preset, onChange }: { locale: string; preset:
       className={`relative min-h-[148px] overflow-hidden rounded-3xl p-4 ${preset ? 'ring-1 ring-app-border/10' : 'border border-dashed border-app-border/30 bg-app-elevated/40'}`}
       style={preset ? { backgroundImage: tileBackground(preset.palette) } : undefined}
     >
-      <Icon
-        aria-hidden="true"
-        strokeWidth={1}
-        className="pointer-events-none absolute -bottom-3 right-3 h-28 w-28"
-        style={{ color: preset ? preset.palette[1] : 'rgb(var(--app-muted))', opacity: preset ? 0.3 : 0.18 }}
-      />
+      {still ? (
+        <>
+          <Image
+            key={still.src}
+            src={still.src}
+            alt=""
+            fill
+            sizes="(min-width: 1024px) 320px, 440px"
+            {...(still.blurDataURL ? { placeholder: 'blur' as const, blurDataURL: still.blurDataURL } : {})}
+            className="object-cover"
+          />
+          {/* The name and hint sit on the left: darken that side (and the foot) so they read on any still. */}
+          <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/85 via-black/55 to-black/10" />
+          <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/50 to-transparent" />
+        </>
+      ) : (
+        <Icon
+          aria-hidden="true"
+          strokeWidth={1}
+          className="pointer-events-none absolute -bottom-3 right-3 h-28 w-28"
+          style={{ color: preset ? preset.palette[1] : 'rgb(var(--app-muted))', opacity: preset ? 0.3 : 0.18 }}
+        />
+      )}
       <div className="relative flex items-start justify-between gap-3">
         <span className={`text-[11px] font-semibold uppercase tracking-wide ${preset ? 'text-white/70' : 'text-app-muted'}`}>
           {preset ? `${c.heroEyebrow} · ${KIND_LABEL[preset.kind][lang]}` : c.heroEyebrow}

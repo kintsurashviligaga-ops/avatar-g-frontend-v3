@@ -258,6 +258,11 @@ export interface UseGeminiLiveSessionResult {
   toggleMute: () => void;
   sendVideoFrame: (frameBase64: string, mimeType?: string) => void;
   sendText: (text: string) => void;
+  /**
+   * A note from the APP to the model ("[App] the music is ready"), sent as text but NOT shown as the user's words.
+   * False when the session is not ready (the caller keeps it for later).
+   */
+  sendNote: (text: string) => boolean;
   /** 0..1 levels for visuals; cheap enough to call every animation frame. */
   getLevels: () => LiveLevels;
   /**
@@ -1558,6 +1563,13 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     publishCaptions();
   }, [publishCaptions]);
 
+  const sendNote = useCallback((text: string): boolean => {
+    const t = typeof text === 'string' ? text.trim() : '';
+    if (!t || !readyRef.current || !sessionRef.current) return false;
+    sessionRef.current.sendText(t);
+    return true;
+  }, []);
+
   const getLevels = useCallback((): LiveLevels => {
     const input = mutedRef.current ? 0 : Math.min(1, Math.max(0, inputLevelRef.current));
     let output = 0;
@@ -1582,7 +1594,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
 
   return {
     status, error, errorDetail, audioBlocked, resumeAudio, captions, muted, degraded,
-    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, getLevels, activity,
+    start, stop, retry, interrupt, setMuted, toggleMute, sendVideoFrame, sendText, sendNote, getLevels, activity,
   };
 }
 
