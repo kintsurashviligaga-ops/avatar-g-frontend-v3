@@ -2,7 +2,7 @@
   "job": "site imagery v2",
   "capUsd": 3,
   "stopAtUsd": 2.7,
-  "spentUsd": 0.684,
+  "spentUsd": 0.72,
   "attempts": [
     {
       "shot": "vfx/hero-cinematic",
@@ -2055,6 +2055,114 @@
         }
       ],
       "at": "2026-10-03T08:00:03.530Z"
+    },
+    {
+      "shot": "vfx/cyberpunk",
+      "attempt": 3,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Cyberpunk film still: a figure in a reflective jacket standing on a wet rooftop above a futuristic megacity at night in the rain, magenta and cyan neon light strips along the rooftop edge, glowing holographic rings floating in the air, the city far below dissolved into soft neon bokeh, lens flares, haze. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "29h0dbnxaxrp20d10348nmqdj0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/3ymVYYxfofo41EMzIkKoNk1ToqI6ZegnPGmhm7agDKc7DNnuA/out-0.png",
+          "file": "raw/vfx/cyberpunk-3-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/491b1MeriGTLAKrw95Oje55KqypPepFE5PYBLVTxC5g6DNnuA/out-1.png",
+          "file": "raw/vfx/cyberpunk-3-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/v3Smu7fVfpgpUEVpCJXeMJKfBGJ0zqAioSevY7alRftnfQzpLA/out-2.png",
+          "file": "raw/vfx/cyberpunk-3-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/BHBv4I4cR86xIFNWzyNXeC8ID1isZ2cviUZuOyB67wSfhmTXA/out-3.png",
+          "file": "raw/vfx/cyberpunk-3-3.png"
+        }
+      ],
+      "at": "2026-10-03T08:01:56.957Z"
+    },
+    {
+      "shot": "vfx/glitch",
+      "attempt": 3,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A close cinematic portrait of a person's head and shoulders against a plain dark background, the image corrupted by a heavy digital glitch: the face split into offset red, green and blue copies, horizontal bands of the picture torn and shifted sideways, blocky datamosh pixels and scanlines, cyan and amber light. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "cham8vfaaxrp60d1034b5stypc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/pi0UEf0fBnshlEeVsAWVQJO9ZpRBiE51AUPqX77l6HlOENnuA/out-0.png",
+          "file": "raw/vfx/glitch-3-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/qs4bAhgBRLYBDVqZ1gYY76SYSYIQzYrrvPe3Fc783c9DRzpLA/out-1.png",
+          "file": "raw/vfx/glitch-3-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/DibSpxV6m66vBJwr4KwugBle1ceFqJfiTQKFobFpB1ZOENnuA/out-2.png",
+          "file": "raw/vfx/glitch-3-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4Zlp9E1LDQKvCN1L4zmmOf5JQsi7UoDKIzI85M0RErlDRzpLA/out-3.png",
+          "file": "raw/vfx/glitch-3-3.png"
+        }
+      ],
+      "at": "2026-10-03T08:02:09.255Z"
+    },
+    {
+      "shot": "hero/lite",
+      "attempt": 3,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A small plain unbranded vlogging camera on a mini tripod on a café table, seen in profile from the side, its lens pointed through a rain-streaked window at the night street, warm Old Tbilisi streetlights blurred outside, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "2dr3500ctxrp00d1034vvrgkh4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/gqKTtSNejnyTVixbA6NfQUoPJvBGb2CxxTEu3cPfIW8sENnuA/out-0.png",
+          "file": "raw/hero/lite-3-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/WiJgk4Xa9zpyLRUESF43YpInCyBe2Dj937vR38H93maLRzpLA/out-1.png",
+          "file": "raw/hero/lite-3-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/zPBrg92jGhp8B5Si6GIGp7JT6675I8Z2xiWfa5usvOMLRzpLA/out-2.png",
+          "file": "raw/hero/lite-3-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/zfqUjgwjSHXUf0sosqhFSMyNJ9Wpim3gft5BlfL753JbJaOdB/out-3.png",
+          "file": "raw/hero/lite-3-3.png"
+        }
+      ],
+      "at": "2026-10-03T08:02:18.089Z"
     }
   ],
   "selected": {
@@ -2282,6 +2390,21 @@
       "url": "https://replicate.delivery/xezq/dHoZfCAhHKTzNKiOY1z0BmLA2t0c8edflomrse6JsOeMB0c6C/out-2.png",
       "file": "raw/style/pixel-art-2-2.png",
       "attempt": 2
+    },
+    "vfx/cyberpunk": {
+      "url": "https://replicate.delivery/xezq/3ymVYYxfofo41EMzIkKoNk1ToqI6ZegnPGmhm7agDKc7DNnuA/out-0.png",
+      "file": "raw/vfx/cyberpunk-3-0.png",
+      "attempt": 3
+    },
+    "vfx/glitch": {
+      "url": "https://replicate.delivery/xezq/pi0UEf0fBnshlEeVsAWVQJO9ZpRBiE51AUPqX77l6HlOENnuA/out-0.png",
+      "file": "raw/vfx/glitch-3-0.png",
+      "attempt": 3
+    },
+    "hero/lite": {
+      "url": "https://replicate.delivery/xezq/gqKTtSNejnyTVixbA6NfQUoPJvBGb2CxxTEu3cPfIW8sENnuA/out-0.png",
+      "file": "raw/hero/lite-3-0.png",
+      "attempt": 3
     }
   }
 }
