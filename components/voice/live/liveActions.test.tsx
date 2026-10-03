@@ -405,3 +405,19 @@ describe('useLiveActions', () => {
     expect(responses[responses.length - 1]!.id).toBe(`c${calls.length - 1}`);
   });
 });
+
+describe('prepare_generation for a deck or a 3D model', () => {
+  it('opens the studio with the topic and tells the model the user presses Create there (no start_generation)', () => {
+    const dispatched: Array<{ type: string; reply?: unknown }> = [];
+    const env = {
+      dispatchAction: (d: { type: string; reply?: unknown }) => { dispatched.push(d); d.reply = { ok: true, tool: 'presentation' }; return true; },
+      openArtifact: () => true,
+    };
+    const out = executeLiveToolCall({ id: 'p1', name: 'prepare_generation', args: { tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' } }, env as never);
+    expect(dispatched[0]).toMatchObject({ type: 'prepare_generation', tool: 'presentation', prompt: 'საქართველოს ღვინის ისტორია' });
+    const r = out.response.response as { ok: boolean; summary: string };
+    expect(r.ok).toBe(true);
+    expect(r.summary).toMatch(/press Create/);
+    expect(r.summary).toMatch(/start_generation does not run this studio/);
+  });
+});

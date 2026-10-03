@@ -102,7 +102,7 @@ interface Strings {
 export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
   ka: {
     title: 'ცოცხალი საუბარი',
-    live: 'Live',
+    live: 'ცოცხალი ზარი',
     status: {
       idle: 'მზად არის',
       connecting: 'დაკავშირება…',
@@ -156,7 +156,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
   },
   en: {
     title: 'Live Conversation',
-    live: 'Live',
+    live: 'Live call',
     status: {
       idle: 'Ready',
       connecting: 'Connecting…',
@@ -210,7 +210,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
   },
   ru: {
     title: 'Живой разговор',
-    live: 'Live',
+    live: 'Живой звонок',
     status: {
       idle: 'Готово',
       connecting: 'Подключение…',

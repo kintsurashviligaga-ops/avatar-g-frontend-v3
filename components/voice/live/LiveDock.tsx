@@ -77,7 +77,7 @@ export const LIVE_DOCK_STRINGS: Record<Locale, DockStrings> = {
     end: 'ზარის დასრულება',
     endShort: 'დასრულება',
     hint: 'მითხარი, რა გავაკეთო ეკრანზე',
-    runIn: (s) => `გენერაცია დაიწყება ${s} წამში`,
+    runIn: (s) => `დაიწყება ${s} წამში`,
     credits: (n) => `${n} კრედიტი`,
     cancel: 'გაუქმება',
     started: 'გენერაცია დაიწყო',
@@ -166,7 +166,7 @@ export function LiveRunBanner({ run, locale = 'ka', onCancel, className = '' }: 
       className={`relative flex items-center gap-3 overflow-hidden rounded-2xl bg-app-surface/95 py-2 pl-4 pr-2 text-app-text shadow-lg ring-1 ring-white/10 backdrop-blur-md ${className}`}
     >
       {run.state !== 'counting' && <LiveStepMark state={run.state === 'started' ? 'done' : run.state === 'cancelled' ? 'cancelled' : 'failed'} />}
-      <span className={`min-w-0 flex-1 truncate font-semibold ${quiet}`}>
+      <span className={`min-w-0 flex-1 line-clamp-2 font-semibold ${quiet}`}>
         {text}
         {run.state === 'counting' && typeof run.priceCredits === 'number' && run.priceCredits > 0 && (
           <span className="font-normal text-app-muted"> · {t.credits(run.priceCredits)}</span>

@@ -189,6 +189,20 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
       if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO }) };
       if (detail.reply?.ok === false) return refused(answer, detail.reply, 'The studio could not prepare it.');
       const studio = STUDIO_NAME[action.tool] ?? action.tool;
+      // A deck or a 3D model is made by its panel's own Create button (it prices the run there): start_generation does
+      // not run these studios, so the model is told to hand the last step to the user.
+      if (action.tool === 'presentation' || action.tool === 'model3d') {
+        return {
+          response: answer({
+            ok: true,
+            summary: `Opened the ${studio} studio on screen with the ${action.tool === 'presentation' ? 'topic' : 'description'} filled in. `
+              + 'Nothing was generated and no credits were spent. Tell the user to check it and press Create in that panel — '
+              + 'its price is on the button; start_generation does not run this studio.',
+          }),
+          card: card(action),
+          screen: true,
+        };
+      }
       const applied = appliedSummary(action, detail.reply);
       return {
         response: answer({

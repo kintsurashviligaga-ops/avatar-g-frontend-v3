@@ -6803,6 +6803,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         reply({ ok: true, state: liveScreenState() });
         return true;
       case 'prepare_generation': {
+        // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
+        if (d.tool === 'presentation' || d.tool === 'model3d') {
+          selectTool(d.tool);
+          setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
+          reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          return true;
+        }
         selectTool(d.tool);
         setInput(d.prompt.slice(0, 2000));
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
@@ -6831,6 +6838,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       case 'start_generation': {
         if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; generating needs an account. Ask them to sign in.' }); return true; }
+        if (activeTool === 'presentation' || activeTool === 'model3d') { reply({ ok: false, error: 'panel_run', message: `The ${toolName(activeTool, 'en')} studio runs from its own panel: ask the user to press Create there (the price is on that button).` }); return true; }
         if (!LIVE_GEN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music or avatar first.` }); return true; }
         if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
         if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }

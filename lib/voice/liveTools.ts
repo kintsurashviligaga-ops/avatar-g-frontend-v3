@@ -52,7 +52,7 @@ export const LIVE_ACTION_NAMES = [
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
 /** The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). */
-export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar'] as const;
+export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation', 'model3d'] as const;
 export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
 
 /**
@@ -142,7 +142,8 @@ function deepFreeze<T>(value: T): T {
 const TOOL_PARAM: LiveSchema = {
   type: 'STRING',
   enum: [...LIVE_STUDIO_TOOLS],
-  description: 'Which studio: video, image, music, or avatar (a photo that talks).',
+  description: 'Which studio: video, image, music, avatar (a photo that talks), presentation (a slide deck on a topic) or model3d '
+    + '(a 3D model from a description). presentation and model3d are created with the Create button in their panel.',
 };
 
 const ASPECT_PARAM: LiveSchema = {
@@ -484,6 +485,8 @@ const TOOL_ALIASES: Readonly<Record<string, LiveStudioTool>> = {
   image: 'image', photo: 'image', picture: 'image', img: 'image',
   music: 'music', song: 'music', track: 'music', audio: 'music',
   avatar: 'avatar', lipsync: 'avatar', talking_avatar: 'avatar', 'talking avatar': 'avatar',
+  presentation: 'presentation', slides: 'presentation', deck: 'presentation', slideshow: 'presentation',
+  model3d: 'model3d', '3d': 'model3d', '3d_model': 'model3d', '3d model': 'model3d',
 };
 
 const ASPECT_ALIASES: Readonly<Record<string, LiveAspectRatio>> = {

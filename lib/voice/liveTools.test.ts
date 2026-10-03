@@ -83,7 +83,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     const prep = byName.prepare_generation!.parameters!;
     expect(Object.keys(prep.properties!)).toEqual(['tool', 'prompt', 'aspectRatio', 'durationSec', 'style']);
     expect(prep.required).toEqual(['tool', 'prompt']);
-    expect(prep.properties!.tool!.enum).toEqual(['video', 'image', 'music', 'avatar']);
+    expect(prep.properties!.tool!.enum).toEqual(['video', 'image', 'music', 'avatar', 'presentation', 'model3d']);
     expect(prep.properties!.aspectRatio!.enum).toEqual([...LIVE_ASPECT_RATIOS]);
     expect(prep.properties!.durationSec!.type).toBe('INTEGER');
     const code = byName.show_code!.parameters!;
