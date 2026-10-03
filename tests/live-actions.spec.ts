@@ -100,11 +100,26 @@ test.describe('Live actions on the studio', () => {
 
   test('the docked call moves the studio down by the bar, instead of covering it', async ({ page }) => {
     await openStudio(page);
-    const shell = page.locator('.ag-fixed-shell').first();
+    // The STUDIO's shell (ChatChrome). AppShell's outer box is an `.ag-fixed-shell` too, and it comes first — it must
+    // NOT move: shifted by the dock in flow, it grew the document and the body scrolled by the dock's height.
+    const shell = page.locator('.ag-fixed-shell:not(.app-native-shell)');
     await expect(shell).toBeVisible();
     const before = await shell.boundingBox();
     await page.evaluate(() => { document.documentElement.dataset.liveDocked = '1'; });
     await expect.poll(async () => (await shell.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual((before?.y ?? 0) + 50);
+    // ⚠️ The body is the scroller, not the window (window.scrollY stays 0), so every ancestor is probed.
+    const scrolls = await page.evaluate(() => {
+      const found: string[] = [];
+      const start = document.querySelector('.ag-fixed-shell:not(.app-native-shell)')!.parentElement;
+      for (let el = start; el; el = el.parentElement) {
+        const was = el.scrollTop;
+        el.scrollTop = 10_000;
+        if (el.scrollTop > 0) found.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')} by ${el.scrollTop}px`);
+        el.scrollTop = was;
+      }
+      return found;
+    });
+    expect(scrolls).toEqual([]);
     await page.evaluate(() => { delete document.documentElement.dataset.liveDocked; });
     await expect.poll(async () => (await shell.boundingBox())?.y ?? -1).toBe(before?.y ?? 0);
   });
