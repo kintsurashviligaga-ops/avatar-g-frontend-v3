@@ -1,86 +1,111 @@
-# Live actions: voice-to-action in Gemini Live
+# Live actions: voice control of the screen in Gemini Live
 
-While the user talks, the Live model can call functions that change the UI. It can fill a studio prompt, open a
-studio, put code on screen, or hang up. The agent acts and keeps talking, the way Astra does.
+While the user talks, the Live model calls functions that operate the app: it reads what is on screen, fills and tunes
+a studio, writes in the chat, switches the chat model, stops, scrolls, opens panels, shows code, and — only after the
+user says yes to the price — starts a generation. It acts and keeps talking, the way Astra does, and the user **sees**
+it happen: the call can shrink to a bar at the top of the screen (the dock) while the app stays fully usable under it.
 
-## The safety rule: a tool only prepares
+## The money rule: only a confirmed start spends
 
-A function call may **switch a studio and prefill its prompt**, open a code canvas, or end the call.
-It must **never start a generation or charge a credit**. The user reviews what was prepared and taps **Run**.
+Every function but one is free. `start_generation` is the only one that spends credits, and three things guard it:
 
-- `dispatchServiceBlock` in `components/studio/OmniStudio.tsx` has an image/music branch that renders straight away.
-  The Live listener uses only the studio switch and the prompt prefill. It must never reuse that branch.
-- The declarations and the instruction both tell the model this. After `prepare_generation`, the model says the work is
-  ready and that the user starts it with Run.
-- A future action that would spend money needs a user tap, not a function call.
+1. **The price comes first.** `prepare_generation` and `update_settings` answer with `priceCredits` (the studio's own
+   quote, `quoteCredits`), and the instruction tells the model to say it and ask.
+2. **`confirmed: "yes"` is required.** The declaration and `LIVE_ACTIONS_RULE` say to send it only after the user
+   clearly agreed to that price, and never on the model's own initiative. Without it the validator refuses.
+3. **A 3-second countdown the user can cancel** (`LIVE_START_COUNTDOWN_MS`). The banner (`LiveRunBanner`, in the dock
+   and on the full call screen) says what starts and its price, with a 44 px Cancel. Only when it runs out does the
+   call fire `myavatar:live-run`, and OmniStudio re-checks (signed in, a generative tool, a prompt, nothing busy)
+   before it presses its own Run (`runTool(true)`). Hanging up during the countdown counts as Cancel.
+
+`dispatchServiceBlock`'s image/music branch renders straight away and is never reused by the Live listener.
 
 ## The pieces
 
 | Piece | File |
 | --- | --- |
-| Catalogue: declarations, validators, event names, instruction paragraph | `lib/voice/liveTools.ts` |
+| Catalogue: declarations, validators, event names, the instruction paragraph, `LiveStudioReply` | `lib/voice/liveTools.ts` |
+| Spoken settings → the panels' real choices (orientation, snapped lengths, style synonyms) | `lib/voice/liveStudio.ts` |
 | Wire: `LiveTool 'live_actions'` → `{functionDeclarations}`, and `toolCallCancellation` parsing | `lib/voice/geminiLive.ts` |
 | Server lock: the mint puts the declarations into `bidiGenerateContentSetup` | `app/api/voice/live/route.ts` |
-| Transport: the `actions` opt-in, the no-actions retry and cancellation | `components/voice/live/useGeminiLiveSession.ts` |
-| Executor: validate, dispatch the window event, answer the model | `components/voice/live/liveActions.ts` |
-| Screen: the action cards above the control pill | `components/voice/live/LiveActionCards.tsx` and `LiveModeOverlay.tsx` |
-| Host: wires the above and runs `end_call` and Open | `components/voice/GeminiLiveConversation.tsx` |
-| Studio: one listener that switches the studio and fills the prompt | `components/studio/OmniStudio.tsx` |
+| Transport: the `actions` opt-in, the no-actions retry, cancellation, mint timeout, offline-aware resume | `components/voice/live/useGeminiLiveSession.ts` |
+| Executor: validate, dispatch the window event, read the studio's reply, answer the model, the countdown | `components/voice/live/liveActions.ts` |
+| Dock: the call as a bar at the top; the run banner | `components/voice/live/LiveDock.tsx` |
+| Full screen: the action cards, the run banner, "Show the screen", stop-speaking | `LiveActionCards.tsx`, `LiveModeOverlay.tsx` |
+| Host: dock/full view, the call flag, `end_call` and Open | `components/voice/GeminiLiveConversation.tsx` |
+| Studio: one listener that does each action and writes the reply | `components/studio/OmniStudio.tsx` |
+| Panels opened by voice (search, history sidebar) | `components/studio/ChatChrome.tsx` |
 
 ## The tool contract
 
 Each declaration uses only the plain OpenAPI subset: `type` (with the proto names `OBJECT`, `STRING` and `INTEGER`),
 `description`, `properties`, `required` and `enum`. The validators enforce the bounds; the schema does not carry them.
-`end_call` has **no** `parameters`, because Gemini rejects an `OBJECT` whose `properties` is empty.
+A function with no arguments (`get_screen_state`, `new_chat`, `end_call`) has **no** `parameters`, because Gemini
+rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"off"` strings.
 
 | Function | Arguments | What happens |
 | --- | --- | --- |
-| `prepare_generation` | `tool` (`video` · `image` · `music` · `avatar`, required), `prompt` (required, at most 2,000 characters), `aspectRatio?` (`16:9` · `9:16` · `1:1` · `4:5` · `3:4` · `4:3`), `durationSec?` (clamped to 1–120), `style?` (at most 60 characters) | The studio switches and the prompt is prefilled. Nothing runs. |
-| `show_code` | `title`, `language` (allowlist; aliases such as `js` and `py` are mapped; an unknown name becomes `plaintext`; `svg` is its own language, so it keeps the canvas Preview), `code` (at most 200 KB of UTF-8) | `myavatar:open-artifact` with `{ title, language, code }` |
-| `open_studio` | `tool` | The studio switches. |
+| `get_screen_state` | none | The studio reports what is on screen: the tool, the prompt, its settings and price, the chat model, whether something runs, the last chat reply, the last result, signed in or not. |
+| `prepare_generation` | `tool` (`video` · `image` · `music` · `avatar`), `prompt` (≤ 2,000 chars), `aspectRatio?`, `durationSec?` (1–120), `style?` (≤ 60 chars) | The studio switches, the prompt is filled and the settings are **applied** to the panel. The reply says what was applied (a length snapped to the panel's) and the price. Nothing runs. |
+| `update_settings` | `aspectRatio?`, `durationSec?`, `style?`, `instrumental?` (`on`/`off`) | Tunes the open studio; refuses (`no_settings`, `not_applicable`) when nothing applies. |
+| `start_generation` | `confirmed` (`yes`, required) | The countdown above, then the studio's Run. Refusals: `signed_out`, `not_generative`, `no_prompt`, `busy`. |
+| `open_studio` | `tool` (any of the 17 tools) | The tool switches. |
+| `chat_send` | `text` (≤ 4,000 chars) | Sends the message in the chat — opening the chat first when another tool is on screen — for anything long or written. |
+| `new_chat` | none | A new, empty session; the current one stays in the history. |
+| `set_chat_model` | `model` (`fast` · `thinking` · `pro` · `lite`) | The chat's mode switch. |
+| `stop` | `what` (`reply` · `generation` · `all`) | Stops the chat answer being written and/or the running generations. |
+| `scroll_chat` | `to` (`top` · `bottom` · `up` · `down`) | Scrolls the thread. |
+| `open_panel` | `panel` (`settings` · `credits` · `persona` · `connectors` · `search` · `history`) | Opens that panel. |
+| `call_view` | `view` (`screen` · `full`) | Docks the call to the bar, or brings the full call screen back. |
+| `show_code` | `title`, `language` (allowlist, aliases mapped), `code` (≤ 200 KB) | `myavatar:open-artifact` with `{ title, language, code }`. |
 | `end_call` | none | The call hangs up after the model's goodbye. |
 
 The validators sanitise the input. They strip control characters and bidi overrides, normalise unambiguous spellings
-(`portrait` → `9:16`, `9x16` → `9:16`, `"24s"` → 24), cut or clamp values to their bounds, and ignore unknown
-arguments. A missing required field, a wrong type, an unknown enum value or an unknown function name returns a
+(`portrait` → `9:16`, `"24s"` → 24, `js` → `javascript`, tool aliases), clamp values to their bounds, and ignore
+unknown arguments. A missing required field, a wrong type, an unknown enum value or an unknown function name returns a
 structured error, `{ code, message, field?, allowed? }`, and the model can retry with it. The validators never throw.
 
 ### Window events
 
-- **`myavatar:live-action`** is cancelable. Its `detail` is the typed action and is sent for **every** validated call.
-  OmniStudio maps `prepare_generation` and `open_studio` to `selectTool(tool)` plus `setInput(prompt)`, then calls
-  `preventDefault()` as its **receipt**. When no listener takes the event, there is no studio on the page: the model
-  gets `ok:false`, never "done". After the call has closed, a card's Open sends the action again with `reveal: true`,
-  and the composer takes focus.
-- **`myavatar:open-artifact`** has `detail` `{ title, language, code }`, exactly those three fields. Another surface
-  owns the canvas. The event is cancelable too: `ArtifactCanvas` calls `preventDefault()` as its **receipt**, and only
-  after its store has taken the artifact. With no receipt (a page that hosts Live but no canvas, such as the library),
-  the model gets `ok:false` with `canvas_unavailable`, and no card appears. With a receipt, the model hears that the code
-  is **saved** in the canvas, not that it is on screen: the Live dialog covers the canvas for the whole call. The code
-  card also offers Copy.
+- **`myavatar:live-action`** is cancelable. Its `detail` is the typed action (`LiveActionEventDetail`). OmniStudio does
+  the action and calls `preventDefault()` as its **receipt**, and writes `detail.reply` (`LiveStudioReply`: `ok`,
+  `error`, `message`, `priceCredits`, `applied`, `state`, `tool`) **synchronously, inside `dispatchEvent`**, so the
+  answer to the model carries facts only the studio knows. With no receipt there is no studio on the page: the model
+  gets `ok:false` (`studio_unavailable`), never "done". After the call, a card's Open re-sends the action with
+  `reveal: true`, and the composer takes focus.
+- **`myavatar:live-run`** (cancelable) is the countdown running out: OmniStudio re-checks and runs; its receipt says it
+  did.
+- **`myavatar:live-call`** `{ active }` and **`<html data-live-call>`** mark a call in progress: OmniStudio keeps the
+  call's turns in one thread instead of splitting it when a voice action switches the tool.
+- **`<html data-live-docked>`** is set while the dock is up: `app/globals.css` moves `.ag-fixed-shell` down by
+  `--live-dock-h`, so the bar never covers the app.
+- **`myavatar:open-artifact`** has `detail` `{ title, language, code }`, exactly those three fields; `ArtifactCanvas`
+  calls `preventDefault()` once its store has the artifact. Without that receipt the model gets `canvas_unavailable`.
+- **`myavatar:open-search`** and **`myavatar:open-sidebar`** (ChatChrome) open the chat search and the history sidebar.
 
 ### The answer to the model
 
 Every call gets a `toolResponse` straight away, synchronously and with no network. Live function calls block the
 model's turn, so a slow answer would be dead air.
 
-- `{ ok: true, summary }`: an English sentence for the model, for example *"Prepared a video prompt in the Video
-  studio. Nothing was generated and no credits were spent…"*. The summary is honest about settings. The receipt covers
-  only the studio switch and the prompt; the requested aspect ratio, duration and style are shown on the card for the
-  user to confirm in the studio settings.
+- `{ ok: true, summary }`: an English sentence for the model that is honest about what happened — the settings the
+  panel really took, the price, and for a prepared run, "ask the user whether to start it".
 - `{ ok: false, error, message, field?, allowed? }`: `error` is one of `invalid_args`, `too_large`, `unknown_tool`,
-  `studio_unavailable`, `canvas_unavailable` or `too_many_actions`. After 40 actions in one call, a looping model is
-  cut off.
-- When the server sends `toolCallCancellation`, the user has barged in, so the cards for those ids are dropped.
+  `studio_unavailable`, `canvas_unavailable`, `too_many_actions`, or the studio's own refusal code. After 40 actions in
+  one call, a looping model is cut off.
+- When the server sends `toolCallCancellation`, the user has barged in: the cards for those ids are dropped and a
+  pending countdown is cancelled.
 
 ### The screen
 
-The strip of cards sits above the control pill, newest first, with at most 3 cards. Each card shows what the agent did
-(*Prepared a video prompt*), the settings and prompt or the code's title, and an **Open** button. Open ends the call
-and brings the studio, focused, or the canvas to the front. The strip has one visually hidden `role="status"` line. It
-announces each new card once and is mounted for the whole call. Framer Motion animates the cards, and they simply
-appear under `prefers-reduced-motion`. The copy exists in ka, en and ru. Georgian text is at least 16 px, and every
-target is at least 44 px.
+- **The dock.** A 56 px bar at the top (plus the safe area), always dark: the orb, the status, the last caption or the
+  agent's current step, stop-speaking (while the agent speaks), mute, expand and end — each ≥ 44 px, named in ka/en/ru.
+  It is not a dialog: no focus trap, Escape does not hang up. A screen action (`get_screen_state` and every action that
+  changes the screen) docks the call on its own, so the user sees the change; `call_view` and "Show the screen" on the
+  full call do it on request; an error brings the full screen back.
+- **The full call.** The strip of cards sits above the control pill, newest first, at most 3, each with an **Open**
+  button. One visually hidden `role="status"` line announces each new card once. Framer Motion animates the cards; they
+  simply appear under `prefers-reduced-motion`. Georgian text is at least 16 px.
 
 ## Switches and fallbacks
 
@@ -108,6 +133,10 @@ funded key:
    mint returns 200 **and** that the socket reaches `setupComplete`.
 2. On that session, a spoken request such as "make me a vertical video of a cat surfing" must produce a `toolCall`, and
    the model must speak after our `toolResponse`.
+3. The model asks before `start_generation` and sends `confirmed: "yes"` only after a spoken yes.
+
+The studio's side is covered in a real browser by `tests/live-actions.spec.ts` (the events are dispatched as the call
+dispatches them); the executor, countdown and dock by the jest suites under `components/voice/live/`.
 
 `scripts/probe-live-actions.mjs` checks both with the owner's key, which it never prints. By default it only mints a
 token and opens the setup for three locks: full, actions dropped, and no tools (the legacy wire). It reports which

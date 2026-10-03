@@ -92,6 +92,23 @@ const BARGE_GRACE_MS = 300;
 const THINKING_TIMEOUT_MS = 10_000;
 /** Reuse the minted token for a resume only while it has at least this long left. */
 const TOKEN_REUSE_MARGIN_MS = 60_000;
+/** The token mint answers within the route's own retries (~28 s); past this it is a failed mint, never an endless spinner. */
+const MINT_TIMEOUT_MS = 35_000;
+/** Resuming on a device that went offline: wait this long for the network before ending the call. */
+const RESUME_OFFLINE_WAIT_MS = 45_000;
+/** Between resume steps after a failed mint (a flaky network gets a breath before the next try). */
+const RESUME_RETRY_PAUSE_MS = 1_500;
+
+/** Resolves true at once when online (or unknown); otherwise when the `online` event fires, or false after `ms`. */
+function waitForOnline(ms: number): Promise<boolean> {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || navigator.onLine !== false) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (ok: boolean) => { window.removeEventListener('online', on); clearTimeout(timer); resolve(ok); };
+    const on = () => done(true);
+    const timer = setTimeout(() => done(false), ms);
+    window.addEventListener('online', on);
+  });
+}
 /** A call longer than this many resumes is almost certainly a loop, not a conversation. */
 const MAX_RESUMES = 40;
 const MAX_FINAL_CAPTIONS = 40;
@@ -804,8 +821,13 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const parity = o.parity !== false && !degradedRef.current;
     mintsRef.current += 1;
     let res: Response;
+    // ⚠️ THE MINT HAD NO TIMEOUT. The route retries Google for up to ~28 s; a request that never answered (a captive
+    // portal, a stalled proxy) left the screen on „დაკავშირება…“ forever. Bounded now: past MINT_TIMEOUT_MS it is a
+    // mint_failed like any other, with Retry.
+    let mintTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      res = await deps().fetch(o.endpoint || '/api/voice/live', {
+      const timeout = new Promise<never>((_, reject) => { mintTimer = setTimeout(() => reject(new Error('mint timeout')), MINT_TIMEOUT_MS); });
+      res = await Promise.race([deps().fetch(o.endpoint || '/api/voice/live', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -823,9 +845,11 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           // is minted for a setup the browser never sends.
           ...(!parity ? { tools: false } : {}),
         }),
-      });
+      }), timeout]);
     } catch {
       return { ok: false, code: 'mint_failed' };
+    } finally {
+      if (mintTimer) clearTimeout(mintTimer);
     }
     const j = (await res.json().catch(() => ({}))) as { token?: unknown; model?: unknown; expiresAt?: unknown; setupMessage?: unknown; setup?: unknown; actions?: unknown };
     const token = typeof j.token === 'string' ? j.token.trim() : '';
@@ -1086,10 +1110,29 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       if (actionsOffRef.current) { stepRef.current += 1; await runStepRef.current(); return; }
       actionsOffRef.current = true;
     }
+    // ⚠️ A NETWORK BLIP ENDED THE CALL. Resuming opened a socket that failed, then minted a token with no network,
+    // and the first failed fetch was the end: „საუბრის დაწყება ვერ მოხერხდა“ for a call that was fine a second ago.
+    // While resuming, an offline device now waits for the network to come back (bounded), and a failed mint moves on
+    // to the next step of the plan after a short pause instead of giving up.
+    if (phaseRef.current === 'resume' && !(await waitForOnline(RESUME_OFFLINE_WAIT_MS))) {
+      if (gen === genRef.current) fail('connection_lost');
+      return;
+    }
+    if (gen !== genRef.current || !activeRef.current) return;
     if (step.freshToken || !tokenUsable()) {
       const minted = await mint(step.handle);
       if (gen !== genRef.current) return;
-      if (!minted.ok) { fail(minted.code); return; }
+      if (!minted.ok) {
+        if (phaseRef.current === 'resume' && minted.code === 'mint_failed' && planRef.current[stepRef.current + 1]) {
+          stepRef.current += 1;
+          await new Promise((r) => setTimeout(r, RESUME_RETRY_PAUSE_MS));
+          if (gen !== genRef.current || !activeRef.current) return;
+          await runStepRef.current();
+          return;
+        }
+        fail(minted.code);
+        return;
+      }
     }
     openSession(step.handle);
   };

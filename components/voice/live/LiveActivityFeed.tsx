@@ -12,7 +12,10 @@
  * presentation; the data comes from useGeminiLiveSession().activity and the job queue (GeminiLiveConversation).
  * Georgian keeps the product's 16 px floor.
  */
-import { AlertCircle, Check, Clapperboard, Code2, Globe, Loader2, PhoneOff, Search, Sparkles, Wand2, X } from 'lucide-react';
+import {
+  AlertCircle, ArrowUpDown, Check, Clapperboard, Code2, Cpu, Eye, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
+  MessageSquarePlus, Search, SlidersHorizontal, Sparkles, Square, Wand2, X,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { newestFirst, sourceLabel, type LiveActivityItem } from './liveActivity';
@@ -50,6 +53,16 @@ const S: Record<Locale, Strings> = {
       show_code: { running: 'კოდს ეკრანზე ვწერ', done: 'კოდი ეკრანზეა' },
       open_studio: { running: 'სტუდიას ვხსნი', done: 'სტუდია გახსნილია' },
       end_call: { running: 'ზარს ვასრულებ', done: 'ზარი სრულდება' },
+      get_screen_state: { running: 'ეკრანს ვკითხულობ', done: 'ეკრანი წავიკითხე' },
+      update_settings: { running: 'პარამეტრებს ვცვლი', done: 'პარამეტრები შეიცვალა' },
+      start_generation: { running: 'გენერაციას ვიწყებ', done: 'გენერაცია იწყება' },
+      chat_send: { running: 'ჩატში ვწერ', done: 'ჩატში დაიწერა' },
+      new_chat: { running: 'ახალ ჩატს ვხსნი', done: 'ახალი ჩატი' },
+      set_chat_model: { running: 'მოდელს ვცვლი', done: 'მოდელი შეიცვალა' },
+      stop: { running: 'ვაჩერებ', done: 'შეჩერდა' },
+      scroll_chat: { running: 'ჩატს ვაგორებ', done: 'ჩატი გადავაგორე' },
+      open_panel: { running: 'პანელს ვხსნი', done: 'პანელი გაიხსნა' },
+      call_view: { running: 'ხედს ვცვლი', done: 'ხედი შეიცვალა' },
     },
     tool: { running: 'ვასრულებ', done: 'შესრულდა' },
     failed: 'ვერ შესრულდა',
@@ -66,6 +79,16 @@ const S: Record<Locale, Strings> = {
       show_code: { running: 'Putting code on screen', done: 'Code on screen' },
       open_studio: { running: 'Opening the studio', done: 'Studio opened' },
       end_call: { running: 'Ending the call', done: 'Ending the call' },
+      get_screen_state: { running: 'Reading the screen', done: 'Read the screen' },
+      update_settings: { running: 'Changing settings', done: 'Settings changed' },
+      start_generation: { running: 'Starting the generation', done: 'Generation starting' },
+      chat_send: { running: 'Writing in the chat', done: 'Written in the chat' },
+      new_chat: { running: 'Opening a new chat', done: 'New chat' },
+      set_chat_model: { running: 'Switching the model', done: 'Model switched' },
+      stop: { running: 'Stopping', done: 'Stopped' },
+      scroll_chat: { running: 'Scrolling the chat', done: 'Scrolled' },
+      open_panel: { running: 'Opening a panel', done: 'Panel open' },
+      call_view: { running: 'Changing the view', done: 'View changed' },
     },
     tool: { running: 'Working', done: 'Done' },
     failed: 'Didn’t work',
@@ -82,6 +105,16 @@ const S: Record<Locale, Strings> = {
       show_code: { running: 'Вывожу код на экран', done: 'Код на экране' },
       open_studio: { running: 'Открываю студию', done: 'Студия открыта' },
       end_call: { running: 'Завершаю звонок', done: 'Завершаю звонок' },
+      get_screen_state: { running: 'Смотрю на экран', done: 'Экран прочитан' },
+      update_settings: { running: 'Меняю настройки', done: 'Настройки изменены' },
+      start_generation: { running: 'Запускаю генерацию', done: 'Генерация запускается' },
+      chat_send: { running: 'Пишу в чат', done: 'Написано в чате' },
+      new_chat: { running: 'Открываю новый чат', done: 'Новый чат' },
+      set_chat_model: { running: 'Меняю модель', done: 'Модель изменена' },
+      stop: { running: 'Останавливаю', done: 'Остановлено' },
+      scroll_chat: { running: 'Прокручиваю чат', done: 'Прокручено' },
+      open_panel: { running: 'Открываю панель', done: 'Панель открыта' },
+      call_view: { running: 'Меняю вид', done: 'Вид изменён' },
     },
     tool: { running: 'Выполняю', done: 'Готово' },
     failed: 'Не получилось',
@@ -96,7 +129,32 @@ const TOOL_ICON: Record<string, ReactNode> = {
   show_code: <Code2 size={16} aria-hidden />,
   open_studio: <Sparkles size={16} aria-hidden />,
   end_call: <PhoneOff size={16} aria-hidden />,
+  get_screen_state: <Eye size={16} aria-hidden />,
+  update_settings: <SlidersHorizontal size={16} aria-hidden />,
+  start_generation: <Play size={16} aria-hidden />,
+  chat_send: <MessageSquare size={16} aria-hidden />,
+  new_chat: <MessageSquarePlus size={16} aria-hidden />,
+  set_chat_model: <Cpu size={16} aria-hidden />,
+  stop: <Square size={16} aria-hidden />,
+  scroll_chat: <ArrowUpDown size={16} aria-hidden />,
+  open_panel: <PanelRight size={16} aria-hidden />,
+  call_view: <Monitor size={16} aria-hidden />,
 };
+
+/**
+ * One line for the docked call: the step running now („ეკრანს ვკითხულობ“, „ვეძებ ინტერნეტში: …“), or null when the agent
+ * is not in the middle of anything.
+ */
+export function liveActivityLine(activity: readonly LiveActivityItem[], locale: Locale = 'ka'): string | null {
+  const t = S[locale] ?? S.ka;
+  const running = newestFirst(activity).find((it) => it.state === 'running');
+  if (!running) return null;
+  if (running.kind === 'search') {
+    const q = running.queries?.[0];
+    return q ? `${t.searching}: ${q}` : t.searching;
+  }
+  return (running.name && t.tools[running.name]?.running) || t.tool.running;
+}
 
 export interface LiveActivityFeedProps {
   activity: readonly LiveActivityItem[];

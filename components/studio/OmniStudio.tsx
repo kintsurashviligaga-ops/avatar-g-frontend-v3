@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -66,6 +66,8 @@ import { ModelSwitcher, OPEN_PERSONA_EVENT, selectPersona, useActivePersona } fr
 import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@/lib/chat/chatModes';
 import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
+import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
+import { LIVE_ACTION_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
@@ -152,7 +154,7 @@ import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { ImageDesk } from '@/components/studio/create/ImageDesk';
 import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
-import { type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
+import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -290,6 +292,7 @@ const COPY: Record<Lang, {
   remixNeedTrack: string; remixNeedCaption: string;
   modeSurgical: string;
   stop: string; stopped: string; scrollDown: string; regenerate: string; retry: string; elapsedHint: string; greeting: string; attachHint: string;
+  /** The cut-off reply's button, and the user turn it sends. */ continueReply: string; cutShort: string;
   instrumental: string; withVocals: string; lyricsPlaceholder: string; coverMode: string; voiceMode: string; voiceLyricsPlaceholder: string; voiceSecTitle: string; voiceRec: string; voiceUp: string; voiceReady: string; voiceRecHint: string; need15: string;
   narration: string; narrationCue: string; transCrossfade: string; transCut: string;
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string; sbDrag: string;
@@ -314,6 +317,7 @@ const COPY: Record<Lang, {
     modeSurgical: 'რედაქტორი',
     generatingLipsync: 'ავატარი იქმნება…', lipsyncFailed: 'ავატარი ვერ შეიქმნა.', lipsyncNeedFiles: 'მიამაგრე ფოტო და ტექსტი (ან აუდიო).', lipsyncAuth: 'ავატარისთვის ჯერ გაიარე ავტორიზაცია.', lipAudioLabel: 'აუდიო',
     stop: 'შეჩერება', stopped: 'შეჩერდა', scrollDown: 'ბოლოში გადასვლა', regenerate: 'თავიდან გენერაცია', retry: 'თავიდან ცდა', elapsedHint: 'გავიდა', greeting: STUDIO_EMPTY.ka.greeting, attachHint: 'დამატება',
+    continueReply: 'გააგრძელე', cutShort: 'პასუხი სიგრძის ლიმიტზე შეწყდა.',
     instrumental: 'ინსტრუმენტალი', withVocals: 'ვოკალით', lyricsPlaceholder: 'ლირიკა (არჩევითი) — შენი ტექსტი; ცარიელი = ავტომატური', coverMode: '🎵 ქავერი', voiceMode: '🎤 ჩემი ხმით', voiceLyricsPlaceholder: 'ლირიკა — რას იმღერებს შენი ხმა (ატვირთე ≥15წმ ხმა)', voiceSecTitle: '🎤 შენი ხმა', voiceRec: 'ჩაწერა', voiceUp: 'ატვირთვა', voiceReady: 'ხმა მზადაა — აირჩიე „ჩემი ხმით"', voiceRecHint: 'ჩაიწერე ან ატვირთე ≥15წმ ხმა — სიმღერა შენი ვოკალით შეიქმნება', need15: '≥15წმ',
     narration: 'ნარაცია', narrationCue: ' (პროფესიონალი კომენტატორის ხმოვანი ნარაციით)', transCrossfade: 'გადადნობა', transCut: 'კვეთა',
     sbTitle: 'სტორიბორდი', sbReview: 'გადახედე სცენებს — შეცვალე ტექსტი ან თავიდან დააგენერირე კადრი, შემდეგ გაუშვი ვიდეო', sbGenerate: 'ვიდეოს გენერაცია', sbRegen: 'თავიდან', sbCancel: 'გაუქმება', sbCreating: 'სცენარი და კადრები იქმნება…', sbFailed: 'სტორიბორდი ვერ შეიქმნა. სცადე თავიდან.', sbScene: 'სცენა', sbEditHint: 'შეცვალე ამ კადრის აღწერა…', sbReroll: 'კადრის თავიდან დაგენერირება', sbFrames: 'კადრი', sbEditPromptAction: 'ტექსტის რედაქტირება', sbChangeBaseAction: 'ბაზის სურათის შეცვლა', sbGenerating: 'იქმნება', sbEmpty: 'კადრი არ არის', sbMoveEarlier: 'ადრე გადატანა', sbMoveLater: 'მოგვიანებით გადატანა', sbDeleteScene: 'სცენის წაშლა', sbAddScene: 'სცენის დამატება', sbSourceLocked: 'ორიგინალი დაფიქსირდა', sbAnchorLocked: '🎥 ორიგინალის იდენტობა დაფიქსირდა', sbPipeScript: 'სცენარი', sbPipeBoard: 'სტორიბორდი', sbPipeRender: 'რენდერი', sbCompiling: 'სცენების კომპილირება', sbReady: 'მზადაა', sbAutoFill: 'ავტომატურად შეიქმნება', sbRenderNote: 'რენდერს რამდენიმე წუთი სჭირდება — შეტყობინებას მიიღებ, როცა მზად იქნება', sbDrag: 'გადაათრიე გადასაწყობად',
@@ -338,6 +342,7 @@ const COPY: Record<Lang, {
     modeSurgical: 'Editor',
     generatingLipsync: 'Creating your Avatar…', lipsyncFailed: 'Avatar creation failed.', lipsyncNeedFiles: 'Attach a photo and a script (or audio).', lipsyncAuth: 'Sign in first to use Avatar.', lipAudioLabel: 'Audio',
     stop: 'Stop', stopped: 'Stopped', scrollDown: 'Scroll to bottom', regenerate: 'Regenerate', retry: 'Try again', elapsedHint: 'elapsed', greeting: STUDIO_EMPTY.en.greeting, attachHint: 'Add',
+    continueReply: 'Continue', cutShort: 'The answer stopped at its length limit.',
     instrumental: 'Instrumental', withVocals: 'Vocals', lyricsPlaceholder: 'Lyrics (optional) — your words; empty = auto-written', coverMode: '🎵 Cover', voiceMode: '🎤 My voice', voiceLyricsPlaceholder: 'Lyrics — what your voice will sing (upload ≥15s of voice)', voiceSecTitle: '🎤 Your voice', voiceRec: 'Record', voiceUp: 'Upload', voiceReady: 'Voice ready — pick “My voice”', voiceRecHint: 'Record or upload ≥15s of voice — the song is sung in your voice', need15: '≥15s',
     narration: 'Narration', narrationCue: ' (with professional spoken voice-over narration)', transCrossfade: 'Crossfade', transCut: 'Cut',
     sbTitle: 'Storyboard', sbReview: 'Review the scenes — edit a description or re-roll a frame, then generate', sbGenerate: 'Generate Video', sbRegen: 'Regenerate', sbCancel: 'Cancel', sbCreating: 'Creating storyboard & frames…', sbFailed: 'Storyboard failed. Try again.', sbScene: 'Scene', sbEditHint: 'Edit this shot…', sbReroll: 'Re-roll this frame', sbFrames: 'frames', sbEditPromptAction: 'Edit prompt', sbChangeBaseAction: 'Change base image', sbGenerating: 'generating', sbEmpty: 'no frame', sbMoveEarlier: 'Move earlier', sbMoveLater: 'Move later', sbDeleteScene: 'Delete scene', sbAddScene: 'Add scene', sbSourceLocked: 'Source Reference Locked', sbAnchorLocked: '🎥 ORIGIN IDENTITY ANCHOR LOCKED', sbPipeScript: 'Script', sbPipeBoard: 'Storyboard', sbPipeRender: 'Render', sbCompiling: 'Compiling scenes', sbReady: 'ready', sbAutoFill: 'auto-generates at render', sbRenderNote: "Render takes a few minutes — you'll be notified when it's ready", sbDrag: 'Drag to reorder',
@@ -362,6 +367,7 @@ const COPY: Record<Lang, {
     modeSurgical: 'Редактор',
     generatingLipsync: 'Создаю аватар…', lipsyncFailed: 'Не удалось создать аватар.', lipsyncNeedFiles: 'Прикрепите фото и текст (или аудио).', lipsyncAuth: 'Войдите, чтобы использовать Аватар.', lipAudioLabel: 'Аудио',
     stop: 'Стоп', stopped: 'Остановлено', scrollDown: 'Вниз', regenerate: 'Заново', retry: 'Повторить', elapsedHint: 'прошло', greeting: STUDIO_EMPTY.ru.greeting, attachHint: 'Добавить',
+    continueReply: 'Продолжить', cutShort: 'Ответ остановился на пределе длины.',
     instrumental: 'Инструментал', withVocals: 'Вокал', lyricsPlaceholder: 'Текст (необязательно) — ваши слова; пусто = авто', coverMode: '🎵 Кавер', voiceMode: '🎤 Мой голос', voiceLyricsPlaceholder: 'Текст — что споёт ваш голос (загрузите ≥15с голоса)', voiceSecTitle: '🎤 Ваш голос', voiceRec: 'Запись', voiceUp: 'Загрузить', voiceReady: 'Голос готов — выберите «Мой голос»', voiceRecHint: 'Запишите или загрузите ≥15с голоса — песня будет спета вашим голосом', need15: '≥15с',
     narration: 'Озвучка', narrationCue: ' (с профессиональной голосовой озвучкой)', transCrossfade: 'Плавно', transCut: 'Резко',
     sbTitle: 'Раскадровка', sbReview: 'Просмотрите сцены — измените описание или кадр, затем сгенерируйте', sbGenerate: 'Сгенерировать видео', sbRegen: 'Заново', sbCancel: 'Отмена', sbCreating: 'Создаю раскадровку и кадры…', sbFailed: 'Не удалось создать раскадровку. Попробуйте снова.', sbScene: 'Сцена', sbEditHint: 'Измените этот кадр…', sbReroll: 'Пересоздать кадр', sbFrames: 'кадры', sbEditPromptAction: 'Изменить текст', sbChangeBaseAction: 'Сменить базовое фото', sbGenerating: 'создаётся', sbEmpty: 'нет кадра', sbMoveEarlier: 'Переместить раньше', sbMoveLater: 'Переместить позже', sbDeleteScene: 'Удалить сцену', sbAddScene: 'Добавить сцену', sbSourceLocked: 'Оригинал закреплён', sbAnchorLocked: '🎥 ОРИГИНАЛ ЗАКРЕПЛЁН', sbPipeScript: 'Сценарий', sbPipeBoard: 'Раскадровка', sbPipeRender: 'Рендер', sbCompiling: 'Компиляция сцен', sbReady: 'готово', sbAutoFill: 'создастся при рендере', sbRenderNote: 'Рендер займёт несколько минут — вы получите уведомление, когда всё будет готово', sbDrag: 'Перетащите для порядка',
@@ -433,32 +439,51 @@ const ThinkingMark = memo(function ThinkingMark({ label, lang }: { label: string
   );
 });
 
-/** „Pro's daily allowance is spent — this answer came from Flash." The Flash name comes from the catalogue. */
-function proCapNotice(l: Lang): string {
+/** Why a turn was answered in another mode than the one picked (the route's `{meta}.reason`). */
+type ModeNotice = 'pro_cap' | 'pro_busy' | 'guest';
+const MODE_NOTICES: ReadonlySet<string> = new Set<ModeNotice>(['pro_cap', 'pro_busy', 'guest']);
+const asModeNotice = (v: unknown): ModeNotice | null => (typeof v === 'string' && MODE_NOTICES.has(v) ? (v as ModeNotice) : null);
+
+/**
+ * The line above a reply that another mode answered: Pro's daily allowance is spent, Pro was busy (after one retry, so
+ * Fast answered instead of the turn failing), or a guest picked a mode only an account has. The Fast name comes from
+ * the catalogue.
+ */
+function modeNotice(reason: ModeNotice, l: Lang): string {
   const fast = chatModeOption('fast').label;
+  if (reason === 'pro_busy') {
+    return l === 'en' ? `Pro is busy right now — this answer used ${fast}.`
+      : l === 'ru' ? `Pro сейчас перегружен — ответ дан моделью ${fast}.`
+        : `Pro ახლა გადატვირთულია — პასუხი გაეცა ${fast}-ით.`;
+  }
+  if (reason === 'guest') {
+    return l === 'en' ? `Sign in to use the other modes — this answer used ${fast}.`
+      : l === 'ru' ? `Войдите, чтобы пользоваться другими режимами — ответ дан моделью ${fast}.`
+        : `სხვა რეჟიმებისთვის შედი ანგარიშზე — პასუხი გაეცა ${fast}-ით.`;
+  }
   return l === 'en' ? `You've reached today's Pro limit — this answer used ${fast}.`
     : l === 'ru' ? `Дневной лимит Pro исчерпан — ответ дан моделью ${fast}.`
       : `Pro-ს დღიური ლიმიტი ამოიწურა — პასუხი გაეცა ${fast}-ით.`;
 }
 
 /** The notice line above a reply — one recipe for the streaming and the committed bubble, so the hand-off never jumps. */
-function ProCapLine({ lang }: { lang: Lang }) {
-  return <p role="note" className={`mb-2 text-app-muted ${chatSmallText(lang)}`}>{proCapNotice(lang)}</p>;
+function ModeNoticeLine({ reason, lang }: { reason: ModeNotice; lang: Lang }) {
+  return <p role="note" data-testid="mode-notice" data-reason={reason} className={`mb-2 text-app-muted ${chatSmallText(lang)}`}>{modeNotice(reason, lang)}</p>;
 }
 
 /**
- * The same notice while the reply streams. The route downgrades a Pro turn to Flash once the per-account Pro
- * allowance is spent and says so in the meta frame (`reason: 'pro_cap'`), which arrives before the first token — so
- * the line is in place before any text, and the committed bubble renders it in the same spot. Subscribes to a
- * BOOLEAN of the stream store, so a text chunk never re-renders it (only StreamingBubble re-renders per frame).
+ * The same notice while the reply streams. The route says in the `{meta}` frame — before the first token — when the
+ * turn is answered by another mode, so the line is in place before any text, and the committed bubble renders it in
+ * the same spot. Subscribes to the REASON only, so a text chunk never re-renders it (only StreamingBubble re-renders
+ * per frame).
  */
-const StreamProCapNotice = memo(function StreamProCapNotice({ store, lang }: { store: ChatStreamStore; lang: Lang }) {
-  const capped = useSyncExternalStore(
+const StreamModeNotice = memo(function StreamModeNotice({ store, lang }: { store: ChatStreamStore; lang: Lang }) {
+  const reason = useSyncExternalStore(
     store.subscribe,
-    () => store.getSnapshot().meta?.reason === 'pro_cap',
-    () => false,
+    () => asModeNotice(store.getSnapshot().meta?.reason),
+    () => null,
   );
-  return capped ? <ProCapLine lang={lang} /> : null;
+  return reason ? <ModeNoticeLine reason={reason} lang={lang} /> : null;
 });
 
 /** A video's orientation as the ratio its ResultCard tile keeps while it renders. */
@@ -960,7 +985,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -970,8 +995,14 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** A Dee
   chatModelId?: string;
   /** The chat mode that answered (Fast · Thinking · Pro · Lite) — the server's effective mode when it reports one. */
   chatMode?: ChatModeId;
-  /** A one-line notice above the reply: 'pro_cap' = Pro's daily allowance was spent and Flash answered instead. */
-  chatNotice?: 'pro_cap';
+  /** A one-line notice above the reply: another mode answered this turn (Pro's allowance spent, Pro busy, a guest). */
+  chatNotice?: ModeNotice;
+  /** The reply stopped at the output-token limit (the route's `{truncated}`): the last reply offers "Continue". */
+  truncated?: boolean;
+  /** This failure would only fail again (a policy refusal, a safety stop): no Retry button. */
+  noRetry?: boolean;
+  /** The reply failed mid-answer: its text ends with the chat's own „\n\n⚠️ …" line, which the model must not get. */
+  errorTail?: boolean;
   inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
@@ -1140,6 +1171,57 @@ function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined):
 }
 
 /**
+ * Which server session each conversation writes to: conversation id → chat_sessions id (localStorage, per account).
+ *
+ * ⚠️ ONE POINTER FOR EVERY CONVERSATION MIXED THREADS ON THE SERVER. The session id used to be cached ONCE per account
+ * (`myavatar:chat-session`) and reused by whatever conversation was open. "New chat" cleared it, but the fresh chat a
+ * reload opens did not, and neither did opening an older chat from History — so their turns were appended to the
+ * previous conversation's server session, and the history on another device showed two conversations as one. The
+ * session now belongs to the conversation that created it.
+ */
+const SESSION_MAP_MAX = 120;
+function sessionMapKey(uid: string): string { return `myavatar:chat-session-map:${uid}`; }
+function readSessionMap(uid: string | null): Record<string, string> {
+  if (!uid || typeof window === 'undefined') return {};
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(sessionMapKey(uid)) ?? '{}') as unknown;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'string' && v) out[k] = v;
+    return out;
+  } catch { return {}; }
+}
+function writeSessionMap(uid: string, map: Record<string, string>): void {
+  try {
+    const entries = Object.entries(map);
+    const kept = entries.length > SESSION_MAP_MAX ? entries.slice(entries.length - SESSION_MAP_MAX) : entries;
+    window.localStorage.setItem(sessionMapKey(uid), JSON.stringify(Object.fromEntries(kept)));
+  } catch { /* private mode / quota */ }
+}
+/** The server session a conversation already writes to: its own row's tag, else the map. */
+function conversationSidFor(uid: string | null, cid: string): string | null {
+  return serverSidOf(loadConversations().find((c) => c.id === cid)) ?? readSessionMap(uid)[cid] ?? null;
+}
+/** Remember a conversation's server session — in the map, and on its saved row (the sync dedups by it). */
+function rememberConversationSid(uid: string, cid: string, sid: string): void {
+  const map = readSessionMap(uid);
+  delete map[cid];
+  map[cid] = sid;
+  writeSessionMap(uid, map);
+  const list = loadConversations();
+  const row = list.find((c) => c.id === cid);
+  if (row && !row.serverSid) { row.serverSid = sid; saveConversations(list); }
+}
+function forgetConversationSid(uid: string | null, cid?: string): void {
+  if (!uid) return;
+  if (cid === undefined) { try { window.localStorage.removeItem(sessionMapKey(uid)); } catch { /* ignore */ } return; }
+  const map = readSessionMap(uid);
+  if (!(cid in map)) return;
+  delete map[cid];
+  writeSessionMap(uid, map);
+}
+
+/**
  * ONE-SHOT resume handoff. The app must land on a FRESH, EMPTY chat on every open and every refresh —
  * the way ChatGPT and Gemini do — instead of dropping the user back inside whatever they last said.
  * Past chats are not lost: they stay in the sidebar History and are opened EXPLICITLY, which writes the
@@ -1233,12 +1315,27 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
       ...(m.researchId ? { researchId: m.researchId } : {}),
+      ...(m.notice ? { notice: true } : {}),
+      ...(m.errorTail ? { errorTail: true } : {}),
+      // A reply's sources are a few short links — kept, so its source chips survive a reload like the reply itself.
+      ...(m.sources?.length ? { sources: m.sources.slice(0, 8) } : {}),
+      // The attachment bytes are never stored; WHAT was attached is, so after a reload the model is told a photo or a PDF
+      // was part of that turn instead of seeing a question about "this" with nothing attached.
+      ...(m.medias?.length ? { attached: m.medias.map((x) => attachedKind(x.mimeType)) } : m.attached?.length ? { attached: m.attached } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
       ...(m.regen ? { regen: dropRef(m.regen) } : {}),
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
     }));
+}
+/** A short word for an attachment's kind, for the model's context after a reload. */
+function attachedKind(mime: string): string {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime === 'application/pdf') return 'PDF';
+  return 'file';
 }
 function conversationTitle(messages: Msg[]): string {
   const firstUser = messages.find((m) => m.role === 'user' && m.text.trim());
@@ -1264,7 +1361,9 @@ function upsertConversation(id: string, messages: Msg[], tool?: string): void {
   // schema was fixed, because until then there were no cloud rows to duplicate.
   const conv: Conversation = {
     id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now(),
-    ...(idx >= 0 && list[idx]?.serverSid ? { serverSid: list[idx].serverSid } : {}),
+    ...((idx >= 0 && list[idx]?.serverSid) || readSessionMap(currentUid())[id]
+      ? { serverSid: (idx >= 0 && list[idx]?.serverSid) || readSessionMap(currentUid())[id] }
+      : {}),
     // The FIRST tool a session was saved under stays its tool (a thread that spanned a switch made mid-render keeps it).
     ...((idx >= 0 && list[idx]?.tool) || tool ? { tool: (idx >= 0 && list[idx]?.tool) || tool } : {}),
   };
@@ -1784,6 +1883,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [studioPrefill, setStudioPrefill] = useState<{ targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string } | undefined>(undefined);
   // The active conversation id + its messages (resumed from the saved history).
   const [conversationId, setConversationId] = useState<string>(currentConversationId);
+  /** Always-current mirror: a server session is resolved for the conversation open at the moment a turn is saved. */
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
   const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
   // Mirror of `messages` for the mount-hydration effect below (reads the current view without a
   // stale-closure / exhaustive-deps churn).
@@ -2110,6 +2212,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // (not stranded in the composer), then sent the moment the turn finishes — see the flush effect. Carries
   // viaVoice so a dictated follow-up still tags inputMethod:'voice' + auto-plays its reply.
   const pendingChatRef = useRef<{ text: string; viaVoice: boolean } | null>(null);
+  /**
+   * Take a parked type-ahead message back into the composer instead of letting it send.
+   * ⚠️ THE QUEUE OUTLIVED THE TURN IT WAS WAITING FOR. Stop, New chat and opening another conversation all end the
+   * turn, and the flush effect then sent the parked follow-up at once — into a thread the user had just stopped or
+   * left. Back in the composer it is neither lost nor sent somewhere it was not meant for.
+   */
+  const unparkTypeAhead = useCallback(() => {
+    const queued = pendingChatRef.current;
+    if (!queued) return;
+    pendingChatRef.current = null;
+    setInput((cur) => (cur.trim() ? cur : queued.text));
+  }, []);
   /** Agent G asked clarifying questions about this prompt (lib/chat/focusGate); the user's next message answers them. */
   const gatePendingRef = useRef<{ mode: GateMode; base: string; at: number; /** asked in plain chat (one-shot) */ inChat?: boolean } | null>(null);
   /** Index in `messages` where Agent G's current gate turn began — the Image desk shows its latest word while the thread is hidden. */
@@ -2588,6 +2702,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const resumeConversation = useCallback(async (id: string) => {
     // A reply still streaming belongs to the thread that asked it: end that turn and save its partial text THERE,
     // instead of letting it render over — and then overwrite — a message in the thread being opened.
+    unparkTypeAhead();
     const settle = endChatStream();
     if (settle) { genIdRef.current += 1; setBusy(false); }
     upsertConversation(conversationId, settle ? settle(messages) : messages, activeToolRef.current); // save current before leaving
@@ -2601,6 +2716,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
     if (convo?.serverSid && (convo.messages?.length ?? 0) === 0) {
       chatSessionIdRef.current = convo.serverSid; // ensureChatSession returns this → no session fork
+      chatSessionCidRef.current = id;
       setMessages([]);
       try {
         const rows = await getMessages(convo.serverSid);
@@ -2612,25 +2728,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } else {
       setMessages(loadConversationMessages(id));
     }
-  }, [conversationId, messages, endChatStream]);
+  }, [conversationId, messages, endChatStream, unparkTypeAhead]);
   const startNewConversation = useCallback((): string => {
+    unparkTypeAhead();
     upsertConversation(conversationId, messages, activeToolRef.current); // save current
     const id = newConversationId();
     setConversationId(id);
     setCurrentConversationId(id);
     setMessages([]);
-    // ⚠️ RELEASE THE SERVER SESSION, or every "New Chat" keeps writing into the PREVIOUS one.
-    // ensureChatSession caches one session id per uid in `myavatar:chat-session` and reuses it for the
-    // life of the tab; nothing ever cleared it. So all 40 sidebar conversations would append into a
-    // SINGLE chat_sessions row and the server-side history would be one endless thread with one title.
-    // Harmless while the schema was broken (no rows were written at all) — a guaranteed corruption the
-    // moment it started working.
+    // ⚠️ RELEASE THE SERVER SESSION, or every "New Chat" keeps writing into the PREVIOUS one. ensureChatSession
+    // resolves the session per conversation (rememberConversationSid); the in-memory one is dropped here too.
+    // (The legacy one-per-account pointer `myavatar:chat-session` is removed wherever it may still be lying around.)
     chatSessionIdRef.current = null;
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     // "New session" is new for the service on screen: going back to it later in this visit opens this one.
     writeToolSessions({ ...readToolSessions(), [activeToolRef.current]: id });
     return id;
-  }, [conversationId, messages]);
+  }, [conversationId, messages, unparkTypeAhead]);
   const removeConversation = useCallback((id: string) => {
     // ⚠️ TOMBSTONE + SERVER DELETE BEFORE THE LOCAL ONE. Removing the local row erases its serverSid,
     // and that id is the only thing that could have told the sync not to re-import this chat. Read it
@@ -2638,6 +2752,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // what the user was seeing.
     const sid = serverSidOf(loadConversations().find((c) => c.id === id));
     if (sid) { rememberDeletedSids(currentUid(), [sid]); deleteServerSession(sid); }
+    forgetConversationSid(currentUid(), id);
     deleteConversation(id);
     // Deleting the OPEN chat → discard it to a FRESH EMPTY conversation WITHOUT re-saving.
     // (startNewConversation upserts the current first, and the idle auto-save effect would
@@ -2648,10 +2763,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setConversationId(fresh);
       setCurrentConversationId(fresh);
       setMessages([]);
-      // ⚠️ DROP THE SERVER SESSION POINTER TOO. ensureChatSession caches one session id per uid in
-      // `myavatar:chat-session` and reuses it for the next turn — so deleting the chat you are IN while
-      // leaving that pointer behind silently re-attached the fresh conversation to the session that was
-      // just deleted, and the next message wrote the chat straight back onto the server.
+      // ⚠️ DROP THE SERVER SESSION POINTER TOO. Leaving the in-memory session behind re-attached the fresh
+      // conversation to the session that was just deleted, and the next message wrote it straight back.
       chatSessionIdRef.current = null;
       try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     }
@@ -2667,10 +2780,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     rememberDeletedSids(uid, sids);
     for (const sid of sids) deleteServerSession(sid);
     try { window.localStorage.removeItem(omniConversationsKey(uid)); } catch { /* ignore */ }
-    // ⚠️ AND THE SERVER SESSION POINTER — the second, independent way "clear all" failed to clear.
-    // ensureChatSession caches one session id per uid in `myavatar:chat-session`; leaving it behind meant
-    // the very next message re-attached to a session that had just been wiped from the list, writing the
-    // conversation back onto the server. The list looked cleared and then refilled itself.
+    forgetConversationSid(uid);
+    // ⚠️ AND THE SERVER SESSION POINTER — the second, independent way "clear all" failed to clear. Leaving it
+    // behind re-attached the next message to a session that had just been wiped, and the list refilled itself.
     chatSessionIdRef.current = null;
     try { window.localStorage.removeItem('myavatar:chat-session'); } catch { /* private mode */ }
     const fresh = newConversationId();
@@ -2770,6 +2882,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const switchToolSession = useCallback((to: ToolId) => {
     const from = activeToolRef.current;
     if (to === from) return;
+    // ⚠️ A LIVE CALL IS ONE CONVERSATION. Its spoken turns land in this thread (myavatar:live-transcript); when the agent
+    // switched tools mid-call, the swap below moved everything said afterwards into another tool's session — the call's
+    // transcript came out split across two chats. While a call is on (<html data-live-call>, GeminiLiveConversation),
+    // the tool changes and the thread stays.
+    if (typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1') return;
     const rendering = busy || genActiveRef.current || useJobQueue.getState().jobs.some((j) => j.status === 'rendering' || j.status === 'queued');
     if (rendering) return;
     const map = readToolSessions();
@@ -4700,19 +4817,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Chat previously lived ONLY in localStorage (device-local, lost on cache-clear). We now mirror
   // each turn to Supabase (chat_sessions/chat_messages) via the fail-soft chat-history helpers.
   // A session is minted LAZILY on the first authed chat turn; anonymous users skip entirely
-  // (fail-open — no server row, RLS would reject anyway). The session id is cached in a ref +
-  // localStorage (scoped to the signed-in user) so a reload on the SAME device keeps appending to
-  // the same server session; a different account on that device mints its own.
+  // (fail-open — no server row, RLS would reject anyway). Each CONVERSATION keeps its own session: the id is
+  // remembered per conversation (rememberConversationSid, scoped to the signed-in user), so reopening a chat keeps
+  // appending to its session and a new or different chat never writes into another one's.
   const chatSessionIdRef = useRef<string | null>(null);
-  const chatSessionInflightRef = useRef<Promise<string | null> | null>(null);
+  /** The conversation `chatSessionIdRef` belongs to. */
+  const chatSessionCidRef = useRef<string | null>(null);
+  const chatSessionInflightRef = useRef<{ cid: string; run: Promise<string | null> } | null>(null);
   // Clear the cached session on ANY auth change so an IN-PLACE account switch (A signs out, B
   // signs in with no page reload) never appends B's turns to A's cached session. ensureChatSession
-  // then re-resolves under B's identity (the localStorage pointer is uid-scoped, so same-user
-  // reloads still resume the same session).
+  // then re-resolves under B's identity (the per-conversation map is uid-scoped).
   useEffect(() => {
     const sb = createBrowserClient();
     if (!sb) return;
-    const { data } = sb.auth.onAuthStateChange(() => { chatSessionIdRef.current = null; });
+    const { data } = sb.auth.onAuthStateChange(() => { chatSessionIdRef.current = null; chatSessionCidRef.current = null; });
     return () => { try { data.subscription.unsubscribe(); } catch { /* noop */ } };
   }, []);
   // `titleHint` — the first thing the user actually said. Without it every server session is created
@@ -4720,31 +4838,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // exists for this and was never called from here. The session is created on the FIRST turn, so the
   // first user message is exactly the right title and is available at the only moment it is needed.
   const ensureChatSession = useCallback((titleHint?: string): Promise<string | null> => {
-    if (chatSessionIdRef.current) return Promise.resolve(chatSessionIdRef.current);
-    // In-flight dedup: two concurrent first-turns share ONE createSession (no duplicate sessions).
-    if (chatSessionInflightRef.current) return chatSessionInflightRef.current;
+    // The session of the conversation open NOW (see rememberConversationSid): never one cached for another thread.
+    const cid = conversationIdRef.current;
+    if (chatSessionIdRef.current && chatSessionCidRef.current === cid) return Promise.resolve(chatSessionIdRef.current);
+    // In-flight dedup: two concurrent first-turns of one conversation share ONE createSession (no duplicate sessions).
+    const inflight = chatSessionInflightRef.current;
+    if (inflight && inflight.cid === cid) return inflight.run;
     const run = (async (): Promise<string | null> => {
       try {
         const sb = createBrowserClient();
         if (!sb) return null;
         const { data: { user } } = await sb.auth.getUser();
         if (!user) return null; // anonymous → no server persistence (fail-open)
-        let sid: string | null = null;
-        try {
-          const raw = localStorage.getItem('myavatar:chat-session');
-          if (raw) { const p = JSON.parse(raw) as { uid?: string; sid?: string }; if (p?.uid === user.id && p.sid) sid = p.sid; }
-        } catch { /* ignore unreadable storage */ }
+        let sid = conversationSidFor(user.id, cid);
         if (!sid) {
           const title = (titleHint || '').trim().replace(/\s+/g, ' ').slice(0, 80);
           sid = await createSession(user.id, 'agent-g', title || undefined);
-          if (sid) { try { localStorage.setItem('myavatar:chat-session', JSON.stringify({ uid: user.id, sid })); } catch { /* ignore */ } }
         }
-        chatSessionIdRef.current = sid;
+        if (sid) rememberConversationSid(user.id, cid, sid);
+        // The user may have switched conversations while this resolved: the ref follows the one on screen only.
+        if (conversationIdRef.current === cid) {
+          chatSessionIdRef.current = sid;
+          chatSessionCidRef.current = cid;
+        }
         return sid;
       } catch { return null; }
-      finally { chatSessionInflightRef.current = null; }
+      finally { if (chatSessionInflightRef.current?.cid === cid) chatSessionInflightRef.current = null; }
     })();
-    chatSessionInflightRef.current = run;
+    chatSessionInflightRef.current = { cid, run };
     return run;
   }, []);
   // Fire-and-forget mirror of one chat turn to the server. Never blocks or throws into the chat
@@ -4792,22 +4913,44 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => window.removeEventListener('research:started', onStarted);
   }, [locale, persistChatTurn]);
 
-  // LIVE → THE STUDIO (voice-to-action, lib/voice/liveTools.ts). A Live call PREPARES: the same studio switch + prompt
-  // prefill as dispatchServiceBlock's video/avatar branch, for every tool — and NEVER a run (its image/music branch
-  // renders at once; this must not). The user reviews and taps Run. preventDefault() is the receipt the call waits for
-  // before telling the model "done"; `reveal` = the card's Open, after the call has closed, so the composer takes focus.
+  // LIVE → THE STUDIO (voice-to-action, lib/voice/liveTools.ts). One listener for every on-screen action a call takes —
+  // prepare / tune / start a generation, read the screen, drive the chat, open a panel. The handler itself is assigned
+  // further down (liveApiRef), next to the functions it calls, so this registration never holds a stale closure.
+  // preventDefault() is the RECEIPT the call waits for before telling the model "done"; `detail.reply` carries what only
+  // the studio knows (the price, the settings it really applied, the screen state) back into the same answer.
+  // ⚠️ It never renders by itself: dispatchServiceBlock's image/music branch renders at once and must not be reused. A
+  // confirmed start_generation only marks the run; the call's countdown sends LIVE_RUN_EVENT, and THAT runs it.
+  const liveApiRef = useRef<(d: LiveActionEventDetail) => boolean>(() => false);
+  const liveRunRef = useRef<() => boolean>(() => false);
+  const liveChatSendRef = useRef<(text: string) => void>(() => {});
+  /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
+  const pendingLiveChatRef = useRef<string | null>(null);
   useEffect(() => {
     const onAction = (e: Event) => {
-      const a = (e as CustomEvent<{ type?: unknown; tool?: unknown; prompt?: unknown; reveal?: unknown }>).detail;
-      if ((a?.type !== 'prepare_generation' && a?.type !== 'open_studio') || !isToolId(a.tool)) return;
-      selectTool(a.tool);
-      if (a.type === 'prepare_generation' && typeof a.prompt === 'string') setInput(a.prompt.slice(0, 2000));
-      if (a.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
-      e.preventDefault();
+      const d = (e as CustomEvent<LiveActionEventDetail>).detail;
+      if (!d || typeof d !== 'object') return;
+      let took = false;
+      try { took = liveApiRef.current(d); } catch { took = false; }
+      if (took) e.preventDefault();
     };
-    window.addEventListener('myavatar:live-action', onAction);
-    return () => window.removeEventListener('myavatar:live-action', onAction);
-  }, [selectTool]);
+    const onRun = (e: Event) => {
+      let took = false;
+      try { took = liveRunRef.current(); } catch { took = false; }
+      if (took) e.preventDefault();
+    };
+    window.addEventListener(LIVE_ACTION_EVENT, onAction);
+    window.addEventListener(LIVE_RUN_EVENT, onRun);
+    return () => {
+      window.removeEventListener(LIVE_ACTION_EVENT, onAction);
+      window.removeEventListener(LIVE_RUN_EVENT, onRun);
+    };
+  }, []);
+  useEffect(() => {
+    if (activeTool !== 'chat' || !pendingLiveChatRef.current) return;
+    const text = pendingLiveChatRef.current;
+    pendingLiveChatRef.current = null;
+    liveChatSendRef.current(text);
+  }, [activeTool]);
 
   // ── Mount hydration: server chat RESUME (#1) + batch-tile RECONCILIATION (#3) ────────────────
   // For an AUTHENTICATED user, once on mount:
@@ -4987,9 +5130,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // (lib/chat/mediaWindow — "make it warmer" still sees the photo), generated results as a short reference the
     // model can read, no empty turns (a result bubble has no text: an empty model turn made Gemini reject every
     // later turn of the thread), oldest turns trimmed to a budget.
+    // ⚠️ THE MODEL READ OUR NOTICES AS ITS OWN WORDS. „⚠️ …" errors, „⏹ Stopped", routing notes and an error appended to
+    // a half-finished answer all went back as assistant turns, so the next reply could apologise for, or continue, things
+    // it never said. `notice` turns stay on screen and out of the context, and a failed reply goes back without its
+    // „⚠️" line (`errorTail`). A bubble saved before those flags existed is a notice when it opens with „⚠️" / „⏹" and no
+    // model answered it (a real answer always records its model). A turn whose files are gone after a reload says so.
     const payload = serializeHistory(history.map((m) => ({
       role: m.role,
-      text: m.text,
+      text: m.role === 'user' && !m.medias?.length && m.attached?.length
+        ? `${m.text}\n[attached earlier: ${m.attached.join(', ')} — no longer available to you]`
+        : m.errorTail ? m.text.replace(/\n\n⚠️[^\n]*$/u, '') : m.text,
+      ...(m.notice || (m.role === 'assistant' && /^\s*(⚠|⏹)/u.test(m.text ?? '') && !m.chatModelId && !m.chatModel
+        && !m.imageUrl && !m.videoUrl && !m.audioUrl && !m.glbUrl) ? { notice: true } : {}),
       // A video turn carries its frames + soundtrack for the model, not the clip itself (lib/chat/videoDigest).
       ...((m.modelMedias ?? m.medias)?.length ? { medias: (m.modelMedias ?? m.medias)! } : {}),
       ...(m.imageUrl ? { imageUrl: m.imageUrl } : {}),
@@ -5014,6 +5166,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // protocol 2: this client renders {error} frames, so the route sends the error once (not also as {text}).
         protocol: 2,
         mode: chatMode,
+        // The UI language: the reply follows it unless the user's own words are clearly in another language
+        // (a bare „ok", a pasted English article or Georgian in Latin letters no longer flip a Georgian chat to English).
+        language: locale === 'en' || locale === 'ru' ? locale : 'ka',
         ...(personaId ? { personaId } : {}),
         ...(customPersona ? { customPersona } : {}),
       }, { turnId: String(myGen) });
@@ -5038,12 +5193,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? {
           ...m,
           text: replyText,
+          ...(result.status === 'error' && !result.text ? { notice: true } : {}),
+          ...(result.status === 'error' && result.text && result.error ? { errorTail: true } : {}),
           ...(answered
             ? (answered.provider === 'gemini'
               ? { chatModelId: answered.model, chatMode: answeredMode }
               : { chatModel: `⚠ ${answered.model} (fallback)` })
             : {}),
-          ...(meta?.reason === 'pro_cap' ? { chatNotice: 'pro_cap' as const } : {}),
+          ...(asModeNotice(meta?.reason) ? { chatNotice: asModeNotice(meta?.reason)! } : {}),
+          ...(result.status === 'done' && result.truncated ? { truncated: true } : {}),
+          ...(result.status === 'error' && result.error && !result.error.retryable ? { noRetry: true } : {}),
           ...(result.sources.length ? { sources: result.sources } : {}),
         }
         : m)));
@@ -5100,6 +5259,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (lastA < 0) return;
     void streamChat(messages.slice(0, lastA));
   }, [busy, messages, streamChat]);
+
+  // Continue a reply that stopped at the output-token limit: „Continue" goes out as the user's next turn (it is in the
+  // thread, like any message), and the model picks up from its own cut-off answer, which travels in the history.
+  const continueChat = useCallback(() => {
+    if (busy) return;
+    const text = t.continueReply;
+    persistChatTurn('user', text);
+    void streamChat([...messages, { role: 'user', text, inputMethod: 'text' }]);
+  }, [busy, messages, persistChatTurn, streamChat, t.continueReply]);
 
   // Agent G router (shared by typed send + voice dictation). Returns true if it consumed the message + routed the
   // attached asset into the Surgical Editor. Strictly gated (chat mode · one editable asset · imperative edit intent)
@@ -5287,7 +5455,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // the box, which the panel's prompt shares.
         if ((gateMode === 'image' || gateMode === 'video') && higgsfieldPicked(gateMode)) {
           gatePendingRef.current = null;
-          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: HF_PANEL_NOTE[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] }]);
+          setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: HF_PANEL_NOTE[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'], notice: true }]);
           setGateFrom(messages.length);
           if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
           if (promptText !== text) setInput(promptText);
@@ -5968,7 +6136,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         : locale === 'ru'
           ? '🎬 Открываю Видеостудию и планирую сцены — проверьте раскадровку и нажмите «Сгенерировать видео».'
           : '🎬 ვხსნი ვიდეო სტუდიას და ვგეგმავ სცენებს — გადახედე სტორიბორდს და დააჭირე „ვიდეოს გენერაციას“.';
-      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: routeNote }]);
+      setMessages((prev) => [...prev, { role: 'user', text, ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: routeNote, notice: true }]);
       setInput(''); setAttachments([]);
       await createStoryboard(text, routeRefs, routeOrientation);
       return;
@@ -6128,6 +6296,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // pending finalizer no-ops), aborts the fetch, frees the composer, and converts
   // an empty pending bubble into a "stopped" note (a streamed partial is kept).
   const stop = useCallback(() => {
+    unparkTypeAhead(); // a follow-up parked behind the stopped reply goes back to the composer, not out
     genIdRef.current += 1;
     try { abortRef.current?.abort(); } catch { /* noop */ }
     abortRef.current = null;
@@ -6165,11 +6334,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : locale === 'ru'
             ? 'Ожидание остановлено. Уже отправленные сцены продолжают рендериться на стороне движка — повторный запуск создаст (и оплатит) новый фильм.'
             : 'ლოდინი შეწყდა. უკვე გაგზავნილი სცენები რენდერს აგრძელებს — ხელახლა გაშვება ახალ ფილმს დაარენდერებს (და დაგარიცხავს).';
-        next[next.length - 1] = { role: 'assistant', text: wasFilm ? `⏹ ${filmNote}` : `⏹ ${t.stopped}` };
+        next[next.length - 1] = { role: 'assistant', text: wasFilm ? `⏹ ${filmNote}` : `⏹ ${t.stopped}`, notice: true };
       }
       return next;
     });
-  }, [t.stopped, locale, endChatStream]);
+  }, [t.stopped, locale, endChatStream, unparkTypeAhead]);
   const cancelQueueJob = useJobQueue((s) => s.cancel);
   /**
    * Cancel the job behind ONE bubble, from its ResultCard. A queued film bubble IS its queue job (id === jobId);
@@ -6274,8 +6443,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (!orig || orig.role !== 'user' || !trimmed) { setEditingIdx(null); return; }
     setEditingIdx(null);
     setEditText('');
-    void streamChat([...messages.slice(0, idx), { role: 'user', text: trimmed, ...(orig.medias ? { medias: orig.medias } : {}) }]);
-  }, [editingIdx, editText, messages, streamChat]);
+    // ⚠️ AN EDITED VIDEO TURN ALWAYS FAILED (HTTP 413). Only `medias` was carried over — for a video that is the raw clip
+    // (up to 20 MB) — while `modelMedias`, the frames + soundtrack the model actually gets, was dropped. Everything the
+    // turn carried for the model goes with it now; and the edited words are saved like any new turn.
+    void streamChat([...messages.slice(0, idx), {
+      role: 'user',
+      text: trimmed,
+      ...(orig.medias ? { medias: orig.medias } : {}),
+      ...(orig.modelMedias ? { modelMedias: orig.modelMedias } : {}),
+      ...(orig.attached ? { attached: orig.attached } : {}),
+      ...(orig.inputMethod ? { inputMethod: orig.inputMethod } : {}),
+    }]);
+    persistChatTurn('user', trimmed);
+  }, [editingIdx, editText, messages, streamChat, persistChatTurn]);
 
   // Read an assistant reply aloud via the premium TTS route (ElevenLabs Georgian
   // voice, Google-TTS fallback). Toggles: tapping the speaking message stops it.
@@ -6532,6 +6712,161 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };
+  // ── LIVE → THE STUDIO: the handler (registered above as liveApiRef / liveRunRef) ─────────────────────────────────
+  // Reassigned every render, so it always reads the state on screen. Every branch answers synchronously and fills
+  // `d.reply` with what the model may say; true = handled (the receipt).
+  const LIVE_GEN_TOOLS: readonly ToolId[] = ['video', 'image', 'music', 'avatar'];
+  /** The price the studio's own Generate button shows (lib/credits/quote). A video is priced at its storyboard: undefined. */
+  const livePrice = (tool: ToolId, over: { musicSec?: number } = {}): number | undefined => {
+    if (tool === 'image') return quoteCredits({ tool: 'image', count: imgCount }) || undefined;
+    if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return quoteCredits({ tool: 'music', seconds: sec || undefined }) || undefined; }
+    if (tool === 'avatar') return quoteCredits({ tool: 'avatar' }) || undefined;
+    return undefined;
+  };
+  /** Apply a call's settings to `tool`'s real controls; returns what was applied (snapped to what the panel offers). */
+  const applyLiveSettings = (tool: ToolId, a: { aspectRatio?: string; durationSec?: number; style?: string; instrumental?: boolean }): { applied: Record<string, unknown>; musicSec?: number } => {
+    const applied: Record<string, unknown> = {};
+    let musicSec: number | undefined;
+    if (tool === 'image') {
+      if (a.aspectRatio && (IMG_ASPECTS as readonly string[]).includes(a.aspectRatio)) { setImgAspect(a.aspectRatio as ImgAspect); applied.aspectRatio = a.aspectRatio; }
+      if (a.style) { const st = matchStyle(a.style, IMG_STYLES); if (st) { setImgStyle(st); applied.style = st; } }
+    } else if (tool === 'video') {
+      const o = a.aspectRatio ? videoOrientationFor(a.aspectRatio) : null;
+      if (o) { setVideoOrientation(o); applied.aspectRatio = aspectForOrientation(o); }
+      if (typeof a.durationSec === 'number') { const d = snapVideoSeconds(a.durationSec); setVideoDuration(d); applied.durationSec = d; }
+      if (a.style) { const st = matchStyle(a.style, VIDEO_STYLES); if (st) { setVideoStyle(st); applied.style = st; } }
+    } else if (tool === 'music') {
+      if (typeof a.durationSec === 'number') { const d = snapMusicSeconds(a.durationSec); setMusicDuration(d); applied.durationSec = d; musicSec = d; }
+      if (typeof a.instrumental === 'boolean') { setMusicInstrumental(a.instrumental); applied.instrumental = a.instrumental; }
+      if (a.style) { const st = a.style.slice(0, 60); setMusicStyles([st]); applied.style = st; }
+    }
+    return { applied, ...(musicSec !== undefined ? { musicSec } : {}) };
+  };
+  /** What a call may know about the screen (get_screen_state). Short strings only — it is spoken context, not a dump. */
+  const liveScreenState = (): Record<string, unknown> => {
+    const settings: Record<string, unknown> | undefined =
+      activeTool === 'image' ? { aspectRatio: imgAspect, style: imgStyle, quality: imgQuality, count: imgCount }
+        : activeTool === 'video' ? { aspectRatio: aspectForOrientation(videoOrientation), durationSec: videoDuration, style: videoStyle }
+          : activeTool === 'music' ? { durationSec: musicDuration || 'full song', instrumental: musicInstrumental, style: musicGenre }
+            : undefined;
+    const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && m.text?.trim() && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹'));
+    const lastMedia = [...messages].reverse().find((m) => m.role === 'assistant' && (m.imageUrl || m.videoUrl || m.audioUrl));
+    const jobs = useJobQueue.getState().jobs.filter((j) => j.status === 'rendering' || j.status === 'queued')
+      .slice(0, 4).map((j) => ({ label: j.label, status: j.status, ...(typeof j.pct === 'number' ? { percent: Math.round(j.pct) } : {}) }));
+    const price = livePrice(activeTool);
+    return {
+      tool: activeTool,
+      toolName: toolName(activeTool, 'en'),
+      prompt: input.trim().slice(0, 600),
+      ...(settings ? { settings } : {}),
+      ...(LIVE_GEN_TOOLS.includes(activeTool) ? { priceCredits: price ?? (activeTool === 'video' ? 'priced at the storyboard step' : undefined) } : {}),
+      chatModel: getChatMode(),
+      busy: busy || genActiveRef.current,
+      ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
+      ...(lastMedia ? { lastResult: lastMedia.videoUrl ? 'a video' : lastMedia.imageUrl ? 'an image' : 'audio' } : {}),
+      runningGenerations: jobs,
+      messagesInThisChat: messages.length,
+      signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
+    };
+  };
+  liveChatSendRef.current = (text: string) => { void send({ promptOverride: text }); };
+  liveApiRef.current = (d: LiveActionEventDetail): boolean => {
+    const reply = (r: LiveStudioReply) => { d.reply = r; };
+    const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
+    switch (d.type) {
+      case 'get_screen_state':
+        reply({ ok: true, state: liveScreenState() });
+        return true;
+      case 'prepare_generation': {
+        selectTool(d.tool);
+        setInput(d.prompt.slice(0, 2000));
+        const { applied, musicSec } = applyLiveSettings(d.tool, d);
+        const price = livePrice(d.tool, { musicSec });
+        reply({ ok: true, tool: d.tool, applied, ...(price ? { priceCredits: price } : {}) });
+        if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
+        return true;
+      }
+      case 'open_studio':
+        selectTool(d.tool);
+        if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
+        return true;
+      case 'update_settings': {
+        if (!LIVE_GEN_TOOLS.includes(activeTool)) {
+          reply({ ok: false, error: 'no_settings', message: `The ${toolName(activeTool, 'en')} tool on screen has none of these settings; open or prepare video, image or music first.` });
+          return true;
+        }
+        const { applied, musicSec } = applyLiveSettings(activeTool, d);
+        if (!Object.keys(applied).length) {
+          reply({ ok: false, error: 'not_applicable', message: `None of those settings exist in the ${toolName(activeTool, 'en')} studio (or the style is not one it offers).` });
+          return true;
+        }
+        const price = livePrice(activeTool, { musicSec });
+        reply({ ok: true, tool: activeTool, applied, ...(price ? { priceCredits: price } : {}) });
+        return true;
+      }
+      case 'start_generation': {
+        if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; generating needs an account. Ask them to sign in.' }); return true; }
+        if (!LIVE_GEN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music or avatar first.` }); return true; }
+        if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
+        if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }
+        const price = livePrice(activeTool);
+        reply({ ok: true, tool: activeTool, ...(price ? { priceCredits: price } : {}) });
+        return true;
+      }
+      case 'chat_send': {
+        if (busy) { reply({ ok: false, error: 'busy', message: 'The chat is still answering; wait a moment or stop it first.' }); return true; }
+        if (activeTool === 'chat') liveChatSendRef.current(d.text);
+        else { pendingLiveChatRef.current = d.text; selectTool('chat'); }
+        reply({ ok: true });
+        return true;
+      }
+      case 'new_chat':
+        startNewConversation();
+        reply({ ok: true, message: 'Started a new, empty chat on screen.' });
+        return true;
+      case 'stop': {
+        const done: string[] = [];
+        if ((d.what === 'reply' || d.what === 'all') && (busy || genActiveRef.current)) { stop(); done.push('stopped the answer in progress'); }
+        if (d.what === 'generation' || d.what === 'all') {
+          const q = useJobQueue.getState();
+          const live = q.jobs.filter((j) => j.status === 'rendering' || j.status === 'queued');
+          for (const j of live) q.cancel(j.id);
+          if (live.length) done.push(`cancelled ${live.length} generation${live.length === 1 ? '' : 's'}`);
+        }
+        reply({ ok: true, message: done.length ? `Done: ${done.join(' and ')}.` : 'Nothing was running, so nothing was stopped.' });
+        return true;
+      }
+      case 'scroll_chat': {
+        const el = feedRef.current;
+        if (!el) { reply({ ok: false, error: 'no_chat', message: 'There is no chat list on screen to scroll.' }); return true; }
+        if (d.to === 'bottom') scrollToBottom();
+        else if (d.to === 'top') el.scrollTo({ top: 0, behavior: 'smooth' });
+        else el.scrollBy({ top: (d.to === 'up' ? -1 : 1) * Math.round(el.clientHeight * 0.8), behavior: 'smooth' });
+        return true;
+      }
+      case 'open_panel': {
+        if (d.panel === 'settings') {
+          if (activeTool === 'chat') { reply({ ok: false, error: 'no_settings', message: 'The chat has no settings panel; change its model with set_chat_model.' }); return true; }
+          openSettings();
+        } else if (d.panel === 'credits') window.dispatchEvent(new CustomEvent('myavatar:open-credits'));
+        else if (d.panel === 'persona') window.dispatchEvent(new Event(OPEN_PERSONA_EVENT));
+        else if (d.panel === 'connectors') window.dispatchEvent(new CustomEvent('myavatar:hub-open'));
+        else if (d.panel === 'search') window.dispatchEvent(new CustomEvent('myavatar:open-search'));
+        else if (d.panel === 'history') window.dispatchEvent(new CustomEvent('myavatar:open-sidebar'));
+        return true;
+      }
+      default:
+        // show_code (the canvas answers), end_call / call_view / set_chat_model (the call itself) — not the studio's.
+        return false;
+    }
+  };
+  liveRunRef.current = (): boolean => {
+    // The countdown ran out: run what is on screen through the studio's own path (balance checks; a video's storyboard).
+    if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim() || busy || genActiveRef.current) return false;
+    runTool(true);
+    return true;
+  };
+
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
     : activeTool === 'image' ? (locale === 'en' ? 'Create image' : locale === 'ru' ? 'Создать изображение' : 'სურათის შექმნა')
       : activeTool === 'music' ? (locale === 'en' ? 'Create music' : locale === 'ru' ? 'Создать музыку' : 'მუსიკის შექმნა')
@@ -7031,7 +7366,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   if (streamingId !== null && m.id === streamingId && m.role === 'assistant' && !m.genKind) {
                     return (
                       <>
-                        <StreamProCapNotice store={chat.store} lang={locale} />
+                        <StreamModeNotice store={chat.store} lang={locale} />
                         <StreamingBubble store={chat.store} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} transform={streamTransform} onCommit={pinStream} />
                       </>
                     );
@@ -7198,7 +7533,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   const displayText = stripDanglingServiceBlock(parsed.text);
                   return (
                     <>
-                      {m.chatNotice === 'pro_cap' && <ProCapLine lang={locale} />}
+                      {m.chatNotice && <ModeNoticeLine reason={m.chatNotice} lang={locale} />}
                       {typeof m.videoProgress === 'number' && !m.videoUrl && (
                         <div className="mb-2 h-1.5 w-[min(80vw,340px)] overflow-hidden rounded-full bg-app-border/20">
                           <div className="h-full rounded-full bg-app-accent transition-[width] duration-700 ease-out" style={{ width: `${Math.max(4, m.videoProgress)}%` }} />
@@ -7355,11 +7690,28 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   );
                 })()}
+                {/* ⚠️ A LONG ANSWER USED TO STOP MID-SENTENCE AND LOOK FINISHED. The route now says when a reply hit the
+                    output-token limit ({truncated}); the last such reply says so and offers to continue — one tap sends
+                    „Continue" as the next turn, and the model picks up from its own cut-off text. */}
+                {m.role === 'assistant' && m.truncated && i === messages.length - 1 && !busy && (
+                  <div data-testid="reply-truncated" className={`mt-2 flex flex-wrap items-center gap-2 text-app-muted ${chatSmallText(locale)}`}>
+                    <span>{t.cutShort}</span>
+                    <button
+                      type="button"
+                      onClick={() => continueChat()}
+                      data-testid="reply-continue"
+                      className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-elevated px-4 font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 [@media(pointer:fine)]:min-h-[36px]"
+                    >
+                      <ChevronsRight size={16} aria-hidden="true" /> {t.continueReply}
+                    </button>
+                  </div>
+                )}
                 {/* Retry — the last reply errored; re-run the same turn cleanly. */}
                 {/* Chat-only retry: a failed IMAGE/MUSIC/VIDEO bubble keeps its genKind (video also sets
                     retryVideo + its own retry), so exclude those — regenerateChat() streams a TEXT reply and
                     would NOT re-run the generation, silently turning a failed image job into a chat answer. */}
-                {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && (
+                {/* Not for a failure that would only fail again (a spent limit, a safety stop): `noRetry`. */}
+                {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && !m.noRetry && (
                   <button
                     type="button"
                     onClick={() => regenerateChat()}
@@ -7388,7 +7740,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

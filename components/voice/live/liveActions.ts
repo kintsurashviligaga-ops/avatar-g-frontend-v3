@@ -12,23 +12,30 @@
  *   • `myavatar:open-artifact` — detail `{title, language, code}` for show_code (the canvas another surface owns),
  *     cancelable too: ArtifactCanvas's preventDefault() is the receipt. No canvas on this page → `ok:false`.
  *
- * ⚠️ PREPARE-ONLY. Nothing here may start a render or charge a credit: the strongest thing a call can do is fill a
- * prompt the user then runs with their own tap. A future action that spends money needs a user gesture, not a call.
+ * ⚠️ MONEY. Everything here prepares, reads or navigates — except start_generation, which never runs on the call itself:
+ * it opens a COUNTDOWN (LIVE_START_COUNTDOWN_MS) the user can cancel on screen, and only when that runs out uncancelled is
+ * `myavatar:live-run` sent, which the studio answers through its own paid path. The model must have said the price and
+ * heard a yes (the declaration's `confirmed: "yes"`, lib/voice/liveTools.ts).
  * ⚠️ The answer goes out SYNCHRONOUSLY (no network, no await): Live function calls block the model's turn, and a
- * slow answer is dead air on a voice call.
+ * slow answer is dead air on a voice call. The studio fills `detail.reply` inside dispatchEvent, so its facts (the price,
+ * the settings it applied, the screen state) are in the same answer.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { setChatMode } from '@/lib/chat/chatModeStore';
 import type { LiveFunctionResponse } from '@/lib/voice/geminiLive';
 import {
   LIVE_ACTION_EVENT,
+  LIVE_RUN_EVENT,
+  LIVE_START_COUNTDOWN_MS,
   OPEN_ARTIFACT_EVENT,
   validateLiveToolCall,
   type LiveAction,
   type LiveActionEventDetail,
-  type LiveStudioTool,
+  type LiveCallView,
+  type LiveChatModel,
+  type LiveStudioReply,
   type OpenArtifactDetail,
-  type PrepareGenerationAction,
 } from '@/lib/voice/liveTools';
 
 /** The strip shows the last few things the agent did — more would bury the call. */
@@ -42,8 +49,8 @@ export const LIVE_END_CALL_MAX_WAIT_MS = 8000;
 
 export interface LiveToolCall { id: string; name: string; args: unknown }
 
-/** Everything a card can show; end_call has no card (the call simply ends). */
-export type LiveCardAction = Exclude<LiveAction, { type: 'end_call' }>;
+/** What a card can show: a prepared prompt, an opened tool, code. (The rest act on the visible screen and need no card.) */
+export type LiveCardAction = Extract<LiveAction, { type: 'prepare_generation' | 'open_studio' | 'show_code' }>;
 export interface LiveActionCard {
   /** The function-call id (toolCallCancellation removes by it); a local id when the model sent none. */
   id: string;
@@ -52,10 +59,17 @@ export interface LiveActionCard {
 
 /** Where the executor's side effects go (window events in the app; spies in tests). */
 export interface LiveActionEnv {
-  /** Returns true when a studio took it (its preventDefault receipt). */
+  /**
+   * Returns true when a studio took it (its preventDefault receipt). The studio may fill `detail.reply` while it handles
+   * the event (dispatchEvent is synchronous), and the executor reads it straight after.
+   */
   dispatchAction: (detail: LiveActionEventDetail) => boolean;
   /** Returns true when a canvas took it (its preventDefault receipt); false → show_code answers canvas_unavailable. */
   openArtifact: (detail: OpenArtifactDetail) => boolean;
+  /** The chat model picker (a global store, so it works on any page). Defaults to lib/chat/chatModeStore. */
+  setChatModel?: (model: LiveChatModel) => void;
+  /** The countdown ran out: the studio runs what was prepared. True when a studio took it. */
+  runGeneration?: () => boolean;
 }
 
 function dispatchCancelable<T>(type: string, detail: T): boolean {
@@ -79,23 +93,51 @@ export function dispatchOpenArtifact(detail: OpenArtifactDetail): boolean {
   return dispatchCancelable<OpenArtifactDetail>(OPEN_ARTIFACT_EVENT, { title: detail.title, language: detail.language, code: detail.code });
 }
 
-export const browserLiveActionEnv: LiveActionEnv = { dispatchAction: dispatchLiveAction, openArtifact: dispatchOpenArtifact };
+/** `myavatar:live-run`, cancelable: true = the studio started (or refused with its own message on screen). */
+export function dispatchLiveRun(): boolean {
+  return dispatchCancelable(LIVE_RUN_EVENT, {});
+}
 
-const STUDIO_NAME: Record<LiveStudioTool, string> = { video: 'Video', image: 'Image', music: 'Music', avatar: 'Avatar' };
+export const browserLiveActionEnv: LiveActionEnv = {
+  dispatchAction: dispatchLiveAction,
+  openArtifact: dispatchOpenArtifact,
+  setChatModel: (m) => setChatMode(m),
+  runGeneration: dispatchLiveRun,
+};
 
-function settingsSummary(a: PrepareGenerationAction): string {
+const STUDIO_NAME: Record<string, string> = {
+  video: 'Video', image: 'Image', music: 'Music', avatar: 'Avatar', chat: 'Chat', photoshoot: 'Photographer',
+  interior: 'Interior designer', remix: 'Remix', product: 'Product ad', swap: 'Character swap', vfx: 'VFX', motion: 'Motion',
+  montage: 'Montage (video editor)', dubbing: 'Dubbing', model3d: '3D model', presentation: 'Presentation', photo: 'Photo culling',
+};
+const MODEL_NAME: Record<LiveChatModel, string> = { fast: '3.8 Flash', thinking: '3.8 Flash Thinking', pro: '3.1 Pro', lite: '3.1 Flash-Lite' };
+
+/** The settings the studio actually applied, for the model ("9:16, 24 s"), or the ones asked for when it did not say. */
+function appliedSummary(asked: { aspectRatio?: string; durationSec?: number; style?: string; instrumental?: boolean }, reply: LiveStudioReply | undefined): string {
+  const src = (reply?.applied ?? asked) as Record<string, unknown>;
   const parts = [
-    a.aspectRatio ? `aspect ratio ${a.aspectRatio}` : '',
-    a.durationSec !== undefined ? `${a.durationSec} s` : '',
-    a.style ? `style "${a.style}"` : '',
+    typeof src.aspectRatio === 'string' ? `aspect ratio ${src.aspectRatio}` : '',
+    typeof src.durationSec === 'number' ? (src.durationSec === 0 ? 'full-length' : `${src.durationSec} s`) : '',
+    typeof src.style === 'string' && src.style ? `style "${src.style}"` : '',
+    typeof src.instrumental === 'boolean' ? (src.instrumental ? 'instrumental' : 'with vocals') : '',
   ].filter(Boolean);
-  // ⚠️ Honest about what the studio did: the receipt covers the studio switch and the prompt, not these settings.
-  return parts.length
-    ? ` The requested ${parts.join(', ')} are shown to the user on screen; they confirm them in the studio settings before Run.`
-    : '';
+  return parts.join(', ');
+}
+
+/** "It costs 4 credits." — or how this tool is priced when the studio could not quote it up front. */
+function priceSentence(reply: LiveStudioReply | undefined, tool?: string): string {
+  const p = reply?.priceCredits;
+  if (typeof p === 'number' && p > 0) return ` Running it costs ${p} credit${p === 1 ? '' : 's'}.`;
+  if (tool === 'video') return ' A video is priced at its storyboard step, before anything renders.';
+  return '';
+}
+
+function refused(answer: (r: Record<string, unknown>) => LiveFunctionResponse, reply: LiveStudioReply | undefined, fallback: string): LiveCallOutcome {
+  return { response: answer({ ok: false, error: reply?.error ?? 'refused', message: reply?.message ?? fallback }) };
 }
 
 const NO_STUDIO = 'No studio is open on this page, so nothing was prepared. Suggest the user opens the MyAvatar dashboard and asks again.';
+const NO_STUDIO_SHORT = 'No studio is open on this page, so nothing happened. Suggest the user opens the MyAvatar dashboard.';
 const NO_CANVAS = 'No code canvas is open on this page, so the code was not shown or saved. Do not read it aloud; '
   + 'suggest the user opens the MyAvatar dashboard and asks again.';
 
@@ -103,6 +145,12 @@ export interface LiveCallOutcome {
   response: LiveFunctionResponse;
   card?: LiveActionCard;
   endCall?: true;
+  /** It changed what is on screen — the call docks so the user can see it (the host decides). */
+  screen?: true;
+  /** call_view: the model asked for this view. */
+  view?: LiveCallView;
+  /** start_generation was accepted: the countdown to run it (the host shows it with Cancel). */
+  run?: { tool: string; priceCredits?: number };
 }
 
 /**
@@ -123,27 +171,110 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   const card = (a: LiveCardAction): LiveActionCard => ({ id: id || localId, action: a });
 
   switch (action.type) {
+    case 'get_screen_state': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      return { response: answer({ ok: true, state: detail.reply?.state ?? {} }) };
+    }
     case 'prepare_generation': {
-      if (!env.dispatchAction(action)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO }) };
-      const studio = STUDIO_NAME[action.tool];
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'The studio could not prepare it.');
+      const studio = STUDIO_NAME[action.tool] ?? action.tool;
+      const applied = appliedSummary(action, detail.reply);
       return {
         response: answer({
           ok: true,
-          summary: `Prepared a ${action.tool} prompt in the ${studio} studio. Nothing was generated and no credits were spent: `
-            + `the user reviews it and starts it with the Run button.${settingsSummary(action)}`,
+          summary: `Prepared a ${action.tool} prompt in the ${studio} studio on screen${applied ? ` (${applied})` : ''}. Nothing `
+            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Ask the user whether to start it; `
+            + 'call start_generation only after a clear yes.',
+          ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
         }),
         card: card(action),
+        screen: true,
+      };
+    }
+    case 'update_settings': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'The studio on screen has none of those settings.');
+      const applied = appliedSummary(action, detail.reply);
+      return {
+        response: answer({
+          ok: true,
+          summary: `Updated the settings on screen${applied ? `: ${applied}` : ''}.${priceSentence(detail.reply, detail.reply?.tool)}`,
+          ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
+        }),
+        screen: true,
+      };
+    }
+    case 'start_generation': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'There is nothing prepared to start.');
+      const tool = detail.reply?.tool ?? '';
+      const price = detail.reply?.priceCredits;
+      return {
+        response: answer({
+          ok: true,
+          summary: `The ${STUDIO_NAME[tool] ?? 'studio'} generation starts in ${Math.round(LIVE_START_COUNTDOWN_MS / 1000)} seconds `
+            + `unless the user taps Cancel on screen.${priceSentence(detail.reply, tool)} Say so in one sentence.`,
+        }),
+        screen: true,
+        run: { tool, ...(typeof price === 'number' ? { priceCredits: price } : {}) },
       };
     }
     case 'open_studio': {
       if (!env.dispatchAction(action)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO }) };
-      return { response: answer({ ok: true, summary: `Opened the ${STUDIO_NAME[action.tool]} studio. Nothing was started.` }), card: card(action) };
+      return {
+        response: answer({ ok: true, summary: `Opened ${STUDIO_NAME[action.tool] ?? action.tool} on screen. Nothing was started.` }),
+        card: card(action),
+        screen: true,
+      };
     }
+    case 'chat_send': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'The chat could not take the message.');
+      return {
+        response: answer({ ok: true, summary: 'Sent to the chat: the written answer is appearing on screen. Tell the user it is on the screen; do not read it all aloud.' }),
+        screen: true,
+      };
+    }
+    case 'new_chat':
+    case 'scroll_chat':
+    case 'open_panel':
+    case 'stop': {
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'That is not available on this screen.');
+      const summary = detail.reply?.message
+        ?? (action.type === 'new_chat' ? 'Started a new, empty chat on screen.'
+          : action.type === 'scroll_chat' ? `Scrolled the chat ${action.to === 'top' || action.to === 'bottom' ? `to the ${action.to}` : action.to}.`
+            : action.type === 'open_panel' ? `Opened the ${action.panel} panel on screen.`
+              : 'Stopped.');
+      return { response: answer({ ok: true, summary }), screen: true };
+    }
+    case 'set_chat_model': {
+      // A global store: works on any page, and the studio's header follows its event.
+      (env.setChatModel ?? ((m: LiveChatModel) => setChatMode(m)))(action.model);
+      return { response: answer({ ok: true, summary: `The text chat now answers with ${MODEL_NAME[action.model]}.` }) };
+    }
+    case 'call_view':
+      return {
+        response: answer({
+          ok: true,
+          summary: action.view === 'screen'
+            ? 'The call is now a slim bar at the top of the screen; the user sees the app while you talk.'
+            : 'The full call screen is back.',
+        }),
+        view: action.view,
+      };
     case 'show_code': {
       env.dispatchAction(action);
       // ⚠️ The canvas's receipt, like the studio's above: the library and agent pages host Live but no canvas, and the
-      // model used to say "it's on your screen" there. And "saved", never "on screen": the Live dialog covers the
-      // canvas for the whole call — the user sees it after the card's Open (which hangs up) or after the call.
+      // model used to say "it's on your screen" there. And "saved", never "on screen": the full call screen covers the
+      // canvas — the user sees it in the docked view, after the card's Open, or after the call.
       if (!env.openArtifact({ title: action.title, language: action.language, code: action.code })) {
         return { response: answer({ ok: false, error: 'canvas_unavailable', message: NO_CANVAS }) };
       }
@@ -171,14 +302,33 @@ export function revealLiveAction(action: LiveCardAction, env: LiveActionEnv = br
   else env.dispatchAction({ ...action, reveal: true });
 }
 
+/** A confirmed start_generation counting down on screen. */
+export interface LivePendingRun {
+  id: string;
+  tool: string;
+  priceCredits?: number;
+  /** Date.now() when it runs. */
+  runsAt: number;
+  /** 'counting' → 'started' | 'cancelled' | 'failed' (kept briefly so the screen can say what happened). */
+  state: 'counting' | 'started' | 'cancelled' | 'failed';
+}
+
 export interface UseLiveActionsResult {
   /** Newest first, at most LIVE_ACTION_CARDS_MAX. */
   cards: LiveActionCard[];
   /** The model called end_call: the host hangs up once the goodbye has been said. */
   endRequested: boolean;
+  /** Bumps each time an action changed what is on screen (the host docks the call so the user sees it). */
+  screenSeq: number;
+  /** The last call_view the model asked for (with a sequence number, so asking twice still applies). */
+  viewRequest: { view: LiveCallView; seq: number } | null;
+  /** A confirmed generation counting down, or how the last one ended. */
+  pendingRun: LivePendingRun | null;
+  /** The user's Cancel on the countdown. */
+  cancelRun: () => void;
   /** useGeminiLiveSession `onToolCall`: answers every call, synchronously. */
   onToolCall: (calls: LiveToolCall[]) => LiveFunctionResponse[];
-  /** useGeminiLiveSession `onToolCallCancellation`: the user barged in — drop those cards. */
+  /** useGeminiLiveSession `onToolCallCancellation`: the user barged in — drop those cards (and a countdown it started). */
   onToolCallCancellation: (ids: string[]) => void;
 }
 
@@ -186,20 +336,61 @@ export interface UseLiveActionsResult {
 export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
   const [cards, setCards] = useState<LiveActionCard[]>([]);
   const [endRequested, setEndRequested] = useState(false);
+  const [screenSeq, setScreenSeq] = useState(0);
+  const [viewRequest, setViewRequest] = useState<{ view: LiveCallView; seq: number } | null>(null);
+  const [pendingRun, setPendingRun] = useState<LivePendingRun | null>(null);
   const envRef = useRef(env);
   envRef.current = env;
   const countRef = useRef(0);
   const seqRef = useRef(0);
   const mountedRef = useRef(true);
+  const runTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      // ⚠️ A call that ends mid-countdown does NOT run it: hanging up is the clearest "no" there is.
+      if (runTimer.current) clearTimeout(runTimer.current);
+      if (clearTimer.current) clearTimeout(clearTimer.current);
+    };
   }, []);
+
+  /** Show how the countdown ended for a moment, then clear the banner. */
+  const settleRun = useCallback((state: LivePendingRun['state']) => {
+    if (!mountedRef.current) return;
+    setPendingRun((p) => (p ? { ...p, state } : p));
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    clearTimer.current = setTimeout(() => { if (mountedRef.current) setPendingRun(null); }, 2500);
+  }, []);
+
+  const armRun = useCallback((id: string, run: { tool: string; priceCredits?: number }) => {
+    if (runTimer.current) clearTimeout(runTimer.current);
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    setPendingRun({ id, ...run, runsAt: Date.now() + LIVE_START_COUNTDOWN_MS, state: 'counting' });
+    runTimer.current = setTimeout(() => {
+      runTimer.current = null;
+      if (!mountedRef.current) return;
+      const e = envRef.current ?? browserLiveActionEnv;
+      const ok = (e.runGeneration ?? dispatchLiveRun)();
+      settleRun(ok ? 'started' : 'failed');
+    }, LIVE_START_COUNTDOWN_MS);
+  }, [settleRun]);
+
+  const cancelRun = useCallback(() => {
+    if (!runTimer.current) return;
+    clearTimeout(runTimer.current);
+    runTimer.current = null;
+    settleRun('cancelled');
+  }, [settleRun]);
 
   const onToolCall = useCallback((calls: LiveToolCall[]): LiveFunctionResponse[] => {
     const responses: LiveFunctionResponse[] = [];
     const added: LiveActionCard[] = [];
     let end = false;
+    let screen = false;
+    let view: LiveCallView | null = null;
+    let run: { id: string; tool: string; priceCredits?: number } | null = null;
     for (const call of Array.isArray(calls) ? calls : []) {
       if (countRef.current >= LIVE_ACTIONS_PER_CALL_MAX) {
         responses.push({
@@ -211,10 +402,14 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
       }
       countRef.current += 1;
       seqRef.current += 1;
-      const out = executeLiveToolCall(call, envRef.current ?? browserLiveActionEnv, `live-action-${seqRef.current}`);
+      const localId = `live-action-${seqRef.current}`;
+      const out = executeLiveToolCall(call, envRef.current ?? browserLiveActionEnv, localId);
       responses.push(out.response);
       if (out.card) added.unshift(out.card); // newest first
       if (out.endCall) end = true;
+      if (out.screen) screen = true;
+      if (out.view) view = out.view;
+      if (out.run) run = { id: typeof call?.id === 'string' && call.id ? call.id : localId, ...out.run };
     }
     if (mountedRef.current) {
       if (added.length) {
@@ -224,15 +419,27 @@ export function useLiveActions(env?: LiveActionEnv): UseLiveActionsResult {
         });
       }
       if (end) setEndRequested(true);
+      if (screen) setScreenSeq((n) => n + 1);
+      if (view) { const v = view; setViewRequest((p) => ({ view: v, seq: (p?.seq ?? 0) + 1 })); }
+      if (run) armRun(run.id, run);
     }
     return responses;
-  }, []);
+  }, [armRun]);
 
   const onToolCallCancellation = useCallback((ids: string[]) => {
     if (!mountedRef.current || !Array.isArray(ids) || !ids.length) return;
     const gone = new Set(ids);
     setCards((prev) => (prev.some((c) => gone.has(c.id)) ? prev.filter((c) => !gone.has(c.id)) : prev));
+    // A barge-in that cancels the start itself also stops its countdown.
+    setPendingRun((p) => {
+      if (p && p.state === 'counting' && gone.has(p.id) && runTimer.current) {
+        clearTimeout(runTimer.current);
+        runTimer.current = null;
+        return { ...p, state: 'cancelled' };
+      }
+      return p;
+    });
   }, []);
 
-  return { cards, endRequested, onToolCall, onToolCallCancellation };
+  return { cards, endRequested, screenSeq, viewRequest, pendingRun, cancelRun, onToolCall, onToolCallCancellation };
 }

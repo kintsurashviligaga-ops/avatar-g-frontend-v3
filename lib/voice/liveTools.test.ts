@@ -8,9 +8,11 @@ import {
   LIVE_ACTION_NAMES,
   LIVE_ASPECT_RATIOS,
   LIVE_CODE_LANGUAGES,
+  LIVE_CHAT_TEXT_MAX_CHARS,
   LIVE_CODE_MAX_BYTES,
   LIVE_DURATION_MAX_SEC,
   LIVE_FUNCTION_DECLARATIONS,
+  LIVE_OPEN_TOOLS,
   LIVE_PROMPT_MAX_CHARS,
   LIVE_STUDIO_TOOLS,
   LIVE_STYLE_MAX_CHARS,
@@ -20,6 +22,7 @@ import {
   type LiveSchema,
 } from './liveTools';
 import { isPreviewable, normalizeArtifactLanguage } from '@/components/chat/artifacts/artifactSpec';
+import { ALL_TOOLS } from '@/lib/studio/tools';
 
 const ALLOWED_SCHEMA_KEYS = new Set(['type', 'description', 'enum', 'properties', 'required']);
 
@@ -40,9 +43,12 @@ const err = (name: string, args: unknown) => {
 };
 
 describe('LIVE_FUNCTION_DECLARATIONS', () => {
-  it('declares exactly the four functions, in order, each with a description', () => {
+  it('declares every function, in order, each with a description', () => {
     expect(LIVE_FUNCTION_DECLARATIONS.map((d) => d.name)).toEqual([...LIVE_ACTION_NAMES]);
-    expect(LIVE_ACTION_NAMES).toEqual(['prepare_generation', 'show_code', 'open_studio', 'end_call']);
+    expect(LIVE_ACTION_NAMES).toEqual([
+      'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
+      'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'end_call',
+    ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
       expect(d.description.length).toBeGreaterThan(20);
@@ -63,7 +69,10 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
         if (s.enum) expect(s.type).toBe('STRING');
       });
     }
-    expect(LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'end_call')!.parameters).toBeUndefined();
+    // Functions with no arguments carry NO `parameters` (an empty OBJECT is a Gemini 400).
+    for (const name of ['end_call', 'get_screen_state', 'new_chat']) {
+      expect(LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === name)!.parameters).toBeUndefined();
+    }
   });
 
   it('the argument shapes the brief locked: prepare_generation / show_code / open_studio', () => {
@@ -80,17 +89,31 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(byName.open_studio!.parameters!.required).toEqual(['tool']);
   });
 
-  it('tells the model the safety rule: prepare_generation never starts a render or spends credits', () => {
+  it('tells the model the money rule: only start_generation spends, and only after the price and a clear yes', () => {
     const prep = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'prepare_generation')!;
     expect(prep.description).toMatch(/does NOT start/);
     expect(prep.description).toMatch(/no credits/);
-    expect(LIVE_ACTIONS_RULE).toMatch(/NEVER starts a generation or spends credits/);
+    const start = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'start_generation')!;
+    expect(start.description).toMatch(/SPENDS CREDITS/);
+    expect(start.description).toMatch(/ONLY after you told the user the price and they clearly said yes/);
+    expect(start.parameters!.required).toEqual(['confirmed']);
+    expect(start.parameters!.properties!.confirmed!.enum).toEqual(['yes']);
+    expect(LIVE_ACTIONS_RULE).toMatch(/never spend credits/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/ONLY after the user clearly says yes to that price/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/Never start a generation on your own initiative/);
     expect(LIVE_ACTIONS_RULE).toMatch(/ok:false/);
+  });
+
+  it('open_studio reaches every studio tool (kept in step with lib/studio/tools)', () => {
+    const open = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'open_studio')!;
+    expect([...open.parameters!.properties!.tool!.enum!].sort()).toEqual([...ALL_TOOLS].sort());
+    expect([...LIVE_OPEN_TOOLS].sort()).toEqual([...ALL_TOOLS].sort());
   });
 
   it('is frozen and JSON-round-trip safe (it travels server → Google → browser)', () => {
     expect(Object.isFrozen(LIVE_FUNCTION_DECLARATIONS)).toBe(true);
-    expect(Object.isFrozen(LIVE_FUNCTION_DECLARATIONS[0]!.parameters!.properties!.tool!.enum)).toBe(true);
+    const prep = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'prepare_generation')!;
+    expect(Object.isFrozen(prep.parameters!.properties!.tool!.enum)).toBe(true);
     expect(JSON.parse(JSON.stringify(LIVE_FUNCTION_DECLARATIONS))).toEqual(LIVE_FUNCTION_DECLARATIONS);
   });
 
@@ -112,8 +135,8 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
   it('never claims code is on the user\'s screen — show_code SAVES it (the Live dialog covers the canvas)', () => {
     const show = LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'show_code')!;
     expect(show.description).not.toMatch(/screen/i);
-    expect(LIVE_ACTIONS_RULE).not.toMatch(/on the screen/i);
-    expect(LIVE_ACTIONS_RULE).toMatch(/show_code saves code in the code canvas/);
+    expect(LIVE_ACTIONS_RULE).not.toMatch(/code (is )?on the screen/i);
+    expect(LIVE_ACTIONS_RULE).toMatch(/show_code for code/);
   });
 });
 
@@ -257,6 +280,55 @@ describe('validateLiveToolCall — open_studio, end_call, junk', () => {
         expect(err(name, bad).code).toBe('invalid_args');
       }
     }
+  });
+});
+
+describe('validateLiveToolCall — the screen-control functions', () => {
+  it('open_studio: every tool, plus spoken aliases', () => {
+    for (const t of ALL_TOOLS) expect(ok('open_studio', { tool: t })).toEqual({ type: 'open_studio', tool: t });
+    expect(ok('open_studio', { tool: 'Photographer' })).toEqual({ type: 'open_studio', tool: 'photoshoot' });
+    expect(ok('open_studio', { tool: 'video editor' })).toEqual({ type: 'open_studio', tool: 'montage' });
+    expect(ok('open_studio', { tool: 'slides' })).toEqual({ type: 'open_studio', tool: 'presentation' });
+    expect(err('open_studio', { tool: 'settings' })).toMatchObject({ field: 'tool' });
+  });
+
+  it('update_settings: at least one setting, each validated like prepare_generation; instrumental is on/off', () => {
+    expect(ok('update_settings', { aspectRatio: 'portrait', durationSec: '30s', instrumental: 'on' }))
+      .toEqual({ type: 'update_settings', aspectRatio: '9:16', durationSec: 30, instrumental: true });
+    expect(ok('update_settings', { instrumental: 'off' })).toEqual({ type: 'update_settings', instrumental: false });
+    expect(ok('update_settings', { style: '  lo-fi  ' })).toEqual({ type: 'update_settings', style: 'lo-fi' });
+    expect(err('update_settings', {})).toMatchObject({ code: 'invalid_args' });
+    expect(err('update_settings', { aspectRatio: '1080x1920' })).toMatchObject({ field: 'aspectRatio' });
+    expect(err('update_settings', { instrumental: 'maybe' })).toMatchObject({ field: 'instrumental' });
+  });
+
+  it('start_generation: refused unless the model asserts the user said yes', () => {
+    expect(ok('start_generation', { confirmed: 'yes' })).toEqual({ type: 'start_generation' });
+    expect(ok('start_generation', { confirmed: ' YES ' })).toEqual({ type: 'start_generation' });
+    for (const bad of [{}, { confirmed: 'no' }, { confirmed: 'maybe' }, null, undefined, 'yes']) {
+      expect(err('start_generation', bad)).toMatchObject({ code: 'invalid_args', field: 'confirmed' });
+    }
+  });
+
+  it('chat_send: a non-empty text, bounded; get_screen_state / new_chat take no arguments', () => {
+    expect(ok('chat_send', { text: '  დამიწერე გეგმა  ' })).toEqual({ type: 'chat_send', text: 'დამიწერე გეგმა' });
+    expect((ok('chat_send', { text: 'ა'.repeat(9000) }) as { text: string }).text.length).toBe(LIVE_CHAT_TEXT_MAX_CHARS);
+    expect(err('chat_send', { text: '   ' })).toMatchObject({ field: 'text' });
+    expect(ok('get_screen_state', { anything: 1 })).toEqual({ type: 'get_screen_state' });
+    expect(ok('new_chat', undefined)).toEqual({ type: 'new_chat' });
+  });
+
+  it('the enum functions accept exactly their values (case-insensitive) and name them on an error', () => {
+    expect(ok('set_chat_model', { model: 'PRO' })).toEqual({ type: 'set_chat_model', model: 'pro' });
+    expect(err('set_chat_model', { model: 'gpt' })).toMatchObject({ field: 'model', allowed: ['fast', 'thinking', 'pro', 'lite'] });
+    expect(ok('stop', { what: 'generation' })).toEqual({ type: 'stop', what: 'generation' });
+    expect(err('stop', {})).toMatchObject({ field: 'what' });
+    expect(ok('scroll_chat', { to: 'top' })).toEqual({ type: 'scroll_chat', to: 'top' });
+    expect(err('scroll_chat', { to: 'left' })).toMatchObject({ field: 'to' });
+    expect(ok('open_panel', { panel: 'credits' })).toEqual({ type: 'open_panel', panel: 'credits' });
+    expect(err('open_panel', { panel: 'billing-admin' })).toMatchObject({ field: 'panel' });
+    expect(ok('call_view', { view: 'screen' })).toEqual({ type: 'call_view', view: 'screen' });
+    expect(err('call_view', { view: 'tiny' })).toMatchObject({ field: 'view' });
   });
 });
 

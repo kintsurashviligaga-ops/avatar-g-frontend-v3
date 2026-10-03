@@ -29,7 +29,7 @@ describe('copy helpers', () => {
     const s = LIVE_ACTION_STRINGS[locale];
     for (const tool of ['video', 'image', 'music', 'avatar'] as const) {
       expect(s.prepared[tool]).toBeTruthy();
-      expect(s.opened[tool]).toBeTruthy();
+      expect(s.opened('X')).toContain('X');
     }
     expect(s.openStudioLabel).toContain(s.open);
     expect(s.openCodeLabel).toContain(s.open);
@@ -38,7 +38,7 @@ describe('copy helpers', () => {
   it('title / detail / announcement per action', () => {
     expect(liveActionTitle(video.action, 'en')).toBe('Prepared a video prompt');
     expect(liveActionTitle(image.action, 'ka')).toBe('სურათის პრომპტი მოვამზადე');
-    expect(liveActionTitle(studio.action, 'ru')).toBe('Открыта студия музыки');
+    expect(liveActionTitle(studio.action, 'ru')).toBe('Открыто: Музыка');
     expect(liveActionTitle(code.action, 'en')).toBe('Fibonacci');
     expect(liveActionDetail(video.action, 'ka')).toBe('9:16 · 24 წმ · cinematic · A cat surfing at sunset');
     expect(liveActionDetail(code.action, 'en')).toBe('Code · python');

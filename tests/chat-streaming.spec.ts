@@ -155,6 +155,58 @@ test.describe('chat streaming (mocked SSE)', () => {
     await expect(page.getByText(/RESOURCE_EXHAUSTED|prepayment/)).toHaveCount(0);
     await expect(page.getByTestId('composer-input')).toBeEnabled();
   });
+
+  test('a reply cut at the length limit says so and continues on one tap', async ({ page }) => {
+    const bodies: Array<{ messages?: Array<{ role: string; content: unknown }> }> = [];
+    await page.route('**/api/chat/gemini', (route) => {
+      bodies.push(route.request().postDataJSON());
+      const first = bodies.length === 1;
+      return route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        body: sse(first
+          ? [{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'პირველი ნაწილი, რომელიც შუაში' }, { truncated: true }, '[DONE]']
+          : [{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'და აქ გრძელდება.' }, '[DONE]']),
+      });
+    });
+    await openChat(page);
+    await sendTurn(page, 'დაწერე გრძელი ესე');
+
+    await expect(page.getByTestId('reply-truncated')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('reply-continue').click();
+    await expect(page.getByText('და აქ გრძელდება.')).toBeVisible({ timeout: 15_000 });
+    // „Continue" went out as the next user turn, after the cut-off answer — and the button is gone.
+    const msgs = bodies[1]!.messages!;
+    expect(msgs[msgs.length - 1]).toMatchObject({ role: 'user', content: 'გააგრძელე' });
+    expect(JSON.stringify(msgs[msgs.length - 2])).toContain('პირველი ნაწილი');
+    await expect(page.getByTestId('reply-truncated')).toHaveCount(0);
+  });
+
+  test('a refusal that cannot succeed again shows the route\'s own words and no Retry; a busy Pro says Fast answered', async ({ page }) => {
+    let turn = 0;
+    await page.route('**/api/chat/gemini', (route) => {
+      turn += 1;
+      return route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        body: sse(turn === 1
+          ? [{ error: { code: 'daily_cap', retryable: false, message: '⚠️ ჩატის დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით.', lang: 'ka' } }, '[DONE]']
+          : [
+            { meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', requestedMode: 'pro', reason: 'pro_busy' } },
+            { text: 'Fast-მა უპასუხა.' },
+            '[DONE]',
+          ]),
+      });
+    });
+    await openChat(page);
+    await sendTurn(page, 'გამარჯობა');
+    await expect(page.getByText('ჩატის დღიური ლიმიტი ამოიწურა').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'თავიდან გენერაცია' })).toHaveCount(0);
+
+    await sendTurn(page, 'კიდევ ერთხელ');
+    await expect(page.getByText('Fast-მა უპასუხა.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('mode-notice').filter({ visible: true }).last()).toHaveAttribute('data-reason', 'pro_busy');
+  });
 });
 
 test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
