@@ -33,6 +33,7 @@ Every function but one is free. `start_generation` is the only one that spends c
 | Dock: the call as a floating capsule at the top; the step line, the link chip, the run banner | `components/voice/live/LiveDock.tsx` |
 | Full screen: the control row, the action cards (a link's Open), the run banner, "Show the screen", stop-speaking | `LiveActionCards.tsx`, `LiveModeOverlay.tsx` |
 | The agent's face: the rocket in the orb, and behind it on the full call | `components/voice/live/LiveOrb.tsx` |
+| The call screen's shared chrome (frame, top bar, status line, error panel, control row) — also the fallback's | `components/voice/live/LiveCallChrome.tsx` |
 | The agent's steps (running → done) for both screens | `components/voice/live/LiveActivityFeed.tsx` (`liveCurrentStep`) |
 | Host: dock/full view, the call flag, `end_call` and Open | `components/voice/GeminiLiveConversation.tsx` |
 | Studio: one listener that does each action and writes the reply | `components/studio/OmniStudio.tsx` |
@@ -155,6 +156,18 @@ model's turn, so a slow answer would be dead air.
   each with an **Open** button (a link's Open opens the site and keeps the call). One visually hidden `role="status"`
   line announces each new card once. Framer Motion animates the cards; they simply appear under
   `prefers-reduced-motion`. Georgian reading text is at least 16 px.
+- **Connecting.** The status reads „უკავშირდება…" / "Connecting…" / «Подключение…» in the UI language (the owner's
+  English screenshot was the `/en` locale; the Georgian copy was there). The rocket orb breathes — scale and opacity
+  within 3 %, one 2 s cycle (`connectBreath`) — and the arc around it runs over a faint accent track, growing with the
+  time spent connecting: a tenth at once, 63 % of the way in 3 s, held at 92 % until the call is up (`connectProgress`,
+  the elapsed ÷ cap pattern of DESIGN.md §8). Under `prefers-reduced-motion`: a still quarter arc on the track, no breath.
+- **The fallback wears the same screen.** When Gemini Live is unavailable for a user, ChatChrome mounts the ElevenLabs
+  `VoiceConversation`; it draws the same pieces (`LiveCallChrome`) around the same `LiveOrb`, fed by its own analysers:
+  the rocket orb and the faint rocket behind it, „ცოცხალი ზარი", the captions toggle, the status line with the waveform,
+  the captions (the last thing said and the answer) and the row Mute · End. A tap on the orb ends the turn while it
+  listens; before a start (iOS needs one tap) and after a pause, a labelled button under the status starts or resumes.
+  Mute switches the mic track off, so a muted user neither ends a turn nor barges in. Its old canvas orb (crimson →
+  violet while speaking, `lib/voice/orbViz.ts`) is gone.
 
 ## Switches and fallbacks
 

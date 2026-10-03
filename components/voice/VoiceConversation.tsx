@@ -1,7 +1,9 @@
 'use client';
 
 /**
- * VoiceConversation — continuous, hands-free, full-duplex-style voice node (Phase 10).
+ * VoiceConversation — continuous, hands-free, full-duplex-style voice node (Phase 10). Tier 3 of ChatChrome's voice
+ * cascade: the ElevenLabs fallback a user gets when Gemini Live is unavailable for them (a provider outage, no live
+ * user id, NEXT_PUBLIC_GEMINI_LIVE_ENABLED off).
  *
  * Tap ONCE to start a live session; after that it listens continuously, auto-detects when you
  * stop speaking (VAD), replies out loud, and immediately listens again — hands-free multi-turn
@@ -24,10 +26,23 @@
  *    background tab); a monotonic turn-generation counter orphans stale async on barge/close.
  *  - If the Web-Audio machinery can't be set up, it FALLS BACK to plain tap-to-talk so voice still
  *    works. Tapping the orb while listening always force-ends the turn (manual endpoint).
+ *
+ * THE SCREEN IS THE LIVE CALL'S (the owner, 2026-10-03: "the rocket logo on the Live chat, as here, for users too").
+ * ⚠️ This used to be its own screen: a canvas metaball orb that went crimson → violet while speaking (the banned "AI
+ * purple" and glow soup, docs/DESIGN.md §6), no rocket, an unlocalized ✕. It now draws the Gemini Live call's pieces
+ * (components/voice/live/LiveCallChrome.tsx): the rocket orb with its one audio-reactive halo (LiveOrb, fed by this
+ * session's analysers through `getLevels`), the large faint rocket behind it, „ცოცხალი ზარი“ top-left with the
+ * captions toggle, the status line with the compact waveform, the rolling captions, and the round 56 px glass row —
+ * Mute · End. The status words are the Live screen's (LIVE_OVERLAY_STRINGS), so „უკავშირდება…“ reads the same on both.
+ * Mute disables the mic track: the recorder and the VAD hear silence, so a muted user neither ends a turn nor barges in.
+ * Like the Live screen it is portalled onto <body>, pinned dark, at z-[130], and is a dialog: focus moves in, Tab is
+ * trapped, Escape ends the call.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Mic, AlertCircle, RotateCcw } from 'lucide-react';
-import { smoothBar, rgba, ORB_STATE_GRADIENT, orbBlobRadius, type OrbState, type RGB } from '@/lib/voice/orbViz';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AlertCircle, Mic, MicOff, PhoneOff, RotateCcw, Subtitles } from 'lucide-react';
+
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
   DEFAULT_VAD_CONFIG,
   bargeConfig,
@@ -40,18 +55,67 @@ import {
 import { useMicRelease } from '@/lib/voice/micBus';
 import { isSpeechLang, loadLearnedSpeechLang, resolveSpeechLang, saveLearnedSpeechLang, transcriptSpeechLang } from '@/lib/voice/speechLang';
 
+import LiveCaptions from './live/LiveCaptions';
+import {
+  LiveBottomScrim,
+  LiveCallFrame,
+  LiveControl,
+  LiveControlRow,
+  LiveErrorPanel,
+  LiveStatusLine,
+  LiveTopBar,
+  LiveTopToggle,
+  livePrimaryButtonClass,
+  liveQuietText,
+} from './live/LiveCallChrome';
+import { LIVE_OVERLAY_STRINGS } from './live/LiveModeOverlay';
+import LiveOrb, { type LiveOrbState } from './live/LiveOrb';
+import type { LiveCaption, LiveLevels } from './live/useGeminiLiveSession';
+
 type Lang = 'ka' | 'en' | 'ru';
 type Status = 'connecting' | 'off' | 'listening' | 'thinking' | 'speaking' | 'resume' | 'error';
+/** Why the session stopped: the microphone, the routes' rate limit, or a leg that answered nothing (signed out, TTS). */
+type VoiceError = 'mic' | 'rate_limited' | 'failed';
 interface Turn { role: 'user' | 'assistant'; content: string }
 
-const COPY: Record<Lang, {
-  title: string; connecting: string; tapToStart: string; listening: string; thinking: string; speaking: string;
-  micDenied: string; retry: string; rateLimited: string; tapResume: string; you: string; assistant: string; hint: string;
+/** This screen's own words; everything the Live call also says (status, Mute, End, „ცოცხალი ზარი“) is LIVE_OVERLAY_STRINGS. */
+export const VOICE_CONVERSATION_STRINGS: Record<Lang, {
+  title: string; tapToStart: string; tapResume: string; paused: string; endTurn: string; hint: string;
+  micDenied: string; rateLimited: string; noReply: string; stopped: string; retry: string;
 }> = {
-  ka: { title: 'ხმოვანი საუბარი', connecting: 'ვუკავშირდები…', tapToStart: 'დააჭირე დასაწყებად', listening: 'გისმენ…', thinking: 'ვფიქრობ…', speaking: 'ვპასუხობ…', micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', retry: 'სცადე თავიდან', rateLimited: 'ცოტა ხანს დაისვენე და სცადე თავიდან', tapResume: 'დააჭირე გასაგრძელებლად', you: 'შენ', assistant: 'MyAvatar', hint: 'ილაპარაკე თავისუფლად — მე თვითონ მივხვდები როდის დაასრულებ' },
-  en: { title: 'Voice chat', connecting: 'Connecting…', tapToStart: 'Tap to start', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', micDenied: "Couldn't access the microphone", retry: 'Try again', rateLimited: 'Slow down a moment — tap to retry', tapResume: 'Tap to resume', you: 'You', assistant: 'MyAvatar', hint: 'Just talk — I detect when you finish' },
-  ru: { title: 'Голосовой чат', connecting: 'Подключаюсь…', tapToStart: 'Нажмите, чтобы начать', listening: 'Слушаю…', thinking: 'Думаю…', speaking: 'Отвечаю…', micDenied: 'Нет доступа к микрофону', retry: 'Ещё раз', rateLimited: 'Слишком часто — нажмите, чтобы повторить', tapResume: 'Нажмите, чтобы продолжить', you: 'Вы', assistant: 'MyAvatar', hint: 'Просто говорите — я пойму, когда вы закончите' },
+  ka: {
+    title: 'ხმოვანი საუბარი', tapToStart: 'დააჭირე დასაწყებად', tapResume: 'დააჭირე გასაგრძელებლად', paused: 'შეჩერებულია',
+    endTurn: 'დააჭირე, როცა დაასრულებ', hint: 'ილაპარაკე თავისუფლად — მე თვითონ მივხვდები როდის დაასრულებ',
+    micDenied: 'მიკროფონზე წვდომა ვერ მოხერხდა', rateLimited: 'ცოტა ხანს დაისვენე და სცადე თავიდან',
+    noReply: 'პასუხი ვერ მივიღე.', stopped: 'საუბარი შეჩერდა', retry: 'სცადე თავიდან',
+  },
+  en: {
+    title: 'Voice chat', tapToStart: 'Tap to start', tapResume: 'Tap to resume', paused: 'Paused',
+    endTurn: "Tap when you're done", hint: 'Just talk — I detect when you finish',
+    micDenied: "Couldn't access the microphone", rateLimited: 'Slow down a moment — tap to retry',
+    noReply: "I couldn't get an answer.", stopped: 'The conversation stopped', retry: 'Try again',
+  },
+  ru: {
+    title: 'Голосовой чат', tapToStart: 'Нажмите, чтобы начать', tapResume: 'Нажмите, чтобы продолжить', paused: 'На паузе',
+    endTurn: 'Нажмите, когда закончите', hint: 'Просто говорите — я пойму, когда вы закончите',
+    micDenied: 'Нет доступа к микрофону', rateLimited: 'Слишком часто — нажмите, чтобы повторить',
+    noReply: 'Не удалось получить ответ.', stopped: 'Разговор остановлен', retry: 'Ещё раз',
+  },
 };
+
+/** The orb has fewer states than the session: not started and paused both look idle. */
+export function voiceOrbState(status: Status): LiveOrbState {
+  switch (status) {
+    case 'connecting':
+    case 'listening':
+    case 'thinking':
+    case 'speaking':
+    case 'error':
+      return status;
+    default:
+      return 'idle';
+  }
+}
 
 const VAD_INTERVAL_MS = 50;
 // Master Contract V5 — per-chunk grace window after playback starts, during which barge is suppressed
@@ -82,13 +146,48 @@ function turnSignal(ms: number, extra: AbortSignal): AbortSignal {
   return typeof anyFn === 'function' ? anyFn([timeout, extra]) : timeout;
 }
 
+/**
+ * The voice level an analyser hears (0..1) — what the orb and the waveform follow: the mean of the lower two-thirds of
+ * its bins (where voice energy lives), with gain. Never throws: a closed context's analyser reads as silence.
+ */
+function analyserLevel(analyser: AnalyserNode | null, bufRef: { current: Uint8Array | null }): number {
+  if (!analyser) return 0;
+  try {
+    const bins = analyser.frequencyBinCount;
+    let buf = bufRef.current;
+    if (!buf || buf.length !== bins) { buf = new Uint8Array(bins); bufRef.current = buf; }
+    analyser.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>);
+    const usable = Math.max(1, Math.floor(bins * 0.66));
+    let sum = 0; for (let i = 0; i < usable; i++) sum += buf[i] ?? 0;
+    return Math.min(1, (sum / usable / 255) * 1.9);
+  } catch {
+    return 0;
+  }
+}
+
+/** Mute = the mic track off: the recorder and the VAD hear silence, and the stream stays granted for unmute. */
+function setMicEnabled(stream: MediaStream | null, enabled: boolean): void {
+  try { stream?.getAudioTracks?.().forEach((tr) => { try { tr.enabled = enabled; } catch { /* noop */ } }); } catch { /* noop */ }
+}
+
+const NO_LEVELS: LiveLevels = { input: 0, output: 0 };
+
+/** A context a teardown closed — read through a call, because it can close during any await of a boot. */
+function isClosed(ctx: AudioContext | null): boolean {
+  return ctx?.state === 'closed';
+}
+
 export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string; onClose: () => void }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
-  const t = COPY[lang];
+  const t = VOICE_CONVERSATION_STRINGS[lang];
+  const live = LIVE_OVERLAY_STRINGS[lang];
   const [status, setStatus] = useState<Status>('connecting');
-  const [transcript, setTranscript] = useState('');
-  const [reply, setReply] = useState('');
-  const [error, setError] = useState('');
+  // The last exchange, numbered so each new turn mounts new caption lines (the log announces additions).
+  const [turn, setTurn] = useState<{ n: number; said: string; reply: string }>({ n: 0, said: '', reply: '' });
+  const [error, setError] = useState<VoiceError | null>(null);
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
+  const [captionsOn, setCaptionsOn] = useState(true);
 
   // ── Mic + Web-Audio graph (persistent across turns) ──
   const streamRef = useRef<MediaStream | null>(null);
@@ -108,16 +207,13 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
 
   // ── Playback (through the AudioContext) ──
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const playbackAnalyserRef = useRef<AnalyserNode | null>(null); // taps the TTS output for the orb viz
+  const playbackAnalyserRef = useRef<AnalyserNode | null>(null); // taps the TTS output for the orb
   const ttsAbortRef = useRef<AbortController | null>(null);
   const turnAbortRef = useRef<AbortController | null>(null);
 
-  // ── Real-time LIQUID ORB (canvas driven by whichever analyser is live) ──
-  const vizCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const vizRafRef = useRef<number>(0);
-  const vizFreqRef = useRef<Uint8Array | null>(null);
-  const orbLevelRef = useRef(0); // smoothed single amplitude scalar (0..1)
-  const orbColorRef = useRef<[number, number, number]>([0, 209, 255]); // eased core colour → flawless state transitions
+  // ── The orb's levels (read by LiveOrb + LiveWaveform once per animation frame each) ──
+  const levelBufRef = useRef<Uint8Array | null>(null);
+  const levelCacheRef = useRef<{ at: number; value: LiveLevels }>({ at: -1, value: NO_LEVELS });
 
   // ── Session bookkeeping ──
   const statusRef = useRef<Status>('connecting');
@@ -156,7 +252,12 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     if (ctx && ctx.state !== 'closed') { void ctx.close().catch(() => undefined); }
   }, [stopGraph]);
 
-  useEffect(() => () => { mountedRef.current = false; teardown(); }, [teardown]);
+  // ⚠️ Re-arm the flag on every mount: React's development double-mount (Strict Mode — the app router's default) ran
+  // this cleanup once and left `mountedRef` false, so the remount's boot bailed and the screen sat on connecting.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; teardown(); };
+  }, [teardown]);
 
   // VECTOR 1 — pre-warm the AudioContext on mount (this component only mounts when the voice overlay opens,
   // so it's a safe head-start): the context is CREATED suspended here — no user gesture needed to create,
@@ -170,120 +271,26 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     try { audioCtxRef.current = new Ctor(); } catch { /* falls back to lazy creation on the first turn */ }
   }, []);
 
-  // ── The LIQUID ORB (Master Contract V16) — a morphing, glowing 3D-like blob (Siri/Gemini-class) that
-  //    replaces the flat linear equalizer. One rAF loop drives a canvas from whichever AnalyserNode is live:
-  //    the MIC while listening, the TTS output while speaking, a breathing idle while thinking. The boundary
-  //    is a metaball-style sine morph (lib/voice/orbBlobRadius) reacting to a single smoothed amplitude; the
-  //    core colour EASES toward the per-state gradient each frame so transitions never snap. Thinking adds a
-  //    clockwise silver orbit trail; speaking pulses crimson→violet; error is a dim steady crimson aura. ──
-  useEffect(() => {
-    const draw = () => {
-      vizRafRef.current = requestAnimationFrame(draw);
-      const canvas = vizCanvasRef.current;
-      if (!canvas) return;
-      const c = canvas.getContext('2d');
-      if (!c) return;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const cw = Math.max(1, Math.round(canvas.clientWidth || 180));
-      const ch = Math.max(1, Math.round(canvas.clientHeight || 180));
-      if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) { canvas.width = cw * dpr; canvas.height = ch * dpr; }
-      c.setTransform(dpr, 0, 0, dpr, 0, 0);
-      c.clearRect(0, 0, cw, ch);
-
-      const st = statusRef.current;
-      const listening = st === 'listening';
-      const speaking = st === 'speaking';
-      const orbState: OrbState = listening ? 'listening' : speaking ? 'speaking' : st === 'error' ? 'error' : st === 'off' ? 'idle' : 'processing';
-      const analyser = listening ? analyserRef.current : speaking ? playbackAnalyserRef.current : null;
-
-      // ── single live amplitude scalar (fast attack / slow decay so the orb pops then settles) ──
-      let target: number;
-      if (analyser) {
-        const bins = analyser.frequencyBinCount;
-        let buf = vizFreqRef.current;
-        if (!buf || buf.length !== bins) { buf = new Uint8Array(bins); vizFreqRef.current = buf; }
-        analyser.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>);
-        const usable = Math.max(1, Math.floor(bins * 0.66)); // voice energy lives in the lower-mid bins
-        let sum = 0; for (let i = 0; i < usable; i++) sum += buf[i] ?? 0;
-        target = Math.min(1, (sum / usable / 255) * 1.9); // normalise + gain
-      } else {
-        target = 0.12 + 0.05 * (0.5 + 0.5 * Math.sin(performance.now() / 720)); // gentle idle/thinking breathing
-      }
-      const level = smoothBar(orbLevelRef.current, target, 0.45, 0.12);
-      orbLevelRef.current = level;
-
-      // ── ease the core colour toward the target state gradient (flawless, snap-free transitions) ──
-      const gradient = ORB_STATE_GRADIENT[orbState];
-      const cur = orbColorRef.current;
-      cur[0] += (gradient.inner[0] - cur[0]) * 0.08;
-      cur[1] += (gradient.inner[1] - cur[1]) * 0.08;
-      cur[2] += (gradient.inner[2] - cur[2]) * 0.08;
-      const inner: RGB = [Math.round(cur[0]), Math.round(cur[1]), Math.round(cur[2])];
-      const outer = gradient.outer;
-
-      const t = performance.now() / 1000;
-      const cx = cw / 2;
-      const cy = ch / 2;
-      const baseR = Math.min(cw, ch) * (0.26 + level * 0.06);
-      const SAMPLES = 72;
-
-      // ── layered liquid blobs (back → front), additively blended for a luminous 3D feel ──
-      c.globalCompositeOperation = 'lighter';
-      const layers = [
-        { scale: 1.30, seed: 2.1, alpha: 0.15 },
-        { scale: 1.12, seed: 0.9, alpha: 0.26 },
-        { scale: 1.00, seed: 0.0, alpha: 0.85 },
-      ];
-      for (const ly of layers) {
-        c.beginPath();
-        for (let i = 0; i <= SAMPLES; i++) {
-          const a = i / SAMPLES;
-          const r = baseR * ly.scale * orbBlobRadius(a, t, level, ly.seed);
-          const ang = a * Math.PI * 2;
-          const x = cx + Math.cos(ang) * r;
-          const y = cy + Math.sin(ang) * r;
-          if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-        }
-        c.closePath();
-        const g = c.createRadialGradient(cx, cy, baseR * 0.15, cx, cy, baseR * ly.scale * 1.35);
-        g.addColorStop(0, rgba(inner, ly.alpha));
-        g.addColorStop(0.55, rgba(outer, ly.alpha * 0.7));
-        g.addColorStop(1, rgba(outer, 0));
-        c.fillStyle = g;
-        c.shadowColor = rgba(inner, 0.5);
-        c.shadowBlur = 16 + level * 26;
-        c.fill();
-      }
-      c.shadowBlur = 0;
-
-      // ── luminous core (brightens with loudness) ──
-      const coreR = baseR * (0.5 + level * 0.16);
-      const cg = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, coreR));
-      cg.addColorStop(0, rgba([255, 255, 255], 0.85 * (0.5 + level * 0.5)));
-      cg.addColorStop(0.4, rgba(inner, 0.55));
-      cg.addColorStop(1, rgba(inner, 0));
-      c.fillStyle = cg;
-      c.beginPath(); c.arc(cx, cy, Math.max(1, coreR), 0, Math.PI * 2); c.fill();
-
-      // ── thinking: a smooth clockwise silver/white orbit trail (intellectual processing) ──
-      if (orbState === 'processing') {
-        const orbitR = baseR * 1.36;
-        const head = t * 2.2; // clockwise
-        const TRAIL = 22;
-        for (let k = 0; k < TRAIL; k++) {
-          const ang = head - k * 0.09;
-          const fade = 1 - k / TRAIL;
-          c.beginPath();
-          c.arc(cx + Math.cos(ang) * orbitR, cy + Math.sin(ang) * orbitR, 2.4 * fade + 0.6, 0, Math.PI * 2);
-          c.fillStyle = rgba([226, 232, 240], 0.5 * fade);
-          c.fill();
-        }
-      }
-      c.globalCompositeOperation = 'source-over';
+  // ── The orb's levels: the MIC while listening (zero while muted), the TTS output while speaking, nothing otherwise.
+  //    LiveOrb and LiveWaveform each read once per frame, so one analyser read serves both (8 ms cache). ──
+  const getLevels = useCallback((): LiveLevels => {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const cache = levelCacheRef.current;
+    if (cache.at >= 0 && now - cache.at >= 0 && now - cache.at < 8) return cache.value;
+    const st = statusRef.current;
+    const value: LiveLevels = {
+      input: st === 'listening' && !mutedRef.current ? analyserLevel(analyserRef.current, levelBufRef) : 0,
+      output: st === 'speaking' ? analyserLevel(playbackAnalyserRef.current, levelBufRef) : 0,
     };
+    levelCacheRef.current = { at: now, value };
+    return value;
+  }, []);
 
-    vizRafRef.current = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(vizRafRef.current);
+  const toggleMute = useCallback(() => {
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+    setMicEnabled(streamRef.current, !next);
   }, []);
 
   // ── One VAD sample: read RMS → advance the reducer → act on the event ──
@@ -341,7 +348,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const guard = setTimeout(finish, 45_000);
       const src = ctx.createBufferSource();
       src.buffer = audio;
-      // Route src → AnalyserNode → destination so the orb equalizer can pulse to the assistant's
+      // Route src → AnalyserNode → destination so the orb can pulse to the assistant's
       // OWN voice in real time. Created once, reused across chunks/turns (tied to the ctx lifecycle).
       let pa = playbackAnalyserRef.current;
       if (!pa) {
@@ -372,7 +379,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     const turnSig = turnAbortRef.current.signal;
     const ttsSig = ttsAbortRef.current.signal;
     try {
-      go('thinking'); setError('');
+      go('thinking'); setError(null);
 
       // 1) STT — label the upload with the container's real extension (iOS records mp4, not webm).
       const fd = new FormData();
@@ -383,13 +390,13 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       fd.append('language', resolveSpeechLang({ locale: lang, typed: transcriptSpeechLang(lastSaid), learned: loadLearnedSpeechLang() }));
       const sr = await fetch('/api/voice/transcribe', { method: 'POST', body: fd, credentials: 'include', signal: turnSignal(30_000, turnSig) }).catch(() => null);
       if (stale()) return;
-      if (sr && sr.status === 429) { go('error'); setError(t.rateLimited); return; } // back off, don't hammer the throttled route
+      if (sr && sr.status === 429) { go('error'); setError('rate_limited'); return; } // back off, don't hammer the throttled route
       const sj = sr ? ((await sr.json().catch(() => null)) as { text?: string; language?: unknown } | null) : null;
       const said = (sj?.text || '').trim();
       if (said && isSpeechLang(sj?.language)) saveLearnedSpeechLang(sj.language);
       if (stale()) return;
       if (!said) { armListenRef.current?.(); return; } // heard nothing → listen again (no chat/tts spend)
-      setTranscript(said); setReply('');
+      setTurn((p) => ({ n: p.n + 1, said, reply: '' }));
       historyRef.current = [...historyRef.current, { role: 'user' as const, content: said }].slice(-12);
 
       // 2) LLM reply — a bulletproof SYNCHRONOUS full response (PHASE 35: the Phase-33 sentence-streaming
@@ -400,8 +407,8 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         signal: turnSignal(25_000, turnSig),
       }).catch(() => null);
       if (stale()) return;
-      if (cr && cr.status === 401) { go('error'); setError(t.retry); return; } // signed out → stop, don't loop
-      if (cr && cr.status === 429) { go('error'); setError(t.rateLimited); return; } // rate-limited → stop, don't re-pay STT in a loop
+      if (cr && cr.status === 401) { go('error'); setError('failed'); return; } // signed out → stop, don't loop
+      if (cr && cr.status === 429) { go('error'); setError('rate_limited'); return; } // rate-limited → stop, don't re-pay STT in a loop
       const cj = cr ? ((await cr.json().catch(() => null)) as { reply?: string; locale?: string } | null) : null;
       const answer = (cj?.reply || '').trim();
       // The server answers in the language actually SPOKEN (detected from the transcript), which may differ from the
@@ -409,7 +416,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const spokenLocale: Lang = cj?.locale === 'en' || cj?.locale === 'ru' || cj?.locale === 'ka' ? cj.locale : lang;
       if (stale()) return;
       if (!answer) { armListenRef.current?.(); return; } // fail-open: don't hang, just listen again
-      setReply(answer);
+      setTurn((p) => ({ ...p, reply: answer }));
 
       // 3) TTS — feed the WHOLE reply to ElevenLabs in ONE call and play a single unbroken buffer. No
       //    sentence/chunk slicing → no cut words, no dropped tails. Voice replies are short (trimForSpeech
@@ -429,7 +436,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         }
       } catch { buf = null; }
       if (stale()) return;
-      if (!buf) { go('error'); setError(t.retry); return; } // TTS miss → surface, don't loop silently
+      if (!buf) { go('error'); setError('failed'); return; } // TTS miss → surface, don't loop silently
       await playBuffer(buf, myGen);
       if (stale()) return; // barge/close bumped the generation → stop cleanly
       // Record the reply in history ONLY after the user actually heard it — a barged/failed turn must not
@@ -439,7 +446,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     } catch {
       if (!stale()) armListenRef.current?.(); // never strand the loop on an unexpected throw
     }
-  }, [go, lang, playBuffer, t.rateLimited, t.retry]);
+  }, [go, lang, playBuffer]);
   runTurnRef.current = runTurn;
 
   // ── Arm a fresh listening turn: new recorder on the persistent stream + reset the VAD ──
@@ -468,9 +475,9 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       rec.start(250); // 250ms timeslice = preroll so the first phoneme is never clipped
       go('listening');
     } catch {
-      go('error'); setError(t.micDenied);
+      go('error'); setError('mic');
     }
-  }, [go, t.micDenied]);
+  }, [go]);
   armListenRef.current = armListen;
 
   // ── Barge-in: the user talked over the reply → abort playback + capture the new utterance ──
@@ -494,7 +501,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   //    Android → zero-touch); if it stays 'suspended' (iOS), we fall back to a single "tap to start"
   //    (that tap IS a gesture → resumes cleanly). Never a dead, silently-suspended listening orb. ──
   const bootSession = useCallback(async (fromGesture: boolean) => {
-    setError('');
+    setError(null);
     stopGraph(); // idempotent: a re-boot from a mid-session error must not leak the old mic/graph
     turnGenRef.current += 1; // orphan any in-flight turn from the previous session
 
@@ -510,7 +517,9 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
         ctx = null;
       }
     } catch { ctx = null; }
-    if (!mountedRef.current) return;
+    // Unmounted meanwhile — or a teardown closed the context this boot was building on (the development double-mount):
+    // the remount's own boot owns the session.
+    if (!mountedRef.current || isClosed(ctx)) return;
 
     // 2) Auto-start only commits when the context is actually running (VAD will work hands-free).
     //    Otherwise show a one-tap affordance rather than grabbing the mic into a dead loop.
@@ -521,12 +530,13 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
       // The overlay can close (teardown) while the permission prompt is up; if the grant lands after
       // unmount, drop the stream instead of leaving a hot mic + graph behind.
-      if (!mountedRef.current) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
+      if (!mountedRef.current || isClosed(ctx)) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
       // Reentrancy (double-tap on the orb): a concurrent boot already acquired the mic + built the
       // graph. Drop this duplicate stream instead of overwriting streamRef — otherwise the earlier
       // stream + its MediaRecorder become an orphaned hot mic that teardown never sees.
       if (streamRef.current) { stream.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } }); return; }
       streamRef.current = stream;
+      setMicEnabled(stream, !mutedRef.current); // a re-grant keeps the user's mute
       mimeRef.current = pickMime();
       runningRef.current = true;
 
@@ -556,9 +566,9 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
       streamRef.current?.getTracks().forEach((tr) => { try { tr.stop(); } catch { /* noop */ } });
       streamRef.current = null;
       runningRef.current = false;
-      go('error'); setError(t.micDenied);
+      go('error'); setError('mic');
     }
-  }, [armListen, go, stopGraph, t.micDenied, vadTick]);
+  }, [armListen, go, stopGraph, vadTick]);
   const bootSessionRef = useRef<(fromGesture: boolean) => Promise<void>>();
   bootSessionRef.current = bootSession;
 
@@ -598,7 +608,7 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
   }, 'voice-conversation');
 
   const resumeSession = useCallback(async () => {
-    setError('');
+    setError(null);
     runningRef.current = true;
     const ctx = audioCtxRef.current;
     try { if (ctx && ctx.state === 'suspended') await ctx.resume(); } catch { /* noop */ }
@@ -623,56 +633,115 @@ export function VoiceConversation({ locale = 'ka', onClose }: { locale?: string;
     // thinking / speaking → ignore (barge-in is handled by the VAD, not a tap)
   }, [bootSession, resumeSession]);
 
-  const label = status === 'connecting' ? t.connecting
-    : status === 'listening' ? t.listening
-      : status === 'thinking' ? t.thinking
-        : status === 'speaking' ? t.speaking
-          : status === 'resume' ? t.tapResume
-            : status === 'error' ? (error || t.retry)
-              : t.tapToStart;
-  const busy = status === 'thinking' || status === 'connecting';
-  // The reactive equalizer owns every "live audio" state; static glyphs remain only for tap actions.
-  const showViz = status === 'connecting' || status === 'listening' || status === 'thinking' || status === 'speaking';
+  // The dialog contract of the Live screen: focus moves in, Tab is trapped, Escape ends the call.
+  const dialogRef = useDialogA11y<HTMLDivElement>(true, onClose);
 
-  return (
-    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-app-bg/95 backdrop-blur-md ag-no-drag" role="dialog" aria-label={t.title}>
-      <button type="button" onClick={onClose} aria-label="close" className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.06] text-app-muted transition hover:bg-white/[0.12] hover:text-app-text" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
-        <X size={18} />
-      </button>
+  // The last exchange as the Live call's captions: what the user said, quieter; the answer, large.
+  const captions = useMemo<LiveCaption[]>(() => {
+    const out: LiveCaption[] = [];
+    if (turn.said) out.push({ id: `u${turn.n}`, role: 'user', text: turn.said, final: true });
+    if (turn.reply) out.push({ id: `a${turn.n}`, role: 'assistant', text: turn.reply, final: true });
+    return out;
+  }, [turn]);
 
-      <span className="mb-8 text-[12px] font-semibold uppercase tracking-wider text-app-muted">{t.title}</span>
+  const orbState = voiceOrbState(status);
+  const statusLabel = status === 'off' ? live.status.idle
+    : status === 'resume' ? t.paused
+      : status === 'error' ? t.stopped // never "connection dropped": a mic failure is not a network one
+        : live.status[status];
+  const quiet = liveQuietText(lang);
+  const isError = status === 'error';
+  // The orb is the mic control while listening (a tap ends the turn — with or without the VAD); before a start and
+  // after a pause it answers a tap too, but the labelled button under the status line is the control for those.
+  const orbIsControl = status === 'listening';
+  const orbTappable = orbIsControl || status === 'off' || status === 'resume';
+  const errorKind: VoiceError = error ?? 'failed';
 
-      {/* Conversation echo */}
-      <div className="mb-10 min-h-[84px] w-full max-w-md px-6 text-center">
-        {transcript && <p className="mb-2 text-[13px] text-app-muted"><span className="font-semibold text-app-text/70">{t.you}:</span> {transcript}</p>}
-        {reply && <p className="text-[15px] leading-relaxed text-app-text"><span className="font-semibold text-app-accent">{t.assistant}:</span> {reply}</p>}
-        {error && <p className="mt-2 flex items-center justify-center gap-1.5 text-[12.5px] text-rose-400"><AlertCircle size={14} /> {error}</p>}
-      </div>
+  const screen = (
+    <LiveCallFrame ref={dialogRef} ariaLabel={t.title} data-voice-status={status}>
+      {!isError && <LiveBottomScrim />}
 
-      {/* Master Contract V16 — the LIQUID VOICE ORB. A circular canvas renders the morphing glowing orb for
-          every active-audio state; a tap glyph otherwise. Tapping the orb starts / ends the turn (the whole
-          disc is the mic control). */}
-      <button
-        type="button"
-        onClick={onMicTap}
-        disabled={busy}
-        aria-label={label}
-        className={`relative flex h-44 w-44 max-w-[70vw] items-center justify-center overflow-hidden rounded-full transition-all disabled:cursor-default ${
-          showViz
-            ? (status === 'listening' ? 'ring-1 ring-cyan-400/25' : status === 'speaking' ? 'ring-1 ring-rose-500/25' : 'ring-1 ring-white/15')
-            : status === 'resume' ? 'bg-app-elevated text-app-accent ring-1 ring-app-border/15 hover:scale-[1.03]'
-              : 'bg-app-accent text-app-bg shadow-[0_10px_40px_-8px_rgba(51,143,232,0.55)] hover:scale-[1.03]'
-        }`}
-      >
-        {showViz ? (
-          <canvas ref={vizCanvasRef} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />
-        ) : status === 'resume' ? <RotateCcw size={30} />
-          : <Mic size={34} />}
-      </button>
-      <span className="mt-5 text-[13.5px] font-medium text-app-muted">{label}</span>
-      {status === 'listening' && vadModeRef.current && <span className="mt-2 max-w-xs px-6 text-center text-[11.5px] text-app-muted/70">{t.hint}</span>}
-    </div>
+      <LiveTopBar label={live.live} live={!isError}>
+        {!isError && (
+          <LiveTopToggle label={live.captions} pressed={captionsOn} onClick={() => setCaptionsOn((v) => !v)} icon={<Subtitles size={20} aria-hidden />} />
+        )}
+      </LiveTopBar>
+
+      {isError ? (
+        <LiveErrorPanel
+          icon={errorKind === 'mic' ? <MicOff size={26} /> : <AlertCircle size={26} />}
+          headline={errorKind === 'mic' ? live.micHeadline : t.stopped}
+          reason={errorKind === 'mic' ? t.micDenied : errorKind === 'rate_limited' ? t.rateLimited : t.noReply}
+          locale={lang}
+        >
+          <button type="button" onClick={onMicTap} className={livePrimaryButtonClass(lang)}>
+            <RotateCcw size={16} aria-hidden />
+            {t.retry}
+          </button>
+        </LiveErrorPanel>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={onMicTap}
+            disabled={!orbTappable}
+            aria-label={orbIsControl ? t.endTurn : undefined}
+            aria-hidden={orbIsControl ? undefined : true}
+            tabIndex={orbIsControl ? undefined : -1}
+            data-testid="voice-orb"
+            className="relative z-10 mb-6 touch-manipulation rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:cursor-default"
+          >
+            <LiveOrb state={orbState} getLevels={getLevels} size={208} label={statusLabel} backdrop />
+          </button>
+
+          <LiveStatusLine state={orbState} muted={muted} getLevels={getLevels} label={statusLabel} locale={lang} />
+
+          {(status === 'off' || status === 'resume') && (
+            <button type="button" onClick={onMicTap} data-testid="voice-start" className={`relative z-10 mt-4 ${livePrimaryButtonClass(lang)}`}>
+              {status === 'off' ? <Mic size={18} aria-hidden /> : <RotateCcw size={18} aria-hidden />}
+              {status === 'off' ? t.tapToStart : t.tapResume}
+            </button>
+          )}
+
+          {/* Until the first turn: how hands-free works (the VAD hears the end of a sentence). */}
+          {status === 'listening' && vadModeRef.current && !turn.said && (
+            <p className={`relative z-10 mt-3 max-w-xs px-6 text-center ${quiet} leading-[1.6] text-app-muted`}>{t.hint}</p>
+          )}
+
+          {captionsOn && (
+            <LiveCaptions captions={captions} locale={lang} className="relative z-10 mt-6 min-h-[5.5rem]" />
+          )}
+        </>
+      )}
+
+      {/* The Live call's row: Mute · End (this engine has no camera and one voice). Only End on the error screen. */}
+      <LiveControlRow>
+        {!isError && (
+          <LiveControl
+            label={live.muteShort}
+            ariaLabel={live.mute}
+            icon={muted ? <MicOff size={22} aria-hidden /> : <Mic size={22} aria-hidden />}
+            onClick={toggleMute}
+            pressed={muted}
+            locale={lang}
+            testId="voice-mute"
+          />
+        )}
+        <LiveControl
+          label={live.endShort}
+          ariaLabel={live.end}
+          icon={<PhoneOff size={22} aria-hidden />}
+          onClick={onClose}
+          tone="danger"
+          locale={lang}
+          testId="voice-end"
+        />
+      </LiveControlRow>
+    </LiveCallFrame>
   );
+
+  // ChatChrome loads this screen with ssr:false, so document exists; the guard keeps a server render harmless.
+  return typeof document === 'undefined' ? screen : createPortal(screen, document.body);
 }
 
 export default VoiceConversation;

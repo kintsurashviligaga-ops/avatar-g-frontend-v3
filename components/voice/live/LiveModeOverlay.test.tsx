@@ -11,7 +11,9 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import LiveCaptions, { tailText } from './LiveCaptions';
 import { LIVE_DOCK_STRINGS } from './LiveDock';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './LiveModeOverlay';
-import LiveOrb, { LiveWaveform, WAVE_REST, orbStateFor, orbTarget, waveLevel } from './LiveOrb';
+import LiveOrb, {
+  CONNECT_BREATH_DEPTH, CONNECT_BREATH_MS, LiveWaveform, WAVE_REST, connectBreath, connectProgress, orbStateFor, orbTarget, waveLevel,
+} from './LiveOrb';
 import type { LiveCaption, LiveErrorCode } from './useGeminiLiveSession';
 
 const ALL_CODES: LiveErrorCode[] = [
@@ -55,6 +57,19 @@ describe('LiveModeOverlay', () => {
     expect(end.querySelector('[data-circle] svg')).not.toBeNull();
     expect(end.textContent).toBe(s.endShort);
     expect(s.end).toContain(s.endShort);
+  });
+
+  it.each([
+    ['ka', 'უკავშირდება…', 'ცოცხალი ზარი'],
+    ['en', 'Connecting…', 'Live call'],
+    ['ru', 'Подключение…', 'Живой звонок'],
+  ] as const)('%s: connecting reads in the UI language, beside the waveform, under the breathing rocket', (locale, connecting, label) => {
+    expect(LIVE_OVERLAY_STRINGS[locale].status.connecting).toBe(connecting);
+    render(<LiveModeOverlay locale={locale} status="connecting" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
+    expect(screen.getByTestId('live-status').textContent).toBe(connecting);
+    expect(screen.getByTestId('live-call-label').textContent).toBe(label);
+    expect(screen.getByRole('img', { name: connecting }).getAttribute('data-state')).toBe('connecting');
+    expect(screen.getByTestId('live-orb-arc').className).toMatch(/\bopacity-100\b/);
   });
 
   it('stop-speaking joins the row only while the agent speaks', () => {
@@ -358,6 +373,79 @@ describe('LiveOrb', () => {
     expect((container.firstElementChild as HTMLElement).style.width).toBe(`${size}px`);
     // No backdrop unless asked (the dock has none).
     expect(container.querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
+  });
+
+  it('connecting breathes: a 2 s cycle, at rest at both ends, never past 3 %', () => {
+    expect(CONNECT_BREATH_MS).toBe(2000);
+    expect(CONNECT_BREATH_DEPTH).toBeLessThanOrEqual(0.03);
+    expect(connectBreath(0)).toBeCloseTo(0, 10);
+    expect(connectBreath(1000)).toBeCloseTo(1, 10);
+    expect(connectBreath(2000)).toBeCloseTo(0, 10);
+    for (let ts = 0; ts <= 4000; ts += 37) {
+      expect(connectBreath(ts)).toBeGreaterThanOrEqual(0);
+      expect(connectBreath(ts)).toBeLessThanOrEqual(1);
+    }
+    expect(connectBreath(Number.NaN)).toBe(0);
+  });
+
+  it('the connecting arc shows progress: a tenth at once, growing with the wait, held at 92 %', () => {
+    expect(connectProgress(0)).toBeCloseTo(0.1, 5);
+    let prev = 0;
+    for (const ms of [0, 250, 1000, 3000, 6000, 12_000, 60_000]) {
+      const p = connectProgress(ms);
+      expect(p).toBeGreaterThanOrEqual(prev);
+      prev = p;
+    }
+    expect(connectProgress(3000)).toBeGreaterThan(0.55);
+    expect(connectProgress(600_000)).toBeLessThanOrEqual(0.92);
+    expect(connectProgress(-5)).toBeCloseTo(0.1, 5);
+  });
+
+  it('connecting: the orb swells and brightens within 3 % and the arc grows over its track (paint and transform only)', () => {
+    mockReducedMotion(false);
+    const frames: FrameRequestCallback[] = [];
+    jest.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { frames.push(cb); return frames.length; });
+    jest.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    const { container, rerender, unmount } = render(<LiveOrb state="connecting" label="Connecting" />);
+    const arc = () => container.querySelector('[data-testid="live-orb-arc"] circle:last-child')!;
+    const arcLength = () => Number(arc().getAttribute('stroke-dasharray')!.split(' ')[0]);
+    const core = () => container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement;
+    const scales: number[] = [];
+    const opacities: number[] = [];
+    act(() => {
+      for (let i = 0; i <= 150; i++) {
+        frames[frames.length - 1]!(i * 40); // 6 s at 25 fps: three breaths
+        scales.push(Number(/scale\(([\d.]+)\)/.exec(core().style.transform)![1]));
+        opacities.push(Number(core().style.opacity));
+      }
+    });
+    expect(Math.max(...scales)).toBeLessThanOrEqual(1.03 + 1e-9);
+    expect(Math.max(...scales)).toBeGreaterThan(1.02); // it does breathe
+    expect(Math.min(...opacities)).toBeGreaterThanOrEqual(0.97 - 1e-9);
+    expect(Math.max(...opacities)).toBeLessThanOrEqual(1);
+    expect(arcLength()).toBeGreaterThan(70); // ~6 s in: most of the ring
+    expect(arcLength()).toBeLessThanOrEqual(92);
+    // The faint track is on while connecting, and the whole ring is one hue (the accent).
+    expect(container.querySelector('[data-testid="live-orb-arc"] circle')!.getAttribute('class')).toMatch(/stroke-app-accent\/15.*opacity-100/);
+    expect(arc().getAttribute('class')).toMatch(/stroke-app-accent\/80/);
+    // Connected: the breath settles back and lets go of the opacity; the arc goes back to a quarter and hides.
+    rerender(<LiveOrb state="listening" label="Listening" getLevels={() => ({ input: 0, output: 0 })} />);
+    act(() => { for (let i = 0; i < 80; i++) frames[frames.length - 1]!(7000 + i * 16); });
+    expect(core().style.opacity).toBe('');
+    expect(arcLength()).toBe(25);
+    expect(container.querySelector('[data-testid="live-orb-arc"]')!.className).toMatch(/\bopacity-0\b/);
+    unmount();
+  });
+
+  it('connecting under prefers-reduced-motion: no breath, no frame, a still quarter arc on its track', () => {
+    mockReducedMotion(true);
+    const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+    const { container } = render(<LiveOrb state="connecting" label="Connecting" />);
+    expect(raf).not.toHaveBeenCalled();
+    const ring = container.querySelector('[data-testid="live-orb-arc"]')!;
+    expect(ring.className).toMatch(/\bopacity-100\b/);
+    expect(ring.querySelector('circle:last-child')!.getAttribute('stroke-dasharray')).toBe('25.0 100');
+    expect((container.querySelector('[data-testid="live-orb-rocket"]')!.parentElement as HTMLElement).style.opacity).toBe('');
   });
 
   it('idle dims the rocket and an error greys it; live states show it in full', () => {
