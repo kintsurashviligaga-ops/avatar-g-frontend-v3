@@ -91,6 +91,15 @@ describe('element order — header → hero → references → prompt → model 
     rerender({ plan: initialVeoPlan({ tier: 'lite' }) });
     expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 LITE');
   });
+
+  test('the hero banner follows the tier too — every tier has its own picture, Lite included', () => {
+    const { rerender } = setup();
+    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/fast.jpg');
+    rerender({ plan: initialVeoPlan({ tier: 'standard' }) });
+    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/standard.jpg');
+    rerender({ plan: initialVeoPlan({ tier: 'lite' }) });
+    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/lite.jpg');
+  });
 });
 
 describe('the number on the Generate button is the quote', () => {
@@ -344,6 +353,7 @@ describe('format and model pickers', () => {
     expect(window.localStorage.getItem('myavatar:model:video')).toBe('hf/kling-3-std-t2v');
     expect(calls.dispatch).not.toHaveBeenCalled(); // the film's Veo tier is left as it was
     expect(screen.getByTestId('video-hero-title').textContent).toBe('Kling 3 — text to video');
+    expect(screen.getByTestId('video-hero').getAttribute('data-hero-art')).toBe('/brand/video-hero/model.jpg'); // not a Veo tier's picture
     expect(screen.queryByTestId('video-model-row')).toBeNull(); // the hero is the one place the model is named
     expect(screen.queryByTestId('video-quality')).toBeNull();
     expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/kling-3-std-t2v');
