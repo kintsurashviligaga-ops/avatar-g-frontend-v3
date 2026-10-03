@@ -2,7 +2,7 @@
   "job": "site imagery v2",
   "capUsd": 3,
   "stopAtUsd": 2.7,
-  "spentUsd": 0.576,
+  "spentUsd": 0.684,
   "attempts": [
     {
       "shot": "vfx/hero-cinematic",
@@ -1731,7 +1731,557 @@
         }
       ],
       "at": "2026-10-03T07:53:08.741Z"
+    },
+    {
+      "shot": "vfx/stone-golem",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A towering golem built of rough grey granite boulders, cracked and mossy, glowing orange molten light shining through the cracks in its chest and arms, standing in a narrow Old Tbilisi street at night, dust and small stones falling from its shoulders, warm amber glow against cool cyan mist. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "btz4y27jzxrp20d1032s5ay1f0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/G4yvPdk9zlbqOlKx4e8ozum6cMFvXAq9DRzenIhIeTbHeZOdB/out-0.png",
+          "file": "raw/vfx/stone-golem-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/z0I4YTaZUcI2FR9oJ5OuQcOinGiSBPWNFixOvZyyDj0wn50F/out-1.png",
+          "file": "raw/vfx/stone-golem-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/jtHU3oYTyiqgG5OlO3khQf1b15JIYqn1fWXQOTGv7u2DfMnuA/out-2.png",
+          "file": "raw/vfx/stone-golem-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/87RzgHVp6VbPJJa8lf5o19fbQefmWXUHlU8NUlImKKFT8ZOdB/out-3.png",
+          "file": "raw/vfx/stone-golem-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:58:53.983Z"
+    },
+    {
+      "shot": "vfx/gold-statue",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A person transformed into a polished liquid-gold statue, standing directly on the wet cobblestones of an Old Tbilisi street at night, mirror-like gold reflections, slow drips of molten gold running down the body, warm sodium streetlight and cool cyan reflections, no pedestal and no plaque. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "2f7vdb0sc1rp40d1033a3p6b0c",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/oYdWgSN8qeRQHq1bpRfyV4tsrC0MRmlwufwTOziDnejy8ZOdB/out-0.png",
+          "file": "raw/vfx/gold-statue-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/lfdae2JP1eZV4p6GlfTb2GTKE5FTTfyGsK9G0QH4WSXg5zc6C/out-1.png",
+          "file": "raw/vfx/gold-statue-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/k88Ot6eCdCVAZabHAFt3tFDiuKq9Gn8GKJ4kugniJE1mPzpLA/out-2.png",
+          "file": "raw/vfx/gold-statue-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uA9RXfhAgxTof0GDJER71b51JuRZAK16AHqCnTRcjAXNfMnuA/out-3.png",
+          "file": "raw/vfx/gold-statue-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:04.692Z"
+    },
+    {
+      "shot": "vfx/tokyo-night",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure under a clear umbrella walking down a narrow Japanese alley at night in light drizzle, rows of glowing blank white paper lanterns overhead, soft out-of-focus pink and cyan neon bokeh, steam rising from a street-food stall, wet reflective ground, every lantern and wall plain and unmarked. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "a1c3389nv1rp20d103380e8cjc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/xe7LSgmKJ0RJfkJKbwuJosf8yyfW64HxDK2VSOt7VWGN9ZOdB/out-0.png",
+          "file": "raw/vfx/tokyo-night-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ifBxGZC7BWVeHkHwv08eUADpYbFGifGnIVMvqI2Ih7aP9ZOdB/out-1.png",
+          "file": "raw/vfx/tokyo-night-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xvHayWkeIfnyVkvRB2PtyboOcZMawu4Fn0fKVvUuKSqmeZOdB/out-2.png",
+          "file": "raw/vfx/tokyo-night-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/AwvfjXeD5xmi6EFHUJ6Rn5xKxNbVrVzyVhlyeV3I4YameZOdB/out-3.png",
+          "file": "raw/vfx/tokyo-night-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:11.789Z"
+    },
+    {
+      "shot": "vfx/anime",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Hand-drawn Japanese anime film still: a girl holding an umbrella on a rainy Old Tbilisi street at night under carved wooden balconies, clean cel shading, bold outlines, a painterly night sky, warm lamplight and cool cyan reflections on the wet street. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "sw99v82fy9rp00d1033brhnr20",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/YrlpgIarbU5jNRYwkG7kbhkZT4FT3dMCvx8hfGNNnJitPzpLA/out-0.png",
+          "file": "raw/vfx/anime-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/vdGnwEHeUaRlaKFtEGJhg0XeCiyxlHGOzWLlwtxCwaWbfMnuA/out-1.png",
+          "file": "raw/vfx/anime-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/PD5mpIDW22r4NZBKxOm9RfCkLUxXKN1P0mUIQU14mmbuPzpLA/out-2.png",
+          "file": "raw/vfx/anime-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/95xLH0ZV7JYsBdly4P0G1i3SjYpCkZUXMuWkw5EtoTJ3n50F/out-3.png",
+          "file": "raw/vfx/anime-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:18.667Z"
+    },
+    {
+      "shot": "vfx/cyberpunk",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Cyberpunk film still: a figure in a reflective jacket on a rain-soaked futuristic street at night, magenta and cyan neon light strips and glowing abstract geometric holograms, lens flares, dense city haze, every surface free of signs and lettering. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "8rxgjybjzxrp60d1033a1vvabc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/lSZojMNBYNoNG9sxlJbVl7fqqwiRBhAUuts4Dp4xjmfjfMnuA/out-0.png",
+          "file": "raw/vfx/cyberpunk-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/81tP0vcdOlKBPJ9Tp8fPy40fi9iDmNlVVPivRXDOD3jjfMnuA/out-1.png",
+          "file": "raw/vfx/cyberpunk-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4POdLO2vFSYNLNjzI1vRcfAde0IIGK88TId42FakTzPjfMnuA/out-2.png",
+          "file": "raw/vfx/cyberpunk-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Tjqu0CQxT94sG1t0OXSFIsnayOiBr0eM65ozuBsFfjXjfMnuA/out-3.png",
+          "file": "raw/vfx/cyberpunk-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:27.155Z"
+    },
+    {
+      "shot": "vfx/ice",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure standing on a frozen night street, encased in frost: thick white frost and jagged translucent ice crystals growing over the shoulders, arms and the ground around the feet, icicles hanging, cold breath mist, cold blue light, glittering ice particles in the air, photoreal. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "acey9swb15rp00d1033b35yk74",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/6UXRmoALyGo3JpFecfEntngVXjs97F1XNPFXFtJqirvpfMnuA/out-0.png",
+          "file": "raw/vfx/ice-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9J6oa52ciuajPFUj3oIfI07cv44ZNzvuXR6zRHfzd49pfMnuA/out-1.png",
+          "file": "raw/vfx/ice-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/PR7GNh9IuV5sMJbfmXMgreIu9Vhe0UPzf50nActVyMdkezc6C/out-2.png",
+          "file": "raw/vfx/ice-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Er5kUWRyGJ7OCt1xg6Bsnaa9CPscPJjHYpaj3alvEqV6n50F/out-3.png",
+          "file": "raw/vfx/ice-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:33.780Z"
+    },
+    {
+      "shot": "vfx/glitch",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A cinematic portrait of a figure on a night street, the whole image visibly corrupted by a heavy digital glitch: strong RGB channel splitting into offset red, green and blue copies, thick horizontal slices of the picture shifted sideways, blocky datamosh pixels and scanlines across the frame, cyan and amber light. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "7rvw80d3p5rp40d1033a4j7bmr",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/NeKhmFgWeFmzD0JkBkbwKJERVdoWDJnIUlIxfM8BUYSlfZOdB/out-0.png",
+          "file": "raw/vfx/glitch-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/X0DRoQ2HSqqBMlT9aNUupftbn9GCWT7uXbvjhefbKepLfzc6C/out-1.png",
+          "file": "raw/vfx/glitch-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rJ1SKBRVZK7sGpyQ04AiUXGOotzXWPh8sKVRUeZZTeKyfMnuA/out-2.png",
+          "file": "raw/vfx/glitch-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/n8gn9Z8gwx4KKhm0KI851JPXHYOGAI4rnxX1jPA9e5A5PzpLA/out-3.png",
+          "file": "raw/vfx/glitch-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:39.745Z"
+    },
+    {
+      "shot": "hero/lite",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A smartphone on a small tripod on a café table by a rain-streaked window at night, seen from behind so its screen faces away toward the street it is filming, warm Old Tbilisi streetlights blurred outside, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "37043ky72nrp00d10338jrk8jw",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/ejfrKffeZx0kkkcohcMYSqDNpeqdVrYrYOeOe8yquRxnAgmTXA/out-0.png",
+          "file": "raw/hero/lite-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/TFgwnc7WGrrrJ5VOld3pkw0WwaTollz3szrD1lVQM5CAo50F/out-1.png",
+          "file": "raw/hero/lite-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/eZglq1tOKhWhMaMJ2e7qhBtZUvc3M1V3q04z3HdYyVQAgmTXA/out-2.png",
+          "file": "raw/hero/lite-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xCwzmLOzdqoNGdNKvRUl63XVW8ieeViSXmm4RIFYQdbAgmTXA/out-3.png",
+          "file": "raw/hero/lite-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:59:49.167Z"
+    },
+    {
+      "shot": "style/pixel-art",
+      "attempt": 2,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Low-resolution 8-bit pixel art of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a tiny retro video game sprite scene upscaled with huge square pixels clearly visible, a flat limited palette of a few colours, no smooth gradients, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "1eqcfffz6srp20d103383x4rkr",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/qAakgGh7mUonIxkfWP9PLQWkFts0k6FxW1pjQnBNhxmEQzpLA/out-0.png",
+          "file": "raw/style/pixel-art-2-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/D1ZiqrSepOQ4BKeh0bgB1n2lLMTPsw5oTPO0fbrv0AcSANnuA/out-1.png",
+          "file": "raw/style/pixel-art-2-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/dHoZfCAhHKTzNKiOY1z0BmLA2t0c8edflomrse6JsOeMB0c6C/out-2.png",
+          "file": "raw/style/pixel-art-2-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/GGTQ65AWeaxxLCfs33sffkbc90xRnSZo8GkfHSbtHpdJB0c6C/out-3.png",
+          "file": "raw/style/pixel-art-2-3.png"
+        }
+      ],
+      "at": "2026-10-03T08:00:03.530Z"
     }
   ],
-  "selected": {}
+  "selected": {
+    "vfx/hero-cinematic": {
+      "url": "https://replicate.delivery/xezq/Qybebej49btuqkpizViFe94eeoY6zsae8f0Za5DsNNsfCTmTXA/out-2.png",
+      "file": "raw/vfx/hero-cinematic-1-2.png",
+      "attempt": 1
+    },
+    "vfx/neon-stage": {
+      "url": "https://replicate.delivery/xezq/PzXVfm8dacVPBqeeAzgS3vyDqkB0EgO5RdWuYZazOOiInMnuA/out-0.png",
+      "file": "raw/vfx/neon-stage-1-0.png",
+      "attempt": 1
+    },
+    "vfx/rain-street": {
+      "url": "https://replicate.delivery/xezq/1FxN2li70fQPP6w4oXKntaH43fsppwdW3K10v18wTm8vTmTXA/out-2.png",
+      "file": "raw/vfx/rain-street-1-2.png",
+      "attempt": 1
+    },
+    "vfx/zero-gravity": {
+      "url": "https://replicate.delivery/xezq/rYanhuHeqxWOPq7M8NxMIozlKue63ev9YCTHYJZYI8eiPZOdB/out-3.png",
+      "file": "raw/vfx/zero-gravity-1-3.png",
+      "attempt": 1
+    },
+    "vfx/mecha-robot": {
+      "url": "https://replicate.delivery/xezq/01hlxcpffGocL0wZWoBqnEm3SdYCvcZ5IsxCwj0zi26enMnuA/out-0.png",
+      "file": "raw/vfx/mecha-robot-1-0.png",
+      "attempt": 1
+    },
+    "vfx/glass-crystal": {
+      "url": "https://replicate.delivery/xezq/YaFN40aQs8KvOhw45keM9DjmacJBAffkwgo5IxCmesH0QZOdB/out-1.png",
+      "file": "raw/vfx/glass-crystal-1-1.png",
+      "attempt": 1
+    },
+    "vfx/alien-desert": {
+      "url": "https://replicate.delivery/xezq/q3eWFANMtiVTDy3mSEXEZH8oaeu6tk1YswEj9eazvsfsSZOdB/out-3.png",
+      "file": "raw/vfx/alien-desert-1-3.png",
+      "attempt": 1
+    },
+    "vfx/underwater-city": {
+      "url": "https://replicate.delivery/xezq/4zP33M6MWe2xDqVQuE2YRSrUiKSb3olqcN06apfrOKBepMnuA/out-3.png",
+      "file": "raw/vfx/underwater-city-1-3.png",
+      "attempt": 1
+    },
+    "vfx/arctic-peak": {
+      "url": "https://replicate.delivery/xezq/uJTMGruvg5ZUN1opkytI5bA7J3RnLt6qTshyJGKg0rYUl50F/out-3.png",
+      "file": "raw/vfx/arctic-peak-1-3.png",
+      "attempt": 1
+    },
+    "vfx/claymation": {
+      "url": "https://replicate.delivery/xezq/9MgRbc9emnR7WKKrrpO7tJ3HyK2E3t9omemhEmr1HIzgVmTXA/out-2.png",
+      "file": "raw/vfx/claymation-1-2.png",
+      "attempt": 1
+    },
+    "vfx/film-noir": {
+      "url": "https://replicate.delivery/xezq/9uWgUwyuVm6HAtbmvRJsVAWxDHlsfehnnyIcIiee3QhVWZOdB/out-1.png",
+      "file": "raw/vfx/film-noir-1-1.png",
+      "attempt": 1
+    },
+    "vfx/watercolor": {
+      "url": "https://replicate.delivery/xezq/pCubWKn1Sgo4BZiHLolsfBfouyTf6YvFlfE6M3dn9U4IXZOdB/out-3.png",
+      "file": "raw/vfx/watercolor-1-3.png",
+      "attempt": 1
+    },
+    "vfx/toy-3d": {
+      "url": "https://replicate.delivery/xezq/h5X5EfjzLoz7Zyatra6pEDZfMthtbfY95h1LrAaG3OLwrMnuA/out-2.png",
+      "file": "raw/vfx/toy-3d-1-2.png",
+      "attempt": 1
+    },
+    "vfx/fire": {
+      "url": "https://replicate.delivery/xezq/E6tMmZFVUr5yEtY7IgGubiGGSfT1l8qeghITW7PNj6VfrMnuA/out-2.png",
+      "file": "raw/vfx/fire-1-2.png",
+      "attempt": 1
+    },
+    "vfx/smoke": {
+      "url": "https://replicate.delivery/xezq/8Er6vBcfQ6TGKSk8pDZ4OBfkplqSR05RhNAftqVsWDadsMnuA/out-2.png",
+      "file": "raw/vfx/smoke-1-2.png",
+      "attempt": 1
+    },
+    "vfx/lightning": {
+      "url": "https://replicate.delivery/xezq/XF7oaZmJJPbnMtjr1DShfPNQdAKEOR33ZrNojkoZIXQKLzpLA/out-2.png",
+      "file": "raw/vfx/lightning-1-2.png",
+      "attempt": 1
+    },
+    "vfx/portal": {
+      "url": "https://replicate.delivery/xezq/edL67qiSG93Yd6mlgyOEiy5rkmk5tedfv5p63980EdLEtMnuA/out-0.png",
+      "file": "raw/vfx/portal-1-0.png",
+      "attempt": 1
+    },
+    "hero/fast": {
+      "url": "https://replicate.delivery/xezq/JoEX1hXHDk7PFJ3p2RUaaqtzwdaJyUp51tkOIuDOveoZLzpLA/out-0.png",
+      "file": "raw/hero/fast-1-0.png",
+      "attempt": 1
+    },
+    "hero/standard": {
+      "url": "https://replicate.delivery/xezq/9uepveqnHAjFy079IorbrLus7NYRbnwaECBS9VfLtKxztMnuA/out-1.png",
+      "file": "raw/hero/standard-1-1.png",
+      "attempt": 1
+    },
+    "hero/musicvideo": {
+      "url": "https://replicate.delivery/xezq/7FbmThbtUp4KGpANZBfRFEPgGGAo0bfmLUizDDIedCXebZOdB/out-0.png",
+      "file": "raw/hero/musicvideo-1-0.png",
+      "attempt": 1
+    },
+    "hero/model": {
+      "url": "https://replicate.delivery/xezq/yXAgtJdmdJbWN1qVV5Quw6o2QPjhWxhRHuVeDtMcYfgHXmTXA/out-3.png",
+      "file": "raw/hero/model-1-3.png",
+      "attempt": 1
+    },
+    "services/voice": {
+      "url": "https://replicate.delivery/xezq/zAm1tuH6tNbeOqzWBqYfs8jI4xYG0p9pLJfGte1u8pH8cZOdB/out-0.png",
+      "file": "raw/services/voice-1-0.png",
+      "attempt": 1
+    },
+    "services/content-writer": {
+      "url": "https://replicate.delivery/xezq/RMkcRLvLnWoLCZGQj48g1LS3HoPDdB8UX6CrAd75fRFwLzpLA/out-0.png",
+      "file": "raw/services/content-writer-1-0.png",
+      "attempt": 1
+    },
+    "services/podcast": {
+      "url": "https://replicate.delivery/xezq/4XUPIJz1kXbYP5TfAJ6QmTsfnUCxzJfzbujeXZcYei208yc6C/out-0.png",
+      "file": "raw/services/podcast-1-0.png",
+      "attempt": 1
+    },
+    "services/character": {
+      "url": "https://replicate.delivery/xezq/fo1gAbt5IuVdMyd2fEyJMtbCINq9Q98M9WQU5c7p4mTrXmTXA/out-0.png",
+      "file": "raw/services/character-1-0.png",
+      "attempt": 1
+    },
+    "services/event": {
+      "url": "https://replicate.delivery/xezq/UzdH00uzsL6JPtgPNYvDxgT1TMtbPgRNKSv8HHAufwr4LzpLA/out-1.png",
+      "file": "raw/services/event-1-1.png",
+      "attempt": 1
+    },
+    "services/prompt-builder": {
+      "url": "https://replicate.delivery/xezq/EuUeulot3cTqM6a1BB1jiJQ4yd9oUVeVTlTxZ2DekhP1vMnuA/out-0.png",
+      "file": "raw/services/prompt-builder-1-0.png",
+      "attempt": 1
+    },
+    "services/terminal": {
+      "url": "https://replicate.delivery/xezq/ltgeuAShWrUQXqFRd40WfPg0K3ZLqGe02wePM7qHJnLCgZOdB/out-3.png",
+      "file": "raw/services/terminal-1-3.png",
+      "attempt": 1
+    },
+    "style/photorealistic": {
+      "url": "https://replicate.delivery/xezq/VJAjbBQOg1aTJxJW7eexBd70HUbNUgQ33G9Homes5DfZgZOdB/out-2.png",
+      "file": "raw/style/photorealistic-1-2.png",
+      "attempt": 1
+    },
+    "style/cinematic": {
+      "url": "https://replicate.delivery/xezq/rz036dvaFbI5NNW7fD7Dzvxn1kXquqkbdqjNFXVAD5FHMzpLA/out-2.png",
+      "file": "raw/style/cinematic-1-2.png",
+      "attempt": 1
+    },
+    "style/digital-art": {
+      "url": "https://replicate.delivery/xezq/dZ2EMQ4mNsJWAdrVlQXCSARYAy1lIg5PD1hf5hE0aAKLMzpLA/out-2.png",
+      "file": "raw/style/digital-art-1-2.png",
+      "attempt": 1
+    },
+    "style/anime": {
+      "url": "https://replicate.delivery/xezq/R2mVYAcfxJSAekepfH0aaIxPaozLrig7Vu5Sfdw0WWVBEzc6C/out-2.png",
+      "file": "raw/style/anime-1-2.png",
+      "attempt": 1
+    },
+    "style/3d-render": {
+      "url": "https://replicate.delivery/xezq/mELXSoAFcLIeSSgsafMe26uLyDngao3UBT2YeeGxlQGCGzc6C/out-2.png",
+      "file": "raw/style/3d-render-1-2.png",
+      "attempt": 1
+    },
+    "style/oil-painting": {
+      "url": "https://replicate.delivery/xezq/rbNTrr7rYB6hKZjEUvWft1P8gTDaqbn0VAHThi8iwpGbMzpLA/out-3.png",
+      "file": "raw/style/oil-painting-1-3.png",
+      "attempt": 1
+    },
+    "style/watercolor": {
+      "url": "https://replicate.delivery/xezq/tHAQfauxigXUByiLzyMlUmGO5AZiVgEt8sOFsDQHnBBeYmTXA/out-1.png",
+      "file": "raw/style/watercolor-1-1.png",
+      "attempt": 1
+    },
+    "style/cyberpunk": {
+      "url": "https://replicate.delivery/xezq/ye1IqfNrUsidO0ocan3ldZYQLYm97pgS6GfDqoIPrKMHyMnuA/out-3.png",
+      "file": "raw/style/cyberpunk-1-3.png",
+      "attempt": 1
+    },
+    "style/fantasy": {
+      "url": "https://replicate.delivery/xezq/biFFw6cZvP7IHFkX8eepsDHe7tmtOHROpdoWzMBQRvaqyMnuA/out-2.png",
+      "file": "raw/style/fantasy-1-2.png",
+      "attempt": 1
+    },
+    "style/minimalist": {
+      "url": "https://replicate.delivery/xezq/1P6vDEdKva78G1uxzUuGkZGgVntGEHbovBBuH5Bzg51Wm50F/out-3.png",
+      "file": "raw/style/minimalist-1-3.png",
+      "attempt": 1
+    },
+    "style/line-art": {
+      "url": "https://replicate.delivery/xezq/B4tziSQC80ocJRrjRoFfyOeOA1BXBfSUTyDKJU1OLGrFzMnuA/out-0.png",
+      "file": "raw/style/line-art-1-0.png",
+      "attempt": 1
+    },
+    "vfx/anime": {
+      "url": "https://replicate.delivery/xezq/PD5mpIDW22r4NZBKxOm9RfCkLUxXKN1P0mUIQU14mmbuPzpLA/out-2.png",
+      "file": "raw/vfx/anime-2-2.png",
+      "attempt": 2
+    },
+    "vfx/gold-statue": {
+      "url": "https://replicate.delivery/xezq/oYdWgSN8qeRQHq1bpRfyV4tsrC0MRmlwufwTOziDnejy8ZOdB/out-0.png",
+      "file": "raw/vfx/gold-statue-2-0.png",
+      "attempt": 2
+    },
+    "vfx/ice": {
+      "url": "https://replicate.delivery/xezq/PR7GNh9IuV5sMJbfmXMgreIu9Vhe0UPzf50nActVyMdkezc6C/out-2.png",
+      "file": "raw/vfx/ice-2-2.png",
+      "attempt": 2
+    },
+    "vfx/stone-golem": {
+      "url": "https://replicate.delivery/xezq/jtHU3oYTyiqgG5OlO3khQf1b15JIYqn1fWXQOTGv7u2DfMnuA/out-2.png",
+      "file": "raw/vfx/stone-golem-2-2.png",
+      "attempt": 2
+    },
+    "vfx/tokyo-night": {
+      "url": "https://replicate.delivery/xezq/xvHayWkeIfnyVkvRB2PtyboOcZMawu4Fn0fKVvUuKSqmeZOdB/out-2.png",
+      "file": "raw/vfx/tokyo-night-2-2.png",
+      "attempt": 2
+    },
+    "style/pixel-art": {
+      "url": "https://replicate.delivery/xezq/dHoZfCAhHKTzNKiOY1z0BmLA2t0c8edflomrse6JsOeMB0c6C/out-2.png",
+      "file": "raw/style/pixel-art-2-2.png",
+      "attempt": 2
+    }
+  }
 }

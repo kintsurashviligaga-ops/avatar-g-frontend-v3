@@ -286,7 +286,7 @@ Revised before attempt 2 — attempt 1 (all four takes had a black or white lett
 
 ## VFX · Cyberpunk
 
-Revised before attempt 2 — attempt 1 (pseudo-lettering on the neon signs, and a letterbox band at the foot ("the lower third dark" was read as a black bar)). Attempt 1's prompt is in the manifest.
+Revised before attempt 2 — attempt 1 (pseudo-lettering on the neon signs, and a letterbox band at the foot ("the lower third dark" was read as a black bar)); and again before attempt 3, the last — every street of attempt 2 still carried pseudo-lettering on its signs, one on a jacket — so the figure moves to a rooftop above the city's bokeh. The earlier prompts are in the manifest.
 
 ```json shot
 {
@@ -294,7 +294,7 @@ Revised before attempt 2 — attempt 1 (pseudo-lettering on the neon signs, and 
   "title": "VFX · Cyberpunk",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "Cyberpunk film still: a figure in a reflective jacket on a rain-soaked futuristic street at night, magenta and cyan neon light strips and glowing abstract geometric holograms, lens flares, dense city haze, every surface free of signs and lettering. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "Cyberpunk film still: a figure in a reflective jacket standing on a wet rooftop above a futuristic megacity at night in the rain, magenta and cyan neon light strips along the rooftop edge, glowing holographic rings floating in the air, the city far below dissolved into soft neon bokeh, lens flares, haze. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -402,7 +402,7 @@ Revised before attempt 2 — attempt 1 (the takes showed blue mist, not ice — 
 
 ## VFX · Glitch
 
-Revised before attempt 2 — attempt 1 (the glitch was barely visible, and two takes had shop lettering). Attempt 1's prompt is in the manifest.
+Revised before attempt 2 — attempt 1 (the glitch was barely visible, and two takes had shop lettering); and again before attempt 3, the last — attempt 2's strongest glitches sat on lettered street signs — so a portrait on a plain ground. The earlier prompts are in the manifest.
 
 ```json shot
 {
@@ -410,7 +410,7 @@ Revised before attempt 2 — attempt 1 (the glitch was barely visible, and two t
   "title": "VFX · Glitch",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A cinematic portrait of a figure on a night street, the whole image visibly corrupted by a heavy digital glitch: strong RGB channel splitting into offset red, green and blue copies, thick horizontal slices of the picture shifted sideways, blocky datamosh pixels and scanlines across the frame, cyan and amber light. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A close cinematic portrait of a person's head and shoulders against a plain dark background, the image corrupted by a heavy digital glitch: the face split into offset red, green and blue copies, horizontal bands of the picture torn and shifted sideways, blocky datamosh pixels and scanlines, cyan and amber light. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -438,7 +438,7 @@ Revised before attempt 2 — attempt 1 (the glitch was barely visible, and two t
 
 ## Video hero · Lite
 
-Revised before attempt 2 — attempt 1 (the phone screens showed a camera app's interface (DESIGN.md §4: a screen shows footage, never UI), and two had shop lettering). Attempt 1's prompt is in the manifest.
+Revised before attempt 2 — attempt 1 (the phone screens showed a camera app's interface (DESIGN.md §4: a screen shows footage, never UI), and two had shop lettering); and again before attempt 3, the last — attempt 2's phones still faced the viewer with a camera app on screen — so a small camera seen in profile, no screen in view. The earlier prompts are in the manifest.
 
 ```json shot
 {
@@ -446,7 +446,7 @@ Revised before attempt 2 — attempt 1 (the phone screens showed a camera app's 
   "title": "Video hero · Lite",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A smartphone on a small tripod on a café table by a rain-streaked window at night, seen from behind so its screen faces away toward the street it is filming, warm Old Tbilisi streetlights blurred outside, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A small plain unbranded vlogging camera on a mini tripod on a café table, seen in profile from the side, its lens pointed through a rain-streaked window at the night street, warm Old Tbilisi streetlights blurred outside, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "21:9",
     "batch_size": 4,
     "seed": 261102
