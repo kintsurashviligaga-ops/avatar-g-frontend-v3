@@ -7,7 +7,9 @@ import {
   dataUrlMime,
   estimateWireChars,
   DEFAULT_HISTORY_MAX_CHARS,
+  DEFAULT_HISTORY_MEDIA_CHARS,
   MEDIA_CHAR_ESTIMATE,
+  assistantTextWithoutNotices,
   type HistoryMsg,
   type HistoryMsgInput,
   type WireMessage,
@@ -497,5 +499,188 @@ describe('wireToHistory (the route re-runs the rules over the request body)', ()
     expect(serializeHistory(wireToHistory(junk))).toEqual([{ role: 'user', content: 'ok' }]);
     const badMsgs = [null, { role: 'tool', text: 'x' }, { role: 'user', text: 5 }, { role: 'user', text: 'fine', medias: 'no' }] as unknown as HistoryMsgInput[];
     expect(serializeHistory(badMsgs)).toEqual([{ role: 'user', content: 'fine' }]);
+  });
+});
+
+// ─── UI notices are not the assistant's words ────────────────────────────────────────────────────────────
+
+describe('assistantTextWithoutNotices', () => {
+  it('a whole notice ("⚠️ …" / "⏹ …", with or without the emoji selector, after whitespace) is empty', () => {
+    for (const t of ['⚠️ The AI service is temporarily unavailable.', '⚠ busy', '  \n⚠️ x', '⏹ Stopped', '⏹️ Stopped', '⚠️']) {
+      expect([t, assistantTextWithoutNotices(t)]).toEqual([t, '']);
+    }
+  });
+
+  it('a trailing "⚠️ …" paragraph is cut from a real answer', () => {
+    expect(assistantTextWithoutNotices('Here is half an answer.\n\n⚠️ The connection was interrupted.')).toBe('Here is half an answer.');
+    expect(assistantTextWithoutNotices('Answer.\n \n\t⚠ err  \n')).toBe('Answer.');
+    expect(assistantTextWithoutNotices('Para one.\n\nPara two.\n\n⏹ Stopped')).toBe('Para one.\n\nPara two.');
+  });
+
+  it('leaves everything else alone', () => {
+    for (const t of [
+      'A normal answer.',
+      'Mind the ⚠️ sign on the door.', // not at the start of a paragraph
+      'Answer.\n⚠️ no blank line before it', // not its own paragraph
+      'Answer.\n\n⚠️ a warning in the middle\n\nand the answer goes on', // not the LAST paragraph
+      'გამარჯობა! 🙂',
+    ]) {
+      expect([t, assistantTextWithoutNotices(t)]).toEqual([t, t]);
+    }
+  });
+
+  it('tolerates empty and non-string input', () => {
+    expect(assistantTextWithoutNotices('')).toBe('');
+    expect(assistantTextWithoutNotices(undefined as unknown as string)).toBe('');
+    expect(assistantTextWithoutNotices(42 as unknown as string)).toBe('');
+  });
+});
+
+describe('UI notices are never sent back to the model', () => {
+  it('a message flagged notice: true is dropped, whatever its role or text', () => {
+    const out = serializeHistory([
+      u('first question'),
+      a('Answered with Fast — Pro resets at 12:00', { notice: true }),
+      a('the real answer'),
+      u('Stopped by the user', { notice: true }),
+      u('next question'),
+    ]);
+    expect(out).toEqual([
+      { role: 'user', content: 'first question' },
+      { role: 'assistant', content: 'the real answer' },
+      { role: 'user', content: 'next question' },
+    ]);
+    expectRouteSafe(out);
+  });
+
+  it('only notice === true counts as the flag', () => {
+    const out = serializeHistory([u('q'), a('kept', { notice: 'yes' as unknown as boolean }), u('again')]);
+    expect(out).toEqual([{ role: 'user', content: 'q' }, { role: 'assistant', content: 'kept' }, { role: 'user', content: 'again' }]);
+  });
+
+  it('the TEXT is never guessed at: a model answer that opens or ends with "⚠️" is the model\'s own words', () => {
+    // Gemini writes warnings like these; only the chat knows which bubbles it wrote, and it flags them.
+    const opens = '⚠️ Warning: never mix bleach and ammonia.';
+    const ends = 'Take it with food.\n\n⚠️ Note: ask your doctor first.';
+    expect(serializeHistory([u('q'), a(opens), u('more')])).toEqual([
+      { role: 'user', content: 'q' }, { role: 'assistant', content: opens }, { role: 'user', content: 'more' },
+    ]);
+    expect(serializeHistory([u('q'), a(ends), u('more')])[1]).toEqual({ role: 'assistant', content: ends });
+  });
+
+  it('a user turn that starts with ⚠️ is the user\'s own words and is kept', () => {
+    expect(serializeHistory([u('⚠️ what does this sign mean?')])).toEqual([{ role: 'user', content: '⚠️ what does this sign mean?' }]);
+  });
+
+  it('a flagged notice that also carries a generated asset is dropped with it (the chat never flags a result bubble)', () => {
+    const out = serializeHistory([u('draw a cat'), a('⚠️ Saving failed', { notice: true, imageUrl: 'https://cdn.example.com/cat.png' }), u('nice')]);
+    expect(out).toEqual([{ role: 'user', content: 'draw a cat\n\nnice' }]);
+  });
+
+  it('the route\'s re-serialization keeps the assistant turns the chat sent (it already removed its notices)', () => {
+    const body = [{ role: 'user', content: 'q' }, { role: 'assistant', content: '⚠️ Warning: hot surface.' }, { role: 'user', content: 'again' }];
+    expect(serializeHistory(wireToHistory(body))).toEqual(body);
+  });
+});
+
+// ─── The history media byte budget ───────────────────────────────────────────────────────────────────────
+
+describe('earlier turns\' media share maxHistoryMediaChars', () => {
+  /** A base64 PNG data URL exactly `chars` characters long. */
+  const png = (chars: number, fill = 'A') => {
+    const head = 'data:image/png;base64,';
+    return head + fill.repeat(chars - head.length);
+  };
+  const img = (dataUrl: string, name?: string) => ({ kind: 'image' as const, dataUrl, mimeType: 'image/png', ...(name ? { name } : {}) });
+  const L = 10_000;
+
+  it('newest first: the newer turn keeps its bytes, the older one past the budget becomes "not re-sent"', () => {
+    const one = png(L, 'A');
+    const two = png(L, 'B');
+    const out = serializeHistory([u('photo one', { medias: [img(one)] }), a('nice'), u('photo two', { medias: [img(two)] }), a('ok'), u('compare them')], {
+      maxHistoryMediaChars: L + 10,
+    });
+    expect(out[0]).toEqual({ role: 'user', content: 'photo one\n[attached image — not re-sent]' });
+    expect(out[2]!.content).toEqual([{ type: 'text', text: 'photo two' }, { type: 'image', image: two, mimeType: 'image/png' }]);
+    expect(out[4]).toEqual({ role: 'user', content: 'compare them' });
+    expectRouteSafe(out);
+  });
+
+  it('a budget that fits both sends both (the boundary is inclusive)', () => {
+    const out = serializeHistory([u('a', { medias: [img(png(L))] }), a('ok'), u('b', { medias: [img(png(L))] }), a('ok'), u('?')], { maxHistoryMediaChars: 2 * L });
+    expect(Array.isArray(out[0]!.content)).toBe(true);
+    expect(Array.isArray(out[2]!.content)).toBe(true);
+  });
+
+  it('within one turn the attachments are taken in order; the one that does not fit is named in the note', () => {
+    const first = png(L, 'C');
+    const out = serializeHistory([u('two photos', { medias: [img(first, 'a.png'), img(png(L, 'D'), 'b.png')] }), a('ok'), u('which is better?')], {
+      maxHistoryMediaChars: L + 1,
+    });
+    expect(out[0]!.content).toEqual([
+      { type: 'text', text: 'two photos\n[attached image: b.png — not re-sent]' },
+      { type: 'image', image: first, mimeType: 'image/png' },
+    ]);
+  });
+
+  it('a PDF past the budget is a "file" in the note', () => {
+    const pdf = `data:application/pdf;base64,${'J'.repeat(L)}`;
+    const out = serializeHistory([u('read', { medias: [{ kind: 'pdf', dataUrl: pdf, name: 'report.pdf' }] }), a('done'), u('summarize')], { maxHistoryMediaChars: 100 });
+    expect(out[0]).toEqual({ role: 'user', content: 'read\n[attached file: report.pdf — not re-sent]' });
+  });
+
+  it('the LAST user turn (the one being sent) is never cut by it, and does not use it up', () => {
+    const old = png(L, 'E');
+    const current = png(5 * L, 'F');
+    const out = serializeHistory([u('old', { medias: [img(old)] }), a('ok'), u('current', { medias: [img(current)] })], { maxHistoryMediaChars: L });
+    expect(out[2]!.content).toEqual([{ type: 'text', text: 'current' }, { type: 'image', image: current, mimeType: 'image/png' }]);
+    expect(out[0]!.content).toEqual([{ type: 'text', text: 'old' }, { type: 'image', image: old, mimeType: 'image/png' }]);
+
+    const zero = serializeHistory([u('old', { medias: [img(old)] }), a('ok'), u('current', { medias: [img(current)] })], { maxHistoryMediaChars: 0 });
+    expect(zero[0]).toEqual({ role: 'user', content: 'old\n[attached image — not re-sent]' });
+    expect(zero[2]!.content).toEqual([{ type: 'text', text: 'current' }, { type: 'image', image: current, mimeType: 'image/png' }]);
+    expectRouteSafe(zero);
+  });
+
+  it('Infinity turns it off: every in-window attachment keeps its bytes', () => {
+    const big = png(3_000_000);
+    const out = serializeHistory([u('a', { medias: [img(big)] }), a('ok'), u('b', { medias: [img(big)] }), a('ok'), u('?')], { maxHistoryMediaChars: Infinity });
+    expect(Array.isArray(out[0]!.content)).toBe(true);
+    expect(Array.isArray(out[2]!.content)).toBe(true);
+  });
+
+  it('the default is DEFAULT_HISTORY_MEDIA_CHARS: two earlier 1.5 MB photos no longer both ride along', () => {
+    expect(DEFAULT_HISTORY_MEDIA_CHARS).toBe(2_500_000);
+    const big = png(1_500_000);
+    const out = serializeHistory([u('a', { medias: [img(big)] }), a('ok'), u('b', { medias: [img(big)] }), a('ok'), u('?')]);
+    expect(out[0]).toEqual({ role: 'user', content: 'a\n[attached image — not re-sent]' });
+    expect(Array.isArray(out[2]!.content)).toBe(true);
+  });
+
+  it('invalid values fall back to the default (never to 0)', () => {
+    const history = [u('a', { medias: [img(png(L))] }), a('ok'), u('?')];
+    for (const bad of [-1, NaN, -Infinity, '5' as unknown as number, null as unknown as number]) {
+      expect([bad, Array.isArray(serializeHistory(history, { maxHistoryMediaChars: bad })[0]!.content)]).toEqual([bad, true]);
+    }
+  });
+
+  it('only in-window turns are costed: an older one is still the "earlier" placeholder', () => {
+    const out = serializeHistory([
+      u('p1', { medias: [img(png(L))] }), a('ok'),
+      u('p2', { medias: [img(png(L))] }), a('ok'),
+      u('p3', { medias: [img(png(L))] }), a('ok'),
+      u('what changed?'),
+    ], { maxHistoryMediaChars: L });
+    expect(out[0]).toEqual({ role: 'user', content: 'p1\n[earlier image attachment]' });
+    expect(out[2]).toEqual({ role: 'user', content: 'p2\n[attached image — not re-sent]' });
+    expect(Array.isArray(out[4]!.content)).toBe(true);
+  });
+
+  it('the note is a history marker (stripped for locale detection) and the result is stable through the route', () => {
+    const history = [u('ფოტო', { medias: [img(png(L))] }), a('კარგი'), u('ფოტო 2', { medias: [img(png(L, 'G'))] }), a('ok'), u('შეადარე')];
+    const first = serializeHistory(history, { maxHistoryMediaChars: L });
+    expect(first[0]).toEqual({ role: 'user', content: 'ფოტო\n[attached image — not re-sent]' });
+    expect(stripHistoryMarkers(first[0]!.content as string).trim()).toBe('ფოტო');
+    expect(serializeHistory(wireToHistory(first), { maxHistoryMediaChars: L })).toEqual(first);
   });
 });

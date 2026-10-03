@@ -24,6 +24,19 @@
  * ⚠️ MEDIA BYTES ONLY IN THE LAST N MEDIA TURNS. This is `lib/chat/mediaWindow.ts`, reused as is (see its
  * header for why a window and not a strip). Older attachments become `[earlier image attachment]`.
  *
+ * ⚠️ …AND ONLY WITHIN A TOTAL BYTE BUDGET. The window counted TURNS, not bytes: two earlier turns of large photos or
+ * a PDF re-sent their full base64 with every message, and the request crossed Vercel's ~4.5 MB body limit — a 413 on
+ * every later turn, i.e. one attachment could break the whole conversation. History turns (not the turn being sent,
+ * which the composer caps itself) now share `maxHistoryMediaChars` of inline data, newest first; an attachment that
+ * does not fit becomes `[attached image — not re-sent]`.
+ *
+ * ⚠️ UI NOTICES ARE NOT THE ASSISTANT'S WORDS. The chat keeps its own notices in the thread — "⚠️ …" error bubbles,
+ * "⏹ Stopped", routing notes — and they used to be sent back as assistant turns, so the model read "⚠️ The AI service
+ * is temporarily unavailable" as something IT had said (and sometimes apologised for it again). A message flagged
+ * `notice: true` is skipped. The TEXT is never guessed at here: a model's own answer may well open with "⚠️ Warning"
+ * or end on a "⚠️ Note" paragraph, and this function also re-serializes what the route receives. The chat, which
+ * knows which bubbles it wrote, flags them (and cuts a failed reply's "⚠️" tail with `assistantTextWithoutNotices`).
+ *
  * ⚠️ THE DATA URL'S OWN MIME TYPE WINS, BECAUSE THE AI SDK LETS IT WIN. `convertToLanguageModelV3DataContent`
  * in `ai` takes the media type from the data URL header and only falls back to the part's `mediaType`
  * when the header has none. So a declared `mimeType` that disagrees with the header is ignored downstream
@@ -61,7 +74,17 @@ import { mediaCarryingIndices, mediaPlaceholder, MEDIA_WINDOW_TURNS, type TurnLi
 // ─── Shared interface (lib/chat/historySerializer — see the architecture brief) ──────────────────────────
 
 export interface HistoryMedia { kind: 'image' | 'audio' | 'video' | 'pdf' | 'file'; dataUrl?: string; url?: string; mimeType?: string; name?: string }
-export interface HistoryMsg { role: 'user' | 'assistant'; text: string; medias?: HistoryMedia[]; imageUrl?: string; videoUrl?: string; audioUrl?: string; glbUrl?: string }
+export interface HistoryMsg {
+  role: 'user' | 'assistant';
+  text: string;
+  medias?: HistoryMedia[];
+  imageUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
+  glbUrl?: string;
+  /** A UI notice the chat drew (an error bubble, "Stopped", a routing note) — never sent to the model. */
+  notice?: boolean;
+}
 export type WirePart = { type: 'text'; text: string } | { type: 'image'; image: string; mimeType?: string } | { type: 'file'; data: string; mimeType: string; name?: string };
 export interface WireMessage { role: 'user' | 'assistant'; content: string | WirePart[] }
 
@@ -78,6 +101,11 @@ export interface SerializeHistoryOptions {
   maxChars?: number;
   /** How many of the newest media-bearing user turns send real bytes. Default `MEDIA_WINDOW_TURNS` (2). 0 = none. */
   mediaWindowTurns?: number;
+  /**
+   * Inline media budget for the HISTORY turns (every turn before the last user turn), in characters of source (a data
+   * URL's base64 is ≈ 1.33 × its bytes). `Infinity` turns it off. Default `DEFAULT_HISTORY_MEDIA_CHARS`.
+   */
+  maxHistoryMediaChars?: number;
 }
 
 /**
@@ -87,6 +115,12 @@ export interface SerializeHistoryOptions {
  * characters is more tokens (UNCERTAIN by how much for Gemini's tokenizer).
  */
 export const DEFAULT_HISTORY_MAX_CHARS = 120_000;
+
+/**
+ * 2.5 MB of base64 for the attachments re-sent with EARLIER turns. Vercel refuses a request body over ~4.5 MB with a
+ * 413 before the route runs; the turn being sent is capped by the composer, and this leaves it the rest.
+ */
+export const DEFAULT_HISTORY_MEDIA_CHARS = 2_500_000;
 
 /**
  * Flat per-media cost used by the budget, in characters (≈ tokens × 4). An image is about 258 tokens. For
@@ -283,6 +317,35 @@ function unreadableNote(m: ResolvedMedia): string {
   return m.src ? `[attached ${what} — this format cannot be read here]` : `[attached ${what} — not available]`;
 }
 
+/** An in-window attachment left out by the history byte budget: `[attached image — not re-sent]`. */
+function notResentNote(m: ResolvedMedia): string {
+  const label = kindLabel(m);
+  return `[attached ${m.name ? `${label}: ${m.name}` : label} — not re-sent]`;
+}
+
+// ─── UI notices ──────────────────────────────────────────────────────────────────────────────────────────
+
+/** "⚠️ …" (U+26A0, with or without the emoji selector) or "⏹ …" (U+23F9): how the chat writes its own notices. */
+const NOTICE_LEAD_RE = /^\s*(?:⚠|⏹)️?/u;
+/** A last paragraph that is a notice: the client appends "\n\n⚠️ <error>" to a reply that failed mid-answer. */
+const TRAILING_NOTICE_RE = /\n[ \t]*\n[ \t]*(?:⚠|⏹)️?[^\n]{0,2000}\s*$/u;
+
+/**
+ * An assistant turn's text without the chat's own notices: '' when the whole text is one, else the text with a
+ * trailing notice paragraph removed. For a caller that KNOWS the text carries a notice (the chat's own error bubbles
+ * and failed-reply tails) — `serializeHistory` never applies it to text it cannot vouch for.
+ */
+export function assistantTextWithoutNotices(text: string): string {
+  if (typeof text !== 'string' || !text) return '';
+  if (NOTICE_LEAD_RE.test(text)) return '';
+  return text.replace(TRAILING_NOTICE_RE, '');
+}
+
+/** The characters an attachment adds to the request body: its data URL, or the length of its link. */
+function sourceChars(m: ResolvedMedia): number {
+  return m.src ? m.src.length : 0;
+}
+
 // ─── Asset references ────────────────────────────────────────────────────────────────────────────────────
 
 const MAX_REF_URL = 2048;
@@ -371,12 +434,14 @@ function mediaPart(m: ResolvedMedia): WirePart {
   return m.name ? { type: 'file', data: src, mimeType: m.mime, name: m.name } : { type: 'file', data: src, mimeType: m.mime };
 }
 
-function clampOptions(opts: SerializeHistoryOptions | undefined): { maxChars: number; window: number } {
+function clampOptions(opts: SerializeHistoryOptions | undefined): { maxChars: number; window: number; mediaChars: number } {
   const mc = opts?.maxChars;
   const maxChars = mc === Infinity ? Infinity : typeof mc === 'number' && Number.isFinite(mc) && mc > 0 ? Math.floor(mc) : DEFAULT_HISTORY_MAX_CHARS;
   const w = opts?.mediaWindowTurns;
   const window = typeof w === 'number' && Number.isInteger(w) && w >= 0 ? Math.min(w, 64) : MEDIA_WINDOW_TURNS;
-  return { maxChars, window };
+  const b = opts?.maxHistoryMediaChars;
+  const mediaChars = b === Infinity ? Infinity : typeof b === 'number' && Number.isFinite(b) && b >= 0 ? Math.floor(b) : DEFAULT_HISTORY_MEDIA_CHARS;
+  return { maxChars, window, mediaChars };
 }
 
 /**
@@ -386,7 +451,9 @@ function clampOptions(opts: SerializeHistoryOptions | undefined): { maxChars: nu
  *   A turn with nothing in it is dropped.
  * - Consecutive same-role turns are merged, so roles strictly alternate.
  * - Media bytes travel only for the newest `mediaWindowTurns` media-bearing user turns. Older ones become
- *   `[earlier image attachment]`.
+ *   `[earlier image attachment]`. Earlier turns' bytes also share `maxHistoryMediaChars`; past it, an attachment
+ *   becomes `[attached image — not re-sent]`.
+ * - UI notices (`notice: true`) are left out.
  * - Assistant content is always a string.
  * - The oldest turns are trimmed to fit `maxChars`. The last user turn is always kept, and the result
  *   never starts with an assistant turn.
@@ -395,8 +462,11 @@ function clampOptions(opts: SerializeHistoryOptions | undefined): { maxChars: nu
  * over a request body.
  */
 export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: SerializeHistoryOptions): WireMessage[] {
-  const { maxChars, window } = clampOptions(opts);
-  const list: ReadonlyArray<unknown> = Array.isArray(msgs) ? msgs : [];
+  const { maxChars, window, mediaChars } = clampOptions(opts);
+  // A UI notice is not part of the conversation at all (see the header): it is dropped before anything counts it.
+  const list: ReadonlyArray<unknown> = (Array.isArray(msgs) ? msgs : []).filter(
+    (m) => !(m && typeof m === 'object' && (m as { notice?: unknown }).notice === true),
+  );
 
   // 1. Resolve every attachment once. Only USER turns with at least one SENDABLE attachment take a window
   //    slot. An unreadable .docx must not push the photo the user is still talking about out of the window,
@@ -424,6 +494,27 @@ export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: Serial
   // turn in `recent` is also in `carrying`, since fewer media turns follow it.
   const carrying = windowOver((r) => r.sendable);
   const recent = windowOver(() => true);
+
+  // 1b. The history byte budget: every carrying turn BEFORE the last user turn (the one being sent) shares
+  //     `mediaChars`, newest turn first; an attachment that does not fit is not re-sent (`over`, keyed "turn:media").
+  let current = -1;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = list[i];
+    if (r && typeof r === 'object' && (r as { role?: unknown }).role === 'user') { current = i; break; }
+  }
+  const over = new Set<string>();
+  if (mediaChars !== Infinity) {
+    let used = 0;
+    for (const i of [...carrying].sort((a, b) => b - a)) {
+      if (i === current) continue;
+      (resolved[i] ?? []).forEach((md, j) => {
+        if (!md.sendable) return;
+        const cost = sourceChars(md);
+        if (used + cost > mediaChars) over.add(`${i}:${j}`);
+        else used += cost;
+      });
+    }
+  }
 
   // 2. Each turn → one wire message, or nothing.
   const turns: WireMessage[] = [];
@@ -458,11 +549,13 @@ export function serializeHistory(msgs: readonly HistoryMsgInput[], opts?: Serial
     // shape `wireToHistory` reads back, so running the serializer twice gives the same result.
     const notes: string[] = [];
     const parts: WirePart[] = [];
-    for (const md of medias) {
-      if (md.sendable && carrying.has(i)) parts.push(mediaPart(md));
-      else if (!md.sendable && (carrying.has(i) || recent.has(i))) notes.push(unreadableNote(md));
+    medias.forEach((md, j) => {
+      if (md.sendable && carrying.has(i)) {
+        if (over.has(`${i}:${j}`)) notes.push(notResentNote(md));
+        else parts.push(mediaPart(md));
+      } else if (!md.sendable && (carrying.has(i) || recent.has(i))) notes.push(unreadableNote(md));
       else notes.push(earlierPlaceholder(md));
-    }
+    });
     const lead = [text, ...notes, ...refs].filter(Boolean).join('\n');
     if (!parts.length) {
       if (lead) turns.push({ role: 'user', content: lead });

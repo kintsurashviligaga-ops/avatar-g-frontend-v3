@@ -143,6 +143,7 @@ describe('useChatStream — a successful turn', () => {
       { provider: 'gemini', model: 'gemini-3.8-flash' },
       [{ url: 'https://ex.ge/a', title: 'A' }],
       { model: 'gemini-3.8-flash', inputTokens: 5, outputTokens: 4 },
+      { truncated: false },
     );
     expect(result.current.store.getSnapshot()).toMatchObject({ status: 'done', text: 'გამარჯობა, მეგობარო', turnId: 't1' });
 
@@ -168,7 +169,7 @@ describe('useChatStream — a successful turn', () => {
       await done;
     });
     expect((await done).status).toBe('done');
-    expect(onDone).toHaveBeenCalledWith('ok', null, [], null);
+    expect(onDone).toHaveBeenCalledWith('ok', null, [], null, { truncated: false });
   });
 });
 
@@ -204,7 +205,8 @@ describe('useChatStream — typed, localized failures', () => {
   it.each([
     ['en', 'safety', "I can't answer that: the safety filter stopped it. Try rephrasing."],
     ['ru', 'rate_limited', 'Сейчас слишком много запросов. Подождите немного и попробуйте снова.'],
-    ['ka', 'budget', 'ჩატის დღევანდელი ლიმიტი ამოიწურა. სცადე მოგვიანებით.'],
+    ['ka', 'budget', 'პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადე ცოტა ხანში.'],
+    ['ka', 'daily_cap', 'ჩატის დღიური ლიმიტი ამოიწურა. სცადე ხვალ.'],
   ] as const)('localizes %s %s', async (locale, code, expected) => {
     const body = controllableBody();
     const onError = jest.fn();
@@ -219,6 +221,66 @@ describe('useChatStream — typed, localized failures', () => {
       await done;
     });
     expect(onError.mock.calls[0]![0]).toMatchObject({ code, message: expected });
+  });
+
+  it("shows the route's own notice when it is in this locale, and re-localizes one in another", async () => {
+    const run = async (lang: string) => {
+      const body = controllableBody();
+      const onError = jest.fn();
+      const { result } = setup({ fetchImpl: mockFetch(() => sseResponse(body)), onError, locale: 'ka' });
+      let done!: Promise<unknown>;
+      act(() => {
+        done = result.current.start({});
+      });
+      await act(async () => {
+        body.push(frame({ error: { code: 'daily_cap', retryable: false, message: '⚠️ დღევანდელი ლიმიტი ამოიწურა.', lang } }));
+        body.close();
+        await done;
+      });
+      return onError.mock.calls[0]![0];
+    };
+    // In this locale: the notice itself (without the "⚠️" lead the host draws), and no Retry.
+    expect(await run('ka')).toMatchObject({ code: 'daily_cap', retryable: false, message: 'დღევანდელი ლიმიტი ამოიწურა.' });
+    // Another locale: the client's own text for the code.
+    expect((await run('en')).message).toBe(chatErrorMessage('daily_cap', 'ka'));
+  });
+
+  it('a spent guest allowance opens sign-in, like auth_required', async () => {
+    const body = controllableBody();
+    const onError = jest.fn();
+    const onAuthRequired = jest.fn();
+    const { result } = setup({ fetchImpl: mockFetch(() => sseResponse(body)), onError, onAuthRequired, locale: 'en' });
+    let done!: Promise<unknown>;
+    act(() => {
+      done = result.current.start({});
+    });
+    await act(async () => {
+      body.push(frame({ error: { code: 'guest_limit', retryable: false, message: 'x' } }));
+      body.close();
+      await done;
+    });
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]![0]).toMatchObject({ code: 'guest_limit', retryable: false });
+  });
+
+  it('a {truncated} frame finishes the turn and says the reply was cut short', async () => {
+    const body = controllableBody();
+    const onDone = jest.fn();
+    const { result } = setup({ fetchImpl: mockFetch(() => sseResponse(body)), onDone });
+    let done!: Promise<{ status: string; truncated: boolean }>;
+    act(() => {
+      done = result.current.start({}) as unknown as Promise<{ status: string; truncated: boolean }>;
+    });
+    let r!: { status: string; truncated: boolean };
+    await act(async () => {
+      body.push(frame({ text: 'long answer' }));
+      body.push(frame({ truncated: true }));
+      body.push('data: [DONE]\n\n');
+      r = await done;
+    });
+    expect(r).toMatchObject({ status: 'done', truncated: true });
+    expect(onDone).toHaveBeenCalledWith('long answer', null, [], null, { truncated: true });
+    expect(result.current.store.getSnapshot()).toMatchObject({ status: 'done', truncated: true });
   });
 
   it('401 calls onAuthRequired and reports auth_required, never onDone', async () => {
@@ -481,7 +543,7 @@ describe('useChatStream — stop, supersede and identity', () => {
       await done;
     });
     expect(firstOnDone).not.toHaveBeenCalled();
-    expect(latestOnDone).toHaveBeenCalledWith('hi', null, [], null);
+    expect(latestOnDone).toHaveBeenCalledWith('hi', null, [], null, { truncated: false });
   });
 
   it('unmounting aborts the running stream', async () => {

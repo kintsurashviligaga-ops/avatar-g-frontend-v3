@@ -71,6 +71,11 @@ export interface AgentProfile {
   /** The persona's tone (informational — it is already folded into `directive`). */
   tone?: string;
   temperature: number;
+  /**
+   * True when the PERSONA chose `temperature` (a built-in's override, or a custom persona's). False / absent = the
+   * platform default above, which a Gemini 3 chat call leaves out (lib/ai/google/chatStream `samplingFor`).
+   */
+  personaTemperature?: boolean;
   topP: number;
   topK?: number;
   maxOutputTokens: number;
@@ -102,6 +107,9 @@ export const DEFAULT_AGENT_PROFILE_ID = 'default';
  * TODAY's chat settings, verbatim from the streamText call in app/api/chat/gemini/route.ts
  * (temperature 0.7, topP 0.95, topK 40, maxOutputTokens 4096, the google_search tool on, no thinkingConfig).
  * Aoede is the female voice the Live session defaults to.
+ * NOTE: these are the PROFILE's values. The chat route lays each mode's output floor over maxOutputTokens (4096 cut
+ * long answers short, thinking included — app/api/chat/gemini `applyChatMode`), and a Gemini 3 call leaves out the
+ * default temperature / topK (lib/ai/google/chatStream `samplingFor`).
  */
 export const PLATFORM_CHAT_DEFAULTS = Object.freeze({
   temperature: 0.7,
@@ -167,6 +175,7 @@ export function clampAgentProfile(p: AgentProfile): AgentProfile {
     directive: typeof src.directive === 'string' ? src.directive : '',
     ...(typeof src.tone === 'string' && src.tone ? { tone: src.tone } : {}),
     temperature: clampNum(src.temperature, B.temperature.min, B.temperature.max, D.temperature),
+    ...(src.personaTemperature === true ? { personaTemperature: true } : {}),
     topP: clampNum(src.topP, B.topP.min, B.topP.max, D.topP),
     ...(src.topK === undefined ? {} : { topK: clampNum(src.topK, B.topK.min, B.topK.max, D.topK, true) }),
     maxOutputTokens: clampNum(src.maxOutputTokens, B.maxOutputTokens.min, B.maxOutputTokens.max, D.maxOutputTokens, true),
@@ -206,6 +215,7 @@ function profileFromPersona(persona: Persona): AgentProfile {
     directive: personaSystemBlock(persona),
     tone: persona.tone,
     temperature: persona.temperature ?? D.temperature,
+    ...(typeof persona.temperature === 'number' ? { personaTemperature: true } : {}),
     topP: persona.topP ?? D.topP,
     topK: persona.topK ?? D.topK,
     maxOutputTokens: persona.maxOutputTokens ?? D.maxOutputTokens,
@@ -243,7 +253,8 @@ export function resolveAgentProfile(input: { personaId?: string | null; customPe
  *
  * `system` = the platform system string with the profile's persona block APPENDED — byte-identical to what
  * `applySystemPersona(platformSystem, persona)` has always produced, so the platform rules keep precedence.
- * `thinking` is omitted entirely for a 'default' profile (see ThinkingSetting); `topK` only when set.
+ * `thinking` is omitted entirely for a 'default' profile (see ThinkingSetting); `topK` only when set;
+ * `personaSampling` only when the persona chose its temperature (a Gemini 3 call sends temperature / topK only then).
  */
 export function toGeminiChatConfig(profile: AgentProfile, platformSystem: string): GeminiChatConfig {
   const p = clampAgentProfile(profile);
@@ -252,6 +263,7 @@ export function toGeminiChatConfig(profile: AgentProfile, platformSystem: string
   return {
     system,
     temperature: p.temperature,
+    ...(p.personaTemperature ? { personaSampling: true } : {}),
     topP: p.topP,
     ...(p.topK !== undefined ? { topK: p.topK } : {}),
     maxOutputTokens: p.maxOutputTokens,

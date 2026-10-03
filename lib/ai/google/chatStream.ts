@@ -21,7 +21,7 @@ import { isRetiredModel } from '@/lib/ai/google/models';
  * error part itself, so the failure is classified here and reaches the user as a typed `{error}` frame.
  *
  * Frame order for one call:
- *   success:            {meta} [{meta}] {text}… [{sources}] [{usage}]
+ *   success:            {meta} [{meta}] {text}… [{sources}] [{usage}] [{truncated}]
  *   failure after text: {meta} [{meta}] {text}… {meta partial:true} [{sources}] [{usage}] {error}
  *   failure, no text:   [{usage}] {error}
  *   caller abort:       whatever was already sent; nothing after the abort
@@ -42,6 +42,11 @@ export interface GeminiChatConfig {
   temperature?: number;
   topP: number;
   topK?: number;
+  /**
+   * True when a persona chose its own temperature. Only then do `temperature` / `topK` reach a Gemini 3 model; without
+   * it a Gemini 3 call runs on the model's defaults (see `samplingFor`). Older families always get what is configured.
+   */
+  personaSampling?: boolean;
   maxOutputTokens: number;
   safetySettings: Array<{ category: string; threshold: string }>;
   thinking?: { level: 'off' | 'low' | 'high' };
@@ -61,6 +66,14 @@ export interface StreamGeminiChatInput {
   config: GeminiChatConfig;
   abortSignal?: AbortSignal;
   onFrame: (frame: ChatFrame) => void | Promise<void>;
+  /**
+   * Retry ONE transient failure (429, 503, "overloaded") of the same model once, after a short backoff, while nothing
+   * has been sent — before rotating or giving up. The route sets it for Pro, whose chain is a single preview model
+   * (a busy minute used to fail the turn outright). Off by default: a Flash chain rotates to its next model instead.
+   */
+  retryTransientOnce?: boolean;
+  /** The retry's backoff in ms (tests). Default `TRANSIENT_RETRY_BASE_MS` plus up to `TRANSIENT_RETRY_JITTER_MS`. */
+  retryDelayMs?: number;
 }
 
 export interface StreamGeminiChatResult {
@@ -97,6 +110,8 @@ export interface StreamGeminiChatResult {
    * reported attempt, from `groundingMetadata.webSearchQueries`. Feeds `bookChatUsage({ groundingQueries })`.
    */
   groundingQueries?: number;
+  /** The answer stopped at `maxOutputTokens` (finish MAX_TOKENS) — `ok`, but cut short; a `{truncated}` frame said so. */
+  truncated?: boolean;
 }
 
 type ChatError = NonNullable<StreamGeminiChatResult['error']>;
@@ -179,6 +194,24 @@ export function thinkingConfigFor(modelId: string, level: ThinkingLevel | undefi
     return { thinkingBudget: isPro ? 128 : 0 };
   }
   return undefined;
+}
+
+/**
+ * The sampling knobs one attempt sends.
+ *
+ * ⚠️ GEMINI 3 GETS ITS OWN DEFAULTS UNLESS A PERSONA ASKED OTHERWISE. Fast and Lite used to send the platform's
+ * historical 0.7 / topK 40 to Gemini 3 models, against Google's own Gemini 3 guidance (the route already cited it for
+ * Thinking and Pro): keep temperature at its default 1.0 — lower values risk looping and weaker answers. So a Gemini 3
+ * call carries temperature / topK only when `personaSampling` says a persona chose them; other families (2.5, an env
+ * override) keep exactly what is configured. Per attempt, because one chain may mix families.
+ */
+export function samplingFor(modelId: string, config: Pick<GeminiChatConfig, 'temperature' | 'topK' | 'personaSampling'>): { temperature?: number; topK?: number } {
+  const keep = config.personaSampling === true || !GEMINI_3_RE.test(String(modelId || '').trim());
+  if (!keep) return {};
+  return {
+    ...(typeof config.temperature === 'number' ? { temperature: config.temperature } : {}),
+    ...(typeof config.topK === 'number' ? { topK: config.topK } : {}),
+  };
 }
 
 // ─── Safety ──────────────────────────────────────────────────────────────────
@@ -270,7 +303,40 @@ const PUBLIC_MESSAGE: Readonly<Record<ChatErrorCode, string>> = {
   network: 'The connection to the AI service was interrupted. Please try again.',
   unavailable: 'The AI service is temporarily unavailable. Please try again.',
   bad_request: 'This request could not be processed.',
+  // The policy refusals are the route's, never this module's; listed so every code has a public text.
+  daily_cap: "You've reached today's chat limit.",
+  guest_limit: "You've used today's guest messages. Sign in to keep chatting.",
+  too_long: 'The message is too long.',
 };
+
+/** The same-model retry's backoff (`retryTransientOnce`): ~0.8 s plus jitter, so a burst of turns does not re-collide. */
+export const TRANSIENT_RETRY_BASE_MS = 800;
+export const TRANSIENT_RETRY_JITTER_MS = 400;
+
+/**
+ * A failure worth one more try of the SAME model: a 429 (a per-minute bucket refills), a 503 / "overloaded" (Google's
+ * capacity blip). Not an empty 200 — that one already billed its thinking — and not a 500 or an unknown failure.
+ */
+export function isTransientFailure(err: Pick<ChatError, 'code' | 'message' | 'status'> | undefined): boolean {
+  if (!err) return false;
+  if (err.code === 'rate_limited') return true;
+  if (err.code !== 'unavailable') return false;
+  return err.status === 503 || /overloaded/i.test(err.message);
+}
+
+/** Resolves after `ms`, or at once when `signal` aborts. Never rejects. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, Math.max(0, ms));
+    signal?.addEventListener('abort', done, { once: true });
+  });
+}
 
 type ErrorLike = {
   name?: unknown;
@@ -447,6 +513,8 @@ interface AttemptOutcome {
   usage?: StreamGeminiChatResult['usage'];
   sources: Array<{ url: string; title?: string }>;
   groundingQueries: number;
+  /** Text arrived and the model stopped on the output-token limit. */
+  truncated?: boolean;
 }
 
 interface Emitter {
@@ -542,9 +610,8 @@ async function runAttempt(
       system: config.system,
       messages: input.messages as ModelMessage[],
       ...(tools ? { tools } : {}),
-      ...(typeof config.temperature === 'number' ? { temperature: config.temperature } : {}),
+      ...samplingFor(modelId, config),
       topP: config.topP,
-      ...(typeof config.topK === 'number' ? { topK: config.topK } : {}),
       maxOutputTokens: config.maxOutputTokens,
       ...(providerOptions ? { providerOptions: { google: providerOptions } } : {}),
       // Fail fast: rotation is ours, and the SDK's own retries would burn the function's time budget.
@@ -659,6 +726,10 @@ async function runAttempt(
     // A 200 with no text and no error (thinking ate maxOutputTokens, an empty candidate, an OTHER stop).
     // Nothing reached the user, so this is a model to skip, not an answer.
     out.error = makeError('unavailable', `empty response (finish: ${rawFinishReason || finishReason || 'none'})`);
+  } else if (finishReason === 'length' || rawFinishReason === 'MAX_TOKENS') {
+    // ⚠️ A REPLY CUT AT maxOutputTokens USED TO LOOK FINISHED. It is still an answer (the text stays), but the caller
+    // is told, so the user sees "the answer was cut off" instead of a sentence that just stops.
+    out.truncated = true;
   }
   return out;
 }
@@ -673,6 +744,8 @@ async function runAttempt(
  * fail the same way, and each try costs latency), safety is deliberate (another model re-answering a
  * blocked prompt is a filter bypass), and bad_request is our payload. Once text has been sent, a failure is
  * terminal: a second model's answer appended to the first one's partial answer is a garbled bubble.
+ * With `retryTransientOnce`, the first transient failure (see `isTransientFailure`) retries the SAME model once,
+ * after a short backoff, before any rotation.
  *
  * Never throws; every outcome is in the result, and every failure a live consumer can still read ends with
  * an `{error}` frame.
@@ -728,7 +801,10 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
     const attemptInput: StreamGeminiChatInput = { ...input, apiKey };
 
     let last: { model: string; index: number; outcome: AttemptOutcome } | null = null;
-    for (const [i, model] of models.entries()) {
+    /** `retryTransientOnce` spends its one retry per turn, so a busy model costs at most one backoff. */
+    let retried = false;
+    for (let i = 0; i < models.length; ) {
+      const model = models[i]!;
       if (input.abortSignal?.aborted || emitter.gone) break;
       const outcome = await runAttempt(model, i > 0, attemptInput, emitter, linkAbort);
       last = { model, index: i, outcome };
@@ -749,8 +825,24 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
       console.warn(
         `[gemini-chat] ${model} → ${outcome.error.code}${outcome.error.status ? ` (${outcome.error.status})` : ''}: ${outcome.error.message}`,
       );
+      // ⚠️ PRO WAS ONE BUSY MINUTE FROM FAILING. Its chain is a single preview model with maxRetries 0, so one 429 or
+      // 503 ended the turn. With `retryTransientOnce` the same model gets one more try after a short, jittered pause —
+      // only while nothing has been sent, so a retry can never append a second answer to a first.
+      if (input.retryTransientOnce === true && !retried && outcome.text.length === 0 && isTransientFailure(outcome.error)) {
+        retried = true;
+        const delay = typeof input.retryDelayMs === 'number'
+          ? input.retryDelayMs
+          : TRANSIENT_RETRY_BASE_MS + Math.floor(Math.random() * (TRANSIENT_RETRY_JITTER_MS + 1));
+        await pause(delay, input.abortSignal);
+        if (input.abortSignal?.aborted || emitter.gone) {
+          last = { model, index: i, outcome: { ...outcome, aborted: true } };
+          break;
+        }
+        continue; // the same model again
+      }
       const canRotate = outcome.text.length === 0 && ROTATE_ON.has(outcome.error.code) && i < models.length - 1;
       if (!canRotate) break;
+      i++;
     }
 
     if (!last || last.outcome.aborted) {
@@ -779,6 +871,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
       ...(outcome.error ? { error: outcome.error } : {}),
       attempts,
       ...(outcome.groundingQueries ? { groundingQueries: outcome.groundingQueries } : {}),
+      ...(outcome.truncated && !outcome.error ? { truncated: true } : {}),
     };
 
     const tail: ChatFrame[] = [];
@@ -786,6 +879,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
     if (outcome.error && outcome.text.length > 0) tail.push(metaFrame(outcome.served ?? model, index > 0, true));
     if (outcome.sources.length > 0) tail.push({ sources: outcome.sources });
     if (outcome.usage) tail.push({ usage: { model, ...outcome.usage } });
+    if (res.truncated) tail.push({ truncated: true });
     if (outcome.error) tail.push(errorFrame(outcome.error));
     return await finish(res, tail);
   } catch (err) {

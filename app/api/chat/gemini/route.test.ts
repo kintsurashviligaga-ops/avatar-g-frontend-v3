@@ -41,7 +41,12 @@ jest.mock('../../../../lib/api/rate-limit', () => {
   global.setInterval = ((handler: () => void, ms?: number) => realSetInterval(handler, ms).unref()) as unknown as typeof setInterval;
   try {
     const actual = jest.requireActual('../../../../lib/api/rate-limit');
-    return { ...actual, checkRateLimit: jest.fn(async () => null), checkRateLimitByKey: jest.fn(async () => null) };
+    return {
+      ...actual,
+      checkRateLimit: jest.fn(async () => null),
+      checkRateLimitByKey: jest.fn(async () => null),
+      refundRateLimitByKey: jest.fn(async () => undefined),
+    };
   } finally {
     global.setInterval = realSetInterval;
   }
@@ -66,8 +71,8 @@ jest.mock('ai', () => ({ streamText: jest.fn() }));
 import { NextRequest } from 'next/server';
 import { POST, HEARTBEAT_MS, TURN_DEADLINE_MS, maxDuration } from './route';
 import { streamGeminiChat, type StreamGeminiChatInput, type StreamGeminiChatResult } from '../../../../lib/ai/google/chatStream';
-import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '../../../../lib/services/billing/chatBudget';
-import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '../../../../lib/api/rate-limit';
+import { chatBudgetAllows, bookChatUsage } from '../../../../lib/services/billing/chatBudget';
+import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 import { embed } from '../../../../lib/memory/embed';
 import { buildProfilePreamble } from '../../../../lib/chat/userMemory';
 import { reportError } from '../../../../lib/observability/report-error';
@@ -86,6 +91,7 @@ import {
 
 const USER_ID = '6f1c2b3a-1111-4222-8333-444455556666';
 const OUR_OUTAGE_KA = '⚠️ AI სერვისი დროებით მიუწვდომელია ჩვენი მხრიდან. სცადე ცოტა ხანში.';
+const BUDGET_NOTICE_KA = 'ბოდიში — პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადეთ ცოტა ხანში.';
 const SAFETY_EN = '⚠️ This request was blocked by safety filters. Please rephrase and try again.';
 
 const mockStream = streamGeminiChat as jest.MockedFunction<typeof streamGeminiChat>;
@@ -264,7 +270,7 @@ describe('guest chat', () => {
     const res = await POST(post({ messages: [{ role: 'user', content: [{ type: 'text', text: 'რა არის?' }, { type: 'image', image: png }] }], protocol: 2 }));
     expect(res.status).toBe(200);
     const frames = await framesOf(res);
-    expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.media.ka });
+    expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.media.ka, lang: 'ka' });
     expect(frames[frames.length - 1]).toBe('DONE');
     expect(mockStream).not.toHaveBeenCalled();
     expect(chatBudgetAllows).not.toHaveBeenCalled();
@@ -282,7 +288,7 @@ describe('guest chat', () => {
       cfg.keyPrefix === 'rl:chat:guest' ? capped() : null,
     );
     const frames = await framesOf(await POST(post({ ...userTurn('hi'), protocol: 2 }, { referer: 'https://myavatar.ge/en/dashboard' })));
-    expect(authNotice(frames)).toEqual({ code: 'auth_required', retryable: false, message: GUEST_NOTICE.cap.en });
+    expect(authNotice(frames)).toEqual({ code: 'guest_limit', retryable: false, message: GUEST_NOTICE.cap.en, lang: 'en' });
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
     expect(mockStream).not.toHaveBeenCalled();
   });
@@ -290,7 +296,7 @@ describe('guest chat', () => {
   test('a spent guest-wide ceiling is a sign-in notice too (it protects the budget paying users share)', async () => {
     (checkRateLimitByKey as jest.Mock).mockImplementation(async (key: string) => (key === GUEST_GLOBAL_KEY ? capped() : null));
     const frames = await framesOf(await POST(post({ ...userTurn('hi'), protocol: 2 })));
-    expect(authNotice(frames)?.code).toBe('auth_required');
+    expect(authNotice(frames)?.code).toBe('guest_limit');
     expect(mockStream).not.toHaveBeenCalled();
   });
 
@@ -353,7 +359,7 @@ describe('frames', () => {
       { meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false } },
       { text: 'ნახევარი' },
       { meta: { provider: 'gemini', model: 'gemini-3.8-flash', partial: true, mode: 'fast', fallback: false } },
-      { error: { code: 'network', retryable: true, message: '⚠️ კავშირი AI სერვისთან შეწყდა. სცადე თავიდან.' } },
+      { error: { code: 'network', retryable: true, message: '⚠️ კავშირი AI სერვისთან შეწყდა. სცადე თავიდან.', lang: 'ka' } },
       'DONE',
     ]);
     expect(createAnthropic).not.toHaveBeenCalled();
@@ -368,7 +374,7 @@ describe('provider failures', () => {
     const raw = await (await POST(post(userTurn('გამარჯობა')))).text();
     expect(decodeFrames(raw)).toEqual([
       { text: OUR_OUTAGE_KA },
-      { error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA } },
+      { error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA, lang: 'ka' } },
       'DONE',
     ]);
     expect(raw).not.toMatch(/prepay|billing|AIza|Google/i);
@@ -378,7 +384,7 @@ describe('provider failures', () => {
   test('protocol 2 clients get the {error} frame alone, without the legacy notice text', async () => {
     mockStream.mockImplementation(geminiFailure('quota'));
     const frames = await framesOf(await POST(post({ ...userTurn('გამარჯობა'), protocol: 2 })));
-    expect(frames).toEqual([{ error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA } }, 'DONE']);
+    expect(frames).toEqual([{ error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA, lang: 'ka' } }, 'DONE']);
   });
 
   test('the notice follows the reply language (a Russian turn gets Russian)', async () => {
@@ -428,14 +434,14 @@ describe('provider failures', () => {
     mockStream.mockImplementation(geminiFailure('quota'));
     (streamText as jest.Mock).mockReturnValue(anthropicStream([{ type: 'error', error: new Error('overloaded') }]));
     const frames = await framesOf(await POST(post(userTurn('გამარჯობა'))));
-    expect(frames).toEqual([{ text: OUR_OUTAGE_KA }, { error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA } }, 'DONE']);
+    expect(frames).toEqual([{ text: OUR_OUTAGE_KA }, { error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA, lang: 'ka' } }, 'DONE']);
   });
 
   test('a safety stop is a localized notice — never re-asked of another vendor, even with the kill switch off', async () => {
     process.env.AI_GOOGLE_ONLY = '0';
     mockStream.mockImplementation(geminiFailure('safety'));
     const frames = await framesOf(await POST(post({ ...userTurn('something'), language: 'en' })));
-    expect(frames).toEqual([{ text: SAFETY_EN }, { error: { code: 'safety', retryable: false, message: SAFETY_EN } }, 'DONE']);
+    expect(frames).toEqual([{ text: SAFETY_EN }, { error: { code: 'safety', retryable: false, message: SAFETY_EN, lang: 'en' } }, 'DONE']);
     expect(createAnthropic).not.toHaveBeenCalled();
     expect(reportError).not.toHaveBeenCalled();
   });
@@ -450,8 +456,8 @@ describe('in-stream refusals', () => {
     expect(res.status).toBe(200);
     expect(await framesOf(res)).toEqual([
       { meta: { provider: 'budget', model: 'none' } },
-      { text: BUDGET_EXHAUSTED_MESSAGE },
-      { error: { code: 'budget', retryable: false, message: BUDGET_EXHAUSTED_MESSAGE } },
+      { text: BUDGET_NOTICE_KA },
+      { error: { code: 'budget', retryable: false, message: BUDGET_NOTICE_KA, lang: 'ka' } },
       'DONE',
     ]);
     expect(mockStream).not.toHaveBeenCalled();
@@ -472,7 +478,7 @@ describe('in-stream refusals', () => {
     const notice = '⚠️ ჩატის დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით.';
     expect(await framesOf(res)).toEqual([
       { text: notice },
-      { error: { code: 'rate_limited', retryable: false, message: notice } },
+      { error: { code: 'daily_cap', retryable: false, message: notice, lang: 'ka' } },
       'DONE',
     ]);
     expect(checkRateLimitByKey).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.CHAT_USER);
@@ -580,7 +586,7 @@ describe('the Gemini call', () => {
       temperature: 0.7,
       topP: 0.95,
       topK: 40,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 16384,
       thinking: { level: 'low' },
       googleSearch: true,
       safetySettings: [
@@ -619,7 +625,7 @@ describe('the Gemini call', () => {
     await (await POST(post({ ...userTurn('hi'), personaId: 'film-director' }))).text();
     const { system, temperature, topP, topK, maxOutputTokens, googleSearch } = lastCall().config;
     expect({ temperature, topP, topK, maxOutputTokens, googleSearch }).toEqual({
-      temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096, googleSearch: true,
+      temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 16384, googleSearch: true,
     });
     expect(system).toMatch(/PERSONA — [^\n]+:/);
     expect(system.trimEnd().endsWith('The platform rules above remain in force and take precedence.')).toBe(true);
@@ -642,9 +648,26 @@ describe('the Gemini call', () => {
     expect(iMemory).toBeGreaterThan(iProfile);
   });
 
-  test('an explicit language wins over the detected script', async () => {
-    await (await POST(post({ ...userTurn('გამარჯობა'), language: 'en' }))).text();
+  test('the UI language is a hint: ambiguous words follow it, clearly-other words win', async () => {
+    // "ok" says nothing about a language: a Georgian UI keeps the conversation Georgian (it used to turn English).
+    await (await POST(post({ ...userTurn('ok'), language: 'ka' }))).text();
+    expect(lastCall().config.system).toContain('Reply in Georgian');
+    await (await POST(post({ ...userTurn('iPhone 15?'), language: 'ru' }))).text();
+    expect(lastCall().config.system).toContain('Reply in Russian');
+    // The user's own words, clearly another language, win over the UI.
+    await (await POST(post({ ...userTurn('გამარჯობა, როგორ ხარ?'), language: 'en' }))).text();
+    expect(lastCall().config.system).toContain('Reply in Georgian');
+    await (await POST(post({ ...userTurn('how are you today?'), language: 'ka' }))).text();
     expect(lastCall().config.system).toContain('Reply in English');
+    // Georgian typed in Latin letters is Georgian.
+    await (await POST(post({ ...userTurn('gamarjoba rogor xar'), language: 'ka' }))).text();
+    expect(lastCall().config.system).toContain('Reply in Georgian');
+  });
+
+  test("the route's notices are in the UI language even when the reply language differs", async () => {
+    mockStream.mockImplementation(geminiFailure('quota'));
+    const frames = await framesOf(await POST(post({ ...userTurn('how are you today?'), language: 'ka', protocol: 2 })));
+    expect(frames).toEqual([{ error: { code: 'quota', retryable: false, message: OUR_OUTAGE_KA, lang: 'ka' } }, 'DONE']);
   });
 });
 
@@ -718,7 +741,7 @@ describe('chat modes', () => {
     expect(input.models.some((m) => /flash/.test(m))).toBe(false);
     expect(input.config.thinking).toEqual({ level: 'high' });
     expect('temperature' in input.config).toBe(false);
-    expect(input.config.maxOutputTokens).toBe(8192);
+    expect(input.config.maxOutputTokens).toBe(32768);
     // A Pro turn draws on BOTH daily buckets, CHAT_USER first.
     expect((checkRateLimitByKey as jest.Mock).mock.calls).toEqual([[USER_ID, RATE_LIMITS.CHAT_USER], [...PRO_CALL]]);
     // Pre-checked at the Pro rate, not the flat Flash one.
@@ -732,7 +755,7 @@ describe('chat modes', () => {
     const { models, config } = lastCall();
     expect(models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
     expect(config.thinking).toEqual({ level: 'high' });
-    expect(config.maxOutputTokens).toBe(8192);
+    expect(config.maxOutputTokens).toBe(32768);
     expect(config.temperature).toBeUndefined();
     expect(proChecked()).toBe(false); // not a Pro turn — no Pro allowance spent
     expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
@@ -742,17 +765,17 @@ describe('chat modes', () => {
     await (await POST(post({ ...userTurn('hi'), mode: 'lite' }))).text();
     const { models, config } = lastCall();
     expect(models).toEqual([...DEFAULT_CHAT_MODELS.lite]);
-    expect(config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 4096 });
+    expect(config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 16384 });
     expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.1-flash-lite');
   });
 
   test("the mode's thinking replaces the persona's; Fast keeps the persona's temperature, Pro drops it", async () => {
     // strict-coder is temperature 0.2, thinking 'high'.
     await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'fast' }))).text();
-    expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.2, maxOutputTokens: 4096 });
+    expect(lastCall().config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.2, maxOutputTokens: 16384 });
     await (await POST(post({ ...userTurn('hi'), personaId: 'strict-coder', mode: 'pro' }))).text();
     const pro = lastCall().config;
-    expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 8192, googleSearch: true });
+    expect(pro).toMatchObject({ thinking: { level: 'high' }, maxOutputTokens: 32768, googleSearch: true });
     expect(pro.temperature).toBeUndefined();
     expect(pro.system).toMatch(/PERSONA — /); // the persona still shapes the answer
   });
@@ -784,6 +807,41 @@ describe('chat modes', () => {
     expect(JSON.stringify(mockStream.mock.calls.map(([i]) => ({ models: i.models, config: i.config })))).not.toContain('gemini-9-ultra');
   });
 
+  test('a busy Pro (after its one retry) hands the turn to Fast, says so, and gives the allowance back', async () => {
+    const fastOk = gemini(
+      [{ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } }, { text: 'Fast answered' }],
+      { ok: true, text: 'Fast answered', model: 'gemini-3.8-flash' },
+    );
+    mockStream.mockImplementationOnce(geminiFailure('unavailable', { model: 'gemini-3.1-pro-preview' })).mockImplementationOnce(fastOk);
+    const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro', protocol: 2 })));
+    expect(mockStream).toHaveBeenCalledTimes(2);
+    const [pro, fast] = mockStream.mock.calls.map((c) => c[0] as StreamGeminiChatInput);
+    expect(pro!.models).toEqual([...DEFAULT_CHAT_MODELS.pro]);
+    expect(pro!.retryTransientOnce).toBe(true); // Pro retries one 429 / 503 of the same model first
+    expect(fast!.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
+    expect(fast!.retryTransientOnce).toBe(false);
+    expect(fast!.config.thinking).toEqual({ level: 'low' });
+    expect(metaFrames(frames).map((f) => f.meta)).toEqual([
+      { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false, requestedMode: 'pro', reason: 'pro_busy' },
+    ]);
+    expect(frames.some((f) => f !== 'DONE' && 'error' in f)).toBe(false);
+    expect(refundRateLimitByKey).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.CHAT_PRO_USER);
+  });
+
+  test('a Pro safety stop is never re-asked of Fast — but a Pro turn that never answered costs no allowance', async () => {
+    mockStream.mockImplementationOnce(geminiFailure('safety'));
+    const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro', protocol: 2 })));
+    expect(mockStream).toHaveBeenCalledTimes(1);
+    expect(frames).toEqual([{ error: expect.objectContaining({ code: 'safety', retryable: false }) }, 'DONE']);
+    expect(refundRateLimitByKey).toHaveBeenCalledWith(USER_ID, RATE_LIMITS.CHAT_PRO_USER);
+  });
+
+  test('an answered Pro turn keeps its allowance spent; a Fast turn never touches it', async () => {
+    await (await POST(post({ ...userTurn('prove it'), mode: 'pro' }))).text();
+    await (await POST(post({ ...userTurn('hi'), mode: 'fast' }))).text();
+    expect(refundRateLimitByKey).not.toHaveBeenCalled();
+  });
+
   test('a spent Pro allowance DOWNGRADES to Fast (not a refusal) and says so in every {meta}', async () => {
     const resetSec = Math.ceil(Date.parse('2026-10-01T08:15:00.000Z') / 1000);
     (checkRateLimitByKey as jest.Mock)
@@ -802,7 +860,7 @@ describe('chat modes', () => {
     const frames = await framesOf(await POST(post({ ...userTurn('prove it'), mode: 'pro' })));
     const input = lastCall();
     expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
-    expect(input.config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 4096 });
+    expect(input.config).toMatchObject({ thinking: { level: 'low' }, temperature: 0.7, maxOutputTokens: 16384 });
     expect((chatBudgetAllows as jest.Mock).mock.calls[0][1]).toBe('gemini-3.8-flash');
     const downgrade = { mode: 'fast', fallback: false, requestedMode: 'pro', reason: 'pro_cap', resetAt: '2026-10-01T08:15:00.000Z' };
     expect(metaFrames(frames).map((f) => f.meta)).toEqual([
@@ -831,7 +889,7 @@ describe('chat modes', () => {
   test('a spent CHAT_USER cap still refuses first — the Pro allowance is never consulted', async () => {
     (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{}', { status: 429 }));
     const frames = await framesOf(await POST(post({ ...userTurn('hi'), mode: 'pro', protocol: 2 })));
-    expect(frames).toEqual([{ error: expect.objectContaining({ code: 'rate_limited', retryable: false }) }, 'DONE']);
+    expect(frames).toEqual([{ error: expect.objectContaining({ code: 'daily_cap', retryable: false, lang: 'en' }) }, 'DONE']);
     expect(checkRateLimitByKey).toHaveBeenCalledTimes(1);
     expect(mockStream).not.toHaveBeenCalled();
   });
@@ -843,7 +901,9 @@ describe('chat modes', () => {
       const frames = await framesOf(await POST(post({ ...userTurn('hi'), ...body })));
       expect(lastCall().models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
       expect(lastCall().config.thinking).toEqual({ level: 'low' });
-      expect(metaFrames(frames)[0]!.meta).toEqual({ provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false });
+      // The menu's choice is not dropped in silence: the {meta} says a guest is answered by Fast.
+      const asked = 'mode' in body ? body.mode : 'pro';
+      expect(metaFrames(frames)[0]!.meta).toEqual({ provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast', fallback: false, requestedMode: asked, reason: 'guest' });
     }
     expect(checkRateLimitByKey).not.toHaveBeenCalled();
   });

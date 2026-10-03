@@ -390,3 +390,109 @@ describe('callback errors', () => {
     expect(seen).toEqual([{ text: 'a' }, { text: 'c' }]);
   });
 });
+
+describe('the {truncated} frame (the answer hit the output-token limit)', () => {
+  it('encodes as one data line and decodes back', () => {
+    expect(encodeFrame({ truncated: true })).toBe('data: {"truncated":true}\n\n');
+    expect(decodeFrames(encodeFrame({ truncated: true }))).toEqual([{ truncated: true }]);
+  });
+
+  it('only the literal `true` makes a frame', () => {
+    for (const v of [false, 'true', 1, null, {}, []]) {
+      expect([v, decodeFrames(`data: ${JSON.stringify({ truncated: v })}\n\n`)]).toEqual([v, []]);
+    }
+  });
+
+  it('a success tail that ends truncated: text → sources → usage → truncated → DONE, re-chunked', () => {
+    const frames: ChatFrame[] = [
+      { meta: { provider: 'gemini', model: 'gemini-3.8-flash' } },
+      { text: 'A long answer that stops mid-' },
+      { sources: [{ url: 'https://example.com/a', title: 'A' }] },
+      { usage: { model: 'gemini-3.8-flash', inputTokens: 10, outputTokens: 8192, totalTokens: 8202 } },
+      { truncated: true },
+    ];
+    const body = frames.map((f) => encodeFrame(f)).join('') + encodeFrame('DONE');
+    expect(run(splitInto(body, 7))).toEqual([...frames, 'DONE']);
+  });
+
+  it('in one combined object it comes after usage and before error', () => {
+    const payload = {
+      error: { code: 'quota', message: 'x' },
+      truncated: true,
+      usage: { model: 'm', outputTokens: 5 },
+      text: 'partial',
+      meta: { provider: 'gemini', model: 'm' },
+      sources: [{ url: 'https://example.com/s' }],
+    };
+    expect(decodeFrames(`data: ${JSON.stringify(payload)}\n\n`)).toEqual([
+      { meta: { provider: 'gemini', model: 'm' } },
+      { text: 'partial' },
+      { sources: [{ url: 'https://example.com/s' }] },
+      { usage: { model: 'm', outputTokens: 5 } },
+      { truncated: true },
+      { error: { code: 'quota', retryable: false, message: 'x' } },
+    ]);
+    expect(decodeFrames('data: {"truncated":true,"usage":{"model":"m"}}\n\n')).toEqual([{ usage: { model: 'm' } }, { truncated: true }]);
+  });
+});
+
+describe('the policy error codes (daily_cap, guest_limit, too_long)', () => {
+  const NEW_CODES = ['daily_cap', 'guest_limit', 'too_long'] as const;
+
+  it('are known codes, listed after the original ones', () => {
+    for (const c of NEW_CODES) expect(isChatErrorCode(c)).toBe(true);
+    expect(CHAT_ERROR_CODES.slice(-3)).toEqual([...NEW_CODES]);
+  });
+
+  it.each(NEW_CODES)('%s decodes as itself (not `unavailable`) and is not retryable by default', (code) => {
+    expect(decodeFrames(`data: ${JSON.stringify({ error: { code, message: 'm' } })}\n\n`)).toEqual([
+      { error: { code, retryable: false, message: 'm' } },
+    ]);
+  });
+
+  it.each(NEW_CODES)('%s round-trips through the encoder with an explicit retryable', (code) => {
+    const frame: ChatFrame = { error: { code, retryable: false, message: `notice ${code}` } };
+    expect(decodeFrames(encodeFrame(frame))).toEqual([frame]);
+  });
+});
+
+describe('error `lang` (a notice the route wrote in that locale)', () => {
+  it.each(['ka', 'en', 'ru'] as const)('lang %s is kept and round-trips', (lang) => {
+    const frame: ChatFrame = { error: { code: 'daily_cap', retryable: false, message: 'დღევანდელი ლიმიტი ამოიწურა.', lang } };
+    expect(decodeFrames(encodeFrame(frame))).toEqual([frame]);
+  });
+
+  it('any other value is dropped — the key is absent, the error itself survives', () => {
+    for (const lang of ['fr', 'KA', 'en-US', '', 1, null, true, ['ka'], { ka: 1 }]) {
+      const [f] = decodeFrames(`data: ${JSON.stringify({ error: { code: 'too_long', retryable: false, message: 'm', lang } })}\n\n`);
+      expect([lang, f]).toEqual([lang, { error: { code: 'too_long', retryable: false, message: 'm' } }]);
+      expect(f !== 'DONE' && f && 'error' in f && 'lang' in f.error).toBe(false);
+    }
+  });
+
+  it('a bare-string error never carries a lang', () => {
+    expect(decodeFrames('data: {"error":"boom"}\n\n')).toEqual([{ error: { code: 'unavailable', retryable: true, message: 'boom' } }]);
+  });
+});
+
+describe('meta `reason`: pro_cap | pro_busy | guest', () => {
+  const base = { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast' as const };
+
+  it.each(['pro_cap', 'pro_busy', 'guest'] as const)('%s is kept and round-trips', (reason) => {
+    const frame: ChatFrame = { meta: { ...base, requestedMode: 'pro', reason } };
+    expect(decodeFrames(encodeFrame(frame))).toEqual([frame]);
+  });
+
+  it('every other value is dropped field by field; the badge survives', () => {
+    for (const reason of ['budget', 'PRO_CAP', 'pro-busy', 'guests', '', 1, null, true, ['guest'], { guest: true }]) {
+      const [f] = decodeFrames(`data: ${JSON.stringify({ meta: { ...base, reason } })}\n\n`);
+      expect([reason, f]).toEqual([reason, { meta: base }]);
+    }
+  });
+
+  it('a pro_busy downgrade (no resetAt) decodes without inventing one', () => {
+    expect(decodeFrames(`data: ${JSON.stringify({ meta: { ...base, requestedMode: 'pro', reason: 'pro_busy', fallback: false } })}\n\n`)).toEqual([
+      { meta: { ...base, requestedMode: 'pro', reason: 'pro_busy', fallback: false } },
+    ]);
+  });
+});

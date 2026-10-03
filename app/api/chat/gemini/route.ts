@@ -19,13 +19,20 @@
  *  10. real token usage booked with the user id, before the stream closes.
  *
  * WIRE (lib/chat/sse.ts — one encoder here, one parser in the browser):
- *   success:              {meta} {text}… [{sources}] [{usage}] [DONE]
+ *   success:              {meta} {text}… [{sources}] [{usage}] [{truncated}] [DONE]
  *   failure, no text:     [{usage}] {text: notice} {error} [DONE]
  *   failure after text:   {meta} {text}… {meta partial:true} [{sources}] [{usage}] {error} [DONE]
- *   budget refusal:       {meta provider:'budget'} {text: BUDGET_EXHAUSTED_MESSAGE} {error budget} [DONE]
+ *   budget refusal:       {meta provider:'budget'} {text: notice} {error budget} [DONE]
+ * `{truncated}` = the answer stopped at the output-token limit. Every `{error}` this route writes carries `lang`: its
+ * `message` is a notice in that locale, meant to be shown as is.
  *
  * Every answer's `{meta}` also carries `mode` (the mode that answered) and `fallback` (not that mode's primary model),
- * plus `requestedMode` / `reason: 'pro_cap'` / `resetAt` when a Pro turn was answered by Fast.
+ * plus `requestedMode` / `reason` [/ `resetAt`] when it was answered in another mode than asked: 'pro_cap' (the Pro
+ * allowance is spent), 'pro_busy' (Pro failed even after a retry; its allowance is given back) or 'guest'.
+ *
+ * LANGUAGE: the body's optional `language` ('ka' | 'en' | 'ru', the UI locale) is a hint — the reply follows the
+ * user's own words when they clearly are another language, the hint otherwise (lib/chat/replyLocale
+ * `resolveReplyLocale`); the route's notices are written in the hint.
  *
  * ⚠️ THE CLIENT PICKS A MODE, NEVER A MODEL. A model id in the body is ignored; the chain is chosen here, so a request
  * cannot point a turn at an arbitrary (or costlier) model.
@@ -47,9 +54,9 @@ import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
-import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import { detectReplyLocale } from '@/lib/chat/replyLocale';
-import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
+import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { isReplyLocale, resolveReplyLocale } from '@/lib/chat/replyLocale';
+import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 import { anonymousGenerationAllowed, isAnonymousUser, signInToGenerateBody } from '@/lib/auth/generationGate';
 import {
   GUEST_GLOBAL_KEY,
@@ -60,12 +67,13 @@ import {
   guestChatGlobalDailyLimit,
   guestSearchEnabled,
   guestTurnRefusal,
+  type GuestRefusal,
 } from '@/lib/chat/guestChat';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { chatModelChain } from '@/lib/ai/google/models';
 import { chatModeOption, resolveChatMode, type ChatModeId } from '@/lib/chat/chatModes';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
-import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig } from '@/lib/ai/google/chatStream';
+import { streamGeminiChat, unbookedAttempts, type GeminiChatConfig, type StreamGeminiChatResult } from '@/lib/ai/google/chatStream';
 import { wantsUrlContext } from '@/lib/chat/urlContext';
 import { encodeFrame, SSE_KEEPALIVE, type ChatErrorCode, type ChatFrame, type ChatMeta } from '@/lib/chat/sse';
 import {
@@ -117,8 +125,20 @@ export const HEARTBEAT_MS = 8_000;
  */
 export const TURN_DEADLINE_MS = (maxDuration - 20) * 1000;
 
-/** Output floor for the reasoning modes (Thinking, Pro) — see `applyChatMode`. The persona upper bound. */
-const REASONING_MIN_OUTPUT_TOKENS = 8192;
+/**
+ * Each mode's output ceiling floor, THINKING INCLUDED (Gemini counts thought tokens against maxOutputTokens) — see
+ * `applyChatMode`. ⚠️ It was 4,096 for Fast / Lite and 8,192 for Thinking / Pro, so a long answer (a full essay, a
+ * long code file, a detailed plan) stopped mid-sentence, and nothing said so. Google documents 65,536 output tokens
+ * for its current Flash, Flash-Lite and Pro models (UNVERIFIED for an id an env override adds to a chain). A reply that
+ * still reaches the ceiling now ends with a `{truncated}` frame instead of passing as complete.
+ */
+const MODE_MIN_OUTPUT_TOKENS: Readonly<Record<ChatModeId, number>> = { fast: 16_384, lite: 16_384, thinking: 32_768, pro: 32_768 };
+
+/**
+ * Failures of a Pro turn that hand it to the Fast chain (after chatStream's one same-model retry of a 429 / 503):
+ * the ones that are about Pro's MODEL, not the account (auth, quota), the request (bad_request) or the prompt (safety).
+ */
+const PRO_FALLBACK_ON: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(['rate_limited', 'unavailable', 'model_missing', 'network']);
 
 /** The Anthropic model the legacy fallback uses when AI_GOOGLE_ONLY is off — unchanged from the old route. */
 const FALLBACK_MODEL_ID = 'claude-haiku-4-5-20251001';
@@ -147,6 +167,16 @@ const DAILY_CAP_NOTICE: Readonly<Record<Locale, string>> = {
   ka: '⚠️ ჩატის დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით.',
   en: "⚠️ You've reached the daily chat limit. Please try again later.",
   ru: '⚠️ Дневной лимит сообщений исчерпан. Попробуйте позже.',
+};
+
+/**
+ * The PLATFORM's AI budget guard refused the turn (shared by everyone — not the user's own limit). It used to be one
+ * bilingual ka+en string (BUDGET_EXHAUSTED_MESSAGE) for every locale; the Georgian and English halves are kept.
+ */
+const PLATFORM_BUDGET_NOTICE: Readonly<Record<Locale, string>> = {
+  ka: 'ბოდიში — პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადეთ ცოტა ხანში.',
+  en: "Sorry — the platform's AI budget for this period is exhausted. Please try again later.",
+  ru: 'Извините — бюджет ИИ платформы на этот период исчерпан. Попробуйте чуть позже.',
 };
 
 /** Our side is down (unfunded project, bad key, a model the project cannot see): an outage, never "top up". */
@@ -186,8 +216,23 @@ const NOTICE: Readonly<Record<ChatErrorCode, Readonly<Record<Locale, string>>>> 
     en: '⚠️ This request could not be processed. Try rephrasing it or removing the attachment.',
     ru: '⚠️ Этот запрос не удалось обработать. Переформулируйте его или уберите вложение.',
   },
-  budget: { ka: BUDGET_EXHAUSTED_MESSAGE, en: BUDGET_EXHAUSTED_MESSAGE, ru: BUDGET_EXHAUSTED_MESSAGE },
+  budget: PLATFORM_BUDGET_NOTICE,
   auth_required: SIGN_IN_TO_CHAT,
+  daily_cap: DAILY_CAP_NOTICE,
+  guest_limit: GUEST_NOTICE.cap,
+  too_long: GUEST_NOTICE.too_long,
+};
+
+/**
+ * What each in-stream POLICY refusal is called on the wire. ⚠️ They used to borrow other codes — a spent daily cap went
+ * out as `rate_limited` (the client said "too many requests, try again" and offered Retry), a guest's spent allowance
+ * and too-long message as `auth_required` ("sign in") — so the client re-worded them wrongly. None is retryable.
+ * A guest's photo stays `auth_required`: signing in is the one way to send it.
+ */
+const GUEST_REFUSAL_CODE: Readonly<Record<'cap' | GuestRefusal, ChatErrorCode>> = {
+  cap: 'guest_limit',
+  media: 'auth_required',
+  too_long: 'too_long',
 };
 
 /** Mirrors lib/chat/sse.ts: codes worth a retry button when nothing more specific is known. */
@@ -197,6 +242,7 @@ const RETRYABLE_BY_DEFAULT: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(
 
 interface ChatRequestBody {
   messages?: unknown;
+  /** The UI locale ('ka' | 'en' | 'ru'): a HINT for the reply language (see the header), and the notices' language. */
   language?: unknown;
   /** The chat mode (lib/chat/chatModes ChatModeId). Anything else → Fast. Never a model id. */
   mode?: unknown;
@@ -279,21 +325,20 @@ function hasTokens(u: { inputTokens?: number; outputTokens?: number; totalTokens
  * prompt, safety, search, topP / topK — and the mode sets how hard the model thinks, because the dropdown is the
  * user's explicit, per-turn choice of exactly that:
  *   · thinking — the mode's level REPLACES the persona's (Fast / Lite 'low', Thinking / Pro 'high').
- *   · maxOutputTokens ≥ 8192 for the reasoning modes. Thinking tokens count against it: at 4096 a long reasoning pass
- *     ends MAX_TOKENS with EMPTY text, which chatStream (rightly) treats as a failed attempt and rotates — Google has
- *     billed the whole thought budget, and the next model bills it again.
+ *   · maxOutputTokens ≥ the mode's floor (MODE_MIN_OUTPUT_TOKENS). Thinking tokens count against it: at 4096 a long
+ *     reasoning pass ends MAX_TOKENS with EMPTY text, which chatStream (rightly) treats as a failed attempt and
+ *     rotates — Google has billed the whole thought budget, and the next model bills it again; with text, the answer
+ *     is cut short. A persona's own value is a floor-raised preference, not a way to cut answers off.
  *   · temperature omitted for the reasoning modes. Google's Gemini 3 guidance is to keep the default 1.0: lower values
- *     risk looping or weaker reasoning. Fast / Lite keep the persona's temperature (0.7 by default).
+ *     risk looping or weaker reasoning. Fast / Lite keep it in the config, but chatStream sends it to a Gemini 3 model
+ *     only when the persona chose it (`personaSampling`); the platform's 0.7 / topK 40 default is left out.
  */
 function applyChatMode(config: GeminiChatConfig, mode: ChatModeId): GeminiChatConfig {
   const { thinking } = chatModeOption(mode);
-  if (thinking !== 'high') return { ...config, thinking: { level: thinking } };
+  const maxOutputTokens = Math.max(config.maxOutputTokens, MODE_MIN_OUTPUT_TOKENS[mode]);
+  if (thinking !== 'high') return { ...config, thinking: { level: thinking }, maxOutputTokens };
   const { temperature: _personaTemperature, ...rest } = config;
-  return {
-    ...rest,
-    thinking: { level: thinking },
-    maxOutputTokens: Math.max(config.maxOutputTokens, REASONING_MIN_OUTPUT_TOKENS),
-  };
+  return { ...rest, thinking: { level: thinking }, maxOutputTokens };
 }
 
 /**
@@ -497,9 +542,13 @@ export async function POST(req: NextRequest) {
   }
 
   const v2 = body.protocol === 2 || body.protocol === '2';
-  // An explicit UI selection wins; otherwise lock the reply to the latest message's dominant script (prose only).
-  const explicitLang = body.language === 'en' || body.language === 'ru' || body.language === 'ka' ? body.language : null;
-  const respLocale: Locale = explicitLang ?? detectReplyLocale(localeView(wire));
+  // ⚠️ THE UI LOCALE IS A HINT, NOT A LOCK — AND NOT IGNORED. It used to win outright when sent, and without it the
+  // latest message's dominant script decided, so "ok" answered a Georgian user in English. The user's own words win
+  // when they clearly are another language; short or ambiguous ones follow the UI (lib/chat/replyLocale).
+  const uiLocale: Locale | null = isReplyLocale(body.language) ? body.language : null;
+  const respLocale: Locale = resolveReplyLocale(localeView(wire), uiLocale);
+  /** The route's own notices are UI text: the interface's language when the client said it, else the reply's. */
+  const noticeLocale: Locale = uiLocale ?? respLocale;
 
   // Per-ACCOUNT daily cap, keyed on the verified user id (IP rotation cannot defeat it). A guest only gets here when
   // FILM_ALLOW_ANONYMOUS re-opened chat; they are capped per IP instead. Refused IN-STREAM, like the budget: an HTTP
@@ -514,10 +563,11 @@ export async function POST(req: NextRequest) {
       ((await checkRateLimit(req, guestChatDailyLimit())) ?? (await checkRateLimitByKey(GUEST_GLOBAL_KEY, guestChatGlobalDailyLimit())));
     if (refusal || guestCapped) {
       if (guestCapped) console.warn('[/api/chat/gemini] guest chat cap reached');
-      const message = GUEST_NOTICE[refusal ?? 'cap'][respLocale];
+      const why = refusal ?? 'cap';
+      const message = GUEST_NOTICE[why][noticeLocale];
       return frameResponse([
         ...(v2 ? [] : [{ text: message }]),
-        { error: { code: 'auth_required', retryable: false, message } },
+        { error: { code: GUEST_REFUSAL_CODE[why], retryable: false, message, lang: noticeLocale } },
         'DONE',
       ]);
     }
@@ -529,20 +579,25 @@ export async function POST(req: NextRequest) {
       : await checkRateLimit(req, RATE_LIMITS.CHAT_USER);
   if (capped) {
     console.warn('[/api/chat/gemini] daily chat cap reached');
-    const message = DAILY_CAP_NOTICE[respLocale];
+    const message = DAILY_CAP_NOTICE[noticeLocale];
     return frameResponse([
       ...(v2 ? [] : [{ text: message }]),
-      { error: { code: 'rate_limited', retryable: false, message } },
+      { error: { code: 'daily_cap', retryable: false, message, lang: noticeLocale } },
       'DONE',
     ]);
   }
 
   // ── MODE. Resolved against the catalogue (unknown → Fast, legacy tier:'pro' → Pro) — the body names a mode, the
-  //    chain is chosen here. A guest only reaches this line when FILM_ALLOW_ANONYMOUS re-opened chat, and always gets
-  //    Fast: the Pro allowance is per ACCOUNT, and a guest has none to draw on.
-  const requestedMode: ChatModeId = accountId ? resolveChatMode(body.mode, body.tier) : 'fast';
+  //    chain is chosen here. Without an ACCOUNT (a guest, or FILM_ALLOW_ANONYMOUS) the turn is always Fast: the Pro
+  //    allowance is per account, and a guest has none to draw on. The `{meta}` now says so (reason 'guest') instead of
+  //    the menu's choice being dropped in silence.
+  const askedMode: ChatModeId = resolveChatMode(body.mode, body.tier);
+  const requestedMode: ChatModeId = accountId ? askedMode : 'fast';
   let mode: ChatModeId = requestedMode;
-  let downgrade: Pick<ChatMeta, 'requestedMode' | 'reason' | 'resetAt'> | null = null;
+  let downgrade: Pick<ChatMeta, 'requestedMode' | 'reason' | 'resetAt'> | null =
+    !accountId && askedMode !== 'fast' ? { requestedMode: askedMode, reason: 'guest' } : null;
+  /** The Pro allowance was drawn on for THIS turn (and may have to be given back — see the stream's finally). */
+  let proCharged = false;
   if (requestedMode === 'pro' && accountId) {
     // AFTER CHAT_USER, so a Pro turn draws on both buckets. A spent Pro allowance does not refuse the turn — like the
     // Gemini app, it is answered by Fast and the `{meta}` says so (the stored choice stays Pro; it resumes at reset).
@@ -552,6 +607,8 @@ export async function POST(req: NextRequest) {
       const resetAt = resetAtOf(proSpent);
       downgrade = { requestedMode: 'pro', reason: 'pro_cap', ...(resetAt ? { resetAt } : {}) };
       console.warn('[/api/chat/gemini] daily Pro allowance spent — answering with Fast');
+    } else {
+      proCharged = true;
     }
   }
   const chain = chatModelChain(mode);
@@ -565,9 +622,14 @@ export async function POST(req: NextRequest) {
   // A guest's turn is grounded too, like the Gemini app (CHAT_GUEST_SEARCH=0 turns it off — lib/chat/guestChat), and the
   // prompt follows the config: it must not promise a search the config will not run, nor deny one it will.
   const groundingOn = profile.googleSearch && (!guest || guestSearchEnabled());
-  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn });
-  const modelMessages = toModelMessages(wire);
   const latestUserText = stripHistoryMarkers(textOfWire(lastTurn)).trim();
+  // URL reading only for a turn that carries a link, and only behind GEMINI_CHAT_URL_CONTEXT=1
+  // (lib/chat/urlContext.ts) — and never for a guest: a fetched page multiplies the input tokens, the same reason
+  // grounding is off for them (lib/chat/guestChat). The prompt is told either way, so a turn without the tool says it
+  // cannot open links instead of "summarizing" a page it never read.
+  const urlContextOn = !guest && wantsUrlContext(latestUserText);
+  const platformPrompt = buildPlatformPrompt({ locale: respLocale, googleSearch: groundingOn, urlContext: urlContextOn });
+  const modelMessages = toModelMessages(wire);
   const historyChars = wire.reduce((n, m) => n + estimateWireChars(m), 0);
 
   // Started now, awaited inside the stream: their latencies overlap each other and the Response is returned at once.
@@ -605,7 +667,12 @@ export async function POST(req: NextRequest) {
         try {
           controller.enqueue(encoder.encode(SSE_KEEPALIVE));
         } catch {
+          // ⚠️ THE BROWSER LEFT WHILE THE MODEL WAS STILL THINKING. Only the heartbeat writes in that phase, and it
+          // used to stop its timer and nothing else — the model call ran on (and was billed) for nobody until it
+          // produced a frame to fail on. A failed enqueue now ends the turn exactly as a cancel() does.
+          open = false;
           stopTimers();
+          abort.abort();
         }
       };
       // The first bytes go out NOW (budget, memory and the model's thinking all come before the first frame), then
@@ -636,9 +703,9 @@ export async function POST(req: NextRequest) {
       };
       /** A failure the user must see: the legacy `{text}` notice (see the header) unless text already streamed. */
       const notice = (code: ChatErrorCode, opts: { afterText: boolean; retryable?: boolean; message?: string }): void => {
-        const message = opts.message ?? NOTICE[code][respLocale];
+        const message = opts.message ?? NOTICE[code][noticeLocale];
         if (!opts.afterText && !v2) tryWrite({ text: message });
-        tryWrite({ error: { code, retryable: opts.retryable ?? RETRYABLE_BY_DEFAULT.has(code), message } });
+        tryWrite({ error: { code, retryable: opts.retryable ?? RETRYABLE_BY_DEFAULT.has(code), message, lang: noticeLocale } });
       };
       const bookings: Array<Promise<void>> = [];
       /**
@@ -658,7 +725,7 @@ export async function POST(req: NextRequest) {
         //    turn. Fails OPEN on a guard fault.
         if (!(await budgetPromise)) {
           tryWrite({ meta: { provider: 'budget', model: 'none' } });
-          notice('budget', { afterText: false, retryable: false, message: BUDGET_EXHAUSTED_MESSAGE });
+          notice('budget', { afterText: false, retryable: false });
           return;
         }
 
@@ -674,45 +741,74 @@ export async function POST(req: NextRequest) {
               maxOutputTokens: Math.min(modeConfig.maxOutputTokens, GUEST_MAX_OUTPUT_TOKENS),
             }
           : modeConfig;
-        // URL reading only for a turn that carries a link, and only behind GEMINI_CHAT_URL_CONTEXT=1
-        // (lib/chat/urlContext.ts) — and never for a guest: a fetched page multiplies the input tokens, the same reason
-        // grounding is off for them (lib/chat/guestChat).
-        if (!guest && wantsUrlContext(latestUserText)) config.urlContext = true;
+        if (urlContextOn) config.urlContext = true;
         const inputChars = platformSystem.length + historyChars;
 
-        const result = await streamGeminiChat({
-          apiKey: resolveGeminiKey(),
-          models: chain,
-          messages: modelMessages,
-          config,
-          abortSignal: abort.signal,
-          // chatStream ends every failure with an `{error}` frame worded in English. It is dropped here and re-sent
-          // below, localized — or not at all when the fallback answers instead.
-          onFrame: (frame) => {
-            if ('error' in frame) return;
-            write(decorate(frame));
-          },
-        });
+        /** One chain, streamed to the browser; everything Google billed for it is booked. */
+        const runChain = async (models: readonly string[], cfg: GeminiChatConfig, retryTransientOnce: boolean): Promise<StreamGeminiChatResult> => {
+          const r = await streamGeminiChat({
+            apiKey: resolveGeminiKey(),
+            models: [...models],
+            messages: modelMessages,
+            config: cfg,
+            abortSignal: abort.signal,
+            retryTransientOnce,
+            // chatStream ends every failure with an `{error}` frame worded in English. It is dropped here and re-sent
+            // below, localized — or not at all when a fallback answers instead.
+            onFrame: (frame) => {
+              if ('error' in frame) return;
+              write(decorate(frame));
+            },
+          });
+          // ⚠️ BOOK WHAT GOOGLE BILLED, NOT JUST WHAT SUCCEEDED. A turn that failed mid-answer, was aborted by the
+          // user, or came back empty after thinking still consumed tokens; booking only clean successes (as the old
+          // route did, by character count, with no user) under-counted the platform budget.
+          if (r.model && (hasTokens(r.usage) || r.text.length > 0)) {
+            bookings.push(
+              bookChatUsage({
+                model: r.model,
+                ...r.usage,
+                chars: r.text.length,
+                inputChars,
+                userId: accountId,
+                groundingQueries: r.groundingQueries ?? 0,
+              }),
+            );
+          }
+          // …and every EARLIER attempt Google billed before the rotation (a text-less 200 — thinking ate the budget —
+          // still consumed tokens and search queries), each against the model that consumed it.
+          for (const a of unbookedAttempts(r)) {
+            bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId: accountId, groundingQueries: a.groundingQueries ?? 0 }));
+          }
+          return r;
+        };
 
-        // ⚠️ BOOK WHAT GOOGLE BILLED, NOT JUST WHAT SUCCEEDED. A turn that failed mid-answer, was aborted by the
-        // user, or came back empty after thinking still consumed tokens; booking only clean successes (as the old
-        // route did, by character count, with no user) under-counted the platform budget.
-        if (result.model && (hasTokens(result.usage) || result.text.length > 0)) {
-          bookings.push(
-            bookChatUsage({
-              model: result.model,
-              ...result.usage,
-              chars: result.text.length,
-              inputChars,
-              userId: accountId,
-              groundingQueries: result.groundingQueries ?? 0,
-            }),
-          );
-        }
-        // …and every EARLIER attempt Google billed before the rotation (a text-less 200 — thinking ate the budget —
-        // still consumed tokens and search queries), each against the model that consumed it.
-        for (const a of unbookedAttempts(result)) {
-          bookings.push(bookChatUsage({ model: a.model, ...a.usage, inputChars, userId: accountId, groundingQueries: a.groundingQueries ?? 0 }));
+        // A Pro turn retries ONE transient failure (429 / 503) of its single preview model before giving up on it.
+        let result = await runChain(chain, config, mode === 'pro');
+
+        if (mode === 'pro' && !result.ok && result.text.length === 0) {
+          const userLeft = abort.signal.aborted && !deadlineHit;
+          // ⚠️ AN ALLOWANCE IS FOR AN ANSWER. Pro's allowance is drawn up front (two tabs cannot both slip under the
+          // cap), so a Pro turn that never produced a word used to cost one of the day's few Pro turns all the same.
+          // Given back when Pro failed — not when the user stopped it (the thinking was billed and is theirs).
+          if (proCharged && accountId && !userLeft) {
+            proCharged = false;
+            bookings.push(refundRateLimitByKey(accountId, chatProUserLimit()));
+          }
+          // ⚠️ A BUSY PRO MINUTE USED TO FAIL THE TURN. Pro's chain is one preview model; after chatStream's one
+          // same-model retry, a failure that is about the MODEL (busy, overloaded, missing, the network) hands the turn
+          // to Fast — like the Gemini app — and the `{meta}` says so ('pro_busy'). Not a safety stop (another model
+          // answering a blocked prompt is a filter bypass), not our account or the request, not after the deadline.
+          if (!abort.signal.aborted && result.error && PRO_FALLBACK_ON.has(result.error.code)) {
+            console.warn(`[/api/chat/gemini] Pro failed (${result.error.code}) — answering with Fast`);
+            mode = 'fast';
+            downgrade = { requestedMode: 'pro', reason: 'pro_busy' };
+            const fastConfig: GeminiChatConfig = {
+              ...applyChatMode(toGeminiChatConfig(profile, platformSystem), 'fast'),
+              ...(urlContextOn ? { urlContext: true } : {}),
+            };
+            result = await runChain(chatModelChain('fast'), fastConfig, false);
+          }
         }
 
         if (deadlineHit && !result.ok) {

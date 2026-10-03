@@ -62,11 +62,15 @@ export type ChatStreamErrorReason = 'frame' | 'http' | 'timeout' | 'too_large' |
 
 export interface ChatStreamError {
   code: ChatErrorCode;
+  /** False when retrying the same turn would only fail again (a policy refusal, a safety stop): hide Retry. */
   retryable: boolean;
-  /** Localized, user-facing text (ka/en/ru). */
+  /**
+   * Localized, user-facing text (ka/en/ru): the route's own notice when it was written in this locale (`lang` on the
+   * error frame), otherwise the client's text for `code`.
+   */
   message: string;
   reason: ChatStreamErrorReason;
-  /** The server's own message, for logs. Never shown in place of `message`. */
+  /** The server's raw message, for logs (it is `message` only when it was a notice in this locale). */
   detail?: string;
   /** HTTP status when the failure was a non-2xx response. */
   status?: number;
@@ -87,6 +91,8 @@ export interface ChatStreamSnapshot {
   readonly error: ChatStreamError | null;
   /** Milliseconds from `begin()` to the first text delta, or null before it. */
   readonly firstTokenMs: number | null;
+  /** The server said the reply stopped at the output-token limit (`{"truncated":true}`): the text is cut short. */
+  readonly truncated: boolean;
 }
 
 export interface ChatStreamWriter {
@@ -97,6 +103,8 @@ export interface ChatStreamWriter {
   setMeta(meta: ChatStreamMeta): void;
   setSources(sources: readonly ChatSource[]): void;
   setUsage(usage: ChatStreamUsage): void;
+  /** The reply ended on the output-token limit. */
+  setTruncated(): void;
   /** The stream completed. Flushes pending text synchronously. */
   finish(): void;
   /** The stream failed. Any partial text is kept. Flushes synchronously. */
@@ -133,6 +141,7 @@ const IDLE: ChatStreamSnapshot = Object.freeze({
   usage: null,
   error: null,
   firstTokenMs: null,
+  truncated: false,
 });
 
 interface Pending {
@@ -140,6 +149,7 @@ interface Pending {
   meta?: ChatStreamMeta;
   sources?: readonly ChatSource[];
   usage?: ChatStreamUsage;
+  truncated?: true;
 }
 
 function defaultSchedule(cb: () => void): unknown {
@@ -203,6 +213,7 @@ export function createChatStreamStore(options: ChatStreamStoreOptions = {}): Cha
     if (p.meta) next = { ...next, meta: p.meta };
     if (p.sources) next = { ...next, sources: p.sources };
     if (p.usage) next = { ...next, usage: p.usage };
+    if (p.truncated && !next.truncated) next = { ...next, truncated: true };
     if (next === snapshot) return false;
     snapshot = next;
     return true;
@@ -266,6 +277,12 @@ export function createChatStreamStore(options: ChatStreamStoreOptions = {}): Cha
       setUsage(usage: ChatStreamUsage) {
         if (!live()) return;
         pending.usage = { ...usage };
+        hasPending = true;
+        requestFrame();
+      },
+      setTruncated() {
+        if (!live()) return;
+        pending.truncated = true;
         hasPending = true;
         requestFrame();
       },

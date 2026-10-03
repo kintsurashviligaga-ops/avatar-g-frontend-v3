@@ -41,9 +41,13 @@ import {
   thinkingConfigFor,
   sanitizeSafetySettings,
   servedModelOf,
+  samplingFor,
+  isTransientFailure,
   type GeminiChatConfig,
   type StreamGeminiChatInput,
 } from './chatStream';
+// eslint-disable-next-line import/first
+import { decodeFrames, encodeFrame } from '@/lib/chat/sse';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -762,5 +766,320 @@ describe('sanitizeSafetySettings', () => {
       ]),
     ).toEqual([{ category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_LOW_AND_ABOVE' }]);
     expect(sanitizeSafetySettings(undefined)).toEqual([]);
+  });
+});
+
+// ─── Sampling per model family ───────────────────────────────────────────────
+
+describe('samplingFor — Gemini 3 runs on its own defaults unless a persona chose them', () => {
+  const PLATFORM = { temperature: 0.7, topK: 40 };
+
+  it('drops temperature and topK for every Gemini 3 id (any case, padded)', () => {
+    for (const id of ['gemini-3.8-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'GEMINI-3.8-FLASH', ' gemini-3.6-flash ']) {
+      expect([id, samplingFor(id, PLATFORM)]).toEqual([id, {}]);
+      expect([id, samplingFor(id, { ...PLATFORM, personaSampling: false })]).toEqual([id, {}]);
+    }
+  });
+
+  it('keeps them on Gemini 3 when a persona chose its temperature (personaSampling === true only)', () => {
+    expect(samplingFor('gemini-3.8-flash', { ...PLATFORM, personaSampling: true })).toEqual({ temperature: 0.7, topK: 40 });
+    expect(samplingFor('gemini-3.1-pro-preview', { temperature: 0.2, personaSampling: true })).toEqual({ temperature: 0.2 });
+    expect(samplingFor('gemini-3.8-flash', { ...PLATFORM, personaSampling: 'yes' as unknown as boolean })).toEqual({});
+  });
+
+  it('other families keep exactly what is configured', () => {
+    for (const id of ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemma-3-27b-it']) {
+      expect([id, samplingFor(id, PLATFORM)]).toEqual([id, { temperature: 0.7, topK: 40 }]);
+    }
+    expect(samplingFor('gemini-2.5-flash', { temperature: 0 })).toEqual({ temperature: 0 });
+    expect(samplingFor('gemini-2.5-flash', { topK: 1 })).toEqual({ topK: 1 });
+    expect(samplingFor('gemini-2.5-flash', {})).toEqual({});
+  });
+
+  it('on the wire: a Gemini 3 call carries no temperature / topK, a persona call does, topP always travels', async () => {
+    const plain = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', plain);
+    await run(['gemini-3.8-flash']).promise;
+    expect(plain.doStreamCalls[0]!.temperature).toBeUndefined();
+    expect(plain.doStreamCalls[0]!.topK).toBeUndefined();
+    expect(plain.doStreamCalls[0]!.topP).toBe(0.95);
+
+    const persona = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', persona);
+    await run(['gemini-3.8-flash'], { config: { ...BASE_CONFIG, temperature: 0.9, personaSampling: true } }).promise;
+    expect(persona.doStreamCalls[0]!.temperature).toBe(0.9);
+    expect(persona.doStreamCalls[0]!.topK).toBe(40);
+  });
+
+  it('is decided per attempt: a chain that rotates from Gemini 3 to 2.5 sends the knobs only to 2.5', async () => {
+    const first = failingModel(apiError(503, 'The model is overloaded.', 'UNAVAILABLE'));
+    const second = streamModel([...textParts(['ok']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', first);
+    mockModels.set('gemini-2.5-flash', second);
+    const res = await run(['gemini-3.8-flash', 'gemini-2.5-flash']).promise;
+    expect(res.ok).toBe(true);
+    expect(first.doStreamCalls[0]!.temperature).toBeUndefined();
+    expect(first.doStreamCalls[0]!.topK).toBeUndefined();
+    expect(second.doStreamCalls[0]!.temperature).toBe(0.7);
+    expect(second.doStreamCalls[0]!.topK).toBe(40);
+  });
+});
+
+// ─── The same-model retry ────────────────────────────────────────────────────
+
+/** A model whose n-th stream call follows `steps[n]`: an Error is thrown, an array of parts is streamed. */
+function sequenceModel(steps: Array<unknown[] | Error>): MockLanguageModelV3 {
+  const model: MockLanguageModelV3 = new MockLanguageModelV3({
+    doStream: async () => {
+      const step = steps[Math.min(model.doStreamCalls.length, steps.length) - 1];
+      if (step instanceof Error) throw step;
+      return {
+        stream: simulateReadableStream({
+          chunks: [{ type: 'stream-start', warnings: [] } as LanguageModelV3StreamPart, ...(step as LanguageModelV3StreamPart[])],
+          initialDelayInMs: null,
+          chunkDelayInMs: null,
+        }),
+      };
+    },
+  });
+  return model;
+}
+
+const overloaded = () => apiError(503, 'The model is overloaded. Please try again later.', 'UNAVAILABLE');
+const tooMany = () => apiError(429, 'You exceeded your current quota, please check your plan and billing details.', 'RESOURCE_EXHAUSTED');
+
+describe('isTransientFailure', () => {
+  it('a 429, a 503 or an "overloaded" message is worth one more try of the same model', () => {
+    expect(isTransientFailure({ code: 'rate_limited', message: 'slow down' })).toBe(true);
+    expect(isTransientFailure({ code: 'rate_limited', message: 'x', status: 429 })).toBe(true);
+    expect(isTransientFailure({ code: 'unavailable', message: 'Service Unavailable', status: 503 })).toBe(true);
+    expect(isTransientFailure({ code: 'unavailable', message: 'The model is OVERLOADED.' })).toBe(true);
+    expect(isTransientFailure(classifyChatError(overloaded()))).toBe(true);
+    expect(isTransientFailure(classifyChatError(tooMany()))).toBe(true);
+    expect(isTransientFailure(classifyChatError(new Error('The model is overloaded. Please try again later.')))).toBe(true);
+  });
+
+  it('not an empty 200, a 500, an unknown failure or any other code', () => {
+    expect(isTransientFailure(undefined)).toBe(false);
+    expect(isTransientFailure({ code: 'unavailable', message: 'empty response (finish: STOP)' })).toBe(false);
+    expect(isTransientFailure({ code: 'unavailable', message: 'Internal error encountered.', status: 500 })).toBe(false);
+    expect(isTransientFailure({ code: 'unavailable', message: 'something odd' })).toBe(false);
+    for (const code of ['network', 'model_missing', 'quota', 'auth', 'safety', 'bad_request'] as const) {
+      expect([code, isTransientFailure({ code, message: 'overloaded', status: 503 })]).toEqual([code, false]);
+    }
+  });
+});
+
+describe('streamGeminiChat — retryTransientOnce', () => {
+  const PRO = 'gemini-3.1-pro-preview';
+  const ok = () => [...textParts(['Pro ', 'answer']), finishPart()];
+
+  it.each([
+    ['a 503', overloaded],
+    ['a 429', tooMany],
+    ['an "overloaded" error part with no status', () => new Error('The model is overloaded. Please try again later.')],
+  ])('retries the same model once after %s with no text, and answers from it', async (_label, makeErr) => {
+    const model = sequenceModel([makeErr(), ok()]);
+    mockModels.set(PRO, model);
+    const { frames, promise } = run([PRO], { retryTransientOnce: true, retryDelayMs: 0 });
+    const res = await promise;
+
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(res.ok).toBe(true);
+    expect(res.model).toBe(PRO);
+    expect(res.text).toBe('Pro answer');
+    expect(res.error).toBeUndefined();
+    expect(shape(res.attempts)).toEqual([{ model: PRO, code: res.attempts[0]!.code }, { model: PRO }]);
+    expect(['unavailable', 'rate_limited']).toContain(res.attempts[0]!.code);
+    // The retry is the same chain member: its badge is not a fallback, and the failed try left no frame behind.
+    expect(kinds(frames)).toEqual(['meta', 'text', 'text', 'usage']);
+    expect(frames[0]).toEqual({ meta: { provider: 'gemini', model: PRO } });
+  });
+
+  it('an error part in the stream (not a thrown request) is retried too', async () => {
+    const model = sequenceModel([[{ type: 'error', error: overloaded() }], ok()]);
+    mockModels.set(PRO, model);
+    const res = await run([PRO], { retryTransientOnce: true, retryDelayMs: 0 }).promise;
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(res.ok).toBe(true);
+  });
+
+  it('is off by default: a single-model chain fails on the first 503', async () => {
+    const model = sequenceModel([overloaded(), ok()]);
+    mockModels.set(PRO, model);
+    const { frames, promise } = run([PRO], { retryDelayMs: 0 });
+    const res = await promise;
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatchObject({ code: 'unavailable', status: 503 });
+    expect(kinds(frames)).toEqual(['error']);
+  });
+
+  it('retryTransientOnce: false is the same as off', async () => {
+    const model = sequenceModel([tooMany(), ok()]);
+    mockModels.set(PRO, model);
+    const res = await run([PRO], { retryTransientOnce: false, retryDelayMs: 0 }).promise;
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(res.error?.code).toBe('rate_limited');
+  });
+
+  it('never retries once text was sent (a second answer would be appended to the first)', async () => {
+    const model = sequenceModel([
+      [{ type: 'text-start', id: 't0' }, { type: 'text-delta', id: 't0', delta: 'Half ' }, { type: 'error', error: overloaded() }],
+      ok(),
+    ]);
+    mockModels.set(PRO, model);
+    const { frames, promise } = run([PRO], { retryTransientOnce: true, retryDelayMs: 0 });
+    const res = await promise;
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(res.ok).toBe(false);
+    expect(res.text).toBe('Half ');
+    expect(kinds(frames)).toEqual(['meta', 'text', 'meta', 'error']);
+  });
+
+  it('does not retry a failure that is not transient (a 500, a 404, quota)', async () => {
+    for (const err of [apiError(500, 'Internal error encountered.', 'INTERNAL'), apiError(404, 'not found for API version v1beta', 'NOT_FOUND'), apiError(402, 'Payment Required')]) {
+      const model = sequenceModel([err, ok()]);
+      mockModels.set(PRO, model);
+      const res = await run([PRO], { retryTransientOnce: true, retryDelayMs: 0 }).promise;
+      expect([err.statusCode, model.doStreamCalls.length, res.ok]).toEqual([err.statusCode, 1, false]);
+    }
+  });
+
+  it('spends ONE retry per turn: a model that fails twice ends the turn with one error frame', async () => {
+    const model = sequenceModel([overloaded(), overloaded(), ok()]);
+    mockModels.set(PRO, model);
+    const { frames, promise } = run([PRO], { retryTransientOnce: true, retryDelayMs: 0 });
+    const res = await promise;
+    expect(model.doStreamCalls).toHaveLength(2);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatchObject({ code: 'unavailable', retryable: true, status: 503 });
+    expect(shape(res.attempts)).toEqual([{ model: PRO, code: 'unavailable' }, { model: PRO, code: 'unavailable' }]);
+    expect(kinds(frames)).toEqual(['error']);
+  });
+
+  it('…across the whole chain: after the retry the chain rotates, and the next model gets no retry of its own', async () => {
+    const first = sequenceModel([overloaded(), overloaded(), ok()]);
+    const second = sequenceModel([tooMany(), ok()]);
+    mockModels.set('gemini-3.8-flash', first);
+    mockModels.set('gemini-3.6-flash', second);
+    const res = await run(['gemini-3.8-flash', 'gemini-3.6-flash'], { retryTransientOnce: true, retryDelayMs: 0 }).promise;
+    expect(first.doStreamCalls).toHaveLength(2);
+    expect(second.doStreamCalls).toHaveLength(1);
+    expect(res.ok).toBe(false);
+    expect(res.model).toBe('gemini-3.6-flash');
+    expect(shape(res.attempts)).toEqual([
+      { model: 'gemini-3.8-flash', code: 'unavailable' },
+      { model: 'gemini-3.8-flash', code: 'unavailable' },
+      { model: 'gemini-3.6-flash', code: 'rate_limited' },
+    ]);
+  });
+
+  it('retries before rotating: a chain whose first model recovers never reaches the second', async () => {
+    const first = sequenceModel([overloaded(), ok()]);
+    const second = streamModel([...textParts(['second']), finishPart()]);
+    mockModels.set('gemini-3.8-flash', first);
+    mockModels.set('gemini-3.6-flash', second);
+    const { frames, promise } = run(['gemini-3.8-flash', 'gemini-3.6-flash'], { retryTransientOnce: true, retryDelayMs: 0 });
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(res.model).toBe('gemini-3.8-flash');
+    expect(second.doStreamCalls).toHaveLength(0);
+    expect(frames[0]).toEqual({ meta: { provider: 'gemini', model: 'gemini-3.8-flash' } });
+  });
+
+  it('a caller abort during the backoff ends the turn at once: no second try, no frames', async () => {
+    const model = sequenceModel([overloaded(), ok()]);
+    mockModels.set(PRO, model);
+    const ctrl = new AbortController();
+    const started = Date.now();
+    const { frames, promise } = run([PRO], { retryTransientOnce: true, retryDelayMs: 60_000, abortSignal: ctrl.signal });
+    setTimeout(() => ctrl.abort(), 20);
+    const res = await promise;
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(model.doStreamCalls).toHaveLength(1);
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe('network');
+    expect(shape(res.attempts)).toEqual([{ model: PRO, code: 'unavailable' }]);
+    expect(frames).toEqual([]);
+  });
+});
+
+// ─── Truncation (finish MAX_TOKENS) ──────────────────────────────────────────
+
+describe('streamGeminiChat — an answer cut at maxOutputTokens', () => {
+  it('a MAX_TOKENS / length finish with text is ok but truncated, and a {truncated} frame follows usage', async () => {
+    mockModels.set('gemini-3.8-flash', streamModel([...textParts(['A long answer that stops mid-']), finishPart('length', 'MAX_TOKENS')]));
+    const { frames, promise } = run(['gemini-3.8-flash']);
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(res.truncated).toBe(true);
+    expect(res.error).toBeUndefined();
+    expect(res.text).toBe('A long answer that stops mid-');
+    expect(kinds(frames)).toEqual(['meta', 'text', 'usage', 'truncated']);
+    expect(frames[frames.length - 1]).toEqual({ truncated: true });
+  });
+
+  it('either signal is enough: the unified `length` reason or Google\'s raw MAX_TOKENS', async () => {
+    for (const [unified, raw] of [['length', ''], ['other', 'MAX_TOKENS']] as const) {
+      mockModels.set('gemini-3.8-flash', streamModel([...textParts(['cut']), finishPart(unified, raw)]));
+      const res = await run(['gemini-3.8-flash']).promise;
+      expect([unified, raw, res.ok, res.truncated]).toEqual([unified, raw, true, true]);
+    }
+  });
+
+  it('the frame comes after sources and usage — the last frame before the route\'s [DONE]', async () => {
+    const source = { type: 'source', sourceType: 'url', id: 's', url: 'https://a.example/1', title: 'A' } as LanguageModelV3StreamPart;
+    mockModels.set('gemini-3.8-flash', streamModel([source, ...textParts(['cut']), finishPart('length', 'MAX_TOKENS')]));
+    const { frames, promise } = run(['gemini-3.8-flash']);
+    await promise;
+    expect(kinds(frames)).toEqual(['meta', 'text', 'sources', 'usage', 'truncated']);
+    // …and the browser's codec reads the whole tail back unchanged.
+    expect(decodeFrames(frames.map((f) => encodeFrame(f)).join('') + encodeFrame('DONE'))).toEqual([...frames, 'DONE']);
+  });
+
+  it('a normal STOP is not truncated: no flag on the result, no frame', async () => {
+    mockModels.set('gemini-3.8-flash', streamModel([...textParts(['done.']), finishPart('stop', 'STOP')]));
+    const { frames, promise } = run(['gemini-3.8-flash']);
+    const res = await promise;
+    expect('truncated' in res).toBe(false);
+    expect(frames.some((f) => 'truncated' in f)).toBe(false);
+  });
+
+  it('MAX_TOKENS with NO text is an empty answer (thinking ate the budget): it rotates, it is not "truncated"', async () => {
+    mockModels.set('gemini-3.8-flash', streamModel([finishPart('length', 'MAX_TOKENS')]));
+    mockModels.set('gemini-3.6-flash', streamModel([...textParts(['full answer']), finishPart()]));
+    const { frames, promise } = run(['gemini-3.8-flash', 'gemini-3.6-flash']);
+    const res = await promise;
+    expect(res.ok).toBe(true);
+    expect(res.model).toBe('gemini-3.6-flash');
+    expect(res.attempts[0]).toMatchObject({ model: 'gemini-3.8-flash', code: 'unavailable' });
+    expect(res.truncated).toBeUndefined();
+    expect(frames.some((f) => 'truncated' in f)).toBe(false);
+
+    // Alone in the chain it fails as unavailable — still not truncated.
+    mockModels.set('gemini-3.8-flash', streamModel([finishPart('length', 'MAX_TOKENS')]));
+    const alone = await run(['gemini-3.8-flash']).promise;
+    expect(alone.ok).toBe(false);
+    expect(alone.error?.code).toBe('unavailable');
+    expect(alone.truncated).toBeUndefined();
+  });
+
+  it('a rotated model that runs out of tokens reports the truncation of the answer it gave', async () => {
+    mockModels.set('gemini-3.8-flash', failingModel(apiError(404, 'not found for API version v1beta', 'NOT_FOUND')));
+    mockModels.set('gemini-3.6-flash', streamModel([...textParts(['cut']), finishPart('length', 'MAX_TOKENS')]));
+    const { frames, promise } = run(['gemini-3.8-flash', 'gemini-3.6-flash']);
+    const res = await promise;
+    expect(res).toMatchObject({ ok: true, model: 'gemini-3.6-flash', truncated: true });
+    expect(frames[frames.length - 1]).toEqual({ truncated: true });
+  });
+
+  it('a safety stop is never reported as truncated', async () => {
+    mockModels.set('gemini-3.8-flash', streamModel([...textParts(['partial']), finishPart('content-filter', 'MAX_TOKENS')]));
+    const { frames, promise } = run(['gemini-3.8-flash']);
+    const res = await promise;
+    expect(res.error?.code).toBe('safety');
+    expect(res.truncated).toBeUndefined();
+    expect(frames.some((f) => 'truncated' in f)).toBe(false);
   });
 });
