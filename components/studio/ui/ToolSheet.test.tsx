@@ -1,8 +1,8 @@
 /**
  * @jest-environment jsdom
  *
- * ToolSheet — what the composer's „+" opens: one attach button (the phone's picker offers photos, the camera and
- * files from it), drawn only when the active tool takes files, then the tools.
+ * ToolSheet — what the composer's „+" opens: the tools. Files are attached with the composer's paperclip beside „+"
+ * (owner, 2026-10-03), so the sheet carries no attach row.
  */
 import '@testing-library/jest-dom';
 import { fireEvent, render, screen, within } from '@testing-library/react';
@@ -19,36 +19,22 @@ function sheet(props: Partial<React.ComponentProps<typeof ToolSheet>> = {}) {
   return { onClose, ...utils };
 }
 
-test('ONE attach button (not four tiles): it opens the picker and closes the sheet', () => {
-  const onAttach = jest.fn();
-  const { onClose } = sheet({ onAttach });
-  const dialog = screen.getByRole('dialog');
-  const outside = within(dialog).getAllByRole('button').filter((b) => !b.closest('ul'));
-  expect(outside).toHaveLength(1);
-  expect(outside[0]).toHaveTextContent('Attach files');
-  expect(outside[0]).toHaveTextContent('Photos, videos, camera, documents, audio');
-  for (const old of ['Photos', 'Video', 'Camera', 'Files']) expect(screen.queryByRole('button', { name: old })).toBeNull();
-  fireEvent.click(screen.getByTestId('attach'));
-  expect(onAttach).toHaveBeenCalledTimes(1);
-  expect(onClose).toHaveBeenCalledTimes(1);
-});
-
-test('the line under the button says what the open tool takes', () => {
-  sheet({ onAttach: jest.fn(), attachHint: 'A video' });
-  expect(screen.getByTestId('attach')).toHaveTextContent('A video');
-});
-
-test('no attach button when the tool takes no files (a studio): the tools list is the whole sheet', () => {
+test('the sheet is the tools only: no attach row — files are the paperclip beside „+"', () => {
   sheet();
   expect(screen.queryByTestId('attach')).toBeNull();
+  const dialog = screen.getByRole('dialog');
+  const outside = within(dialog).getAllByRole('button').filter((b) => !b.closest('ul'));
+  expect(outside).toHaveLength(0);
+  for (const old of ['Attach files', 'Photos', 'Camera', 'Files']) expect(screen.queryByRole('button', { name: old })).toBeNull();
 });
 
 test.each([
-  ['ka', 'ფაილის მიმაგრება'],
-  ['ru', 'Прикрепить файлы'],
-] as const)('the attach button is named in %s', (locale, name) => {
-  sheet({ locale, onAttach: jest.fn() });
-  expect(screen.getByTestId('attach')).toHaveTextContent(name);
+  ['ka', 'ხელსაწყოები'],
+  ['en', 'Tools'],
+  ['ru', 'Инструменты'],
+] as const)('in %s the sheet is named for what it holds — the tools', (locale, name) => {
+  sheet({ locale });
+  expect(screen.getByRole('dialog', { name })).toBeInTheDocument();
 });
 
 // ── extras: the rows that DO something instead of switching the tool (Deep Research, Connectors) ──────────────────

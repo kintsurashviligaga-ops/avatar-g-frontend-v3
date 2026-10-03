@@ -45,16 +45,17 @@ const TOOL_ENGINE: Partial<Record<ToolId, string>> = {
 
 /**
  * Button and menu labels the prompt points users at, copied from the UI (they are not exported there):
- * the composer's "+" sheet title (components/studio/ui/ToolSheet.tsx), the side menu's services entry and the top-up
- * button (components/studio/ChatChrome.tsx), and the Live voice chip (the composer in OmniStudio). The test scans
+ * the composer's "+" sheet title (components/studio/ui/ToolSheet.tsx), the paperclip beside it (the composer in
+ * OmniStudio), the side menu's services entry and the top-up button (components/studio/ChatChrome.tsx), and the Live
+ * voice chip (the composer in OmniStudio). The test scans
  * components/ for each literal, so a renamed button fails CI instead of sending users to a button that is gone.
  */
 export const PLATFORM_UI_LABELS: Readonly<Record<PlatformPromptLocale, {
-  language: string; toolsSheet: string; services: string; liveVoice: string; topUp: string;
+  language: string; toolsSheet: string; attach: string; services: string; liveVoice: string; topUp: string;
 }>> = {
-  ka: { language: 'Georgian (ქართული)', toolsSheet: 'დამატება და ხელსაწყოები', services: 'სერვისები', liveVoice: 'ცოცხალი ხმა', topUp: 'შევსება' },
-  en: { language: 'English', toolsSheet: 'Add and tools', services: 'Services', liveVoice: 'Live voice', topUp: 'Top up' },
-  ru: { language: 'Russian (Русский)', toolsSheet: 'Добавить и инструменты', services: 'Сервисы', liveVoice: 'Живой голос', topUp: 'Пополнить' },
+  ka: { language: 'Georgian (ქართული)', toolsSheet: 'ხელსაწყოები', attach: 'ფაილის მიმაგრება', services: 'სერვისები', liveVoice: 'ცოცხალი ხმა', topUp: 'შევსება' },
+  en: { language: 'English', toolsSheet: 'Tools', attach: 'Attach files', services: 'Services', liveVoice: 'Live voice', topUp: 'Top up' },
+  ru: { language: 'Russian (Русский)', toolsSheet: 'Инструменты', attach: 'Прикрепить файлы', services: 'Сервисы', liveVoice: 'Живой голос', topUp: 'Пополнить' },
 };
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -166,7 +167,7 @@ export function buildPlatformPrompt(opts: {
 
     `STUDIO TOOLS (name — what it does · Google engine):\n${toolLines(loc)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
-    `HANDING OFF: You cannot start, queue or finish a render from a text reply — the studio runs the tools. A clear request typed in chat (e.g. "make a 30-second video of …") is usually routed to the right tool automatically, and every tool opens from "${ui.toolsSheet}" (the + button) or "${ui.services}" in the side menu. So when someone wants to create or edit media and the request reached you, name the tool and how to open it in one sentence, then offer a ready-to-use prompt. Never say a result exists that you have not seen. Never reply with JSON, commands or routing payloads — plain language only. Bring up tools only when the user wants to make or edit media, or asks about the platform. Creating media needs a signed-in account; paid tools spend credits.`,
+    `HANDING OFF: You cannot start, queue or finish a render from a text reply — the studio runs the tools. A clear request typed in chat (e.g. "make a 30-second video of …") is usually routed to the right tool automatically, and every tool opens from "${ui.toolsSheet}" (the + button) or "${ui.services}" in the side menu, and files are attached with "${ui.attach}" (the paperclip beside +). So when someone wants to create or edit media and the request reached you, name the tool and how to open it in one sentence, then offer a ready-to-use prompt. Never say a result exists that you have not seen. Never reply with JSON, commands or routing payloads — plain language only. Bring up tools only when the user wants to make or edit media, or asks about the platform. Creating media needs a signed-in account; paid tools spend credits.`,
 
     priceBlock(ui.topUp),
   ].join('\n\n');

@@ -1,17 +1,15 @@
 'use client';
 
-import { Check, Paperclip, type LucideIcon } from 'lucide-react';
+import { Check, type LucideIcon } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 
 /**
- * What the composer's „+" opens — the Gemini grammar (docs/DESIGN.md §8): ONE button for what you bring, then the
- * tools, each a line icon, a name and one line of what it does. Choosing a tool closes the sheet and puts it in the
- * composer as a chip.
+ * What the composer's „+" opens — the tools (docs/DESIGN.md §8), each a line icon, a name and one line of what it does.
+ * Choosing a tool closes the sheet and puts it in the composer as a chip.
  *
- * ⚠️ ONE ATTACH BUTTON, NOT FOUR TILES. Photos, Video, Camera and Files were four tiles for one job, and the owner
- * asked for the customary single button. The phone's own picker already offers the photo library, the camera and the
- * files from one tap (an <input type="file"> does that on iOS and Android), so a single „Attach" covers all of them;
- * the line under it says what the open tool takes.
+ * ⚠️ FILES ARE NOT HERE ANY MORE. The one attach button lived at the top of this sheet, two taps from the composer, and
+ * the owner asked for it beside „+" where people look for it (2026-10-03): it is the composer's paperclip now
+ * (OmniStudio, `data-testid="composer-attach"`), drawn only for a tool that takes files.
  */
 export interface ToolEntry {
   id: string;
@@ -25,14 +23,14 @@ export interface ToolEntry {
 
 type Lang = 'ka' | 'en' | 'ru';
 
-const COPY: Record<Lang, { title: string; close: string; attach: string; attachAll: string; tools: string; more: string }> = {
-  ka: { title: 'დამატება და ხელსაწყოები', close: 'დახურვა', attach: 'ფაილის მიმაგრება', attachAll: 'ფოტო, ვიდეო, კამერა, დოკუმენტი, აუდიო', tools: 'ხელსაწყოები', more: 'მეტი' },
-  en: { title: 'Add and tools', close: 'Close', attach: 'Attach files', attachAll: 'Photos, videos, camera, documents, audio', tools: 'Tools', more: 'More' },
-  ru: { title: 'Добавить и инструменты', close: 'Закрыть', attach: 'Прикрепить файлы', attachAll: 'Фото, видео, камера, документы, аудио', tools: 'Инструменты', more: 'Ещё' },
+const COPY: Record<Lang, { close: string; tools: string; more: string }> = {
+  ka: { close: 'დახურვა', tools: 'ხელსაწყოები', more: 'მეტი' },
+  en: { close: 'Close', tools: 'Tools', more: 'More' },
+  ru: { close: 'Закрыть', tools: 'Инструменты', more: 'Ещё' },
 };
 
 export function ToolSheet({
-  open, onClose, locale, title, tools, studios = [], extras = [], activeId, onTool, onAttach, attachHint,
+  open, onClose, locale, title, tools, studios = [], extras = [], activeId, onTool,
 }: {
   open: boolean;
   onClose: () => void;
@@ -47,13 +45,6 @@ export function ToolSheet({
   extras?: Array<ToolEntry & { onPick: () => void }>;
   activeId: string | null;
   onTool: (id: string) => void;
-  /**
-   * The one attach button: opens the picker for whatever the active tool takes (the chat: anything readable — photos,
-   * video, the camera, documents, audio). Absent = the tool takes no files (a studio), and no button is drawn.
-   */
-  onAttach?: () => void;
-  /** The line under the button: what this tool takes. Default: everything the chat reads. */
-  attachHint?: string;
 }) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
@@ -75,21 +66,7 @@ export function ToolSheet({
     );
   };
   return (
-    <BottomSheet open={open} onClose={onClose} closeLabel={c.close} testId="tool-sheet" title={title ?? c.title} showHeader={false}>
-      {onAttach && (
-        <div className="px-1 pb-3 pt-1">
-          <button type="button" data-testid="attach" onClick={() => { onAttach(); onClose(); }}
-            className="flex min-h-[64px] w-full items-center gap-3.5 rounded-2xl bg-app-elevated/70 px-3 text-left transition-colors hover:bg-app-elevated focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-app-accent">
-            <span aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent">
-              <Paperclip size={20} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[16px] font-semibold leading-tight text-app-text">{c.attach}</span>
-              <span className="mt-0.5 block text-[13px] leading-snug text-app-muted">{attachHint ?? c.attachAll}</span>
-            </span>
-          </button>
-        </div>
-      )}
+    <BottomSheet open={open} onClose={onClose} closeLabel={c.close} testId="tool-sheet" title={title ?? c.tools} showHeader={false}>
       <p className="px-3 pb-1 pt-1 text-[12px] font-medium text-app-muted">{c.tools}</p>
       <ul className="space-y-0.5" aria-label={c.tools}>{tools.map(row)}</ul>
       {extras.length > 0 && (

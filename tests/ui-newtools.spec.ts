@@ -109,7 +109,7 @@ for (const vp of VIEWPORTS) {
         for (const t of TOOLS) await expect(nav.getByRole('button', { name: t.title })).toBeVisible();
         await nav.getByRole('button', { name: 'Interior designer' }).click();
       } else {
-        await page.getByRole('button', { name: 'Add and tools' }).click();
+        await page.getByRole('button', { name: 'Tools', exact: true }).click();
         const sheet = page.getByTestId('tool-sheet');
         await expect(sheet).toBeVisible();
         for (const t of TOOLS) await expect(sheet.getByRole('button', { name: new RegExp(t.title) })).toBeVisible();

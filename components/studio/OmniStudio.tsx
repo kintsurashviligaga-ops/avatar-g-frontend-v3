@@ -14,7 +14,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
+import { Send, ArrowUp, ArrowDown, Sparkle, Mic, Square, Plus, Paperclip, X, Loader2, Sparkles, Film, Music2, FileText, Image as ImageIcon, Download, Upload, Wand2, Volume2, Copy, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, RotateCcw, Trash2, Pencil, Share2, ThumbsUp, ThumbsDown, Camera, BookmarkPlus, Scissors, GripVertical, ScanFace, AlertTriangle, Clapperboard, Package, SlidersHorizontal, PenSquare, CreditCard, Wallet, Palette, User, Subtitles, Languages, Type, Gauge, Video } from 'lucide-react';
 import { BRAND_V1 } from '@/lib/brand/v1';
 import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
@@ -7848,10 +7848,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
   });
-  // THE ONE ATTACH BUTTON (components/studio/ui/ToolSheet): one picker per tool — the phone's own picker offers the
-  // library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
+  // THE ONE ATTACH BUTTON — the composer's paperclip, beside „+" (it used to sit inside the „+" sheet, two taps away):
+  // one picker per tool — the phone's own picker offers the library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
   // one picker for both, and each file is handed to the input that has always handled its kind (routeAttach).
   const hint = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+  const attachWord = hint('ფაილის მიმაგრება', 'Attach files', 'Прикрепить файлы');
   const attachTarget: { onAttach?: () => void; attachHint?: string } =
     // THE CHAT TAKES EVERYTHING: photos, a video, the camera, documents, audio — `fileRef` accepts every kind it reads.
     activeTool === 'chat' ? { onAttach: () => fileRef.current?.click() }
@@ -9603,27 +9604,51 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           {/* Controls — Gemini's row: [+] and the tool chip on the left, voice and Run on the right. The camera, the
               mode dropdown, the options icon and two format selects used to share this row; „+" and the chip replace
               all five. */}
-          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1`}>
+          <div className={chatSingleRow ? 'contents' : `${chatOnly ? 'px-1' : 'mt-1'} flex items-center gap-1 max-[389px]:gap-0.5`}>
             <button type="button" onClick={() => { setToolPickOnly(false); setToolSheetOpen(true); }}
               aria-haspopup="dialog" aria-expanded={toolSheetOpen && !toolPickOnly} data-testid="plus"
-              aria-label={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
-              title={locale === 'en' ? 'Add and tools' : locale === 'ru' ? 'Добавить и инструменты' : 'დამატება და ხელსაწყოები'}
+              aria-label={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
+              title={locale === 'en' ? 'Tools' : locale === 'ru' ? 'Инструменты' : 'ხელსაწყოები'}
               className={chatOnly
                 ? `group flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text/90 transition-colors duration-200 hover:bg-app-border/10 [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10 ${chatSingleRow ? 'order-first' : ''}`
                 : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
               {/* In the chat the „+“ turns into „×“ while its sheet is open, as Gemini's does. */}
               <Plus size={chatOnly ? 22 : 20} aria-hidden="true" className={chatOnly ? 'transition-transform duration-200 group-aria-expanded:rotate-45 motion-reduce:transition-none' : undefined} />
             </button>
+            {/* Attach — the paperclip right beside „+", where people look for it (owner, 2026-10-03); it used to be the
+                first row of the „+" sheet. Drawn only for a tool that takes files; the tooltip says what this one takes. */}
+            {attachTarget.onAttach && (
+              <button type="button" onClick={attachTarget.onAttach} data-testid="composer-attach"
+                aria-label={attachWord}
+                title={attachTarget.attachHint ? `${attachWord} — ${attachTarget.attachHint}` : attachWord}
+                className={chatOnly
+                  ? `${chatRound} text-app-text/90 hover:bg-app-border/10 ${chatSingleRow ? 'order-first' : ''}`
+                  : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-surface hover:text-app-text'}>
+                <Paperclip size={chatOnly ? 20 : 19} aria-hidden="true" />
+              </button>
+            )}
             {/* The tool chip — its visible text IS its accessible name (what, and in what shape). NOT in the chat: the
                 chat has no settings to open, and „+“ (like the sidebar) already switches the tool. */}
             {!chatOnly && (
               <button type="button" onClick={() => (isDesktop ? setPanelOpen((v) => !v) : setOptionsOpen(true))}
                 aria-haspopup={isDesktop ? undefined : 'dialog'} aria-expanded={isDesktop ? panelOpen : optionsOpen}
                 data-testid="options-toggle" title={settingsWord}
-                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface sm:px-3.5 sm:text-[13px]">
+                className="flex h-11 min-w-0 items-center gap-1 rounded-full bg-app-surface/60 px-3 text-[12.5px] sm:gap-1.5 font-medium text-app-text transition-colors hover:bg-app-surface max-[389px]:px-2 max-[359px]:w-11 max-[359px]:shrink-0 max-[359px]:justify-center max-[359px]:px-0 sm:px-3.5 sm:text-[13px]">
                 <ToolIcon size={15} aria-hidden="true" className="shrink-0 text-app-accent" />
-                <span className="min-w-0 truncate whitespace-nowrap">{toolLabel}{toolSummary ? <span className="text-app-muted"> · {toolSummary}</span> : null}</span>
-                {/* The chevron is from `sm` up: on a 390 px phone its 19 px is what keeps „ვიდეო · 9:16 · 24წმ" whole. */}
+                {/* ⚠️ ON A PHONE THE CHIP IS TWO LINES — the tool, and under it its shape („9:16 · 24წმ"), small and muted. With
+                    the paperclip beside „+" (owner, 2026-10-03) one line left ~136 px at 390 and cut it to „ვიდეო · …". The
+                    „ · " stays in the text (screen-reader-only on a phone), so the chip's text and accessible name are
+                    still „ვიდეო · 9:16 · 24წმ". Under 360 px the words go screen-reader-only too: the icon is the chip. */}
+                <span className="flex min-w-0 flex-col items-start leading-[1.15] max-[359px]:sr-only sm:flex-row sm:items-center sm:leading-normal">
+                  <span className="max-w-full truncate whitespace-nowrap">{toolLabel}</span>
+                  {toolSummary ? (
+                    <>
+                      <span className="sr-only whitespace-pre text-app-muted sm:not-sr-only"> · </span>
+                      <span className="max-w-full truncate whitespace-nowrap text-[11px] text-app-muted sm:text-[13px]">{toolSummary}</span>
+                    </>
+                  ) : null}
+                </span>
+                {/* The chevron is from `sm` up: a phone's width goes to the words. */}
                 <ChevronDown size={13} aria-hidden="true" className="hidden shrink-0 text-app-muted sm:block" />
               </button>
             )}
@@ -10054,7 +10079,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       open={toolSheetOpen}
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
-      {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTarget)}
+      title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
       tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}

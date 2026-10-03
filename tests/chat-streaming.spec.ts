@@ -233,23 +233,30 @@ test.describe('the chat is Gemini’s (docs/DESIGN.md §12)', () => {
     await expect(switcher(page)).toHaveCount(0);
   });
 
-  test('„+“ in the chat has ONE attach button — one picker takes a photo, a video and a PDF together, all in the tray', async ({ page }) => {
+  test('the paperclip beside „+“ is the ONE attach button — one picker takes a photo, a video and a PDF together, all in the tray', async ({ page }) => {
     await openChat(page);
-    await page.getByTestId('plus').click();
+    const plus = page.getByTestId('plus');
+    const attach = page.getByTestId('composer-attach');
+    await expect(attach).toBeVisible();
+    await expect(attach).toHaveAccessibleName('ფაილის მიმაგრება');
+    // Right beside „+“, the same size, on the same line.
+    const [p, a] = [(await plus.boundingBox())!, (await attach.boundingBox())!];
+    expect(a.height).toBeGreaterThanOrEqual(40);
+    expect(Math.abs(a.y - p.y)).toBeLessThanOrEqual(1);
+    expect(a.x - (p.x + p.width)).toBeLessThanOrEqual(8);
+    // „+“ is the tools now: no attach row and no Photos / Camera / Files tiles in its sheet.
+    await plus.click();
     const sheet = page.getByTestId('tool-sheet');
     await expect(sheet).toBeVisible();
-    const attach = sheet.getByTestId('attach');
-    await expect(attach).toBeVisible();
-    await expect(attach).toContainText('ფაილის მიმაგრება');
-    expect((await attach.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-    // The four tiles are gone (Photos / Camera / Files); „ვიდეო“ remains only as the TOOL in the list below.
-    for (const old of ['ფოტოები', 'კამერა', 'ფაილები']) await expect(sheet.getByRole('button', { name: old, exact: true })).toHaveCount(0);
+    await expect(sheet.getByTestId('attach')).toHaveCount(0);
+    for (const old of ['ფოტოები', 'კამერა', 'ფაილები', 'ფაილის მიმაგრება']) await expect(sheet.getByRole('button', { name: old, exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
 
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
     // One tap → the system picker (library, camera and files on a phone), which takes every kind at once.
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), attach.click()]);
     expect(chooser.isMultiple()).toBe(true);
-    await expect(sheet).toHaveCount(0);
     await chooser.setFiles([
       { name: 'photo.png', mimeType: 'image/png', buffer: png },
       { name: 'clip.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(4096) },
