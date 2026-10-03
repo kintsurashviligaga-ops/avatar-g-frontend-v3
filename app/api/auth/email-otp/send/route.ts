@@ -5,6 +5,7 @@ import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supab
 import {
   buildOtpEmail,
   extractEmailOtp,
+  isEmailTakenError,
   isOtpPurpose,
   isPlausibleEmail,
   normalizeLocale,
@@ -91,35 +92,59 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const admin = createServiceRoleClient();
-    // Both remaining purposes start from a sign-in (magiclink) code; only 'continue' creates a missing account below.
-    let { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
-    // THE ONE-FIELD FLOW: an address with no account gets one. It is created UNCONFIRMED with a random password
-    // nobody knows (the person signs in with codes; „forgot password" sets a real one), and the code mailed below is
-    // the only way in — verifyOtp({ type: 'email' }) accepts it exactly like a sign-in code. The answer is the same
-    // OK either way, so this cannot be used to learn which addresses are registered.
-    if (purpose === 'continue' && error && isUserNotFoundError(error.message)) {
-      ({ data, error } = await admin.auth.admin.generateLink({ type: 'signup', email, password: randomBytes(32).toString('base64url') }));
+    let data: unknown = null;
+    let error: { message?: string; code?: string } | null = null;
+    const randomPassword = () => randomBytes(32).toString('base64url');
+
+    if (purpose === 'register') {
+      // SIGN-UP (2026-10-03). A new address gets an UNCONFIRMED account with a random password nobody knows — the code
+      // mailed below proves the address, and the sheet then asks for the person's own password. `password_set: false`
+      // tells /api/auth/lookup that this account signs in by code until they choose one.
+      // ⚠️ AN ADDRESS THAT ALREADY HAS AN ACCOUNT MUST NOT REGISTER AGAIN (owner, 2026-10-03). Supabase refuses a
+      // signup link for a CONFIRMED address with `email_exists`; that becomes `account_exists`, and the sheet sends the
+      // person to log in. It says the address is registered — the answer sign-up exists to give — under the same
+      // AUTH_IP / per-address limits as every code. An UNCONFIRMED row (a sign-up nobody finished) is not an account:
+      // it gets a fresh code below.
+      ({ data, error } = await admin.auth.admin.generateLink({
+        type: 'signup', email, password: randomPassword(), options: { data: { password_set: false } },
+      }));
+      if (error && (error.code === 'email_exists' || isEmailTakenError(error.message))) {
+        return NextResponse.json({ error: 'account_exists' }, { status: 409 });
+      }
+    } else if (purpose === 'recovery') {
+      // „Forgot password": Supabase's own RECOVERY code (generateLink sends nothing; we mail it). It verifies with
+      // type 'recovery', which signs the person in, and the sheet asks for the new password.
+      ({ data, error } = await admin.auth.admin.generateLink({ type: 'recovery', email }));
+    } else {
+      // 'signin' and the legacy 'continue' start from a sign-in (magiclink) code.
+      ({ data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email }));
+      // THE 2026-10-01 ONE-FIELD FLOW ('continue', still answered for tabs running that build): an address with no
+      // account gets one, created UNCONFIRMED with a random password, and the code is the only way in. Same OK either way.
+      if (purpose === 'continue' && error && isUserNotFoundError(error.message)) {
+        ({ data, error } = await admin.auth.admin.generateLink({ type: 'signup', email, password: randomPassword() }));
+      }
     }
-    // ⚠️ PRE-ACCOUNT TAKEOVER. An address can already hold an UNCONFIRMED account whose password a stranger chose
-    // (purpose 'signup' never proved the address). The code proves the address now — so whatever password the
+
+    // ⚠️ PRE-ACCOUNT TAKEOVER. An address can already hold an UNCONFIRMED account whose password a stranger chose (the
+    // retired two-field sign-up never proved the address). The code proves the address now — so whatever password the
     // unproven account carried must not survive into the owner's account.
     const pending = (data as { user?: { id?: string; email_confirmed_at?: string | null } } | null)?.user;
-    if (purpose === 'continue' && !error && pending?.id && !pending.email_confirmed_at) {
-      await admin.auth.admin.updateUserById(pending.id, { password: randomBytes(32).toString('base64url') });
+    if ((purpose === 'continue' || purpose === 'register') && !error && pending?.id && !pending.email_confirmed_at) {
+      await admin.auth.admin.updateUserById(pending.id, { password: randomPassword() });
     }
 
     if (error) {
       const msg = String(error.message || '').toLowerCase();
-      // Sign-in for an UNKNOWN ADDRESS answers OK, because confirming which addresses have accounts
-      // would turn this endpoint into an account-enumeration oracle.
-      //
-      // BUT ONLY FOR THAT. This used to swallow EVERY sign-in error, so a bad service-role key, a GoTrue
-      // 5xx, its rate limit or a network fault all reported "code sent" — and because the branch sat
-      // above the log line, nothing was recorded either. The user then waited forever for a code that
-      // was never generated. That is the exact silent failure this endpoint must not have.
-      if (purpose === 'signin' && isUserNotFoundError(msg)) return NextResponse.json({ ok: true });
+      // LOG-IN AND „FORGOT PASSWORD" FOR AN UNKNOWN ADDRESS SAY SO (2026-10-03): the sheet answers „no account with
+      // this email — create one" instead of leaving the person waiting for a code that was never sent. (It used to
+      // answer OK here to hide which addresses are registered; sign-up has to say that now, so hiding it here only
+      // cost people a dead wait.) Nothing is generated and nothing is mailed.
+      if ((purpose === 'signin' || purpose === 'recovery') && isUserNotFoundError(msg)) {
+        return NextResponse.json({ error: 'no_account' }, { status: 404 });
+      }
 
-      // Everything else is a REAL failure and is logged, whatever the purpose.
+      // Everything else is a REAL failure and is logged, whatever the purpose. (It used to be swallowed as „code
+      // sent" for sign-in — a bad service-role key or a GoTrue 5xx then left people waiting forever, unlogged.)
       // eslint-disable-next-line no-console
       console.error(`[email-otp/send] generateLink (${purpose}):`, error.message);
       return NextResponse.json({ error: 'send_failed' }, { status: 502 });

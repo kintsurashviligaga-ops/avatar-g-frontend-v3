@@ -9112,11 +9112,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ) : (
           <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text" title={sessionTitle}>{sessionTitle}</h2>
         )}
+        {/* A guest: „Log in" (solid) and „Sign up for free" (outline) — the owner's ChatGPT reference (2026-10-03). */}
         {guest && (
-          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
-            className="tap-44 relative mr-1 inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
-            {locale === 'en' ? 'Sign in' : locale === 'ru' ? 'Войти' : 'შესვლა'}
-          </button>
+          <div className="mr-1 flex items-center gap-2">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'login' }))}
+              data-testid="titlebar-login"
+              className="tap-44 relative inline-flex h-9 items-center rounded-full bg-app-accent px-4 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+              {locale === 'en' ? 'Log in' : locale === 'ru' ? 'Войти' : 'შესვლა'}
+            </button>
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:auth-required', { detail: 'signup' }))}
+              data-testid="titlebar-signup"
+              className="tap-44 relative inline-flex h-9 items-center rounded-full border border-app-border/25 px-4 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated">
+              {locale === 'en' ? 'Sign up for free' : locale === 'ru' ? 'Регистрация бесплатно' : 'დარეგისტრირდი უფასოდ'}
+            </button>
+          </div>
         )}
         <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('myavatar:open-new-chat'))}
           aria-label={locale === 'en' ? 'New session' : locale === 'ru' ? 'Новая сессия' : 'ახალი სესია'}

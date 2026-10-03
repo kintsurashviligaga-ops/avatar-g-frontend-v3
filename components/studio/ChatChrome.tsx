@@ -109,25 +109,25 @@ function dropUnadoptedPrime(): void {
 const COPY: Record<Lang, {
   menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
   favorites: string; persona: string; billing: string; soon: string;
-  account: string; accountGuest: string; library: string; login: string; signup: string;
+  account: string; accountGuest: string; library: string; login: string; signup: string; signupFree: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string; deleteAccount: string;
 }> = {
   ka: {
     menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
     favorites: 'რჩეულები', persona: 'პერსონა', billing: 'ბილინგი', soon: 'მალე',
-    account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია',
+    account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია', signupFree: 'დარეგისტრირდი უფასოდ',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება', deleteAccount: 'ანგარიშის წაშლა',
   },
   en: {
     menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
     favorites: 'Favorites', persona: 'Persona', billing: 'Billing', soon: 'Soon',
-    account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Sign in', signup: 'Sign up',
+    account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Log in', signup: 'Sign up', signupFree: 'Sign up for free',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support', deleteAccount: 'Delete account',
   },
   ru: {
     menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
     favorites: 'Избранное', persona: 'Персона', billing: 'Биллинг', soon: 'Скоро',
-    account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация',
+    account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация', signupFree: 'Регистрация бесплатно',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка', deleteAccount: 'Удалить аккаунт',
   },
 };
@@ -244,7 +244,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [genService, setGenService] = useState<string | null>(null);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'newPassword'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'newPassword'>('login');
   // A sign-in deep link (/{lang}/dashboard?auth=login&redirect=…&error=… — lib/routing/signIn.ts) carries where to go
   // afterwards and, from a failed OAuth round-trip, what went wrong. Held only while that sheet is open.
   const [authReturnTo, setAuthReturnTo] = useState<string | null>(null);
@@ -371,7 +371,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           } else {
             setAuthReturnTo(link.redirect);
             setAuthError(link.error);
-            setAuthMode(link.mode === 'signup' ? 'register' : 'login');
+            setAuthMode(link.mode === 'signup' ? 'signup' : 'login');
             setAuthOpen(true);
           }
         }
@@ -470,7 +470,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // the user met an error for something the UI could have known before spending the round-trip.
   useEffect(() => {
     // A spend gate asks for an account (register); a plain „შესვლა" button passes detail 'login'.
-    const needAuth = (e: Event) => { setAuthMode((e as CustomEvent<unknown>).detail === 'login' ? 'login' : 'register'); setAuthOpen(true); };
+    const needAuth = (e: Event) => { setAuthMode((e as CustomEvent<unknown>).detail === 'login' ? 'login' : 'signup'); setAuthOpen(true); };
     window.addEventListener('myavatar:auth-required', needAuth);
     return () => window.removeEventListener('myavatar:auth-required', needAuth);
   }, []);
@@ -1251,10 +1251,18 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               <span className="shrink-0 rounded-full bg-app-accent/10 px-2.5 py-1 text-[11.5px] font-semibold text-app-accent" aria-hidden="true">{t.topUp}</span>
             </button>
           ) : (
-            <button type="button" onClick={() => { setSidebarOpen(false); setAuthMode('login'); setAuthOpen(true); }}
-              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-app-accent text-[13.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation">
-              <LogIn className="h-4 w-4" aria-hidden="true" /> {t.login}
-            </button>
+            // A guest: „Log in" and „Sign up" side by side (owner, 2026-10-03 — the ChatGPT / X grammar). Two doors, two
+            // sheets: sign-up refuses an address that already has an account and sends it to log in.
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setSidebarOpen(false); setAuthMode('login'); setAuthOpen(true); }} data-testid="sidebar-login"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-app-accent px-3 text-[13.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation">
+                <LogIn className="h-4 w-4 shrink-0" aria-hidden="true" /> <span className="truncate">{t.login}</span>
+              </button>
+              <button type="button" onClick={() => { setSidebarOpen(false); setAuthMode('signup'); setAuthOpen(true); }} data-testid="sidebar-signup"
+                className="flex min-h-[44px] items-center justify-center rounded-full border border-app-border/25 px-3 text-[13.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated touch-manipulation">
+                <span className="truncate">{t.signup}</span>
+              </button>
+            </div>
           )}
           <div className="flex items-center gap-0.5">
             <button type="button" onClick={() => { setMenuOpen(true); setSidebarOpen(false); }} aria-label={t.settings} title={authed ? (userEmail ?? t.settings) : t.settings}
@@ -1393,10 +1401,19 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                   </span>
                 </button>
               ) : (
-                <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} aria-label={t.login}
-                  className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-0">
-                  <LogIn className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" /> {t.login}
-                </button>
+                // „Log in" (solid) and „Sign up for free" (outline), as the owner's ChatGPT reference (2026-10-03). ⚠️ NOT
+                // ON A PHONE: ☰ · the model menu · ✎ already fill it, and two pills ran over the name even at 430 px
+                // (measured). There „Sign up" is one tap away — the sheet's „no account? Sign up", and both doors in the menu.
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => { setAuthMode('login'); setAuthOpen(true); }} data-testid="header-login"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90 touch-manipulation sm:min-h-[36px]">
+                    <LogIn className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" /> {t.login}
+                  </button>
+                  <button type="button" onClick={() => { setAuthMode('signup'); setAuthOpen(true); }} data-testid="header-signup"
+                    className="hidden min-h-[36px] items-center rounded-full border border-app-border/25 px-3.5 py-1.5 text-[12.5px] font-semibold text-app-text transition-colors hover:bg-app-elevated touch-manipulation sm:inline-flex">
+                    {t.signupFree}
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1542,8 +1559,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           void refreshBalance();
         }} />
 
-      {/* PHASE 3 Task 2 — first-login welcome (signed-in users who haven't seen it). */}
-      {authed && !welcomed && (
+      {/* PHASE 3 Task 2 — first-login welcome (signed-in users who haven't seen it).
+          ⚠️ NOT WHILE THE SIGN-IN SHEET IS OPEN. The session exists the moment the sign-up code is verified, and the
+          sheet still has a step to go (name + password, or the new password after a reset): the welcome opened ON TOP of
+          it and covered the very form the person was filling in. It waits until the sheet is closed. */}
+      {authed && !welcomed && !authOpen && (
         <WelcomeOnboarding locale={locale} balanceGel={balanceGel} onComplete={() => setWelcomed(true)} />
       )}
       {/* Library-only sheet — the legal documents open as pages (lib/legal/links.ts). */}

@@ -217,6 +217,11 @@ export const RATE_LIMITS = {
   // sign-in for a day (review, 2026-10-01). A short window bounds the flood and expires on its own; the real fix for
   // a determined attacker is a CAPTCHA (owner action — Turnstile keys).
   OTP_ADDRESS:     { maxRequests: 5,  windowMs: 15 * 60_000,      keyPrefix: 'rl:otp:addr' } as const,
+  // /api/auth/lookup — „does this address have an account?" (the sheet's log-in / sign-up split, 2026-10-03). It says
+  // what sign-up must say anyway („already registered"), so it is bounded like the code sends: this per-ADDRESS bucket
+  // (a person retyping and switching between log-in and sign-up stays far inside it) under the AUTH_IP ceiling, which
+  // caps how many addresses one host can probe — 40 per 15 minutes.
+  AUTH_LOOKUP:     { maxRequests: 20, windowMs: 15 * 60_000,      keyPrefix: 'rl:auth:lookup' } as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,
   // 3D reconstruction STATUS polling — its OWN namespace, and that is the point.

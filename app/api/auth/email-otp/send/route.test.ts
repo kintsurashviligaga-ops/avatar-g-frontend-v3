@@ -93,13 +93,76 @@ describe('pre-account takeover', () => {
   });
 });
 
-describe("purpose 'signin' is unchanged", () => {
-  it('an unknown address gets OK and NO account', async () => {
+describe("purpose 'signin' (log in with a code)", () => {
+  it('an existing account gets a sign-in code', async () => {
+    mockGenerateLink.mockResolvedValueOnce(otp('121212'));
+    const res = await send({ email: 'member@example.com', purpose: 'signin', locale: 'en' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'member@example.com' });
+    expect(JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body)).subject).toContain('sign-in code');
+  });
+  it('an unknown address is told „no account" — nothing is created and nothing is mailed', async () => {
     mockGenerateLink.mockResolvedValueOnce({ data: null, error: { message: 'User not found' } });
     const res = await send({ email: 'ghost@example.com', purpose: 'signin' });
-    expect(await res.json()).toEqual({ ok: true });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'no_account' });
     expect(mockGenerateLink).toHaveBeenCalledTimes(1);
     expect(mail).not.toHaveBeenCalled();
+  });
+});
+
+describe("purpose 'register' (sign up) — an address with an account cannot register again", () => {
+  it('a new address gets an unconfirmed account (random password, password_set false) and a confirmation code', async () => {
+    mockUpdateUser.mockClear();
+    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'n1', email_confirmed_at: null }, properties: { email_otp: '424242' } }, error: null });
+    const res = await send({ email: 'New@Example.com', purpose: 'register', locale: 'ka' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    const [args] = mockGenerateLink.mock.calls[0] as [{ type: string; email: string; password: string; options: { data: Record<string, unknown> } }];
+    expect(args).toMatchObject({ type: 'signup', email: 'new@example.com', options: { data: { password_set: false } } });
+    expect(args.password.length).toBeGreaterThanOrEqual(32);
+    const sent = JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body));
+    expect(sent.subject).toContain('424242');
+    expect(sent.subject).toContain('დაადასტურეთ');
+  });
+  it('a CONFIRMED address is refused with account_exists — no code, no mail', async () => {
+    mockGenerateLink.mockResolvedValueOnce({ data: null, error: { code: 'email_exists', message: 'A user with this email address has already been registered' } });
+    const res = await send({ email: 'member@example.com', purpose: 'register' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'account_exists' });
+    expect(mail).not.toHaveBeenCalled();
+  });
+  it('an unfinished sign-up (unconfirmed) is not an account: a fresh code, and any stranger-chosen password is replaced', async () => {
+    mockUpdateUser.mockClear();
+    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'p1', email_confirmed_at: null }, properties: { email_otp: '515151' } }, error: null });
+    const res = await send({ email: 'pending@example.com', purpose: 'register' });
+    expect(res.status).toBe(200);
+    expect(mockUpdateUser).toHaveBeenCalledWith('p1', { password: expect.any(String) });
+  });
+});
+
+describe("purpose 'recovery' (forgot password) — a reset CODE by email", () => {
+  it('an existing account gets a recovery code', async () => {
+    mockGenerateLink.mockResolvedValueOnce(otp('909090'));
+    const res = await send({ email: 'member@example.com', purpose: 'recovery', locale: 'ru' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'recovery', email: 'member@example.com' });
+    const sent = JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body));
+    expect(sent.subject).toContain('909090');
+    expect(sent.subject).toContain('сброса пароля');
+  });
+  it('an unknown address is told „no account" and nothing is mailed', async () => {
+    mockGenerateLink.mockResolvedValueOnce({ data: null, error: { message: 'User not found' } });
+    const res = await send({ email: 'ghost@example.com', purpose: 'recovery' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'no_account' });
+    expect(mail).not.toHaveBeenCalled();
+  });
+  it('never changes the password itself — the person sets it after the code', async () => {
+    mockUpdateUser.mockClear();
+    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'm1', email_confirmed_at: '2026-01-01' }, properties: { email_otp: '808080' } }, error: null });
+    await send({ email: 'member@example.com', purpose: 'recovery' });
+    expect(mockUpdateUser).not.toHaveBeenCalled();
   });
 });
 
