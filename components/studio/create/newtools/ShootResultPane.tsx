@@ -16,12 +16,11 @@
  */
 import dynamic from 'next/dynamic';
 import { Component, useEffect, useState, type ReactNode } from 'react';
-import { Clapperboard, Loader2, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X, type LucideIcon } from 'lucide-react';
+import { Clapperboard, Loader2, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X } from 'lucide-react';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
 import { ResultActions } from '@/components/studio/ui/ResultActions';
 import { NOTE_BASE, NOTE_TONE } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
-import { TOOL_META } from '@/lib/studio/tools';
 import { shootTargetSec, type ShootAspect } from '@/lib/studio/shootQuote';
 import type { ShootKind } from '@/lib/studio/shootWire';
 import { SHOOT_COPY, shootLang, type ShootCopy } from './copy';
@@ -193,39 +192,6 @@ export function ModelsPrices({ tool, locale, prices }: { tool: ShootKind; locale
   );
 }
 
-// ─── The welcome (no runs yet) ───────────────────────────────────────────────────────────────────────────────────
-
-function Welcome({ p, copy }: { p: ShootPaneProps; copy: ShootCopy }) {
-  const meta = TOOL_META[p.tool];
-  const Icon: LucideIcon = meta.Icon;
-  const steps = copy.steps[p.tool];
-  return (
-    <div data-testid="shoot-empty" className="space-y-4">
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-app-elevated via-app-surface to-app-bg p-6 ring-1 ring-app-border/10">
-        <Icon aria-hidden="true" strokeWidth={1.25} className="absolute -right-4 -top-4 h-36 w-36 text-app-accent/15" />
-        <div className="relative space-y-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-app-accent text-app-bg"><Icon size={24} aria-hidden="true" /></span>
-          <h2 className="font-display text-[26px] font-bold leading-tight tracking-tight text-app-text">{copy.emptyTitle[p.tool]}</h2>
-          <p className="max-w-md text-[15px] leading-relaxed text-app-muted">{copy.emptyBody[p.tool]}</p>
-          <ol className="space-y-2 pt-1">
-            {steps.map((s, i) => (
-              <li key={s} className="flex items-center gap-3 text-[14px] text-app-text/90">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-[13px] font-semibold text-app-accent">{i + 1}</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ol>
-          <button type="button" onClick={p.onOpenSettings}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-app-accent px-5 text-[14px] font-semibold text-app-bg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 lg:hidden">
-            <SlidersHorizontal size={16} aria-hidden="true" /> {copy.settings}
-          </button>
-        </div>
-      </section>
-      <ModelsPrices tool={p.tool} locale={p.locale} prices={p.prices} />
-    </div>
-  );
-}
-
 // ─── The pane ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const timeOf = (ts: number) => { const d = new Date(ts); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -241,7 +207,11 @@ export function ShootResultPane(p: ShootPaneProps) {
     return () => window.clearInterval(id);
   }, [busy]);
 
-  if (mine.length === 0) return <div className="px-1 py-3"><Welcome p={p} copy={copy} /></div>;
+  // ⚠️ NO WELCOME CARD. A hero with the tool's description, three numbered steps and a price table used to fill this pane
+  // before the first run — and it stayed on screen behind the settings sheet every time the tool was opened and closed
+  // (the owner: "remove these description cards"). The settings panel says what to do and its Generate pill carries the
+  // price; until there is a result, the pane is empty and the composer is the way back into the panel.
+  if (mine.length === 0) return <div data-testid="shoot-empty" />;
 
   return (
     <div data-testid="shoot-results" className="space-y-5 px-1 py-3">

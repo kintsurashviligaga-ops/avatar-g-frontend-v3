@@ -1162,6 +1162,20 @@ const HF_PANEL_NOTE: Record<'ka' | 'en' | 'ru', string> = {
   ru: 'Выбранная модель запускается из панели — запрос уже в её поле, а цена на кнопке «Создать».',
 };
 
+/**
+ * Hand files to another hidden file input as if the user had picked them there: its own onChange (validation, size
+ * limits, previews) runs unchanged. Used by the one attach button of a tool that takes two kinds.
+ */
+function forwardFiles(input: HTMLInputElement | null, files: File[]): void {
+  if (!input || !files.length || typeof DataTransfer === 'undefined') return;
+  try {
+    const dt = new DataTransfer();
+    files.forEach((f) => dt.items.add(f));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch { /* a browser without a settable FileList: the file is not routed */ }
+}
+
 /** The server session id behind a sidebar row — either a synced local chat or a `cloud:` entry. */
 function serverSidOf(c: { id?: string; serverSid?: string } | null | undefined): string | null {
   if (!c) return null;
@@ -2359,6 +2373,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [swapSourceVideo, setSwapSourceVideo] = useState<{ name: string; url: string; previewUrl?: string } | null>(null);
   const [swapSourceVideoBusy, setSwapSourceVideoBusy] = useState(false);
   const swapVideoRef = useRef<HTMLInputElement | null>(null);
+  // The one attach button for a tool that takes two kinds (see attachTarget): one picker, each file routed by its kind.
+  const attachRouteRef = useRef<HTMLInputElement | null>(null);
+  const attachRouteKindRef = useRef<'swap' | 'avatar'>('swap');
+  const openAttachRoute = useCallback((kind: 'swap' | 'avatar') => {
+    attachRouteKindRef.current = kind;
+    const el = attachRouteRef.current;
+    if (!el) return;
+    el.accept = kind === 'swap' ? 'image/*,video/mp4,video/quicktime,.mp4,.mov' : 'image/*,audio/*,video/*';
+    el.multiple = kind === 'avatar';
+    el.click();
+  }, []);
   // PHASE 2 L1 — Character Voice selector → VOICE_MAP (language + persona + tone).
   const [voiceLanguage, setVoiceLanguage] = useState<'ka' | 'en' | 'ru'>('ka');
   const [voicePersona, setVoicePersona] = useState<'male' | 'female' | 'child' | 'elderly'>('male');
@@ -7815,21 +7840,25 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     id, Icon: TOOL_META[id].Icon, title: toolName(id, locale), sub: toolSub(id, locale),
     ...(liveTool(id) ? {} : { disabled: true, tag: SOON_LABEL[locale] }),
   });
-  const attachTargets: { onPhotos?: () => void; onVideo?: () => void; onCamera?: () => void; onFiles?: () => void } =
-    // THE CHAT TAKES EVERYTHING: photos, a video, the camera, and files (documents, audio, anything else readable).
-    activeTool === 'chat' ? { onPhotos: () => photoRef.current?.click(), onVideo: () => videoPickRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
-    : activeTool === 'product' ? { onPhotos: () => productPhotoRef.current?.click() }
-      : activeTool === 'swap' ? { onPhotos: () => { charReplaceRef.current = true; charFileRef.current?.click(); }, onFiles: () => swapVideoRef.current?.click() }
-        : activeTool === 'avatar' ? { onPhotos: () => lipsyncFaceRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() }
+  // THE ONE ATTACH BUTTON (components/studio/ui/ToolSheet): one picker per tool — the phone's own picker offers the
+  // library, the camera and files from it. A tool that takes TWO kinds (a face photo + a video / an audio track) gets
+  // one picker for both, and each file is handed to the input that has always handled its kind (routeAttach).
+  const hint = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+  const attachTarget: { onAttach?: () => void; attachHint?: string } =
+    // THE CHAT TAKES EVERYTHING: photos, a video, the camera, documents, audio — `fileRef` accepts every kind it reads.
+    activeTool === 'chat' ? { onAttach: () => fileRef.current?.click() }
+    : activeTool === 'product' ? { onAttach: () => productPhotoRef.current?.click(), attachHint: hint('პროდუქტის ფოტო', 'A product photo', 'Фото товара') }
+      : activeTool === 'swap' ? { onAttach: () => openAttachRoute('swap'), attachHint: hint('ვიდეო და პერსონაჟის ფოტო', 'A video and a character photo', 'Видео и фото персонажа') }
+        : activeTool === 'avatar' ? { onAttach: () => openAttachRoute('avatar'), attachHint: hint('სახის ფოტო ან აუდიო', 'A face photo or audio', 'Фото лица или аудио') }
           // Music reads an AUDIO attachment (a voice or a cover source) — a photo would turn the song into a chat reply.
-          : activeTool === 'music' ? { onFiles: () => voiceFileRef.current?.click() }
+          : activeTool === 'music' ? { onAttach: () => voiceFileRef.current?.click(), attachHint: hint('აუდიო — MP3, WAV, M4A', 'Audio — MP3, WAV, M4A', 'Аудио — MP3, WAV, M4A') }
             // An image request needs every attachment to be an image; a PDF or audio would turn it into chat.
-            : activeTool === 'image' ? { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click() }
-          : activeTool === 'remix' ? { onFiles: () => remixVideoRef.current?.click() }
+            : activeTool === 'image' ? { onAttach: () => photoRef.current?.click(), attachHint: hint('ფოტოები ან კამერა', 'Photos or the camera', 'Фото или камера') }
+          : activeTool === 'remix' ? { onAttach: () => remixVideoRef.current?.click(), attachHint: hint('ვიდეო', 'A video', 'Видео') }
             : activeTool === 'motion' || activeTool === 'vfx' || activeTool === 'montage' || activeTool === 'dubbing' || activeTool === 'model3d' || activeTool === 'presentation' ? {}
               // The Interior designer / Photographer read their OWN photos (the panel's upload card), not the composer's attachments.
-              : shootActive ? { onPhotos: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), onCamera: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'camera' })) }
-              : { onPhotos: () => photoRef.current?.click(), onCamera: () => cameraRef.current?.click(), onFiles: () => fileRef.current?.click() };
+              : shootActive ? { onAttach: () => window.dispatchEvent(new CustomEvent('omni:shoot-pick', { detail: 'photos' })), attachHint: hint('ფოტოები ან კამერა', 'Photos or the camera', 'Фото или камера') }
+              : { onAttach: () => fileRef.current?.click() };
   // The Image tool has its own Create screen (components/studio/create): its header IS the tool switcher, so the generic card is not drawn.
   const imageCreate = activeTool === 'image';
   // ≥ 1024 px: the Image tool's CENTRE column is the Result pane + Models & prices (components/studio/create/ImageDesk) in place of the
@@ -9432,6 +9461,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }} />
         {/* TASK 1 — Character-Swap source video: ≤100MB mp4/mov → Supabase; keeps a local
             blob for the panel preview. */}
+        {/* The one attach button's picker for a tool that takes two kinds: each file goes to the input that has always
+            handled its kind (a photo → the character / face picker, the rest → the video / file picker). */}
+        <input ref={attachRouteRef} type="file" className="hidden" data-testid="attach-route-input" onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          const images = files.filter((f) => isImage(f.type));
+          const others = files.filter((f) => !isImage(f.type));
+          if (attachRouteKindRef.current === 'swap') {
+            if (images[0]) { charReplaceRef.current = true; forwardFiles(charFileRef.current, [images[0]]); }
+            if (others[0]) forwardFiles(swapVideoRef.current, [others[0]]);
+          } else {
+            if (images[0]) forwardFiles(lipsyncFaceRef.current, [images[0]]);
+            if (others.length) forwardFiles(fileRef.current, others);
+          }
+        }} />
         <input ref={swapVideoRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" className="hidden" onChange={async (e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
@@ -10002,7 +10046,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       open={toolSheetOpen}
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
-      {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTargets)}
+      {...(toolPickOnly ? { title: locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო' } : attachTarget)}
       tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
