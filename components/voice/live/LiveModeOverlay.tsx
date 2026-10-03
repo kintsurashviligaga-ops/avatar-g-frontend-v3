@@ -50,10 +50,22 @@ import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 import LiveActionCards from './LiveActionCards';
 import LiveActivityFeed, { liveCurrentStep, type LiveJobLine } from './LiveActivityFeed';
+import {
+  LiveBottomScrim,
+  LiveCallFrame,
+  LiveControl,
+  LiveControlRow,
+  LiveErrorPanel,
+  LiveStatusLine,
+  LiveTopBar,
+  LiveTopToggle,
+  liveQuietText,
+  livePrimaryButtonClass,
+} from './LiveCallChrome';
 import LiveDock, { LIVE_DOCK_STRINGS, LiveRunBanner, type LiveDockLink } from './LiveDock';
 import type { LiveActivityItem } from './liveActivity';
 import LiveCaptions from './LiveCaptions';
-import LiveOrb, { LiveWaveform, orbStateFor } from './LiveOrb';
+import LiveOrb, { orbStateFor } from './LiveOrb';
 import type { LiveActionCard, LivePendingRun } from './liveActions';
 import {
   isMicErrorCode,
@@ -105,7 +117,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     live: 'ცოცხალი ზარი',
     status: {
       idle: 'მზად არის',
-      connecting: 'დაკავშირება…',
+      connecting: 'უკავშირდება…',
       listening: 'გისმენ',
       thinking: 'ვფიქრობ…',
       speaking: 'ვსაუბრობ…',
@@ -365,7 +377,6 @@ export interface LiveModeOverlayProps {
   onCancelRun?: () => void;
 }
 
-const ON = 'bg-app-text text-app-bg';
 const SECONDARY_BTN =
   'inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-5 font-semibold text-app-text '
   + 'ring-1 ring-white/10 transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 '
@@ -376,57 +387,8 @@ const NO_JOBS: readonly LiveJobLine[] = [];
 /** The control row: 20 px off the bottom + a 56 px circle and its word (~80 px); the action strip floats above it. */
 const STRIP_BOTTOM = 'calc(env(safe-area-inset-bottom, 0px) + 112px)';
 
-export interface LiveControlProps {
-  /** The word under the circle. */
-  label: string;
-  /** The accessible name; it must CONTAIN `label` (WCAG 2.5.3). Defaults to `label`. */
-  ariaLabel?: string;
-  icon: ReactNode;
-  onClick: () => void;
-  /** A toggle: exposes aria-pressed, and the circle inverts while on. */
-  pressed?: boolean;
-  /** `danger` is End: a solid red circle. */
-  tone?: 'glass' | 'danger';
-  locale?: Locale;
-  title?: string;
-  testId?: string;
-}
-
-/**
- * One control of the call's bottom row: a 56 px round glass button with its word under it (from 360 px). The whole
- * column is the button, so the word is part of the target. Exported for the host's extras (the voice switch).
- */
-export function LiveControl({ label, ariaLabel, icon, onClick, pressed, tone = 'glass', locale = 'ka', title, testId }: LiveControlProps) {
-  const circle = tone === 'danger'
-    ? 'bg-app-danger text-white ring-1 ring-white/10 group-hover:bg-app-danger/90'
-    : pressed
-      ? `${ON} ring-1 ring-transparent`
-      : 'bg-white/[0.09] text-app-text ring-1 ring-white/[0.14] shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] group-hover:bg-white/[0.15]';
-  const word = tone === 'danger' ? 'text-red-300' : pressed ? 'text-app-text' : 'text-app-text/80';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel ?? label}
-      aria-pressed={pressed}
-      title={title}
-      data-testid={testId}
-      data-control
-      className="group flex min-h-[56px] min-w-[56px] shrink-0 touch-manipulation flex-col items-center gap-1.5 rounded-[22px] focus-visible:outline-none"
-    >
-      <span
-        data-circle
-        className={`flex h-[56px] w-[56px] items-center justify-center rounded-full backdrop-blur-xl transition-colors duration-200 group-focus-visible:ring-2 group-focus-visible:ring-app-accent/70 ${circle}`}
-      >
-        {icon}
-      </span>
-      {/* 12 px in every language (see the header): five Georgian words this size fit 360 px with the agent speaking. */}
-      <span lang={locale} className={`hidden whitespace-nowrap text-[12px] font-medium leading-4 min-[360px]:block ${word}`}>
-        {label}
-      </span>
-    </button>
-  );
-}
+// The bottom row's control lives with the rest of the shared call chrome (the ElevenLabs fallback draws the same row).
+export { LiveControl, type LiveControlProps } from './LiveCallChrome';
 
 export default function LiveModeOverlay({
   locale = 'ka',
@@ -474,7 +436,7 @@ export default function LiveModeOverlay({
   const [dismissedLinks, setDismissedLinks] = useState<ReadonlySet<string>>(() => new Set());
   const dismissLink = useCallback((id: string) => setDismissedLinks((prev) => new Set(prev).add(id)), []);
   // Georgian's tall script needs the 16 px floor; Latin/Cyrillic secondary copy stays a step quieter.
-  const quiet = locale === 'ka' ? 'text-[16px]' : 'text-[15px]';
+  const quiet = liveQuietText(locale);
   // The strip is mounted for the whole call (its live region must exist before the first card); it takes room only
   // once it holds a card — then the centred content moves up by the strip's height (~84 px).
   const showActions = !isError && !!onOpenAction;
@@ -521,85 +483,48 @@ export default function LiveModeOverlay({
   if (isError && error) {
     const mic = isMicErrorCode(error);
     const Icon = mic ? MicOff : error === 'connection_lost' || error === 'setup_failed' ? WifiOff : AlertCircle;
-    const hint = t.hints[error];
     const intent = error === 'mic_in_app' && typeof window !== 'undefined' ? androidIntentFor(liveLink()) : null;
     errorPanel = (
-      <div className="relative z-10 flex w-full max-w-sm flex-col items-center px-6 text-center">
-        <span aria-hidden className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-white/[0.08] text-app-text">
-          <Icon size={26} />
-        </span>
-        <h2 className="text-[20px] font-semibold leading-[1.4] text-app-text">{liveErrorHeadline(error, locale)}</h2>
-        <p role="alert" className="mt-2 text-[16px] leading-[1.6] text-app-text/90">{t.errors[error]}</p>
-        {hint && <p className={`mt-2 ${quiet} leading-[1.6] text-app-muted`}>{hint}</p>}
-        {/* The browser's own name for the failure: meaningless to most users, decisive in a support screenshot. */}
-        {errorDetail?.name && (
-          <p data-testid="live-error-name" className="mt-3 font-mono text-[12px] leading-5 text-app-muted/80">{errorDetail.name}</p>
+      <LiveErrorPanel
+        icon={<Icon size={26} />}
+        headline={liveErrorHeadline(error, locale)}
+        reason={t.errors[error]}
+        hint={t.hints[error]}
+        detailName={errorDetail?.name}
+        locale={locale}
+      >
+        {onRetry && (
+          <button type="button" onClick={onRetry} className={livePrimaryButtonClass(locale)}>
+            <RotateCcw size={16} aria-hidden />
+            {t.retry}
+          </button>
         )}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-          {onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className={`inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-app-text px-5 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
-            >
-              <RotateCcw size={16} aria-hidden />
-              {t.retry}
-            </button>
-          )}
-          {intent && (
-            <a href={intent} className={`${SECONDARY_BTN} ${quiet}`}>
-              <ExternalLink size={16} aria-hidden />
-              {t.openInBrowser}
-            </a>
-          )}
-          {error === 'mic_in_app' && (
-            <button type="button" onClick={onCopyLink} className={`${SECONDARY_BTN} ${quiet}`}>
-              {copied ? <Check size={16} aria-hidden className="text-app-accent" /> : <Copy size={16} aria-hidden />}
-              <span aria-live="polite">{copied ? t.copied : t.copyLink}</span>
-            </button>
-          )}
-        </div>
-      </div>
+        {intent && (
+          <a href={intent} className={`${SECONDARY_BTN} ${quiet}`}>
+            <ExternalLink size={16} aria-hidden />
+            {t.openInBrowser}
+          </a>
+        )}
+        {error === 'mic_in_app' && (
+          <button type="button" onClick={onCopyLink} className={`${SECONDARY_BTN} ${quiet}`}>
+            {copied ? <Check size={16} aria-hidden className="text-app-accent" /> : <Copy size={16} aria-hidden />}
+            <span aria-live="polite">{copied ? t.copied : t.copyLink}</span>
+          </button>
+        )}
+      </LiveErrorPanel>
     );
   }
 
   const overlay = (
-    // Content is centred between the top bar (64 px) and the control pill (~64 px + 24 px + the safe area): the
-    // padding reserves both, so on a short landscape phone the status line is never laid out under the pill.
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t.title}
-      tabIndex={-1}
-      data-theme="dark"
-      data-live-status={status}
-      className="ag-no-drag fixed inset-0 z-[130] flex flex-col items-center justify-center overflow-hidden bg-app-bg text-app-text outline-none"
-      style={{
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 64px)',
-        paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${actionsShown ? 204 : 124}px)`,
-      }}
-    >
+    <LiveCallFrame ref={dialogRef} ariaLabel={t.title} data-live-status={status} padBottom={actionsShown ? 204 : 124}>
       {/* Full-screen camera (as in the Gemini app), with a scrim so the text stays readable. */}
       <video ref={videoRef} playsInline muted className={cameraOn && !isError ? 'absolute inset-0 z-0 h-full w-full object-cover' : 'hidden'} />
       {cameraOn && !isError && <div aria-hidden className="absolute inset-0 z-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />}
 
-      {/* Under the control row: a scrim so the words stay legible over the camera or the rocket behind the orb. */}
-      {!isError && <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-56 bg-gradient-to-t from-black/80 via-black/35 to-transparent" />}
+      {!isError && <LiveBottomScrim />}
 
       {/* Top bar: names the mode (quietly — the user knows where they are) and holds the captions toggle. */}
-      <div
-        className="absolute inset-x-0 z-20 flex h-16 items-center justify-between px-3"
-        style={{ top: 'env(safe-area-inset-top, 0px)' }}
-      >
-        <span className="inline-flex items-center gap-2 pl-2 text-[16px] font-medium text-app-text">
-          <span aria-hidden className="relative flex h-2 w-2">
-            {!isError && <span className="absolute inline-flex h-full w-full rounded-full bg-app-accent opacity-60 motion-safe:animate-ping" />}
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-app-accent" />
-          </span>
-          {t.live}
-        </span>
-        <span className="flex items-center gap-1.5">
+      <LiveTopBar label={t.live} live={!isError}>
         {cameraOn && onFlipCamera && !isError && (
           // Beside the camera preview (as in Gemini Live), so the bottom row keeps room on a 320 px phone.
           <button
@@ -625,18 +550,9 @@ export default function LiveModeOverlay({
           </button>
         )}
         {showCaptions && !isError && (
-          <button
-            type="button"
-            onClick={() => setCaptionsOn((v) => !v)}
-            aria-label={t.captions}
-            aria-pressed={captionsOn}
-            className={`flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 ${captionsOn ? ON : 'bg-white/[0.08] text-app-text hover:bg-white/[0.14]'}`}
-          >
-            <Subtitles size={20} aria-hidden />
-          </button>
+          <LiveTopToggle label={t.captions} pressed={captionsOn} onClick={() => setCaptionsOn((v) => !v)} icon={<Subtitles size={20} aria-hidden />} />
         )}
-        </span>
-      </div>
+      </LiveTopBar>
 
       {isError ? errorPanel : (
         <>
@@ -650,22 +566,10 @@ export default function LiveModeOverlay({
             className="relative z-10 mb-6"
           />
 
-          {/* Quiet on purpose: the orb carries the state; the line names it, and the waveform says who is talking. */}
-          <div className="relative z-10 flex items-center gap-2.5">
-            <span data-testid="live-waveform" className="flex items-center">
-              <LiveWaveform compact state={muted ? 'idle' : orbState} getLevels={getLevels} />
-            </span>
-            <span aria-live="polite" className={`${quiet} font-medium leading-[1.6] text-app-muted`}>
-              {statusLabel}
-            </span>
-          </div>
+          <LiveStatusLine state={orbState} muted={muted} getLevels={getLevels} label={statusLabel} locale={locale} />
 
           {audioBlocked && onResumeAudio && (
-            <button
-              type="button"
-              onClick={onResumeAudio}
-              className={`relative z-10 mt-4 inline-flex h-11 touch-manipulation items-center gap-2 rounded-full bg-app-text px-5 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90`}
-            >
+            <button type="button" onClick={onResumeAudio} className={`relative z-10 mt-4 ${livePrimaryButtonClass(locale)}`}>
               <Volume2 size={18} aria-hidden />
               {t.tapToStart}
             </button>
@@ -694,55 +598,48 @@ export default function LiveModeOverlay({
 
       {/* Controls: one row of round glass buttons, each with its word (see the header). Only End stays on the error
           screen — the rest would act on a call that no longer exists. */}
-      <div
-        className="absolute inset-x-0 bottom-0 z-20 flex justify-center px-2 min-[400px]:px-4"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
-      >
-        {/* Pixel sizes, not rem (the app's root is 17 px): five 56 px circles + four 4 px gaps fill a 320 px phone; the
-            gaps open up as the words appear and the screen widens. */}
-        <div data-testid="live-controls" className="flex max-w-full items-start justify-center gap-[4px] min-[360px]:gap-[6px] min-[390px]:gap-[10px] sm:gap-4">
-          {!isError && (
-            <>
+      <LiveControlRow>
+        {!isError && (
+          <>
+            <LiveControl
+              label={t.camera}
+              icon={cameraOn ? <Video size={22} aria-hidden /> : <VideoOff size={22} aria-hidden />}
+              onClick={onToggleCamera}
+              pressed={cameraOn}
+              locale={locale}
+            />
+            {status === 'speaking' && onStopSpeaking && (
               <LiveControl
-                label={t.camera}
-                icon={cameraOn ? <Video size={22} aria-hidden /> : <VideoOff size={22} aria-hidden />}
-                onClick={onToggleCamera}
-                pressed={cameraOn}
+                label={t.stopShort}
+                ariaLabel={LIVE_DOCK_STRINGS[locale]?.stopSpeaking ?? LIVE_DOCK_STRINGS.ka.stopSpeaking}
+                icon={<Square size={18} aria-hidden className="fill-current" />}
+                onClick={onStopSpeaking}
                 locale={locale}
+                testId="live-stop-speaking"
               />
-              {status === 'speaking' && onStopSpeaking && (
-                <LiveControl
-                  label={t.stopShort}
-                  ariaLabel={LIVE_DOCK_STRINGS[locale]?.stopSpeaking ?? LIVE_DOCK_STRINGS.ka.stopSpeaking}
-                  icon={<Square size={18} aria-hidden className="fill-current" />}
-                  onClick={onStopSpeaking}
-                  locale={locale}
-                  testId="live-stop-speaking"
-                />
-              )}
-              <LiveControl
-                label={t.muteShort}
-                ariaLabel={t.mute}
-                icon={muted ? <MicOff size={22} aria-hidden /> : <Mic size={22} aria-hidden />}
-                onClick={onToggleMute}
-                pressed={muted}
-                locale={locale}
-              />
-              {extraControls}
-            </>
-          )}
-          <LiveControl
-            label={t.endShort}
-            ariaLabel={t.end}
-            icon={<PhoneOff size={22} aria-hidden />}
-            onClick={onEnd}
-            tone="danger"
-            locale={locale}
-            testId="live-end"
-          />
-        </div>
-      </div>
-    </div>
+            )}
+            <LiveControl
+              label={t.muteShort}
+              ariaLabel={t.mute}
+              icon={muted ? <MicOff size={22} aria-hidden /> : <Mic size={22} aria-hidden />}
+              onClick={onToggleMute}
+              pressed={muted}
+              locale={locale}
+            />
+            {extraControls}
+          </>
+        )}
+        <LiveControl
+          label={t.endShort}
+          ariaLabel={t.end}
+          icon={<PhoneOff size={22} aria-hidden />}
+          onClick={onEnd}
+          tone="danger"
+          locale={locale}
+          testId="live-end"
+        />
+      </LiveControlRow>
+    </LiveCallFrame>
   );
 
   // ChatChrome loads this screen with ssr:false, so document exists; the guard keeps a server render harmless.
