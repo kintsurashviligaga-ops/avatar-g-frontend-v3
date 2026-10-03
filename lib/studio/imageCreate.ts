@@ -37,6 +37,20 @@ export const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K'
 export type ImgQuality = (typeof IMG_QUALITIES)[number][0];
 
 export const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
+export type ImgStyle = (typeof IMG_STYLES)[number];
+
+/** 'Digital Art' → 'digital-art': a style's file name (the swatch, the art pack's `style/<slug>` shot). */
+export const imageStyleSlug = (style: string): string => style.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/**
+ * The style chip's swatch: one cat on one Tbilisi balcony, drawn in that style (scripts/site-art/shots.md `style/…`, built
+ * to 96×96 by scripts/site-art/build-site-art.mjs), so thirteen chips compare like for like. 'Auto' is no look of its own
+ * — it has no swatch (null) and keeps an icon. lib/studio/imageCreate.test.ts pins that every other file exists.
+ */
+export function imageStyleSwatch(style: string): string | null {
+  if (style === 'Auto' || !(IMG_STYLES as readonly string[]).includes(style)) return null;
+  return `/styles/image/${imageStyleSlug(style)}.jpg`;
+}
 
 /** Variations per press: each one is its own billed request (OmniStudio.runImageBatch). */
 export const IMG_COUNTS = [1, 2, 4] as const;

@@ -1,6 +1,6 @@
 /** @jest-environment node */
 import {
-  artClientFor, parseShots, pendingShots, providerFromArgv, runQueue, saveInline, saveOutputs, spent, substitute,
+  artClientFor, packFromArgv, parseShots, pendingShots, providerFromArgv, runQueue, saveInline, saveOutputs, spent, substitute,
   PACKS, PRICES_USD, STOP_AT_USD, JOB_CAP_USD,
   type ArtClient, type Attempt, type Manifest, type Shot,
   throttleWaitMs,
@@ -64,6 +64,29 @@ describe('references and money', () => {
   test('the stop line sits under the job cap', () => {
     expect(STOP_AT_USD).toBeLessThan(JOB_CAP_USD);
     expect(JOB_CAP_USD).toBe(7);
+  });
+});
+
+describe('--pack picks one of the packs, and nothing else', () => {
+  test('brand-v1 by default; templates and site by name', () => {
+    expect(packFromArgv([])).toBe('brand-v1');
+    expect(packFromArgv(['--dry'])).toBe('brand-v1');
+    expect(packFromArgv(['--pack', 'templates', '--dry'])).toBe('templates');
+    expect(packFromArgv(['--provider', 'replicate', '--pack', 'site'])).toBe('site');
+  });
+  test('an unknown name, a missing value, or an inherited key is refused — never a silent default', () => {
+    for (const argv of [['--pack', 'nope'], ['--pack'], ['--pack', 'constructor'], ['--pack', '__proto__'], ['--pack', 'toString']]) {
+      expect(() => packFromArgv(argv)).toThrow(/unknown --pack/);
+    }
+  });
+  test('every pack has its own spec, work dir and job, with the stop line under its cap', () => {
+    const packs = Object.values(PACKS);
+    expect(new Set(packs.map((p) => p.spec)).size).toBe(packs.length);
+    expect(new Set(packs.map((p) => p.work)).size).toBe(packs.length);
+    for (const p of packs) {
+      expect(p.stop).toBeLessThan(p.cap);
+      expect(existsSync(join(process.cwd(), p.spec))).toBe(true);
+    }
   });
 });
 

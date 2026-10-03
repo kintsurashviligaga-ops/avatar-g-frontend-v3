@@ -3,6 +3,8 @@
  * unique ids, every kind the owner asked for, ka / en / ru copy on every preset, English-only model text, and a
  * composed prompt that stays bounded and says only what the engine will really be given.
  */
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { COMPOSED_PROMPT_MAX_CHARS, USER_PROMPT_MAX_CHARS } from './limits';
 import { GENJUTSU_PRESETS, KIND_LABEL, PRESET_KINDS, cleanUserText, composeGenjutsuPrompt, getPreset } from './presets';
 
@@ -62,6 +64,16 @@ test('every preset has a tile palette (dark base, accent) and an icon key', () =
     expect(p.icon).toMatch(/^[A-Z][A-Za-z0-9]+$/);
   }
   for (const k of PRESET_KINDS) for (const l of ['ka', 'en', 'ru'] as const) expect(KIND_LABEL[k][l].length).toBeGreaterThan(0);
+});
+
+test('every `thumb` is the preset\'s own /vfx/<id>.jpg and the file ships — a tile never asks for a picture that 404s', () => {
+  const withThumb = GENJUTSU_PRESETS.filter((p) => p.thumb !== undefined);
+  for (const p of withThumb) {
+    expect(p.thumb).toBe(`/vfx/${p.id}.jpg`);
+    expect(existsSync(join(process.cwd(), 'public', p.thumb!))).toBe(true);
+  }
+  // Site imagery v2 (scripts/site-art/shots.md) gave every preset its still; the palette stays as the placeholder.
+  expect(withThumb).toHaveLength(GENJUTSU_PRESETS.length);
 });
 
 test('getPreset resolves a known id and nothing else (it guards the wire)', () => {

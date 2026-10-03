@@ -19,6 +19,7 @@ import { VIDEO_TIER_TITLE, referenceToken, tierPriceEffect, videoQuote } from '@
 import type { VideoMode, VideoQuality } from '@/lib/credits/videoPricing';
 import type { OutputFormat } from '@/lib/veo/types';
 import { VIDEO_COPY, vc } from './videoCreateCopy';
+import { VIDEO_HERO_ART, siteArt, type SiteArtImage } from '@/lib/brand/siteArt';
 
 const cx = (...p: Array<string | false | null | undefined>) => p.filter(Boolean).join(' ');
 
@@ -73,10 +74,15 @@ export function VideoCreateHeader({ locale, title, onSwitchTool, onClose }: {
 
 // ── Hero ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The preview of the chosen engine/mode: a still of the look, or a gradient where no still exists (Lite, music videos). */
-function heroPicture(tier: VideoQuality, mode: VideoMode): string | null {
-  if (mode === 'musicvideo') return null;
-  return tier === 'standard' ? '/templates/video/trailer.jpg' : tier === 'fast' ? '/templates/video/reel.jpg' : null;
+/**
+ * The preview of the chosen engine/mode: a 21:9 banner of its own (public/brand/video-hero/, site imagery v2) for every
+ * tier, the music-video mode and a named model that is not a Veo tier. It used to be a 3:4 template thumbnail cropped to
+ * a 3:1 strip — for Fast and Veo 3.1 only; Lite, music videos and every other model got a bare gradient.
+ */
+export function heroPicture(tier: VideoQuality, mode: VideoMode, titled = false): SiteArtImage {
+  if (titled) return siteArt(VIDEO_HERO_ART.model);
+  if (mode === 'musicvideo') return siteArt(VIDEO_HERO_ART.musicvideo);
+  return siteArt(VIDEO_HERO_ART[tier]);
 }
 
 export function VideoHero({ locale, tier, mode, format, seconds, onChange, title }: {
@@ -89,15 +95,20 @@ export function VideoHero({ locale, tier, mode, format, seconds, onChange, title
   seconds: number;
   onChange: () => void;
 }) {
-  const pic = title ? null : heroPicture(tier, mode);
+  const pic = heroPicture(tier, mode, Boolean(title));
   return (
-    <div data-testid="video-hero" className="relative isolate overflow-hidden rounded-3xl bg-app-elevated" style={{ minHeight: 140 }}>
-      {pic ? (
-        <Image src={pic} alt="" fill sizes="(min-width: 1024px) 340px, 440px" className="-z-20 object-cover" />
-      ) : (
-        <div aria-hidden="true" className="absolute inset-0 -z-20 bg-gradient-to-br from-app-accent-deep/55 via-app-elevated to-app-bg" />
-      )}
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-t from-black/70 via-black/25 to-black/40" />
+    <div data-testid="video-hero" data-hero-art={pic.src} className="relative isolate overflow-hidden rounded-3xl bg-app-elevated" style={{ minHeight: 140 }}>
+      <Image
+        key={pic.src}
+        src={pic.src}
+        alt=""
+        fill
+        sizes="(min-width: 1024px) 340px, 440px"
+        {...(pic.blurDataURL ? { placeholder: 'blur' as const, blurDataURL: pic.blurDataURL } : {})}
+        className="-z-20 object-cover"
+      />
+      {/* The banners are real stills — some bright in the middle, where the title sits: a little more weight mid-frame. */}
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-t from-black/70 via-black/35 to-black/40" />
       <button type="button" onClick={onChange} data-testid="video-hero-change" aria-haspopup="dialog"
         className="absolute right-3 top-3 flex min-h-[44px] items-center gap-2 rounded-2xl border border-white/25 bg-black/35 px-3.5 text-[14px] font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/50">
         <Pencil size={16} aria-hidden="true" /> {vc(VIDEO_COPY.change, locale)}

@@ -6,14 +6,14 @@
  * app/api/nanobanana/image/route.ts here (its source text, so no provider and no network is touched): when the route
  * changes and this module does not, a test fails instead of the Generate button promising something the bill disagrees with.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { quoteCredits } from '@/lib/credits/quote';
 import { catalogueEntry, catalogueFor, imageEndpointFor } from '@/lib/providers/catalogue';
 import {
   IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_QUALITIES, IMG_STYLES,
-  imageCredits, imageModelFor, imageVariant, nativeQuality, tierFor, tierModelLabel,
+  imageCredits, imageModelFor, imageStyleSlug, imageStyleSwatch, imageVariant, nativeQuality, tierFor, tierModelLabel,
 } from './imageCreate';
 
 const route = readFileSync(join(process.cwd(), 'app/api/nanobanana/image/route.ts'), 'utf8');
@@ -91,5 +91,22 @@ describe('the option lists', () => {
     expect(IMG_STYLES).toHaveLength(13);
     expect(IMG_STYLES[0]).toBe('Auto');
     expect([...IMG_COUNTS]).toEqual([1, 2, 4]);
+  });
+});
+
+describe('the style swatches (site imagery v2)', () => {
+  test('every style but Auto has its swatch on disk; Auto and anything unknown have none', () => {
+    for (const s of IMG_STYLES) {
+      const swatch = imageStyleSwatch(s);
+      if (s === 'Auto') { expect(swatch).toBeNull(); continue; }
+      expect(swatch).toBe(`/styles/image/${imageStyleSlug(s)}.jpg`);
+      expect(existsSync(join(process.cwd(), 'public', swatch!))).toBe(true);
+    }
+    for (const bad of ['', 'Nope', 'constructor', '../x']) expect(imageStyleSwatch(bad)).toBeNull();
+  });
+  test('the slug is the file name: lowercase, dashes, nothing else', () => {
+    expect(imageStyleSlug('Digital Art')).toBe('digital-art');
+    expect(imageStyleSlug('3D Render')).toBe('3d-render');
+    expect(new Set(IMG_STYLES.map(imageStyleSlug)).size).toBe(IMG_STYLES.length);
   });
 });

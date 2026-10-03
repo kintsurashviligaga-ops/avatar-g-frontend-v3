@@ -12,6 +12,8 @@
 
 import { useState, useCallback, useRef, useEffect, type ChangeEvent } from 'react'
 import Image from 'next/image'
+import { Lightbulb } from 'lucide-react'
+import { serviceCardImage } from '@/lib/services/cardImage'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '@/lib/i18n/LanguageContext'
@@ -1108,6 +1110,7 @@ export default function ServiceWorkspaceView({
 }: ServiceWorkspaceViewProps) {
   const { language } = useLanguage()
   const lang = locale ? getSafeLocale(locale) : getSafeLocale(language)
+  const cardImage = serviceCardImage(serviceId)
   const ui = { ...UI_COPY[lang], ...(labels ?? {}) }
   const baseWorkspace = SERVICE_WORKSPACES[serviceId] || DEFAULT_WORKSPACE
   const workspace: ServiceWorkspace = {
@@ -1784,12 +1787,20 @@ export default function ServiceWorkspaceView({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div
-              className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
-              style={{ background: 'rgba(51,143,232,0.08)', border: '1px solid rgba(51,143,232,0.15)' }}
-            >
-              {serviceIcon}
-            </div>
+            {/* The service's own card still (the /services hub's picture) where one ships — it was a 24 px Unicode glyph
+                (⬡ ◈ ▷, and for some services an emoji) in a tinted box. Decorative: the heading names the service. */}
+            {cardImage ? (
+              <span data-testid="service-header-thumb" className="relative block h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white/[0.03] ring-1 ring-white/10">
+                <Image src={cardImage} alt="" fill sizes="48px" className="object-cover" priority />
+              </span>
+            ) : (
+              <div
+                className="flex items-center justify-center w-12 h-12 rounded-xl text-2xl"
+                style={{ background: 'rgba(51,143,232,0.08)', border: '1px solid rgba(51,143,232,0.15)' }}
+              >
+                {serviceIcon}
+              </div>
+            )}
             <div>
               <h1 className="text-2xl font-bold" style={{ color: '#f8fafc' }}>{safeServiceName}</h1>
               <p className="text-sm mt-0.5" style={{ color: 'rgba(148,163,184,0.7)' }}>{safeDescription}</p>
@@ -1980,8 +1991,8 @@ export default function ServiceWorkspaceView({
                 className="rounded-xl p-4"
                 style={{ background: 'rgba(51,143,232,0.04)', border: '1px solid rgba(51,143,232,0.08)' }}
               >
-                <p className="text-xs font-semibold mb-1" style={{ color: '#338FE8' }}>
-                  💡 {ui.quickTip}
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#338FE8' }}>
+                  <Lightbulb size={13} aria-hidden="true" /> {ui.quickTip}
                 </p>
                 <p className="text-xs leading-relaxed" style={{ color: 'rgba(148,163,184,0.6)' }}>
                   {ui.tipText}
@@ -2158,12 +2169,18 @@ export default function ServiceWorkspaceView({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-center">
-                    <div
-                      className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
-                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-                    >
-                      {serviceIcon}
-                    </div>
+                    {cardImage ? (
+                      <span className="relative block h-16 w-16 overflow-hidden rounded-2xl opacity-80 ring-1 ring-white/[0.06]">
+                        <Image src={cardImage} alt="" fill sizes="64px" className="object-cover" />
+                      </span>
+                    ) : (
+                      <div
+                        className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl"
+                        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
+                      >
+                        {serviceIcon}
+                      </div>
+                    )}
                     <p className="text-sm" style={{ color: 'rgba(148,163,184,0.5)' }}>
                       {workspace.previewHint[lang] || workspace.previewHint.en}
                     </p>
