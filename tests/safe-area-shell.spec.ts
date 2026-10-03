@@ -50,7 +50,17 @@ async function layout(page: Page) {
       shellBottom: Math.round(s.bottom),
       shellHeight: Math.round(s.height),
       headerContentTop: Math.round(header.getBoundingClientRect().top + parseFloat(getComputedStyle(header).paddingTop)),
+      composerTop: Math.round(composer.getBoundingClientRect().top),
       composerBottom: Math.round(composer.getBoundingClientRect().bottom),
+      // `--live-dock-h` resolved to pixels (the variable reads back as its unresolved calc()).
+      dockH: (() => {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:var(--live-dock-h);visibility:hidden';
+        document.body.appendChild(probe);
+        const h = Math.round(probe.getBoundingClientRect().height);
+        probe.remove();
+        return h;
+      })(),
       scrolls,
     };
   });
@@ -89,6 +99,45 @@ test.describe('the studio on an iPhone screen — the safe area is reserved once
     expect(l.headerContentTop).toBe(47);
     expect(l.shellBottom).toBe(l.viewportH);
     expect(l.composerBottom).toBeLessThanOrEqual(l.viewportH);
+  });
+
+  test('a docked Live call: the studio sits right under the dock, the composer stays on screen, nothing scrolls', async ({ page }) => {
+    await setSafeArea(page, NOTCH);
+    await openChat(page);
+    await expect.poll(async () => (await layout(page)).headerContentTop).toBe(47);
+    await page.evaluate(() => { document.documentElement.dataset.liveDocked = '1'; });
+    // The dock's first-frame fallback on a phone: two rows (110 px) under the notch.
+    await expect.poll(async () => (await layout(page)).shellTop).toBe(110 + 47);
+    let l = await layout(page);
+    expect(l.dockH).toBe(110 + 47);
+    expect(l.position).toBe('fixed');
+    expect(l.shellBottom).toBe(l.viewportH);
+    // The dock already reserved the notch — the header does not pad by it again.
+    expect(l.headerContentTop).toBe(l.dockH);
+    expect(l.composerTop).toBeGreaterThanOrEqual(l.dockH);
+    expect(l.composerBottom).toBeLessThanOrEqual(l.viewportH);
+    // ⚠️ THE BUG THIS PINS: AppShell is an `.ag-fixed-shell` too. Moved by the dock in flow, it grew the document by the
+    // dock's height and the body scrolled by it (157 px here) — with window.scrollY still 0.
+    expect(l.scrolls).toEqual([]);
+
+    // The real dock writes its MEASURED height; the shell follows it.
+    await page.evaluate(() => { document.documentElement.style.setProperty('--live-dock-h', '132px'); });
+    await expect.poll(async () => (await layout(page)).shellTop).toBe(132);
+    l = await layout(page);
+    expect(l.shellBottom).toBe(l.viewportH);
+    expect(l.composerBottom).toBeLessThanOrEqual(l.viewportH);
+    expect(l.scrolls).toEqual([]);
+
+    // Undocked (LiveDock's cleanup): back to the full screen under the notch.
+    await page.evaluate(() => {
+      delete document.documentElement.dataset.liveDocked;
+      document.documentElement.style.removeProperty('--live-dock-h');
+    });
+    await expect.poll(async () => (await layout(page)).shellTop).toBe(0);
+    l = await layout(page);
+    expect(l.shellBottom).toBe(l.viewportH);
+    expect(l.headerContentTop).toBe(47);
+    expect(l.scrolls).toEqual([]);
   });
 
   test('the keyboard fallback (iOS ignores resizes-content) pins the shell to the visible band — not a safe area below it', async ({ page }) => {
