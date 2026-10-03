@@ -7,7 +7,7 @@
  *   ruler   ·  0:00 ·  0:02 ·  0:04 …
  *   video   [sound] [clip ▮▮▮▮][|][clip ▮▮▮][|][clip ▮▮] [+]
  *   text            [T caption ]      [T title]
- *   music   [♫ track ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]
+ *   music   [♫ from 0:42 · track ~~~~~~~~~~~~~~~~~]   (the slice of the song that plays, from the music start)
  *
  * Scrolling IS seeking: the time under the playhead is `scrollLeft / pxPerSec`, so the edit starts and ends
  * exactly under it (half a viewport of padding on each side). While the preview plays, the player moves the
@@ -19,15 +19,58 @@
  */
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Layers, Loader2, Minus, Music2, Plus, Square, Type, Volume2, VolumeX } from 'lucide-react';
-import type { Copy } from './copy';
+import { fmtClock, type Copy } from './copy';
 import { fmtSec, fmtTime } from './media';
-import { clipDuration, type Clip, type MediaSource, type Placed } from './project';
+import { clipDuration, musicSpanSec, type Clip, type MediaSource, type Placed } from './project';
 
 export interface TimelineMusic {
   name: string;
   durationSec: number;
+  /** Peaks over the WHOLE track, evenly spaced (media.ts decodePeaks). */
   peaks: number[];
   status: MediaSource['status'];
+  /** Where in the song the edit starts — the bar shows the song from here, not from its top. */
+  startSec: number;
+}
+
+/**
+ * The slice of a whole-track waveform that plays under the edit: from `startSec` for `spanSec`. An unknown track
+ * length draws the whole waveform, as before there was a start.
+ */
+export function visiblePeaks(peaks: readonly number[], durationSec: number, startSec: number, spanSec: number): number[] {
+  if (!peaks.length || !(durationSec > 0)) return [...peaks];
+  const n = peaks.length;
+  const from = Math.max(0, Math.min(n - 1, Math.floor((startSec / durationSec) * n)));
+  const to = Math.max(from + 1, Math.min(n, Math.ceil(((startSec + spanSec) / durationSec) * n)));
+  return peaks.slice(from, to);
+}
+
+/**
+ * `peaks` redrawn as `n` bars: the loudest of each group when there are more peaks than bars, a straight line between
+ * neighbours when there are fewer — a 12 s slice of a long song is a handful of peaks stretched over hundreds of px,
+ * and drawn one bar per peak it read as a row of blobs, not a waveform.
+ */
+export function resamplePeaks(peaks: readonly number[], n: number): number[] {
+  const count = Math.max(0, Math.min(600, Math.floor(n)));
+  if (!count || !peaks.length) return [];
+  if (peaks.length === count) return [...peaks];
+  if (peaks.length > count) {
+    return Array.from({ length: count }, (_, j) => {
+      const a = Math.floor((j * peaks.length) / count);
+      const b = Math.max(a + 1, Math.floor(((j + 1) * peaks.length) / count));
+      let m = 0;
+      for (let k = a; k < b; k += 1) m = Math.max(m, peaks[k] ?? 0);
+      return m;
+    });
+  }
+  if (count === 1 || peaks.length === 1) return Array.from({ length: count }, () => Math.max(...peaks));
+  return Array.from({ length: count }, (_, j) => {
+    const x = (j * (peaks.length - 1)) / (count - 1);
+    const i = Math.floor(x);
+    const lo = peaks[i] ?? 0;
+    const hi = peaks[Math.min(peaks.length - 1, i + 1)] ?? lo;
+    return lo + (hi - lo) * (x - i);
+  });
 }
 
 export interface TimelineProps {
@@ -195,6 +238,13 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
   const musicTop = textTop + textH + 6;
   const height = musicTop + musicH + 8;
   const anyCaption = p.clips.some((c) => c.caption.trim());
+  // The music bar: as long as the song plays under the edit, drawn with one waveform bar per ~4 px of it.
+  const musicSpan = p.music ? musicSpanSec(p.music.durationSec, p.music.startSec, p.totalSec) : 0;
+  const musicW = Math.max(44, musicSpan * p.pxPerSec);
+  const musicWave = useMemo(
+    () => (p.music ? resamplePeaks(visiblePeaks(p.music.peaks, p.music.durationSec, p.music.startSec, musicSpan), Math.round(musicW / 4)) : []),
+    [p.music, musicSpan, musicW],
+  );
 
   return (
     <div className="relative w-full select-none" style={{ height }} data-testid="montage-timeline">
@@ -386,27 +436,29 @@ export const Timeline = forwardRef<TimelineHandle, TimelineProps>(function Timel
             </button>
           )}
 
-          {/* Music track */}
+          {/* Music track — the part of the song that plays: from its start, for as long as the edit (or the song) runs */}
           {p.clips.length > 0 && (p.music ? (
             <button
               type="button"
               data-testid="montage-music-bar"
+              data-start={p.music.startSec}
               onClick={p.onMusic}
+              aria-label={`${p.t.musicTitle}: ${p.music.name}${p.music.startSec > 0 ? ` · ${p.t.musicFrom.replace('{t}', fmtClock(p.music.startSec))}` : ''}`}
               className="absolute flex items-center gap-1.5 overflow-hidden rounded bg-app-accent/15 px-1.5 text-left text-[11px] text-app-text ring-1 ring-app-accent/25 hover:bg-app-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent"
-              style={{
-                left: pad,
-                width: Math.max(44, (p.music.durationSec > 0 ? Math.min(p.music.durationSec, p.totalSec) : p.totalSec) * p.pxPerSec),
-                top: musicTop,
-                height: musicH,
-              }}
+              style={{ left: pad, width: musicW, top: musicTop, height: musicH }}
             >
-              <Waveform peaks={p.music.peaks} />
+              <Waveform peaks={musicWave} />
               <span className="relative flex min-w-0 items-center gap-1">
                 {p.music.status === 'uploading'
                   ? <Loader2 size={11} aria-hidden="true" className="shrink-0 animate-spin motion-reduce:animate-none" />
                   : p.music.status === 'error'
                     ? <AlertCircle size={11} aria-hidden="true" className="shrink-0 text-app-danger" />
                     : <Music2 size={11} aria-hidden="true" className="shrink-0 text-app-accent" />}
+                {p.music.startSec > 0 && (
+                  <span className="shrink-0 rounded bg-black/45 px-1 tabular-nums leading-[14px] text-white" data-testid="montage-music-bar-start">
+                    {p.t.musicFrom.replace('{t}', fmtClock(p.music.startSec))}
+                  </span>
+                )}
                 <span className="truncate">{p.music.name}</span>
               </span>
             </button>

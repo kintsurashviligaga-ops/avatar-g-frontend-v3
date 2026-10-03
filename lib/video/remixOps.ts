@@ -103,17 +103,30 @@ async function videoStreamIsMp4Copyable(url: string): Promise<boolean> {
   }
 }
 
+/**
+ * The two inputs every mux branch opens: the picture, then the incoming track. `audioStartSec` > 0 seeks INTO the
+ * track — `-ss` before its `-i` is input seeking, so the song's 0:42 lands on the picture's first frame (Montage's
+ * „start the music at"). 0, absent or garbage adds nothing, so the argv is byte-for-byte what it was without it.
+ */
+function muxInputs(videoUrl: string, audioUrl: string, audioStartSec: number): string[] {
+  const seek = Number.isFinite(audioStartSec) && audioStartSec > 0 ? ['-ss', String(Number(audioStartSec.toFixed(3)))] : [];
+  return ['-y', '-i', videoUrl, ...seek, '-i', audioUrl];
+}
+
 export async function muxAudioOntoVideo(
   videoUrl: string,
   audioUrl: string,
   mode: 'replace' | 'mix' | 'under' | 'bed' = 'replace',
   duckDb = 10,
+  /** Seconds into `audioUrl` to start from (input seeking on the track only). 0 = the top, as before. */
+  audioStartSec = 0,
 ): Promise<string | null> {
   if (!BIN || !videoUrl || !audioUrl) return null;
   let dir: string | null = null;
   try {
     dir = await mkdtemp(join(tmpdir(), 'remix-mux-'));
     const out = join(dir, 'out.mp4');
+    const inputs = muxInputs(videoUrl, audioUrl, audioStartSec);
     // ONLY THE AUDIO CHANGES HERE, so the picture is stream-COPIED whenever the source allows it.
     // Re-encoding a master we did not touch costs a full x264 pass over every frame (a 3-minute 1080p
     // montage master is ~45-90s of lambda CPU), adds a generation of loss, and re-inflates a file that
@@ -122,7 +135,7 @@ export async function muxAudioOntoVideo(
     // format and orientation: anything not already H.264 8-bit 4:2:0 and unrotated takes X264 as before.
     const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
     const replaceArgs = [
-      '-y', '-i', videoUrl, '-i', audioUrl,
+      ...inputs,
       '-map', '0:v:0', '-map', '1:a:0',
       ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
     ];
@@ -134,7 +147,7 @@ export async function muxAudioOntoVideo(
       // (`apad` + `-shortest` does the same on paper, and with the picture stream-copied it never terminates.)
       try {
         await exec(BIN, [
-          '-y', '-i', videoUrl, '-i', audioUrl,
+          ...inputs,
           '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
           '-map', '0:v:0', '-map', '[aout]',
           ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,
@@ -153,7 +166,7 @@ export async function muxAudioOntoVideo(
         ? `[0:a]volume=-${db}dB[a0];[a0][1:a]amix=inputs=2:duration=first:dropout_transition=0[aout]`
         : `[1:a]volume=-${db}dB[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
       const mixArgs = [
-        '-y', '-i', videoUrl, '-i', audioUrl,
+        ...inputs,
         '-filter_complex', graph,
         '-map', '0:v:0', '-map', '[aout]',
         ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out,

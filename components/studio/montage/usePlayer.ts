@@ -34,6 +34,8 @@ export interface PlayerOptions {
   clips: PlayerClip[];
   totalSec: number;
   musicUrl: string | null;
+  /** Where in the song timeline 0 lands, seconds — the edit's music start. The bed plays from `t + offset`. */
+  musicOffsetSec?: number;
   /** Clip sound on? Off = every clip is silent in the preview, as in the export. */
   originalSound: boolean;
   onFrame?: (t: number) => void;
@@ -139,10 +141,13 @@ export function usePlayer(opts: PlayerOptions) {
     const a = audioRef.current;
     const url = optsRef.current.musicUrl;
     if (!a || !url) return;
+    // The song runs `offset` ahead of the timeline — the export seeks its input by the same amount (`-ss`).
+    const offset = Math.max(0, optsRef.current.musicOffsetSec ?? 0);
+    const at = t + offset;
     const dur = Number.isFinite(a.duration) ? a.duration : Number.POSITIVE_INFINITY;
-    if (t >= dur) { if (!a.paused) a.pause(); return; }
-    if (hard || Math.abs(a.currentTime - t) > 0.3) {
-      try { a.currentTime = t; } catch { /* not ready */ }
+    if (at >= dur) { if (!a.paused) a.pause(); return; }
+    if (hard || Math.abs(a.currentTime - at) > 0.3) {
+      try { a.currentTime = at; } catch { /* not ready */ }
     }
     if (playingRef.current && a.paused) void a.play().catch(() => {});
     if (!playingRef.current && !a.paused) a.pause();
@@ -254,6 +259,10 @@ export function usePlayer(opts: PlayerOptions) {
   }, [signature]);
 
   useEffect(() => { applyMute(optsRef.current.clips[idxRef.current]); }, [opts.originalSound, applyMute]);
+
+  // A new music start moves the song under the playhead at once — playing or paused — so what plays next is what the
+  // export will lay there.
+  useEffect(() => { syncMusic(timeRef.current, true); }, [opts.musicOffsetSec, opts.musicUrl, syncMusic]);
 
   useEffect(() => () => stopLoop(), []);
 

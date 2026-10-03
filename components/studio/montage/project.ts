@@ -15,6 +15,7 @@
  * numbers this file checks are the server's own limits, imported rather than restated.
  */
 import {
+  MAX_MUSIC_START_SEC,
   MAX_SHOTS,
   MAX_SHOT_SEC,
   MAX_TOTAL_SEC,
@@ -65,6 +66,11 @@ export interface Edit {
   aspect: MontageAspect;
   /** A MediaSource of kind 'audio', laid under the whole edit. */
   musicId: string | null;
+  /**
+   * Where in the song the edit's first frame lands, in seconds (0.1 s steps) — CapCut's dragging the song along under
+   * the clips. 0 = the top. Reset when the song changes; clamped to the track (`clampMusicStart`).
+   */
+  musicStartSec: number;
   /** The clips' own sound. Off with music = music only; off without music = a silent edit. */
   originalSound: boolean;
   grade: MontageGrade;
@@ -85,6 +91,7 @@ export const emptyEdit = (aspect: MontageAspect = '9:16'): Edit => ({
   clips: [],
   aspect,
   musicId: null,
+  musicStartSec: 0,
   originalSound: true,
   grade: NEUTRAL_GRADE,
   filterId: 'original',
@@ -274,6 +281,55 @@ export function toggleMute(e: Edit, id: string): Edit {
   return mapClip(e, id, (c) => ({ ...c, muted: !c.muted }));
 }
 
+// ── MUSIC ────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The song keeps at least this much after its start. A start ON the last second would lay a silent bed — an edit
+ * that says "music" and plays none.
+ */
+export const MUSIC_MIN_PLAY_SEC = 1;
+
+/**
+ * The latest the song may start: its own length less MUSIC_MIN_PLAY_SEC (so ≤ the track's length, always), on the
+ * 0.1 s grid. A track the browser could not measure (0) gets the render route's own ceiling — the server decides.
+ */
+export function musicStartMax(trackSec: number): number {
+  if (!Number.isFinite(trackSec) || trackSec <= 0) return MAX_MUSIC_START_SEC;
+  // The epsilon keeps float noise ((29.3 − 1) × 10 = 292.999…) from flooring a whole step off.
+  return Math.min(MAX_MUSIC_START_SEC, Math.max(0, Math.floor((trackSec - MUSIC_MIN_PLAY_SEC) * 10 + 1e-6) / 10));
+}
+
+/** A start from anywhere (a slider, a stepper, a voice command): finite, ≥ 0, ≤ musicStartMax, rounded to 0.1 s. */
+export function clampMusicStart(sec: number, trackSec: number): number {
+  if (!Number.isFinite(sec)) return 0;
+  return clamp(Math.round(sec * 10) / 10, 0, musicStartMax(trackSec));
+}
+
+/** Move where the song starts. A non-finite value, or one that lands where it already is, changes nothing. */
+export function setMusicStart(e: Edit, sec: number, trackSec: number): Edit {
+  if (!Number.isFinite(sec)) return e;
+  const v = clampMusicStart(sec, trackSec);
+  return v === e.musicStartSec ? e : { ...e, musicStartSec: v };
+}
+
+/** Lay a song under the edit, starting `startSec` in (a new song starts at its top unless told otherwise). */
+export function setMusic(e: Edit, musicId: string, startSec = 0, trackSec = 0): Edit {
+  return { ...e, musicId, musicStartSec: clampMusicStart(startSec, trackSec) };
+}
+
+export function removeMusic(e: Edit): Edit {
+  return e.musicId === null && e.musicStartSec === 0 ? e : { ...e, musicId: null, musicStartSec: 0 };
+}
+
+/**
+ * How long the song plays under an edit of `editSec`: from its start to its end or the edit's end, whichever comes
+ * first. A track of unknown length is assumed to cover the edit.
+ */
+export function musicSpanSec(trackSec: number, startSec: number, editSec: number): number {
+  if (!Number.isFinite(trackSec) || trackSec <= 0) return Math.max(0, editSec);
+  return round3(Math.max(0, Math.min(editSec, trackSec - startSec)));
+}
+
 // ── HISTORY ──────────────────────────────────────────────────────────────────────────────────────────
 
 /** Undo/redo over `Edit` snapshots. Capped, so a long session cannot grow it without bound. */
@@ -341,7 +397,13 @@ export function buildRenderBody(edit: Edit, sources: Record<string, MediaSource>
   return {
     shots: toShots(edit, sources),
     aspect: edit.aspect,
-    ...(musicRef ? { musicUrl: musicRef, musicOnly: !edit.originalSound } : {}),
+    ...(musicRef ? {
+      musicUrl: musicRef,
+      musicOnly: !edit.originalSound,
+      // Only a real offset is sent: the top of the song is the route's default, and an edit without one stays the
+      // request it always was.
+      ...(edit.musicStartSec > 0 ? { musicStartSec: edit.musicStartSec } : {}),
+    } : {}),
     ...(sameGrade(edit.grade, NEUTRAL_GRADE) ? {} : { grade: edit.grade }),
   };
 }
@@ -379,4 +441,4 @@ export function blockers(edit: Edit, sources: Record<string, MediaSource>): Bloc
   return out;
 }
 
-export { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC };
+export { MAX_MUSIC_START_SEC, MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC };

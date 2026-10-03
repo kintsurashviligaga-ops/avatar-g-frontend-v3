@@ -11,6 +11,8 @@ import {
   MAX_TOTAL_SEC,
   TRANSITION_MAX_SEC,
   maxrateForTarget,
+  coerceMusicStartSec,
+  MAX_MUSIC_START_SEC,
   type MontageShot,
 } from './montagePlan';
 
@@ -123,6 +125,32 @@ describe('validation', () => {
   it('clamps the duck into a usable range instead of trusting the client', () => {
     expect(validateMontageRequest(body({ musicDuckDb: -900 })).request?.musicDuckDb).toBe(-30);
     expect(validateMontageRequest(body({ musicDuckDb: 40 })).request?.musicDuckDb).toBe(0);
+  });
+
+  it('carries where the song starts — only with a bed, only when it is past the top', () => {
+    const song = 'https://cdn.example.com/song.mp3';
+    expect(validateMontageRequest(body({ musicUrl: song, musicStartSec: 42.5 })).request?.musicStartSec).toBe(42.5);
+    expect(validateMontageRequest(body({ musicUrl: song, musicStartSec: 12.3456789 })).request?.musicStartSec).toBe(12.346);
+    expect(validateMontageRequest(body({ musicUrl: song, musicStartSec: MAX_MUSIC_START_SEC })).request?.musicStartSec).toBe(MAX_MUSIC_START_SEC);
+    // 0, absent and null are the top of the song: nothing rides along, so the mux runs as it always did.
+    for (const musicStartSec of [0, undefined, null]) {
+      const r = validateMontageRequest(body({ musicUrl: song, musicStartSec }));
+      expect(r.ok).toBe(true);
+      expect(r.request).not.toHaveProperty('musicStartSec');
+    }
+    // No bed, nothing to start.
+    expect(validateMontageRequest(body({ musicStartSec: 30 })).request).not.toHaveProperty('musicStartSec');
+  });
+
+  it('refuses a music start that is not 0–3600 seconds, with a reason a caller can act on', () => {
+    for (const musicStartSec of [-1, MAX_MUSIC_START_SEC + 0.1, '12', true, {}, [5]]) {
+      const r = validateMontageRequest(body({ musicUrl: 'https://cdn.example.com/song.mp3', musicStartSec }));
+      expect(r.ok).toBe(false);
+      expect(r.error).toBe('musicStartSec must be a number of seconds from 0 to 3600');
+    }
+    expect(coerceMusicStartSec(Number.NaN).ok).toBe(false);
+    expect(coerceMusicStartSec(Number.POSITIVE_INFINITY).ok).toBe(false);
+    expect(coerceMusicStartSec(undefined)).toEqual({ ok: true, value: 0 });
   });
 });
 

@@ -18,6 +18,18 @@ const VIEWPORTS = [
 // A 1×1 PNG: photos need no decoding to land on the timeline.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
+/** A 20 s song (8 kHz mono WAV, a quiet tone), built here so no audio file is committed: long enough to start inside. */
+function wav(seconds = 20, rate = 8000): Buffer {
+  const n = seconds * rate;
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVE', 8);
+  buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(rate, 24); buf.writeUInt32LE(rate * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+  buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i += 1) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / rate) * 3000), 44 + i * 2);
+  return buf;
+}
+
 async function prepare(page: Page) {
   await page.addInitScript(() => {
     try {
@@ -83,12 +95,22 @@ for (const vp of VIEWPORTS) {
       await page.locator('[data-testid="montage-transition-choice"] [data-value="crossfade"]').click();
       await page.getByTestId('montage-panel-done').click();
       await expect(page.getByTestId('montage-transition').first()).toHaveAttribute('data-transition', 'crossfade');
+      // A song under it, started three seconds in: the drawer's „Start at", then the timeline says where it starts.
+      await page.getByTestId('montage-tool-music').click();
+      await page.getByTestId('montage-music-input').setInputFiles({ name: 'song.wav', mimeType: 'audio/wav', buffer: wav() });
+      await expect(page.getByTestId('montage-music-start')).toBeVisible();
+      for (let i = 0; i < 3; i += 1) await page.getByTestId('montage-music-start-later').click();
+      await expect(page.getByTestId('montage-music-start-value')).toHaveText(/^0:03/);
+      await shot(page, `montage-${vp.name}-music-start`);
+      await page.getByTestId('montage-panel-done').click();
+      await expect(page.getByTestId('montage-music-bar-start')).toHaveText('from 0:03');
       await shot(page, `montage-${vp.name}-editor`);
 
       // Nothing on the page may push it sideways.
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow).toBeLessThanOrEqual(0);
 
+      await expect(page.getByTestId('montage-export-btn')).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('montage-export-btn').click();
       await expect(page.locator('[data-testid="montage-export"][data-phase="done"]')).toBeVisible({ timeout: 15_000 });
       expect(body).toMatchObject({
@@ -97,6 +119,8 @@ for (const vp of VIEWPORTS) {
           { url: 'u/e2e-1', kind: 'image', caption: 'Summer in Tbilisi', transition: 'cut' },
           { url: 'u/e2e-2', kind: 'image', transition: 'crossfade' },
         ],
+        musicUrl: 'u/e2e-3',
+        musicStartSec: 3,
       });
       await shot(page, `montage-${vp.name}-done`);
 

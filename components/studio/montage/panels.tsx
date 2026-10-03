@@ -8,11 +8,11 @@
  * changes the edit live (the preview shows it at once) and „მზადაა" just closes it — there is no Apply step
  * to forget. Every control is a word with a line icon, never an emoji (docs/DESIGN.md §6).
  */
-import type { ReactNode } from 'react';
-import { Check, Loader2, Music2, Trash2, Upload } from 'lucide-react';
+import { useId, type ReactNode } from 'react';
+import { Check, Loader2, Minus, Music2, Plus, Trash2, Upload } from 'lucide-react';
 import type { MontageAspect, MontageCaptionPos, MontageGrade, MontageTransition } from '@/lib/services/montage/montagePlan';
 import { Slider, ToggleRow } from '../ui/controls';
-import { ASPECTS, FILTERS, TRANSITIONS, aspectRatio, langOf, type Copy } from './copy';
+import { ASPECTS, FILTERS, TRANSITIONS, aspectRatio, fmtClock, langOf, type Copy } from './copy';
 import { MAX_CAPTION_CHARS, PHOTO_MAX_SEC, MIN_SHOT_SEC, type MediaSource } from './project';
 import type { LibraryItem } from './useLibrary';
 
@@ -78,12 +78,104 @@ function Choice<T extends string>({ options, value, onChange, label, testId, ren
 
 // ── Music ────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * „Start at" — where in the song the edit's first frame lands. A 44 px slider between two 44 px one-second steppers,
+ * the position as m:ss, and (once the waveform is decoded) the song with the part that will play lit: before the start
+ * dimmed, the edit's length from it in the accent. The arrow keys move it by 0.1 s, the steppers by a second.
+ */
+export function MusicStart(p: {
+  t: Copy;
+  startSec: number;
+  /** The latest it may start (project.ts musicStartMax). */
+  maxSec: number;
+  /** The track's length; 0 when the browser could not measure it. */
+  trackSec: number;
+  /** The edit's length — how much of the song plays from the start. */
+  editSec: number;
+  peaks: readonly number[];
+  onChange: (sec: number) => void;
+}) {
+  const { t } = p;
+  const id = useId();
+  const known = p.trackSec > 0;
+  const from = known ? p.startSec / p.trackSec : 0;
+  const to = known ? (p.startSec + p.editSec) / p.trackSec : 1;
+  return (
+    <div className="mt-3" data-testid="montage-music-start-control">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={id} className="text-[12.5px] font-medium text-app-text">{t.musicStart}</label>
+        <span className="text-[12.5px] tabular-nums text-app-text" data-testid="montage-music-start-value">
+          {fmtClock(p.startSec)}
+          {known && <span className="text-app-muted"> / {fmtClock(p.trackSec)}</span>}
+        </span>
+      </div>
+      {known && p.peaks.length > 0 && (
+        <div className="mt-2 flex h-8 items-center gap-px overflow-hidden rounded-lg bg-app-elevated/60 px-1" aria-hidden="true" data-testid="montage-music-start-wave">
+          {p.peaks.map((v, i) => {
+            const x = (i + 0.5) / p.peaks.length;
+            const lit = x >= from && x <= to;
+            return (
+              <span
+                key={i}
+                className={cx('min-w-0 flex-1 rounded-full', lit ? 'bg-app-accent' : 'bg-app-muted/35')}
+                style={{ height: `${Math.round(v * 85)}%` }}
+              />
+            );
+          })}
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => p.onChange(p.startSec - 1)}
+          disabled={p.startSec <= 0}
+          aria-label={t.musicStartEarlier}
+          data-testid="montage-music-start-earlier"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text hover:bg-app-elevated disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+        >
+          <Minus size={16} aria-hidden="true" />
+        </button>
+        {/* `appearance-none` opts into the app's range styling: a 44 px grab strip around a 6 px track (globals.css). */}
+        <input
+          id={id}
+          type="range"
+          min={0}
+          max={p.maxSec}
+          step={0.1}
+          value={Math.min(p.startSec, p.maxSec)}
+          aria-valuetext={fmtClock(p.startSec)}
+          onChange={(e) => p.onChange(parseFloat(e.target.value))}
+          data-testid="montage-music-start"
+          className="min-w-0 flex-1 appearance-none"
+        />
+        <button
+          type="button"
+          onClick={() => p.onChange(p.startSec + 1)}
+          disabled={p.startSec >= p.maxSec}
+          aria-label={t.musicStartLater}
+          data-testid="montage-music-start-later"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-text hover:bg-app-elevated disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+        >
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <p className="text-[11.5px] leading-snug text-app-muted">{t.musicStartHint}</p>
+    </div>
+  );
+}
+
 export function MusicPanel(p: {
   t: Copy;
   music: MediaSource | null;
   library: { items: LibraryItem[]; loading: boolean; signedOut: boolean };
   originalSound: boolean;
   shorterThanEdit: boolean;
+  /** Where the song starts, and what the start control needs to draw it. */
+  startSec: number;
+  startMaxSec: number;
+  editSec: number;
+  peaks: readonly number[];
+  onStart: (sec: number) => void;
   onUpload: () => void;
   onPick: (item: LibraryItem) => void;
   onRemove: () => void;
@@ -94,24 +186,37 @@ export function MusicPanel(p: {
   return (
     <PanelShell title={t.musicTitle} onDone={p.onDone} doneLabel={t.done} testId="montage-panel-music">
       {p.music ? (
-        <div className="flex items-center gap-3 rounded-xl bg-app-elevated px-3 py-2.5">
-          <Music2 size={18} aria-hidden="true" className="shrink-0 text-app-accent" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13.5px] text-app-text">{p.music.name}</p>
-            {p.music.status === 'uploading' && <p className="text-[11.5px] text-app-muted">{t.uploading}</p>}
-            {p.music.status === 'error' && <p className="text-[11.5px] text-app-danger">{p.music.error ?? t.failed}</p>}
-            {p.music.status === 'ready' && p.shorterThanEdit && <p className="text-[11.5px] text-app-muted">{t.musicShorter}</p>}
+        <>
+          <div className="flex items-center gap-3 rounded-xl bg-app-elevated px-3 py-2.5">
+            <Music2 size={18} aria-hidden="true" className="shrink-0 text-app-accent" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13.5px] text-app-text">{p.music.name}</p>
+              {p.music.status === 'uploading' && <p className="text-[11.5px] text-app-muted">{t.uploading}</p>}
+              {p.music.status === 'error' && <p className="text-[11.5px] text-app-danger">{p.music.error ?? t.failed}</p>}
+              {p.music.status === 'ready' && p.shorterThanEdit && <p className="text-[11.5px] text-app-muted">{t.musicShorter}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={p.onRemove}
+              aria-label={t.removeMusic}
+              data-testid="montage-music-remove"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted hover:bg-app-surface hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
+            >
+              <Trash2 size={17} aria-hidden="true" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={p.onRemove}
-            aria-label={t.removeMusic}
-            data-testid="montage-music-remove"
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted hover:bg-app-surface hover:text-app-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
-          >
-            <Trash2 size={17} aria-hidden="true" />
-          </button>
-        </div>
+          {p.music.status !== 'error' && (
+            <MusicStart
+              t={t}
+              startSec={p.startSec}
+              maxSec={p.startMaxSec}
+              trackSec={p.music.durationSec}
+              editSec={p.editSec}
+              peaks={p.peaks}
+              onChange={p.onStart}
+            />
+          )}
+        </>
       ) : (
         <button
           type="button"

@@ -30,6 +30,7 @@ const C = {
   added: T('დაემატა', 'Added', 'Добавлено'),
   video: T('ვიდეო', 'Video', 'Видео'),
   photo: T('ფოტო', 'Photo', 'Фото'),
+  opening: T('იხსნება…', 'Opening…', 'Открываем…'),
 
   // Transport
   play: T('დაკვრა', 'Play', 'Воспроизвести'),
@@ -83,6 +84,12 @@ const C = {
   keepClipSound: T('კლიპების ორიგინალი ხმა', 'Keep the clips’ own sound', 'Оставить звук клипов'),
   keepClipSoundHint: T('ჩართულია: მუსიკა ხმის ქვეშ ჟღერს. გამორთულია: მხოლოდ მუსიკა.', 'On: the music plays under the clips’ sound. Off: music only.', 'Вкл: музыка звучит под звуком клипов. Выкл: только музыка.'),
   musicShorter: T('ტრეკი მონტაჟზე მოკლეა — ბოლოს ჩუმად დასრულდება.', 'The track is shorter than the edit — the end will be silent.', 'Трек короче монтажа — в конце будет тишина.'),
+  musicStart: T('დაწყება', 'Start at', 'Начать с'),
+  musicStartHint: T('სიმღერის ეს მომენტი ჟღერს ვიდეოს პირველ კადრზე.', 'This moment of the song plays on the video’s first frame.', 'Этот момент песни звучит на первом кадре видео.'),
+  musicStartEarlier: T('1 წამით ადრე', '1 s earlier', 'На 1 с раньше'),
+  musicStartLater: T('1 წამით გვიან', '1 s later', 'На 1 с позже'),
+  /** `{t}` is the start time: the music bar on the timeline says where in the song it begins. */
+  musicFrom: T('{t}-დან', 'from {t}', 'с {t}'),
   textTitle: T('ტექსტი კადრზე', 'Text on the clip', 'Текст на клипе'),
   textPh: T('დაწერე ტექსტი…', 'Type your text…', 'Введите текст…'),
   posBottom: T('სუბტიტრი', 'Subtitle', 'Субтитр'),
@@ -157,6 +164,16 @@ export const STAGE_LABEL: Record<string, Tri> = {
   stitch: T('კლიპების შეერთება', 'Joining the clips', 'Склеиваем клипы'),
   music: T('მუსიკის დადება', 'Laying the music', 'Накладываем музыку'),
 };
+
+/** „0:42" / „1:04.5" — a song position: tenths only when it has them (the start moves in 0.1 s steps). */
+export function fmtClock(sec: number): string {
+  const s = Number.isFinite(sec) && sec > 0 ? Math.round(sec * 10) / 10 : 0;
+  const m = Math.floor(s / 60);
+  const rest = Math.round((s - m * 60) * 10) / 10;
+  const whole = Math.floor(rest);
+  const tenth = Math.round((rest - whole) * 10);
+  return `${m}:${String(whole).padStart(2, '0')}${tenth ? `.${tenth}` : ''}`;
+}
 
 export const ASPECTS: readonly { id: MontageAspect; where: Tri }[] = [
   { id: '9:16', where: T('Reels · TikTok · Shorts', 'Reels · TikTok · Shorts', 'Reels · TikTok · Shorts') },
