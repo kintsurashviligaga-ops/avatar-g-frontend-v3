@@ -92,13 +92,11 @@ for (const vp of VIEWPORTS) {
         await noHorizontalScroll(page);
         await shot(page, `${tool.id}-${vp.name}-panel`);
 
-        // The centre pane is the tool's welcome with its models-and-prices list (on a phone it sits behind the sheet).
+        // The centre pane is EMPTY before the first run: no description card, no numbered steps, no price table that stays
+        // behind the sheet (the owner removed them) — the price is on the panel's Generate pill.
         await expect(page.getByTestId('shoot-empty')).toBeAttached();
-        await expect(page.getByTestId('models-prices')).toBeAttached();
-        const rows = await page.getByTestId('model-row').allInnerTexts();
-        expect(rows.length).toBe(tool.id === 'interior' ? 3 : 1);
-        expect(rows[0]).toMatch(/2 credits/);
-        if (tool.id === 'interior') { expect(rows[1]).toMatch(/8 credits/); expect(rows[2]).toMatch(/25 credits/); }
+        await expect(page.getByTestId('shoot-empty')).toBeEmpty();
+        await expect(page.getByTestId('models-prices')).toHaveCount(0);
       });
     }
 

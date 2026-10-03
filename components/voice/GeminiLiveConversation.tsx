@@ -6,7 +6,8 @@
  * A thin host now: the call lives in components/voice/live/useGeminiLiveSession.ts (token mint, WebSocket,
  * AudioWorklet capture, playback queue, barge-in, resumption, captions, transcript sink), the camera in useLiveCamera,
  * and the screen in components/voice/live/LiveModeOverlay.tsx. This file wires them together, builds the spoken
- * persona, loads the user's enrolled avatar and owns the voice switch.
+ * persona and owns the voice switch. (It no longer loads the user's enrolled avatar poster: the agent on the call is
+ * the rocket — LiveOrb — not a photo of the user.)
  *
  * CONTRACT WITH ChatChrome (unchanged): props `userId`, `locale`, `systemInstruction`, `gender`, `onClose`,
  * `onUnavailable`. A 503 from the token mint (GEMINI_LIVE_ENABLED kill switch off, key missing, mint failed) calls
@@ -19,7 +20,8 @@
  * VOICE-TO-ACTION (docs/voice/LIVE_ACTIONS.md): the call asks for the UI-action functions and EXECUTES them here —
  * live/liveActions.ts validates each call, dispatches `myavatar:live-action` (OmniStudio switches + prefills, never
  * runs) / `myavatar:open-artifact` (code), answers the model at once, and the overlay shows a card per action. A card's
- * Open ends the call and brings that studio (focused) or the canvas to the front; end_call hangs up after the goodbye.
+ * Open ends the call and brings that studio (focused) or the canvas to the front — except a link (open_url), whose
+ * Open opens the tab inside the user's tap and keeps the call going; end_call hangs up after the goodbye.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // Volume2, not AudioLines — this lucide version does not export the latter (verified against the installed package,
@@ -31,13 +33,14 @@ import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
 import { LIVE_CALL_EVENT } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
-import LiveModeOverlay from './live/LiveModeOverlay';
+import LiveModeOverlay, { LiveControl } from './live/LiveModeOverlay';
 import type { LiveJobLine } from './live/LiveActivityFeed';
 import { useJobQueue } from '@/store/useJobQueue';
 import { mergeTrayJobs } from '@/lib/jobs/durableJobs';
 import {
   LIVE_END_CALL_GRACE_MS,
   LIVE_END_CALL_MAX_WAIT_MS,
+  openLiveUrl,
   revealLiveAction,
   useLiveActions,
   type LiveActionCard,
@@ -192,21 +195,9 @@ export default function GeminiLiveConversation({
     if (status === 'error' || status === 'closed') stopCamera();
   }, [status, stopCamera]);
 
-  // The user's enrolled LIVE-AVATAR poster (avatar/enroll → profiles.core_avatar_id): shown inside the orb and as the
-  // backdrop, so the Live screen is the USER's avatar rather than an empty space. Best-effort; any miss → plain orb.
-  const [avatarPoster, setAvatarPoster] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const r = await fetch('/api/avatar/core', { credentials: 'include' });
-        if (!r.ok) return;
-        const j = (await r.json().catch(() => ({}))) as { data?: { poster_url?: string | null; status?: string } };
-        if (alive && j?.data?.poster_url && j.data.status === 'ready') setAvatarPoster(j.data.poster_url);
-      } catch { /* fail-open — plain orb */ }
-    })();
-    return () => { alive = false; };
-  }, [userId]);
+  // ⚠️ The call used to fetch the user's enrolled avatar poster (/api/avatar/core) and show it inside the orb and as a
+  // blurred backdrop — on the owner's phone, a cropped photo of a man as the face of the AGENT. The agent is MyAvatar's:
+  // the orb and the backdrop carry the rocket (LiveOrb), and that request is gone.
 
   const endCall = useCallback(() => {
     stopCamera();
@@ -231,7 +222,10 @@ export default function GeminiLiveConversation({
   // A card's Open: end the call, then bring what was prepared to the front. ⚠️ A task LATER, not now: the overlay's
   // useDialogA11y hands focus back to the Live chip synchronously as it unmounts, and the studio's composer must take
   // focus after that — never while the call's modal dialog is still up.
+  // A link is the exception: it opens NOW, inside the tap (a task later would be outside the gesture and blocked), and
+  // the call goes on — the user asked to see a page, not to hang up. (LiveActionCards opens it itself; this is the guard.)
   const openAction = useCallback((card: LiveActionCard) => {
+    if (card.action.type === 'open_url') { openLiveUrl(card.action.url); return; }
     endCall();
     setTimeout(() => revealLiveAction(card.action), 0);
   }, [endCall]);
@@ -242,24 +236,22 @@ export default function GeminiLiveConversation({
   // ⚠️ WAS A ♀ | ♂ GLYPH PAIR, COLOUR-CODED PINK AND BLUE. The control does not choose a GENDER, it chooses a VOICE
   // (Google Aoede vs Charon); the glyphs rendered at whatever weight the system font gave them; and pink/blue is a
   // convention this product has no reason to adopt. One labelled control says, in the user's language, which voice
-  // is speaking. The aria-label announces the destination, because that is what activating it does.
+  // is speaking. It is one of the call's round controls (LiveControl): the word under it is the voice speaking now, and
+  // the accessible name starts with that word (WCAG 2.5.3) and then says what activating it does.
+  const voiceWord = voiceGender === 'female'
+    ? (loc === 'en' ? 'Female' : loc === 'ru' ? 'Женский' : 'ქალის')
+    : (loc === 'en' ? 'Male' : loc === 'ru' ? 'Мужской' : 'კაცის');
   const voiceSwitch = (
-    <button
-      type="button"
+    <LiveControl
+      label={voiceWord}
+      ariaLabel={voiceGender === 'female'
+        ? (loc === 'en' ? 'Female voice — switch to the male voice' : loc === 'ru' ? 'Женский голос — переключить на мужской' : 'ქალის ხმა — გადართე კაცის ხმაზე')
+        : (loc === 'en' ? 'Male voice — switch to the female voice' : loc === 'ru' ? 'Мужской голос — переключить на женский' : 'კაცის ხმა — გადართე ქალის ხმაზე')}
+      icon={<Volume2 size={22} className="text-app-accent" aria-hidden />}
       onClick={() => setVoiceGender((v) => (v === 'female' ? 'male' : 'female'))}
-      aria-label={voiceGender === 'female'
-        ? (loc === 'en' ? 'Switch to the male voice' : loc === 'ru' ? 'Переключить на мужской голос' : 'გადართე კაცის ხმაზე')
-        : (loc === 'en' ? 'Switch to the female voice' : loc === 'ru' ? 'Переключить на женский голос' : 'გადართე ქალის ხმაზე')}
-      className="flex h-12 min-w-[48px] shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full px-3 text-app-text transition-colors duration-200 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60"
-    >
-      <Volume2 size={20} className="shrink-0 text-app-accent" aria-hidden />
-      {/* Icon-only below `sm`: the pill must hold five controls on a 320 px phone; the aria-label still names it. */}
-      <span className={`hidden whitespace-nowrap font-semibold sm:inline ${loc === 'ka' ? 'text-[16px]' : 'text-[15px]'}`}>
-        {voiceGender === 'female'
-          ? (loc === 'en' ? 'Female' : loc === 'ru' ? 'Женский' : 'ქალის')
-          : (loc === 'en' ? 'Male' : loc === 'ru' ? 'Мужской' : 'კაცის')}
-      </span>
-    </button>
+      locale={loc}
+      testId="live-voice-switch"
+    />
   );
 
   return (
@@ -274,7 +266,6 @@ export default function GeminiLiveConversation({
       cameraFacing={camera.facing}
       getLevels={session.getLevels}
       videoRef={camera.videoRef}
-      avatarUrl={avatarPoster}
       onToggleMute={session.toggleMute}
       onToggleCamera={camera.toggle}
       onFlipCamera={onFlipCamera}

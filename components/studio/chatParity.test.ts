@@ -97,9 +97,11 @@ describe('the Gemini chat surface', () => {
 });
 
 describe('the chat takes everything a person can bring', () => {
-  it('its „+" offers photos, a video, the camera and files — each to its own input', () => {
-    expect(omni).toMatch(/activeTool === 'chat' \? \{ onPhotos: \(\) => photoRef\.current\?\.click\(\), onVideo: \(\) => videoPickRef\.current\?\.click\(\), onCamera: \(\) => cameraRef\.current\?\.click\(\), onFiles: \(\) => fileRef\.current\?\.click\(\) \}/);
-    // the video input takes video only, several at once, and goes through the one intake
+  it('its „+" has ONE attach button: the chat\'s picker takes every kind (photos, video, audio, documents) at once', () => {
+    expect(omni).toMatch(/activeTool === 'chat' \? \{ onAttach: \(\) => fileRef\.current\?\.click\(\) \}/);
+    // that one input accepts images, audio, video, PDFs and text/code — several at once — and goes through the one intake
+    expect(omni).toMatch(/<input ref=\{fileRef\} type="file" multiple accept="image\/\*,audio\/\*,video\/\*,application\/pdf,text\/\*/);
+    // the video input still exists for the attachment e2e tests (and goes through the same intake)
     expect(omni).toMatch(/<input ref=\{videoPickRef\} type="file" multiple accept="video\/\*"/);
   });
 

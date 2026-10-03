@@ -8,9 +8,13 @@
  *   · each tool step (prepare a studio, put code on screen, open a studio, end the call): running → ✓ / failed;
  *   · generations still rendering (the job tray, which the full-screen call covers): label + a progress bar.
  *
- * Newest first, at most three rows of steps plus two jobs, so it never pushes the captions off a phone screen. Pure
- * presentation; the data comes from useGeminiLiveSession().activity and the job queue (GeminiLiveConversation).
- * Georgian keeps the product's 16 px floor.
+ * Newest first, at most three rows of steps plus two jobs, so it never pushes the captions off a phone screen. The
+ * newest row is the step the agent is on NOW: it is lifted (the accent ring, full opacity, a running bar under it while
+ * it runs) and the older ones step back, so "what is it doing" reads at a glance. Pure presentation; the data comes from
+ * useGeminiLiveSession().activity and the job queue (GeminiLiveConversation). Georgian keeps the product's 16 px floor.
+ *
+ * liveCurrentStep() is the same "now" for the docked call (LiveDock's line): the running step, else the newest one with
+ * how it ended — so the dock can show a spinner, then a check.
  */
 import {
   AlertCircle, ArrowUpDown, Check, Clapperboard, Code2, Cpu, Eye, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
@@ -18,7 +22,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { newestFirst, sourceLabel, type LiveActivityItem } from './liveActivity';
+import { newestFirst, sourceLabel, type LiveActivityItem, type LiveActivityState } from './liveActivity';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -63,6 +67,7 @@ const S: Record<Locale, Strings> = {
       scroll_chat: { running: 'ჩატს ვაგორებ', done: 'ჩატი გადავაგორე' },
       open_panel: { running: 'პანელს ვხსნი', done: 'პანელი გაიხსნა' },
       call_view: { running: 'ხედს ვცვლი', done: 'ხედი შეიცვალა' },
+      open_url: { running: 'ბმულს ვამზადებ', done: 'ბმული ეკრანზეა — შეეხე' },
     },
     tool: { running: 'ვასრულებ', done: 'შესრულდა' },
     failed: 'ვერ შესრულდა',
@@ -89,6 +94,7 @@ const S: Record<Locale, Strings> = {
       scroll_chat: { running: 'Scrolling the chat', done: 'Scrolled' },
       open_panel: { running: 'Opening a panel', done: 'Panel open' },
       call_view: { running: 'Changing the view', done: 'View changed' },
+      open_url: { running: 'Getting the link ready', done: 'Link on screen — tap it' },
     },
     tool: { running: 'Working', done: 'Done' },
     failed: 'Didn’t work',
@@ -115,6 +121,7 @@ const S: Record<Locale, Strings> = {
       scroll_chat: { running: 'Прокручиваю чат', done: 'Прокручено' },
       open_panel: { running: 'Открываю панель', done: 'Панель открыта' },
       call_view: { running: 'Меняю вид', done: 'Вид изменён' },
+      open_url: { running: 'Готовлю ссылку', done: 'Ссылка на экране — нажмите' },
     },
     tool: { running: 'Выполняю', done: 'Готово' },
     failed: 'Не получилось',
@@ -139,6 +146,7 @@ const TOOL_ICON: Record<string, ReactNode> = {
   scroll_chat: <ArrowUpDown size={16} aria-hidden />,
   open_panel: <PanelRight size={16} aria-hidden />,
   call_view: <Monitor size={16} aria-hidden />,
+  open_url: <Globe size={16} aria-hidden />,
 };
 
 /**
@@ -156,6 +164,52 @@ export function liveActivityLine(activity: readonly LiveActivityItem[], locale: 
   return (running.name && t.tools[running.name]?.running) || t.tool.running;
 }
 
+/** The words for one step: running ("Preparing the studio…"), done, failed or cancelled — in plain language. */
+function stepWords(it: LiveActivityItem, t: Strings): string {
+  if (it.kind === 'search') return it.state === 'running' ? t.searching : t.searched;
+  const copy = (it.name && t.tools[it.name]) || t.tool;
+  if (it.state === 'failed') return `${copy.running} — ${t.failed}`;
+  if (it.state === 'cancelled') return `${copy.running} — ${t.cancelled}`;
+  return it.state === 'running' ? `${copy.running}…` : copy.done;
+}
+
+/** The step the agent is on, for one line: what it is, how it stands, and the words to show. */
+export interface LiveStep {
+  id: string;
+  kind: LiveActivityItem['kind'];
+  name?: string;
+  state: LiveActivityState;
+  text: string;
+}
+
+/**
+ * The agent's step NOW: the newest running one („სტუდიას ვამზადებ…“, „ვეძებ ინტერნეტში: ‘…’“), else the newest step with
+ * how it ended („სტუდია მზადაა“ ✓) — or null before the first one.
+ */
+export function liveCurrentStep(activity: readonly LiveActivityItem[], locale: Locale = 'ka'): LiveStep | null {
+  const t = S[locale] ?? S.ka;
+  const ordered = newestFirst(activity);
+  const it = ordered.find((x) => x.state === 'running') ?? ordered[0];
+  if (!it) return null;
+  const q = it.kind === 'search' ? it.queries?.[0] : undefined;
+  const words = stepWords(it, t);
+  return { id: it.id, kind: it.kind, ...(it.name ? { name: it.name } : {}), state: it.state, text: q ? `${words}: ‘${q}’` : words };
+}
+
+/** The 16 px icon for a step (a search, or the function it ran). */
+export function liveStepIcon(step: Pick<LiveStep, 'kind' | 'name'>): ReactNode {
+  if (step.kind === 'search') return <Search size={16} aria-hidden />;
+  return (step.name && TOOL_ICON[step.name]) || <Sparkles size={16} aria-hidden />;
+}
+
+/** Running → a spinner (still under reduced motion); done → a check; failed → a warning; cancelled → ✕. */
+export function LiveStepMark({ state, size = 16 }: { state: LiveActivityState; size?: number }) {
+  if (state === 'running') return <Loader2 size={size} data-mark="running" className="shrink-0 animate-spin text-app-accent motion-reduce:animate-none" aria-hidden />;
+  if (state === 'done') return <Check size={size} data-mark="done" className="shrink-0 text-emerald-400" aria-hidden />;
+  if (state === 'failed') return <AlertCircle size={size} data-mark="failed" className="shrink-0 text-amber-400" aria-hidden />;
+  return <X size={size} data-mark="cancelled" className="shrink-0 text-app-muted" aria-hidden />;
+}
+
 export interface LiveActivityFeedProps {
   activity: readonly LiveActivityItem[];
   jobs?: readonly LiveJobLine[];
@@ -163,13 +217,6 @@ export interface LiveActivityFeedProps {
   /** Step rows shown (newest first). */
   maxItems?: number;
   className?: string;
-}
-
-function StateMark({ state }: { state: LiveActivityItem['state'] }) {
-  if (state === 'running') return <Loader2 size={16} className="shrink-0 animate-spin text-app-accent motion-reduce:animate-none" aria-hidden />;
-  if (state === 'done') return <Check size={16} className="shrink-0 text-emerald-400" aria-hidden />;
-  if (state === 'failed') return <AlertCircle size={16} className="shrink-0 text-amber-400" aria-hidden />;
-  return <X size={16} className="shrink-0 text-app-muted" aria-hidden />;
 }
 
 export default function LiveActivityFeed({ activity, jobs = [], locale = 'ka', maxItems = 3, className = '' }: LiveActivityFeedProps) {
@@ -182,34 +229,40 @@ export default function LiveActivityFeed({ activity, jobs = [], locale = 'ka', m
 
   return (
     <div role="group" aria-live="polite" aria-label={t.region} className={`flex w-full max-w-md flex-col gap-1.5 px-4 ${className}`}>
-      {rows.map((it) => {
+      {rows.map((it, i) => {
         const search = it.kind === 'search';
-        const words = search
-          ? (it.state === 'running' ? t.searching : t.searched)
-          : (() => {
-            const copy = (it.name && t.tools[it.name]) || t.tool;
-            if (it.state === 'failed') return `${copy.running} — ${t.failed}`;
-            if (it.state === 'cancelled') return `${copy.running} — ${t.cancelled}`;
-            return it.state === 'running' ? `${copy.running}…` : copy.done;
-          })();
+        const words = stepWords(it, t);
         const query = search && it.queries?.length ? it.queries.slice(0, 2).map((q) => `‘${q}’`).join(', ') : '';
+        // The newest row is the step the agent is on now; the older ones step back.
+        const now = i === 0;
+        const running = it.state === 'running';
         return (
           <div
             key={it.id}
             data-kind={it.kind}
             data-state={it.state}
-            className="rounded-2xl bg-white/[0.06] px-3 py-2 ring-1 ring-white/10 backdrop-blur-sm"
+            data-now={now ? 'true' : undefined}
+            className={`relative rounded-2xl px-3 py-2 backdrop-blur-sm transition-opacity duration-300 ${now
+              ? `bg-white/[0.08] ring-1 ${running ? 'ring-app-accent/45' : 'ring-white/15'}`
+              : 'bg-white/[0.04] opacity-70 ring-1 ring-white/[0.08]'}`}
           >
             <div className={`flex items-center gap-2 ${text} leading-[1.6] text-app-text`}>
-              <span className="shrink-0 text-app-muted">
-                {search ? <Search size={16} aria-hidden /> : (it.name && TOOL_ICON[it.name]) || <Sparkles size={16} aria-hidden />}
+              <span className={`shrink-0 ${now && running ? 'text-app-accent' : 'text-app-muted'}`}>
+                {liveStepIcon(it)}
               </span>
               <span className="min-w-0 flex-1 truncate">
-                <span className="font-medium">{words}</span>
+                <span className={now ? 'font-semibold' : 'font-medium'}>{words}</span>
                 {query && <span className="text-app-muted"> · {query}</span>}
               </span>
-              <StateMark state={it.state} />
+              <LiveStepMark state={it.state} />
             </div>
+            {now && running && (
+              // An indeterminate bar under the running step — the "it is working" cue. Gone under reduced motion,
+              // where the spinner (which stops) and the words still say it.
+              <span aria-hidden data-testid="live-step-progress" className="absolute inset-x-4 bottom-[3px] h-0.5 overflow-hidden rounded-full motion-reduce:hidden">
+                <span className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-app-accent/80" style={{ animation: 'mya-loadbar 1.2s ease-in-out infinite' }} />
+              </span>
+            )}
             {search && it.sources && it.sources.length > 0 && (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {it.sources.slice(0, 4).map((src) => (

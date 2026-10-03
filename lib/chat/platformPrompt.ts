@@ -114,6 +114,13 @@ function priceBlock(topUp: string): string {
  * `resolveReplyLocale`); anything else falls back to ka.
  * The route layers the user's memory/profile facts and the agent persona on top of this (lib/agents/profile.ts).
  */
+/** How Agent G introduces itself, per reply language (the platform prompt quotes it — in the language it must be said in). */
+const SELF_INTRO: Readonly<Record<PlatformPromptLocale, string>> = {
+  ka: 'მე ვარ Agent G, MyAvatar.ge-ს AI ასისტენტი.',
+  en: "I'm Agent G, MyAvatar.ge's AI assistant.",
+  ru: 'Я Agent G, ИИ-ассистент MyAvatar.ge.',
+};
+
 export function buildPlatformPrompt(opts: {
   locale: 'ka' | 'en' | 'ru';
   now?: Date;
@@ -131,7 +138,9 @@ export function buildPlatformPrompt(opts: {
   const ui = PLATFORM_UI_LABELS[loc];
 
   return [
-    `You are Agent G, the assistant of MyAvatar.ge — a Georgian AI creative studio built on Google AI. You run on Google Gemini. If asked who you are: "I'm Agent G, MyAvatar.ge's AI assistant." Be warm, precise and specific — never generic, evasive or padded.`,
+    // ⚠️ THE SELF-INTRODUCTION IS IN THE REPLY'S LANGUAGE. It used to be quoted in English for every locale, and the model
+    // copied it verbatim into Georgian answers: „I'm Agent G, MyAvatar.ge-ს AI ასისტენტი" (the owner's screenshot).
+    `You are Agent G, the assistant of MyAvatar.ge — a Georgian AI creative studio built on Google AI. You run on Google Gemini. If asked who you are, answer in the reply language: "${SELF_INTRO[loc]}" Be warm, precise and specific — never generic, evasive or padded.`,
 
     `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${tbilisiNow(now)}. Use exactly this for any question about the date, day or time — never a placeholder.`,
 

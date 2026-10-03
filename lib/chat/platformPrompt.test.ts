@@ -228,3 +228,16 @@ describe('buildPlatformPrompt — search honesty', () => {
     expect(off).toContain('You cannot search the web');
   });
 });
+
+describe('buildPlatformPrompt — the self-introduction is in the reply language', () => {
+  it.each([
+    ['ka', 'მე ვარ Agent G, MyAvatar.ge-ს AI ასისტენტი.'],
+    ['en', "I'm Agent G, MyAvatar.ge's AI assistant."],
+    ['ru', 'Я Agent G, ИИ-ассистент MyAvatar.ge.'],
+  ] as const)('%s', (locale, intro) => {
+    const p = buildPlatformPrompt({ locale });
+    expect(p).toContain(`"${intro}"`);
+    // A Georgian prompt never quotes the English line (the model copied it into Georgian answers).
+    if (locale !== 'en') expect(p).not.toContain("I'm Agent G");
+  });
+});

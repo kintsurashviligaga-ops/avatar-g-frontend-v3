@@ -1,9 +1,10 @@
 /**
  * @jest-environment jsdom
  *
- * ToolSheet — what the composer's „+" opens. The chat takes everything a person may bring (photos, a video, the
- * camera, files), and each tile shows only when the active tool can take it.
+ * ToolSheet — what the composer's „+" opens: one attach button (the phone's picker offers photos, the camera and
+ * files from it), drawn only when the active tool takes files, then the tools.
  */
+import '@testing-library/jest-dom';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { Film } from 'lucide-react';
 import { ToolSheet } from './ToolSheet';
@@ -18,46 +19,36 @@ function sheet(props: Partial<React.ComponentProps<typeof ToolSheet>> = {}) {
   return { onClose, ...utils };
 }
 
-const tileNames = () => {
+test('ONE attach button (not four tiles): it opens the picker and closes the sheet', () => {
+  const onAttach = jest.fn();
+  const { onClose } = sheet({ onAttach });
   const dialog = screen.getByRole('dialog');
-  // The tiles are the buttons outside the tools lists.
-  return within(dialog).getAllByRole('button').filter((b) => !b.closest('ul')).map((b) => b.textContent?.trim());
-};
-
-test('the chat\'s four tiles, in order: Photos, Video, Camera, Files', () => {
-  sheet({ onPhotos: jest.fn(), onVideo: jest.fn(), onCamera: jest.fn(), onFiles: jest.fn() });
-  expect(tileNames().slice(0, 4)).toEqual(['Photos', 'Video', 'Camera', 'Files']);
-});
-
-test('each tile calls its own handler and closes the sheet', () => {
-  const h = { onPhotos: jest.fn(), onVideo: jest.fn(), onCamera: jest.fn(), onFiles: jest.fn() };
-  const { onClose } = sheet(h);
-  fireEvent.click(screen.getByRole('button', { name: 'Video' }));
-  expect(h.onVideo).toHaveBeenCalledTimes(1);
-  expect(h.onPhotos).not.toHaveBeenCalled();
+  const outside = within(dialog).getAllByRole('button').filter((b) => !b.closest('ul'));
+  expect(outside).toHaveLength(1);
+  expect(outside[0]).toHaveTextContent('Attach files');
+  expect(outside[0]).toHaveTextContent('Photos, videos, camera, documents, audio');
+  for (const old of ['Photos', 'Video', 'Camera', 'Files']) expect(screen.queryByRole('button', { name: old })).toBeNull();
+  fireEvent.click(screen.getByTestId('attach'));
+  expect(onAttach).toHaveBeenCalledTimes(1);
   expect(onClose).toHaveBeenCalledTimes(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Files' }));
-  expect(h.onFiles).toHaveBeenCalledTimes(1);
 });
 
-test('a tile shows only when the active tool can take it (a remix takes a video file, never a photo)', () => {
-  sheet({ onFiles: jest.fn() });
-  expect(tileNames()).toEqual(['Files']);
+test('the line under the button says what the open tool takes', () => {
+  sheet({ onAttach: jest.fn(), attachHint: 'A video' });
+  expect(screen.getByTestId('attach')).toHaveTextContent('A video');
 });
 
-test('no tile at all when the tool takes nothing (a studio): the tools list is the whole sheet', () => {
+test('no attach button when the tool takes no files (a studio): the tools list is the whole sheet', () => {
   sheet();
-  expect(screen.queryByRole('button', { name: 'Photos' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Video' })).toBeNull();
+  expect(screen.queryByTestId('attach')).toBeNull();
 });
 
 test.each([
-  ['ka', ['ფოტოები', 'ვიდეო', 'კამერა', 'ფაილები']],
-  ['ru', ['Фото', 'Видео', 'Камера', 'Файлы']],
-] as const)('the tiles are named in %s', (locale, names) => {
-  sheet({ locale, onPhotos: jest.fn(), onVideo: jest.fn(), onCamera: jest.fn(), onFiles: jest.fn() });
-  const dialog = screen.getByRole('dialog');
-  for (const n of names) expect(within(dialog).getByRole('button', { name: n })).toBeTruthy();
+  ['ka', 'ფაილის მიმაგრება'],
+  ['ru', 'Прикрепить файлы'],
+] as const)('the attach button is named in %s', (locale, name) => {
+  sheet({ locale, onAttach: jest.fn() });
+  expect(screen.getByTestId('attach')).toHaveTextContent(name);
 });
 
 // ── extras: the rows that DO something instead of switching the tool (Deep Research, Connectors) ──────────────────

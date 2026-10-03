@@ -11,15 +11,18 @@
  * whole call (with no cards) because a live region inserted together with its text is often not announced at all.
  * Motion: Framer Motion springs the cards in and out; under prefers-reduced-motion they simply appear (DESIGN.md: the
  * Live screen keeps exactly one moving glow). Georgian never below 16 px / 1.6; every target ≥ 44 px.
+ *
+ * A LINK (open_url) is the one card whose button does NOT end the call: it opens the address in a new tab right inside
+ * the tap (openLiveUrl — the tap is the user gesture a browser needs; the call itself never could) and the call goes on.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { Check, Code2, Copy } from 'lucide-react';
+import { ArrowUpRight, Check, Code2, Copy, Globe } from 'lucide-react';
 
 import { TOOL_META, toolName } from '@/lib/studio/tools';
-import type { LiveStudioTool } from '@/lib/voice/liveTools';
+import { liveUrlHost, type LiveStudioTool } from '@/lib/voice/liveTools';
 
-import { LIVE_ACTION_CARDS_MAX, type LiveActionCard, type LiveCardAction } from './liveActions';
+import { LIVE_ACTION_CARDS_MAX, openLiveUrl, type LiveActionCard, type LiveCardAction } from './liveActions';
 
 type Locale = 'ka' | 'en' | 'ru';
 
@@ -38,6 +41,9 @@ interface ActionStrings {
   copy: string;
   copied: string;
   seconds: string;
+  /** A link the agent put on screen (open_url): the announcement, and the Open button's name (contains `open`). */
+  linkOnScreen: (host: string) => string;
+  openLinkLabel: (host: string) => string;
 }
 
 export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
@@ -48,6 +54,8 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       image: 'სურათის პრომპტი მოვამზადე',
       music: 'მუსიკის პრომპტი მოვამზადე',
       avatar: 'ავატარის პრომპტი მოვამზადე',
+      presentation: 'პრეზენტაციის თემა მოვამზადე',
+      model3d: '3D მოდელის აღწერა მოვამზადე',
     },
     opened: (tool) => `გავხსენი: ${tool}`,
     code: 'კოდი',
@@ -59,6 +67,8 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
     copy: 'კოდის კოპირება',
     copied: 'დაკოპირდა',
     seconds: 'წმ',
+    linkOnScreen: (host) => `ბმული ეკრანზეა: ${host} — შეეხე „გახსნას“`,
+    openLinkLabel: (host) => `გახსნა ახალ ჩანართში: ${host}`,
   },
   en: {
     region: 'Actions',
@@ -67,6 +77,8 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       image: 'Prepared an image prompt',
       music: 'Prepared a music prompt',
       avatar: 'Prepared an avatar prompt',
+      presentation: 'Prepared a presentation topic',
+      model3d: 'Prepared a 3D model description',
     },
     opened: (tool) => `Opened ${tool}`,
     code: 'Code',
@@ -78,6 +90,8 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
     copy: 'Copy code',
     copied: 'Copied',
     seconds: 's',
+    linkOnScreen: (host) => `Link on screen: ${host} — tap Open`,
+    openLinkLabel: (host) => `Open ${host} in a new tab`,
   },
   ru: {
     region: 'Действия',
@@ -86,6 +100,8 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       image: 'Промпт для изображения готов',
       music: 'Промпт для музыки готов',
       avatar: 'Промпт для аватара готов',
+      presentation: 'Тема презентации готова',
+      model3d: 'Описание 3D-модели готово',
     },
     opened: (tool) => `Открыто: ${tool}`,
     code: 'Код',
@@ -97,16 +113,19 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
     copy: 'Скопировать код',
     copied: 'Скопировано',
     seconds: 'с',
+    linkOnScreen: (host) => `Ссылка на экране: ${host} — нажмите «Открыть»`,
+    openLinkLabel: (host) => `Открыть ${host} в новой вкладке`,
   },
 };
 
 const stringsFor = (locale: Locale): ActionStrings => LIVE_ACTION_STRINGS[locale] ?? LIVE_ACTION_STRINGS.ka;
 
-/** The card's headline: what the agent did. For code, the code's own title. */
+/** The card's headline: what the agent did. For code, the code's own title; for a link, its title, else its site. */
 export function liveActionTitle(action: LiveCardAction, locale: Locale = 'ka'): string {
   const t = stringsFor(locale);
   if (action.type === 'prepare_generation') return t.prepared[action.tool];
   if (action.type === 'open_studio') return t.opened(toolName(action.tool, locale));
+  if (action.type === 'open_url') return action.title || liveUrlHost(action.url);
   return action.title;
 }
 
@@ -115,6 +134,8 @@ export function liveActionDetail(action: LiveCardAction, locale: Locale = 'ka'):
   const t = stringsFor(locale);
   if (action.type === 'show_code') return `${t.code} · ${action.language}`;
   if (action.type === 'open_studio') return '';
+  // Where the link goes, under its title (with no title the site already is the headline).
+  if (action.type === 'open_url') return action.title ? liveUrlHost(action.url) : '';
   return [
     action.aspectRatio ?? '',
     action.durationSec !== undefined ? `${action.durationSec} ${t.seconds}` : '',
@@ -128,6 +149,7 @@ export function liveActionAnnouncement(action: LiveCardAction, locale: Locale = 
   const t = stringsFor(locale);
   if (action.type === 'show_code') return `${t.codeOnScreen}: ${action.title}`;
   if (action.type === 'prepare_generation') return `${t.prepared[action.tool]}. ${t.notStarted}`;
+  if (action.type === 'open_url') return t.linkOnScreen(liveUrlHost(action.url));
   return t.opened(toolName(action.tool, locale));
 }
 
@@ -161,7 +183,7 @@ function ActionCardView({ card, locale, onOpen }: { card: LiveActionCard; locale
   const t = stringsFor(locale);
   const a = card.action;
   const quiet = locale === 'ka' ? 'text-[16px] leading-[1.6]' : 'text-[15px] leading-6';
-  const Icon = a.type === 'show_code' ? Code2 : TOOL_META[a.tool].Icon;
+  const Icon = a.type === 'show_code' ? Code2 : a.type === 'open_url' ? Globe : TOOL_META[a.tool].Icon;
   const detail = liveActionDetail(a, locale);
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,14 +216,28 @@ function ActionCardView({ card, locale, onOpen }: { card: LiveActionCard; locale
           {copied ? <Check size={18} aria-hidden className="text-app-accent" /> : <Copy size={18} aria-hidden />}
         </button>
       )}
-      <button
-        type="button"
-        onClick={() => onOpen(card)}
-        aria-label={a.type === 'show_code' ? t.openCodeLabel : t.openStudioLabel}
-        className={`inline-flex h-11 min-w-[44px] shrink-0 touch-manipulation items-center justify-center rounded-full bg-app-text px-4 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
-      >
-        {t.open}
-      </button>
+      {a.type === 'open_url' ? (
+        // The tap IS the gesture: window.open runs inside it. The call is not ended (onOpen is not called).
+        <button
+          type="button"
+          onClick={() => { openLiveUrl(a.url); }}
+          aria-label={t.openLinkLabel(liveUrlHost(a.url))}
+          data-testid="live-open-url"
+          className={`inline-flex h-11 min-w-[44px] shrink-0 touch-manipulation items-center justify-center gap-1 rounded-full bg-app-accent px-4 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70`}
+        >
+          {t.open}
+          <ArrowUpRight size={16} aria-hidden />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onOpen(card)}
+          aria-label={a.type === 'show_code' ? t.openCodeLabel : t.openStudioLabel}
+          className={`inline-flex h-11 min-w-[44px] shrink-0 touch-manipulation items-center justify-center rounded-full bg-app-text px-4 ${quiet} font-semibold text-app-bg transition-opacity duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
+        >
+          {t.open}
+        </button>
+      )}
     </div>
   );
 }
@@ -235,7 +271,8 @@ export default function LiveActionCards({ cards, locale = 'ka', onOpen, classNam
       <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
       {/* Centred while it fits, a horizontal scroller (never a page scroll) on a narrow phone. Always mounted, so the
           last card can animate OUT; `empty:hidden` once it has. */}
-      <ul className="mx-auto flex w-max max-w-full snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] empty:hidden">
+      {/* scroll-px-4: the snap honours the 16 px gutter (without it the first card snapped flush to the screen's edge). */}
+      <ul className="mx-auto flex w-max max-w-full snap-x snap-mandatory scroll-px-4 gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] empty:hidden">
         <AnimatePresence initial={false}>
           {visible.map((card) => (
             <motion.li
