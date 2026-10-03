@@ -27,15 +27,17 @@
  * so; with a non-image file in the attachment tray (which would turn the request into chat) it says that and offers to drop them.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Cpu, Gem, Image as ImageIcon, Layers, LayoutTemplate, SlidersHorizontal, X } from 'lucide-react';
+import Image from 'next/image';
+import { ChevronDown, Cpu, Gem, Image as ImageIcon, Layers, LayoutTemplate, SlidersHorizontal, Wand2, X } from 'lucide-react';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { ModelPicker } from '@/components/studio/ui/ModelPicker';
 import { TemplateGallery, type TemplateCardItem } from '@/components/studio/ui/TemplateGallery';
-import { Chip, TextArea } from '@/components/studio/ui/controls';
+import { TextArea } from '@/components/studio/ui/controls';
+import { CHIP_BASE, CHIP_OFF, CHIP_ON } from '@/components/studio/ui/tokens';
 import { creditsLabel } from '@/lib/credits/quote';
 import {
-  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageVariant,
-  nativeQuality, tierFor, type ImgAspect, type ImgCount, type ImgQuality,
+  IMAGE_MAX_REFERENCES, IMAGE_TIERS, IMG_ASPECTS, IMG_COUNTS, IMG_STYLES, imageCredits, imageLang, imageModelFor, imageStyleSwatch,
+  imageVariant, nativeQuality, tierFor, type ImgAspect, type ImgCount, type ImgQuality,
 } from '@/lib/studio/imageCreate';
 import { DEFAULT_MODEL, catalogueEntry, type ModelRunner } from '@/lib/providers/catalogue';
 import { effectivePick, pickerRows, useModelPick } from '@/lib/studio/modelPick';
@@ -112,6 +114,23 @@ export interface ImageCreatePanelProps {
 }
 
 /** A disclosure row: 52 px, an icon, a title, a quiet summary and a chevron. */
+/**
+ * A style chip with its swatch: the same cat on the same balcony in that style (lib/studio/imageCreate imageStyleSwatch),
+ * so thirteen words become thirteen looks you can compare at a glance. The swatch is decorative (the word names the style)
+ * and 24 px, so the chip stays honestly 44 px tall (CHIP_BASE: py-2.5 + 24); 'Auto' has no look of its own — a wand.
+ */
+function StyleChip({ style, active, onClick, children }: { style: string; active: boolean; onClick: () => void; children: ReactNode }) {
+  const swatch = imageStyleSwatch(style);
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} data-style={style} className={`${CHIP_BASE} ${active ? CHIP_ON : CHIP_OFF} !gap-2 !pl-2.5`}>
+      <span aria-hidden="true" className="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-app-border/15 ring-1 ring-black/20">
+        {swatch ? <Image src={swatch} alt="" width={24} height={24} className="h-full w-full object-cover" /> : <Wand2 size={13} />}
+      </span>
+      {children}
+    </button>
+  );
+}
+
 function DisclosureRow({
   icon, title, summary, dot, open, onToggle, controls, testId,
 }: { icon: ReactNode; title: string; summary?: string; dot?: boolean; open: boolean; onToggle: () => void; controls: string; testId: string }) {
@@ -340,7 +359,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
               <p className="mb-2 text-[12.5px] font-semibold text-app-text">{c.style}</p>
               {/* Wraps, never scrolls sideways: thirteen styles in a strip hid most of them behind the edge. */}
               <div className="flex min-w-0 flex-wrap gap-1.5" role="group" aria-label={c.style}>
-                {IMG_STYLES.map((s) => <Chip key={s} active={p.style === s} onClick={() => p.onStyle(s)}>{p.styleLabel(s)}</Chip>)}
+                {IMG_STYLES.map((s) => <StyleChip key={s} style={s} active={p.style === s} onClick={() => p.onStyle(s)}>{p.styleLabel(s)}</StyleChip>)}
               </div>
             </div>
             <div>
