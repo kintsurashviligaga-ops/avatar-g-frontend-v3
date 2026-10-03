@@ -118,13 +118,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Stone golem
 
+Revised before attempt 2 — attempt 1 (the takes read as a blue robot, and the runes came out as letters). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/stone-golem",
   "title": "VFX · Stone golem",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A towering stone golem carved from rough granite with glowing orange runes and moss in its cracks, standing in a misty Old Tbilisi courtyard at night, dust falling from its shoulders, warm amber glow against cool cyan mist. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A towering golem built of rough grey granite boulders, cracked and mossy, glowing orange molten light shining through the cracks in its chest and arms, standing in a narrow Old Tbilisi street at night, dust and small stones falling from its shoulders, warm amber glow against cool cyan mist. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -150,13 +152,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Gold statue
 
+Revised before attempt 2 — attempt 1 (every take stood on a plinth with a lettered plaque). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/gold-statue",
   "title": "VFX · Gold statue",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A polished liquid-gold statue of a standing person with mirror-like reflections and slowly dripping molten gold, on a dark stone plinth in a rainy Old Tbilisi square at night, warm luxurious light. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A person transformed into a polished liquid-gold statue, standing directly on the wet cobblestones of an Old Tbilisi street at night, mirror-like gold reflections, slow drips of molten gold running down the body, warm sodium streetlight and cool cyan reflections, no pedestal and no plaque. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -166,13 +170,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Tokyo night
 
+Revised before attempt 2 — attempt 1 (every take had lettering on a lantern or a sign). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/tokyo-night",
   "title": "VFX · Tokyo night",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A figure under a clear umbrella in a narrow Tokyo alley at night in light drizzle, rows of plain unmarked paper lanterns and soft blurred neon bokeh, steam from a street-food stall, wet reflective ground. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A figure under a clear umbrella walking down a narrow Japanese alley at night in light drizzle, rows of glowing blank white paper lanterns overhead, soft out-of-focus pink and cyan neon bokeh, steam rising from a street-food stall, wet reflective ground, every lantern and wall plain and unmarked. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -230,13 +236,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Anime
 
+Revised before attempt 2 — attempt 1 (all four takes had a black or white letterbox band at the foot). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/anime",
   "title": "VFX · Anime",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "Hand-drawn Japanese anime film still: a girl standing on a rainy Old Tbilisi street at night under carved wooden balconies, clean cel shading, bold outlines, a painterly sky, warm lamplight and cool cyan reflections. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "Hand-drawn Japanese anime film still: a girl holding an umbrella on a rainy Old Tbilisi street at night under carved wooden balconies, clean cel shading, bold outlines, a painterly night sky, warm lamplight and cool cyan reflections on the wet street. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -278,13 +286,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Cyberpunk
 
+Revised before attempt 2 — attempt 1 (pseudo-lettering on the neon signs, and a letterbox band at the foot ("the lower third dark" was read as a black bar)). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/cyberpunk",
   "title": "VFX · Cyberpunk",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "Cyberpunk film still: a figure in a reflective jacket on a rain-soaked street at night, magenta and cyan neon light, floating holographic geometric shapes, lens flares, a dense futuristic city haze. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "Cyberpunk film still: a figure in a reflective jacket on a rain-soaked futuristic street at night, magenta and cyan neon light strips and glowing abstract geometric holograms, lens flares, dense city haze, every surface free of signs and lettering. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -342,13 +352,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Ice
 
+Revised before attempt 2 — attempt 1 (the takes showed blue mist, not ice — and one carried a watermark). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/ice",
   "title": "VFX · Ice",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A figure on a night street with frost spreading over the body and the ground, jagged ice crystals growing, cold breath mist, cold blue light, glittering particles in the air, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A figure standing on a frozen night street, encased in frost: thick white frost and jagged translucent ice crystals growing over the shoulders, arms and the ground around the feet, icicles hanging, cold breath mist, cold blue light, glittering ice particles in the air, photoreal. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -390,13 +402,15 @@ or UI in a picture; the app sets the type.
 
 ## VFX · Glitch
 
+Revised before attempt 2 — attempt 1 (the glitch was barely visible, and two takes had shop lettering). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "vfx/glitch",
   "title": "VFX · Glitch",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A portrait of a figure on a night street broken apart by a digital glitch: RGB channel splitting, horizontal pixel tearing and datamosh blocks, scanlines and signal noise, cyan and amber tinted highlights. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A cinematic portrait of a figure on a night street, the whole image visibly corrupted by a heavy digital glitch: strong RGB channel splitting into offset red, green and blue copies, thick horizontal slices of the picture shifted sideways, blocky datamosh pixels and scanlines across the frame, cyan and amber light. One clear subject in the centre of a vertical frame, the picture filling the whole frame edge to edge. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "3:4",
     "batch_size": 4,
     "seed": 261102
@@ -424,13 +438,15 @@ or UI in a picture; the app sets the type.
 
 ## Video hero · Lite
 
+Revised before attempt 2 — attempt 1 (the phone screens showed a camera app's interface (DESIGN.md §4: a screen shows footage, never UI), and two had shop lettering). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "hero/lite",
   "title": "Video hero · Lite",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "A smartphone on a small tripod on a café table by a rain-streaked window at night, filming the street outside, its screen showing blurred footage of warm Old Tbilisi streetlights, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "A smartphone on a small tripod on a café table by a rain-streaked window at night, seen from behind so its screen faces away toward the street it is filming, warm Old Tbilisi streetlights blurred outside, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "21:9",
     "batch_size": 4,
     "seed": 261102
@@ -796,13 +812,15 @@ or UI in a picture; the app sets the type.
 
 ## Style · Pixel art
 
+Revised before attempt 2 — attempt 1 (it came out as a smooth illustration — no pixels to see). Attempt 1's prompt is in the manifest.
+
 ```json shot
 {
   "id": "style/pixel-art",
   "title": "Style · Pixel art",
   "endpoint": "higgsfield-ai/soul/v2/standard",
   "input": {
-    "prompt": "Pixel art of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a retro 16-bit video game sprite style, chunky visible pixels, a limited palette, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+    "prompt": "Low-resolution 8-bit pixel art of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a tiny retro video game sprite scene upscaled with huge square pixels clearly visible, a flat limited palette of a few colours, no smooth gradients, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
     "aspect_ratio": "1:1",
     "batch_size": 4,
     "seed": 261102

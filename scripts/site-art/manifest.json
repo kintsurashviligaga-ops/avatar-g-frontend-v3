@@ -1,0 +1,1737 @@
+{
+  "job": "site imagery v2",
+  "capUsd": 3,
+  "stopAtUsd": 2.7,
+  "spentUsd": 0.576,
+  "attempts": [
+    {
+      "shot": "vfx/hero-cinematic",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An epic action-film hero moment on a wet cobblestone street in Old Tbilisi at night: a lone figure in a long coat stands backlit by a warm sodium streetlight, drifting dust and glowing embers in the air, mist, carved wooden balconies in shadow, anamorphic lens flare. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "tgcs1zhw7srp20d102xa5at4hw",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/QwqenKYjRDVhL6VmfANHrCOomUySbQmEg2qqsOiwRZsCTmTXA/out-0.png",
+          "file": "raw/vfx/hero-cinematic-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/QrDjiS4aDH7cMpMulzSFFQNx0SqTrT7UANJ1WEE46Rqwk50F/out-1.png",
+          "file": "raw/vfx/hero-cinematic-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Qybebej49btuqkpizViFe94eeoY6zsae8f0Za5DsNNsfCTmTXA/out-2.png",
+          "file": "raw/vfx/hero-cinematic-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/JM3hCysVcpb8Ot6qgopvzuhIcte1Zxrj7g4p8cal6rghJzpLA/out-3.png",
+          "file": "raw/vfx/hero-cinematic-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:46:05.777Z"
+    },
+    {
+      "shot": "vfx/neon-stage",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A dancer caught mid-move on a dark stage filled with haze, cyan and magenta laser beams cutting through the smoke above, a warm amber key light, a glossy black floor reflecting the light. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "shqdwxnxssrp00d102x9492er4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/PzXVfm8dacVPBqeeAzgS3vyDqkB0EgO5RdWuYZazOOiInMnuA/out-0.png",
+          "file": "raw/vfx/neon-stage-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/7voL7jMDNRKyANZnJuUUGL1HXhIOqFy5pO0kpuLyh9P5k50F/out-1.png",
+          "file": "raw/vfx/neon-stage-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/n61uSVT1ZiYNI1AZEyC7lspRwuBBQyfXEUJBeDo97JpkTmTXA/out-2.png",
+          "file": "raw/vfx/neon-stage-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/pV7keIqr8oyNVKt6OCTqtDjmncmwM6R6HaBmgVv4BYVyJzpLA/out-3.png",
+          "file": "raw/vfx/neon-stage-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:46:40.042Z"
+    },
+    {
+      "shot": "vfx/rain-street",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure with an umbrella walking down a narrow Old Tbilisi street in heavy rain at night, wet cobblestones full of reflections of warm sodium streetlights and cool cyan shop lights, steam rising, carved wooden balconies overhead. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "rzdddepvbhrp20d102x8txskxg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/OO5YEUwaFGJTPxJizQ9nJVZFx38gerc0jZwzif7wpBrvTmTXA/out-0.png",
+          "file": "raw/vfx/rain-street-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/n38w64veVhxnXq5k3McT44csUefJsV91qIgXXg3eitD9OZOdB/out-1.png",
+          "file": "raw/vfx/rain-street-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/1FxN2li70fQPP6w4oXKntaH43fsppwdW3K10v18wTm8vTmTXA/out-2.png",
+          "file": "raw/vfx/rain-street-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/7zuOMLRxNVrQK1Ww66GPMTyIMIYApJp3M7BO2kctwGe3JzpLA/out-3.png",
+          "file": "raw/vfx/rain-street-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:46:47.967Z"
+    },
+    {
+      "shot": "vfx/zero-gravity",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Inside a dark space-station module: an astronaut floating weightless, loose objects and water droplets drifting slowly around them, Earth glowing through a round window behind, soft cool cyan light with one warm amber practical lamp. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "39grzt85thrp60d102xtbxjrcm",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/cqNvoPRUXPreMKyWnqS2vT1eN1k4rGSFD1OINBuaUeCxnMnuA/out-0.png",
+          "file": "raw/vfx/zero-gravity-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/dgGLH3vnML4rK9tonJu7A4033eofbWNb0sMFnjiWvuX4TmTXA/out-1.png",
+          "file": "raw/vfx/zero-gravity-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/V3fafQtcNyt0epY1EqY9S3BczsIuP6awYri9XymDqEwwnMnuA/out-2.png",
+          "file": "raw/vfx/zero-gravity-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rYanhuHeqxWOPq7M8NxMIozlKue63ev9YCTHYJZYI8eiPZOdB/out-3.png",
+          "file": "raw/vfx/zero-gravity-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:46:58.839Z"
+    },
+    {
+      "shot": "vfx/mecha-robot",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A sleek chrome mecha robot with articulated armour plates and glowing blue joints standing on wet cobblestones in an Old Tbilisi street at night, its reflective hard-surface metal catching warm sodium streetlight, mist. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "7p57na1665rp20d102xsr15j0w",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/01hlxcpffGocL0wZWoBqnEm3SdYCvcZ5IsxCwj0zi26enMnuA/out-0.png",
+          "file": "raw/vfx/mecha-robot-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/1mzAcSmFT4rJB1zt6tKzvqJaZGuMSvPl59RCGSPkUfSfTmTXA/out-1.png",
+          "file": "raw/vfx/mecha-robot-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Eui6xFTONdI8GR17c7wnov2pTO7vsFgZanPiGJfl9hZfTmTXA/out-2.png",
+          "file": "raw/vfx/mecha-robot-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/fmNxkhnURu0LJi68zeZTkN2f3qVRXAiQ7AlyPumez2E6PZOdB/out-3.png",
+          "file": "raw/vfx/mecha-robot-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:07.121Z"
+    },
+    {
+      "shot": "vfx/stone-golem",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A towering stone golem carved from rough granite with glowing orange runes and moss in its cracks, standing in a misty Old Tbilisi courtyard at night, dust falling from its shoulders, warm amber glow against cool cyan mist. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "0hmsb81xtxrp20d102xs91vm1m",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/UIdVFTXirGZeRS9mzqjMQ63XQRZI0O44WD6j3s70F3EDKzpLA/out-0.png",
+          "file": "raw/vfx/stone-golem-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/f9J3zfaNRWqzk0Cvgh0us7WWSZ7mq6JOtNwJJD4ErtcGUmTXA/out-1.png",
+          "file": "raw/vfx/stone-golem-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/c5f0oXQxc6RVZCnEHQD76el4URMokm490wLClqN3kZ5HUmTXA/out-2.png",
+          "file": "raw/vfx/stone-golem-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9qCDfAjkLJXKWC7vi6sM86UqBGIaOzA4cXdnkqyXQroDKzpLA/out-3.png",
+          "file": "raw/vfx/stone-golem-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:13.175Z"
+    },
+    {
+      "shot": "vfx/glass-crystal",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A human figure made entirely of translucent glass crystal, refracting the light into prismatic highlights and caustics, standing on a wet cobblestone street at night, warm streetlight and cool cyan reflections passing through the body. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "b8qw0z3111rp40d102xsnamyd8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/wuVdpoVRDToOAJICWTwkjejXC5rrQ3eFh31PzzdtSE3NUmTXA/out-0.png",
+          "file": "raw/vfx/glass-crystal-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/YaFN40aQs8KvOhw45keM9DjmacJBAffkwgo5IxCmesH0QZOdB/out-1.png",
+          "file": "raw/vfx/glass-crystal-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/LyRruQQ8Zl44Lx6vo892CgTsdWqUmH4UIQaMJt50wSQDl50F/out-2.png",
+          "file": "raw/vfx/glass-crystal-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/jkdHtH1JC1LUGdG9JbWhobflAvMd121XiJTarGKJHniGKzpLA/out-3.png",
+          "file": "raw/vfx/glass-crystal-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:22.186Z"
+    },
+    {
+      "shot": "vfx/gold-statue",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A polished liquid-gold statue of a standing person with mirror-like reflections and slowly dripping molten gold, on a dark stone plinth in a rainy Old Tbilisi square at night, warm luxurious light. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "9kr9n93vydrp00d102xs65wbdm",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/Q2t8HnRsUL64KB6uTZnzz9J5HUU67ESceejTQfvuW3spoMnuA/out-0.png",
+          "file": "raw/vfx/gold-statue-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bLEasV6qQ5LvNF8s23Jf1eAGHxFWpAnEWmYRy9Aoo9MUUmTXA/out-1.png",
+          "file": "raw/vfx/gold-statue-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uPOPaA1i9KJXN1ElBdNFYzHVKVQB2WWh8fawcQW6YjTKKzpLA/out-2.png",
+          "file": "raw/vfx/gold-statue-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/XlMg3m5Dr36sFRsb7VMU4dAvOfjMD8wvgnzwNd26EOwKKzpLA/out-3.png",
+          "file": "raw/vfx/gold-statue-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:28.766Z"
+    },
+    {
+      "shot": "vfx/tokyo-night",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure under a clear umbrella in a narrow Tokyo alley at night in light drizzle, rows of plain unmarked paper lanterns and soft blurred neon bokeh, steam from a street-food stall, wet reflective ground. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "bx812fmkvhrp20d102xvmyk270",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/wkq0SOUPY6ZhKRNkbDzGnhh1GeXyYCFOMwjSbOr7Y7SNKzpLA/out-0.png",
+          "file": "raw/vfx/tokyo-night-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/jC7zvWiQ9eQDYKH7pRAh0e26QLbbAl7yX7BoVWLD2n4aUmTXA/out-1.png",
+          "file": "raw/vfx/tokyo-night-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/T3lsr7iery2saiPDSFpF8YCVWo9lHzY8cGdJyyB4mMbNKzpLA/out-2.png",
+          "file": "raw/vfx/tokyo-night-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/mVxfE12VjFVtRKfDkvFgZu3YViKFN437j34Gk2HR7PTbUmTXA/out-3.png",
+          "file": "raw/vfx/tokyo-night-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:35.195Z"
+    },
+    {
+      "shot": "vfx/alien-desert",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A lone figure standing on a red dune in an alien desert, two suns low on the horizon, enormous rocks floating in the sky, dust drifting in warm light, long shadows, epic science-fiction still. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "8zmrv3emg1rp00d102xvng9s7r",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/K6dfon04fTr7RketIoZ57sexkgY5whKxhNY5YrioTNVvSZOdB/out-0.png",
+          "file": "raw/vfx/alien-desert-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4XHy4IaKJ268HxtX4xeZWxgUbkDQtPz9jhSqtP8vXL7VKzpLA/out-1.png",
+          "file": "raw/vfx/alien-desert-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rvWjGVODNH7LFBVtQXQCgrvtBs0d3AyPEmHYXhgP3U8Kl50F/out-2.png",
+          "file": "raw/vfx/alien-desert-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/q3eWFANMtiVTDy3mSEXEZH8oaeu6tk1YswEj9eazvsfsSZOdB/out-3.png",
+          "file": "raw/vfx/alien-desert-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:47:51.691Z"
+    },
+    {
+      "shot": "vfx/underwater-city",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A diver floating above a sunken city deep underwater: glowing coral towers, shafts of light from the surface, drifting bubbles and small fish, soft blue-green haze, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "krd0ry8wt5rp40d102yb2yxv44",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/AQriXMz38CrhNhXXmpc9kkFWbTJkrmGM2HKdcXU77eleUmTXA/out-0.png",
+          "file": "raw/vfx/underwater-city-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bSKKoJWvJezdZCmTovQmdbaQIJMnbfntVoQkfg6M9ah7pMnuA/out-1.png",
+          "file": "raw/vfx/underwater-city-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/hbWHKx9xw8qQBRvEcGdeA5aLfuDgxmHs7E9kRekxmfx5TZOdB/out-2.png",
+          "file": "raw/vfx/underwater-city-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4zP33M6MWe2xDqVQuE2YRSrUiKSb3olqcN06apfrOKBepMnuA/out-3.png",
+          "file": "raw/vfx/underwater-city-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:09.396Z"
+    },
+    {
+      "shot": "vfx/arctic-peak",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A climber standing on an arctic mountain summit at sunrise in a blizzard, swirling snow, golden light breaking through the clouds, ice-crusted rocks, a dramatic wide landscape. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "d6q8f7tzf5rp60d102ybn36mf0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/lSujZFp9OJ5qJlOsCZ6LPeoOluxAD9CuxpWJNlW0S81oKzpLA/out-0.png",
+          "file": "raw/vfx/arctic-peak-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/RMjbqiIRhP7zDdsVTxvDAhdwyOgH26fJBix5xiXp5afRVmTXA/out-1.png",
+          "file": "raw/vfx/arctic-peak-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/GTIhC8reSsxcCSYFKmAaMK69JvOY0ZfADyEgUBjE6ZoRVmTXA/out-2.png",
+          "file": "raw/vfx/arctic-peak-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uJTMGruvg5ZUN1opkytI5bA7J3RnLt6qTshyJGKg0rYUl50F/out-3.png",
+          "file": "raw/vfx/arctic-peak-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:26.824Z"
+    },
+    {
+      "shot": "vfx/anime",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Hand-drawn Japanese anime film still: a girl standing on a rainy Old Tbilisi street at night under carved wooden balconies, clean cel shading, bold outlines, a painterly sky, warm lamplight and cool cyan reflections. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "7cbm1qm1q1rp00d102y9ngzn24",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/sL2jcjpzEpKYAFMpocMuvruL087AfrV4TanOsr84pHmsKzpLA/out-0.png",
+          "file": "raw/vfx/anime-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/xT4L3KoLHfVCCid2jpFSXo2p5eP9r24y4hi2BaYbFc3ZVmTXA/out-1.png",
+          "file": "raw/vfx/anime-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/dtJLYCYUeEVteU3zH9pQtDa4kCy0dy6XeFmcmsogJIXzqMnuA/out-2.png",
+          "file": "raw/vfx/anime-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/1fUwYaW8YCQ7TC5e1sJ4kehxPKgvQ8BcPftJTqCQCZFqVZOdB/out-3.png",
+          "file": "raw/vfx/anime-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:36.088Z"
+    },
+    {
+      "shot": "vfx/claymation",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Stop-motion claymation still: a small clay figure holding an umbrella on a miniature Old Tbilisi street with carved wooden balconies, every surface hand-sculpted from clay with visible fingerprints and tool marks, warm miniature-set lighting at night. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "ywa30w53thrp40d102yapwv3kc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/Oo4hthHVkUJQDVwio5tSrSDjr1PBJj2Y46EpVGOypfNwKzpLA/out-0.png",
+          "file": "raw/vfx/claymation-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/nMRhTETU7dqVLRXmAxoXNNNJA8JzfyPeisiQ4cOniflBrMnuA/out-1.png",
+          "file": "raw/vfx/claymation-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9MgRbc9emnR7WKKrrpO7tJ3HyK2E3t9omemhEmr1HIzgVmTXA/out-2.png",
+          "file": "raw/vfx/claymation-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ev8GZ9bkoFzkKiE9miquf6XRX1FfDyvneCIfqTe5AX2CYl50F/out-3.png",
+          "file": "raw/vfx/claymation-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:44.621Z"
+    },
+    {
+      "shot": "vfx/film-noir",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Classic black-and-white film noir still: a figure in a fedora and trench coat under a single streetlamp on a wet cobblestone street, hard venetian-blind shadows on a wall, drifting cigarette smoke, 1940s cinematography, fine film grain. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "jr4tby5svxrp20d102yben5d9r",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/5wXAqLv8RaIOKRfTSxGEtaQBvRngopsMEQThfgfXOufXWZOdB/out-0.png",
+          "file": "raw/vfx/film-noir-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9uWgUwyuVm6HAtbmvRJsVAWxDHlsfehnnyIcIiee3QhVWZOdB/out-1.png",
+          "file": "raw/vfx/film-noir-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/yBA4TqMBWOaQMtNkyDe24Hcfg1kRfurGUQV6pe6rsBIWWZOdB/out-2.png",
+          "file": "raw/vfx/film-noir-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/0G8Ko75ICCqXKVfyuOi4eTxJTs0BkX9O6TGhXFkygHfKrMnuA/out-3.png",
+          "file": "raw/vfx/film-noir-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:50.243Z"
+    },
+    {
+      "shot": "vfx/cyberpunk",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Cyberpunk film still: a figure in a reflective jacket on a rain-soaked street at night, magenta and cyan neon light, floating holographic geometric shapes, lens flares, a dense futuristic city haze. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "x6aepm6g8drp20d102y848aacc",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/UEfhgUiysJQMYKFqoVtQf2rzUhseurIF6k2FfHbjdDHvWZOdB/out-0.png",
+          "file": "raw/vfx/cyberpunk-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/XC9Y9C9BTXZqK911Io8e1yXS3DwDkLjiywgkKULvSit1KzpLA/out-1.png",
+          "file": "raw/vfx/cyberpunk-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/CWMfvXXXgTXLRSZnf6PUBOH1Vl36KIK5rzj2SI6ueCiWrMnuA/out-2.png",
+          "file": "raw/vfx/cyberpunk-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/i6RtNdht4Ea1AN6VAtGg3AKUDGbE75KmeCBHPpWXgh81KzpLA/out-3.png",
+          "file": "raw/vfx/cyberpunk-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:48:55.990Z"
+    },
+    {
+      "shot": "vfx/watercolor",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A watercolour painting: a figure with a red umbrella on an Old Tbilisi street with carved wooden balconies, translucent washes of paint bleeding and flowing, visible paper texture, soft pigment edges. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "5vyz6az8axrp40d102y9tvw87w",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/C3jPbzkaYWbkGBSeBXTi2Hp9NEAUmLf9LJeJZiyj2zWjrMnuA/out-0.png",
+          "file": "raw/vfx/watercolor-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/1rPWtPQbQWrxP9VIf4nkk2fo9kxCUPsKRkuBu9DAeCNjrMnuA/out-1.png",
+          "file": "raw/vfx/watercolor-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4dmt8fD8JKT0bidUNJJaaAWAPH9z4cLZ6bglZcKtCUa5KzpLA/out-2.png",
+          "file": "raw/vfx/watercolor-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/pCubWKn1Sgo4BZiHLolsfBfouyTf6YvFlfE6M3dn9U4IXZOdB/out-3.png",
+          "file": "raw/vfx/watercolor-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:02.359Z"
+    },
+    {
+      "shot": "vfx/toy-3d",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A glossy 3D collectible toy figure of a person in a yellow raincoat standing on a miniature cobblestone street against a dark backdrop, soft rounded forms, smooth plastic with subtle reflections, bright studio lighting, charming animated-feature look. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label, deep blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "kw54ttr5m1rp20d102yr8g1q24",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/8hOt4bkaekXQKSnvyL0tnCoqFmv1MeCjfqD9OvSIYOgwrMnuA/out-0.png",
+          "file": "raw/vfx/toy-3d-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/5LfpNYhk1S0vf0hpG8Ve1WnrI6SepsY3NvGjSHRHIWrjXZOdB/out-1.png",
+          "file": "raw/vfx/toy-3d-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/h5X5EfjzLoz7Zyatra6pEDZfMthtbfY95h1LrAaG3OLwrMnuA/out-2.png",
+          "file": "raw/vfx/toy-3d-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/cewSoy9Jn922Iat619HVOFypWeFzCNmba1j8LQ1isFM4VmTXA/out-3.png",
+          "file": "raw/vfx/toy-3d-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:09.855Z"
+    },
+    {
+      "shot": "vfx/fire",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure on a wet cobblestone street at night wreathed in roaring flames, embers and sparks streaming upward, heat haze distorting the air, flickering orange light on the surroundings, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "zh03b9rvnnrp60d102yst41730",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/JyxmHEItMr5bKNTrwt3r1vI2XE6GoKdAoPUHEiHDSZofKzpLA/out-0.png",
+          "file": "raw/vfx/fire-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/G7ac8teFqBXYH6tcHrN98He80de5cD3YVfN0PHc8nCufvyc6C/out-1.png",
+          "file": "raw/vfx/fire-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/E6tMmZFVUr5yEtY7IgGubiGGSfT1l8qeghITW7PNj6VfrMnuA/out-2.png",
+          "file": "raw/vfx/fire-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/VWrOpD2CHAKkLxVFjxe8uK1qvvkUzsPcnYwQXd7FG0kfVmTXA/out-3.png",
+          "file": "raw/vfx/fire-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:15.498Z"
+    },
+    {
+      "shot": "vfx/ice",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure on a night street with frost spreading over the body and the ground, jagged ice crystals growing, cold breath mist, cold blue light, glittering particles in the air, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "1e91er1w7xrp00d102ysn9wb9r",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/5IT8lIZ1BNL1ENnp80vGLO2M9ESLs36t9r3qxMe6CmkDLzpLA/out-0.png",
+          "file": "raw/vfx/ice-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/x7Bcv6xLUCZYPJeCZlK1ViVSJgKre7VXjSujAv6hDO9HWmTXA/out-1.png",
+          "file": "raw/vfx/ice-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/MybjCi3zgA4LBRUHS8CnvMzILInCWmhYraJdYfaYoQ2DLzpLA/out-2.png",
+          "file": "raw/vfx/ice-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/fly8798JrXxtPCw2CIxghSc1ELyDKCMiLdDDefTy6hvPsMnuA/out-3.png",
+          "file": "raw/vfx/ice-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:23.837Z"
+    },
+    {
+      "shot": "vfx/smoke",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure dissolving into thick drifting smoke at night, soft volumetric trails curling away from the body, a single warm streetlight cutting through the smoke, moody dramatic light, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "ws1ytz2q2hrp20d102ys73f4j0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/1TcI2ff1SPjr10IiByaooVzTGj95k4aHlmNnFJuffVh5YZOdB/out-0.png",
+          "file": "raw/vfx/smoke-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rS5GPsmzag6OOF21Ogx6t9dKXNSWE9NBtHoNtI98tCpjl50F/out-1.png",
+          "file": "raw/vfx/smoke-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/8Er6vBcfQ6TGKSk8pDZ4OBfkplqSR05RhNAftqVsWDadsMnuA/out-2.png",
+          "file": "raw/vfx/smoke-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/hKMZldLY9sK3CRH20lVMS7jhjr9g8Xt6McNBJqyqvwpjl50F/out-3.png",
+          "file": "raw/vfx/smoke-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:30.701Z"
+    },
+    {
+      "shot": "vfx/lightning",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A figure on a wet street at night surrounded by bright electric arcs crackling through the air, flickering white-blue light across the scene, sparks and brief flashes, photoreal. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "sz8g0nbdedrp40d102ytg7c0v8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/yd7jGAcHKprfGSGWicd6qGqTo3tnlBOfVjsIAtfByrYnsMnuA/out-0.png",
+          "file": "raw/vfx/lightning-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/pI05sz6Q5Y7GIFF3sXipo1c29bWca30Sv7ID4hDvcR9kl50F/out-1.png",
+          "file": "raw/vfx/lightning-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/XF7oaZmJJPbnMtjr1DShfPNQdAKEOR33ZrNojkoZIXQKLzpLA/out-2.png",
+          "file": "raw/vfx/lightning-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/TD2Tv1PLCRqCNNCptylayKZDMdf5fHNEdTYzRWezBSBosMnuA/out-3.png",
+          "file": "raw/vfx/lightning-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:36.431Z"
+    },
+    {
+      "shot": "vfx/glitch",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A portrait of a figure on a night street broken apart by a digital glitch: RGB channel splitting, horizontal pixel tearing and datamosh blocks, scanlines and signal noise, cyan and amber tinted highlights. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "za0f51m82xrp60d102ytsedss0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/6zAahBQgLewpFqA6MLab7fnX33GgFICgekbUDQ5SGE64sMnuA/out-0.png",
+          "file": "raw/vfx/glitch-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/fzNLtefeLiDm1QG6MCV1Q6xDzM5gqB3bg0ypk32PYirwZZOdB/out-1.png",
+          "file": "raw/vfx/glitch-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3CQfSmL1URQzVapkHkpCd0Nk6mqUiWlyXpyOGBDn5txOLzpLA/out-2.png",
+          "file": "raw/vfx/glitch-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/St397DBfILxtbqvT0jyewKFfpEsJO3uMsEDf5E1cFYepzyc6C/out-3.png",
+          "file": "raw/vfx/glitch-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:43.055Z"
+    },
+    {
+      "shot": "vfx/portal",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A swirling circular energy portal opening in the middle of a misty Old Tbilisi street at night, its bright rim throwing sparks, wind pulling dust and leaves toward its centre, cyan and warm amber light spilling onto a figure standing before it. One clear subject in the centre of a vertical frame, the lower third dark and calm for a label. Cinematic film still: 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, rich contrast. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "3:4",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "qz5596d8tnrp40d102yte0t1cg",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/edL67qiSG93Yd6mlgyOEiy5rkmk5tedfv5p63980EdLEtMnuA/out-0.png",
+          "file": "raw/vfx/portal-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/INJ1fHgDZr0cekbG2htVDn7uSHHASDZQMpTrXFS9Zp6iWmTXA/out-1.png",
+          "file": "raw/vfx/portal-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/8Dwl6C28mSLbFxkpLlTjNf9SfTPdPixJtR9eub2oLB4GtMnuA/out-2.png",
+          "file": "raw/vfx/portal-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/0fCiYZ75VgWbTihnJ9bzcXxRNPJPZULms62ihjtUi5pRLzpLA/out-3.png",
+          "file": "raw/vfx/portal-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:51.638Z"
+    },
+    {
+      "shot": "hero/lite",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A smartphone on a small tripod on a café table by a rain-streaked window at night, filming the street outside, its screen showing blurred footage of warm Old Tbilisi streetlights, a cup of coffee beside it, soft bokeh across the frame. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "9fv2vye00nrp20d102ysh5fqem",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/IN7FtlxpTJYtE53KY8AjV0kTrMOadpRRv0ajM6XE4Pqql50F/out-0.png",
+          "file": "raw/hero/lite-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/vWx2VDmV2lJ6KBbesPrpeQWHNDMRl6AHmaVK0FkAsCXrWmTXA/out-1.png",
+          "file": "raw/hero/lite-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/8iYsZ8rDn8LqNdWHzTrgGHFGCLKCh7pneWsjiErapsjVLzpLA/out-2.png",
+          "file": "raw/hero/lite-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bvRKeyc83RxdPqslIhSvtfiwo65pr8vUSQIjF6sBRVeXtMnuA/out-3.png",
+          "file": "raw/hero/lite-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:49:57.576Z"
+    },
+    {
+      "shot": "hero/fast",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A cyclist speeding through a wet Old Tbilisi street at night, followed by a handheld gimbal camera, motion blur on the streetlights, spray from the tyres, the energy of a quick social reel. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "wqpsk570edrp00d102ysx3dgpr",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/JoEX1hXHDk7PFJ3p2RUaaqtzwdaJyUp51tkOIuDOveoZLzpLA/out-0.png",
+          "file": "raw/hero/fast-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4sMeMptPfHhZmkkiKMQsm6V5SskVmYJ7qErk8pixEGIzWmTXA/out-1.png",
+          "file": "raw/hero/fast-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ufPyDTlXVs2cTqoGJvBQeLFhhZzklwkf0B2OcTwlT1jmtMnuA/out-2.png",
+          "file": "raw/hero/fast-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rVPhJrgyTl65LB3fyjpPmKcO5loVdmxC17irNvKbrxmZLzpLA/out-3.png",
+          "file": "raw/hero/fast-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:05.875Z"
+    },
+    {
+      "shot": "hero/standard",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A wide establishing shot of Old Tbilisi at night after rain, seen from across the river: the old town and the fortress on the hill lit warm, mist over the water, a cinema camera on a crane in silhouette in the foreground, the polish of a feature-film trailer. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "7hd8pk82vdrp60d102zan5tvt4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/SL1QfByS7dQAOSVhsY71Ab9rKj4nuXj4llL3eR1ZVzl5WmTXA/out-0.png",
+          "file": "raw/hero/standard-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/9uepveqnHAjFy079IorbrLus7NYRbnwaECBS9VfLtKxztMnuA/out-1.png",
+          "file": "raw/hero/standard-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Jqk9TMdLxJoLH59GUTUvHtvKlMc5yfshyCc0T126ymRdLzpLA/out-2.png",
+          "file": "raw/hero/standard-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Ia7heESVuDWocKwuUpIFf7yFxZk8ekH8fpwBdasKARlrbZOdB/out-3.png",
+          "file": "raw/hero/standard-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:14.221Z"
+    },
+    {
+      "shot": "hero/musicvideo",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A singer silhouetted on a misty rooftop stage above Old Tbilisi at night, a single warm spotlight from above, a cool cyan rim light, haze, the city lights blurred far below, music-video mood. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "b9sy780shhrp40d102zam18vxw",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/7FbmThbtUp4KGpANZBfRFEPgGGAo0bfmLUizDDIedCXebZOdB/out-0.png",
+          "file": "raw/hero/musicvideo-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/0foFtTDiELVdGCiPZkMatXsQLaVupUHmvdQStXnfSJzftMnuA/out-1.png",
+          "file": "raw/hero/musicvideo-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/OxHcHoKVv76JKpHk9gnpeaJ4Ksg1LTcCfz9qrWe5uhe9bZOdB/out-2.png",
+          "file": "raw/hero/musicvideo-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/n3ZrB2DeKxwfc0rJHOm5W7OsExPBbEpRcso70yZTK7XftMnuA/out-3.png",
+          "file": "raw/hero/musicvideo-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:20.274Z"
+    },
+    {
+      "shot": "hero/model",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An extreme close-up of a professional cinema camera lens, reflections of warm and cyan city lights curving across its glass, a blurred rainy night street behind it, shallow depth of field. Ultra-wide cinematic frame with the subject in the left third and the centre calm and dark for a title. 35 mm anamorphic look, fine film grain, teal-and-amber grade, deep true blacks, mist. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "21:9",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "hyq4wz9fqhrp00d102zb3s52h4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/MUSi1CUrD54ZF5XFm2n67ePmH8snrkT0zreO3pilqgRHXmTXA/out-0.png",
+          "file": "raw/hero/model-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/evwfqKXUpwhWikuuASqUwRqUS10t52Nw47RcSQHqQYcHXmTXA/out-1.png",
+          "file": "raw/hero/model-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/cgdMBRTmrkZgMtRrgR8KepO1qJ2glU1J3vr9uRYkC6eHXmTXA/out-2.png",
+          "file": "raw/hero/model-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/yXAgtJdmdJbWN1qVV5Quw6o2QPjhWxhRHuVeDtMcYfgHXmTXA/out-3.png",
+          "file": "raw/hero/model-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:25.945Z"
+    },
+    {
+      "shot": "services/voice",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI voice cloning scene: a professional studio condenser microphone on a shock mount in the centre, a glowing holographic sound waveform flowing out of it and curling into the soft profile of a human head made of light particles, warm amber highlights, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "yzxjpctp99rp00d102z9k3wfb8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/zAm1tuH6tNbeOqzWBqYfs8jI4xYG0p9pLJfGte1u8pH8cZOdB/out-0.png",
+          "file": "raw/services/voice-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3hoInzeY1Nx3YiKaFuIFEpL6dmlScUjh0qjM3OPl5FmnLzpLA/out-1.png",
+          "file": "raw/services/voice-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/WOwtwT9XPvKcKd06fZn6Pga1ZDbEGEmpZWsb754XHfOPXmTXA/out-2.png",
+          "file": "raw/services/voice-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/PvOtm3efRXkCSUNUjunEbs9PSwqjRslmSiWUPYmTniiPXmTXA/out-3.png",
+          "file": "raw/services/voice-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:36.041Z"
+    },
+    {
+      "shot": "services/content-writer",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI content writing scene: a sleek open laptop on a dark desk, glowing holographic article cards and social media post panels floating above it, filled with abstract lines of light instead of words, a luminous pen of light, warm amber and cool cyan tones, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "1wcxcr4jf1rp00d102z8p5rqh8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/RMkcRLvLnWoLCZGQj48g1LS3HoPDdB8UX6CrAd75fRFwLzpLA/out-0.png",
+          "file": "raw/services/content-writer-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/kZ5ElfmnBlXCeUMSpbhqcReVWcFzXYuDggEVIyq9zMzAvMnuA/out-1.png",
+          "file": "raw/services/content-writer-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/A7XNjEi64t5zBt52Od6bBipivxCwwThz2qCzE4pVrFP4l50F/out-2.png",
+          "file": "raw/services/content-writer-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/iVxwhH5YZkqvGFRzFRJ59ibnR9lwpGVM8JU5mpgsFwM4l50F/out-3.png",
+          "file": "raw/services/content-writer-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:51.418Z"
+    },
+    {
+      "shot": "services/podcast",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI podcast studio scene: two broadcast microphones on boom arms facing each other across a dark round table, studio headphones resting between them, glowing cyan sound waves flowing from one microphone to the other, a warm amber practical light, intimate late-night broadcast atmosphere, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "ywjq2v5fmxrp00d102za5v8vk8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/4XUPIJz1kXbYP5TfAJ6QmTsfnUCxzJfzbujeXZcYei208yc6C/out-0.png",
+          "file": "raw/services/podcast-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Yvt5gb3J0r68G1s4NxfLZ1wR0pzM35eToWMEG0eqLaJNvMnuA/out-1.png",
+          "file": "raw/services/podcast-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/dhXvpQbDWw5wKdbqHfNN9cp9YbI6nh5HpWm0JeHXh84mXmTXA/out-2.png",
+          "file": "raw/services/podcast-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/SJtLyEBN9fxFBC8JiPHe0CCqZZmPYsEJrUNUkgMsiPWmXmTXA/out-3.png",
+          "file": "raw/services/podcast-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:50:58.926Z"
+    },
+    {
+      "shot": "services/character",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI character design scene: an ornate carnival mask floating in the centre, glowing holographic character silhouettes emerging from it in layers of light particles, small points of light orbiting it, warm gold highlights, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "rqx89r64shrp60d102za92knn0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/fo1gAbt5IuVdMyd2fEyJMtbCINq9Q98M9WQU5c7p4mTrXmTXA/out-0.png",
+          "file": "raw/services/character-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/YpBMPW8VA1pYClQD3WpR6Xehbd9cNgTkDsFmmgCHJ2l1LzpLA/out-1.png",
+          "file": "raw/services/character-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/oUb85le1G1zeT0GwG6bwlO4Qx7ZdX86DZj3PCOp92WCrXmTXA/out-2.png",
+          "file": "raw/services/character-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/bzsvePmeBSmfyJzf0ex9Rz1dEYHOTEyMuF1FVYv6MVne6l50F/out-3.png",
+          "file": "raw/services/character-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:04.333Z"
+    },
+    {
+      "shot": "services/event",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI event production scene: an elegant event stage at night with warm spotlights cutting through haze, rows of chairs facing a glowing stage arch, confetti made of light drifting in the air, celebratory yet refined atmosphere, warm gold and cool cyan tones, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "kwb9rtpvgdrp40d102z9vsmkb0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/wo2el1xMZAVAYaHkbDHTE0LQdE6EncwMC7zu09SLlf1xXmTXA/out-0.png",
+          "file": "raw/services/event-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/UzdH00uzsL6JPtgPNYvDxgT1TMtbPgRNKSv8HHAufwr4LzpLA/out-1.png",
+          "file": "raw/services/event-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/WaVs0ucTqjaWJZ4MTJZvpH3cYMCRycD5R5xrpbPDcli8l50F/out-2.png",
+          "file": "raw/services/event-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/28gXBaAl2hbEBBJYTrHuurkHtO4BpW9CkKX8kUic4ss8l50F/out-3.png",
+          "file": "raw/services/event-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:10.151Z"
+    },
+    {
+      "shot": "services/prompt-builder",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium prompt builder visualization: translucent glass building blocks of light being assembled into a precise structure by thin beams of light, a slim glowing wand of light directing them, modular and geometric, warm amber highlights, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "az1sb6qnn5rp60d102z8sps2r8",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/EuUeulot3cTqM6a1BB1jiJQ4yd9oUVeVTlTxZ2DekhP1vMnuA/out-0.png",
+          "file": "raw/services/prompt-builder-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/6Cz5ot06AVokMl48OxQ7xRsk85I4kwaqPNKLslA57yreLzpLA/out-1.png",
+          "file": "raw/services/prompt-builder-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Xxtii8kTlUr6N5iDZv2wC4H1rbA3sq9YPz7RMEUeD3Q9LzpLA/out-2.png",
+          "file": "raw/services/prompt-builder-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/NXFGUQttGCraNlPdZiZFpeFVrohYlDulkiaKedwcbV16XmTXA/out-3.png",
+          "file": "raw/services/prompt-builder-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:16.615Z"
+    },
+    {
+      "shot": "services/terminal",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A premium AI coding scene: a glowing terminal window floating in dark space filled with abstract lines of light, a sleek mechanical keyboard in the foreground lit in cyan, circuit patterns of light underneath, warm amber highlights, cinematic lighting, dark premium atmosphere, elegant color grading, moody blue and cyan accents, photorealistic, 8k ultra detailed, professional studio quality, dramatic contrast, wide composition suitable for card crop, the subject centred in the middle band of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "371wv2gk8nrp00d102zs48k87m",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/m3JuCL6dPFoGJJqcmnPGVVLuYULQhyoSfKoRAbQ3KS4fXmTXA/out-0.png",
+          "file": "raw/services/terminal-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/YpK6mvwrhrIqOxVe3CEB9bBWH1qw6nK6tOaRDXvwB0ifXmTXA/out-1.png",
+          "file": "raw/services/terminal-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/lNjIPifypmVpXK4P4uZpKQanY5U7XdqXbOvJTk720eOfvMnuA/out-2.png",
+          "file": "raw/services/terminal-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ltgeuAShWrUQXqFRd40WfPg0K3ZLqGe02wePM7qHJnLCgZOdB/out-3.png",
+          "file": "raw/services/terminal-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:24.151Z"
+    },
+    {
+      "shot": "style/photorealistic",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A photorealistic photograph of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, soft natural daylight, sharp detail, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "nhd5qt1cv9rp40d102zs24313g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/BDKTagTVWWrnOliFQAZehN851oqBC0erW8af8jHJFgwNwMnuA/out-0.png",
+          "file": "raw/style/photorealistic-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/AkQE1pkMSzZGBNqN4G7eQhMJmF6NTkBh4gsqIwkREIHDMzpLA/out-1.png",
+          "file": "raw/style/photorealistic-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/VJAjbBQOg1aTJxJW7eexBd70HUbNUgQ33G9Homes5DfZgZOdB/out-2.png",
+          "file": "raw/style/photorealistic-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/Qr9Qd15oM4JfeUtA49YVCbfIe5cI3l8D7xRXym2FfHN3Azc6C/out-3.png",
+          "file": "raw/style/photorealistic-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:30.757Z"
+    },
+    {
+      "shot": "style/cinematic",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A cinematic film still of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi at night, warm streetlight and teal shadows, anamorphic, shallow depth of field, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "df1gq8a98nrp40d102zvbdfhgw",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/IUfOZH1OwW3AfE0C3eAJsCFtMADcZePp5n5PLgKRfWDvBzc6C/out-0.png",
+          "file": "raw/style/cinematic-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/NGdne54TpbS5NSefLp7C7vOeYzYfjpyfPwwXHSSMqfhkGMzpLA/out-1.png",
+          "file": "raw/style/cinematic-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rz036dvaFbI5NNW7fD7Dzvxn1kXquqkbdqjNFXVAD5FHMzpLA/out-2.png",
+          "file": "raw/style/cinematic-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/BLlUi3EJoso5NlQejRW8fPOLGKlPJMSylH6yiXnxU5tOYmTXA/out-3.png",
+          "file": "raw/style/cinematic-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:38.241Z"
+    },
+    {
+      "shot": "style/digital-art",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A digital art illustration of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, vibrant painterly digital brushwork, glowing saturated colours, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "2p469vv92srp20d102zvs1xtc4",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/zhwBjG4feeSfxQnBY7lTeWBe4LRvb5Sbrh79BoOYVL9UFm50F/out-0.png",
+          "file": "raw/style/digital-art-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/kntUv8KMUEYXJxEBr3c4FgvkDBUvlFq3G4FZZBKYf97KMzpLA/out-1.png",
+          "file": "raw/style/digital-art-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/dZ2EMQ4mNsJWAdrVlQXCSARYAy1lIg5PD1hf5hE0aAKLMzpLA/out-2.png",
+          "file": "raw/style/digital-art-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/hW87fd1WskTPDSt4sTJxchCN6LelaffeNFdW1H6r6SD0Czc6C/out-3.png",
+          "file": "raw/style/digital-art-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:46.202Z"
+    },
+    {
+      "shot": "style/anime",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An anime illustration of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, clean cel shading, bold outlines, bright flat colours, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "hwgd3cwg7srp60d102zs25ytn0",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/MSKGJVCnOjoxMpletoAaMxTli2x5pLOu7xjsw7xtH8nPMzpLA/out-0.png",
+          "file": "raw/style/anime-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/JjSZRzfMf6ocZkSQtwhEXX25OFfqweO9jozhXBOk3818hZOdB/out-1.png",
+          "file": "raw/style/anime-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/R2mVYAcfxJSAekepfH0aaIxPaozLrig7Vu5Sfdw0WWVBEzc6C/out-2.png",
+          "file": "raw/style/anime-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/gSw9RzveFYTflUWtNMrDhrFwPA7eCiRnJKnjWr8CBsZBxMnuA/out-3.png",
+          "file": "raw/style/anime-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:51:56.365Z"
+    },
+    {
+      "shot": "style/3d-render",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A 3D render of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, smooth stylised animated-film 3D look, soft global illumination, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "znvrg56g61rp00d102zrw0x400",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/XNnvZ27tszaCFpGkfejmXlCTZ6OxZgMq2ZPl2qkSXTegxMnuA/out-0.png",
+          "file": "raw/style/3d-render-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/3U4P2PIhh97FLJxuleinSoTnxl2osajvOBhWUT5fyhuwYmTXA/out-1.png",
+          "file": "raw/style/3d-render-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/mELXSoAFcLIeSSgsafMe26uLyDngao3UBT2YeeGxlQGCGzc6C/out-2.png",
+          "file": "raw/style/3d-render-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/XAR9HrqsOfTLQ6noNGHtXeQjxGPVTuGfwIhtqZq4jr9hxMnuA/out-3.png",
+          "file": "raw/style/3d-render-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:12.514Z"
+    },
+    {
+      "shot": "style/oil-painting",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "An oil painting of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, thick impasto brushstrokes, rich classical colours, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "dvzp0wf82xrp20d102zrvxteag",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/ZH1WTxDvnPJsNdI4Yz17rCGvZgDMGzlOxH6fVXgDeXl1YmTXA/out-0.png",
+          "file": "raw/style/oil-painting-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/HL4GdGXuA3LmC98dnCdkDqkb2fxbV8mPAPAUupfQ3DetxMnuA/out-1.png",
+          "file": "raw/style/oil-painting-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/r5nTnPlM9Wb3GBJfCGqSH16Fbb7w1gCZuXSsRJ2eqPM2YmTXA/out-2.png",
+          "file": "raw/style/oil-painting-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/rbNTrr7rYB6hKZjEUvWft1P8gTDaqbn0VAHThi8iwpGbMzpLA/out-3.png",
+          "file": "raw/style/oil-painting-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:18.667Z"
+    },
+    {
+      "shot": "style/watercolor",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A watercolour painting of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, translucent washes of paint, white paper texture, soft bleeding edges, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "nz9gwsr3hhrp60d10308hwvkvr",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/nzNygQj614q2PdEGZOEHQz724sItkdlxV2wkQES884PPm50F/out-0.png",
+          "file": "raw/style/watercolor-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/tHAQfauxigXUByiLzyMlUmGO5AZiVgEt8sOFsDQHnBBeYmTXA/out-1.png",
+          "file": "raw/style/watercolor-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/pN2dy2Y4D454NRsOecs1KfTrrDOQnbESZfvseIfQoOxuHzc6C/out-2.png",
+          "file": "raw/style/watercolor-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/uYmnKnZVQCpzOpZ80K6fkyjB4rNJlPple3Z9lHUluSr9YmTXA/out-3.png",
+          "file": "raw/style/watercolor-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:25.928Z"
+    },
+    {
+      "shot": "style/cyberpunk",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Cyberpunk artwork of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi at night, magenta and cyan neon light, rain, futuristic, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "etbx1bgtqdrp40d1030agt7d28",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/Reh2mKdgeUtqFEhG14hvIlPEw1r27IDot7s42046anpDZmTXA/out-0.png",
+          "file": "raw/style/cyberpunk-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/sPbCevZLQ8z5HCZTB85l0TnKXVAwFBTQwvWURnbm2okhMzpLA/out-1.png",
+          "file": "raw/style/cyberpunk-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/8y7h7OgnZZbiNJeDtv0flH05pLt0if4msGhgfT7Us1xPkZOdB/out-2.png",
+          "file": "raw/style/cyberpunk-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/ye1IqfNrUsidO0ocan3ldZYQLYm97pgS6GfDqoIPrKMHyMnuA/out-3.png",
+          "file": "raw/style/cyberpunk-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:31.868Z"
+    },
+    {
+      "shot": "style/fantasy",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A fantasy storybook painting of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a magical golden glow, floating sparkles of light, ethereal, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "gt9rndb095rp00d1030bhyts4m",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/dg1faffOMhVduoeRh2DIzl9kpeeZkeoK7fBMBkO0fXsFryMnuA/out-0.png",
+          "file": "raw/style/fantasy-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/vBYcx6z0fEXWbCr02fnZ4LvehoyH3u0WmOwXZ2f3SjgVlZOdB/out-1.png",
+          "file": "raw/style/fantasy-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/biFFw6cZvP7IHFkX8eepsDHe7tmtOHROpdoWzMBQRvaqyMnuA/out-2.png",
+          "file": "raw/style/fantasy-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/DFxMWjxitMJEExgoy55HjkTet2LWrlmDPQcETRmNleBWZmTXA/out-3.png",
+          "file": "raw/style/fantasy-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:49.384Z"
+    },
+    {
+      "shot": "style/minimalist",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A minimalist flat illustration of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a few simple flat shapes, a limited palette of two colours, lots of empty space. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "47bqnd3w89rp40d1030b2q0f1g",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/USQ8wsFShzo2LdCzknznfXVSTAN58JcIsXsXwGM686ktMzpLA/out-0.png",
+          "file": "raw/style/minimalist-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/f9NabCBmLjxrL6p6zhjNU9asHtOF4eFUrckYVfwCjLv2yMnuA/out-1.png",
+          "file": "raw/style/minimalist-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/pKTxBWcS4OraNR5LImQdKYnztbwM5El36gBxEG9henxtMzpLA/out-2.png",
+          "file": "raw/style/minimalist-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/1P6vDEdKva78G1uxzUuGkZGgVntGEHbovBBuH5Bzg51Wm50F/out-3.png",
+          "file": "raw/style/minimalist-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:52:56.615Z"
+    },
+    {
+      "shot": "style/line-art",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "A black ink line art drawing of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, clean single-weight lines on plain white paper, no shading, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "02nf7qwpg5rp40d1030a934x3c",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/B4tziSQC80ocJRrjRoFfyOeOA1BXBfSUTyDKJU1OLGrFzMnuA/out-0.png",
+          "file": "raw/style/line-art-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/4cDx6fut9UXPR6yMcKl2S6tqo2NM3ffsmLot4xqDyEuFzMnuA/out-1.png",
+          "file": "raw/style/line-art-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/t9RVuYSdFmKyHlfJddiLGDB027Kk6MApj8u5aPDSE2KxMzpLA/out-2.png",
+          "file": "raw/style/line-art-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/HHcIyjQ2jC6HGZwNLleqNmsfu007Cg8kEkAroFQI4IBiZmTXA/out-3.png",
+          "file": "raw/style/line-art-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:53:02.724Z"
+    },
+    {
+      "shot": "style/pixel-art",
+      "attempt": 1,
+      "provider": "replicate",
+      "endpoint": "black-forest-labs/flux-schnell",
+      "input": {
+        "prompt": "Pixel art of a ginger cat sitting on the railing of a carved wooden balcony in Old Tbilisi, a retro 16-bit video game sprite style, chunky visible pixels, a limited palette, close-up. The cat fills the centre of a square frame. No text, no letters, no numbers, no logos, no watermark, no user interface, no frames or borders.",
+        "aspect_ratio": "1:1",
+        "num_outputs": 4,
+        "seed": 261102,
+        "output_format": "png"
+      },
+      "requestId": "z4gny55arxrp20d10309qtbq5w",
+      "usd": 0.012,
+      "listUsd": 0.012,
+      "status": "completed",
+      "outputs": [
+        {
+          "url": "https://replicate.delivery/xezq/N6LgyEAmGta2HB7pOeFtfyBcNWxAN7C1APmEZ0CDxNXnZmTXA/out-0.png",
+          "file": "raw/style/pixel-art-1-0.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/zZHr9VkyvmbjP9JaPYMteuXsgwcfKukAzJAMWHZA6AmoZmTXA/out-1.png",
+          "file": "raw/style/pixel-art-1-1.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/en8TOarm7MWFd6waTwECeIzcqEFLtNHHevCd8OEkzhNQzMnuA/out-2.png",
+          "file": "raw/style/pixel-art-1-2.png"
+        },
+        {
+          "url": "https://replicate.delivery/xezq/qINzcIWTOHYuFNxVnq4S8bmfKfPYs05MgYyp6MXDHpNoZmTXA/out-3.png",
+          "file": "raw/style/pixel-art-1-3.png"
+        }
+      ],
+      "at": "2026-10-03T07:53:08.741Z"
+    }
+  ],
+  "selected": {}
+}
