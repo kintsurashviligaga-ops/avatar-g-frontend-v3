@@ -252,9 +252,9 @@ export interface LiveCallOutcome {
 
 /** Why the call does not press it — in words the model repeats to the user. */
 const GUARD_MESSAGE: Record<LiveGuard, (name: string) => string> = {
-  spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music or avatar use `
-    + 'prepare_generation, say the price, and after a clear yes call start_generation; for any other tool ask the user to tap it '
-    + '(its price is on the button).',
+  spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music, avatar, the `
+    + 'photographer, the interior designer, a product ad, a character swap or a remix use prepare_generation, say the price, and '
+    + 'after a clear yes call start_generation; for any other tool ask the user to tap it (its price is on the button).',
   pay: (n) => `"${n}" pays money: only the user can do that. Tell them to tap it themselves.`,
   destructive: (n) => `"${n}" deletes or signs out: only the user can do that. Ask them to tap it if they want to.`,
   file: (n) => `"${n}" opens the device's file picker, which only the user's own tap can open. Tell them to tap it.`,
@@ -341,8 +341,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         response: answer({
           ok: true,
           summary: `Prepared a ${action.tool} prompt in the ${studio} studio on screen${applied ? ` (${applied})` : ''}. Nothing `
-            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Ask the user whether to start it; `
-            + 'call start_generation only after a clear yes.',
+            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)}`
+            // What only the studio knows — e.g. the product photo still has to be added — before the user is asked.
+            + (detail.reply?.message ? ` ${detail.reply.message}` : '')
+            + ' Ask the user whether to start it; call start_generation only after a clear yes.',
           ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
         }),
         card: card(action),

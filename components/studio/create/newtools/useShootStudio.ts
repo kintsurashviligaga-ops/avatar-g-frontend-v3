@@ -31,7 +31,7 @@ import { PHOTOSHOOT_PANEL_DEFAULTS, photoshootTemplate } from '@/lib/studio/temp
 import { TOOL_META } from '@/lib/studio/tools';
 import type { AngleId, DofId, LensId, LightId, RoomId, ShootKind, StudioWire } from '@/lib/studio/shootWire';
 import {
-  PLAN_3D_CREDITS, SHOOT_BRIEF_MAX, SHOOT_MAX_PHOTOS, nearestAspect, shootCredits, shootTargetSec, shootTiles, walkthroughCredits,
+  PLAN_3D_CREDITS, SHOOT_ASPECTS, SHOOT_BRIEF_MAX, SHOOT_MAX_PHOTOS, nearestAspect, shootCredits, shootTargetSec, shootTiles, walkthroughCredits,
   type ShootAspect, type ShootCount, type ShootQuality,
 } from '@/lib/studio/shootQuote';
 import { SHOOT_COPY, shootLang } from './copy';
@@ -309,6 +309,31 @@ export function useShootStudio(deps: ShootDeps) {
     return 'started';
   }, [buildRun, submitTile]);
 
+  /**
+   * A voice call's prepare_generation (lib/voice/liveTools): the brief — and a shape the panel offers — written into the form.
+   * Nothing is submitted. Answers what was applied, the price the panel's Generate button shows, and how many photos the
+   * user added (none = it renders from the words alone). A call's start_generation then runs `generate(tool)`.
+   */
+  const prepare = useCallback((tool: ShootKind, a: { brief: string; aspect?: string }) => {
+    const brief = a.brief.trim().slice(0, SHOOT_BRIEF_MAX);
+    const aspect = a.aspect && (SHOOT_ASPECTS as readonly string[]).includes(a.aspect) ? (a.aspect as ShootAspect) : null;
+    const patch = { brief, ...(aspect ? { aspect } : {}) };
+    if (tool === 'interior') patchInterior(patch); else patchPhotoshoot(patch);
+    const f = tool === 'interior' ? formsRef.current.interior : formsRef.current.photoshoot;
+    return {
+      applied: { prompt: true, ...(aspect ? { aspectRatio: aspect } : {}) } as Record<string, unknown>,
+      priceCredits: shootCredits(f.photos.length, f.count),
+      photos: f.photos.length,
+    };
+  }, [patchInterior, patchPhotoshoot]);
+
+  /** The price on the panel's Generate button, and whether a press would run (a photo, a card or the user's words). */
+  const priceOf = (tool: ShootKind): number => {
+    const f = tool === 'interior' ? formsRef.current.interior : formsRef.current.photoshoot;
+    return shootCredits(f.photos.length, f.count);
+  };
+  const canGenerate = (tool: ShootKind): boolean => canGenerateForm(tool === 'interior' ? formsRef.current.interior : formsRef.current.photoshoot);
+
   /** „Another": one more render with the run's own settings (a new reservation, one image's price). */
   const another = useCallback((runId: string, tileId: string): 'started' | 'sign-in' | 'top-up' | 'gone' => {
     if (isGuest()) { fire('myavatar:auth-required'); return 'sign-in'; }
@@ -422,7 +447,7 @@ export function useShootStudio(deps: ShootDeps) {
   return {
     interior, photoshoot, runs, balanceCredits,
     interiorProps, photoshootProps,
-    generate, another, retry, cancel, plan3d, walkthrough, useAsReference, summary,
+    generate, another, retry, cancel, plan3d, walkthrough, useAsReference, summary, prepare, priceOf, canGenerate,
     dismissRun: (runId: string) => dispatch({ type: 'dismiss', runId }),
     dismissTile: (runId: string, tileId: string) => dispatch({ type: 'dropTile', runId, tileId }),
     clearRuns: (tool: ShootKind) => dispatch({ type: 'clear', tool }),

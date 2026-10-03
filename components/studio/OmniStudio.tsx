@@ -6776,12 +6776,39 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Reassigned every render, so it always reads the state on screen. Every branch answers synchronously and fills
   // `d.reply` with what the model may say; true = handled (the receipt).
   const LIVE_GEN_TOOLS: readonly ToolId[] = ['video', 'image', 'music', 'avatar'];
+  /**
+   * Every tool a call can prepare AND start (lib/voice/liveTools LIVE_STUDIO_TOOLS without the deck and the 3D model, which
+   * their panels create). The photographer and the interior designer run their panel's Generate (`shoot.generate`); the
+   * product ad, the character swap and the remix run through runTool, exactly as the composer's Run does. Owner, 2026-10-03:
+   * „by voice the chat must be able to run every service".
+   */
+  const LIVE_RUN_TOOLS: readonly ToolId[] = [...LIVE_GEN_TOOLS, 'photoshoot', 'interior', 'product', 'swap', 'remix'];
   /** The price the studio's own Generate button shows (lib/credits/quote). A video is priced at its storyboard: undefined. */
   const livePrice = (tool: ToolId, over: { musicSec?: number } = {}): number | undefined => {
     if (tool === 'image') return quoteCredits({ tool: 'image', count: imgCount }) || undefined;
     if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return quoteCredits({ tool: 'music', seconds: sec || undefined }) || undefined; }
     if (tool === 'avatar') return quoteCredits({ tool: 'avatar' }) || undefined;
+    if (tool === 'photoshoot' || tool === 'interior') return shoot.priceOf(tool) || undefined;
+    if (tool === 'product' || tool === 'swap' || tool === 'remix') return quoteCredits({ tool }) || undefined;
     return undefined;
+  };
+  /** Whether `tool` has what its run needs (`canRun` reads the tool ON screen; a call asks before switching to it). */
+  const liveCanRun = (tool: ToolId): boolean =>
+    tool === 'product' ? !!productImage
+      : tool === 'swap' ? !!swapSourceVideo && !!videoCharacterRef
+        : tool === 'remix' ? !!remixVideo && !remixBusy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
+          : tool === 'photoshoot' || tool === 'interior' ? shoot.canGenerate(tool)
+            : !!input.trim();
+  /** What a call cannot add by itself (a file is the user's own tap), in words for the model — null when nothing is missing. */
+  const liveMissing = (tool: ToolId): string | null => {
+    if (tool === 'product' && !productImage) return 'The product photo is not added yet: the user adds it with the + button before it can start.';
+    if (tool === 'swap' && !(swapSourceVideo && videoCharacterRef)) {
+      const need = [!swapSourceVideo && 'the video', !videoCharacterRef && 'a photo of the new face'].filter(Boolean).join(' and ');
+      return `Still needed: ${need} — the user adds them with the + button before it can start.`;
+    }
+    if (tool === 'remix' && !remixVideo) return 'No video is added yet: the user adds the video to remix with the + button before it can start.';
+    if (tool === 'remix' && remixOp === 'music' && !remixTrack) return 'This remix puts music under the video: the user adds the track in the panel first.';
+    return null;
   };
   /** Apply a call's settings to `tool`'s real controls; returns what was applied (snapped to what the panel offers). */
   const applyLiveSettings = (tool: ToolId, a: { aspectRatio?: string; durationSec?: number; style?: string; instrumental?: boolean }): { applied: Record<string, unknown>; musicSec?: number } => {
@@ -6841,7 +6868,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       toolName: toolName(activeTool, 'en'),
       prompt: input.trim().slice(0, 600),
       ...(settings ? { settings } : {}),
-      ...(LIVE_GEN_TOOLS.includes(activeTool) ? { priceCredits: price ?? (activeTool === 'video' ? 'priced at the storyboard step' : undefined) } : {}),
+      ...(LIVE_RUN_TOOLS.includes(activeTool) ? { priceCredits: price ?? (activeTool === 'video' ? 'priced at the storyboard step' : undefined) } : {}),
       chatModel: getChatMode(),
       busy: busy || genActiveRef.current,
       ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
@@ -6866,6 +6893,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           selectTool(d.tool);
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
           reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
+          return true;
+        }
+        // The photographer / the interior designer: the brief (and a shape) in their own form; their Generate runs it.
+        if (d.tool === 'photoshoot' || d.tool === 'interior') {
+          selectTool(d.tool);
+          const r = shoot.prepare(d.tool, { brief: d.prompt, ...(d.aspectRatio ? { aspect: d.aspectRatio } : {}) });
+          const noPhoto = d.tool === 'photoshoot'
+            ? 'No photo of the user is added, so the pictures are made from the description alone; to be in them, the user adds a photo in the panel first.'
+            : 'No room photo is added, so the room is imagined from the description; to redesign their own room, the user adds its photo in the panel first.';
+          reply({ ok: true, tool: d.tool, applied: r.applied, ...(r.priceCredits ? { priceCredits: r.priceCredits } : {}), ...(r.photos === 0 ? { message: noPhoto } : {}) });
+          return true;
+        }
+        // A product ad (the words are its tagline), a character swap (no words) or a remix (the words say how): the composer's
+        // Run starts them once their files are in — a call cannot pick a file, so it says what is still missing.
+        if (d.tool === 'product' || d.tool === 'swap' || d.tool === 'remix') {
+          selectTool(d.tool);
+          if (d.tool !== 'swap') setInput(d.prompt.slice(0, 2000));
+          const price = livePrice(d.tool);
+          const missing = liveMissing(d.tool);
+          reply({ ok: true, tool: d.tool, applied: {}, ...(price ? { priceCredits: price } : {}), ...(missing ? { message: missing } : {}) });
           return true;
         }
         selectTool(d.tool);
@@ -6897,8 +6944,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'start_generation': {
         if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; generating needs an account. Ask them to sign in.' }); return true; }
         if (activeTool === 'presentation' || activeTool === 'model3d') { reply({ ok: false, error: 'panel_run', message: `The ${toolName(activeTool, 'en')} studio runs from its own panel: ask the user to press Create there (the price is on that button).` }); return true; }
-        if (!LIVE_GEN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music or avatar first.` }); return true; }
-        if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
+        if (!LIVE_RUN_TOOLS.includes(activeTool)) { reply({ ok: false, error: 'not_generative', message: `Nothing to start: the open tool is ${toolName(activeTool, 'en')}. Prepare a video, image, music, avatar, photoshoot, interior, product ad, character swap or remix first.` }); return true; }
+        if (!LIVE_GEN_TOOLS.includes(activeTool)) {
+          if (!liveCanRun(activeTool)) { reply({ ok: false, error: 'missing_input', message: liveMissing(activeTool) ?? 'The studio has nothing to run yet; prepare it first.' }); return true; }
+        } else if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
         if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }
         const price = livePrice(activeTool);
         reply({ ok: true, tool: activeTool, ...(price ? { priceCredits: price } : {}) });
@@ -7021,7 +7070,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   };
   liveRunRef.current = (): boolean => {
     // The countdown ran out: run what is on screen through the studio's own path (balance checks; a video's storyboard).
-    if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim() || busy || genActiveRef.current) return false;
+    if (busy || genActiveRef.current) return false;
+    // The photographer / interior designer: their panel's Generate (guest → sign-in, a short balance → the top-up).
+    if (activeTool === 'photoshoot' || activeTool === 'interior') return shoot.generate(activeTool) === 'started';
+    if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
+      if (!canRun) return false;
+      runTool(true);
+      return true;
+    }
+    if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim()) return false;
     runTool(true);
     return true;
   };

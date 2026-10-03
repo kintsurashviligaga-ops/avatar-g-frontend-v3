@@ -71,7 +71,7 @@ describe('the engine', () => {
     // The backup legs are real in the route (and prompt-only: an edit never reaches them).
     expect(route).toMatch(/generateGrokImage\(finalPrompt\)/);
     expect(route).toMatch(/generateFluxProImage\(finalPrompt/);
-    expect(route).toMatch(/!providerUrl && !referenceImageUrl/);
+    expect(route).toMatch(/!providerUrl && (?:!backupB64 && )?!referenceImageUrl/);
   });
 });
 
@@ -79,7 +79,10 @@ describe('the reference picture', () => {
   test('the route reads ONE referenceImage (a string), so the limit is one — never an array', () => {
     expect(IMAGE_MAX_REFERENCES).toBe(1);
     expect(route).toMatch(/referenceImage\?: string;/);
-    expect(route).not.toMatch(/referenceImages|referenceImage\?: string\[\]/);
+    // The body takes one string; the Google leg hands that ONE hosted photo on as a one-element list.
+    expect(route).not.toMatch(/body\.referenceImages|referenceImage\?: string\[\]/);
+    expect(route.match(/referenceImages/g) ?? []).toHaveLength(1);
+    expect(route).toContain('referenceImages: [referenceImageUrl]');
   });
 });
 

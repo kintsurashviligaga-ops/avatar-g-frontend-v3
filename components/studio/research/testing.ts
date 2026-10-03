@@ -1,7 +1,12 @@
 /** Shared fixtures for the research UI tests. Not shipped: only *.test.ts(x) import it. */
 import type { ResearchJobPublic } from '@/lib/research/types';
 
-export const NOW = Date.parse('2026-10-02T12:00:00.000Z');
+/**
+ * The fixtures' clock: the start of the current minute. It was a fixed 2026-10-02T12:00Z, and the toasts announce only a
+ * job settled within TOAST_MAX_AGE_MS (24 h) of the REAL clock — so from 2026-10-03 12:00Z every „finished" fixture was a
+ * day old and the store / toast suites failed for everyone. Anchored to now, the fixtures stay fresh.
+ */
+export const NOW = Math.floor(Date.now() / 60_000) * 60_000;
 
 export function job(over: Partial<ResearchJobPublic> = {}): ResearchJobPublic {
   return {

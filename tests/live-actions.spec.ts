@@ -67,6 +67,37 @@ test.describe('Live actions on the studio', () => {
     expect(state.runningGenerations ?? []).toEqual([]);
   });
 
+  test('every service by voice: the photographer, the interior designer and a product ad are prepared with their price — and a start that lacks the user\'s file is refused in words, nothing runs', async ({ page }) => {
+    await openStudio(page);
+
+    // The photographer: the brief lands in ITS form (not the composer), the shape is the panel's own, the price is its button's.
+    const shoot = await fire(page, { type: 'prepare_generation', tool: 'photoshoot', prompt: 'სტუდიური პორტრეტი თბილ შუქზე', aspectRatio: '4:5' });
+    expect(shoot.took).toBe(true);
+    expect(shoot.reply).toMatchObject({ ok: true, tool: 'photoshoot', applied: { prompt: true, aspectRatio: '4:5' } });
+    expect(typeof shoot.reply?.priceCredits).toBe('number');
+    expect(String(shoot.reply?.message)).toMatch(/No photo of the user/);
+    await expect.poll(async () => (await screenState(page)).tool, { timeout: 10_000 }).toBe('photoshoot');
+    await expect(page.getByTestId('photoshoot-brief').filter({ visible: true })).toHaveValue('სტუდიური პორტრეტი თბილ შუქზე');
+    // A brief is enough to run — the start is accepted (its countdown is the call's, and it is never fired here).
+    expect((await fire(page, { type: 'start_generation', confirmed: 'yes' })).reply).toMatchObject({ ok: true, tool: 'photoshoot' });
+
+    const room = await fire(page, { type: 'prepare_generation', tool: 'interior', prompt: 'სკანდინავიური მისაღები ოთახი' });
+    expect(room.reply).toMatchObject({ ok: true, tool: 'interior', applied: { prompt: true } });
+    await expect.poll(async () => (await screenState(page)).tool, { timeout: 10_000 }).toBe('interior');
+    await expect(page.getByTestId('interior-brief').filter({ visible: true })).toHaveValue('სკანდინავიური მისაღები ოთახი');
+
+    // A product ad needs the product photo — a file only the user can pick: prepared with its price, the start refused in words.
+    const ad = await fire(page, { type: 'prepare_generation', tool: 'product', prompt: 'ქართული ღვინო — გემო, რომელიც გახსოვს' });
+    expect(ad.reply).toMatchObject({ ok: true, tool: 'product' });
+    expect(typeof ad.reply?.priceCredits).toBe('number');
+    expect(String(ad.reply?.message)).toMatch(/product photo/);
+    await expect.poll(async () => (await screenState(page)).tool, { timeout: 10_000 }).toBe('product');
+    const start = await fire(page, { type: 'start_generation', confirmed: 'yes' });
+    expect(start.reply).toMatchObject({ ok: false, error: 'missing_input' });
+    expect(String(start.reply?.message)).toMatch(/product photo/);
+    expect((await screenState(page)).runningGenerations ?? []).toEqual([]);
+  });
+
   test('chat_send from another studio opens the chat and sends the message there', async ({ page }) => {
     let sent: { messages?: Array<{ role: string; content: unknown }> } | null = null;
     await page.route('**/api/chat/gemini', async (route) => {

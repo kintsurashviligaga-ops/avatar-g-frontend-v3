@@ -59,8 +59,15 @@ export const LIVE_ACTION_NAMES = [
 ] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
-/** The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). */
-export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar', 'presentation', 'model3d'] as const;
+/**
+ * The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). Since 2026-10-03
+ * every tool that makes something can be prepared AND started by voice (owner: „by voice the chat must be able to run every
+ * service"): the photographer, the interior designer, the product ad, the character swap and the remix joined video, image,
+ * music and avatar. presentation and model3d are prepared by voice and created with their panel's Create button.
+ */
+export const LIVE_STUDIO_TOOLS = [
+  'video', 'image', 'music', 'avatar', 'photoshoot', 'interior', 'product', 'swap', 'remix', 'presentation', 'model3d',
+] as const;
 export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
 
 /**
@@ -185,8 +192,11 @@ function deepFreeze<T>(value: T): T {
 const TOOL_PARAM: LiveSchema = {
   type: 'STRING',
   enum: [...LIVE_STUDIO_TOOLS],
-  description: 'Which studio: video, image, music, avatar (a photo that talks), presentation (a slide deck on a topic) or model3d '
-    + '(a 3D model from a description). presentation and model3d are created with the Create button in their panel.',
+  description: 'Which studio: video, image, music, avatar (a photo that talks), photoshoot (the photographer: studio photos, of '
+    + 'the user when they added a photo), interior (the interior designer: a room redesigned or imagined), product (an ad reel '
+    + 'from a product photo — the prompt is its tagline), swap (put another face into a video; no prompt needed), remix (change '
+    + 'a video the user added — the prompt says how), presentation (a slide deck on a topic) or model3d (a 3D model from a '
+    + 'description). presentation and model3d are created with the Create button in their panel.',
 };
 
 const ASPECT_PARAM: LiveSchema = {
@@ -658,6 +668,11 @@ const TOOL_ALIASES: Readonly<Record<string, LiveStudioTool>> = {
   avatar: 'avatar', lipsync: 'avatar', talking_avatar: 'avatar', 'talking avatar': 'avatar',
   presentation: 'presentation', slides: 'presentation', deck: 'presentation', slideshow: 'presentation',
   model3d: 'model3d', '3d': 'model3d', '3d_model': 'model3d', '3d model': 'model3d',
+  photoshoot: 'photoshoot', photographer: 'photoshoot', 'photo shoot': 'photoshoot', photo_shoot: 'photoshoot', portrait: 'photoshoot',
+  interior: 'interior', 'interior designer': 'interior', interior_design: 'interior', 'interior design': 'interior', room: 'interior',
+  product: 'product', 'product ad': 'product', product_ad: 'product', ad: 'product', advert: 'product', commercial: 'product',
+  swap: 'swap', 'character swap': 'swap', character_swap: 'swap', 'face swap': 'swap', face_swap: 'swap',
+  remix: 'remix', 'video remix': 'remix', video_edit: 'remix',
 };
 
 const ASPECT_ALIASES: Readonly<Record<string, LiveAspectRatio>> = {

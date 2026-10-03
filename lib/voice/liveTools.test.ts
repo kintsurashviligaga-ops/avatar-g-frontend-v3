@@ -85,7 +85,9 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     const prep = byName.prepare_generation!.parameters!;
     expect(Object.keys(prep.properties!)).toEqual(['tool', 'prompt', 'aspectRatio', 'durationSec', 'style']);
     expect(prep.required).toEqual(['tool', 'prompt']);
-    expect(prep.properties!.tool!.enum).toEqual(['video', 'image', 'music', 'avatar', 'presentation', 'model3d']);
+    expect(prep.properties!.tool!.enum).toEqual([
+      'video', 'image', 'music', 'avatar', 'photoshoot', 'interior', 'product', 'swap', 'remix', 'presentation', 'model3d',
+    ]);
     expect(prep.properties!.aspectRatio!.enum).toEqual([...LIVE_ASPECT_RATIOS]);
     expect(prep.properties!.durationSec!.type).toBe('INTEGER');
     const code = byName.show_code!.parameters!;
@@ -163,6 +165,12 @@ describe('validateLiveToolCall — prepare_generation', () => {
     expect(ok('prepare_generation', { tool: ' Photo ', prompt: 'p' })).toMatchObject({ tool: 'image' });
     expect(ok('prepare_generation', { tool: 'SONG', prompt: 'p' })).toMatchObject({ tool: 'music' });
     expect(ok('prepare_generation', { tool: 'lipsync', prompt: 'p' })).toMatchObject({ tool: 'avatar' });
+    // Every tool that makes something can be prepared by voice (2026-10-03) — by its id or the words people use for it.
+    expect(ok('prepare_generation', { tool: 'photographer', prompt: 'p' })).toMatchObject({ tool: 'photoshoot' });
+    expect(ok('prepare_generation', { tool: 'Interior Design', prompt: 'p' })).toMatchObject({ tool: 'interior' });
+    expect(ok('prepare_generation', { tool: 'product ad', prompt: 'p' })).toMatchObject({ tool: 'product' });
+    expect(ok('prepare_generation', { tool: 'face swap', prompt: 'p' })).toMatchObject({ tool: 'swap' });
+    expect(ok('prepare_generation', { tool: 'remix', prompt: 'p' })).toMatchObject({ tool: 'remix' });
     const long = ok('prepare_generation', { tool: 'video', prompt: 'ა'.repeat(5000) }) as { prompt: string };
     expect(long.prompt.length).toBe(LIVE_PROMPT_MAX_CHARS);
     // A cut never leaves half an emoji (surrogate pair) behind.

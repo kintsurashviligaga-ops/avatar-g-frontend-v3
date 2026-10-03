@@ -14,6 +14,7 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
 import { generateFluxProImage } from '@/lib/ai/fluxImage';
+import { GEMINI_PRO_IMAGE_MODEL, generateGeminiImage, geminiFrameModel, geminiImageForEndpoint } from '@/lib/ai/geminiImage';
 import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -302,17 +303,48 @@ export async function POST(req: NextRequest) {
       }, { status: 502 });
     }
 
-    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to the primary
-    // image provider. If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and
-    // fail-FAST to the Grok backup, instead of burning ~50s on a known-bad provider. Every outcome
-    // is recorded so the breaker opens/closes itself. Fail-open: no Redis → primary always runs.
-    const nbTripped = await isProviderTripped('nanobanana').catch(() => false);
     let providerUrl: string | null = null;
     let backupB64: string | null = null;
+    let backupMime = 'image/png';
     let providerText: string | undefined;
     let credits: number | undefined;
     let model = `NanoBananaAI ${endpoint.toUpperCase()}`;
-    if (!nbTripped) {
+
+    // ⚠️ GOOGLE FIRST (2026-10-03). The catalogue's image models ARE Google's — Nano Banana 2 and Pro (`vendor: 'Google'`) —
+    // but this route bought them through a reseller, the NanoBanana API. Its balance ran dry and EVERY image, photographer
+    // and interior render failed („The current credits are insufficient", 3 of 3 that day; Grok and FLUX missed too) while
+    // the Gemini key that runs the chat and Veo could make the same picture. The same model is now asked on Google
+    // directly (the user's photo as an inline part, the size the endpoint names); NanoBanana → Grok → FLUX below are the
+    // fallback, unchanged. Same reserve, same price, same refund on a miss.
+    if (!(await isProviderTripped('gemini-image').catch(() => false))) {
+      const g = geminiImageForEndpoint(endpoint);
+      // The other Nano Banana once, before the reseller: a key whose project does not serve one of the two (a 404) still
+      // makes the picture. Each attempt is time-boxed so the reseller legs keep their window inside maxDuration.
+      for (const m of [g.model, g.model === GEMINI_PRO_IMAGE_MODEL ? geminiFrameModel() : GEMINI_PRO_IMAGE_MODEL]) {
+        const img = await generateGeminiImage({
+          prompt: finalPrompt,
+          aspectRatio: body.aspectRatio ?? '1:1',
+          imageSize: g.imageSize,
+          model: m,
+          timeoutMs: 70_000,
+          ...(referenceImageUrl ? { referenceImages: [referenceImageUrl] } : {}),
+        });
+        if (img) {
+          backupB64 = img.base64;
+          backupMime = img.mimeType;
+          model = `Google ${img.model}`;
+          break;
+        }
+      }
+      await recordProviderResult('gemini-image', !!backupB64).catch(() => {});
+    }
+
+    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to NanoBanana
+    // (the reseller leg). If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and
+    // fail-FAST to the Grok backup, instead of burning ~50s on a known-bad provider. Every outcome
+    // is recorded so the breaker opens/closes itself. Fail-open: no Redis → primary always runs.
+    const nbTripped = !backupB64 && (await isProviderTripped('nanobanana').catch(() => false));
+    if (!backupB64 && !nbTripped) {
       try {
         // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
         // than timing out; 1K finishes far sooner and exits the poll early.
@@ -337,7 +369,7 @@ export async function POST(req: NextRequest) {
         await recordProviderResult('nanobanana', false).catch(() => {});
         providerText = e instanceof Error ? e.message : undefined;
       }
-    } else {
+    } else if (nbTripped) {
       // eslint-disable-next-line no-console
       console.warn('[nanobanana/image] breaker OPEN for nanobanana → fail-fast to Grok backup');
     }
@@ -349,7 +381,7 @@ export async function POST(req: NextRequest) {
     // reference image is set, e.g. "edit this photo") they'd ignore the source and return an UNRELATED
     // new image — which we'd deliver as success and still charge. When only NanoBanana can honor the
     // reference and it missed, skip these legs so the 502-refund path below fires instead.
-    if (!providerUrl && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
+    if (!providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
       try {
         const grok = await generateGrokImage(finalPrompt);
         if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
@@ -403,10 +435,11 @@ export async function POST(req: NextRequest) {
     // fall back to the raw provider URL (better than nothing).
     let hostedUrl = providerUrl ?? '';
     if (backupB64) {
-      // Grok returned raw base64 (no provider CDN URL to re-fetch) → upload the bytes directly.
+      // Google or Grok returned raw base64 (no provider CDN URL to re-fetch) → upload the bytes directly.
       try {
-        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-        const signed = await uploadAndSign('uploads', path, backupB64, 'image/png', 604800);
+        const ext = /jpe?g/i.test(backupMime) ? 'jpg' : /webp/i.test(backupMime) ? 'webp' : 'png';
+        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const signed = await uploadAndSign('uploads', path, backupB64, backupMime, 604800);
         if (signed) hostedUrl = signed;
       } catch { /* fail-open — final guard below rejects an empty url */ }
     } else if (providerUrl) {
