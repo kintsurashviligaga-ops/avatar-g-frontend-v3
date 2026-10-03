@@ -1,11 +1,12 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getLocalizedMeta, getAgentIdForService } from '@/lib/services/metadata';
+import { getLocalizedMeta } from '@/lib/services/metadata';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceSchema, breadcrumbSchema } from '@/lib/seo/schema';
 import { localeAlternates } from '@/lib/seo/hreflang';
 import { OG_IMAGE } from '@/lib/seo/metadata';
-import ServicePageClient from './ServicePageClient';
+import { StudioPageShell } from '@/components/studio/StudioPageShell';
+import ServiceWorkspaceView from '@/components/services/unified/ServiceWorkspaceView';
 
 /** Localized "Services" breadcrumb crumb (leaf uses the service's own headline). */
 const SERVICES_CRUMB: Record<string, string> = { ka: 'სერვისები', en: 'Services', ru: 'Сервисы' };
@@ -102,8 +103,6 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
     );
   }
 
-  const agentId = getAgentIdForService(slug);
-
   // Structured data — only for a KNOWN slug (guarded by the !meta return above), so the noindex
   // not-found branch never emits it. Server-rendered, additive, links to the root Organization @id.
   const structuredData = [
@@ -118,15 +117,11 @@ export default async function ServiceDetailPage({ params }: ServiceDetailPagePro
   return (
     <>
       <JsonLd data={structuredData} />
-      <ServicePageClient
-        serviceId={slug}
-        serviceName={meta.headline}
-        serviceIcon={meta.icon}
-        agentId={agentId}
-        locale={locale}
-        features={meta.features}
-        description={meta.description}
-      />
+      {/* In the studio's own shell, like the /services hub (docs/DESIGN.md §13) — it was a full-screen overlay of its
+          own (an orbit dock, a ⌘K bar, an emoji service rail and a „Workspace / Chat" tab pair). */}
+      <StudioPageShell locale={locale}>
+        <ServiceWorkspaceView serviceId={slug} serviceName={meta.headline} description={meta.description} locale={locale} />
+      </StudioPageShell>
     </>
   );
 }
