@@ -25,6 +25,8 @@ jest.mock('./useLibrary', () => ({
 import MontageStudio from './MontageStudio';
 // eslint-disable-next-line import/first
 import { resamplePeaks, visiblePeaks } from './Timeline';
+// eslint-disable-next-line import/first
+import { MONTAGE_COMMAND_EVENT } from './voiceCommands';
 
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -64,6 +66,14 @@ const renderBody = () => {
   const call = (global.fetch as jest.Mock).mock.calls.find(([u]) => String(u).includes('/api/v2/montage/render'));
   return call ? JSON.parse(call[1].body) : null;
 };
+
+/** What a voice call does: dispatch the command and read the editor's synchronous answer. */
+function voice(detail: Record<string, unknown>) {
+  const d: Record<string, unknown> = { ...detail };
+  const ev = new CustomEvent(MONTAGE_COMMAND_EVENT, { detail: d, cancelable: true });
+  act(() => { window.dispatchEvent(ev); });
+  return { received: ev.defaultPrevented, reply: d.reply as Record<string, unknown> & { state?: Record<string, unknown> } };
+}
 
 const file = (name: string, type: string) => new File(['x'], name, { type });
 
@@ -274,3 +284,72 @@ describe('the music start', () => {
   });
 });
 
+describe('voice: myavatar:montage-command', () => {
+  it('answers synchronously with preventDefault as the receipt — state, set_music_start (undoable), export', async () => {
+    render(
+      <MontageStudio
+        locale="en"
+        onExit={() => {}}
+        initialMedia={[{ url: 'https://cdn.test/gen.mp4', kind: 'video' }]}
+        initialMusic={{ url: 'https://cdn.test/song.mp3', name: 'Song' }}
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByTestId('montage-clip')).toHaveLength(1));
+    await waitFor(() => expect(voice({ command: 'state' }).reply.state).toMatchObject({ musicStartSec: 0 }));
+
+    const state = voice({ command: 'state' });
+    expect(state.received).toBe(true);
+    expect(state.reply).toEqual({
+      ok: true,
+      state: { clips: 1, durationSec: 6, hasMusic: true, musicStartSec: 0, aspect: '9:16', exporting: false, blockers: [] },
+    });
+
+    const moved = voice({ command: 'set_music_start', sec: 7.25 });
+    expect(moved.received).toBe(true);
+    expect(moved.reply).toMatchObject({ ok: true, state: { musicStartSec: 7.3 } });
+    // The same tick already reads it…
+    expect(voice({ command: 'state' }).reply.state).toMatchObject({ musicStartSec: 7.3 });
+    // …the screen shows it…
+    expect(screen.getByTestId('montage-music-bar-start')).toHaveTextContent('from 0:07.3');
+    // …and it is an undo step of its own.
+    fireEvent.click(screen.getByTestId('montage-undo'));
+    expect(voice({ command: 'state' }).reply.state).toMatchObject({ musicStartSec: 0 });
+    fireEvent.click(screen.getByTestId('montage-redo'));
+
+    // Export: exactly the button's run; a second one while it renders is `busy`, not a second render.
+    let open: () => void = () => {};
+    renderGate = new Promise<void>((r) => { open = r; });
+    const exp = voice({ command: 'export' });
+    expect(exp.reply).toMatchObject({ ok: true, state: { exporting: true } });
+    expect(voice({ command: 'export' }).reply).toMatchObject({ ok: false, error: 'busy' });
+    expect(voice({ command: 'state' }).reply.state).toMatchObject({ exporting: true });
+    await act(async () => { open(); });
+    await waitFor(() => expect(screen.getByTestId('montage-export')).toHaveAttribute('data-phase', 'done'));
+    const renders = (global.fetch as jest.Mock).mock.calls.filter(([u]) => String(u).includes('/api/v2/montage/render'));
+    expect(renders).toHaveLength(1);
+    expect(renderBody()).toMatchObject({ musicUrl: 'https://cdn.test/song.mp3', musicStartSec: 7.3 });
+    expect(voice({ command: 'state' }).reply.state).toMatchObject({ exporting: false });
+  });
+
+  it('export is refused, with the reasons, while there is nothing to export or files are still uploading', async () => {
+    render(<MontageStudio locale="ka" onExit={() => {}} />);
+    expect(voice({ command: 'export' }).reply).toMatchObject({
+      ok: false, error: 'blocked', message: "Can't export yet: there are no clips on the timeline yet.",
+    });
+    expect(voice({ command: 'set_music_start', sec: 5 }).reply).toMatchObject({ ok: false, error: 'no_music' });
+    await addTwoClips();
+    const blocked = voice({ command: 'export' });
+    expect(blocked.received).toBe(true);
+    expect(blocked.reply).toMatchObject({ ok: false, error: 'blocked', message: "Can't export yet: 2 files are still uploading.", state: { blockers: ['uploading'] } });
+    expect((global.fetch as jest.Mock).mock.calls.some(([u]) => String(u).includes('/api/v2/montage/render'))).toBe(false);
+  });
+
+  it('stops listening when the editor closes', () => {
+    const { unmount } = render(<MontageStudio locale="en" onExit={() => {}} />);
+    expect(voice({ command: 'state' }).received).toBe(true);
+    unmount();
+    const after = voice({ command: 'state' });
+    expect(after.received).toBe(false);
+    expect(after.reply).toBeUndefined();
+  });
+});

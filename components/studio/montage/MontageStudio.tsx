@@ -47,6 +47,7 @@ import {
 import { Timeline, type TimelineHandle } from './Timeline';
 import { useLibrary, isVideoItem, type LibraryItem } from './useLibrary';
 import { usePlayer, type PlayerClip } from './usePlayer';
+import { listenForMontageCommands, type MontageCommandHost } from './voiceCommands';
 
 interface Tool { id: string; label: string; Icon: typeof Film; run: () => void; disabled?: boolean }
 
@@ -154,6 +155,8 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   const filesById = useRef(new Map<string, File>());
   /** blob: URLs the HOST handed in (initialMusic) — theirs to revoke, never ours. */
   const foreignUrls = useRef(new Set<string>());
+  /** True from the first statement of an export to its last — read synchronously by the voice commands. */
+  const exportingRef = useRef(false);
 
   const flash = useCallback((m: string) => {
     setToast(m);
@@ -491,7 +494,8 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
   }, [releaseInline]);
 
   const runExport = useCallback(async () => {
-    if (blockersOf(editRef.current, sourcesRef.current).length) return;
+    if (exportingRef.current || blockersOf(editRef.current, sourcesRef.current).length) return;
+    exportingRef.current = true;
     pause();
     setSelectedId(null);
     setPanel(null);
@@ -539,9 +543,34 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
       if (mounted.current) setExp({ phase: 'error', message: t.exportFailed });
     } finally {
       stop.done = true;
+      exportingRef.current = false;
       if (claimed.current) { releaseInline(claimed.current); claimed.current = null; }
     }
   }, [claimInline, lang, locale, onDelivered, pause, releaseInline, t]);
+
+  // ── Voice: `myavatar:montage-command` (voiceCommands.ts) — export · set_music_start · state ──────────────────
+  // The host object is rebuilt every render and read through a ref, so the one listener never holds a stale closure;
+  // everything it reads is the refs, i.e. the edit as it is at the moment the event fires.
+  const voiceHost = useRef<MontageCommandHost | null>(null);
+  voiceHost.current = {
+    edit: () => editRef.current,
+    sources: () => sourcesRef.current,
+    exporting: () => exportingRef.current,
+    startExport: () => { void runExport(); },
+    setMusicStart: (sec) => {
+      const cur = editRef.current;
+      const trackSec = (cur.musicId ? sourcesRef.current[cur.musicId]?.durationSec : 0) ?? 0;
+      const next = setMusicStart(cur, sec, trackSec);
+      if (next !== cur) {
+        // Its own undo step — never folded into a slider drag that happened a moment ago.
+        lastStep.current = null;
+        setHist((h) => commit(h, setMusicStart(h.present, sec, trackSec)));
+        editRef.current = next; // a second command in the same tick reads the start it just set
+      }
+      return next.musicStartSec;
+    },
+  };
+  useEffect(() => listenForMontageCommands(() => voiceHost.current), []);
 
   // ── Leaving ────────────────────────────────────────────────────────────────────────────────────────
   const dirty = edit.clips.length > 0 && !exportedOnce;
