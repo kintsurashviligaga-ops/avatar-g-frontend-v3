@@ -15,8 +15,9 @@
 -- from public, anon and authenticated, and granted to service_role alone. The route that calls it is rate-limited per
 -- IP and per address (lib/api/rate-limit AUTH_IP / OTP_ADDRESS).
 --
--- PREPARED, NOT APPLIED. Until the owner applies it /api/auth/lookup answers `unknown` and the sheet degrades by
--- itself: log-in offers the password AND a code; sign-up is still refused for a registered address, because
+-- APPLIED to production 2026-10-03 with the owner's OK (verified: anon / authenticated cannot execute, service_role
+-- can; all 21 accounts resolve). On a database without it /api/auth/lookup answers `unknown` and the sheet degrades
+-- by itself: log-in offers the password AND a code; sign-up is still refused for a registered address, because
 -- /api/auth/email-otp/send (purpose `register`) gets `email_exists` from Supabase itself.
 -- After applying: `node scripts/check-db-exposure.mjs`.
 
