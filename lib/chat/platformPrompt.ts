@@ -110,10 +110,22 @@ function priceBlock(topUp: string): string {
 
 /**
  * The platform system prompt for one reply locale. `locale` is the RESPONSE language the route already resolved
- * (explicit UI choice, else the latest message's script — lib/chat/replyLocale.ts); anything else falls back to ka.
+ * (the user's own words when clearly another language, else the UI locale — lib/chat/replyLocale.ts
+ * `resolveReplyLocale`); anything else falls back to ka.
  * The route layers the user's memory/profile facts and the agent persona on top of this (lib/agents/profile.ts).
  */
-export function buildPlatformPrompt(opts: { locale: 'ka' | 'en' | 'ru'; now?: Date; /** false = this turn has no Google Search tool (a persona turned it off). Default true. */ googleSearch?: boolean }): string {
+export function buildPlatformPrompt(opts: {
+  locale: 'ka' | 'en' | 'ru';
+  now?: Date;
+  /** false = this turn has no Google Search tool (a persona turned it off). Default true. */
+  googleSearch?: boolean;
+  /**
+   * false = this turn has no url_context tool (lib/chat/urlContext.ts — off unless GEMINI_CHAT_URL_CONTEXT=1 and the
+   * message carries a link), so the prompt says links cannot be opened. Omitted = say nothing about links (the
+   * prompt's other callers, e.g. Live voice, are unchanged).
+   */
+  urlContext?: boolean;
+}): string {
   const loc: PlatformPromptLocale = opts?.locale === 'en' || opts?.locale === 'ru' ? opts.locale : 'ka';
   const now = opts?.now instanceof Date && !Number.isNaN(opts.now.getTime()) ? opts.now : new Date();
   const ui = PLATFORM_UI_LABELS[loc];
@@ -123,7 +135,7 @@ export function buildPlatformPrompt(opts: { locale: 'ka' | 'en' | 'ru'; now?: Da
 
     `CURRENT DATE & TIME in Tbilisi, Georgia (UTC+4): ${tbilisiNow(now)}. Use exactly this for any question about the date, day or time — never a placeholder.`,
 
-    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.`,
+    `LANGUAGE: Reply in ${ui.language}. Switch only if the user asks for another language. Georgian is always written in Mkhedruli, never Latin transliteration, and in a natural, conversational register.${loc === 'ka' ? ' Georgian typed in Latin letters ("gamarjoba", "rogor xar") is still Georgian: answer it in Mkhedruli.' : ''}`,
 
     // ⚠️ THE PROMPT MUST NOT PROMISE A TOOL THE REQUEST DOES NOT CARRY. A persona with googleSearch:false (Strict Coder,
     // or a custom one) gets no google_search tool; telling that turn to "search first" invited a stale answer from
@@ -131,6 +143,13 @@ export function buildPlatformPrompt(opts: { locale: 'ka' | 'en' | 'ru'; now?: Da
     opts?.googleSearch === false
       ? `SEARCH: You cannot search the web in this conversation. For anything that can change over time — news, prices, exchange rates, scores, releases, "latest" — say plainly that your information may be out of date instead of presenting it as current.`
       : `SEARCH: You have Google Search. For anything that can change over time — news, who currently holds an office or title, prices, exchange rates, scores, weather, releases, "latest", anything after your training — search first and answer from the results, not from memory. Evergreen facts, maths, code and creative writing need no search.`,
+
+    // ⚠️ A MODEL THAT CANNOT OPEN A LINK STILL "SUMMARIZES" IT. Without the url_context tool (off by default), "summarize
+    // this link" was answered from the URL's words or a search snippet as if the page had been read. Same honesty rule
+    // as SEARCH above: the prompt says what this turn can and cannot do.
+    ...(opts?.urlContext === false
+      ? [`LINKS: You cannot open or read web pages from links in this chat. When asked about a link's content, say plainly that you can't open links here and ask the user to paste the text; never describe a page you have not read.`]
+      : []),
 
     `ANSWERING: You are a complete general-purpose assistant. Answer any question — knowledge, science, maths, code, writing, translation, business, health, everyday life — accurately and fully; never call a topic "outside the platform". Help people find films, series, books and music and where to watch or buy them legally; never help with piracy. When the user attaches images, PDFs, audio or video, read them fully and answer about them. Lines like "[generated video: <url>]" mark results the studio already made in this chat: refer to them, but you cannot see their content unless they are attached again.`,
 

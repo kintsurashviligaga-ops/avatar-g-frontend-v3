@@ -289,3 +289,71 @@ describe('Live setup', () => {
     expect(s.systemInstruction).toBe(liveVoicePersona('ka'));
   });
 });
+
+describe('personaTemperature / personaSampling — set only when a persona CHOSE its temperature', () => {
+  const base = { name: 'Screenwriter', directive: 'You write screenplays in Georgian, scene by scene.' };
+
+  it('the default profile has neither (its 0.7 is the platform default, which Gemini 3 calls leave out)', () => {
+    const p = resolveAgentProfile({});
+    expect('personaTemperature' in p).toBe(false);
+    expect('personaSampling' in toGeminiChatConfig(p, SYS)).toBe(false);
+  });
+
+  it.each(ORIGINAL_SIX)('%s (no temperature of its own) has neither', (id) => {
+    const p = resolveAgentProfile({ personaId: id });
+    expect('personaTemperature' in p).toBe(false);
+    expect('personaSampling' in toGeminiChatConfig(p, SYS)).toBe(false);
+  });
+
+  it('a built-in with its own temperature sets both', () => {
+    for (const id of ['creative-video-director', 'strict-coder']) {
+      const p = resolveAgentProfile({ personaId: id });
+      expect([id, p.personaTemperature]).toEqual([id, true]);
+      const cfg = toGeminiChatConfig(p, SYS);
+      expect([id, cfg.personaSampling]).toEqual([id, true]);
+      expect(cfg.temperature).toBe(p.temperature);
+    }
+  });
+
+  it('every built-in: the flag follows exactly whether the persona defines a temperature', () => {
+    for (const persona of BUILT_IN_PERSONAS) {
+      const chose = typeof (persona as { temperature?: number }).temperature === 'number';
+      const p = resolveAgentProfile({ personaId: persona.id });
+      const cfg = toGeminiChatConfig(p, SYS);
+      expect([persona.id, p.personaTemperature === true, cfg.personaSampling === true]).toEqual([persona.id, chose, chose]);
+    }
+  });
+
+  it('a custom persona sets it when it gives a temperature — even one equal to the platform default', () => {
+    const p = resolveAgentProfile({ customPersona: { ...base, temperature: 0.7 } });
+    expect(p).toMatchObject({ temperature: 0.7, personaTemperature: true });
+    expect(toGeminiChatConfig(p, SYS).personaSampling).toBe(true);
+    // A clamped out-of-range value was still a choice.
+    expect(resolveAgentProfile({ customPersona: { ...base, temperature: 5 } })).toMatchObject({ temperature: 1.2, personaTemperature: true });
+  });
+
+  it('a custom persona without a usable temperature does not — other overrides (topK) do not count', () => {
+    for (const extra of [{}, { temperature: NaN }, { temperature: '0.5' }, { temperature: null }, { topK: 20, topP: 0.8 }]) {
+      const p = resolveAgentProfile({ customPersona: { ...base, ...extra } });
+      expect([extra, 'personaTemperature' in p]).toEqual([extra, false]);
+      expect([extra, 'personaSampling' in toGeminiChatConfig(p, SYS)]).toEqual([extra, false]);
+    }
+  });
+
+  it('clampAgentProfile keeps only a literal `true`', () => {
+    const d = resolveAgentProfile({});
+    expect(clampAgentProfile({ ...d, personaTemperature: true }).personaTemperature).toBe(true);
+    for (const v of [false, 'true', 1, null, undefined]) {
+      const out = clampAgentProfile({ ...d, personaTemperature: v } as unknown as AgentProfile);
+      expect([v, 'personaTemperature' in out]).toEqual([v, false]);
+    }
+  });
+
+  it('toGeminiChatConfig: personaSampling sits right after temperature, and is absent (not false) otherwise', () => {
+    const chose = toGeminiChatConfig({ ...resolveAgentProfile({}), temperature: 0.3, personaTemperature: true }, SYS);
+    expect(Object.keys(chose).slice(0, 3)).toEqual(['system', 'temperature', 'personaSampling']);
+    expect(chose).toMatchObject({ temperature: 0.3, personaSampling: true });
+    const forged = toGeminiChatConfig({ ...resolveAgentProfile({}), personaTemperature: 'yes' } as unknown as AgentProfile, SYS);
+    expect('personaSampling' in forged).toBe(false);
+  });
+});

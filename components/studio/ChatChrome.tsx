@@ -754,6 +754,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => { if (activeTool && (MORE_TOOLS as readonly string[]).includes(activeTool)) setMoreOpen(true); }, [activeTool]);
   const [searchOpen, setSearchOpen] = useState(false);
+  // VOICE CONTROL (a Live call's open_panel, lib/voice/liveTools.ts): open the chat search, or show the history — the
+  // phone's drawer, or a desktop sidebar that was collapsed to its rail.
+  useEffect(() => {
+    const onSearch = () => setSearchOpen(true);
+    const onSidebar = () => {
+      if (typeof window !== 'undefined' && window.matchMedia?.('(min-width: 768px)').matches) setSidebarCollapsedPersist(false);
+      else setSidebarOpen(true);
+    };
+    window.addEventListener('myavatar:open-search', onSearch);
+    window.addEventListener('myavatar:open-sidebar', onSidebar);
+    return () => {
+      window.removeEventListener('myavatar:open-search', onSearch);
+      window.removeEventListener('myavatar:open-sidebar', onSidebar);
+    };
+  }, [setSidebarCollapsedPersist]);
   // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
   // studio on that tool (`?tool=`, read once by OmniStudio).
   const onStudioHome = isStudioPath(pathname) && !onBack;

@@ -19,7 +19,8 @@
  * ⚠️ THE GLOBAL CAP IS WHAT PROTECTS PAYING USERS. The platform's daily budget guard (chatBudgetAllows, $10/day by
  * default) is shared by everyone; rotating IPs defeats any per-IP cap, so without a ceiling on guests as a group a
  * scripted flood could spend the day's budget and every signed-in user would be refused. 250 Fast turns with
- * grounding and ≤ 2,048 output tokens is a few dollars at worst — a bounded marketing cost, not an open tap.
+ * grounding and ≤ 4,096 output tokens is ~$8 in the impossible case where every turn hits the ceiling (a real one
+ * uses a fraction) — a bounded marketing cost, not an open tap. Lower CHAT_GUEST_GLOBAL_DAILY_LIMIT to tighten it.
  *
  * ⚠️ A SPENT CAP IS A SIGN-IN PROMPT, NOT AN ERROR. The route answers it in-stream with code `auth_required`, which
  * the browser turns into the sign-in sheet (hooks/chat/useChatStream → onAuthRequired). Signing in is free and lifts
@@ -40,8 +41,11 @@ export const DEFAULT_GUEST_GLOBAL_DAILY_LIMIT = 250;
 const MAX_GUEST_DAILY_LIMIT = 200;
 const MAX_GUEST_GLOBAL_DAILY_LIMIT = 20_000;
 
-/** A guest's answer ceiling. Fast's own default is 4,096; half keeps a worst-case guest turn ~1.5¢. */
-export const GUEST_MAX_OUTPUT_TOKENS = 2048;
+/**
+ * A guest's answer ceiling, THINKING INCLUDED. ⚠️ 2,048 cut ordinary guest answers off mid-sentence once Fast's own
+ * 'low' thinking had taken its share. 4,096 is still a quarter of a signed-in Fast turn's 16,384, ~3¢ at worst.
+ */
+export const GUEST_MAX_OUTPUT_TOKENS = 4096;
 /** The longest message a guest may send. A pasted book is a signed-in use. */
 export const GUEST_MAX_MESSAGE_CHARS = 4000;
 

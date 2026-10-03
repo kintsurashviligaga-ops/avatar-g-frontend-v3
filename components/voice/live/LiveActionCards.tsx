@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check, Code2, Copy } from 'lucide-react';
 
-import { TOOL_META } from '@/lib/studio/tools';
+import { TOOL_META, toolName } from '@/lib/studio/tools';
 import type { LiveStudioTool } from '@/lib/voice/liveTools';
 
 import { LIVE_ACTION_CARDS_MAX, type LiveActionCard, type LiveCardAction } from './liveActions';
@@ -26,7 +26,8 @@ type Locale = 'ka' | 'en' | 'ru';
 interface ActionStrings {
   region: string;
   prepared: Record<LiveStudioTool, string>;
-  opened: Record<LiveStudioTool, string>;
+  /** „{tool} გავხსენი“ — any of the studio's tools (open_studio reaches all of them). */
+  opened: (tool: string) => string;
   code: string;
   codeOnScreen: string;
   notStarted: string;
@@ -48,12 +49,7 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       music: 'მუსიკის პრომპტი მოვამზადე',
       avatar: 'ავატარის პრომპტი მოვამზადე',
     },
-    opened: {
-      video: 'ვიდეოს სტუდია გავხსენი',
-      image: 'სურათის სტუდია გავხსენი',
-      music: 'მუსიკის სტუდია გავხსენი',
-      avatar: 'ავატარის სტუდია გავხსენი',
-    },
+    opened: (tool) => `გავხსენი: ${tool}`,
     code: 'კოდი',
     codeOnScreen: 'კოდი ეკრანზეა',
     notStarted: 'ჯერ არ დაწყებულა — სტუდიაში შენ გაუშვებ.',
@@ -72,12 +68,7 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       music: 'Prepared a music prompt',
       avatar: 'Prepared an avatar prompt',
     },
-    opened: {
-      video: 'Opened the Video studio',
-      image: 'Opened the Image studio',
-      music: 'Opened the Music studio',
-      avatar: 'Opened the Avatar studio',
-    },
+    opened: (tool) => `Opened ${tool}`,
     code: 'Code',
     codeOnScreen: 'Code on screen',
     notStarted: 'Not started — you run it from the studio.',
@@ -96,12 +87,7 @@ export const LIVE_ACTION_STRINGS: Record<Locale, ActionStrings> = {
       music: 'Промпт для музыки готов',
       avatar: 'Промпт для аватара готов',
     },
-    opened: {
-      video: 'Открыта студия видео',
-      image: 'Открыта студия изображений',
-      music: 'Открыта студия музыки',
-      avatar: 'Открыта студия аватаров',
-    },
+    opened: (tool) => `Открыто: ${tool}`,
     code: 'Код',
     codeOnScreen: 'Код на экране',
     notStarted: 'Не запущено — запустите в студии.',
@@ -120,7 +106,7 @@ const stringsFor = (locale: Locale): ActionStrings => LIVE_ACTION_STRINGS[locale
 export function liveActionTitle(action: LiveCardAction, locale: Locale = 'ka'): string {
   const t = stringsFor(locale);
   if (action.type === 'prepare_generation') return t.prepared[action.tool];
-  if (action.type === 'open_studio') return t.opened[action.tool];
+  if (action.type === 'open_studio') return t.opened(toolName(action.tool, locale));
   return action.title;
 }
 
@@ -142,7 +128,7 @@ export function liveActionAnnouncement(action: LiveCardAction, locale: Locale = 
   const t = stringsFor(locale);
   if (action.type === 'show_code') return `${t.codeOnScreen}: ${action.title}`;
   if (action.type === 'prepare_generation') return `${t.prepared[action.tool]}. ${t.notStarted}`;
-  return t.opened[action.tool];
+  return t.opened(toolName(action.tool, locale));
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {

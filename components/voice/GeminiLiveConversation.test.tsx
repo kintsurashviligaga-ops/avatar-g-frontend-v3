@@ -241,6 +241,13 @@ describe('voice-to-action', () => {
     // Nothing but the answer went to Google: no render, no second call.
     expect((g.fetch as jest.Mock).mock.calls.filter((c) => c[0] !== '/api/voice/live' && c[0] !== '/api/avatar/core')).toEqual([]);
 
+    // The call DOCKS so the user sees the prepared studio while still talking (components/voice/live/LiveDock.tsx).
+    expect(await screen.findByTestId('live-dock')).toBeTruthy();
+    expect(document.documentElement.dataset.liveDocked).toBe('1');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Back to the full call: the card says what was done and offers Open.
+    fireEvent.click(screen.getByTestId('live-dock-expand'));
+    expect(document.documentElement.dataset.liveDocked).toBeUndefined();
     expect(await screen.findByText('Prepared a video prompt')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe('Prepared a video prompt. Not started — you run it from the studio.');
     fireEvent.click(screen.getByRole('button', { name: S.openStudioLabel }));

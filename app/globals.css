@@ -1083,6 +1083,16 @@ a {
   to { opacity: 1; transform: none; }
 }
 
+/* A Live call DOCKED into its slim bar (components/voice/live/LiveDock.tsx): the studio shell moves down by the bar's
+   height instead of being covered, and the shell's header stops reserving the safe area the bar already took. */
+:root { --live-dock-h: calc(56px + env(safe-area-inset-top, 0px)); }
+html[data-live-docked] .ag-fixed-shell {
+  top: var(--live-dock-h) !important;
+  bottom: auto !important;
+  height: calc(100dvh - var(--live-dock-h)) !important;
+}
+html[data-live-docked] [data-chrome-header] { padding-top: 0 !important; }
+
 /* A full-screen workspace (Montage, like CapCut) brings its own top bar with ✕ — the shell's header steps aside. */
 html[data-immersive] [data-chrome-header] { display: none; }
 

@@ -24,6 +24,18 @@
  * "Something went wrong" and turned any stream into success. An `{error}` frame, a 401, a 413 or a stalled
  * connection now each produce a typed `ChatStreamError` with a localized message, and a 401 also calls
  * `onAuthRequired` so the host can open sign-in instead of showing an error.
+ *
+ * ⚠️ THE ROUTE'S OWN NOTICE WINS OVER THE GENERIC TEXT FOR ITS CODE. With `protocol: 2` every error frame used to be
+ * re-worded from `code` alone, so a spent daily cap read "too many requests, try again" (with a Retry button), a
+ * guest's over-long message read "sign in", and the platform budget read "your daily limit". The route now tags each
+ * notice it writes with `lang`; when that is this hook's locale the notice itself is shown, and `retryable` says
+ * whether a Retry button makes sense (false for every policy refusal).
+ *
+ * HOW A HOST READS THE OUTCOME OF A TURN (the result of `start()`, the callbacks and the store all agree):
+ *   · finished: `result.status === 'done'`; `result.truncated` (also `onDone(…, { truncated })` and
+ *     `store.getSnapshot().truncated`) is true when the reply stopped at the output-token limit;
+ *   · failed:   `result.status === 'error'`; `result.error.message` is the text to show and `result.error.retryable`
+ *     (also `onError(error)` and `store.getSnapshot().error`) is false when a Retry button would only fail again.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -73,11 +85,25 @@ export interface ChatStreamResult {
   error: ChatStreamError | null;
   ttftMs: number | null;
   turnId: string | null;
+  /** The server sent `{"truncated":true}`: the reply stopped at the output-token limit, so `text` is cut short. */
+  truncated: boolean;
+}
+
+/** Facts about a finished reply beyond its text (an object, so more can be added without another positional arg). */
+export interface ChatStreamDoneInfo {
+  /** The reply stopped at the output-token limit — offer "continue" instead of presenting it as complete. */
+  truncated: boolean;
 }
 
 export interface ChatStreamCallbacks {
   /** The stream completed without an error. Not called for failures or for `stop()`. */
-  onDone?: (finalText: string, meta: ChatStreamMeta | null, sources: ChatSource[], usage: ChatStreamUsage | null) => void;
+  onDone?: (
+    finalText: string,
+    meta: ChatStreamMeta | null,
+    sources: ChatSource[],
+    usage: ChatStreamUsage | null,
+    info: ChatStreamDoneInfo,
+  ) => void;
   /** The stream failed. `partial` holds whatever arrived before the failure. Not called for `stop()`. */
   onError?: (error: ChatStreamError, partial: Omit<ChatStreamResult, 'status' | 'error'>) => void;
   /** The server answered 401, or sent an `auth_required` error frame. Called before `onError`. */
@@ -152,10 +178,11 @@ const CODE_MESSAGES: Record<ChatErrorCode, Localized> = {
     en: 'Connection problem. Check your internet and try again.',
     ru: 'Проблема с подключением. Проверьте интернет и попробуйте снова.',
   },
+  // The PLATFORM's AI budget (shared by everyone), not the user's own limit — that one is `daily_cap`.
   budget: {
-    ka: 'ჩატის დღევანდელი ლიმიტი ამოიწურა. სცადე მოგვიანებით.',
-    en: "Today's chat limit has been reached. Please try again later.",
-    ru: 'Дневной лимит чата исчерпан. Попробуйте позже.',
+    ka: 'პლატფორმის დღევანდელი AI ბიუჯეტი ამოიწურა. სცადე ცოტა ხანში.',
+    en: "The platform's AI budget for today is used up. Please try again later.",
+    ru: 'Дневной бюджет ИИ платформы исчерпан. Попробуйте позже.',
   },
   unavailable: {
     ka: 'პასუხის მიღება ვერ მოხერხდა. სცადე თავიდან.',
@@ -171,6 +198,21 @@ const CODE_MESSAGES: Record<ChatErrorCode, Localized> = {
     ka: 'ჩატის გასაგრძელებლად შედი ანგარიშში.',
     en: 'Sign in to continue the chat.',
     ru: 'Войдите, чтобы продолжить чат.',
+  },
+  daily_cap: {
+    ka: 'ჩატის დღიური ლიმიტი ამოიწურა. სცადე ხვალ.',
+    en: "You've reached today's chat limit. Please come back tomorrow.",
+    ru: 'Дневной лимит сообщений исчерпан. Возвращайтесь завтра.',
+  },
+  guest_limit: {
+    ka: 'სტუმრის დღევანდელი შეტყობინებები ამოიწურა. შედი ან შექმენი უფასო ანგარიში და გააგრძელე საუბარი.',
+    en: "You've used today's guest messages. Sign in or create a free account to keep chatting.",
+    ru: 'Гостевые сообщения на сегодня закончились. Войдите или создайте бесплатный аккаунт, чтобы продолжить.',
+  },
+  too_long: {
+    ka: 'შეტყობინება ძალიან გრძელია. შეამოკლე და სცადე თავიდან.',
+    en: 'The message is too long. Shorten it and try again.',
+    ru: 'Сообщение слишком длинное. Сократите его и попробуйте снова.',
   },
 };
 
@@ -205,16 +247,31 @@ export function chatErrorMessage(code: ChatErrorCode, locale?: string | null, re
 
 const RETRYABLE: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(['rate_limited', 'network', 'unavailable', 'model_missing']);
 
+/** Codes that are a sign-in prompt: the host opens the sign-in sheet (`onAuthRequired`) as well as showing the text. */
+const SIGN_IN_CODES: ReadonlySet<ChatErrorCode> = new Set<ChatErrorCode>(['auth_required', 'guest_limit']);
+
+/** Longest route notice shown as is; anything longer is not a notice we wrote. */
+const MAX_NOTICE_CHARS = 600;
+
+/**
+ * The route's own notice, ready to show: the legacy "⚠️ " lead is dropped (the host draws its own), whitespace is
+ * trimmed, and an empty or oversized text is refused (''), so the generic text for the code is used instead.
+ */
+function noticeText(raw: string): string {
+  const t = String(raw ?? '').replace(/^\s*\u26a0\ufe0f?\s*/u, '').trim();
+  return t && t.length <= MAX_NOTICE_CHARS ? t : '';
+}
+
 function makeError(
   code: ChatErrorCode,
   locale: ChatLocale,
   reason: ChatStreamErrorReason,
-  extra: { retryable?: boolean; detail?: string; status?: number; retryAfterSec?: number } = {},
+  extra: { retryable?: boolean; detail?: string; status?: number; retryAfterSec?: number; message?: string } = {},
 ): ChatStreamError {
   const err: ChatStreamError = {
     code,
     retryable: extra.retryable ?? (RETRYABLE.has(code) || reason === 'timeout' || reason === 'empty'),
-    message: chatErrorMessage(code, locale, reason),
+    message: extra.message || chatErrorMessage(code, locale, reason),
     reason,
   };
   if (extra.detail) err.detail = extra.detail.slice(0, 500);
@@ -332,6 +389,7 @@ export async function runChatStream(input: RunChatStreamInput): Promise<ChatStre
   let sources: ChatSource[] = [];
   let usage: ChatStreamUsage | null = null;
   let frameError: ChatStreamError | null = null;
+  let truncated = false;
   let sawDone = false;
   let ttftMs: number | null = null;
   let timedOut = false;
@@ -358,6 +416,7 @@ export async function runChatStream(input: RunChatStreamInput): Promise<ChatStre
     error,
     ttftMs,
     turnId: input.turnId ?? null,
+    truncated,
   });
 
   const settleAbort = (): ChatStreamResult => {
@@ -376,8 +435,16 @@ export async function runChatStream(input: RunChatStreamInput): Promise<ChatStre
     }
     writer.fail(error);
     const r = result('error', error);
-    if (error.code === 'auth_required') input.onAuthRequired?.();
-    input.onError?.(error, { text: r.text, meta: r.meta, sources: r.sources, usage: r.usage, ttftMs: r.ttftMs, turnId: r.turnId });
+    if (SIGN_IN_CODES.has(error.code)) input.onAuthRequired?.();
+    input.onError?.(error, {
+      text: r.text,
+      meta: r.meta,
+      sources: r.sources,
+      usage: r.usage,
+      ttftMs: r.ttftMs,
+      turnId: r.turnId,
+      truncated: r.truncated,
+    });
     return r;
   }
 
@@ -404,10 +471,17 @@ export async function runChatStream(input: RunChatStreamInput): Promise<ChatStre
     } else if ('usage' in frame) {
       usage = frame.usage;
       writer.setUsage(frame.usage);
+    } else if ('truncated' in frame) {
+      truncated = true;
+      writer.setTruncated();
     } else if ('error' in frame) {
+      // The route's notice is shown only when it is in THIS locale (`lang`); a frame without `lang` (chatStream's
+      // English fallback, an older route) is re-localized by its code, so provider wording never reaches the user.
+      const own = frame.error.lang === locale ? noticeText(frame.error.message) : '';
       frameError = makeError(frame.error.code, locale, 'frame', {
         retryable: frame.error.retryable,
         detail: frame.error.message,
+        ...(own ? { message: own } : {}),
       });
     }
   };
@@ -487,7 +561,7 @@ export async function runChatStream(input: RunChatStreamInput): Promise<ChatStre
   }
   if (!writer.isCurrent()) return result('aborted', null);
   writer.finish();
-  input.onDone?.(text, meta, sources, usage);
+  input.onDone?.(text, meta, sources, usage, { truncated });
   return result('done', null);
 }
 
@@ -512,6 +586,11 @@ export function useChatStream(options: UseChatStreamOptions = {}): ChatStreamCon
       const run = activeRef.current;
       if (!run) return;
       activeRef.current = null;
+      // ⚠️ FLUSH BEFORE THE ABORT. Text deltas are committed once per animation frame, and the abort settles only
+      // after the reader's pending read resolves — a microtask later. The host reads the snapshot right after
+      // stop() (OmniStudio's endChatStream keeps the partial reply), so without this the last frame's worth of
+      // tokens the user had already been sent was missing from the bubble.
+      store.flush();
       try {
         run.ac.abort();
       } catch (_err) {

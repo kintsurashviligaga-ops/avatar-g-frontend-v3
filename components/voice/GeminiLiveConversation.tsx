@@ -28,6 +28,7 @@ import { Volume2 } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
+import { LIVE_CALL_EVENT } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 import LiveModeOverlay from './live/LiveModeOverlay';
@@ -137,7 +138,32 @@ export default function GeminiLiveConversation({
     onToolCall: liveActions.onToolCall,
     onToolCallCancellation: liveActions.onToolCallCancellation,
   });
-  const { start, stop, sendVideoFrame, status } = session;
+  const { start, stop, sendVideoFrame, status, interrupt } = session;
+
+  // ── THE CALL ON THE SCREEN ─────────────────────────────────────────────────────────────────────────────────────
+  // Full screen while you only talk; DOCKED into a slim bar the moment the agent changes something on screen (a studio,
+  // a prompt, a chat message, a panel), so the user watches it happen instead of finding it after hanging up. The user
+  // can flip either way (the bar's ⤢, the full screen's „ეკრანის ნახვა“), and so can the model (call_view).
+  const [docked, setDocked] = useState(false);
+  const { screenSeq, viewRequest } = liveActions;
+  useEffect(() => { if (screenSeq > 0) setDocked(true); }, [screenSeq]);
+  useEffect(() => { if (viewRequest) setDocked(viewRequest.view === 'screen'); }, [viewRequest]);
+  // An error needs the full screen (its message, Retry); the overlay also refuses to dock on one.
+  useEffect(() => { if (status === 'error') setDocked(false); }, [status]);
+  const toggleDock = useCallback(() => setDocked((d) => !d), []);
+
+  // Tell the studio a call is on (`myavatar:live-call` + <html data-live-call>): while it is, the call's turns stay in
+  // ONE conversation even when the agent switches tools — the studio's per-tool session swap would otherwise split the
+  // call's transcript across threads.
+  useEffect(() => {
+    const el = document.documentElement;
+    el.dataset.liveCall = '1';
+    try { window.dispatchEvent(new CustomEvent(LIVE_CALL_EVENT, { detail: { active: true } })); } catch { /* old engines */ }
+    return () => {
+      delete el.dataset.liveCall;
+      try { window.dispatchEvent(new CustomEvent(LIVE_CALL_EVENT, { detail: { active: false } })); } catch { /* old engines */ }
+    };
+  }, []);
 
   // Generations still rendering: the full-screen call covers the job tray, so the call shows them itself.
   const localJobs = useJobQueue((s) => s.jobs);
@@ -262,6 +288,11 @@ export default function GeminiLiveConversation({
       onOpenAction={openAction}
       activity={session.activity}
       jobs={jobLines}
+      docked={docked}
+      onToggleDock={toggleDock}
+      onStopSpeaking={interrupt}
+      pendingRun={liveActions.pendingRun}
+      onCancelRun={liveActions.cancelRun}
     />
   );
 }

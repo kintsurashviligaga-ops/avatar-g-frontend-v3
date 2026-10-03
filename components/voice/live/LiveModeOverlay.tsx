@@ -32,18 +32,19 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, Check, Copy, ExternalLink, Mic, MicOff, RotateCcw, Subtitles, SwitchCamera, Video, VideoOff, Volume2,
-  WifiOff, X,
+  AlertCircle, Check, Copy, ExternalLink, Mic, MicOff, Minimize2, RotateCcw, Square, Subtitles, SwitchCamera, Video, VideoOff,
+  Volume2, WifiOff, X,
 } from 'lucide-react';
 
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 import LiveActionCards from './LiveActionCards';
-import LiveActivityFeed, { type LiveJobLine } from './LiveActivityFeed';
+import LiveActivityFeed, { liveActivityLine, type LiveJobLine } from './LiveActivityFeed';
+import LiveDock, { LIVE_DOCK_STRINGS, LiveRunBanner } from './LiveDock';
 import type { LiveActivityItem } from './liveActivity';
 import LiveCaptions from './LiveCaptions';
 import LiveOrb, { LiveWaveform, orbStateFor } from './LiveOrb';
-import type { LiveActionCard } from './liveActions';
+import type { LiveActionCard, LivePendingRun } from './liveActions';
 import {
   isMicErrorCode,
   type LiveCaption,
@@ -80,6 +81,8 @@ interface Strings {
   copied: string;
   openInBrowser: string;
   tapToStart: string;
+  /** Docks the call into a slim bar so the app is visible (the call goes on). */
+  showScreen: string;
 }
 
 export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
@@ -133,6 +136,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     copied: 'დაკოპირდა',
     openInBrowser: 'ბრაუზერში გახსნა',
     tapToStart: 'შეეხე ხმის ჩასართავად',
+    showScreen: 'ეკრანის ნახვა',
   },
   en: {
     title: 'Live Conversation',
@@ -184,6 +188,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     copied: 'Copied',
     openInBrowser: 'Open in browser',
     tapToStart: 'Tap to turn on sound',
+    showScreen: 'Show the screen',
   },
   ru: {
     title: 'Живой разговор',
@@ -235,6 +240,7 @@ export const LIVE_OVERLAY_STRINGS: Record<Locale, Strings> = {
     copied: 'Скопировано',
     openInBrowser: 'Открыть в браузере',
     tapToStart: 'Нажмите, чтобы включить звук',
+    showScreen: 'Показать экран',
   },
 };
 
@@ -328,6 +334,17 @@ export interface LiveModeOverlayProps {
   activity?: readonly LiveActivityItem[];
   /** Generations still rendering (the job tray the call covers). */
   jobs?: readonly LiveJobLine[];
+  /**
+   * The call docked into a slim bar at the top so the user sees the app (components/voice/live/LiveDock.tsx). Never while
+   * an error is up — the error screen needs the room. With `onToggleDock` the full screen offers „ეკრანის ნახვა“.
+   */
+  docked?: boolean;
+  onToggleDock?: () => void;
+  /** Cut the agent's answer off (shown while it speaks). */
+  onStopSpeaking?: () => void;
+  /** A confirmed generation counting down, with its Cancel. */
+  pendingRun?: LivePendingRun | null;
+  onCancelRun?: () => void;
 }
 
 const ROUND_BTN =
@@ -370,9 +387,16 @@ export default function LiveModeOverlay({
   onOpenAction,
   activity = NO_ACTIVITY,
   jobs = NO_JOBS,
+  docked = false,
+  onToggleDock,
+  onStopSpeaking,
+  pendingRun = null,
+  onCancelRun,
 }: LiveModeOverlayProps) {
   const t = LIVE_OVERLAY_STRINGS[locale] ?? LIVE_OVERLAY_STRINGS.ka;
-  const dialogRef = useDialogA11y<HTMLDivElement>(true, onEnd);
+  const isDocked = docked && !(status === 'error' && !!error);
+  // The dialog behaviour (focus trap, Escape hangs up) belongs to the FULL screen only: docked, the page is the user's.
+  const dialogRef = useDialogA11y<HTMLDivElement>(!isDocked, onEnd);
   const [captionsOn, setCaptionsOn] = useState(true);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -398,6 +422,28 @@ export default function LiveModeOverlay({
       copiedTimer.current = setTimeout(() => setCopied(false), 2000);
     });
   }, []);
+
+  if (isDocked) {
+    const dock = (
+      <LiveDock
+        locale={locale}
+        status={status}
+        statusLabel={statusLabel}
+        captions={showCaptions ? captions : []}
+        activityLine={liveActivityLine(activity, locale)}
+        muted={muted}
+        getLevels={getLevels}
+        avatarUrl={avatarUrl}
+        onToggleMute={onToggleMute}
+        onEnd={onEnd}
+        onExpand={onToggleDock ?? (() => {})}
+        {...(onStopSpeaking ? { onStopSpeaking } : {})}
+        pendingRun={pendingRun}
+        {...(onCancelRun ? { onCancelRun } : {})}
+      />
+    );
+    return typeof document === 'undefined' ? dock : createPortal(dock, document.body);
+  }
 
   let errorPanel: ReactNode = null;
   if (isError && error) {
@@ -483,6 +529,19 @@ export default function LiveModeOverlay({
           <span aria-hidden className="h-2 w-2 rounded-full bg-app-accent" />
           {t.live}
         </span>
+        <span className="flex items-center gap-1.5">
+        {onToggleDock && !isError && (
+          <button
+            type="button"
+            onClick={onToggleDock}
+            data-testid="live-show-screen"
+            className={`inline-flex h-11 shrink-0 touch-manipulation items-center gap-2 rounded-full bg-white/[0.08] px-4 ${quiet} font-medium text-app-text transition-colors duration-200 hover:bg-white/[0.14] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60`}
+          >
+            <Minimize2 size={18} aria-hidden />
+            <span className="hidden min-[380px]:inline">{t.showScreen}</span>
+            <span className="sr-only min-[380px]:hidden">{t.showScreen}</span>
+          </button>
+        )}
         {showCaptions && !isError && (
           <button
             type="button"
@@ -494,6 +553,7 @@ export default function LiveModeOverlay({
             <Subtitles size={20} aria-hidden />
           </button>
         )}
+        </span>
       </div>
 
       {isError ? errorPanel : (
@@ -535,6 +595,11 @@ export default function LiveModeOverlay({
 
       {showActions && onOpenAction && (
         <div className="absolute inset-x-0 z-20" style={{ bottom: STRIP_BOTTOM }}>
+          {pendingRun && onCancelRun && (
+            <div className="mb-2 flex justify-center px-4">
+              <LiveRunBanner run={pendingRun} locale={locale} onCancel={onCancelRun} className="w-full max-w-md" />
+            </div>
+          )}
           <LiveActionCards cards={actions} locale={locale} onOpen={onOpenAction} />
         </div>
       )}
@@ -571,6 +636,17 @@ export default function LiveModeOverlay({
               <div data-testid="live-waveform" className="hidden h-12 w-10 items-center justify-center min-[360px]:flex sm:w-16">
                 <LiveWaveform state={muted ? 'idle' : orbState} getLevels={getLevels} />
               </div>
+              {status === 'speaking' && onStopSpeaking && (
+                <button
+                  type="button"
+                  onClick={onStopSpeaking}
+                  aria-label={LIVE_DOCK_STRINGS[locale]?.stopSpeaking ?? LIVE_DOCK_STRINGS.ka.stopSpeaking}
+                  data-testid="live-stop-speaking"
+                  className={`${ROUND_BTN} ${IDLE}`}
+                >
+                  <Square size={18} aria-hidden className="fill-current" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onToggleMute}

@@ -7,11 +7,13 @@
  * (components/voice/live/liveActions.ts) validates every `toolCall` with validateLiveToolCall before anything
  * happens on screen. Contract + safety rule: docs/voice/LIVE_ACTIONS.md.
  *
- * ⚠️ THE SAFETY RULE — A TOOL ONLY PREPARES. prepare_generation switches a studio and fills its prompt; open_studio
- * switches; show_code opens a canvas; end_call hangs up. NOTHING here starts a render or charges a credit — the user
- * reviews what was prepared and taps Run. (dispatchServiceBlock's image/music branch in OmniStudio renders at once;
- * the Live listener must never reuse that branch.) Any new tool that would spend money needs a user tap, not a call.
- *
+ * ⚠️ THE MONEY RULE. Every tool but one only PREPARES or NAVIGATES: it switches a studio, fills or tunes its prompt and
+ * settings, reads the screen, drives the chat (send · new · stop · scroll · model), opens a panel, shows code, hangs up.
+ * NONE of those can start a render or charge a credit. The one that does — start_generation — is gated three times: the
+ * model must say the price and hear a clear yes (its required `confirmed: "yes"`), the browser shows a cancelable
+ * countdown before anything runs (components/voice/live/liveActions.ts), and the run then goes through the studio's
+ * own paid path (balance checks, a video's storyboard approval). dispatchServiceBlock's image/music branch in OmniStudio
+ * renders at once — the Live listener must never reuse it.
  * ⚠️ THE SCHEMA IS THE OLDEST, PLAINEST OPENAPI SUBSET ON PURPOSE: `type` (the proto enum NAMES — OBJECT, STRING,
  * INTEGER — the canonical JSON form; lowercase is a REST leniency we do not need to bet a call on), `description`,
  * `properties`, `required`, `enum`. No minimum / maximum / maxLength / nullable: the bounds live in the validators
@@ -27,12 +29,57 @@ export const LIVE_ACTION_EVENT = 'myavatar:live-action';
 /** Window event for show_code — the canvas contract: detail `{ title, language, code }`, exactly. */
 export const OPEN_ARTIFACT_EVENT = 'myavatar:open-artifact';
 
-export const LIVE_ACTION_NAMES = ['prepare_generation', 'show_code', 'open_studio', 'end_call'] as const;
+export const LIVE_ACTION_NAMES = [
+  'get_screen_state',
+  'prepare_generation',
+  'update_settings',
+  'start_generation',
+  'open_studio',
+  'chat_send',
+  'new_chat',
+  'set_chat_model',
+  'stop',
+  'scroll_chat',
+  'open_panel',
+  'call_view',
+  'show_code',
+  'end_call',
+] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
 /** The studios a call may prepare — each one is also a lib/studio/tools.ts ToolId (OmniStudio's selectTool). */
 export const LIVE_STUDIO_TOOLS = ['video', 'image', 'music', 'avatar'] as const;
 export type LiveStudioTool = (typeof LIVE_STUDIO_TOOLS)[number];
+
+/**
+ * Every tool the studio has (lib/studio/tools.ts ToolId — kept in step by a test; not imported, because that module pulls
+ * in the icon set and this file is shared with the token route). open_studio reaches all of them.
+ */
+export const LIVE_OPEN_TOOLS = [
+  'chat', 'video', 'image', 'photoshoot', 'interior', 'music', 'avatar', 'remix',
+  'product', 'swap', 'vfx', 'motion', 'montage', 'dubbing', 'model3d', 'presentation', 'photo',
+] as const;
+export type LiveOpenTool = (typeof LIVE_OPEN_TOOLS)[number];
+
+/** The chat model picker's modes (lib/chat/chatModes.ts ChatModeId). */
+export const LIVE_CHAT_MODELS = ['fast', 'thinking', 'pro', 'lite'] as const;
+export type LiveChatModel = (typeof LIVE_CHAT_MODELS)[number];
+
+/** Panels a call may open. `settings` = the open studio's own settings panel. */
+export const LIVE_PANELS = ['settings', 'credits', 'persona', 'connectors', 'search', 'history'] as const;
+export type LivePanel = (typeof LIVE_PANELS)[number];
+
+export const LIVE_STOP_TARGETS = ['reply', 'generation', 'all'] as const;
+export type LiveStopTarget = (typeof LIVE_STOP_TARGETS)[number];
+
+export const LIVE_SCROLL_TARGETS = ['top', 'bottom', 'up', 'down'] as const;
+export type LiveScrollTarget = (typeof LIVE_SCROLL_TARGETS)[number];
+
+/** The call screen: `screen` docks the call into a slim bar so the app is visible; `full` brings the call back. */
+export const LIVE_CALL_VIEWS = ['screen', 'full'] as const;
+export type LiveCallView = (typeof LIVE_CALL_VIEWS)[number];
+
+export const LIVE_SWITCH_VALUES = ['on', 'off'] as const;
 
 /** Every value is also one of OmniStudio's IMG_ASPECTS, so a studio can apply it without mapping. */
 export const LIVE_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:5', '3:4', '4:3'] as const;
@@ -56,6 +103,10 @@ export const LIVE_TITLE_MAX_CHARS = 120;
 export const LIVE_CODE_MAX_BYTES = 200 * 1024;
 export const LIVE_DURATION_MIN_SEC = 1;
 export const LIVE_DURATION_MAX_SEC = 120;
+/** chat_send: a long dictated request is fine; a book is not. */
+export const LIVE_CHAT_TEXT_MAX_CHARS = 4000;
+/** How long the browser counts down before a confirmed start_generation runs — the user's last chance to cancel. */
+export const LIVE_START_COUNTDOWN_MS = 3000;
 
 // ─── Declarations (Gemini `functionDeclarations`) ───────────────────────────
 
@@ -88,15 +139,35 @@ const TOOL_PARAM: LiveSchema = {
   description: 'Which studio: video, image, music, or avatar (a photo that talks).',
 };
 
+const ASPECT_PARAM: LiveSchema = {
+  type: 'STRING',
+  enum: [...LIVE_ASPECT_RATIOS],
+  description: 'Frame shape for video, image or avatar: 16:9 landscape, 9:16 vertical, 1:1 square, 4:5, 3:4 or 4:3.',
+};
+const DURATION_PARAM: LiveSchema = {
+  type: 'INTEGER',
+  description: `Length in seconds for video or music (${LIVE_DURATION_MIN_SEC}-${LIVE_DURATION_MAX_SEC}); the studio snaps it to the lengths it offers.`,
+};
+const STYLE_PARAM: LiveSchema = {
+  type: 'STRING',
+  description: `Short style or genre, e.g. "cinematic", "watercolor", "lo-fi" (at most ${LIVE_STYLE_MAX_CHARS} characters).`,
+};
+
 /** The tool block's payload — `{ functionDeclarations: LIVE_FUNCTION_DECLARATIONS }`. Frozen; JSON-safe. */
 export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = deepFreeze([
+  {
+    name: 'get_screen_state',
+    description:
+      'Read what is on the user\'s screen right now: the open studio, its prompt and settings, the price to run it, the chat '
+      + 'model, the last chat reply, and generations still rendering. Call it before you answer anything about the screen '
+      + 'or a result, and before start_generation.',
+  },
   {
     name: 'prepare_generation',
     description:
       'Prepare a creation in a MyAvatar studio: switch to that studio and fill in the prompt (and optionally the shape, '
-      + 'length and style) for the user to review. It does NOT start the generation and spends no credits — the user '
-      + 'starts it with the Run button. Use it when the user clearly asks you to make a video, an image, music or a '
-      + 'talking avatar.',
+      + 'length and style) on screen. It does NOT start the generation and spends no credits. Its answer includes the '
+      + 'price: tell it to the user and ask whether to start.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -105,21 +176,115 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
           type: 'STRING',
           description: `What to make: a short, concrete prompt in the language the user is speaking (at most ${LIVE_PROMPT_MAX_CHARS} characters).`,
         },
-        aspectRatio: {
-          type: 'STRING',
-          enum: [...LIVE_ASPECT_RATIOS],
-          description: 'Optional frame shape for video, image or avatar: 16:9 landscape, 9:16 vertical, 1:1 square, 4:5, 3:4 or 4:3.',
-        },
-        durationSec: {
-          type: 'INTEGER',
-          description: `Optional length in seconds for video or music (${LIVE_DURATION_MIN_SEC}-${LIVE_DURATION_MAX_SEC}).`,
-        },
-        style: {
-          type: 'STRING',
-          description: `Optional short style or genre, e.g. "watercolor", "cinematic", "lo-fi" (at most ${LIVE_STYLE_MAX_CHARS} characters).`,
-        },
+        aspectRatio: ASPECT_PARAM,
+        durationSec: DURATION_PARAM,
+        style: STYLE_PARAM,
       },
       required: ['tool', 'prompt'],
+    },
+  },
+  {
+    name: 'update_settings',
+    description:
+      'Change the settings of the studio on screen without touching its prompt: frame shape, length, style, or for music '
+      + 'whether it is instrumental. Spends nothing.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        aspectRatio: ASPECT_PARAM,
+        durationSec: DURATION_PARAM,
+        style: STYLE_PARAM,
+        instrumental: { type: 'STRING', enum: [...LIVE_SWITCH_VALUES], description: 'Music only: "on" for no vocals, "off" for a song with vocals.' },
+      },
+    },
+  },
+  {
+    name: 'start_generation',
+    description:
+      'Start the generation prepared in the studio on screen. It SPENDS CREDITS. Call it ONLY after you told the user the '
+      + 'price and they clearly said yes in this conversation. The screen shows a 3-second countdown the user can cancel; '
+      + 'a video first gets a storyboard the user approves.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        confirmed: { type: 'STRING', enum: ['yes'], description: 'Must be "yes": the user explicitly agreed to start and to the price.' },
+      },
+      required: ['confirmed'],
+    },
+  },
+  {
+    name: 'open_studio',
+    description: 'Switch the app to a tool without preparing anything in it: chat, video, image, photoshoot (photographer), '
+      + 'interior (interior designer), music, avatar, remix, product (product ad), swap (character swap), vfx, motion, '
+      + 'montage (video editor), dubbing, model3d, presentation, photo (photo culling).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { tool: { type: 'STRING', enum: [...LIVE_OPEN_TOOLS], description: 'The tool to open.' } },
+      required: ['tool'],
+    },
+  },
+  {
+    name: 'chat_send',
+    description:
+      'Write a message into the text chat on screen and send it, as if the user typed it; the written answer appears on '
+      + 'screen. Use it for long or written answers (a document, a list, a plan, a table, code) or when the user asks you to '
+      + 'write something in the chat. Then tell the user it is on the screen; do not read it all aloud.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { text: { type: 'STRING', description: `The message, in the user's language (at most ${LIVE_CHAT_TEXT_MAX_CHARS} characters).` } },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'new_chat',
+    description: 'Start a new, empty chat session (the current one stays in the history).',
+  },
+  {
+    name: 'set_chat_model',
+    description: 'Switch the text chat model: fast (3.8 Flash), thinking (deeper reasoning), pro (3.1 Pro, the strongest), lite (lightest).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { model: { type: 'STRING', enum: [...LIVE_CHAT_MODELS], description: 'The chat model.' } },
+      required: ['model'],
+    },
+  },
+  {
+    name: 'stop',
+    description: 'Stop something on screen: the chat answer being written (reply), the running generations (generation), or both (all). '
+      + 'Cancelling a generation cannot be undone.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { what: { type: 'STRING', enum: [...LIVE_STOP_TARGETS], description: 'What to stop.' } },
+      required: ['what'],
+    },
+  },
+  {
+    name: 'scroll_chat',
+    description: 'Scroll the chat on screen: to the top, to the bottom, or one screen up or down.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { to: { type: 'STRING', enum: [...LIVE_SCROLL_TARGETS], description: 'Where to scroll.' } },
+      required: ['to'],
+    },
+  },
+  {
+    name: 'open_panel',
+    description: 'Open a panel: settings (the open studio\'s settings), credits (balance and top-up), persona (the assistant\'s '
+      + 'persona), connectors (connectors and plugins), search (search the chats), history (the list of chats).',
+    parameters: {
+      type: 'OBJECT',
+      properties: { panel: { type: 'STRING', enum: [...LIVE_PANELS], description: 'The panel to open.' } },
+      required: ['panel'],
+    },
+  },
+  {
+    name: 'call_view',
+    description: 'Change how this call is shown: "screen" shrinks the call into a slim bar so the user sees the app while you '
+      + 'talk; "full" brings the full call screen back. The call itself continues either way.',
+    parameters: {
+      type: 'OBJECT',
+      properties: { view: { type: 'STRING', enum: [...LIVE_CALL_VIEWS], description: 'screen or full.' } },
+      required: ['view'],
     },
   },
   {
@@ -138,11 +303,6 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     },
   },
   {
-    name: 'open_studio',
-    description: 'Switch the app to a studio without preparing anything in it.',
-    parameters: { type: 'OBJECT', properties: { tool: TOOL_PARAM }, required: ['tool'] },
-  },
-  {
     name: 'end_call',
     description: 'End this voice call. Use it only when the user says goodbye or asks to hang up, then say a short goodbye.',
   },
@@ -154,11 +314,14 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
  * it never took).
  */
 export const LIVE_ACTIONS_RULE = [
-  'ACTIONS: while you talk you can act in the app through your functions.',
-  'prepare_generation fills a studio with a prompt; it NEVER starts a generation or spends credits, so afterwards tell',
-  'the user it is ready and that they start it themselves with the Run button. Call it only when the user clearly',
-  'wants something made. open_studio only switches the studio. show_code saves code in the code canvas: never read',
-  'code aloud, summarise it in a sentence. end_call hangs up: use it only when the user says goodbye.',
+  'ACTIONS: you can operate the MyAvatar app on the user\'s screen through your functions while you talk.',
+  'Call get_screen_state whenever the user refers to the screen, a result, a price or "this", before you answer.',
+  'prepare_generation and update_settings fill and tune a studio; they never spend credits. Their answer gives the price:',
+  'say it and ask whether to start. Call start_generation ONLY after the user clearly says yes to that price; it shows a',
+  '3-second countdown they can cancel. Never start a generation on your own initiative.',
+  'Use chat_send for anything long or written (documents, lists, plans, code explanations) and then say it is on the',
+  'screen instead of reading it aloud; show_code for code. open_studio, new_chat, set_chat_model, stop, scroll_chat,',
+  'open_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
 ].join(' ');
@@ -173,16 +336,61 @@ export interface PrepareGenerationAction {
   durationSec?: number;
   style?: string;
 }
+export interface UpdateSettingsAction {
+  type: 'update_settings';
+  aspectRatio?: LiveAspectRatio;
+  durationSec?: number;
+  style?: string;
+  instrumental?: boolean;
+}
+export interface StartGenerationAction { type: 'start_generation' }
+export interface GetScreenStateAction { type: 'get_screen_state' }
 export interface ShowCodeAction { type: 'show_code'; title: string; language: LiveCodeLanguage; code: string }
-export interface OpenStudioAction { type: 'open_studio'; tool: LiveStudioTool }
+export interface OpenStudioAction { type: 'open_studio'; tool: LiveOpenTool }
+export interface ChatSendAction { type: 'chat_send'; text: string }
+export interface NewChatAction { type: 'new_chat' }
+export interface SetChatModelAction { type: 'set_chat_model'; model: LiveChatModel }
+export interface StopAction { type: 'stop'; what: LiveStopTarget }
+export interface ScrollChatAction { type: 'scroll_chat'; to: LiveScrollTarget }
+export interface OpenPanelAction { type: 'open_panel'; panel: LivePanel }
+export interface CallViewAction { type: 'call_view'; view: LiveCallView }
 export interface EndCallAction { type: 'end_call' }
-export type LiveAction = PrepareGenerationAction | ShowCodeAction | OpenStudioAction | EndCallAction;
+export type LiveAction =
+  | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
+  | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
+  | ShowCodeAction | EndCallAction;
+
+/**
+ * What the studio writes back onto the event detail (`detail.reply`) while it handles an action — synchronously, inside
+ * dispatchEvent — so the model's answer can carry facts only the studio knows: the price, the settings it actually
+ * applied (a video length is snapped to the lengths the panel offers), the screen state, or why it refused.
+ */
+export interface LiveStudioReply {
+  ok?: boolean;
+  /** Machine code when it refused (no_prompt, not_generative, busy, signed_out …). */
+  error?: string;
+  /** English, for the model. */
+  message?: string;
+  /** Credits the run would cost (0/absent = the studio prices it later, e.g. a video's storyboard). */
+  priceCredits?: number;
+  /** Settings the studio really applied, e.g. { aspectRatio: '9:16', durationSec: 24 }. */
+  applied?: Record<string, unknown>;
+  /** get_screen_state: what is on screen. */
+  state?: Record<string, unknown>;
+  /** start_generation: which studio will run. */
+  tool?: string;
+}
 
 /**
  * The `myavatar:live-action` detail: the typed action, plus `reveal` when the user tapped a card's Open after the call
- * ended (the studio should take focus then — never during the call, the Live dialog owns focus).
+ * ended (the studio should take focus then), plus `reply`, which the studio fills in while it handles the event.
  */
-export type LiveActionEventDetail = LiveAction & { reveal?: true };
+export type LiveActionEventDetail = LiveAction & { reveal?: true; reply?: LiveStudioReply };
+
+/** Fired by the call when a confirmed start_generation's countdown ran out uncancelled: the studio runs it now. */
+export const LIVE_RUN_EVENT = 'myavatar:live-run';
+/** Fired by the call on start (`active: true`) and end — the studio keeps a call's turns in one thread meanwhile. */
+export const LIVE_CALL_EVENT = 'myavatar:live-call';
 
 /** The `myavatar:open-artifact` detail (the canvas contract — nothing more, nothing less). */
 export interface OpenArtifactDetail { title: string; language: LiveCodeLanguage; code: string }
@@ -289,6 +497,37 @@ function asLanguage(v: unknown): LiveCodeLanguage | null {
   return LANGUAGE_ALIASES[t] ?? 'plaintext';
 }
 
+function asEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim().toLowerCase();
+  return (allowed as readonly string[]).includes(t) ? (t as T) : null;
+}
+
+const OPEN_TOOL_ALIASES: Readonly<Record<string, LiveOpenTool>> = {
+  ...TOOL_ALIASES,
+  chat: 'chat', text: 'chat', photographer: 'photoshoot', photoshoot: 'photoshoot', interior: 'interior',
+  interior_designer: 'interior', remix: 'remix', product: 'product', product_ad: 'product', swap: 'swap',
+  character_swap: 'swap', vfx: 'vfx', motion: 'motion', montage: 'montage', editor: 'montage', video_editor: 'montage',
+  dubbing: 'dubbing', dub: 'dubbing', model3d: 'model3d', '3d': 'model3d', presentation: 'presentation', slides: 'presentation',
+  deck: 'presentation', culling: 'photo', photo_culling: 'photo',
+};
+
+function asOpenTool(v: unknown): LiveOpenTool | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if ((LIVE_OPEN_TOOLS as readonly string[]).includes(t)) return t as LiveOpenTool;
+  return OPEN_TOOL_ALIASES[t] ?? OPEN_TOOL_ALIASES[t.replace(/_/g, ' ')] ?? null;
+}
+
+function asSwitch(v: unknown): boolean | null {
+  if (typeof v === 'boolean') return v;
+  if (typeof v !== 'string') return null;
+  const t = v.trim().toLowerCase();
+  if (['on', 'yes', 'true', '1'].includes(t)) return true;
+  if (['off', 'no', 'false', '0'].includes(t)) return false;
+  return null;
+}
+
 function asDuration(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v.trim().replace(/s(ec(onds?)?)?$/i, '')) : NaN;
   if (!Number.isFinite(n)) return null;
@@ -334,6 +573,92 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     return { ok: true, action };
   },
 
+  get_screen_state() {
+    return { ok: true, action: { type: 'get_screen_state' } };
+  },
+
+  update_settings(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with at least one setting.');
+    const action: UpdateSettingsAction = { type: 'update_settings' };
+    const rawAspect = own(args, 'aspectRatio');
+    if (rawAspect !== undefined && rawAspect !== null && rawAspect !== '') {
+      const aspect = asAspect(rawAspect);
+      if (!aspect) return fail('invalid_args', 'Unsupported aspect ratio.', 'aspectRatio', LIVE_ASPECT_RATIOS);
+      action.aspectRatio = aspect;
+    }
+    const rawDuration = own(args, 'durationSec');
+    if (rawDuration !== undefined && rawDuration !== null && rawDuration !== '') {
+      const d = asDuration(rawDuration);
+      if (d === null) return fail('invalid_args', 'durationSec must be a number of seconds.', 'durationSec');
+      action.durationSec = d;
+    }
+    const rawStyle = own(args, 'style');
+    if (rawStyle !== undefined && rawStyle !== null && rawStyle !== '') {
+      if (typeof rawStyle !== 'string') return fail('invalid_args', 'style must be text.', 'style');
+      const style = cleanLine(rawStyle, LIVE_STYLE_MAX_CHARS);
+      if (style) action.style = style;
+    }
+    const rawInstr = own(args, 'instrumental');
+    if (rawInstr !== undefined && rawInstr !== null && rawInstr !== '') {
+      const on = asSwitch(rawInstr);
+      if (on === null) return fail('invalid_args', 'instrumental must be "on" or "off".', 'instrumental', LIVE_SWITCH_VALUES);
+      action.instrumental = on;
+    }
+    if (Object.keys(action).length === 1) return fail('invalid_args', 'Name at least one setting to change.', 'aspectRatio');
+    return { ok: true, action };
+  },
+
+  start_generation(args) {
+    // ⚠️ The model must ASSERT the user's yes. Anything but "yes" is refused with a message that sends it back to ask.
+    const confirmed = isObj(args) ? own(args, 'confirmed') : undefined;
+    if (asSwitch(confirmed) !== true && !(typeof confirmed === 'string' && /^\s*yes\s*$/i.test(confirmed))) {
+      return fail('invalid_args', 'Only call this after telling the price and hearing a clear yes; then pass confirmed "yes".', 'confirmed', ['yes']);
+    }
+    return { ok: true, action: { type: 'start_generation' } };
+  },
+
+  chat_send(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with text.');
+    const raw = own(args, 'text');
+    const text = typeof raw === 'string' ? cleanText(raw, LIVE_CHAT_TEXT_MAX_CHARS) : '';
+    if (!text) return fail('invalid_args', 'A non-empty text is required.', 'text');
+    return { ok: true, action: { type: 'chat_send', text } };
+  },
+
+  new_chat() {
+    return { ok: true, action: { type: 'new_chat' } };
+  },
+
+  set_chat_model(args) {
+    const model = isObj(args) ? asEnum(own(args, 'model'), LIVE_CHAT_MODELS) : null;
+    if (!model) return fail('invalid_args', 'Unknown chat model.', 'model', LIVE_CHAT_MODELS);
+    return { ok: true, action: { type: 'set_chat_model', model } };
+  },
+
+  stop(args) {
+    const what = isObj(args) ? asEnum(own(args, 'what'), LIVE_STOP_TARGETS) : null;
+    if (!what) return fail('invalid_args', 'Say what to stop.', 'what', LIVE_STOP_TARGETS);
+    return { ok: true, action: { type: 'stop', what } };
+  },
+
+  scroll_chat(args) {
+    const to = isObj(args) ? asEnum(own(args, 'to'), LIVE_SCROLL_TARGETS) : null;
+    if (!to) return fail('invalid_args', 'Say where to scroll.', 'to', LIVE_SCROLL_TARGETS);
+    return { ok: true, action: { type: 'scroll_chat', to } };
+  },
+
+  open_panel(args) {
+    const panel = isObj(args) ? asEnum(own(args, 'panel'), LIVE_PANELS) : null;
+    if (!panel) return fail('invalid_args', 'Unknown panel.', 'panel', LIVE_PANELS);
+    return { ok: true, action: { type: 'open_panel', panel } };
+  },
+
+  call_view(args) {
+    const view = isObj(args) ? asEnum(own(args, 'view'), LIVE_CALL_VIEWS) : null;
+    if (!view) return fail('invalid_args', 'view must be screen or full.', 'view', LIVE_CALL_VIEWS);
+    return { ok: true, action: { type: 'call_view', view } };
+  },
+
   show_code(args) {
     if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with title, language and code.');
     const rawCode = own(args, 'code');
@@ -357,8 +682,8 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
 
   open_studio(args) {
     if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with tool.');
-    const tool = asTool(own(args, 'tool'));
-    if (!tool) return fail('invalid_args', 'Unknown studio.', 'tool', LIVE_STUDIO_TOOLS);
+    const tool = asOpenTool(own(args, 'tool'));
+    if (!tool) return fail('invalid_args', 'Unknown tool.', 'tool', LIVE_OPEN_TOOLS);
     return { ok: true, action: { type: 'open_studio', tool } };
   },
 

@@ -42,11 +42,14 @@ describe('executeLiveToolCall', () => {
     expect(out.response.name).toBe('prepare_generation');
     expect(out.response.response).toMatchObject({ ok: true });
     const summary = String(out.response.response.summary);
-    expect(summary).toMatch(/Prepared a video prompt in the Video studio/);
+    expect(summary).toMatch(/Prepared a video prompt in the Video studio on screen/);
     expect(summary).toMatch(/no credits were spent/);
-    expect(summary).toMatch(/Run button/);
-    // Honest: the settings are shown, not claimed as applied.
-    expect(summary).toMatch(/aspect ratio 9:16, 24 s are shown to the user/);
+    // The model is sent back to ASK before anything is started.
+    expect(summary).toMatch(/Ask the user whether to start it/);
+    // No studio reply: it reports the settings it asked for, and a video's price comes at its storyboard.
+    expect(summary).toMatch(/aspect ratio 9:16, 24 s/);
+    expect(summary).toMatch(/priced at its storyboard/);
+    expect(out.screen).toBe(true);
     expect(out.card).toEqual({ id: 'c1', action: actions[0] });
     expect(out.endCall).toBeUndefined();
   });
@@ -64,7 +67,7 @@ describe('executeLiveToolCall', () => {
     const { env, actions } = spyEnv(true);
     const out = executeLiveToolCall(call('c1', 'open_studio', { tool: 'avatar' }), env);
     expect(actions).toEqual([{ type: 'open_studio', tool: 'avatar' }]);
-    expect(out.response.response).toEqual({ ok: true, summary: 'Opened the Avatar studio. Nothing was started.' });
+    expect(out.response.response).toEqual({ ok: true, summary: 'Opened Avatar on screen. Nothing was started.' });
     expect(out.card?.action).toEqual({ type: 'open_studio', tool: 'avatar' });
   });
 
@@ -119,6 +122,73 @@ describe('executeLiveToolCall', () => {
     const out = executeLiveToolCall({ id: '', name: 'open_studio', args: { tool: 'video' } }, env, 'local-7');
     expect(out.response.id).toBe('');
     expect(out.card?.id).toBe('local-7');
+  });
+});
+
+describe('executeLiveToolCall — the studio\'s reply', () => {
+  /** A studio that takes every event and answers with `reply` (as OmniStudio fills detail.reply inside dispatchEvent). */
+  function replyingEnv(reply: Record<string, unknown> | ((d: LiveActionEventDetail) => Record<string, unknown> | undefined), receipt = true) {
+    const actions: LiveActionEventDetail[] = [];
+    const env: LiveActionEnv = {
+      dispatchAction: (d) => {
+        actions.push(d);
+        const r = typeof reply === 'function' ? reply(d) : reply;
+        if (r) d.reply = r;
+        return receipt;
+      },
+      openArtifact: () => true,
+      setChatModel: jest.fn(),
+      runGeneration: jest.fn(() => true),
+    };
+    return { env, actions };
+  }
+
+  test('prepare_generation reports the settings the studio APPLIED and its price', () => {
+    const { env } = replyingEnv({ ok: true, tool: 'music', applied: { durationSec: 30, instrumental: true }, priceCredits: 3 });
+    const out = executeLiveToolCall(call('m', 'prepare_generation', { tool: 'music', prompt: 'lo-fi', durationSec: 27 }), env);
+    const summary = String(out.response.response.summary);
+    expect(summary).toMatch(/30 s, instrumental/);
+    expect(summary).toMatch(/Running it costs 3 credits/);
+    expect(out.response.response.priceCredits).toBe(3);
+  });
+
+  test('a studio refusal is passed to the model as ok:false with its message', () => {
+    const { env } = replyingEnv({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' });
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), env);
+    expect(out.response.response).toEqual({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' });
+    expect(out.run).toBeUndefined();
+  });
+
+  test('start_generation accepted → a countdown run (never a run on the call itself), with the price', () => {
+    const { env } = replyingEnv({ ok: true, tool: 'image', priceCredits: 2 });
+    const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), env);
+    expect(out.run).toEqual({ tool: 'image', priceCredits: 2 });
+    expect(env.runGeneration).not.toHaveBeenCalled();
+    expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel/);
+  });
+
+  test('get_screen_state answers with the studio\'s state; set_chat_model uses the global store; call_view asks the host', () => {
+    const { env } = replyingEnv((d) => (d.type === 'get_screen_state' ? { ok: true, state: { tool: 'video', prompt: 'x' } } : undefined));
+    expect(executeLiveToolCall(call('g', 'get_screen_state'), env).response.response).toEqual({ ok: true, state: { tool: 'video', prompt: 'x' } });
+    const m = executeLiveToolCall(call('m', 'set_chat_model', { model: 'pro' }), env);
+    expect(env.setChatModel).toHaveBeenCalledWith('pro');
+    expect(String(m.response.response.summary)).toMatch(/3\.1 Pro/);
+    expect(executeLiveToolCall(call('v', 'call_view', { view: 'screen' }), env).view).toBe('screen');
+  });
+
+  test('chat_send / new_chat / scroll_chat / open_panel / stop act on the screen; no studio → ok:false', () => {
+    const { env, actions } = replyingEnv({});
+    for (const c of [
+      call('1', 'chat_send', { text: 'write a plan' }), call('2', 'new_chat'), call('3', 'scroll_chat', { to: 'bottom' }),
+      call('4', 'open_panel', { panel: 'credits' }), call('5', 'stop', { what: 'all' }),
+    ]) {
+      const out = executeLiveToolCall(c, env);
+      expect(out.response.response.ok).toBe(true);
+      expect(out.screen).toBe(true);
+    }
+    expect(actions.map((a) => a.type)).toEqual(['chat_send', 'new_chat', 'scroll_chat', 'open_panel', 'stop']);
+    const none = replyingEnv({}, false);
+    expect(executeLiveToolCall(call('n', 'new_chat'), none.env).response.response).toMatchObject({ ok: false, error: 'studio_unavailable' });
   });
 });
 
@@ -211,6 +281,50 @@ describe('useLiveActions', () => {
     expect(result.current.endRequested).toBe(false);
     act(() => { result.current.onToolCall([call('e', 'end_call')]); });
     expect(result.current.endRequested).toBe(true);
+  });
+
+  test('a confirmed start counts down, then runs — unless the user cancels; a cancelled call-id stops it too', () => {
+    jest.useFakeTimers();
+    try {
+      const runGeneration = jest.fn(() => true);
+      const env: LiveActionEnv = {
+        dispatchAction: (d) => { if (d.type === 'start_generation') d.reply = { ok: true, tool: 'image', priceCredits: 2 }; return true; },
+        openArtifact: () => true,
+        runGeneration,
+      };
+      const { result } = renderHook(() => useLiveActions(env));
+      act(() => { result.current.onToolCall([call('s1', 'start_generation', { confirmed: 'yes' })]); });
+      expect(result.current.pendingRun).toMatchObject({ id: 's1', tool: 'image', priceCredits: 2, state: 'counting' });
+      act(() => { jest.advanceTimersByTime(2900); });
+      expect(runGeneration).not.toHaveBeenCalled();
+      act(() => { jest.advanceTimersByTime(200); });
+      expect(runGeneration).toHaveBeenCalledTimes(1);
+      expect(result.current.pendingRun?.state).toBe('started');
+
+      act(() => { result.current.onToolCall([call('s2', 'start_generation', { confirmed: 'yes' })]); });
+      act(() => { result.current.cancelRun(); });
+      act(() => { jest.advanceTimersByTime(5000); });
+      expect(runGeneration).toHaveBeenCalledTimes(1);
+
+      act(() => { result.current.onToolCall([call('s3', 'start_generation', { confirmed: 'yes' })]); });
+      act(() => { result.current.onToolCallCancellation(['s3']); });
+      act(() => { jest.advanceTimersByTime(5000); });
+      expect(runGeneration).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('screen actions bump screenSeq (the host docks); call_view sets viewRequest', () => {
+    const { env } = spyEnv(true);
+    const { result } = renderHook(() => useLiveActions(env));
+    expect(result.current.screenSeq).toBe(0);
+    act(() => { result.current.onToolCall([call('a', 'open_studio', { tool: 'chat' })]); });
+    expect(result.current.screenSeq).toBe(1);
+    act(() => { result.current.onToolCall([call('b', 'call_view', { view: 'full' })]); });
+    expect(result.current.viewRequest).toEqual({ view: 'full', seq: 1 });
+    act(() => { result.current.onToolCall([call('c', 'call_view', { view: 'full' })]); });
+    expect(result.current.viewRequest).toEqual({ view: 'full', seq: 2 });
   });
 
   test('a model looping on functions is cut off after the per-call budget (answered, not executed)', () => {

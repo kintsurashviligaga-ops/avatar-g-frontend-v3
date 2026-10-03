@@ -42,6 +42,13 @@ class InMemoryRateLimiter {
     };
   }
 
+  /** Undo one counted request in a live window. A missing or expired bucket, or a count of 0, is left alone. */
+  refund(key: string): void {
+    const record = this.store.get(key);
+    if (!record || Date.now() > record.resetTime || record.count <= 0) return;
+    record.count--;
+  }
+
   cleanup() {
     const now = Date.now();
     for (const [key, record] of this.store) {
@@ -101,6 +108,29 @@ async function redisRateLimit(
     const resetTime = Date.now() + (ttl > 0 ? ttl * 1000 : config.windowMs);
     const allowed = count <= config.maxRequests;
     return { allowed, remaining: Math.max(0, config.maxRequests - count), resetTime };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * DECR one key. A result below zero means the key had already expired (DECR created it at -1, with no TTL): it is
+ * deleted, so a refund can never leave a negative, never-expiring counter behind. Null when Redis is not configured
+ * or the call failed — the caller then tries the in-memory store, the one `limitByKey` fell back to.
+ */
+async function redisRefund(key: string): Promise<true | null> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    const res = await fetch(`${url}/pipeline`, { method: 'POST', headers, body: JSON.stringify([['DECR', key]]), cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Array<{ result: number }>;
+    if ((data[0]?.result ?? 0) < 0) {
+      await fetch(`${url}/pipeline`, { method: 'POST', headers, body: JSON.stringify([['DEL', key]]), cache: 'no-store' });
+    }
+    return true;
   } catch {
     return null;
   }
@@ -328,6 +358,21 @@ export async function checkRateLimitByKey(
   config: RateLimitConfig
 ): Promise<NextResponse | null> {
   return limitByKey(`${config.keyPrefix ?? 'rl:key'}:${id}`, config);
+}
+
+/**
+ * Gives back one request `checkRateLimitByKey(id, config)` counted — for an allowance charged UP FRONT (so two
+ * concurrent requests cannot both slip under the cap) whose work then did not happen, e.g. a Pro chat turn that Pro
+ * never answered. Best effort: never below zero, never creates a bucket, never throws.
+ */
+export async function refundRateLimitByKey(id: string, config: RateLimitConfig): Promise<void> {
+  const key = `${config.keyPrefix ?? 'rl:key'}:${id}`;
+  try {
+    if (await redisRefund(key)) return;
+    memLimiter.refund(key);
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Backward-compatible alias */

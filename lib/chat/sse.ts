@@ -8,8 +8,13 @@
  *   data: {"text":"გამარჯობა"}\n\n
  *   data: [DONE]\n\n
  *
- * New frames use the same envelope: `{sources}`, `{usage}` and `{error}`. The legacy `{text}` / `{meta}` /
+ * New frames use the same envelope: `{sources}`, `{usage}`, `{truncated}` and `{error}`. The legacy `{text}` / `{meta}` /
  * `[DONE]` frames parse unchanged, so the route and the client can ship separately in either order.
+ *
+ * ⚠️ `{"truncated":true}` — THE ANSWER HIT THE OUTPUT-TOKEN LIMIT. Google ends such a reply with finishReason
+ * MAX_TOKENS, and it used to arrive as a plain success: a long answer simply stopped mid-sentence and nothing said so.
+ * The frame comes after the last `{text}` (and `{sources}` / `{usage}`) and before `[DONE]`; an older client ignores
+ * the unknown key, so it is purely additive.
  *
  * ⚠️ THE OLD CLIENT LOST FRAMES THAT WERE SPLIT ACROSS CHUNKS. It split the buffer on `\n\n`. That only
  * worked while the only separator ever sent was LF-LF. A proxy that rewrote line endings to CRLF made every
@@ -41,10 +46,27 @@ export type ChatErrorCode =
   | 'budget'
   | 'unavailable'
   | 'bad_request'
-  | 'auth_required';
+  | 'auth_required'
+  // ⚠️ THE POLICY REFUSALS HAD NO CODES OF THEIR OWN. A spent daily cap went out as `rate_limited` (the client said
+  // "too many requests, try again" and offered Retry), a guest's spent allowance and a guest's too-long message as
+  // `auth_required` ("sign in"). Each now names itself, and none of them is retryable.
+  | 'daily_cap'
+  | 'guest_limit'
+  | 'too_long';
 
-/** Why a turn was answered in another mode than the one the user picked. Only one reason exists today. */
-export type ChatModeChangeReason = 'pro_cap';
+/** The locales the route writes its notices in. */
+export type ChatNoticeLocale = 'ka' | 'en' | 'ru';
+
+/**
+ * Why a turn was answered in another mode than the one the user picked:
+ *   · 'pro_cap'  — the daily Pro allowance is spent (with `resetAt`);
+ *   · 'pro_busy' — Pro was overloaded / rate-limited even after one retry, so Fast answered this turn (the allowance
+ *                  is given back);
+ *   · 'guest'    — signed out: a guest is always answered by Fast.
+ */
+export type ChatModeChangeReason = 'pro_cap' | 'pro_busy' | 'guest';
+
+const MODE_CHANGE_REASONS: ReadonlySet<string> = new Set<ChatModeChangeReason>(['pro_cap', 'pro_busy', 'guest']);
 
 /**
  * The `{meta}` frame — who is answering this turn. `provider` + `model` are the original shape (the badge); the rest
@@ -52,9 +74,8 @@ export type ChatModeChangeReason = 'pro_cap';
  *   · `mode`      the mode that ANSWERED (lib/chat/chatModes), after any server-side downgrade;
  *   · `fallback`  true when the answer did not come from that mode's primary model (a rotation to the next model in
  *                 the chain, or the non-Google fallback) — the badge says so instead of pretending;
- *   · `requestedMode` + `reason` + `resetAt` — set together when the server answered in another mode than asked:
- *                 today only 'pro_cap' (the daily Pro allowance is spent, so the turn was answered by Fast) and the
- *                 ISO time the allowance resets.
+ *   · `requestedMode` + `reason` [+ `resetAt`] — set together when the server answered in another mode than asked
+ *                 (see `ChatModeChangeReason`); `resetAt` is the ISO time a spent Pro allowance resets.
  * Everything but `provider` / `model` is optional, so an older route and an older client each read the other.
  */
 export interface ChatMeta {
@@ -73,7 +94,12 @@ export type ChatFrame =
   | { meta: ChatMeta }
   | { sources: Array<{ url: string; title?: string }> }
   | { usage: { model: string; inputTokens?: number; outputTokens?: number; totalTokens?: number } }
-  | { error: { code: ChatErrorCode; retryable: boolean; message: string } };
+  | { truncated: true }
+  /**
+   * `lang` is set by the route on every notice it writes itself: `message` is then human text in that locale, meant
+   * to be SHOWN (the client re-localizes by `code` only when `lang` is absent or another locale).
+   */
+  | { error: { code: ChatErrorCode; retryable: boolean; message: string; lang?: ChatNoticeLocale } };
 
 /** Every code the client knows how to localize. The order matches the `ChatErrorCode` union. */
 export const CHAT_ERROR_CODES: readonly ChatErrorCode[] = [
@@ -87,6 +113,9 @@ export const CHAT_ERROR_CODES: readonly ChatErrorCode[] = [
   'unavailable',
   'bad_request',
   'auth_required',
+  'daily_cap',
+  'guest_limit',
+  'too_long',
 ] as const;
 
 const ERROR_CODE_SET: ReadonlySet<string> = new Set(CHAT_ERROR_CODES);
@@ -181,7 +210,7 @@ function decodeMeta(v: unknown): ChatFrame | null {
   if (isChatModeId(v.mode)) meta.mode = v.mode;
   if (typeof v.fallback === 'boolean') meta.fallback = v.fallback;
   if (isChatModeId(v.requestedMode)) meta.requestedMode = v.requestedMode;
-  if (v.reason === 'pro_cap') meta.reason = v.reason;
+  if (typeof v.reason === 'string' && MODE_CHANGE_REASONS.has(v.reason)) meta.reason = v.reason as ChatModeChangeReason;
   const resetAt = isoInstant(v.resetAt);
   if (resetAt !== undefined) meta.resetAt = resetAt;
   return { meta };
@@ -213,7 +242,8 @@ function decodeError(v: unknown): ChatFrame | null {
   const code: ChatErrorCode = isChatErrorCode(v.code) ? v.code : 'unavailable';
   const retryable = typeof v.retryable === 'boolean' ? v.retryable : RETRYABLE_BY_DEFAULT.has(code);
   const message = typeof v.message === 'string' ? v.message : '';
-  return { error: { code, retryable, message } };
+  const lang = v.lang === 'ka' || v.lang === 'en' || v.lang === 'ru' ? v.lang : undefined;
+  return { error: lang ? { code, retryable, message, lang } : { code, retryable, message } };
 }
 
 /**
@@ -221,7 +251,7 @@ function decodeError(v: unknown): ChatFrame | null {
  * JSON, a non-object, an unknown shape, or an empty text delta.
  *
  * One object may carry several known keys. No producer of ours sends that, but a legacy or third-party one
- * might, so each key becomes its own frame, in the order meta → text → sources → usage → error. That matches
+ * might, so each key becomes its own frame, in the order meta → text → sources → usage → truncated → error. That matches
  * the legacy client, which stamped the model badge before appending text from the same object.
  */
 function decodePayload(payload: string): Array<ChatFrame | 'DONE'> {
@@ -247,6 +277,7 @@ function decodePayload(payload: string): Array<ChatFrame | 'DONE'> {
     const f = decodeUsage(parsed.usage);
     if (f) out.push(f);
   }
+  if (parsed.truncated === true) out.push({ truncated: true });
   if ('error' in parsed) {
     const f = decodeError(parsed.error);
     if (f) out.push(f);

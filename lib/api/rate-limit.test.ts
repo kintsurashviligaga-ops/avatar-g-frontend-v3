@@ -8,7 +8,7 @@ import type { RateLimitConfig } from './rate-limit';
 // fake clock puts that interval on the fake clock, and it is discarded when the real one comes back.
 jest.useFakeTimers();
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { checkRateLimit } = require('./rate-limit') as typeof import('./rate-limit');
+const { checkRateLimit, checkRateLimitByKey, refundRateLimitByKey } = require('./rate-limit') as typeof import('./rate-limit');
 jest.useRealTimers();
 
 /**
@@ -150,5 +150,131 @@ describe('the rest of the limiter is unchanged', () => {
     expect(res?.status).toBe(429);
     expect(res?.headers.get('Retry-After')).toMatch(/^\d+$/);
     expect((await res!.json()).code).toBe('RATE_LIMIT_EXCEEDED');
+  });
+});
+
+describe('refundRateLimitByKey (in-memory path — no Upstash env)', () => {
+  /** A fresh bucket of `max` per test, keyed by an explicit id. */
+  function cap(max: number): RateLimitConfig {
+    n += 1;
+    return { maxRequests: max, windowMs: 60_000, keyPrefix: `rl:refund:${n}` };
+  }
+  const allowed = async (id: string, cfg: RateLimitConfig) => (await checkRateLimitByKey(id, cfg)) === null;
+
+  it('gives one request back: the call that would have been refused is allowed, and only that one', async () => {
+    const cfg = cap(3);
+    for (let i = 0; i < 3; i++) expect(await allowed('user-1', cfg)).toBe(true);
+    expect(await allowed('user-1', cfg)).toBe(false); // the 4th is over the cap (and counted)
+
+    // Two refunds: one for the refused 4th, one that gives back a real slot.
+    await refundRateLimitByKey('user-1', cfg);
+    await refundRateLimitByKey('user-1', cfg);
+    expect(await allowed('user-1', cfg)).toBe(true);
+    expect(await allowed('user-1', cfg)).toBe(false);
+  });
+
+  it('after N allowed calls a refund makes the (N+1)th allowed; the one after is refused again', async () => {
+    const cfg = cap(3);
+    for (let i = 0; i < 3; i++) expect(await allowed('user-n', cfg)).toBe(true);
+    await refundRateLimitByKey('user-n', cfg);
+    expect(await allowed('user-n', cfg)).toBe(true);
+    expect(await allowed('user-n', cfg)).toBe(false);
+  });
+
+  it('a refund right after an up-front charge leaves the allowance as it was', async () => {
+    const cfg = cap(2);
+    expect(await allowed('pro-user', cfg)).toBe(true);
+    await refundRateLimitByKey('pro-user', cfg); // Pro never answered that turn
+    expect(await allowed('pro-user', cfg)).toBe(true);
+    expect(await allowed('pro-user', cfg)).toBe(true);
+    expect(await allowed('pro-user', cfg)).toBe(false);
+  });
+
+  it('never goes below zero: extra refunds do not bank requests for later', async () => {
+    const cfg = cap(1);
+    expect(await allowed('u', cfg)).toBe(true);
+    for (let i = 0; i < 5; i++) await refundRateLimitByKey('u', cfg);
+    expect(await allowed('u', cfg)).toBe(true);
+    expect(await allowed('u', cfg)).toBe(false);
+  });
+
+  it('is a no-op on an unknown key: it creates no bucket and does not throw', async () => {
+    const cfg = cap(1);
+    await expect(refundRateLimitByKey('never-seen', cfg)).resolves.toBeUndefined();
+    expect(await allowed('never-seen', cfg)).toBe(true);
+    expect(await allowed('never-seen', cfg)).toBe(false);
+  });
+
+  it('only touches its own key (same prefix, another id)', async () => {
+    const cfg = cap(1);
+    expect(await allowed('a', cfg)).toBe(true);
+    expect(await allowed('b', cfg)).toBe(true);
+    await refundRateLimitByKey('a', cfg);
+    expect(await allowed('a', cfg)).toBe(true);
+    expect(await allowed('b', cfg)).toBe(false);
+  });
+
+  it('uses the same default prefix as checkRateLimitByKey when the config has none', async () => {
+    const id = `no-prefix-${Date.now()}-${Math.random()}`;
+    const cfg: RateLimitConfig = { maxRequests: 1, windowMs: 60_000 };
+    expect(await allowed(id, cfg)).toBe(true);
+    expect(await allowed(id, cfg)).toBe(false);
+    await refundRateLimitByKey(id, cfg);
+    await refundRateLimitByKey(id, cfg);
+    expect(await allowed(id, cfg)).toBe(true);
+  });
+
+  it('leaves an expired window alone (the next check opens a fresh one)', async () => {
+    const cfg = cap(1);
+    const t0 = Date.now();
+    const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+    try {
+      expect(await allowed('late', cfg)).toBe(true);
+      now.mockReturnValue(t0 + cfg.windowMs + 1);
+      await refundRateLimitByKey('late', cfg); // window is over: nothing to give back
+      expect(await allowed('late', cfg)).toBe(true); // fresh window
+      expect(await allowed('late', cfg)).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+  });
+});
+
+describe('refundRateLimitByKey (Upstash path, fetch mocked)', () => {
+  const realFetch = global.fetch;
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'tok';
+    fetchMock = jest.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  const json = (body: unknown, ok = true) => ({ ok, json: async () => body }) as unknown as Response;
+  const commands = () => fetchMock.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+  it('DECRs the same key checkRateLimitByKey counts, and stops there when the counter stays ≥ 0', async () => {
+    fetchMock.mockResolvedValueOnce(json([{ result: 2 }]));
+    await refundRateLimitByKey('user-7', { maxRequests: 5, windowMs: 60_000, keyPrefix: 'chat:pro' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0]).toBe('https://redis.example/pipeline');
+    expect(commands()).toEqual([[['DECR', 'chat:pro:user-7']]]);
+  });
+
+  it('deletes a key the DECR took below zero (it had expired), so no negative never-expiring counter is left', async () => {
+    fetchMock.mockResolvedValueOnce(json([{ result: -1 }])).mockResolvedValueOnce(json([{ result: 1 }]));
+    await refundRateLimitByKey('user-8', { maxRequests: 5, windowMs: 60_000 });
+    expect(commands()).toEqual([[['DECR', 'rl:key:user-8']], [['DEL', 'rl:key:user-8']]]);
+  });
+
+  it('never throws when Redis fails (a network error or a non-OK response)', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('ECONNRESET'));
+    await expect(refundRateLimitByKey('user-9', { maxRequests: 1, windowMs: 60_000 })).resolves.toBeUndefined();
+    fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, false));
+    await expect(refundRateLimitByKey('user-9', { maxRequests: 1, windowMs: 60_000 })).resolves.toBeUndefined();
   });
 });
