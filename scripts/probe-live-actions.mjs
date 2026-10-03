@@ -317,8 +317,11 @@ async function main() {
   }
 
   if (!opts.dry) {
-    const { loadEnvConfig } = await import('@next/env');
-    loadEnvConfig(process.cwd(), false, { info: () => {}, error: (...a) => console.error('[probe-live]', ...a) });
+    // @next/env is CommonJS: under ESM its exports arrive on `default` (a named import came back undefined and the probe
+    // died with "loadEnvConfig is not a function" before reaching Google).
+    const envMod = await import('@next/env');
+    const loadEnvConfig = envMod.loadEnvConfig ?? envMod.default?.loadEnvConfig;
+    loadEnvConfig?.(process.cwd(), false, { info: () => {}, error: (...a) => console.error('[probe-live]', ...a) });
   }
   const model = probeModel(opts.model, process.env.GEMINI_LIVE_MODEL);
   const variants = buildProbeVariants({ model, search: opts.search }).filter((v) => !opts.only || v.name === opts.only);
