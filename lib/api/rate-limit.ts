@@ -222,6 +222,9 @@ export const RATE_LIMITS = {
   // (a person retyping and switching between log-in and sign-up stays far inside it) under the AUTH_IP ceiling, which
   // caps how many addresses one host can probe — 40 per 15 minutes.
   AUTH_LOOKUP:     { maxRequests: 20, windowMs: 15 * 60_000,      keyPrefix: 'rl:auth:lookup' } as const,
+  // /api/voice/web-read — the voice agent reading a public page (read_webpage). Signed-in only, per user: a call that
+  // follows a few links stays far inside it; a loop turning us into a crawler or a proxy does not.
+  WEB_READ:        { maxRequests: 30, windowMs: 5 * 60_000,       keyPrefix: 'rl:webread' } as const,
   PUBLIC:    { maxRequests: 200, windowMs: 60_000,       keyPrefix: 'rl:pub'   } as const,
   AI:        { maxRequests: 10,  windowMs: 60_000,       keyPrefix: 'rl:ai'    } as const,
   // 3D reconstruction STATUS polling — its OWN namespace, and that is the point.

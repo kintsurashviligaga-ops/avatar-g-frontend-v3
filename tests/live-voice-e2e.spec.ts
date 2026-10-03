@@ -123,6 +123,52 @@ test.describe('voice mode, end to end', () => {
     expect(spend).toEqual([]);
   });
 
+  test('the agent\'s hands: it presses and types what it is asked to and reads a website — and refuses what would spend', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    await page.route('**/api/voice/web-read', (r) => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, page: { url: 'https://example.ge/', title: 'Example — news', description: '', text: 'Hello from Tbilisi.', links: [{ text: 'More', url: 'https://example.ge/more' }] } }),
+    }));
+    const spend = await openLiveCall(page, baseURL, live);
+    type Control = { id: string; role: string; name: string; state?: string; guard?: string };
+    const screen = async () => (await live.call('get_screen_state')).state as { tool: string; controls: Control[]; results: unknown[] };
+
+    // 1 — the screen as the model sees it: controls with ids, and no results yet.
+    const s1 = await screen();
+    expect(s1.controls.length).toBeGreaterThan(3);
+    expect(s1.results).toEqual([]);
+
+    // 2 — „click Music": the sidebar's row is pressed like a tap, the call docks, the music studio opens.
+    const clicked = await live.call('click', { target: 'მუსიკა' });
+    expect(clicked).toMatchObject({ ok: true, summary: expect.stringMatching(/Pressed/) });
+    await expect(page.getByTestId('live-dock')).toBeVisible();
+    await expect.poll(async () => (await screen()).tool).toBe('music');
+
+    // 3 — the priced Generate is never pressed by voice: it is marked, and refused.
+    const priced = (await screen()).controls.find((c) => c.guard === 'spend');
+    expect(priced).toBeTruthy();
+    const refused = await live.call('click', { target: priced!.id });
+    expect(refused).toMatchObject({ ok: false, error: 'needs_user_spend' });
+
+    // 4 — typing into the studio's prompt works; Enter there would start a paid run, so it is held.
+    const placeholder = (await page.getByTestId('composer-input').getAttribute('placeholder')) ?? '';
+    const box = (await screen()).controls.find((c) => c.role === 'textbox' && placeholder.startsWith(c.name.replace(/…$/, '')));
+    expect(box).toBeTruthy();
+    const typed = await live.call('type_text', { target: box!.id, text: 'მშვიდი პიანინო წვიმაში', submit: 'on' });
+    expect(typed).toMatchObject({ ok: true, summary: expect.stringMatching(/NOT submitted/) });
+    await expect(page.getByTestId('composer-input')).toHaveValue('მშვიდი პიანინო წვიმაში');
+
+    // 5 — a website is read (title, text, links) and put on screen as a link to tap.
+    const read = await live.call('read_webpage', { url: 'example.ge' });
+    expect(read).toMatchObject({ ok: true, title: 'Example — news', text: 'Hello from Tbilisi.', links: ['More — https://example.ge/more'] });
+    await expect(page.getByTestId('live-dock')).toContainText('example.ge');
+
+    // 6 — nothing to download yet: the model hears the truth.
+    expect(await live.call('download', { result: 'latest' })).toMatchObject({ ok: false, error: 'no_result' });
+
+    expect(spend).toEqual([]);
+  });
+
   test('a function the app does not have is refused honestly, and the call keeps going', async ({ page, baseURL }) => {
     const live = new FakeLive();
     await openLiveCall(page, baseURL, live);

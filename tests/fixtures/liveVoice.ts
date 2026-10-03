@@ -7,7 +7,12 @@ import { expect, type Page, type WebSocketRoute } from '@playwright/test';
  * `openLiveCall` signs in, mocks the token mint, opens the chat and starts a call from the composer's Live button.
  */
 
-const SUPABASE_URL = 'https://dummy.supabase.co';
+// The Supabase project the dev server under test runs with: its cookie name and its auth host both come from it.
+// ⚠️ It was hard-coded to dummy.supabase.co, so against `npm run dev:ui` (example.supabase.co) the session cookie had the
+// wrong name and the mocked /auth/v1/user the wrong host — every test here stopped at „signed in" (2026-10-03).
+// PLAYWRIGHT_SUPABASE_URL names it explicitly; NEXT_PUBLIC_SUPABASE_URL is used when the runner shares the app's env.
+const SUPABASE_URL = (process.env.PLAYWRIGHT_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy.supabase.co').replace(/\/$/, '');
+const AUTH_COOKIE = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
 const USER = {
   id: '00000000-0000-4000-8000-0000000000e2',
   aud: 'authenticated',
@@ -76,7 +81,7 @@ export class FakeLive {
 }
 
 async function signIn(page: Page, baseURL: string | undefined): Promise<void> {
-  await page.context().addCookies([{ name: 'sb-dummy-auth-token', value: sessionCookieValue(), url: baseURL ?? 'http://localhost:3000' }]);
+  await page.context().addCookies([{ name: AUTH_COOKIE, value: sessionCookieValue(), url: baseURL ?? 'http://localhost:3000' }]);
   await page.route(`${SUPABASE_URL}/auth/v1/user`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(USER) }));
   await page.route(`${SUPABASE_URL}/auth/v1/token**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ access_token: 'x', token_type: 'bearer', expires_in: 3600, refresh_token: 'y', user: USER }) }));
   await page.route(`${SUPABASE_URL}/rest/v1/**`, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));

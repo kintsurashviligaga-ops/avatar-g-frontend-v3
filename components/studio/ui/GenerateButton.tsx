@@ -66,6 +66,8 @@ export function GenerateButton({
         aria-label={accessible}
         data-testid={testId}
         data-price={priced ? credits : free ? 'free' : undefined}
+        // A priced run is never pressed by a voice call (lib/voice/liveUi): it goes through start_generation's yes + countdown.
+        data-live-guard={priced ? 'spend' : undefined}
         className={`flex min-h-[52px] w-full touch-manipulation items-center justify-center gap-2.5 rounded-2xl bg-app-accent px-5 text-[16px] font-bold leading-none text-app-bg shadow-[0_10px_30px_-12px_rgb(var(--app-accent)/0.7)] transition-[opacity,transform] hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       >
         {loading ? (

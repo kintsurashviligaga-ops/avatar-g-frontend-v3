@@ -30,7 +30,7 @@ import { Volume2 } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
-import { LIVE_CALL_EVENT } from '@/lib/voice/liveTools';
+import { LIVE_CALL_EVENT, LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 import LiveModeOverlay, { LiveControl } from './live/LiveModeOverlay';
@@ -167,6 +167,36 @@ export default function GeminiLiveConversation({
       try { window.dispatchEvent(new CustomEvent(LIVE_CALL_EVENT, { detail: { active: false } })); } catch { /* old engines */ }
     };
   }, []);
+
+  // [App] NOTES: the studio announces each new result (or a failure) while the call is on (LIVE_RESULT_EVENT); the model
+  // hears it, so a plan of several steps goes on by itself — „make music, then the video, then put them together"
+  // (owner, 2026-10-03). Held while the agent is speaking or thinking (text arriving then would cut it off) and sent
+  // the moment it listens again.
+  const notesRef = useRef<string[]>([]);
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const sendNote = session.sendNote;
+  const flushNotes = useCallback(() => {
+    if (!notesRef.current.length || statusRef.current !== 'listening') return;
+    const text = notesRef.current.join(' ');
+    if (sendNote(text)) notesRef.current = [];
+  }, [sendNote]);
+  useEffect(() => {
+    const onResult = (e: Event) => {
+      const n = (e as CustomEvent<LiveResultNote>).detail;
+      if (!n || typeof n !== 'object') return;
+      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, 160) : '';
+      const note = n.kind === 'failed'
+        ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
+        : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
+          + 'If the user asked for more steps, continue with the next one now; otherwise tell them in one short sentence.';
+      notesRef.current = [...notesRef.current, note].slice(-4);
+      flushNotes();
+    };
+    window.addEventListener(LIVE_RESULT_EVENT, onResult);
+    return () => window.removeEventListener(LIVE_RESULT_EVENT, onResult);
+  }, [flushNotes]);
+  useEffect(() => { flushNotes(); }, [status, flushNotes]);
 
   // Generations still rendering: the full-screen call covers the job tray, so the call shows them itself.
   const localJobs = useJobQueue((s) => s.jobs);

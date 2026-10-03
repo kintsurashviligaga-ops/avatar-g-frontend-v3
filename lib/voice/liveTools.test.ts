@@ -18,6 +18,7 @@ import {
   LIVE_STYLE_MAX_CHARS,
   LIVE_TITLE_MAX_CHARS,
   LIVE_URL_MAX_CHARS,
+  asResultRef,
   liveUrlHost,
   utf8ByteLength,
   validateLiveToolCall,
@@ -51,6 +52,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
+      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -432,5 +434,78 @@ describe('utf8ByteLength', () => {
     for (const s of ['', 'abc', 'ქართული', 'Русский', '😀x', 'a\uD800b']) {
       expect(utf8ByteLength(s)).toBe(Buffer.byteLength(s, 'utf8'));
     }
+  });
+});
+
+
+// ── 2026-10-03: the call's hands (click · type_text · download · use_result · montage · read_webpage) ─────────────────
+describe('the hands — validators', () => {
+  const v = (name: string, args: unknown) => validateLiveToolCall(name, args);
+
+  it('click: an id or a label; a bare number becomes an id; nothing → a structured error', () => {
+    expect(v('click', { target: ' c12 ' })).toEqual({ ok: true, action: { type: 'click', target: 'c12' } });
+    expect(v('click', { target: 'ვიდეო' })).toEqual({ ok: true, action: { type: 'click', target: 'ვიდეო' } });
+    expect(v('click', { target: 7 })).toEqual({ ok: true, action: { type: 'click', target: 'c7' } });
+    const bad = v('click', {});
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error).toMatchObject({ code: 'invalid_args', field: 'target' });
+  });
+
+  it('type_text: text is cleaned and bounded; submit is opt-in', () => {
+    const r = v('type_text', { target: 'c3', text: 'cats\u202E in\nsnow', submit: 'on' });
+    expect(r).toEqual({ ok: true, action: { type: 'type_text', target: 'c3', text: 'cats in\nsnow', submit: true } });
+    expect(v('type_text', { target: 'c3', text: 'x', submit: 'off' })).toEqual({ ok: true, action: { type: 'type_text', target: 'c3', text: 'x' } });
+    expect(v('type_text', { target: 'c3' }).ok).toBe(false);
+    expect(v('type_text', { target: 'c3', text: 'x', submit: 'maybe' }).ok).toBe(false);
+  });
+
+  it.each([
+    [undefined, {}], ['latest', {}], ['the latest', {}], ['ბოლო', {}], ['2', { n: 2 }], [3, { n: 3 }], ['#4', { n: 4 }],
+    ['result 5', { n: 5 }], ['video', { kind: 'video' }], ['the music', { kind: 'audio' }], ['მუსიკა', { kind: 'audio' }],
+    ['latest image', { kind: 'image' }], ['фото', { kind: 'image' }],
+  ])('a result named %j → %j', (raw, ref) => {
+    expect(asResultRef(raw)).toEqual(ref);
+  });
+
+  it.each(['0', '51', 'the dog', -1, 2.5])('an unknown result %j → null', (raw) => {
+    expect(asResultRef(raw)).toBeNull();
+  });
+
+  it('download and use_result', () => {
+    expect(v('download', {})).toEqual({ ok: true, action: { type: 'download', result: {} } });
+    expect(v('download', { result: 'music' })).toEqual({ ok: true, action: { type: 'download', result: { kind: 'audio' } } });
+    expect(v('use_result', { result: '2', to: 'montage' })).toEqual({ ok: true, action: { type: 'use_result', result: { n: 2 }, to: 'montage' } });
+    expect(v('use_result', { to: 'music video' })).toEqual({ ok: true, action: { type: 'use_result', result: {}, to: 'music_video' } });
+    const bad = v('use_result', { result: 'x', to: 'nowhere' });
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.error.allowed).toEqual(['video', 'music_video', 'montage', 'editor', 'chat']);
+  });
+
+  it('montage open: "latest" means the newest VIDEO / TRACK; a list of numbers; a time said as mm:ss; the format', () => {
+    expect(v('montage', { action: 'open', videos: 'latest', music: 'latest', musicStartSec: '0:30', aspectRatio: 'vertical' })).toEqual({
+      ok: true,
+      action: { type: 'montage', action: 'open', videos: [{ kind: 'video' }], music: { kind: 'audio' }, musicStartSec: 30, aspectRatio: '9:16' },
+    });
+    expect(v('montage', { action: 'open', videos: '2, 1', music: 'none' })).toEqual({
+      ok: true, action: { type: 'montage', action: 'open', videos: [{ n: 2 }, { n: 1 }], music: null },
+    });
+    expect(v('montage', { action: 'open', aspectRatio: '4:5' }).ok).toBe(false);
+    expect(v('montage', { action: 'set_music_start' }).ok).toBe(false);
+    expect(v('montage', { action: 'set_music_start', musicStartSec: 99999 })).toEqual({ ok: true, action: { type: 'montage', action: 'set_music_start', musicStartSec: 3600 } });
+    expect(v('montage', { action: 'export' })).toEqual({ ok: true, action: { type: 'montage', action: 'export' } });
+  });
+
+  it('read_webpage: only a public web address, normalised', () => {
+    expect(v('read_webpage', { url: 'example.ge/news' })).toEqual({ ok: true, action: { type: 'read_webpage', url: 'https://example.ge/news' } });
+    for (const url of ['http://localhost:3000', 'http://169.254.169.254/latest', 'javascript:alert(1)', 'http://10.0.0.1/']) {
+      expect(v('read_webpage', { url }).ok).toBe(false);
+    }
+  });
+
+  it('the rule tells the model it may click and chain steps — and that other sites\' buttons are not its to press', () => {
+    expect(LIVE_ACTIONS_RULE).toMatch(/click and\s+type_text/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/\[App\]/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/cannot press\s+buttons, fill forms, sign in or pay on other websites/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/never\s+spend credits, pay, delete or sign out/);
   });
 });
