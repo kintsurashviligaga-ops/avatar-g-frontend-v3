@@ -5,9 +5,11 @@
  * Gemini Live frame: portalled onto <body>, pinned dark, above every toast/tray; a mic failure names the MICROPHONE
  * (never "connection dropped") with the browser's error name; captions toggle; the audio-driven waveform.
  */
+import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import LiveCaptions, { tailText } from './LiveCaptions';
+import { LIVE_DOCK_STRINGS } from './LiveDock';
 import LiveModeOverlay, { LIVE_OVERLAY_STRINGS, liveErrorHeadline } from './LiveModeOverlay';
 import LiveOrb, { LiveWaveform, WAVE_REST, orbStateFor, orbTarget, waveLevel } from './LiveOrb';
 import type { LiveCaption, LiveErrorCode } from './useGeminiLiveSession';
@@ -21,21 +23,70 @@ const MIC_CODES = ALL_CODES.filter((c) => c.startsWith('mic_'));
 const handlers = () => ({ onToggleMute: jest.fn(), onToggleCamera: jest.fn(), onFlipCamera: jest.fn(), onEnd: jest.fn(), onRetry: jest.fn() });
 
 describe('LiveModeOverlay', () => {
-  it.each(['ka', 'en', 'ru'] as const)('%s: every control has a localized name and a ≥ 44 px target', (locale) => {
+  it.each(['ka', 'en', 'ru'] as const)('%s: every control has a localized name and a ≥ 44 px target; the bottom row is 56 px round buttons with their word', (locale) => {
     const s = LIVE_OVERLAY_STRINGS[locale];
-    render(<LiveModeOverlay locale={locale} status="listening" captions={[]} muted={false} cameraOn {...handlers()} />);
+    render(<LiveModeOverlay locale={locale} status="speaking" captions={[]} muted={false} cameraOn {...handlers()} onStopSpeaking={jest.fn()} />);
     expect(screen.getByRole('dialog', { name: s.title })).toBeTruthy();
-    for (const name of [s.mute, s.camera, s.flip, s.end, s.captions]) {
-      const cls = screen.getByRole('button', { name }).className;
-      expect(cls).toMatch(/\bh-1[12]\b/); // 44 / 48 px
-      expect(cls).toMatch(/\bw-1[12]\b|\bmin-w-\[48px\]/);
+    // The bottom row: a 56 px circle per control, the whole column the target.
+    const row = screen.getByTestId('live-controls');
+    const controls = Array.from(row.querySelectorAll<HTMLButtonElement>('button[data-control]'));
+    expect(controls).toHaveLength(4); // camera · stop-speaking · mute · End
+    for (const b of controls) {
+      expect(b.className).toMatch(/min-h-\[56px\]/);
+      expect(b.className).toMatch(/min-w-\[56px\]/);
+      // In px: the app's root font is 17 px, so a rem-sized circle would not be 56 px.
+      expect(b.querySelector('[data-circle]')!.className).toMatch(/\bh-\[56px\] w-\[56px\]/);
+      // The word under it is in its accessible name (WCAG 2.5.3) …
+      expect(b.getAttribute('aria-label')!.toLocaleLowerCase()).toContain(b.textContent!.toLocaleLowerCase());
+      // … and it appears from 360 px (icons alone fit a 320 px phone).
+      expect(b.lastElementChild!.className).toMatch(/\bhidden\b.*min-\[360px\]:block/);
     }
-    expect(screen.getByText(s.status.listening)).toBeTruthy();
-    // End is a red pill whose accessible name contains its visible word (WCAG 2.5.3).
+    for (const name of [s.mute, s.camera, s.end, LIVE_DOCK_STRINGS[locale].stopSpeaking]) expect(row).toContainElement(screen.getByRole('button', { name }));
+    // Flip and captions sit in the top bar.
+    for (const name of [s.flip, s.captions]) {
+      const cls = screen.getByRole('button', { name }).className;
+      expect(cls).toMatch(/\bh-11\b/);
+      expect(cls).toMatch(/\bw-11\b/);
+    }
+    expect(screen.getByText(s.status.speaking)).toBeTruthy();
+    // End: a solid red circle with a phone-down icon and its word.
     const end = screen.getByRole('button', { name: s.end });
-    expect(end.className).toMatch(/\bbg-app-danger\b/);
+    expect(end.querySelector('[data-circle]')!.className).toMatch(/\bbg-app-danger\b/);
+    expect(end.querySelector('[data-circle] svg')).not.toBeNull();
     expect(end.textContent).toBe(s.endShort);
     expect(s.end).toContain(s.endShort);
+  });
+
+  it('stop-speaking joins the row only while the agent speaks', () => {
+    const onStopSpeaking = jest.fn();
+    const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} onStopSpeaking={onStopSpeaking} />);
+    expect(screen.queryByTestId('live-stop-speaking')).toBeNull();
+    rerender(<LiveModeOverlay locale="en" status="speaking" captions={[]} muted={false} cameraOn={false} {...handlers()} onStopSpeaking={onStopSpeaking} />);
+    fireEvent.click(screen.getByTestId('live-stop-speaking'));
+    expect(onStopSpeaking).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('live-stop-speaking').textContent).toBe(LIVE_OVERLAY_STRINGS.en.stopShort);
+  });
+
+  it('the agent is the rocket: in the orb (whole, centred, never cropped) and large and faint behind it — no photo', () => {
+    const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
+    const dialog = screen.getByRole('dialog');
+    const rocket = dialog.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
+    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    expect(rocket.getAttribute('srcset')).toBe('/brand/rocket-mark.png 256w, /brand/rocket-mark-512.png 512w');
+    expect(rocket.className).toMatch(/\bobject-contain\b/);
+    expect(rocket.className).toMatch(/inset-\[15%\].*h-\[70%\].*w-\[70%\]/);
+    const backdrop = dialog.querySelector('[data-testid="live-orb-backdrop"]')!;
+    expect(backdrop).not.toBeNull();
+    expect(backdrop.className).toMatch(/aspect-square/);
+    expect(backdrop.className).toMatch(/w-\[min\(92vw,34rem\)\]/); // always whole on a phone
+    expect(backdrop.querySelector('img')!.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    expect(backdrop.querySelector('img')!.className).toMatch(/\bobject-contain\b/);
+    // Every picture on the call is the rocket (the enrolled-avatar photo is gone).
+    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    // With the camera on, the camera is the background.
+    rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn {...handlers()} />);
+    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
+    expect(screen.getByRole('dialog').querySelector('[data-testid="live-orb-rocket"]')).not.toBeNull();
   });
 
   it('toggles expose aria-pressed and call their handlers; flip only while the camera is on', () => {
@@ -153,9 +204,14 @@ describe('LiveModeOverlay', () => {
 
   it('mute inverts when active (the toggle grammar), and the waveform goes still', () => {
     const s = LIVE_OVERLAY_STRINGS.en;
-    render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted cameraOn={false} {...handlers()} />);
-    expect(screen.getByRole('button', { name: s.mute }).className).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
+    const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted cameraOn={false} {...handlers()} />);
+    const circle = () => screen.getByRole('button', { name: s.mute }).querySelector('[data-circle]')!.className;
+    expect(circle()).toMatch(/\bbg-app-text\b.*\btext-app-bg\b/);
     expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('idle');
+    rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} />);
+    expect(circle()).not.toMatch(/\bbg-app-text\b/);
+    expect(circle()).toMatch(/bg-white\/\[0\.09\]/); // glass when off
+    expect(screen.getByTestId('live-waveform').querySelector('[data-state]')?.getAttribute('data-state')).toBe('listening');
   });
 
   it('a blocked audio context shows "tap to turn on sound", which resumes it inside the tap', () => {
@@ -279,13 +335,42 @@ describe('LiveOrb', () => {
     expect(raf).not.toHaveBeenCalled();
   });
 
-  it('one hue, one glow: the core has no shadow; the single halo is the blurred accent', () => {
+  it('one hue, one glow: the core has no shadow; the single halo is the blurred accent; the disc is lit by the accent', () => {
     mockReducedMotion(true);
     const { container } = render(<LiveOrb state="speaking" label="Speaking" />);
     const layers = Array.from(container.querySelectorAll<HTMLDivElement>('[aria-hidden]'));
     expect(layers.filter((l) => /\bblur-3xl\b/.test(l.className))).toHaveLength(1);
     expect(layers.some((l) => /shadow-/.test(l.className))).toBe(false);
-    expect(container.innerHTML).toMatch(/from-app-accent via-cyan-500 to-cyan-dim/);
+    expect(container.innerHTML).toMatch(/rgb\(var\(--app-accent\)\/0\.42\)/);
+  });
+
+  it.each([36, 40, 88, 136, 168, 208])('the rocket sits whole on the disc at %i px, and asks for the raster it needs', (size) => {
+    mockReducedMotion(true);
+    const { container } = render(<LiveOrb state="listening" size={size} label="Listening" />);
+    const rocket = container.querySelector<HTMLImageElement>('[data-testid="live-orb-rocket"]')!;
+    expect(rocket.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    expect(rocket.getAttribute('alt')).toBe('');
+    // 70 % of the core, centred, object-contain: the corner-to-corner mark stays inside the circle at every size.
+    expect(rocket.className).toMatch(/\bobject-contain\b/);
+    expect(rocket.className).toMatch(/inset-\[15%\]/);
+    expect(rocket.getAttribute('sizes')).toBe(`${Math.max(16, Math.round(size * 0.76 * 0.7))}px`);
+    expect(rocket.closest('[aria-hidden]')!.className).toMatch(/\boverflow-hidden\b.*\brounded-full\b/);
+    expect((container.firstElementChild as HTMLElement).style.width).toBe(`${size}px`);
+    // No backdrop unless asked (the dock has none).
+    expect(container.querySelector('[data-testid="live-orb-backdrop"]')).toBeNull();
+  });
+
+  it('idle dims the rocket and an error greys it; live states show it in full', () => {
+    mockReducedMotion(true);
+    const rocketCls = (state: 'idle' | 'error' | 'speaking') => {
+      const { container, unmount } = render(<LiveOrb state={state} label={state} />);
+      const cls = container.querySelector('[data-testid="live-orb-rocket"]')!.className;
+      unmount();
+      return cls;
+    };
+    expect(rocketCls('idle')).toMatch(/opacity-60/);
+    expect(rocketCls('error')).toMatch(/\bgrayscale\b/);
+    expect(rocketCls('speaking')).not.toMatch(/opacity-|grayscale/);
   });
 });
 

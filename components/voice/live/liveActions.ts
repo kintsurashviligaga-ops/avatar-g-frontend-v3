@@ -19,6 +19,9 @@
  * ⚠️ The answer goes out SYNCHRONOUSLY (no network, no await): Live function calls block the model's turn, and a
  * slow answer is dead air on a voice call. The studio fills `detail.reply` inside dispatchEvent, so its facts (the price,
  * the settings it applied, the screen state) are in the same answer.
+ * ⚠️ open_url DOES NOT OPEN ANYTHING HERE. A function call arrives on a WebSocket message, which is not a user gesture:
+ * every browser blocks window.open there (iOS Safari always). It becomes a card with the link, and the model is told the
+ * truth — the user taps it. The tap (openLiveUrl, inside the click handler) is the gesture that opens the tab.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -29,7 +32,9 @@ import {
   LIVE_RUN_EVENT,
   LIVE_START_COUNTDOWN_MS,
   OPEN_ARTIFACT_EVENT,
+  liveUrlHost,
   validateLiveToolCall,
+  validateLiveUrl,
   type LiveAction,
   type LiveActionEventDetail,
   type LiveCallView,
@@ -49,8 +54,11 @@ export const LIVE_END_CALL_MAX_WAIT_MS = 8000;
 
 export interface LiveToolCall { id: string; name: string; args: unknown }
 
-/** What a card can show: a prepared prompt, an opened tool, code. (The rest act on the visible screen and need no card.) */
-export type LiveCardAction = Extract<LiveAction, { type: 'prepare_generation' | 'open_studio' | 'show_code' }>;
+/**
+ * What a card can show: a prepared prompt, an opened tool, code, a link to open. (The rest act on the visible screen and
+ * need no card.)
+ */
+export type LiveCardAction = Extract<LiveAction, { type: 'prepare_generation' | 'open_studio' | 'show_code' | 'open_url' }>;
 export interface LiveActionCard {
   /** The function-call id (toolCallCancellation removes by it); a local id when the model sent none. */
   id: string;
@@ -288,6 +296,18 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         card: card(action),
       };
     }
+    case 'open_url': {
+      // Not the studio's (no event), and never window.open from here — see the header. A card the user taps.
+      const host = liveUrlHost(action.url) || 'the website';
+      return {
+        response: answer({
+          ok: true,
+          summary: `A link to ${host} is on the user's screen; they tap it to open it in a new browser tab — a voice call `
+            + 'cannot open tabs by itself. Tell them to tap it.',
+        }),
+        card: card(action),
+      };
+    }
     case 'end_call':
       env.dispatchAction(action);
       return { response: answer({ ok: true, summary: 'The call ends right after your reply: say a short goodbye now.' }), endCall: true };
@@ -296,10 +316,31 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   }
 }
 
-/** A card's Open, after the call has ended: bring the studio (focused) or the canvas back to the front. */
+/**
+ * A card's Open, after the call has ended: bring the studio (focused) or the canvas back to the front. A link is not
+ * revealed here — this runs a task after the tap, outside the gesture, where a browser blocks the new tab; the link's
+ * own button opens it (openLiveUrl) and the call goes on.
+ */
 export function revealLiveAction(action: LiveCardAction, env: LiveActionEnv = browserLiveActionEnv): void {
+  if (action.type === 'open_url') return;
   if (action.type === 'show_code') env.openArtifact({ title: action.title, language: action.language, code: action.code });
   else env.dispatchAction({ ...action, reveal: true });
+}
+
+/**
+ * Open a link the call put on screen, in a new tab, with no opener and no referrer. Call it ONLY inside the user's
+ * tap (a click handler): that is the gesture the browser needs. The address is checked again here, so nothing but a
+ * public http(s) address can ever reach window.open. True when it was handed to the browser.
+ */
+export function openLiveUrl(url: string): boolean {
+  const checked = validateLiveUrl(url);
+  if (!checked.ok || typeof window === 'undefined' || typeof window.open !== 'function') return false;
+  try {
+    window.open(checked.url, '_blank', 'noopener,noreferrer');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** A confirmed start_generation counting down on screen. */

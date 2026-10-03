@@ -1,8 +1,8 @@
 # Live actions: voice control of the screen in Gemini Live
 
 While the user talks, the Live model calls functions that operate the app: it reads what is on screen, fills and tunes
-a studio, writes in the chat, switches the chat model, stops, scrolls, opens panels, shows code, and — only after the
-user says yes to the price — starts a generation. It acts and keeps talking, the way Astra does, and the user **sees**
+a studio, writes in the chat, switches the chat model, stops, scrolls, opens panels, shows code, puts a link to a
+website on screen for the user to open, and — only after the user says yes to the price — starts a generation. It acts and keeps talking, the way Astra does, and the user **sees**
 it happen: the call can shrink to a bar at the top of the screen (the dock) while the app stays fully usable under it.
 
 ## The money rule: only a confirmed start spends
@@ -30,8 +30,10 @@ Every function but one is free. `start_generation` is the only one that spends c
 | Server lock: the mint puts the declarations into `bidiGenerateContentSetup` | `app/api/voice/live/route.ts` |
 | Transport: the `actions` opt-in, the no-actions retry, cancellation, mint timeout, offline-aware resume | `components/voice/live/useGeminiLiveSession.ts` |
 | Executor: validate, dispatch the window event, read the studio's reply, answer the model, the countdown | `components/voice/live/liveActions.ts` |
-| Dock: the call as a bar at the top; the run banner | `components/voice/live/LiveDock.tsx` |
-| Full screen: the action cards, the run banner, "Show the screen", stop-speaking | `LiveActionCards.tsx`, `LiveModeOverlay.tsx` |
+| Dock: the call as a floating capsule at the top; the step line, the link chip, the run banner | `components/voice/live/LiveDock.tsx` |
+| Full screen: the control row, the action cards (a link's Open), the run banner, "Show the screen", stop-speaking | `LiveActionCards.tsx`, `LiveModeOverlay.tsx` |
+| The agent's face: the rocket in the orb, and behind it on the full call | `components/voice/live/LiveOrb.tsx` |
+| The agent's steps (running → done) for both screens | `components/voice/live/LiveActivityFeed.tsx` (`liveCurrentStep`) |
 | Host: dock/full view, the call flag, `end_call` and Open | `components/voice/GeminiLiveConversation.tsx` |
 | Studio: one listener that does each action and writes the reply | `components/studio/OmniStudio.tsx` |
 | Panels opened by voice (search, history sidebar) | `components/studio/ChatChrome.tsx` |
@@ -58,7 +60,28 @@ rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"o
 | `open_panel` | `panel` (`settings` · `credits` · `persona` · `connectors` · `search` · `history`) | Opens that panel. |
 | `call_view` | `view` (`screen` · `full`) | Docks the call to the bar, or brings the full call screen back. |
 | `show_code` | `title`, `language` (allowlist, aliases mapped), `code` (≤ 200 KB) | `myavatar:open-artifact` with `{ title, language, code }`. |
+| `open_url` | `url` (≤ 2,048 chars, http/https only), `title?` (≤ 120 chars) | A card with the link (and a chip under the dock); **the user's tap** opens it in a new tab. The call never opens it itself. |
 | `end_call` | none | The call hangs up after the model's goodbye. |
+
+### `open_url`: a link the user taps
+
+Browsers block `window.open` outside a user gesture, and a function call arrives on a WebSocket message, which is not
+one (iOS Safari blocks it every time). So the executor does **not** open anything: it adds an action card of the kind
+`open_url` and answers the model with the truth — `{ ok: true, summary: "A link to <host> is on the user's screen; they
+tap it to open it in a new browser tab — a voice call cannot open tabs by itself. Tell them to tap it." }`. The card's
+**Open** (on the full call) and the link chip under the dock call `window.open(url, '_blank', 'noopener,noreferrer')`
+inside the tap (`openLiveUrl`), which is the gesture; the call goes on (unlike a studio card's Open, which ends it).
+`LIVE_ACTIONS_RULE` tells the model to use it for websites, videos and search results, e.g.
+`https://www.google.com/search?q=…` or `https://www.youtube.com/results?search_query=…`. The studio is not involved:
+no `myavatar:live-action` event is sent.
+
+The validator (`validateLiveUrl`) lets only a public web address through: `http:` or `https:` (a bare `youtube.com/…`
+gets `https://`); never `javascript:`, `data:`, `file:`, `blob:`, `intent:` or any other scheme; no user name or password
+in the address; no `localhost`, local-network names (`.local`, `.internal`, a single-label host) or private, loopback,
+link-local or CGNAT IPv4 literals (in any spelling — the URL parser normalises `2130706433` and `0x7f.1`); no IPv6
+literal at all. Control and bidi characters are stripped, unknown arguments ignored, and the normalised address (a
+Georgian query is percent-encoded and grows) must stay within 2,048 characters, else `too_large`. `openLiveUrl` checks
+the address again before it reaches `window.open`.
 
 The validators sanitise the input. They strip control characters and bidi overrides, normalise unambiguous spellings
 (`portrait` → `9:16`, `"24s"` → 24, `js` → `javascript`, tool aliases), clamp values to their bounds, and ignore
@@ -77,8 +100,15 @@ structured error, `{ code, message, field?, allowed? }`, and the model can retry
   did.
 - **`myavatar:live-call`** `{ active }` and **`<html data-live-call>`** mark a call in progress: OmniStudio keeps the
   call's turns in one thread instead of splitting it when a voice action switches the tool.
-- **`<html data-live-docked>`** is set while the dock is up: `app/globals.css` moves `.ag-fixed-shell` down by
-  `--live-dock-h`, so the bar never covers the app.
+- **`<html data-live-docked>`** is set while the dock is up, and the dock writes its **measured** height (safe area,
+  capsule, link chip, countdown) to `--live-dock-h` on `<html>` (a ResizeObserver keeps it current; `app/globals.css`
+  holds only a first-frame fallback). `app/globals.css` moves `.ag-fixed-shell` down by exactly that, so the dock never
+  covers the app and no band is left under it. ⚠️ ChatChrome's shell says `fixed`, but the unlayered
+  `.ag-fixed-shell { position: relative }` beats Tailwind's `.fixed`, so it sat in AppShell's flow — under AppShell's
+  safe-area padding and AppShell's own docked offset: docked, the studio landed a whole dock (plus a safe area) lower,
+  leaving an empty dark band over its header and its composer pushed off the screen. Docked, the studio's shell is now
+  pinned to the viewport right under the dock, and nothing in it pads by the top safe area again (AppShell, the header,
+  the sidebar and the collapsed rail); the phone's history drawer opens under the dock, not behind it.
 - **`myavatar:open-artifact`** has `detail` `{ title, language, code }`, exactly those three fields; `ArtifactCanvas`
   calls `preventDefault()` once its store has the artifact. Without that receipt the model gets `canvas_unavailable`.
 - **`myavatar:open-search`** and **`myavatar:open-sidebar`** (ChatChrome) open the chat search and the history sidebar.
@@ -90,22 +120,41 @@ model's turn, so a slow answer would be dead air.
 
 - `{ ok: true, summary }`: an English sentence for the model that is honest about what happened — the settings the
   panel really took, the price, and for a prepared run, "ask the user whether to start it".
-- `{ ok: false, error, message, field?, allowed? }`: `error` is one of `invalid_args`, `too_large`, `unknown_tool`,
-  `studio_unavailable`, `canvas_unavailable`, `too_many_actions`, or the studio's own refusal code. After 40 actions in
-  one call, a looping model is cut off.
+- `{ ok: false, error, message, field?, allowed? }`: `error` is one of `invalid_args`, `too_large` (code over 200 KB, an
+  address over 2,048 characters), `unknown_tool`, `studio_unavailable`, `canvas_unavailable`, `too_many_actions`, or the
+  studio's own refusal code. After 40 actions in one call, a looping model is cut off.
 - When the server sends `toolCallCancellation`, the user has barged in: the cards for those ids are dropped and a
   pending countdown is cancelled.
 
 ### The screen
 
-- **The dock.** A 56 px bar at the top (plus the safe area), always dark: the orb, the status, the last caption or the
-  agent's current step, stop-speaking (while the agent speaks), mute, expand and end — each ≥ 44 px, named in ka/en/ru.
-  It is not a dialog: no focus trap, Escape does not hang up. A screen action (`get_screen_state` and every action that
-  changes the screen) docks the call on its own, so the user sees the change; `call_view` and "Show the screen" on the
-  full call do it on request; an error brings the full screen back.
-- **The full call.** The strip of cards sits above the control pill, newest first, at most 3, each with an **Open**
-  button. One visually hidden `role="status"` line announces each new card once. Framer Motion animates the cards; they
-  simply appear under `prefers-reduced-motion`. Georgian text is at least 16 px.
+- **The agent is the rocket.** The orb carries the brand mark (`public/brand/rocket-mark*.png`, transparent) on a dark
+  glass disc — 70 % of the core, centred, `object-contain`, so the corner-to-corner mark is never cropped or stretched
+  at any size from the dock's 36 px to the call's 208 px; `srcSet` + `sizes` pick the 256 or 512 px raster. On the full
+  call with the camera off, the same rocket stands large and faint behind the orb (at most 92 % of the screen's width,
+  always whole) on a soft wash of its blue — static, one hue, under the one audio-reactive halo. The user's enrolled
+  avatar poster is no longer shown (or fetched) on the call.
+- **The dock.** A floating glass capsule at the top (on a black strip that takes the safe area), always dark: the rocket
+  orb, „ცოცხალი ზარი · Agent G" with a live dot (it pulses only while the call is live, never under reduced motion), the
+  status beside a compact waveform, and one line that says what is happening — the agent's step while it runs (a
+  spinner), the agent's words while it speaks, a step that just finished (a check, for 5 s), then the last caption. Then
+  mute, expand, stop-speaking (while the agent speaks) and End: a calm dark-red pill with a phone-down icon and its word
+  („დასრულება", from 360 px) — the old big red filled ✕ read as "close this panel". Two rows on a phone, one from
+  `sm`. A link the agent put on screen (`open_url`) shows as a chip under the capsule with **Open** (and hide), and a
+  confirmed generation's countdown (with a draining bar) sits there too — both inside the dock, so their height is
+  reserved. Every target is 44 px (in px: the app's root font is 17 px), named in ka/en/ru. It is not a dialog: no focus
+  trap, Escape does not hang up. A screen action (`get_screen_state` and every action that changes the screen) docks the
+  call on its own, so the user sees the change; `call_view` and "Show the screen" on the full call do it on request; an
+  error brings the full screen back.
+- **The full call.** One row of round glass controls, 56 px, each with its word under it (from 360 px; 12 px captions
+  of the icons — the accessible name carries the full phrase): camera · stop-speaking (while the agent speaks) · mute ·
+  the voice · End, a solid red circle with a phone-down icon. Toggles invert when on and expose `aria-pressed`. Five fit a
+  320 px phone; flip-camera sits in the top bar beside the preview, and the waveform beside the status line. Under the
+  status, the agent's steps: the newest is the step it is on now — lifted, a spinner and a running bar while it runs,
+  a check when done — and the older ones step back. The strip of cards sits above the controls, newest first, at most 3,
+  each with an **Open** button (a link's Open opens the site and keeps the call). One visually hidden `role="status"`
+  line announces each new card once. Framer Motion animates the cards; they simply appear under
+  `prefers-reduced-motion`. Georgian reading text is at least 16 px.
 
 ## Switches and fallbacks
 

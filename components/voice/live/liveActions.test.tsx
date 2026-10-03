@@ -15,6 +15,7 @@ import {
   dispatchLiveAction,
   dispatchOpenArtifact,
   executeLiveToolCall,
+  openLiveUrl,
   revealLiveAction,
   useLiveActions,
   type LiveActionEnv,
@@ -115,6 +116,55 @@ describe('executeLiveToolCall', () => {
     expect(unknown.response).toMatchObject({ id: 'u', name: 'start_render', response: { ok: false, error: 'unknown_tool' } });
     expect(actions).toEqual([]);
     expect(artifacts).toEqual([]);
+  });
+
+  test('open_url → a link card and an honest answer ("the user taps it"); no tab is opened and the studio is not involved', () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const { env, actions, artifacts } = spyEnv(true);
+      const out = executeLiveToolCall(call('u1', 'open_url', { url: 'https://www.youtube.com/results?search_query=cats', title: 'YouTube: cats' }), env);
+      expect(out.response).toEqual({
+        id: 'u1',
+        name: 'open_url',
+        response: {
+          ok: true,
+          summary: "A link to youtube.com is on the user's screen; they tap it to open it in a new browser tab — a voice call "
+            + 'cannot open tabs by itself. Tell them to tap it.',
+        },
+      });
+      expect(out.card).toEqual({ id: 'u1', action: { type: 'open_url', url: 'https://www.youtube.com/results?search_query=cats', title: 'YouTube: cats' } });
+      expect(out.screen).toBeUndefined(); // a link does not dock the call: the card (or the dock's chip) carries it
+      expect(actions).toEqual([]);
+      expect(artifacts).toEqual([]);
+      // ⚠️ A WebSocket message is not a user gesture: the executor must never call window.open itself.
+      expect(open).not.toHaveBeenCalled();
+
+      const bad = executeLiveToolCall(call('u2', 'open_url', { url: 'javascript:alert(document.cookie)' }), env);
+      expect(bad.response.response).toMatchObject({ ok: false, error: 'invalid_args', field: 'url' });
+      expect(bad.card).toBeUndefined();
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test('openLiveUrl (the tap) opens a new tab with no opener and no referrer — and only a public web address', () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      expect(openLiveUrl('https://www.youtube.com/results?search_query=cats')).toBe(true);
+      expect(open).toHaveBeenCalledWith('https://www.youtube.com/results?search_query=cats', '_blank', 'noopener,noreferrer');
+      for (const bad of ['javascript:alert(1)', 'http://127.0.0.1/', 'data:text/html,x', 'https://u:p@bank.example']) {
+        expect(openLiveUrl(bad)).toBe(false);
+      }
+      expect(open).toHaveBeenCalledTimes(1);
+      // revealLiveAction runs a task AFTER the tap (outside the gesture): it never opens a link.
+      const { env, actions } = spyEnv(true);
+      revealLiveAction({ type: 'open_url', url: 'https://bbc.com/' }, env);
+      expect(actions).toEqual([]);
+      expect(open).toHaveBeenCalledTimes(1);
+    } finally {
+      open.mockRestore();
+    }
   });
 
   test('a call without an id still gets an answer; its card takes the local id', () => {
@@ -312,6 +362,22 @@ describe('useLiveActions', () => {
       expect(runGeneration).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
+    }
+  });
+
+  test('open_url through the hook: a link card, no dock, no window.open', () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const { env } = spyEnv(true);
+      const { result } = renderHook(() => useLiveActions(env));
+      let responses: ReturnType<typeof result.current.onToolCall> = [];
+      act(() => { responses = result.current.onToolCall([call('l1', 'open_url', { url: 'bbc.com/news' })]); });
+      expect(responses[0]!.response).toMatchObject({ ok: true });
+      expect(result.current.cards).toEqual([{ id: 'l1', action: { type: 'open_url', url: 'https://bbc.com/news' } }]);
+      expect(result.current.screenSeq).toBe(0);
+      expect(open).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
     }
   });
 

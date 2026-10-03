@@ -14,6 +14,7 @@
 const mockReportError = jest.fn();
 jest.mock('../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReportError(...a) }));
 
+import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 
@@ -238,8 +239,9 @@ describe('voice-to-action', () => {
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ id: 'c1', name: 'prepare_generation', response: { ok: true } });
     expect(String(r[0]!.response.summary)).toMatch(/no credits were spent/);
-    // Nothing but the answer went to Google: no render, no second call.
-    expect((g.fetch as jest.Mock).mock.calls.filter((c) => c[0] !== '/api/voice/live' && c[0] !== '/api/avatar/core')).toEqual([]);
+    // Nothing but the answer went to Google: no render, no second call — and no avatar-poster request either (the
+    // agent on the call is the rocket, not the user's photo).
+    expect((g.fetch as jest.Mock).mock.calls.filter((c) => c[0] !== '/api/voice/live')).toEqual([]);
 
     // The call DOCKS so the user sees the prepared studio while still talking (components/voice/live/LiveDock.tsx).
     expect(await screen.findByTestId('live-dock')).toBeTruthy();
@@ -294,6 +296,68 @@ describe('voice-to-action', () => {
     } finally {
       window.removeEventListener(OPEN_ARTIFACT_EVENT, canvas);
     }
+  });
+
+  test('the call shows the rocket, never the user\'s enrolled avatar photo (no /api/avatar/core request)', async () => {
+    await connectedCall();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.querySelector('[data-testid="live-orb-rocket"]')?.getAttribute('src')).toBe('/brand/rocket-mark-512.png');
+    expect(dialog.querySelector('[data-testid="live-orb-backdrop"]')).not.toBeNull();
+    for (const img of Array.from(dialog.querySelectorAll('img'))) expect(img.getAttribute('src')).toMatch(/^\/brand\/rocket-mark/);
+    expect((g.fetch as jest.Mock).mock.calls.some((c) => c[0] === '/api/avatar/core')).toBe(false);
+  });
+
+  test('open_url → an honest answer and a link card; the tab opens only on the user\'s tap, and the call goes on', async () => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const { ws, onClose } = await connectedCall();
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'w1', name: 'open_url', args: { url: 'https://www.youtube.com/results?search_query=cats', title: 'YouTube: cats' } }] } }));
+      await waitFor(() => expect(lastToolResponse(ws)).toBeTruthy());
+      const r = lastToolResponse(ws)!.toolResponse.functionResponses[0]!;
+      expect(r).toMatchObject({ id: 'w1', name: 'open_url', response: { ok: true } });
+      expect(String(r.response.summary)).toMatch(/A link to youtube\.com is on the user's screen; they tap it/);
+      expect(String(r.response.summary)).toMatch(/cannot open tabs by itself/);
+      // The studio is not involved, and nothing was opened from the socket message.
+      expect(live).toEqual([]);
+      expect(open).not.toHaveBeenCalled();
+      // The call stays full screen; the card offers the link.
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      const card = await screen.findByText('YouTube: cats');
+      expect(card).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: S.openLinkLabel('youtube.com') }));
+      expect(open).toHaveBeenCalledWith('https://www.youtube.com/results?search_query=cats', '_blank', 'noopener,noreferrer');
+      expect(onClose).not.toHaveBeenCalled();
+      expect(ws.readyState).toBe(FakeSocket.OPEN);
+
+      // Docked (the agent changed the screen), the link rides along as a chip under the capsule.
+      act(() => ws.receive({ toolCall: { functionCalls: [{ id: 'w2', name: 'open_studio', args: { tool: 'video' } }] } }));
+      const chip = await screen.findByTestId('live-dock-link');
+      expect(chip).toHaveTextContent('YouTube: cats');
+      fireEvent.click(screen.getByTestId('live-dock-link-open'));
+      expect(open).toHaveBeenCalledTimes(2);
+      // Opened → the chip gives its room back; the call is still on.
+      await waitFor(() => expect(screen.queryByTestId('live-dock-link')).toBeNull());
+      expect(screen.getByTestId('live-dock')).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  test('docked, the dock names the call, ends with a pill (not a red ✕), and shows the agent\'s step', async () => {
+    const { ws, onClose } = await connectedCall();
+    act(() => ws.receive({ toolCall: { functionCalls: [{ id: 's1', name: 'open_studio', args: { tool: 'music' } }] } }));
+    const dock = await screen.findByTestId('live-dock');
+    expect(dock).toHaveTextContent('Live call');
+    expect(dock).toHaveTextContent('Agent G');
+    // The step the agent just took, with its check.
+    const line = screen.getByTestId('live-dock-line');
+    expect(line).toHaveTextContent('Studio opened');
+    expect(line.querySelector('[data-mark="done"]')).not.toBeNull();
+    const end = screen.getByTestId('live-dock-end');
+    expect(end).toHaveTextContent('End');
+    fireEvent.click(end);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test('end_call hangs up after the goodbye: a short grace when nothing plays, bounded while the goodbye plays', async () => {

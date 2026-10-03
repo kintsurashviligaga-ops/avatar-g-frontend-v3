@@ -20,6 +20,9 @@
  * below, and a field the Constrained endpoint might reject would cost the whole lock (the mint route then retries
  * without the declarations). And end_call has NO `parameters`: an OBJECT with empty `properties` is a documented
  * Gemini 400 ("properties: should be non-empty for OBJECT type").
+ * ⚠️ open_url NEVER OPENS A TAB BY ITSELF. Browsers block window.open outside a user gesture (a WebSocket message is not
+ * one; iOS Safari blocks it every time), so the call shows a link the user taps — and the validator below lets only a
+ * public http(s) address through (no javascript:/data:/file:, no credentials, no localhost or private IP literals).
  */
 
 // ─── Catalogue constants ─────────────────────────────────────────────────────
@@ -43,6 +46,7 @@ export const LIVE_ACTION_NAMES = [
   'open_panel',
   'call_view',
   'show_code',
+  'open_url',
   'end_call',
 ] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
@@ -105,6 +109,8 @@ export const LIVE_DURATION_MIN_SEC = 1;
 export const LIVE_DURATION_MAX_SEC = 120;
 /** chat_send: a long dictated request is fine; a book is not. */
 export const LIVE_CHAT_TEXT_MAX_CHARS = 4000;
+/** open_url: the address as it will be opened (after normalisation — a Georgian query is percent-encoded and grows). */
+export const LIVE_URL_MAX_CHARS = 2048;
 /** How long the browser counts down before a confirmed start_generation runs — the user's last chance to cancel. */
 export const LIVE_START_COUNTDOWN_MS = 3000;
 
@@ -303,6 +309,24 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
     },
   },
   {
+    name: 'open_url',
+    description:
+      'Open a website, a video or search results in the browser: it shows the user a link they tap to open it in a new '
+      + 'tab (a voice call cannot open tabs by itself). Use a full https address, e.g. https://www.google.com/search?q=... '
+      + 'or https://www.youtube.com/results?search_query=... Then tell the user to tap the link.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        url: { type: 'STRING', description: `The full http(s) address (at most ${LIVE_URL_MAX_CHARS} characters).` },
+        title: {
+          type: 'STRING',
+          description: `A short name for the link in the user's language, e.g. "YouTube: cat videos" (at most ${LIVE_TITLE_MAX_CHARS} characters).`,
+        },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'end_call',
     description: 'End this voice call. Use it only when the user says goodbye or asks to hang up, then say a short goodbye.',
   },
@@ -320,7 +344,10 @@ export const LIVE_ACTIONS_RULE = [
   'say it and ask whether to start. Call start_generation ONLY after the user clearly says yes to that price; it shows a',
   '3-second countdown they can cancel. Never start a generation on your own initiative.',
   'Use chat_send for anything long or written (documents, lists, plans, code explanations) and then say it is on the',
-  'screen instead of reading it aloud; show_code for code. open_studio, new_chat, set_chat_model, stop, scroll_chat,',
+  'screen instead of reading it aloud; show_code for code.',
+  'To open a website, a video or search results in the browser, call open_url, e.g. with',
+  'https://www.google.com/search?q=... or https://www.youtube.com/results?search_query=...; it shows a link the user taps.',
+  'open_studio, new_chat, set_chat_model, stop, scroll_chat,',
   'open_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
@@ -354,11 +381,13 @@ export interface StopAction { type: 'stop'; what: LiveStopTarget }
 export interface ScrollChatAction { type: 'scroll_chat'; to: LiveScrollTarget }
 export interface OpenPanelAction { type: 'open_panel'; panel: LivePanel }
 export interface CallViewAction { type: 'call_view'; view: LiveCallView }
+/** A link the user taps to open in a new tab: `url` is a normalised public http(s) address (see validateLiveUrl). */
+export interface OpenUrlAction { type: 'open_url'; url: string; title?: string }
 export interface EndCallAction { type: 'end_call' }
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
   | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
-  | ShowCodeAction | EndCallAction;
+  | ShowCodeAction | OpenUrlAction | EndCallAction;
 
 /**
  * What the studio writes back onto the event detail (`detail.reply`) while it handles an action — synchronously, inside
@@ -534,6 +563,87 @@ function asDuration(v: unknown): number | null {
   return Math.min(LIVE_DURATION_MAX_SEC, Math.max(LIVE_DURATION_MIN_SEC, Math.round(n)));
 }
 
+// ─── open_url: a public web address, or nothing ─────────────────────────────
+
+// Everything CONTROL_RE strips, plus tab/CR/LF, the soft hyphen, the bidi MARKS (LRM, RLM, ALM), zero-width characters,
+// the line/paragraph separators, the invisible operators and the BOM: none belongs in an address, and each can make a
+// link read differently from where it goes.
+// eslint-disable-next-line no-control-regex
+const URL_INVISIBLE_RE = /[\u0000-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]/g;
+
+/** Names that mean this device or the local network, never "a website". */
+const LOCAL_HOST_RE = /(^|\.)(localhost|localdomain|local|internal|intranet|lan|home\.arpa)$/;
+
+/**
+ * A dotted-quad hostname in a private, loopback, link-local or otherwise non-public range. The WHATWG URL parser has
+ * already rewritten every IPv4 spelling (2130706433, 0x7f.1, 0177.0.0.1) into a dotted quad, so this one form is enough.
+ */
+function isNonPublicIPv4(host: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  return a === 0 || a === 10 || a === 127 || a >= 224 // "this network", private, loopback, multicast/reserved/broadcast
+    || (a === 100 && b >= 64 && b <= 127) // carrier-grade NAT
+    || (a === 169 && b === 254) // link-local (where cloud metadata lives)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 192 && b === 0 && Number(m[3]) === 0) // IETF protocol assignments
+    || (a === 198 && (b === 18 || b === 19)); // benchmarking
+}
+
+export type LiveUrlResult =
+  | { ok: true; url: string; host: string }
+  | { ok: false; code: LiveActionErrorCode; message: string };
+
+const URL_TOO_LONG = `url is longer than ${LIVE_URL_MAX_CHARS} characters; use a shorter address or a shorter search.`;
+
+/**
+ * A model-supplied address → the normalised href to open (and its host for the screen, without "www."), or why not.
+ * Only http(s): javascript:, data:, file:, blob:, intent: and the rest are refused. A bare "youtube.com/…" gets https://.
+ * No user name or password in it (the `https://bank.ge@evil.example` trick). No localhost, local-network names or
+ * private/loopback IPv4 literals; IPv6 literals are refused outright — no site the agent should open is addressed that
+ * way, and the private ranges hidden in IPv6 (mapped, NAT64, unique-local, link-local) are easy to miss. At most
+ * LIVE_URL_MAX_CHARS, before and after normalisation. Never throws.
+ */
+export function validateLiveUrl(raw: unknown): LiveUrlResult {
+  if (typeof raw !== 'string') return { ok: false, code: 'invalid_args', message: 'url must be text.' };
+  const s = raw.replace(URL_INVISIBLE_RE, '').trim();
+  if (!s) return { ok: false, code: 'invalid_args', message: 'A url is required.' };
+  if (s.length > LIVE_URL_MAX_CHARS) return { ok: false, code: 'too_large', message: URL_TOO_LONG };
+  // A scheme is a run of letters before ":" ("javascript:", "https:"). A bare host ("youtube.com/…", "www.x.ge:8080")
+  // has a dot before its first colon, so it is never mistaken for one — it gets https:// instead.
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(s);
+  const candidate = s.startsWith('//') ? `https:${s}` : scheme && !scheme[1]!.includes('.') ? s : `https://${s}`;
+  let u: URL;
+  try {
+    u = new URL(candidate);
+  } catch {
+    return { ok: false, code: 'invalid_args', message: 'url must be a full web address, e.g. https://www.google.com/search?q=cats' };
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+    return { ok: false, code: 'invalid_args', message: 'Only http and https web addresses can be opened.' };
+  }
+  if (u.username || u.password) {
+    return { ok: false, code: 'invalid_args', message: 'Addresses with a user name or password in them are not allowed.' };
+  }
+  const host = u.hostname.toLowerCase().replace(/\.$/, '');
+  if (!host || host.startsWith('[') || !host.includes('.') || LOCAL_HOST_RE.test(host) || isNonPublicIPv4(host)) {
+    return { ok: false, code: 'invalid_args', message: 'Only public websites can be opened — not this device, the local network or a private address.' };
+  }
+  if (u.href.length > LIVE_URL_MAX_CHARS) return { ok: false, code: 'too_large', message: URL_TOO_LONG };
+  return { ok: true, url: u.href, host: host.replace(/^www\./, '') };
+}
+
+/** "https://www.youtube.com/results?…" → "youtube.com" (what the screen and the model are told). Never throws. */
+export function liveUrlHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/, '').replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
 // ─── Validators (one per tool) ──────────────────────────────────────────────
 
 /**
@@ -678,6 +788,20 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     // A missing title is not worth a retry round-trip mid-sentence: the canvas still needs a name.
     const title = (typeof rawTitle === 'string' ? cleanLine(rawTitle, LIVE_TITLE_MAX_CHARS) : '') || 'Code';
     return { ok: true, action: { type: 'show_code', title, language, code } };
+  },
+
+  open_url(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with url.');
+    const checked = validateLiveUrl(own(args, 'url'));
+    if (!checked.ok) return fail(checked.code, checked.message, 'url');
+    const rawTitle = own(args, 'title');
+    if (rawTitle !== undefined && rawTitle !== null && typeof rawTitle !== 'string') {
+      return fail('invalid_args', 'title must be text.', 'title');
+    }
+    const title = typeof rawTitle === 'string' ? cleanLine(rawTitle, LIVE_TITLE_MAX_CHARS) : '';
+    const action: OpenUrlAction = { type: 'open_url', url: checked.url };
+    if (title) action.title = title;
+    return { ok: true, action };
   },
 
   open_studio(args) {

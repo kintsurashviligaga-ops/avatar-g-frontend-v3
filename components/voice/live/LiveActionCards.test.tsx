@@ -21,6 +21,7 @@ const video: LiveActionCard = {
 const studio: LiveActionCard = { id: 'c2', action: { type: 'open_studio', tool: 'music' } };
 const code: LiveActionCard = { id: 'c3', action: { type: 'show_code', title: 'Fibonacci', language: 'python', code: 'def fib(n):\n  return n' } };
 const image: LiveActionCard = { id: 'c4', action: { type: 'prepare_generation', tool: 'image', prompt: 'A red fox' } };
+const link: LiveActionCard = { id: 'c6', action: { type: 'open_url', url: 'https://www.youtube.com/results?search_query=cats', title: 'YouTube: cats' } };
 
 const handlers = () => ({ onToggleMute: jest.fn(), onToggleCamera: jest.fn(), onEnd: jest.fn() });
 
@@ -33,6 +34,9 @@ describe('copy helpers', () => {
     }
     expect(s.openStudioLabel).toContain(s.open);
     expect(s.openCodeLabel).toContain(s.open);
+    expect(s.openLinkLabel('bbc.com')).toContain(s.open);
+    expect(s.openLinkLabel('bbc.com')).toContain('bbc.com');
+    expect(s.linkOnScreen('bbc.com')).toContain('bbc.com');
   });
 
   it('title / detail / announcement per action', () => {
@@ -45,6 +49,12 @@ describe('copy helpers', () => {
     expect(liveActionDetail(studio.action, 'en')).toBe('');
     expect(liveActionAnnouncement(video.action, 'en')).toBe('Prepared a video prompt. Not started — you run it from the studio.');
     expect(liveActionAnnouncement(code.action, 'en')).toBe('Code on screen: Fibonacci');
+    // A link: its title, and where it goes under it; with no title the site is the headline.
+    expect(liveActionTitle(link.action, 'en')).toBe('YouTube: cats');
+    expect(liveActionDetail(link.action, 'en')).toBe('youtube.com');
+    expect(liveActionTitle({ type: 'open_url', url: 'https://www.bbc.com/news' }, 'ka')).toBe('bbc.com');
+    expect(liveActionDetail({ type: 'open_url', url: 'https://www.bbc.com/news' }, 'ka')).toBe('');
+    expect(liveActionAnnouncement(link.action, 'en')).toBe('Link on screen: youtube.com — tap Open');
   });
 });
 
@@ -112,20 +122,46 @@ describe('LiveActionCards', () => {
     expect(screen.getByRole('button', { name: s.copied })).toBeTruthy();
     expect(onOpen).not.toHaveBeenCalled(); // copying never ends the call
   });
+
+  it.each(['ka', 'en', 'ru'] as const)('%s: a link card opens the site in a new tab only on the tap — and never ends the call', (locale) => {
+    const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      const s = LIVE_ACTION_STRINGS[locale];
+      const onOpen = jest.fn();
+      render(<LiveActionCards cards={[link]} locale={locale} onOpen={onOpen} />);
+      const card = screen.getByTestId('live-action-card');
+      expect(card.getAttribute('data-action')).toBe('open_url');
+      expect(within(card).getByText('YouTube: cats')).toBeTruthy();
+      expect(within(card).getByText('youtube.com')).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toBe(s.linkOnScreen('youtube.com'));
+      // Nothing is opened by showing the card (the call cannot: it is not a gesture)…
+      expect(open).not.toHaveBeenCalled();
+      const btn = within(card).getByRole('button', { name: s.openLinkLabel('youtube.com') });
+      expect(btn.textContent).toBe(s.open);
+      expect(btn.className).toMatch(/\bh-11\b/);
+      // …the tap is the gesture that opens it, with no opener and no referrer.
+      fireEvent.click(btn);
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(open).toHaveBeenCalledWith('https://www.youtube.com/results?search_query=cats', '_blank', 'noopener,noreferrer');
+      expect(onOpen).not.toHaveBeenCalled();
+    } finally {
+      open.mockRestore();
+    }
+  });
 });
 
 describe('LiveModeOverlay — the action strip', () => {
-  it('renders above the pill with onOpenAction; the content moves up only while it holds cards', () => {
+  it('renders above the controls with onOpenAction; the content moves up only while it holds cards', () => {
     const onOpenAction = jest.fn();
     const { rerender } = render(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[]} onOpenAction={onOpenAction} />);
     const dialog = screen.getByRole('dialog');
     expect(screen.getByRole('status')).toBeTruthy(); // the strip's live region is mounted for the whole call
     expect(screen.queryAllByTestId('live-action-card')).toHaveLength(0);
-    expect(dialog.style.paddingBottom).toContain('112px');
+    expect(dialog.style.paddingBottom).toContain('124px');
 
     rerender(<LiveModeOverlay locale="en" status="listening" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[video]} onOpenAction={onOpenAction} />);
     expect(screen.getAllByTestId('live-action-card')).toHaveLength(1);
-    expect(dialog.style.paddingBottom).toContain('196px');
+    expect(dialog.style.paddingBottom).toContain('204px');
     fireEvent.click(screen.getByRole('button', { name: LIVE_ACTION_STRINGS.en.openStudioLabel }));
     expect(onOpenAction).toHaveBeenCalledWith(video);
   });
@@ -135,6 +171,6 @@ describe('LiveModeOverlay — the action strip', () => {
     expect(screen.queryByTestId('live-action-card')).toBeNull();
     rerender(<LiveModeOverlay locale="en" status="error" error="connection_lost" captions={[]} muted={false} cameraOn={false} {...handlers()} actions={[video]} onOpenAction={jest.fn()} />);
     expect(screen.queryByTestId('live-action-card')).toBeNull();
-    expect(screen.getByRole('dialog').style.paddingBottom).toContain('112px');
+    expect(screen.getByRole('dialog').style.paddingBottom).toContain('124px');
   });
 });
