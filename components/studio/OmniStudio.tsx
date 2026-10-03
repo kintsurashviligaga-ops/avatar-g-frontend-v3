@@ -1939,6 +1939,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** A voice call's montage open (lib/voice/liveTools `montage`): the music bed and where in the song it starts, and the format. */
   const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number } | null>(null);
   const [montageAspectSeed, setMontageAspectSeed] = useState<'9:16' | '16:9' | '1:1' | null>(null);
+  /** Bumped by a voice montage open: a NEW edit with those seeds, even when Montage is already on screen (it reads its seeds at mount). */
+  const [montageSessionKey, setMontageSessionKey] = useState(0);
   // Agent G — glowing granular loader while the router classifies + orchestrates. `agentGPhase` drives the step text.
   const [agentGBusy, setAgentGBusy] = useState(false);
   const [agentGPhase, setAgentGPhase] = useState(0);
@@ -2946,7 +2948,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'vfx': setMode('video'); setVideoTab('vfx'); break;
       case 'avatar': setMode('lipsync'); setLipTab('avatar'); break;
       case 'motion': setMode('lipsync'); setLipTab('motion'); break;
-      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setEditorMode('video'); setMode('surgical'); break;
+      case 'montage': setPanelService(null); setEditorAsset(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setEditorMode('video'); setMode('surgical'); break;
       case 'dubbing': case 'model3d': case 'presentation': case 'interior': case 'photoshoot': setStudioPrefill(undefined); setPanelService(id); break;
       // setMode('chat') keeps an open studio panel on purpose (opening one parks the mode at chat), so choosing
       // „ჩატი“ has to close it itself — or the pick did nothing while dubbing / 3D / a deck was open.
@@ -6970,9 +6972,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         if (to === 'montage') {
           if (r.kind === 'audio') {
-            setMontageSeed(null); setMontageMusicSeed({ url: r.url, name: r.what || 'Music' }); setMontageAspectSeed(null);
+            setMontageSeed(null); setMontageMusicSeed({ url: r.url, name: r.what || 'Music' }); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
           } else {
-            setMontageSeed([{ url: r.url, kind: r.kind }]); setMontageMusicSeed(null); setMontageAspectSeed(null);
+            setMontageSeed([{ url: r.url, kind: r.kind }]); setMontageMusicSeed(null); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
           }
           setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
           reply({ ok: true, message: `Opened Montage with ${label}${r.kind === 'audio' ? ' as its music' : ' on the timeline'}. Use montage open with videos and music to combine several results.` });
@@ -6980,7 +6982,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         if (to === 'editor') {
           if (r.kind === 'video') {
-            setMontageSeed([{ url: r.url, kind: 'video' }]); setMontageMusicSeed(null); setMontageAspectSeed(null);
+            setMontageSeed([{ url: r.url, kind: 'video' }]); setMontageMusicSeed(null); setMontageAspectSeed(null); setMontageSessionKey((k) => k + 1);
             setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
           } else openInEditor(r.url, r.kind);
           reply({ ok: true, message: `Opened ${label} in the ${r.kind === 'video' ? 'Montage editor' : 'editor'}.` });
@@ -7002,7 +7004,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const startSec = music ? Math.max(0, d.musicStartSec ?? 0) : 0;
         setMontageSeed(videos.map((v) => ({ url: v.url, kind: v.kind as 'video' | 'image' })));
         setMontageMusicSeed(music ? { url: music.url, name: music.what || 'Music', startSec } : null);
-        setMontageAspectSeed(d.aspectRatio ?? null);
+        setMontageAspectSeed(d.aspectRatio ?? null); setMontageSessionKey((k) => k + 1);
         setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
         reply({
           ok: true,
@@ -7921,8 +7923,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       return (
         <div className="flex h-full w-full min-w-0 flex-col overflow-hidden text-app-text">
           <MontageStudio
+            key={montageSessionKey}
             locale={locale}
             {...(seed ? { initialMedia: seed } : {})}
+            {...(montageMusicSeed ? { initialMusic: montageMusicSeed } : {})}
+            {...(montageAspectSeed ? { initialAspect: montageAspectSeed } : {})}
             onDelivered={(videoUrl, aspect) => {
               const label = SERVICE_LABEL.montage?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? 'Montage';
               const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
@@ -7930,7 +7935,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
               setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation }]);
             }}
-            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMode('chat'); }}
+            onExit={() => { setEditorAsset(null); setEditorMode(null); setMontageSeed(null); setMontageMusicSeed(null); setMontageAspectSeed(null); setMode('chat'); }}
           />
         </div>
       );

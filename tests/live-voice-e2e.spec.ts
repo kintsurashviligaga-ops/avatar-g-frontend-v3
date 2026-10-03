@@ -169,6 +169,55 @@ test.describe('voice mode, end to end', () => {
     expect(spend).toEqual([]);
   });
 
+  test('the agent drives Montage through the editor\'s own hook — and an empty edit is not exported', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    const spend = await openLiveCall(page, baseURL, live);
+    // No result yet: „put the latest video in Montage" is answered with the truth.
+    expect(await live.call('montage', { action: 'open', videos: 'latest' })).toMatchObject({ ok: false, error: 'no_video' });
+    // Commands need an open editor.
+    expect(await live.call('montage', { action: 'state' })).toMatchObject({ ok: false, error: 'montage_closed' });
+    // Open it (as the user's „open Montage"), then read and drive it by voice.
+    expect(await live.call('open_studio', { tool: 'montage' })).toMatchObject({ ok: true });
+    await expect.poll(async () => (await live.call('montage', { action: 'state' })).ok, { timeout: 15_000 }).toBe(true);
+    const state = await live.call('montage', { action: 'state' });
+    expect(state.state).toMatchObject({ clips: 0, hasMusic: false, exporting: false });
+    expect(await live.call('montage', { action: 'export' })).toMatchObject({ ok: false, error: 'blocked' });
+    expect(await live.call('montage', { action: 'set_music_start', musicStartSec: 30 })).toMatchObject({ ok: false, error: 'no_music' });
+    expect(spend).toEqual([]);
+  });
+
+  test('a chain by voice: the confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    const FOX = 'https://e2e-media.example/fox.png';
+    // A 1×1 PNG stands in for the provider's file; the image engine is the only paid call and it is answered here.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+    await page.context().route('https://e2e-media.example/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png }));
+    await page.route('**/api/nanobanana/image', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: FOX }) }));
+    const spend = await openLiveCall(page, baseURL, live);
+
+    // 1 — prepare, the user says yes, the countdown runs out: exactly one paid request leaves the browser.
+    expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' })).toMatchObject({ ok: true });
+    await expect.poll(() => toolOnScreen(live)).toBe('image');
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    await expect.poll(() => spend, { timeout: 15_000 }).toEqual(['/api/nanobanana/image']);
+
+    // 2 — nobody asked, yet the agent hears it: the app's note says the image is ready, so a plan of steps goes on.
+    await expect.poll(() => live.notes().some((n) => /new image is ready/.test(n)), { timeout: 15_000 }).toBe(true);
+    const s = (await live.call('get_screen_state')).state as { results: Array<{ n: number; kind: string }> };
+    expect(s.results[0]).toMatchObject({ n: 1, kind: 'image' });
+
+    // 3 — „download it": the file is saved under our name, with the extension of what it really is.
+    const [file] = await Promise.all([page.waitForEvent('download'), live.call('download', { result: 'latest' })]);
+    expect(file.suggestedFilename()).toBe('myavatar-image.png');
+
+    // 4 — „now make a video of it": the image becomes the Video studio's start frame. Still free.
+    expect(await live.call('use_result', { result: 'latest', to: 'video' })).toMatchObject({ ok: true });
+    await expect.poll(() => toolOnScreen(live)).toBe('video');
+    // A video result cannot be asked for yet, and the agent is told so instead of guessing.
+    expect(await live.call('use_result', { result: 'video', to: 'montage' })).toMatchObject({ ok: false, error: 'no_result' });
+    expect(spend).toEqual(['/api/nanobanana/image']);
+  });
+
   test('a function the app does not have is refused honestly, and the call keeps going', async ({ page, baseURL }) => {
     const live = new FakeLive();
     await openLiveCall(page, baseURL, live);

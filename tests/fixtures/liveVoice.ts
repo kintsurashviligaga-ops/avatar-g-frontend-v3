@@ -74,6 +74,11 @@ export class FakeLive {
     return found!;
   }
 
+  /** The app's own notes to the model ("[App] A new image is ready…"), however the session framed the text. */
+  notes(): string[] {
+    return this.sent.map((s) => JSON.stringify(s)).filter((t) => t.includes('[App]'));
+  }
+
   /** The model speaking: an output transcription, as the dock and captions show it. */
   say(text: string): void {
     this.ws?.send(JSON.stringify({ serverContent: { outputTranscription: { text } } }));
@@ -112,8 +117,21 @@ async function fakeMicrophone(page: Page): Promise<void> {
   });
 }
 
-/** Requests that would cost money if they ran. None may leave the browser in this test. */
-const SPEND = /\/api\/(image|images|video|music|lipsync|generate|gen|orchestrator|jobs)(\/|$|\?)/;
+/**
+ * Requests that would cost money if they ran — every generation family the studio calls (nanobanana is the image
+ * engine, ai/music the music one, film/heygen/genjutsu the video ones). None may leave the browser in these tests.
+ * The free routes (chat, voice, presence, the Montage cut, a job's progress note) are deliberately not here.
+ */
+const SPEND = new RegExp(
+  '^/api/(' + [
+    'image', 'images', 'video', 'videos', 'music', 'lipsync', 'generate', 'gen', 'orchestrate', 'jobs(?:/create)?$',
+    // the orchestrator's produce routes render; its /jobs is the free progress note every image job writes
+    'orchestrator/(?:produce|music|image|voice|avatar|interior)',
+    'nanobanana', 'film', 'heygen', 'genjutsu', 'ltx-video', 'motion-control', 'pipeline', 'udio', 'replicate',
+    'audio', 'elevenlabs', 'ai/(?:music|upscale|magic-wand|edit|edit-audio|edit-photo)',
+    'avatar/(?:create|generate|enroll)', 'v2/(?:dubbing|model3d|presentation)',
+  ].join('|') + ')(/|$)',
+);
 
 export async function openLiveCall(page: Page, baseURL: string | undefined, live: FakeLive): Promise<string[]> {
   const spend: string[] = [];
