@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Film, ImageIcon, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -222,7 +222,8 @@ export default function LibraryGallery({ locale }: { locale: string }) {
         <div className="flex items-center justify-center py-20 text-app-muted"><Loader2 className="animate-spin" size={22} /></div>
       ) : display.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
-          <span className="text-4xl opacity-60">📭</span>
+          {/* A line icon, not an emoji (docs/DESIGN.md §6) — the copy below says what is empty. */}
+          <Inbox size={40} strokeWidth={1.25} aria-hidden="true" className="text-app-muted/70" />
           <p className="text-[14px] text-app-muted">{t.empty}</p>
         </div>
       ) : (
