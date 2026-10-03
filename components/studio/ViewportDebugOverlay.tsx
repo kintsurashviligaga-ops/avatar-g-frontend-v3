@@ -39,7 +39,8 @@ export function ViewportDebugOverlay() {
 
     const read = () => {
       const vv = window.visualViewport;
-      const el = document.querySelector('.ag-fixed-shell');
+      // The studio's shell — not AppShell's outer box, which carries the same class and always reads top 0.
+      const el = document.querySelector('.ag-fixed-shell:not(.app-native-shell)');
       const r = el ? el.getBoundingClientRect() : null;
       const layoutH = window.innerHeight;
       const visualH = vv ? Math.round(vv.height) : 0;

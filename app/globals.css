@@ -321,6 +321,16 @@ html[data-display-mode='fullscreen'] body {
   }
 }
 
+/* The studio (ChatChrome's `.ag-fixed-shell`) is pinned to the viewport and reserves the safe areas itself — its header,
+   drawer and rail pad by the top inset, the composer by the bottom one. Padding AppShell around it as well leaves AppShell
+   a safe area taller than the screen, and the body (height 100% + overflow-x hidden, so a vertical scroller) scrolls by
+   it. Pages without the studio (landing, legal, admin, the share page) keep the padding. `!important`: the display-mode
+   rules above out-rank this selector. Emulated notch checks: tests/safe-area-shell.spec.ts. */
+.app-native-shell:has(.ag-fixed-shell) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 /* Subtle ambient Ã¢â‚¬â€ fallback only when CinematicEnvironment is not present */
 /* (CinematicEnvironment replaces body::before for dark theme) */
 
@@ -374,12 +384,16 @@ button,
    safe on every viewport; the vertical-only touch lock is added on mobile only so
    desktop pinch-zoom / trackpad stay intact. Safe to apply to shell + workspace roots. */
 .ag-fixed-shell {
-  position: relative;
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
   overscroll-behavior: none;
 }
+/* ⚠️ `position: relative` IS ONLY A DEFAULT — zero specificity, so a position utility on the element wins. It used to sit
+   in the rule above, and that unlayered rule comes after `@tailwind utilities`, so it beat ChatChrome's `fixed inset-0`:
+   the studio shell sat in AppShell's flow, under AppShell's safe-area padding — on an installed iPhone a 47 px empty
+   band above the header (which pads by the safe area again) and the composer's last 47 px below the screen. */
+:where(.ag-fixed-shell) { position: relative; }
 /* ⚠️ THIS LOCK IS THE ONLY THING THAT LETS A FINGER SCROLL AN INNER PANEL, AND IT USED TO SAY
    `max-width: 767px` — one pixel short of every iPad.
 
@@ -1097,11 +1111,11 @@ html[data-live-docked] .ag-fixed-shell {
   height: calc(100dvh - var(--live-dock-h)) !important;
 }
 /* ⚠️ THE EMPTY BAND UNDER THE DOCK (the owner's iPhone, 2026-10-03). ChatChrome's shell says `fixed inset-0`, but the
-   unlayered `.ag-fixed-shell { position: relative }` above beats Tailwind's `.fixed`, so that shell sits in AppShell's
-   flow — under AppShell's own safe-area padding (.app-native-shell) AND AppShell's own docked offset. Docked, it landed
-   one more dock height plus a safe area below the dock (a dark band over the header), with its bottom — the composer —
-   pushed off the screen. Docked, the studio's shell is pinned to the viewport right under the dock, and nothing in it
-   reserves the top safe area again: the dock already did. */
+   unlayered `.ag-fixed-shell { position: relative }` above beat Tailwind's `.fixed` (it is a zero-specificity default
+   now — see there), so that shell sat in AppShell's flow — under AppShell's own safe-area padding (.app-native-shell)
+   AND AppShell's own docked offset. Docked, it landed one more dock height plus a safe area below the dock (a dark band
+   over the header), with its bottom — the composer — pushed off the screen. Docked, the studio's shell is pinned to the
+   viewport right under the dock, and nothing in it reserves the top safe area again: the dock already did. */
 html[data-live-docked] .ag-fixed-shell:not(.app-native-shell) {
   position: fixed !important;
   left: 0 !important;

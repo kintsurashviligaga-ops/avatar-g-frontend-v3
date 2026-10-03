@@ -1059,6 +1059,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       ...(keyboardOffset > 0
         ? { top: `${viewportTop}px`, bottom: 'auto' as const, height: `${viewportHeight}px` }
         : { top: 0, bottom: 0, height: '100dvh' }),
+      // Pinned to the viewport, the shell is outside AppShell's padded box, so it keeps the landscape notch clear itself.
+      paddingLeft: 'env(safe-area-inset-left, 0px)',
+      paddingRight: 'env(safe-area-inset-right, 0px)',
     }}>
       {/* ── GLOBAL LOADING BAR — thin indeterminate top bar during ANY generation ── */}
       {genBusy && (
