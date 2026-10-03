@@ -25,7 +25,7 @@ import {
   ChevronLeft, ChevronRight, Copy as CopyIcon, Film, Loader2, Minus, Music2, Palette, Pause, Play, Plus,
   Ratio, Redo2, RotateCcw, Scissors, SlidersHorizontal, Timer, Trash2, Type, Undo2, Volume2, VolumeX, X,
 } from 'lucide-react';
-import type { MontageAspect, MontageCaptionPos, MontageGrade, MontageTransition } from '@/lib/services/montage/montagePlan';
+import { isMontageAspect, type MontageAspect, type MontageCaptionPos, type MontageGrade, type MontageTransition } from '@/lib/services/montage/montagePlan';
 import { useJobQueue } from '@/store/useJobQueue';
 import { describeServiceError } from '../ui/serviceError';
 import { uploadErrorText, uploadFileToStorage } from '../ui/useUpload';
@@ -39,9 +39,10 @@ import {
 import { Preview } from './Preview';
 import {
   HISTORY_CAP, MAX_SHOTS, MAX_SHOT_SEC, NEUTRAL_GRADE, blockers as blockersOf, buildRenderBody, canSplit, clipAt, clipDuration,
-  clipForSource, commit, duplicateClip, emptyEdit, insertClips, layout, moveClip, newId, redo, removeClip,
-  replacePresent, setCaption, setPhotoDuration, setTransition, setTransitionAll, splitClip, startHistory,
-  toggleMute, totalSec as totalOf, trimClip, undo, type Blocker, type Edit, type History, type MediaSource,
+  clipForSource, commit, duplicateClip, emptyEdit, insertClips, layout, moveClip, musicSpanSec, musicStartMax, newId, redo,
+  removeClip, removeMusic, replacePresent, setCaption, setMusic, setMusicStart, setPhotoDuration, setTransition,
+  setTransitionAll, splitClip, startHistory, toggleMute, totalSec as totalOf, trimClip, undo, type Blocker, type Edit,
+  type History, type MediaSource,
 } from './project';
 import { Timeline, type TimelineHandle } from './Timeline';
 import { useLibrary, isVideoItem, type LibraryItem } from './useLibrary';
@@ -56,6 +57,14 @@ export interface MontageStudioProps {
   onExit: () => void;
   /** Clips to open with — a video sent here from the chat („Open in editor"), or the attachments of a request. */
   initialMedia?: { url: string; kind: 'video' | 'image'; name?: string }[];
+  /**
+   * A song to open with — e.g. one the Music tool just made — as the music bed, starting `startSec` into it (default
+   * 0; clamped to the track once its length is known). An https URL is used as it is; a data:/blob: URL is uploaded
+   * like a picked file, and Export waits for it like any other source.
+   */
+  initialMusic?: { url: string; name?: string; startSec?: number };
+  /** The format to start in. With `initialMedia` the format choice is skipped: the editor opens on the clips. */
+  initialAspect?: MontageAspect;
   /** Called once with the finished video, so it lands in the conversation too (and survives closing this). */
   onDelivered?: (videoUrl: string, aspect: MontageAspect) => void;
 }
@@ -109,7 +118,7 @@ function ToolButton({ label, Icon, run, disabled, testId, active }: {
   );
 }
 
-export default function MontageStudio({ locale, onExit, initialMedia, onDelivered }: MontageStudioProps) {
+export default function MontageStudio({ locale, onExit, initialMedia, initialMusic, initialAspect, onDelivered }: MontageStudioProps) {
   const t = useMemo(() => montageCopy(locale), [locale]);
   const lang = langOf(locale);
   // ≥ 1024: the tools move into a right column. ≥ 1280: the media gets its own left column too — below that, beside
@@ -120,7 +129,9 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
   const [sources, setSources] = useState<Record<string, MediaSource>>({});
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
-  const [hist, setHist] = useState<History>(() => startHistory(emptyEdit('9:16')));
+  const [hist, setHist] = useState<History>(() => startHistory(emptyEdit(isMontageAspect(initialAspect) ? initialAspect : '9:16')));
+  // Opening on clips in a known format („put the song on the video we made"): no format question while they land.
+  const [seeding, setSeeding] = useState(() => Boolean(initialMedia?.length) && isMontageAspect(initialAspect));
   const edit = hist.present;
   const editRef = useRef(edit);
   editRef.current = edit;
@@ -141,6 +152,8 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
   const timelineRef = useRef<TimelineHandle | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const filesById = useRef(new Map<string, File>());
+  /** blob: URLs the HOST handed in (initialMusic) — theirs to revoke, never ours. */
+  const foreignUrls = useRef(new Set<string>());
 
   const flash = useCallback((m: string) => {
     setToast(m);
@@ -198,6 +211,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
     clips: playerClips,
     totalSec: total,
     musicUrl: music?.previewUrl ?? null,
+    musicOffsetSec: music ? edit.musicStartSec : 0,
     originalSound: edit.originalSound,
     onFrame,
   });
@@ -320,8 +334,13 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
           files.push(new File([blob], m.name || `clip.${m.kind === 'video' ? 'mp4' : 'png'}`, { type }));
         } catch { /* an unreadable attachment is skipped rather than blocking the rest */ }
       }
-      if (hosted.length) await addLibrary(hosted);
-      if (files.length) await addFiles(files);
+      try {
+        if (hosted.length) await addLibrary(hosted);
+        if (files.length) await addFiles(files);
+      } finally {
+        // Nothing usable landed → the start screen after all, in the format it was opened in.
+        setSeeding(false);
+      }
     })();
   }, [initialMedia, addFiles, addLibrary]);
 
@@ -333,16 +352,29 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
     return () => { if (el.dataset.immersive === 'montage') delete el.dataset.immersive; };
   }, []);
 
-  // Release blob: URLs when the editor goes away.
+  // Release blob: URLs when the editor goes away — the ones it made, not the ones it was handed.
   useEffect(() => () => {
-    for (const s of Object.values(sourcesRef.current)) if (s.previewUrl.startsWith('blob:')) URL.revokeObjectURL(s.previewUrl);
+    for (const s of Object.values(sourcesRef.current)) {
+      if (s.previewUrl.startsWith('blob:') && !foreignUrls.current.has(s.previewUrl)) URL.revokeObjectURL(s.previewUrl);
+    }
   }, []);
 
   // ── Music ──────────────────────────────────────────────────────────────────────────────────────────
+  /** A new song under the edit — from its top, like CapCut (the last song's start meant nothing for this one). */
   const setMusicSource = useCallback((s: MediaSource) => {
     setSources((cur) => ({ ...cur, [s.id]: s }));
-    apply((e) => ({ ...e, musicId: s.id }));
+    apply((e) => setMusic(e, s.id, 0, s.durationSec));
   }, [apply]);
+  const musicTrackSec = music?.durationSec ?? 0;
+  /** The start from the panel: a slider drag (or a run of stepper taps) is ONE undo step. */
+  const changeMusicStart = useCallback((sec: number) => {
+    apply((e) => setMusicStart(e, sec, musicTrackSec), 'musicStart');
+  }, [apply, musicTrackSec]);
+  // A song whose length is learned AFTER its start was set (a seeded track still probing): keep the start inside it.
+  useEffect(() => {
+    if (!music || music.durationSec <= 0) return;
+    setHist((h) => (h.present.musicId === music.id ? replacePresent(h, setMusicStart(h.present, h.present.musicStartSec, music.durationSec)) : h));
+  }, [music]);
   const addMusicFile = useCallback(async (f: File) => {
     if (kindOfFile(f) !== 'audio') { flash(t.notAudio); return; }
     const previewUrl = URL.createObjectURL(f);
@@ -355,6 +387,41 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
     const durationSec = await probeDuration(it.url, 'audio', 8000);
     setMusicSource({ id: newId('mus'), kind: 'audio', name: it.prompt?.slice(0, 48) || t.audio, previewUrl: it.url, ref: it.url, status: 'ready', durationSec });
   }, [setMusicSource, t]);
+
+  // Opening with a song (a track the Music tool just made). It is registered AT ONCE — before anything is fetched or
+  // probed — so Export can never run in the gap without it: a hosted URL is ready as it is; a data:/blob: one is
+  // 'uploading' until the same upload queue a picked file goes through has stored it. Its length arrives later and the
+  // effect above keeps the start inside it.
+  const musicSeeded = useRef(false);
+  useEffect(() => {
+    if (musicSeeded.current || !initialMusic?.url) return;
+    musicSeeded.current = true;
+    const m = initialMusic;
+    const hosted = /^https?:\/\//i.test(m.url);
+    const id = newId('mus');
+    const name = (m.name ?? '').trim().slice(0, 48) || t.audio;
+    if (m.url.startsWith('blob:')) foreignUrls.current.add(m.url);
+    setSources((cur) => ({
+      ...cur,
+      [id]: { id, kind: 'audio', name, previewUrl: m.url, ref: hosted ? m.url : null, status: hosted ? 'ready' : 'uploading', durationSec: 0 },
+    }));
+    const start = typeof m.startSec === 'number' && Number.isFinite(m.startSec) ? m.startSec : 0;
+    apply((e) => setMusic(e, id, start, 0));
+    void (async () => {
+      if (!hosted) {
+        try {
+          const blob = await (await fetch(m.url)).blob();
+          const type = blob.type || 'audio/mpeg';
+          const ext = /wav/.test(type) ? 'wav' : /ogg/.test(type) ? 'ogg' : /mp4|m4a|aac/.test(type) ? 'm4a' : 'mp3';
+          enqueueUpload(id, new File([blob], `${name}.${ext}`, { type }));
+        } catch {
+          patchSource(id, { status: 'error', error: t.failed, errorKind: 'fail' });
+        }
+      }
+      const durationSec = await probeDuration(m.url, 'audio', 8000);
+      if (durationSec > 0) patchSource(id, { durationSec });
+    })();
+  }, [initialMusic, apply, enqueueUpload, patchSource, t]);
 
   // ── Selection and the clip under the playhead ─────────────────────────────────────────────────────────
   const selected = selectedId ? edit.clips.find((c) => c.id === selectedId) ?? null : null;
@@ -539,10 +606,15 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
             music={music}
             library={musicLib}
             originalSound={edit.originalSound}
-            shorterThanEdit={!!music && music.durationSec > 0 && music.durationSec + 0.5 < total}
+            shorterThanEdit={!!music && music.durationSec > 0 && musicSpanSec(music.durationSec, edit.musicStartSec, total) + 0.5 < total}
+            startSec={edit.musicStartSec}
+            startMaxSec={musicStartMax(musicTrackSec)}
+            editSec={total}
+            peaks={music ? peaks[music.id] ?? [] : []}
+            onStart={changeMusicStart}
             onUpload={() => musicFileRef.current?.click()}
             onPick={(it) => void addMusicLibrary(it)}
-            onRemove={() => apply((e) => ({ ...e, musicId: null }))}
+            onRemove={() => apply(removeMusic)}
             onToggleOriginal={() => apply((e) => ({ ...e, originalSound: !e.originalSound }))}
             onDone={closePanel}
           />
@@ -728,6 +800,11 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
           onBackToChat={onExit}
           onRetry={() => void runExport()}
         />
+      ) : empty && seeding ? (
+        // ── OPENING ON CLIPS IN A KNOWN FORMAT: nothing to choose, they are on their way ──
+        <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-[13px] text-app-muted" role="status" data-testid="montage-opening">
+          <Loader2 size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> {t.opening}
+        </div>
       ) : empty ? (
         // ── START: pick where it goes, then add footage ──
         <div className="min-h-0 flex-1 overflow-y-auto" data-testid="montage-start">
@@ -829,7 +906,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, onDelivere
               thumbs={thumbs}
               pxPerSec={pxPerSec}
               selectedId={selectedId}
-              music={music ? { name: music.name, durationSec: music.durationSec, peaks: peaks[music.id] ?? [], status: music.status } : null}
+              music={music ? { name: music.name, durationSec: music.durationSec, peaks: peaks[music.id] ?? [], status: music.status, startSec: edit.musicStartSec } : null}
               originalSound={edit.originalSound}
               compact={!desktop}
               onSeek={seek}
