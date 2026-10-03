@@ -15,7 +15,9 @@
  *     before and after it runs.
  *
  * Packs (`--pack`, default brand-v1): brand-v1 = the brand/v1 art pack ($7 cap); templates = the studio's template
- * gallery thumbnails (scripts/templates/thumbs.md, $5 cap — the owner's 2026-10-01 budget).
+ * gallery thumbnails (scripts/templates/thumbs.md, $5 cap — the owner's 2026-10-01 budget); site = site imagery v2, the
+ * VFX preset tiles, the video header banners, the missing /services cards and the image style swatches
+ * (scripts/site-art/shots.md, $3 cap — the owner's 2026-10-03 design pass).
  * ⚠️ A pack's manifest and raw takes live in its `work` dir, never under public/: everything in public/ is deployed,
  * and the manifest carries prompts, prices, request ids and provider URLs. Only the selected, resized finals go public.
  *
@@ -56,14 +58,16 @@ export const STOP_AT_USD = 6.5;
 export const PACKS = {
   'brand-v1': { spec: 'scripts/hf-art-pack.md', work: 'design/brand/v1', job: 'brand/v1 art pack', cap: JOB_CAP_USD, stop: STOP_AT_USD },
   templates: { spec: 'scripts/templates/thumbs.md', work: 'scripts/templates', job: 'template gallery thumbnails', cap: 5.0, stop: 4.5 },
+  site: { spec: 'scripts/site-art/shots.md', work: 'scripts/site-art', job: 'site imagery v2', cap: 3.0, stop: 2.7 },
 } as const;
 export type PackId = keyof typeof PACKS;
 
+/** `--pack <id>` (default brand-v1). ⚠️ Only an OWN key of PACKS: `--pack constructor` must not resolve to Object's. */
 export function packFromArgv(argv: readonly string[]): PackId {
   const i = argv.indexOf('--pack');
   const id = i >= 0 ? argv[i + 1] : 'brand-v1';
-  if (id !== 'brand-v1' && id !== 'templates') throw new Error(`unknown --pack ${id} (brand-v1 | templates)`);
-  return id;
+  if (typeof id !== 'string' || !Object.hasOwn(PACKS, id)) throw new Error(`unknown --pack ${id} (${Object.keys(PACKS).join(' | ')})`);
+  return id as PackId;
 }
 
 const MAX_ATTEMPTS = 3;
