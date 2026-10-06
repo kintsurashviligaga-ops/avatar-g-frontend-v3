@@ -23,6 +23,8 @@ export interface CompositeTaskRef {
   createdAt: number;
   /** Udio workId (NOT prefixed with `udio:` — bare). */
   musicWorkId?: string;
+  /** Completed Lyria track, stored on our Supabase instance. */
+  musicUrl?: string;
   /** ServiceManager taskRef for the LTX/HeyGen video leg. */
   videoTaskRef?: string;
   /** Inline-rendered lyrics, already complete by the time we encode. */

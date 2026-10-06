@@ -11,6 +11,9 @@
  * Every engine, the ledger and the idempotency store are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../../../../lib/ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001' }));
+jest.mock('../../../../lib/ai/geminiImage', () => ({ ...jest.requireActual('../../../../lib/ai/geminiImage'), generateGeminiImage: jest.fn(async () => null) }));
+
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({
@@ -55,14 +58,13 @@ const post = (body: unknown, locale?: string) =>
   });
 
 const BODY = { prompt: 'a lighthouse at dusk', quality: 'standard', aspectRatio: '1:1', jobId: 'tile-1' };
-let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
   (debitExistsForRef as jest.Mock).mockResolvedValue(false);
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
   (refundCredits as jest.Mock).mockResolvedValue({ ok: true });
-  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());

@@ -1,3 +1,5 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
+import { googleAiConfigured, googleTransport } from '@/lib/ai/google/transport';
 /**
  * Provider env-map registry — the "degraded → operational" gate.
  *
@@ -22,7 +24,7 @@ export type ProviderId =
 
 /** Env keys that activate each provider (ANY present = active). */
 export const PROVIDER_ENV: Record<ProviderId, string[]> = {
-  gemini:      ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'],
+  gemini:      ['GEMINI_API_KEY'],
   anthropic:   ['ANTHROPIC_API_KEY'],
   openai:      ['OPENAI_API_KEY'],
   elevenlabs:  ['ELEVENLABS_API_KEY'],
@@ -46,6 +48,8 @@ function present(key: string, env: Env): boolean {
 
 /** True when at least one activating key for the provider is set. */
 export function isProviderActive(provider: ProviderId, env: Env = process.env): boolean {
+  if (!isProviderPermitted(provider)) return false;
+  if (provider === 'gemini') return googleAiConfigured(env);
   const keys = PROVIDER_ENV[provider];
   if (!keys) return false;
   // azure_speech + runpod need BOTH halves; everything else needs ANY one.
@@ -68,6 +72,10 @@ export function providerSnapshot(env: Env = process.env): Record<ProviderId, boo
 
 /** First activating value for a provider (the token a runner should use). */
 export function providerKey(provider: ProviderId, env: Env = process.env): string | null {
+  if (!isProviderPermitted(provider)) return null;
+  if (provider === 'gemini') {
+    try { if (googleTransport(env) !== 'gemini') return null; } catch { return null; }
+  }
   for (const k of PROVIDER_ENV[provider] ?? []) {
     const v = String(env[k] ?? '').trim();
     if (v) return v;

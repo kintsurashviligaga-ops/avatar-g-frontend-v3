@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import { config } from "@/lib/config";
 
 interface AvatarConfig {
@@ -19,6 +20,7 @@ export async function generateImage(
   style: string = "photorealistic",
   avatarConfig?: AvatarConfig
 ) {
+  assertProviderPermitted('stability');
   try {
     const engineId = config.apis.stability.engine;
     const apiHost = config.apis.stability.baseUrl;

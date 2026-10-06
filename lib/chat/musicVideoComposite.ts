@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * lib/chat/musicVideoComposite.ts
  * ===============================
@@ -32,7 +33,8 @@
 
 import 'server-only';
 import type { OrchestratorInput, ChatResponse } from './providerRouter';
-import { startUdioGeneration } from '@/lib/udio/client';
+import { generateLyriaTrack, hasLyriaProvider } from '@/lib/ai/lyriaMusic';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { withTrace } from '@/lib/observability/agentTrace';
 import { forecastMarginForAction } from '@/lib/monetization/audit-engine';
@@ -40,7 +42,6 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
-import { hasUdioApiKey } from './mediaKeys';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
@@ -173,7 +174,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   // ── Leg 1: lyrics from Gemini (synchronous) ────────────────────────────
   // Don't fail the whole pipeline if lyrics fail — caller can iterate.
   try {
-    if (process.env.GEMINI_API_KEY) {
+    if (googleAiConfigured()) {
       const lyricsPrompt = [
         'You are a hip-hop lyricist. Write a tight 30-second verse-chorus-verse',
         'song based on this brief. Output ONLY the lyrics. Keep each line short',
@@ -210,43 +211,20 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
-  // Music leg — Udio.
-  const musicPromise: Promise<string | null> = hasUdioApiKey()
-    ? withTrace(
-        {
-          userId: input.userId || null,
-          agentId: 'music-agent',
-          workerKind: 'udio',
-          action: 'generate_track',
-          promptSummary: input.message,
-          costWholesaleGel: forecast.legs.music.wholesale,
-          costRetailGel: forecast.legs.music.retail,
-          metadata: { composite: true, leg: 'music', style: baseStyle },
-          deduct: false, // the composite is charged once, up front (mvCharged) — never per leg
-          deductRef: `${compositeId}:music`,
-        },
-        // ⚠️ THE USER'S BRIEF WAS INTERPOLATED INTO AN ENGLISH SENTENCE IN WHATEVER ALPHABET THEY TYPED.
-        // Udio reads English, so "…based on: <Georgian text>" gave it a well-formed instruction ending in
-        // noise — it kept the English scaffolding and invented the part that mattered. Same defect as the
-        // chat music lane, in the music-VIDEO path. `plan.lyrics` stays untranslated: those are sung.
-        async () =>
-          startUdioGeneration({
-            prompt: `${baseStyle} 30 second instrumental with vocal hook based on: ${await (async () => {
-              const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-              return promptToEnglish(input.message, 'music');
-            })()}`,
-            lyrics: plan.lyrics ?? undefined,
-            style: baseStyle,
-            genre: baseStyle,
-            makeInstrumental: false,
-          }),
-      )
-        .then((r) => r.workId)
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn('[composite] music leg failed:', err instanceof Error ? err.message : err);
-          return null;
-        })
+  // Lyria returns a finished track; store it before recording the composite reference.
+  const musicPromise: Promise<string | null> = hasLyriaProvider()
+    ? withTrace({
+        userId: input.userId || null, agentId: 'music-agent', workerKind: 'gemini', action: 'generate_track',
+        promptSummary: input.message, costWholesaleGel: forecast.legs.music.wholesale,
+        costRetailGel: forecast.legs.music.retail, metadata: { composite: true, leg: 'music', style: baseStyle },
+        deduct: false, deductRef: `${compositeId}:music`,
+      }, async () => {
+        const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
+        const track = await generateLyriaTrack({ prompt: `${baseStyle}. ${await promptToEnglish(input.message, 'music')}`, lyrics: plan.lyrics ?? undefined, instrumental: false });
+        if (!track) return null;
+        const ext = /wav/i.test(track.mime) ? 'wav' : 'mp3';
+        return uploadAndSign('uploads', `music-video/${compositeId}.${ext}`, track.base64, track.mime, 604800);
+      }).catch(() => null)
     : Promise.resolve(null);
 
   // Video leg — LTX via ServiceManager. The lyrics text (when available)
@@ -261,7 +239,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
         {
           userId: input.userId || null,
           agentId: 'video-agent',
-          workerKind: 'ltx',
+          workerKind: 'gemini',
           action: 'generate_clip',
           promptSummary: videoBrief,
           costWholesaleGel: forecast.legs.video.wholesale,
@@ -323,7 +301,7 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
     ? encodeCompositeRef({
         sessionId: input.sessionId,
         createdAt: Date.now(),
-        musicWorkId: musicWorkId ?? undefined,
+        musicUrl: musicWorkId ?? undefined,
         videoTaskRef: videoTaskRef ?? undefined,
         lyrics: plan.lyrics,
       })

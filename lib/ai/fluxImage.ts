@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * FLUX 1.1 Pro — general-purpose text-to-image (Replicate, synchronous).
  * ======================================================================
@@ -29,6 +30,7 @@ function pickImageUrl(output: unknown): string | null {
  * re-hosts it to durable storage), or null on any failure / missing token.
  */
 export async function generateFluxProImage(prompt: string, aspectRatio?: string): Promise<string | null> {
+  assertProviderPermitted('replicate');
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) return null; // leg simply unavailable → caller falls through
   const aspect_ratio = aspectRatio && FLUX_ASPECTS.has(aspectRatio) ? aspectRatio : '1:1';

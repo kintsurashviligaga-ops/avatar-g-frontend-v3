@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 /**
  * THE list of models a user can choose, per service — one entry per choice, whatever runs it. Every model picker reads it
  * (components/studio/ui/ModelPicker): the Image and Video Create panels, Studio β, and the routes that must refuse a pick.
@@ -117,7 +118,7 @@ const same = (name: string): L3 => t(name, name, name);
 
 const HF_DOCS = 'https://docs.higgsfield.ai/docs/models';
 /** The image route's ten ratios (lib/studio/imageCreate IMG_ASPECTS — pinned equal by catalogue.test.ts). */
-const NB_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
+const NB_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 const SOUL2_ASPECTS = ['9:16', '16:9', '4:3', '3:4', '1:1', '2:3', '3:2'] as const;
 const KLING_T2V_ASPECTS = ['16:9', '9:16', '1:1'] as const;
 const SEEDANCE_ASPECTS = ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'] as const;
@@ -142,30 +143,30 @@ function veoCaps(tier: VeoTier): ModelCapabilities {
 
 const IMAGE: CatalogueEntry[] = [
   {
-    id: 'nb/auto', service: 'image', provider: 'nanobanana', vendor: 'Google', auto: true,
-    label: t('ავტო', 'Auto', 'Авто'),
-    bestFor: t('სისტემა ირჩევს: V2 — 1K და 2K, Pro — 4K.', 'Chosen for you: V2 at 1K and 2K, Pro at 4K.', 'Выбор системы: V2 для 1K и 2K, Pro для 4K.'),
+    id: 'nb/auto', service: 'image', provider: 'google', vendor: 'Google', auto: true,
+    label: t('Imagen — ავტომატური', 'Imagen — Auto', 'Imagen — Авто'),
+    bestFor: t('Google Imagen — სურათი ტექსტიდან, სტანდარტული ზომით.', 'Google Imagen images from text at the default size.', 'Изображения Google Imagen из текста в стандартном размере.'),
     tier: 'standard',
-    caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: NB_ASPECTS },
     // ⚠️ EXACTLY THE ROUTE'S OLD QUALITY_ENDPOINT — a request without `model` must render what it always rendered.
     wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'pro-4k' } },
     verified: 'code', source: 'app/api/nanobanana/image (QUALITY_ENDPOINT) · lib/nanobanana/client.ts',
   },
   {
-    id: 'nb/v2', service: 'image', provider: 'nanobanana', vendor: 'Google',
-    label: same('Nano Banana V2'),
-    bestFor: t('სწრაფი ყოველდღიური სურათი და რედაქტირება, 4K-მდე.', 'Fast everyday images and edits, up to 4K.', 'Быстрые повседневные изображения и правки, до 4K.'),
+    id: 'nb/v2', service: 'image', provider: 'google', vendor: 'Google',
+    label: same('Imagen'),
+    bestFor: t('Google Imagen — სურათი ტექსტიდან, სტანდარტული ზომით.', 'Google Imagen images from text at the default size.', 'Изображения Google Imagen из текста в стандартном размере.'),
     tier: 'fast',
-    caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: NB_ASPECTS },
     wire: { runner: 'image', endpoints: { standard: 'v2-1k', high: 'v2-2k', ultra: 'v2-4k' } },
     verified: 'code', source: 'lib/nanobanana/client.ts (generate-2 · 1K / 2K / 4K)',
   },
   {
-    id: 'nb/pro', service: 'image', provider: 'nanobanana', vendor: 'Google',
-    label: same('Nano Banana Pro'),
-    bestFor: t('მაქსიმალური დეტალი, 2K და 4K. უფრო ნელი.', 'Maximum detail at 2K and 4K. Slower.', 'Максимум деталей в 2K и 4K. Медленнее.'),
+    id: 'nb/pro', service: 'image', provider: 'google', vendor: 'Google',
+    label: same('Imagen'),
+    bestFor: t('Google Imagen — სურათი ტექსტიდან, სტანდარტული ზომით.', 'Google Imagen images from text at the default size.', 'Изображения Google Imagen из текста в стандартном размере.'),
     tier: 'pro',
-    caps: { fromText: true, fromImage: true, references: 1, maxDurationSec: null, aspectRatios: NB_ASPECTS },
+    caps: { fromText: true, fromImage: false, references: 0, maxDurationSec: null, aspectRatios: NB_ASPECTS },
     // No 1K: the Pro endpoint's smallest size renders 2K (lib/nanobanana/client extractResolution: pro-1k2k → '2K').
     wire: { runner: 'image', endpoints: { high: 'pro-1k2k', ultra: 'pro-4k' } },
     verified: 'code', source: 'lib/nanobanana/client.ts (generate-pro · 2K / 4K)',
@@ -425,7 +426,9 @@ const MUSIC: CatalogueEntry[] = [
   })),
 ];
 
-export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze([...IMAGE, ...VIDEO, ...MOTION, ...MUSIC]);
+const DEFINITIONS: readonly CatalogueEntry[] = Object.freeze([...IMAGE, ...VIDEO, ...MOTION, ...MUSIC]);
+const permitted = (entry: CatalogueEntry): boolean => isProviderPermitted(entry.provider, entry.service === 'motion' ? 'video' : entry.service);
+export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze(DEFINITIONS.filter(permitted));
 
 /** What a surface shows before anyone picks — the model its route always ran. */
 export const DEFAULT_MODEL: Readonly<Record<CatalogueService, string>> = Object.freeze({
@@ -436,6 +439,8 @@ export const DEFAULT_MODEL: Readonly<Record<CatalogueService, string>> = Object.
 });
 
 const BY_ID = new Map(CATALOGUE.map((e) => [e.id, e]));
+/** Retained for interpreting historical registry rows, never for offering new generations. */
+export function legacyCatalogueDefinition(id: string): CatalogueEntry | null { return DEFINITIONS.find((e) => e.id === id) ?? null; }
 
 export function catalogueEntry(id: unknown): CatalogueEntry | null {
   return typeof id === 'string' ? BY_ID.get(id) ?? null : null;
@@ -463,6 +468,8 @@ export interface Availability {
 
 /** What the server knows about this deployment, read once per request (lib/providers/catalogueStatus). */
 export interface DeploymentProbe {
+  /** Imagen transport is configured. Absence means unavailable. */
+  image?: boolean;
   /** HF credentials are set. */
   higgsfield: boolean;
   /** STUDIO_V2 is on — /api/generate exists. */
@@ -484,15 +491,15 @@ const no = (reason: UnavailableReason): Availability => ({ available: false, rea
  * The image route is never blocked here — its own cascade (NanoBanana → Grok → FLUX) refunds a miss.
  */
 export function availabilityOf(entry: CatalogueEntry, probe: DeploymentProbe): Availability {
+  if (!permitted(entry)) return no('not_enabled');
   switch (entry.wire.runner) {
     case 'image':
-      return OK;
+      return probe.image === true ? OK : no('not_configured');
     case 'film':
       return probe.film ? OK : no('not_configured');
     case 'music': {
-      if (entry.wire.engine === null) return OK; // Auto: the route says so itself when nothing in the chain can run
-      const m = probe.music?.[entry.wire.engine];
-      if (!m) return OK; // not read → as the route treats it: try, fall through
+      const m = probe.music?.[entry.wire.engine ?? 'lyria'];
+      if (!m) return no('not_configured');
       if (!m.configured) return no('not_configured');
       return m.busy ? no('busy') : OK;
     }
@@ -518,7 +525,7 @@ export function imageEndpointFor(entry: CatalogueEntry, quality: string): NanoBa
 /** The sizes an image model renders natively — the quality chip disables the rest. */
 export function imageQualitiesOf(entry: CatalogueEntry): ImageQuality[] {
   const w = entry.wire;
-  return w.runner === 'image' ? (['standard', 'high', 'ultra'] as const).filter((q) => !!w.endpoints[q]) : [];
+  return w.runner === 'image' ? ['standard'] : [];
 }
 
 // ── the film route's wire ───────────────────────────────────────────────────────────────────────────────────────────

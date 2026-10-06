@@ -1,3 +1,4 @@
+import { googleAiConfigured, googleModelFetch } from '@/lib/ai/google/transport';
 import 'server-only';
 
 /**
@@ -18,13 +19,11 @@ import 'server-only';
  * The key is resolved through the shared pool (resolveGeminiKey) and travels in the x-goog-api-key HEADER — a key
  * in a URL lands in every proxy log, trace and error string on the way to Google. It is never logged or returned.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 export function hasGeminiSttKey(): boolean {
-  return resolveGeminiKey().length > 0;
+  return googleAiConfigured();
 }
 
 // ─── Model chain ─────────────────────────────────────────────────────────────
@@ -252,8 +251,7 @@ export async function transcribeWithGeminiDetailed(
   language: string,
   opts: { models?: readonly string[]; timeoutMs?: number } = {},
 ): Promise<GeminiSttResult> {
-  const key = resolveGeminiKey();
-  if (!key) throw new GeminiSttError('Gemini key is not configured', 'auth');
+  if (!googleAiConfigured()) throw new GeminiSttError('Gemini key is not configured', 'auth');
   const models = (opts.models?.length ? [...opts.models] : geminiSttModelChain())
     .map((m) => normalizeModelId(m))
     .filter((m): m is string => !!m && !isRetiredModel(m));
@@ -273,9 +271,8 @@ export async function transcribeWithGeminiDetailed(
 
     let res: Response;
     try {
-      res = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      res = await googleModelFetch(model, 'generateContent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         cache: 'no-store',
         body,
         signal: AbortSignal.timeout(remaining),

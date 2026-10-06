@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * POST /api/orchestrator/script-context — fold reference documents into the brief.
  *
@@ -15,7 +16,6 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
-import { geminiKeyPresent } from '@/lib/orchestrator/gemini-guard';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Fail-open: nothing to enrich, or no Gemini credential → use the raw prompt.
-  if (!geminiKeyPresent() || docs.length === 0) {
+  if (!googleAiConfigured() || docs.length === 0) {
     return NextResponse.json({ brief: prompt, enriched: false });
   }
   const parsed = docs.map(parseDoc).filter((p): p is NonNullable<ReturnType<typeof parseDoc>> => p !== null);

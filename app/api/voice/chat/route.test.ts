@@ -104,12 +104,12 @@ test('empty text → 400', async () => {
   expect(llmMock).not.toHaveBeenCalled();
 });
 
-test('Google-only by default; AI_GOOGLE_ONLY=0 restores the multi-vendor chain', async () => {
+test('Google-only is mandatory despite AI_GOOGLE_ONLY=0', async () => {
   await POST(post({ text: 'hello there', locale: 'en' }));
   expect(lastOpts().googleOnly).toBe(true);
   process.env.AI_GOOGLE_ONLY = '0';
   await POST(post({ text: 'hello there', locale: 'en' }));
-  expect(lastOpts().googleOnly).toBe(false);
+  expect(lastOpts().googleOnly).toBe(true);
 });
 
 test('Google Search grounds the Gemini voice turn by default, and the prompt says so; VOICE_GOOGLE_SEARCH=0 turns it off', async () => {
@@ -121,9 +121,9 @@ test('Google Search grounds the Gemini voice turn by default, and the prompt say
   expect(lastOpts().googleSearch).toBeUndefined();
   expect(lastOpts().system).not.toMatch(/LIVE FACTS/);
   delete process.env.VOICE_GOOGLE_SEARCH;
-  process.env.AI_GOOGLE_ONLY = '0'; // the legacy multi-vendor chain has no grounding leg
+  process.env.AI_GOOGLE_ONLY = '0'; // cannot disable mandatory Gemini routing
   await POST(post({ text: "what's the weather in Tbilisi", locale: 'en' }));
-  expect(lastOpts().googleSearch).toBeUndefined();
+  expect(lastOpts().googleSearch).toBe(true);
 });
 
 test('no persona: the fuller Live persona + the spoken-length rule, no ≤20-word cap, the old temperature', async () => {

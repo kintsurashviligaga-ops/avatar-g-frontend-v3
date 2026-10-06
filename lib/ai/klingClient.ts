@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/ai/klingClient.ts
  * =====================
@@ -30,7 +31,7 @@ export const KLING_NEGATIVE = [
   'inconsistent clothing', 'glitch', 'artifact', 'overexposed', 'underexposed',
 ].join(', ');
 
-function token(): string { return String(process.env.REPLICATE_API_TOKEN || '').trim(); }
+function token(): string { return ''; }
 export function klingConfigured(): boolean { return token().length > 0; }
 
 function pickUrl(output: unknown): string | null {
@@ -64,6 +65,7 @@ export interface KlingV2VInput extends KlingI2VInput {
 
 /** Image → Video. Returns a hosted MP4 URL; throws on failure (caller decides). */
 export async function klingImageToVideo(p: KlingI2VInput): Promise<string> {
+  assertProviderPermitted('kling');
   if (!klingConfigured()) throw new Error('REPLICATE_API_TOKEN not configured');
   const model = (p.modelName || KLING_MODELS.BEST);
   const isV16 = /v1[.\-]6/.test(model);
@@ -91,6 +93,7 @@ export async function klingImageToVideo(p: KlingI2VInput): Promise<string> {
  * movement-rich prompt). The reference video is accepted for API symmetry but not used.
  */
 export async function klingVideoToVideo(p: KlingV2VInput): Promise<string> {
+  assertProviderPermitted('kling');
   p.onProgress?.('[kling] no native V2V on Replicate → motion-prompt I2V');
   return klingImageToVideo({
     ...p,
@@ -108,6 +111,7 @@ const REPLICATE_API = 'https://api.replicate.com/v1';
  * video degrades to motion-prompt I2V (Replicate has no true V2V Kling).
  */
 export async function klingSubmit(p: KlingI2VInput & { videoUrl?: string }): Promise<string> {
+  assertProviderPermitted('kling');
   if (!klingConfigured()) throw new Error('REPLICATE_API_TOKEN not configured');
   const model = (p.modelName || KLING_MODELS.BEST);
   const isV16 = /v1[.\-]6/.test(model);
@@ -139,6 +143,7 @@ export async function klingSubmit(p: KlingI2VInput & { videoUrl?: string }): Pro
 /** Poll a Kling prediction ONCE → normalized status + output URL when finished. A
  *  transient fetch miss is reported as 'processing' so the caller keeps polling. */
 export async function klingPoll(id: string): Promise<{ status: 'processing' | 'succeeded' | 'failed'; url: string | null; error?: string }> {
+  assertProviderPermitted('kling');
   if (!klingConfigured()) return { status: 'failed', url: null, error: 'REPLICATE_API_TOKEN not configured' };
   try {
     const res = await fetch(`${REPLICATE_API}/predictions/${encodeURIComponent(id)}`, {
@@ -163,6 +168,7 @@ export async function klingPoll(id: string): Promise<{ status: 'processing' | 's
 
 /** Cheap connectivity probe. */
 export async function klingAuthOk(): Promise<boolean> {
+  assertProviderPermitted('kling');
   if (!klingConfigured()) return false;
   try {
     const replicate = new Replicate({ auth: token() });

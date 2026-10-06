@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/chat/filmVoiceover.ts
  * =========================
@@ -502,6 +503,7 @@ async function synthesizeSfx(brief: string, totalSec: number): Promise<{ base64:
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 40_000);
   try {
+    if (!isProviderPermitted('elevenlabs', 'music')) return null;
     const res = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
       method: 'POST',
       headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', Accept: 'audio/mpeg' },

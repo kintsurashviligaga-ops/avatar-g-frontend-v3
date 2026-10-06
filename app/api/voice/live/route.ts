@@ -1,3 +1,4 @@
+import { googleTransport } from '@/lib/ai/google/transport';
 /**
  * app/api/voice/live/route.ts — mints a SHORT-LIVED EPHEMERAL token for a browser-direct Gemini
  * Multimodal Live session. This route is request/response (Vercel-safe); the persistent WebSocket to
@@ -149,6 +150,11 @@ function liveCallRule(search: boolean, actions: boolean): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // Vertex Live requires a server WebSocket relay; never expose a project OAuth token to browsers.
+    // The existing client handles 503 by using the migrated REST voice loop.
+    if (googleTransport() === 'vertex') {
+      return NextResponse.json({ error: 'vertex_live_relay_required' }, { status: 503 });
+    }
     // ── Gate 1: feature flag. Native Gemini Live is the DEFAULT voice (live-validated), so it is ON unless
     // GEMINI_LIVE_ENABLED is explicitly set falsy ('0'|'false'|'no'|'off') — the kill-switch. Its 503 makes
     // the client fall back to the REST voice loop at runtime (GeminiLiveConversation.onUnavailable). The

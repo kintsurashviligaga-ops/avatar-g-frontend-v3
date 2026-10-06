@@ -36,7 +36,7 @@ import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from 
 import { withColorScience } from '@/lib/video/colorScience';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 
-export type DeterministicProvider = 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
+export type DeterministicProvider = 'google' | 'nanobanana' | 'replicate' | 'ltx' | 'heygen' | 'xai';
 export type DeterministicOperation = 'text-to-image' | 'video-avatar';
 
 // PHASE 24 — 'runway' is an async provider tier (Runway Gen-3 Alpha primary i2v). It surfaces on the
@@ -279,14 +279,26 @@ export class ServiceManager {
    */
   async execute(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const operation = this.resolveOperation(request);
-    const service: BillingServiceType = operation === 'text-to-image' ? 'image'
-      : request.intent === 'avatar_generation' ? 'avatar'
-      : 'video';
+    // Refuse unsupported capabilities before budget reservation or prompt enrichment.
+    if (request.intent === 'avatar_generation' || request.serviceContext === 'avatar') {
+      return this.unavailable(request, 'avatar_unavailable', 'Avatar lipsync is not available right now.');
+    }
+    const hasImageReference = request.imageUrl || this.getOption(request.selectedOptions || {}, ['characterReference', 'imageUrl', 'image', 'referenceImage', 'startImage', 'characterReferences', 'referenceImages']);
+    if (operation === 'text-to-image' && (hasImageReference || request.intent === 'photo_edit')) {
+      return this.unavailable(request, 'image_edit_unavailable', 'Image editing is not available right now.');
+    }
+    if (operation === 'text-to-image' && !hasGeminiImagenProvider()) {
+      return this.unavailable(request, 'provider_unavailable', 'Image generation is not available right now.');
+    }
+    if (operation === 'video-avatar' && !veoTransport()) {
+      return this.veoFailureResponse(request, { ok: false, reason: 'not_configured', retryable: false });
+    }
+    const service: BillingServiceType = operation === 'text-to-image' ? 'image' : 'video';
     // A Google-only clip renders on Veo and nothing else, so the guard can price it exactly (tier × resolution ×
     // audio) instead of the flat video line — which under-reserves a Standard clip ~3×.
     // Any request that will RENDER on Veo is priced as a Veo clip — including an "avatar" request whose provider
     // option routes it past HeyGen (it would otherwise be booked at the $0.05 avatar line for a $0.40/s render).
-    const rendersOnVeo = operation !== 'text-to-image' && this.resolveVideoProvider(request) !== 'heygen' && this.isGoogleOnlyVideo(request);
+    const rendersOnVeo = operation !== 'text-to-image';
     const veoPrice = rendersOnVeo ? this.veoGuardPrice(request) : null;
     // Seconds for video (the guard prices video per second), one artefact otherwise. ⚠️ NEVER the raw option: the
     // duration is caller-supplied, and `duration: '0.001'` booked a whole clip at a fraction of a cent — the budget
@@ -297,7 +309,7 @@ export class ServiceManager {
       return await guardedCall(
         {
           service: veoPrice ? 'video' : service,
-          model: veoPrice?.model ?? (request.videoModel || (service === 'image' ? 'imagen-4' : 'veo-3.1')),
+          model: veoPrice?.model ?? (service === 'image' ? geminiImagenModel() : 'veo-3.1'),
           units,
           promptSummary: request.userPrompt,
           ...(veoPrice
@@ -343,14 +355,19 @@ export class ServiceManager {
   async poll(taskRefOrPredictionId: string, sessionId?: string): Promise<ServiceManagerResponse> {
     const decoded = this.decodeTaskRef(taskRefOrPredictionId);
 
-    if (!decoded) {
-      return this.pollLegacyReplicate(taskRefOrPredictionId, sessionId || 'legacy');
+    if (!decoded || decoded.provider !== 'gemini-veo') {
+      return {
+        success: false, provider: 'google', operation: decoded?.operation ?? 'video-avatar',
+        responseType: decoded?.responseType ?? 'video', predictionStatus: 'failed',
+        message: 'This generation provider is no longer available.',
+        metadata: { provider: 'google', operation: decoded?.operation ?? 'video-avatar',
+          sessionId: sessionId ?? '', promptHash: '', code: 'provider_deprecated' },
+      };
     }
 
     if (!sessionId || decoded.sessionId !== sessionId) {
       // 'video-cascade' / 'runway' / 'gemini-veo' are async tiers with no DeterministicProvider surface → 'replicate'.
-      const surfaceProvider: DeterministicProvider =
-        decoded.provider === 'video-cascade' || decoded.provider === 'runway' || decoded.provider === 'gemini-veo' ? 'replicate' : decoded.provider;
+      const surfaceProvider: DeterministicProvider = 'google';
       return {
         success: false,
         provider: surfaceProvider,
@@ -370,61 +387,20 @@ export class ServiceManager {
       };
     }
 
-    if (decoded.provider === 'replicate') {
-      return this.pollReplicateTask(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'video-cascade') {
-      return this.pollVideoCascadeTask(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'heygen') {
-      return this.pollHeygenTask(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'runway') {
-      return this.pollRunwayTaskRef(decoded, taskRefOrPredictionId);
-    }
-
-    if (decoded.provider === 'gemini-veo') {
-      return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
-    }
-
-    return this.pollLtxTask(decoded, taskRefOrPredictionId);
+    return this.pollVeoTaskRef(decoded, taskRefOrPredictionId);
   }
 
   private async runTextToImage(rawRequest: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    // ⚠️ ONE TRANSLATION FOR ALL FOUR LEGS. Imagen, NanoBanana, Grok and FLUX each read
-    // `request.userPrompt` verbatim, and every one of them is trained overwhelmingly on English — so a
-    // Georgian brief was noise to all four and each fell back to its priors, returning a competent
-    // image unrelated to the request. Rebinding the request here fixes the whole cascade at its single
-    // entry point rather than at four call sites (and at the fifth engine added tomorrow). Only the
-    // DESCRIPTION passes through — this path carries no lyrics, dialogue or on-screen copy. Fail-open:
-    // any error/missing key/timeout returns the ORIGINAL text, so this can never break generation.
-    const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-    const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
+    const request = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
+    return await this.tryImagenImage(request)
+      ?? this.unavailable(request, 'provider_unavailable', 'Image generation could not be completed. Please try again later.');
+  }
 
-    // IMAGEN 4 — the Master Task's specified image engine (§1.6.2), tried FIRST. On any miss (no key, no
-    // access, quota, timeout) it returns null and the proven FLUX → NanoBanana cascade below runs
-    // byte-identical, so adding a primary engine cannot break image generation.
-    const imagen = await this.tryImagenImage(request);
-    if (imagen) return imagen;
-
-    const provider = this.resolveImageProvider(request.selectedOptions);
-    if (provider === 'replicate') {
-      // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
-      // preview (resilience preserved, just inverted from the old NanoBanana→FLUX order).
-      // NOTE: createPrediction is `Prefer: respond-async`, so the NORMAL success return carries a
-      // `predictionId` (client polls it) and NO `assetUrl` — accept that in-flight prediction as
-      // success; only fail open to NanoBanana on a throw / !success / a synchronously-failed status.
-      try {
-        const res = await this.runReplicateImage(request);
-        if (res.success && (res.assetUrl || res.predictionId) && res.predictionStatus !== 'failed') return res;
-      } catch { /* fall through to NanoBanana */ }
-      return this.runNanoBananaImage(request);
-    }
-
-    return this.runNanoBananaImage(request);
+  private unavailable(request: ServiceManagerRequest, code: string, message: string): ServiceManagerResponse {
+    const operation = this.resolveOperation(request);
+    return { success: false, provider: 'google', operation,
+      responseType: operation === 'text-to-image' ? 'image' : 'video', message, predictionStatus: 'failed',
+      metadata: { provider: 'google', operation, sessionId: request.sessionId, promptHash: this.hashPrompt(request.userPrompt), code } };
   }
 
   /**
@@ -446,9 +422,6 @@ export class ServiceManager {
     // A reference request now falls through to the NanoBanana leg, which does accept one.
     if (request.imageUrl) return null;
     const opts = request.selectedOptions || {};
-    // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
-    const picked = (this.getOption(opts, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
-    if (picked === 'nanobanana' || picked === 'replicate' || picked === 'flux') return null;
 
     const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
     const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
@@ -480,7 +453,7 @@ export class ServiceManager {
       console.log(`[imagen] ${model} produced ${urls.length}/${images.length} hosted image(s)`);
       return {
         success: true,
-        provider: 'nanobanana', // surface provider union has no 'gemini' member; the real engine is in metadata
+        provider: 'google',
         operation: 'text-to-image',
         responseType: 'image',
         message: 'Image generation completed successfully.',
@@ -488,7 +461,7 @@ export class ServiceManager {
         assetType: 'image',
         predictionStatus: 'succeeded',
         metadata: {
-          provider: 'nanobanana' as const,
+          provider: 'google' as const,
           imageProvider: 'gemini-imagen',
           model,
           operation: 'text-to-image',
@@ -501,16 +474,12 @@ export class ServiceManager {
       };
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[imagen] threw → falling through to FLUX/NanoBanana:', err instanceof Error ? err.message : err);
+      console.warn('[imagen] generation failed:', err instanceof Error ? err.message : err);
       return null;
     }
   }
 
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
-    const provider = this.resolveVideoProvider(request);
-    if (provider === 'heygen') {
-      return this.runHeygenAvatarVideo(request);
-    }
 
     // ⚠️ ENGLISH FOR THE ENGINE. Veo, Runway, Kling, Seedance and LTX are trained overwhelmingly on English,
     // and EVERY leg below reads `request.userPrompt`: tryI2vClip (Veo → Runway → Kling → cascade), runLtxVideo
@@ -967,11 +936,11 @@ export class ServiceManager {
   /** A Veo submit that did not produce a job, as a failed leg carrying the engine's reason. */
   private veoFailureResponse(request: ServiceManagerRequest, veo: Extract<VeoSubmit, { ok: false }>): ServiceManagerResponse {
     return {
-      success: false, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+      success: false, provider: 'google', operation: 'video-avatar', responseType: 'video',
       message: VEO_FAILURE_MESSAGE[veo.reason],
       predictionStatus: 'failed',
       metadata: {
-        provider: 'replicate' as const, videoProvider: 'gemini-veo', operation: 'video-avatar', outputType: 'video',
+        provider: 'google' as const, videoProvider: 'gemini-veo', operation: 'video-avatar', outputType: 'video',
         sessionId: request.sessionId, promptHash: this.hashPrompt(request.userPrompt),
         // filmComposite reads this to decide whether a re-POST is safe (docs/VEO_ENGINE.md §4: only a PROVABLE
         // rejection — 429 / 503 — is retried; a timeout or 5xx may already have created a billed job).
@@ -1070,11 +1039,11 @@ export class ServiceManager {
     return {
       ok: true,
       response: {
-        success: true, provider: 'replicate', operation: 'video-avatar', responseType: 'video',
+        success: true, provider: 'google', operation: 'video-avatar', responseType: 'video',
         message: `${engine} accepted the request. Polling for completion.`,
         predictionId: taskRef, predictionStatus: 'processing',
         metadata: {
-          provider: 'replicate' as const, videoProvider: 'gemini-veo', model: result.model, veoTransport: result.transport,
+          provider: 'google' as const, videoProvider: 'gemini-veo', model: result.model, veoTransport: result.transport,
           // What normalisation changed to fit the model (e.g. 1:1 → 9:16, 6 s → 8 s for references) — field names only.
           ...(result.adjustments.length ? { veoAdjustments: result.adjustments.map((a) => a.field) } : {}),
           operation: 'video-avatar', outputType: 'video', sessionId: request.sessionId, taskRef, providerTaskId, promptHash,
@@ -1099,11 +1068,11 @@ export class ServiceManager {
     const transport = transportOf(operation);
     const engine = veoEngineLabel(transport, null);
     const baseMeta = {
-      provider: 'replicate' as const, videoProvider: 'gemini-veo', veoTransport: transport, operation: decoded.operation,
+      provider: 'google' as const, videoProvider: 'gemini-veo', veoTransport: transport, operation: decoded.operation,
       sessionId: decoded.sessionId, taskRef, providerTaskId: decoded.providerTaskId, promptHash: decoded.promptHash,
     };
     const failed = (message: string, extra: Record<string, unknown> = {}): ServiceManagerResponse => ({
-      success: false, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      success: false, provider: 'google', operation: decoded.operation, responseType: decoded.responseType,
       message, predictionId: taskRef, predictionStatus: 'failed', metadata: { ...baseMeta, ...extra },
     });
 
@@ -1112,7 +1081,7 @@ export class ServiceManager {
       const url = await this.deliverVeoVideo(r.videos[0], operation, decoded.sessionId, aspect);
       if (url) {
         return {
-          success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+          success: true, provider: 'google', operation: decoded.operation, responseType: decoded.responseType,
           message: `${engine} rendered the scene.`, assetUrl: url, assetType: decoded.responseType,
           predictionId: taskRef, predictionStatus: 'succeeded', metadata: { ...baseMeta, outputType: decoded.responseType },
         };
@@ -1126,7 +1095,7 @@ export class ServiceManager {
     }
     if (r.state === 'failed') return failed(`${engine} generation failed.`);
     return {
-      success: true, provider: 'replicate', operation: decoded.operation, responseType: decoded.responseType,
+      success: true, provider: 'google', operation: decoded.operation, responseType: decoded.responseType,
       message: `${engine} rendering…`, predictionId: taskRef, predictionStatus: 'processing', metadata: baseMeta,
     };
   }

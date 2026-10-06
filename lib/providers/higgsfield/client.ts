@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * Higgsfield REST client — server-side only.
  *
@@ -55,16 +56,7 @@ export interface HfClientOptions {
  * The Authorization header from env — `HF_CREDENTIALS="id:secret"` or the `HF_API_KEY_ID` + `HF_API_KEY_SECRET`
  * pair. Returns null (never a partial header) when the pair is incomplete.
  */
-export function hfAuthHeaderFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
-  const single = (env.HF_CREDENTIALS ?? '').trim();
-  if (single) {
-    const i = single.indexOf(':');
-    return i > 0 && i < single.length - 1 ? `Key ${single}` : null;
-  }
-  const id = (env.HF_API_KEY_ID ?? '').trim();
-  const secret = (env.HF_API_KEY_SECRET ?? '').trim();
-  return id && secret ? `Key ${id}:${secret}` : null;
-}
+export function hfAuthHeaderFromEnv(_env: NodeJS.ProcessEnv = process.env): string | null { return null; }
 
 /** HTTP status → the saga's vocabulary (docs/concepts/errors). */
 export function mapHttpError(status: number, detail: string): ProviderErrorCode {
@@ -113,6 +105,7 @@ export function extractOutputUrls(body: unknown): string[] {
 }
 
 export function createHfClient(opts: HfClientOptions) {
+  assertProviderPermitted('higgsfield');
   const base = (opts.baseUrl ?? HF_DEFAULT_BASE_URL).replace(/\/+$/, '');
   const doFetch = opts.fetchImpl ?? fetch;
   const submitTimeoutMs = opts.submitTimeoutMs ?? 30_000;

@@ -55,11 +55,10 @@ test('the budget gate refuses before any model is called', async () => {
   expect(gemini).not.toHaveBeenCalled();
 });
 
-test('AI_GOOGLE_ONLY=0 restores the multi-vendor chatEngine, with the style note as a system turn', async () => {
+test('AI_GOOGLE_ONLY=0 keeps channel replies on Gemini with their style note', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
-  (execute as jest.Mock).mockResolvedValue({ text: 'hello', model: 'gpt', tokensIn: 1, tokensOut: 2, costEstimate: 0, dualStage: false, durationMs: 5 });
   const out = await generateChannelReply({ channel: 'whatsapp', userId: UID, externalId: '1', text: 'hi', systemNote: 'WA STYLE' });
-  expect((execute as jest.Mock).mock.calls[0][0].messages[0]).toEqual({ role: 'system', content: 'WA STYLE' });
-  expect(out).toMatchObject({ reply: 'hello', answered: true });
-  expect(gemini).not.toHaveBeenCalled();
+  expect(execute).not.toHaveBeenCalled();
+  expect(out).toMatchObject({ reply: 'გამარჯობა!', answered: true });
+  expect(gemini).toHaveBeenCalledWith([{ role: 'user', content: 'hi' }], UID, expect.any(AbortSignal), expect.objectContaining({ systemNote: 'WA STYLE' }));
 });

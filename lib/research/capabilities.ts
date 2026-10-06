@@ -1,12 +1,12 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * lib/research/capabilities.ts — "is Deep Research available on this deployment?" — answered by PROBING, never assumed.
  *
  * The migration (20261003b) is applied by the owner, later, by hand; the feature must be invisible-but-harmless until then.
- * So availability is the AND of: the opt-out switch (RESEARCH_ENABLED, and a RESEARCH_DAILY_CAP above 0), a Google key, and
+ * So availability is the AND of: the opt-out switch (RESEARCH_ENABLED, and a RESEARCH_DAILY_CAP above 0), the selected Google transport credentials, and
  * the `research_jobs` table being there (a `select … limit 1` probe, cached — the pattern of lib/billing/bogSchemaReady).
  * The UI shows an unavailable mode as "opening soon" and routes answer 503 `unavailable`; nothing ever 500s over a missing table.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { researchLimits, type ResearchLimits } from './limits';
 import { researchCredits } from './pricing';
 
@@ -55,7 +55,7 @@ export async function getResearchCapabilities(
   const base = { credits: researchCredits(), maxActive: limits.maxActive };
   const filesAvailable = db ? await tableReady(db, 'research_context_files', opts.now) : false;
   if (!limits.enabled || limits.globalDaily <= 0) return { ...base, available: false, reason: 'disabled', filesAvailable };
-  const hasKey = opts.hasKey ?? !!resolveGeminiKey();
+  const hasKey = opts.hasKey ?? googleAiConfigured();
   if (!hasKey) return { ...base, available: false, reason: 'no_key', filesAvailable };
   if (!db || !(await tableReady(db, 'research_jobs', opts.now))) return { ...base, available: false, reason: 'schema', filesAvailable };
   return { ...base, available: true, filesAvailable };

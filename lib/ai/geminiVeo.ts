@@ -1,3 +1,4 @@
+import { googleTransport } from '@/lib/ai/google/transport';
 /**
  * lib/ai/geminiVeo.ts — Google **Veo** video generation via the Gemini API (generativelanguage), wired as
  * the OPTIONAL PRIMARY clip engine. Veo returns a finished clip WITH native audio (speech + effects) baked
@@ -47,7 +48,7 @@ function veoResolution(): string {
  *  LIVE-BY-DEFAULT: the key's Veo access + the create contract are verified working, so Veo is the primary
  *  clip engine by default; the flag exists only as an instant revert to the Runway cascade. */
 export function hasGeminiVeoProvider(): boolean {
-  return isEnabledByDefault(process.env.GEMINI_VEO_ENABLED) && !!resolveGeminiKey();
+  return googleTransport() === 'gemini' && isEnabledByDefault(process.env.GEMINI_VEO_ENABLED) && !!resolveGeminiKey();
 }
 
 // Veo accepts 16:9 and 9:16; there is no 1:1, so square requests fall to landscape.
@@ -92,7 +93,7 @@ async function imageToInline(src: string): Promise<{ bytes: string; mime: string
  */
 export async function createGeminiVeoClip(args: VeoCreateArgs): Promise<{ operation: string } | null> {
   const key = resolveGeminiKey();
-  if (!key || !args.promptText?.trim()) return null;
+  if (googleTransport() !== 'gemini' || !key || !args.promptText?.trim()) return null;
 
   // 2000, not the old self-imposed 1000: at 1000 the character-lock clause + consistency seed (which
   // planFilmScenes appends at the END of the scene prompt) were silently cut off, so Veo never received the

@@ -15,24 +15,18 @@
  * exactly as the route itself would treat it).
  */
 import { hasLyriaProvider } from '@/lib/ai/lyriaMusic';
-import { hasUdioApiKey } from '@/lib/chat/mediaKeys';
-import { hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { isProviderTripped } from '@/lib/orchestrator/idempotency';
 import { controlModeFor } from '@/lib/ai/musicControls';
 import { MUSIC_ENGINE_CHAIN, type MusicEngineId, type MusicEnginesStatus } from '@/lib/studio/musicEngines';
 
 export function replicateConfigured(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.REPLICATE_API_TOKEN ?? '').trim().length > 0;
+  void env; return false;
 }
 
 /** True when the engine would be in the route's chain at all (a key / token / switch). */
 export function engineConfigured(id: MusicEngineId, env: NodeJS.ProcessEnv = process.env): boolean {
-  switch (id) {
-    case 'lyria': return hasLyriaProvider();
-    case 'udio': return hasUdioApiKey(env) && env.MUSIC_PROVIDER !== 'elevenlabs';
-    case 'elevenlabs-music': return hasElevenLabsMusicKey(env);
-    case 'musicgen': return replicateConfigured(env);
-  }
+  void env;
+  return id === 'lyria' && hasLyriaProvider();
 }
 
 export async function musicEnginesStatus(
@@ -45,7 +39,7 @@ export async function musicEnginesStatus(
     const busy = configured ? await tripped(id).catch(() => false) : false;
     return [id, { configured, busy, controls: controlModeFor(id, env) }] as const;
   }));
-  const engines = Object.fromEntries(rows) as MusicEnginesStatus['engines'];
+  const engines = { udio: { configured: false, busy: false, controls: 'prompt' }, 'elevenlabs-music': { configured: false, busy: false, controls: 'prompt' }, musicgen: { configured: false, busy: false, controls: 'prompt' }, ...Object.fromEntries(rows) } as MusicEnginesStatus['engines'];
   const replicate = replicateConfigured(env);
   return {
     engines,

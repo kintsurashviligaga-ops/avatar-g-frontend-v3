@@ -405,28 +405,14 @@ describe('provider failures', () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  test('AI_GOOGLE_ONLY=0 restores the Anthropic fallback, badged, with the Gemini error dropped, and books it', async () => {
+  test('AI_GOOGLE_ONLY=0 cannot restore or charge the Anthropic fallback', async () => {
     process.env.AI_GOOGLE_ONLY = '0';
     mockStream.mockImplementation(geminiFailure('quota'));
-    (streamText as jest.Mock).mockReturnValue(
-      anthropicStream([
-        { type: 'text-delta', text: 'Hello ' },
-        { type: 'text-delta', text: 'from Haiku' },
-        { type: 'finish', totalUsage: { inputTokens: 900, outputTokens: 12, totalTokens: 912 } },
-      ]),
-    );
     const frames = await framesOf(await POST(post(userTurn('hello there'))));
-    expect(frames).toEqual([
-      { meta: { provider: 'anthropic', model: 'claude-haiku-4-5', mode: 'fast', fallback: true } },
-      { text: 'Hello ' },
-      { text: 'from Haiku' },
-      { usage: { model: 'claude-haiku-4-5', inputTokens: 900, outputTokens: 12, totalTokens: 912 } },
-      'DONE',
-    ]);
-    expect(createAnthropic).toHaveBeenCalledWith({ apiKey: 'test-anthropic-key' });
-    expect(bookChatUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'claude-haiku-4-5', inputTokens: 900, outputTokens: 12, userId: USER_ID }),
-    );
+    expect(frames).toContainEqual(expect.objectContaining({ error: expect.objectContaining({ code: 'quota' }) }));
+    expect(createAnthropic).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+    expect(bookChatUsage).not.toHaveBeenCalled();
   });
 
   test('AI_GOOGLE_ONLY=0 but the fallback is empty → the Gemini failure is reported honestly', async () => {
@@ -574,11 +560,11 @@ describe('the Gemini call', () => {
   const lastCall = (): StreamGeminiChatInput => mockStream.mock.calls[mockStream.mock.calls.length - 1]![0];
 
   test('no persona, no mode: the old settings + Fast (thinking low); the chain and the key come from the foundation', async () => {
-    delete process.env.GEMINI_API_KEY;
-    process.env.GEMINI_API_KEYS = 'pool-key-1, pool-key-2';
+    process.env.GEMINI_API_KEY = 'canonical-key';
+    process.env.GEMINI_API_KEYS = 'pool-key-must-not-be-used';
     await (await POST(post(userTurn('გამარჯობა')))).text();
     const input = lastCall();
-    expect(input.apiKey).toBe('pool-key-1');
+    expect(input.apiKey).toBe('canonical-key');
     expect(input.models).toEqual([...DEFAULT_CHAT_MODELS.standard]);
     for (const m of input.models) expect(m).not.toMatch(/gemini-(1\.5|2\.0)-/);
     const { system, ...settings } = input.config;

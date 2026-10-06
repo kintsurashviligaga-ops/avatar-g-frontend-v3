@@ -1,3 +1,4 @@
+import { googleTransport } from '@/lib/ai/google/transport';
 /**
  * POST /api/orchestrator/script — Hybrid Creative Script Agent (Agent C).
  *
@@ -25,7 +26,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import {
   buildScriptSystemPrompt,
@@ -106,6 +107,7 @@ async function analyzeAssetWithGemini(
 
 /** All configured Gemini keys (GEMINI_API_KEYS csv ∪ GEMINI_API_KEY ∪ GOOGLE_GENERATIVE_AI_API_KEY), de-duped. */
 function geminiKeys(): string[] {
+  if (googleTransport() === 'vertex') return [''];
   const csv = (process.env.GEMINI_API_KEYS ?? '').split(',').map(s => s.trim()).filter(Boolean);
   const single = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
   if (single) csv.push(single);

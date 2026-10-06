@@ -1,3 +1,5 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
+import { googleAiConfigured, googleModelFetch, googleTransport } from '@/lib/ai/google/transport';
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { assertAdminAccess } from '@/lib/admin/guard';
@@ -44,6 +46,7 @@ async function probe(
   key: string | undefined,
   run: (k: string) => Promise<ProbeResult>,
 ): Promise<ProbeResult> {
+  if (!isProviderPermitted(provider === 'gemini-billing' ? 'gemini' : provider)) return { provider, configured: false, ok: false, detail: 'provider deprecated' };
   if (!key || !key.trim()) return { provider, configured: false, ok: false, detail: 'not configured' };
   try {
     return await run(key.trim());
@@ -64,7 +67,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const results = await Promise.all([
     // GEMINI — chat, Imagen (images), Lyria (music) AND Veo (video) all ride this one key, which is why
     // it is first and why its failure is the most expensive one in the system.
-    probe('gemini', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
+    probe('gemini', googleTransport() === 'vertex' ? (googleAiConfigured() ? 'vertex' : undefined) : process.env.GEMINI_API_KEY, async (k) => {
+      if (googleTransport() === 'vertex') return { provider: 'gemini', configured: true, ok: true, detail: 'Vertex configuration complete; generation checked separately' };
       // Header, not `?key=`: a key in a URL ends up in every proxy and access log between here and Google.
       const r = await get('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { headers: { 'x-goog-api-key': k } });
       if (!r.ok) {
@@ -87,16 +91,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // GEMINI BILLING — listing models is free, so it stays green while the prepaid balance is EMPTY: that is exactly
     // how every Veo / Lyria / TTS / chat call answered 402 for days behind a healthy-looking key. One generated
     // token (well under $0.0001) is the cheapest question the billing system actually answers.
-    probe('gemini-billing', process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY, async (k) => {
+    probe('gemini-billing', googleAiConfigured() ? 'configured' : undefined, async () => {
       const model = (process.env.GEMINI_PROBE_MODEL || geminiTierModel('flash')).trim();
-      const r = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      const r = await googleModelFetch(model, 'generateContent', {
         method: 'POST',
-        headers: { 'x-goog-api-key': k, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(TIMEOUT),
         body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 1 } }),
       });
       if (r.ok) return { provider: 'gemini-billing', configured: true, ok: true, detail: `${model} answered — the balance pays` };
       const body = await r.text().catch(() => '');
-      const hint = r.status === 402 || /prepa|billing|credit/i.test(body) ? ' — the AI Studio prepaid balance is empty' : '';
+      const hint = googleTransport() === 'gemini' && (r.status === 402 || /prepa|billing|credit/i.test(body)) ? ' — the AI Studio prepaid balance is empty' : '';
       return { provider: 'gemini-billing', configured: true, ok: false, detail: `HTTP ${r.status}${hint} ${body.slice(0, 160)}` };
     }),
 

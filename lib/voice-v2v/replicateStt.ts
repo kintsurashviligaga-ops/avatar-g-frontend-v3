@@ -37,7 +37,7 @@ const LANGUAGE_CODE: Record<string, string> = {
 };
 
 function replicateToken(): string {
-  return String(process.env.REPLICATE_API_TOKEN || '').trim();
+  return ''; // Retired provider: never read its credential.
 }
 
 export function hasReplicateSttKey(): boolean {

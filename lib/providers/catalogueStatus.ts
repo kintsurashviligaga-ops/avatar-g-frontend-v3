@@ -1,3 +1,4 @@
+import { hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
 /**
  * Which catalogue models THIS deployment can run right now — the server half of the model picker (lib/providers/catalogue).
  *
@@ -11,8 +12,6 @@
  */
 import 'server-only';
 import { musicEnginesStatus } from '@/lib/ai/musicEnginesStatus';
-import { hfAuthHeaderFromEnv } from '@/lib/providers/higgsfield/client';
-import { isModelEnabled } from '@/lib/providers/registry';
 import {
   CATALOGUE,
   availabilityOf,
@@ -21,20 +20,19 @@ import {
   type DeploymentProbe,
 } from '@/lib/providers/catalogue';
 import type { MusicEnginesStatus } from '@/lib/studio/musicEngines';
-import { studioV2Enabled } from '@/lib/studio/flags';
 import { veoTransport } from '@/lib/veo/engine';
-import { isGoogleOnly } from '@/lib/veo/policy';
 
 export interface CatalogueStatusRow extends Availability {
   id: string;
 }
 
 export interface CatalogueStatusDeps {
+  image?: () => boolean;
   film?: () => boolean;
   music?: () => Promise<MusicEnginesStatus | null>;
 }
 
-const filmReady = (): boolean => veoTransport() !== null || !isGoogleOnly();
+const filmReady = (): boolean => veoTransport() !== null;
 
 export async function catalogueStatus(
   service: CatalogueService | undefined,
@@ -46,9 +44,10 @@ export async function catalogueStatus(
   const wantsMusic = rows.some((e) => e.wire.runner === 'music');
   const music = wantsMusic ? await (deps.music ?? (() => musicEnginesStatus(env)))().catch(() => null) : null;
   const probe: DeploymentProbe = {
-    higgsfield: hfAuthHeaderFromEnv(env) !== null,
-    studioV2: studioV2Enabled(env),
-    hfEnabled: (id) => isModelEnabled(id, env),
+    image: rows.some((e) => e.wire.runner === 'image') ? (deps.image ?? hasGeminiImagenProvider)() : false,
+    higgsfield: false,
+    studioV2: false,
+    hfEnabled: () => false,
     film: rows.some((e) => e.wire.runner === 'film') ? (deps.film ?? filmReady)() : false,
     music: music ? music.engines : null,
   };

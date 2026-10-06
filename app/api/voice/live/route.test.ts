@@ -104,6 +104,7 @@ beforeEach(() => {
   delete process.env.GEMINI_API_KEYS;
   delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   process.env.GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_TRANSPORT = 'gemini';
   budgetMock.mockResolvedValue(true);
   fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () =>
     new Response(JSON.stringify({ name: 'auth_tokens/eph-123' }), { status: 200 }));
@@ -115,6 +116,15 @@ afterEach(() => {
 });
 
 describe('gates', () => {
+  test('Vertex uses the REST voice fallback without minting a Developer token or exposing project OAuth', async () => {
+    process.env.GEMINI_TRANSPORT = 'vertex';
+    const res = await POST(post({}));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'vertex_live_relay_required' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(budgetMock).not.toHaveBeenCalled();
+  });
+
   test('the kill switch → 503 before anything else', async () => {
     process.env.GEMINI_LIVE_ENABLED = '0';
     const res = await POST(post({}));

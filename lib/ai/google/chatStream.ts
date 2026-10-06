@@ -1,7 +1,9 @@
+import { googleTransport } from '@/lib/ai/google/transport';
 import 'server-only';
 
 import { streamText, type ModelMessage, type ToolSet } from 'ai';
-import { createGoogleGenerativeAI, type GoogleLanguageModelOptions } from '@ai-sdk/google';
+import type { GoogleLanguageModelOptions } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from './provider';
 import type { ChatErrorCode, ChatFrame } from '@/lib/chat/sse';
 import { isRetiredModel } from '@/lib/ai/google/models';
 
@@ -779,7 +781,7 @@ export async function streamGeminiChat(input: StreamGeminiChatInput): Promise<St
 
   try {
     const apiKey = typeof input.apiKey === 'string' ? input.apiKey.trim() : '';
-    if (!apiKey) {
+    if (googleTransport() === 'gemini' && !apiKey) {
       const res = failure('auth', 'Gemini API key is not configured', null);
       return await finish(res, [errorFrame(res.error!)]);
     }

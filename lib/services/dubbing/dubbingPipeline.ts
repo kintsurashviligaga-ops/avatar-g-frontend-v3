@@ -2,7 +2,7 @@
  * lib/services/dubbing/dubbingPipeline.ts — the seven legs, run end to end (Master Task §2.3.2).
  *
  *   1 extract_audio  ffmpeg           video → mono mp3
- *   2 transcribe      ElevenLabs Scribe  mp3 → timed, speaker-labelled segments
+ *   2 transcribe      Gemini             mp3 → timed, speaker-labelled segments
  *   3 translate       Gemini (llmText)   segments → length-matched target-language lines
  *   4 synthesize      ElevenLabs TTS     lines → speech, one voice per speaker
  *   5 sync            ffmpeg atempo      each line time-fitted to its original slot
@@ -106,9 +106,10 @@ export async function runDubbing(
     const scribe = await transcribeWithScribe(extracted.buffer, {
       languageCode: req.sourceLanguage === 'auto' ? null : req.sourceLanguage,
       diarize: true,
+      durationSec: extracted.durationSec ?? undefined,
     });
     if (!scribe || !scribe.segments.length) {
-      return { ok: false, step: 'transcribe', error: 'no speech found in the source audio' };
+      return { ok: false, step: 'transcribe', error: 'timed transcription unavailable or no usable speech found' };
     }
     stepsRun.push('transcribe');
 

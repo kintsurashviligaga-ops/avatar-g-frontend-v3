@@ -1,3 +1,4 @@
+import { isDeprecatedProviderRoute } from '@/lib/providers/policy';
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { frontDoor, hasSessionCookie } from '@/lib/routing/landing';
@@ -22,6 +23,7 @@ function getPreferredLocale(request: NextRequest) {
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (isDeprecatedProviderRoute(pathname)) return NextResponse.json({ error: 'provider_deprecated' }, { status: 410 });
   const preferredLocale = getPreferredLocale(request);
 
   const isSkipped =

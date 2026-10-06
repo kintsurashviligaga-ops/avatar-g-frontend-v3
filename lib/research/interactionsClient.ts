@@ -6,10 +6,10 @@
  *   poll    GET  /v1beta/interactions/{id}            → status in_progress → completed | failed | cancelled | incomplete
  *   cancel  POST /v1beta/interactions/{id}/cancel     ("only applies to background interactions that are still running")
  *
- * The key travels ONLY in the `x-goog-api-key` header — never `?key=` (a URL ends up in logs, traces and error reports)
- * — and only to generativelanguage.googleapis.com: every call uses `redirect: 'manual'`, so a redirect can never carry the
- * header to another host (the repo rule, lib/veo/geminiTransport.ts). Error bodies are read through `readError`, which
- * redacts the key and bounds the text, and are returned as INTERNAL `detail` — they never reach a user
+ * Developer requests use x-goog-api-key; Vertex uses project OAuth against the global v1beta1 Interactions endpoint.
+ * No credential enters a URL. Every call uses redirect: 'manual' so credentials cannot follow redirects. Existing
+ * jobs carry their transport/project in a private reference; changing environment selectors never changes their
+ * billing transport. Error bodies redact the credential and are returned as INTERNAL detail — never to a user
  * (lib/api/providerError.ts).
  *
  * ⚠️ THE START POST IS SENT AT MOST ONCE. It has no idempotency key, so a retry after a lost answer could start (and bill)
@@ -21,6 +21,8 @@
 import 'server-only';
 import { classifyProviderError, type ProviderFailure } from '@/lib/api/providerError';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleTransport, requireVertexAiConfig } from '@/lib/ai/google/transport';
+import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 import { parseInteraction, parseInteractionId, type ParsedInteraction } from './parse';
 
 export const INTERACTIONS_HOST = 'generativelanguage.googleapis.com';
@@ -48,6 +50,7 @@ const INTERACTION_ID_RE = /^[A-Za-z0-9_-]{4,512}$/;
 export const isInteractionId = (v: unknown): v is string => typeof v === 'string' && INTERACTION_ID_RE.test(v);
 
 export type StartOutcome =
+  // `id` is an opaque private reference, persisted unchanged in research_jobs.provider_interaction_id.
   | { ok: true; id: string }
   | {
       ok: false;
@@ -89,7 +92,17 @@ export interface InteractionsClientOptions {
 }
 
 /** The request body of a Deep Research start — exported so the contract is asserted in one place. */
-export function startBody(req: StartRequest): Record<string, unknown> {
+export function startBody(req: StartRequest, transport: 'gemini' | 'vertex' = 'gemini'): Record<string, unknown> {
+  // Vertex supports background Interactions on the global endpoint. The documented contract does
+  // not include the Developer API's visualization/collaborative_planning options.
+  // https://docs.cloud.google.com/gemini-enterprise-agent-platform/agents/use-deep-research
+  if (transport === 'vertex') {
+    return {
+      agent: req.agent, input: req.input, background: true, stream: false, store: true,
+      agent_config: { type: 'deep-research', thinking_summaries: 'auto' },
+      tools: [{ type: 'google_search' }, { type: 'url_context' }],
+    };
+  }
   return {
     agent: req.agent,
     input: req.input,
@@ -123,27 +136,97 @@ const errText = (e: unknown, key: string): string => {
   return (key ? raw.split(key).join('[redacted]') : raw).slice(0, 200);
 };
 
+/**
+ * A versioned private reference pins a job to its original transport/project across deploys.
+ * Old bare IDs were created through the Developer API. They never become Vertex IDs when an
+ * operator changes GEMINI_TRANSPORT. The database column is already text; no migration is needed.
+ */
+export type InteractionReference =
+  | { transport: 'gemini'; id: string }
+  | { transport: 'vertex'; project: string; location: 'global'; id: string };
+
+export function parseInteractionReference(raw: string): InteractionReference | null {
+  if (INTERACTION_ID_RE.test(raw)) return { transport: 'gemini', id: raw };
+  const parts = raw.split(':');
+  if (parts[0] !== 'research' || parts[1] !== 'v1') return null;
+  if (parts.length === 4 && parts[2] === 'gemini' && isInteractionId(parts[3])) {
+    return { transport: 'gemini', id: parts[3] };
+  }
+  if (parts.length === 6 && parts[2] === 'vertex' && parts[4] === 'global' && isInteractionId(parts[5])) {
+    try {
+      const project = decodeURIComponent(parts[3]!);
+      // Match vertexAuth's project IDs, including numbers and legacy domain-scoped projects.
+      if (/^[a-z0-9][a-z0-9.:-]{0,99}$/.test(project) && encodeURIComponent(project) === parts[3]) {
+        return { transport: 'vertex', project, location: 'global', id: parts[5] };
+      }
+    } catch { /* malformed percent encoding is not a job reference */ }
+  }
+  return null;
+}
+
+interface RequestTarget {
+  transport: 'gemini' | 'vertex';
+  base: string;
+  secret: string;
+  headers: Record<string, string>;
+  reference(id: string): string;
+}
+
 export function createInteractionsClient(opts: InteractionsClientOptions = {}): InteractionsClient {
   const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
-  const base = (opts.baseUrl ?? INTERACTIONS_BASE).replace(/\/$/, '');
-  const key = () => (opts.apiKey ?? resolveGeminiKey()).trim();
 
-  const call = (url: string, init: RequestInit, timeoutMs: number, k: string): Promise<Response> =>
+  const target = async (ref?: InteractionReference): Promise<RequestTarget> => {
+    // Only NEW starts use the current setting; all lifecycle calls use the persisted reference.
+    const transport = ref?.transport ?? googleTransport();
+    if (transport === 'vertex') {
+      const config = requireVertexAiConfig();
+      if (ref?.transport === 'vertex' && ref.project !== config.projectId) {
+        throw new Error('Research job belongs to a different Vertex project');
+      }
+      const token = await getVertexAccessToken(false);
+      return {
+        transport,
+        base: `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(config.projectId)}/locations/global/interactions`,
+        secret: token,
+        headers: { Authorization: `Bearer ${token}` },
+        reference: (id) => `research:v1:vertex:${encodeURIComponent(config.projectId)}:global:${id}`,
+      };
+    }
+    const key = (opts.apiKey ?? resolveGeminiKey()).trim();
+    if (!key) throw new Error('GEMINI_API_KEY is not configured');
+    return {
+      transport,
+      base: (opts.baseUrl ?? INTERACTIONS_BASE).replace(/\/$/, ''),
+      secret: key,
+      headers: { 'x-goog-api-key': key },
+      reference: (id) => `research:v1:gemini:${id}`,
+    };
+  };
+
+  const call = (url: string, init: RequestInit, signal: AbortSignal, t: RequestTarget): Promise<Response> =>
     doFetch(url, {
       ...init,
-      headers: { ...(init.method === 'POST' ? { 'Content-Type': 'application/json' } : {}), 'x-goog-api-key': k },
+      headers: { ...(init.method === 'POST' ? { 'Content-Type': 'application/json' } : {}), ...t.headers },
       cache: 'no-store',
       redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
 
   return {
     async start(req) {
-      const k = key();
-      if (!k) return { ok: false, failure: 'not_configured', ambiguous: false, detail: 'no Gemini API key configured' };
+      // Token exchange and the provider request share one budget; slow auth cannot extend the
+      // create POST beyond the Vercel deadline and leave a billed job with no recorded ID.
+      const signal = AbortSignal.timeout(START_TIMEOUT_MS);
+      let t: RequestTarget;
+      try { t = await target(); } catch {
+        // Authentication failed before the create POST; no run can have been billed. Never fall back.
+        return { ok: false, failure: 'not_configured', ambiguous: false, detail: 'Research transport authentication is unavailable' };
+      }
+      if (signal.aborted) return { ok: false, failure: 'not_configured', ambiguous: false, detail: 'Research authentication exceeded the request deadline' };
+      const k = t.secret;
       let res: Response;
       try {
-        res = await call(base, { method: 'POST', body: JSON.stringify(startBody(req)) }, START_TIMEOUT_MS, k);
+        res = await call(t.base, { method: 'POST', body: JSON.stringify(startBody(req, t.transport)) }, signal, t);
       } catch (e) {
         // The request may have reached Google (a timeout fires after the send) — never re-POST.
         return { ok: false, failure: 'provider_unavailable', ambiguous: true, detail: `start failed: ${errText(e, k)}` };
@@ -168,16 +251,21 @@ export function createInteractionsClient(opts: InteractionsClientOptions = {}): 
       if (!id) {
         return { ok: false, failure: 'provider_unavailable', ambiguous: true, status: res.status, detail: 'accepted the start but returned no usable interaction id — the run may exist; not re-sent' };
       }
-      return { ok: true, id };
+      return { ok: true, id: t.reference(id) };
     },
 
     async poll(id, popts) {
-      const k = key();
-      if (!k) return { ok: false, kind: 'auth', detail: 'no Gemini API key configured' };
-      if (!isInteractionId(id)) return { ok: false, kind: 'not_found', detail: 'not an interaction id' };
+      const signal = AbortSignal.timeout(Math.max(1_000, Math.min(popts?.timeoutMs ?? POLL_TIMEOUT_MS, POLL_TIMEOUT_MS)));
+      const ref = parseInteractionReference(id);
+      if (!ref) return { ok: false, kind: 'not_found', detail: 'not an interaction reference' };
+      let t: RequestTarget;
+      try { t = await target(ref); } catch {
+        return { ok: false, kind: 'auth', detail: 'Research transport authentication is unavailable or project changed' };
+      }
+      const k = t.secret;
       let res: Response;
       try {
-        res = await call(`${base}/${id}`, { method: 'GET' }, Math.max(1_000, Math.min(popts?.timeoutMs ?? POLL_TIMEOUT_MS, POLL_TIMEOUT_MS)), k);
+        res = await call(`${t.base}/${ref.id}`, { method: 'GET' }, signal, t);
       } catch (e) {
         return { ok: false, kind: 'transient', detail: `poll failed: ${errText(e, k)}` };
       }
@@ -197,12 +285,17 @@ export function createInteractionsClient(opts: InteractionsClientOptions = {}): 
     },
 
     async cancel(id) {
-      const k = key();
-      if (!k) return { ok: false, kind: 'transient', detail: 'no Gemini API key configured' };
-      if (!isInteractionId(id)) return { ok: false, kind: 'not_found', detail: 'not an interaction id' };
+      const signal = AbortSignal.timeout(CANCEL_TIMEOUT_MS);
+      const ref = parseInteractionReference(id);
+      if (!ref) return { ok: false, kind: 'not_found', detail: 'not an interaction reference' };
+      let t: RequestTarget;
+      try { t = await target(ref); } catch {
+        return { ok: false, kind: 'transient', detail: 'Research transport authentication is unavailable or project changed' };
+      }
+      const k = t.secret;
       let res: Response;
       try {
-        res = await call(`${base}/${id}/cancel`, { method: 'POST', body: '{}' }, CANCEL_TIMEOUT_MS, k);
+        res = await call(`${t.base}/${ref.id}/cancel`, { method: 'POST', body: '{}' }, signal, t);
       } catch (e) {
         return { ok: false, kind: 'transient', detail: `cancel failed: ${errText(e, k)}` };
       }

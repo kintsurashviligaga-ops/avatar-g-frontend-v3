@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import 'server-only';
 
 import { embed } from '@/lib/memory/embed';
@@ -40,8 +41,7 @@ const HEADER: Record<string, string> = {
 
 export function isRagConfigured(): boolean {
   const hasEmbedKey = !!(
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    googleAiConfigured() ||
     process.env.OPENAI_API_KEY
   );
   const hasDb = !!(

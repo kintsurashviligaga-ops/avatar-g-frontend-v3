@@ -1,97 +1,37 @@
-// Provider Factory
-// Selects and instantiates the appropriate provider based on available API keys
+import 'server-only';
+import type { ProviderFactory, IAvatarProvider, IOutfitFittingProvider, IVoiceProvider, ITalkingAvatarProvider, IFaceAnalysisProvider } from './interfaces';
+import { generateImagenImages, geminiImagenModel, hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
 
-import type {
-  ProviderFactory,
-  IAvatarProvider,
-  IOutfitFittingProvider,
-  IVoiceProvider,
-  ITalkingAvatarProvider,
-  IFaceAnalysisProvider
-} from './interfaces';
-
-import { StabilityAvatarProvider } from './stability';
-import { ReplicateAvatarProvider } from './replicate';
-import {
-  MockAvatarProvider,
-  MockOutfitFittingProvider,
-  MockVoiceProvider,
-  MockTalkingAvatarProvider,
-  MockFaceAnalysisProvider
-} from './mock';
+/** No demo assets or successful fake jobs may escape through the production factory. */
+async function unavailable(): Promise<never> {
+  throw new Error('This capability has no configured permitted provider');
+}
+const unavailableBase = { name: 'unavailable', isAvailable: () => false };
+const avatar: IAvatarProvider = {
+  name: 'google-imagen', isAvailable: hasGeminiImagenProvider,
+  async generate(input) {
+    if (input.reference_image || input.enable_turnaround) return unavailable();
+    if (!hasGeminiImagenProvider()) return unavailable();
+    const start = Date.now();
+    const ratio = input.width && input.height ? input.width / input.height : 1;
+    const aspectRatio = ratio > 1.5 ? '16:9' : ratio > 1.1 ? '4:3' : ratio < 0.65 ? '9:16' : ratio < 0.9 ? '3:4' : '1:1';
+    const images = await generateImagenImages({ prompt: input.prompt, negativePrompt: input.negative_prompt, aspectRatio, numberOfImages: 1 });
+    const image = images?.[0];
+    if (!image) throw new Error('Imagen generation failed');
+    return { image_url: `data:${image.mimeType};base64,${image.buffer.toString('base64')}`, generation_time_ms: Date.now() - start, metadata: { provider: 'google', model: geminiImagenModel() } };
+  },
+  imageToImage: unavailable,
+};
+const outfit: IOutfitFittingProvider = { ...unavailableBase, fitOutfit: unavailable };
+const voice: IVoiceProvider = { ...unavailableBase, trainVoice: unavailable, synthesize: unavailable };
+const talkingAvatar: ITalkingAvatarProvider = { ...unavailableBase, generateVideo: unavailable };
+const face: IFaceAnalysisProvider = { ...unavailableBase, analyze: unavailable };
 
 export class DefaultProviderFactory implements ProviderFactory {
-  private avatarProvider: IAvatarProvider | null = null;
-  private outfitProvider: IOutfitFittingProvider | null = null;
-  private voiceProvider: IVoiceProvider | null = null;
-  private talkingAvatarProvider: ITalkingAvatarProvider | null = null;
-  private faceAnalysisProvider: IFaceAnalysisProvider | null = null;
-
-  constructor() {
-    this.initializeProviders();
-  }
-
-  private initializeProviders() {
-    // Check which API keys are available
-    const hasStability = !!process.env.STABILITY_API_KEY;
-    const hasReplicate = !!process.env.REPLICATE_API_TOKEN;
-    // Avatar Generation: prefer Stability, fallback to Replicate, then Mock
-    if (hasStability) {
-      this.avatarProvider = new StabilityAvatarProvider();
-    } else if (hasReplicate) {
-      this.avatarProvider = new ReplicateAvatarProvider();
-    } else {
-      this.avatarProvider = new MockAvatarProvider();
-    }
-
-    // Outfit Fitting: use Mock for now (can add real provider later)
-    this.outfitProvider = new MockOutfitFittingProvider();
-
-    // Voice: use Mock for MVP (can add ElevenLabs later)
-    this.voiceProvider = new MockVoiceProvider();
-
-    // Talking Avatar: use Mock for MVP
-    this.talkingAvatarProvider = new MockTalkingAvatarProvider();
-
-    // Face Analysis: use Mock for MVP
-    this.faceAnalysisProvider = new MockFaceAnalysisProvider();
-  }
-
-  getAvatarProvider(): IAvatarProvider {
-    if (!this.avatarProvider) {
-      throw new Error('Avatar provider not initialized');
-    }
-    return this.avatarProvider;
-  }
-
-  getOutfitFittingProvider(): IOutfitFittingProvider {
-    if (!this.outfitProvider) {
-      throw new Error('Outfit fitting provider not initialized');
-    }
-    return this.outfitProvider;
-  }
-
-  getVoiceProvider(): IVoiceProvider {
-    if (!this.voiceProvider) {
-      throw new Error('Voice provider not initialized');
-    }
-    return this.voiceProvider;
-  }
-
-  getTalkingAvatarProvider(): ITalkingAvatarProvider {
-    if (!this.talkingAvatarProvider) {
-      throw new Error('Talking avatar provider not initialized');
-    }
-    return this.talkingAvatarProvider;
-  }
-
-  getFaceAnalysisProvider(): IFaceAnalysisProvider {
-    if (!this.faceAnalysisProvider) {
-      throw new Error('Face analysis provider not initialized');
-    }
-    return this.faceAnalysisProvider;
-  }
+  getAvatarProvider(): IAvatarProvider { return avatar; }
+  getOutfitFittingProvider(): IOutfitFittingProvider { return outfit; }
+  getVoiceProvider(): IVoiceProvider { return voice; }
+  getTalkingAvatarProvider(): ITalkingAvatarProvider { return talkingAvatar; }
+  getFaceAnalysisProvider(): IFaceAnalysisProvider { return face; }
 }
-
-// Export singleton factory
 export const providerFactory = new DefaultProviderFactory();

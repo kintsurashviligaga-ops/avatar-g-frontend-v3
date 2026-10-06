@@ -10,32 +10,9 @@
 
 export type GeminiState = 'ok' | 'billing_quota' | 'invalid_key' | 'bad_request' | 'transient' | 'error';
 
-const KEY_VARS = ['GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
-
-/** Pre-fetch check — is any Gemini credential configured? */
-export function geminiKeyPresent(): boolean {
-  return KEY_VARS.some((n) => {
-    const v = process.env[n];
-    return typeof v === 'string' && v.trim().length > 0;
-  });
-}
-
-/**
- * Resolve the first usable Gemini API key VALUE. Prefers the singular
- * GEMINI_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY; otherwise draws the first entry
- * from the comma/space-separated GEMINI_API_KEYS pool — so a deployment that
- * provisions Gemini as a rotating pool (not the singular var) still works. Returns
- * '' when none is configured. Never logs the value.
- */
-export function resolveGeminiKey(): string {
-  const single = (process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY || '').trim();
-  if (single) return single;
-  const pool = (process.env.GEMINI_API_KEYS || '')
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return pool[0] || '';
-}
+/** Canonical server-side key for the explicitly selected Developer API transport. */
+export function geminiKeyPresent(): boolean { return !!resolveGeminiKey(); }
+export function resolveGeminiKey(): string { return (process.env.GEMINI_API_KEY ?? '').trim(); }
 
 /** Classify a Gemini HTTP response status (+ optional body) into a state. */
 export function classifyGeminiStatus(status: number, body = ''): GeminiState {

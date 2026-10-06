@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * app/api/chat/title/route.ts
  * ===========================
@@ -27,7 +28,6 @@ import { z } from 'zod';
 import { applyApiGuards } from '@/lib/api/guard';
 import { RATE_LIMITS, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { generateWithGemini } from '@/lib/gemini/client';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     // resolveGeminiKey() also honours GOOGLE_GENERATIVE_AI_API_KEY and the GEMINI_API_KEYS pool.
-    if (!resolveGeminiKey()) return empty;
+    if (!googleAiConfigured()) return empty;
 
     const systemPrompt = buildSystemPrompt(locale);
     const input = prompt.slice(0, 2000);

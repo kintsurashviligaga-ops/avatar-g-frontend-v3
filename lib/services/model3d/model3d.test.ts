@@ -109,96 +109,14 @@ describe('GLB extraction — deliberately shape-agnostic, because the exact outp
   });
 });
 
-describe('client — submit', () => {
-  it('reports missing configuration instead of calling out', async () => {
-    delete process.env.REPLICATE_API_TOKEN;
+describe('retired 3D provider', () => {
+  it('cannot activate or submit/poll when a legacy token exists', async () => {
+    process.env.REPLICATE_API_TOKEN = 'legacy-token';
+    const fetchImpl = jest.fn();
     expect(hasReplicate3dProvider()).toBe(false);
-    const r = await submitReconstruction('https://x.dev/a.png', req(), (() => { throw new Error('must not be called'); }) as unknown as typeof fetch);
-    expect(r).toMatchObject({ ok: false, retryable: false });
-  });
-
-  it('refuses to submit without a reference image', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('', req(), (() => { throw new Error('must not be called'); }) as unknown as typeof fetch);
-    expect(r).toMatchObject({ ok: false, retryable: false });
-  });
-
-  it('creates the prediction on the VERSIONED endpoint (firtoz/trellis is a community model, so the\n     version-less /v1/models/{owner}/{name}/predictions endpoint 404s) and returns the poll url', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    let seen = '';
-    let sentBody: Record<string, unknown> = {};
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async (url, init) => {
-      seen = String(url);
-      if (init?.method === 'POST') sentBody = JSON.parse(String(init.body));
-      return res({ body: { id: 'p1', urls: { get: 'https://api.replicate.com/v1/predictions/p1' } } });
-    });
-    expect(seen).toBe('https://api.replicate.com/v1/predictions');
-    expect(typeof sentBody.version).toBe('string');
-    expect(String(sentBody.version)).toHaveLength(64);
-    expect(r).toMatchObject({ ok: true, predictionId: 'p1', pollUrl: 'https://api.replicate.com/v1/predictions/p1' });
-  });
-
-  it('falls back to the conventional poll path when urls.get is absent', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async () => res({ body: { id: 'p2' } }));
-    expect(r).toMatchObject({ ok: true, pollUrl: 'https://api.replicate.com/v1/predictions/p2' });
-  });
-
-  it('marks auth and funding failures NON-retryable, and 5xx/429 retryable', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 401 }))).toMatchObject({ retryable: false });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 402 }))).toMatchObject({ retryable: false });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 429 }))).toMatchObject({ retryable: true });
-    expect(await submitReconstruction('https://x.dev/a.png', req(), async () => res({ ok: false, status: 503 }))).toMatchObject({ retryable: true });
-  });
-
-  it('never throws when the network does', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await submitReconstruction('https://x.dev/a.png', req(), async () => { throw new Error('ECONNRESET'); });
-    expect(r.ok).toBe(false);
-  });
-});
-
-describe('client — poll', () => {
-  it('reports a transient failure as PROCESSING, not failed', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    expect((await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => res({ ok: false, status: 500 }))).status).toBe('processing');
-    expect((await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => { throw new Error('ETIMEDOUT'); })).status).toBe('processing');
-  });
-
-  it('surfaces the glb on success', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: { model_file: 'https://replicate.delivery/x/m.glb' } } }));
-    expect(r).toMatchObject({ status: 'succeeded', glbUrl: 'https://replicate.delivery/x/m.glb' });
-  });
-
-  it('carries the vendor error through on failure', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'failed', error: 'input image unreadable' } }));
-    expect(r).toMatchObject({ status: 'failed', error: 'input image unreadable' });
-  });
-
-  // The status route bills on these: data_removed separates "output deleted (maybe after delivery)" from
-  // "finished without a model", and completed_at bounds how long a failing re-host is retried.
-  it('surfaces data_removed and completed_at', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: null, data_removed: true, completed_at: '2026-10-01T10:00:00.000Z' } }));
-    expect(r).toMatchObject({ status: 'succeeded', glbUrl: null, dataRemoved: true, completedAtMs: Date.parse('2026-10-01T10:00:00.000Z') });
-    const kept = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () =>
-      res({ body: { status: 'succeeded', output: { mesh: 'https://replicate.delivery/x/m.ply' }, data_removed: false } }));
-    expect(kept).toMatchObject({ glbUrl: null, dataRemoved: false });
-  });
-
-  it('an absent or non-boolean data_removed is UNKNOWN, never "not removed"', async () => {
-    process.env.REPLICATE_API_TOKEN = 'k';
-    for (const body of [{ status: 'succeeded', output: null }, { status: 'succeeded', output: null, data_removed: 'false', completed_at: 'soon' }]) {
-      const r = await pollReconstruction('https://api.replicate.com/v1/predictions/p1', async () => res({ body }));
-      expect(r.dataRemoved).toBeUndefined();
-      expect(r.completedAtMs).toBeUndefined();
-    }
+    await expect(submitReconstruction('https://example.com/a.png', req(), fetchImpl)).rejects.toMatchObject({ code: 'provider_deprecated' });
+    await expect(pollReconstruction('https://api.replicate.com/v1/predictions/p1', fetchImpl)).rejects.toMatchObject({ code: 'provider_deprecated' });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 

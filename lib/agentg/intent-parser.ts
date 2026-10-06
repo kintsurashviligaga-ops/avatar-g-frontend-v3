@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * Agent G Intent Parser — Gemini Flash powered
  * Extracts a structured pipeline plan from a free-form Georgian/English/Russian prompt.
@@ -5,7 +6,7 @@
  */
 import 'server-only';
 
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { generateText } from 'ai';
 import { geminiTierModel } from '@/lib/ai/google/models';
 
@@ -182,7 +183,7 @@ export async function parseIntent(goal: string): Promise<IntentPlan> {
   let parsed: Omit<IntentPlan, 'main_goal' | 'estimatedSeconds' | 'creditCost'> | null = null;
 
   // Try Gemini Flash for smart intent extraction
-  if (geminiKey) {
+  if (googleAiConfigured()) {
     try {
       const google = createGoogleGenerativeAI({ apiKey: geminiKey });
       // Use env-configurable model; default to the registry's Flash tier (lib/ai/google/models — a 2.5 id 404s on a new project's key)

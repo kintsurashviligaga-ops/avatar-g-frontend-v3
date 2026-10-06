@@ -127,6 +127,7 @@ const GATE_SIGNALS: RegExp[] = [
  * A new entry is a reviewed decision; shrinking this list is the goal.
  */
 const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
+  'app/api/system/video-provider/route.ts': 'Veo readiness only: computeVideoProviderStatus reads configuration without requesting OAuth tokens or generating media',
   'app/api/agent-g/telegram/route.ts':
     'Telegram webhook — the secret header is checked FAIL-CLOSED inside lib/agent-g/channels/telegram-webhook-handler (guarded below)',
   'app/api/agent-g/telegram/webhook/route.ts': 're-export of the canonical Telegram webhook (/api/agent-g/telegram)',

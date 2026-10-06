@@ -1,3 +1,4 @@
+import { googleTransport } from '@/lib/ai/google/transport';
 /**
  * POST /api/orchestrator/interior/analyze — Agent N (Depth & Schema Extraction).
  *
@@ -12,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import {
@@ -29,6 +30,7 @@ interface Img { base64?: string; mimeType?: string }
 interface Body { images?: Img[]; brief?: string }
 
 function geminiKeys(): string[] {
+  if (googleTransport() === 'vertex') return [''];
   const csv = (process.env.GEMINI_API_KEYS ?? '').split(',').map(s => s.trim()).filter(Boolean);
   const single = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
   if (single) csv.push(single);

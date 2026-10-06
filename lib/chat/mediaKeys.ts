@@ -42,7 +42,8 @@ export function resolveAliasName(aliases: readonly string[], env: NodeJS.Process
 const UDIO_KEY_ALIASES = ['UDIO_API_KEY', 'UDIO_KEY', 'UDIOAPI_KEY', 'UDIO_API_TOKEN'] as const;
 
 export function resolveUdioApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
-  return resolveFromAliases(UDIO_KEY_ALIASES, env);
+  void env;
+  return null; // Udio is retired under the v32 provider policy.
 }
 export function hasUdioApiKey(env: NodeJS.ProcessEnv = process.env): boolean {
   return resolveUdioApiKey(env) !== null;
@@ -51,7 +52,7 @@ export const UDIO_API_KEY_ALIASES = UDIO_KEY_ALIASES;
 
 // ─── ElevenLabs (voiceover / foley) ──────────────────────────────────────────
 // The official request header is `xi-api-key`, so `XI_API_KEY` is a common alias.
-const ELEVENLABS_KEY_ALIASES = ['ELEVENLABS_API_KEY', 'ELEVEN_API_KEY', 'ELEVENLABS_KEY', 'XI_API_KEY'] as const;
+const ELEVENLABS_KEY_ALIASES = ['ELEVENLABS_API_KEY'] as const;
 
 export function resolveElevenLabsApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
   return resolveFromAliases(ELEVENLABS_KEY_ALIASES, env);
@@ -64,7 +65,7 @@ export const ELEVENLABS_API_KEY_ALIASES = ELEVENLABS_KEY_ALIASES;
 // ─── Nano Banana (storyboard architect — Gemini 2.5 Flash Image) ─────────────
 // Nano Banana is the Gemini image model, so a bare GEMINI_API_KEY is a valid
 // last-resort alias when no dedicated key is provisioned.
-const NANOBANANA_KEY_ALIASES = ['NANOBANANA_API_KEY', 'NANO_BANANA_API_KEY', 'NANOBANANA_KEY', 'GEMINI_API_KEY'] as const;
+const NANOBANANA_KEY_ALIASES = ['GEMINI_API_KEY'] as const;
 
 export function resolveNanoBananaApiKey(env: NodeJS.ProcessEnv = process.env): string | null {
   return resolveFromAliases(NANOBANANA_KEY_ALIASES, env);

@@ -62,7 +62,6 @@ import { generateUdioTrack } from '../../../../lib/udio/client';
 import { hasUdioApiKey } from '../../../../lib/chat/mediaKeys';
 import { transcodeVoiceToMp3 } from '../../../../lib/audio/transcode';
 import { createSignedAssetUrl } from '../../../../lib/orchestrator/storage-adapter';
-import { claimIdempotencyKey, hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 
 const post = (body: unknown) =>
@@ -73,7 +72,6 @@ const post = (body: unknown) =>
   });
 
 const SONG = { prompt: 'a summer night by the sea', styles: ['pop'], durationSec: 30, tempo: 'medium', instrumental: false, vocalGender: 'auto' };
-const BED = { ...SONG, instrumental: true };
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -94,135 +92,33 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-const servedBy = async (body: unknown): Promise<string> => (await (await POST(post(body))).json()).engine as string;
 
-describe('`engine` — the model pill moves one engine to the front of the chain', () => {
-  test('without it (Auto) Lyria leads, as it always did', async () => {
-    expect(await servedBy(SONG)).toBe('Lyria');
-    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
-  });
-
-  test('ElevenLabs Music picked: it composes, and Lyria is never asked', async () => {
-    expect(await servedBy({ ...SONG, engine: 'elevenlabs-music' })).toBe('ElevenLabs Music');
-    expect(generateLyriaTrack).not.toHaveBeenCalled();
-  });
-
-  test('Udio picked: it leads', async () => {
-    expect(await servedBy({ ...SONG, engine: 'udio' })).toBe('Udio');
-    expect(generateLyriaTrack).not.toHaveBeenCalled();
-  });
-
-  test('a pick never removes the others: if the picked engine misses, the chain still lands a track', async () => {
-    (composeElevenLabsMusic as jest.Mock).mockRejectedValue(new Error('402'));
-    expect(await servedBy({ ...SONG, engine: 'elevenlabs-music' })).toBe('Lyria'); // the next in line after the pick
-    expect(composeElevenLabsMusic).toHaveBeenCalledTimes(1);
-  });
-
-  test('MusicGen picked for an INSTRUMENTAL leads — and is the engine that rendered it', async () => {
-    const json = await (await POST(post({ ...BED, engine: 'musicgen' }))).json();
-    expect(json.engine).toBe('MusicGen');
-    expect(generateLyriaTrack).not.toHaveBeenCalled();
-  });
-
-  test('MusicGen picked for a SONG is ignored: it makes no vocals, so Lyria still leads', async () => {
-    expect(await servedBy({ ...SONG, engine: 'musicgen' })).toBe('Lyria');
-    expect(generateMusic).not.toHaveBeenCalled();
-  });
-
-  test('an engine that is not in the chain (no Udio key) is a no-op — Auto order', async () => {
-    (hasUdioApiKey as jest.Mock).mockReturnValue(false);
-    expect(await servedBy({ ...SONG, engine: 'udio' })).toBe('Lyria');
-    expect(generateUdioTrack).not.toHaveBeenCalled();
-  });
-
-  test('an unknown or non-string engine is Auto', async () => {
-    for (const engine of ['suno', 7, null, {}, '']) {
-      (generateLyriaTrack as jest.Mock).mockClear();
-      expect(await servedBy({ ...SONG, engine })).toBe('Lyria');
-    }
-  });
-
-  test('a different pick is a different request to the in-flight mutex', async () => {
-    await POST(post({ ...SONG, engine: 'udio' }));
-    expect((hashPayload as jest.Mock).mock.calls[0][0]).toMatchObject({ pe: 'udio' });
-    (hashPayload as jest.Mock).mockClear();
-    await POST(post(SONG));
-    expect((hashPayload as jest.Mock).mock.calls[0][0]).toMatchObject({ pe: null });
-  });
-
-  test('the price does not depend on the engine: the ledger is debited the same for every pick', async () => {
-    await POST(post({ ...SONG, durationSec: 60, engine: 'elevenlabs-music' }));
-    await POST(post({ ...SONG, durationSec: 60 }));
-    const amounts = (deductCredits as jest.Mock).mock.calls.map((c) => c[1]);
-    expect(amounts).toEqual([8, 8]);
-  });
+test.each(['udio', 'elevenlabs-music', 'musicgen'])('a retired engine selection %s cannot override Lyria', async (engine) => {
+  const result = await POST(post({ ...SONG, engine }));
+  expect(result.status).toBe(200);
+  expect(generateLyriaTrack).toHaveBeenCalledTimes(1);
+  expect(generateUdioTrack).not.toHaveBeenCalled();
+  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(generateMusic).not.toHaveBeenCalled();
 });
-
-describe('references — the caller\'s own paths, our own storage for a fetched voice, no internal addresses', () => {
-  const refused = async (body: unknown) => {
-    const res = await POST(post(body));
-    expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ success: false, error: 'invalid_reference' });
-    // Nothing was reserved, signed, fetched or composed.
-    expect(deductCredits).not.toHaveBeenCalled();
-    expect(claimIdempotencyKey).not.toHaveBeenCalled();
-    expect(createSignedAssetUrl).not.toHaveBeenCalled();
-    expect(transcodeVoiceToMp3).not.toHaveBeenCalled();
-    expect(generateMusicCover).not.toHaveBeenCalled();
-    expect(generateLyriaTrack).not.toHaveBeenCalled();
-  };
-
-  test('the caller\'s own upload path is signed and used as the cover melody', async () => {
-    const res = await POST(post({ ...SONG, audioReference: 'omni-uploads/user-1/1700000000-ab12cd34.mp3' }));
-    expect(res.status).toBe(200);
-    expect(createSignedAssetUrl).toHaveBeenCalledWith(expect.any(String), 'omni-uploads/user-1/1700000000-ab12cd34.mp3', 3600);
-    expect((generateMusicCover as jest.Mock).mock.calls[0][1]).toBe('https://signed.example/ref.mp3');
-  });
-
-  test('ANOTHER account\'s path is refused before anything is signed or charged', async () => {
-    await refused({ ...SONG, audioReference: 'omni-uploads/user-2/1700000000-ab12cd34.mp3' });
-  });
-
-  test('a path that climbs out of the caller\'s folder is refused', async () => {
-    await refused({ ...SONG, audioReference: 'omni-uploads/user-1/../user-2/x.mp3' });
-    await refused({ ...SONG, voiceReference: 'omni-uploads/user-1/../../secrets/x.mp3' });
-  });
-
-  test('a path with no owner folder at all is refused', async () => {
-    await refused({ ...SONG, audioReference: 'omni-music/12345-abc.mp3' });
-  });
-
-  test('a voice sample: our own storage URL passes, and the transcoder is handed exactly that URL', async () => {
-    const own = 'https://zwksnayknzggdcenqqxy.supabase.co/storage/v1/object/sign/uploads/omni-uploads/user-1/a.mp3?token=t';
-    const res = await POST(post({ ...SONG, voiceReference: own }));
-    expect(res.status).toBe(200);
-    expect(transcodeVoiceToMp3).toHaveBeenCalledWith(own);
-  });
-
-  test('a voice sample at any other host — or an internal address — is refused (we fetch it ourselves)', async () => {
-    await refused({ ...SONG, voiceReference: 'https://evil.example.com/voice.mp3' });
-    await refused({ ...SONG, voiceReference: 'http://169.254.169.254/latest/meta-data/' });
-    await refused({ ...SONG, voiceReference: 'https://localhost:3000/x.mp3' });
-  });
-
-  test('a cover URL on a public host passes; loopback / private / metadata addresses do not', async () => {
-    const ok = await POST(post({ ...SONG, audioReference: 'https://cdn.example.com/track.mp3' }));
-    expect(ok.status).toBe(200);
-    jest.clearAllMocks();
-    await refused({ ...SONG, audioReference: 'http://127.0.0.1:8080/track.mp3' });
-    await refused({ ...SONG, audioReference: 'http://10.0.0.5/track.mp3' });
-    await refused({ ...SONG, audioReference: 'http://169.254.169.254/' });
-  });
-
-  test('a data: URL must declare itself audio', async () => {
-    await refused({ ...SONG, audioReference: 'data:text/html;base64,PGgxPmhpPC9oMT4=' });
-    const ok = await POST(post({ ...SONG, audioReference: 'data:audio/mpeg;base64,AAAA' }));
-    expect(ok.status).toBe(200);
-  });
-
-  test('no reference at all is untouched by the rule', async () => {
-    const res = await POST(post(SONG));
-    expect(res.status).toBe(200);
-    expect(createSignedAssetUrl).not.toHaveBeenCalled();
-  });
+test('a failed Lyria request cannot trigger a retired fallback', async () => {
+  (generateLyriaTrack as jest.Mock).mockResolvedValue(null);
+  const result = await POST(post(SONG));
+  expect(result.status).toBe(502);
+  expect(generateUdioTrack).not.toHaveBeenCalled();
+  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(generateMusic).not.toHaveBeenCalled();
+});
+test.each([
+  { audioReference: 'user-1/upload.wav' }, { voiceReference: 'https://test.supabase.co/storage/v1/object/public/voice.wav' },
+  { useMyVoice: true }, { audioReference: 'http://169.254.169.254/latest/meta-data/' }, { voiceReference: 'data:audio/wav;base64,AAAA' },
+])('unsupported music reference %j is rejected before charging, fetching or generation', async (reference) => {
+  const response = await POST(post({ ...SONG, ...reference }));
+  expect(response.status).toBe(422);
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(createSignedAssetUrl).not.toHaveBeenCalled();
+  expect(transcodeVoiceToMp3).not.toHaveBeenCalled();
+  expect(generateMusicCover).not.toHaveBeenCalled();
+  expect(generateVoiceSong).not.toHaveBeenCalled();
+  expect(generateLyriaTrack).not.toHaveBeenCalled();
 });

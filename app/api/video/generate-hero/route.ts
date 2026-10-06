@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
@@ -14,6 +15,9 @@ import { isAdmin } from '@/lib/auth/adminGuard';
 const PROMPT = `Create a 30-second cinematic commercial for an AI platform called "MyAvatar". Style: photorealistic, cinematic, futuristic AI technology commercial. Visual tone: dark modern UI, deep black background, soft blue and violet glow, futuristic digital environment, premium SaaS interface. Scenes: Logo intro with glow reveal, platform interface with AI chat, user typing prompt, multi-agent AI network (Avatar, Video, Music, Subtitle agents), avatar builder generating photorealistic avatar, video creation with music and subtitles, full platform ecosystem zoom-out, Agent G automation, final montage with logo. Camera: smooth cinematic zooms, clean UI transitions. Lighting: soft futuristic blue highlights. Quality: ultra realistic premium technology commercial.`;
 
 export async function POST(_req: NextRequest) {
+  if (!isProviderPermitted('replicate', 'video')) {
+    return NextResponse.json({ success: false, code: 'provider_deprecated', error: 'provider_deprecated' }, { status: 410 });
+  }
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }

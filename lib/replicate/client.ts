@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import Replicate from 'replicate';
 import { providerError } from '@/lib/api/providerError';
 
@@ -5,6 +6,7 @@ let _client: Replicate | null = null;
 const _modelVersionCache = new Map<string, string>();
 
 export function getReplicateClient(): Replicate {
+  assertProviderPermitted('replicate');
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error('REPLICATE_API_TOKEN is not configured');
   if (!_client) _client = new Replicate({ auth: token });
@@ -32,6 +34,7 @@ export async function createPrediction(
   modelId: string,
   input: Record<string, unknown>,
 ): Promise<PredictionResult> {
+  assertProviderPermitted('replicate');
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error('REPLICATE_API_TOKEN is not configured');
 
@@ -78,6 +81,7 @@ export async function createPrediction(
 }
 
 export async function pollPrediction(predictionId: string): Promise<PredictionResult> {
+  assertProviderPermitted('replicate');
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error('REPLICATE_API_TOKEN is not configured');
 
@@ -97,6 +101,7 @@ export async function pollUntilDone(
   maxAttempts = 60,
   intervalMs = 2000,
 ): Promise<PredictionResult> {
+  assertProviderPermitted('replicate');
   for (let i = 0; i < maxAttempts; i++) {
     const result = await pollPrediction(predictionId);
     if (result.status === 'succeeded' || result.status === 'failed' || result.status === 'canceled') {

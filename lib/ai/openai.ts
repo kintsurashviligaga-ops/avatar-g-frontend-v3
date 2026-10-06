@@ -1,5 +1,5 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import OpenAI from "openai";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const systemPrompts: Record<string, string> = {
   general: "You are a helpful AI assistant.",
   code: "You are an expert programmer.",
@@ -7,6 +7,8 @@ const systemPrompts: Record<string, string> = {
   executive: "You are an executive assistant."
 };
 export async function generateText(prompt: string, type: string = "general") {
+  assertProviderPermitted('openai');
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const systemPrompt: string = systemPrompts[type] ?? systemPrompts.general ?? "You are a helpful AI assistant.";
   const response = await openai.chat.completions.create({
     model: "gpt-4",

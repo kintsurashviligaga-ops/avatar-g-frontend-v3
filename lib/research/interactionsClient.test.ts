@@ -37,7 +37,7 @@ describe('the start request', () => {
   test('POSTs once to /v1beta/interactions with the key in the HEADER, redirect: manual, no key in the URL', async () => {
     const { client, calls } = harness(() => json(fx('interaction-create.json')));
     const out = await client.start({ agent: 'deep-research-preview-04-2026', input: 'q' });
-    expect(out).toEqual({ ok: true, id: 'v1_ChdkZWVwLXJlc2VhcmNoLWZpeHR1cmU' });
+    expect(out).toEqual({ ok: true, id: 'research:v1:gemini:v1_ChdkZWVwLXJlc2VhcmNoLWZpeHR1cmU' });
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe(INTERACTIONS_BASE);
     expect(calls[0]!.url).not.toMatch(/key=/i);

@@ -1,223 +1,41 @@
 import 'server-only';
-import { audioFileName } from '@/lib/voice/audioExt';
-
-import OpenAI from 'openai';
-
 import type { RealtimeVoiceLanguage } from '@/types/voice';
 import { KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
+import { streamText } from 'ai';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { geminiTierModel } from '@/lib/ai/google/models';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { transcribeWithGeminiDetailed } from './geminiStt';
 
-export type SttProviderName = 'openai-whisper-3-turbo' | 'deepgram-nova-2';
-export type TtsProviderName = 'elevenlabs-multilingual-v2' | 'cartesia-sonic';
-
-export type SttResult = {
-  text: string;
-  isFinal: boolean;
-  provider: SttProviderName;
-  confidence?: number;
-};
-
-export type TtsResult = {
-  audioBase64: string;
-  mimeType: string;
-  provider: TtsProviderName;
-};
-
-type AssistantStreamInput = {
-  userText: string;
-  language: RealtimeVoiceLanguage;
-  history?: Array<{ role: 'user' | 'assistant'; text: string }>;
-};
-
-const DEFAULT_STT_MODEL = 'gpt-4o-mini-transcribe';
-const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
-
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+export type SttProviderName = 'gemini';
+export type TtsProviderName = 'elevenlabs-multilingual-v2';
+export type SttResult = { text: string; isFinal: boolean; provider: SttProviderName; confidence?: number };
+export type TtsResult = { audioBase64: string; mimeType: string; provider: TtsProviderName };
+type AssistantStreamInput = { userText: string; language: RealtimeVoiceLanguage; history?: Array<{ role: 'user' | 'assistant'; text: string }>; signal?: AbortSignal };
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+const bytesToBase64 = (input: ArrayBuffer): string => Buffer.from(input).toString('base64');
+export function getRealtimeProviderSnapshot(): { stt: SttProviderName; tts: TtsProviderName } {
+  return { stt: 'gemini', tts: 'elevenlabs-multilingual-v2' };
 }
-
-function toLanguageCode(language: RealtimeVoiceLanguage): 'ka' | 'en' | 'ru' {
-  if (language === 'ru-RU') return 'ru';
-  if (language === 'en-US') return 'en';
-  return 'ka';
-}
-
-function arrayBufferFromBase64(audioBase64: string): ArrayBuffer {
-  const buffer = Buffer.from(audioBase64, 'base64');
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-}
-
-function bytesToBase64(input: ArrayBuffer): string {
-  return Buffer.from(input).toString('base64');
-}
-
-function sttProviderPreference(): 'openai' | 'deepgram' {
-  const value = String(process.env.VOICE_V2V_STT_PROVIDER || '').trim().toLowerCase();
-  if (value === 'deepgram') {
-    return 'deepgram';
-  }
-  return 'openai';
-}
-
-function ttsProviderPreference(): 'elevenlabs' | 'cartesia' {
-  const value = String(process.env.VOICE_V2V_TTS_PROVIDER || '').trim().toLowerCase();
-  if (value === 'cartesia') {
-    return 'cartesia';
-  }
-  return 'elevenlabs';
-}
-
-export function getRealtimeProviderSnapshot(): {
-  stt: SttProviderName;
-  tts: TtsProviderName;
-} {
-  return {
-    stt: sttProviderPreference() === 'deepgram' ? 'deepgram-nova-2' : 'openai-whisper-3-turbo',
-    tts: ttsProviderPreference() === 'cartesia' ? 'cartesia-sonic' : 'elevenlabs-multilingual-v2',
-  };
-}
-
-async function transcribeWithOpenAI(params: {
-  audioBase64: string;
-  language: RealtimeVoiceLanguage;
-  mimeType?: string;
-  hint?: string;
-}): Promise<SttResult> {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  if (!apiKey) {
-    throw new Error('openai_key_missing');
-  }
-
-  const model = String(process.env.VOICE_V2V_STT_MODEL || DEFAULT_STT_MODEL).trim() || DEFAULT_STT_MODEL;
-  const language = toLanguageCode(params.language);
-  const mimeType = String(params.mimeType || 'audio/wav').trim() || 'audio/wav';
-
-  const form = new FormData();
-  // ⚠️ THIS USED TO SEND EVERYTHING AS `.wav`. Whisper dispatches on the FILENAME EXTENSION, so the
-  // browser's real audio/webm (or audio/mp4 on iOS) was rejected or garbled on every call — the primary
-  // provider failed 100% of the time on genuine mic audio, and the cascade paid two doomed round-trips
-  // before reaching one that works. Shared with the client's recorder so both label a clip identically.
-  form.append('file', new Blob([arrayBufferFromBase64(params.audioBase64)], { type: mimeType }), audioFileName(mimeType));
-  form.append('model', model);
-  form.append('language', language);
-
-  const hint = normalizeWhitespace(String(params.hint || ''));
-  if (hint) {
-    form.append('prompt', hint);
-  }
-
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: form,
-    cache: 'no-store',
-    signal: AbortSignal.timeout(15_000), // a stall throws → transcribe route falls through to Gemini/Replicate
-  });
-
-  const payload = (await response.json().catch(() => null)) as { text?: string } | null;
-  const text = normalizeWhitespace(String(payload?.text || ''));
-
-  if (!response.ok || !text) {
-    throw new Error(`openai_stt_failed_${response.status}`);
-  }
-
-  return {
-    text,
-    isFinal: true,
-    provider: 'openai-whisper-3-turbo',
-  };
-}
-
-async function transcribeWithDeepgram(params: {
-  audioBase64: string;
-  language: RealtimeVoiceLanguage;
-  sampleRate?: number;
-  hint?: string;
-}): Promise<SttResult> {
-  const apiKey = String(process.env.DEEPGRAM_API_KEY || '').trim();
-  if (!apiKey) {
-    throw new Error('deepgram_key_missing');
-  }
-
-  const language = toLanguageCode(params.language);
-  const sampleRate = Number(params.sampleRate || 16_000);
-  const hints = normalizeWhitespace(String(params.hint || '')).split(' ').slice(0, 12).join(',');
-  const model = String(process.env.VOICE_V2V_DEEPGRAM_MODEL || 'nova-2').trim() || 'nova-2';
-
-  const query = new URLSearchParams({
-    model,
-    language,
-    punctuate: 'true',
-    smart_format: 'true',
-    encoding: 'linear16',
-    channels: '1',
-    sample_rate: String(Number.isFinite(sampleRate) ? sampleRate : 16_000),
-  });
-
-  if (hints) {
-    query.set('keywords', hints);
-  }
-
-  const response = await fetch(`https://api.deepgram.com/v1/listen?${query.toString()}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey}`,
-      'Content-Type': 'audio/raw',
-    },
-    body: arrayBufferFromBase64(params.audioBase64),
-    cache: 'no-store',
-    signal: AbortSignal.timeout(15_000), // stall throws → falls through to the next STT provider
-  });
-
-  const payload = (await response.json().catch(() => null)) as {
-    results?: {
-      channels?: Array<{
-        alternatives?: Array<{
-          transcript?: string;
-          confidence?: number;
-        }>;
-      }>;
-    };
-  } | null;
-
-  const alternative = payload?.results?.channels?.[0]?.alternatives?.[0];
-  const text = normalizeWhitespace(String(alternative?.transcript || ''));
-
-  if (!response.ok || !text) {
-    throw new Error(`deepgram_stt_failed_${response.status}`);
-  }
-
-  return {
-    text,
-    isFinal: true,
-    provider: 'deepgram-nova-2',
-    confidence: Number.isFinite(alternative?.confidence ?? NaN) ? Number(alternative?.confidence) : undefined,
-  };
-}
-
 export async function transcribeRealtimePcmChunk(params: {
-  audioBase64: string;
-  language: RealtimeVoiceLanguage;
-  sampleRate?: number;
-  hint?: string;
-  mimeType?: string;
+  audioBase64: string; language: RealtimeVoiceLanguage; sampleRate?: number; hint?: string; mimeType?: string;
 }): Promise<SttResult> {
-  const preferred = sttProviderPreference();
-
-  if (preferred === 'deepgram') {
-    try {
-      return await transcribeWithDeepgram(params);
-    } catch {
-      return transcribeWithOpenAI(params);
-    }
+  let audio = Buffer.from(params.audioBase64, 'base64');
+  const mime = params.mimeType || 'audio/wav';
+  // WebSocket frames contain raw mono PCM. A WAV declaration alone is insufficient for Gemini.
+  if (mime === 'audio/wav' && audio.toString('ascii', 0, 4) !== 'RIFF') {
+    const rate = params.sampleRate ?? 16000;
+    if (!Number.isInteger(rate) || rate < 8000 || rate > 48000 || audio.length % 2) throw new Error('invalid_pcm_audio');
+    const header = Buffer.alloc(44);
+    header.write('RIFF'); header.writeUInt32LE(audio.length + 36, 4); header.write('WAVEfmt ', 8);
+    header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
+    header.writeUInt32LE(rate, 24); header.writeUInt32LE(rate * 2, 28); header.writeUInt16LE(2, 32);
+    header.writeUInt16LE(16, 34); header.write('data', 36); header.writeUInt32LE(audio.length, 40);
+    audio = Buffer.concat([header, audio]);
   }
-
-  try {
-    return await transcribeWithOpenAI(params);
-  } catch {
-    return transcribeWithDeepgram(params);
-  }
+  const result = await transcribeWithGeminiDetailed(audio.toString('base64'), mime, params.language);
+  return { text: result.text, isFinal: true, provider: 'gemini' };
 }
 
 function getSystemPrompt(language: RealtimeVoiceLanguage): string {
@@ -240,53 +58,28 @@ function getSystemPrompt(language: RealtimeVoiceLanguage): string {
 }
 
 export async function* streamAssistantTokens(input: AssistantStreamInput): AsyncGenerator<string> {
-  const userText = normalizeWhitespace(input.userText);
-  if (!userText) {
-    return;
-  }
-
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  if (!apiKey) {
-    const fallback = input.language === 'ka-GE'
-      ? 'მესმის. ახლავე ვამუშავებ თქვენს მოთხოვნას.'
-      : input.language === 'ru-RU'
-      ? 'Понял. Уже обрабатываю ваш запрос.'
-      : 'Understood. Processing your request now.';
-    yield fallback;
-    return;
-  }
-
-  const model = String(process.env.VOICE_V2V_LLM_MODEL || DEFAULT_CHAT_MODEL).trim() || DEFAULT_CHAT_MODEL;
-  const client = new OpenAI({ apiKey });
-
-  const messages = [
-    {
-      role: 'system',
-      content: getSystemPrompt(input.language),
-    },
-    ...(input.history || []).slice(-6).map((item) => ({
-      role: item.role,
-      content: item.text,
-    })),
-    {
-      role: 'user',
-      content: userText,
-    },
-  ];
-
-  const stream = await client.chat.completions.create({
-    model,
-    temperature: 0.35,
-    stream: true,
-    messages,
-  } as unknown as Parameters<typeof client.chat.completions.create>[0]);
-
-  for await (const event of stream as unknown as AsyncIterable<{ choices?: Array<{ delta?: { content?: string } }> }>) {
-    const token = String(event?.choices?.[0]?.delta?.content || '');
-    if (token) {
-      yield token;
+  const prompt = normalizeWhitespace(input.userText);
+  if (!prompt) return;
+  const model = geminiTierModel('flash');
+  if (!(await chatBudgetAllows(prompt, model))) throw new Error('voice_budget_exhausted');
+  const google = createGoogleGenerativeAI({ apiKey: resolveGeminiKey() || undefined });
+  const timeout = AbortSignal.timeout(25_000);
+  const result = streamText({
+    model: google(model), system: getSystemPrompt(input.language), maxOutputTokens: 512,
+    messages: [...(input.history ?? []).slice(-6).map((item) => ({ role: item.role, content: item.text })), { role: 'user', content: prompt }],
+    abortSignal: input.signal ? AbortSignal.any([input.signal, timeout]) : timeout,
+  });
+  let outputChars = 0;
+  try {
+    for await (const part of result.fullStream) {
+      if (part.type === 'error') throw new Error('voice_provider_unavailable');
+      if (part.type === 'text-delta') { outputChars += part.text.length; yield part.text; }
     }
+    if (!outputChars) throw new Error('voice_provider_empty');
+  } finally {
+    if (outputChars) void bookChatUsage(prompt, outputChars, model);
   }
+
 }
 
 export function createSemanticChunkAccumulator(minChunkChars = 64): {
@@ -362,7 +155,7 @@ async function synthesizeWithElevenLabs(text: string, language: RealtimeVoiceLan
         use_speaker_boost: true,
       },
     }),
-    cache: 'no-store',
+    cache: 'no-store', redirect: 'manual', signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -378,74 +171,8 @@ async function synthesizeWithElevenLabs(text: string, language: RealtimeVoiceLan
   };
 }
 
-async function synthesizeWithCartesia(text: string, language: RealtimeVoiceLanguage): Promise<TtsResult> {
-  const apiKey = String(process.env.CARTESIA_API_KEY || '').trim();
-  if (!apiKey) {
-    throw new Error('cartesia_key_missing');
-  }
-
-  const voiceId = String(process.env.CARTESIA_VOICE_ID || '').trim();
-  const modelId = String(process.env.CARTESIA_MODEL_ID || 'sonic').trim() || 'sonic';
-
-  const response = await fetch('https://api.cartesia.ai/tts/bytes', {
-    method: 'POST',
-    headers: {
-      'X-API-Key': apiKey,
-      'Cartesia-Version': '2025-04-16',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model_id: modelId,
-      voice: {
-        mode: voiceId ? 'id' : 'prebuilt',
-        id: voiceId || undefined,
-      },
-      language: toLanguageCode(language),
-      output_format: {
-        container: 'wav',
-        encoding: 'pcm_s16le',
-        sample_rate: 24000,
-      },
-      transcript: text,
-    }),
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw new Error(`cartesia_tts_failed_${response.status}`);
-  }
-
-  const bytes = await response.arrayBuffer();
-
-  return {
-    audioBase64: bytesToBase64(bytes),
-    mimeType: 'audio/wav',
-    provider: 'cartesia-sonic',
-  };
-}
-
-export async function synthesizeSpeechChunk(input: {
-  text: string;
-  language: RealtimeVoiceLanguage;
-}): Promise<TtsResult> {
+export async function synthesizeSpeechChunk(input: { text: string; language: RealtimeVoiceLanguage }): Promise<TtsResult> {
   const text = normalizeWhitespace(input.text);
-  if (!text) {
-    throw new Error('empty_tts_text');
-  }
-
-  const preferred = ttsProviderPreference();
-
-  if (preferred === 'cartesia') {
-    try {
-      return await synthesizeWithCartesia(text, input.language);
-    } catch {
-      return synthesizeWithElevenLabs(text, input.language);
-    }
-  }
-
-  try {
-    return await synthesizeWithElevenLabs(text, input.language);
-  } catch {
-    return synthesizeWithCartesia(text, input.language);
-  }
+  if (!text) throw new Error('empty_tts_text');
+  return synthesizeWithElevenLabs(text, input.language);
 }

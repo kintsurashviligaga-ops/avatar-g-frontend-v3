@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 const jsonSchema = z.object({
   audioBlobRef: z.string().min(1).optional(),
-  audioBase64: z.string().min(1).optional(),
+  audioBase64: z.string().min(1).max(35_000_000).optional(),
   language: z.enum(['ka-GE', 'en-US', 'ru-RU']).default('ka-GE'),
   hint: z.string().optional(),
   sampleRate: z.number().int().min(8000).max(48000).optional(),
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       const audio = form.get('audio');
 
       if (audio && typeof audio !== 'string') {
+        if (!audio.size || audio.size > 25_000_000) return apiError(new Error('invalid_audio_size'), 400, 'Invalid audio size');
         const mimeType = String(audio.type || 'audio/wav');
         const bytes = await audio.arrayBuffer();
         const audioBase64 = Buffer.from(bytes).toString('base64');
@@ -54,36 +55,14 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const transcript = hint.trim() || 'No audio provided.';
-      return apiSuccess({ transcript, provider: 'mock-stt', isFinal: Boolean(transcript) });
+      return apiError(new Error('audio_missing'), 400, 'Audio data is required');
     }
 
     const payload = jsonSchema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid transcribe payload');
 
-    if (!payload.data.audioBase64 && !payload.data.audioBlobRef) {
-      const transcript = String(payload.data.hint || '').trim();
-      if (!transcript) {
-        return apiError(new Error('audio_missing'), 400, 'Audio data is required');
-      }
-
-      return apiSuccess({
-        transcript,
-        provider: 'mock-stt',
-        isFinal: Boolean(payload.data.isFinal ?? true),
-        language: payload.data.language,
-      });
-    }
-
-    const base64Audio = payload.data.audioBase64 || '';
-    if (!base64Audio) {
-      return apiSuccess({
-        transcript: payload.data.hint || `Transcribed audio from ${payload.data.audioBlobRef || 'blob'}`,
-        provider: 'mock-stt',
-        isFinal: Boolean(payload.data.isFinal ?? true),
-        language: payload.data.language,
-      });
-    }
+    const base64Audio = payload.data.audioBase64;
+    if (!base64Audio) return apiError(new Error('audio_missing'), 400, 'Audio data is required');
 
     const result = await transcribeRealtimePcmChunk({
       audioBase64: base64Audio,

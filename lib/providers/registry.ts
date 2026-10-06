@@ -36,7 +36,8 @@ import {
   zImageTurboInput,
 } from '@/lib/providers/higgsfield/models';
 import { seedanceI2vUsd, videoTokensUsd } from '@/lib/providers/higgsfield/tokenPricing';
-import { catalogueEntry } from '@/lib/providers/catalogue';
+import { legacyCatalogueDefinition } from '@/lib/providers/catalogue';
+import { isProviderPermitted } from '@/lib/providers/policy';
 import { describeInput } from '@/lib/providers/paramSpec';
 import type { ModelTier, OutputKind, ProviderId, StudioService } from '@/lib/providers/types';
 
@@ -87,7 +88,7 @@ type Names = Pick<ModelEntry, 'label_ka' | 'description_ka' | 'label_en'>;
 
 /** A Higgsfield model's names, from the catalogue. Throws at import if one is missing — a test-time failure, never a blank row. */
 function names(id: string): Names {
-  const c = catalogueEntry(id);
+  const c = legacyCatalogueDefinition(id);
   if (!c) throw new Error(`registry: ${id} has no catalogue entry (lib/providers/catalogue.ts)`);
   return { label_ka: c.label.ka, description_ka: c.bestFor.ka, label_en: c.label.en };
 }
@@ -305,7 +306,7 @@ export function getModel(id: string): ModelEntry | null {
 
 export function isModelEnabled(id: string, env: NodeJS.ProcessEnv = process.env): boolean {
   const m = BY_ID.get(id);
-  if (!m) return false;
+  if (!m || !isProviderPermitted(m.provider)) return false;
   const allow = enabledIds(env);
   // ⚠️ A schema nobody read is a guess about what the provider accepts — a 422 after the reserve at best. It runs only
   // where the owner has named it (after `npm run hf:smoke` against it), never because the list happens to be unset.

@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/ai/chatEngine.ts
  * =====================
@@ -84,6 +85,7 @@ const COST_PER_1K_OUTPUT_4O = 0.015;
 let _client: OpenAI | null = null;
 
 function getClient(): OpenAI {
+  assertProviderPermitted('openai', 'text');
   if (!_client) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new ChatEngineError('OPENAI_API_KEY not configured', 'ENV_MISSING');
@@ -102,6 +104,7 @@ async function createOpenRouterCompletion(
   maxTokens: number,
   temperature: number,
 ): Promise<{ text: string; tokensIn: number; tokensOut: number; model: string }> {
+  assertProviderPermitted('openrouter', 'text');
   const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -136,6 +139,7 @@ async function* createOpenRouterStream(
   maxTokens: number,
   temperature: number,
 ): AsyncGenerator<string> {
+  assertProviderPermitted('openrouter', 'text');
   const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
     method: 'POST',
     headers: {

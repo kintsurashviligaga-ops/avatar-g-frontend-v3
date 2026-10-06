@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
@@ -20,6 +21,9 @@ export const maxDuration = 300; // 5 min timeout for video gen
  *   prompt    — optional custom prompt override
  */
 export async function POST(req: NextRequest) {
+  if (!isProviderPermitted('replicate', 'video')) {
+    return NextResponse.json({ success: false, code: 'provider_deprecated', error: 'provider_deprecated' }, { status: 410 });
+  }
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }

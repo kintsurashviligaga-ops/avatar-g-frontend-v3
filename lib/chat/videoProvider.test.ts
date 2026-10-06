@@ -1,98 +1,34 @@
 /** @jest-environment node */
-import {
-  hasReplicateToken,
-  hasVideoProvider,
-  computeVideoProviderStatus,
-  selectVideoPrimaryProvider,
-  videoProviderUnavailableMessage,
-  videoProviderConnectionFailedMessage,
-} from './videoProvider';
+jest.mock('server-only', () => ({}));
+import { hasReplicateToken, hasVideoProvider, computeVideoProviderStatus, selectVideoPrimaryProvider,
+  videoProviderUnavailableMessage, videoProviderConnectionFailedMessage } from './videoProvider';
 
-describe('hasReplicateToken', () => {
-  test('true only for a non-empty REPLICATE_API_TOKEN', () => {
-    expect(hasReplicateToken({ REPLICATE_API_TOKEN: 'r8_live' })).toBe(true);
-    expect(hasReplicateToken({ REPLICATE_API_TOKEN: '   ' })).toBe(false);
-    expect(hasReplicateToken({})).toBe(false);
-  });
+const vertex = { GCP_PROJECT_ID: 'my-proj', GCP_VEO_BUCKET: 'my-bucket', GCP_PROJECT_NUMBER: '123456789012',
+  GCP_SERVICE_ACCOUNT_EMAIL: 'veo@my-proj.iam.gserviceaccount.com',
+  GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool', GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider' };
+
+test.each([{ REPLICATE_API_TOKEN: 'legacy' }, { LTX_API_KEY: 'legacy' }, { LTX_VIDEO_API_KEY: 'legacy' },
+  { GOOGLE_GENERATIVE_AI_API_KEY: 'legacy' }])('deprecated keys never enable video: %p', env => {
+  expect(hasVideoProvider(env)).toBe(false);
+  expect(hasReplicateToken(env)).toBe(false);
+  expect(selectVideoPrimaryProvider(env)).toEqual({ primary: null, reason: 'no-provider' });
 });
-
-describe('hasVideoProvider', () => {
-  test('true when LTX (any alias) is present', () => {
-    expect(hasVideoProvider({ LTX_VIDEO_API_KEY: 'k' })).toBe(true);
-    expect(hasVideoProvider({ LTX_API_KEY: 'k' })).toBe(true);
-    expect(hasVideoProvider({ LTX2_API_KEY: 'k' })).toBe(true);
-  });
-
-  test('true when only Replicate is present (LTX absent)', () => {
-    expect(hasVideoProvider({ REPLICATE_API_TOKEN: 'r8' })).toBe(true);
-  });
-
-  test('false when NEITHER provider is configured — the halt condition', () => {
-    expect(hasVideoProvider({})).toBe(false);
-    expect(hasVideoProvider({ LTX2_API_KEY: '', REPLICATE_API_TOKEN: '  ' })).toBe(false);
-  });
+test('canonical Gemini credentials enable Veo', () => {
+  expect(computeVideoProviderStatus({ GEMINI_API_KEY: 'key' })).toMatchObject({ ready: true, veo: true, transport: 'gemini', ltx: false, replicate: false });
 });
-
-describe('computeVideoProviderStatus', () => {
-  test('reports per-provider presence and the names-only checked env', () => {
-    const s = computeVideoProviderStatus({ LTX2_API_KEY: 'k' });
-    expect(s.ready).toBe(true);
-    expect(s.ltx).toBe(true);
-    expect(s.replicate).toBe(false);
-    expect(s.checkedEnv.ltx).toContain('LTX2_API_KEY');
-    expect(s.checkedEnv.replicate).toContain('REPLICATE_API_TOKEN');
-  });
-
-  test('unconfigured env → not ready', () => {
-    expect(computeVideoProviderStatus({}).ready).toBe(false);
-  });
+test('Vertex readiness does not require a Developer API key', () => {
+  expect(computeVideoProviderStatus(vertex)).toMatchObject({ ready: true, transport: 'vertex' });
 });
-
-describe('selectVideoPrimaryProvider', () => {
-  test('LTX wins as PRIMARY whenever its key is present — even if Replicate is also set', () => {
-    expect(selectVideoPrimaryProvider({ LTX_VIDEO_API_KEY: 'k' })).toEqual({
-      primary: 'ltx',
-      reason: 'ltx-key-present',
-    });
-    // LTX still wins over a co-provisioned Replicate token (LTX is the director).
-    expect(selectVideoPrimaryProvider({ LTX2_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8' })).toEqual({
-      primary: 'ltx',
-      reason: 'ltx-key-present',
-    });
-  });
-
-  test('Replicate is promoted to PRIMARY when no LTX key exists — the silent-skip-trap fix', () => {
-    // This is the exact case that used to pass the hasVideoProvider pre-flight and
-    // then skip every clip AFTER reserving a founder slot / GEL.
-    expect(selectVideoPrimaryProvider({ REPLICATE_API_TOKEN: 'r8' })).toEqual({
-      primary: 'replicate',
-      reason: 'ltx-key-absent',
-    });
-  });
-
-  test('no provider → null halt (the pipeline must not spend)', () => {
-    expect(selectVideoPrimaryProvider({})).toEqual({ primary: null, reason: 'no-provider' });
-    expect(selectVideoPrimaryProvider({ LTX_API_KEY: '   ', REPLICATE_API_TOKEN: '' })).toEqual({
-      primary: null,
-      reason: 'no-provider',
-    });
-  });
-
-  test('decision stays consistent with hasVideoProvider across every env shape', () => {
-    const envs: NodeJS.ProcessEnv[] = [
-      {},
-      { LTX_VIDEO_API_KEY: 'k' },
-      { LTX_API_KEY: 'k' },
-      { LTX2_API_KEY: 'k' },
-      { REPLICATE_API_TOKEN: 'r8' },
-      { LTX2_API_KEY: 'k', REPLICATE_API_TOKEN: 'r8' },
-      { LTX2_API_KEY: '   ', REPLICATE_API_TOKEN: '  ' },
-    ];
-    for (const env of envs) {
-      const decided = selectVideoPrimaryProvider(env).primary !== null;
-      expect(decided).toBe(hasVideoProvider(env));
-    }
-  });
+test('pinned Vertex fails closed even with a working Developer API key', () => {
+  expect(hasVideoProvider({ GEMINI_TRANSPORT: 'vertex', GEMINI_API_KEY: 'key' })).toBe(false);
+  expect(hasVideoProvider({ VEO_TRANSPORT: 'vertex', GEMINI_API_KEY: 'key' })).toBe(false);
+});
+test('a malformed or empty configuration is not ready', () => {
+  expect(hasVideoProvider({ ...vertex, GCP_VEO_BUCKET: 'https://bad/bucket' })).toBe(false);
+  expect(hasVideoProvider({})).toBe(false);
+});
+test('the snapshot contains names and booleans, never credentials', () => {
+  expect(JSON.stringify(computeVideoProviderStatus({ GEMINI_API_KEY: 'sensitive-value' }))).not.toContain('sensitive-value');
 });
 
 describe('videoProviderUnavailableMessage', () => {
@@ -131,4 +67,9 @@ describe('videoProviderConnectionFailedMessage', () => {
   test('falls back to Georgian for an unknown locale', () => {
     expect(videoProviderConnectionFailedMessage('zz')).toContain('ბალანსი დაცულია');
   });
+});
+
+test.each(['', 'typo', 'auto'])('invalid transport %p fails closed even when keys exist', value => {
+  expect(hasVideoProvider({ ...vertex, GEMINI_API_KEY: 'key', GEMINI_TRANSPORT: value })).toBe(false);
+  expect(hasVideoProvider({ ...vertex, GEMINI_API_KEY: 'key', VEO_TRANSPORT: value })).toBe(false);
 });

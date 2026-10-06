@@ -1,3 +1,5 @@
+import { isOwnSupabaseUrl } from '@/lib/security/allowlistedAudioFetch';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 /**
  * lib/chat/providerRouter.ts
  * ==========================
@@ -17,13 +19,12 @@ import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudi
 import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
-import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
-import { hasUdioApiKey } from './mediaKeys';
+import { hasLyriaProvider, generateLyriaTrack, lyriaModel } from '@/lib/ai/lyriaMusic';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
 import { buildEnforcedMusicStyle } from './outputEnforcement';
-import Anthropic from '@anthropic-ai/sdk';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
@@ -74,7 +75,6 @@ export interface OrchestratorInput {
 // The routing decision lives in a dependency-free module so it can be
 // unit-tested in isolation (providerRouter itself pulls in heavy provider SDKs).
 export { prefersClaudeSpecialist } from './specialistRouting';
-import { prefersClaudeSpecialist } from './specialistRouting';
 // Film-render routing predicate — dependency-free module so the contract is unit-testable.
 export { hasFilmDispatchSignal } from './filmDispatchSignal';
 import { hasFilmDispatchSignal } from './filmDispatchSignal';
@@ -184,7 +184,7 @@ function dataUrlToInlinePart(dataUrl: string): { mimeType: string; data: string 
 }
 
 async function handleGeminiMultimodal(input: OrchestratorInput): Promise<ChatResponse | null> {
-  if (!process.env.GEMINI_API_KEY) return null;
+  if (!googleAiConfigured()) return null;
 
   const metadataAttachments = Array.isArray(input.metadata?.attachments)
     ? input.metadata.attachments as Array<{ type?: string; mimeType?: string; data?: string }>
@@ -492,25 +492,10 @@ async function pollCompositeTask(predictionId: string, sessionId?: string): Prom
 
   type LegState = { status: 'pending' | 'succeeded' | 'failed' | 'skipped'; url: string | null; error?: string };
 
-  const music: LegState = { status: ref.musicWorkId ? 'pending' : 'skipped', url: null };
+  const music: LegState = ref.musicUrl && isOwnSupabaseUrl(ref.musicUrl)
+    ? { status: 'succeeded', url: ref.musicUrl }
+    : { status: ref.musicWorkId ? 'failed' : 'skipped', url: null, ...(ref.musicWorkId ? { error: 'provider_deprecated' } : {}) };
   const video: LegState = { status: ref.videoTaskRef ? 'pending' : 'skipped', url: null };
-
-  // Music leg via Udio.
-  if (ref.musicWorkId) {
-    try {
-      const udio = await pollUdioTask(ref.musicWorkId, `udio:${ref.musicWorkId}`);
-      if (udio.predictionStatus === 'succeeded') {
-        music.status = 'succeeded';
-        music.url = udio.assetUrl ?? null;
-      } else if (udio.predictionStatus === 'failed') {
-        music.status = 'failed';
-        music.error = udio.message;
-      }
-    } catch (err) {
-      music.status = 'failed';
-      music.error = err instanceof Error ? err.message : String(err);
-    }
-  }
 
   // Video leg via ServiceManager.
   if (ref.videoTaskRef) {
@@ -613,22 +598,9 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   // recovery. The correct fix needs an HMAC-signed token + a server-authoritative per-dispatch render record
   // gating the refund on a TERMINAL provider failure. Tracked as a dedicated secure task.
 
-  // ── Poll the audio leg (Udio) ───────────────────────────────────────────────
-  let audioStatus: FilmLegPollStatus = ref.musicWorkId ? 'pending' : 'skipped';
-  let audioUrl: string | null = null;
-  if (ref.musicWorkId) {
-    try {
-      const udio = await pollUdioTask(ref.musicWorkId, `${UDIO_PREDICTION_PREFIX}${ref.musicWorkId}`);
-      if (udio.predictionStatus === 'succeeded') {
-        audioStatus = 'succeeded';
-        audioUrl = udio.assetUrl ?? null;
-      } else if (udio.predictionStatus === 'failed') {
-        audioStatus = 'failed';
-      }
-    } catch {
-      audioStatus = 'failed';
-    }
-  }
+  // Legacy Udio jobs are retired; no provider request is made during polling.
+  const audioStatus: FilmLegPollStatus = ref.musicWorkId ? 'failed' : 'skipped';
+  const audioUrl: string | null = null;
 
   // ── Union computation across the render legs (clips + audio) ─────────────────
   // The editor (stitch) leg becomes ready only when every clip has landed and
@@ -1175,17 +1147,6 @@ async function handleMusicIntent(
     imageUrl: input.imageUrl,
   });
   const opts = input.selectedOptions || {};
-  const provider = String(
-    opts.provider
-      || opts.music_provider
-      || opts.musicProvider
-      || (hasUdioApiKey() ? 'udio' : 'replicate'),
-  ).toLowerCase();
-
-  if (provider === 'replicate') {
-    return handleReplicateIntent(input, detected);
-  }
-
   const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
   const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
 
@@ -1225,140 +1186,31 @@ async function handleMusicIntent(
     parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental';
 
   try {
-    const started = await startUdioGeneration({
-      // The English brief — Udio cannot read the alphabet the user typed in. `opts.lyrics` on the next
-      // line stays in the user's own language ON PURPOSE: those are the words to be sung.
-      prompt: promptEn,
-      lyrics: opts.lyrics,
-      // `style` now carries the mirrored anchor (typed keywords ∪ UI tags); we
-      // intentionally omit the separate genre/mood/styleTags fields so they are
-      // not double-appended by the Udio body builder.
-      style: enforced.style,
-      title: opts.title,
-      model: opts.model || opts.variant,
-      makeInstrumental: requestedInstrumental || enforced.forceInstrumental,
-      callbackUrl: typeof input.metadata?.callback_url === 'string'
-        ? input.metadata.callback_url
-        : typeof input.metadata?.callbackUrl === 'string'
-          ? input.metadata.callbackUrl
-          : undefined,
+    if (!hasLyriaProvider()) throw new Error('Music is temporarily unavailable.');
+    const track = await generateLyriaTrack({
+      prompt: [promptEn, enforced.style].filter(Boolean).join('. '), lyrics: opts.lyrics,
+      instrumental: requestedInstrumental || enforced.forceInstrumental,
     });
-
-    const predictionId = toUdioPredictionId(started.workId);
-
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'audio',
-      message: startedMessage(detected.intent),
-      predictionId,
-      predictionStatus: 'processing',
-      assetType: 'audio',
-      metadata: {
-        provider: 'udio',
-        model: started.model,
-        workId: started.workId,
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Udio generation failed';
-
-    // PHASE 57 — a billing/credit failure from Udio (e.g. "No credit",
-    // insufficient funds, quota) must NOT be a dead end: transparently fail
-    // over to the funded Replicate (Meta MusicGen) music model so the user
-    // still receives a track. Mirrors the image (NanoBanana→FLUX) and video
-    // (LTX→Zeroscope) failovers. A non-billing error still surfaces honestly
-    // so we never mask a real bug.
-    if (isProviderCreditError(errorMsg)) {
-      const fallback = await handleReplicateIntent(input, detected).catch(() => null);
-      if (fallback && fallback.success) {
-        return {
-          ...fallback,
-          metadata: {
-            ...fallback.metadata,
-            musicFallback: 'udio->replicate',
-            primaryProvider: 'udio',
-            primaryProviderError: errorMsg,
-          },
-        };
-      }
+    if (!track) throw new Error('Music generation did not complete.');
+    const ext = /wav/i.test(track.mime) ? 'wav' : 'mp3';
+    const assetUrl = await uploadAndSign('uploads', `chat-music/${crypto.randomUUID()}.${ext}`, track.base64, track.mime, 604800);
+    if (!assetUrl) throw new Error('Music could not be stored.');
+    if (input.userId && input.userId !== 'anonymous' && gateCost > 0) {
+      const debit = await deductCredits(input.userId, gateCost, `chat:music:${crypto.randomUUID()}`);
+      if (!debit.ok) return chargeRefusedResponse(detected.intent, gateCost, debit.reason === 'insufficient' ? 'insufficient' : 'error', input.locale);
     }
-
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: errorMsg,
-      metadata: {
-        provider: 'udio',
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
+    return { success: true, intent: detected.intent, responseType: 'audio', assetUrl, assetType: 'audio',
+      predictionStatus: 'succeeded', message: readyMessage('music_generation'),
+      metadata: { provider: 'google', model: lyriaModel(), confidence: detected.confidence, iteration: iterative.iteration } };
+  } catch {
+    return { success: false, intent: detected.intent, responseType: 'text', message: 'Music is temporarily unavailable. Please try again shortly.',
+      metadata: { provider: 'google', iteration: iterative.iteration } };
   }
-}
-
-/**
- * PHASE 57 — true when a provider error message indicates a billing/credit/auth
- * failure (out of funds, quota, payment, unauthorized) rather than a
- * deterministic bad-request bug. Drives the music Udio→Replicate failover.
- */
-function isProviderCreditError(message: string): boolean {
-  return /no credit|insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied|\b402\b|\b429\b/i.test(message || '');
 }
 
 async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
-  const status = await getUdioGenerationStatus(workId);
-
-  if (status.status === 'failed') {
-    return {
-      success: false,
-      intent: 'music_generation',
-      responseType: 'text',
-      message: status.message || 'Music generation failed.',
-      predictionId,
-      predictionStatus: 'failed',
-      metadata: {
-        provider: 'udio',
-        workId,
-      },
-    };
-  }
-
-  if (status.status === 'succeeded') {
-    return {
-      success: true,
-      intent: 'music_generation',
-      responseType: 'audio',
-      message: readyMessage('music_generation'),
-      assetUrl: status.audioUrl,
-      assetType: 'audio',
-      predictionId,
-      predictionStatus: 'succeeded',
-      metadata: {
-        provider: 'udio',
-        workId,
-        imageUrl: status.imageUrl,
-        rawStatus: status.rawStatus,
-      },
-    };
-  }
-
-  return {
-    success: true,
-    intent: 'music_generation',
-    responseType: 'audio',
-    message: status.message || startedMessage('music_generation'),
-    predictionId,
-    predictionStatus: 'processing',
-    metadata: {
-      provider: 'udio',
-      workId,
-      rawStatus: status.rawStatus,
-    },
-  };
+  return { success: false, intent: 'music_generation', responseType: 'text', message: 'This music provider has been retired.',
+    predictionId, predictionStatus: 'failed', metadata: { provider: 'udio', workId, error: 'provider_deprecated' } };
 }
 
 async function handleDeterministicIntent(
@@ -1474,58 +1326,6 @@ function toChatResponse(
  * or null on failure so the caller can fall back. `routedAs` records WHY Claude
  * was chosen ('specialist' = §1 complex-task lead, 'fallback' = Gemini surrendered).
  */
-async function tryClaudeCompletion(
-  input: OrchestratorInput,
-  detected: DetectedIntent,
-  systemPrompt: string,
-  opts: { routedAs: 'specialist' | 'fallback'; geminiError?: string | null } = { routedAs: 'fallback' },
-): Promise<ChatResponse | null> {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) return null;
-  try {
-    const anthropic = new Anthropic({ apiKey: anthropicKey });
-    // Specialist work (code/science/blueprints) earns the stronger Sonnet model
-    // and a larger token budget; the fallback path keeps the fast/cheap default.
-    const model = process.env.ANTHROPIC_MODEL
-      || (opts.routedAs === 'specialist' ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001');
-    const msg = await anthropic.messages.create({
-      model,
-      max_tokens: opts.routedAs === 'specialist' ? 4096 : 1024,
-      system: systemPrompt,
-      messages: [
-        ...input.history.map((h) => ({
-          role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-          content: h.content,
-        })),
-        { role: 'user' as const, content: input.message },
-      ],
-    });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-      .trim();
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'text',
-      message: text || '…',
-      metadata: {
-        provider: 'anthropic',
-        model: msg.model,
-        tokensIn: msg.usage?.input_tokens,
-        tokensOut: msg.usage?.output_tokens,
-        confidence: detected.confidence,
-        routedAs: opts.routedAs,
-        ...(opts.geminiError ? { geminiFallbackFrom: opts.geminiError } : {}),
-      },
-    };
-  } catch (error) {
-    console.error(`[providerRouter] Claude ${opts.routedAs} completion failed:`, error);
-    return null;
-  }
-}
-
 async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
@@ -1540,12 +1340,7 @@ async function handleTextIntent(
   // Specialist lead: complex programming / deep science-math / large technical
   // blueprints go to Claude FIRST. If Claude is unavailable we transparently
   // fall through to the Gemini-primary path below (chat never goes dark).
-  if (prefersClaudeSpecialist(input.message) && process.env.ANTHROPIC_API_KEY) {
-    const specialist = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'specialist' });
-    if (specialist) return specialist;
-  }
-
-  if (process.env.GEMINI_API_KEY) {
+  if (googleAiConfigured()) {
     const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
     // Transient Gemini conditions (model overloaded / rate-limited) are worth a
     // fast retry before surrendering to Claude — the GA endpoints intermittently
@@ -1600,25 +1395,12 @@ async function handleTextIntent(
           continue;
         }
         console.warn(
-          `[providerRouter] Gemini text path failed after ${attempt} attempt(s), falling back to Claude:`,
+          `[providerRouter] Gemini text path failed after ${attempt} attempt(s), unavailable:`,
           geminiError,
         );
         break;
       }
     }
-  }
-
-  // ── Claude fallback (Anthropic) — keeps chat alive when Gemini surrenders ──
-  if (process.env.ANTHROPIC_API_KEY) {
-    const fallback = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'fallback', geminiError });
-    if (fallback) return fallback;
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: 'Chat is temporarily unavailable. Please try again shortly.',
-      metadata: { provider: 'anthropic', ...(geminiError ? { geminiError } : {}) },
-    };
   }
 
   // Neither provider configured / Gemini failed with no Claude fallback.
@@ -1627,7 +1409,7 @@ async function handleTextIntent(
     intent: detected.intent,
     responseType: 'text',
     message: 'Chat is temporarily unavailable (cognitive core not configured).',
-    metadata: { provider: 'gemini', error: geminiError || 'GEMINI_API_KEY / ANTHROPIC_API_KEY not configured' },
+    metadata: { provider: 'gemini', error: geminiError || 'Google AI transport is not configured' },
   };
 }
 
@@ -1829,10 +1611,6 @@ function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
     default:
       return 'text';
   }
-}
-
-function toUdioPredictionId(workId: string): string {
-  return `${UDIO_PREDICTION_PREFIX}${workId}`;
 }
 
 function extractUdioWorkId(predictionId: string): string | null {

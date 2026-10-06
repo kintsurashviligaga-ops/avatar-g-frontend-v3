@@ -245,13 +245,13 @@ describe('transcribeWithGeminiDetailed', () => {
     expect(err.message).not.toContain('test-key');
   });
 
-  it('no key → auth error and no call; hasGeminiSttKey reads the shared pool', async () => {
+  it('no canonical key → auth error and no call; deprecated pools are ignored', async () => {
     delete process.env.GEMINI_API_KEY;
     expect(hasGeminiSttKey()).toBe(false);
     await expect(transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US')).rejects.toMatchObject({ code: 'auth' });
     expect(fetchSpy).not.toHaveBeenCalled();
     process.env.GEMINI_API_KEYS = 'pool-a, pool-b';
-    expect(hasGeminiSttKey()).toBe(true);
+    expect(hasGeminiSttKey()).toBe(false);
   });
 
   it('the legacy text-only wrapper still works', async () => {

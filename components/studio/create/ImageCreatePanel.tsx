@@ -168,7 +168,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
   const picked = p.model ?? storedModel;
   const pickedIsStudio = catalogueEntry(picked)?.wire.runner === 'studio';
   // The server's word on what runs here — asked when the sheet opens, or at once when a Higgsfield pick must be confirmed.
-  const status = useCatalogueStatus('image', picker === 'model' || pickedIsStudio);
+  const status = useCatalogueStatus('image', true);
   const rows = useMemo(() => pickerRows('image', { runners: IMAGE_RUNNERS, status }), [status]);
   const modelId = effectivePick('image', picked, rows);
   const hf = catalogueEntry(modelId)?.wire.runner === 'studio' ? catalogueEntry(modelId)! : null;
@@ -239,7 +239,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
     const v = imageVariant(model.id, t.quality);
     return {
       value: t.quality, label: t.res, glyph: <Gem size={20} />, disabled: !v.native,
-      hint: v.native ? `Nano Banana ${v.family} · ${t.note[lang]}` : c.qualityNotOnModel(model.label[lang]),
+      hint: v.native ? `Imagen · ${t.note[lang]}` : c.qualityNotOnModel(model.label[lang]),
       trailing: creditsLabel(imageCredits(1), p.locale),
     };
   }), [lang, p.locale, model, hf, c]);
@@ -279,20 +279,21 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
       </div>
 
       {/* ── upload ── */}
-      <div data-create-row="upload">
+      {(IMAGE_MAX_REFERENCES > 0 || p.references.length > 0) && <div data-create-row="upload">
         <ReferenceUploadCard
           items={p.references}
           max={IMAGE_MAX_REFERENCES}
+          disabled={IMAGE_MAX_REFERENCES === 0}
           onFiles={p.onAddReference}
           onRemove={p.onRemoveReference}
           title={c.uploadTitle}
           limitLabel={c.uploadLimit(IMAGE_MAX_REFERENCES)}
-          filledHint={c.uploadFilled}
+          filledHint={IMAGE_MAX_REFERENCES === 0 ? (lang === 'ka' ? 'ამ რეჟიმში ფოტო არ გამოიყენება — წაშალე ატვირთული სურათი.' : lang === 'ru' ? 'В этом режиме фото не используется — удалите изображение.' : 'This mode cannot use a photo. Remove the attached image.') : c.uploadFilled}
           replaceLabel={c.uploadReplace}
           removeLabel={c.uploadRemove}
-          extraNote={c.uploadExtra}
+          extraNote={IMAGE_MAX_REFERENCES === 0 ? '' : c.uploadExtra}
         />
-      </div>
+      </div>}
       {p.foreignFileCount > 0 && (
         <div role="alert" data-testid="create-foreign-files" className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-app-warning/10 px-4 py-2.5 text-[13px] leading-snug text-app-text ring-1 ring-app-warning/25">
           <span className="min-w-0 flex-1">{c.foreignFiles}</span>

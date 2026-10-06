@@ -1,3 +1,4 @@
+import { deprecatedProviderCredential, assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * DeepSeek Provider for Text Generation
  * Uses OpenAI-compatible API
@@ -11,7 +12,7 @@ export class DeepSeekProvider implements ITextGenerationProvider {
   private baseUrl = 'https://api.deepseek.com/v1';
 
   constructor() {
-    this.apiKey = process.env.DEEPSEEK_API_KEY || null;
+    this.apiKey = deprecatedProviderCredential('DEEPSEEK_API_KEY') || null;
   }
 
   isAvailable(): boolean {
@@ -19,6 +20,7 @@ export class DeepSeekProvider implements ITextGenerationProvider {
   }
 
   async generateText(input: TextGenerationInput): Promise<TextGenerationResult> {
+    assertProviderPermitted('deepseek');
     if (!this.apiKey) {
       throw new Error('DeepSeek API key not configured');
     }
@@ -87,6 +89,7 @@ export class DeepSeekProvider implements ITextGenerationProvider {
   }
 
   async *streamText(input: TextGenerationInput): AsyncGenerator<string> {
+    assertProviderPermitted('deepseek');
     if (!this.apiKey) {
       throw new Error('DeepSeek API key not configured');
     }

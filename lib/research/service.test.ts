@@ -31,6 +31,19 @@ async function started(h: Harness, over: Record<string, unknown> = {}) {
   return r.job;
 }
 
+test('the store preserves a transport/project-pinned operation reference through polling and cancellation', async () => {
+  const h = makeHarness();
+  const reference = 'research:v1:vertex:test-project:global:interaction-123';
+  h.client.startScript = [{ ok: true, id: reference }];
+  const job = await started(h);
+  expect(h.jobs()[0]?.provider_interaction_id).toBe(reference);
+  h.clock.ms += POLL_EVERY_MS;
+  await h.service.sweep();
+  expect(h.client.pollCalls).toContain(reference);
+  await h.service.cancel(job.id, U);
+  expect(h.client.cancelCalls).toContain(reference);
+});
+
 describe('start — the price the user saw is the price charged', () => {
   test('no confirmation, or a different number, is refused before anything is written, charged or sent', async () => {
     const h = makeHarness();

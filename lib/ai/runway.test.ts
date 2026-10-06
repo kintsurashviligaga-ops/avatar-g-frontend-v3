@@ -8,8 +8,6 @@ import {
   pollRunwayTask,
 } from './runway';
 
-const OK = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
-const ERR = (status: number) => ({ ok: false, status, json: async () => ({}) }) as unknown as Response;
 
 describe('runway adapter — pure mappers', () => {
   const saved = { ...process.env };
@@ -59,133 +57,16 @@ describe('runway adapter — pure mappers', () => {
   });
 });
 
-describe('runway adapter — provider gating (INERT until a key is set)', () => {
+describe('retired Runway transport', () => {
   const saved = { ...process.env };
   afterEach(() => { process.env = { ...saved }; });
-
-  test('hasRunwayProvider is false with no key, true with either accepted var', () => {
-    delete process.env.RUNWAY_API_KEY; delete process.env.RUNWAYML_API_SECRET;
+  test.each([undefined, 'legacy-key'])('stays disabled with key %s and makes no create/poll request', async (key) => {
+    if (key) process.env.RUNWAY_API_KEY = key;
+    else delete process.env.RUNWAY_API_KEY;
+    const fetchImpl = jest.fn();
     expect(hasRunwayProvider()).toBe(false);
-    process.env.RUNWAY_API_KEY = 'k';
-    expect(hasRunwayProvider()).toBe(true);
-    delete process.env.RUNWAY_API_KEY; process.env.RUNWAYML_API_SECRET = 's';
-    expect(hasRunwayProvider()).toBe(true);
-  });
-
-  test('createRunwayI2V returns null (no network) when no key is configured', async () => {
-    delete process.env.RUNWAY_API_KEY; delete process.env.RUNWAYML_API_SECRET;
-    const fetchImpl = jest.fn();
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(r).toBeNull();
+    await expect(createRunwayI2V({ promptImage: 'https://example.com/image.png', fetchImpl })).rejects.toMatchObject({ code: 'provider_deprecated' });
+    await expect(pollRunwayTask('task-123', { fetchImpl })).rejects.toMatchObject({ code: 'provider_deprecated' });
     expect(fetchImpl).not.toHaveBeenCalled();
-  });
-});
-
-describe('runway adapter — createRunwayI2V (fail-open create)', () => {
-  const saved = { ...process.env };
-  beforeEach(() => { process.env.RUNWAY_API_KEY = 'test-key'; });
-  afterEach(() => { process.env = { ...saved }; jest.restoreAllMocks(); });
-
-  test('returns {id} on a 200 with an id + sends the 2024-11-06 contract', async () => {
-    const fetchImpl = jest.fn(async () => OK({ id: 'task_123' }));
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', promptText: 'a hero', aspect: '9:16', durationSec: 5, seed: 7, fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(r).toEqual({ id: 'task_123' });
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/v1/image_to_video');
-    expect((init.headers as Record<string, string>)['X-Runway-Version']).toBe('2024-11-06');
-    const body = JSON.parse(init.body as string);
-    expect(body.ratio).toBe('720:1280'); // resolution string (gen4_turbo default portrait), not 9:16
-    expect(body.model).toBe('gen4_turbo'); // the flagship default reaches the payload
-    expect(body.promptImage).toBe('https://x/f.jpg');
-    expect(body.duration).toBe(5);
-  });
-
-  test('returns null on a 429/quota/4xx (→ caller falls back to Replicate)', async () => {
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: (async () => ERR(429)) as unknown as typeof fetch });
-    expect(r).toBeNull();
-  });
-
-  test('PHASE 28: on a 403 it logs the EXACT error body + classifies AUTH/SCOPE (token-scope diagnosis)', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const body = 'You do not have permission to use gen3a_turbo';
-    const res = { ok: false, status: 403, text: async () => body, json: async () => ({}) } as unknown as Response;
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: (async () => res) as unknown as typeof fetch });
-    expect(r).toBeNull();
-    const logged = warn.mock.calls.map((c) => c.join(' ')).join('\n');
-    expect(logged).toMatch(/AUTH\/SCOPE/);
-    expect(logged).toMatch(/http_403/);
-    expect(logged).toContain(body); // the exact Runway error body is surfaced, not just the status
-  });
-
-  test('NEVER throws when fetch rejects — returns null', async () => {
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: (async () => { throw new Error('network down'); }) as unknown as typeof fetch });
-    expect(r).toBeNull();
-  });
-
-  test('PHASE 30: retries Runway on a transient 5xx, then succeeds (no premature Kling surrender)', async () => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    let calls = 0;
-    const fetchImpl = jest.fn(async () => {
-      calls += 1;
-      return calls === 1
-        ? ({ ok: false, status: 503, text: async () => 'upstream hiccup', json: async () => ({}) } as unknown as Response)
-        : OK({ id: 'task_retry_ok' });
-    });
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(r).toEqual({ id: 'task_retry_ok' }); // the 503 blip did NOT cost the clip — Runway stayed primary
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
-  test('PHASE 30: a definitive 402 does NOT retry — one call, immediate Replicate fallback', async () => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const fetchImpl = jest.fn(async () => ({ ok: false, status: 402, text: async () => 'quota', json: async () => ({}) } as unknown as Response));
-    const r = await createRunwayI2V({ promptImage: 'https://x/f.jpg', fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(r).toBeNull();
-    expect(fetchImpl).toHaveBeenCalledTimes(1); // 402 = quota/billing → retrying Runway is pointless
-  });
-
-  test('rejects a non-http/non-data promptImage without a network call', async () => {
-    const fetchImpl = jest.fn();
-    const r = await createRunwayI2V({ promptImage: 'runway-internal-path', fetchImpl: fetchImpl as unknown as typeof fetch });
-    expect(r).toBeNull();
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-});
-
-describe('runway adapter — pollRunwayTask (status mapping, fail-open)', () => {
-  const saved = { ...process.env };
-  beforeEach(() => { process.env.RUNWAY_API_KEY = 'test-key'; });
-  afterEach(() => { process.env = { ...saved }; });
-
-  test('SUCCEEDED with output[0] → succeeded + url', async () => {
-    const r = await pollRunwayTask('t1', (async () => OK({ status: 'SUCCEEDED', output: ['https://cdn/out.mp4'] })) as unknown as typeof fetch);
-    expect(r).toEqual({ status: 'succeeded', url: 'https://cdn/out.mp4' });
-  });
-
-  test('SUCCEEDED with an empty output → failed (no usable URL)', async () => {
-    const r = await pollRunwayTask('t1', (async () => OK({ status: 'SUCCEEDED', output: [] })) as unknown as typeof fetch);
-    expect(r).toEqual({ status: 'failed', url: null });
-  });
-
-  test('FAILED → failed', async () => {
-    const r = await pollRunwayTask('t1', (async () => OK({ status: 'FAILED' })) as unknown as typeof fetch);
-    expect(r.status).toBe('failed');
-  });
-
-  test('PENDING / RUNNING / THROTTLED → processing (keep polling)', async () => {
-    for (const s of ['PENDING', 'RUNNING', 'THROTTLED', 'something-new']) {
-      const r = await pollRunwayTask('t1', (async () => OK({ status: s })) as unknown as typeof fetch);
-      expect(r.status).toBe('processing');
-    }
-  });
-
-  test('a transient non-ok (incl 429) → processing, and a throw → processing (fail-open, never drop a good render)', async () => {
-    expect((await pollRunwayTask('t1', (async () => ERR(429)) as unknown as typeof fetch)).status).toBe('processing');
-    expect((await pollRunwayTask('t1', (async () => { throw new Error('blip'); }) as unknown as typeof fetch)).status).toBe('processing');
-  });
-
-  test('no key or no task id → failed (nothing to poll)', async () => {
-    delete process.env.RUNWAY_API_KEY;
-    expect((await pollRunwayTask('t1')).status).toBe('failed');
   });
 });

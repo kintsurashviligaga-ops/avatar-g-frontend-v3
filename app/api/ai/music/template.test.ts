@@ -143,9 +143,9 @@ test('a Georgian Folk track saved by the Round-2 build (genre "folk") re-rolls w
   expect(key.t).toBe('georgian-folk');
 });
 
-test('a cover (an uploaded reference track) keeps its own source: no brief, no descriptor', async () => {
-  (generateMusicCover as jest.Mock).mockResolvedValueOnce({ audioUrl: '' });
-  await POST(post({ ...FOLK_BODY, templateId: 'georgian-folk', audioReference: 'https://cdn.example.com/track.mp3' }));
+test('reference music is unavailable regardless of template', async () => {
+  const response = await POST(post({ ...FOLK_BODY, templateId: 'georgian-folk', audioReference: 'https://cdn.example.com/track.mp3' }));
+  expect(response.status).toBe(422);
   expect(generateLyriaTrack).not.toHaveBeenCalled();
-  expect((generateMusicCover as jest.Mock).mock.calls[0][0]).not.toContain(DESCRIPTOR);
+  expect(generateMusicCover).not.toHaveBeenCalled();
 });

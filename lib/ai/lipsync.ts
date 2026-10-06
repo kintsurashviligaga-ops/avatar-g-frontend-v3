@@ -41,11 +41,11 @@ interface ReplicatePrediction {
 }
 
 function token(): string {
-  return String(process.env.REPLICATE_API_TOKEN || '').trim();
+  return ''; // Retired provider: never read its credential.
 }
 
 function heygenKey(): string {
-  return String(process.env.HEYGEN_API_KEY || '').trim();
+  return ''; // HeyGen is retired.
 }
 
 /** True when a lip-sync provider is available (HeyGen preferred, Replicate fallback). */

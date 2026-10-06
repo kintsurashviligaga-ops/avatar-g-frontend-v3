@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 import 'server-only';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 
@@ -59,7 +60,7 @@ export async function extractInstrumentalStem(
   maxPollMs = 240_000,
 ): Promise<InstrumentalResult | null> {
   if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) return null;
-  if (!(process.env.REPLICATE_API_TOKEN || '').trim()) return null;
+  if (!isProviderPermitted('replicate')) return null;
   try {
     const created = await createPrediction(DEMUCS_MODEL, { audio: sourceUrl });
     let out = created;

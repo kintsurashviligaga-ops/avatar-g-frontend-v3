@@ -9,7 +9,9 @@
  * deterministic metrics.
  */
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
+import { generateLyriaTrack, hasLyriaProvider } from '@/lib/ai/lyriaMusic';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -22,7 +24,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 180;
 
-const MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
+
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
   try { body = (await req.json()) as { prompt?: string }; } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
   const prompt = String(body.prompt ?? '').trim();
   if (!prompt) return new Response(JSON.stringify({ error: 'prompt required' }), { status: 400 });
-  const origin = new URL(req.url).origin;
+  if (!hasLyriaProvider()) return new Response(JSON.stringify({ error: 'music_unavailable' }), { status: 503 });
 
   // Durable job row (#5).
   const pipelineId = `msc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -69,31 +71,17 @@ export async function POST(req: NextRequest) {
 
         // Agent S — Claude metrics, fail-open to deterministic.
         let metrics = deterministicSongMetrics(prompt);
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (apiKey) {
-          try {
-            const client = new Anthropic({ apiKey });
-            const msg = await client.messages.create({
-              model: MODEL, max_tokens: 1200,
-              system: buildSongArchitectSystemPrompt(),
-              messages: [{ role: 'user', content: `Brief: "${prompt}". Return the JSON now.` }],
-            });
-            const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-            const parsed = extractJson(text);
-            if (parsed) metrics = normalizeSongMetrics(parsed, prompt);
-          } catch { /* keep deterministic */ }
-        }
+        const text = await llmText({ user: `Brief: "${prompt}". Return the JSON now.`, system: buildSongArchitectSystemPrompt(), maxTokens: 1200, json: true });
+        const parsed = text ? extractJson(text) : null;
+        if (parsed) metrics = normalizeSongMetrics(parsed, prompt);
 
         emit({ stage: 'synthesizing', pct: 45, ticker: '[Synthesizing Audio Frequency Spectrum…]', style: metrics.style, bpm: metrics.bpm, instrumental: metrics.instrumental });
 
-        const res = await fetch(`${origin}/api/udio/generate`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: songGenerationPrompt(metrics), make_instrumental: metrics.instrumental }),
-        });
-        if (!res.ok) { emit({ stage: 'failed', error: `worker_${res.status}` }); return; }
-        const data = await res.json() as { url?: string; audioUrl?: string; error?: string };
-        const url = data.url || data.audioUrl || null;
-        if (!url) { emit({ stage: 'failed', error: data.error ?? 'no_audio' }); return; }
+        const track = await generateLyriaTrack({ prompt: songGenerationPrompt(metrics), instrumental: metrics.instrumental });
+        if (!track) { emit({ stage: 'failed', error: 'music_unavailable' }); return; }
+        const extension = /wav/.test(track.mime) ? 'wav' : 'mp3';
+        const url = await uploadAndSign('audio', `music/${pipelineId}.${extension}`, track.base64, track.mime, 604800);
+        if (!url) { emit({ stage: 'failed', error: 'audio_storage_failed' }); return; }
 
         emit({ stage: 'completed', pct: 100, url, title: metrics.title, style: metrics.style, bpm: metrics.bpm });
         succeeded = true;

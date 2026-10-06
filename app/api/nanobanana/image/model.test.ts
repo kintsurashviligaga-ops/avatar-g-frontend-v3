@@ -9,6 +9,9 @@
  * 502-refund path — no fetch, no spend; every provider, the ledger and the idempotency store are mocked.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../../../../lib/ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001' }));
+jest.mock('../../../../lib/ai/geminiImage', () => ({ ...jest.requireActual('../../../../lib/ai/geminiImage'), generateGeminiImage: jest.fn(async () => null) }));
+
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({
@@ -62,8 +65,8 @@ afterEach(() => fetchSpy.mockRestore());
 async function endpointFor(body: Record<string, unknown>): Promise<string> {
   const res = await POST(post(body));
   expect(res.status).toBe(502); // every leg was made to miss → refunded
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  return (generateNanoBananaImage as jest.Mock).mock.calls[0][0].endpoint;
+  expect(generateNanoBananaImage).not.toHaveBeenCalled();
+  return (hashPayload as jest.Mock).mock.calls[0][0].e;
 }
 
 describe('a pick the catalogue does not list for this route is refused before anything costs anything', () => {

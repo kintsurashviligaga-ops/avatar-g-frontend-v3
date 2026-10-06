@@ -130,7 +130,7 @@ async function elevenGeorgianLibrary(key: string) {
 export async function GET(req: NextRequest): Promise<NextResponse> {
   if (!authorized(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
-  const heygenKey = norm(process.env.HEYGEN_API_KEY);
+  const heygenKey = norm(undefined); // Retired: never probe or read HeyGen credentials.
   const elevenKey = norm(process.env.ELEVENLABS_API_KEY);
 
   const result: Record<string, unknown> = {

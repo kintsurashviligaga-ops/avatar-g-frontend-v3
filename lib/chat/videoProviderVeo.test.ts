@@ -1,4 +1,5 @@
 /** @jest-environment node */
+jest.mock('server-only', () => ({}));
 import { hasVideoProvider, hasGeminiVeoKey } from './videoProvider';
 
 const E = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
@@ -9,8 +10,8 @@ describe('a Gemini-only configuration can render', () => {
     expect(hasVideoProvider(E({ GEMINI_API_KEY: 'k' }))).toBe(true);
   });
 
-  it('accepts the alias key the rest of the app also resolves', () => {
-    expect(hasVideoProvider(E({ GOOGLE_GENERATIVE_AI_API_KEY: 'k' }))).toBe(true);
+  it('rejects the retired alias key', () => {
+    expect(hasVideoProvider(E({ GOOGLE_GENERATIVE_AI_API_KEY: 'k' }))).toBe(false);
   });
 });
 
@@ -31,8 +32,8 @@ describe('the kill-switch still kills', () => {
 });
 
 describe('the existing providers are unaffected', () => {
-  it('Replicate alone still counts', () => {
-    expect(hasVideoProvider(E({ REPLICATE_API_TOKEN: 't' }))).toBe(true);
+  it('Replicate does not enable video', () => {
+    expect(hasVideoProvider(E({ REPLICATE_API_TOKEN: 't' }))).toBe(false);
   });
 
   it('no provider at all is still false — the halt-before-spending guard must survive', () => {

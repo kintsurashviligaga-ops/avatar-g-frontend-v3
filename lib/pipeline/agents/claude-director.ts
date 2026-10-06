@@ -3,11 +3,11 @@
 // re-prompts ONCE with the validation error appended — a self-correction loop that
 // sharply raises first-try success without a human in the loop.
 import 'server-only';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { BaseAgent, AgentContext } from './base-agent';
 import { OrchestrationOutputSchema, OrchestrationOutput } from '../schemas/orchestration-output.schema';
 
-const MODEL = process.env.ANTHROPIC_DIRECTOR_MODEL || 'claude-sonnet-4-6';
+
 
 const SYSTEM_PROMPT = `You are the Central Director for MyAvatar.ge.
 Given a user prompt, produce EXACTLY 5 scenes of 6 seconds each (30s total).
@@ -19,10 +19,9 @@ least one scene. Also provide masterTheme and a globalMusicPrompt for one contin
 Match the user's language. Return ONLY raw JSON — no markdown fences, no prose.`;
 
 export class ClaudeDirectorAgent extends BaseAgent {
-  private client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   constructor() {
-    super('ClaudeDirector', 45000); // generous: one 5-scene generation can take 20-40s
+    super('GeminiDirector', 45000); // generous: one 5-scene generation can take 20-40s
   }
 
   async direct(ctx: AgentContext, userPrompt: string): Promise<OrchestrationOutput> {
@@ -63,13 +62,8 @@ export class ClaudeDirectorAgent extends BaseAgent {
     const correction = validationError
       ? `\n\nYour previous output failed validation with: ${validationError}. Fix it and return ONLY raw JSON.`
       : '';
-    const res = await this.client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt + correction }],
-    });
-    const block = res.content.find((b) => b.type === 'text');
-    return block && 'text' in block ? (block as { text: string }).text.trim() : '';
+    const text = await llmText({ user: userPrompt + correction, system: SYSTEM_PROMPT, maxTokens: 2000, json: true, timeoutMs: 40000 });
+    if (!text) throw new Error('Gemini director unavailable');
+    return text;
   }
 }

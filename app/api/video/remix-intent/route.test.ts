@@ -115,14 +115,12 @@ test('no Gemini key → keyword matcher, and still no Claude under Google-only',
   expect(mockClaudeCreate).not.toHaveBeenCalled();
 });
 
-test('kill switch AI_GOOGLE_ONLY=0: Claude classifies (params sanitized too); Gemini is not called', async () => {
+test('AI_GOOGLE_ONLY=0 still uses Gemini and sanitizes its params', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
-  mockClaudeCreate.mockResolvedValueOnce({
-    content: [{ type: 'text', text: '```json\n{"op":"speed_ramp","params":{"factor":2,"audioUrl":"https://evil.test/a.mp3"}}\n```' }],
-    usage: { input_tokens: 30, output_tokens: 8 },
-  });
+  mockGemini.mockResolvedValueOnce(gemReply('{"op":"speed_ramp","params":{"factor":2,"audioUrl":"https://evil.test/a.mp3"}}'));
   expect(await (await POST(post({ message: 'ramp' }))).json()).toEqual({ op: 'speed_ramp', params: { factor: 2 } });
-  expect(mockGemini).not.toHaveBeenCalled();
+  expect(mockGemini).toHaveBeenCalledTimes(1);
+  expect(mockClaudeCreate).not.toHaveBeenCalled();
 });
 
 test('an empty message answers the safe default without any lookup', async () => {

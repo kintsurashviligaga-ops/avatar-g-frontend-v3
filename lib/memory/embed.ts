@@ -1,3 +1,4 @@
+import { googleAiConfigured, googleTransport, googleModelFetch } from '@/lib/ai/google/transport';
 import 'server-only';
 
 import { reportError } from '@/lib/observability/report-error';
@@ -55,12 +56,17 @@ const GEMINI_EMBED_URL = 'https://generativelanguage.googleapis.com/v1beta/model
 async function embedGemini(input: string): Promise<number[] | null> {
   // resolveGeminiKey(): GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, else the GEMINI_API_KEYS pool.
   const apiKey = resolveGeminiKey();
-  if (!apiKey) return null;
+  if (!googleAiConfigured()) return null;
 
   try {
     // ⚠️ The key travels in the x-goog-api-key header, never the URL: a `?key=` URL lands in fetch error
     // messages, traces and proxy logs (and from there in reportError payloads).
-    const r = await fetch(GEMINI_EMBED_URL, {
+    const vertex = googleTransport() === 'vertex';
+    const r = vertex ? await googleModelFetch('gemini-embedding-001', 'predict', {
+      method: 'POST',
+      body: JSON.stringify({ instances: [{ content: input, task_type: 'SEMANTIC_SIMILARITY' }], parameters: { outputDimensionality: 1536 } }),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    }) : await fetch(GEMINI_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
@@ -80,8 +86,8 @@ async function embedGemini(input: string): Promise<number[] | null> {
       return null;
     }
 
-    const json = (await r.json()) as { embedding?: { values?: number[] } };
-    const vec = json.embedding?.values;
+    const json = (await r.json()) as { embedding?: { values?: number[] }; predictions?: Array<{ embeddings?: { values?: number[] } }> };
+    const vec = vertex ? json.predictions?.[0]?.embeddings?.values : json.embedding?.values;
     if (!Array.isArray(vec) || vec.length !== 1536) {
       reportError(new Error('Gemini embedContent: unexpected response shape'), {
         route: 'lib/memory/embed',

@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
@@ -147,7 +148,7 @@ function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
 }
 
 async function generateTextWithGemini(serviceId: ServiceId, locale: string, prompt: string): Promise<string> {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!googleAiConfigured()) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 

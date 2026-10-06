@@ -1,3 +1,4 @@
+import { deprecatedProviderCredential, assertProviderPermitted } from '@/lib/providers/policy';
 // Stability AI Avatar Provider Implementation
 // https://platform.stability.ai/docs/api-reference
 
@@ -39,7 +40,7 @@ export class StabilityAvatarProvider implements IAvatarProvider {
   private baseUrl = 'https://api.stability.ai/v1';
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.STABILITY_API_KEY || '';
+    this.apiKey = apiKey || deprecatedProviderCredential('STABILITY_API_KEY') || '';
   }
 
   isAvailable(): boolean {
@@ -47,6 +48,7 @@ export class StabilityAvatarProvider implements IAvatarProvider {
   }
 
   async generate(input: AvatarProviderInput): Promise<AvatarGenerationResult> {
+    assertProviderPermitted('stability');
     if (!this.isAvailable()) {
       throw new Error('Stability AI API key not configured');
     }
@@ -136,6 +138,7 @@ export class StabilityAvatarProvider implements IAvatarProvider {
   }
 
   async imageToImage(input: AvatarProviderInput & { init_image: string }): Promise<AvatarGenerationResult> {
+    assertProviderPermitted('stability');
     if (!this.isAvailable()) {
       throw new Error('Stability AI API key not configured');
     }

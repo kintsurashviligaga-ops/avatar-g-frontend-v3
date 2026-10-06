@@ -19,9 +19,9 @@ describe('isAiGoogleOnly', () => {
     expect(isAiGoogleOnly()).toBe(true);
   });
 
-  it.each(['0', 'false', 'no', 'off', 'FALSE', ' Off ', 'No'])('is OFF (kill switch) for %p', (v) => {
+  it.each(['0', 'false', 'no', 'off', 'FALSE', ' Off ', 'No'])('cannot be disabled by %p', (v) => {
     process.env.AI_GOOGLE_ONLY = v;
-    expect(isAiGoogleOnly()).toBe(false);
+    expect(isAiGoogleOnly()).toBe(true);
   });
 
   it.each(['1', 'true', 'yes', 'on', 'anything-else'])('stays ON for %p', (v) => {
@@ -29,9 +29,9 @@ describe('isAiGoogleOnly', () => {
     expect(isAiGoogleOnly()).toBe(true);
   });
 
-  it('reads the env at call time, not at import', () => {
+  it('stays enabled across environment changes', () => {
     process.env.AI_GOOGLE_ONLY = '0';
-    expect(isAiGoogleOnly()).toBe(false);
+    expect(isAiGoogleOnly()).toBe(true);
     process.env.AI_GOOGLE_ONLY = '1';
     expect(isAiGoogleOnly()).toBe(true);
   });

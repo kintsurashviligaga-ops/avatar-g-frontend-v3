@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -81,6 +82,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
       { status: 413 },
     );
+  }
+  if (!googleAiConfigured() || !process.env.ELEVENLABS_API_KEY?.trim()) {
+    return NextResponse.json({ error: 'dubbing_unavailable', message: 'Google transcription and ElevenLabs speech must be configured.' }, { status: 503 });
   }
   const minutes = dubbingMinutes(durationSec);
 

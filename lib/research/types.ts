@@ -100,6 +100,7 @@ export interface ResearchJobRow {
   counted: boolean;
   refund_state: RefundState | null;
   refunded_credits: number;
+  /** Private transport/project-pinned reference; pre-migration bare IDs belong to the Developer API. */
   provider_interaction_id: string | null;
   provider_started_at: string | null;
   progress: ResearchProgress;

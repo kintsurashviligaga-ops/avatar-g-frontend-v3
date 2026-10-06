@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import OpenAI from 'openai';
 
 const MODEL = 'gpt-4o-mini';
@@ -59,6 +60,7 @@ export function __resetOpenAIClientFactoryForTests(): void {
 }
 
 function getOpenAIClient(): OpenAIChatClient {
+  assertProviderPermitted('openai', 'text');
   const apiKey = (process.env.OPENAI_API_KEY || '').trim();
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is missing in environment variables');

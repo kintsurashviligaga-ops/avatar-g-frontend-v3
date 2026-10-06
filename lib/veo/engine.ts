@@ -35,9 +35,12 @@ const PROMPT_LOG_CHARS = 120;
 
 // ── Transport selection ──────────────────────────────────────────────────────────────────────────────────────────
 
-function forcedTransport(): VeoTransport | null {
-  const v = (process.env.VEO_TRANSPORT ?? '').trim().toLowerCase();
-  return v === 'vertex' || v === 'gemini' ? v : null;
+function forcedTransport(): VeoTransport | 'invalid' | null {
+  const google = (process.env.GEMINI_TRANSPORT ?? 'gemini').trim().toLowerCase();
+  const veo = process.env.VEO_TRANSPORT?.trim().toLowerCase();
+  if (!['vertex', 'gemini'].includes(google) || (veo !== undefined && !['vertex', 'gemini'].includes(veo))) return 'invalid';
+  if (google === 'vertex') return 'vertex';
+  return veo === 'vertex' || veo === 'gemini' ? veo : null;
 }
 
 const vertexReady = (): boolean => vertexConfig() !== null;
@@ -51,6 +54,7 @@ const geminiReady = (): boolean => !!resolveGeminiKey() && isEnabledByDefault(pr
  */
 export function veoTransport(): VeoTransport | null {
   const forced = forcedTransport();
+  if (forced === 'invalid') return null;
   if (forced === 'vertex') return vertexReady() ? 'vertex' : null;
   if (forced === 'gemini') return geminiReady() ? 'gemini' : null;
   if (vertexReady()) return 'vertex';
@@ -69,6 +73,7 @@ export function transportOf(operationName: string): VeoTransport | null {
 /** Env variable NAMES only (vertexConfigProblems never returns values), so this is safe to log and to show. */
 function notConfiguredDetail(): string {
   const forced = forcedTransport();
+  if (forced === 'invalid') return 'Invalid GEMINI_TRANSPORT or VEO_TRANSPORT; no request was sent';
   const vertexMissing = vertexConfigProblems().join(', ') || 'incomplete';
   const gemini = resolveGeminiKey() ? 'GEMINI_VEO_ENABLED is off' : 'no Gemini API key';
   if (forced === 'vertex') return `VEO_TRANSPORT=vertex but Vertex AI is not configured: ${vertexMissing}`;

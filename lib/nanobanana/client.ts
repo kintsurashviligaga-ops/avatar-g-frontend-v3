@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import {
   getNanoBananaCreditCost,
   type NanoBananaEndpoint,
@@ -463,6 +464,7 @@ function buildCreatePayload(endpoint: NanoBananaEndpoint, input: NanoBananaGener
 }
 
 export async function generateNanoBananaImage(input: NanoBananaGenerateInput): Promise<NanoBananaGenerateResult> {
+  assertProviderPermitted('nanobanana');
   const apiKey = process.env.NANOBANANA_API_KEY?.trim();
   if (!apiKey) {
     throw new Error('NANOBANANA_API_KEY is not configured');

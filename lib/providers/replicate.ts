@@ -1,3 +1,4 @@
+import { deprecatedProviderCredential, assertProviderPermitted } from '@/lib/providers/policy';
 // Replicate Avatar Provider Implementation
 // https://replicate.com/docs/reference/http
 
@@ -13,7 +14,7 @@ export class ReplicateAvatarProvider implements IAvatarProvider {
   private client: Replicate | null = null;
 
   constructor(apiToken?: string) {
-    const token = apiToken || process.env.REPLICATE_API_TOKEN;
+    const token = apiToken || deprecatedProviderCredential('REPLICATE_API_TOKEN');
     if (token) {
       this.client = new Replicate({ auth: token });
     }
@@ -24,6 +25,7 @@ export class ReplicateAvatarProvider implements IAvatarProvider {
   }
 
   async generate(input: AvatarProviderInput): Promise<AvatarGenerationResult> {
+    assertProviderPermitted('replicate');
     if (!this.client) {
       throw new Error('Replicate API token not configured');
     }
@@ -74,6 +76,7 @@ export class ReplicateAvatarProvider implements IAvatarProvider {
   }
 
   async imageToImage(input: AvatarProviderInput & { init_image: string }): Promise<AvatarGenerationResult> {
+    assertProviderPermitted('replicate');
     if (!this.client) {
       throw new Error('Replicate API token not configured');
     }

@@ -32,9 +32,7 @@ const KA_VOICE: Record<AzureGender, string> = {
 };
 
 function azureConfig(): { key: string; region: string } | null {
-  const key = process.env.AZURE_SPEECH_KEY || process.env.AZURE_TTS_KEY || '';
-  const region = process.env.AZURE_SPEECH_REGION || process.env.AZURE_TTS_REGION || '';
-  return key && region ? { key, region } : null;
+  return null; // Azure is retired under the v32 provider policy.
 }
 
 /** True when an Azure Speech key + region are configured. */

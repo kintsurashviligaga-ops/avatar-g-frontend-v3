@@ -130,6 +130,9 @@ export async function POST(req: NextRequest) {
   // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
   const rawOp = String(body.op || body.operation || '').trim();
   const op = OP_ALIASES[rawOp] ?? rawOp;
+  if (['restyle', 'character', 'background_remove'].includes(op)) {
+    return NextResponse.json({ url: null, code: 'capability_unavailable', error: 'This video edit is not available right now.' }, { status: 503 });
+  }
   const p = (body.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {};
   // Flatten common params so per-op reads can fall back to params.* transparently.
   if (body.grade === undefined && (p.style ?? p.grade) !== undefined) body.grade = p.style ?? p.grade;

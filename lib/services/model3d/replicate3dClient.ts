@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/services/model3d/replicate3dClient.ts — image-to-3D on Replicate (TRELLIS), submit → poll → download.
  *
@@ -46,11 +47,11 @@ const MAX_GLB_BYTES = 60 * 1024 * 1024;
 export type FetchImpl = typeof fetch;
 
 export function hasReplicate3dProvider(): boolean {
-  return Boolean((process.env.REPLICATE_API_TOKEN || '').trim());
+  return false;
 }
 
 function token(): string {
-  return (process.env.REPLICATE_API_TOKEN || '').trim();
+  return ''; // Retired by the mandatory provider policy.
 }
 
 export type SubmitResult =
@@ -96,6 +97,7 @@ export async function submitReconstruction(
   req: Model3dRequest,
   fetchImpl: FetchImpl = fetch,
 ): Promise<SubmitResult> {
+  assertProviderPermitted('replicate');
   const k = token();
   if (!k) return { ok: false, error: 'REPLICATE_API_TOKEN is not configured', retryable: false };
   if (!/^https?:\/\//i.test(imageUrl)) return { ok: false, error: 'a reference image is required', retryable: false };
@@ -160,6 +162,7 @@ export interface PollResult {
 }
 
 export async function pollReconstruction(pollUrl: string, fetchImpl: FetchImpl = fetch): Promise<PollResult> {
+  assertProviderPermitted('replicate');
   const k = token();
   if (!k || !pollUrl) return { status: 'failed', glbUrl: null, error: 'not configured' };
   try {

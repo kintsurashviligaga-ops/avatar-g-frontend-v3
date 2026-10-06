@@ -1,14 +1,16 @@
+/** @jest-environment node */
 import { generateFluxProImage } from './fluxImage';
 
-describe('generateFluxProImage — fail-open fallback leg', () => {
+test('retired FLUX generation refuses without contacting Replicate even with legacy credentials', async () => {
   const saved = process.env.REPLICATE_API_TOKEN;
-  afterEach(() => {
+  const fetchSpy = jest.spyOn(global, 'fetch');
+  process.env.REPLICATE_API_TOKEN = 'legacy-token';
+  try {
+    await expect(generateFluxProImage('a cat', '1:1')).rejects.toMatchObject({ code: 'provider_deprecated' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally {
+    fetchSpy.mockRestore();
     if (saved === undefined) delete process.env.REPLICATE_API_TOKEN;
     else process.env.REPLICATE_API_TOKEN = saved;
-  });
-
-  test('returns null (leg unavailable) when REPLICATE_API_TOKEN is unset — never throws', async () => {
-    delete process.env.REPLICATE_API_TOKEN;
-    await expect(generateFluxProImage('a cat', '1:1')).resolves.toBeNull();
-  });
+  }
 });

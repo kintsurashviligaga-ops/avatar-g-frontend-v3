@@ -1,4 +1,5 @@
 import 'server-only';
+import { geminiAudioInput, transcribeWithGeminiDetailed } from '@/lib/voice-v2v/geminiStt';
 
 type TelegramFileResponse = {
   ok?: boolean;
@@ -7,18 +8,9 @@ type TelegramFileResponse = {
   };
 };
 
-type OpenAITranscriptionResponse = {
-  text?: string;
-  segments?: Array<{
-    start?: number;
-    end?: number;
-    text?: string;
-  }>;
-};
-
 export type SttResult = {
   transcript: string;
-  provider: 'openai-stt';
+  provider: 'gemini';
   segments?: Array<{
     startSec: number;
     endSec: number;
@@ -28,14 +20,6 @@ export type SttResult = {
 
 export function isAgentGVoiceEnabled(): boolean {
   return String(process.env.AGENT_G_VOICE_ENABLED || '').trim().toLowerCase() === 'true';
-}
-
-function getSttModel(): string {
-  return String(process.env.OPENAI_STT_MODEL || 'gpt-4o-mini-transcribe').trim();
-}
-
-function getOpenAIKey(): string {
-  return String(process.env.OPENAI_API_KEY || '').trim();
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -97,67 +81,12 @@ export async function transcribeAudioBuffer(input: {
   language?: string;
   withSegments?: boolean;
 }): Promise<SttResult> {
-  const openAIKey = getOpenAIKey();
-  if (!openAIKey) {
-    throw new Error('missing_openai_key');
-  }
+  const audio = geminiAudioInput(input.mimeType || 'audio/ogg', input.audioBuffer);
+  if (!audio.mimeType) throw new Error('unsupported_audio_container');
+  const language = { ka: 'ka-GE', en: 'en-US', ru: 'ru-RU' }[input.language ?? ''] ?? input.language ?? 'auto';
+  const result = await transcribeWithGeminiDetailed(Buffer.from(input.audioBuffer).toString('base64'), audio.mimeType, language);
+  return { transcript: result.text, provider: 'gemini' };
 
-  const form = new FormData();
-  const mimeType = input.mimeType || 'audio/ogg';
-  const fileBuffer = Uint8Array.from(input.audioBuffer);
-  form.append('file', new Blob([fileBuffer], { type: mimeType }), input.filename);
-  form.append('model', getSttModel());
-  if (input.language?.trim()) {
-    form.append('language', input.language.trim());
-  }
-  if (input.withSegments) {
-    form.append('response_format', 'verbose_json');
-  }
-
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${openAIKey}`,
-    },
-    body: form,
-    cache: 'no-store',
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  const payload = (await response
-    .json()
-    .catch(() => null)) as OpenAITranscriptionResponse | null;
-  const transcript = String(payload?.text || '').trim();
-
-  if (!response.ok || !transcript) {
-    throw new Error('openai_transcription_failed');
-  }
-
-  const segments = Array.isArray(payload?.segments)
-    ? payload.segments
-        .map((segment) => {
-          const text = String(segment?.text || '').trim();
-          const startSec = Number(segment?.start ?? 0);
-          const endSec = Number(segment?.end ?? startSec);
-
-          if (!text || !Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) {
-            return null;
-          }
-
-          return {
-            startSec,
-            endSec,
-            text,
-          };
-        })
-        .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
-    : undefined;
-
-  return {
-    transcript,
-    provider: 'openai-stt',
-    ...(segments && segments.length > 0 ? { segments } : {}),
-  };
 }
 
 export async function transcribeTelegramVoice(input: {

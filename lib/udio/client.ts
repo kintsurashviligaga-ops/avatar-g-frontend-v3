@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import { setTimeout as delay } from 'timers/promises';
 import { resolveUdioApiKey, UDIO_API_KEY_ALIASES } from '@/lib/chat/mediaKeys';
 import { musicSunoParamsEnabled, type UdioControlParams } from '@/lib/ai/musicControls';
@@ -115,6 +116,7 @@ function buildUdioAuthHeaders(apiKey: string): Record<string, string> {
 }
 
 function getUdioApiKey(): string {
+  assertProviderPermitted('udio', 'music');
   // PHASE 46 §1 — resolve from any provisioned Udio alias so a host-aliased key
   // still fires the real generation call instead of throwing "not configured".
   const key = resolveUdioApiKey();

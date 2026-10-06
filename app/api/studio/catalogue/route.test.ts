@@ -68,11 +68,11 @@ test('HF_ENABLED_MODELS decides first; then the keys', async () => {
   expect(r['nb/pro']).toMatchObject({ available: true });
 });
 
-test('no Veo transport under VIDEO_GOOGLE_ONLY: the film rows close; with the fallbacks allowed they stay open', async () => {
+test('no Veo transport: the film rows stay closed even with legacy flags', async () => {
   (veoTransport as jest.Mock).mockReturnValue(null);
   expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: false, reason: 'not_configured' });
   process.env.VIDEO_GOOGLE_ONLY = '0';
-  expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: true });
+  expect((await rows('video'))['google/veo-3.1-lite']).toMatchObject({ available: false, reason: 'not_configured' });
 });
 
 test('music follows the engines\' own status: no key → not_configured, breaker open → busy', async () => {

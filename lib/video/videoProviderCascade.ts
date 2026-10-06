@@ -1,3 +1,4 @@
+import { assertProviderPermitted, isProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/video/videoProviderCascade.ts
  * =================================
@@ -80,8 +81,9 @@ export function klingJwt(accessKey: string, secretKey: string, nowSec: number): 
 
 export const klingNativeProvider: VideoProvider = {
   name: 'kling-native',
-  isConfigured: (env) => !!firstNonEmpty(env, 'KLING_ACCESS_KEY') && !!firstNonEmpty(env, 'KLING_SECRET_KEY'),
+  isConfigured: (env) => isProviderPermitted('legacy-video', 'video') && !!firstNonEmpty(env, 'KLING_ACCESS_KEY') && !!firstNonEmpty(env, 'KLING_SECRET_KEY'),
   async submit(input, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const ak = firstNonEmpty(env, 'KLING_ACCESS_KEY')!;
     const sk = firstNonEmpty(env, 'KLING_SECRET_KEY')!;
     const base = firstNonEmpty(env, 'KLING_API_BASE') ?? 'https://api.klingai.com';
@@ -109,6 +111,7 @@ export const klingNativeProvider: VideoProvider = {
     return id;
   },
   async poll(taskId, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const ak = firstNonEmpty(env, 'KLING_ACCESS_KEY');
     const sk = firstNonEmpty(env, 'KLING_SECRET_KEY');
     if (!ak || !sk) return { status: 'failed', url: null, error: 'kling-native not configured' };
@@ -134,8 +137,9 @@ export const klingNativeProvider: VideoProvider = {
 // ── 2. Luma Dream Machine ───────────────────────────────────────────────────────────────────────────
 export const lumaProvider: VideoProvider = {
   name: 'luma',
-  isConfigured: (env) => !!firstNonEmpty(env, 'LUMA_API_KEY'),
+  isConfigured: (env) => isProviderPermitted('legacy-video', 'video') && !!firstNonEmpty(env, 'LUMA_API_KEY'),
   async submit(input, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const key = firstNonEmpty(env, 'LUMA_API_KEY')!;
     const base = firstNonEmpty(env, 'LUMA_API_BASE') ?? 'https://api.lumalabs.ai';
     const model = firstNonEmpty(env, 'LUMA_MODEL') ?? 'ray-2';
@@ -158,6 +162,7 @@ export const lumaProvider: VideoProvider = {
     return j.id;
   },
   async poll(taskId, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const key = firstNonEmpty(env, 'LUMA_API_KEY');
     if (!key) return { status: 'failed', url: null, error: 'luma not configured' };
     const base = firstNonEmpty(env, 'LUMA_API_BASE') ?? 'https://api.lumalabs.ai';
@@ -181,8 +186,9 @@ export const lumaProvider: VideoProvider = {
 // The poll path is endpoint-specific (GET /v2/{endpoint}/{id}), so submit() returns "<endpoint>::<id>".
 export const ltxProvider: VideoProvider = {
   name: 'ltx',
-  isConfigured: (env) => resolveLtxApiKey(env) !== null,
+  isConfigured: (env) => isProviderPermitted('legacy-video', 'video') && resolveLtxApiKey(env) !== null,
   async submit(input, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const key = resolveLtxApiKey(env);
     if (!key) throw new Error('ltx not configured');
     const base = firstNonEmpty(env, 'LTX_API_BASE') ?? 'https://api.ltx.video';
@@ -208,6 +214,7 @@ export const ltxProvider: VideoProvider = {
     return `${endpoint}::${j.id}`;
   },
   async poll(taskId, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const key = resolveLtxApiKey(env);
     if (!key) return { status: 'failed', url: null, error: 'ltx not configured' };
     const base = firstNonEmpty(env, 'LTX_API_BASE') ?? 'https://api.ltx.video';
@@ -233,8 +240,9 @@ export const ltxProvider: VideoProvider = {
 // ── 4. Replicate → Kling (the VERIFIED production path) — the absolute final fallback ────────────────
 export const replicateKlingProvider: VideoProvider = {
   name: 'replicate-kling',
-  isConfigured: (env) => !!firstNonEmpty(env, 'REPLICATE_API_TOKEN'),
+  isConfigured: (env) => isProviderPermitted('legacy-video', 'video') && !!firstNonEmpty(env, 'REPLICATE_API_TOKEN'),
   async submit(input, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const token = firstNonEmpty(env, 'REPLICATE_API_TOKEN')!;
     const model = firstNonEmpty(env, 'KLING_MODEL', 'REPLICATE_VIDEO_MODEL') ?? 'kwaivgi/kling-v2.1-master';
     const isV16 = /v1[.\-]6/.test(model);
@@ -259,6 +267,7 @@ export const replicateKlingProvider: VideoProvider = {
     return j.id;
   },
   async poll(taskId, env, fetchImpl) {
+    assertProviderPermitted('legacy-video', 'video');
     const token = firstNonEmpty(env, 'REPLICATE_API_TOKEN');
     if (!token) return { status: 'failed', url: null, error: 'replicate not configured' };
     try {

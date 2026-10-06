@@ -9,6 +9,8 @@
  * the ledger and the idempotency store are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../../../../lib/ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001' }));
+
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({
@@ -60,7 +62,7 @@ const post = (body: unknown) =>
     body: JSON.stringify(body),
   });
 
-const GOOGLE = { base64: 'iVBORw0KGgo=', mimeType: 'image/png', model: 'gemini-3.1-flash-image' };
+const GOOGLE = { base64: 'iVBORw0KGgo=', mimeType: 'image/png', model: 'imagen-4.0-generate-001' };
 const googleArgs = () => (generateGeminiImage as jest.Mock).mock.calls[0][0] as {
   prompt: string; aspectRatio?: string; imageSize?: string; model?: string; referenceImages?: string[];
 };
@@ -83,7 +85,7 @@ test('Google answers: its bytes are hosted with their own type, the reseller and
   const res = await POST(post({ prompt: 'A red bicycle in Old Tbilisi', aspectRatio: '9:16', jobId: 'job-1' }));
   expect(res.status).toBe(200);
   const body = await res.json();
-  expect(body).toMatchObject({ success: true, url: 'https://signed.example/out.png', model: 'Google gemini-3.1-flash-image' });
+  expect(body).toMatchObject({ success: true, url: 'https://signed.example/out.png', model: 'Google imagen-4.0-generate-001' });
   expect(generateNanoBananaImage).not.toHaveBeenCalled();
   expect(generateGrokImage).not.toHaveBeenCalled();
   expect(generateFluxProImage).not.toHaveBeenCalled();
@@ -98,60 +100,48 @@ test('Google answers: its bytes are hosted with their own type, the reseller and
   expect(recordProviderResult).toHaveBeenCalledWith('gemini-image', true);
 });
 
-test('the endpoint picks the Google model and size: Auto standard → Nano Banana 2 at 1K, ultra → Pro at 4K, a JPEG stays a .jpg', async () => {
+test('the endpoint picks the Google model and size: legacy quality aliases → configured Imagen at its default size, a JPEG stays a .jpg', async () => {
   await POST(post({ prompt: 'p', quality: 'standard', jobId: 'a' }));
-  expect(googleArgs()).toMatchObject({ model: 'gemini-3.1-flash-image', imageSize: '1K' });
+  expect(googleArgs()).toMatchObject({ model: 'imagen-4.0-generate-001', imageSize: '1K' });
 
   (generateGeminiImage as jest.Mock).mockClear();
-  (generateGeminiImage as jest.Mock).mockResolvedValue({ ...GOOGLE, mimeType: 'image/jpeg', model: 'gemini-3-pro-image' });
+  (generateGeminiImage as jest.Mock).mockResolvedValue({ ...GOOGLE, mimeType: 'image/jpeg', model: 'imagen-4.0-generate-001' });
   (uploadAndSign as jest.Mock).mockClear();
   await POST(post({ prompt: 'p', quality: 'ultra', jobId: 'b' }));
-  expect(googleArgs()).toMatchObject({ model: 'gemini-3-pro-image', imageSize: '4K' });
+  expect(googleArgs()).toMatchObject({ model: 'imagen-4.0-generate-001', imageSize: '1K' });
   const [, path, , mime] = (uploadAndSign as jest.Mock).mock.calls[0];
   expect(mime).toBe('image/jpeg');
   expect(path).toMatch(/\.jpg$/);
 });
 
-test('an edit hands Google the hosted photo as its reference', async () => {
-  (uploadAndSign as jest.Mock).mockResolvedValueOnce('https://signed.example/ref.jpg').mockResolvedValue('https://signed.example/out.png');
+test('reference edits are unavailable before hosting, billing or any engine call', async () => {
   const res = await POST(post({ prompt: 'make it night', referenceImage: 'data:image/jpeg;base64,/9j/4AAQ', jobId: 'e' }));
-  expect(res.status).toBe(200);
-  expect(googleArgs().referenceImages).toEqual(['https://signed.example/ref.jpg']);
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ code: 'image_edit_unavailable' });
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(uploadAndSign).not.toHaveBeenCalled();
+  expect(generateGeminiImage).not.toHaveBeenCalled();
 });
 
-test('the first Google model misses (a 404 on this key) → the other Nano Banana makes it, the reseller never runs', async () => {
-  (generateGeminiImage as jest.Mock).mockResolvedValueOnce(null).mockResolvedValueOnce({ ...GOOGLE, model: 'gemini-3-pro-image' });
-  const res = await POST(post({ prompt: 'p', quality: 'standard', jobId: 'f' }));
-  expect(res.status).toBe(200);
-  const models = (generateGeminiImage as jest.Mock).mock.calls.map((c) => (c[0] as { model: string }).model);
-  expect(models).toEqual(['gemini-3.1-flash-image', 'gemini-3-pro-image']);
-  expect(generateNanoBananaImage).not.toHaveBeenCalled();
-  expect((await res.json()).model).toBe('Google gemini-3-pro-image');
-});
-
-test('both Google models miss → the reseller runs exactly as before', async () => {
+test('a Google miss does not submit another job or call a prohibited fallback', async () => {
   (generateGeminiImage as jest.Mock).mockResolvedValue(null);
   const res = await POST(post({ prompt: 'p', jobId: 'm' }));
-  expect(res.status).toBe(200);
-  expect(generateGeminiImage).toHaveBeenCalledTimes(2);
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  expect(recordProviderResult).toHaveBeenCalledWith('gemini-image', false);
-  expect((await res.json()).model).toMatch(/^NanoBananaAI /);
-});
-
-test('every engine misses → 502 and the credit comes back', async () => {
-  (generateGeminiImage as jest.Mock).mockResolvedValue(null);
-  (generateNanoBananaImage as jest.Mock).mockRejectedValue(new Error('The current credits are insufficient. Please top up.'));
-  const res = await POST(post({ prompt: 'p', jobId: 'x' }));
   expect(res.status).toBe(502);
+  expect(generateGeminiImage).toHaveBeenCalledTimes(1);
+  expect(generateNanoBananaImage).not.toHaveBeenCalled();
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
   expect(await res.json()).toMatchObject({ success: false, code: 'provider_unavailable', refunded: true });
   expect(refundCredits).toHaveBeenCalledTimes(1);
 });
 
-test('an open Google breaker skips straight to the reseller', async () => {
+test('an open Google breaker cannot fall back to a prohibited provider', async () => {
   (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'gemini-image');
   const res = await POST(post({ prompt: 'p', jobId: 'k' }));
-  expect(res.status).toBe(200);
+  expect(res.status).toBe(502);
   expect(generateGeminiImage).not.toHaveBeenCalled();
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
+  expect(generateNanoBananaImage).not.toHaveBeenCalled();
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
+  expect(refundCredits).toHaveBeenCalledTimes(1);
 });

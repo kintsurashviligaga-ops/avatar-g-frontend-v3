@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 /**
  * lipsyncNode — the post-render lip-sync adapter stage.
  *
@@ -115,6 +116,7 @@ export function replicateLipsyncProvider(cfg: { token: string; model?: string; f
   return {
     name: `replicate:${model}`,
     async sync(req: LipsyncRequest): Promise<LipsyncProviderResult> {
+      if (!isProviderPermitted('replicate', 'lipsync')) return { ok: false, error: 'provider_deprecated' };
       const deadline = Date.now() + budgetMs;
       try {
         const createRes = await doFetch(`https://api.replicate.com/v1/models/${model}/predictions`, {
@@ -159,6 +161,7 @@ export function heygenLipsyncProvider(cfg: { apiKey: string; fetchImpl?: typeof 
   return {
     name: 'heygen:talking-photo',
     async sync(req: LipsyncRequest): Promise<LipsyncProviderResult> {
+      if (!isProviderPermitted('heygen', 'lipsync')) return { ok: false, error: 'provider_deprecated' };
       // A rendered film master is a VIDEO → HeyGen is the wrong tool → decline so Replicate handles it.
       if (/\.(mp4|webm|mov|m4v|mkv)(\?|#|$)/i.test(req.clipUrl)) {
         return { ok: false, error: 'heygen_requires_image_not_video' };

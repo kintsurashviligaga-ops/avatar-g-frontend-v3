@@ -1,3 +1,4 @@
+import { deprecatedProviderCredential, assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * OpenRouter Provider for Claude Opus 4.6 Fast
  * Uses OpenRouter's chat completion endpoint and prefers the configured OpenRouter key.
@@ -13,7 +14,7 @@ export class OpenRouterProvider implements ITextGenerationProvider {
   private defaultModel = process.env.OPENROUTER_MODEL || 'claude-opus-4.6-fast';
 
   constructor() {
-    this.apiKey = process.env.OPENROUTER_API_KEY || null;
+    this.apiKey = deprecatedProviderCredential('OPENROUTER_API_KEY') || null;
   }
 
   isAvailable(): boolean {
@@ -52,6 +53,7 @@ export class OpenRouterProvider implements ITextGenerationProvider {
   }
 
   async generateText(input: TextGenerationInput): Promise<TextGenerationResult> {
+    assertProviderPermitted('openrouter');
     if (!this.apiKey) {
       throw new Error('OpenRouter API key not configured');
     }
@@ -94,6 +96,7 @@ export class OpenRouterProvider implements ITextGenerationProvider {
   }
 
   async *streamText(input: TextGenerationInput): AsyncGenerator<string> {
+    assertProviderPermitted('openrouter');
     if (!this.apiKey) {
       throw new Error('OpenRouter API key not configured');
     }

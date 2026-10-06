@@ -17,7 +17,7 @@ export type { MusicEngineId };
 export type MusicEnginePref = 'auto' | MusicEngineId;
 
 /** The route's failover order — also the order the picker lists them in. */
-export const MUSIC_ENGINE_CHAIN: readonly MusicEngineId[] = ['lyria', 'udio', 'elevenlabs-music', 'musicgen'];
+export const MUSIC_ENGINE_CHAIN: readonly MusicEngineId[] = ['lyria'];
 
 export function isMusicEngineId(v: unknown): v is MusicEngineId {
   return typeof v === 'string' && (MUSIC_ENGINE_CHAIN as readonly string[]).includes(v);
@@ -54,25 +54,25 @@ export function parseMusicEnginesStatus(raw: unknown): MusicEnginesStatus | null
   const r = raw as { engines?: unknown; references?: unknown; chain?: unknown };
   if (!r.engines || typeof r.engines !== 'object') return null;
   const src = r.engines as Record<string, unknown>;
-  const engines = {} as Record<MusicEngineId, MusicEngineStatusEntry>;
+  const engines: Record<MusicEngineId, MusicEngineStatusEntry> = { lyria: { configured: false, busy: false, controls: 'prompt' }, udio: { configured: false, busy: false, controls: 'prompt' }, 'elevenlabs-music': { configured: false, busy: false, controls: 'prompt' }, musicgen: { configured: false, busy: false, controls: 'prompt' } };
   for (const id of MUSIC_ENGINE_CHAIN) {
     const e = src[id];
     if (!e || typeof e !== 'object') return null;
     const o = e as { configured?: unknown; busy?: unknown; controls?: unknown };
     engines[id] = { configured: bool(o.configured), busy: bool(o.busy), controls: o.controls === 'native' ? 'native' : 'prompt' };
   }
-  const refs = (r.references && typeof r.references === 'object' ? r.references : {}) as { cover?: unknown; voice?: unknown };
   const chain = Array.isArray(r.chain) ? r.chain.filter(isMusicEngineId) : [];
-  return { engines, references: { cover: bool(refs.cover), voice: bool(refs.voice) }, chain };
+  return { engines, references: { cover: false, voice: false }, chain };
 }
 
 export type EngineAvailability = 'ready' | 'busy' | 'off' | 'unknown';
 
 /** unknown = the status has not loaded (or failed): nothing but Auto is offered then. */
 export function engineAvailability(status: MusicEnginesStatus | null, id: MusicEngineId): EngineAvailability {
+  if (!isMusicEngineId(id)) return 'off';
   if (!status) return 'unknown';
   const e = status.engines[id];
-  if (!e.configured) return 'off';
+  if (!e || !e.configured) return 'off';
   return e.busy ? 'busy' : 'ready';
 }
 

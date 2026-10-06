@@ -10,6 +10,9 @@
  * no spend — every provider, the ledger and the idempotency store are mocked.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../../../../lib/ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001' }));
+jest.mock('../../../../lib/ai/geminiImage', () => ({ ...jest.requireActual('../../../../lib/ai/geminiImage'), generateGeminiImage: jest.fn(async () => null) }));
+
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({
@@ -41,7 +44,7 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
+import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { generateGrokImage } from '../../../../lib/ai/xaiImage';
 import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
@@ -67,23 +70,23 @@ beforeEach(() => {
 afterEach(() => fetchSpy.mockRestore());
 
 /** What NanoBanana was handed, and the prompt the prompt-only fallbacks were handed. */
-async function render(style: unknown): Promise<{ nb: { prompt: string; style?: string }; grokPrompt: string; fluxPrompt: string }> {
+async function render(style: unknown): Promise<{ nb: { prompt: string; style?: string } }> {
   const res = await POST(post({ prompt: PROMPT, quality: 'standard', aspectRatio: '1:1', ...(style === undefined ? {} : { style }) }));
   expect(res.status).toBe(502); // every leg was made to miss
   expect(refundCredits).toHaveBeenCalledTimes(1);
   expect(fetchSpy).not.toHaveBeenCalled();
-  expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
+  expect(generateGeminiImage).toHaveBeenCalledTimes(1);
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
   return {
-    nb: (generateNanoBananaImage as jest.Mock).mock.calls[0][0],
-    grokPrompt: (generateGrokImage as jest.Mock).mock.calls[0][0],
-    fluxPrompt: (generateFluxProImage as jest.Mock).mock.calls[0][0],
+    nb: (generateGeminiImage as jest.Mock).mock.calls[0][0],
   };
 }
 
 test('free text is capped at 80 characters, stripped of bidi/zero-width characters and the smuggled line, and NOT forwarded as the provider style', async () => {
-  const { nb, grokPrompt, fluxPrompt } = await render(HOSTILE);
+  const { nb } = await render(HOSTILE);
   expect(nb.style).toBeUndefined();
-  for (const p of [nb.prompt, grokPrompt, fluxPrompt]) {
+  for (const p of [nb.prompt]) {
     expect(p).toBe(`${PROMPT}, ${CLEAN}`);
     expect(p).not.toMatch(/[‮​\n]/);
   }
@@ -93,13 +96,13 @@ test('free text is capped at 80 characters, stripped of bidi/zero-width characte
 
 test('a known label expands to its directive and is the only thing forwarded as the provider style', async () => {
   const { nb } = await render('Anime');
-  expect(nb.style).toBe('Anime');
+  expect(nb.style).toBeUndefined();
   expect(nb.prompt).toBe(`${PROMPT}, anime style, manga, cel shaded, studio ghibli quality, clean line art`);
 });
 
 test('a known label wrapped in invisible characters is still recognised once cleaned', async () => {
   const { nb } = await render('​Oil Painting‬\n');
-  expect(nb.style).toBe('Oil Painting');
+  expect(nb.style).toBeUndefined();
   expect(nb.prompt).toContain('oil painting, brushstrokes');
 });
 

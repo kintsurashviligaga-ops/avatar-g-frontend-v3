@@ -21,6 +21,6 @@ export async function GET() {
   const status = computeVideoProviderStatus();
   return NextResponse.json({
     ...status,
-    note: 'Names-only. `ready` is true when a non-empty value exists under an accepted LTX alias or REPLICATE_API_TOKEN; secret values are never read into the response. A present key can still be rejected by the provider at call time.',
+    note: 'Veo configuration readiness only. This does not verify model access, generation or billing credit coverage',
   });
 }

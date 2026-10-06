@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import Replicate from "replicate";
 
 // useFileOutput:false → `replicate.run()` returns the model's RAW output (a plain
@@ -6,7 +7,10 @@ import Replicate from "replicate";
 // instances whose `String(...)` is NOT the URL ("[object Object]") — so the old
 // `String(output[0])` produced a broken music URL and the film stitched SILENT.
 // This is the root-cause fix for "no music in the video".
-const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN!, useFileOutput: false });
+function getReplicate() {
+  assertProviderPermitted('replicate');
+  return new Replicate({ auth: process.env.REPLICATE_API_TOKEN!, useFileOutput: false });
+}
 
 /**
  * Robustly extract a playable audio URL from a Replicate output, tolerant of
@@ -58,6 +62,7 @@ const finiteIn = (v: unknown, lo: number, hi: number): number | undefined =>
   typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : undefined;
 
 export async function generateMusic(prompt: string, duration: number = 30, sampling: MusicgenSampling = {}) {
+  assertProviderPermitted('replicate');
   try {
     const temperature = finiteIn(sampling.temperature, 0.1, 2);
     // ⚠️ A WHOLE NUMBER ON THE WIRE. The pinned version types classifier_free_guidance as `int`, and Replicate checks
@@ -65,7 +70,7 @@ export async function generateMusic(prompt: string, duration: number = 30, sampl
     // counts toward the shared `musicgen` breaker. Rounded here, whatever the caller computed.
     const cfg = finiteIn(sampling.classifierFreeGuidance, 0, 10);
     const guidance = cfg === undefined ? undefined : Math.round(cfg);
-    const output = (await replicate.run(
+    const output = (await getReplicate().run(
       "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
       {
         input: {
@@ -107,6 +112,7 @@ export async function generateVoiceSong(
   lyrics: string,
   opts: { voiceUrl?: string; songUrl?: string; instrumentalUrl?: string; accompaniment?: boolean } = {},
 ) {
+  assertProviderPermitted('replicate');
   try {
     const clean = lyrics.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 360);
     if (!clean) throw new Error('lyrics are required to sing');
@@ -118,7 +124,7 @@ export async function generateVoiceSong(
     if (opts.voiceUrl) input.voice_file = opts.voiceUrl;
     if (opts.songUrl) input.song_file = opts.songUrl;
     if (opts.instrumentalUrl) input.instrumental_file = opts.instrumentalUrl;
-    const output = (await replicate.run(
+    const output = (await getReplicate().run(
       'minimax/music-01:0254c7e2f54315b667dbae03da7c155822ba29ffe0457be5bc246d564be486bd',
       { input },
     )) as unknown;
@@ -139,8 +145,9 @@ export async function generateVoiceSong(
  * requested style/prompt. `melodyUrl` must be an https URL Replicate can fetch.
  */
 export async function generateMusicCover(prompt: string, melodyUrl: string, duration: number = 30) {
+  assertProviderPermitted('replicate');
   try {
-    const output = (await replicate.run(
+    const output = (await getReplicate().run(
       "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
       {
         input: {
@@ -169,7 +176,8 @@ export async function generateMusicCover(prompt: string, melodyUrl: string, dura
  * `imageUrl` must be an https URL Replicate can fetch; returns the upscaled URL.
  */
 export async function upscaleImage(imageUrl: string, scale: 2 | 4 = 2): Promise<string> {
-  const output = (await replicate.run(
+  assertProviderPermitted('replicate');
+  const output = (await getReplicate().run(
     'nightmareai/real-esrgan:b3ef194191d13140337468c916c2c5b96dd0cb06dffc032a022a31807f6a5ea8',
     { input: { image: imageUrl, scale, face_enhance: false } },
   )) as unknown;

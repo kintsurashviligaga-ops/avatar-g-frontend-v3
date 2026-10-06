@@ -1,10 +1,4 @@
 /** @jest-environment node */
-let mockKey = '';
-jest.mock('../orchestrator/gemini-guard', () => ({
-  ...jest.requireActual('../orchestrator/gemini-guard'),
-  resolveGeminiKey: jest.fn(() => mockKey),
-}));
-
 import { hasLyriaProvider, lyriaModel } from './lyriaMusic';
 
 /**
@@ -16,9 +10,9 @@ import { hasLyriaProvider, lyriaModel } from './lyriaMusic';
  * so every case below is decided by the flag alone (plus one case for the missing key).
  */
 describe('lyriaMusic gating', () => {
-  const orig = process.env.LYRIA_ENABLED;
-  beforeEach(() => { mockKey = 'test-gemini-key'; });
-  afterEach(() => { if (orig === undefined) delete process.env.LYRIA_ENABLED; else process.env.LYRIA_ENABLED = orig; });
+  const origEnv = { ...process.env };
+  beforeEach(() => { process.env = { ...origEnv, GEMINI_TRANSPORT: 'gemini', GEMINI_API_KEY: 'test-gemini-key' }; });
+  afterEach(() => { process.env = { ...origEnv }; });
 
   it('is ON by default when a key is present and the flag is unset', () => {
     delete process.env.LYRIA_ENABLED;
@@ -40,7 +34,7 @@ describe('lyriaMusic gating', () => {
   });
 
   it('is OFF without a Gemini key, whatever the flag says', () => {
-    mockKey = '';
+    delete process.env.GEMINI_API_KEY;
     for (const v of [undefined, '1']) {
       if (v === undefined) delete process.env.LYRIA_ENABLED; else process.env.LYRIA_ENABLED = v;
       expect(hasLyriaProvider()).toBe(false);

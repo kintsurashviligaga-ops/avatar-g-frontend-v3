@@ -18,6 +18,7 @@
 // ── Mocks (declared before the module under test is imported; jest hoists jest.mock above the imports) ────────────
 
 jest.mock('server-only', () => ({}));
+jest.mock('../ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001', generateImagenImages: jest.fn(async () => null) }));
 
 jest.mock('../veo/engine', () => ({
   createVeoClip: jest.fn(),
@@ -64,6 +65,7 @@ jest.mock('../video/videoProviderCascade', () => ({
   shouldUseNativeCascade: jest.fn(() => true),
 }));
 
+import { generateImagenImages, hasGeminiImagenProvider } from '../ai/geminiImagen';
 import { ServiceManager, type ServiceManagerRequest, type ServiceManagerResponse } from './ServiceManager';
 import { createVeoClip, deliverableUrl, pollVeoClip, veoTransport } from '../veo/engine';
 import { downloadGeminiVideo } from '../veo/geminiTransport';
@@ -470,7 +472,7 @@ describe('execute() → the budget guard is priced on what Veo will actually ren
     expect(actualCost({ success: true, metadata: {} as never })).toBeUndefined();
   });
 
-  it('a non-Google-only render keeps the flat video line (no Veo price is invented for it)', async () => {
+  it('VIDEO_GOOGLE_ONLY=0 still uses the Veo budget and duration grid', async () => {
     process.env.VIDEO_GOOGLE_ONLY = '0';
     // Let the multi-vendor path fail fast and locally: no Replicate token, no LTX key.
     const saved = { r: process.env.REPLICATE_API_TOKEN, l: process.env.LTX_VIDEO_API_KEY, l2: process.env.LTX_API_KEY };
@@ -478,12 +480,65 @@ describe('execute() → the budget guard is priced on what Veo will actually ren
     try {
       await new ServiceManager().execute(videoRequest({ veoTier: 'fast', duration: '5' })).catch(() => undefined);
       const opts = lastGuardOpts();
-      expect(opts.unitCostUsd).toBeUndefined();
-      expect(opts.units).toBe(5); // guardVideoSeconds: ceil, clamped to 4–10
+      expect(opts.unitCostUsd).toBe(0.1);
+      expect(opts.units).toBe(6); // Veo rounds the requested 5 seconds to its supported duration grid
     } finally {
       if (saved.r !== undefined) process.env.REPLICATE_API_TOKEN = saved.r;
       if (saved.l !== undefined) process.env.LTX_VIDEO_API_KEY = saved.l;
       if (saved.l2 !== undefined) process.env.LTX_API_KEY = saved.l2;
     }
+  });
+});
+
+
+describe('v32 media policy before billing or network', () => {
+  const imageRequest: ServiceManagerRequest = { sessionId: SESSION, serviceContext: 'image', intent: 'image_generation', userPrompt: 'A bicycle' };
+  it('an avatar request cannot bypass Veo policy via HeyGen', async () => {
+    const res = await new ServiceManager().execute({ ...videoRequest({ provider: 'heygen' }), intent: 'avatar_generation', serviceContext: 'avatar' });
+    expect(res).toMatchObject({ success: false, metadata: { code: 'avatar_unavailable' } });
+    expect(guardMock).not.toHaveBeenCalled();
+    expect(createVeoClipMock).not.toHaveBeenCalled();
+    expectNoOtherEngine();
+  });
+  it('unavailable Veo does not reserve a budget or enrich a prompt', async () => {
+    veoTransportMock.mockReturnValue(null);
+    const res = await new ServiceManager().execute(videoRequest({}));
+    expect(res).toMatchObject({ success: false, metadata: { veoFailure: { reason: 'not_configured' } } });
+    expect(guardMock).not.toHaveBeenCalled();
+    expect(createVeoClipMock).not.toHaveBeenCalled();
+    expectNoOtherEngine();
+  });
+  it.each(['data:image/png;base64,AA==', 'invalid-image'])('a reference %p cannot turn into a charged unrelated image', async imageUrl => {
+    const res = await new ServiceManager().execute({ ...imageRequest, imageUrl });
+    expect(res).toMatchObject({ success: false, metadata: { code: 'image_edit_unavailable' } });
+    expect(guardMock).not.toHaveBeenCalled();
+    expect(generateImagenImages).not.toHaveBeenCalled();
+    expectNoOtherEngine();
+  });
+  it('missing Imagen credentials are refused before the budget guard', async () => {
+    (hasGeminiImagenProvider as jest.Mock).mockReturnValueOnce(false);
+    const res = await new ServiceManager().execute(imageRequest);
+    expect(res.success).toBe(false);
+    expect(guardMock).not.toHaveBeenCalled();
+    expectNoOtherEngine();
+  });
+  it('an Imagen miss never activates an explicit retired image provider', async () => {
+    const res = await new ServiceManager().execute({ ...imageRequest, selectedOptions: { provider: 'replicate' } });
+    expect(res.success).toBe(false);
+    expect(generateImagenImages).toHaveBeenCalledTimes(1);
+    expectNoOtherEngine();
+  });
+  it('a successful Imagen result identifies Google', async () => {
+    (generateImagenImages as jest.Mock).mockResolvedValueOnce([{ buffer: Buffer.from('image'), mimeType: 'image/png' }]);
+    uploadBufMock.mockResolvedValueOnce('https://x.supabase.co/image.png');
+    const res = await new ServiceManager().execute(imageRequest);
+    expect(res).toMatchObject({ success: true, provider: 'google', metadata: { provider: 'google', imageProvider: 'gemini-imagen' } });
+    expectNoOtherEngine();
+  });
+  it('legacy prediction polling cannot make a prohibited API request', async () => {
+    const res = await new ServiceManager().poll('old-replicate-id', SESSION);
+    expect(res).toMatchObject({ success: false, metadata: { code: 'provider_deprecated' } });
+    expect(pollVeoClipMock).not.toHaveBeenCalled();
+    expectNoOtherEngine();
   });
 });

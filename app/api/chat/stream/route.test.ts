@@ -109,10 +109,10 @@ test('Google-only (the default): a Gemini failure never falls to Anthropic, and 
   expect(body).toContain('temporarily unavailable');
 });
 
-test('AI_GOOGLE_ONLY=0 restores the Anthropic leg after a Gemini failure', async () => {
+test('AI_GOOGLE_ONLY=0 cannot restore the Anthropic leg', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
   mockGemini.mockImplementationOnce(failed);
-  const ev = await events(await POST(post(turn)));
-  expect(mockAnthropic).toHaveBeenCalled();
-  expect(ev).toEqual(expect.arrayContaining([{ token: 'claude says hi' }, expect.objectContaining({ done: true, provider: 'anthropic' })]));
+  const body = await (await POST(post(turn))).text();
+  expect(mockAnthropic).not.toHaveBeenCalled();
+  expect(body).toContain('temporarily unavailable');
 });

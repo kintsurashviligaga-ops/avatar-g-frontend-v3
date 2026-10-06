@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/video/remixOps.ts
  * =====================
@@ -534,6 +535,7 @@ export async function stabilizeClip(videoUrl: string): Promise<string | null> {
 // Returns null on no-token / restriction / timeout so the caller falls back. ~9 min poll cap.
 const FACESWAP_MODEL_VERSION = (process.env.REPLICATE_FACESWAP_VERSION || '11b6bf0f4e14d808f655e87e5448233cceff10a45f659d71539cafb7163b2e84').trim();
 export async function roopFaceSwapVideo(targetVideoUrl: string, swapImageUrl: string): Promise<string | null> {
+  assertProviderPermitted('replicate');
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !targetVideoUrl || !swapImageUrl) return null;
   if (!/^https?:\/\//i.test(targetVideoUrl) || !/^https?:\/\//i.test(swapImageUrl)) return null; // replicate fetches by URL
@@ -606,6 +608,7 @@ const I2V_NEGATIVE = 'blurry, distorted, watermark, text, low quality, deformed'
  * kenBurnsClip. Self-contained create+poll (bounded to ~4 min).
  */
 export async function klingI2v(startImage: string, prompt: string, aspect: '9:16' | '16:9' | '1:1' = '9:16', referenceImages?: string[]): Promise<string | null> {
+  assertProviderPermitted('replicate');
   const token = (process.env.REPLICATE_API_TOKEN || '').trim();
   if (!token || !startImage) return null;
   // CIRCUIT BREAKER (Task 5.3): Kling melting down (3 hard fails in cooldown) → fail-FAST so the

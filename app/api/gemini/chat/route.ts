@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateWithGemini, type GeminiAttachment } from '@/lib/gemini/client';
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'budget_exhausted' }, { status: 503 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!googleAiConfigured()) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
     }
 

@@ -18,9 +18,8 @@ import 'server-only';
 const DEEPSEEK_BASE = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '');
 export const DEEPSEEK_DEFAULT_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat'; // → DeepSeek-V3 on the direct API
 
-function deepseekKey(): string {
-  return String(process.env.DEEPSEEK_API_KEY || '').trim();
-}
+/** Deprecated by the mandatory v32 provider allowlist. */
+function deepseekKey(): string { return ''; }
 
 export function deepseekConfigured(): boolean {
   return deepseekKey().length > 0;

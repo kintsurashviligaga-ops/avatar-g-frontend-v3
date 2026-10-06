@@ -1,8 +1,10 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 export async function generateVideo(
   prompt: string,
   imageUrl?: string,
   duration: number = 4
 ) {
+  assertProviderPermitted('runway');
   try {
     const response = await fetch("https://api.runwayml.com/v1/generations", {
       method: "POST",
@@ -103,7 +105,7 @@ const RUNWAY_RETRY_BACKOFF_MS = 600;
 const runwaySleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function runwayKey(): string {
-  return String(process.env.RUNWAY_API_KEY || process.env.RUNWAYML_API_SECRET || '').trim();
+  return ''; // Retired by the mandatory provider policy.
 }
 
 /** True when a Runway key is provisioned. The film cascade only tries Runway when this is true. */
@@ -152,6 +154,7 @@ export interface RunwayCreateArgs {
  * NEVER throws.
  */
 export async function createRunwayI2V(args: RunwayCreateArgs): Promise<{ id: string } | null> {
+  assertProviderPermitted('runway');
   const key = runwayKey();
   if (!key || !args.promptImage || !/^https?:\/\/|^data:image\//i.test(args.promptImage)) return null;
   const doFetch = args.fetchImpl ?? fetch;
@@ -224,6 +227,7 @@ export type RunwayPollResult = { status: 'succeeded' | 'failed' | 'processing'; 
  * unknown outcome so the poll loop keeps waiting rather than dropping a good render. NEVER throws.
  */
 export async function pollRunwayTask(taskId: string, fetchImpl?: typeof fetch): Promise<RunwayPollResult> {
+  assertProviderPermitted('runway');
   const key = runwayKey();
   if (!key || !taskId) return { status: 'failed', url: null };
   const doFetch = fetchImpl ?? fetch;

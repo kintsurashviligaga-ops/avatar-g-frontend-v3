@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import 'server-only';
 
 /**
@@ -67,7 +68,7 @@ export async function groundedWebSearch(
   if (q.length < 2) return { ok: false, code: 'bad_request' };
 
   const apiKey = resolveGeminiKey();
-  if (!apiKey) return { ok: false, code: 'auth' };
+  if (!googleAiConfigured()) return { ok: false, code: 'auth' };
 
   const models = chatModelChain('standard');
   const inputText = `${GROUNDED_SEARCH_SYSTEM} ${q}`;

@@ -8,6 +8,9 @@
  * re-host, no spend — every provider, the ledger and the idempotency store are mocked.
  */
 jest.mock('server-only', () => ({}));
+jest.mock('../../../../lib/ai/geminiImagen', () => ({ hasGeminiImagenProvider: jest.fn(() => true), geminiImagenModel: () => 'imagen-4.0-generate-001' }));
+jest.mock('../../../../lib/ai/geminiImage', () => ({ ...jest.requireActual('../../../../lib/ai/geminiImage'), generateGeminiImage: jest.fn(async () => null) }));
+
 
 jest.mock('../../../../lib/supabase/server', () => ({ authedClientFromRequest: jest.fn(async () => ({ user: { id: 'user-1' } })) }));
 jest.mock('../../../../lib/api/guard', () => ({
@@ -39,7 +42,7 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
+import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
 import { generateGrokImage } from '../../../../lib/ai/xaiImage';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { STYLE_SUFFIXES } from '../../../../lib/studio/composeImagePrompt';
@@ -65,19 +68,19 @@ beforeEach(() => {
 afterEach(() => fetchSpy.mockRestore());
 
 /** What NanoBanana and the prompt-only fallback were handed, and the mutex key's payload. */
-async function render(extra: Record<string, unknown>): Promise<{ prompt: string; style?: string; grok: string; key: Record<string, unknown> }> {
+async function render(extra: Record<string, unknown>): Promise<{ prompt: string; style?: string; key: Record<string, unknown> }> {
   const res = await POST(post({ prompt: PROMPT, quality: PRODUCT.quality, aspectRatio: PRODUCT.aspect, style: PRODUCT.style, ...extra }));
   expect(res.status).toBe(502); // every leg was made to miss
   expect(fetchSpy).not.toHaveBeenCalled();
-  const nb = (generateNanoBananaImage as jest.Mock).mock.calls[0][0] as { prompt: string; style?: string };
-  return { prompt: nb.prompt, style: nb.style, grok: (generateGrokImage as jest.Mock).mock.calls[0][0], key: (hashPayload as jest.Mock).mock.calls[0][0] };
+  const nb = (generateGeminiImage as jest.Mock).mock.calls[0][0] as { prompt: string; style?: string };
+  return { prompt: nb.prompt, style: nb.style, key: (hashPayload as jest.Mock).mock.calls[0][0] };
 }
 
 test('the Product card adds its studio suffix after the style directive — to every engine', async () => {
   const r = await render({ templateId: 'product' });
   expect(r.prompt).toBe(`${PROMPT}, ${STYLE_SUFFIXES.Photorealistic}, ${PRODUCT_SUFFIX}`);
-  expect(r.grok).toBe(r.prompt);
-  expect(r.style).toBe('Photorealistic'); // the provider style field is unchanged by a template
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(r.style).toBeUndefined(); // the provider style field is unchanged by a template
   expect(r.key.t).toBe('product');        // the mutex keys on the id it applied
 });
 

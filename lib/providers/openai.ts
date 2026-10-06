@@ -1,3 +1,4 @@
+import { deprecatedProviderCredential, assertProviderPermitted } from '@/lib/providers/policy';
 /**
  * OpenAI Provider for Text Generation
  * Supports GPT-4 and other OpenAI models
@@ -38,7 +39,7 @@ export class OpenAIProvider implements ITextGenerationProvider {
   private client: OpenAI | null = null;
 
   constructor() {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = deprecatedProviderCredential('OPENAI_API_KEY');
     if (apiKey) {
       this.client = new OpenAI({ apiKey });
     }
@@ -49,6 +50,7 @@ export class OpenAIProvider implements ITextGenerationProvider {
   }
 
   async generateText(input: TextGenerationInput): Promise<TextGenerationResult> {
+    assertProviderPermitted('openai');
     if (!this.client) {
       throw new Error('OpenAI API key not configured');
     }
@@ -104,6 +106,7 @@ export class OpenAIProvider implements ITextGenerationProvider {
   }
 
   async *streamText(input: TextGenerationInput): AsyncGenerator<string> {
+    assertProviderPermitted('openai');
     if (!this.client) {
       throw new Error('OpenAI API key not configured');
     }

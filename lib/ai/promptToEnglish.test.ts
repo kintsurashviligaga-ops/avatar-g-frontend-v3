@@ -91,11 +91,12 @@ describe('the Google-only pipeline translates with Gemini (docs/VEO_ENGINE.md §
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('VIDEO_GOOGLE_ONLY=0 keeps the Anthropic translator (no key here → the original)', async () => {
+  it('VIDEO_GOOGLE_ONLY=0 cannot restore the Anthropic translator', async () => {
     process.env.VIDEO_GOOGLE_ONLY = '0';
     process.env.GEMINI_API_KEY = 'test-key';
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn(async () => new Response('{}', { status: 503 })) as unknown as typeof fetch;
     await expect(promptToEnglish('ქართული ტექსტი', 'video')).resolves.toBe('ქართული ტექსტი');
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(String((global.fetch as jest.Mock).mock.calls[0][0])).toContain('generativelanguage.googleapis.com');
   });
 });

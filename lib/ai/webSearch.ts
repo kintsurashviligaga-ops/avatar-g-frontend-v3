@@ -21,7 +21,8 @@ export async function webSearch(
   query: string,
   opts?: { maxResults?: number },
 ): Promise<WebSearchResponse | null> {
-  const apiKey = process.env.TAVILY_API_KEY?.trim();
+  // Tavily is retired; Google grounding is provided by lib/agent/tools/googleSearch.
+  const apiKey: string | undefined = undefined;
   const q = query.trim();
   if (!apiKey || q.length < 3) return null;
 

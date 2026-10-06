@@ -1,12 +1,26 @@
 import { createServer } from 'node:http';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.VOICE_V2V_PORT || 8787);
 const APP_HTTP_BASE = String(process.env.APP_HTTP_BASE || 'http://localhost:3000').replace(/\/$/, '');
-const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '').trim();
-const LLM_MODEL = String(process.env.VOICE_V2V_LLM_MODEL || 'gpt-4o-mini').trim();
+const WORKER_TOKEN = String(process.env.WORKER_INTERNAL_TOKEN || '').trim();
+const SESSION_SECRET = String(process.env.VOICE_V2V_WS_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+if (!WORKER_TOKEN || !SESSION_SECRET) throw new Error('Voice relay requires worker authentication and a session signing secret');
+
+function validSessionToken(request) {
+  try {
+    const token = new URL(request.url, 'http://localhost').searchParams.get('token') || '';
+    const [payload, signature, extra] = token.split('.');
+    if (!payload || !signature || extra) return false;
+    const expected = createHmac('sha256', SESSION_SECRET).update(payload).digest();
+    const supplied = Buffer.from(signature, 'base64url');
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return false;
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    return Boolean(decoded.userId && decoded.sessionId && Number(decoded.exp) > Date.now());
+  } catch { return false; }
+}
 
 function parseJsonSafe(raw) {
   try {
@@ -72,6 +86,7 @@ async function callRealtimeTranscribe(payload) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-internal-worker-token': WORKER_TOKEN,
     },
     body: JSON.stringify(payload),
   });
@@ -89,6 +104,7 @@ async function callRealtimeTts(payload) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-internal-worker-token': WORKER_TOKEN,
     },
     body: JSON.stringify(payload),
   });
@@ -146,76 +162,26 @@ async function transcribePartialIfNeeded(session) {
 }
 
 async function* streamAssistantTokens({ language, transcript, history, abortSignal }) {
-  if (!OPENAI_API_KEY) {
-    yield language === 'ka-GE'
-      ? 'მესმის. მოთხოვნას ვამუშავებ.'
-      : language === 'ru-RU'
-      ? 'Понял. Обрабатываю запрос.'
-      : 'Understood. Processing your request.';
-    return;
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(`${APP_HTTP_BASE}/api/agent-g/calls/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      stream: true,
-      temperature: 0.35,
-      messages: [
-        {
-          role: 'system',
-          content: language === 'ka-GE'
-            ? 'You are Agent G. Reply in concise spoken Georgian and keep it natural.'
-            : language === 'ru-RU'
-            ? 'You are Agent G. Reply in concise spoken Russian and keep it natural.'
-            : 'You are Agent G. Reply in concise spoken English and keep it natural.',
-        },
-        ...history.slice(-6),
-        {
-          role: 'user',
-          content: transcript,
-        },
-      ],
-    }),
+    headers: { 'Content-Type': 'application/json', 'x-internal-worker-token': WORKER_TOKEN },
+    body: JSON.stringify({ text: transcript, language, history: history.slice(-6) }),
     signal: abortSignal,
   });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`llm_http_${response.status}`);
-  }
-
+  if (!response.ok || !response.body) throw new Error(`llm_http_${response.status}`);
   const decoder = new TextDecoder();
   let buffered = '';
-
   for await (const chunk of response.body) {
     buffered += decoder.decode(chunk, { stream: true });
-
-    let breakIndex = buffered.indexOf('\n');
-    while (breakIndex !== -1) {
-      const line = buffered.slice(0, breakIndex).trim();
-      buffered = buffered.slice(breakIndex + 1);
-      breakIndex = buffered.indexOf('\n');
-
-      if (!line.startsWith('data:')) {
-        continue;
-      }
-
-      const payload = line.slice(5).trim();
-      if (!payload || payload === '[DONE]') {
-        continue;
-      }
-
-      const parsed = parseJsonSafe(payload);
-      const token = parsed?.choices?.[0]?.delta?.content;
-      if (token) {
-        yield token;
-      }
+    let end;
+    while ((end = buffered.indexOf('\n')) !== -1) {
+      const parsed = parseJsonSafe(buffered.slice(0, end));
+      buffered = buffered.slice(end + 1);
+      if (parsed?.error) throw new Error(parsed.error);
+      if (typeof parsed?.token === 'string') yield parsed.token;
     }
   }
+
 }
 
 function interruptSession(session, reason = 'interrupt') {
@@ -339,7 +305,7 @@ async function processSpeechTurn(session) {
 }
 
 const server = createServer();
-const wss = new WebSocketServer({ server, path: '/realtime' });
+const wss = new WebSocketServer({ server, path: '/realtime', maxPayload: 1024 * 1024, verifyClient: ({ req }) => validSessionToken(req) });
 
 wss.on('connection', (ws) => {
   const session = {
@@ -358,8 +324,8 @@ wss.on('connection', (ws) => {
   send(ws, {
     type: 'session.ready',
     sessionId: session.sessionId,
-    sttProvider: process.env.VOICE_V2V_STT_PROVIDER || 'openai',
-    ttsProvider: process.env.VOICE_V2V_TTS_PROVIDER || 'elevenlabs',
+    sttProvider: 'gemini',
+    ttsProvider: 'elevenlabs',
   });
 
   ws.on('message', async (raw) => {

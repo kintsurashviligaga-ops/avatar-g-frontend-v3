@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 // POST /api/video/generate - Generate a video from avatar + track + prompt
 
 import { createClient } from '@supabase/supabase-js';
@@ -40,6 +41,9 @@ const getSupabaseClient = () => {
 };
 
 export async function POST(request: NextRequest) {
+  if (!isProviderPermitted('runway', 'video')) {
+    return NextResponse.json({ success: false, code: 'provider_deprecated', error: 'provider_deprecated' }, { status: 410 });
+  }
   const rateLimitError = await checkRateLimit(request, RATE_LIMITS.WRITE);
   if (rateLimitError) return rateLimitError;
 

@@ -104,12 +104,12 @@ describe('submitGeminiVeo', () => {
     expect(body.parameters.personGeneration).toBe('allow_all');
   });
 
-  it('draws the key from the GEMINI_API_KEYS pool when the singular var is unset', async () => {
+  it('rejects deprecated key pools when the canonical key is unset', async () => {
     delete process.env.GEMINI_API_KEY;
     process.env.GEMINI_API_KEYS = 'AQ.pool-first, AQ.pool-second';
     fetchMock.mockResolvedValueOnce(json(200, { name: OP }));
-    await submitGeminiVeo(REQ, { model: MODEL });
-    expect(call().init.headers?.['x-goog-api-key']).toBe('AQ.pool-first');
+    expect(await submitGeminiVeo(REQ, { model: MODEL })).toMatchObject({ ok: false, reason: 'not_configured' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('no key → not_configured, nothing sent', async () => {

@@ -32,9 +32,11 @@ describe('geminiKeyPresent', () => {
     delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_API_KEYS; delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     expect(geminiKeyPresent()).toBe(false);
   });
-  test('true when any alias set', () => {
+  test('ignores deprecated key aliases', () => {
+    delete process.env.GEMINI_API_KEY;
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'k';
-    expect(geminiKeyPresent()).toBe(true);
+    process.env.GEMINI_API_KEYS = 'legacy-pool';
+    expect(geminiKeyPresent()).toBe(false);
   });
 });
 

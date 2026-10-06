@@ -1,3 +1,4 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { NextRequest, NextResponse } from 'next/server';
 import { analyzeRoomImage } from '@/lib/gemini/image-analysis';
 import { RATE_LIMITS, checkRateLimit } from '@/lib/api/rate-limit';
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!googleAiConfigured()) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 503 });
     }
 

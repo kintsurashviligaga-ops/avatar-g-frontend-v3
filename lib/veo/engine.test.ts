@@ -56,6 +56,7 @@ const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(
 const IMG_URL = 'https://cdn.example.com/frames/scene-1.png?X-Amz-Signature=SIGNED-SECRET';
 
 const ENV_NAMES = [
+  'GEMINI_TRANSPORT',
   'VEO_TRANSPORT', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_VEO_ENABLED',
   'VEO_NATIVE_CAMERA_CONTROL', 'VIDEO_GOOGLE_ONLY', 'VEO_MODEL_STANDARD', 'VEO_MODEL_FAST', 'VEO_MODEL_LITE',
   'GEMINI_VEO_MODEL', 'VEO_VERTEX_PERSON_GENERATION',
@@ -169,7 +170,8 @@ describe('veoTransport', () => {
     ['pinned vertex', 'vertex', true, false, undefined, 'vertex'],
     ['pinned vertex, not configured → null, never a quiet Gemini render', 'vertex', false, true, undefined, null],
     ['pin is trimmed and case-insensitive', ' VERTEX ', true, true, undefined, 'vertex'],
-    ['an unknown pin is auto', 'auto', false, true, undefined, 'gemini'],
+    ['an unknown pin refuses all transports', 'auto', false, true, undefined, null],
+    ['an explicitly empty pin refuses all transports', '', true, true, undefined, null],
   ])('%s', (_label, pin, vertex, key, enabled, expected) => {
     setEnv({
       ...(pin !== undefined ? { VEO_TRANSPORT: pin } : {}),
@@ -179,6 +181,25 @@ describe('veoTransport', () => {
     vertexConfigMock.mockReturnValue(vertex ? CFG : null);
     expect(veoTransport()).toBe(expected);
   });
+});
+
+test.each(['typo', 'auto', ''])('invalid Google selector %s refuses even a funded Veo configuration', async (selector) => {
+  useVertex();
+  process.env.GEMINI_API_KEY = KEY;
+  process.env.GEMINI_TRANSPORT = selector;
+  expect(veoTransport()).toBeNull();
+  expect((await createVeoClip(input({ prompt: 'a forest' }))).outcome).toMatchObject({ ok: false, reason: 'not_configured' });
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+test('Vertex billing selection overrides a valid stale Developer Veo selector but cannot override an invalid one', () => {
+  useVertex();
+  process.env.GEMINI_API_KEY = KEY;
+  process.env.GEMINI_TRANSPORT = ' Vertex ';
+  process.env.VEO_TRANSPORT = 'gemini';
+  expect(veoTransport()).toBe('vertex');
+  process.env.VEO_TRANSPORT = 'typo';
+  expect(veoTransport()).toBeNull();
 });
 
 describe('transportOf', () => {
@@ -195,11 +216,11 @@ describe('transportOf', () => {
 });
 
 describe('isGoogleOnly', () => {
-  it('is ON by default and OFF only when explicitly disabled', () => {
+  it('is mandatory even when legacy environment flags request disabling it', () => {
     expect(isGoogleOnly()).toBe(true);
     for (const v of ['0', 'false', 'no', 'off']) {
       process.env.VIDEO_GOOGLE_ONLY = v;
-      expect(isGoogleOnly()).toBe(false);
+      expect(isGoogleOnly()).toBe(true);
     }
     process.env.VIDEO_GOOGLE_ONLY = '1';
     expect(isGoogleOnly()).toBe(true);

@@ -1,92 +1,39 @@
-/**
- * lib/ai/lyriaMusic.ts — Google **Lyria 3** music generation via the Gemini **Interactions API**, wired as
- * the OPTIONAL PRIMARY music/song engine. Unlike Lyria 2 (instrumental, Vertex-only), Lyria 3 runs on the
- * Gemini API with a plain API key AND generates FULL SONGS — vocals, timed lyrics (via [Verse]/[Chorus]
- * tags), and instrumental arrangements. So it serves BOTH instrumental tracks and vocal songs. Cost bills to
- * the Gemini API account tied to the key.
- *
- * Endpoint (VERIFIED LIVE against this project's Gemini key, 2026-07-25):
- *   POST https://generativelanguage.googleapis.com/v1beta/interactions
- *   header  x-goog-api-key: <GEMINI_API_KEY>
- *   body    { model, input: "<prompt string>", response_format: { type: "audio" } }
- *   → SYNCHRONOUS 200 { status:"completed", steps:[…] }; the audio lands as base64 MP3 in a
- *     steps[].content[] block: { type:"audio", mime_type:"audio/mpeg", data:"<base64>" }.
- *   (Probed: /interactions → 200 with a ~900KB audio/mpeg blob; the models:*:generateContent
- *    path 503s for lyria-3 — so /interactions is the CORRECT surface, not :generateContent.)
- *
- * LIVE-BY-DEFAULT when a Gemini key is present (the endpoint + models are verified working); a single
- * kill-switch LYRIA_ENABLED=0 reverts instantly to the Udio→ElevenLabs→MusicGen chain. EVERY path is
- * null/failure-safe: no key/access, quota, timeout, or a contract drift returns null → the caller's
- * failover serves the track. (Lyria 3 is a PREVIEW model — transient 503s simply fall back and retry.)
- */
+import 'server-only';
+import { googleAiConfigured, googleTransport, requireVertexAiConfig } from '@/lib/ai/google/transport';
+import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
-const INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
-const GEN_TIMEOUT_MS = 150_000; // bounded under the route's 300s ceiling
-
-/** Default Lyria 3 model (env-overridable via LYRIA_MODEL). `clip` is the RELIABLE default — verified live
- *  200 + audio (audio/mpeg). `pro` gives full-length arrangements but currently 500s under "high demand",
- *  which would defeat the point (fall back to Udio) — switch to it once it's stable. */
+/** Google Lyria is the exclusive music provider. The selected transport never silently changes billing accounts.
+ * Vertex contract: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music
+ */
 export function lyriaModel(): string {
-  return (process.env.LYRIA_MODEL || 'lyria-3-clip-preview').trim();
+  const model = process.env.LYRIA_MODEL?.trim() || 'lyria-3-clip-preview';
+  if (!['lyria-3-clip-preview', 'lyria-3-pro-preview'].includes(model)) throw new Error('Unsupported Lyria model');
+  return model;
 }
-
-/** True iff a Gemini key is present AND Lyria isn't explicitly killed (LYRIA_ENABLED=0/false/no/off).
- *  LIVE-BY-DEFAULT: the /interactions surface + clip model are verified working, so the presence of a key
- *  is enough to make Lyria the primary music engine; the flag exists only as an instant revert. */
 export function hasLyriaProvider(): boolean {
-  return isEnabledByDefault(process.env.LYRIA_ENABLED) && !!resolveGeminiKey();
+  return isEnabledByDefault(process.env.LYRIA_ENABLED) && googleAiConfigured();
 }
+export interface LyriaTrack { base64: string; mime: string }
 
-export interface LyriaTrack {
-  base64: string;
-  mime: string;
-}
-
-// A big base64-ish string (the audio payload is a large base64 blob; short strings are ids/text/mime).
-function looksBase64(s: unknown): s is string {
-  return typeof s === 'string' && s.length > 2000 && /^[A-Za-z0-9+/_=-]+$/.test(s.slice(0, 160));
-}
-
-/**
- * Find the audio payload in a Lyria 3 Interactions response. The exact shape of the audio field is not
- * stable across the preview (it may be output_audio, a steps[].model_output inlineData block, or a
- * candidates/parts inlineData), so rather than hard-code one path we DEEP-SEARCH for the LARGEST base64
- * blob in the whole response — for an audio response that blob IS the track — and pick up a sibling mime.
- */
-function extractAudio(j: unknown): LyriaTrack | null {
-  if (j == null || typeof j !== 'object') return null;
-  let best: string | null = null;
-  let bestMime = 'audio/wav';
-  const stack: unknown[] = [j];
-  while (stack.length) {
-    const cur = stack.pop();
-    if (cur == null) continue;
-    if (Array.isArray(cur)) { for (const v of cur) stack.push(v); continue; }
-    if (typeof cur !== 'object') continue;
-    const obj = cur as Record<string, unknown>;
-    const siblingMime = (obj.mimeType || obj.mime_type || obj.mime) as string | undefined;
-    for (const [k, v] of Object.entries(obj)) {
-      if (looksBase64(v)) {
-        if (!best || (v as string).length > best.length) {
-          best = v as string;
-          if (typeof siblingMime === 'string' && siblingMime.startsWith('audio')) bestMime = siblingMime;
-          else if (/audio|wav|mp3|mpeg|ogg/i.test(k)) bestMime = 'audio/wav';
-        }
-      } else if (v && typeof v === 'object') {
-        stack.push(v);
-      }
-    }
+/** Accept only audio blocks, never an unrelated large image or text field. */
+function extractAudio(value: unknown): LyriaTrack | null {
+  if (!value || typeof value !== 'object') return null;
+  if (Array.isArray(value)) {
+    for (const item of value) { const audio = extractAudio(item); if (audio) return audio; }
+    return null;
   }
-  return best ? { base64: best, mime: bestMime } : null;
+  const obj = value as Record<string, unknown>;
+  const mime = obj.mime_type ?? obj.mimeType;
+  if (typeof mime === 'string' && mime.startsWith('audio/') && typeof obj.data === 'string' && obj.data.length > 0) {
+    return { base64: obj.data, mime };
+  }
+  for (const child of Object.values(obj)) { const audio = extractAudio(child); if (audio) return audio; }
+  return null;
 }
 
-/**
- * Ask the budget guard whether one more track fits. Isolated + fail-open so a guard fault can never make
- * music generation unavailable — the same contract the rest of this module keeps.
- */
 async function musicWithinBudget(): Promise<boolean> {
   try {
     const { canProceed } = await import('@/lib/services/billing/BillingGuard');
@@ -109,55 +56,39 @@ async function recordMusicUsage(): Promise<void> {
   }
 }
 
-/**
- * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss so the
- * caller falls back to the next music provider. Never throws.
- */
+/** A failed generation returns null; callers must report/refund it instead of trying a prohibited vendor. */
 export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean }): Promise<LyriaTrack | null> {
-  const key = resolveGeminiKey();
-  if (!key || !args.prompt?.trim()) return null;
-
-  // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
-  // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
-  // caller's existing fallback chain handles it without a new error path. `guardedCall` books the cost
-  // only on success, and fails OPEN if the guard itself is broken.
-  if (!(await musicWithinBudget())) {
-    // eslint-disable-next-line no-console
-    console.warn('[lyria] refused by the platform budget guard → caller falls back');
-    return null;
-  }
-
-  // Lyria 3 is steered entirely via the prompt string: append instrumental intent, or the custom lyrics with
-  // the [Verse]/[Chorus] section tags the model understands, so a vocal song is sung with those words.
+  if (!hasLyriaProvider() || !args.prompt?.trim()) return null;
+  if (!(await musicWithinBudget())) return null;
   let input = args.prompt.trim().slice(0, 1500);
   if (args.instrumental) input += '. Instrumental, no vocals.';
   else if (args.lyrics?.trim()) input += `\n\nLyrics:\n${args.lyrics.trim().slice(0, 1500)}`;
-
   try {
-    const res = await fetch(INTERACTIONS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      cache: 'no-store',
-      body: JSON.stringify({ model: lyriaModel(), input, response_format: { type: 'audio' } }),
-      signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
+    const vertex = googleTransport() === 'vertex';
+    const url = vertex
+      ? `https://aiplatform.googleapis.com/v1beta1/projects/${encodeURIComponent(requireVertexAiConfig().projectId)}/locations/global/interactions`
+      : 'https://generativelanguage.googleapis.com/v1beta/interactions';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (vertex) headers.Authorization = `Bearer ${await getVertexAccessToken(false)}`;
+    else headers['x-goog-api-key'] = resolveGeminiKey()!;
+    const res = await fetch(url, {
+      method: 'POST', headers, cache: 'no-store', redirect: 'manual',
+      body: JSON.stringify(vertex
+        ? { model: lyriaModel(), input: [{ type: 'text', text: input }] }
+        : { model: lyriaModel(), input, response_format: { type: 'audio' } }),
+      signal: AbortSignal.timeout(150_000),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', status: res.status, detail: body, model: lyriaModel() });
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'none', status: res.status, detail: 'Music generation failed', model: lyriaModel() });
       return null;
     }
-    const j = await res.json().catch(() => null);
-    const audio = extractAudio(j);
-    if (!audio) {
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: 'response carried no audio', model: lyriaModel() });
-      return null;
-    }
-    // Book the spend AFTER a real track came back — a failed/empty generation costs us nothing, and
-    // charging the envelope for it would slowly starve the budget on a misbehaving provider.
-    void recordMusicUsage();
+    const payload = await res.json().catch(() => null);
+    if (payload?.status && payload.status !== 'completed') return null;
+    const audio = extractAudio(payload);
+    if (audio) void recordMusicUsage();
     return audio;
-  } catch (e) {
-    reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
+  } catch {
+    reportGeminiFallback({ leg: 'lyria', fallbackTo: 'none', detail: 'Music transport failed' });
     return null;
   }
 }

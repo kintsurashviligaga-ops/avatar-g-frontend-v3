@@ -17,9 +17,8 @@ const ATLAS_BASE = (process.env.ATLAS_BASE_URL || 'https://api.atlascloud.ai').r
 // Exact ids from the live model list — the short "deepseek-v3" 404s ("not found").
 export const ATLAS_DEFAULT_MODEL = process.env.ATLAS_MODEL || 'deepseek-ai/DeepSeek-V3-0324';
 
-function atlasKey(): string {
-  return String(process.env.ATLAS_API_KEY || process.env.ATLAS_KLING_API_KEY || '').trim();
-}
+/** Deprecated by the mandatory v32 provider allowlist. */
+function atlasKey(): string { return ''; }
 
 export function atlasConfigured(): boolean {
   return atlasKey().length > 0;

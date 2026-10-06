@@ -1,3 +1,5 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
+import { hasGeminiImagenProvider } from '@/lib/ai/geminiImagen';
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
@@ -14,7 +16,7 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
 import { generateGrokImage } from '@/lib/ai/xaiImage';
 import { generateFluxProImage } from '@/lib/ai/fluxImage';
-import { GEMINI_PRO_IMAGE_MODEL, generateGeminiImage, geminiFrameModel, geminiImageForEndpoint } from '@/lib/ai/geminiImage';
+import { generateGeminiImage, geminiImageForEndpoint } from '@/lib/ai/geminiImage';
 import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -46,7 +48,7 @@ export const maxDuration = 300;
 const IMAGE_ENDPOINTS: ReadonlySet<string> = new Set(
   catalogueFor('image').flatMap((e) => (e.wire.runner === 'image' ? Object.values(e.wire.endpoints) : [])),
 );
-const NO_DEPLOYMENT_GATE: DeploymentProbe = { higgsfield: false, studioV2: false, hfEnabled: () => false, film: false, music: null };
+const NO_DEPLOYMENT_GATE: DeploymentProbe = { image: true, higgsfield: false, studioV2: false, hfEnabled: () => false, film: false, music: null };
 
 type ImageModelPick = { ok: true; modelId: string; endpoint: NanoBananaEndpoint } | { ok: false };
 
@@ -191,6 +193,13 @@ export async function POST(req: NextRequest) {
     // client claims. Null (no `studio`, or an unknown kind) leaves the render exactly as the image tool's controls say.
     const refGiven = typeof body.referenceImage === 'string' && body.referenceImage.trim() !== '';
     const shoot = resolveShootDirective(body.studio, { hasReference: refGiven });
+    // Stop unsupported edits and missing credentials before billing or provider calls.
+    if (refGiven || !hasGeminiImagenProvider()) {
+      const code = refGiven ? 'image_edit_unavailable' : 'provider_unavailable';
+      return NextResponse.json({ success: false, code, error: code,
+        message: refGiven ? 'Image editing is not available right now.' : 'Image generation is not available right now.' }, { status: 503 });
+    }
+
 
     // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). This route was "free-to-try" for guests: a paid image render plus a
     // Gemini translation leg, behind nothing but a spoofable per-IP limit. The studio already stops a guest before
@@ -320,7 +329,7 @@ export async function POST(req: NextRequest) {
       const g = geminiImageForEndpoint(endpoint);
       // The other Nano Banana once, before the reseller: a key whose project does not serve one of the two (a 404) still
       // makes the picture. Each attempt is time-boxed so the reseller legs keep their window inside maxDuration.
-      for (const m of [g.model, g.model === GEMINI_PRO_IMAGE_MODEL ? geminiFrameModel() : GEMINI_PRO_IMAGE_MODEL]) {
+      for (const m of [g.model]) {
         const img = await generateGeminiImage({
           prompt: finalPrompt,
           aspectRatio: body.aspectRatio ?? '1:1',
@@ -344,7 +353,7 @@ export async function POST(req: NextRequest) {
     // fail-FAST to the Grok backup, instead of burning ~50s on a known-bad provider. Every outcome
     // is recorded so the breaker opens/closes itself. Fail-open: no Redis → primary always runs.
     const nbTripped = !backupB64 && (await isProviderTripped('nanobanana').catch(() => false));
-    if (!backupB64 && !nbTripped) {
+    if (isProviderPermitted('nanobanana', 'image') && !backupB64 && !nbTripped) {
       try {
         // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
         // than timing out; 1K finishes far sooner and exits the poll early.
@@ -381,7 +390,7 @@ export async function POST(req: NextRequest) {
     // reference image is set, e.g. "edit this photo") they'd ignore the source and return an UNRELATED
     // new image — which we'd deliver as success and still charge. When only NanoBanana can honor the
     // reference and it missed, skip these legs so the 502-refund path below fires instead.
-    if (!providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
+    if (isProviderPermitted('xai', 'image') && !providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
       try {
         const grok = await generateGrokImage(finalPrompt);
         if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
@@ -398,7 +407,7 @@ export async function POST(req: NextRequest) {
     // image coming through instead of a 502. Fail-open: null → the 502 below fires as before.
     // Same edit-guard as the Grok leg: FLUX 1.1 Pro is prompt-only, so it must not substitute an unrelated
     // image for an edit request — skip it when a reference image is set so the 502-refund path fires.
-    if (!providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('flux-pro').catch(() => false))) {
+    if (isProviderPermitted('replicate', 'image') && !providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('flux-pro').catch(() => false))) {
       try {
         const flux = await generateFluxProImage(finalPrompt, body.aspectRatio ?? '1:1');
         if (flux) { providerUrl = flux; model = 'FLUX 1.1 Pro'; await recordProviderResult('flux-pro', true).catch(() => {}); }

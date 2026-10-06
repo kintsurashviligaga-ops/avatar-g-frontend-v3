@@ -1,3 +1,4 @@
+import { isProviderPermitted } from '@/lib/providers/policy';
 /**
  * lib/elevenlabs/audioIsolation.ts
  * ================================
@@ -20,6 +21,7 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
  * or null on any failure. On-brand: ElevenLabs powers the song AND the isolation.
  */
 export async function isolateVocal(audioUrl: string, signal?: AbortSignal): Promise<string | null> {
+  if (!isProviderPermitted('elevenlabs', 'music')) return null;
   const key = (process.env.ELEVENLABS_API_KEY || '').trim();
   if (!key || !audioUrl) return null;
   try {

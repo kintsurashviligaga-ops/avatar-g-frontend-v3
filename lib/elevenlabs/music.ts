@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import 'server-only';
 import { withRetry } from '@/lib/utils/withRetry';
 import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
@@ -12,7 +13,7 @@ const EL_MUSIC_URL = 'https://api.elevenlabs.io/v1/music';
 
 /** True when an ElevenLabs key is configured (Music shares the account key). */
 export function hasElevenLabsMusicKey(env: NodeJS.ProcessEnv = process.env): boolean {
-  return Boolean((env.ELEVENLABS_API_KEY || '').trim());
+  void env; return false;
 }
 
 export interface ComposeMusicInput {
@@ -36,6 +37,7 @@ export interface ComposeMusicResult {
  * body so the caller can fall back (MusicGen) and the film is never silently broken.
  */
 export async function composeElevenLabsMusic(input: ComposeMusicInput): Promise<ComposeMusicResult> {
+  assertProviderPermitted('elevenlabs', 'music');
   const key = (process.env.ELEVENLABS_API_KEY || '').trim();
   if (!key) throw new Error('ELEVENLABS_API_KEY is not configured');
   const music_length_ms = Math.max(3_000, Math.min(600_000, Math.round(input.lengthMs)));

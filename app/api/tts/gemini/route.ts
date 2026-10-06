@@ -1,3 +1,4 @@
+import { googleAiConfigured, googleModelFetch } from '@/lib/ai/google/transport';
 /**
  * app/api/tts/gemini/route.ts — one-shot read-aloud via Gemini NATIVE audio (no ElevenLabs).
  *
@@ -21,7 +22,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { ttsModel } from '@/lib/ai/google/models';
@@ -144,8 +144,7 @@ export async function POST(req: NextRequest) {
     if (capped) return capped;
   }
 
-  const apiKey = resolveGeminiKey();
-  if (!apiKey) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
+  if (!googleAiConfigured()) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
   const model = ttsModel();
   const profile = resolveAgentProfile({
@@ -168,9 +167,8 @@ export async function POST(req: NextRequest) {
   // occasionally still slips into answer-mode, so we retry.
   const callGemini = async (): Promise<Response> =>
     // The key rides in a header — a key in a URL lands in every proxy and access log on the way to Google.
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    googleModelFetch(model, 'generateContent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Read aloud verbatim: ${text}` }] }],
         generationConfig: {

@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import 'server-only';
 
 /**
@@ -23,10 +24,7 @@ function xaiImageModel(): string {
 }
 
 /** True when XAI_API_KEY is provisioned — the Grok image leg can fire. */
-export function hasXaiApiKey(env: NodeJS.ProcessEnv = process.env): boolean {
-  const v = env.XAI_API_KEY;
-  return typeof v === 'string' && v.trim().length > 0;
-}
+export function hasXaiApiKey(_env: NodeJS.ProcessEnv = process.env): boolean { return false; }
 
 export interface GrokImageResult {
   /** A hosted image URL (xAI default), or null when only base64 came back. */
@@ -46,6 +44,7 @@ export interface GrokImageResult {
  * synchronous request.
  */
 export async function generateGrokImage(prompt: string, signal?: AbortSignal): Promise<GrokImageResult | null> {
+  assertProviderPermitted('xai');
   const key = process.env.XAI_API_KEY?.trim();
   if (!key) return null;
 

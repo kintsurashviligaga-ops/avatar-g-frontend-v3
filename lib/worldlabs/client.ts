@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import 'server-only';
 
 type JsonRecord = Record<string, unknown>;
@@ -243,6 +244,7 @@ export async function generateWorldLabsInterior(input: {
   prompt: string;
   filename?: string;
 }): Promise<WorldLabsOutput> {
+  assertProviderPermitted('worldlabs');
   const apiKey = getWorldLabsApiKey();
   const endpoint = getWorldLabsEndpoint();
   const { mimeType, bytes } = parseDataUrl(input.imageDataUrl);

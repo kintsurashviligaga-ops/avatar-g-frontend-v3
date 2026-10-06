@@ -1,5 +1,5 @@
 /**
- * lib/services/dubbing/elevenScribe.ts — ElevenLabs **Scribe** speech-to-text (Master Task §2.3.2 leg 2).
+ * lib/services/dubbing/elevenScribe.ts — Google timed speech-to-text (legacy Scribe-compatible shape) (Master Task §2.3.2 leg 2).
  *
  * The one provider in the dubbing pipeline with no existing client in this repo. Everything else is reused:
  * TTS + alignment from lib/elevenlabs/ttsTimestamps, vocal/background separation from
@@ -11,11 +11,9 @@
  * WIRE CONTRACT: POST /v1/speech-to-text, multipart form with `file` + `model_id=scribe_v1`.
  * `diarize=true` labels speakers, which is what lets a two-hander be dubbed with two voices instead of one.
  */
-import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
+import { transcribeTimedAudio } from './geminiTranscribe';
 import type { DubbingSegment } from './dubbingPlan';
 
-const STT_URL = 'https://api.elevenlabs.io/v1/speech-to-text';
-const TIMEOUT_MS = 180_000;
 
 export interface ScribeResult {
   /** Whole-transcript text, for the translation prompt's context. */
@@ -74,56 +72,10 @@ export function groupWordsIntoSegments(words: readonly ScribeWord[]): DubbingSeg
  * Transcribe an audio file. `audio` is the extracted track (see the pipeline's leg 1), not the video —
  * sending a whole mp4 wastes upload time and Scribe only reads the audio anyway.
  */
+/** @deprecated Compatibility name; transcription is Google-only. */
 export async function transcribeWithScribe(
   audio: Buffer,
-  opts: { languageCode?: string | null; diarize?: boolean } = {},
+  opts: { languageCode?: string | null; diarize?: boolean; durationSec?: number } = {},
 ): Promise<ScribeResult | null> {
-  const key = (process.env.ELEVENLABS_API_KEY || '').trim();
-  if (!key || !audio?.byteLength) return null;
-
-  try {
-    return await withElevenLabsSlot(async () => {
-      const form = new FormData();
-      form.append('file', new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }), 'audio.mp3');
-      form.append('model_id', 'scribe_v1');
-      form.append('timestamps_granularity', 'word');
-      // Diarization is what makes multi-voice dubbing possible; without it every speaker gets one voice.
-      form.append('diarize', String(opts.diarize !== false));
-      // Omitted entirely for auto-detect — sending an empty string is a 422.
-      if (opts.languageCode && opts.languageCode !== 'auto') form.append('language_code', opts.languageCode);
-
-      const res = await fetch(STT_URL, {
-        method: 'POST',
-        headers: { 'xi-api-key': key },
-        body: form,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        // eslint-disable-next-line no-console
-        console.warn(`[scribe] http_${res.status}: ${body.slice(0, 240)}`);
-        return null;
-      }
-      const j = (await res.json().catch(() => null)) as
-        | { text?: unknown; words?: unknown; language_code?: unknown }
-        | null;
-      if (!j) return null;
-
-      const words = Array.isArray(j.words) ? (j.words as ScribeWord[]) : [];
-      const segments = groupWordsIntoSegments(words);
-      const text = typeof j.text === 'string' ? j.text : segments.map((s) => s.text).join(' ');
-      // No usable transcript is a failure, not an empty success — dubbing silence produces a silent video.
-      if (!segments.length && !text.trim()) return null;
-
-      return {
-        text,
-        segments,
-        detectedLanguage: typeof j.language_code === 'string' ? j.language_code : null,
-      };
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn('[scribe] threw:', err instanceof Error ? err.message : err);
-    return null;
-  }
+  return transcribeTimedAudio(audio, opts);
 }

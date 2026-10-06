@@ -32,75 +32,36 @@ beforeEach(() => {
   for (const k of Object.keys(process.env)) if (/^(UDIO|ELEVEN|REPLICATE|MUSIC_)/.test(k)) delete process.env[k];
 });
 
-test('no keys at all: Lyria (a Gemini key is its gate) is the only engine, and no reference path is open', async () => {
-  const s = await musicEnginesStatus(ENV);
-  expect(s.engines.lyria.configured).toBe(true);
-  expect(s.engines.udio.configured).toBe(false);
-  expect(s.engines['elevenlabs-music'].configured).toBe(false);
-  expect(s.engines.musicgen.configured).toBe(false);
-  expect(s.references).toEqual({ cover: false, voice: false });
+test('legacy keys cannot add music engines or enable reference paths', async () => {
+  const s = await musicEnginesStatus(KEYS);
   expect(s.chain).toEqual(['lyria']);
-});
-
-test('every key present: the whole chain in the route\'s order, and the reference paths (Replicate) are open', async () => {
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.chain).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
-  expect(s.references).toEqual({ cover: true, voice: true });
-});
-
-test('MUSIC_PROVIDER=elevenlabs drops Udio from the chain, exactly as the route does', async () => {
-  const s = await musicEnginesStatus({ ...KEYS, MUSIC_PROVIDER: 'elevenlabs' });
-  expect(s.engines.udio.configured).toBe(false);
-  expect(s.chain).not.toContain('udio');
-});
-
-test('Lyria switched off (no key / LYRIA_ENABLED=0) leaves it out of the chain', async () => {
-  (hasLyriaProvider as jest.Mock).mockReturnValue(false);
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.lyria.configured).toBe(false);
-  expect(s.chain).toEqual(['udio', 'elevenlabs-music', 'musicgen']);
-});
-
-test('an engine whose breaker is open is busy — present, but not in Auto\'s chain', async () => {
-  (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'udio');
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.udio).toMatchObject({ configured: true, busy: true });
-  expect(s.chain).toEqual(['lyria', 'elevenlabs-music', 'musicgen']);
-});
-
-test('the breaker is never read for an engine that is not configured, and a failing read counts as not busy', async () => {
-  (isProviderTripped as jest.Mock).mockRejectedValue(new Error('redis down'));
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.lyria.busy).toBe(false);
-  (isProviderTripped as jest.Mock).mockClear();
-  await musicEnginesStatus(ENV);
-  expect(isProviderTripped).toHaveBeenCalledTimes(1); // only Lyria is configured with an empty env
+  expect(s.references).toEqual({ cover: false, voice: false });
+  for (const id of ['udio', 'elevenlabs-music', 'musicgen'] as const) expect(s.engines[id].configured).toBe(false);
+  expect(isProviderTripped).toHaveBeenCalledTimes(1);
   expect(isProviderTripped).toHaveBeenCalledWith('lyria');
 });
-
-test('controls: MusicGen takes the sliders natively; the text-brief engines only approximate', async () => {
-  const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.engines.musicgen.controls).toBe('native');
-  expect(s.engines.lyria.controls).toBe('prompt');
-  expect(s.engines['elevenlabs-music'].controls).toBe('prompt');
-  expect(s.engines.udio.controls).toBe('prompt'); // native only behind MUSIC_SUNO_PARAMS
-  expect((await musicEnginesStatus({ ...KEYS, MUSIC_SUNO_PARAMS: '1' })).engines.udio.controls).toBe('native');
+test('unconfigured or busy Lyria leaves no active engine', async () => {
+  (hasLyriaProvider as jest.Mock).mockReturnValue(false);
+  expect((await musicEnginesStatus(KEYS)).chain).toEqual([]);
+  expect(isProviderTripped).not.toHaveBeenCalled();
+  (hasLyriaProvider as jest.Mock).mockReturnValue(true);
+  (isProviderTripped as jest.Mock).mockResolvedValue(true);
+  expect((await musicEnginesStatus(KEYS)).chain).toEqual([]);
 });
-
-test('the route answers 200 with a body the client parser accepts — and no key, token or secret in it', async () => {
+test('breaker lookup failure does not invent additional engines', async () => {
+  (isProviderTripped as jest.Mock).mockRejectedValue(new Error('redis down'));
+  expect((await musicEnginesStatus(ENV)).chain).toEqual(['lyria']);
+});
+test('public status is parseable and contains no credentials', async () => {
   Object.assign(process.env, KEYS);
   const res = await GET(req());
   expect(res.status).toBe(200);
-  expect(res.headers.get('cache-control')).toMatch(/private/);
   const text = await res.text();
   for (const secret of Object.values(KEYS)) expect(text).not.toContain(secret);
-  const parsed = parseMusicEnginesStatus(JSON.parse(text));
-  expect(parsed?.chain).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
+  expect(parseMusicEnginesStatus(JSON.parse(text))?.chain).toEqual(['lyria']);
 });
-
-test('a rate-limited caller gets the limiter\'s answer and the breakers are not read', async () => {
+test('rate limited callers cause no breaker reads', async () => {
   (checkRateLimit as jest.Mock).mockResolvedValue(new Response('slow down', { status: 429 }));
-  const res = await GET(req());
-  expect(res.status).toBe(429);
+  expect((await GET(req())).status).toBe(429);
   expect(isProviderTripped).not.toHaveBeenCalled();
 });

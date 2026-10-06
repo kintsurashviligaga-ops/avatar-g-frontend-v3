@@ -1,3 +1,5 @@
+import { googleAiConfigured, googleTransport } from '@/lib/ai/google/transport';
+import { getVertexAccessToken } from '@/lib/veo/vertexAuth';
 /**
  * lib/audio/google-tts.ts
  * =======================
@@ -24,13 +26,7 @@
 import 'server-only';
 
 function googleKey(): string | null {
-  return (
-    process.env.GOOGLE_TTS_API_KEY ||
-    process.env.GOOGLE_API_KEY ||
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    null
-  );
+  return process.env.GEMINI_API_KEY?.trim() || null;
 }
 
 export type TtsGender = 'MALE' | 'FEMALE' | 'NEUTRAL';
@@ -73,7 +69,7 @@ export async function pickBestGoogleVoice(
   gender?: TtsGender,
 ): Promise<string | null> {
   const key = googleKey();
-  if (!key || keyDead) return null;
+  if ((googleTransport() === 'vertex' ? !googleAiConfigured() : !key) || keyDead) return null;
   const cacheKey = `${languageCode}|${gender ?? 'ANY'}`;
   if (voiceCache.has(cacheKey)) return voiceCache.get(cacheKey) ?? null;
 
@@ -83,7 +79,7 @@ export async function pickBestGoogleVoice(
     // The key rides ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports).
     const res = await fetch(
       `https://texttospeech.googleapis.com/v1/voices?languageCode=${encodeURIComponent(languageCode)}`,
-      { headers: { 'x-goog-api-key': key }, redirect: 'manual', signal: ac.signal },
+      { headers: await googleTtsHeaders(key), redirect: 'manual', signal: ac.signal },
     ).finally(() => clearTimeout(to));
     if (!res.ok) {
       // 400/401/403 → the key is bad for Cloud TTS (expired / invalid / API not
@@ -125,7 +121,7 @@ export async function synthesizeGoogleTts(
   opts?: { languageCode?: string; gender?: TtsGender },
 ): Promise<ArrayBuffer | null> {
   const key = googleKey();
-  if (!key || keyDead) return null;
+  if ((googleTransport() === 'vertex' ? !googleAiConfigured() : !key) || keyDead) return null;
   const clean = (text ?? '').trim();
   if (!clean) return null;
 
@@ -149,7 +145,7 @@ export async function synthesizeGoogleTts(
       `https://texttospeech.googleapis.com/v1/text:synthesize`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        headers: { 'Content-Type': 'application/json', ...await googleTtsHeaders(key) },
         redirect: 'manual',
         body: JSON.stringify({
           input: { text: clean.slice(0, 4500) },
@@ -181,4 +177,9 @@ export function genderForPersona(
 ): TtsGender {
   if (persona === 'female' || persona === 'child') return 'FEMALE';
   return 'MALE';
+}
+
+async function googleTtsHeaders(key: string | null): Promise<Record<string, string>> {
+  if (googleTransport() === 'vertex') return { Authorization: `Bearer ${await getVertexAccessToken(false)}` };
+  return { 'x-goog-api-key': key ?? '' };
 }

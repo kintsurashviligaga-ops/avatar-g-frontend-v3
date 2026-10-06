@@ -286,6 +286,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (action === 'inpaint') return NextResponse.json({ url: null, error: 'capability_unavailable', message: 'Image inpainting is not configured for Google Imagen.' }, { status: 503 });
+
   // ── GENERATIVE inpaint — object removal via a masked-inpaint model. Auth + balance gate + metered. ──
   // Honest labelling: this SYNTHESISES pixels inside the mask; it is not a deterministic "surgical" op.
   const guard = await guardGeneration(req, 'image');

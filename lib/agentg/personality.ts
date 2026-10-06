@@ -1,7 +1,7 @@
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import 'server-only';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { geminiTierModel } from '@/lib/ai/google/models';
 
@@ -65,7 +65,6 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const ANTHROPIC_FALLBACK = 'claude-haiku-4-5-20251001';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 
@@ -224,7 +223,7 @@ async function generateWithRetry(args: {
 
   // Primary: Gemini Flash
   const geminiKey = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
-  if (geminiKey) {
+  if (googleAiConfigured()) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const google = createGoogleGenerativeAI({ apiKey: geminiKey });
@@ -244,33 +243,13 @@ async function generateWithRetry(args: {
     }
   }
 
-  // Fallback: Anthropic Haiku
-  const anthropicKey = (process.env.ANTHROPIC_API_KEY ?? '').trim();
-  if (anthropicKey) {
-    try {
-      const anthropic = createAnthropic({ apiKey: anthropicKey });
-      const result = await generateText({
-        model: anthropic(ANTHROPIC_FALLBACK),
-        system: args.systemPrompt,
-        messages,
-        maxOutputTokens: 600,
-        temperature: 0.55,
-        maxRetries: 1,
-      });
-      if (result.text?.trim()) return trimReply(sanitizeOwnerNaming(result.text));
-    } catch (err) {
-      console.error('[AgentG.Personality] Anthropic fallback failed:', err instanceof Error ? err.message : err);
-      lastError = err;
-    }
-  }
-
   throw lastError instanceof Error ? lastError : new Error('All AI providers failed');
 }
 
 export async function generateAgentGPersonalityReply(input: PersonalityInput): Promise<PersonalityOutput> {
   const locale = normalizeLocale(input.locale);
   const userText = String(input.userText || '').trim();
-  const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview').trim();
+  const realtimeModel = googleAiConfigured();
 
   const detection = detectEmotion(userText);
   const mapped = mapEmotionToTone(detection);

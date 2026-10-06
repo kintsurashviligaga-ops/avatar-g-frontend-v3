@@ -30,10 +30,11 @@ import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
  *
  * Ordered by how often they are wanted, not numerically, because the picker shows the first row first.
  */
-export const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:5', '4:3', '3:4', '3:2', '2:3', '5:4', '21:9'] as const;
-export type ImgAspect = (typeof IMG_ASPECTS)[number];
+export const IMG_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
+/** Older saved templates may carry these ratios; the picker offers only native Imagen ratios. */
+export type ImgAspect = (typeof IMG_ASPECTS)[number] | '4:5' | '3:2' | '2:3' | '5:4' | '21:9';
 
-export const IMG_QUALITIES = [['standard', '1K'], ['high', '2K'], ['ultra', '4K']] as const;
+export const IMG_QUALITIES = [['standard', '1K']] as const;
 export type ImgQuality = (typeof IMG_QUALITIES)[number][0];
 
 export const IMG_STYLES = ['Auto', 'Photorealistic', 'Cinematic', 'Digital Art', 'Anime', '3D Render', 'Oil Painting', 'Watercolor', 'Cyberpunk', 'Fantasy', 'Minimalist', 'Line Art', 'Pixel Art'] as const;
@@ -57,7 +58,7 @@ export const IMG_COUNTS = [1, 2, 4] as const;
 export type ImgCount = (typeof IMG_COUNTS)[number];
 
 /** How many pictures the image routes take in as a reference: ONE (`referenceImage`, a string — not a list). */
-export const IMAGE_MAX_REFERENCES = 1;
+export const IMAGE_MAX_REFERENCES = 0;
 
 /** Credits for one press of Generate. The SAME function the route charges with (creditCostFor('image') × images). */
 export const imageCredits = (count: number): number => quoteCredits({ tool: 'image', count });
@@ -73,18 +74,16 @@ export interface ImageTier {
   /** Auto's NanoBanana endpoint at this size (lib/providers/catalogue `nb/auto`; another model: `imageVariant`). */
   endpoint: 'v2-1k' | 'v2-2k' | 'pro-4k';
   /** Auto's model family at that endpoint — V2 up to 2K, Pro at 4K. */
-  family: 'V2' | 'Pro';
+  family: 'Imagen';
   /** One line on what the size is for. */
   note: L10n;
 }
 
 export const IMAGE_TIERS: readonly ImageTier[] = [
-  { quality: 'standard', res: '1K', endpoint: 'v2-1k', family: 'V2', note: { ka: 'ყველაზე სწრაფი', en: 'Fastest', ru: 'Быстрее всего' } },
-  { quality: 'high', res: '2K', endpoint: 'v2-2k', family: 'V2', note: { ka: 'უფრო მკვეთრი — ნაგულისხმევი', en: 'Sharper — the default', ru: 'Чётче — по умолчанию' } },
-  { quality: 'ultra', res: '4K', endpoint: 'pro-4k', family: 'Pro', note: { ka: 'მაქსიმალური დეტალი, ყველაზე ნელი', en: 'Maximum detail, slowest', ru: 'Максимум деталей, дольше всего' } },
+  { quality: 'standard', res: '1K', endpoint: 'v2-1k', family: 'Imagen', note: { ka: 'სურათი ტექსტიდან', en: 'Image from text', ru: 'Изображение из текста' } },
 ];
 
-export const tierFor = (quality: string): ImageTier => IMAGE_TIERS.find((t) => t.quality === quality) ?? IMAGE_TIERS[1]!;
+export const tierFor = (quality: string): ImageTier => IMAGE_TIERS.find((t) => t.quality === quality) ?? IMAGE_TIERS[0]!;
 
 /**
  * The image model a pick resolves to on THIS tool: a catalogue entry the image route runs, else Auto. (A Studio β pick, or
@@ -99,30 +98,24 @@ export function imageModelFor(id: string | null | undefined): CatalogueEntry {
 export interface ImageVariant {
   quality: ImgQuality;
   endpoint: NanoBananaEndpoint;
-  family: 'V2' | 'Pro';
+  family: 'Imagen';
   res: '1K' | '2K' | '4K';
   /** False where the model has no such size (Nano Banana Pro starts at 2K): the chip offers it disabled. */
   native: boolean;
 }
 
-const RES: Readonly<Partial<Record<NanoBananaEndpoint, ImageVariant['res']>>> = {
-  'v2-1k': '1K', 'v2-2k': '2K', 'v2-4k': '4K', 'pro-1k2k': '2K', 'pro-4k': '4K', 'text-to-image': '1K',
-};
-
 export function imageVariant(modelId: string | null | undefined, quality: string): ImageVariant {
   const entry = imageModelFor(modelId);
   const q = tierFor(quality).quality;
   const endpoint = imageEndpointFor(entry, q) ?? tierFor(q).endpoint;
-  const native = entry.wire.runner === 'image' && !!entry.wire.endpoints[q];
-  return { quality: q, endpoint, family: endpoint.startsWith('pro') ? 'Pro' : 'V2', res: RES[endpoint] ?? tierFor(q).res, native };
+  const native = entry.wire.runner === 'image' && quality === 'standard';
+  return { quality: q, endpoint, family: 'Imagen', res: '1K', native };
 }
 
 /** The size to fall back to when a model does not have the one on screen: the nearest it has, larger first. */
-export function nativeQuality(modelId: string | null | undefined, quality: ImgQuality): ImgQuality {
-  if (imageVariant(modelId, quality).native) return quality;
-  const order: ImgQuality[] = quality === 'standard' ? ['high', 'ultra'] : quality === 'high' ? ['ultra', 'standard'] : ['high', 'standard'];
-  return order.find((q) => imageVariant(modelId, q).native) ?? quality;
+export function nativeQuality(_modelId: string | null | undefined, _quality: ImgQuality): ImgQuality {
+  return 'standard';
 }
 
 /** "Nano Banana V2 · 2K" — the model variant a size runs on. */
-export const tierModelLabel = (t: ImageTier): string => `Nano Banana ${t.family} · ${t.res}`;
+export const tierModelLabel = (t: ImageTier): string => `Imagen · ${t.res}`;

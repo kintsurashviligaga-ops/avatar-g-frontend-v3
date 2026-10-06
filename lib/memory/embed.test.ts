@@ -44,12 +44,12 @@ test('Gemini: the key travels in x-goog-api-key, never in the URL, and the call 
   expect(EMBED_TIMEOUT_MS).toBeGreaterThan(0);
 });
 
-test('the key pool (GEMINI_API_KEYS) is honoured when the singular key is unset', async () => {
+test('deprecated key pools cannot activate embedding calls', async () => {
   delete process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEYS = 'pool-key-1, pool-key-2';
   fetchMock.mockResolvedValueOnce(ok({ embedding: { values: vec() } }));
-  await embed('hello');
-  expect(fetchMock.mock.calls[0][1].headers['x-goog-api-key']).toBe('pool-key-1');
+  await expect(embed('hello')).resolves.toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test('Google-only (default): a Gemini miss is a miss — OpenAI is never called', async () => {
@@ -65,14 +65,12 @@ test('Google-only with no Gemini key at all: null, and no OpenAI call', async ()
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('kill switch AI_GOOGLE_ONLY=0: the OpenAI fallback still runs (time-bounded too)', async () => {
+test('AI_GOOGLE_ONLY=0 cannot restore the OpenAI embedding fallback', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
-  fetchMock.mockResolvedValueOnce(fail(500)).mockResolvedValueOnce(ok({ data: [{ embedding: vec() }] }));
-  await expect(embed('hello')).resolves.toHaveLength(1536);
-  expect(fetchMock).toHaveBeenCalledTimes(2);
-  const [url, init] = fetchMock.mock.calls[1];
-  expect(String(url)).toBe('https://api.openai.com/v1/embeddings');
-  expect(init.signal).toBeInstanceOf(AbortSignal);
+  fetchMock.mockResolvedValueOnce(fail(500));
+  await expect(embed('hello')).resolves.toBeNull();
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(String(fetchMock.mock.calls[0][0])).toContain('generativelanguage.googleapis.com');
 });
 
 test('a timeout / network error is caught (never throws) and reported', async () => {

@@ -1,3 +1,5 @@
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleAiConfigured, googleModelFetch } from '@/lib/ai/google/transport';
 /**
  * lib/ai/geminiImagen.ts — Google **Imagen 4** via the Gemini API (generativelanguage), the Master Task's
  * specified image engine (§1.6.2 / §3.2.2).
@@ -15,11 +17,9 @@
  * Imagen returns base64 IMAGE BYTES inline — there is no operation to poll and no URL to fetch, so the
  * result is hosted here and the caller gets a normal https asset URL.
  */
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
-import { isTruthyFlag } from '@/lib/env/flag';
+import { isEnabledByDefault } from '@/lib/env/flag';
 
-const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const TIMEOUT_MS = 20_000;
 /** Short-lived memo of a hard billing/quota wall (402/403/429). An unfunded key must not cost a
  *  round-trip on every generation; the wall expires on its own so a top-up self-heals with no redeploy. */
@@ -33,11 +33,7 @@ export function geminiImagenModel(): string {
 
 /** True iff a Gemini key is present AND Imagen isn't explicitly killed (GEMINI_IMAGEN_ENABLED=0). */
 export function hasGeminiImagenProvider(): boolean {
-  // OPT-IN, not opt-out. A Gemini key being PRESENT is not evidence that it is FUNDED: with Google's
-  // balance empty this leg 429s on every single generation, and because ServiceManager.runTextToImage
-  // tries it FIRST, every user waited out that round-trip before NanoBanana/FLUX even started.
-  // Re-enable with GEMINI_IMAGEN_ENABLED=1 once billing is topped up — no code push needed.
-  return isTruthyFlag(process.env.GEMINI_IMAGEN_ENABLED) && !!resolveGeminiKey();
+  return isEnabledByDefault(process.env.GEMINI_IMAGEN_ENABLED) && googleAiConfigured();
 }
 
 /** Imagen accepts these five ratios; anything else (4:5, 2:3, …) is snapped to the nearest supported one. */
@@ -72,7 +68,7 @@ export interface ImagenImage {
 export async function generateImagenImages(args: ImagenGenerateArgs): Promise<ImagenImage[] | null> {
   const key = resolveGeminiKey();
   const prompt = String(args.prompt ?? '').trim();
-  if (!key || !prompt) return null;
+  if (!googleAiConfigured() || !prompt) return null;
   // A known billing/quota wall → skip WITHOUT a round-trip (the caller falls through to FLUX/NanoBanana).
   if (Date.now() < quotaWallUntil) return null;
 
@@ -91,9 +87,8 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
   if (negative) parameters.negativePrompt = negative.slice(0, 480);
 
   try {
-    const res = await fetch(`${GL_BASE}/models/${model}:predict`, {
+    const res = await googleModelFetch(model, 'predict', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       cache: 'no-store',
       redirect: 'manual',
       body: JSON.stringify({ instances: [{ prompt: prompt.slice(0, 2000) }], parameters }),
@@ -106,7 +101,7 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
       // latency on each generation.
       if (res.status === 429 || res.status === 402 || res.status === 403) quotaWallUntil = Date.now() + QUOTA_WALL_MS;
       // `detail` goes to Sentry: whatever a provider body or a thrown message carries, never the key.
-      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', status: res.status, detail: body.split(key).join('[redacted]'), model: geminiImagenModel() });
+      reportGeminiFallback({ leg: 'imagen', fallbackTo: 'none', status: res.status, detail: key ? body.split(key).join('[redacted]') : body, model: geminiImagenModel() });
       return null;
     }
     const j = (await res.json().catch(() => ({}))) as {
@@ -123,8 +118,9 @@ export async function generateImagenImages(args: ImagenGenerateArgs): Promise<Im
     }
     return out.length ? out : null;
   } catch (e) {
-    const detail = (e instanceof Error ? e.message : String(e)).split(key).join('[redacted]');
-    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'FLUX/NanoBanana', detail, model: geminiImagenModel() });
+    const message = e instanceof Error ? e.message : String(e);
+    const detail = key ? message.split(key).join('[redacted]') : message;
+    reportGeminiFallback({ leg: 'imagen', fallbackTo: 'none', detail, model: geminiImagenModel() });
     return null;
   }
 }

@@ -1,3 +1,4 @@
+import { assertProviderPermitted } from '@/lib/providers/policy';
 import 'server-only';
 
 /**
@@ -34,7 +35,7 @@ const TRAIN_VERSION = '0397d5e28c9b54665e1e5d29d5cf4f722a7b89ec20e9dbf3148723530
 const RVC_VERSION = '0a9c7c558af4c0f20667c1bd1260ce32a2879944a0b9e44e1398660c077b1550';   // zsxkib/realistic-voice-cloning
 
 function token(): string {
-  return String(process.env.REPLICATE_API_TOKEN || '').trim();
+  return ''; // Retired provider: never read its credential.
 }
 
 /** A safe RVC model name (folder + model id) from a user id. */
@@ -149,6 +150,7 @@ export async function pollRvcPrediction(id: string): Promise<RvcPoll> {
  * on a real failure so the caller can fall back to the zero-shot result.
  */
 export async function convertSongWithRvc(songUrl: string, modelUrl: string, pitch: 'no-change' | 'male-to-female' | 'female-to-male' = 'no-change'): Promise<string> {
+  assertProviderPermitted('replicate');
   const replicate = new Replicate({ auth: token(), useFileOutput: false });
   const output = (await replicate.run(`zsxkib/realistic-voice-cloning:${RVC_VERSION}`, {
     input: {

@@ -209,18 +209,20 @@ test('Google-only: no Gemini key → stt_unavailable and no call at all', async 
   expect(fetchSpy).not.toHaveBeenCalled();
 });
 
-test('AI_GOOGLE_ONLY=0 restores the legacy cascade (Georgian → Replicate first)', async () => {
+test('AI_GOOGLE_ONLY=0 cannot restore Replicate transcription', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
   const res = await POST(upload({ language: 'ka-GE', type: 'audio/webm' }));
-  expect(await res.json()).toEqual({ text: 'გამარჯობა replicate', provider: 'replicate-whisper', language: 'ka-GE' });
-  expect(replicateMock).toHaveBeenCalledTimes(1);
-  expect(fetchSpy).not.toHaveBeenCalled();
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(replicateMock).not.toHaveBeenCalled();
+  expect(openaiMock).not.toHaveBeenCalled();
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
 });
 
-test('AI_GOOGLE_ONLY=0, English: the primary engine answers first', async () => {
+test('AI_GOOGLE_ONLY=0, English: Gemini still answers', async () => {
   process.env.AI_GOOGLE_ONLY = '0';
   const res = await POST(upload({ language: 'en-US' }));
-  expect(await res.json()).toEqual({ text: 'from openai', provider: 'openai', language: 'en-US' });
+  expect(await res.json()).toEqual({ text: 'გამარჯობა', provider: 'gemini', language: 'ka-GE' });
+  expect(openaiMock).not.toHaveBeenCalled();
 });
 
 test('?diag=1 from a non-admin is ignored (plain answer, no upstream detail)', async () => {
