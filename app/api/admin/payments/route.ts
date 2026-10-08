@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createServiceRoleClient, createSupabaseServerClient } from '@/lib/supabase/server';
 import { isAdmin } from '@/lib/auth/adminGuard';
 
 type StripeEventRow = {
@@ -50,8 +50,12 @@ export async function GET(request: NextRequest) {
 
     const limit = Math.min(Math.max(1, Number(searchParams?.get?.('limit') || '50') || 50), 100);
 
+    // Read as the SERVICE ROLE, only past the admin gate above. stripe_events is service-role only (RLS on, no client
+    // privileges — migration 20261008a): through the session client an admin would now read nothing.
+    const db = createServiceRoleClient();
+
     // Fetch latest Stripe events
-    const { data: events, error: eventsError } = await supabase
+    const { data: events, error: eventsError } = await db
       .from('stripe_events')
       .select('*')
       .order('created_at', { ascending: false })
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch payment attempts
-    const { data: attempts, error: attemptsError } = await supabase
+    const { data: attempts, error: attemptsError } = await db
       .from('payment_attempts')
       .select('*')
       .order('created_at', { ascending: false })
