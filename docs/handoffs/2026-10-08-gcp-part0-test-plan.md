@@ -63,3 +63,24 @@ Billing-ის მონაცემები რამდენიმე სა
 - Production: მისი env არ იცვლება; Vertex იქ არ არის კონფიგურირებული (report §10.4).
 - სტუდიის სრული ნაკადი (storyboard, lipsync, credit ledger) — Part 1-ის შემდეგ.
 - Imagen 4: ამ პროექტზე Vertex-ში არ არის (404), ამიტომ არ ტესტდება (report §10.3).
+
+## 8. შედეგები
+owner-ის თანხმობა: decision card, „ორივე ტესტი", 2026-10-08 11:47 UTC.
+
+### T2 — 11:49–11:52 UTC, owner-ის Mac, `myavatar.ge@gmail.com`, `locations/global`
+| # | მოდელი | HTTP | შედეგი | usage | შეფასებული ხარჯი |
+|---|---|---|---|---|---|
+| T2.1 | `gemini-3.8-flash` | 200 | ქართული ტექსტი; `finishReason: MAX_TOKENS` | 12 in, 20 out + **488 thinking** | ≈ $0.002 |
+| T2.2 | `gemini-3.1-flash-image` | 200 | PNG 1024×1024 | 18 in, 1120 image | ≈ $0.067 |
+| T2.3 | `lyria-3-clip-preview` | 400 → 200 | MP3 30.8 წმ, stereo 44.1 kHz, 192 kbps, `<instrumental>` + caption | 533 audio | $0.04 |
+ჯამი ≈ **$0.11**. T2.3-ის პირველი მოთხოვნა (`responseModalities: ["AUDIO"]`) 400 `INVALID_ARGUMENT` იყო — Google ასეთ
+მოთხოვნას არ არიცხავს; მეორე (`["AUDIO","TEXT"]`) წარმატებით დასრულდა. სხვა განმეორება არ ყოფილა.
+სტატუსი: Vertex-ზე ამ სამი მოდელის inference — **PROVEN** owner-ის ანგარიშით. credit-ით დაფარვა — ~24 სთ-ში (§6).
+შედეგების ფაილები: Mac `~/.myavatar-gcloud/test-out/` (`image-0-0.png`, `music-a.mp3`, პასუხების JSON-ები).
+
+Part 1-ისთვის: (1) Gemini 3.8 Flash ნაგულისხმევად „ფიქრობს" (488 token 512-იანი ლიმიტიდან) — აპლიკაციამ thinking-ის
+დონე ან output-ის ლიმიტი მკაფიოდ უნდა დააყენოს, თორემ პასუხი წყდება და ხარჯი იზრდება. (2) Lyria 3 Vertex-ზე
+`:generateContent`-ით მუშაობს მხოლოდ `responseModalities: ["AUDIO","TEXT"]`-ით.
+
+### T1 — Veo
+ელოდება: owner-ის შესვლა Preview-ზე (email + პაროლი), AUTH VERIFIED, შემდეგ ღილაკი `/ka/admin/veo-smoke`-ზე.

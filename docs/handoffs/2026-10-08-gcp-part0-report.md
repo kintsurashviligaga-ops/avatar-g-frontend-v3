@@ -8,7 +8,8 @@ owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
 | CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
 | AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში (§9.4); Preview-ზე admin-ის გახსნას ელოდება |
-| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — გეგმა და admin-ის ტესტის გვერდი მზადაა (§10.5); owner-ის თანხმობას ელოდება |
+| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); Veo ელოდება AUTH-ს (§10.5) |
+| Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11 (§10.5) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
 | Least-privilege WIF კონფიგურაცია | **APPLIED** — `scripts/gcp/part0-wif.sh` |
 | Billing: ანგარიში, Alerts | **PROVEN** — ერთადერთი ანგარიში; 3 budget, read-back (§10.1–10.2) |
@@ -319,3 +320,7 @@ Vertex-ზე owner-ის ანგარიშით (≈ $0.12). ჯამი
 ტესტის გვერდი: `app/[locale]/admin/veo-smoke/page.tsx` + `app/api/admin/veo-smoke/route.ts` + `lib/veo/smoke.ts`. admin-only
 (სხვას 404), submit მხოლოდ `POST {confirm:"paid-test"}`-ით (GET და prefetch არაფერს უშვებს), `VEO_TRANSPORT=vertex`-ის
 გარეშე 409, ერთი submit retry-ის გარეშე, DB-ში არაფერს წერს. Unit test: 9 შემთხვევა (`lib/veo/smoke.test.ts`).
+
+**T2 შედეგი (11:49–11:52 UTC, owner-ის თანხმობით 11:47):** `gemini-3.8-flash` 200, `gemini-3.1-flash-image` 200 (PNG 1024×1024),
+`lyria-3-clip-preview` 200 (MP3 30.8 წმ) — ჯამი ≈ $0.11. Lyria-ს პირველი მოთხოვნა 400 იყო (`["AUDIO"]`; არ ირიცხება),
+მეორე `["AUDIO","TEXT"]`-ით გავიდა. დეტალები: test plan §8. credit-ით დაფარვა ~24 სთ-ში მოწმდება.
