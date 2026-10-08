@@ -255,7 +255,9 @@ no longer falls back to OpenAI TTS while `AI_GOOGLE_ONLY` is on (default), prove
   generation confirmed / completed / failed, saved) fire from `lib/analytics/serviceEvents.ts`: **BUILT_NOT_PROVEN**
   (certification §C lists what they cover and what not).
 - §51 search: `resolveService` answers KA/EN/RU aliases (dubbing, music video, product ad, lip sync, character swap,
-  podcast are all tested) and powers Agent G, but there is no search box that uses it yet: **PARTIAL**.
+  podcast are all tested) and powers Agent G. `searchServices` uses the same aliases plus labels and modes for the
+  sidebar's search box (half-typed words, Agent G's pick first, coming-soon shown as unavailable): **BUILT_NOT_PROVEN**
+  until deployed. A found service opens with its mode (Music video → Video in music-video mode).
 - §A boundary: 10 usable services on a violation path (§2). Fixing them is Part 2, blocked on Part 0 AUTH (STOP-1).
 - R5: re-checked in step 18. Swap, motion, product ad and the Genjutsu panel quote what their routes charge (the earlier
   "swap / VFX quote `remix`" finding was wrong). Montage, dubbing and presentation charge nothing.

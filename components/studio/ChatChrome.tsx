@@ -69,7 +69,8 @@ import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
 import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
-import type { ServiceCategory } from '@/lib/catalog/services';
+import { searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
+import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
@@ -802,6 +803,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
   }, [onStudioHome, router, locale, pathname]);
+  // A service found by the search opens like a menu row, but as the SERVICE: its tool, its mode („Music video" is the
+  // Video tool in music-video mode) and its own analytics id. Outside the studio its catalog link carries the same.
+  const openService = useCallback((s: ServiceDefinition) => {
+    if (!s.tool) return;
+    setSidebarOpen(false);
+    setConvQuery('');
+    if (onStudioHome) {
+      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface: 'search' } }));
+      return;
+    }
+    const url = serviceHref(s.id, locale);
+    if (!url) return;
+    if (isStudioPath(pathname)) window.location.assign(url);
+    else router.push(url);
+  }, [onStudioHome, router, locale, pathname]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
@@ -962,7 +978,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     selectTool('chat');
     window.setTimeout(() => { focusComposer(); }, 250);
   }, [selectTool]);
-  const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
+  const tSearch = locale === 'en' ? 'Search services and chats…' : locale === 'ru' ? 'Поиск сервисов и чатов…' : 'ძებნა: სერვისები და ჩატები…';
   const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
   const tClearAll = locale === 'en' ? 'Clear all' : locale === 'ru' ? 'Очистить' : 'გასუფთავება';
@@ -994,6 +1010,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const q = convQuery.trim().toLowerCase();
     return q ? conversations.filter((c) => (c.title || '').toLowerCase().includes(q)) : conversations;
   }, [conversations, convQuery]);
+  // §51 — the same box finds SERVICES, by the words a person would type in any UI language (the catalog's aliases, the
+  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed.
+  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery) : []), [convQuery]);
 
   const convGroups = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -1237,12 +1256,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
             />
           )}
+          {serviceHits.length > 0 && <ServiceSearchResults services={serviceHits} lang={lang} onOpen={openService} rowClassName={sideRow} />}
           {authed && onStudioHome && !historySynced && conversations.length === 0 ? (
             <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg [@media(pointer:fine)]:h-[38px]" className="space-y-0.5 pb-2" testId="history-skeleton" />
           ) : conversations.length === 0 ? (
             <EmptyState compact icon={ChatIcon} line={tNoHistory} actionLabel={tStartChat} onAction={startChat} testId="history-empty" />
           ) : convMatches.length === 0 ? (
-            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
+            serviceHits.length > 0 ? null : <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
             <div className="space-y-2 pb-2">
               {convGroups.map((g) => (

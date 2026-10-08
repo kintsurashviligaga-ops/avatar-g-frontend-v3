@@ -27,6 +27,7 @@ export type ServiceEventName = (typeof SERVICE_EVENTS)[keyof typeof SERVICE_EVEN
 /** Where an event happened. */
 export type ServiceSurface =
   | 'sidebar'
+  | 'search'
   | 'tool-sheet'
   | 'deep-link'
   | 'agent-g'

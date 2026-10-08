@@ -68,8 +68,15 @@ counts (13 / 17 / 18 / 22 / 24 / 25 / 26) and prices. Two extra shells (`/hub`, 
   Tests: `lib/analytics/serviceEvents.test.ts`, `GenerateButton.test.tsx`. Not covered yet: the `/services` page (a server
   component), Deep Research's Start sheet (no catalog id of its own), failures inside the separate lipsync / motion / VFX
   panels, and the + sheet (it shows every category at once, so there is no "category opened").
+- §51 search: **BUILT_NOT_PROVEN** (not deployed). The sidebar's „ძებნა" box now finds services as well as chats:
+  `searchServices` (lib/catalog/services.ts) matches what is typed, half words included („მუს", „реклам"), against every
+  service's aliases, label and modes in ka/en/ru; Agent G's pick for the same text is always first; a coming-soon service
+  is listed as „მალე" and opens nothing. A found service opens with its mode and is counted as `catalog_service_opened`
+  with surface `search`. Same change fixed a broken shortcut: the catalog link to Music video
+  (`?tool=video&mode=musicvideo`, used by /services) opened plain Video; the studio now applies the mode. Tests:
+  `services.test.ts` (searchServices, serviceModeQuery), `ServiceSearchResults.test.tsx`, `serviceSearch.wiring.test.ts`.
 - Still open: 5 legacy registries are imported by legacy API routes (`/api/pipeline`, `/api/agents/*`) and must be deprecated
-  with them; §51 has no search box (PARTIAL).
+  with them.
 
 ## D. Agent G
 

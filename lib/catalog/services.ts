@@ -289,6 +289,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
 ];
 
 const BY_ID: ReadonlyMap<string, ServiceDefinition> = new Map(SERVICE_CATALOG.map((s) => [s.id, s]));
+const CATEGORY_LABEL: ReadonlyMap<ServiceCategory, L10n> = new Map(SERVICE_CATEGORIES.map((c) => [c.id, c.label]));
 
 export const getService = (id: string): ServiceDefinition | undefined => BY_ID.get(id);
 
@@ -311,9 +312,16 @@ export function serviceHref(id: string, locale: string, modeId?: string): string
   const s = BY_ID.get(id);
   if (!s || !s.tool) return null;
   const q = new URLSearchParams({ tool: s.tool });
-  const mode = modeId ? s.modes.find((m) => m.id === modeId) : s.modes.length === 1 ? s.modes[0] : undefined;
-  for (const [k, v] of Object.entries(mode?.query ?? {})) q.set(k, v);
+  for (const [k, v] of Object.entries(serviceModeQuery(id, modeId) ?? {})) q.set(k, v);
   return `/${locale}/dashboard?${q.toString()}`;
+}
+
+/** The studio query a service (and mode) adds to its tool — a single-mode service always carries its mode. */
+export function serviceModeQuery(id: string, modeId?: string): Readonly<Record<string, string>> | undefined {
+  const s = BY_ID.get(id);
+  if (!s) return undefined;
+  const mode = modeId ? s.modes.find((m) => m.id === modeId) : s.modes.length === 1 ? s.modes[0] : undefined;
+  return mode?.query;
 }
 
 const norm = (t: string): string => t.toLocaleLowerCase().normalize('NFC').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
@@ -369,6 +377,51 @@ export function resolveService(text: string): ServiceDefinition | null {
     }
   }
   return best?.s ?? null;
+}
+
+/** Joining words a search box must not match on („სურათი და ფოტო" is not a hit for „და"). */
+const SEARCH_STOP: ReadonlySet<string> = new Set(['და', 'and', 'и', 'the', 'a', 'an', 'to', 'of', 'in', 'для', 'в', 'на']);
+
+/**
+ * One typed token against one catalog word: the word starts with it (typing in progress: „მუს" → „მუსიკა"), or it is
+ * the word plus an ending of up to 3 letters, also after a Georgian/Russian final vowel (aliasHits' rule, per word).
+ */
+function tokenHits(token: string, word: string): boolean {
+  if (word.startsWith(token)) return true;
+  const inflects = /[ია]$/u.test(word) && /[ა-ჿ]$/u.test(word) || /[аяыиь]$/u.test(word);
+  const stem = inflects && word.length >= 5 ? word.slice(0, -1) : word;
+  return stem.length >= 4 && token.startsWith(stem) && token.length - stem.length <= 3;
+}
+
+/**
+ * The search box (§51): services for what a person is TYPING, best first, at most `limit`.
+ * Every token (stop words aside) must hit a word of the service's aliases, its label or its modes' labels in any UI
+ * language, so a half-typed word already finds it. Agent G's pick (`resolveService`) for the same text always leads,
+ * so the box and the chat never disagree on the top service. Coming-soon services are returned too, for the UI to
+ * show as unavailable (§25 — „audio remix" must not quietly become a video remix); hidden and deprecated never are.
+ */
+export function searchServices(text: string, limit = 6): ServiceDefinition[] {
+  const q = norm(text);
+  const tokens = q.split(' ').filter((t) => t.length > 0 && !SEARCH_STOP.has(t));
+  if (q.length < 2 || tokens.length === 0) return [];
+  const top = resolveService(text);
+  const hits: { s: ServiceDefinition; score: number }[] = [];
+  for (const s of SERVICE_CATALOG) {
+    if (s.status === 'hidden' || s.status === 'deprecated') continue;
+    const phrases = [...s.aliases, ...Object.values(s.label), ...s.modes.flatMap((m) => Object.values(m.label))];
+    const words = [...new Set(phrases.flatMap((p) => norm(p).split(' ')).filter((w) => w && !SEARCH_STOP.has(w)))];
+    const all = tokens.every((t) => words.some((w) => tokenHits(t, w)));
+    if (!all && s !== top) continue;
+    // Agent G's pick first; then services whose LABEL carries the words (what the row shows), those of the category the
+    // words name („მუს" → Music before Music video), then alias-only hits; a usable service before a coming-soon one.
+    const labelWords = Object.values(s.label).flatMap((p) => norm(p).split(' '));
+    const inLabel = tokens.every((t) => labelWords.some((w) => tokenHits(t, w)));
+    const catWords = Object.values(CATEGORY_LABEL.get(s.category) ?? {}).flatMap((p) => norm(p).split(' '));
+    const inCategory = tokens.every((t) => catWords.some((w) => tokenHits(t, w)));
+    const score = (s === top ? 100 : 0) + (inLabel ? 10 : 0) + (inCategory ? 5 : 0) + (s.status === 'coming-soon' ? 0 : 1);
+    hits.push({ s, score });
+  }
+  return hits.sort((a, b) => b.score - a.score || a.s.order - b.s.order).slice(0, limit).map((h) => h.s);
 }
 
 /**

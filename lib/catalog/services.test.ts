@@ -1,6 +1,7 @@
 import {
   SERVICE_CATALOG, SERVICE_CATEGORIES, LEGACY_SLUG_TO_SERVICE,
-  getService, usableServices, countServices, servicesInCategory, serviceHref, resolveService, toolsInCatalog,
+  getService, usableServices, countServices, servicesInCategory, serviceHref, serviceModeQuery, resolveService, searchServices,
+  toolsInCatalog,
 } from './services';
 import { ALL_TOOLS } from '@/lib/studio/tools';
 import { quoteCredits, type QuoteTool } from '@/lib/credits/quote';
@@ -172,6 +173,68 @@ describe('resolveService — Agent G intent and search', () => {
     expect(resolveService('')).toBeNull();
     expect(resolveService('   ')).toBeNull();
     expect(resolveService('hello there')).toBeNull();
+  });
+});
+
+describe('serviceModeQuery — the mode a service adds to its tool', () => {
+  it('a single-mode service always carries its mode; a multi-mode one only when asked', () => {
+    expect(serviceModeQuery('video.music-video')).toEqual({ mode: 'musicvideo' });
+    expect(serviceModeQuery('video.generate')).toBeUndefined();
+    expect(serviceModeQuery('video.generate', 'documentary')).toEqual({ mode: 'documentary' });
+    expect(serviceModeQuery('voice.dubbing')).toBeUndefined();
+    expect(serviceModeQuery('nope')).toBeUndefined();
+  });
+});
+
+describe('searchServices — the §51 search box', () => {
+  const ids = (q: string) => searchServices(q).map((s) => s.id);
+
+  it('finds a service from half a word, in every UI language', () => {
+    expect(ids('მუს')[0]).toBe('music.generate');
+    expect(ids('mus')[0]).toBe('music.generate');
+    expect(ids('муз')[0]).toBe('music.generate');
+    expect(ids('რეკლ')).toEqual(['video.product-ad']);
+    expect(ids('реклам')).toEqual(['video.product-ad']);
+    expect(ids('ავატ')).toEqual(['avatar.talking']);
+    expect(ids('lip')).toEqual(['avatar.talking']);
+    expect(ids('dub')).toEqual(['voice.dubbing']);
+  });
+
+  it('accepts inflected Georgian and Russian words, like Agent G does', () => {
+    expect(ids('ინტერიერის')).toEqual(['image.interior']);
+    expect(ids('ვიდეოს')[0]).toBe('video.generate');
+    expect(ids('фотосессию')[0]).toBe('image.photoshoot');
+  });
+
+  it("puts Agent G's pick for the same text first, so the box and the chat agree", () => {
+    for (const q of ['music video', 'მუსიკალური ვიდეო', 'create a product ad', 'ამ ვიდეოს ხმა გადამითარგმნე', 'swap the character in this video']) {
+      expect(searchServices(q)[0]?.id).toBe(resolveService(q)?.id);
+    }
+  });
+
+  it('lists a medium word as its category, best first, never more than the limit', () => {
+    const video = ids('video');
+    expect(video[0]).toBe('video.generate');
+    expect(video.length).toBeLessThanOrEqual(6);
+    expect(searchServices('video', 3)).toHaveLength(3);
+    for (const id of video.slice(0, 5)) expect(getService(id)?.category).toBe('video');
+  });
+
+  it('shows a coming-soon service for what it is, after the usable ones — never a hidden or deprecated one', () => {
+    expect(ids('audio remix')).toEqual(['music.remix']);
+    expect(ids('remix')).toEqual(['video.remix', 'music.remix']);
+    for (const q of ['video', 'music', 'code', 'remix', 'ფოტო', 'search']) {
+      for (const s of searchServices(q)) expect(['live', 'beta', 'coming-soon']).toContain(s.status);
+    }
+  });
+
+  it('matches nothing on noise, a joining word or a word inside another word', () => {
+    expect(ids('')).toEqual([]);
+    expect(ids('x')).toEqual([]);
+    expect(ids('და')).toEqual([]);
+    expect(ids('and')).toEqual([]);
+    expect(ids('admin')).toEqual([]);
+    expect(ids('zzzz')).toEqual([]);
   });
 });
 

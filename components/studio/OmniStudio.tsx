@@ -143,6 +143,7 @@ import { AgentGNote } from '@/components/studio/AgentGNote';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
+import { getService, serviceModeQuery } from '@/lib/catalog/services';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -2993,10 +2994,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [setMode, setPanelService]);
   applyToolRef.current = applyTool;
   /** `surface` — where the pick came from, for the §50 `catalog_service_opened` event (none: a restart, not a pick). */
-  const selectTool = useCallback((id: ToolId, surface?: ServiceSurface) => {
+  const selectTool = useCallback((id: ToolId, surface?: ServiceSurface, service?: string | null) => {
     switchToolSession(id);
     applyTool(id);
-    if (surface) trackServiceOpened(serviceForTool(id), surface, id);
+    if (surface) trackServiceOpened(service ?? serviceForTool(id), surface, id);
   }, [switchToolSession, applyTool]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -3087,8 +3088,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const activePersona = useActivePersona(locale);
   // The sidebar picks a tool through `omni:set-tool`; it learns which one is active from `omni:tool-changed` and
   // from <html data-tool> (read on its mount — a child's first effect runs before its parent's listener exists).
+  // The sidebar SEARCH (§51) sends a service instead of a bare tool: `{ tool, service, surface }` — its mode comes with
+  // it (Music video = the Video tool in music-video mode) and it is counted under its own catalog id.
   useEffect(() => {
-    const onSet = (e: Event) => { const d = (e as CustomEvent<unknown>).detail; if (isToolId(d)) selectTool(d, 'sidebar'); };
+    const onSet = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      if (isToolId(d)) { selectTool(d, 'sidebar'); return; }
+      const o = d && typeof d === 'object' ? (d as { tool?: unknown; service?: unknown }) : null;
+      if (!o || !isToolId(o.tool)) return;
+      const service = typeof o.service === 'string' ? getService(o.service) : undefined;
+      if (service && service.tool !== o.tool) return;
+      selectTool(o.tool, 'search', service?.id ?? null);
+      const m = service ? serviceModeQuery(service.id)?.mode : undefined;
+      if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);
+    };
     window.addEventListener('omni:set-tool', onSet);
     return () => window.removeEventListener('omni:set-tool', onSet);
   }, [selectTool]);
@@ -3119,7 +3132,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // `?tool=` — any tool, by the id the sidebar uses (/dashboard?tool=product from a page outside the studio).
       const tl = url.searchParams.get('tool');
       if (isToolId(tl)) {
-        selectTool(tl, 'deep-link');
+        // `&mode=` rides along for the Video tool: a catalog link to Music video is `?tool=video&mode=musicvideo`
+        // (lib/catalog/services.serviceHref — /services and the sidebar search). It used to open plain Video.
+        const vm = url.searchParams.get('mode');
+        const videoMode = tl === 'video' && (vm === 'musicvideo' || vm === 'documentary') ? vm : null;
+        selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode }));
+        if (videoMode) { setVideoMode(videoMode); url.searchParams.delete('mode'); }
         url.searchParams.delete('tool');
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
         return;
