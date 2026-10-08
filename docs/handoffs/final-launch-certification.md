@@ -274,6 +274,7 @@ pricing decision (no pricing change without an SSoT update).
 | Credit history | **fixed this run**: reads `credit_ledger`; the client-written `POST /api/credits/record` (forgeable "+N credits" rows) is gone (unit). Admin analytics still reads the now-unwritten `credit_transactions` (PARTIAL) |
 | BOG checkout in Production | **FAILED** (checked live 2026-10-08). All 4 Production checkouts (a 10 ₾ top-up on 2026-10-03, three Starter plans on 2026-10-03 and 2026-10-06) ended `init_failed` 0.5 to 1.7 s after their row was written, with no BOG order id: BOG never created an order, so no one was charged. The code kept no reason. The request matches BOG's documented shape (re-checked against api.bog.ge/docs on 2026-10-08) and the callback URL is https, so the cause is on the merchant side: the credentials (a wrong pair, or sandbox credentials without `BOG_ENV=sandbox`), or the merchant not yet enabled for online payments. **Fixed this run**: a refused order now stores BOG's answer in `bog_orders.reject_reason` and the log (unit), so one test checkout names the cause (owner action 5a) |
 | Any completed payment in Production | **None, ever** (checked live): BOG as above; Stripe has no subscription row and no `stripe:` or `sub:` ledger ref. Credit purchases in the ledger are only the `starter` grant and manual/admin rows |
+| Payment-provider page | **fixed this run** (fake capability claim): `/account/payments` said Stripe was the active provider and Bank of Georgia "coming soon" (the reverse of the product: the studio's only checkout is BOG, `CreditsModal` → `/api/billing/bog/checkout`), let a user pick a provider nothing read, and its API wrote `payment_provider_configs`, a table Production does not have. Unlinked; now redirects to `/account/billing`, and `/api/payments/provider` answers 410 |
 | Live payment, webhook delivery, invoices | BLOCKED_OWNER |
 | Tax / VAT | MISSING |
 
@@ -323,8 +324,13 @@ ships). Vocabulary lacks Beta / Disabled (PARTIAL).
 
 ## S. Localization
 
-Key parity PROVEN: 843 / 843 / 843 keys in `messages/{ka,en,ru}.json`, 162 / 162 / 162 in `lib/i18n/translations.ts`, 0
-missing, 0 empty. **FAILED:** 103 Russian values are English (89 in `studio.*`, used only by a dead component). The 8 English-only
+Key parity PROVEN: 742 / 742 / 742 keys in `messages/{ka,en,ru}.json`, 162 / 162 / 162 in `lib/i18n/translations.ts`, 0
+missing, 0 empty. Russian values with no Cyrillic: **fixed this run**, PROVEN (grep + parity script). There were 112: 95 were
+the whole `studio` namespace, which no code read (the only `t('studio.…')` caller, `StudioBar`, reads `lib/i18n`, not these
+files, and is imported nowhere), so it is removed from all three files; the other 17 are product and plan names (Agent G,
+Starter, Pro, Premium, Empire, Enterprise, Stripe ID, Orbit Solar System) and the phone mask, kept as is. Georgian has the
+same 17 names plus 4 keys no code reads (`metadata.title`, `seller.growth.cac` / `ltv`, `services.svc_avatar_name`). The
+`payments` namespace went with the page that used it (N: `/account/payments`). The 8 English-only
 `aria-label`s and the `AI-generated` badge title in `OmniStudio.tsx` now read from ka/en/ru copy (fixed, 8edefd82).
 Screen-by-screen audit needs the running app (not done).
 
@@ -401,7 +407,7 @@ Any one of these means NO LAUNCH.
 | Wrong pricing / billing inconsistency | Two contradictory pack tables (M). No payment has ever completed in Production: every BOG checkout failed at start (N, owner action 5a) |
 | Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
 | Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |
-| Fake capability claims | Fixed on this branch (`/hub` fake stats deleted, sitemap from the catalog), still live in Production until a deploy |
+| Fake capability claims | Fixed on this branch (`/hub` fake stats deleted, sitemap from the catalog, the `/account/payments` provider page retired), still live in Production until a deploy |
 
 ---
 

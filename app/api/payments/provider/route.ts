@@ -1,124 +1,25 @@
 /**
- * GET /api/payments/provider
- * GET, PUT - Manage payment provider configuration
+ * GET, PUT /api/payments/provider — RETIRED (410 Gone).
+ *
+ * This stored a per-user "active payment provider" (Stripe / TBC / BOG / Payze) in `payment_provider_configs` for the
+ * /account/payments page. Nothing ever read that choice — the studio's checkout is BOG (`/api/billing/bog/checkout`)
+ * whatever the row said — and Production has no such table, so both verbs answered 500 there. The page now redirects
+ * to /account/billing; a 410 tells a stale client the endpoint is gone for good.
  */
-
-import { createServerClient } from '@/lib/supabase/server';
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest) {
-  try {
-    const supabase = createServerClient();
+const gone = () =>
+  NextResponse.json(
+    { error: 'gone', message: 'Payment provider settings were retired. Checkout uses Bank of Georgia.' },
+    { status: 410 },
+  );
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Get payment provider config
-    const { data, error } = await supabase
-      .from('payment_provider_configs')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    if (error) {
-      // Create default config if not exists
-      const { data: newConfig, error: createError } = await supabase
-        .from('payment_provider_configs')
-        .insert([
-          {
-            user_id: user.id,
-            active_provider: 'stripe',
-            stripe_enabled: true,
-          },
-        ])
-        .select()
-        .single();
-
-      if (createError) {
-        return NextResponse.json(
-          { error: 'Failed to create payment config' },
-          { status: 500 },
-        );
-      }
-
-      return NextResponse.json(newConfig, { status: 200 });
-    }
-
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    console.error('Error fetching payment provider config:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch payment provider config' },
-      { status: 500 },
-    );
-  }
+export function GET() {
+  return gone();
 }
 
-export async function PUT(req: NextRequest) {
-
-  try {
-    const supabase = createServerClient();
-
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Parse and validate request body
-    const ProviderSchema = z.object({
-      activeProvider: z.enum(['stripe', 'tbc', 'bog', 'payze']),
-    });
-    let body;
-    try {
-      const json = await req.json();
-      body = ProviderSchema.parse(json);
-    } catch (validationError) {
-      return NextResponse.json(
-        { error: 'Invalid request body', details: validationError instanceof z.ZodError ? validationError.errors : validationError },
-        { status: 400 },
-      );
-    }
-    const { activeProvider } = body;
-
-    // Update payment provider config
-    const { data, error } = await supabase
-      .from('payment_provider_configs')
-      .update({
-        active_provider: activeProvider,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json(
-        { error: 'Failed to update payment config' },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json(data, { status: 200 });
-  } catch (error) {
-    console.error('Error updating payment provider config:', error);
-    return NextResponse.json(
-      { error: 'Failed to update payment config' },
-      { status: 500 },
-    );
-  }
+export function PUT() {
+  return gone();
 }
