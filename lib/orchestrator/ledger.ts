@@ -268,3 +268,76 @@ export async function grantCredits(userId: string, amount: number, ref: string, 
     return { ok: false, reason: 'error' };
   }
 }
+
+/** `_` and `%` are LIKE wildcards and refs contain underscores: escape them (the caller re-checks the prefix). */
+function likePrefix(prefix: string): string {
+  return `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Who was granted credits under exactly `ref`, and how many (the sum of its POSITIVE ledger rows) — the
+ * purchase a Stripe refund or dispute must reverse. `ref` is a payment ref (`stripe:<checkout session>`,
+ * `sub:<invoice>`), unique to one payer.
+ *   { ok:true, grant:null } → nothing was ever granted under it (not a credit purchase): nothing to reverse.
+ *   { ok:false }            → the ledger could not be read; the caller must retry, never guess.
+ */
+export async function grantedForRef(
+  ref: string,
+): Promise<{ ok: true; grant: { userId: string; credits: number } | null } | { ok: false }> {
+  const sb = client();
+  if (!sb || !ref) return { ok: false };
+  try {
+    const { data, error } = await sb
+      .from('credit_ledger')
+      .select('user_id, delta')
+      .eq('metadata->>ref', ref)
+      .gt('delta', 0);
+    if (error) return { ok: false };
+    const rows = (Array.isArray(data) ? data : []) as Array<{ user_id?: unknown; delta?: unknown }>;
+    const userId = rows.find((r) => typeof r.user_id === 'string')?.user_id as string | undefined;
+    if (!userId) return { ok: true, grant: null };
+    if (rows.some((r) => r.user_id !== userId)) {
+      // Two payers under one payment ref should be impossible; never reverse on an ambiguous grant.
+      reportError(new Error('one payment ref granted to more than one user'), { fn: 'grantedForRef', ref });
+      return { ok: false };
+    }
+    const credits = rows.reduce((s, r) => s + (Number(r.delta) || 0), 0);
+    return { ok: true, grant: credits > 0 ? { userId, credits } : null };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Credits debited from `userId` under any ref starting with `prefix` (absolute sum); null when unreadable. */
+export async function debitedUnderPrefix(userId: string, prefix: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !userId || !prefix) return null;
+  try {
+    const { data, error } = await sb
+      .from('credit_ledger')
+      .select('delta, metadata')
+      .eq('user_id', userId)
+      .like('metadata->>ref', likePrefix(prefix))
+      .lt('delta', 0);
+    if (error) return null;
+    return ((data ?? []) as Array<{ delta: number; metadata?: { ref?: unknown } | null }>)
+      .filter((r) => typeof r.metadata?.ref === 'string' && (r.metadata.ref as string).startsWith(prefix))
+      .reduce((s, r) => s + Math.abs(Number(r.delta) || 0), 0);
+  } catch {
+    return null;
+  }
+}
+
+/** The user's spendable balance (profiles.credits_balance); null when it cannot be read. */
+export async function creditsBalanceOf(userId: string): Promise<number | null> {
+  const sb = client();
+  if (!sb || !userId) return null;
+  try {
+    const { data, error } = await sb.from('profiles').select('credits_balance').eq('id', userId).maybeSingle();
+    if (error || !data) return null;
+    const bal = Number((data as { credits_balance?: unknown }).credits_balance);
+    return Number.isFinite(bal) ? bal : null;
+  } catch {
+    return null;
+  }
+}

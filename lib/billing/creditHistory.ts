@@ -23,7 +23,7 @@ export interface CreditHistoryItem {
 
 export const HISTORY_ACTIONS = [
   'video', 'music', 'image', 'avatar', 'voice', 'remix', 'interior', 'research', 'chat',
-  'topup', 'subscription', 'refund', 'bonus', 'adjustment', 'usage', 'credit',
+  'topup', 'subscription', 'refund', 'reversal', 'bonus', 'adjustment', 'usage', 'credit',
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
@@ -39,6 +39,7 @@ const SPEND_KIND: Record<string, HistoryAction> = {
   interior: 'interior',
   research: 'research',
   chat: 'chat',
+  reversal: 'reversal',
 };
 
 /** Ref prefix → grant label. */

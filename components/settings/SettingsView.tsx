@@ -496,6 +496,7 @@ const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: 
   topup: { emoji: '💳', ka: 'შევსება', en: 'Top-up', ru: 'Пополнение' },
   subscription: { emoji: '⭐', ka: 'გამოწერა', en: 'Subscription', ru: 'Подписка' },
   refund: { emoji: '↩', ka: 'დაბრუნება', en: 'Refund', ru: 'Возврат' },
+  reversal: { emoji: '⤺', ka: 'გადახდის გაუქმება', en: 'Payment reversed', ru: 'Отмена платежа' },
   bonus: { emoji: '🎁', ka: 'ბონუსი', en: 'Bonus', ru: 'Бонус' },
   adjustment: { emoji: '🛠', ka: 'კორექტირება', en: 'Adjustment', ru: 'Корректировка' },
   usage: { emoji: '⚙', ka: 'გამოყენება', en: 'Usage', ru: 'Использование' },

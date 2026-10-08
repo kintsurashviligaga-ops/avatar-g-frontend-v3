@@ -24,6 +24,14 @@ import {
   type InvoiceLike,
 } from '@/lib/billing/subscriptionAllowance';
 import { customerIdOf, resolveTopupPayer, type TopupSessionLike } from '@/lib/billing/topupPayer';
+import { reverseCreditsForPayment, type ReversalDeps, type ReversalRequest } from '@/lib/billing/stripeReversal';
+import {
+  creditsBalanceOf,
+  debitedUnderPrefix,
+  debitExistsForRef,
+  deductCredits,
+  grantedForRef,
+} from '@/lib/orchestrator/ledger';
 import { createNotification } from '@/lib/notifications/store';
 import { recomputeFinanceDailyAggregates } from '@/lib/finance/aggregates';
 import { enqueueQueueItem } from '@/lib/platform/queues';
@@ -260,6 +268,10 @@ export async function POST(request: NextRequest) {
 
         case 'charge.refunded':
           await handleChargeRefunded(event);
+          break;
+
+        case 'charge.dispute.created':
+          await handleChargeDisputeCreated(event);
           break;
 
         case 'invoice.paid': {
@@ -705,6 +717,42 @@ async function handlePaymentIntentFailed(event: Stripe.Event) {
   });
 }
 
+/** The payment intent id on a charge / dispute field that may be an id, an expanded object or null. */
+function idOf(v: string | { id: string } | null | undefined): string | null {
+  if (!v) return null;
+  return typeof v === 'string' ? v : v.id ?? null;
+}
+
+/**
+ * Which credit purchase a payment intent paid for: the checkout session (`stripe:<session>` — tier packs and wallet
+ * top-ups) or the subscription invoice (`sub:<invoice>`). null when it paid for neither. Throws on a Stripe error.
+ */
+async function grantRefForPaymentIntent(paymentIntentId: string): Promise<string | null> {
+  const stripe = getStripe();
+  const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 });
+  const sessionId = sessions.data[0]?.id;
+  if (sessionId) return `stripe:${sessionId}`;
+  const payments = await stripe.invoicePayments.list({ payment: { type: 'payment_intent', payment_intent: paymentIntentId }, limit: 1 });
+  const invoiceId = idOf(payments.data[0]?.invoice as string | { id: string } | null | undefined);
+  return invoiceId ? `sub:${invoiceId}` : null;
+}
+
+const reversalDeps: ReversalDeps = {
+  grantRefForPayment: grantRefForPaymentIntent,
+  grantedForRef,
+  debitedUnderPrefix,
+  debitExistsForRef,
+  deduct: deductCredits,
+  balanceOf: creditsBalanceOf,
+  report: reportError,
+};
+
+/** Take back the credits a refunded / disputed payment bought (lib/billing/stripeReversal). Throws Retryable. */
+async function reverseCredits(req: ReversalRequest): Promise<void> {
+  const outcome = await reverseCreditsForPayment(req, reversalDeps);
+  console.info('[Stripe Webhook] credit reversal', { kind: req.kind, chargeId: req.chargeId, ...outcome });
+}
+
 async function handleChargeRefunded(event: Stripe.Event) {
   const charge = event.data.object as Stripe.Charge;
   console.info('[Stripe Webhook] Processing charge.refunded', {
@@ -713,6 +761,49 @@ async function handleChargeRefunded(event: Stripe.Event) {
     refundedAmount: charge.amount_refunded,
   });
 
+  // ⚠️ THE TWO HALVES MUST NOT TAKE EACH OTHER DOWN (same rule as invoice.paid): the credit reversal runs first, the
+  // pre-existing affiliate reversal runs whatever it did, and a reversal failure is re-thrown only after it.
+  const reversalFailure = await reverseCredits({
+    kind: 'refund',
+    chargeId: charge.id,
+    paymentIntentId: idOf(charge.payment_intent as string | { id: string } | null),
+    chargeAmount: charge.amount,
+    reversedAmount: charge.amount_refunded,
+  }).then(() => null, (e: unknown) => e);
+  let commissionFailure: unknown = null;
+  try {
+    await reverseAffiliateCommissionForRefund(event, charge);
+  } catch (e) {
+    commissionFailure = e;
+  }
+  if (reversalFailure) throw reversalFailure;
+  if (commissionFailure) throw commissionFailure;
+}
+
+async function handleChargeDisputeCreated(event: Stripe.Event) {
+  const dispute = event.data.object as Stripe.Dispute;
+  console.info('[Stripe Webhook] Processing charge.dispute.created', {
+    disputeId: dispute.id,
+    amount: dispute.amount,
+    reason: dispute.reason,
+  });
+  let charge: Stripe.Charge;
+  try {
+    charge = typeof dispute.charge === 'string' ? await getStripe().charges.retrieve(dispute.charge) : dispute.charge;
+  } catch (e) {
+    throw new RetryableWebhookError(`dispute ${dispute.id}: charge lookup failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  await reverseCredits({
+    kind: 'dispute',
+    chargeId: charge.id,
+    disputeId: dispute.id,
+    paymentIntentId: idOf(dispute.payment_intent as string | { id: string } | null) ?? idOf(charge.payment_intent as string | { id: string } | null),
+    chargeAmount: charge.amount,
+    reversedAmount: dispute.amount,
+  });
+}
+
+async function reverseAffiliateCommissionForRefund(event: Stripe.Event, charge: Stripe.Charge) {
   const customerId = charge.customer as string | null;
   const userId = customerId ? await getUserIdFromCustomerId(customerId) : null;
 

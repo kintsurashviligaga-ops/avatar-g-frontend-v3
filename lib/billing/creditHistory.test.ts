@@ -18,6 +18,7 @@ describe('historyActionFor', () => {
     [row(-5, 'avatar:p'), 'avatar'],
     [row(-4, 'pipeline-remix:x'), 'remix'],
     [row(-3, 'research:q'), 'research'],
+    [row(-525, 'reversal:ch_1:refund:2900'), 'reversal'],
     [row(-2, 'some-new-engine:x'), 'usage'],
     [row(-2, null), 'usage'],
   ])('spend %o → %s', (r, action) => {

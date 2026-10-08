@@ -13,13 +13,30 @@ let mockEvent: Record<string, unknown> | null = null;
 const mockConstructEvent = jest.fn();
 const mockSubscriptionsRetrieve = jest.fn();
 const mockCustomersRetrieve = jest.fn();
+const mockChargesRetrieve = jest.fn();
+const mockSessionsList = jest.fn();
+const mockInvoicePaymentsList = jest.fn();
 jest.mock('../../../../lib/billing/stripe', () => ({
   getStripe: () => ({
     webhooks: { constructEvent: (...a: unknown[]) => mockConstructEvent(...a) },
     subscriptions: { retrieve: (...a: unknown[]) => mockSubscriptionsRetrieve(...a) },
     customers: { retrieve: (...a: unknown[]) => mockCustomersRetrieve(...a) },
-    charges: { retrieve: jest.fn() },
+    charges: { retrieve: (...a: unknown[]) => mockChargesRetrieve(...a) },
+    checkout: { sessions: { list: (...a: unknown[]) => mockSessionsList(...a) } },
+    invoicePayments: { list: (...a: unknown[]) => mockInvoicePaymentsList(...a) },
   }),
+}));
+
+// The credit ledger, as the refund / dispute reversal sees it: a grant per payment ref, the debits taken so far.
+const mockLedger: { grants: Record<string, { userId: string; credits: number }>; debits: Array<{ userId: string; amount: number; ref: string }>; balance: number } = { grants: {}, debits: [], balance: 0 };
+const mockDeduct = jest.fn();
+jest.mock('../../../../lib/orchestrator/ledger', () => ({
+  grantedForRef: async (ref: string) => ({ ok: true, grant: mockLedger.grants[ref] ?? null }),
+  debitExistsForRef: async (userId: string, ref: string) => mockLedger.debits.some((d) => d.userId === userId && d.ref === ref),
+  debitedUnderPrefix: async (userId: string, prefix: string) =>
+    mockLedger.debits.filter((d) => d.userId === userId && d.ref.startsWith(prefix)).reduce((s, d) => s + d.amount, 0),
+  creditsBalanceOf: async () => mockLedger.balance,
+  deductCredits: (...a: unknown[]) => mockDeduct(...a),
 }));
 
 const mockReportError = jest.fn();
@@ -167,6 +184,19 @@ beforeEach(() => {
   mockFindUserIdForStripeSubscription.mockReset().mockResolvedValue(null);
   mockCreateNotification.mockReset().mockResolvedValue(undefined);
   mockRecompute.mockReset().mockResolvedValue(undefined);
+  mockChargesRetrieve.mockReset();
+  mockSessionsList.mockReset().mockResolvedValue({ data: [] });
+  mockInvoicePaymentsList.mockReset().mockResolvedValue({ data: [] });
+  mockLedger.grants = {};
+  mockLedger.debits = [];
+  mockLedger.balance = 0;
+  mockDeduct.mockReset().mockImplementation(async (userId: string, amount: number, ref: string) => {
+    if (mockLedger.debits.some((d) => d.userId === userId && d.ref === ref)) return { ok: true, balance: mockLedger.balance };
+    if (mockLedger.balance < amount) return { ok: false, reason: 'insufficient' };
+    mockLedger.balance -= amount;
+    mockLedger.debits.push({ userId, amount, ref });
+    return { ok: true, balance: mockLedger.balance };
+  });
   logSpies = [jest.spyOn(console, 'info').mockImplementation(() => {}), jest.spyOn(console, 'error').mockImplementation(() => {})];
 });
 afterEach(() => logSpies.forEach((s) => s.mockRestore()));
@@ -387,6 +417,17 @@ describe('the webhook has no session — every database call is service role', (
     expect(mockGrantSubscriptionAllowance).not.toHaveBeenCalled();
   });
 
+  it('a refund (credit reversal + affiliate reversal) touches only the service role', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_r' }] });
+    mockLedger.grants['stripe:cs_r'] = { userId: USER, credits: 100 };
+    mockLedger.balance = 100;
+    mockDb.rows.affiliate_referrals = { affiliate_id: 'aff_1' };
+    mockDb.rows.affiliates = { id: 'aff_1', commission_percent: 10, is_active: true };
+    expect((await deliver(refunded({ id: 'ch_svc', amount: 1000, amount_refunded: 1000 }))).status).toBe(200);
+    expect(commissionInserts()).toHaveLength(1);
+    expect([...mockDb.reads, ...mockDb.writes].filter((x) => x.client === 'anon')).toEqual([]);
+  });
+
   it('no path in a full invoice.paid + affiliate run touches the anon client', async () => {
     configureTiers();
     mockDb.rows.affiliate_referrals = { affiliate_id: 'aff_1' };
@@ -394,5 +435,116 @@ describe('the webhook has no session — every database call is service role', (
     expect((await deliver(invoicePaid())).status).toBe(200);
     expect(commissionInserts()).toHaveLength(1);
     expect([...mockDb.reads, ...mockDb.writes].filter((x) => x.client === 'anon')).toEqual([]);
+  });
+});
+
+function refunded(charge: Record<string, unknown>) {
+  mockEventSeq += 1;
+  return {
+    id: `evt_refund_${mockEventSeq}`, type: 'charge.refunded', livemode: false, created: PERIOD_START,
+    data: { object: { customer: 'cus_1', currency: 'usd', payment_intent: 'pi_1', refunded: true, ...charge } },
+  };
+}
+function disputed(dispute: Record<string, unknown>) {
+  mockEventSeq += 1;
+  return {
+    id: `evt_dispute_${mockEventSeq}`, type: 'charge.dispute.created', livemode: false, created: PERIOD_START,
+    data: { object: { reason: 'fraudulent', payment_intent: 'pi_1', ...dispute } },
+  };
+}
+
+describe('refunds and disputes take back the credits the payment bought', () => {
+  it('a full refund of a tier pack debits the whole grant once (redelivery is a no-op)', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_pack' }] });
+    mockLedger.grants['stripe:cs_pack'] = { userId: USER, credits: 525 };
+    mockLedger.balance = 600;
+    const ev = refunded({ id: 'ch_1', amount: 2900, amount_refunded: 2900 });
+    expect((await deliver(ev)).status).toBe(200);
+    expect(mockSessionsList).toHaveBeenCalledWith({ payment_intent: 'pi_1', limit: 1 });
+    expect(mockLedger.debits).toEqual([{ userId: USER, amount: 525, ref: 'reversal:ch_1:refund:2900' }]);
+    expect(mockLedger.balance).toBe(75);
+    // Stripe redelivers the same event under a new id (the in-memory dedupe would otherwise short-circuit).
+    expect((await deliver({ ...ev, id: 'evt_refund_again' })).status).toBe(200);
+    expect(mockLedger.debits).toHaveLength(1);
+  });
+
+  it('partial refunds reverse proportionally and the second one takes only the difference', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_w' }] });
+    mockLedger.grants['stripe:cs_w'] = { userId: USER, credits: 290 };
+    mockLedger.balance = 1000;
+    await deliver(refunded({ id: 'ch_2', amount: 2900, amount_refunded: 1000 }));
+    await deliver(refunded({ id: 'ch_2', amount: 2900, amount_refunded: 2900 }));
+    expect(mockLedger.debits).toEqual([
+      { userId: USER, amount: 100, ref: 'reversal:ch_2:refund:1000' },
+      { userId: USER, amount: 190, ref: 'reversal:ch_2:refund:2900' },
+    ]);
+  });
+
+  it('a refunded subscription month is found through its invoice (sub:<invoice>)', async () => {
+    mockInvoicePaymentsList.mockResolvedValue({ data: [{ invoice: 'in_9' }] });
+    mockLedger.grants['sub:in_9'] = { userId: USER, credits: 575 };
+    mockLedger.balance = 575;
+    expect((await deliver(refunded({ id: 'ch_3', amount: 3999, amount_refunded: 3999 }))).status).toBe(200);
+    expect(mockInvoicePaymentsList).toHaveBeenCalledWith({ payment: { type: 'payment_intent', payment_intent: 'pi_1' }, limit: 1 });
+    expect(mockLedger.debits).toEqual([{ userId: USER, amount: 575, ref: 'reversal:ch_3:refund:3999' }]);
+  });
+
+  it('credits already spent: takes what is left and ALERTS the shortfall', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_s' }] });
+    mockLedger.grants['stripe:cs_s'] = { userId: USER, credits: 525 };
+    mockLedger.balance = 200;
+    expect((await deliver(refunded({ id: 'ch_4', amount: 2900, amount_refunded: 2900 }))).status).toBe(200);
+    expect(mockLedger.debits).toEqual([{ userId: USER, amount: 200, ref: 'reversal:ch_4:refund:2900' }]);
+    expect(mockReportError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ stage: 'refund-reversal-shortfall', shortfall: 325, reversed: 200 }));
+  });
+
+  it('a refund of a payment that bought no credits changes nothing and still reverses the affiliate commission', async () => {
+    mockDb.rows.affiliate_referrals = { affiliate_id: 'aff_1' };
+    mockDb.rows.affiliates = { id: 'aff_1', commission_percent: 10, is_active: true };
+    expect((await deliver(refunded({ id: 'ch_5', amount: 5000, amount_refunded: 5000 }))).status).toBe(200);
+    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(commissionInserts()).toEqual([expect.objectContaining({ payload: expect.objectContaining({ status: 'reversed', gross_amount_cents: -5000 }) })]);
+  });
+
+  it('Stripe unreachable during the lookup → 500 so Stripe redelivers, and the affiliate reversal still ran', async () => {
+    mockSessionsList.mockRejectedValue(new Error('ECONNRESET'));
+    mockDb.rows.affiliate_referrals = { affiliate_id: 'aff_1' };
+    mockDb.rows.affiliates = { id: 'aff_1', commission_percent: 10, is_active: true };
+    const r = await deliver(refunded({ id: 'ch_6', amount: 2900, amount_refunded: 2900 }));
+    expect(r.status).toBe(500);
+    expect(commissionInserts()).toHaveLength(1);
+    expect(markedProcessed()).toBe(false);
+  });
+
+  it('charge.dispute.created reverses the disputed amount (charge looked up when only its id is on the dispute)', async () => {
+    mockChargesRetrieve.mockResolvedValue({ id: 'ch_7', amount: 2900, payment_intent: 'pi_1' });
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_d' }] });
+    mockLedger.grants['stripe:cs_d'] = { userId: USER, credits: 525 };
+    mockLedger.balance = 525;
+    const ev = disputed({ id: 'dp_1', charge: 'ch_7', amount: 2900 });
+    expect((await deliver(ev)).status).toBe(200);
+    expect(mockChargesRetrieve).toHaveBeenCalledWith('ch_7');
+    expect(mockLedger.debits).toEqual([{ userId: USER, amount: 525, ref: 'reversal:ch_7:dispute:dp_1' }]);
+    expect((await deliver({ ...ev, id: 'evt_dispute_again' })).status).toBe(200);
+    expect(mockLedger.debits).toHaveLength(1);
+  });
+
+  it('a dispute after a partial refund never reverses more than was granted', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_pd' }] });
+    mockLedger.grants['stripe:cs_pd'] = { userId: USER, credits: 100 };
+    mockLedger.balance = 1000;
+    await deliver(refunded({ id: 'ch_8', amount: 1000, amount_refunded: 400 }));
+    await deliver(disputed({ id: 'dp_2', charge: { id: 'ch_8', amount: 1000, payment_intent: 'pi_1' }, amount: 1000 }));
+    expect(mockLedger.debits.map((d) => d.amount)).toEqual([40, 60]);
+    expect(mockChargesRetrieve).not.toHaveBeenCalled();
+  });
+
+  it('a ledger that cannot debit → 500 (retry), never marked processed', async () => {
+    mockSessionsList.mockResolvedValue({ data: [{ id: 'cs_e' }] });
+    mockLedger.grants['stripe:cs_e'] = { userId: USER, credits: 10 };
+    mockDeduct.mockResolvedValue({ ok: false, reason: 'error' });
+    const r = await deliver(disputed({ id: 'dp_3', charge: { id: 'ch_9', amount: 1000, payment_intent: 'pi_1' }, amount: 1000 }));
+    expect(r.status).toBe(500);
+    expect(markedProcessed()).toBe(false);
   });
 });
