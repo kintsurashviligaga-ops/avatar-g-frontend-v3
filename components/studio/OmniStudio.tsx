@@ -127,6 +127,7 @@ import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
+import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -5400,7 +5401,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music' || mode === 'lipsync') && isConversational(guestText);
       const plainChat =
         (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
-        !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
+        !isGenerativeCommand(guestText) && !detectStudioIntent(guestText) && routeAgentIntent(guestText)?.kind !== 'open';
       if (!plainChat) {
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
@@ -5468,7 +5469,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const chatOrder: GateMode | null = (() => {
       if (!inChat || !text || opts?.confirmed) return null;
       if (chatPend) return chatPend.mode;
-      if (!isGenerativeCommand(text) || detectStudioIntent(text)) return null;
+      // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
+      if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
       if (lane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) return 'image';
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
@@ -5687,6 +5689,44 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         { role: 'assistant', text: head + filled + files + tail },
       ]);
       setInput(''); stopDictationEcho();
+      return;
+    }
+
+    // AGENT G × THE SERVICE CATALOG (Master Task §52). The tools with no sentence path of their own — product ad,
+    // character swap, motion transfer, VFX, video remix, interior, photographer — open from the chat the way the panels
+    // above do: the tool opens, nothing renders, nothing is charged. A request for a service that does not exist yet
+    // („მუსიკა დამირემიქსე" — an AUDIO remix) is answered honestly with the nearest real one, never with the video
+    // remix. lib/catalog/agentRoute decides; it returns null for everything the routers above and below already own.
+    const agentRoute = mode === 'chat' && text ? routeAgentIntent(text) : null;
+    if (agentRoute) {
+      const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
+      const en = lang === 'en', ru = lang === 'ru';
+      const label = agentRoute.service.label[lang];
+      let reply: string;
+      // The video-tab tools take the composer's words as their prompt, so the words stay there; the panel tools
+      // (interior, photographer) have their own fields, and the sentence is already in the thread.
+      let keepWords = false;
+      if (agentRoute.kind === 'open') {
+        applyToolRef.current?.(agentRoute.tool);
+        keepWords = agentRoute.tool === 'product' || agentRoute.tool === 'swap' || agentRoute.tool === 'vfx' || agentRoute.tool === 'remix' || agentRoute.tool === 'motion';
+        const head = en ? `Opened **${label}**.` : ru ? `Открыл **${label}**.` : `გავხსენი **${label}**.`;
+        const files = attachments.length
+          ? (en ? ' Your attached file is still in the composer — pick it in the panel to use it.'
+            : ru ? ' Ваш файл остался в поле ввода — выберите его в панели.'
+              : ' შენი ფაილი შეტანის ველში დარჩა — აირჩიე პანელში გამოსაყენებლად.')
+          : '';
+        const tail = en ? ' Review the settings and start when you’re ready.'
+          : ru ? ' Проверьте настройки и запустите, когда будете готовы.'
+            : ' გადახედე პარამეტრებს და დაიწყე, როცა მზად იქნები.';
+        reply = head + files + tail;
+      } else {
+        const alt = agentRoute.alternative?.label[lang];
+        reply = (en ? `**${label}** isn’t available yet.` : ru ? `**${label}** пока недоступен.` : `**${label}** ჯერ არ არის ხელმისაწვდომი.`)
+          + (alt ? (en ? ` Available instead: **${alt}** — describe what you want.` : ru ? ` Вместо этого доступно: **${alt}** — опишите, что нужно.` : ` ამის ნაცვლად ხელმისაწვდომია **${alt}** — აღწერე, რა გინდა.`) : '');
+      }
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
+      if (!keepWords) setInput('');
+      stopDictationEcho();
       return;
     }
 

@@ -18,6 +18,20 @@ describe('the four services that had no sentence path at all', () => {
     expect(detectStudioIntent('გააკეთე 3D მოდელი')?.service).toBe('model3d');
   });
 
+  it('routes Georgian object-first, verb-last requests (Master Task §52)', () => {
+    const dub = detectStudioIntent('ამ ვიდეოს ხმა ქართულად გადამითარგმნე.');
+    expect(dub?.service).toBe('dubbing');
+    expect(dub?.params.targetLanguage).toBe('ka');
+    expect(detectStudioIntent('ეს ვიდეო რუსულად გადათარგმნე')?.service).toBe('dubbing');
+    expect(detectStudioIntent('პრეზენტაცია გამიკეთე ხელოვნურ ინტელექტზე')?.service).toBe('presentation');
+  });
+
+  it('a Georgian text translation is not dubbing, whatever the word order', () => {
+    expect(detectStudioIntent('ეს ტექსტი ინგლისურად გადამითარგმნე')).toBeNull();
+    // a declarative that shares the „მი" shape is not a request
+    expect(detectStudioIntent('პრეზენტაციის გაკეთება შემიძლია')).toBeNull();
+  });
+
   it('routes Russian', () => {
     expect(detectStudioIntent('озвучь это видео на английский')?.service).toBe('dubbing');
     expect(detectStudioIntent('сделай презентацию на 8 слайдов')?.service).toBe('presentation');

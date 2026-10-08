@@ -149,6 +149,25 @@ describe('resolveService — Agent G intent and search', () => {
     expect(resolveService('two videos please')?.id).toBe('video.generate');
   });
 
+  it('matches Georgian and Russian aliases in any case, not only the nominative', () => {
+    expect(resolveService('ინტერიერის დიზაინი გამიკეთე')?.id).toBe('image.interior');
+    expect(resolveService('сделай фотосессию')?.id).toBe('image.photoshoot');
+    expect(resolveService('сделай рекламу для кафе')?.id).toBe('video.product-ad');
+  });
+
+  it('a medium word („video") never outranks the service the sentence names', () => {
+    expect(resolveService('swap the character in this video')?.id).toBe('video.character-swap');
+    expect(resolveService('add vfx to my video')?.id).toBe('video.vfx');
+  });
+
+  it('a subject noun is not a service: no misroute into a panel', () => {
+    expect(resolveService('write captions for my instagram post')?.id).toBe('text.write');
+    expect(resolveService('გადათარგმნე ეს ტექსტი ინგლისურად')?.id).toBe('text.write');
+    expect(resolveService('make a slow motion video')?.id).toBe('video.generate');
+    expect(resolveService('a video in portrait format')?.id).toBe('video.generate');
+    expect(resolveService('ეს ვიდეო დამირემიქსე')?.id).toBe('video.remix');
+  });
+
   it('returns null for empty or unrelated text', () => {
     expect(resolveService('')).toBeNull();
     expect(resolveService('   ')).toBeNull();

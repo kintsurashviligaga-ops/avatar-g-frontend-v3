@@ -23,7 +23,9 @@
  *
  * Pure (no I/O, no env); the date line is computed per call so a cached prompt can never serve yesterday's date.
  */
-import { ALL_TOOLS, TOOL_META, type ToolId } from '@/lib/studio/tools';
+import { TOOL_META, type ToolId } from '@/lib/studio/tools';
+import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
+import { SERVICE_CATALOG } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_PACKAGES, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
 
 export type PlatformPromptLocale = 'ka' | 'en' | 'ru';
@@ -46,16 +48,16 @@ const TOOL_ENGINE: Partial<Record<ToolId, string>> = {
 /**
  * Button and menu labels the prompt points users at, copied from the UI (they are not exported there):
  * the composer's "+" sheet title (components/studio/ui/ToolSheet.tsx), the paperclip beside it (the composer in
- * OmniStudio), the side menu's services entry and the top-up button (components/studio/ChatChrome.tsx), and the Live
- * voice chip (the composer in OmniStudio). The test scans
- * components/ for each literal, so a renamed button fails CI instead of sending users to a button that is gone.
+ * OmniStudio), the top-up button (components/studio/ChatChrome.tsx), and the Live voice chip (the composer in
+ * OmniStudio). The test scans components/ for each literal, so a renamed button fails CI instead of sending users to a
+ * button that is gone. The side menu's headings are not copied: they are NAV_GROUP_LABEL (lib/catalog/nav), read here.
  */
 export const PLATFORM_UI_LABELS: Readonly<Record<PlatformPromptLocale, {
-  language: string; toolsSheet: string; attach: string; services: string; liveVoice: string; topUp: string;
+  language: string; toolsSheet: string; attach: string; liveVoice: string; topUp: string;
 }>> = {
-  ka: { language: 'Georgian (ქართული)', toolsSheet: 'ხელსაწყოები', attach: 'ფაილის მიმაგრება', services: 'სერვისები', liveVoice: 'ცოცხალი ხმა', topUp: 'შევსება' },
-  en: { language: 'English', toolsSheet: 'Tools', attach: 'Attach files', services: 'Services', liveVoice: 'Live voice', topUp: 'Top up' },
-  ru: { language: 'Russian (Русский)', toolsSheet: 'Инструменты', attach: 'Прикрепить файлы', services: 'Сервисы', liveVoice: 'Живой голос', topUp: 'Пополнить' },
+  ka: { language: 'Georgian (ქართული)', toolsSheet: 'ხელსაწყოები', attach: 'ფაილის მიმაგრება', liveVoice: 'ცოცხალი ხმა', topUp: 'შევსება' },
+  en: { language: 'English', toolsSheet: 'Tools', attach: 'Attach files', liveVoice: 'Live voice', topUp: 'Top up' },
+  ru: { language: 'Russian (Русский)', toolsSheet: 'Инструменты', attach: 'Прикрепить файлы', liveVoice: 'Живой голос', topUp: 'Пополнить' },
 };
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -83,12 +85,28 @@ function tbilisiNow(now: Date): string {
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
 
+/** The tools under the side menu's own categories (lib/catalog/nav), so the model names the place a person will look. */
 function toolLines(loc: PlatformPromptLocale): string {
-  return ALL_TOOLS.map((id) => {
-    const meta = TOOL_META[id];
-    const engine = TOOL_ENGINE[id];
-    return `- ${meta.name[loc]} — ${meta.sub[loc]}${engine ? ` · ${engine}` : ''}`;
-  }).join('\n');
+  return toolGroups().map((g) => [
+    `${g.label[loc]}:`,
+    ...g.tools.map((id) => {
+      const meta = TOOL_META[id];
+      const engine = TOOL_ENGINE[id];
+      return `- ${meta.name[loc]} — ${meta.sub[loc]}${engine ? ` · ${engine}` : ''}`;
+    }),
+  ].join('\n')).join('\n');
+}
+
+/**
+ * ⚠️ A SERVICE THAT DOES NOT EXIST MUST NOT BE IMPROVISED. „მუსიკა დამირემიქსე" (an AUDIO remix) used to reach the model,
+ * which knew a "Remix" tool and offered it — that tool remixes VIDEO (Master Task §25). The catalog's coming-soon
+ * services are listed by name so the answer is "not yet", with what does exist.
+ */
+function notYetLine(loc: PlatformPromptLocale): string {
+  const names = SERVICE_CATALOG.filter((s) => s.status === 'coming-soon').map((s) => s.label[loc]);
+  return names.length
+    ? `NOT AVAILABLE YET: ${names.join(', ')}. When asked for one of these, say plainly it is not available yet and name the closest tool above that does exist — never present another tool as if it were the same thing.`
+    : '';
 }
 
 /**
@@ -165,9 +183,9 @@ export function buildPlatformPrompt(opts: {
 
     `FORMAT: Fit the length to the question — a simple or casual question gets one to three plain sentences, no headings. Use Markdown only when structure helps: short ## headings, bullet or numbered lists, tables for comparisons, fenced code blocks with a language tag for all code, LaTeX maths in $…$ or $$…$$. Answer first; no filler, no restating the question, no generic disclaimers.`,
 
-    `STUDIO TOOLS (name — what it does · Google engine):\n${toolLines(loc)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
+    `STUDIO TOOLS by side-menu category (name — what it does · Google engine):\n${toolLines(loc)}\n${notYetLine(loc)}\nVoice: the "${ui.liveVoice}" button starts a live spoken conversation (Gemini Live) for signed-in users, and replies can be read aloud (Gemini TTS).\nWhen asked which engine powers something, name only the Google engines listed here; for a tool with none listed, describe what it makes — never guess or name another vendor.`,
 
-    `HANDING OFF: You cannot start, queue or finish a render from a text reply — the studio runs the tools. A clear request typed in chat (e.g. "make a 30-second video of …") is usually routed to the right tool automatically, and every tool opens from "${ui.toolsSheet}" (the + button) or "${ui.services}" in the side menu, and files are attached with "${ui.attach}" (the paperclip beside +). So when someone wants to create or edit media and the request reached you, name the tool and how to open it in one sentence, then offer a ready-to-use prompt. Never say a result exists that you have not seen. Never reply with JSON, commands or routing payloads — plain language only. Bring up tools only when the user wants to make or edit media, or asks about the platform. Creating media needs a signed-in account; paid tools spend credits.`,
+    `HANDING OFF: You cannot start, queue or finish a render from a text reply — the studio runs the tools. A clear request typed in chat (e.g. "make a 30-second video of …") is usually routed to the right tool automatically, and every tool opens from "${ui.toolsSheet}" (the + button) or from its category under "${NAV_GROUP_LABEL.create[loc]}" or "${NAV_GROUP_LABEL.work[loc]}" in the side menu, and files are attached with "${ui.attach}" (the paperclip beside +). So when someone wants to create or edit media and the request reached you, name the tool and how to open it in one sentence, then offer a ready-to-use prompt. Never say a result exists that you have not seen. Never reply with JSON, commands or routing payloads — plain language only. Bring up tools only when the user wants to make or edit media, or asks about the platform. Creating media needs a signed-in account; paid tools spend credits.`,
 
     priceBlock(ui.topUp),
   ].join('\n\n');

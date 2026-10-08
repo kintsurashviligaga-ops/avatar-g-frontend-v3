@@ -105,7 +105,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
       { id: 'documentary', label: l('დოკუმენტური', 'Documentary', 'Документальный'), query: { mode: 'documentary' } },
     ],
     visibleInSidebar: true,
-    aliases: ['video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм', 'reel', 'რილი', 'text to video', 'storyboard', 'სცენარი'],
+    aliases: ['video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм', 'reel', 'რილი', 'text to video', 'storyboard', 'სთორიბორდი', 'раскадровка'],
   }),
   svc({
     id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live', boundary: 'google',
@@ -117,11 +117,11 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'live',
-    boundary: 'violation', boundaryNote: 'Kling via Replicate (/api/video/remix productad)',
+    boundary: 'violation', boundaryNote: 'Veo first, then Kling via Replicate, then a Ken Burns still (/api/video/remix productad); §A removes the Kling leg',
     label: l('პროდუქტის რეკლამა', 'Product ad', 'Реклама продукта'),
     description: l('პროდუქტის ფოტოდან სარეკლამო რილი', 'An ad reel from a product photo', 'Рекламный ролик из фото продукта'),
     shortcuts: ['image-photo'],
-    aliases: ['product ad', 'ad', 'რეკლამა', 'პროდუქტის რეკლამა', 'реклама', 'реклама продукта', 'commercial'],
+    aliases: ['product ad', 'ad', 'advert', 'advertisement', 'promo video', 'რეკლამა', 'პროდუქტის რეკლამა', 'სარეკლამო ვიდეო', 'реклама', 'реклама продукта', 'рекламный ролик'],
   }),
   svc({
     id: 'video.character-swap', category: 'video', order: 13, tool: 'swap', pricingKey: 'swap', status: 'live',
@@ -129,7 +129,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     label: l('პერსონაჟის შეცვლა', 'Character swap', 'Замена персонажа'),
     description: l('ვიდეოში სხვა სახე ან პერსონაჟი', 'Put another face or character in a video', 'Другое лицо или персонаж в видео'),
     shortcuts: ['avatar'],
-    aliases: ['character swap', 'face swap', 'swap', 'სახის შეცვლა', 'პერსონაჟის შეცვლა', 'замена лица', 'замена персонажа', 'ამ ბიჭით'],
+    aliases: ['character swap', 'face swap', 'swap the character', 'swap character', 'swap the face', 'swap face', 'სახის შეცვლა', 'პერსონაჟის შეცვლა', 'замена лица', 'замена персонажа', 'ამ ბიჭით', 'ამ გოგოთი'],
   }),
   svc({
     id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'live',
@@ -137,27 +137,29 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
     description: l('ფოტო იმოძრავებს ვიდეოს მიხედვით', 'A photo moves like a reference video', 'Фото двигается по образцу'),
     shortcuts: ['avatar'],
-    aliases: ['motion', 'motion transfer', 'animate image', 'მოძრაობა', 'გააცოცხლე ფოტო', 'движение', 'оживить фото'],
+    // Not „animate this photo": that is image→video, which the chat sends to Veo (§A). Motion transfer needs a
+    // reference video, so only its own name routes here.
+    aliases: ['motion transfer', 'motion control', 'copy the motion', 'მოძრაობის გადატანა', 'перенос движения'],
   }),
   svc({
     id: 'video.vfx', category: 'video', order: 15, tool: 'vfx', pricingKey: 'remix', status: 'live', boundary: 'google',
     boundaryNote: 'Veo scene; button quotes `remix`, route prices with lib/genjutsu/pricing.ts (R5 gap)',
     label: l('VFX ეფექტები', 'VFX effects', 'VFX-эффекты'),
     description: l('ერთი შეხებით VFX ეფექტები ფოტოსთვის', 'One-tap VFX effects for your photos', 'VFX-эффекты в одно касание'),
-    aliases: ['vfx', 'effects', 'ეფექტები', 'эффекты', 'спецэффекты'],
+    aliases: ['vfx', 'visual effects', 'special effects', 'ვიზუალური ეფექტ', 'სპეცეფექტ', 'спецэффект', 'визуальные эффекты'],
   }),
   svc({
     id: 'video.remix', category: 'video', order: 16, tool: 'remix', pricingKey: 'remix', status: 'live',
     boundary: 'violation', boundaryNote: 'restyle/character ops can reach Kling / Replicate Wav2Lip / NanoBanana',
     label: l('ვიდეო რემიქსი', 'Video remix', 'Видео-ремикс'),
     description: l('შეცვალე არსებული ვიდეო: სტილი, სუბტიტრები, ხმა', 'Change a video you have: style, captions, voice', 'Измените своё видео: стиль, субтитры, голос'),
-    aliases: ['video remix', 'restyle', 'ვიდეოს რემიქსი', 'ვიდეო რემიქსი', 'ремикс видео', 'captions', 'სუბტიტრები'],
+    aliases: ['video remix', 'remix this video', 'remix my video', 'remix the video', 'restyle', 'add captions', 'add subtitles', 'ვიდეოს რემიქსი', 'ვიდეო რემიქსი', 'ვიდეო დამირემიქსე', 'ვიდეოს სუბტიტრ', 'ремикс видео', 'субтитры к видео'],
   }),
   svc({
     id: 'video.editing', category: 'video', order: 17, tool: 'montage', pricingKey: null, status: 'live', boundary: 'google',
     label: l('ვიდეოს მონტაჟი', 'Video editing', 'Видеомонтаж'),
     description: l('კადრებიდან ერთი ფილმი: ჭრა, მიერთება, მუსიკა', 'One film from your clips: trim, join, music', 'Один фильм из клипов: обрезка, склейка, музыка'),
-    aliases: ['montage', 'edit video', 'trim', 'join', 'მონტაჟი', 'მოჭრა', 'монтаж', 'обрезать', 'склеить'],
+    aliases: ['montage', 'edit video', 'trim', 'join clips', 'join the clips', 'join videos', 'მონტაჟი', 'მოჭრა', 'монтаж', 'обрезать', 'склеить'],
   }),
   // ── IMAGE & PHOTO ─────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
@@ -166,21 +168,21 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     label: l('სურათის შექმნა', 'Generate image', 'Создать изображение'),
     description: l('შექმენი და დაარედაქტირე სურათები', 'Create and edit images', 'Создавайте и редактируйте изображения'),
     visibleInSidebar: true,
-    aliases: ['image', 'picture', 'სურათი', 'ნახატი', 'изображение', 'картинка', 'draw', 'დახატე', 'нарисуй', 'edit image'],
+    aliases: ['image', 'picture', 'სურათი', 'ნახატი', 'изображение', 'картинка', 'draw', 'დახატე', 'დამიხატე', 'нарисуй', 'edit image'],
   }),
   svc({
     id: 'image.photoshoot', category: 'image-photo', order: 21, tool: 'photoshoot', pricingKey: 'photoshoot', status: 'live',
     boundary: 'violation', boundaryNote: 'same cascade as image.generate',
     label: l('ფოტოგრაფი', 'Photographer', 'Фотограф'),
     description: l('სტუდიური ფოტოსესია შენი ფოტოებიდან', 'A studio photoshoot from your photos', 'Студийная фотосессия из ваших фото'),
-    aliases: ['photoshoot', 'portrait', 'photographer', 'ფოტოსესია', 'ფოტოგრაფი', 'პორტრეტი', 'фотосессия', 'фотограф', 'портрет'],
+    aliases: ['photoshoot', 'photo shoot', 'photographer', 'ფოტოსესია', 'ფოტოგრაფი', 'фотосессия', 'фотограф'],
   }),
   svc({
     id: 'image.interior', category: 'image-photo', order: 22, tool: 'interior', pricingKey: 'interior', status: 'live',
     boundary: 'violation', boundaryNote: 'NanoBanana cascade; /api/orchestrator/interior/produce uses Claude for style',
     label: l('ინტერიერის დიზაინი', 'Interior design', 'Дизайн интерьера'),
     description: l('გადააპროექტე ოთახი ფოტოდან', 'Redesign a room from a photo', 'Новый дизайн комнаты по фото'),
-    aliases: ['interior', 'room', 'ინტერიერი', 'ოთახი', 'интерьер', 'комната'],
+    aliases: ['interior', 'interior design', 'room design', 'redesign my room', 'redesign my living room', 'redesign my bedroom', 'redesign my kitchen', 'ინტერიერი', 'ოთახის დიზაინი', 'интерьер', 'дизайн комнаты'],
   }),
   svc({
     id: 'image.culling', category: 'image-photo', order: 23, tool: 'photo', pricingKey: null, authRequired: false, agentCallable: false,
@@ -217,7 +219,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     agentCallable: false, visibleInTools: false, visibleInServices: false,
     label: l('აუდიო რემიქსი', 'Audio remix', 'Аудио-ремикс'),
     description: l('არსებული ტრეკის ვარიაცია — ჯერ არ არის', 'A variation of a track you have — not available yet', 'Вариация вашего трека — пока недоступно'),
-    aliases: ['audio remix', 'music remix', 'remix song', 'მუსიკის რემიქსი', 'დამირემიქსე', 'ремикс музыки', 'ремикс трека'],
+    aliases: ['audio remix', 'music remix', 'remix song', 'remix this song', 'remix my song', 'remix this track', 'მუსიკის რემიქსი', 'მუსიკა დამირემიქსე', 'სიმღერა დამირემიქსე', 'ტრეკი დამირემიქსე', 'ремикс музыки', 'ремикс трека', 'ремикс песни'],
   }),
   // ── VOICE & AUDIO ─────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
@@ -226,7 +228,8 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     label: l('დუბლაჟი', 'Dubbing', 'Дубляж'),
     description: l('ვიდეო სხვა ენაზე, შენი ხმით', 'Your video in another language', 'Ваше видео на другом языке'),
     shortcuts: ['video'],
-    aliases: ['dubbing', 'dub', 'translate video', 'დუბლაჟი', 'გადათარგმნე', 'ქართულად გადამითარგმნე', 'дубляж', 'перевести видео', 'озвучка'],
+    // Never a bare „translate": „გადათარგმნე ეს ტექსტი" is a text job for Agent G, not a video one.
+    aliases: ['dubbing', 'dub', 'translate video', 'translate this video', 'დუბლაჟი', 'ვიდეოს ხმა', 'ვიდეოს თარგმანი', 'ვიდეოს გადათარგმნა', 'дубляж', 'перевести видео', 'переведи видео', 'озвучка видео'],
   }),
   // ── TEXT & CONTENT ────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
@@ -241,7 +244,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
       { id: 'translate', label: l('თარგმანი', 'Translate', 'Перевод') },
     ],
     shortcuts: ['video'],
-    aliases: ['write', 'text', 'copy', 'article', 'script', 'podcast', 'prompt', 'ტექსტი', 'სტატია', 'სცენარი', 'პოსტი', 'პოდკასტი', 'текст', 'статья', 'сценарий', 'пост', 'подкаст'],
+    aliases: ['write', 'დამიწერე', 'დაწერე', 'text', 'copy', 'article', 'script', 'podcast', 'prompt', 'ტექსტი', 'სტატია', 'სცენარი', 'პოსტი', 'პოდკასტი', 'текст', 'статья', 'сценарий', 'пост', 'подкаст'],
   }),
   // ── DESIGN ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
@@ -318,23 +321,38 @@ const norm = (t: string): string => t.toLocaleLowerCase().normalize('NFC').repla
 /**
  * Whole-word match, or — for an alias of 4+ letters — the alias plus up to 3 more letters, which covers Georgian and
  * Russian case endings („ვიდეოს", „музыку") and English plurals ("videos") without letting "ad" match "admin".
+ * A Georgian or Russian alias written in the nominative also matches its other cases: the final vowel is an ending,
+ * not part of the word („ინტერიერი" → „ინტერიერის", „фотосессия" → „фотосессию").
  */
 function aliasHits(query: string, alias: string): boolean {
-  let at = query.indexOf(` ${alias}`);
+  const inflects = /[ია]$/u.test(alias) && /[\u10D0-\u10FF]$/u.test(alias) || /[аяыиь]$/u.test(alias);
+  const stem = inflects && alias.length >= 5 ? alias.slice(0, -1) : alias;
+  let at = query.indexOf(` ${stem}`);
   while (at !== -1) {
-    const rest = query.slice(at + 1 + alias.length);
+    const rest = query.slice(at + 1 + stem.length);
     const tail = rest.slice(0, rest.indexOf(' '));
-    if (tail.length === 0 || (alias.length >= 4 && tail.length <= 3)) return true;
-    at = query.indexOf(` ${alias}`, at + 1);
+    if (tail.length === 0 || (stem.length >= 4 && tail.length <= 3)) return true;
+    at = query.indexOf(` ${stem}`, at + 1);
   }
   return false;
 }
 
 /**
+ * Bare category nouns. Almost every request names its medium („swap the character in this VIDEO", „ამ ვიდეოს ხმა
+ * გადამითარგმნე"), so a medium word is evidence of the category, not of the service: it scores below any specific
+ * alias and only decides when nothing more specific was said ("make a video about the sea" → video.generate).
+ */
+const GENERIC_ALIASES: ReadonlySet<string> = new Set([
+  'video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм',
+  'image', 'picture', 'სურათი', 'ნახატი', 'изображение', 'картинка',
+]);
+
+/**
  * Search (§51) and Agent G service resolution (§52): the best catalog service for free text, or null.
  * Scoring prefers the LONGEST matching alias, so „მუსიკალური ვიდეო" wins over „მუსიკა" and „ვიდეო", and
- * "music remix" (audio) wins over "remix" — §25 "Remix is not enough". Unusable services still resolve (a person
- * asking for an audio remix must hear it is not available, not get a video remix instead).
+ * "music remix" (audio) wins over "remix" — §25 "Remix is not enough"; a bare medium word (GENERIC_ALIASES) loses to
+ * any specific one. Unusable services still resolve (a person asking for an audio remix must hear it is not
+ * available, not get a video remix instead).
  */
 export function resolveService(text: string): ServiceDefinition | null {
   const q = ` ${norm(text)} `;
@@ -346,7 +364,7 @@ export function resolveService(text: string): ServiceDefinition | null {
       const na = norm(a);
       if (!na) continue;
       if (!aliasHits(q, na)) continue;
-      const score = na.length + (s.status === 'live' ? 0.5 : 0);
+      const score = (GENERIC_ALIASES.has(na) ? 1 : na.length) + (s.status === 'live' ? 0.5 : 0);
       if (!best || score > best.score) best = { s, score };
     }
   }

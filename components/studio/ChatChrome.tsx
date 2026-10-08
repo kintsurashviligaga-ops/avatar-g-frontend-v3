@@ -108,25 +108,25 @@ function dropUnadoptedPrime(): void {
 }
 
 const COPY: Record<Lang, {
-  menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
+  menu: string; settings: string; newChat: string; topUp: string; language: string;
   favorites: string; persona: string; billing: string; soon: string;
   account: string; accountGuest: string; library: string; login: string; signup: string; signupFree: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string; deleteAccount: string;
 }> = {
   ka: {
-    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
+    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', language: 'ენა',
     favorites: 'რჩეულები', persona: 'პერსონა', billing: 'ბილინგი', soon: 'მალე',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია', signupFree: 'დარეგისტრირდი უფასოდ',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება', deleteAccount: 'ანგარიშის წაშლა',
   },
   en: {
-    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
+    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', language: 'Language',
     favorites: 'Favorites', persona: 'Persona', billing: 'Billing', soon: 'Soon',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Log in', signup: 'Sign up', signupFree: 'Sign up for free',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support', deleteAccount: 'Delete account',
   },
   ru: {
-    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
+    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', language: 'Язык',
     favorites: 'Избранное', persona: 'Персона', billing: 'Биллинг', soon: 'Скоро',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация', signupFree: 'Регистрация бесплатно',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка', deleteAccount: 'Удалить аккаунт',
