@@ -31,12 +31,14 @@ CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 don
 CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
-NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Part 0 AUTH + Veo smoke, apply migration
-          20261008a, Stripe refund/dispute events, pricing table, browser infra, provider migration plan); then Part 2
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry, apply
+          migrations 20261008a and 20261008b, VIDEO_DIRECTOR_RUNS=admin on Preview, Stripe refund/dispute events, pricing
+          table, browser infra, provider migration plan); then Part 2
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
-          (not applied) · 17 V1–V6 director domain layer (not wired) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          (not applied) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
+          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b written, NOT applied) · 18 Stripe refund/dispute reversal, ledger fail-closed
           in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
           build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in

@@ -131,10 +131,20 @@ reasons; the first failed shot halts the run in `waiting_for_shot_decision` and 
 edit / cancel. Every engine change Veo would make silently (duration snap, aspect, seed coercion, reference on Lite) is
 refused before any money is spent. 121 tests (`npx jest lib/video/director`), mutation-checked.
 
+Since then (commits `08671489`, `e09ee27f`, `8aa2a9f7`) the director runs inside the product, behind the flag
+`VIDEO_DIRECTOR_RUNS` (unset = off: every director route answers 404 before reading the session; `admin` = admins only;
+`1` = every signed-in user). A run is stored in `director_runs` (migration `20261008b`, written, NOT applied) and advanced one
+bounded step per request: claim the shot (compare-and-set on `version`), charge that shot's share
+(`director:<run>:shot:<i>:a<attempt>`), submit once, poll, refund a shot that delivers no clip. In Production a missing
+ledger refuses the shot instead of rendering it free. With the flag on, the studio's storyboard Approve opens the director
+run instead of the film render: each scene's text goes over untouched, a board the rules refuse is listed with every
+problem, and a failed shot waits for retry / edit / cancel. A director run delivers per-shot clips only: no assembly,
+music bed, narration or colour pass. 169 tests across the director, its routes and the studio overlay.
+
 | Invariant | Label |
 |---|---|
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
-| Wired into the product's video flow | **MISSING**: the studio's video tool still uses the existing engine path, not the director |
+| Wired into the product's video flow | BUILT_NOT_PROVEN (unit + route + component tests): the studio's Approve runs the director when `VIDEO_DIRECTOR_RUNS` lets the user in; off by default, so Production is unchanged. Needs migration `20261008b` applied and the flag set on Preview (owner actions 3a, 3b) before anyone can try it |
 | Live Veo run | **FAILED, fix pending retry**: Part 0 is AUTH VERIFIED (build log of e222e38, 14:21:20 UTC). The owner's smoke press at 14:45:29 UTC reached Vertex via WIF (PredictLongRunning 200 from SA myavatar-veo), then the operation failed "Veo 3 prompt enhancement cannot be disabled" because `lib/veo/payload.ts` sent `enhancePrompt: false`. Fix `75eef69` (PR #43) is cherry-picked here; the clip waits on one more owner press on a Preview carrying it |
 | Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt. Limit (PROVEN by the T1 failure): Veo 3.x always rewrites the prompt inside Google and refuses `enhancePrompt: false`, so V3 holds on the wire, not inside the model; the studio's no-op "let Google rewrite" switch was removed |
 
@@ -269,6 +279,8 @@ Only the owner can do these. Nothing below was done by Claude.
 | 1a | Verify the `myavatar.ge` domain in the Resend account whose key is `RESEND_API_KEY` (resend.com/domains → Add Domain → add the TXT / MX records at the DNS host → Verify). Until then every email code, sign-up and password reset is refused by Resend (403), on Preview and in Production | O, §55 "auth blocking normal flow" |
 | 2 | Sign in as admin on the PR #43 Preview alias (password, or Google once that exact alias + `/**` is in Supabase Redirect URLs), then press the Veo smoke button on `/ka/admin/veo-smoke` once (approved clip, ≈ $0.40). AUTH itself is already verified from the build log | L, VIDEO V1-V6 |
 | 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
+| 3a | Apply `supabase/migrations/20261008b_director_runs.sql` (one service-role-only table, RLS on, no client access; it verifies itself) | J, VIDEO V1-V6 |
+| 3b | After 3a and the Veo retry in 2: set `VIDEO_DIRECTOR_RUNS=admin` on Preview only, so an admin can run a storyboard shot by shot (paid Veo per shot) | J, VIDEO V1-V6 |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
 | 5 | Subscribe the Stripe webhook to `charge.refunded` and `charge.dispute.created`; confirm `webhook_events` exists in Production | N |
 | 6 | Before deploying this branch: confirm `deduct_credits` and `SUPABASE_SERVICE_ROLE_KEY` exist in Production (otherwise every paid render is now refused, not given away) | N |
@@ -292,7 +304,7 @@ Any one of these means NO LAUNCH.
 | Wrong provider / silent fallback | 10 of 20 usable services still run on forbidden providers; `/api/pipeline` falls back to Anthropic / OpenAI (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | 9 tables open until migration `20261008a` is applied (O) |
-| Broken V1–V6 | Domain layer built and unit-proven; not wired into the product, no live Veo run (J) |
+| Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is not applied and no live Veo clip yet (J) |
 | Wrong pricing / billing inconsistency | Two contradictory pack tables (M) |
 | Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
 | Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |
