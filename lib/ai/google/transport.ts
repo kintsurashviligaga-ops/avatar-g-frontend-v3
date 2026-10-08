@@ -25,7 +25,7 @@ import { normalizeModelId } from './models';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-export type GoogleModelMethod = 'generateContent' | 'streamGenerateContent' | 'predict';
+export type GoogleModelMethod = 'generateContent' | 'streamGenerateContent' | 'predict' | 'countTokens';
 
 export interface GoogleModelCall {
   model: string;

@@ -197,7 +197,9 @@ package). Tests `lib/ai/google/transport.test.ts` (20). Still on the API key wha
 script / interior routes (own key pool), embeddings, Deep Research (Interactions), TTS, STT, Live, Imagen, health probes;
 Veo keeps its own `VEO_TRANSPORT`. Nothing in Production changes until `GEMINI_TRANSPORT=vertex` is set
 there. Not yet proven: one Vertex Gemini call from a Preview runtime (the service account holds
-`aiplatform.endpoints.predict`, which generateContent needs; a free `countTokens` check or an owner-approved call proves it).
+`aiplatform.endpoints.predict`, which generateContent needs). The free proof is `GET /api/admin/google-transport` (admin
+only): `countTokens` on the chat and image models through the same transport, nothing generated or billed; it needs
+`GEMINI_TRANSPORT=vertex` on Preview and a Preview build that carries this branch.
 
 ## M. Pricing
 
