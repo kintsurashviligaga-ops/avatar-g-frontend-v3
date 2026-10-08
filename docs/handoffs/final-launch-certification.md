@@ -181,7 +181,7 @@ pricing decision (no pricing change without an SSoT update).
 
 | Requirement | Label |
 |---|---|
-| **Email OTP sign-in, sign-up, password reset in Production** | **FAILED** since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"; suspected `lib/auth/otpEmail.ts:50` accepts exactly 6 digits). Fix owned by PR #43; FAILED until deployed with owner approval |
+| **Email OTP sign-in, sign-up, password reset in Production** | **FAILED** since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"; suspected `lib/auth/otpEmail.ts:50` accepts exactly 6 digits). Fix: 6–10 digit codes (PR #43 commit `87122ff`, also on this branch as `0421377a`; 10 suites / 127 auth tests and `tests/auth-sheet.spec.ts` 8 / 8 pass). FAILED in Production until deployed with owner approval |
 | Google OAuth, callback open-redirect guard | BUILT_NOT_PROVEN / PROVEN (unit) |
 | Session refresh, paid routes require auth | PROVEN (unit, static scan of 446 routes) |
 | Return to the workflow after login | PARTIAL (URL only, no prompt stash) |
@@ -265,7 +265,7 @@ Only the owner can do these. Nothing below was done by Claude.
 
 | # | Action | Unblocks |
 |---|---|---|
-| 1 | Deploy the OTP sign-in fix (PR #43) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
+| 1 | Deploy the OTP sign-in fix (PR #43; also on this branch) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
 | 2 | Part 0 AUTH probe on the PR #43 Preview (password sign-in, open `/api/admin/provider-probe`), then press the Veo smoke button once (approved clip, ≈ $0.40) | L, VIDEO V1-V6 |
 | 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
@@ -287,7 +287,7 @@ Any one of these means NO LAUNCH.
 
 | §55 blocker | Where it stands |
 |---|---|
-| Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O); fix on PR #43, not deployed |
+| Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O); fix on PR #43 and this branch, not deployed |
 | Wrong provider / silent fallback | 10 of 20 usable services still run on forbidden providers; `/api/pipeline` falls back to Anthropic / OpenAI (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | 9 tables open until migration `20261008a` is applied (O) |

@@ -66,7 +66,8 @@ BLOCKERS:
 · AUTH-1 (launch blocker, Production auth FAILED): email OTP sign-in, sign-up and password reset fail on Production and
   Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
   lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
-  thread (PR #43); stays FAILED for Production until that fix is deployed with the owner's approval.
+  thread (PR #43, commit 87122ff); since 13:55 UTC also on the cert branch (0421377a), so launch-certification Previews
+  carry it. Stays FAILED for Production until that fix is deployed with the owner's approval.
 · STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
   pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
   (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
