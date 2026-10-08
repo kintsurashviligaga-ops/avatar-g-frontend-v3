@@ -25,7 +25,8 @@ export interface FilmDelivery {
   /**
    * What the score leg ended up doing.
    * `null`      → every music provider missed; the film has NO music bed.
-   * `'musicgen'`→ the primary sang out and the backup engine produced the bed.
+   * `'musicgen'`→ the backup engine produced the bed. No longer sent: /api/video/assemble has no MusicGen leg since
+   *               R7 (no silent fallback); kept so an older response still reads correctly.
    * `undefined` → the route did not report (older response, or no music was requested).
    */
   scoreFallback?: string | null;

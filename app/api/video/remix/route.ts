@@ -30,7 +30,6 @@ import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
 import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
-import { generateMusic } from '@/lib/ai/replicate';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
@@ -90,7 +89,13 @@ async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | 
 
 // FIX 3 — preset-appropriate background score for a SINGLE-clip product ad, hosted to a
 // fetchable URL. (Multi-clip ads already get a music bed from /api/video/assemble.)
-// ElevenLabs Music (instrumental) → MusicGen fallback → null (caller keeps it silent).
+// ElevenLabs Music (instrumental) → null (caller ships the clip without music and says so: `music: false`).
+//
+// ⚠️ NO MUSICGEN BEHIND IT (PROJECT_MASTER R7 — no silent fallback). An ElevenLabs miss used to drop to Replicate
+// MusicGen, a provider the platform no longer allows, and the ad came back scored by an engine nobody chose with
+// nothing in the response to say so. The music bed is an optional leg of an ad that is already rendered and paid
+// for, so its failure is the leg's own explicit outcome — the clip without music, reported as `music: false` — and
+// never a second provider.
 const AD_MUSIC_PROMPTS: Record<string, string> = {
   splash: 'upbeat fresh energetic commercial pop, bright clean percussion, product advert bed',
   epic: 'dramatic cinematic orchestral trailer music, powerful epic build, brass and drums',
@@ -99,21 +104,14 @@ const AD_MUSIC_PROMPTS: Record<string, string> = {
 };
 async function presetAdMusicUrl(presetKey: string, lengthSec = 8): Promise<string | null> {
   const prompt = AD_MUSIC_PROMPTS[presetKey] ?? AD_MUSIC_PROMPTS.luxury!;
-  if (hasElevenLabsMusicKey()) {
-    try {
-      const { audio, contentType } = await composeElevenLabsMusic({ prompt, lengthMs: lengthSec * 1000, instrumental: true });
-      const path = `productad-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      const url = await uploadAndSign(UPLOAD_BUCKET, path, audio.toString('base64'), contentType, 604800);
-      if (url) return url;
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[video/remix] productad EL music failed → MusicGen:', e instanceof Error ? e.message : e);
-    }
-  }
+  if (!hasElevenLabsMusicKey()) return null;
   try {
-    const score = await generateMusic(prompt, lengthSec);
-    return score.audioUrl ?? null;
-  } catch {
+    const { audio, contentType } = await composeElevenLabsMusic({ prompt, lengthMs: lengthSec * 1000, instrumental: true });
+    const path = `productad-music/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+    return (await uploadAndSign(UPLOAD_BUCKET, path, audio.toString('base64'), contentType, 604800)) || null;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[video/remix] productad EL music failed → clip ships without music (no fallback, R7):', e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -471,8 +469,8 @@ export async function POST(req: NextRequest) {
       // assemble pipeline scores the stitched master, so per-clip music would clash.
       // `noMusic` ALSO skips it: the caller (Product-Ad with a voiceover/overlay) sends
       // this clip straight to /api/video/assemble, which scores + dubs + overlays in one
-      // pass — baking music here would only be replaced and waste a MusicGen call.
-      // Fail-open: any music miss returns the (silent) clip — still a working ad.
+      // pass — baking music here would only be replaced and waste an ElevenLabs Music call.
+      // Fail-open: any music miss returns the (silent) clip — still a working ad, reported `music: false`.
       if (sceneIdx < 0 && body.noMusic !== true) {
         const music = await presetAdMusicUrl(presetKey, 8);
         if (music) {

@@ -1,8 +1,9 @@
 /** @jest-environment node */
 /**
  * GET /api/ai/music/engines — the picker's source of truth. Each engine's `configured` follows the SAME gate the music
- * route builds its chain with (a key; MUSIC_PROVIDER=elevenlabs drops Udio; LYRIA_ENABLED off drops Lyria), `busy` is
- * its circuit breaker, `chain` is what Auto would try, and nothing secret is ever in the body.
+ * route checks a pick against (a key; MUSIC_PROVIDER=elevenlabs drops Udio; LYRIA_ENABLED off drops Lyria), `busy` is
+ * its circuit breaker, `chain` is what Auto would try — Lyria ALONE, the route no longer fails over (R7) — and nothing
+ * secret is ever in the body.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../../lib/ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn() }));
@@ -42,9 +43,10 @@ test('no keys at all: Lyria (a Gemini key is its gate) is the only engine, and n
   expect(s.chain).toEqual(['lyria']);
 });
 
-test('every key present: the whole chain in the route\'s order, and the reference paths (Replicate) are open', async () => {
+test('every key present: every engine is pickable, but Auto is still Lyria alone — no fallback chain behind it (R7)', async () => {
   const s = await musicEnginesStatus({ ...KEYS });
-  expect(s.chain).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
+  for (const id of ['lyria', 'udio', 'elevenlabs-music', 'musicgen'] as const) expect(s.engines[id]).toMatchObject({ configured: true, busy: false });
+  expect(s.chain).toEqual(['lyria']);
   expect(s.references).toEqual({ cover: true, voice: true });
 });
 
@@ -54,18 +56,23 @@ test('MUSIC_PROVIDER=elevenlabs drops Udio from the chain, exactly as the route 
   expect(s.chain).not.toContain('udio');
 });
 
-test('Lyria switched off (no key / LYRIA_ENABLED=0) leaves it out of the chain', async () => {
+test('Lyria switched off (no key / LYRIA_ENABLED=0): Auto has NOTHING to run — the others are not promoted into it', async () => {
   (hasLyriaProvider as jest.Mock).mockReturnValue(false);
   const s = await musicEnginesStatus({ ...KEYS });
   expect(s.engines.lyria.configured).toBe(false);
-  expect(s.chain).toEqual(['udio', 'elevenlabs-music', 'musicgen']);
+  expect(s.engines.udio.configured).toBe(true); // still an explicit pick
+  expect(s.chain).toEqual([]);
 });
 
-test('an engine whose breaker is open is busy — present, but not in Auto\'s chain', async () => {
+test('an engine whose breaker is open is busy — present, but not pickable; Lyria busy leaves Auto empty, not rerouted', async () => {
   (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'udio');
   const s = await musicEnginesStatus({ ...KEYS });
   expect(s.engines.udio).toMatchObject({ configured: true, busy: true });
-  expect(s.chain).toEqual(['lyria', 'elevenlabs-music', 'musicgen']);
+  expect(s.chain).toEqual(['lyria']);
+  (isProviderTripped as jest.Mock).mockImplementation(async (p: string) => p === 'lyria');
+  const t = await musicEnginesStatus({ ...KEYS });
+  expect(t.engines.lyria).toMatchObject({ configured: true, busy: true });
+  expect(t.chain).toEqual([]);
 });
 
 test('the breaker is never read for an engine that is not configured, and a failing read counts as not busy', async () => {
@@ -95,7 +102,7 @@ test('the route answers 200 with a body the client parser accepts — and no key
   const text = await res.text();
   for (const secret of Object.values(KEYS)) expect(text).not.toContain(secret);
   const parsed = parseMusicEnginesStatus(JSON.parse(text));
-  expect(parsed?.chain).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
+  expect(parsed?.chain).toEqual(['lyria']);
 });
 
 test('a rate-limited caller gets the limiter\'s answer and the breakers are not read', async () => {
