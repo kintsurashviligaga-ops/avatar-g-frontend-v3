@@ -226,9 +226,12 @@ there. The free proof is `countTokens` (nothing generated or billed) through the
 cert-branch Preview (ea665ba5, `GEMINI_TRANSPORT=vertex` on Preview only, set by the owner): transport vertex, location
 global, gemini-3.8-flash and gemini-3.1-flash-image 200 through the Preview's Workload Identity; the ModelCatalog check
 found 13 catalog ids on Vertex and 2 missing (`gemini-flash-latest`, `gemini-pro-latest`: Google aliases that exist on
-the Gemini API only, now marked so in the catalog and skipped by the STT step-downs on Vertex). Not yet INFERENCE
-VERIFIED from the Preview runtime: that needs one generation, which is paid and waits for the owner's consent (Gemini
-text, image and Lyria generation on Vertex were proven from the owner's Mac in T2).
+the Gemini API only, now marked so in the catalog and skipped by the STT step-downs on Vertex). **INFERENCE VERIFIED
+2026-10-08T18:28:55Z** for Gemini text on Vertex with the Preview identity: one owner-approved generateContent (decision
+card 18:27:39Z) from the cert-branch Preview build `396cb354` through Workload Identity, `scripts/gcp/preview-inference-check.cjs`:
+gemini-3.8-flash, global, HTTP 200, reply "ok", 7 prompt + 60 output tokens (59 of them thinking). The request file was
+removed in the next commit, so later builds call nothing. Production still sends every Gemini call through the API key
+until `GEMINI_TRANSPORT=vertex` is set there (owner).
 
 ## M. Pricing
 

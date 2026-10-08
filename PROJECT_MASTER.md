@@ -100,8 +100,9 @@ PHASE CHECKLIST:
           then STT, read-aloud TTS, memory embeddings (Vertex :predict) and the orchestrator script / interior Gemini
           legs. Deep Research stays on the API key (Interactions API is Gemini-API only; stated in its client). Live,
           Imagen and the health probes are not on it. AUTH VERIFIED on Preview 2026-10-08T18:13Z (countTokens 200 via
-          WIF, GET /api/preview/google-check); INFERENCE from the Preview runtime waits on paid consent. Production
-          unchanged while unset.
+          WIF, GET /api/preview/google-check); INFERENCE VERIFIED 18:28:55Z (one owner-approved gemini-3.8-flash reply
+          from the Preview build identity, HTTP 200, 67 tokens; scripts/gcp/preview-inference-check.cjs). Production
+          unchanged while unset; switching it is an owner step.
           D (ModelCatalog): lib/models/catalog.ts (28 Google models, verifiedAt only from dated calls, Gemini 2.5 text
           left out), lib/models/verify.ts (free runtime check: models.list / Vertex countTokens; missing → off, unknown →
           review queue), GET /api/admin/model-catalog. Studio pickers still read lib/providers/catalogue (action 9).
