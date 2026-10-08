@@ -2,7 +2,7 @@ import 'server-only';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
-import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { agentGSystemPrompt } from '@/lib/agent-g-orchestrator';
 import { geminiTierModel } from '@/lib/ai/google/models';
 
 export type AgentGChannel = 'web' | 'telegram';
@@ -183,7 +183,8 @@ function buildSystemPrompt(params: {
     : '';
 
   return [
-    AGENT_G_SYSTEM_PROMPT,
+    // generateWithRetry sends no Google Search tool, so the prompt says the model cannot search.
+    agentGSystemPrompt({ locale: params.locale, googleSearch: false }),
     '',
     '## SESSION CONTEXT',
     languageRule,

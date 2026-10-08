@@ -38,7 +38,7 @@ jest.mock('ai', () => ({
   streamText: () => ({ textStream: (async function* gen() { yield 'claude says hi'; })() }),
 }));
 jest.mock('../../../../lib/chat/providerRouter', () => ({ orchestrate: jest.fn(), pollOrchestrationTask: jest.fn() }));
-jest.mock('../../../../lib/agent-g-orchestrator', () => ({ AGENT_G_SYSTEM_PROMPT: 'SYSTEM' }));
+jest.mock('../../../../lib/agent-g-orchestrator', () => ({ agentGSystemPrompt: () => 'SYSTEM' }));
 
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';

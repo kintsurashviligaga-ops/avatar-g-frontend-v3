@@ -21,7 +21,7 @@ import type { ChatMessage } from '@/lib/ai/chatEngine';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { orchestrate, pollOrchestrationTask } from '@/lib/chat/providerRouter';
-import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { agentGSystemPrompt } from '@/lib/agent-g-orchestrator';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -152,6 +152,11 @@ export async function POST(req: NextRequest) {
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+      // One profile and one prompt per request: the prompt says whether this turn has Google Search, and carries
+      // today's date in Tbilisi (lib/chat/platformPrompt).
+      const profile = resolveAgentProfile({});
+      const systemPrompt = agentGSystemPrompt({ locale: loc, googleSearch: profile.googleSearch });
+
       const stream = new ReadableStream({
         async start(controller) {
           const startTime = Date.now();
@@ -167,7 +172,7 @@ export async function POST(req: NextRequest) {
             apiKey: resolveGeminiKey(),
             models: chatModelChain('standard'),
             messages: userAssistantMessages,
-            config: toGeminiChatConfig(resolveAgentProfile({}), AGENT_G_SYSTEM_PROMPT),
+            config: toGeminiChatConfig(profile, systemPrompt),
             abortSignal: req.signal,
             onFrame: (frame) => {
               if ('text' in frame && frame.text) { streamedAny = true; send({ token: frame.text }); }
@@ -178,14 +183,14 @@ export async function POST(req: NextRequest) {
               model: result.model,
               ...result.usage,
               chars: result.text.length,
-              inputChars: AGENT_G_SYSTEM_PROMPT.length + budgetText.length,
+              inputChars: systemPrompt.length + budgetText.length,
               userId: verifiedId,
               groundingQueries: result.groundingQueries ?? 0,
             });
           }
           for (const a of unbookedAttempts(result)) {
             void bookChatUsage({
-              model: a.model, ...a.usage, inputChars: AGENT_G_SYSTEM_PROMPT.length + budgetText.length,
+              model: a.model, ...a.usage, inputChars: systemPrompt.length + budgetText.length,
               userId: verifiedId, groundingQueries: a.groundingQueries ?? 0,
             });
           }
@@ -213,7 +218,7 @@ export async function POST(req: NextRequest) {
                 const anthropic = createAnthropic({ apiKey: anthropicKey });
                 const result = streamText({
                   model: anthropic('claude-haiku-4-5-20251001'),
-                  system: AGENT_G_SYSTEM_PROMPT,
+                  system: agentGSystemPrompt({ locale: loc, googleSearch: false }), // no search tool on this leg
                   messages: userAssistantMessages,
                   maxOutputTokens: 2048,
                   temperature: 0.7,

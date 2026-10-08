@@ -10,7 +10,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('ai', () => ({ generateText: jest.fn() }));
 jest.mock('@ai-sdk/google', () => ({ createGoogleGenerativeAI: jest.fn(() => (id: string) => ({ provider: 'google', id })) }));
 jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: jest.fn(() => (id: string) => ({ provider: 'anthropic', id })) }));
-jest.mock('../agent-g-orchestrator', () => ({ AGENT_G_SYSTEM_PROMPT: 'system' }));
+jest.mock('../agent-g-orchestrator', () => ({ agentGSystemPrompt: () => 'system' }));
 
 import { generateText } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';

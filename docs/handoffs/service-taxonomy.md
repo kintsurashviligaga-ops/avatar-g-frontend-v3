@@ -244,7 +244,7 @@ no longer falls back to OpenAI TTS while `AI_GOOGLE_ONLY` is on (default), prove
 | `lib/studio/tools.ts` | KEEP as the runtime list; grouped by `lib/catalog/nav.ts` (the old PRIMARY/MORE split is gone from every menu) |
 | `lib/services/metadata.ts`, `lib/services/workspaceForms.ts` | KEEP as page content; CTAs resolve through `LEGACY_SLUG_TO_SERVICE` |
 | `lib/services/serviceCatalogue.ts` | still read by OmniStudio path targets and the Skills tab; DEPRECATE into the catalog |
-| `lib/registry.ts` (10 importers), `lib/services/registry.ts` (6), `lib/service-registry.ts` (6), `lib/app/services.ts` (3), `lib/services/catalog.ts` (2) | still imported by legacy API routes (`/api/pipeline`, `/api/agents/*`, `/api/app/services/*`) and dead shells; DEPRECATE with those routes. Their credit tables must not be shown to anyone (§36, pricing step 18). |
+| `lib/registry.ts` (9 importers), `lib/services/registry.ts` (6), `lib/service-registry.ts` (6), `lib/app/services.ts` (3), `lib/services/catalog.ts` (2) | still imported by legacy API routes (`/api/pipeline`, `/api/agents/*`, `/api/app/services/*`) and dead shells; DEPRECATE with those routes. Their credit tables must not be shown to anyone (§36, pricing step 18). |
 | `components/hub/AiHubShell.tsx`, `components/workspace/WorkspaceDashboard.tsx` | **deleted** with the shells |
 
 ## 7. Status honesty and what is still open
