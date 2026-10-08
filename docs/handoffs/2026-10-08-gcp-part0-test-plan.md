@@ -22,7 +22,7 @@ T2 WIF-ზე არ არის დამოკიდებული: ის o
 
 ## 3. T1 — ერთი Veo კლიპი აპლიკაციის გზით
 **ვინ:** owner (admin-ის შესვლა Preview-ზე სჭირდება). **სად:** `<preview>/ka/admin/veo-smoke`.
-შესვლა Preview-ზე: სტუდიის „შესვლა" → ელფოსტა → „კოდით შესვლა" → 6-ციფრიანი კოდი. Google-ით არა: ის Production-ზე
+შესვლა Preview-ზე: სტუდიის „შესვლა" → ელფოსტა → „კოდით შესვლა" → ფოსტაში მოსული კოდი (6–10 ციფრი; 87122ff-მდე ეს გზა 502-ს აბრუნებდა, report §9.5). Google-ით არა: ის Production-ზე
 აბრუნებს (report §9.4). შემდეგ `<preview>/api/admin/provider-probe` — შედეგი Vercel log-შიც იწერება (`[provider-probe] veo …`).
 1. გვერდი აჩვენებს: `veo-3.1-fast-generate-001`, 4 წმ, 720p, ხმით, **≈ $0.40**, `Transport: vertex (pinned)`.
 2. „ტესტის გაშვება" → ბრაუზერის დადასტურება → `POST /api/admin/veo-smoke {confirm:"paid-test"}` — **ერთი** submit.
@@ -89,4 +89,4 @@ Google-ის მხრიდან დადასტურება (Cloud Mon
 
 ### T1 — Veo
 ელოდება: owner-ის შესვლა Preview-ზე ელფოსტის კოდით, AUTH VERIFIED (log), შემდეგ ღილაკი `/ka/admin/veo-smoke`-ზე.
-Preview: `avatar-g-frontend-v3-git-22ebb4-…vercel.app` → `dpl_4cuJcnZ3tor8iqjArwiTRqvLVp54` (f3578b8).
+Preview: `avatar-g-frontend-v3-git-22ebb4-…vercel.app` → უახლესი Ready build; კოდით შესვლის შესწორება პირველად `dpl_G1jduPBs7jKwUsrj1Cyik6SUCLQ2`-ზე (87122ff).

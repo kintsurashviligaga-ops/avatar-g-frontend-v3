@@ -7,7 +7,7 @@ owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply
 |---|---|
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
 | CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
-| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში და log-შიც იწერება (§9.4); owner-ის Preview-ზე შესვლას (ელფოსტის კოდით) ელოდება |
+| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში და log-შიც იწერება (§9.4); owner-ის Preview-ზე შესვლას (ელფოსტის კოდით) ელოდება. კოდით შესვლა თავად იყო გაფუჭებული, Production-შიც (§9.5) |
 | INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); Veo ელოდება AUTH-ს (§10.5) |
 | Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11; Google-ის metrics-ითაც (§10.5) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
@@ -180,8 +180,9 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 ## 7. ტესტები
 - `bash -n scripts/gcp/part0-wif.sh`, `bash -n scripts/gcp/setup-veo-vertex.sh` — OK.
 - `MODE=plan` fake `gcloud`-ით: ბრძანებები, condition და principal-ები სწორად იბეჭდება (§4).
-- TypeScript/Jest: TS კოდი არ შეცვლილა; baseline-ს launch-certification თრედი ფლობს.
-- AUTH/INFERENCE: არ გაშვებულა.
+- TypeScript/Jest: ამ branch-ის TS ცვლილებებს (admin veo-smoke, provider-probe, email OTP) თავისი unit test-ები აქვს (§9.4, §9.5, §10.5);
+  `tsc` და `eslint` სუფთაა. სრული baseline-ს launch-certification თრედი ფლობს.
+- AUTH/INFERENCE (Veo): ჯერ არ გაშვებულა; T2 — §10.5.
 
 ## 8. ბლოკერები და შემდეგი ნაბიჯი
 1. ✓ **read-only audit** — ჩატარდა (§1).
@@ -256,6 +257,28 @@ Probe-ის შედეგი log-შიც (commit f3578b8): Veo-ს ხა�
 `[provider-probe] veo ok=<bool> transport:… · vertex:ready · auth:mode:wif token:… bucket:… sign:…` — ასე AUTH-ს Vercel runtime
 log-იდან ვკითხულობთ, owner-ის ფოტოს გარეშე. `console.warn` იმიტომ, რომ `next.config`-ის `removeConsole` build-ში
 error/warn-ის გარდა ყველაფერს შლის (`console.info` log-ამდე ვერ აღწევს). Unit test: 4 შემთხვევა (`route.test.ts`).
+
+### 9.5 ელფოსტის კოდით შესვლა არ მუშაობდა — Production-შიც (ნაპოვნია AUTH-ის დროს)
+owner-მა Preview-ზე „კოდით შესვლა" სცადა (12:08 UTC) და ეკრანზე „კოდის გაგზავნა ვერ მოხერხდა" მიიღო. Vercel log:
+`POST /api/auth/email-otp/send` → 502, `[email-otp/send] no email_otp in generateLink response`. იგივე ხაზი **Production**-ზეც
+არის 2026-10-03 07:18 და 07:24 UTC-ზე (PROVEN, Vercel log), ანუ ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა
+სულ მცირე 10-03-დან კოდს ვერ აგზავნის. პაროლით და Google-ით შესვლას ეს არ ეხება.
+
+მიზეზი (inferred, Supabase-ის პასუხის მნიშვნელობა არ წაგვიკითხავს): `lib/auth/otpEmail.ts` `admin.generateLink`-ის `email_otp`-ს
+მხოლოდ **ზუსტად 6 ციფრის** შემთხვევაში იღებდა, Supabase-ში კი ელფოსტის OTP-ის სიგრძე პროექტის პარამეტრია (6–10). სხვა
+სიგრძის კოდზე route 502-ს აბრუნებდა და ფოსტა არ იგზავნებოდა.
+
+შესწორება (commit 87122ff, ამ branch-ზე, Preview `dpl_G1jduPBs7jKwUsrj1Cyik6SUCLQ2` Ready):
+- კოდი მიიღება 6–10 ციფრით (`isEmailOtpCode`); route აბრუნებს `{ ok: true, length }`;
+- თუ კოდი მაინც ვერ წაიკითხა, log-ში იწერება პასუხის ფორმა — key-ების სახელები, ტიპი და სიგრძე, **მნიშვნელობა არასდროს**
+  (`describeOtpShape`);
+- შესვლის ფანჯარა (`components/chat/AuthModal.tsx`) ველს, ავტომატურ შემოწმებას და ტექსტს (ka/en/ru) ამ სიგრძეზე აწყობს;
+  SMS კოდი ისევ 6 ციფრია.
+- შემოწმება: `tsc` და `eslint` სუფთა; jest 400/400 (`app/api/auth`, `lib/auth`, `components/chat`, api-lockdown), მათ შორის
+  8-ციფრიანი კოდი → 200 და ფოსტა, 5-ციფრიანი → 502 ფოსტის გარეშე და ფორმის log-ით.
+
+Production ამ შესწორებას მხოლოდ main-ში merge-ისა და deploy-ის შემდეგ მიიღებს (owner-ის ცალკე თანხმობა). ეს **launch blocker**-ია
+და Master Task-ის თრედს გადაეცა. PROVEN გახდება, როცა owner Preview-ზე კოდით შევა (log: `email-otp/send` → 200).
 
 ## 10. owner-ის 8 პუნქტი (2026-10-08 11:08 UTC): billing, მოდელები, კოდი, ტესტი
 ყველაფერი read-only-ა, გარდა `billingbudgets` API-ის ჩართვისა და 3 budget-ის შექმნისა (პუნქტი 8, owner-ის მითითება).
