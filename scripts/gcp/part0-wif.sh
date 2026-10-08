@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # GCP Part 0 for MyAvatar.ge: keyless Vercel OIDC → Workload Identity Federation → service-account impersonation,
-# least privilege (docs/handoffs/2026-10-08-gcp-part0-report.md). Run in Cloud Shell as the project owner.
+# least privilege (docs/handoffs/2026-10-08-gcp-part0-report.md). Run as the project owner (Cloud Shell, or any gcloud;
+# bash 3.2 compatible).
 #
 #   MODE=audit ./scripts/gcp/part0-wif.sh   # read-only: prints project, billing, APIs, WIF, SA, IAM, bucket state
 #   MODE=plan  ./scripts/gcp/part0-wif.sh   # read-only: prints every gcloud command apply would run, runs none
@@ -44,7 +45,8 @@ case "$MODE" in audit|plan|apply) ;; *) echo "MODE must be audit, plan or apply"
 # The owner named the one Google account for this project (2026-10-08). Never read or change GCP as anyone else.
 EXPECTED_ACCOUNT="${EXPECTED_ACCOUNT:-myavatar.ge@gmail.com}"
 ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
-if [[ "${ACTIVE_ACCOUNT,,}" != "${EXPECTED_ACCOUNT,,}" ]]; then
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }   # not ${x,,}: macOS ships bash 3.2
+if [[ "$(lower "$ACTIVE_ACCOUNT")" != "$(lower "$EXPECTED_ACCOUNT")" ]]; then
   echo "✗ gcloud is signed in as '${ACTIVE_ACCOUNT:-nobody}', not ${EXPECTED_ACCOUNT}. Stop." >&2
   echo "  Cloud Shell: open it as ${EXPECTED_ACCOUNT}, or run: gcloud auth login ${EXPECTED_ACCOUNT}" >&2
   exit 3
@@ -122,7 +124,7 @@ exists() { [[ "$MODE" == "apply" ]] && "$@" >/dev/null 2>&1; }
 
 if [[ "$MODE" == "apply" ]]; then
   billing="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null || echo false)"
-  [[ "${billing,,}" == "true" ]] || { echo "✗ billing is not linked to $PROJECT_ID — stop" >&2; exit 1; }
+  [[ "$(lower "$billing")" == "true" ]] || { echo "✗ billing is not linked to $PROJECT_ID — stop" >&2; exit 1; }
 fi
 [[ "$MODE" == "plan" ]] && echo "PLAN for $PROJECT_ID ($PROJECT_NUMBER) — nothing below has been run"
 
