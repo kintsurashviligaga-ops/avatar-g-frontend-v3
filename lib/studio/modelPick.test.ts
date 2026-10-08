@@ -2,7 +2,8 @@
 /**
  * The browser's model pick and what a picker may offer: per service, in two memories (the Create panels / Studio β); storage
  * that throws degrades to this page; the request names a model its route can run, always; and a row a tap cannot choose
- * says why.
+ * says why. MyAvatar v32: Higgsfield (Studio β) models are no longer in the catalogue, so a remembered one is no pick at all
+ * and no picker lists one.
  */
 import { act, renderHook } from '@testing-library/react';
 import {
@@ -19,9 +20,14 @@ describe('the stored pick', () => {
     expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/pro');
     expect(getModelPick('image')).toBe('nb/pro');
     expect(getModelPick('image', 'studio')).toBeNull(); // Studio β remembers its own
-    setModelPick('image', 'hf/soul-2', 'studio');
-    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('hf/soul-2');
+    setModelPick('image', 'nb/v2', 'studio');
+    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('nb/v2');
     expect(getModelPick('image')).toBe('nb/pro');
+    // A retired Higgsfield model is not a catalogue model any more: it is not stored, and a stale stored one reads as none.
+    setModelPick('image', 'hf/soul-2', 'studio');
+    expect(window.localStorage.getItem(modelPickKey('image', 'studio'))).toBe('nb/v2');
+    window.localStorage.setItem(modelPickKey('image', 'studio'), 'hf/soul-2');
+    expect(getModelPick('image', 'studio')).toBeNull();
 
     setModelPick('image', 'nb/auto');
     expect(window.localStorage.getItem('myavatar:model:image')).toBeNull();
@@ -64,10 +70,12 @@ describe('the image request always names the picked model', () => {
     expect(higgsfieldPicked('image')).toBe(false);
   });
 
-  test('⚠️ a Higgsfield pick is sent AS IS — the image route refuses it (nothing charged) instead of rendering Google behind the user\'s back', () => {
-    setModelPick('image', 'hf/soul-2');
-    expect(imageModelField()).toEqual({ model: 'hf/soul-2' });
-    expect(higgsfieldPicked('image')).toBe(true); // the composer opens the panel, whose own Generate runs it
+  test('a Higgsfield pick remembered from before v32 is no pick: the request names Auto (what the picker shows), never the retired id', () => {
+    setModelPick('image', 'hf/soul-2'); // refused: not a catalogue model
+    expect(imageModelField()).toEqual({ model: 'nb/auto' });
+    window.localStorage.setItem('myavatar:model:image', 'hf/soul-2'); // stored by an older build
+    expect(imageModelField()).toEqual({ model: 'nb/auto' });
+    expect(higgsfieldPicked('image')).toBe(false); // the composer runs the Google route itself
     window.localStorage.setItem('myavatar:model:image', 'google/veo-3.1'); // a hand-edited foreign id is no pick at all
     expect(imageModelField()).toEqual({ model: 'nb/auto' });
   });
@@ -76,15 +84,14 @@ describe('the image request always names the picked model', () => {
 describe('the rows a picker offers', () => {
   const ids = (rows: ReturnType<typeof pickerRows>) => rows.map((r) => [r.entry.id, r.selectable, r.block]);
 
-  test('the Video panel: its three Veo models open; the Studio β models dimmed — "not enabled" until the server says otherwise', () => {
+  test('the Video panel: its three Veo models, open — and nothing else (no Studio β row is listed under v32)', () => {
     const rows = pickerRows('video', { runners: ['film'], status: null });
-    expect(ids(rows).slice(0, 3)).toEqual([
+    expect(ids(rows)).toEqual([
       ['google/veo-3.1-lite', true, null], ['google/veo-3.1-fast', true, null], ['google/veo-3.1', true, null],
     ]);
-    for (const r of rows.slice(3)) expect([r.entry.wire.runner, r.selectable, r.block]).toEqual(['studio', false, 'not_enabled']);
   });
 
-  test('with the server\'s answer: a model enabled for Studio β says WHERE it runs; one that is not says why', () => {
+  test('a stale server answer that still names Higgsfield models cannot add a row: only the Veo rows, each as the server says', () => {
     const status: CatalogueStatus = {
       'google/veo-3.1-lite': { available: true, reason: null },
       'google/veo-3.1-fast': { available: true, reason: null },
@@ -94,10 +101,9 @@ describe('the rows a picker offers', () => {
       'hf/seedance-2.5-t2v': { available: false, reason: 'studio_off' },
     };
     const rows = pickerRows('video', { runners: ['film'], status });
-    const by = (id: string) => rows.find((r) => r.entry.id === id)!;
-    expect(by('hf/kling-3-std-t2v')).toMatchObject({ selectable: false, block: 'elsewhere' });
-    expect(by('hf/kling-3-pro-t2v')).toMatchObject({ selectable: false, block: 'not_enabled' });
-    expect(by('hf/seedance-2.5-t2v')).toMatchObject({ selectable: false, block: 'studio_off' });
+    expect(rows.map((r) => r.entry.id)).toEqual(['google/veo-3.1-lite', 'google/veo-3.1-fast', 'google/veo-3.1']);
+    expect(rows.every((r) => r.selectable && r.block === null)).toBe(true);
+    expect(rows.some((r) => r.entry.provider === 'higgsfield')).toBe(false);
   });
 
   test('a film route without a renderer: its own rows close too, and the pick falls back to the first open one or the default', () => {
@@ -111,13 +117,12 @@ describe('the rows a picker offers', () => {
     expect(effectivePick('video', 'google/veo-3.1', rows)).toBe('google/veo-3.1-fast');
   });
 
-  test('Studio β lists only its own models; a Higgsfield row is never open while the server has not answered', () => {
-    const unknown = pickerRows('video', { runners: ['studio'], status: null, include: 'runnable' });
-    expect(unknown.every((r) => r.entry.wire.runner === 'studio' && !r.selectable && r.block === 'checking')).toBe(true);
+  test('Studio β lists only its own models — none under v32, whether or not the server has answered', () => {
+    for (const service of ['image', 'video', 'motion'] as const) {
+      expect(pickerRows(service, { runners: ['studio'], status: null, include: 'runnable' })).toEqual([]);
+    }
     const known = pickerRows('video', { runners: ['studio'], status: { 'hf/kling-3-std-t2v': { available: true, reason: null } }, include: 'runnable' });
-    expect(known[0]).toMatchObject({ selectable: true, block: null });
-    expect(known[0]!.entry.id).toBe('hf/kling-3-std-t2v');
-    expect(known.slice(1).every((r) => r.block === 'not_enabled')).toBe(true);
+    expect(known).toEqual([]);
   });
 
   test('the effective pick: the stored one if a tap could choose it now, else the default', () => {

@@ -2,10 +2,14 @@
 /**
  * The model registry is what the UI and Agent G see. Brief §5: every model has a Georgian label, a short
  * Georgian description, a tier and a fallback — and only the parameters its documentation allows.
+ *
+ * MyAvatar v32 (lib/providers/policy): Higgsfield is not a permitted provider. The registry stays so old jobs remain
+ * readable (names, schemas, endpoints), but no model in it is enabled — no env (HF_ENABLED_MODELS included) can turn
+ * one on — and the catalogue no longer offers its rows (they survive as legacy definitions only).
  */
 import { MODELS, fallbacksFor, getModel, isModelEnabled, listModels, parseModelInput, publicModel } from './registry';
 import { priceFromUsd, samePrice, formatGel } from './pricing';
-import { CATALOGUE, catalogueEntry } from './catalogue';
+import { CATALOGUE, catalogueEntry, legacyCatalogueDefinition } from './catalogue';
 import { describeInput } from './paramSpec';
 
 const GEORGIAN = /[Ⴀ-ჿ]/;
@@ -35,7 +39,8 @@ describe('every registered model', () => {
         expect(t!.id).not.toBe(m.id);
       }
     }
-    expect(fallbacksFor('hf/kling-3-pro-t2v').map((m) => m.id)).toEqual(['hf/kling-3-std-t2v']);
+    expect(getModel('hf/kling-3-pro-t2v')!.fallback).toEqual(['hf/kling-3-std-t2v']); // declared…
+    expect(fallbacksFor('hf/kling-3-pro-t2v')).toEqual([]); // …but never enabled under v32, so nothing can stand in
   });
 
   test('nothing the catalogue does not sell is registered (Nano Banana, Seedream, GPT Image)', () => {
@@ -59,15 +64,17 @@ describe('every registered model', () => {
   });
 });
 
-describe('HF_ENABLED_MODELS narrows the set to what the account has', () => {
+describe('HF_ENABLED_MODELS cannot weaken the v32 allowlist', () => {
   const env = { HF_ENABLED_MODELS: 'hf/soul-2, hf/kling-3-std-t2v' } as NodeJS.ProcessEnv;
-  test('only listed ids are enabled, and fallbacks respect it', () => {
-    expect(listModels({ env }).map((m) => m.id)).toEqual(['hf/soul-2', 'hf/kling-3-std-t2v']);
-    expect(isModelEnabled('hf/kling-3-pro-t2v', env)).toBe(false);
-    expect(fallbacksFor('hf/kling-3-pro-t2v', { HF_ENABLED_MODELS: 'hf/kling-3-pro-t2v' } as NodeJS.ProcessEnv)).toEqual([]);
+  test('a listed id is still not enabled, and no fallback is offered', () => {
+    expect(listModels({ env })).toEqual([]);
+    expect(isModelEnabled('hf/soul-2', env)).toBe(false);
+    expect(isModelEnabled('hf/kling-3-std-t2v', env)).toBe(false);
+    expect(fallbacksFor('hf/kling-3-pro-t2v', { HF_ENABLED_MODELS: 'hf/kling-3-pro-t2v,hf/kling-3-std-t2v' } as NodeJS.ProcessEnv)).toEqual([]);
   });
-  test('unset → everything registered', () => {
-    expect(listModels({ env: {} as NodeJS.ProcessEnv })).toHaveLength(MODELS.length);
+  test('unset → nothing enabled (it used to mean "everything registered")', () => {
+    expect(listModels({ env: {} as NodeJS.ProcessEnv })).toEqual([]);
+    for (const m of MODELS) expect(isModelEnabled(m.id, {} as NodeJS.ProcessEnv)).toBe(false);
   });
 });
 
@@ -133,10 +140,11 @@ describe('pricing: the GEL on the button IS the credits taken', () => {
 describe('the registry and the catalogue are one list (lib/providers/catalogue — what every picker shows)', () => {
   const CYRILLIC = /[Ѐ-ӿ]/;
 
-  test.each(listModels({ env: {} as NodeJS.ProcessEnv }).map((m) => [m.id, m] as const))(
-    '%s (enabled) is named in ka / en / ru with a "best for" line, and the registry says the catalogue\'s words',
+  test.each(MODELS.map((m) => [m.id, m] as const))(
+    '%s (legacy) is named in ka / en / ru with a "best for" line, and the registry says the catalogue\'s words',
     (_id, m) => {
-      const c = catalogueEntry(m.id)!;
+      expect(catalogueEntry(m.id)).toBeNull(); // not offered under v32…
+      const c = legacyCatalogueDefinition(m.id)!; // …but its definition still names old jobs
       expect(c).not.toBeNull();
       expect(c.label.ka).toMatch(GEORGIAN);
       expect(c.label.ru).toMatch(CYRILLIC);
@@ -153,20 +161,20 @@ describe('the registry and the catalogue are one list (lib/providers/catalogue �
     },
   );
 
-  test('every Studio β row of the catalogue is a registered model, and every registered model has a row', () => {
-    const studio = CATALOGUE.filter((e) => e.wire.runner === 'studio').map((e) => e.id).sort();
-    expect(studio).toEqual(MODELS.map((m) => m.id).sort());
+  test('the catalogue offers no Studio β row; every registered model keeps its legacy Studio β definition', () => {
+    expect(CATALOGUE.filter((e) => e.wire.runner === 'studio')).toEqual([]);
+    for (const m of MODELS) expect(legacyCatalogueDefinition(m.id)!.wire.runner).toBe('studio');
   });
 
   test('where a fact comes from is the same in both: a page read ↔ "docs", a sibling\'s page ↔ "family", unread ↔ "unverified"', () => {
     const as = { page: 'docs', family: 'family', unverified: 'unverified' } as const;
-    for (const m of MODELS) expect(catalogueEntry(m.id)!.verified).toBe(as[m.schema]);
+    for (const m of MODELS) expect(legacyCatalogueDefinition(m.id)!.verified).toBe(as[m.schema]);
     // Read 2026-10-02: the Pro siblings are verified by their own pages now.
     for (const id of ['hf/kling-3-pro-t2v', 'hf/kling-3-pro-i2v', 'hf/kling-3-motion-pro']) expect(getModel(id)!.schema).toBe('page');
   });
 
   test.each(MODELS.map((m) => [m.id, m] as const))('%s: the capabilities the picker states ARE its schema\'s', (_id, m) => {
-    const caps = catalogueEntry(m.id)!.caps;
+    const caps = legacyCatalogueDefinition(m.id)!.caps;
     const specs = describeInput(m.input);
     const spec = (k: string) => specs.find((p) => p.key === k);
     const media = specs.filter((p) => p.kind === 'media' || p.kind === 'mediaList');
