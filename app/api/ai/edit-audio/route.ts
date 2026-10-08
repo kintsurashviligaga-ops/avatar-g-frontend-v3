@@ -13,7 +13,8 @@ import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generatio
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
-import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { audioProcess } from '@/lib/audio/audioOps';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
@@ -29,13 +30,10 @@ const AI_COST = { vocal_isolation: 3, splitter: 4 } as const;
 
 type AudioAction = 'vocal_isolation' | 'splitter' | 'process';
 
-async function resolveMedia(v: unknown): Promise<string | null> {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!s || s.length > 4000) return null;
-  if (/^https:\/\//i.test(s)) return parseSupabaseObjectUrl(s) ? reSignIfInternal(s) : null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null;
-  return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
+/** Own storage only (SSRF), and only the caller's own object (lib/security/callerMedia). */
+async function resolveMedia(v: unknown, userId: string): Promise<string | null> {
+  const r = await resolveCallerMedia(v, userId, 3600);
+  return r.ok && r.own ? r.url : null;
 }
 function pick(o: unknown, ...keys: string[]): string | null {
   const rec = o as Record<string, unknown> | null;
@@ -43,7 +41,7 @@ function pick(o: unknown, ...keys: string[]): string | null {
   return null;
 }
 /** Re-host an ephemeral Replicate audio URL into our storage → { url, path } (path = chainable own-storage ref). */
-async function rehost(srcUrl: string): Promise<{ url: string; path: string } | null> {
+async function rehost(srcUrl: string, userId: string): Promise<{ url: string; path: string } | null> {
   try {
     const res = await fetch(srcUrl, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return null;
@@ -51,7 +49,8 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
     const ext = /wav/.test(ct) ? 'wav' : /mp4|m4a|aac/.test(ct) ? 'm4a' : 'mp3';
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength < 128) return null;
-    const path = `audio-studio/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Under the caller's id: the PATH comes back for chaining, and resolveMedia signs a bare path only for its owner.
+    const path = `audio-studio/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const signed = await uploadAndSign(UPLOAD_BUCKET, path, buf.toString('base64'), ct, 604_800);
     return signed ? { url: signed, path } : null;
   } catch { return null; }
@@ -87,7 +86,7 @@ export async function POST(req: NextRequest) {
   const guard = await guardGeneration(req, 'music', { gate: false });
   if (!guard.ok) return guard.response;
 
-  const src = await resolveMedia(body?.mediaUrl);
+  const src = await resolveMedia(body?.mediaUrl, guard.userId);
   if (!src) return NextResponse.json({ url: null, error: 'could not resolve audio (upload it first)' }, { status: 400 });
 
   // ── DETERMINISTIC: pitch / speed / trim / fades — FREE (no provider call). ──────────────────────────────
@@ -144,8 +143,8 @@ export async function POST(req: NextRequest) {
       if (debit.ok) await refundCredits(guard.userId, cost, ref).catch(() => {});
       return NextResponse.json({ url: null, error: 'no stem produced' }, { status: 502 });
     }
-    const hostedPrimary = await rehost(primary);
-    const hostedSecondary = secondary ? await rehost(secondary) : null;
+    const hostedPrimary = await rehost(primary, guard.userId);
+    const hostedSecondary = secondary ? await rehost(secondary, guard.userId) : null;
     const url = hostedPrimary?.url ?? primary;
     await saveCreation(guard.userId, url, action);
     if (hostedSecondary?.url) await saveCreation(guard.userId, hostedSecondary.url, action);

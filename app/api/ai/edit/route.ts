@@ -24,7 +24,8 @@ import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generatio
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { creditCostFor } from '@/lib/credits/pricing';
-import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { trimClip } from '@/lib/video/trimClip';
 import { cropClip, gradeClip, detachAudio, fadeClip, renderVideoDraft, renderPhotoDraft, renderConcat, type RenderDraft } from '@/lib/video/surgicalOps';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
@@ -36,24 +37,21 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300; // ffmpeg re-encode / inpaint poll headroom
 
-const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
 // TEXT-GUIDED inpainting (inputs: image + mask + prompt) — the panel takes an optional description
 // ("replace the background with a beach"), so a prompt-aware model makes that description actually matter. This is
 // the very stable, widely-run SD-inpainting checkpoint; createPrediction resolves its latest version, and a bad
 // slug fails cleanly + refunds. Operators wanting pure LaMa object-removal can pin REPLICATE_INPAINT_MODEL instead.
 const DEFAULT_INPAINT_MODEL = 'stability-ai/stable-diffusion-inpainting';
 
-/** Resolve a client media ref (https / bare storage path from uploadBigFile) to a fetchable https URL. */
-async function resolveMedia(v: unknown): Promise<string | null> {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!s || s.length > 4000) return null;
-  // SSRF guard — an https ref is honored ONLY when it's one of OUR OWN Supabase storage objects; an arbitrary
-  // external host must never be handed to `ffmpeg -i` (it could reach internal metadata/services). Editor
-  // uploads always send a bare storage path, so this rejects nothing legitimate.
-  if (/^https:\/\//i.test(s)) return parseSupabaseObjectUrl(s) ? reSignIfInternal(s) : null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // reject data:/other schemes
-  return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
+/**
+ * Resolve a client media ref (https / bare storage path from uploadBigFile) to a fetchable https URL.
+ * SSRF guard: only OUR OWN storage objects are honoured; an arbitrary external host must never be handed to
+ * `ffmpeg -i` (it could reach internal metadata/services). Editor uploads always send a bare storage path.
+ * Owner guard: the object must be the caller's (lib/security/callerMedia), never another account's file.
+ */
+async function resolveMedia(v: unknown, userId: string): Promise<string | null> {
+  const r = await resolveCallerMedia(v, userId, 3600);
+  return r.ok && r.own ? r.url : null;
 }
 
 type EditAction = 'split' | 'crop' | 'detach' | 'color' | 'fade' | 'inpaint' | 'render';
@@ -146,7 +144,7 @@ export async function POST(req: NextRequest) {
     // that SILENTLY DROPPED clips 6+ — the sequence still referenced them by index, so the render either
     // failed or quietly used the wrong footage. Now it is a named cap, and the client refuses to build a
     // sequence past it, so the truncation can no longer be reached.
-    const resolved = await Promise.all(body.sources.slice(0, MAX_CONCAT_SOURCES).map((s) => resolveMedia(s)));
+    const resolved = await Promise.all(body.sources.slice(0, MAX_CONCAT_SOURCES).map((s) => resolveMedia(s, guard.userId)));
     if (resolved.some((u) => !u)) {
       return NextResponse.json({ url: null, error: 'could not resolve all clip sources' }, { status: 400 });
     }
@@ -218,7 +216,7 @@ export async function POST(req: NextRequest) {
     const guard = await guardGeneration(req, 'video', { gate: false });
     if (!guard.ok) return guard.response;
 
-    const src = await resolveMedia(mediaUrl);
+    const src = await resolveMedia(mediaUrl, guard.userId);
     if (!src) return NextResponse.json({ url: null, error: 'could not resolve media' }, { status: 400 });
 
     try {
@@ -307,9 +305,9 @@ export async function POST(req: NextRequest) {
   if (!rawMask) {
     return NextResponse.json({ url: null, error: 'maskUrl required (paint the region to remove)' }, { status: 400 });
   }
-  const src = await resolveMedia(mediaUrl);
+  const src = await resolveMedia(mediaUrl, guard.userId);
   // A mask is a data: URI (painted client-side) or a storage path — accept the data URI verbatim.
-  const mask = /^data:/i.test(rawMask) ? rawMask : await resolveMedia(rawMask);
+  const mask = /^data:/i.test(rawMask) ? rawMask : await resolveMedia(rawMask, guard.userId);
   if (!src || !mask) {
     return NextResponse.json({ url: null, error: 'could not resolve media or mask' }, { status: 400 });
   }

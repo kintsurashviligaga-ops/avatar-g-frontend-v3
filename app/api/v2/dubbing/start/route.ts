@@ -49,7 +49,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // `^https?://` rule rejects the only thing the upload flow can produce, which is why this service
   // used to demand a public link the user did not have. See lib/services/resolveUpload.
   const body = raw && typeof raw === 'object'
-    ? { ...(raw as Record<string, unknown>), sourceVideoUrl: await resolveUploadRef((raw as Record<string, unknown>).sourceVideoUrl) }
+    ? { ...(raw as Record<string, unknown>), sourceVideoUrl: await resolveUploadRef((raw as Record<string, unknown>).sourceVideoUrl, user.id) }
     : raw;
 
   const parsed = validateDubbingRequest(body);

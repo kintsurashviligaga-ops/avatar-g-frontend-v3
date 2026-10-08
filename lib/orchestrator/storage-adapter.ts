@@ -313,10 +313,17 @@ export async function verifyFileableUrl(
  * signed URL for it; otherwise return the URL unchanged (external provider
  * links are already time-limited by their issuer). Guarantees no permanent
  * internal bucket URL escapes onto the wire.
+ *
+ * ⚠️ IT SIGNS WHATEVER OBJECT THE URL NAMES, FOR WHOEVER ASKS. Never hand it a URL a request supplied without first
+ * passing it through lib/security/callerMedia (own upload, own Library row, or a live token). Only a SIGNED URL on
+ * OUR project host is re-signed: parseSupabaseObjectUrl accepts any `*.supabase.co`, and signing
+ * `other.supabase.co/…/uploads/<path>` would mint a link to OUR object at that path; and a public URL never expires
+ * (it works exactly when its bucket is public), so re-signing one would turn a guessed private path into a working
+ * link.
  */
 export async function reSignIfInternal(url: string, expiresSec: number = SIGNED_URL_TTL_SEC): Promise<string> {
-  const ref = parseSupabaseObjectUrl(url);
-  if (!ref) return url;
+  const ref = describeSupabaseObjectUrl(url);
+  if (!ref || ref.access !== 'sign' || !ownStorageHosts().has(ref.host)) return url;
   const signed = await createSignedAssetUrl(ref.bucket, ref.path, expiresSec);
   return signed ?? url;
 }

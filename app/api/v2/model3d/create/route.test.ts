@@ -228,7 +228,7 @@ describe('a charge taken first must not be stranded by the platform timeout', ()
 describe('the photo-mode reference is signed to outlive the chat thumbnail it becomes', () => {
   it('signs an uploaded path for a week, like the text path\'s reference — not resolveUploadRef\'s 1-hour default', async () => {
     await POST(post({ mode: 'image', imageUrl: 'user-1/uploads/jug.jpg', quality: 'draft' }));
-    expect(resolveUploadRef).toHaveBeenCalledWith('user-1/uploads/jug.jpg', 604_800);
+    expect(resolveUploadRef).toHaveBeenCalledWith('user-1/uploads/jug.jpg', 'user-1', 604_800);
   });
 });
 

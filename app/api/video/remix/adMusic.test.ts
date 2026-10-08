@@ -31,6 +31,11 @@ jest.mock('../../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jes
 jest.mock('../../../../lib/nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/ai/lipsync', () => ({ filmLipsyncCreate: jest.fn(), lipsyncFetch: jest.fn() }));
+jest.mock('../../../../lib/security/callerMedia', () => ({
+  // The owner rule is pinned in lib/security/callerMedia.test.ts; here an https ref passes as given, a path does not.
+  resolveCallerMedia: jest.fn(async (v: unknown) =>
+    (typeof v === 'string' && /^https:\/\//.test(v) ? { ok: true, url: v, own: false } : { ok: false, reason: 'invalid' })),
+}));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   reSignIfInternal: jest.fn(async (u: string) => u),
   createSignedAssetUrl: jest.fn(),

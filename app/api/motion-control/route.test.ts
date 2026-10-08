@@ -116,3 +116,13 @@ test('a ledger without the RPC (skipped) renders uncharged: no `_settle`, a bare
   expect(j.jobId).toBe('pred-abc');
   expect((createJob as jest.Mock).mock.calls[0][0].params._settle).toBeUndefined();
 });
+
+test('another account’s bare upload path → 403 before any charge or render; the caller’s own path goes through', async () => {
+  for (const p of ['omni-uploads/user-2/face.jpg', 'user-2/face.jpg', 'photo-studio/1-a.png']) {
+    const res = await POST(post({ ...BODY, characterImageUrl: p }));
+    expect(res.status).toBe(403);
+  }
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(klingSubmit).not.toHaveBeenCalled();
+  expect((await POST(post({ ...BODY, characterImageUrl: 'omni-uploads/user-1/face.jpg' }))).status).toBe(200);
+});

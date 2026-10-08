@@ -30,6 +30,7 @@ import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
@@ -277,6 +278,19 @@ async function assembleImpl(req: NextRequest) {
   {
     const gate = requireAuthForGeneration(uid);
     if (gate.response) return gate.response;
+  }
+  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
+  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
+  // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).
+  {
+    const named: unknown[] = [
+      ...segments.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
+    ];
+    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
+      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
+    }
   }
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client

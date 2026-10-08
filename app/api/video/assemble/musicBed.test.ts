@@ -36,6 +36,8 @@ jest.mock('../../../../lib/orchestrator/ledger', () => ({
 jest.mock('../../../../lib/chat/filmComposite', () => ({ isAdminUser: jest.fn(async () => false) }));
 jest.mock('../../../../lib/billing/wallet-ledger', () => ({ consumeFreeFilm: jest.fn(async () => null), restoreFreeFilm: jest.fn() }));
 jest.mock('../../../../lib/billing/entitlements', () => ({ markFreeOutput: jest.fn() }));
+// The owner gate is pinned in lib/security/callerMedia.test.ts and callerMedia.test.ts here; every URL passes it.
+jest.mock('../../../../lib/security/callerMedia', () => ({ firstUnreadableOwnUrl: jest.fn(async () => -1) }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   reSignIfInternal: jest.fn(async (u: string) => u),
   uploadAndSign: jest.fn(async () => 'https://storage.example/el-score.mp3'),

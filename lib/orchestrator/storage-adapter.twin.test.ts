@@ -59,3 +59,29 @@ test('reSignIfInternal never re-signs a client-supplied twin URL (any project ho
   for (const u of urls) await expect(reSignIfInternal(u, 3600)).resolves.toBe(u); // handed back untouched, no token minted
   expect(signed).toEqual([]);
 });
+
+test('reSignIfInternal signs only OUR project host: another tenant’s URL never mints a link to our object at that path', async () => {
+  const saved = process.env.SUPABASE_URL;
+  process.env.SUPABASE_URL = 'https://proj.supabase.co';
+  try {
+    const foreign = 'https://other.supabase.co/storage/v1/object/sign/uploads/omni-uploads/u/1.png?token=x';
+    await expect(reSignIfInternal(foreign, 3600)).resolves.toBe(foreign);
+    expect(signed).toEqual([]);
+    await expect(reSignIfInternal('https://proj.supabase.co/storage/v1/object/sign/uploads/omni-uploads/u/1.png?token=x', 3600)).resolves.toMatch(/token=MINTED/);
+    expect(signed).toEqual([{ bucket: 'uploads', path: 'omni-uploads/u/1.png' }]);
+  } finally {
+    if (saved === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = saved;
+  }
+});
+
+test('reSignIfInternal never turns a public-shaped URL into a signed link (a guessed private path stays dead)', async () => {
+  const saved = process.env.SUPABASE_URL;
+  process.env.SUPABASE_URL = 'https://proj.supabase.co';
+  try {
+    const pub = 'https://proj.supabase.co/storage/v1/object/public/uploads/omni-uploads/victim/1.png';
+    await expect(reSignIfInternal(pub, 3600)).resolves.toBe(pub);
+    expect(signed).toEqual([]);
+  } finally {
+    if (saved === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = saved;
+  }
+});

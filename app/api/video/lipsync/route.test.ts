@@ -33,6 +33,11 @@ jest.mock('../../../../lib/chat/filmVoiceover', () => ({ textToHostedSpeech: jes
 jest.mock('../../../../lib/audio/georgian-voice', () => ({ georgianVoiceId: jest.fn(() => 'voice-ka') }));
 jest.mock('../../../../lib/audio/rvc', () => ({ convertSongWithRvc: jest.fn(async () => null) }));
 jest.mock('../../../../lib/audio/voiceModel', () => ({ getUserVoiceModel: jest.fn(async () => null), DEMO_VOICE_USER_ID: 'demo' }));
+jest.mock('../../../../lib/security/callerMedia', () => ({
+  // The owner rule is pinned in lib/security/callerMedia.test.ts; here an https ref passes as given, a path does not.
+  resolveCallerMedia: jest.fn(async (v: unknown) =>
+    (typeof v === 'string' && /^https:\/\//.test(v) ? { ok: true, url: v, own: false } : { ok: false, reason: 'invalid' })),
+}));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
   uploadAndSign: jest.fn(async () => 'https://x.supabase.co/storage/v1/object/sign/uploads/lipsync/out.mp4?token=t'),
   reSignIfInternal: jest.fn(async (u: string) => u),

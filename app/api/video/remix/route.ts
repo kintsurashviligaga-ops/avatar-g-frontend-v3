@@ -28,7 +28,8 @@ import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { filmLipsyncCreate, lipsyncFetch } from '@/lib/ai/lipsync';
-import { reSignIfInternal, createSignedAssetUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidation';
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
@@ -54,14 +55,13 @@ const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
 type Aspect = '9:16' | '16:9' | '1:1';
 type Gender = 'male' | 'female';
 
-/** Resolve a client media ref (https / bare storage path) to a fetchable https URL. */
-async function resolveMedia(v: unknown): Promise<string | null> {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!s || s.length > 4000) return null;
-  if (/^https:\/\//i.test(s)) return reSignIfInternal(s);
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // reject data:/other schemes
-  return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
+/**
+ * Resolve a client media ref (https / bare storage path) to a fetchable https URL. An external https URL passes
+ * through; one of OUR objects is signed only for the caller who owns it (lib/security/callerMedia).
+ */
+async function resolveMedia(v: unknown, userId: string | null): Promise<string | null> {
+  const r = await resolveCallerMedia(v, userId, 3600);
+  return r.ok ? r.url : null;
 }
 
 const ok = (url: string | null, extra: Record<string, unknown> = {}) => NextResponse.json({ url, ...extra });
@@ -339,7 +339,7 @@ export async function POST(req: NextRequest) {
         if (!v.ok) { await refundCharge('bad-image'); return NextResponse.json({ url: null, error: v.error }, { status: /too large/i.test(v.error) ? 413 : 415 }); }
       }
       // klingI2v/Replicate accepts a data:image URL directly; an https path is re-signed.
-      const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img);
+      const startImgRaw = /^data:image\//i.test(img) ? img : await resolveMedia(img, remixUid);
       // STEP 2.6 — pre-fit a product image to the target aspect so Kling i2v (output ratio =
       // start-image ratio) renders NATIVE 9:16, not a square that later needs letterboxing.
       const startImg = startImgRaw && /^data:image\//i.test(startImgRaw)
@@ -497,7 +497,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const videoUrl = await resolveMedia(body.videoUrl);
+  const videoUrl = await resolveMedia(body.videoUrl, remixUid);
   if (!videoUrl) return failRefund('A video is required.', 'no-video'); // refund the up-front charge + free the mutex
 
   const aspect: Aspect = body.aspect === '16:9' || body.aspect === '1:1' ? body.aspect : '9:16';
@@ -558,7 +558,7 @@ export async function POST(req: NextRequest) {
       }
 
       case 'music': {
-        const audioUrl = await resolveMedia(body.audioUrl);
+        const audioUrl = await resolveMedia(body.audioUrl, remixUid);
         if (!audioUrl) return failRefund('Add a music track.', 'no-track');
         const replace = body.mix !== true; // default: replace the original audio
         const url = await muxAudioOntoVideo(videoUrl, audioUrl, replace ? 'replace' : 'mix', 12);
@@ -567,7 +567,7 @@ export async function POST(req: NextRequest) {
 
       case 'redub': {
         // Audio source: synthesized from text in the chosen voice, or an upload.
-        const uploaded = await resolveMedia(body.audioUrl);
+        const uploaded = await resolveMedia(body.audioUrl, remixUid);
         const audioUrl = uploaded || (text ? await textToHostedSpeech(text, georgianVoiceId(gender)) : null);
         if (!audioUrl) return failRefund('Add redub text or an audio track.', 'no-audio');
         const url = await runLipsync(videoUrl, audioUrl);
@@ -617,7 +617,7 @@ export async function POST(req: NextRequest) {
         const frame = await extractFrame(videoUrl, 0.5);
         if (!frame) return failRefund('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.', 'frame-read');
         // TASK 1 — character swap with an UPLOADED PHOTO.
-        const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef) : null;
+        const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef, remixUid) : null;
         // PRIMARY (closer-to-source): roop video face-swap — the SAME video with the face
         // replaced throughout, motion preserved. Tried first when a swap photo is present;
         // on any miss we fall through to the keyframe-regenerate path below (a fresh ~5s clip

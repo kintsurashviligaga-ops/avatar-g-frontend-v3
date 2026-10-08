@@ -150,6 +150,18 @@ test.each([
   expectNothingStarted();
 });
 
+test('a bare storage path must be the caller’s own upload: another account’s recording is refused, never signed', async () => {
+  mockUser = { id: USER_ID };
+  for (const p of ['omni-uploads/someone-else/voice.mp3', 'someone-else/voice.mp3', 'audio-studio/1-a.mp3']) {
+    const res = await POST(post({ voiceReference: p }));
+    expect(res.status).toBe(403);
+  }
+  expect(createSignedAssetUrl).not.toHaveBeenCalled();
+  expectNothingStarted();
+  await POST(post({ voiceReference: `omni-uploads/${USER_ID}/voice.mp3` }));
+  expect(createSignedAssetUrl).toHaveBeenCalledWith('uploads', `omni-uploads/${USER_ID}/voice.mp3`, 3600);
+});
+
 test('GET keeps the demo fallback for a guest (a free status poll)', async () => {
   const res = await GET(new NextRequest('https://myavatar.ge/api/voice/train'));
   expect(res.status).toBe(200);
