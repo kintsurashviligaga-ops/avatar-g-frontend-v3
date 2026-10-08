@@ -163,7 +163,9 @@ describe('streamGeminiChat — happy path', () => {
     expect(textOf(frames)).toBe('Hello!');
     expect(frames[frames.length - 1]).toEqual({ usage: { model: 'gemini-3.8-flash', inputTokens: 12, outputTokens: 7, totalTokens: 19 } });
     expect(res.usage).toEqual({ inputTokens: 12, outputTokens: 7, totalTokens: 19 });
-    expect(mockCreateGoogle).toHaveBeenCalledWith({ apiKey: 'test-key' });
+    // The shared factory (lib/ai/google/provider) also hands the SDK its provider-local fetch (redirect: 'manual', so the
+    // key is never forwarded across a redirect).
+    expect(mockCreateGoogle).toHaveBeenCalledWith({ apiKey: 'test-key', fetch: expect.any(Function) });
   });
 
   it('emits one deduped, http(s)-only sources frame at the end, before usage, and counts grounding queries', async () => {

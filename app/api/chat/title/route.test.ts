@@ -21,8 +21,8 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 }));
 const mockGemini = jest.fn();
 jest.mock('../../../../lib/gemini/client', () => ({ generateWithGemini: (...a: unknown[]) => mockGemini(...a) }));
-let mockKey = 'test-key';
-jest.mock('../../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockKey }));
+// "Configured" is the Google transport's answer (lib/ai/google/transport googleAiConfigured): on the default Developer API
+// transport that is the canonical GEMINI_API_KEY, set per test below — never a deprecated alias.
 const mockAllows = jest.fn(async () => true);
 const mockBook = jest.fn(async () => undefined);
 jest.mock('../../../../lib/services/billing/chatBudget', () => ({
@@ -47,7 +47,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGuardUser = { userId: USER };
   mockBearerUser = null;
-  mockKey = 'test-key';
+  delete process.env.GEMINI_TRANSPORT;
+  process.env.GEMINI_API_KEY = 'test-key';
   mockAllows.mockResolvedValue(true);
   delete process.env.FILM_ALLOW_ANONYMOUS;
 });
@@ -96,7 +97,9 @@ test('best-effort: a Gemini failure answers 200 with an empty title', async () =
 test('budget refusal and a missing key never call Gemini', async () => {
   mockAllows.mockResolvedValueOnce(false);
   expect(await (await POST(post({ prompt: 'x', locale: 'en' }))).json()).toEqual({ title: null, reason: 'budget_exhausted' });
-  mockKey = '';
+  delete process.env.GEMINI_API_KEY;
+  // A deprecated alias is not a key (MyAvatar v32): the title stays empty and Gemini is not called.
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'legacy-alias';
   expect(await (await POST(post({ prompt: 'x', locale: 'en' }))).json()).toEqual({ title: '' });
   expect(mockGemini).not.toHaveBeenCalled();
 });
