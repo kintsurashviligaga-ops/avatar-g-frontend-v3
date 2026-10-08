@@ -167,8 +167,10 @@ for role in roles/storage.objectCreator roles/storage.objectViewer; do
 done
 # Vertex AI Service Agent: reads the gs:// inputs and writes Veo's sample_N.mp4 outputs.
 run gcloud beta services identity create --service=aiplatform.googleapis.com --project="$PROJECT_ID" || true
+# A service agent created a moment ago can take a minute to become visible to IAM ("does not exist").
+retry() { local n; for n in 1 2 3 4 5 6 7 8 9; do "$@" && return 0; echo "  (not visible to IAM yet, retry $n/9 in 10 s)" >&2; sleep 10; done; "$@"; }
 for role in roles/storage.objectCreator roles/storage.objectViewer; do
-  run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member="serviceAccount:$VERTEX_AGENT" --role="$role"
+  retry run gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" --member="serviceAccount:$VERTEX_AGENT" --role="$role"
 done
 
 hr "6. workload identity pool $POOL_ID / provider $PROVIDER_ID"
