@@ -17,6 +17,13 @@ AUTH="${AUTH:-key}"                          # key | wif
 KEY_FILE="${KEY_FILE:-./${SA_NAME}-key.json}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"       # signed URLs live 7 days; outputs are kept a little longer
 
+if [[ "$AUTH" == "wif" ]]; then
+  # The keyless path moved to part0-wif.sh: this script's WIF branch trusted the whole pool (principalSet …/*) with no
+  # attribute condition, and granted objectAdmin / aiplatform.user / TokenCreator where narrower grants suffice.
+  echo "AUTH=wif is handled by scripts/gcp/part0-wif.sh (least privilege). Run: MODE=plan ./scripts/gcp/part0-wif.sh" >&2
+  exit 2
+fi
+
 gcloud config set project "$PROJECT_ID" >/dev/null
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
