@@ -11,7 +11,8 @@ import { deriveImageResults, type ImageMsgLike, type ImageResultView } from '@/l
  * the Models & prices table that is also the size picker, and the conversation kept one tap away.
  */
 
-const spec = { kind: 'image', prompt: 'a red fox', aspect: '4:5', quality: 'ultra' };
+// v32: a result is an Imagen render — a native ratio at the one size there is (standard · 1K).
+const spec = { kind: 'image', prompt: 'a red fox', aspect: '3:4', quality: 'standard' };
 
 function actions(over: Partial<ImageResultActions> = {}): ImageResultActions {
   return {
@@ -59,7 +60,7 @@ describe('ImageResultPane', () => {
     pane({ actions: a, results: results(ready('r1', 'https://x/fox.png')) });
     const img = screen.getByTestId('result-image') as HTMLImageElement;
     expect(img.src).toBe('https://x/fox.png');
-    expect(screen.getByRole('heading', { name: 'Result' }).parentElement!.textContent).toContain('4:5 · 4K');
+    expect(screen.getByRole('heading', { name: 'Result' }).parentElement!.textContent).toContain('3:4 · 1K');
     expect(screen.getByTestId('image-result-pane').textContent).toContain('a red fox');
 
     const bar = screen.getByRole('toolbar', { name: 'Result' });
@@ -179,54 +180,53 @@ describe('ImageModelsTable — Models & prices, and the size picker', () => {
     return { onQuality, ...view };
   };
 
-  test('a row per model variant the route can run — Auto at 1K, 2K, 4K — each priced by the quote', () => {
-    setup();
+  test('v32: one row per model — the one size Imagen renders here (1K) — priced by the quote', () => {
+    setup({ quality: 'standard' });
     const rows = within(screen.getByRole('radiogroup', { name: 'Models & prices' })).getAllByRole('radio');
-    expect(rows).toHaveLength(3);
-    expect(rows.map((r) => r.querySelector('span.truncate')?.textContent)).toEqual(['Auto · 1K', 'Auto · 2K', 'Auto · 4K']);
+    expect(rows).toHaveLength(1);
+    expect(rows.map((r) => r.querySelector('span.truncate')?.textContent)).toEqual(['Imagen — Auto · 1K']);
     const price = `${quoteCredits({ tool: 'image', count: 1 })} credits / image`;
     for (const r of rows) expect(r.textContent).toContain(price);
-    // The variant behind each size is the real one.
-    expect(rows[0]!.textContent).toContain('Nano Banana V2');
-    expect(rows[2]!.textContent).toContain('Nano Banana Pro');
+    // The engine behind the size is the real one — Imagen — and no retired name is printed.
+    expect(rows[0]!.textContent).toContain('Imagen · Image from text');
+    expect(screen.getByTestId('models-prices').textContent).not.toMatch(/Nano Banana|2K|4K/);
   });
 
-  test('the row for the current size is checked and follows it', () => {
-    const { rerender, onQuality } = setup({ quality: 'standard' });
-    const checked = () => screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('data-quality'));
-    expect(checked()).toEqual(['standard']);
-    rerender(<ImageModelsTable locale="en" quality="ultra" onQuality={onQuality} />);
-    expect(checked()).toEqual(['ultra']);
+  test('the row for the current size is checked', () => {
+    setup({ quality: 'standard' });
+    const checked = screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true').map((r) => r.getAttribute('data-quality'));
+    expect(checked).toEqual(['standard']);
   });
 
-  test('choosing a row sets that size (it is the size picker; the model is chosen in the panel\'s model row)', () => {
-    const { onQuality } = setup();
-    fireEvent.click(screen.getAllByRole('radio')[2]!);
-    expect(onQuality).toHaveBeenCalledWith('ultra');
+  test('choosing the row sets that size (it is the size picker; the model is chosen in the panel\'s model row)', () => {
+    const { onQuality } = setup({ quality: 'standard' });
+    fireEvent.click(screen.getAllByRole('radio')[0]!);
+    expect(onQuality).toHaveBeenCalledWith('standard');
   });
 
-  test('a Higgsfield pick: the table of Nano Banana sizes and prices steps aside (that model is priced on its own button)', () => {
+  test('a remembered Higgsfield pick (from before v32) no longer hides the table: it prices Auto, the model the request will name', () => {
     window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
-    setup();
-    expect(screen.queryByTestId('models-prices')).toBeNull();
+    setup({ quality: 'standard' });
+    const rows = within(screen.getByTestId('models-prices')).getAllByRole('radio');
+    expect(rows.map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto']);
   });
 
-  test('it follows the picked model: Nano Banana Pro has 2K and 4K only, and says so in each row', () => {
-    setup({ model: 'nb/pro' });
-    const rows = within(screen.getByRole('radiogroup', { name: 'Models & prices' })).getAllByRole('radio');
-    expect(rows.map((r) => r.querySelector('span.truncate')?.textContent)).toEqual(['Nano Banana Pro · 2K', 'Nano Banana Pro · 4K']);
-    expect(rows.map((r) => r.getAttribute('data-quality'))).toEqual(['high', 'ultra']);
-    for (const r of rows) expect(r.textContent).toContain('Nano Banana Pro');
+  test('it follows the picked model: every Imagen model has the one 1K row', () => {
+    for (const model of ['nb/v2', 'nb/pro']) {
+      const view = setup({ model, quality: 'standard' });
+      const rows = within(screen.getByRole('radiogroup', { name: 'Models & prices' })).getAllByRole('radio');
+      expect(rows.map((r) => [r.getAttribute('data-model'), r.getAttribute('data-quality'), r.querySelector('span.truncate')?.textContent]))
+        .toEqual([[model, 'standard', 'Imagen · 1K']]);
+      view.unmount();
+    }
   });
 
-  test('arrow keys move through the rows; only the checked row is a Tab stop; every row is a ≥ 44 px target', () => {
-    setup({ quality: 'high' });
+  test('the one row is the Tab stop, arrow keys stay on it, and it is a ≥ 44 px target', () => {
+    setup({ quality: 'standard' });
     const rows = screen.getAllByRole('radio');
-    expect(rows.map((r) => r.tabIndex)).toEqual([-1, 0, -1]);
-    rows[1]!.focus();
-    fireEvent.keyDown(rows[1]!, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(rows[2]);
-    fireEvent.keyDown(rows[2]!, { key: 'ArrowDown' });
+    expect(rows.map((r) => r.tabIndex)).toEqual([0]);
+    rows[0]!.focus();
+    fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(rows[0]);
     expect(rows.every((r) => /min-h-\[(6\d)px\]/.test(r.className))).toBe(true);
   });
