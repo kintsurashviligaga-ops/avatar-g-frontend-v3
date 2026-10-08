@@ -53,6 +53,9 @@ import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, 
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunOverlay';
+import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
+import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
@@ -2415,6 +2418,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
+  // V1–V6 director runs (VIDEO_DIRECTOR_RUNS): when on for this user, an approved board renders shot by shot through
+  // the director instead of the film render. Off → false → nothing below changes.
+  const directorRunsOn = useDirectorRunsEnabled();
   useEffect(() => { dispatchVeo({ type: 'format', format: formatForOrientation(videoOrientation) }); }, [videoOrientation]);
   useEffect(() => { dispatchVeo({ type: 'length', lengthSec: videoDuration }); }, [videoDuration]);
   // PHASE 2 L5 / Master Contract V3 — per-render i2v engine. Google VEO is the wired PRIMARY i2v engine
@@ -2700,6 +2706,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
+  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard } | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   // Which storyboard scene is currently re-rolling its single frame (null = none).
   const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
@@ -10167,6 +10174,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
+            if (directorRunsOn) {
+              // The director renders exactly this board (V2/V3/V6): its scenes' text, frame, length and tier, nothing
+              // added — the music bed, narration and colour pass of the film render are not part of a director run.
+              const board = storyboard;
+              const seed = veoPlan.seedLock && Number.isInteger(board.seed) && board.seed >= 0 && board.seed <= 0xffff_ffff ? board.seed : undefined;
+              setStoryboard(null);
+              setDirectorBoard({
+                studio: board,
+                director: studioToDirectorStoryboard(board, { id: `board-${Date.now().toString(36)}`, quality: veoPlan.tier, clipSec: FILM_CLIP_SEC, ...(seed !== undefined ? { seed } : {}) }),
+              });
+              return;
+            }
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
             // REFERENCE MODE — the photos ride as Veo asset references and Veo composes every scene itself, so the
             // board's frames are only the plan: sending them would make each clip animate FROM a frame (Veo cannot
@@ -10194,6 +10213,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             void createStoryboard(sb.filmPrompt, sb.refs, sb.orientation);
           }}
           onCancel={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboard(null); }}
+        />
+      )}
+
+      {directorBoard && (
+        <DirectorRunOverlay
+          storyboard={directorBoard.director}
+          locale={locale}
+          onEdit={() => { const back = directorBoard.studio; setDirectorBoard(null); setStoryboard(back); }}
+          onClose={() => setDirectorBoard(null)}
         />
       )}
 

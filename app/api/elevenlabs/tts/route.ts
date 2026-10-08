@@ -5,8 +5,6 @@ import {
   type ElevenLabsModelId,
 } from '@/lib/audio/tts-model';
 import { extractVoiceDirectives } from '@/lib/chat/outputEnforcement';
-import { synthesizeGoogleTts } from '@/lib/audio/google-tts';
-import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { numbersToGeorgianWords } from '@/lib/chat/georgianNumbers';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -27,7 +25,7 @@ interface TtsRequest {
    *  ElevenLabs voice_settings so the read MATCHES the requested tone. Omitting
    *  it preserves the existing per-model defaults (backward compatible). */
   voiceStyle?: string;
-  /** Optional gender hint for native Georgian (Azure Eka female / Giorgi male). */
+  /** Optional gender hint for Georgian — picks the gender-matched cloned ElevenLabs voice. */
   gender?: 'male' | 'female';
 }
 
@@ -51,18 +49,6 @@ function enforceVoiceSettings(
   };
 }
 
-function audioResponse(buffer: ArrayBuffer, provider: string): NextResponse {
-  return new NextResponse(buffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': String(buffer.byteLength),
-      'X-Voice-Provider': provider,
-      'Cache-Control': 'no-store',
-    },
-  });
-}
-
 // Progressive: hit the ElevenLabs /stream endpoint with low-latency optimization
 // and PIPE the chunked body straight through — first audio bytes reach the client
 // far sooner than buffering the whole file. Consumers that need a blob/arrayBuffer
@@ -74,9 +60,9 @@ async function streamElevenLabs(
   modelId: ElevenLabsModelId,
   voiceStyle?: string,
 ): Promise<NextResponse | null> {
-  // A network THROW here must NOT propagate — it would bypass the Azure/Google fallback chain and 500.
-  // (No whole-request timeout on the streaming fetch: it would abort a valid long TTS stream mid-flight,
-  // after the caller has already returned this response and the fallback window is closed.)
+  // A network THROW here must NOT propagate — it would skip the buffered retry below and 500 instead of the route's
+  // explicit 502. (No whole-request timeout on the streaming fetch: it would abort a valid long TTS stream mid-flight,
+  // after the caller has already returned this response.)
   let res: Response;
   try {
     res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?optimize_streaming_latency=3`, {
@@ -130,8 +116,8 @@ async function bufferElevenLabs(
   modelId: ElevenLabsModelId,
   voiceStyle?: string,
 ): Promise<NextResponse | null> {
-  // Try/catch + a bounded timeout: a throw or a stall must return null so the Azure/Google fallback
-  // runs, not propagate a 500 or hang the function. Buffered (non-streaming) → timeout is safe here.
+  // Try/catch + a bounded timeout: a throw or a stall must return null so the route answers its explicit 502,
+  // not propagate a 500 or hang the function. Buffered (non-streaming) → timeout is safe here.
   let res: Response;
   try {
     res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -164,13 +150,6 @@ async function bufferElevenLabs(
       'Cache-Control': 'no-store',
     },
   });
-}
-
-// Google Cloud TTS fallback — now routes through the shared helper, which picks the
-// BEST AVAILABLE neural ka-GE voice (Chirp3-HD / Neural2 / Wavenet) instead of the
-// old robotic `ka-GE-Standard-A`. Auto-detects language from the text.
-async function synthesizeWithGoogleTTS(text: string): Promise<ArrayBuffer | null> {
-  return synthesizeGoogleTts(text);
 }
 
 export async function POST(req: NextRequest) {
@@ -236,13 +215,10 @@ export async function POST(req: NextRequest) {
     if (buffered) return buffered;
   }
 
-  // Fallbacks: Azure native ka (Eka/Giorgi) → Google ka-GE neural.
-  if (isGeorgian && azureTtsConfigured()) {
-    const az = await synthesizeAzureGeorgian(text, body.gender === 'male' ? 'male' : 'female');
-    if (az) return audioResponse(az, 'azure-ka');
-  }
-  const googleAudio = await synthesizeWithGoogleTTS(text);
-  if (googleAudio) return audioResponse(googleAudio, 'google-tts');
-
+  // ⚠️ NO FALLBACK PROVIDER (PROJECT_MASTER R7 — no silent fallback). An ElevenLabs miss (or no key) used to fall to
+  // Azure's native ka voices (Eka/Giorgi) for Georgian, then to Google Cloud TTS for any language — so a user who chose a
+  // cloned Georgian voice could be answered, with no sign but a response header, by a different provider's different
+  // voice, and Azure is not an allowed provider at all. A request uses ONE provider: ElevenLabs (the /stream →
+  // buffered retry above stays on it). When it fails, this route answers its explicit error.
   return NextResponse.json({ error: 'No TTS provider available' }, { status: 502 });
 }

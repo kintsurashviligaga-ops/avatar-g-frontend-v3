@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 /**
- * The engine catalogue: the list is exactly the route's chain; a pick the server would refuse (no key, breaker open,
+ * The engine catalogue: the list is exactly the route's engines (one runs per request — no chain); a pick the server would refuse (no key, breaker open,
  * MusicGen for a song, status not loaded) cannot be offered; copy exists in ka / en / ru for every row.
  */
 import { readFileSync } from 'node:fs';
@@ -19,15 +19,24 @@ const STATUS: MusicEnginesStatus = {
     musicgen: { configured: true, busy: false, controls: 'native' },
   },
   references: { cover: true, voice: true },
-  chain: ['lyria', 'musicgen'],
+  chain: ['lyria'], // Auto is Lyria alone (R7) — MusicGen is ready, but only as an explicit pick
 };
 
-test('the list is the route\'s failover chain, in its order — and nothing the route cannot run', () => {
+test('the list is exactly the engines the route can run, in picker order — and nothing the route cannot run', () => {
   expect(MUSIC_ENGINE_CHAIN).toEqual(['lyria', 'udio', 'elevenlabs-music', 'musicgen']);
-  // Pinned from the route's source: the four provider names it pushes, in order.
+  // Pinned from the route's source: the four engine names it can run (a pick is checked against them).
   const route = readFileSync(join(process.cwd(), 'app/api/ai/music/route.ts'), 'utf8');
-  const names = [...route.matchAll(/providers\.push\(\{ name: '([a-z-]+)'/g)].map((m) => m[1]);
+  const names = [...route.matchAll(/engines\.push\(\{ name: '([a-z-]+)'/g)].map((m) => m[1]);
   expect(names).toEqual([...MUSIC_ENGINE_CHAIN]);
+});
+
+test('…and they are NOT a chain: the route runs ONE engine per request, Lyria on Auto, with no failover (R7)', () => {
+  const route = readFileSync(join(process.cwd(), 'app/api/ai/music/route.ts'), 'utf8');
+  // Exactly one attempt reaches the failover helper — a list of one has nothing to reroute to.
+  expect(route).toContain('runWithLatencyFailover<Track>([bounded],');
+  expect(route).toContain("const attempt = picked ?? engines.find((p) => p.name === 'lyria');");
+  // The old reorder-the-chain shapes are gone.
+  expect(route).not.toMatch(/providers\.(unshift|splice)\(/);
 });
 
 test('ids and picks validate: a made-up engine is neither', () => {
@@ -87,7 +96,9 @@ test('every engine, reason and note has ka / en / ru copy, and no copy is empty'
   for (const l of ['ka', 'en', 'ru'] as const) {
     const c = ENGINE_COPY[l];
     expect(c.auto.name.length).toBeGreaterThan(0);
-    expect(c.auto.role(['A', 'B'])).toContain('A → B');
+    // Auto names the engine it runs and never reads as a chain (one engine per request, R7).
+    expect(c.auto.role(['A'])).toContain('A');
+    expect(c.auto.role(['A'])).not.toContain('→');
     expect(c.auto.role([]).length).toBeGreaterThan(0);
     for (const id of MUSIC_ENGINE_CHAIN) {
       expect(c.engines[id].name.length).toBeGreaterThan(0);
@@ -97,7 +108,7 @@ test('every engine, reason and note has ka / en / ru copy, and no copy is empty'
     expect(c.priceNote.length).toBeGreaterThan(0);
     expect(c.settleNote.length).toBeGreaterThan(0);
   }
-  expect(chainNames(STATUS, 'en')).toEqual(['Lyria 3', 'MusicGen']);
+  expect(chainNames(STATUS, 'en')).toEqual(['Lyria 3']);
 });
 
 test('the pill names the pick — a reference track fixes the engine', () => {

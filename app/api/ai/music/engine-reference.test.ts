@@ -1,7 +1,8 @@
 /** @jest-environment node */
 /**
- * POST /api/ai/music — (1) the model pill's `engine`: one engine goes to the FRONT of the chain and the rest stay behind it
- * as fallbacks; an engine the chain does not have, an unknown id, or MusicGen for a song change nothing. (2) The
+ * POST /api/ai/music — (1) the model pill's `engine`: the picked engine runs INSTEAD of Lyria, alone — a miss is the explicit,
+ * refunded failure, never another engine (R7); an engine the deployment cannot run, an unknown id, or MusicGen for a song
+ * change nothing (Auto: Lyria alone). (2) The
  * `audioReference` / `voiceReference` rule: a storage path must be the caller's own, a voice sample's URL must be our
  * own storage (we fetch it), a cover's URL must not be an internal address — and a refusal happens BEFORE the mutex or the
  * ledger is touched. Every provider, the ledger, storage and the idempotency store are mocked: no network, no spend.
@@ -63,7 +64,8 @@ import { hasUdioApiKey } from '../../../../lib/chat/mediaKeys';
 import { transcodeVoiceToMp3 } from '../../../../lib/audio/transcode';
 import { createSignedAssetUrl } from '../../../../lib/orchestrator/storage-adapter';
 import { claimIdempotencyKey, hashPayload } from '../../../../lib/orchestrator/idempotency';
-import { deductCredits } from '../../../../lib/orchestrator/ledger';
+import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
+import { runWithLatencyFailover } from '../../../../lib/providers/latencyFailover';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/ai/music', {
@@ -96,10 +98,40 @@ afterEach(() => jest.restoreAllMocks());
 
 const servedBy = async (body: unknown): Promise<string> => (await (await POST(post(body))).json()).engine as string;
 
-describe('`engine` — the model pill moves one engine to the front of the chain', () => {
-  test('without it (Auto) Lyria leads, as it always did', async () => {
+/** The engines the route handed the failover helper — ONE, always (R7: no chain behind it). */
+const attemptsHanded = (): string[] =>
+  ((runWithLatencyFailover as jest.Mock).mock.calls.at(-1)?.[0] as Array<{ name: string }>).map((p) => p.name);
+
+describe('`engine` — the model pill picks the ONE engine that runs', () => {
+  test('without it (Auto) Lyria runs — and only Lyria is handed to the failover', async () => {
     expect(await servedBy(SONG)).toBe('Lyria');
+    expect(attemptsHanded()).toEqual(['lyria']);
     expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  });
+
+  test('Auto: a Lyria miss is the explicit, refunded 502 — Udio, ElevenLabs and MusicGen are never asked', async () => {
+    (generateLyriaTrack as jest.Mock).mockRejectedValue(new Error('Lyria 503'));
+    for (const body of [SONG, BED]) {
+      const res = await POST(post(body));
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ success: false, refunded: true });
+      expect(attemptsHanded()).toEqual(['lyria']);
+    }
+    expect(refundCredits).toHaveBeenCalledTimes(2);
+    expect(generateUdioTrack).not.toHaveBeenCalled();
+    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+    expect(generateMusic).not.toHaveBeenCalled();
+  });
+
+  test('Auto with Lyria not configured: the explicit, refunded 502 — the other configured engines are not promoted', async () => {
+    (hasLyriaProvider as jest.Mock).mockReturnValue(false);
+    const res = await POST(post(BED));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ success: false, refunded: true });
+    expect(runWithLatencyFailover).not.toHaveBeenCalled();
+    expect(generateUdioTrack).not.toHaveBeenCalled();
+    expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+    expect(generateMusic).not.toHaveBeenCalled();
   });
 
   test('ElevenLabs Music picked: it composes, and Lyria is never asked', async () => {
@@ -107,29 +139,37 @@ describe('`engine` — the model pill moves one engine to the front of the chain
     expect(generateLyriaTrack).not.toHaveBeenCalled();
   });
 
-  test('Udio picked: it leads', async () => {
+  test('Udio picked: it runs instead of Lyria, alone', async () => {
     expect(await servedBy({ ...SONG, engine: 'udio' })).toBe('Udio');
+    expect(attemptsHanded()).toEqual(['udio']);
     expect(generateLyriaTrack).not.toHaveBeenCalled();
   });
 
-  test('a pick never removes the others: if the picked engine misses, the chain still lands a track', async () => {
+  test('a picked engine that misses is the explicit, refunded 502 — Lyria is NOT run behind it (R7)', async () => {
     (composeElevenLabsMusic as jest.Mock).mockRejectedValue(new Error('402'));
-    expect(await servedBy({ ...SONG, engine: 'elevenlabs-music' })).toBe('Lyria'); // the next in line after the pick
+    const res = await POST(post({ ...SONG, engine: 'elevenlabs-music' }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ success: false, refunded: true });
+    expect(attemptsHanded()).toEqual(['elevenlabs-music']);
     expect(composeElevenLabsMusic).toHaveBeenCalledTimes(1);
+    expect(generateLyriaTrack).not.toHaveBeenCalled();
+    expect(generateUdioTrack).not.toHaveBeenCalled();
+    expect(generateMusic).not.toHaveBeenCalled();
   });
 
-  test('MusicGen picked for an INSTRUMENTAL leads — and is the engine that rendered it', async () => {
+  test('MusicGen picked for an INSTRUMENTAL runs — and is the engine that rendered it', async () => {
     const json = await (await POST(post({ ...BED, engine: 'musicgen' }))).json();
     expect(json.engine).toBe('MusicGen');
     expect(generateLyriaTrack).not.toHaveBeenCalled();
   });
 
-  test('MusicGen picked for a SONG is ignored: it makes no vocals, so Lyria still leads', async () => {
+  test('MusicGen picked for a SONG is ignored: it makes no vocals, so Auto (Lyria) runs', async () => {
     expect(await servedBy({ ...SONG, engine: 'musicgen' })).toBe('Lyria');
+    expect(attemptsHanded()).toEqual(['lyria']);
     expect(generateMusic).not.toHaveBeenCalled();
   });
 
-  test('an engine that is not in the chain (no Udio key) is a no-op — Auto order', async () => {
+  test('an engine the deployment cannot run (no Udio key) is a no-op — Auto (Lyria)', async () => {
     (hasUdioApiKey as jest.Mock).mockReturnValue(false);
     expect(await servedBy({ ...SONG, engine: 'udio' })).toBe('Lyria');
     expect(generateUdioTrack).not.toHaveBeenCalled();

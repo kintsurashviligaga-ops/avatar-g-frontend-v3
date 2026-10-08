@@ -8,7 +8,7 @@
  * MusicGen ('native'), and Udio's native fields only behind MUSIC_SUNO_PARAMS; `controls.applied` is true only when a
  * slider actually reached the engine; an untouched panel composes exactly the brief it always did; the in-flight mutex
  * keys on the controls. Every provider, the ledger, storage and the idempotency store are mocked, and the failover mock
- * runs the chain in order — no network, no spend.
+ * runs whatever it is handed in order (the route now hands it ONE engine — R7) — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -205,13 +205,13 @@ describe('a template card applies only while its genre is the sole style', () =>
   });
 });
 
-describe('native engines', () => {
-  test('MusicGen takes the sliders as sampling parameters, and says so ("native")', async () => {
-    (hasLyriaProvider as jest.Mock).mockReturnValue(false);
+describe('native engines — reached only by an explicit pick now (Auto is Lyria alone, R7)', () => {
+  test('MusicGen picked for an instrumental takes the sliders as sampling parameters, and says so ("native")', async () => {
     (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
-    const res = await POST(post({ ...PANEL, instrumental: true }));
+    const res = await POST(post({ ...PANEL, instrumental: true, engine: 'musicgen' }));
     const json = await res.json();
     expect(json).toMatchObject({ success: true, engine: 'MusicGen', controls: { engine: 'musicgen', mode: 'native', applied: true } });
+    expect(generateLyriaTrack).not.toHaveBeenCalled(); // the pick runs INSTEAD of Lyria, not ahead of it
     // Style influence 10 is the strong-low band → guidance 1. A WHOLE number: the model's input is an int, and the
     // first build's 1.4 was a 422 from Replicate (lib/ai/replicate rounds as well).
     const sampling = (generateMusic as jest.Mock).mock.calls[0][2];
@@ -219,20 +219,24 @@ describe('native engines', () => {
     expect(Number.isInteger(sampling.classifierFreeGuidance)).toBe(true);
   });
 
-  test('a SONG that falls through to MusicGen is badged as voiceless even with the singer on Auto and no lyrics', async () => {
+  test('a SONG never reaches MusicGen: with Lyria off it is the explicit, refunded failure — not a voiceless instrumental', async () => {
     (hasLyriaProvider as jest.Mock).mockReturnValue(false);
     (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
-    const json = await (await POST(post({ ...PANEL, vocalGender: 'auto' }))).json();
-    expect(json.engine).toBe('MusicGen (instrumental — vocals unavailable)');
+    for (const body of [{ ...PANEL, vocalGender: 'auto' }, { ...PANEL, vocalGender: 'auto', engine: 'musicgen' }]) {
+      const res = await POST(post(body));
+      expect(res.status).toBe(502);
+      expect(await res.json()).toMatchObject({ success: false, refunded: true });
+    }
+    expect(generateMusic).not.toHaveBeenCalled();
   });
 
-  test('Udio gets its native fields handed over, but with MUSIC_SUNO_PARAMS off (the default) the result says "prompt"', async () => {
-    (hasLyriaProvider as jest.Mock).mockReturnValue(false);
+  test('Udio picked gets its native fields handed over, but with MUSIC_SUNO_PARAMS off (the default) the result says "prompt"', async () => {
     (hasUdioApiKey as jest.Mock).mockReturnValue(true);
     (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
-    const body = { ...PANEL, vocalGender: 'female' };
+    const body = { ...PANEL, vocalGender: 'female', engine: 'udio' };
     const json = await (await POST(post(body))).json();
     expect(json.controls).toEqual({ engine: 'udio', mode: 'prompt', applied: true });
+    expect(generateLyriaTrack).not.toHaveBeenCalled();
     const input = (generateUdioTrack as jest.Mock).mock.calls[0][0];
     expect(input.controls).toEqual(udioParams({ styles: [], vocalGender: 'female', weirdness: 92, styleInfluence: 10 }, { instrumental: false }));
     expect(input.style).toBe('georgian folk, jazz');
@@ -241,11 +245,23 @@ describe('native engines', () => {
 
   test('…and with MUSIC_SUNO_PARAMS=1 the same track reports "native"', async () => {
     process.env.MUSIC_SUNO_PARAMS = '1';
-    (hasLyriaProvider as jest.Mock).mockReturnValue(false);
     (hasUdioApiKey as jest.Mock).mockReturnValue(true);
     (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
-    const json = await (await POST(post(PANEL))).json();
+    const json = await (await POST(post({ ...PANEL, engine: 'udio' }))).json();
     expect(json.controls).toEqual({ engine: 'udio', mode: 'native', applied: true });
+  });
+
+  test('a Lyria miss on Auto is NOT rescued by the native engines, even with every key present', async () => {
+    (hasUdioApiKey as jest.Mock).mockReturnValue(true);
+    (generateLyriaTrack as jest.Mock).mockResolvedValue(null); // Lyria answered with no audio
+    (generateUdioTrack as jest.Mock).mockResolvedValue({ status: 'succeeded', audioUrl: 'https://udio.example/t.mp3' });
+    (generateMusic as jest.Mock).mockResolvedValue({ audioUrl: 'https://replicate.delivery/track.mp3' });
+    const res = await POST(post({ ...PANEL, instrumental: true }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ success: false, refunded: true });
+    expect(generateLyriaTrack).toHaveBeenCalledTimes(1);
+    expect(generateUdioTrack).not.toHaveBeenCalled();
+    expect(generateMusic).not.toHaveBeenCalled();
   });
 });
 

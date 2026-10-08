@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import {
   getFlow,
@@ -33,7 +32,9 @@ import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// ⚠️ THE TEXT SERVICES HAVE NO ANTHROPIC OR OPENAI CLIENT (PROJECT_MASTER R7, "NO SILENT FALLBACK"): they run on Gemini
+// only. This OpenAI client serves ONLY the voice leg's TTS behind ElevenLabs, which itself runs only with the Google-only
+// switch turned off (AI_GOOGLE_ONLY=0, the kill switch) — see the `voice` case in handleGenerate.
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const HEYGEN_BASE = 'https://api.heygen.com';
@@ -107,24 +108,6 @@ function detectServiceIntent(text: string): ServiceId | null {
     if (score > 0 && (!best || score > best.score)) best = { id, score };
   }
   return best?.id ?? null;
-}
-
-async function generateTextWithOpenAI(systemPrompt: string, prompt: string): Promise<string> {
-  if (!openai) {
-    throw new Error('OPENAI_API_KEY is not configured');
-  }
-
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    max_tokens: 4096,
-    temperature: 0.7,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt },
-    ],
-  });
-
-  return completion.choices[0]?.message?.content?.trim() || '';
 }
 
 function toGeminiContext(serviceId: ServiceId): GeminiServiceContext {
@@ -690,7 +673,7 @@ async function handleGenerate(
   });
   const effectivePrompt = iterative.prompt;
 
-  // ── Text services (Gemini as primary assistant brain) ─────────────────────
+  // ── Text services (Gemini ONLY — PROJECT_MASTER R7) ────────────────────────
   const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
 
   if (TEXT_SERVICES.includes(serviceId)) {
@@ -706,41 +689,10 @@ async function handleGenerate(
       tourism:          'You are an expert travel consultant and destination specialist. Create detailed, practical, and inspiring travel content. Include local tips, cultural context, logistics, and hidden gems. Format in clean, readable markdown with clear sections.',
     };
 
-    if (serviceId === 'terminal') {
-      try {
-        const result = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-          messages: [{ role: 'user', content: effectivePrompt }],
-        });
-        const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
-        return NextResponse.json({
-          jobId, status: 'done', serviceId, outputKind,
-          result: text,
-          provider: 'anthropic',
-          tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
-          iteration: iterative.iteration,
-        });
-      } catch (anthropicErr) {
-        try {
-          const text = await generateTextWithGemini(serviceId, locale, `${systemPrompts[serviceId]}\n\n${effectivePrompt}`);
-          return NextResponse.json({
-            jobId,
-            status: 'done',
-            serviceId,
-            outputKind,
-            result: text,
-            provider: 'gemini',
-            iteration: iterative.iteration,
-          });
-        } catch (geminiErr) {
-          const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
-          const geminiMsg = geminiErr instanceof Error ? geminiErr.message : 'Gemini unavailable';
-          return NextResponse.json({ jobId, status: 'error', serviceId, error: `Terminal generation unavailable: ${anthropicMsg}; ${geminiMsg}` }, { status: 200 });
-        }
-      }
-    }
+    // ⚠️ THE TERMINAL TOOL HAS NO BRANCH OF ITS OWN ANY MORE. It ran Claude FIRST (claude-sonnet-4-6) with Gemini only as
+    // its fallback — a forbidden provider as the primary, and a silent vendor switch on every Claude miss. It now takes
+    // the shared Gemini path below like every other text service (its prompt needs no enrichment, so the call is
+    // exactly the Gemini call its old fallback made), and a Gemini miss is that path's explicit error.
 
     // For game service, enrich prompt with genre/platform/art_style answers
     let enrichedPrompt = effectivePrompt;
@@ -854,47 +806,12 @@ async function handleGenerate(
         iteration: iterative.iteration,
       });
     } catch (geminiErr) {
-      try {
-        const result = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          system: systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-          messages: [{ role: 'user', content: enrichedPrompt }],
-        });
-        const text = result.content[0]?.type === 'text' ? result.content[0].text : '';
-        return NextResponse.json({
-          jobId,
-          status: 'done',
-          serviceId,
-          outputKind,
-          result: text,
-          provider: 'anthropic',
-          tokensUsed: result.usage.input_tokens + result.usage.output_tokens,
-          iteration: iterative.iteration,
-        });
-      } catch (anthropicErr) {
-        try {
-          const text = await generateTextWithOpenAI(
-            systemPrompts[serviceId] ?? 'You are a helpful AI assistant.',
-            enrichedPrompt,
-          );
-          return NextResponse.json({
-            jobId,
-            status: 'done',
-            serviceId,
-            outputKind,
-            result: text,
-            provider: 'openai',
-            iteration: iterative.iteration,
-          });
-        } catch (openaiErr) {
-          const geminiMsg = geminiErr instanceof Error ? geminiErr.message : 'Gemini unavailable';
-          const anthropicMsg = anthropicErr instanceof Error ? anthropicErr.message : 'Anthropic unavailable';
-          const openaiMsg = openaiErr instanceof Error ? openaiErr.message : 'OpenAI unavailable';
-          const msg = `Text generation unavailable: ${geminiMsg}; ${anthropicMsg}; ${openaiMsg}`;
-          return NextResponse.json({ jobId, status: 'error', serviceId, error: msg }, { status: 200 });
-        }
-      }
+      // ⚠️ NO SECOND PROVIDER (PROJECT_MASTER R7, "NO SILENT FALLBACK"). A Gemini miss used to fall through to Claude
+      // (claude-sonnet-4-6) and then OpenAI (gpt-4o-mini) — both forbidden — so the user got another vendor's text under
+      // a Gemini request. It is now this route's explicit text-service error (200 + status:'error', the shape every
+      // other generate failure here answers). This legacy surface charges no credit, so there is nothing to refund.
+      const geminiMsg = geminiErr instanceof Error ? geminiErr.message : 'Gemini unavailable';
+      return NextResponse.json({ jobId, status: 'error', serviceId, error: `Text generation unavailable: ${geminiMsg}` }, { status: 200 });
     }
   }
 
@@ -1076,8 +993,8 @@ export async function POST(req: NextRequest) {
         }
         // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), and only HERE: detect_intent / get_questions / confirm are
         // local lookups that spend nothing, so the wizard can still be walked signed out. `generate` is the one
-        // action that spends — and it spends everywhere: the text services on Gemini Pro (Claude / OpenAI as the
-        // fallbacks), image on Nano Banana, video on LTX, avatar on HeyGen + ElevenLabs, interior on World Labs,
+        // action that spends — and it spends everywhere: the text services on Gemini (only — R7, no Claude / OpenAI
+        // fallback any more), image on Nano Banana, video on LTX, avatar on HeyGen + ElevenLabs, interior on World Labs,
         // music on Udio. None of it had a session check, so a direct POST reached every one of those keys for free.
         const { user } = await authedClientFromRequest(req);
         if (mustSignInToGenerate(user?.id)) {

@@ -4,8 +4,9 @@
  *
  * Pinned at the arguments every engine receives: the suffix lands only when the request's own aspect/quality/style
  * still select the card, the client can never send the text itself, and the in-flight mutex keys on the id that was
- * applied. The NanoBanana leg throws and both fallbacks miss, so the request ends on the 502-refund path: no fetch, no
- * re-host, no spend — every provider, the ledger and the idempotency store are mocked.
+ * applied. The NanoBanana leg throws, so the request ends on the 502-refund path (NanoBanana is the route's only engine —
+ * no Grok / FLUX fallback, PROJECT_MASTER R7): no fetch, no re-host, no spend — every provider, the ledger and the
+ * idempotency store are mocked.
  */
 jest.mock('server-only', () => ({}));
 
@@ -41,6 +42,7 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
 import { generateGrokImage } from '../../../../lib/ai/xaiImage';
+import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
 import { hashPayload } from '../../../../lib/orchestrator/idempotency';
 import { STYLE_SUFFIXES } from '../../../../lib/studio/composeImagePrompt';
 import { resolveTemplateContext } from '../../../../lib/studio/templateContext';
@@ -64,19 +66,21 @@ beforeEach(() => {
 });
 afterEach(() => fetchSpy.mockRestore());
 
-/** What NanoBanana and the prompt-only fallback were handed, and the mutex key's payload. */
-async function render(extra: Record<string, unknown>): Promise<{ prompt: string; style?: string; grok: string; key: Record<string, unknown> }> {
+/** What NanoBanana was handed, and the mutex key's payload. */
+async function render(extra: Record<string, unknown>): Promise<{ prompt: string; style?: string; key: Record<string, unknown> }> {
   const res = await POST(post({ prompt: PROMPT, quality: PRODUCT.quality, aspectRatio: PRODUCT.aspect, style: PRODUCT.style, ...extra }));
-  expect(res.status).toBe(502); // every leg was made to miss
+  expect(res.status).toBe(502); // NanoBanana was made to miss, and nothing stands behind it
   expect(fetchSpy).not.toHaveBeenCalled();
+  // R7 — the old prompt-only fallbacks are never reached, whatever the template.
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
   const nb = (generateNanoBananaImage as jest.Mock).mock.calls[0][0] as { prompt: string; style?: string };
-  return { prompt: nb.prompt, style: nb.style, grok: (generateGrokImage as jest.Mock).mock.calls[0][0], key: (hashPayload as jest.Mock).mock.calls[0][0] };
+  return { prompt: nb.prompt, style: nb.style, key: (hashPayload as jest.Mock).mock.calls[0][0] };
 }
 
-test('the Product card adds its studio suffix after the style directive — to every engine', async () => {
+test('the Product card adds its studio suffix after the style directive', async () => {
   const r = await render({ templateId: 'product' });
   expect(r.prompt).toBe(`${PROMPT}, ${STYLE_SUFFIXES.Photorealistic}, ${PRODUCT_SUFFIX}`);
-  expect(r.grok).toBe(r.prompt);
   expect(r.style).toBe('Photorealistic'); // the provider style field is unchanged by a template
   expect(r.key.t).toBe('product');        // the mutex keys on the id it applied
 });

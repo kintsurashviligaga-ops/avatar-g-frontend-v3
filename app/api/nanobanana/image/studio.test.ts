@@ -3,8 +3,8 @@
  * POST /api/nanobanana/image — the Interior designer and the Photographer ride this route (lib/studio/shootContext).
  *
  * Pinned at what every engine receives and at the ledger: the style, room and camera arrive as IDs and become server text;
- * the room / the subject is kept by the lead; ONE reference per render is hosted and handed to NanoBanana (the prompt-only
- * fallbacks never run for an edit); a photo that cannot be hosted is refused and REFUNDED rather than rendered as a
+ * the room / the subject is kept by the lead; ONE reference per render is hosted and handed to NanoBanana (the route's only
+ * engine — no Grok / FLUX fallback, PROJECT_MASTER R7); a photo that cannot be hosted is refused and REFUNDED rather than rendered as a
  * different room; the charge is creditCostFor('image') per render whatever the body claims. Every provider, the ledger
  * and the idempotency store are mocked — no network, no spend.
  */
@@ -87,7 +87,7 @@ describe('interior designer', () => {
     expect(a.prompt).toContain(`Scandinavian living room, ${UNSTYLED_BOOST}, Scandinavian style: `);
     expect(a.prompt).toContain('pale oak');
     expect(a.prompt).toMatch(/\. Do NOT include: people, text, watermarks, logos, warped or distorted furniture, extra or missing windows\.$/);
-    // …and the prompt-only engines never run: a reference is present, so a miss refunds instead of drawing another room.
+    // …and no other engine is ever called (R7: NanoBanana is the route's only engine).
     expect(generateGrokImage).not.toHaveBeenCalled();
     expect(generateFluxProImage).not.toHaveBeenCalled();
   });
@@ -99,16 +99,19 @@ describe('interior designer', () => {
     expect(keys).toEqual(['interior|scandinavian|living-room|photo', 'interior|loft|living-room|photo']);
   });
 
-  test('with no photo it is a plain text-to-image of that room — and the prompt-only fallbacks stay available', async () => {
+  test('with no photo it is a plain text-to-image of that room — and a NanoBanana miss is the refunded 502, never a Grok / FLUX render (R7)', async () => {
     (generateNanoBananaImage as jest.Mock).mockRejectedValueOnce(new Error('stopped'));
     const { referenceImage: _omit, ...noPhoto } = ROOM;
     void _omit;
     const res = await POST(post(noPhoto));
     expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ success: false, code: 'provider_unavailable', refunded: true });
     const a = engineArgs();
     expect(a.referenceImageDataUrl).toBeUndefined();
     expect(a.prompt.startsWith('Photorealistic interior-design photograph of a living room.')).toBe(true);
-    expect(generateGrokImage).toHaveBeenCalledTimes(1);
+    expect(generateGrokImage).not.toHaveBeenCalled();
+    expect(generateFluxProImage).not.toHaveBeenCalled();
+    expect(refundCredits).toHaveBeenCalledTimes(1);
   });
 
   test('a photo that cannot be hosted is REFUSED and REFUNDED — never rendered as a different room', async () => {

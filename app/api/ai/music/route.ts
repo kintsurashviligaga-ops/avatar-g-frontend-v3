@@ -45,11 +45,12 @@ import { isMusicEngineId } from '@/lib/studio/musicEngines';
  * (CSP media-src allows *.supabase.co) so the <audio> element plays + the track
  * persists past the provider's short-lived CDN URL.
  *
- * Provider chain (composeTrackUrl) — ONE uniform chain for BOTH vocal songs and instrumentals (Lyria 3
- * generates full songs with vocals + lyrics, so there's no vocal/instrumental switching):
- *   Google Lyria 3 (Gemini music, PRIMARY) → Udio → ElevenLabs Music → Replicate MusicGen.
- * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0); the rest are pure
- * safety fallbacks for the rare Lyria miss (503/quota/timeout). Set MUSIC_PROVIDER=elevenlabs to drop Udio.
+ * Engine (composeTrackUrl) — ONE engine per request, for BOTH vocal songs and instrumentals (Lyria 3 generates
+ * full songs with vocals + lyrics, so there's no vocal/instrumental switching):
+ *   Auto → Google Lyria 3 (Gemini music) ONLY. No failover (PROJECT_MASTER R7): a Lyria error, timeout or open
+ *   breaker is this request's explicit failure — 502, the reserved credit refunded — never another engine's track.
+ * Lyria is live-by-default when a Gemini key is present (kill-switch LYRIA_ENABLED=0). The Create screen's explicit
+ * engine pick runs that one engine instead, under the same rule. MUSIC_PROVIDER=elevenlabs makes Udio unpickable.
  * Singer gender is prompt-engineered (the EL Music + Udio APIs take no voice_id; cloned voice IDs apply to
  * TTS/narration, not music generation).
  *
@@ -126,9 +127,9 @@ async function generateCoverArt(songPrompt: string, style: string): Promise<stri
   }
 }
 
-// Standalone music composition: Google Lyria 3 (PRIMARY — live by default whenever a Gemini key is set,
-// kill-switch LYRIA_ENABLED=0) → Udio → ElevenLabs Music → Replicate MusicGen, as latency-failover
-// fallbacks. Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
+// Standalone music composition: Google Lyria 3 (live by default whenever a Gemini key is set, kill-switch
+// LYRIA_ENABLED=0), or the ONE engine the user explicitly picked — never a chain (see the R7 note below).
+// Lyria and EL Music return audio BYTES, hosted to Supabase first; the result is always a URL.
 // `controls` reaches the engines that take them natively (MusicGen always, Udio behind MUSIC_SUNO_PARAMS); for the
 // others the sliders are already sentences inside `brief`. Each attempt reports which, for the response.
 async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: boolean, lengthSec = 30, controls?: MusicControls, preferred?: MusicEngineId | null): Promise<{ url: string; engine: string; controls: MusicControlsReport }> {
@@ -145,19 +146,15 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
   // ~3s clip (audit HIGH: "full song" was broken on the primary engine). Map the sentinel to a
   // real full-song target for those engines, bounded well under the 300s function budget.
   const elMusicSec = secs === 0 ? 120 : secs; // ElevenLabs Music: ~2-min full song
-  const musicgenSec = secs === 0 ? 90 : secs; // MusicGen fallback: bounded so it finishes in time
+  const musicgenSec = secs === 0 ? 90 : secs; // MusicGen (explicit pick only): bounded so it finishes in time
 
   type Track = { url: string; engine: string; controls: MusicControlsReport };
   // `sent` is the EXACT text that engine was handed: `applied` asks whether a slider made it into the request, so a
   // slider moved only within the neutral band, or whose sentence the brief had no room for, reports false.
   const report = (engine: MusicEngineId, sent: string): MusicControlsReport => musicControlsReport(engine, controls, sent);
 
-  // Each provider's EXACT existing logic, now expressed as a failover attempt. Order is
-  // unchanged: Udio (funded primary) → ElevenLabs Music → MusicGen. The chain is run
-  // through runWithLatencyFailover so a provider that ERRORS *or* exceeds its latency
-  // BUDGET (a "heavy bottleneck") reroutes to the next — sequentially, one at a time,
-  // so at most one provider serves the track (no double-submit). Fully fail-open: if the
-  // whole chain is exhausted we throw the same error the sequential version did.
+  // Each engine's EXACT existing logic, expressed as a latency-bounded attempt. Exactly ONE of them runs per
+  // request (chosen below); a miss throws, and the caller turns that into the explicit, refunded failure.
   const udioRun = async (): Promise<Track> => {
     const udio = await generateUdioTrack(
       {
@@ -197,10 +194,10 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     if (score.audioUrl) return { url: score.audioUrl, engine: 'MusicGen', controls: report('musicgen', text) };
     throw new Error('MusicGen did not complete in time');
   };
-  // Google LYRIA 3 — opt-in PRIMARY music engine for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
+  // Google LYRIA 3 — THE music engine (Auto) for BOTH instrumental tracks AND vocal songs (Lyria 3 sings
   // custom lyrics). The prompt already carries the lyrics (baked by the caller); we pass the instrumental
-  // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. On any miss the
-  // failover moves to Udio/ElevenLabs/MusicGen.
+  // flag so Lyria steers vocals on/off. Returns base64 audio → hosted like the others. A miss is the
+  // request's failure — nothing runs behind it.
   const lyriaRun = async (): Promise<Track> => {
     // ⚠️ `lyrics` PASSED SEPARATELY — this argument existed all along and no caller ever used it, so the
     // user's words were folded into the prompt string and cut by its 1500-char slice. Given its own
@@ -218,74 +215,61 @@ async function composeTrackUrl(brief: MusicBrief, style: string, instrumental: b
     throw new Error('Lyria host failed');
   };
 
-  // Per-provider latency budgets (env-tunable, no deploy needed). Udio's is set just above
-  // its own ~180s internal poll cap so a normal run is UNAFFECTED — the budget only trips on
-  // a true hang; EL/MusicGen budgets bound the fallbacks well under the 300s function ceiling.
+  // Per-engine latency budgets (env-tunable, no deploy needed). Each sits above its engine's normal render time
+  // (Udio's just above its own ~180s internal poll cap), so the budget only trips on a true hang.
   const num = (v: string | undefined, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
-  const cascadeStartedAt = Date.now();
-  const providers: ProviderAttempt<Track>[] = [];
-  // LYRIA 3 is the PRIMARY engine for ALL music — vocal songs AND instrumentals alike. Lyria 3 generates
-  // full songs (vocals + timed [Verse]/[Chorus] lyrics + arrangement), so there is NO vocal/instrumental
-  // switching: the same request goes straight to Lyria first. Udio → ElevenLabs → MusicGen remain ONLY as
-  // graceful safety fallbacks for the rare Lyria miss (503/quota/timeout) so a track always lands. The
-  // engine badge on the result card reflects whichever provider actually produced the track.
+  // The engines this deployment can run at all (a key / a switch) — the set an explicit pick is checked against.
+  const engines: ProviderAttempt<Track>[] = [];
   if (hasLyriaProvider()) {
-    providers.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
+    engines.push({ name: 'lyria', budgetMs: num(process.env.MUSIC_LYRIA_BUDGET_MS, 160_000), run: lyriaRun });
   }
   if (hasUdioApiKey() && process.env.MUSIC_PROVIDER !== 'elevenlabs') {
-    providers.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
+    engines.push({ name: 'udio', budgetMs: num(process.env.MUSIC_UDIO_BUDGET_MS, 190_000), run: udioRun });
   }
   if (hasElevenLabsMusicKey()) {
-    providers.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
+    engines.push({ name: 'elevenlabs-music', budgetMs: num(process.env.MUSIC_EL_BUDGET_MS, 90_000), run: elRun });
   }
-  providers.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
-  // ⚠️ THE USER'S PICK GOES FIRST, THE REST STAY BEHIND IT. `engine` (the Create screen's model pill) moves one engine to
-  // the front of the chain — it never removes the others, so a busy or failing pick still ends in a track via the
-  // fallbacks, exactly like Auto. An engine that is not in the chain (no key, or MUSIC_PROVIDER dropped it) is a no-op,
-  // and MusicGen — which makes no vocals — is never put ahead for a SONG: it would return an instrumental.
-  if (preferred && !(preferred === 'musicgen' && !instrumental)) {
-    const at = providers.findIndex((p) => p.name === preferred);
-    if (at > 0) providers.unshift(...providers.splice(at, 1));
-  }
+  engines.push({ name: 'musicgen', budgetMs: num(process.env.MUSIC_MUSICGEN_BUDGET_MS, 100_000), run: musicgenRun });
 
-  // Pre-read the Redis circuit breaker ONCE (it's async; the failover's isTripped is sync)
-  // so a provider already tripped by recent failures is skipped without spending its budget.
-  const trippedSet = new Set<string>();
-  await Promise.all(providers.map(async (p) => { try { if (await isProviderTripped(p.name)) trippedSet.add(p.name); } catch { /* fail-open */ } }));
-
-  // ⚠️ THE CASCADE COULD OUTLIVE THE FUNCTION, AND A PLATFORM-KILLED LAMBDA REFUNDS NOTHING. The
-  // per-provider budgets are 160 + 190 + 90 + 100 = 540s of worst case against maxDuration = 300s, so a
-  // run that fell all the way down the chain was hard-killed — skipping the route's own rollback and
-  // stranding the user's reserve. A timeout the code chooses can refund; one the platform imposes cannot.
+  // ⚠️ ONE ENGINE PER REQUEST — NO FAILOVER (PROJECT_MASTER R7, the owner's "no silent fallback" rule). This was a
+  // chain: Lyria → Udio → ElevenLabs Music → Replicate MusicGen, each miss rerouting to the next, so a Lyria 503 quietly
+  // became a track from an engine the user never chose — on Udio or Replicate, which the provider policy does not allow
+  // at all — and the only trace was the badge on the result card. Auto is now Lyria and nothing else. A Lyria error,
+  // a blown budget or an open breaker throws, and the caller answers with its explicit 502 and refunds the reserve.
   //
-  // Allocate every provider from ONE shared wall-clock pool, so the worst case is the POOL and not the
-  // sum. A provider left too little time to finish anything is dropped rather than handed a stub budget
-  // that only guarantees a miss — and at least one attempt always survives, so a slow start never turns
-  // into "no providers ran at all".
-  const poolMs = num(process.env.MUSIC_CASCADE_BUDGET_MS, 250_000); // 50s of headroom under maxDuration
-  let remainingMs = Math.max(0, poolMs - (Date.now() - cascadeStartedAt));
-  const bounded = providers
-    .map((p) => {
-      const budgetMs = Math.min(p.budgetMs ?? poolMs, remainingMs);
-      remainingMs = Math.max(0, remainingMs - budgetMs);
-      return { ...p, budgetMs };
-    })
-    .filter((p) => p.budgetMs >= 20_000);
-  if (bounded.length < providers.length) {
-    // eslint-disable-next-line no-console
-    console.warn(`[ai/music] cascade bounded to ${poolMs}ms — ${providers.length - bounded.length} provider(s) dropped for want of time`);
-  }
+  // The model pill's explicit pick is kept as it was (for now): it runs THAT engine instead of Lyria — alone. A miss
+  // there is the same explicit failure; Lyria is never run behind it. A pick the deployment cannot run (no key, or
+  // MUSIC_PROVIDER dropped it) stays the no-op it always was, and MusicGen — which makes no vocals — is never picked for
+  // a SONG: both leave Auto. (The picker already sends neither: lib/studio/musicEngines.effectiveEnginePref.)
+  const picked = preferred && !(preferred === 'musicgen' && !instrumental)
+    ? engines.find((p) => p.name === preferred)
+    : undefined;
+  const attempt = picked ?? engines.find((p) => p.name === 'lyria');
+  if (!attempt) throw new Error('Lyria is not configured (no Gemini key, or LYRIA_ENABLED=0) — no fallback engine runs.');
 
-  const res = await runWithLatencyFailover<Track>(bounded.length ? bounded : providers.slice(0, 1), {
-    isTripped: (n) => trippedSet.has(n),
+  // ⚠️ A PLATFORM-KILLED LAMBDA REFUNDS NOTHING. A timeout the code chooses can refund; one the platform imposes cannot.
+  // So the attempt's budget is capped by the same pool the old cascade shared (default 250s — 50s of headroom under
+  // maxDuration): an env-raised MUSIC_*_BUDGET_MS can never let the render outlive the function.
+  const poolMs = num(process.env.MUSIC_CASCADE_BUDGET_MS, 250_000);
+  const bounded: ProviderAttempt<Track> = { ...attempt, budgetMs: Math.min(attempt.budgetMs ?? poolMs, poolMs) };
+
+  // Pre-read the Redis circuit breaker (it's async; the failover's isTripped is sync). An engine tripped by recent
+  // failures is not run at all — and with nothing behind it, that too is this request's explicit failure.
+  let tripped = false;
+  try { tripped = await isProviderTripped(bounded.name); } catch { /* fail-open */ }
+
+  // runWithLatencyFailover over a list of ONE: it still brings the latency budget (abort on a hang), the breaker skip
+  // and the breaker's bookkeeping — and with nothing to reroute to, no failover.
+  const res = await runWithLatencyFailover<Track>([bounded], {
+    isTripped: (n) => n === bounded.name && tripped,
     record: (n, ok) => { void recordProviderResult(n, ok); },
-    onReroute: ({ from, to, reason }) => {
+    onReroute: ({ from, reason }) => {
       // eslint-disable-next-line no-console
-      console.warn(`[ai/music] ${from} ${reason} → ${to ?? 'exhausted'}`);
+      console.warn(`[ai/music] ${from} ${reason} → explicit failure (no fallback, R7)`);
     },
   });
   if (res.ok && res.result) return res.result;
-  throw new Error('Music generation did not complete in time.');
+  throw new Error(`Music generation did not complete on ${bounded.name}.`);
 }
 
 export async function POST(req: NextRequest) {
@@ -618,8 +602,8 @@ export async function POST(req: NextRequest) {
       providerAudioUrl = cover.audioUrl;
       engine = 'MusicGen (cover)';
     } else {
-      // Compose a fresh track from the brief — ElevenLabs Music (sung when not
-      // instrumental), MusicGen fallback. Lyrics, if given, steer the prompt; the
+      // Compose a fresh track from the brief — Lyria (sung when not instrumental), or the
+      // one engine the user picked; no fallback. Lyrics, if given, steer the prompt; the
       // vocal descriptor (female/male/duet) is appended for a sung track.
       // Structured, not concatenated: the brief, the style, the vocal descriptor and the LYRICS each
       // stay their own field, so the boilerplate can never push the user's words out of the budget.
@@ -632,14 +616,9 @@ export async function POST(req: NextRequest) {
       providerAudioUrl = composed.url;
       engine = composed.engine;
       controlsReport = composed.controls;
-      // MusicGen (meta/musicgen) is INSTRUMENTAL-ONLY. If the vocal-capable engines (Udio, ElevenLabs
-      // Music) both missed and a VOCAL song fell through to MusicGen, the lyrics + vocal gender were
-      // silently dropped — so badge the engine honestly rather than implying a sung track was delivered.
-      // ⚠️ ANY song, not only one with lyrics or a named singer: with the singer on Auto a sung request carries
-      // neither, and it is still a song that came back without a voice.
-      if (engine === 'MusicGen' && !makeInstrumental) {
-        engine = 'MusicGen (instrumental — vocals unavailable)';
-      }
+      // (The "MusicGen — vocals unavailable" badge that stood here labelled a SONG that fell through the old chain
+      // to the instrumental-only MusicGen. Nothing falls through any more, and composeTrackUrl never runs MusicGen
+      // for a song, so there is no such track left to label.)
     }
 
     // RE-HOST to Supabase so the audio plays in-app (CSP-allowed) + persists.

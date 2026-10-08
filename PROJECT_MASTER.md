@@ -31,25 +31,38 @@ CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 don
 CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
-NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Part 0 AUTH + Veo smoke, apply migration
-          20261008a, Stripe refund/dispute events, pricing table, browser infra, provider migration plan); then Part 2
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry, apply
+          migrations 20261008a and 20261008b, VIDEO_DIRECTOR_RUNS=admin on Preview, Stripe refund/dispute events, pricing
+          table, browser infra, provider migration plan); then Part 2
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
-          (not applied) · 17 V1–V6 director domain layer (not wired) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          (not applied) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
+          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b written, NOT applied) · 18 Stripe refund/dispute reversal, ledger fail-closed
           in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
           build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
           production (nothing deployed); see the certification for every label.
+          After the owner's "continue" (2026-10-08 14:10 UTC): R7 silent fallbacks removed for image (no Grok / FLUX),
+          text (llmText and /api/pipeline Gemini only), music (Auto = Lyria alone; no MusicGen bed) and voice (no Azure /
+          Google behind ElevenLabs), commits 8a2d1b0f and 32abf9ad. Forbidden providers that are still the primary engine
+          are listed in the certification §L (Part 2).
 PHASE CHECKLIST:
 ◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
           preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
           bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
-          Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
-          on the PR #43 Preview, signed in with email + password). Paid test approved by owner 11:47 UTC: T2 PROVEN
-          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11);
-          T1 Veo (INFERENCE VERIFIED) waits on AUTH; credit coverage checked ~24 h later in Billing.
+          Preview /api/video/engine → transport vertex. AUTH VERIFIED 2026-10-08 14:21:20 UTC with the Preview build identity
+          (build log of e222e38: "[gcp-auth-check] env=preview … ok=true mode:wif token:ok bucket:ok sign:ok"; STS,
+          impersonation, bucket list, signBlob; free). Paid test approved by owner 11:47 UTC: T2 PROVEN
+          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11; Cloud
+          Monitoring: aiplatform GenerateContent 200×3/400×1, generativelanguage 0);
+          T1 Veo: owner pressed /ka/admin/veo-smoke 14:45:29 UTC; Vertex accepted the submit via WIF (log "[veo] submit
+          transport=vertex … → ok", aiplatform PredictLongRunning 200 from SA myavatar-veo), then the operation FAILED
+          "Veo 3 prompt enhancement cannot be disabled" (op 71e35314-…): lib/veo/payload.ts sent enhancePrompt:false, so every
+          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch. Veo is NOT
+          INFERENCE VERIFIED until the retry produces the clip; the failed op is expected unbilled (Billing confirms).
+          Credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
           No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
           and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
@@ -73,9 +86,11 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-· STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
-  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
-  (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
+· STOP-1: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
+  with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
+  code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once more, on the Preview build
+  that carries 75eef69 (≈ $0.40, approved 11:47; the first press failed on enhancePrompt:false and produced no clip).
+  AUTH itself is already verified (build log). Production env not yet.
   scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
 · Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
   - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,
@@ -394,6 +409,10 @@ Agent G → Orchestrator → Video Capability → VideoDirector
 - იკრძალება: improve, rephrase, translate, expand, truncate, decorate
 - LLM-ს არ აქვს უფლება შეცვალოს prompt freeze-ის შემდეგ
 - Unit test: `prompt in === prompt out`
+> Implementation note (2026-10-08, PROVEN by GCP Part 0 T1): Veo 3.x always rewrites the prompt inside Google and fails the
+> operation on an explicit `enhancePrompt: false`. V3 is therefore enforced up to the wire: the director sends `Shot.prompt`
+> byte-for-byte and never asks for enhancement (lib/veo/payload.ts, lib/video/director/googleVeoProvider.ts); what Google's
+> model does with it afterwards is outside this system. The studio no longer offers a "let Google rewrite" switch.
 ### V4. CONSISTENCY GUARANTEE
 Shot List-ის განმავლობაში შენარჩუნებული:
 - ერთი character reference image
