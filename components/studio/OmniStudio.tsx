@@ -67,6 +67,7 @@ import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@
 import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
+import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { LIVE_ACTION_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveResultNote, type LiveResultRef, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
@@ -4915,6 +4916,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     void ensureChatSession(role === 'user' ? text : undefined)
       .then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
+
+  // THE THREAD → LIVE. A voice call opened from this chat continues it: the Live mint asks which chat session is on screen
+  // (lib/voice/liveThread) and the server loads that session's turns for the signed-in owner. Only the conversation on screen
+  // answers; a session cached for another thread never does.
+  useEffect(() => answerLiveThreadId(() => (
+    chatSessionCidRef.current === conversationIdRef.current ? chatSessionIdRef.current : null
+  )), []);
 
   // LIVE → THE THREAD. A Gemini Live call (components/voice/live) reports each finished turn — what the user said and
   // what the model said, as transcribed by Google — on the `myavatar:live-transcript` window event. A call used to

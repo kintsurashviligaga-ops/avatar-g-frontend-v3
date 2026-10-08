@@ -14,10 +14,13 @@
  *
  * Body (all optional): { model, locale: 'ka'|'en'|'ru', personaId, customPersona, gender: 'male'|'female',
  *   voice: 'Aoede'|'Charon'|'Kore'|'Puck', transcribe: boolean, compression: boolean, resumptionHandle: string|null,
- *   actions: boolean, tools: false, researchId: string }
+ *   actions: boolean, tools: false, researchId: string, chatSessionId: string }
  *   `researchId` = TALK TO A RESEARCH REPORT: the server loads that finished report for the signed-in OWNER (never text from
  *   the browser), squeezes it to the engine's limit (lib/research/liveContext.ts) and appends it to the locked instruction.
  *   A report that is not the caller's / not finished / not found → 404 `report_unavailable`, no mint.
+ *   `chatSessionId` = THE SAME CONVERSATION: the id of the text-chat session the call was opened from. The server loads that
+ *   session's newest turns for the signed-in OWNER (lib/voice/liveThread) and appends them to the locked instruction, so the
+ *   call continues the chat instead of starting cold. Not the caller's / trashed / malformed → simply no history block.
  * Response: { token, model, expiresAt, setupMessage, setupLocked, voice, locale, actions }.
  *   `setupMessage` is the complete first WS frame ({ setup }) — pass it as GeminiLiveConfig.setupMessage so the
  *   browser sends exactly what the token was minted for.
@@ -70,6 +73,7 @@ import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { buildPlatformPrompt } from '@/lib/chat/platformPrompt';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { loadLiveReportBlock } from '@/lib/research/liveContext';
+import { loadLiveThreadBlock } from '@/lib/voice/liveThread';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -202,6 +206,14 @@ export async function POST(request: NextRequest) {
       if (!block) return NextResponse.json({ error: 'report_unavailable' }, { status: 404 });
       reportBlock = block;
     }
+    // The text chat this call was opened from (lib/voice/liveThread): only the session ID travels; the turns are loaded here
+    // for the session's OWNER. A report call is about the report, so it does not carry the thread. Any miss → no block, the
+    // call still opens. Imported lazily for the same reason as the research runtime.
+    let threadBlock = '';
+    if (!reportBlock && typeof body.chatSessionId === 'string' && body.chatSessionId) {
+      const { liveThreadDeps } = await import('@/lib/voice/liveThreadStore');
+      threadBlock = await loadLiveThreadBlock(userId, body.chatSessionId, liveThreadDeps());
+    }
     // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
     const toolsAllowed = body.tools !== false;
     // Google Search in Live: default ON, like the text chat (GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill switch). The
@@ -216,7 +228,7 @@ export async function POST(request: NextRequest) {
     const liveFor = (withActions: boolean) => toGeminiLiveSetup(
       { ...profile, voice },
       // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
