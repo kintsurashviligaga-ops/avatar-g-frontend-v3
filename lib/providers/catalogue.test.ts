@@ -3,14 +3,16 @@
  * The model catalogue is what every picker shows and what the routes check a pick against. Pinned here: every row is
  * named in three languages with a short "best for", its capabilities are the wrapped module's own facts, the default per
  * service is a model its route always ran, nothing in it is a price, and the availability rules keep an unverified or
- * unenabled Higgsfield model off.
+ * unenabled Higgsfield model off. MyAvatar v32 (lib/providers/policy): only permitted providers' rows are offered at all;
+ * the retired rows survive only as legacy definitions (old jobs stay readable) and are never available.
  */
+import { isProviderPermitted } from './policy';
 import { capsFor, DEFAULT_MODEL_IDS } from '@/lib/veo/capabilities';
 import { IMG_ASPECTS, IMAGE_MAX_REFERENCES } from '@/lib/studio/imageCreate';
 import { MUSIC_ENGINE_CHAIN } from '@/lib/studio/musicEngines';
 import {
   CATALOGUE, CATALOGUE_SERVICES, DEFAULT_MODEL, availabilityOf, catalogueEntry, catalogueFor, imageEndpointFor, imageQualitiesOf,
-  isCatalogueService, tierForVideoModel, videoModelForTier, type CatalogueEntry, type DeploymentProbe,
+  isCatalogueService, legacyCatalogueDefinition, tierForVideoModel, videoModelForTier, type CatalogueEntry, type DeploymentProbe,
 } from './catalogue';
 
 const GEORGIAN = /[Ⴀ-ჿ]/;
@@ -58,15 +60,29 @@ describe('every row', () => {
       if (/nano|banana|seedream|gpt-image/i.test(`${e.id} ${e.label.en}`)) expect(e.provider).not.toBe('higgsfield');
     }
   });
+
+  test('MyAvatar v32: every row offered is a permitted provider; a retired row is a legacy definition only', () => {
+    for (const e of CATALOGUE) expect(isProviderPermitted(e.provider, e.service === 'motion' ? 'video' : e.service)).toBe(true);
+    expect(CATALOGUE.map((e) => e.provider)).not.toEqual(expect.arrayContaining(['higgsfield']));
+    expect(catalogueEntry('music/udio')).toBeNull(); // the music chain itself is Lyria-only now
+    for (const id of ['hf/soul-2', 'hf/kling-3-std-t2v', 'hf/kling-3-motion-std']) {
+      expect(catalogueEntry(id)).toBeNull();
+      expect(legacyCatalogueDefinition(id)?.id).toBe(id);
+    }
+  });
 });
 
 describe('the defaults are what each route always ran', () => {
   test('one per service, a model of that service, never a flag-gated one', () => {
-    for (const s of CATALOGUE_SERVICES) {
+    for (const s of CATALOGUE_SERVICES.filter((x) => x !== 'motion')) {
       const d = catalogueEntry(DEFAULT_MODEL[s])!;
       expect(d.service).toBe(s);
       expect(catalogueFor(s)).toContain(d);
     }
+    // Motion transfer ran only on Higgsfield, which v32 retired: nothing is offered and its old default resolves to nothing.
+    expect(catalogueFor('motion')).toEqual([]);
+    expect(catalogueEntry(DEFAULT_MODEL.motion)).toBeNull();
+    expect(legacyCatalogueDefinition(DEFAULT_MODEL.motion)?.provider).toBe('higgsfield');
     expect(DEFAULT_MODEL.image).toBe('nb/auto');
     expect(DEFAULT_MODEL.video).toBe('google/veo-3.1-fast'); // OmniStudio's initialVeoPlan tier: 'fast'
     expect(DEFAULT_MODEL.music).toBe('music/auto');
@@ -109,14 +125,13 @@ describe('the image route\'s wire', () => {
     expect(['standard', 'high', 'ultra'].map((q) => imageEndpointFor(e('nb/auto'), q))).toEqual(['v2-1k', 'v2-2k', 'pro-4k']);
     expect(imageEndpointFor(e('nb/auto'), 'bogus')).toBe('v2-2k'); // the route's old fallback for an unknown quality
   });
-  test('V2 pins the V2 family, Pro the Pro family; Pro has no 1K and renders a 1K request at its 2K', () => {
-    expect(imageQualitiesOf(e('nb/v2'))).toEqual(['standard', 'high', 'ultra']);
-    expect(imageQualitiesOf(e('nb/pro'))).toEqual(['high', 'ultra']);
+  test('every image model renders Imagen at its one native size (1K); the old endpoint map still resolves a legacy size', () => {
+    for (const id of ['nb/auto', 'nb/v2', 'nb/pro']) expect(imageQualitiesOf(e(id))).toEqual(['standard']);
     expect(imageEndpointFor(e('nb/pro'), 'standard')).toBe('pro-1k2k');
     expect(imageEndpointFor(e('nb/v2'), 'ultra')).toBe('v2-4k');
   });
   test('a model of another runner has no image endpoint', () => {
-    expect(imageEndpointFor(e('hf/soul-2'), 'high')).toBeNull();
+    expect(imageEndpointFor(legacyCatalogueDefinition('hf/soul-2')!, 'high')).toBeNull();
     expect(imageQualitiesOf(e('google/veo-3.1'))).toEqual([]);
   });
 });
@@ -125,31 +140,39 @@ describe('availability: an unverified or unenabled model never runs', () => {
   const probe = (over: Partial<DeploymentProbe> = {}): DeploymentProbe => ({
     higgsfield: true, studioV2: true, hfEnabled: () => true, film: true, music: null, ...over,
   });
-  const kling = catalogueEntry('hf/kling-3-std-t2v')!;
+  const kling = legacyCatalogueDefinition('hf/kling-3-std-t2v')!;
+  const NOT_ENABLED = { available: false, reason: 'not_enabled' };
 
-  test('a Higgsfield row: enabled list first, then the studio flag, then the keys', () => {
-    expect(availabilityOf(kling, probe())).toEqual({ available: true, reason: null });
-    expect(availabilityOf(kling, probe({ hfEnabled: () => false, studioV2: false, higgsfield: false }))).toEqual({ available: false, reason: 'not_enabled' });
-    expect(availabilityOf(kling, probe({ studioV2: false, higgsfield: false }))).toEqual({ available: false, reason: 'studio_off' });
-    expect(availabilityOf(kling, probe({ higgsfield: false }))).toEqual({ available: false, reason: 'not_configured' });
+  test('a Higgsfield row is never available under v32 — not even with the list, the studio flag and the keys all set', () => {
+    expect(availabilityOf(kling, probe())).toEqual(NOT_ENABLED);
+    expect(availabilityOf(kling, probe({ hfEnabled: () => false, studioV2: false, higgsfield: false }))).toEqual(NOT_ENABLED);
+    expect(availabilityOf(kling, probe({ studioV2: false, higgsfield: false }))).toEqual(NOT_ENABLED);
+    expect(availabilityOf(kling, probe({ higgsfield: false }))).toEqual(NOT_ENABLED);
   });
 
-  test('an unverified schema is "coming soon" unless the owner named it — whatever else is set', () => {
+  test('the provider policy is checked before "coming soon": an unverified Higgsfield schema is not enabled, named or not', () => {
     const unread: CatalogueEntry = { ...kling, id: 'hf/unread-model', verified: 'unverified' };
-    expect(availabilityOf(unread, probe({ hfEnabled: () => false }))).toEqual({ available: false, reason: 'unverified' });
-    expect(availabilityOf(unread, probe({ hfEnabled: (id) => id === 'hf/unread-model' }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(unread, probe({ hfEnabled: () => false }))).toEqual(NOT_ENABLED);
+    expect(availabilityOf(unread, probe({ hfEnabled: (id) => id === 'hf/unread-model' }))).toEqual(NOT_ENABLED);
   });
 
-  test('the film route: a renderer or nothing; the image route: always (its cascade refunds a miss)', () => {
+  test('the film route: a renderer or nothing; the image route: Imagen configured or nothing (no reseller cascade behind it)', () => {
     expect(availabilityOf(videoModelForTier('fast'), probe({ film: false }))).toEqual({ available: false, reason: 'not_configured' });
-    expect(availabilityOf(catalogueEntry('nb/pro')!, probe({ higgsfield: false, studioV2: false, film: false }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(videoModelForTier('fast'), probe({ film: true }))).toEqual({ available: true, reason: null });
+    const pro = catalogueEntry('nb/pro')!;
+    expect(availabilityOf(pro, probe({ image: true, higgsfield: false, studioV2: false, film: false }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(pro, probe({ image: false }))).toEqual({ available: false, reason: 'not_configured' });
+    expect(availabilityOf(pro, probe())).toEqual({ available: false, reason: 'not_configured' }); // not read → unavailable
   });
 
-  test('music: an engine without a key is unavailable, a tripped breaker is busy; Auto and an unread status try', () => {
+  test('music: Lyria without a key is unavailable, a tripped breaker is busy; Auto follows Lyria, and an unread status fails closed', () => {
     const lyria = catalogueEntry('music/lyria')!;
+    const auto = catalogueEntry('music/auto')!;
     expect(availabilityOf(lyria, probe({ music: { lyria: { configured: false, busy: false } } })).reason).toBe('not_configured');
     expect(availabilityOf(lyria, probe({ music: { lyria: { configured: true, busy: true } } })).reason).toBe('busy');
-    expect(availabilityOf(lyria, probe({ music: null })).available).toBe(true);
-    expect(availabilityOf(catalogueEntry('music/auto')!, probe({ music: {} })).available).toBe(true);
+    expect(availabilityOf(lyria, probe({ music: { lyria: { configured: true, busy: false } } }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(auto, probe({ music: { lyria: { configured: true, busy: false } } }))).toEqual({ available: true, reason: null });
+    expect(availabilityOf(lyria, probe({ music: null }))).toEqual({ available: false, reason: 'not_configured' });
+    expect(availabilityOf(auto, probe({ music: {} }))).toEqual({ available: false, reason: 'not_configured' });
   });
 });

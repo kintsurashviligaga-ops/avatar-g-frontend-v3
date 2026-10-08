@@ -1,7 +1,8 @@
 /** @jest-environment node */
 /**
  * groundedWebSearch — the agent's web_search on Gemini + Google Search grounding.
- * streamGeminiChat, the key resolver and the budget are mocked: no network, no spend.
+ * streamGeminiChat and the budget are mocked: no network, no spend. The key is the canonical GEMINI_API_KEY on the
+ * default (Developer API) transport — set per test, so "configured" never depends on the machine's environment.
  */
 jest.mock('server-only', () => ({}));
 
@@ -10,8 +11,6 @@ jest.mock('../../ai/google/chatStream', () => ({
   streamGeminiChat: (...a: unknown[]) => mockStream(...a),
   unbookedAttempts: jest.requireActual('../../ai/google/chatStream').unbookedAttempts,
 }));
-let mockKey = 'test-key';
-jest.mock('../../orchestrator/gemini-guard', () => ({ resolveGeminiKey: () => mockKey }));
 const mockAllows = jest.fn(async () => true);
 const mockBook = jest.fn(async () => undefined);
 jest.mock('../../services/billing/chatBudget', () => ({
@@ -22,13 +21,16 @@ jest.mock('../../services/billing/chatBudget', () => ({
 import { groundedWebSearch, GROUNDED_SEARCH_SYSTEM } from './googleSearch';
 
 const USER = '11111111-2222-4333-8444-555555555555';
+const ENV = { ...process.env };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockKey = 'test-key';
   mockAllows.mockResolvedValue(true);
   delete process.env.GEMINI_CHAT_MODELS;
+  delete process.env.GEMINI_TRANSPORT;
+  process.env.GEMINI_API_KEY = 'test-key';
 });
+afterEach(() => { process.env = { ...ENV }; });
 
 test('a grounded answer comes back in the Tavily shape, and the call is booked with grounding queries + user', async () => {
   mockStream.mockResolvedValue({
@@ -97,9 +99,10 @@ test('the budget guard refuses before any Gemini call', async () => {
 });
 
 test('no key → auth, an empty query → bad_request; neither calls Gemini', async () => {
-  mockKey = '';
+  delete process.env.GEMINI_API_KEY;
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'legacy-alias'; // a deprecated alias is not a key (MyAvatar v32)
   await expect(groundedWebSearch('anything')).resolves.toEqual({ ok: false, code: 'auth' });
-  mockKey = 'test-key';
+  process.env.GEMINI_API_KEY = 'test-key';
   await expect(groundedWebSearch('  ')).resolves.toEqual({ ok: false, code: 'bad_request' });
   expect(mockStream).not.toHaveBeenCalled();
 });

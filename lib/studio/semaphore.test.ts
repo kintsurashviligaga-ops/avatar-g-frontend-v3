@@ -24,7 +24,7 @@ function fakeRedis(): SemaphoreRedis & { set: Map<string, number> } {
 
 describe('createRedisSemaphore', () => {
   test('admits up to the limit; re-acquiring your own slot is free; release frees it', async () => {
-    let now = 1_000;
+    const now = 1_000;
     const redis = fakeRedis();
     const s = createRedisSemaphore(redis, { limit: 2, now: () => now });
     expect(await s.acquire('a', 60_000)).toBe(true);

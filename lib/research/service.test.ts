@@ -492,6 +492,7 @@ describe('cancel — owner only, refunded, idempotent', () => {
   test('if the provider cannot confirm, the intent is recorded and the credits are NOT refunded yet; the sweeper retries the cancel', async () => {
     const h = makeHarness();
     const job = await started(h);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     h.client.cancelScript = [{ ok: false, kind: 'transient', status: 503, detail: 'x' }, { ok: true, parsed: { ...require('./parse').parseInteraction({ status: 'cancelled' }) } }];
     const r = await h.service.cancel(job.id, U);
     expect(r.ok && r.job.status).toBe('running');
@@ -616,6 +617,7 @@ describe('the sweeper — every path a crash can leave, settled exactly once', (
     let n = 0;
     h.client.poll = async () => {
       if (++n === 1) throw new Error('boom');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       return { ok: true as const, parsed: require('./parse').parseInteraction(completedAnswer()) };
     };
     const rep = await h.service.sweep();

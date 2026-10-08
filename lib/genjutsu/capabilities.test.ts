@@ -40,9 +40,17 @@ test('swap stays locked TODAY even with its flag on: the registry has no object-
   const on = env({ GENJUTSU_SWAP_ENABLED: '1', GENJUTSU_MOTION_ENABLED: '1' });
   expect(isModelEnabled(SWAP_MODEL_ID, on)).toBe(false);
   expect(opStatuses(on, real).swap).toEqual({ op: 'swap', open: false, reason: 'engine_missing' });
-  // …while motion's default model IS registered, so only the flag and Higgsfield stand between it and "open".
-  expect(isModelEnabled('hf/kling-3-motion-std', on)).toBe(true);
-  expect(opStatuses(on, real).motion.open).toBe(true);
+});
+
+test('motion stays locked under MyAvatar v32 even with its flag, Higgsfield "ready" and the model named: Higgsfield is not a permitted provider', () => {
+  const real = probes({ modelEnabled: (id, e) => isModelEnabled(id, e) });
+  const on = env({ GENJUTSU_MOTION_ENABLED: '1', HF_ENABLED_MODELS: 'hf/kling-3-motion-std,hf/kling-3-motion-pro' });
+  // The model is still registered (old jobs stay readable)…
+  expect(motionModelId('standard', on)).toBe('hf/kling-3-motion-std');
+  // …but the registry refuses it whatever the env says, so the op cannot open.
+  expect(isModelEnabled('hf/kling-3-motion-std', on)).toBe(false);
+  expect(opStatuses(on, real).motion).toEqual({ op: 'motion', open: false, reason: 'engine_missing' });
+  expect(publicOpStatuses(on, real).motion).toEqual({ open: false, state: 'soon' });
 });
 
 test('the wire view is coarse: open | soon — never which provider key is missing', () => {

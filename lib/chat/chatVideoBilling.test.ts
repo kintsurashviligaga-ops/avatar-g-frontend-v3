@@ -37,7 +37,10 @@ jest.mock('../orchestrator/idempotency', () => ({
 }));
 jest.mock('../gemini/client', () => ({ generateWithGemini: jest.fn(async () => ({ text: 'hi there', model: 'gemini-test' })) }));
 jest.mock('@anthropic-ai/sdk', () => jest.fn().mockImplementation(() => ({ messages: { create: jest.fn() } })));
-jest.mock('../udio/client', () => ({ startUdioGeneration: jest.fn(), getUdioGenerationStatus: jest.fn() }));
+// Music now runs on Lyria (Udio is retired by MyAvatar v32) and hosts the track via storage — both mocked: the storage
+// adapter's import chain (supabase server → env schema) is server-only and must not load here.
+jest.mock('../ai/lyriaMusic', () => ({ hasLyriaProvider: jest.fn(() => true), generateLyriaTrack: jest.fn(), lyriaModel: () => 'lyria-test' }));
+jest.mock('../orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn(async () => null) }));
 jest.mock('../worldlabs/client', () => ({ generateWorldLabsInterior: jest.fn() }));
 jest.mock('../nanobanana/client', () => ({ generateNanoBananaImage: jest.fn() }));
 jest.mock('../replicate/client', () => ({ createPrediction: jest.fn(), pollUntilDone: jest.fn(), pollPrediction: jest.fn() }));

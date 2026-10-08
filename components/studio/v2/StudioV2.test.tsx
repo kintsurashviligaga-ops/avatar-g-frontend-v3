@@ -169,23 +169,15 @@ test('a start whose answer is lost is NEVER re-sent; the job list is re-read ins
   expect(posts()).toHaveLength(1);
 }, 10_000);
 
-test('image→video waits for its first frame; the uploaded PATH is what gets priced', async () => {
+test('v32: production\'s answer — /api/studio/models lists nothing, every model being retired — leaves no model, no price and no start', async () => {
+  // (The money-path cases above run against a scripted server that still lists Higgsfield models; production cannot.)
+  install((url) => (url.startsWith('/api/studio/models') ? { status: 200, body: { models: [] } } : undefined));
   render(<StudioV2 locale="ka" />);
-  await waitFor(() => expect(screen.getByLabelText('აღწერა')).toBeInTheDocument());
-  fireEvent.click(screen.getByText('Kling 3').closest('button')!);
-  const sheet = await screen.findByRole('dialog');
-  fireEvent.click(within(sheet).getByText('Kling 3 — ფოტოს გაცოცხლება'));
-  typePrompt('ცოცხლდება');
-  expect(await screen.findByText('დაამატე ფოტო')).toBeInTheDocument();
+  await waitFor(() => expect(calls.some((c) => c.url.startsWith('/api/studio/models'))).toBe(true));
   await new Promise((r) => setTimeout(r, 600));
+  expect(screen.queryByTestId('studio-generate')).toBeNull();
   expect(estimates()).toHaveLength(0);
-
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  const file = new File(['x'], 'p.jpg', { type: 'image/jpeg' });
-  (global as unknown as { URL: { createObjectURL: () => string } }).URL.createObjectURL = () => 'blob:preview';
-  await act(async () => { fireEvent.change(input, { target: { files: [file] } }); });
-  await waitFor(() => expect(estimates()).toHaveLength(1));
-  expect(estimates()[0]!.body!.params).toMatchObject({ image_url: 'omni-uploads/user-1/1.jpg', prompt: 'ცოცხლდება' });
+  expect(posts()).toHaveLength(0);
 });
 
 test('music, voice and avatar open the flows that already work, with no dock and no spend', async () => {
@@ -211,26 +203,21 @@ test('the job list survives a reload: results play, failures say why and that th
   expect(alert.textContent!.match(/თანხა დაგიბრუნდა/g)).toHaveLength(1); // said once, not twice
 });
 
-test('the model is chosen in the studio\'s ModelPicker: what this deployment enabled is open, the rest says why — and the pick survives a reload', async () => {
+test('v32: the studio\'s ModelPicker lists no model even when a stale server enables two, and a retired pick is never remembered across a reload', async () => {
   const enabled = models.filter((m) => m.id === 'hf/kling-3-std-t2v' || m.id === 'hf/seedance-2.5-t2v');
   install((url) => (url.startsWith('/api/studio/models') ? { status: 200, body: { models: enabled } } : undefined));
   const first = render(<StudioV2 locale="ka" />);
   await waitFor(() => expect(screen.getByLabelText('აღწერა')).toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: /^Kling 3/ }));
   const sheet = screen.getByRole('dialog', { name: 'მოდელი' });
-  const rows = within(sheet).getAllByRole('radio');
-  // Only Studio β's own rows (no Veo here), the enabled ones first.
-  expect(rows.every((r) => r.getAttribute('data-model')!.startsWith('hf/'))).toBe(true);
-  expect(rows.filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['hf/kling-3-std-t2v', 'hf/seedance-2.5-t2v']);
-  const pro = rows.find((r) => r.getAttribute('data-model') === 'hf/kling-3-pro-t2v')!;
-  expect(pro.getAttribute('aria-disabled')).toBe('true');
-  expect(pro.textContent).toContain('ჯერ არ არის ჩართული');
-  expect(sheet.textContent).not.toMatch(/₾|კრედიტ/); // no price in the picker — it is on the button
-  fireEvent.click(rows.find((r) => r.getAttribute('data-model') === 'hf/seedance-2.5-t2v')!);
-  expect(screen.queryByRole('dialog', { name: 'მოდელი' })).toBeNull();
-  expect(localStorage.getItem('myavatar:studio:model:video')).toBe('hf/seedance-2.5-t2v');
+  // The catalogue has no Studio β row any more: nothing to tap, and still no price in the picker.
+  expect(within(sheet).queryAllByRole('radio')).toEqual([]);
+  expect(sheet.textContent).not.toMatch(/₾|კრედიტ/);
   first.unmount();
 
+  // A pick stored before v32 is not restored: the studio opens on the server's first model, not the remembered one.
+  localStorage.setItem('myavatar:studio:model:video', 'hf/seedance-2.5-t2v');
   render(<StudioV2 locale="ka" />);
-  await waitFor(() => expect(screen.getByRole('button', { name: /^Seedance 2\.5/ })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Kling 3/ })).toBeInTheDocument());
+  expect(screen.queryByRole('button', { name: /^Seedance 2\.5/ })).toBeNull();
 });

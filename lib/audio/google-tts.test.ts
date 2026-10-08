@@ -2,7 +2,8 @@
 /**
  * google-tts.ts against a scripted global fetch — no network. Both Cloud TTS calls (voices list + synthesize) carry
  * the key ONLY in the x-goog-api-key header (never `?key=`: a URL lands in logs, traces and error reports) and never
- * follow a redirect with it; the fail-open behaviour (dead key → no further calls) is unchanged.
+ * follow a redirect with it; the fail-open behaviour (dead key → no further calls) is unchanged. On the default
+ * (Developer API) transport the key is the canonical GEMINI_API_KEY only — MyAvatar v32 retired the old aliases.
  */
 jest.mock('server-only', () => ({}));
 
@@ -10,7 +11,7 @@ type GoogleTts = typeof import('./google-tts');
 type Init = RequestInit & { headers: Record<string, string> };
 
 const KEY = 'AIza-test-tts-key-0123456789abcdef';
-const KEY_VARS = ['GOOGLE_TTS_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'] as const;
+const KEY_VARS = ['GOOGLE_TTS_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_TRANSPORT'] as const;
 const saved: Record<string, string | undefined> = {};
 const realFetch = global.fetch;
 const fetchMock = jest.fn();
@@ -26,7 +27,7 @@ const VOICES = {
 
 beforeEach(async () => {
   for (const k of KEY_VARS) { saved[k] = process.env[k]; delete process.env[k]; }
-  process.env.GOOGLE_TTS_API_KEY = KEY;
+  process.env.GEMINI_API_KEY = KEY;
   fetchMock.mockReset();
   global.fetch = fetchMock as unknown as typeof fetch;
   // The module memoises the best voice and a dead key — every test starts from a fresh copy.
@@ -75,4 +76,15 @@ test('unchanged fail-open: a 403 on the voices list marks the key dead and stops
   expect(await tts.synthesizeGoogleTts('hello')).toBeNull();
   expect(await tts.synthesizeGoogleTts('hello again')).toBeNull();
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test('a deprecated key alias alone is not a credential: nothing is called', async () => {
+  delete process.env.GEMINI_API_KEY;
+  process.env.GOOGLE_TTS_API_KEY = KEY;
+  process.env.GOOGLE_API_KEY = KEY;
+  process.env.GOOGLE_GENERATIVE_AI_API_KEY = KEY;
+
+  expect(await tts.pickBestGoogleVoice('ka-GE', 'FEMALE')).toBeNull();
+  expect(await tts.synthesizeGoogleTts('hello')).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
 });

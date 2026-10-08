@@ -154,7 +154,7 @@ import { ImageCreatePanel } from '@/components/studio/create/ImageCreatePanel';
 import { ImageDesk } from '@/components/studio/create/ImageDesk';
 import type { ImageResultActions } from '@/components/studio/create/ImageResultPane';
 import { useCreditsBalance } from '@/store/useCreditsBalance';
-import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
+import { IMG_ASPECTS, IMG_STYLES, tierFor, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -2277,7 +2277,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Default to the 2K tier for sharper, higher-fidelity output. The wider provider
   // poll window now makes 2K reliable (~33s live) without the old timeouts; users can
   // drop to 1K for speed or pick 4K for maximum detail.
-  const [imgQuality, setImgQuality] = useState<ImgQuality>(IMAGE_PANEL_DEFAULTS.quality);
+  // Templates and the panel defaults may still name a legacy 2K / 4K size; the state holds a size the picker offers (Imagen 1K).
+  const [imgQuality, setImgQuality] = useState<ImgQuality>(() => tierFor(IMAGE_PANEL_DEFAULTS.quality).quality);
   const [imgStyle, setImgStyle] = useState<string>(IMAGE_PANEL_DEFAULTS.style);
   // ×1 / ×2 / ×4 — how many image variations to generate at once (the batch grid).
   const [imgCount, setImgCount] = useState<1 | 2 | 4>(1);
@@ -2475,7 +2476,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const v = imageTemplateValues(id);
     if (!v) return;
     setImgAspect(v.aspect as typeof imgAspect);
-    setImgQuality(v.quality);
+    setImgQuality(tierFor(v.quality).quality);
     setImgStyle(v.style);
     pickImageTemplate(id);
   }, [pickImageTemplate]);

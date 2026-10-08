@@ -71,7 +71,7 @@ export function ImageModelsTable({
                     <span className="truncate">{model.label[lang]} · {variant.res}</span>
                     {on && <Check size={14} aria-hidden="true" className="shrink-0" />}
                   </span>
-                  <span className="mt-0.5 block text-[12.5px] leading-snug text-app-muted">Nano Banana {variant.family} · {tier.note[lang]}</span>
+                  <span className="mt-0.5 block text-[12.5px] leading-snug text-app-muted">{variant.family} · {tier.note[lang]}</span>
                 </span>
                 <span className="text-right text-[13.5px] font-medium tabular-nums text-app-text">{c.creditsPerImage(imageCredits(1))}</span>
               </button>
