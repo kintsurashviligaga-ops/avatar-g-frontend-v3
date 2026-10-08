@@ -4,12 +4,12 @@
  * Gemini REST client supporting Pro and Flash model tiers.
  * Implements multimodal inputs (image base64, PDF, video URL).
  * Uses native fetch — no SDK package required at compile time.
+ * The endpoint and credential come from the selected Google transport (lib/ai/google/transport: the Gemini API key, or
+ * Vertex AI with Workload Identity when GEMINI_TRANSPORT=vertex). An unconfigured transport throws NotConfiguredError.
  */
 
 import { geminiTierModel, isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';
-import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+import { googleModelFetch } from '@/lib/ai/google/transport';
 
 // Defaults and env overrides (GEMINI_MODEL_PRO / GEMINI_MODEL_FLASH) live in lib/ai/google/models.ts, which drops
 // retired ids (gemini-1.x / 2.0-* answer 404) and empty values instead of sending them to Google.
@@ -133,14 +133,6 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
   // malformed id falls back to the tier model instead of 404ing, and a `models/` prefix no longer doubles in the URL.
   const override = normalizeModelId(req.model);
   const modelName = override && !isRetiredModel(override) ? override : GEMINI_MODELS[tier];
-  const apiKey = resolveGeminiKey();
-
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured');
-  }
-
-  // The key travels in the x-goog-api-key header, never the URL: a URL lands in logs, traces and error text.
-  const url = `${GEMINI_BASE_URL}/models/${modelName}:generateContent`;
 
   // Build contents array from (sanitized) history + current message
   const contents: { role: string; parts: Part[] }[] = [];
@@ -172,9 +164,8 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
   // Grounding and a forced JSON response cannot be combined in one request.
   if (req.googleSearch && !req.responseMimeType) body.tools = [{ googleSearch: {} }];
 
-  const res = await fetch(url, {
+  const res = await googleModelFetch(modelName, 'generateContent', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
     // Bound the one-shot call so a hung socket can't pin the request up to maxDuration; every caller
     // (viaGemini / handleGeminiMultimodal) wraps this and falls through on throw. (streamWithGemini untouched.)
@@ -208,11 +199,6 @@ export async function* streamWithGemini(
 ): AsyncGenerator<string, GeminiResponse, unknown> {
   const tier: GeminiModelTier = req.tier ?? 'flash';
   const modelName = GEMINI_MODELS[tier];
-  const apiKey = resolveGeminiKey();
-
-  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
-
-  const url = `${GEMINI_BASE_URL}/models/${modelName}:streamGenerateContent?alt=sse`;
   const contents: { role: string; parts: Part[] }[] = [];
 
   for (const turn of sanitizeGeminiHistory(req.history)) {
@@ -235,9 +221,8 @@ export async function* streamWithGemini(
     body.systemInstruction = { parts: [{ text: req.systemPrompt }] };
   }
 
-  const res = await fetch(url, {
+  const res = await googleModelFetch(modelName, 'streamGenerateContent', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
   });
 

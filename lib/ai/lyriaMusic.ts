@@ -18,8 +18,14 @@
  * kill-switch LYRIA_ENABLED=0 reverts instantly to the Udio→ElevenLabs→MusicGen chain. EVERY path is
  * null/failure-safe: no key/access, quota, timeout, or a contract drift returns null → the caller's
  * failover serves the track. (Lyria 3 is a PREVIEW model — transient 503s simply fall back and retry.)
+ *
+ * On Vertex AI (GEMINI_TRANSPORT=vertex, Part 2 A2) there is no Interactions surface: the same model answers
+ * `:generateContent` on the global endpoint, and ONLY with `responseModalities: ["AUDIO","TEXT"]` (["AUDIO"] alone is a
+ * 400 INVALID_ARGUMENT) — both proven in the Part 0 T2 test, 2026-10-08 (30.8 s MP3). The audio comes back as an
+ * inlineData part, which extractAudio's deep search already finds.
  */
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleModelFetch, googleTransportBlocker, googleTransportKind } from '@/lib/ai/google/transport';
 import { reportGeminiFallback } from '@/lib/ai/geminiFallbackReport';
 import { isEnabledByDefault } from '@/lib/env/flag';
 
@@ -37,7 +43,15 @@ export function lyriaModel(): string {
  *  LIVE-BY-DEFAULT: the /interactions surface + clip model are verified working, so the presence of a key
  *  is enough to make Lyria the primary music engine; the flag exists only as an instant revert. */
 export function hasLyriaProvider(): boolean {
-  return isEnabledByDefault(process.env.LYRIA_ENABLED) && !!resolveGeminiKey();
+  return isEnabledByDefault(process.env.LYRIA_ENABLED) && !googleTransportBlocker(resolveGeminiKey());
+}
+
+/** The Vertex request body (exported for tests): plain generateContent, audio + text modalities. */
+export function buildLyriaVertexBody(input: string): Record<string, unknown> {
+  return {
+    contents: [{ role: 'user', parts: [{ text: input }] }],
+    generationConfig: { responseModalities: ['AUDIO', 'TEXT'] },
+  };
 }
 
 export interface LyriaTrack {
@@ -115,7 +129,7 @@ async function recordMusicUsage(): Promise<void> {
  */
 export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean }): Promise<LyriaTrack | null> {
   const key = resolveGeminiKey();
-  if (!key || !args.prompt?.trim()) return null;
+  if (googleTransportBlocker(key) || !args.prompt?.trim()) return null;
 
   // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
   // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
@@ -134,13 +148,20 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
   else if (args.lyrics?.trim()) input += `\n\nLyrics:\n${args.lyrics.trim().slice(0, 1500)}`;
 
   try {
-    const res = await fetch(INTERACTIONS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      cache: 'no-store',
-      body: JSON.stringify({ model: lyriaModel(), input, response_format: { type: 'audio' } }),
-      signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
-    });
+    const res = googleTransportKind() === 'vertex'
+      ? await googleModelFetch(lyriaModel(), 'generateContent', {
+          method: 'POST',
+          cache: 'no-store',
+          body: JSON.stringify(buildLyriaVertexBody(input)),
+          signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
+        })
+      : await fetch(INTERACTIONS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          cache: 'no-store',
+          body: JSON.stringify({ model: lyriaModel(), input, response_format: { type: 'audio' } }),
+          signal: AbortSignal.timeout(GEN_TIMEOUT_MS),
+        });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', status: res.status, detail: body, model: lyriaModel() });

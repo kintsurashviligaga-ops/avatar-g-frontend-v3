@@ -1,6 +1,7 @@
 import 'server-only';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { geminiTierModel } from '@/lib/ai/google/models';
 
@@ -220,9 +221,9 @@ async function generateWithRetry(args: {
   }
   messages.push({ role: 'user', content: args.userText });
 
-  // Primary: Gemini Flash
+  // Gemini Flash on the selected Google transport (the API key, or Vertex AI when GEMINI_TRANSPORT=vertex)
   const geminiKey = (process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '').trim();
-  if (geminiKey) {
+  if (!googleTransportBlocker(geminiKey)) {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const google = createGoogleGenerativeAI({ apiKey: geminiKey });
@@ -244,7 +245,7 @@ async function generateWithRetry(args: {
 
   // Gemini only (R7): no other vendor answers when Gemini fails. The caller replies with the localized
   // fallbackReply() and tags the turn 'fallback', so a Gemini outage stays visible.
-  throw lastError instanceof Error ? lastError : new Error(geminiKey ? 'Gemini did not answer' : 'GEMINI_API_KEY not configured');
+  throw lastError instanceof Error ? lastError : new Error(googleTransportBlocker(geminiKey) ?? 'Gemini did not answer');
 }
 
 export async function generateAgentGPersonalityReply(input: PersonalityInput): Promise<PersonalityOutput> {

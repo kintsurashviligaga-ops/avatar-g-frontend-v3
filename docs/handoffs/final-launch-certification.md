@@ -180,9 +180,24 @@ still keep an Anthropic leg that runs only when `AI_GOOGLE_ONLY=0` (default on, 
 (`api.nanobananaapi.ai`, a third-party reseller, not Google); avatar HeyGen / SadTalker; swap / motion / product ad Kling,
 roop, Higgsfield; 3D TRELLIS; interior World Labs; music on an explicit pick of Udio or MusicGen, cover (MusicGen-melody),
 "your voice" songs (MiniMax, RVC), cover art (Pollinations); `/api/pipeline` voice on OpenAI TTS when Google-only is off;
-`lib/chat/ServiceManager` still imports the Grok image client. Only Veo can run on Vertex, and only in
-Preview. GCP Part 0 is CONFIGURED; Gemini text, Gemini image and Lyria **INFERENCE PROVEN on Vertex** from the owner's Mac
-(≈ $0.11, owner-approved 11:47 UTC); Imagen 4 is not available on Vertex for this project (404). The migration is Part 2.
+`lib/chat/ServiceManager` still imports the Grok image client. The owner chose "not now" on removing them (decision card,
+2026-10-08 17:16 UTC): action 9 stays open, and PR #44's provider removals are not merged into this branch.
+
+GCP Part 0 is CONFIGURED; Gemini text, Gemini image and Lyria **INFERENCE PROVEN on Vertex** from the owner's Mac
+(≈ $0.11, owner-approved 11:47 UTC); Imagen 4 is not available on Vertex for this project (404).
+
+**Google transport (Part 2 A2, BUILT_NOT_PROVEN).** `lib/ai/google/transport.ts` implements the Part 1 contract:
+`GEMINI_TRANSPORT` unset (or `gemini_api` / `gemini`) keeps today's Gemini API calls unchanged; `vertex` sends them to
+`aiplatform.googleapis.com` (`locations/global`, `GCP_GEMINI_LOCATION` to override) with the Workload Identity token, no
+API key and no Veo bucket needed; an unconfigured transport is `NotConfiguredError`, never the other transport; an unknown
+value fails closed. On it now: `lib/gemini/client` (19 importers) and `llmText` (11), the studio chat stream and grounded search
+(`chatStream`), Agent G's reply and intent parser, the storyboard image model and Lyria 3 (Vertex `:generateContent` with
+AUDIO + TEXT, as in T2). `lib/ai/google/provider.ts` points the existing `@ai-sdk/google` at the Vertex endpoint (no new
+package). Tests `lib/ai/google/transport.test.ts` (20). Still on the API key whatever the setting: the orchestrator
+script / interior routes (own key pool), embeddings, Deep Research (Interactions), TTS, STT, Live, Imagen, health probes;
+Veo keeps its own `VEO_TRANSPORT`. Nothing in Production changes until `GEMINI_TRANSPORT=vertex` is set
+there. Not yet proven: one Vertex Gemini call from a Preview runtime (the service account holds
+`aiplatform.endpoints.predict`, which generateContent needs; a free `countTokens` check or an owner-approved call proves it).
 
 ## M. Pricing
 
