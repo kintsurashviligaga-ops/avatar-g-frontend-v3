@@ -66,3 +66,22 @@ test('extras are rows after the tools: each calls its own handler (not onTool) a
   expect(onTool).not.toHaveBeenCalled();
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+// ── sections: the studio passes the service catalog's categories (lib/catalog/nav.ts) ──────────────────────────────
+test('sections draw one heading per catalog category, skip an empty one, and put the extras after the first', () => {
+  const onPick = jest.fn();
+  sheet({
+    tools: [],
+    sections: [
+      { id: 'agent-g', label: 'Agent G', tools },
+      { id: 'video', label: 'Video', tools: [{ id: 'video', Icon: Film, title: 'Video', sub: 'A film' }] },
+      { id: 'music', label: 'Music', tools: [] },
+    ],
+    extras: [{ id: 'research', Icon: Film, title: 'Deep Research', sub: 'Searches the web', onPick }],
+  });
+  expect(screen.getByTestId('tool-section-agent-g')).toBeInTheDocument();
+  expect(screen.getByTestId('tool-section-video')).toBeInTheDocument();
+  expect(screen.queryByTestId('tool-section-music')).toBeNull();
+  expect(within(screen.getByTestId('tool-section-agent-g')).getByTestId('tool-sheet-extras')).toBeInTheDocument();
+  expect(within(screen.getByTestId('tool-section-video')).getByRole('list', { name: 'Video' })).toBeInTheDocument();
+});

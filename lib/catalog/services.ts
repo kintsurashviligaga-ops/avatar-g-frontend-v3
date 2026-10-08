@@ -37,7 +37,7 @@ export type ServiceStatus = 'live' | 'beta' | 'coming-soon' | 'hidden' | 'deprec
  */
 export type BoundaryState = 'google' | 'violation';
 
-type L10n = { ka: string; en: string; ru: string };
+export type L10n = { ka: string; en: string; ru: string };
 
 export interface ServiceMode {
   id: string;

@@ -29,16 +29,28 @@ const COPY: Record<Lang, { close: string; tools: string; more: string }> = {
   ru: { close: 'Закрыть', tools: 'Инструменты', more: 'Ещё' },
 };
 
+/** One heading of the sheet: a service-catalog category and its tools (lib/catalog/nav.ts). */
+export interface ToolSection {
+  id: string;
+  label: string;
+  tools: ToolEntry[];
+}
+
 export function ToolSheet({
-  open, onClose, locale, title, tools, studios = [], extras = [], activeId, onTool,
+  open, onClose, locale, title, tools = [], studios = [], sections, extras = [], activeId, onTool,
 }: {
   open: boolean;
   onClose: () => void;
   locale: string;
   /** Overrides the sheet's accessible name — e.g. „აირჩიე ხელსაწყო" when it is opened to switch tools only. */
   title?: string;
-  /** The primary tools, in order (video first). */
-  tools: ToolEntry[];
+  /** The primary tools, in order (video first). Ignored when `sections` is given. */
+  tools?: ToolEntry[];
+  /**
+   * The tools grouped by catalog category — what the studio passes. The first section is Agent G (the chat), and the
+   * extras follow it, since they act on the chat. Replaces `tools` and `studios`.
+   */
+  sections?: ToolSection[];
   /** The tools one level down: video variants, motion, and the full studios (montage, dubbing, 3D, presentation). */
   studios?: ToolEntry[];
   /** Rows that DO something instead of switching the active tool (Deep Research, Connectors). Empty = nothing is drawn. */
@@ -65,26 +77,41 @@ export function ToolSheet({
       </li>
     );
   };
+  const extrasList = extras.length > 0 && (
+    <ul className="mt-0.5 space-y-0.5" aria-label={c.tools} data-testid="tool-sheet-extras">
+      {extras.map((t) => (
+        <li key={t.id}>
+          <button type="button" data-testid={`tool-extra-${t.id}`} onClick={() => { t.onPick(); onClose(); }}
+            className="flex min-h-[56px] w-full items-center gap-3.5 rounded-2xl px-3 text-left transition-colors hover:bg-app-elevated/70">
+            <t.Icon size={20} aria-hidden="true" className="shrink-0 text-app-text/80" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-medium leading-tight text-app-text">{t.title}</span>
+              <span className="mt-0.5 block truncate text-[12.5px] leading-tight text-app-muted">{t.sub}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+  const shown = (sections ?? []).filter((sec) => sec.tools.length > 0);
+  if (shown.length > 0) {
+    return (
+      <BottomSheet open={open} onClose={onClose} closeLabel={c.close} testId="tool-sheet" title={title ?? c.tools} showHeader={false}>
+        {shown.map((sec, i) => (
+          <section key={sec.id} data-testid={`tool-section-${sec.id}`}>
+            <p className={`px-3 pb-1 text-[12px] font-medium text-app-muted ${i === 0 ? 'pt-1' : 'pt-3'}`}>{sec.label}</p>
+            <ul className="space-y-0.5" aria-label={sec.label}>{sec.tools.map(row)}</ul>
+            {i === 0 && extrasList}
+          </section>
+        ))}
+      </BottomSheet>
+    );
+  }
   return (
     <BottomSheet open={open} onClose={onClose} closeLabel={c.close} testId="tool-sheet" title={title ?? c.tools} showHeader={false}>
       <p className="px-3 pb-1 pt-1 text-[12px] font-medium text-app-muted">{c.tools}</p>
       <ul className="space-y-0.5" aria-label={c.tools}>{tools.map(row)}</ul>
-      {extras.length > 0 && (
-        <ul className="mt-0.5 space-y-0.5" aria-label={c.tools} data-testid="tool-sheet-extras">
-          {extras.map((t) => (
-            <li key={t.id}>
-              <button type="button" data-testid={`tool-extra-${t.id}`} onClick={() => { t.onPick(); onClose(); }}
-                className="flex min-h-[56px] w-full items-center gap-3.5 rounded-2xl px-3 text-left transition-colors hover:bg-app-elevated/70">
-                <t.Icon size={20} aria-hidden="true" className="shrink-0 text-app-text/80" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-medium leading-tight text-app-text">{t.title}</span>
-                  <span className="mt-0.5 block truncate text-[12.5px] leading-tight text-app-muted">{t.sub}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {extrasList}
       {studios.length > 0 && (
         <>
           <p className="px-3 pb-1 pt-3 text-[12px] font-medium text-app-muted">{c.more}</p>

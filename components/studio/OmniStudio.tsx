@@ -125,7 +125,8 @@ import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
-import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { toolGroups } from '@/lib/catalog/nav';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -10218,8 +10219,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
-      tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
-      studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
+      // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar and the Plugins tab.
+      sections={toolGroups().map((g) => ({
+        id: g.id,
+        label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
+        tools: visibleToolIds(g.tools, hiddenTools, activeTool).map(toolEntry),
+      }))}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
       onTool={(id) => { if (isToolId(id)) selectTool(id); }}

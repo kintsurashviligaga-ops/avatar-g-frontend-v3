@@ -353,6 +353,11 @@ const nextConfig = {
       ['services/marketplace/:path*', home], ['services/online-shop/:path+', home],
       ['services/agent-g/calls', home], ['services/agent-g/settings', home],
       ['account/business', '/:locale/account/billing'], ['account/returns', '/:locale/account/billing'],
+      // /hub and /workspace were two more app shells beside the studio (docs/handoffs/service-inventory.md §0): English-only
+      // dashboards with hard-coded „12 Avatars Created · 98% Success Rate" stats, whose „Image Creator" answered with text
+      // and charged for an image. Master Task §19 / §27: one primary workspace, no fake numbers — they land in the studio.
+      ['hub', '/:locale/dashboard'], ['hub/:path*', '/:locale/dashboard'],
+      ['workspace', '/:locale/dashboard'], ['workspace/:path*', '/:locale/dashboard'],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
     // /{lang}/studio is the new studio only where STUDIO_V2 is on (lib/studio/flags). Elsewhere it goes home with a
     // real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale] loading.tsx starts the response

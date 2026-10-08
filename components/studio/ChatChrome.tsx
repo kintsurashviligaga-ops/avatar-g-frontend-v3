@@ -21,7 +21,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import {
   Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
 } from 'lucide-react';
-import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { isStudioPath } from '@/lib/routing/landing';
 
 /** The chat's own icon, from the tool list — the hub row and the tool rows can never draw different marks. */
@@ -749,10 +750,24 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // The tools the user switched off in the hub's Plugins tab leave the sidebar and the rail (never the one they are on).
   // ⚠️ Menus only — selectTool, ?tool= and the studio still open a hidden tool (lib/plugins/catalog.ts).
   const hiddenTools = useHiddenTools();
-  const navPrimary = useMemo(() => visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
-  const navMore = useMemo(() => visibleToolIds(MORE_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
-  const [moreOpen, setMoreOpen] = useState(false);
-  useEffect(() => { if (activeTool && (MORE_TOOLS as readonly string[]).includes(activeTool)) setMoreOpen(true); }, [activeTool]);
+  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK, each category
+  // holding only its tools that are still switched on — a category with none left is not drawn.
+  const navGroups = useMemo(() => toolGroups()
+    .map((g) => ({ ...g, tools: visibleToolIds(g.tools, hiddenTools, activeTool) }))
+    .filter((g) => g.tools.length > 0), [hiddenTools, activeTool]);
+  const navCategories = useMemo(() => navGroups.filter((g) => g.id !== 'agent-g'), [navGroups]);
+  // A category row opens its first tool; its chevron shows the rest. The category holding the active tool opens itself.
+  const [openCats, setOpenCats] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (!activeTool) return;
+    const g = navCategories.find((x) => x.tools.indexOf(activeTool) > 0);
+    if (g) setOpenCats((prev) => (prev.has(g.id) ? prev : new Set([...prev, g.id])));
+  }, [activeTool, navCategories]);
+  const toggleCat = useCallback((id: string) => setOpenCats((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), []);
   const [searchOpen, setSearchOpen] = useState(false);
   // VOICE CONTROL (a Live call's open_panel, lib/voice/liveTools.ts): open the chat search, or show the history — the
   // phone's drawer, or a desktop sidebar that was collapsed to its rail.
@@ -1141,41 +1156,58 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* „სერვისები“ — every tool the studio has, from ONE list (lib/studio/tools.ts). In the studio a row
-              switches the tool in place; anywhere else it opens the studio on it. The composer's „+“ sheet
-              reads the same list, so a service can never be reachable from one door and missing from the other. */}
-          <p className={sideHdr}>{t.services}</p>
-          <div className="space-y-0.5">
-            {navPrimary.filter((id) => id !== 'chat').map((id) => {
-              const { Icon } = TOOL_META[id];
-              const on = onStudioHome && activeTool === id;
-              return (
-                // data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar).
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
-                  className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
-                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
-                </button>
-              );
-            })}
-            {/* „მეტი“ only while there is something under it — every one of them may be switched off in Plugins. */}
-            {navMore.length > 0 && (
-            <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} className={`${sideRow} text-app-muted`}>
-              <ChevronRight className={`h-[17px] w-[17px] transition-transform ${moreOpen ? 'rotate-90' : ''}`} aria-hidden="true" /> {tMore}
-            </button>
-            )}
-            {moreOpen && navMore.map((id) => {
-              const { Icon } = TOOL_META[id];
-              const on = onStudioHome && activeTool === id;
-              return (
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
-                  className={`${sideRow} pl-5 ${on ? 'bg-app-elevated' : ''}`}>
-                  <Icon className={`h-4 w-4 ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet and the Plugins tab read the
+              same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
+              switches the tool in place; anywhere else it opens the studio on it. */}
+          {(['create', 'work'] as const).map((grp) => {
+            const cats = navCategories.filter((g) => g.group === grp);
+            if (cats.length === 0) return null;
+            return (
+              <div key={grp} data-testid={`sidebar-group-${grp}`}>
+                <p className={sideHdr}>{NAV_GROUP_LABEL[grp][lang]}</p>
+                <div className="space-y-0.5">
+                  {cats.map((g) => {
+                    const lead = g.tools[0]!;
+                    const rest = g.tools.slice(1);
+                    const { Icon } = TOOL_META[lead];
+                    const inCat = onStudioHome && activeTool !== null && g.tools.includes(activeTool);
+                    const on = onStudioHome && activeTool === lead;
+                    const open = openCats.has(g.id);
+                    return (
+                      <div key={g.id}>
+                        <div className="flex items-center gap-0.5">
+                          {/* data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar). */}
+                          <button type="button" onClick={() => selectTool(lead)} aria-current={on ? 'true' : undefined} data-tour={`tool-${lead}`}
+                            className={`${sideRow} min-w-0 flex-1 ${on ? 'bg-app-elevated' : ''}`}>
+                            <Icon className={`h-[17px] w-[17px] ${inCat ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                            <span className="min-w-0 truncate">{g.label[lang]}</span>
+                          </button>
+                          {rest.length > 0 && (
+                            <button type="button" onClick={() => toggleCat(g.id)} aria-expanded={open} aria-label={`${g.label[lang]}: ${tMore}`} title={tMore}
+                              data-testid={`sidebar-cat-toggle-${g.id}`}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10">
+                              <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                        {open && rest.map((id) => {
+                          const { Icon: SubIcon } = TOOL_META[id];
+                          const subOn = onStudioHome && activeTool === id;
+                          return (
+                            <button key={id} type="button" onClick={() => selectTool(id)} aria-current={subOn ? 'true' : undefined} data-tour={`tool-${id}`}
+                              className={`${sideRow} pl-7 ${subOn ? 'bg-app-elevated' : ''}`}>
+                              <SubIcon className={`h-4 w-4 ${subOn ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                              <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
           {/* „ბოლო“ — the chat history. */}
           <div className="mt-3 flex items-center justify-between gap-1.5 pr-1">
@@ -1304,12 +1336,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={tExpand} title={tExpand} className={railBtn}><PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession} className={railBtn}><PenSquare className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <span className="my-1 h-px w-6 bg-app-border/15" aria-hidden="true" />
-          {navPrimary.map((id) => {
+          {/* One icon per category (its first tool), Agent G first — the rail is the sidebar's categories, folded. */}
+          {navGroups.map((g) => {
+            const id = g.tools[0]!;
             const { Icon } = TOOL_META[id];
-            const on = onStudioHome && activeTool === id;
-            const name = TOOL_META[id].name[lang];
+            const on = onStudioHome && activeTool !== null && g.tools.includes(activeTool);
+            const name = g.id === 'agent-g' ? TOOL_META.chat.name[lang] : g.label[lang];
             return (
-              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
+              <button key={g.id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                 className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
             );
           })}
