@@ -50,54 +50,47 @@ describe('lipsyncNode', () => {
   });
 });
 
-describe('replicateLipsyncProvider (mock fetch — create + poll)', () => {
-  it('parses a terminal prediction returned by Prefer:wait on CREATE', async () => {
-    const fetchImpl = (async () => ({ ok: true, json: async () => ({ status: 'succeeded', output: 'https://r/out.mp4' }) })) as unknown as typeof fetch;
+// MyAvatar v32 (lib/providers/policy): lip-sync is ElevenLabs-only. The Replicate (sync/lipsync-2) and HeyGen
+// (talking_photo) adapters are retired: each answers `provider_deprecated` without a request, so lipsyncNode fail-opens
+// to the raw clip — a film still ships, unsynced, and nothing is spent on a forbidden provider.
+const neverFetch = () => {
+  const fetchImpl = jest.fn(async () => { throw new Error('a retired lip-sync provider attempted network access'); });
+  return { fetchImpl: fetchImpl as unknown as typeof fetch, calls: fetchImpl };
+};
+
+describe('replicateLipsyncProvider — retired (v32)', () => {
+  it('a sync is refused as provider_deprecated without a create or a poll — even with a token', async () => {
+    const { fetchImpl, calls } = neverFetch();
+    const r = await replicateLipsyncProvider({ token: 't', fetchImpl, pollMs: 1 }).sync(req);
+    expect(r).toEqual({ ok: false, error: 'provider_deprecated' });
+    expect(calls).not.toHaveBeenCalled();
+  });
+
+  it('lipsyncNode fail-opens to the raw clip (never a provider URL)', async () => {
+    const { fetchImpl, calls } = neverFetch();
     const res = await lipsyncNode(req, { provider: replicateLipsyncProvider({ token: 't', fetchImpl }) });
-    expect(res).toMatchObject({ ok: true, url: 'https://r/out.mp4', usedFallback: false });
-  });
-
-  it('POLLS a non-terminal CREATE to succeeded (the old code skipped this → always failed)', async () => {
-    let n = 0;
-    const fetchImpl = (async () => {
-      n += 1;
-      return n === 1
-        ? { ok: true, json: async () => ({ status: 'processing', id: 'p1', urls: { get: 'https://api.replicate.com/v1/predictions/p1' } }) }
-        : { ok: true, json: async () => ({ status: 'succeeded', output: ['https://r/synced.mp4'] }) };
-    }) as unknown as typeof fetch;
-    const res = await lipsyncNode(req, { provider: replicateLipsyncProvider({ token: 't', fetchImpl, pollMs: 1 }) });
-    expect(res).toMatchObject({ ok: true, url: 'https://r/synced.mp4', usedFallback: false });
-    expect(n).toBeGreaterThanOrEqual(2); // proved it actually polled
-  });
-
-  it('hits the official-model endpoint with video/audio fields (regression on the broken wiring)', async () => {
-    let capturedUrl = '';
-    let capturedInput: unknown = null;
-    const fetchImpl = (async (url: string, init: { body: string }) => {
-      capturedUrl = url; capturedInput = (JSON.parse(init.body) as { input: unknown }).input;
-      return { ok: true, json: async () => ({ status: 'succeeded', output: 'https://r/o.mp4' }) };
-    }) as unknown as typeof fetch;
-    await replicateLipsyncProvider({ token: 't', fetchImpl }).sync(req);
-    expect(capturedUrl).toBe('https://api.replicate.com/v1/models/sync/lipsync-2/predictions');
-    expect(capturedInput).toEqual({ video: req.clipUrl, audio: req.audioUrl });
-  });
-
-  it('falls back on a non-2xx CREATE (e.g. 402 credit block)', async () => {
-    const fetchImpl = (async () => ({ ok: false, status: 402, json: async () => ({}) })) as unknown as typeof fetch;
-    const res = await lipsyncNode(req, { provider: replicateLipsyncProvider({ token: 't', fetchImpl }) });
-    expect(res.usedFallback).toBe(true);
+    expect(res).toMatchObject({ ok: true, url: req.clipUrl, usedFallback: true });
+    expect(calls).not.toHaveBeenCalled();
   });
 });
 
-describe('heygenLipsyncProvider', () => {
-  it('DECLINES a video master (talking_photo is image-only) so the cascade falls through', async () => {
-    const r = await heygenLipsyncProvider({ apiKey: 'k' }).sync({ clipUrl: 'https://c/master.mp4', audioUrl: 'https://a/v.mp3' });
-    expect(r).toMatchObject({ ok: false, error: 'heygen_requires_image_not_video' });
+describe('heygenLipsyncProvider — retired (v32)', () => {
+  it.each([
+    ['a video master', 'https://c/master.mp4'],
+    ['an image', 'https://c/face.jpg'],
+  ])('%s is refused as provider_deprecated before any request (no talking_photo, no credit probe)', async (_label, clipUrl) => {
+    const { fetchImpl, calls } = neverFetch();
+    const r = await heygenLipsyncProvider({ apiKey: 'k', fetchImpl }).sync({ clipUrl, audioUrl: 'https://a/v.mp3' });
+    expect(r).toEqual({ ok: false, error: 'provider_deprecated' });
+    expect(calls).not.toHaveBeenCalled();
   });
-  it('keys a 402 subscription/credit block explicitly (image input)', async () => {
-    const fetchImpl = (async () => ({ status: 402, ok: false, json: async () => ({}) })) as unknown as typeof fetch;
-    const r = await heygenLipsyncProvider({ apiKey: 'k', fetchImpl }).sync({ clipUrl: 'https://c/face.jpg', audioUrl: 'https://a/v.mp3' });
-    expect(r.error).toMatch(/heygen_credit_block_402/);
+
+  it('a HeyGen → Replicate cascade of retired legs exhausts without a request and ships the raw clip', async () => {
+    const { fetchImpl, calls } = neverFetch();
+    const cascade = cascadeLipsyncProvider([heygenLipsyncProvider({ apiKey: 'k', fetchImpl }), replicateLipsyncProvider({ token: 't', fetchImpl })]);
+    expect((await cascade.sync(req)).error).toMatch(/cascade_exhausted/);
+    expect((await lipsyncNode(req, { provider: cascade })).url).toBe(req.clipUrl);
+    expect(calls).not.toHaveBeenCalled();
   });
 });
 

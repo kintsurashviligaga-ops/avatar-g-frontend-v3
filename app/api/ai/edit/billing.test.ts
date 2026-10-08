@@ -1,8 +1,10 @@
 /** @jest-environment node */
 /**
- * POST /api/ai/edit (inpaint) — the generative object-removal is refused (503) when the ledger DEFINITIVELY failed.
- * Before: the code said so itself — "a 'skipped' (RPC absent) or transient 'error' degrades to proceeding" — so a
- * ledger outage made every inpaint free. Every provider, ffmpeg op and the ledger are mocked — no network, no spend.
+ * POST /api/ai/edit (inpaint) — the generative object-removal ran on Replicate, which MyAvatar v32 retired
+ * (lib/providers/policy). Until a Google (Imagen) inpaint adapter exists the action is refused 503
+ * `capability_unavailable` BEFORE the guard, the ledger or a provider: nothing is charged, nothing is sent — whatever the
+ * ledger would have said, and even with the legacy Replicate variables still set.
+ * Every provider, ffmpeg op and the ledger are mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../../../../lib/api/generationGuard', () => ({
@@ -31,7 +33,8 @@ jest.mock('../../../../lib/orchestrator/saveEditorOutput', () => ({ saveEditorOu
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
-import { deductCredits } from '../../../../lib/orchestrator/ledger';
+import { guardGeneration } from '../../../../lib/api/generationGuard';
+import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { createPrediction } from '../../../../lib/replicate/client';
 
 const ENV = { ...process.env };
@@ -48,18 +51,21 @@ beforeEach(() => {
 });
 afterAll(() => { process.env = ENV; });
 
-test('a ledger error → 503 billing_unavailable (localized), and the inpaint model never runs', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'error' });
+test.each(['error', 'skipped'] as const)('a ledger that would answer %s is never reached: 503 capability_unavailable, nothing charged, Replicate never runs', async (reason) => {
+  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason });
   const res = await post();
   expect(res.status).toBe(503);
-  const j = await res.json();
-  expect(j).toMatchObject({ url: null, error: 'billing_unavailable' });
-  expect(j.message).toMatch(/ничего не списано/);
+  expect(await res.json()).toMatchObject({ url: null, error: 'capability_unavailable' });
+  expect(guardGeneration).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(refundCredits).not.toHaveBeenCalled();
   expect(createPrediction).not.toHaveBeenCalled();
 });
 
-test('a ledger without the RPC (skipped) still proceeds uncharged — the documented degrade', async () => {
-  (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'skipped' });
-  await post();
-  expect(createPrediction).toHaveBeenCalledTimes(1);
+test('a ledger that would have charged changes nothing: the inpaint is still refused before any debit', async () => {
+  (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
+  const res = await post();
+  expect(res.status).toBe(503);
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(createPrediction).not.toHaveBeenCalled();
 });
