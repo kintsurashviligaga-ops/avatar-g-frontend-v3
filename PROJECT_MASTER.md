@@ -41,12 +41,14 @@ PHASE CHECKLIST:
           preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
           bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
           Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
-          on the PR #43 Preview). INFERENCE VERIFIED: not run (paid, needs separate consent).
-          Report docs/handoffs/2026-10-08-gcp-part0-report.md, script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
-          Billing (owner-confirmed from the AI Studio Billing screen, 2026-10-08): Google Cloud free credit $300.00 of
-          $300.00 remaining, valid until 2026-12-31, labelled "Not applicable to Gemini API"; separate AI Studio /
-          Gemini API balance $13.21, auto-reload OFF. UNVERIFIED: that gen-lang-client-0671348730 is linked to the
-          billing account holding the credit (GCP Part 0 thread checking). Paid tests ($5–10) only after owner approval.
+          on the PR #43 Preview). INFERENCE VERIFIED: not run — plan ready (≈ $0.52, cap $2), needs owner consent.
+          Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31,
+          labelled "Not applicable to Gemini API", and AI Studio / Gemini API balance $13.21, auto-reload OFF
+          (owner-confirmed from the AI Studio Billing screen, 2026-10-08). 3 budgets (PROVEN): $10/month test,
+          $300/year credit guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert,
+          they do not cap.
+          Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
+          script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
 ◐ Part 1: Audit + Foundation — no part-1-report.md was ever written; restarted 2026-10-08.
 ◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
           self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
@@ -55,15 +57,25 @@ PHASE CHECKLIST:
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
 · STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
-  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then INFERENCE only with separate consent. Production env not yet.
+  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
+  (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
   scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
-· Part 2 findings from the Part 0 audit (no change made): API keys "API key 2" (Vertex express) and "Gemini API Key"
-  (AI Studio) exist on the project; Vercel has GEMINI_API_KEY in production + development; roles/editor on the default
-  compute SA.
+· Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
+  - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,
+    image, music, TTS, STT, Live, embeddings, search, research) uses the Gemini Developer API key. Production has
+    GEMINI_API_KEY and no GCP_*/VEO_TRANSPORT, so all its Google spend, Veo included, hits the AI Studio balance.
+  - Silent fallbacks / forbidden providers still reachable: veoTransport auto → Gemini API; Claude with no gate
+    (providerRouter, agentg/personality, /api/pipeline); image NanoBanana → Grok → FLUX; music Lyria → Udio →
+    ElevenLabs → MusicGen; avatar HeyGen / SadTalker / LiveAvatar; OpenAI / Azure voice paths.
+  - Imagen 4 is not available on Vertex for this project (404): Part 1 image should target gemini-3.1-flash-image.
+    Image generation quota is 2 requests/min per model (increase request needed before launch).
+  - Preview and Production share one Supabase, so any Preview studio test writes to the production DB.
+  - API keys "API key 2" (aiplatform) and "Gemini API Key" (generativelanguage); roles/editor on the default compute SA.
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
 · Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
+· Part 0 Test plan: docs/handoffs/2026-10-08-gcp-part0-test-plan.md
 · Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
 · Part 1 Report: pending (docs/handoffs/part-1-report.md)
 · Part 2 Report: pending
