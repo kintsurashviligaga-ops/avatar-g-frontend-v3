@@ -9,6 +9,8 @@
 # Never creates a service-account key. Prints no tokens; every value it prints is a non-secret identifier.
 # Safe to re-run: apply checks before it creates and bindings are idempotent.
 set -euo pipefail
+# No interactive prompts: gcloud must never offer to enable an API or change anything on a "y" (audit stays read-only).
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 MODE="${MODE:-audit}"
 PROJECT_ID="${PROJECT_ID:-gen-lang-client-0671348730}"
