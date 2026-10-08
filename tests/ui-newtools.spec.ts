@@ -106,6 +106,8 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 60_000 });
       if (vp.name === 'desktop') {
         const nav = page.locator('aside[aria-label="Menu"]');
+        // The sidebar lists categories (§60 step 11); both tools live under Image & Photo's „More".
+        await nav.getByRole('button', { name: 'Image & Photo: More' }).click();
         for (const t of TOOLS) await expect(nav.getByRole('button', { name: t.title })).toBeVisible();
         await nav.getByRole('button', { name: 'Interior designer' }).click();
       } else {
