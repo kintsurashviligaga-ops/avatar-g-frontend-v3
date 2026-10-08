@@ -2,14 +2,15 @@
  * Health Check Endpoint
  * GET/POST /api/health
  *
- * Production-grade health check with Redis verification
- * Returns HTTP 200 always (health endpoint must never fail system)
- * Verifies: Redis connectivity, Vercel environment, service status
+ * Production-grade health check with database and Redis verification
+ * Returns HTTP 200 always (health endpoint must never fail system); the BODY says whether the deployment works
+ * Verifies: database read (service role), Redis connectivity, Vercel environment, service status
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { opsCallerAllowed } from '@/lib/security/opsAccess';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,10 +22,13 @@ interface HealthResponse {
   env: 'valid' | 'invalid';
   env_ok?: boolean;
   service: 'backend';
-  status: 'healthy';
+  status: 'healthy' | 'degraded';
   ts: number;
   version: string;
   redis: 'connected' | 'unconfigured' | 'error';
+  /** Can the service role read the database? 'unconfigured' when the Supabase env itself is missing. */
+  database?: 'connected' | 'unconfigured' | 'error';
+  database_error?: string;
   missing: string[];
   /** Per-provider "is a key set" map. Booleans only — see providerReadiness for why this exists. */
   providers?: Record<string, boolean>;
@@ -144,6 +148,21 @@ async function verifyRedis(): Promise<
 }
 
 /**
+ * Can the service role read the database? One `select id … limit 1` on `profiles` (one row per account, present in
+ * every environment). Never throws. Reports the Postgres / PostgREST error CODE only, never its message.
+ */
+async function verifyDatabase(): Promise<Pick<HealthResponse, 'database' | 'database_error'>> {
+  if (getMissingEnvVars().length > 0) return { database: 'unconfigured' };
+  try {
+    const { error } = await createServiceRoleClient().from('profiles').select('id').limit(1);
+    if (!error) return { database: 'connected' };
+    return { database: 'error', database_error: typeof error.code === 'string' && error.code ? error.code : 'query_failed' };
+  } catch {
+    return { database: 'error', database_error: 'unreachable' };
+  }
+}
+
+/**
  * Which PROVIDER capabilities are configured. Booleans only — never a value, never a prefix.
  *
  * ⚠️ WHY THIS EXISTS. `missing` only covers CORE_REQUIRED_VARS: Supabase plus three URLs. So this
@@ -205,7 +224,7 @@ export async function GET(req: Request) {
     );
   }
   try {
-    const redisStatus = await verifyRedis();
+    const [redisStatus, db] = await Promise.all([verifyRedis(), verifyDatabase()]);
     const missing = getMissingEnvVars();
     const envValid = missing.length === 0 && hasBaseUrlConfigured();
     const ts = Date.now();
@@ -213,22 +232,27 @@ export async function GET(req: Request) {
     const region = process.env.VERCEL_REGION;
     const providers = providerReadiness();
     const providersMissing = Object.entries(providers).filter(([, v]) => !v).map(([k]) => k);
+    // ⚠️ THIS USED TO SAY `ok: true, status: "healthy"` WHATEVER IT FOUND: invalid env, a Redis error and (never
+    // checked) an unreachable database all came back green. The operator view now fails on what breaks every request.
+    // Missing PROVIDER keys stay a separate list: one absent key degrades one service, not the deployment.
+    const healthy = envValid && db.database === 'connected' && redisStatus.redis !== 'error';
 
     const response: HealthResponse = {
       providers,
       providers_missing: providersMissing,
       providers_note: 'configured-only — does NOT prove a key is valid or funded',
       payments: stripeMode(),
-      ok: true,
+      ok: healthy,
       commit: version,
       time: new Date(ts).toISOString(),
       env: envValid ? 'valid' : 'invalid',
       env_ok: envValid,
       service: 'backend',
-      status: 'healthy',
+      status: healthy ? 'healthy' : 'degraded',
       ts,
       version,
       redis: redisStatus.redis,
+      ...db,
       missing,
       ...(redisStatus.message && { message: redisStatus.message }),
       ...(region && { region }),
@@ -237,16 +261,16 @@ export async function GET(req: Request) {
     // Always return 200 (health endpoint must not fail the system)
     return NextResponse.json(response, { status: 200 });
   } catch {
-    // Fallback: still return 200 even if something goes wrong
+    // Fallback: still return 200 even if something goes wrong — but never a green body for a check that crashed
     return NextResponse.json(
       {
-        ok: true,
+        ok: false,
         commit: getVersion(),
         time: new Date().toISOString(),
         env: 'invalid',
         env_ok: false,
         service: 'backend',
-        status: 'healthy',
+        status: 'degraded',
         ts: Date.now(),
         version: getVersion(),
         redis: 'error',

@@ -363,8 +363,17 @@ Core Web Vitals live in Vercel Speed Insights: BLOCKED_OWNER. Not fixed in this 
 ## X. Observability
 
 Sentry (production, DSN-dependent: BLOCKED_OWNER), `structuredLog` in 24 files, `reliability.ts` emits surface / provider /
-fallback depth. PARTIAL: only one route sets `x-request-id`; 348 raw `console.*` calls in API routes; `/api/health` always
-reports healthy; no alert rules in the repo (GCP budgets alert; they do not cap).
+fallback depth. PARTIAL: only one route sets `x-request-id`; 348 raw `console.*` calls in API routes; no alert rules in the
+repo (GCP budgets alert; they do not cap).
+
+`/api/health` used to answer `ok: true, status: "healthy"` whatever it found: invalid core env, a Redis error and a
+database it never checked all came back green. Fixed this run, BUILT_NOT_PROVEN (unit, `app/api/health/route.test.ts`, 7
+tests): the operator view (CRON_SECRET or a signed-in admin, on Preview and Production alike) now reads one `profiles` row
+with the service role and answers `ok: false, status: "degraded"` on invalid env, a database error (code only, never the
+message) or a Redis error. A missing provider key stays a separate list and does not degrade the deployment. The public
+answer is unchanged (liveness only, no I/O) and HTTP stays 200 on every path, so an uptime monitor that checks the status
+code sees no change. No live call made yet: the operator view needs CRON_SECRET or an admin session, which Claude does not
+hold. Proof path: an admin opens `/api/health` on the Preview while signed in and sees `database: "connected"`.
 
 ## Y. Remaining owner actions
 
