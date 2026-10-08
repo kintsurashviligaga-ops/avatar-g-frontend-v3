@@ -3,7 +3,8 @@ import {
   linkTypeFor,
   verifyTypeFor,
   isOtpPurpose,
-  isSixDigitCode,
+  isEmailOtpCode,
+  describeOtpShape,
   extractEmailOtp,
   isPlausibleEmail,
   normalizeLocale,
@@ -49,9 +50,9 @@ describe('extracting the code from generateLink', () => {
     expect(extractEmailOtp({ data: { properties: { email_otp: '000111' } } })).toBe('000111');
   });
 
-  it('REFUSES anything that is not exactly six digits — mailing a wrong code locks the user out', () => {
+  it('REFUSES anything that is not 6–10 digits — mailing a wrong code locks the user out', () => {
     expect(extractEmailOtp({ properties: { email_otp: '12345' } })).toBeNull();
-    expect(extractEmailOtp({ properties: { email_otp: '1234567' } })).toBeNull();
+    expect(extractEmailOtp({ properties: { email_otp: '12345678901' } })).toBeNull();
     expect(extractEmailOtp({ properties: { email_otp: 'abc123' } })).toBeNull();
     expect(extractEmailOtp({ properties: { email_otp: '' } })).toBeNull();
     expect(extractEmailOtp({ properties: { email_otp: 123456 } })).toBeNull();
@@ -64,9 +65,26 @@ describe('extracting the code from generateLink', () => {
     expect(extractEmailOtp({})).toBeNull();
   });
 
-  it('isSixDigitCode is strict about leading zeros being kept as a string', () => {
-    expect(isSixDigitCode('000000')).toBe(true);
-    expect(isSixDigitCode('0')).toBe(false);
+  it('isEmailOtpCode keeps leading zeros and accepts the 6–10 digits Supabase can be set to', () => {
+    expect(isEmailOtpCode('000000')).toBe(true);
+    expect(isEmailOtpCode('12345678')).toBe(true);
+    expect(isEmailOtpCode('1234567890')).toBe(true);
+    expect(isEmailOtpCode('0')).toBe(false);
+    expect(isEmailOtpCode('12345')).toBe(false);
+    expect(isEmailOtpCode('12345678901')).toBe(false);
+    expect(isEmailOtpCode('12a456')).toBe(false);
+    expect(isEmailOtpCode(123456)).toBe(false);
+  });
+
+  it('reads a longer code (the OTP length is a Supabase project setting)', () => {
+    expect(extractEmailOtp({ data: { properties: { email_otp: '01234567' } } })).toBe('01234567');
+  });
+
+  it('describes the answer for the log without the code itself', () => {
+    const d = describeOtpShape({ data: { properties: { action_link: 'x', email_otp: 'ab12' }, user: {} } });
+    expect(d).toBe('keys=[properties,user] properties=[action_link,email_otp] email_otp=string(4)');
+    expect(d).not.toContain('ab12');
+    expect(describeOtpShape(null)).toBe('keys=[] properties=[] email_otp=undefined');
   });
 });
 

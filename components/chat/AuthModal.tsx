@@ -8,7 +8,7 @@
  *   Log in   Google · (phone) · or an email → we look the address up (/api/auth/lookup):
  *              no account   → „no account with this email" + one tap to create it
  *              a password   → the password step; „forgot password?" and „sign in with a code" beside it
- *              codes only   → a 6-digit code is mailed straight away
+ *              codes only   → a code is mailed straight away (6–10 digits: Supabase's setting, from the send's answer)
  *   Sign up  Google · (phone) · or an email → a CONFIRMATION code (/api/auth/email-otp/send, purpose `register`):
  *              already registered → „this email is already registered" + one tap to log in — an address that has an
  *                                   account NEVER registers again (the lookup says so first, and Supabase refuses
@@ -83,7 +83,7 @@ const COPY = {
     loginCta: 'შესვლა', forgot: 'დაგავიწყდა პაროლი?', useCode: 'კოდით შესვლა', change: 'შეცვლა', back: 'უკან', close: 'დახურვა',
     codeTitle: { signin: 'შეიყვანე კოდი', register: 'დაადასტურე ელფოსტა', recovery: 'პაროლის აღდგენა' },
     codeTitlePhone: 'დაადასტურე ნომერი',
-    codeSent: 'გამოგიგზავნეთ 6-ნიშნა კოდი:', codeLabel: '6-ნიშნა კოდი', verify: 'დადასტურება',
+    codeSent: (n: number) => `გამოგიგზავნეთ ${n}-ნიშნა კოდი:`, codeLabel: (n: number) => `${n}-ნიშნა კოდი`, verify: 'დადასტურება',
     resend: 'კოდის ხელახლა გაგზავნა', resendIn: (s: number) => `ხელახლა გაგზავნა ${s} წმ-ში`, resent: 'ახალი კოდი გამოგზავნილია.',
     spam: 'არ ჩანს? შეამოწმე სპამის საქაღალდე.',
     profileTitle: 'დაასრულე რეგისტრაცია', profileSub: 'მისამართი დადასტურებულია. დაამატე სახელი და აირჩიე პაროლი.',
@@ -94,7 +94,7 @@ const COPY = {
     errPassword: 'პაროლი არასწორია.', errCredentials: 'ელფოსტა ან პაროლი არასწორია.',
     errWeak: `პაროლი უნდა იყოს მინიმუმ ${MIN_PASSWORD} სიმბოლო.`, errPwned: 'ეს პაროლი ძალიან გავრცელებულია — აირჩიე სხვა.',
     errMismatch: 'პაროლები არ ემთხვევა.', errCode: 'კოდი არასწორია. შეამოწმე და სცადე ხელახლა.',
-    errExpired: 'კოდს ვადა გაუვიდა — გამოითხოვე ახალი.', errCodeLength: 'შეიყვანე 6-ნიშნა კოდი.',
+    errExpired: 'კოდს ვადა გაუვიდა — გამოითხოვე ახალი.', errCodeLength: (n: number) => `შეიყვანე ${n}-ნიშნა კოდი.`,
     errRate: 'ძალიან ბევრი მცდელობა — სცადე რამდენიმე წუთში.', errRateIn: (m: number) => `ძალიან ბევრი მცდელობა — სცადე ${m} წუთში.`,
     errNetwork: 'ქსელის შეცდომა. შეამოწმე კავშირი და სცადე ხელახლა.', errGeneric: 'ვერ მოხერხდა. სცადე ხელახლა.',
     errSend: `კოდის გაგზავნა ვერ მოხერხდა. სცადე ერთ წუთში ან მოგვწერე ${SUPPORT_EMAIL}.`,
@@ -115,7 +115,7 @@ const COPY = {
     loginCta: 'Log in', forgot: 'Forgot password?', useCode: 'Log in with a code', change: 'Change', back: 'Back', close: 'Close',
     codeTitle: { signin: 'Enter the code', register: 'Confirm your email', recovery: 'Reset your password' },
     codeTitlePhone: 'Confirm your number',
-    codeSent: 'We sent a 6-digit code to', codeLabel: '6-digit code', verify: 'Verify',
+    codeSent: (n: number) => `We sent a ${n}-digit code to`, codeLabel: (n: number) => `${n}-digit code`, verify: 'Verify',
     resend: 'Resend code', resendIn: (s: number) => `Resend in ${s}s`, resent: 'A new code is on its way.',
     spam: "Can't see it? Check your spam folder.",
     profileTitle: 'Finish signing up', profileSub: 'Confirmed. Add your name and choose a password.',
@@ -126,7 +126,7 @@ const COPY = {
     errPassword: 'That password is not correct.', errCredentials: 'Email or password is not correct.',
     errWeak: `Use at least ${MIN_PASSWORD} characters.`, errPwned: 'That password is too common — choose another one.',
     errMismatch: "The passwords don't match.", errCode: "That code isn't right. Check it and try again.",
-    errExpired: 'That code has expired — request a new one.', errCodeLength: 'Enter the 6-digit code.',
+    errExpired: 'That code has expired — request a new one.', errCodeLength: (n: number) => `Enter the ${n}-digit code.`,
     errRate: 'Too many attempts — try again in a few minutes.', errRateIn: (m: number) => `Too many attempts — try again in ${m} min.`,
     errNetwork: 'Network error. Check your connection and try again.', errGeneric: 'Something went wrong. Please try again.',
     errSend: `We couldn't send the code right now. Try again in a minute, or write to ${SUPPORT_EMAIL}.`,
@@ -147,7 +147,7 @@ const COPY = {
     loginCta: 'Войти', forgot: 'Забыли пароль?', useCode: 'Войти по коду', change: 'Изменить', back: 'Назад', close: 'Закрыть',
     codeTitle: { signin: 'Введите код', register: 'Подтвердите почту', recovery: 'Сброс пароля' },
     codeTitlePhone: 'Подтвердите номер',
-    codeSent: 'Мы отправили 6-значный код на', codeLabel: '6-значный код', verify: 'Подтвердить',
+    codeSent: (n: number) => `Мы отправили ${n}-значный код на`, codeLabel: (n: number) => `${n}-значный код`, verify: 'Подтвердить',
     resend: 'Отправить код снова', resendIn: (s: number) => `Повторно через ${s} с`, resent: 'Новый код отправлен.',
     spam: 'Не видно? Проверьте папку «Спам».',
     profileTitle: 'Завершите регистрацию', profileSub: 'Подтверждено. Укажите имя и придумайте пароль.',
@@ -158,7 +158,7 @@ const COPY = {
     errPassword: 'Неверный пароль.', errCredentials: 'Неверная почта или пароль.',
     errWeak: `Минимум ${MIN_PASSWORD} символов.`, errPwned: 'Этот пароль слишком распространён — выберите другой.',
     errMismatch: 'Пароли не совпадают.', errCode: 'Неверный код. Проверьте и попробуйте снова.',
-    errExpired: 'Срок действия кода истёк — запросите новый.', errCodeLength: 'Введите 6-значный код.',
+    errExpired: 'Срок действия кода истёк — запросите новый.', errCodeLength: (n: number) => `Введите ${n}-значный код.`,
     errRate: 'Слишком много попыток — попробуйте через несколько минут.', errRateIn: (m: number) => `Слишком много попыток — попробуйте через ${m} мин.`,
     errNetwork: 'Ошибка сети. Проверьте подключение и попробуйте снова.', errGeneric: 'Не получилось. Попробуйте снова.',
     errSend: `Не удалось отправить код. Попробуйте через минуту или напишите на ${SUPPORT_EMAIL}.`,
@@ -226,6 +226,8 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const [status, setStatus] = useState<AccountStatus>('unknown');
   const [codeKind, setCodeKind] = useState<CodeKind>('signin');
   const [code, setCode] = useState('');
+  /** Digits in the code just sent: 6 for SMS; for email, Supabase's project setting (6–10), from the send's answer. */
+  const [codeLength, setCodeLength] = useState(6);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [name, setName] = useState('');
@@ -351,6 +353,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
         if (kind !== 'register' && /signups? not allowed|not found|no user/i.test(e.message)) { setIssue('noAccount'); return ''; }
         return humanizeAuthError(e, t);
       }
+      setCodeLength(6);
       return null;
     }
     let res: Response;
@@ -362,8 +365,13 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } catch {
       return t.errNetwork;
     }
-    if (res.ok) return null;
-    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    const j = (await res.json().catch(() => null)) as { error?: string; length?: unknown } | null;
+    if (res.ok) {
+      // A server older than the `length` field sent six.
+      const n = j?.length;
+      setCodeLength(typeof n === 'number' && Number.isInteger(n) && n >= 6 && n <= 10 ? n : 6);
+      return null;
+    }
     if (j?.error === 'account_exists') { setIssue('exists'); return ''; }
     if (j?.error === 'no_account') { setIssue('noAccount'); return ''; }
     if (res.status === 429) {
@@ -464,7 +472,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const verifyCode = useCallback(async (value?: string) => {
     clearMessages();
     const digits = (value ?? code).replace(/\D/g, '');
-    if (digits.length !== 6) { setError(t.errCodeLength); return; }
+    if (digits.length !== codeLength) { setError(t.errCodeLength(codeLength)); return; }
     if (!who) return;
     const s = supabaseOr();
     if (!s) return;
@@ -491,7 +499,7 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
     } finally {
       setBusy(false);
     }
-  }, [clearMessages, code, t, who, supabaseOr, codeKind, redeemRef, finish]);
+  }, [clearMessages, code, codeLength, t, who, supabaseOr, codeKind, redeemRef, finish]);
 
   const resend = useCallback(async () => {
     if (!who || resendLeft > 0) return;
@@ -729,21 +737,21 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
             {step === 'code' && (
               <form onSubmit={(e) => { e.preventDefault(); void verifyCode(); }} className="mt-2 space-y-3">
                 <p className="text-[14px] leading-relaxed text-app-muted">
-                  {t.codeSent}
+                  {t.codeSent(codeLength)}
                   <span className="block font-medium text-app-text [overflow-wrap:anywhere]" data-testid="auth-address">{shownAddress}</span>
                 </p>
-                <label htmlFor={`${titleId}-code`} className="sr-only">{t.codeLabel}</label>
+                <label htmlFor={`${titleId}-code`} className="sr-only">{t.codeLabel(codeLength)}</label>
                 <input id={`${titleId}-code`} ref={codeRef} value={code}
                   onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    const v = e.target.value.replace(/\D/g, '').slice(0, codeLength);
                     setCode(v);
-                    // Six digits (typed, pasted, or filled from the SMS / mail by the OS) verify at once.
-                    if (v.length === 6 && !busy) void verifyCode(v);
+                    // A complete code (typed, pasted, or filled from the SMS / mail by the OS) verifies at once.
+                    if (v.length === codeLength && !busy) void verifyCode(v);
                   }}
-                  inputMode="numeric" autoComplete="one-time-code" autoFocus data-autofocus maxLength={6} placeholder="••••••" data-testid="auth-code"
+                  inputMode="numeric" autoComplete="one-time-code" autoFocus data-autofocus maxLength={codeLength} placeholder={'•'.repeat(codeLength)} data-testid="auth-code"
                   className={`${field} mt-2 h-14 text-center text-[26px] font-semibold tracking-[0.5em] placeholder:tracking-[0.5em]`} />
                 {messages}
-                <button type="submit" disabled={busy || code.length !== 6} className={primary} data-testid="auth-verify">{spinner}{t.verify}</button>
+                <button type="submit" disabled={busy || code.length !== codeLength} className={primary} data-testid="auth-verify">{spinner}{t.verify}</button>
                 <div className="flex flex-wrap items-center justify-between gap-x-4">
                   <button type="button" onClick={() => void resend()} disabled={busy || resendLeft > 0}
                     className={`${textLink} disabled:text-app-muted disabled:opacity-100`} data-testid="auth-resend">
