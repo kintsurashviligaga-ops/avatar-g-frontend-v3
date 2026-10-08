@@ -7,7 +7,7 @@
  * token for `text/html`, `image/svg+xml` or anything else a client named, and nothing capped the size, so a
  * signed-in user could park arbitrary files (pages, scripts, archives) of any size in our storage. The UI only
  * ever uploads pictures, video and audio; that is now all either route accepts, at the 50 MB the UI already
- * enforced. The bucket itself carries the same list and cap (supabase/migrations/20261008a_…), because a
+ * enforced. The bucket itself carries the same list and cap (supabase/migrations/20261008c_…), because a
  * signed upload URL is a direct PUT to storage that no route sees.
  *
  * Keep UPLOAD_MIME_ALLOWLIST in step with that migration's `allowed_mime_types` (a test compares them).

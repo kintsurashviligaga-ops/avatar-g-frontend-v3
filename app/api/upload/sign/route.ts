@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   // ⚠️ ANY CONTENT TYPE USED TO GET A TOKEN, AT ANY SIZE. Held to the shared upload policy now: images, video and
   // audio only (415), and a declared size over the 50 MB cap is refused here (413) rather than after a long upload.
-  // The bucket enforces the same list and cap on the PUT itself (migration 20261008a), since no route sees those bytes.
+  // The bucket enforces the same list and cap on the PUT itself (migration 20261008c), since no route sees those bytes.
   const body = (await req.json().catch(() => ({}))) as { contentType?: unknown; size?: unknown; name?: unknown };
   const contentType = allowedUploadMime(
     typeof body.contentType === 'string' ? body.contentType : '',

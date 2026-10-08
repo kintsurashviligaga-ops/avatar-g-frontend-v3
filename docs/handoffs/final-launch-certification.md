@@ -133,7 +133,7 @@ refused before any money is spent. 121 tests (`npx jest lib/video/director`), mu
 
 Since then (commits `08671489`, `e09ee27f`, `8aa2a9f7`) the director runs inside the product, behind the flag
 `VIDEO_DIRECTOR_RUNS` (unset = off: every director route answers 404 before reading the session; `admin` = admins only;
-`1` = every signed-in user). A run is stored in `director_runs` (migration `20261008b`, written, NOT applied) and advanced one
+`1` = every signed-in user). A run is stored in `director_runs` (migration `20261008b`, applied to Production 2026-10-08 16:01Z) and advanced one
 bounded step per request: claim the shot (compare-and-set on `version`), charge that shot's share
 (`director:<run>:shot:<i>:a<attempt>`), submit once, poll, refund a shot that delivers no clip. In Production a missing
 ledger refuses the shot instead of rendering it free. With the flag on, the studio's storyboard Approve opens the director
@@ -144,7 +144,7 @@ music bed, narration or colour pass. 169 tests across the director, its routes a
 | Invariant | Label |
 |---|---|
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
-| Wired into the product's video flow | BUILT_NOT_PROVEN (unit + route + component tests): the studio's Approve runs the director when `VIDEO_DIRECTOR_RUNS` lets the user in; off by default, so Production is unchanged. Needs migration `20261008b` applied and the flag set on Preview (owner actions 3a, 3b) before anyone can try it |
+| Wired into the product's video flow | BUILT_NOT_PROVEN (unit + route + component tests): the studio's Approve runs the director when `VIDEO_DIRECTOR_RUNS` lets the user in; off by default, so Production is unchanged. Migration `20261008b` is applied (2026-10-08); needs the flag set on Preview (owner action 3b) before anyone can try it |
 | Live Veo run | **FAILED, fix pending retry**: Part 0 is AUTH VERIFIED (build log of e222e38, 14:21:20 UTC). The owner's smoke press at 14:45:29 UTC reached Vertex via WIF (PredictLongRunning 200 from SA myavatar-veo), then the operation failed "Veo 3 prompt enhancement cannot be disabled" because `lib/veo/payload.ts` sent `enhancePrompt: false`. Fix `75eef69` (PR #43) is cherry-picked here; the clip waits on one more owner press on a Preview carrying it |
 | Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt. Limit (PROVEN by the T1 failure): Veo 3.x always rewrites the prompt inside Google and refuses `enhancePrompt: false`, so V3 holds on the wire, not inside the model; the studio's no-op "let Google rewrite" switch was removed |
 
@@ -193,7 +193,7 @@ pricing decision (no pricing change without an SSoT update).
 | Idempotent credit grants (by payment ref) | PROVEN (unit) |
 | Refund on failed generation | PROVEN (unit) |
 | Checkout amounts from server catalogues | PROVEN (unit) |
-| Refund or dispute takes back the credits it bought | **fixed this run**, BUILT_NOT_PROVEN (unit: proportional, never more than granted, idempotent per charge, shortfall alerted). Needs the Stripe endpoint subscribed to `charge.refunded` and `charge.dispute.created` (owner). A dispute the merchant wins does not restore credits automatically |
+| Refund or dispute takes back the credits it bought | **fixed this run**, BUILT_NOT_PROVEN (unit: proportional, never more than granted, idempotent per charge, shortfall alerted). Needs the Stripe endpoint subscribed to `charge.refunded` and `charge.dispute.created` (owner, owner action 5: the endpoint is in Stripe Live mode, which the Stripe connector here cannot reach; it only sees the test sandbox, whose one endpoint is Grok's). A dispute the merchant wins does not restore credits automatically |
 | Stripe webhook writes (event dedupe, subscription sync) | **fixed this run**: service-role client instead of the anon client (unit). `webhook_events` must exist in Production (owner check) |
 | A paid render when the ledger cannot charge | **fixed this run**: refused with `billing_unavailable` in production instead of rendering free (unit). Before deploy, confirm `deduct_credits` and the service-role key exist in Production, or every render is refused |
 | Credit history | **fixed this run**: reads `credit_ledger`; the client-written `POST /api/credits/record` (forgeable "+N credits" rows) is gone (unit). Admin analytics still reads the now-unwritten `credit_transactions` (PARTIAL) |
@@ -208,8 +208,9 @@ pricing decision (no pricing change without an SSoT update).
 | Google OAuth, callback open-redirect guard | BUILT_NOT_PROVEN / PROVEN (unit) |
 | Session refresh, paid routes require auth | PROVEN (unit, static scan of 446 routes) |
 | Return to the workflow after login | PARTIAL (URL only, no prompt stash) |
-| RLS | **FAILED until applied.** 8 tables had no RLS and `tracking_tokens` had a public SELECT policy. Migration `20261008a_rls_internal_tables_and_upload_limits.sql` fixes all 9 and verifies itself; it is written, **not applied** (owner applies it, then runs the Supabase security advisor). `agent_definitions` keeps an authenticated `USING(true)` read policy. No DB-level RLS test (MISSING) |
+| RLS | **Applied.** In the repo's migrations 8 tables had no RLS and `tracking_tokens` had a public SELECT policy; migration `20261008a_rls_internal_tables.sql` fixes all 9 and verifies itself. Checked live on 2026-10-08: **none of the 9 tables exists in Production**, so Production never had this leak; the migration was applied there at 16:06Z as a self-verified no-op that guards any environment built from the older migrations. Security advisor after it: 0 errors, 22 warnings (14 functions without a fixed `search_path`, 3 trigger functions callable over RPC by anon and by authenticated, `vector` in `public`, leaked-password protection off), 23 info (RLS on with no policy, i.e. service-role-only tables, `director_runs` among them). `agent_definitions` keeps an authenticated `USING(true)` read policy. No DB-level RLS test (MISSING) |
 | Admin routes | 3 inconsistent guards; `run-migration` and 2 other routes header-key only (Admin Panel audit thread) |
+| Production schema matches the code | **FAILED** (checked live 2026-10-08 16:05Z). Production `public` has 52 tables; the code (app, lib, components, workers, services; tests excluded) calls `.from()` on 160 names, and **124 of them do not exist in Production** (`webhook_events`, `stripe_events`, `payment_attempts`, `agent_g_*`, `smm_*`, `orders`, `projects`, `messages`, …). Full list and which live features they break: `docs/handoffs/2026-10-08-production-schema-drift.md` |
 
 ## P. Security
 
@@ -218,7 +219,7 @@ pricing decision (no pricing change without an SSoT update).
 | SSRF on every caller-chosen fetch, ffmpeg included | **fixed this run**, PROVEN (unit) — see G |
 | Prompt injection | ReAct observations and Live page reads are labelled untrusted data; no adversarial live test (BUILT_NOT_PROVEN) |
 | Cross-user file access (`/api/studio/library`) | **fixed this run**, PROVEN (unit): `POST` needs a session and accepts only a currently valid signed link to our own storage (probed) or a public URL; `GET` re-signs only the caller's rows, on our project host, in our media buckets. Accepted gap: whoever holds a valid signed link can file that object |
-| Upload MIME / size | **fixed this run**, PROVEN (unit): images, video and audio only (415) and at most 50 MB (413) on `/api/upload` and `/api/upload/sign`; server renders and RVC zips moved to `renders`. The bucket-level cap is in migration `20261008a` (owner applies) |
+| Upload MIME / size | **fixed this run**, PROVEN (unit): images, video and audio only (415) and at most 50 MB (413) on `/api/upload` and `/api/upload/sign`; server renders and RVC zips moved to `renders`. The bucket-level cap is migration `20261008c`, **not applied**: `main` still writes RVC zips and rendered videos to `uploads`, so it is applied right after this branch is live (owner action 3c) |
 | Secrets | none found in logs or the repo; SA keys never created (WIF, keyless) |
 | HawkScan DAST | **not run**: `HAWK_API_KEY` is not set in this environment |
 | High-risk browser actions | n/a: no browser control exists (H) |
@@ -291,11 +292,12 @@ Only the owner can do these. Nothing below was done by Claude.
 | 1 | Deploy the OTP sign-in fix (PR #43; also on this branch) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
 | 1a | Verify the `myavatar.ge` domain in the Resend account whose key is `RESEND_API_KEY` (resend.com/domains → Add Domain → add the TXT / MX records at the DNS host → Verify). Until then every email code, sign-up and password reset is refused by Resend (403), on Preview and in Production | O, §55 "auth blocking normal flow" |
 | 2 | Sign in as admin on the PR #43 Preview alias (password, or Google once that exact alias + `/**` is in Supabase Redirect URLs), then press the Veo smoke button on `/ka/admin/veo-smoke` once (approved clip, ≈ $0.40). AUTH itself is already verified from the build log | L, VIDEO V1-V6 |
-| 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
-| 3a | Apply `supabase/migrations/20261008b_director_runs.sql` (one service-role-only table, RLS on, no client access; it verifies itself) | J, VIDEO V1-V6 |
-| 3b | After 3a and the Veo retry in 2: set `VIDEO_DIRECTOR_RUNS=admin` on Preview only, so an admin can run a storyboard shot by shot (paid Veo per shot) | J, VIDEO V1-V6 |
+| 3 | ~~Apply `supabase/migrations/20261008a_rls_internal_tables.sql`, then run the Supabase security advisor~~ **Done 2026-10-08 16:06Z** (no-op in Production, see O) | O (RLS) |
+| 3a | ~~Apply `supabase/migrations/20261008b_director_runs.sql`~~ **Done 2026-10-08 16:01Z** (table exists, RLS on, anon/authenticated hold no privilege, 0 rows) | J, VIDEO V1-V6 |
+| 3c | Right AFTER this branch is deployed to Production (never before): apply `supabase/migrations/20261008c_uploads_bucket_limits.sql` (50 MB, media only on `uploads`) | P (uploads) |
+| 3b | After the Veo retry in 2: set `VIDEO_DIRECTOR_RUNS=admin` on Preview only (on 2026-10-08 it was added to Production too; remove the Production scope), so an admin can run a storyboard shot by shot (paid Veo per shot) | J, VIDEO V1-V6 |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
-| 5 | Subscribe the Stripe webhook to `charge.refunded` and `charge.dispute.created`; confirm `webhook_events` exists in Production | N |
+| 5 | Subscribe the Stripe **Live** webhook endpoint to `charge.refunded` and `charge.dispute.created` (dashboard.stripe.com/webhooks). `webhook_events` does **not** exist in Production (checked live), so the webhook's dedupe is in-memory only; the credit grant (`sub:<invoice>`) and the reversal refs are idempotent on their own | N |
 | 6 | Before deploying this branch: confirm `deduct_credits` and `SUPABASE_SERVICE_ROLE_KEY` exist in Production (otherwise every paid render is now refused, not given away) | N |
 | 7 | Choose the canonical pricing table (`/pricing` 25/75/149 GEL vs studio 9/29/89 GEL) | M |
 | 8 | Decide the browser-control infrastructure (none exists) | H, BROWSER CONTROL |
@@ -316,8 +318,8 @@ Any one of these means NO LAUNCH.
 | Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O): AUTH-1 code-check fix on PR #43 and this branch, not deployed; AUTH-2 Resend refuses mail until `myavatar.ge` is verified (owner action 1a) |
 | Wrong provider / silent fallback | Silent fallbacks removed on this branch for image, text, music and voice (not deployed). Forbidden providers are still the primary engine for avatar, swap / motion / product ad, 3D, interior, several music modes, and NanoBanana is a reseller (L) |
 | Browser nonfunctional | No browser control exists (H) |
-| RLS failure | 9 tables open until migration `20261008a` is applied (O) |
-| Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is not applied and no live Veo clip yet (J) |
+| RLS failure | None open in Production: the 9 tables do not exist there; `20261008a` applied (O) |
+| Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is applied (2026-10-08) and no live Veo clip yet (J) |
 | Wrong pricing / billing inconsistency | Two contradictory pack tables (M) |
 | Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
 | Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |

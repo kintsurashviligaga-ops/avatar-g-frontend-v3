@@ -402,7 +402,7 @@ export async function uploadBufferAndSign(
       // fileSizeLimit predates large video masters rejects them for size. Raise
       // the cap once and let the next attempt retry. Fail-open: a perms error just
       // falls through to null and the saga compensates.
-      // ⚠️ NEVER the user-upload bucket: its 50 MB cap is deliberate (lib/uploads/policy, migration 20261008a), and
+      // ⚠️ NEVER the user-upload bucket: its 50 MB cap is deliberate (lib/uploads/policy, migration 20261008c), and
       // raising it here would quietly undo that for every signed browser upload. Server renders belong in `renders`.
       if (/maximum allowed size|exceeded|too large|payload too large/i.test(error.message) && !isUserUploadBucket(bucket)) {
         try {

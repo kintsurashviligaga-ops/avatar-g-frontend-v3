@@ -61,7 +61,7 @@ test('every allowlisted type has a stored extension', () => {
 });
 
 test('the uploads bucket migration carries exactly this list and the same 50 MB cap', () => {
-  const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '20261008a_rls_internal_tables_and_upload_limits.sql'), 'utf8')
+  const sql = readFileSync(join(__dirname, '..', '..', 'supabase', 'migrations', '20261008c_uploads_bucket_limits.sql'), 'utf8')
     .replace(/--[^\n]*/g, '');
   const insert = sql.slice(sql.indexOf('INSERT INTO storage.buckets'), sql.indexOf('ON CONFLICT (id) DO UPDATE'));
   const types = [...insert.matchAll(/'([a-z0-9.+-]+\/[a-z0-9.+-]+)'/g)].map((m) => m[1]);

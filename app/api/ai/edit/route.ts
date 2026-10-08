@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
         // Stream the finished master straight to storage as BYTES — no base64 inflation, and
         // uploadBufferAndSign self-heals a size rejection where uploadAndSign silently returns null.
         sink: (buf) => uploadBufferAndSign(
-          'renders', // a concat master can pass the 50 MB `uploads` cap (20261008a): server renders live in renders
+          'renders', // a concat master can pass the 50 MB `uploads` cap (20261008c): server renders live in renders
           `edits/concat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
           buf,
           'video/mp4',

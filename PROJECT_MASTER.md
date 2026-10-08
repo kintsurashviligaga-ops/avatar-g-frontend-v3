@@ -31,14 +31,14 @@ CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 don
 CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
-NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry, apply
-          migrations 20261008a and 20261008b, VIDEO_DIRECTOR_RUNS=admin on Preview, Stripe refund/dispute events, pricing
-          table, browser infra, provider migration plan); then Part 2
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry,
+          VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, 20261008c right after the deploy,
+          pricing table, browser infra, provider migration plan); then Part 2
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
-          (not applied) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
-          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b written, NOT applied) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          (applied 2026-10-08) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
+          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b applied 2026-10-08) · 18 Stripe refund/dispute reversal, ledger fail-closed
           in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
           build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
@@ -47,6 +47,12 @@ MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus 
           text (llmText and /api/pipeline Gemini only), music (Auto = Lyria alone; no MusicGen bed) and voice (no Azure /
           Google behind ElevenLabs), commits 8a2d1b0f and 32abf9ad. Forbidden providers that are still the primary engine
           are listed in the certification §L (Part 2).
+          Owner's "you do Supabase and Stripe" (2026-10-08 15:55 UTC): Production Supabase zwksnayknzggdcenqqxy got
+          20261008b (director_runs, 16:01Z) and 20261008a (RLS, 16:06Z; a no-op there, none of its 9 tables exists).
+          The uploads cap moved to 20261008c, applied only after the deploy (main still writes zips and big videos to
+          uploads). Advisor after: 0 errors, 22 warnings, 23 info. Stripe: the connector reaches only the test sandbox;
+          the myavatar.ge endpoint is in Live mode, so the owner adds the two events. Schema drift found: the code calls
+          124 table names that do not exist in Production (certification §O).
 PHASE CHECKLIST:
 ◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +

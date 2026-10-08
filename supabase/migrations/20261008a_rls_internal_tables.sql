@@ -1,5 +1,7 @@
--- 20261008a — RLS on the internal tables the anon key could read and write, close the public tracking-token list,
--- and cap the `uploads` bucket. NOT APPLIED — the owner applies it.
+-- 20261008a — RLS on the internal tables the anon key could read and write, and close the public tracking-token list.
+-- APPLIED to Production (zwksnayknzggdcenqqxy) on 2026-10-08. None of the nine tables exists there, so it changed
+-- nothing in Production; it locks them down in every environment where an older migration created them.
+-- The `uploads` bucket cap that used to be section 3 of this file is now 20261008c (applied with the deploy).
 --
 -- 1. RLS ON + client privileges off for tables created with RLS never enabled. Supabase grants ALL on every public
 --    table to anon and authenticated, so with RLS off the public anon key could SELECT / INSERT / UPDATE / DELETE:
@@ -22,14 +24,8 @@
 --    /api/tracking/[id] → ShippingService.getShipmentForTracking, already uses the service role and looks one token
 --    up by value. The policy goes and the table becomes service-role only.
 --
--- 3. Storage bucket `uploads` (UPLOAD_BUCKET): 50 MB per object and images / video / audio only — the same policy
---    /api/upload and /api/upload/sign now enforce (lib/uploads/policy.ts, which a test keeps in step with the list
---    below). A signed upload URL is a direct PUT to storage that no route sees, so only the bucket can hold a client
---    to it. Server-side writers that can exceed 50 MB or are not media (rendered videos, RVC zips) now write to
---    `renders` instead. ⚠️ If UPLOAD_BUCKET names a different bucket in production, apply section 3 to that bucket.
---
--- Idempotent: tables missing in this environment are skipped, policies are dropped before they are created,
--- REVOKE of a privilege not held is a no-op, and the bucket row is upserted.
+-- Idempotent: tables missing in this environment are skipped, policies are dropped before they are created, and
+-- REVOKE of a privilege not held is a no-op.
 
 -- ── 1a. Owner-scoped tables ──────────────────────────────────────────────────────────────────────────────────────
 DO $$
@@ -99,23 +95,6 @@ BEGIN
 END
 $$;
 
--- ── 3. The `uploads` bucket: 50 MB, images / video / audio ───────────────────────────────────────────────────────
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES (
-  'uploads', 'uploads', false, 52428800,
-  ARRAY[
-    'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/avif',
-    'video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v', 'video/3gpp', 'video/3gpp2', 'video/x-matroska',
-    'video/x-msvideo', 'video/mpeg', 'video/ogg',
-    'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/x-aac', 'audio/wav',
-    'audio/x-wav', 'audio/wave', 'audio/vnd.wave', 'audio/webm', 'audio/ogg', 'audio/opus', 'audio/flac',
-    'audio/x-flac', 'audio/aiff', 'audio/x-aiff', 'audio/3gpp', 'audio/amr'
-  ]::text[]
-)
-ON CONFLICT (id) DO UPDATE
-  SET file_size_limit = EXCLUDED.file_size_limit,
-      allowed_mime_types = EXCLUDED.allowed_mime_types;
-
 -- ── Self-verification: fail loudly if anything above did not take ────────────────────────────────────────────────
 DO $$
 DECLARE
@@ -156,11 +135,6 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tracking_tokens'
              AND policyname = 'tracking_tokens_public_policy') THEN
     RAISE EXCEPTION '20261008a: tracking_tokens_public_policy still exists';
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'uploads' AND file_size_limit = 52428800
-                 AND allowed_mime_types IS NOT NULL AND NOT ('text/html' = ANY (allowed_mime_types))) THEN
-    RAISE EXCEPTION '20261008a: the uploads bucket limits did not apply';
   END IF;
 END
 $$;
