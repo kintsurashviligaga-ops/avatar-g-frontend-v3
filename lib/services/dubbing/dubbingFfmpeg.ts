@@ -13,8 +13,7 @@
  * Fail-open like the rest of lib/audio: null on any miss, never throws.
  */
 import 'server-only';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,7 +22,8 @@ import { reportError } from '@/lib/observability/report-error';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { fitSpeed } from './dubbingPlan';
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 const WEEK_SEC = 604_800;
 const FF_TIMEOUT_MS = 540_000;
 /** amix stops being reliable with very many inputs, and the arg list gets unwieldy — mix in groups. */

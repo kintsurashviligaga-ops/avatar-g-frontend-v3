@@ -13,15 +13,15 @@
  * the caller keeps the full-length track — trimming must never break a generation.
  */
 import 'server-only';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 
 export async function trimAudioToDuration(url: string, durationSec: number): Promise<string | null> {
   const bin = ffmpegStatic as unknown as string | null;

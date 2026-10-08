@@ -13,7 +13,6 @@ import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replic
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
@@ -817,6 +816,7 @@ const INTERIOR_REDESIGN_MODEL = process.env.REPLICATE_INTERIOR_MODEL || 'black-f
 // it can be unit-tested in isolation (providerRouter pulls in heavy SDKs).
 export { shouldRedesignInterior } from './interiorRouting';
 import { shouldRedesignInterior } from './interiorRouting';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 /** Normalize the many shapes a Replicate image output can take into a URL. */
 function extractReplicateImageUrl(output: unknown): string | null {
@@ -994,23 +994,15 @@ async function loadImageAsDataUrl(imageUrl: string): Promise<string> {
     throw new Error('Interior generation requires a valid image URL or data URL.');
   }
 
-  // SSRF + hang + OOM guards on a caller-supplied URL: block internal hosts, cap the wait, cap the body.
-  // The multimodal caller wraps this and degrades to text on throw, so failing closed here is safe.
-  if (!isPublicHttpUrl(imageUrl)) {
-    throw new Error('Reference image must be a public URL.');
+  // SSRF + hang + OOM guards on a caller-supplied URL (lib/web/publicFetch): public hosts only, every redirect
+  // re-checked, the connection DNS-pinned, an image, 10 MB. The multimodal caller wraps this and degrades to text on
+  // throw, so failing closed here is safe.
+  const got = await fetchPublicBytes(imageUrl, { maxBytes: 10_000_000, accept: /^image\//, timeoutMs: 15_000 });
+  if (!got.ok) {
+    throw new Error(got.error === 'too_large' ? 'Reference image too large (max 10MB).' : got.error === 'blocked_host' || got.error === 'invalid_url'
+      ? 'Reference image must be a public URL.' : 'Unable to load reference image.');
   }
-
-  const response = await fetch(imageUrl, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) {
-    throw new Error(`Unable to load reference image (${response.status})`);
-  }
-
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
-  const bytes = await readBodyWithCap(response, 10_000_000);
-  if (!bytes) {
-    throw new Error('Reference image too large (max 10MB).');
-  }
-  return ensureImageDataUrl(bytes.toString('base64'), contentType);
+  return ensureImageDataUrl(got.bytes.toString('base64'), got.contentType || 'image/jpeg');
 }
 
 function runOutputValidation(input: {

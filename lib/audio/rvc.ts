@@ -27,6 +27,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import JSZip from 'jszip';
 import Replicate from 'replicate';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 
 const exec = promisify(execFile);
 
@@ -51,11 +52,10 @@ export async function prepareDatasetZip(voiceUrl: string, name: string): Promise
   if (!bin || !voiceUrl) return null;
   let dir = '';
   try {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 25_000);
-    const r = await fetch(voiceUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
-    if (!r.ok) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
+    // The voice sample is the caller's: public hosts only, capped while streaming (lib/web/publicFetch).
+    const got = await fetchPublicBytes(voiceUrl, { maxBytes: 50 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs: 25_000 });
+    if (!got.ok) return null;
+    const buf = got.bytes;
     if (buf.byteLength < 2000) return null;
 
     dir = await mkdtemp(join(tmpdir(), 'rvc_'));

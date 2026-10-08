@@ -12,8 +12,7 @@
  * with './node_modules/ffmpeg-static/**' or the binary is absent in the lambda and every op ENOENTs.
  */
 import 'server-only';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,7 +25,8 @@ import {
   type DroppedWindow,
 } from '@/lib/video/sequenceWindows';
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 const WEEK_SEC = 604_800;
 
 function bin(): string | null {

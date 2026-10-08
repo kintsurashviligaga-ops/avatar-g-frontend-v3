@@ -16,6 +16,7 @@ import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { NOTO_SANS_B64 } from './font-data';
 import { captionMaxWidth, captionPad, wrapCaption } from '@/lib/text/wrapCaption';
 import { FIRAGO_REGULAR_B64, FIRAGO_MEDIUM_B64 } from './font-data-firago';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 
 // Fonts passed to resvg EXPLICITLY as buffers — Vercel's librsvg ignores @font-face data
 // URIs (renders tofu), but resvg honours explicit font buffers identically everywhere.
@@ -523,9 +524,10 @@ export async function overlayMasterUrl(videoUrl: string, m: MarketingOverlay): P
   const inPath = join(dir, 'master.mp4');
   const outPath = join(dir, 'master-overlaid.mp4');
   try {
-    const r = await fetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
-    if (!r.ok) return null;
-    await writeFile(inPath, Buffer.from(await r.arrayBuffer()));
+    // A caller can name the master: public only, redirects re-checked, media, at most 400 MB (lib/web/publicFetch).
+    const got = await fetchPublicBytes(videoUrl, { maxBytes: 400 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs: 60_000 });
+    if (!got.ok) return null;
+    await writeFile(inPath, got.bytes);
     const res = await applyMarketingOverlays(inPath, outPath, m); // probes the master's real dims
     if (!res.ok) return null;
     const out = await readFile(outPath);

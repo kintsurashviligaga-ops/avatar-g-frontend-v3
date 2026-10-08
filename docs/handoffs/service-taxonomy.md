@@ -88,7 +88,7 @@ priced by exactly one quote key (`lib/credits/quote.ts`, R5). `boundary` is PROJ
 | video.generate (modes: text, documentary) | Video | video | video | live | google (Veo; V1–V6 unproven) |
 | video.music-video (mode musicvideo) | Video | video | video | live | google |
 | video.product-ad | Video | product | product | live | **violation**: Veo → Kling via Replicate → Ken Burns still |
-| video.character-swap | Video | swap | swap | live | **violation**: Kling via Higgsfield; R5 gap (button quotes `remix`) |
+| video.character-swap | Video | swap | swap | live | **violation**: roop via Replicate (`/api/video/remix` `character`); the Genjutsu panel's swap is Kling via Higgsfield. R5 holds (15 = 15) |
 | video.motion | Video | motion | motion | live | **violation**: Kling via Higgsfield / Replicate |
 | video.vfx | Video | vfx | remix | live | google (Veo); R5 gap |
 | video.remix | Video | remix | remix | live | **violation**: Kling / Wav2Lip / NanoBanana on some ops |
@@ -256,5 +256,5 @@ no longer falls back to OpenAI TTS while `AI_GOOGLE_ONLY` is on (default), prove
 - §51 search: `resolveService` answers KA/EN/RU aliases (dubbing, music video, product ad, lip sync, character swap,
   podcast are all tested) and powers Agent G, but there is no search box that uses it yet: **PARTIAL**.
 - §A boundary: 10 usable services on a violation path (§2). Fixing them is Part 2, blocked on Part 0 AUTH (STOP-1).
-- R5: swap and VFX buttons quote `remix` while the route prices with `lib/genjutsu/pricing.ts`; montage, dubbing and
-  presentation charge nothing. Step 18.
+- R5: re-checked in step 18. Swap, motion, product ad and the Genjutsu panel quote what their routes charge (the earlier
+  "swap / VFX quote `remix`" finding was wrong). Montage, dubbing and presentation charge nothing.

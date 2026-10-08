@@ -1,5 +1,6 @@
 import 'server-only';
 import { getFeatureFlag } from '@/lib/server/feature-flags';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 /**
  * Wav2Lip lip-sync — the OPT-IN, FAIL-OPEN final pass for a music film.
@@ -181,16 +182,10 @@ const HEYGEN_BASE = 'https://api.heygen.com';
 // binary body with Content-Type = the file's mime (NOT multipart form-data).
 const HEYGEN_UPLOAD = 'https://upload.heygen.com';
 
+/** The face is a caller-chosen address: public only, redirects re-checked, an image, at most 10 MB (lib/web/publicFetch). */
 async function faceUrlToBase64(url: string): Promise<{ base64: string; mime: string } | null> {
-  try {
-    const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20_000) });
-    if (!r.ok) return null;
-    const mime = r.headers.get('content-type') || 'image/jpeg';
-    const buf = Buffer.from(await r.arrayBuffer());
-    return buf.byteLength ? { base64: buf.toString('base64'), mime } : null;
-  } catch {
-    return null;
-  }
+  const r = await fetchPublicBytes(url, { maxBytes: 10 * 1024 * 1024, accept: /^image\//, timeoutMs: 20_000 });
+  return r.ok && r.bytes.byteLength ? { base64: r.bytes.toString('base64'), mime: r.contentType || 'image/jpeg' } : null;
 }
 
 /** HeyGen: face URL + audio URL → "heygen:<videoId>" job handle (or null).

@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { renderSubtitleCardPng } from './ffmpeg-overlay';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 import {
   buildCaptionOverlayFilter,
   alignmentToCaptionSegments,
@@ -122,10 +123,10 @@ export async function overlayCaptionsOnUrl(masterUrl: string, alignment: ElevenA
   if (!bin || !masterUrl || !segs.length) return null;
   const dir = await mkdtemp(join(tmpdir(), 'capurl_'));
   try {
-    const res = await fetch(masterUrl);
-    if (!res.ok) return null;
+    const got = await fetchPublicBytes(masterUrl, { maxBytes: 400 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs: 90_000 });
+    if (!got.ok) return null;
     const inPath = join(dir, 'master.mp4');
-    await writeFile(inPath, Buffer.from(await res.arrayBuffer()));
+    await writeFile(inPath, got.bytes);
     const dims = await probeDims(bin, inPath);
     if (!dims) return null;
     const captioned = await burnCaptionSegments(inPath, segs, { width: dims.w, height: dims.h });

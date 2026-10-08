@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { renderTitleCardPng, renderMusicBugPng, renderSubtitleCardPng, splitIntoSubtitleLines, subtitleStripHeight, type MusicBug } from './ffmpeg-overlay';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 
 const exec = (bin: string, args: string[], timeoutMs = 240_000): Promise<{ ok: boolean; err: string }> =>
   new Promise((resolve) => {
@@ -76,9 +77,11 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
   try {
     dir = await mkdtemp(join(tmpdir(), 'mvgfx-'));
     const inPath = join(dir, 'in.mp4');
-    const res = await fetch(videoUrl);
-    if (!res.ok) return null;
-    await writeFile(inPath, Buffer.from(await res.arrayBuffer()));
+    // /api/video/graphics takes this URL from the request: public only, redirects re-checked, media, capped, bounded
+    // in time (lib/web/publicFetch). It used to be a bare fetch with no size or time limit.
+    const got = await fetchPublicBytes(videoUrl, { maxBytes: 400 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs: 90_000 });
+    if (!got.ok) return null;
+    await writeFile(inPath, got.bytes);
     const { w, h, dur, hasAudio } = await probe(bin, inPath);
     const introSec = Math.max(0, Math.min(opts.introSec ?? 10, Math.max(0, dur - 6)));
 

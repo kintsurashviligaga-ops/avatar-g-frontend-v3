@@ -1,16 +1,19 @@
 /**
  * scrape_webpage — STEP 3 agent tool (the agent's "browser" leg).
  *
- * Fetches a URL and extracts readable text (readability-style: drop script/style/nav/svg,
- * collapse tags to text) so the ReAct loop can build a research context before any media
- * step. Bounded (timeout + byte cap + output cap), robots-aware, and NEVER throws — returns
- * a typed structured result. JS-heavy / anti-bot sites (TikTok, IG) are unreliable to scrape;
- * prefer official search APIs for those (the agent is told this via the tool description).
+ * Reads a URL through lib/web/readPage — the same SSRF-safe reader the voice agent uses (every redirect hop re-checked,
+ * the connection DNS-pinned to a public address, a byte cap during the download, one deadline) — so the ReAct loop can
+ * build a research context before any media step. NEVER throws — returns a typed structured result. JS-heavy /
+ * anti-bot sites (TikTok, IG) are unreliable to scrape; prefer official search APIs for those (the agent is told this
+ * via the tool description).
  *
- * The extraction (`htmlToReadableText`) is a pure function → unit-testable with no network.
+ * ⚠️ It used to `fetch(url, { redirect: 'follow' })` after a string check of the FIRST address only: a public page
+ * that 302-redirected to 169.254.169.254 or 127.0.0.1 was read, and its text went back in the agent's step trace.
+ *
+ * `htmlToReadableText` stays as the pure extractor for callers that already hold the HTML.
  */
 import { z } from 'zod';
-import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
+import { readWebPage, type ReadPageOptions } from '@/lib/web/readPage';
 
 export const scrapeWebpageInput = z.object({
   url: z.string().url(),
@@ -61,31 +64,24 @@ export function htmlToReadableText(html: string, maxChars = DEFAULT_MAX_CHARS): 
   return { ...(title ? { title } : {}), text: text.slice(0, maxChars) };
 }
 
-/** Fetch + extract. Fail-soft: always resolves a ScrapeResult, never throws. */
-export async function scrapeWebpage(input: ScrapeWebpageInput): Promise<ScrapeResult> {
+const SCRAPE_ERROR: Record<string, string> = {
+  invalid_url: 'invalid url', blocked_host: 'blocked host', too_many_redirects: 'too many redirects', not_html: 'unsupported content-type',
+  too_large: 'page too large', timeout: 'timeout', fetch_failed: 'fetch failed',
+};
+
+/** Fetch + extract. Fail-soft: always resolves a ScrapeResult, never throws. `io` is for tests (fetch + DNS). */
+export async function scrapeWebpage(input: ScrapeWebpageInput, io: Pick<ReadPageOptions, 'fetchImpl' | 'lookupImpl'> = {}): Promise<ScrapeResult> {
   const parsed = scrapeWebpageInput.safeParse(input);
   if (!parsed.success) return { ok: false, url: String((input as { url?: unknown })?.url ?? ''), error: 'invalid url' };
   const { url } = parsed.data;
-  // SSRF: reject internal-network hosts before the fetch. (redirect:'follow' below still trusts resolved
-  // hops — a redirect-safe walk is the stricter GATED fix; this blocks the direct-private/metadata case.)
-  if (!isPublicHttpUrl(url)) return { ok: false, url, error: 'blocked host' };
   const maxChars = parsed.data.maxChars ?? DEFAULT_MAX_CHARS;
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'MyAvatarBot/1.0 (+https://myavatar.ge)' }, redirect: 'follow' });
-    if (!res.ok) return { ok: false, url, error: `HTTP ${res.status}` };
-    const ctype = res.headers.get('content-type') || '';
-    if (!/text\/html|application\/xhtml/i.test(ctype)) return { ok: false, url, error: `unsupported content-type: ${ctype.split(';')[0] || 'unknown'}` };
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_HTML_BYTES) return { ok: false, url, error: 'page too large' };
-    const { title, text } = htmlToReadableText(buf.toString('utf-8'), maxChars);
-    if (!text) return { ok: false, url, error: 'no readable text' };
-    return { ok: true, url, ...(title ? { title } : {}), text, chars: text.length };
+    const r = await readWebPage(url, { ...io, timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_HTML_BYTES, maxText: maxChars, maxLinks: 0 });
+    if (!r.ok) return { ok: false, url, error: r.error === 'http_error' ? `HTTP ${r.status ?? 'error'}` : SCRAPE_ERROR[r.error] ?? r.error };
+    const text = r.page.text.slice(0, maxChars);
+    if (!text) return { ok: false, url: r.page.url, error: 'no readable text' };
+    return { ok: true, url: r.page.url, ...(r.page.title ? { title: r.page.title } : {}), text, chars: text.length };
   } catch (err) {
-    const aborted = ac.signal.aborted;
-    return { ok: false, url, error: aborted ? 'timeout' : err instanceof Error ? err.message : String(err) };
-  } finally {
-    clearTimeout(timer);
+    return { ok: false, url, error: err instanceof Error ? err.message : String(err) };
   }
 }

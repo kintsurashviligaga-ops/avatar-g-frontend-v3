@@ -38,6 +38,7 @@ jest.mock('../../../../lib/orchestrator/jobs', () => ({
   failJob: jest.fn(async () => undefined),
 }));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
+jest.mock('../../../../lib/web/publicFetch', () => ({ fetchPublicBytes: jest.fn() }));
 
 import { NextRequest } from 'next/server';
 import { GET, POST } from './route';
@@ -46,6 +47,7 @@ import { textToHostedSpeech } from '../../../../lib/chat/filmVoiceover';
 import { recordCompletedFilm, createJob, failJob } from '../../../../lib/orchestrator/jobs';
 import { creditCostFor } from '../../../../lib/credits/pricing';
 import { audioFingerprint, verifyAvatarCharge } from '../../../../lib/billing/avatarCharge';
+import { fetchPublicBytes } from '../../../../lib/web/publicFetch';
 
 const deductMock = deductCredits as jest.MockedFunction<typeof deductCredits>;
 const refundMock = refundDebitByRef as jest.MockedFunction<typeof refundDebitByRef>;
@@ -284,5 +286,37 @@ describe('signed in', () => {
     const j = await (await GET(poll(sj.videoId))).json();
     expect(j.refunded).toBe(false);
     expect(failJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('the presenter face (a caller-chosen address)', () => {
+  const publicBytes = fetchPublicBytes as jest.MockedFunction<typeof fetchPublicBytes>;
+  beforeEach(() => {
+    mockUser = { id: 'user-42' };
+    delete process.env.PRESENTER_TALKING_PHOTO_ID; // the face upload path
+  });
+
+  it('is fetched only through the public-fetch guard, and a refusal names no status', async () => {
+    publicBytes.mockResolvedValueOnce({ ok: false, error: 'blocked_host' });
+    const res = await POST(post({ audioUrl: AUDIO, faceUrl: 'http://169.254.169.254/latest/meta-data/' }).req);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ success: false, error: 'presenter face unreachable' });
+    expect(publicBytes).toHaveBeenCalledWith('http://169.254.169.254/latest/meta-data/', expect.objectContaining({ accept: expect.any(RegExp), maxBytes: expect.any(Number) }));
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('169.254'))).toBe(false);
+  });
+
+  it("a caller's own face is never cached for the next caller", async () => {
+    let n = 0;
+    const uploads: string[] = [];
+    global.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/v1/talking_photo')) { uploads.push(String(init?.headers && (init.headers as Record<string, string>)['Content-Type'])); return Response.json({ data: { talking_photo_id: `tp-${++n}` } }); }
+      return fetchMock(input);
+    }) as typeof fetch;
+    publicBytes.mockResolvedValueOnce({ ok: true, bytes: Buffer.from([1, 2, 3]), contentType: 'image/png', url: 'https://me.example/face.png' });
+    await POST(post({ audioUrl: AUDIO, faceUrl: 'https://me.example/face.png' }).req);
+    await POST(post({ audioUrl: AUDIO }).req); // the default face, another caller
+    await POST(post({ audioUrl: AUDIO }).req); // the default face again: now cached
+    expect(uploads).toEqual(['image/png', expect.any(String)]);
   });
 });

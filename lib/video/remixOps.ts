@@ -14,8 +14,7 @@
 import 'server-only';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,7 +44,8 @@ function predictionProgress(status?: string, logs?: unknown): number {
   return ord * 1_000_000 + logLen;
 }
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 const BIN = ffmpegStatic as unknown as string | null;
 
 const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p'];
