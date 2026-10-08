@@ -8,35 +8,55 @@
  *   2. render;
  *   3. refundProduce()   — compensate (refund) if the render did not succeed. Only refunds what was charged.
  *
- * Degrades exactly like the ledger: when the deduct_credits RPC isn't provisioned it reports `skipped`
- * → proceed WITHOUT charging (fail-open, zero regression), and there's nothing to refund.
+ * When the ledger cannot charge at all (no service-role client, or the deduct_credits RPC isn't provisioned) it
+ * reports `skipped`. ⚠️ IN PRODUCTION THAT IS NOW A REFUSAL (`billing_unavailable`), NOT A FREE RENDER: the old
+ * fail-open meant a missing env var or a dropped function handed every paid render out for nothing. Only the
+ * documented dev bypass — `next dev` (NODE_ENV==='development') — and the test runner keep rendering uncharged.
  */
 import 'server-only';
 import { deductCredits, refundCredits, type LedgerReason } from './ledger';
+import { reportError } from '@/lib/observability/report-error';
 
 export interface Reservation {
-  /** false → the route MUST fail-fast (do NOT render): balance too low or a DB error. */
+  /** false → the route MUST fail-fast (do NOT render): balance too low, a DB error, or billing unavailable. */
   proceed: boolean;
   /** true → credits were actually debited → refund on render failure. false → skipped/free (nothing to refund). */
   charged: boolean;
-  reason: 'ok' | LedgerReason;
+  reason: 'ok' | LedgerReason | 'billing_unavailable';
   balance?: number;
 }
 
 export { produceRef, bodyFingerprint, idemRef } from './idemRef';
 
+/** May a render proceed UNCHARGED when the ledger is absent? Only outside production (`next dev`, jest). */
+export function unbilledRenderAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== 'production';
+}
+
+/** The machine code a route reports for a refused reservation: only a real shortfall is "insufficient credits". */
+export function reservationErrorCode(r: Pick<Reservation, 'reason'>): 'insufficient_credits' | 'billing_unavailable' {
+  return r.reason === 'insufficient' ? 'insufficient_credits' : 'billing_unavailable';
+}
+
 /**
  * Reserve `amount` credits BEFORE the render. Returns whether the route may proceed and whether a real
  * debit happened (so the caller knows to refund on failure).
- *   ok          → proceed, charged.
+ *   ok           → proceed, charged.
  *   insufficient → do NOT proceed (fail-fast: no compute for a user who can't pay).
  *   error        → do NOT proceed (a genuine DB failure — safer to abort than to render for free).
- *   skipped      → proceed, NOT charged (RPC absent → fail-open, exactly the prior behavior).
+ *   skipped      → production: do NOT proceed (`billing_unavailable`, alerted);
+ *                  `next dev` / tests: proceed, NOT charged (the dev bypass).
  */
 export async function reserveProduce(userId: string, amount: number, ref: string): Promise<Reservation> {
   const r = await deductCredits(userId, amount, ref);
   if (r.ok) return { proceed: true, charged: true, reason: 'ok', balance: r.balance };
-  if (r.reason === 'skipped') return { proceed: true, charged: false, reason: 'skipped' };
+  if (r.reason === 'skipped') {
+    if (unbilledRenderAllowed()) return { proceed: true, charged: false, reason: 'skipped' };
+    reportError(new Error('billing unavailable: the credit ledger could not charge a paid render — refused'), {
+      fn: 'reserveProduce', userId, amount, ref,
+    });
+    return { proceed: false, charged: false, reason: 'billing_unavailable' };
+  }
   return { proceed: false, charged: false, reason: r.reason ?? 'error', balance: r.balance };
 }
 
