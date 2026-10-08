@@ -1,6 +1,6 @@
 /** @jest-environment node */
 /**
- * storage-adapter vs the capped `uploads` bucket (migration 20261008a): server writes are typed from their path when a
+ * storage-adapter vs the capped `uploads` bucket (migration 20261008c): server writes are typed from their path when a
  * provider answered octet-stream (the bucket only takes media types), and the "raise the size limit" self-heal never
  * touches the user-upload bucket — it would silently undo the 50 MB cap for every signed browser upload.
  */

@@ -3,14 +3,15 @@
  *
  * Takes Agent N's RoomGeometry + the client brief and produces a cinematic
  * StyleGuide JSON (named style, palette, furniture, lighting temperature,
- * materials, mood, ambient SFX for Agent J) — NOT textures. Powered by Claude.
+ * materials, mood, ambient SFX for Agent J) — NOT textures. Powered by Gemini (lib/ai/llmText, no second provider).
  *
  * Request:  { geometry: RoomGeometry, brief: string }
  * Response: { style: StyleGuide, walkthrough: string[], model: string, degraded: boolean }
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
+import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import {
   buildStyleSystemPrompt, buildStyleUserPrompt, normalizeRoomGeometry,
@@ -21,7 +22,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
-const MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 interface Body { geometry?: unknown; brief?: string }
 
@@ -46,24 +46,12 @@ export async function POST(req: NextRequest) {
   const geometry = normalizeRoomGeometry(body.geometry);
   const brief = String(body.brief ?? '').trim();
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
   const finish = (style = DEFAULT_STYLE_GUIDE, model = 'deterministic', degraded = true) =>
     NextResponse.json({ style, walkthrough: buildWalkthroughPrompts(geometry, style), model, degraded });
 
-  if (!apiKey) return finish();
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({
-      model: MODEL, max_tokens: 1200,
-      system: buildStyleSystemPrompt(),
-      messages: [{ role: 'user', content: buildStyleUserPrompt(geometry, brief) }],
-    });
-    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-    const parsed = extractJson(text);
-    if (!parsed) return finish();
-    const style = normalizeStyleGuide(parsed);
-    return NextResponse.json({ style, walkthrough: buildWalkthroughPrompts(geometry, style), model: MODEL, degraded: false });
-  } catch {
-    return finish();
-  }
+  const text = await llmText({ user: buildStyleUserPrompt(geometry, brief), system: buildStyleSystemPrompt(), maxTokens: 1200, json: true, timeoutMs: 25_000 });
+  const parsed = text ? extractJson(text) : null;
+  if (!parsed) return finish();
+  const style = normalizeStyleGuide(parsed);
+  return NextResponse.json({ style, walkthrough: buildWalkthroughPrompts(geometry, style), model: geminiTierModel('flash'), degraded: false });
 }

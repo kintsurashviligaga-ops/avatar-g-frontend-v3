@@ -244,17 +244,20 @@ no longer falls back to OpenAI TTS while `AI_GOOGLE_ONLY` is on (default), prove
 | `lib/studio/tools.ts` | KEEP as the runtime list; grouped by `lib/catalog/nav.ts` (the old PRIMARY/MORE split is gone from every menu) |
 | `lib/services/metadata.ts`, `lib/services/workspaceForms.ts` | KEEP as page content; CTAs resolve through `LEGACY_SLUG_TO_SERVICE` |
 | `lib/services/serviceCatalogue.ts` | still read by OmniStudio path targets and the Skills tab; DEPRECATE into the catalog |
-| `lib/registry.ts` (10 importers), `lib/services/registry.ts` (6), `lib/service-registry.ts` (6), `lib/app/services.ts` (3), `lib/services/catalog.ts` (2) | still imported by legacy API routes (`/api/pipeline`, `/api/agents/*`, `/api/app/services/*`) and dead shells; DEPRECATE with those routes. Their credit tables must not be shown to anyone (§36, pricing step 18). |
+| `lib/registry.ts` (9 importers), `lib/services/registry.ts` (6), `lib/service-registry.ts` (6), `lib/app/services.ts` (3), `lib/services/catalog.ts` (2) | still imported by legacy API routes (`/api/pipeline`, `/api/agents/*`, `/api/app/services/*`) and dead shells; DEPRECATE with those routes. Their credit tables must not be shown to anyone (§36, pricing step 18). |
 | `components/hub/AiHubShell.tsx`, `components/workspace/WorkspaceDashboard.tsx` | **deleted** with the shells |
 
 ## 7. Status honesty and what is still open
 
 - §26 counts: `/services` and the Agent G system prompt read the catalog; `messages/{ka,en,ru}.json` lost the hard-coded
   "13 Services". Other hard-coded counts outside these pages are not yet swept (step 21/SEO).
-- §50 analytics identity: the catalog id is the analytics id, but the events (category viewed, service opened, quote shown,
-  generation confirmed / completed / failed, saved) are **MISSING**.
+- §50 analytics identity: the catalog id is the analytics id. The events (category viewed, service opened, quote shown,
+  generation confirmed / completed / failed, saved) fire from `lib/analytics/serviceEvents.ts`: **BUILT_NOT_PROVEN**
+  (certification §C lists what they cover and what not).
 - §51 search: `resolveService` answers KA/EN/RU aliases (dubbing, music video, product ad, lip sync, character swap,
-  podcast are all tested) and powers Agent G, but there is no search box that uses it yet: **PARTIAL**.
+  podcast are all tested) and powers Agent G. `searchServices` uses the same aliases plus labels and modes for the
+  sidebar's search box (half-typed words, Agent G's pick first, coming-soon shown as unavailable): **BUILT_NOT_PROVEN**
+  until deployed. A found service opens with its mode (Music video → Video in music-video mode).
 - §A boundary: 10 usable services on a violation path (§2). Fixing them is Part 2, blocked on Part 0 AUTH (STOP-1).
 - R5: re-checked in step 18. Swap, motion, product ad and the Genjutsu panel quote what their routes charge (the earlier
   "swap / VFX quote `remix`" finding was wrong). Montage, dubbing and presentation charge nothing.

@@ -81,6 +81,9 @@ Veo failure — surfaced honestly and refunded by the existing per-leg rollback 
 | `GCP_VEO_BUCKET` | `gs://bucket[/prefix]` for Veo outputs and uploaded inputs |
 | `GCP_PROJECT_NUMBER`, `GCP_SERVICE_ACCOUNT_EMAIL`, `GCP_WORKLOAD_IDENTITY_POOL_ID`, `GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID` | keyless auth: Vercel OIDC → GCP STS → service-account impersonation (recommended) |
 | `GCP_SERVICE_ACCOUNT_KEY` | alternative: base64 of a service-account JSON key |
+| `GEMINI_TRANSPORT` | the non-Veo Google model calls (`lib/ai/google/transport`): unset / `gemini_api` = the API key (today), `vertex` = the same project + Workload Identity as above, no bucket; anything else fails closed. Not covered: Deep Research (Interactions API, Gemini API only), Live, Imagen, health probes |
+| `GCP_GEMINI_LOCATION` | Gemini on Vertex, default `global` (Gemini 3.x, `gemini-3.1-flash-image`, Lyria 3 answered there in the Part 0 T2 test) |
+| `GCP_PREDICT_LOCATION` | Vertex `:predict` models (memory embeddings `gemini-embedding-001`), default `us-central1` |
 | `VEO_MODEL_STANDARD` / `VEO_MODEL_FAST` / `VEO_MODEL_LITE` | override model ids (the -001 ids list retirement "November 17, 2026 or later") |
 | `GEMINI_VEO_MODEL`, `GEMINI_VEO_RESOLUTION`, `GEMINI_VEO_ENABLED` | Gemini-API transport (unchanged) |
 | `VEO_NATIVE_CAMERA_CONTROL` | `1` sends Vertex `cameraControl` with a first frame |

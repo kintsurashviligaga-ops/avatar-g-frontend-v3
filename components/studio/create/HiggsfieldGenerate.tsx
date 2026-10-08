@@ -241,6 +241,7 @@ export function HiggsfieldGenerate(p: HiggsfieldGenerateProps) {
         locale={p.locale}
         onClick={() => void onClick()}
         testId={p.buttonTestId ?? 'create-generate'}
+        service={p.service === 'image' ? 'image.generate' : 'video.generate'}
       />
     </div>
   );

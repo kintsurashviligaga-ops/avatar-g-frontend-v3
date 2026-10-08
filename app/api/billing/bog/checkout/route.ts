@@ -110,12 +110,19 @@ export async function POST(request: NextRequest) {
     .insert({ shop_order_id: shopOrderId, user_id: userId, status: 'pending', locale, ...row });
   if (insertErr) return json({ error: 'order_mapping_unavailable', error_code: 'BOG_ORDER_ROW' }, 503);
 
-  const markInitFailed = () =>
-    svc
+  // ⚠️ SAY WHY. A refused order used to leave only `init_failed`, so four Production checkouts (2026-10-03…06) failed
+  // with no trace of the cause. The reason (BOG's OAuth or order answer — never a secret) goes on the row and the log.
+  let initFailure = 'unknown';
+  const markInitFailed = () => {
+    const reason = `init (${cfg.environment}): ${initFailure}`.slice(0, 200);
+    // eslint-disable-next-line no-console
+    console.error(`[bog checkout] order ${shopOrderId} not created — ${reason}`);
+    return svc
       .from('bog_orders')
-      .update({ status: 'init_failed', updated_at: new Date().toISOString() })
+      .update({ status: 'init_failed', reject_reason: reason, updated_at: new Date().toISOString() })
       .eq('shop_order_id', shopOrderId)
       .then(() => undefined, () => undefined);
+  };
 
   const origin = request.nextUrl.origin;
   const back = (outcome: 'success' | 'failed') =>
@@ -132,6 +139,8 @@ export async function POST(request: NextRequest) {
     locale,
     ttlMinutes: 30,
     cardOnly: isPlan,
+  }, (failure) => {
+    initFailure = failure;
   });
   if (!order) {
     await markInitFailed();

@@ -61,7 +61,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
         activeId={p.form.template} onPick={(id) => p.onPatch({ template: id })}
         addsLine={picked ? interiorAddsLine(picked, tl) : null} emptyLine={c.carouselNone} />
       <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="interior" />
-      <ShootFooter copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
+      <ShootFooter service="image.interior" copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
         canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="interior"
         onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} />
     </div>

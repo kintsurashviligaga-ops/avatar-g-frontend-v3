@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(__dirname, '..', '..');
-const SQL = readFileSync(join(ROOT, 'supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql'), 'utf8')
+const SQL = readFileSync(join(ROOT, 'supabase/migrations/20261008a_rls_internal_tables.sql'), 'utf8')
   .replace(/--[^\n]*/g, '')
   .toLowerCase();
 

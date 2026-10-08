@@ -1,7 +1,6 @@
 /**
  * filmDispatchSignal — the "is this a FILM render?" routing predicate, kept in a DEPENDENCY-FREE module so it
  * can be unit-tested in isolation (providerRouter itself pulls in heavy provider SDKs that break under jest).
- * Mirrors the specialistRouting.ts pattern.
  */
 
 /**

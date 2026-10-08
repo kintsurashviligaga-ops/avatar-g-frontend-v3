@@ -33,7 +33,7 @@ jest.mock('../../../lib/orchestrator/gemini-guard', () => ({ resolveGeminiKey: (
 const mockExecute = jest.fn();
 jest.mock('../../../lib/ai/chatEngine', () => ({ execute: (...a: unknown[]) => mockExecute(...a) }));
 jest.mock('../../../lib/agents/agentRegistry', () => ({ getAllAgents: () => [] }));
-jest.mock('../../../lib/agent-g-orchestrator', () => ({ AGENT_G_SYSTEM_PROMPT: 'SYSTEM' }));
+jest.mock('../../../lib/agent-g-orchestrator', () => ({ agentGSystemPrompt: () => 'SYSTEM' }));
 const mockAnthropicCall = jest.fn();
 jest.mock('@ai-sdk/anthropic', () => ({ createAnthropic: () => (id: string) => ({ id }) }));
 jest.mock('ai', () => ({ generateText: (...a: unknown[]) => mockAnthropicCall(...a) }));

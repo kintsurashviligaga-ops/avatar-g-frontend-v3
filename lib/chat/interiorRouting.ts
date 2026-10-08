@@ -4,8 +4,7 @@
  * PHASE 56 — the Interior REDESIGN routing decision, isolated in a
  * dependency-free module so it can be unit-tested without importing
  * providerRouter (which pulls in the Replicate SDK and other heavy provider
- * deps that need web globals the jest env lacks). Mirrors the specialistRouting
- * split for `prefersClaudeSpecialist`.
+ * deps that need web globals the jest env lacks). Same split as filmDispatchSignal.
  *
  * A "redesign" re-renders the SAME uploaded room (new materials / furniture /
  * lighting) as a flat depth-locked "after" photo. The WorldLabs path builds a

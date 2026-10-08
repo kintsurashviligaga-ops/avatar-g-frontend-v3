@@ -1,7 +1,8 @@
 /**
  * lib/chat/platformPrompt.ts — the Google-only platform prompt for the chat model (and any Gemini surface that
  * wants the same ground truth). It REPLACES the chat route's use of AGENT_G_SYSTEM_PROMPT + the inline chat rules +
- * platformKnowledge('en'); lib/agent-g-orchestrator.ts stays for its legacy callers.
+ * platformKnowledge('en'). Since 2026-10-08 lib/agent-g-orchestrator.ts returns this prompt too, so the older routes
+ * (/api/chat/stream, /api/agent-g/chat, Telegram) no longer speak the old one.
  *
  * What the old ~13.5 KB prompt got wrong, and why each piece below is built the way it is:
  *

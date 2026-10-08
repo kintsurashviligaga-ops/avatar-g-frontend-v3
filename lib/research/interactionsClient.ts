@@ -16,6 +16,10 @@
  * a second run. Every doubtful outcome — a timeout, a dropped connection, a 5xx, a 2xx with no usable id — is reported as
  * `ambiguous`, and the caller refunds instead of re-sending. Nothing in this file retries.
  *
+ * GEMINI_TRANSPORT DOES NOT APPLY HERE (Part 2 A2): the Interactions API and its Deep Research agent exist on the Gemini
+ * API only, so this client is pinned to it — the contract's `selectFixed('gemini_api')`, stated, never a fallback. With
+ * `GEMINI_TRANSPORT=vertex` a research run still bills the API key's account, not the Google Cloud project.
+ *
  * Injectable `fetch` and key, so the whole client is unit-tested against fixtures with no network.
  */
 import 'server-only';

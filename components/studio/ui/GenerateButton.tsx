@@ -10,8 +10,10 @@
  *   · Loading keeps the footprint (no layout shift) and says what is happening.
  *   · 44 px+ target, safe-area aware when `stickyBottom`, token colours only (text on the accent is `text-app-bg`).
  */
+import { useEffect } from 'react';
 import { Loader2, Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
+import { trackQuoteShown, type ServiceSurface } from '@/lib/analytics/serviceEvents';
 
 type Lang = 'ka' | 'en' | 'ru';
 const lang = (l: string | null | undefined): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -40,14 +42,21 @@ export interface GenerateButtonProps {
   testId?: string;
   /** A glyph before the label ("♪✦ Create" on the Music screen). Decorative: the accessible name is unchanged. */
   icon?: React.ReactNode;
+  /** The catalog service this button runs (lib/catalog/services.ts): a shown price is reported as `service_quote_shown`. */
+  service?: string | null;
+  /** Where the quote is shown, for that event. */
+  quoteSurface?: ServiceSurface;
 }
 
 export function GenerateButton({
   label, credits, free = false, loading = false, loadingLabel, disabled = false, insufficient = false,
-  locale = 'en', onClick, stickyBottom = false, className = '', testId, icon,
+  locale = 'en', onClick, stickyBottom = false, className = '', testId, icon, service, quoteSurface = 'panel',
 }: GenerateButtonProps) {
   const c = COPY[lang(locale)];
   const priced = typeof credits === 'number' && credits > 0 && !free;
+  useEffect(() => {
+    if (priced && service) trackQuoteShown(service, credits as number, quoteSurface);
+  }, [priced, credits, service, quoteSurface]);
   const text = insufficient && priced ? c.topUp : label;
   const accessible = free
     ? `${text} — ${c.free}`

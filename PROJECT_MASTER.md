@@ -27,18 +27,25 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
-CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
+CURRENT PHASE: Part 2 (Vertex Migration + Provider Cleanup) — Part 1 complete 2026-10-08 (docs/handoffs/part-1-report.md);
+          Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
 CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
-NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry, apply
-          migrations 20261008a and 20261008b, VIDEO_DIRECTOR_RUNS=admin on Preview, Stripe refund/dispute events, pricing
-          table, browser infra, provider migration plan); then Part 2
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry,
+          VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, BOG credentials / merchant
+          activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
+          pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
+          (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
+          the API key) → ModelCatalog data ✓ (lib/models, runtime check, admin report) → pickers on the catalog and
+          PR #44's provider removals after action 9); Veo T1 passed 15:49Z, so A1 (Veo Production env) now waits only on
+          the owner (a Production change); Gemini on Vertex AUTH + INFERENCE VERIFIED on Preview 18:28Z, so switching
+          Production's GEMINI_TRANSPORT is the owner's call too. §50 service analytics events built (e144b27b).
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
-          (not applied) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
-          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b written, NOT applied) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          (applied 2026-10-08) · 17 V1–V6 director domain layer, since 2026-10-08 wired into the studio's storyboard Approve behind
+          VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b applied 2026-10-08) · 18 Stripe refund/dispute reversal, ledger fail-closed
           in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
           build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
@@ -47,6 +54,12 @@ MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus 
           text (llmText and /api/pipeline Gemini only), music (Auto = Lyria alone; no MusicGen bed) and voice (no Azure /
           Google behind ElevenLabs), commits 8a2d1b0f and 32abf9ad. Forbidden providers that are still the primary engine
           are listed in the certification §L (Part 2).
+          Owner's "you do Supabase and Stripe" (2026-10-08 15:55 UTC): Production Supabase zwksnayknzggdcenqqxy got
+          20261008b (director_runs, 16:01Z) and 20261008a (RLS, 16:06Z; a no-op there, none of its 9 tables exists).
+          The uploads cap moved to 20261008c, applied only after the deploy (main still writes zips and big videos to
+          uploads). Advisor after: 0 errors, 22 warnings, 23 info. Stripe: the connector reaches only the test sandbox;
+          the myavatar.ge endpoint is in Live mode, so the owner adds the two events. Schema drift found: the code calls
+          124 table names that do not exist in Production (certification §O).
 PHASE CHECKLIST:
 ◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
@@ -60,8 +73,13 @@ PHASE CHECKLIST:
           T1 Veo: owner pressed /ka/admin/veo-smoke 14:45:29 UTC; Vertex accepted the submit via WIF (log "[veo] submit
           transport=vertex … → ok", aiplatform PredictLongRunning 200 from SA myavatar-veo), then the operation FAILED
           "Veo 3 prompt enhancement cannot be disabled" (op 71e35314-…): lib/veo/payload.ts sent enhancePrompt:false, so every
-          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch. Veo is NOT
-          INFERENCE VERIFIED until the retry produces the clip; the failed op is expected unbilled (Billing confirms).
+          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch.
+          T1 retry: INFERENCE VERIFIED (Veo) 2026-10-08 15:49 UTC via WIF on the PR #43 Preview (75eef69): submit 15:48:21,
+          veo-3.1-fast-generate-001, 4 s, 720p, op fbe5ed00-…; done, no error, raiMediaFilteredCount 0; MP4 in
+          gs://myavatar-veo-outputs (638,497 bytes, h264 1280x720 24 fps + AAC, 4.01 s, frame matches the prompt). Cloud
+          Monitoring: PredictLongRunning from SA myavatar-veo only; the AI Studio key unused. ≈ $0.40. The two failed ops
+          produced no video (Billing confirms they are unbilled). Gemini text on Vertex from the Preview runtime: AUTH
+          VERIFIED 18:13 UTC (Part 2 A2).
           Credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
           No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
@@ -69,9 +87,29 @@ PHASE CHECKLIST:
           guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
           Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
           script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
-◐ Part 1: Audit + Foundation — restarted 2026-10-08; §60 certification done (final-launch-certification.md), not launch ready.
-◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
-          self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
+✓ Part 1: Audit + Foundation — complete 2026-10-08: audit, foundation contracts (lib/contracts), report
+          docs/handoffs/part-1-report.md; §60 certification done (final-launch-certification.md), not launch ready.
+◐ Part 2: Vertex Migration — in progress on claude/launch-certification-wmvitt (2026-10-08). Earlier WIP on unmerged
+          origin/codex/vertex-ai-migration (503829dc) + PR #44 (green) is to be merged in, not redone (15 conflicts).
+          Part 0 T1 passed 15:49Z (STOP-1 cleared); A1 (Veo Production env) is a Production change, so it waits on the owner.
+          Step 1 done: Claude removed from the chat router (specialist-first and fallback) and Agent G's personality
+          (Gemini only, explicit failure; certification §L).
+          Owner 2026-10-08 17:16 UTC ("not now", action 9): Replicate / Udio / Higgsfield / HeyGen stay; PR #44 is NOT
+          merged whole — only its Google transport is ported. The Udio / MusicGen picker rows wait for action 9 too.
+          A2 groundwork done: lib/ai/google/transport.ts (contract selector, GEMINI_TRANSPORT=gemini_api|vertex, no
+          fallback) + provider.ts; Gemini client, llmText, chat stream, Agent G, storyboard image and Lyria on it,
+          then STT, read-aloud TTS, memory embeddings (Vertex :predict) and the orchestrator script / interior Gemini
+          legs. Deep Research stays on the API key (Interactions API is Gemini-API only; stated in its client). Live,
+          Imagen and the health probes are not on it. AUTH VERIFIED on Preview 2026-10-08T18:13Z (countTokens 200 via
+          WIF, GET /api/preview/google-check); INFERENCE VERIFIED 18:28:55Z (one owner-approved gemini-3.8-flash reply
+          from the Preview build identity, HTTP 200, 67 tokens; scripts/gcp/preview-inference-check.cjs). Production
+          unchanged while unset; switching it is an owner step.
+          D (ModelCatalog): lib/models/catalog.ts (28 Google models, verifiedAt only from dated calls, Gemini 2.5 text
+          left out), lib/models/verify.ts (free runtime check: models.list / Vertex countTokens; missing → off, unknown →
+          review queue), GET /api/admin/model-catalog. Studio pickers still read lib/providers/catalogue (action 9).
+          B1 Claude slice 2: the orchestrator script / produce / image / music / interior routes plan with Gemini
+          (llmText), no Anthropic SDK left under app/api/orchestrator; Claude only behind AI_GOOGLE_ONLY=0,
+          VIDEO_GOOGLE_ONLY=0 or FILM_VISION_QA=1.
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
@@ -86,7 +124,7 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-· STOP-1: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
+· ~~STOP-1~~ CLEARED 2026-10-08 15:49Z (Veo INFERENCE VERIFIED, see Part 0). Was: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
   with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
   code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once more, on the Preview build
   that carries 75eef69 (≈ $0.40, approved 11:47; the first press failed on enhancePrompt:false and produced no clip).
@@ -108,13 +146,21 @@ BLOCKERS:
   Replicate/Udio keys are set in Production. Admin auth uses 3 inconsistent guards; run-migration and 2 other routes are
   header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
   Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
+  §55 admin P1: BUILT_NOT_PROVEN on PR #45 (one admin guard, run-migration off by default + admin session + own key).
+  Owner to confirm Supabase 'Confirm email' is ON.
+· STORAGE-1 (P0, found 2026-10-08 19:40Z, read-only check): Production storage.objects has a SELECT policy for role
+  public with USING (true) ("Public read music 1q2q05_0", made in the dashboard, names no bucket), so the public anon
+  key can list and download every object in every bucket, the private uploads (2,589 objects) and studio included.
+  Gateway logs 2026-09-30 19:00Z → 2026-10-08 19:45Z: 0 storage requests as anon/authenticated besides public-bucket
+  reads and signed uploads. Fix supabase/migrations/20261008d_storage_read_scope.sql (narrow to bucket_id = 'music',
+  self-verifying, safe before or after the deploy), NOT APPLIED: waits for the owner's yes (Production DDL).
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
 · Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
 · Part 0 Test plan: docs/handoffs/2026-10-08-gcp-part0-test-plan.md
 · Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
-· Part 1 Report: pending (docs/handoffs/part-1-report.md)
+· Part 1 Report: docs/handoffs/part-1-report.md (2026-10-08)
 · Part 2 Report: pending
 · Part 3 Report: pending
 · Part 4 Report: pending
