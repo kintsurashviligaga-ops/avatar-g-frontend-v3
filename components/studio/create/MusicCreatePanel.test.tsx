@@ -175,25 +175,34 @@ describe('controls that would do nothing are not drawn', () => {
     expect(screen.queryByTestId('music-add-voice')).toBeNull();
   });
 
-  test('only the half that works is drawn', async () => {
-    fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, references: { cover: false, voice: true } }) : respond({})));
+  test('v32: neither is drawn even where the server says a reference provider runs — Lyria takes no audio reference', async () => {
+    fetchMock.mockImplementation((url: string) => (String(url).includes('/engines') ? respond({ ...STATUS, references: { cover: true, voice: true } }) : respond({})));
     render(<Host />);
-    await waitFor(() => expect(screen.queryByTestId('music-add-audio')).toBeNull());
-    expect(screen.getByTestId('music-add-voice')).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/ai/music/engines', expect.anything()));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByTestId('music-add-audio')).toBeNull();
+    expect(screen.queryByTestId('music-add-voice')).toBeNull();
   });
 
-  test('an unconfigured engine (Udio) and MusicGen-for-a-song are listed but cannot be picked', async () => {
+  test('v32: Lyria is the only engine — Udio, ElevenLabs Music and MusicGen are not listed, even where the server calls them configured', async () => {
     render(<Host />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('music-engine-pill'));
     await waitFor(() => expect(screen.getByTestId('engine-lyria').getAttribute('aria-disabled')).toBeNull());
-    expect(screen.getByTestId('engine-udio').getAttribute('aria-disabled')).toBe('true');
-    expect(screen.getByTestId('engine-musicgen').getAttribute('data-blocked')).toBe('instrumental-only');
-    fireEvent.click(screen.getByTestId('engine-udio'));
-    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBeNull();
-    fireEvent.click(screen.getByTestId('engine-elevenlabs-music'));
-    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('elevenlabs-music');
-    expect(screen.getByTestId('music-engine-pill').textContent).toContain('ElevenLabs Music');
+    for (const retired of ['udio', 'elevenlabs-music', 'musicgen']) expect(screen.queryByTestId(`engine-${retired}`)).toBeNull();
+    expect(screen.getByTestId('engine-auto')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('engine-lyria'));
+    expect(window.localStorage.getItem(MUSIC_ENGINE_KEY)).toBe('lyria');
+    expect(screen.getByTestId('music-engine-pill').textContent).toContain('Lyria 3');
+  });
+
+  test('a remembered pick of a retired engine is never sent: it reads as Auto', async () => {
+    window.localStorage.setItem(MUSIC_ENGINE_KEY, 'udio');
+    render(<Host />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('music-engine-pill'));
+    await waitFor(() => expect(screen.getByTestId('engine-auto').getAttribute('aria-checked')).toBe('true'));
+    expect(screen.queryByTestId('engine-udio')).toBeNull();
   });
 });
 

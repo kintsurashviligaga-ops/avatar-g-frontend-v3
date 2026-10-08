@@ -4,9 +4,15 @@
  * said); the price on the button is the server's estimate and the tap sends exactly it as `confirmedGel`; a changed price waits
  * for another tap; a guest is sent to sign-in before anything is asked; a model this deployment did not enable is never a live
  * button; the panel's pictures are uploaded once and reach the model on its own media key.
+ *
+ * ⚠️ v32 (lib/providers/policy) retired Higgsfield: the catalogue has no Higgsfield row any more, so no panel mounts this
+ * button (components/studio/create/imageCreate.test.tsx pins that) and /api/estimate + /api/generate refuse every model
+ * (lib/studio/saga.test.ts). The component is exercised here against a faked server only; with no catalogue row its
+ * summary names the model by its id.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MODELS, publicModel } from '@/lib/providers/registry';
+import { catalogueEntry } from '@/lib/providers/catalogue';
 import { HiggsfieldGenerate, type HiggsfieldGenerateProps } from './HiggsfieldGenerate';
 import { __resetStudioModelsCache } from './useStudioModels';
 
@@ -77,7 +83,8 @@ test('the request is the model\'s own params — the panel\'s shape and size map
   await waitFor(() => expect(button().getAttribute('data-price')).toBe('13'));
   expect(estimates()).toHaveLength(1);
   expect(estimates()[0]!.body).toEqual({ modelId: 'hf/soul-2', params: { prompt: 'a lighthouse', aspect_ratio: '9:16', resolution: '720p' } });
-  expect(screen.getByTestId('hf-summary').textContent).toBe('Soul 2 — photoreal image · 9:16 · 720p');
+  expect(catalogueEntry('hf/soul-2')).toBeNull(); // v32: no catalogue row, so no display name — the id stands in
+  expect(screen.getByTestId('hf-summary').textContent).toBe('hf/soul-2 · 9:16 · 720p');
 });
 
 test('the tap IS the confirmation: it sends the price on the button, then follows the job to its result', async () => {
@@ -157,7 +164,8 @@ test('video: a length the model cannot render is CLAMPED and said; the panel\'s 
     modelId: 'hf/kling-3-std-i2v',
     params: { prompt: 'the sea moves', image_url: 'omni-uploads/user-1/ref-1.jpg', duration: 15, sound: 'off' },
   });
-  expect(screen.getByTestId('hf-summary').textContent).toBe('Kling 3 — image to video · 15 s · no sound');
+  expect(catalogueEntry('hf/kling-3-std-i2v')).toBeNull();
+  expect(screen.getByTestId('hf-summary').textContent).toBe('hf/kling-3-std-i2v · 15 s · no sound');
 });
 
 test('video: a model that needs a photo says so on the button until the panel has one', async () => {

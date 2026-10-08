@@ -3,6 +3,9 @@
  * for a service. Pinned: name · badge · "best for" on every row; rows this surface cannot run are present, dimmed, say why
  * in the UI language and do nothing on a tap; a radio group with one Tab stop and arrows that skip the dimmed rows; a pick
  * closes the sheet; the server's availability is asked only once the sheet opens; and never a price.
+ *
+ * v32 (lib/providers/policy): the catalogue holds Google rows only (Veo for video), so the dimmed rows here are Google rows the
+ * server says cannot run right now — and no answer from the server can add a retired provider's row.
  */
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
@@ -30,6 +33,9 @@ function Harness(over: Partial<ModelPickerProps> & { initial?: string; onPick?: 
 }
 
 const dialog = () => screen.getByRole('dialog', { name: 'Model' });
+/** The server answers (once the sheet opens) with these availabilities. */
+const answer = (models: Array<{ id: string; available: boolean; reason: string | null }>) =>
+  fetchMock.mockImplementation(async () => ({ ok: true, json: async () => ({ models }) }));
 const radios = () => within(dialog()).getAllByRole('radio');
 const radio = (id: string) => radios().find((r) => r.getAttribute('data-model') === id)!;
 
@@ -45,12 +51,13 @@ describe('the chip', () => {
     expect(dialog().getAttribute('aria-modal')).toBe('true');
   });
 
-  test('Georgian first: the chip, the title, the rows and the reasons speak the UI language', () => {
+  test('Georgian first: the chip, the title, the rows and the reasons speak the UI language', async () => {
+    answer([{ id: 'google/veo-3.1', available: false, reason: 'not_enabled' }]);
     render(<Harness locale="ka" />);
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     const sheet = screen.getByRole('dialog', { name: 'მოდელი' });
     expect(sheet.textContent).toContain('ყოველდღიური Reels და რეკლამა');
-    expect(sheet.textContent).toContain('ჯერ არ არის ჩართული');
+    await waitFor(() => expect(sheet.textContent).toContain('ჯერ არ არის ჩართული'));
     expect(sheet.textContent).toContain('სხვა მოდელები');
   });
 });
@@ -72,15 +79,18 @@ describe('the rows', () => {
     expect(dialog().textContent).not.toMatch(/credit|кредит|კრედიტ|₾|\$|✦/i);
   });
 
-  test('a row this surface cannot run is in the list, dimmed, says why, and a tap on it does nothing', () => {
+  test('a row that cannot run right now is in the list, dimmed, says why, and a tap on it does nothing', async () => {
+    answer([{ id: 'google/veo-3.1', available: false, reason: 'not_configured' }]);
     const onPick = jest.fn();
     render(<Harness onPick={onPick} />);
     fireEvent.click(screen.getByTestId('model-picker-chip'));
-    const kling = radio('hf/kling-3-std-t2v');
-    expect(kling.getAttribute('aria-disabled')).toBe('true');
-    expect(kling.getAttribute('data-blocked')).toBe('not_enabled');
-    expect(within(kling).getByTestId('model-block').textContent).toBe('Not enabled yet');
-    fireEvent.click(kling);
+    // v32: the video list is the three Veo rows — no retired provider is listed, dimmed or otherwise.
+    expect(radios().map((r) => r.getAttribute('data-model')).sort()).toEqual(['google/veo-3.1', 'google/veo-3.1-fast', 'google/veo-3.1-lite']);
+    await waitFor(() => expect(radio('google/veo-3.1').getAttribute('aria-disabled')).toBe('true'));
+    const veo = radio('google/veo-3.1');
+    expect(veo.getAttribute('data-blocked')).toBe('not_configured');
+    expect(within(veo).getByTestId('model-block').textContent).toBe('Unavailable right now');
+    fireEvent.click(veo);
     expect(onPick).not.toHaveBeenCalled();
     expect(dialog()).toBeTruthy();
     // The dimmed rows sit after the open ones, under "Other models".
@@ -120,32 +130,31 @@ describe('the rows', () => {
 });
 
 describe('what the server says', () => {
-  test('asked only once the sheet opens; its answer opens a row that is enabled elsewhere as "In Studio β"', async () => {
-    fetchMock.mockImplementation(async () => ({
-      ok: true,
-      json: async () => ({ models: [
-        { id: 'google/veo-3.1-fast', available: true, reason: null },
-        { id: 'hf/kling-3-std-t2v', available: true, reason: null },
-        { id: 'hf/kling-3-pro-t2v', available: false, reason: 'studio_off' },
-      ] }),
-    }));
-    render(<Harness />);
+  test('asked only once the sheet opens; on another surface its answer names where a row runs ("In the Video tool") — and it cannot add a retired row', async () => {
+    answer([
+      { id: 'google/veo-3.1-fast', available: true, reason: null },
+      { id: 'google/veo-3.1', available: false, reason: 'busy' },
+      // A stale server still naming retired Higgsfield models: dropped — the list is the catalogue's.
+      { id: 'hf/kling-3-std-t2v', available: true, reason: null },
+      { id: 'hf/kling-3-pro-t2v', available: false, reason: 'studio_off' },
+    ]);
+    render(<Harness runners={['studio']} />);
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     expect(fetchMock).toHaveBeenCalledWith('/api/studio/catalogue?service=video', expect.anything());
-    await waitFor(() => expect(within(radio('hf/kling-3-std-t2v')).getByTestId('model-block').textContent).toBe('In Studio β'));
-    expect(radio('hf/kling-3-std-t2v').getAttribute('aria-disabled')).toBe('true'); // still not runnable HERE
-    expect(within(radio('hf/kling-3-pro-t2v')).getByTestId('model-block').textContent).toBe('Not enabled yet');
+    await waitFor(() => expect(within(radio('google/veo-3.1-fast')).getByTestId('model-block').textContent).toBe('In the Video tool'));
+    expect(radio('google/veo-3.1-fast').getAttribute('aria-disabled')).toBe('true'); // still not runnable HERE
+    expect(within(radio('google/veo-3.1')).getByTestId('model-block').textContent).toBe('Busy — try again shortly');
+    expect(radios().some((r) => r.getAttribute('data-model')!.startsWith('hf/'))).toBe(false);
   });
 
-  test('a surface that knows its own availability (Studio β) passes it and asks nothing; it lists only its own rows', () => {
+  test('a surface that knows its own availability (Studio β) passes it and asks nothing; it lists only its own rows — none under v32', () => {
     render(<Harness runners={['studio']} include="runnable" initial="hf/kling-3-std-t2v"
       status={{ 'hf/kling-3-std-t2v': { available: true, reason: null }, 'hf/seedance-2.5-t2v': { available: true, reason: null } }} />);
     fireEvent.click(screen.getByTestId('model-picker-chip'));
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(radios().every((r) => r.getAttribute('data-model')!.startsWith('hf/'))).toBe(true);
-    expect(radios().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model')))
-      .toEqual(['hf/kling-3-std-t2v', 'hf/seedance-2.5-t2v']);
+    // The surface's own status says two Higgsfield models run; the catalogue has no Studio β row, so nothing is listed.
+    expect(within(dialog()).queryAllByRole('radio')).toEqual([]);
   });
 
   test('controlled by the surface\'s own trigger: no chip, open / onOpenChange, and a header slot above the list', () => {

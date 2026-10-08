@@ -48,10 +48,10 @@ const generate = () => screen.getByTestId('create-generate');
 beforeEach(() => { try { window.localStorage.clear(); } catch { /* jsdom always has it */ } });
 
 describe('the rows, in the reference\'s order', () => {
-  test('header → upload → prompt → templates → advanced → chips → Generate', () => {
+  test('header → prompt → templates → advanced → chips → Generate (v32: no upload row — Imagen takes no reference picture)', () => {
     const { container } = show();
     const rows = [...container.querySelectorAll('[data-create-row]')].map((el) => el.getAttribute('data-create-row')).filter((r) => r !== 'footer');
-    expect(rows).toEqual(['header', 'upload', 'prompt', 'templates', 'advanced', 'options', 'generate']);
+    expect(rows).toEqual(['header', 'prompt', 'templates', 'advanced', 'options', 'generate']);
   });
 
   test('the header is the tool name with a chevron that opens the tool switcher, and a ✕ where the sheet can close', () => {
@@ -195,44 +195,47 @@ describe('Generate never silently does nothing', () => {
 });
 
 describe('the chips show the live values and open large pickers', () => {
-  test('aspect · quality · count read from the props, in that order', () => {
-    const { container, rerenderWith } = show({ aspect: '9:16', quality: 'ultra', count: 4 });
+  test('aspect · quality · count read from the props, in that order — a legacy 4K value reads the one size there is', () => {
+    const { container, rerenderWith } = show({ aspect: '9:16', quality: 'ultra' as never, count: 4 });
     const chips = ['chip-aspect', 'chip-quality', 'chip-count'].map((id) => screen.getByTestId(id));
-    expect(chips.map((c) => c.textContent)).toEqual(['9:16', '4K', '4']);
+    expect(chips.map((c) => c.textContent)).toEqual(['9:16', '1K', '4']);
     const row = container.querySelector('[data-create-row="options"]')!;
     expect(chips.every((c) => row.contains(c))).toBe(true);
     expect(chips[0]!.compareDocumentPosition(chips[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    rerenderWith({ aspect: '21:9', quality: 'standard', count: 2 });
-    expect(chips.map((c) => c.textContent)).toEqual(['21:9', '1K', '2']);
-    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 21:9', 'Quality: 1K', 'Count: 2']);
+    rerenderWith({ aspect: '3:4', quality: 'standard', count: 2 });
+    expect(chips.map((c) => c.textContent)).toEqual(['3:4', '1K', '2']);
+    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual(['Aspect ratio: 3:4', 'Quality: 1K', 'Count: 2']);
   });
 
-  test('the aspect picker is a sheet of ten ratios, each a ≥ 44 px tile with its drawn shape; the current one is checked', () => {
-    const { p } = show({ aspect: '4:5' });
+  test('the aspect picker is a sheet of the five native Imagen ratios, each a ≥ 44 px tile with its drawn shape; the current one is checked', () => {
+    const { p } = show({ aspect: '3:4' });
     fireEvent.click(screen.getByTestId('chip-aspect'));
     const dialog = screen.getByRole('dialog', { name: 'Aspect ratio' });
     const options = within(dialog).getAllByRole('radio');
     expect(options.map((o) => o.textContent)).toEqual([...IMG_ASPECTS]);
     expect(options.every((o) => /min-h-\[(6[8-9]|[7-9]\d)px\]/.test(o.className))).toBe(true);
     expect(options.every((o) => o.querySelector('span[aria-hidden="true"]'))).toBe(true);
-    expect(options.filter((o) => o.getAttribute('aria-checked') === 'true').map((o) => o.textContent)).toEqual(['4:5']);
+    expect(options).toHaveLength(5);
+    expect(options.filter((o) => o.getAttribute('aria-checked') === 'true').map((o) => o.textContent)).toEqual(['3:4']);
     fireEvent.click(options[1]!); // 16:9
     expect(p.onAspect).toHaveBeenCalledWith('16:9');
     expect(screen.queryByRole('dialog', { name: 'Aspect ratio' })).toBeNull();
   });
 
-  test('the quality picker names the model at each size and prices it from the quote', () => {
-    const { p } = show({ quality: 'high' });
+  test('v32: the quality picker offers the one size Imagen renders here (1K), names the engine and prices it from the quote', () => {
+    const { p } = show({ quality: 'standard' });
     fireEvent.click(screen.getByTestId('chip-quality'));
     const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
-    expect(options.map((o) => o.querySelector('span.text-\\[15px\\]')?.textContent)).toEqual(['1K', '2K', '4K']);
-    expect(options[0]!.textContent).toContain('Nano Banana V2');
-    expect(options[2]!.textContent).toContain('Nano Banana Pro');
+    expect(options.map((o) => o.querySelector('span.text-\\[15px\\]')?.textContent)).toEqual(['1K']);
+    expect(options[0]!.textContent).toContain('Imagen');
+    expect(options[0]!.textContent).not.toMatch(/Nano Banana|2K|4K/);
+    expect((options[0] as HTMLButtonElement).disabled).toBe(false);
+    expect(options[0]!.getAttribute('aria-checked')).toBe('true');
     const price = creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en');
     for (const o of options) expect(o.textContent).toContain(price);
     expect(options.every((o) => o.className.includes('min-h-[56px]'))).toBe(true);
-    fireEvent.click(options[2]!);
-    expect(p.onQuality).toHaveBeenCalledWith('ultra');
+    fireEvent.click(options[0]!);
+    expect(p.onQuality).toHaveBeenCalledWith('standard');
   });
 
   test('the count picker prices each choice from the quote', () => {
@@ -248,9 +251,9 @@ describe('the chips show the live values and open large pickers', () => {
   });
 
   test('arrow keys move through a picker and Escape closes it', () => {
-    show();
-    fireEvent.click(screen.getByTestId('chip-quality'));
-    const dialog = screen.getByRole('dialog', { name: 'Quality' });
+    show({ count: 2 });
+    fireEvent.click(screen.getByTestId('chip-count'));
+    const dialog = screen.getByRole('dialog', { name: 'How many images' });
     const options = within(dialog).getAllByRole('radio');
     options[1]!.focus();
     fireEvent.keyDown(options[1]!, { key: 'ArrowDown' });
@@ -260,7 +263,7 @@ describe('the chips show the live values and open large pickers', () => {
     // One Tab stop: only the checked radio is tabbable.
     expect(options.map((o) => o.tabIndex)).toEqual([-1, 0, -1]);
     act(() => { fireEvent.keyDown(window, { key: 'Escape' }); });
-    expect(screen.queryByRole('dialog', { name: 'Quality' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'How many images' })).toBeNull();
   });
 
   test('on a desktop the picker is a popover anchored to the chip (not the sheet), closed by Escape or an outside press', () => {
@@ -279,20 +282,24 @@ describe('the chips show the live values and open large pickers', () => {
   });
 });
 
-describe('the model row: the studio\'s ModelPicker — Google first and the default, Higgsfield opt-in, no price', () => {
+describe('the model row: the studio\'s ModelPicker — v32: Google Imagen only, Auto the default, no price', () => {
   const rows = () => within(screen.getByRole('dialog', { name: 'Model' })).getAllByRole('radio');
   const row = (id: string) => rows().find((r) => r.getAttribute('data-model') === id)!;
   const realFetch = global.fetch;
-  /** GET /api/studio/catalogue as this deployment would answer: the listed Higgsfield models run, the rest are not enabled. */
+  /**
+   * GET /api/studio/catalogue as a deployment would answer — including a STALE server that still says some retired Higgsfield
+   * models run (an old instance mid-deploy). The picker lists the catalogue's rows only, so no answer can add one.
+   */
   const deployment = (runs: string[]) => {
     __resetCatalogueStatusCache();
     __resetStudioModelsCache();
     global.fetch = jest.fn(async (url: string) => {
       const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
       if (url.startsWith('/api/studio/catalogue')) {
-        return ok({ models: catalogueFor('image').map((e) => (e.provider === 'higgsfield'
-          ? { id: e.id, available: runs.includes(e.id), reason: runs.includes(e.id) ? null : 'not_enabled' }
-          : { id: e.id, available: true, reason: null })) });
+        return ok({ models: [
+          ...catalogueFor('image').map((e) => ({ id: e.id, available: true, reason: null })),
+          ...runs.map((id) => ({ id, available: true, reason: null })),
+        ] });
       }
       if (url.startsWith('/api/studio/models')) return ok({ models: MODELS.map(publicModel).filter((m) => runs.includes(m.id)) });
       return ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response;
@@ -300,117 +307,105 @@ describe('the model row: the studio\'s ModelPicker — Google first and the defa
   };
   afterEach(() => { global.fetch = realFetch; });
 
-  test('Google\'s Nano Banana first (Auto checked); every Higgsfield image model listed, dimmed where this deployment cannot run it', async () => {
-    deployment([]);
+  test('the three Google Imagen rows, Auto checked — no Higgsfield row, even where a stale server says one runs', async () => {
+    deployment(['hf/soul-2']);
     show();
     fireEvent.click(screen.getByTestId('model-row'));
-    const hf = catalogueFor('image').filter((e) => e.provider === 'higgsfield').map((e) => e.id);
-    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro', ...hf]);
-    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    expect(catalogueFor('image').every((e) => e.provider === 'google')).toBe(true);
+    expect(rows().map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
     expect(rows().filter((r) => r.getAttribute('aria-disabled') !== 'true').map((r) => r.getAttribute('data-model'))).toEqual(['nb/auto', 'nb/v2', 'nb/pro']);
     expect(row('nb/auto').getAttribute('aria-checked')).toBe('true');
-    expect(row('nb/auto').textContent).toContain('V2 at 1K and 2K, Pro at 4K');
+    expect(row('nb/auto').textContent).toContain('Google Imagen images from text at the default size.');
     expect(row('nb/pro').textContent).toContain('Max quality'); // the speed/quality badge
-    for (const id of hf) expect(row(id).getAttribute('aria-disabled')).toBe('true');
     // ⚠️ No price anywhere in the model list — the request names the model and the server quotes it.
     const dialog = screen.getByRole('dialog', { name: 'Model' });
     expect(dialog.textContent).not.toContain(creditsLabel(quoteCredits({ tool: 'image', count: 1 }), 'en'));
     expect(dialog.textContent).not.toMatch(/credit/i);
+    expect(dialog.textContent).not.toMatch(/Soul|Higgsfield/);
   });
 
-  test('a pick is one tap: it closes the sheet, the row reads the model, the browser remembers it — a dimmed row does nothing', async () => {
+  test('a pick is one tap: it closes the sheet, the row reads the model, the browser remembers it', async () => {
     deployment([]);
     show();
     fireEvent.click(screen.getByTestId('model-row'));
-    await waitFor(() => expect(row('hf/soul-2').textContent).toContain('Not enabled yet'));
-    fireEvent.click(row('hf/soul-2'));
-    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy(); // still open: nothing happened
     fireEvent.click(row('nb/v2'));
     expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
-    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana V2');
+    expect(screen.getByTestId('model-row').textContent).toContain('Imagen');
     expect(window.localStorage.getItem('myavatar:model:image')).toBe('nb/v2');
   });
 
-  test('a Higgsfield model this deployment runs is a real choice: Generate becomes the saga\'s (its own price), the ×N chip steps aside', async () => {
+  test('a stale server cannot make a Higgsfield model a choice: no saga button, the ×N chip stays, Cmd/Ctrl+Enter runs the Google route', async () => {
     deployment(['hf/soul-2']);
-    const { p } = show({ prompt: '' }); // no prompt: nothing to price, so the test ends with no request in flight
+    const { p } = show({ prompt: 'a fox' });
     fireEvent.click(screen.getByTestId('model-row'));
-    await waitFor(() => expect(row('hf/soul-2').getAttribute('aria-disabled')).toBeNull());
-    fireEvent.click(row('hf/soul-2'));
-    expect(window.localStorage.getItem('myavatar:model:image')).toBe('hf/soul-2');
-    expect(screen.getByTestId('model-row').textContent).toContain('Soul 2');
-    expect(screen.getByTestId('hf-generate').getAttribute('data-model')).toBe('hf/soul-2');
-    expect(screen.queryByTestId('chip-count')).toBeNull();
-    // The panel's own Generate is not reachable for it: Cmd/Ctrl+Enter does not run the Google route.
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    expect(rows().some((r) => r.getAttribute('data-model') === 'hf/soul-2')).toBe(false);
+    act(() => { fireEvent.keyDown(window, { key: 'Escape' }); });
+    expect(screen.queryByTestId('hf-generate')).toBeNull();
+    expect(screen.getByTestId('chip-count')).toBeTruthy();
     fireEvent.keyDown(screen.getByTestId('create-prompt'), { key: 'Enter', ctrlKey: true });
-    expect(p.onGenerate).not.toHaveBeenCalled();
-    // It reads the model's own parameters (Studio β's description) and says what it will render.
-    await waitFor(() => expect(screen.getByTestId('hf-summary').textContent).toBe('Soul 2 — photoreal image · 1:1 · 1080p'));
+    expect(p.onGenerate).toHaveBeenCalledTimes(1);
   });
 
-  test('a remembered Higgsfield pick the deployment no longer runs falls back to Google — once the server has said so', async () => {
+  test('a remembered Higgsfield pick (from before v32) reads as Auto at once — the request can never name it', async () => {
     window.localStorage.setItem('myavatar:model:image', 'hf/soul-2');
     deployment([]);
-    show();
-    await waitFor(() => expect(window.localStorage.getItem('myavatar:model:image')).toBeNull());
+    const { p } = show({ prompt: 'a fox' });
     expect(screen.getByTestId('model-row').textContent).toContain('Auto');
     expect(screen.queryByTestId('hf-generate')).toBeNull();
+    fireEvent.click(generate());
+    expect(p.onGenerate).toHaveBeenCalledTimes(1);
   });
 
-  test('a model without the size on screen moves the size chip to one it has (Nano Banana Pro starts at 2K) and names the gap', () => {
-    const { p } = show({ quality: 'standard', model: 'nb/pro', onModel: jest.fn() });
-    expect(p.onQuality).toHaveBeenCalledWith('high');
+  test('a legacy size on screen (2K from an old preset) moves the chip to the one size every model has, 1K', () => {
+    const { p } = show({ quality: 'high' as never, model: 'nb/pro', onModel: jest.fn() });
+    expect(p.onQuality).toHaveBeenCalledWith('standard');
     fireEvent.click(screen.getByTestId('chip-quality'));
     const options = within(screen.getByRole('dialog', { name: 'Quality' })).getAllByRole('radio');
-    expect((options[0] as HTMLButtonElement).disabled).toBe(true);
-    expect(options[0]!.textContent).toContain('Nano Banana Pro does not render this size');
-    expect(options[1]!.textContent).toContain('Nano Banana Pro');
+    expect(options).toHaveLength(1);
+    expect((options[0] as HTMLButtonElement).disabled).toBe(false);
+    expect(options[0]!.textContent).toContain('Imagen');
   });
 
   test('controlled: `model` / `onModel` override the browser\'s pick', () => {
     const onModel = jest.fn();
     show({ model: 'nb/pro', onModel });
-    expect(screen.getByTestId('model-row').textContent).toContain('Nano Banana Pro');
+    expect(screen.getByTestId('model-row').textContent).toContain('Imagen');
+    expect(screen.getByTestId('model-row').textContent).not.toContain('Auto');
     fireEvent.click(screen.getByTestId('model-row'));
+    expect(row('nb/pro').getAttribute('aria-checked')).toBe('true');
     fireEvent.click(row('nb/auto'));
     expect(onModel).toHaveBeenCalledWith('nb/auto');
   });
 });
 
-describe('the reference picture: the route takes one', () => {
-  test('empty: the dashed card says "Choose an image to upload (max 1)" and picks a single image file', () => {
-    const { p, container } = show();
+describe('the reference picture: v32 — the route takes none (Imagen has no edit adapter yet)', () => {
+  test('empty: no upload card and no file input at all — nothing invites a picture the route would refuse', () => {
+    const { container } = show();
+    expect(container.querySelector('[data-create-row="upload"]')).toBeNull();
+    expect(screen.queryByTestId('reference-input')).toBeNull();
+    expect(screen.queryByText(/Choose an image to upload/)).toBeNull();
+  });
+
+  test('a picture already attached (from chat) is shown dimmed with a plain "remove it" note; the picker is shut and Remove works', () => {
+    const { p, container } = show({ references: [{ src: 'data:image/png;base64,AAAA', name: 'fox.png' }] });
     const row = container.querySelector('[data-create-row="upload"]')!;
-    expect(row.textContent).toContain('Choose an image to upload');
-    expect(row.textContent).toContain('(max 1)');
+    expect(row).toBeTruthy();
+    expect(screen.getByAltText('fox.png').parentElement!.className).toContain('opacity-45');
+    expect(row.textContent).toContain('This mode cannot use a photo. Remove the attached image.');
     const input = screen.getByTestId('reference-input') as HTMLInputElement;
-    expect(input.accept).toBe('image/*');
-    expect(input.multiple).toBe(false);
-    const a = new File(['a'], 'a.png', { type: 'image/png' });
-    const b = new File(['b'], 'b.png', { type: 'image/png' });
-    fireEvent.change(input, { target: { files: [a, b] } });
-    // A second file is dropped before it reaches the studio: it would only be ignored by the route.
-    expect(p.onAddReference).toHaveBeenCalledWith([a]);
-  });
-
-  test('the file input is a SIBLING of its label (a nested input cancels the picker on iOS)', () => {
-    show();
-    const input = screen.getByTestId('reference-input');
+    expect(input.disabled).toBe(true);
+    // The file input stays a SIBLING of its label (a nested input cancels the picker on iOS).
     const label = document.querySelector(`label[for="${input.id}"]`)!;
-    expect(label).toBeTruthy();
     expect(label.contains(input)).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
+    expect(p.onRemoveReference).toHaveBeenCalledWith(0);
   });
 
-  test('filled: the picture, a remove, a replace — and a plain note when more than one is attached', () => {
-    const one = show({ references: [{ src: 'data:image/png;base64,AAAA', name: 'fox.png' }] });
-    expect(screen.getByAltText('fox.png')).toBeTruthy();
-    expect(screen.queryByRole('status')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove image' }));
-    expect(one.p.onRemoveReference).toHaveBeenCalledWith(0);
-    one.unmount();
-    show({ references: [{ src: 'data:image/png;base64,AAAA' }, { src: 'data:image/png;base64,BBBB' }] });
-    expect(screen.getByRole('status').textContent).toBe('Only the first image is used.');
-    expect(screen.getAllByRole('button', { name: 'Remove image' })).toHaveLength(2);
+  test('the note speaks the language', () => {
+    show({ locale: 'ka', references: [{ src: 'data:image/png;base64,AAAA' }] });
+    expect(document.querySelector('[data-create-row="upload"]')!.textContent).toContain('ამ რეჟიმში ფოტო არ გამოიყენება');
   });
 });
 
