@@ -153,7 +153,8 @@ BLOCKERS:
   key can list and download every object in every bucket, the private uploads (2,589 objects) and studio included.
   Gateway logs 2026-09-30 19:00Z → 2026-10-08 19:45Z: 0 storage requests as anon/authenticated besides public-bucket
   reads and signed uploads. Fix supabase/migrations/20261008d_storage_read_scope.sql (narrow to bucket_id = 'music',
-  self-verifying, safe before or after the deploy), NOT APPLIED: waits for the owner's yes (Production DDL).
+  self-verifying, safe before or after the deploy). CLEARED: applied to Production 2026-10-08 21:27:25Z after the
+  owner's yes; pg_policies shows (bucket_id = 'music'), and as anon only the 10 music objects are visible.
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
