@@ -1,19 +1,20 @@
 # GCP Part 0 — Vertex AI WIF: ანგარიში (2026-10-08)
 
-სტატუსი: **GCP და Vercel — CONFIGURED (read-back-ით დადასტურებული). AUTH VERIFIED — Preview build-ის იდენტობით (§9.7). Veo-ს INFERENCE ჯერ არ არის.** Billing Alerts — 3 budget (§10).
+სტატუსი: **GCP და Vercel — CONFIGURED (read-back-ით დადასტურებული). AUTH VERIFIED — Preview build-ის და function-ის იდენტობით (§9.7, §9.8). INFERENCE VERIFIED (Veo) — 15:49 UTC, Vertex-მა WIF-ით 4-წამიანი კლიპი შექმნა (§9.8); ორი ადრეული მცდელობა ჩვენი payload-ის გამო ჩავარდა, შესწორებულია (75eef69).** Gemini Vertex-ით Preview-ის runtime-იდან — INFERENCE VERIFIED 18:28 UTC (Master Task-ის თრედი, §10.4). Billing Alerts — 3 budget (§10). დარჩენილია owner-ის პუნქტი 7: credit-მა ხარჯი დაფარა თუ არა (Billing-ის ფოტო ~24 სთ-ში, §10.5).
 owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply გაეშვა owner-ის Mac-ზე `myavatar.ge@gmail.com`-ით (§9).
 
 | ფენა | სტატუსი |
 |---|---|
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
 | CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
-| AUTH VERIFIED (STS exchange + impersonation) | **AUTH VERIFIED** (Preview build-ის იდენტობით, 2026-10-08 14:21:20 UTC): `env=preview` `token:ok bucket:ok sign:ok` (§9.7). function-ში header-იდან token-ის აღებას probe (§9.4) ან Veo კლიპი (T1) დაამტკიცებს. ელფოსტის კოდით შესვლა ორი მიზეზით არ მუშაობს, Production-შიც: კოდის შემოწმება (§9.5, შესწორებულია) და Resend-ის დომენი (§9.6, owner-ის ქმედება) |
-| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); ელოდება owner-ის სესიას PR #43-ის alias-ზე და ერთ ღილაკს `/ka/admin/veo-smoke`-ზე (§10.5) |
+| AUTH VERIFIED (STS exchange + impersonation) | **AUTH VERIFIED** (Preview build-ის იდენტობით, 2026-10-08 14:21:20 UTC): `env=preview` `token:ok bucket:ok sign:ok` (§9.7). function-ის runtime-ში (header-იდან token) — 14:45:29 UTC, Vertex-მა `myavatar-veo` SA-ს მოთხოვნა 200-ით მიიღო (§9.8). ელფოსტის კოდით შესვლა ორი მიზეზით არ მუშაობს, Production-შიც: კოდის შემოწმება (§9.5, შესწორებულია) და Resend-ის დომენი (§9.6, owner-ის ქმედება) |
+| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **INFERENCE VERIFIED** (15:49 UTC): operation `fbe5ed00-…` done, შეცდომის გარეშე; `gs://myavatar-veo-outputs/…/sample_0.mp4` — 4.01 წმ, 1280×720 h264 + AAC, 638,497 B (§9.8). ორი ადრეული მცდელობა (14:45, 14:52) ჩავარდა `Veo 3 prompt enhancement cannot be disabled`-ით (ჩვენი payload), ვიდეო არ შექმნილა; შესწორება 75eef69 |
+| Gemini Vertex-ით Preview-ის runtime-იდან (cert branch, `GEMINI_TRANSPORT=vertex`) | **AUTH VERIFIED** 18:13 UTC, **INFERENCE VERIFIED** 18:28 UTC — `gemini-3.8-flash` 200, WIF, API key-ის გარეშე (Master Task-ის თრედი, §10.4) |
 | Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11; Google-ის metrics-ითაც (§10.5) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
 | Least-privilege WIF კონფიგურაცია | **APPLIED** — `scripts/gcp/part0-wif.sh` |
 | Billing: ანგარიში, Alerts | **PROVEN** — ერთადერთი ანგარიში; 3 budget, read-back (§10.1–10.2) |
-| AI მოთხოვნები Vertex-ით? (owner-ის პუნქტი 4) | **NO** — Vertex-ზე მხოლოდ Veo-ა და მხოლოდ Preview-ში; Production ყველაფერს API key-ით უშვებს (§10.4) |
+| AI მოთხოვნები Vertex-ით? (owner-ის პუნქტი 4) | **Preview: Veo და Gemini — დიახ** (Gemini 18:00 UTC-დან, `GEMINI_TRANSPORT=vertex`). **Production: NO** — ყველაფერი API key-ით; გადართვა owner-ის გადაწყვეტილებაა (§10.4) |
 | ჩუმი fallback / აკრძალული provider-ები (პუნქტი 5) | **NOT EXCLUDED** — ჩამონათვალი §10.4-ში; Preview-ის Veo ტესტი მათ არ ეხება |
 
 ## 0. ანგარიში
@@ -147,6 +148,8 @@ Vercel-ის დოკის მაგალითი წერს `getSubjectT
 რისკი, რომელიც მხოლოდ ტესტით დადასტურდება: `aiplatform.endpoints.predict` საკმარისობა Veo publisher model-ისთვის
 და Service Agent-ისთვის objectCreator-ის საკმარისობა (Veo არსებულ ობიექტს არ უნდა გადააწეროს). თუ INFERENCE ტესტი
 `PERMISSION_DENIED`-ს დააბრუნებს კონკრეტული permission-ის სახელით, ემატება მხოლოდ ის.
+**შედეგი (15:49 UTC, §9.8): ორივე საკმარისი აღმოჩნდა** — `PredictLongRunning` 200 SA-ის სახელით, ხოლო service agent-მა
+`sample_0.mp4` bucket-ში ჩაწერა. დამატებითი permission არ დასჭირდა.
 
 ## 5. API-ები
 | API | სტატუსი (audit) | სჭირდება |
@@ -182,7 +185,13 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 - `MODE=plan` fake `gcloud`-ით: ბრძანებები, condition და principal-ები სწორად იბეჭდება (§4).
 - TypeScript/Jest: ამ branch-ის ცვლილებებს (admin veo-smoke, provider-probe, email OTP, build-ის AUTH შემოწმება) თავისი unit test-ები აქვს (§9.4, §9.5, §9.7, §10.5);
   `tsc` და `eslint` სუფთაა. სრული baseline-ს launch-certification თრედი ფლობს.
-- AUTH/INFERENCE (Veo): ჯერ არ გაშვებულა; T2 — §10.5.
+- AUTH (Veo): build-ის log (§9.7) და function-ის runtime (§9.8). INFERENCE (Veo): VERIFIED 15:49 UTC (§9.8); T2 — §10.5.
+- 75eef69: `tsc` 0, `eslint` სუფთა, jest `lib/veo lib/video app/api/admin app/api/video lib/chat components/studio` — 195 suite, 3,845 test.
+- cert branch-ის შეერთება: 116ea69, b70a48f (ebec2f7-მდე) და 10f0e2a (eb4d0c1-მდე). `vercel.json`-ში ორივე build-ის შემოწმება
+  რჩება: `preview-auth-check.cjs; preview-inference-check.cjs; next build`. Gemini-ის ფასიანი შემოწმების request ფაილი
+  cert branch-ზე უკვე წაშლილია (dcd58990), ამიტომ აქ არ გაეშვება. 10f0e2a: `tsc` 0, `eslint` 0 შეცდომა, jest 682 suite /
+  10,618 test. `components/voice/live/useGeminiLiveSession.test.tsx` სრული გაშვების 7-დან 2-ჯერ ჩავარდა და ცალკე 3/3-ჯერ გავიდა:
+  დატვირთვაზე მგრძნობიარე ტესტია, ამ branch-ს და ამ შეერთებას არ ეხება (Master Task-ს გადაეცა).
 
 ## 8. ბლოკერები და შემდეგი ნაბიჯი
 1. ✓ **read-only audit** — ჩატარდა (§1).
@@ -191,8 +200,9 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 3. **owner (თანხმობა):** plan — `reports/2026-10-08-gcp-part0-plan.md` (2 API, bucket, SA, 2 custom role, grant-ები,
    pool/provider, ერთი impersonation binding, Preview-ში 3 ცვლადი). მხოლოდ ამის შემდეგ `MODE=apply` და read-back audit.
 4. ✓ **Vercel OIDC Team mode** — უკვე ჩართულია.
-5. ✓ **AUTH VERIFIED** — Preview build-ის იდენტობით, inference-ის გარეშე (§9.7). INFERENCE VERIFIED — ერთი მოკლე Veo კლიპი
-   (owner-ის თანხმობა 11:47), owner-ის ღილაკით PR #43-ის Preview-ზე (§10.5).
+5. ✓ **AUTH VERIFIED** — Preview build-ის (§9.7) და function-ის (§9.8) იდენტობით. ✓ **INFERENCE VERIFIED (Veo)** — 15:49 UTC,
+   ერთი მოკლე კლიპი (owner-ის თანხმობა 11:47) owner-ის ღილაკით PR #43-ის Preview-ზე (§9.8). ორი ადრეული მცდელობა ჩვენი
+   payload-ის გამო ჩავარდა, შესწორება 75eef69. Master Task-მა PROJECT_MASTER-ში ჩაწერა (dad86a69); ახალი Veo ტესტი არ იგეგმება.
 6. ✓ **credit და budget-ები** — owner-ის ეკრანი + 3 budget (§10.1–10.2).
 7. Production environment-ის დამატება (`VERCEL_ENVIRONMENTS=preview,production`) — მხოლოდ ზემოთქმულის შემდეგ და ცალკე თანხმობით.
 
@@ -319,7 +329,7 @@ bucket-ის ერთი ობიექტის სია (`bucket`), signBl
 `invalid_grant`-ით უარყოფს და სკრიპტი exit 0-ით სრულდება.
 
 რას ამტკიცებს: pool, provider condition, impersonation binding, bucket grant და signBlob role Preview-ის იდენტობისთვის. რას
-არა: function-ში token-ის header-იდან აღებას — ამას probe (§9.4) ან Veo კლიპი (T1) ამტკიცებს.
+არა: function-ში token-ის header-იდან აღებას — ამას probe (§9.4) ან Veo კლიპი (T1, §9.8) ამტკიცებს.
 
 შედეგი (**PROVEN**, `vercel inspect dpl_4MqG7yVGuceJ13aj8CtgyFvGstTr --logs`, commit e222e38, branch `claude/gcp-part0-wif-fmtfxp`):
 ```
@@ -327,6 +337,51 @@ bucket-ის ერთი ობიექტის სია (`bucket`), signBl
 ```
 ანუ Vercel-ის Preview იდენტობა GCP STS-მა მიიღო, `myavatar-veo` SA-ს impersonation გავიდა, bucket-ზე წვდომა და signBlob მუშაობს.
 ფასი: 0 (STS, IAM Credentials, GCS list, signBlob უფასოა; მოდელი არ გამოძახებულა).
+
+### 9.8 T1 — Veo კლიპი Vertex-ით: ორი მცდელობა ჩავარდა (14:45, 14:52), მესამე გავიდა (15:48) — INFERENCE VERIFIED
+owner-მა Supabase Redirect URLs-ში PR #43-ის ზუსტი alias დაამატა (~14:44 UTC, wildcard-ის გარეშე) და Google-ით შევიდა
+(14:45:07 `/auth/callback` 307 alias-ზე). პაროლით შესვლა ადრე (13:48, 13:57) `invalid_credentials`-ით უარყო Supabase-მა.
+ყოველი მცდელობა owner-მა `/ka/admin/veo-smoke`-ზე ღილაკით დაიწყო. Google-ის მხარე სამივეჯერ ერთნაირად ჩანს
+(Cloud Monitoring `serviceruntime.googleapis.com/api/request_count`): `aiplatform.googleapis.com`
+`PredictionService.PredictLongRunning` **200 ×1** თითო წუთში — 14:45:31, 14:52:31, 15:48:31 — credential
+`serviceaccount:112389782429742732379`, ანუ `myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com`. ესე იგი
+function-ის runtime-ში OIDC token header-იდან აიღო, STS-მა მიიღო, SA-ს impersonation გავიდა, გასაღების გარეშე.
+
+**მცდელობა 1 (14:45:29 UTC, deployment 116ea69) — FAILED, ვიდეო არ შექმნილა.**
+- submit **PROVEN** (Vercel runtime log): `POST /api/admin/veo-smoke` 200,
+  `[veo] submit transport=vertex model=veo-3.1-fast-generate-001 aspect=16:9 duration=4s resolution=720p adjustments=0 → ok`.
+- operation-ის სახელი მაშინ log-ში არ იწერებოდა, ტელეფონის ბრაუზერმა ფონზე polling შეაჩერა, ხოლო გვერდის გადატვირთვამ
+  operation დაკარგა. ამიტომ ამ მცდელობის შედეგი პირდაპირ არ წაკითხულა. bucket ცარიელი დარჩა; იგივე payload-ით იგივე
+  შეცდომა იქნებოდა (inferred).
+
+**მცდელობა 1b (14:52:30 UTC, იგივე deployment) — FAILED, ვიდეო არ შექმნილა.** owner-მა გვერდი გადატვირთა და ხელახლა
+დააჭირა, სანამ ჩემი გაფრთხილება მივიდოდა. ეკრანი 14:52:59-ზე: `failed: Veo 3 prompt enhancement cannot be disabled.`,
+operation `projects/gen-lang-client-0671348730/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001/operations/71e35314-405b-49b8-a4cf-8fe2dc46ecf9`.
+
+- **მიზეზი — PROVEN** (იგივე შეცდომა): `lib/veo/payload.ts` `buildVertexPayload` ნაგულისხმევად `enhancePrompt: false`-ს
+  აგზავნიდა, Veo 3.x კი გამორთვას არ იღებს. ანუ Vertex-ზე ყოველი Veo render (სტუდია, რეჟისორი, ეს ტესტი) ასე ჩავარდებოდა.
+  Production-ს დღეს არ ეხება: ის Gemini API-ით მიდის, სადაც ეს ველი არ იგზავნება.
+- **შესწორება — commit 75eef69:** ველი იგზავნება მხოლოდ `true`-ზე; რეჟისორის wire-შემოწმება `parameters.enhancePrompt === true`-ს
+  კითხულობს; `[veo] submit` log-ში `op=<operation>` იწერება (ასე ოპერაცია Vercel log-იდანაც მოიძებნება); veo-smoke გვერდი
+  ოპერაციას reload-ის შემდეგაც ინახავს და 30 წთ-მდე ამოწმებს.
+- **V3-ის მნიშვნელობა (Master Task-ს გადაეცა):** Veo 3.x-ზე Google prompt-ს ყოველთვის თავისთან გადაწერს. ჩვენგან prompt
+  byte-for-byte გადის, მაგრამ მოდელის შიგნით — არა. სტუდიის „Google-მა გადაწეროს აღწერა" გადამრთველს Vertex-ზე გამორთვა აღარ შეუძლია.
+
+**მცდელობა 2 (15:48:21 UTC, deployment 75eef69) — PASSED: INFERENCE VERIFIED (Veo).**
+- submit **PROVEN** (Vercel runtime log): `[veo] submit transport=vertex model=veo-3.1-fast-generate-001 aspect=16:9 duration=4s
+  resolution=720p adjustments=0 → ok op=…/operations/fbe5ed00-a3cd-47f2-ab4a-3d7f4bcd45b4`.
+- operation **PROVEN** (`fetchPredictOperation`, owner-ის Mac, `myavatar.ge@gmail.com`): `done=true`, შეცდომის გარეშე,
+  `raiMediaFilteredCount=0`.
+- ობიექტი **PROVEN**: `gs://myavatar-veo-outputs/veo/admin-veo-smoke-1791474503054/0-0b0a94b5/3505283432834505055/sample_0.mp4`,
+  ჩაწერილია 15:49:11 UTC, 638,497 B. ჩაწერა Vertex-ის service agent-მა შეძლო, ანუ bucket-ის IAM საკმარისია (§4.4).
+- ფაილი **PROVEN** (`ffprobe`): h264 1280×720, 24 fps, AAC ხმა, 4.01 წმ. 2-ე წამის კადრში prompt-ის ფინჯანი, ფანჯარა და
+  ორთქლი ჩანს; ხმა mean −41.3 dB, max −19.4 dB (ჩუმი ფონი, არა სიჩუმე). ასლი owner-ის Mac-ზე:
+  `~/.myavatar-gcloud/test-out/t1/veo-t1.mp4` (sha256 `13389b57ef7afee7…`).
+- Master Task-მა შედეგი PROJECT_MASTER-ში ჩაწერა (dad86a69: Part 0 — INFERENCE VERIFIED (Veo), STOP-1 მოხსნილია).
+  ახალი Veo ტესტი არ იგეგმება.
+
+**ფასი:** ერთი კლიპი ≈ $0.40 (Veo 3.1 Fast, 4 წმ ხმით; ფასების ცხრილით, inferred). 1 და 1b-მ ვიდეო არ შექმნა, ამიტომ
+მოსალოდნელია $0 (inferred). ორივე Billing → Reports-ით მოწმდება (§10.5, პუნქტი 7).
 
 ## 10. owner-ის 8 პუნქტი (2026-10-08 11:08 UTC): billing, მოდელები, კოდი, ტესტი
 ყველაფერი read-only-ა, გარდა `billingbudgets` API-ის ჩართვისა და 3 budget-ის შექმნისა (პუნქტი 8, owner-ის მითითება).
@@ -403,6 +458,15 @@ key-ით (`lib/orchestrator/gemini-guard.ts:30-38` + 21 ფაილი). `@ai
 Production-ის Vertex-ზე გადაყვანა = Production env-ის ცვლილება + deploy (owner-ის ცალკე თანხმობა) + Part 1-ის კოდი
 (text/image/music Vertex-ის კლიენტზე). Preview-ის ტესტი (§10.5) ამ ჩამონათვალს არ ეხება.
 
+**განახლება 18:35 UTC (cert branch, ამ branch-ში 10f0e2a-ით შემოვიდა).** Part 1–2-ის კოდმა ეს სურათი Preview-ში შეცვალა:
+Google-ის text/STT/TTS/embeddings/orchestrator გამოძახებები `GEMINI_TRANSPORT`-ს მიჰყვება (Part 2 A2), Preview-ში
+`GEMINI_TRANSPORT=vertex` 18:00 UTC-დან. Master Task-ის თრედის შედეგი: Gemini Vertex-ით Preview-ის runtime-იდან
+**AUTH VERIFIED** 18:13 UTC (`/api/preview/google-check`, შესვლის გარეშე, უფასო) და **INFERENCE VERIFIED** 18:28 UTC
+(`scripts/gcp/preview-inference-check.cjs`, owner-ის თანხმობით ერთი პასუხი: `gemini-3.8-flash` 200, „ok", 67 token, WIF,
+API key-ის გარეშე). `-latest` alias-ები Vertex-ზე არ არსებობს (c44ba0e9). ზემოთ ჩამოთვლილი fallback-ების ნაწილი cert
+branch-ზე უკვე მოხსნილია (R7: image და music, pipeline-ის text Gemini-only); ზუსტი მდგომარეობა certification §L-შია.
+**Production უცვლელია:** ყველაფერი API key-ით მიდის, Vertex-ზე გადართვა owner-ის გადაწყვეტილებაა (env + deploy).
+
 ### 10.5 ფასიანი ტესტი (პუნქტები 6–7)
 გეგმა: `docs/handoffs/2026-10-08-gcp-part0-test-plan.md`. მოკლედ: T1 — ერთი Veo 3.1 Fast კლიპი (4 წმ, 720p, ხმით, ≈ $0.40)
 Preview-ზე admin-ის გვერდიდან `/ka/admin/veo-smoke`; T2 — `gemini-3.8-flash`, `gemini-3.1-flash-image`, `lyria-3-clip-preview`
@@ -415,6 +479,14 @@ Vertex-ზე owner-ის ანგარიშით (≈ $0.12). ჯამი
 **T2 შედეგი (11:49–11:52 UTC, owner-ის თანხმობით 11:47):** `gemini-3.8-flash` 200, `gemini-3.1-flash-image` 200 (PNG 1024×1024),
 `lyria-3-clip-preview` 200 (MP3 30.8 წმ) — ჯამი ≈ $0.11. Lyria-ს პირველი მოთხოვნა 400 იყო (`["AUDIO"]`; არ ირიცხება),
 მეორე `["AUDIO","TEXT"]`-ით გავიდა. დეტალები: test plan §8. credit-ით დაფარვა ~24 სთ-ში მოწმდება.
+
+**T1 შედეგი (15:49 UTC):** INFERENCE VERIFIED (Veo) — operation `fbe5ed00-…` done, `sample_0.mp4` 4.01 წმ 1280×720 ხმით,
+WIF-ით, გასაღების გარეშე (§9.8). ორი ადრეული მცდელობა (14:45, 14:52) payload-ის გამო ჩავარდა, ვიდეო არ შექმნილა.
+
+**ხარჯის ჯამი (inferred, ფასების ცხრილით):** T1 ≈ $0.40 + T2 ≈ $0.11 + Master Task-ის Gemini-ის ერთი მოკლე პასუხი
+(67 token, ≪ $0.01) ≈ **$0.51**; ჩავარდნილი Veo ოპერაციები ≈ $0. ზღვარი $2 არ გადაცილებულა. პუნქტი 7: ~24 სთ-ის შემდეგ
+(2026-10-09 ~16:00 UTC-დან) owner Billing → Reports-ში (Group by SKU) და Credits-ში ამოწმებს, რომ Subtotal ≈ $0 და
+credit ≈ $299.49; ფოტო Claude-ს. მანამდე „credit-მა დაფარა" — **BLOCKED_OWNER**.
 
 **T2 Google-ის მხრიდან (PROVEN, Cloud Monitoring `serviceruntime.googleapis.com/api/request_count`, 12:00 UTC, ბოლო 3 სთ):**
 `aiplatform.googleapis.com` → `PredictionService.GenerateContent` **200 ×3, 400 ×1**, credential = owner-ის gcloud OAuth client;

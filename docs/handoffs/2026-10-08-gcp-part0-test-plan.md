@@ -6,7 +6,7 @@
 ## 1. რას ამტკიცებს
 | ტესტი | რა მტკიცდება | სტატუსი, რომელსაც აძლევს |
 |---|---|---|
-| T1 — Veo აპლიკაციიდან (Preview, WIF) | Vercel OIDC → STS → SA impersonation → Veo 3.1 → GCS bucket → signed URL; ხარჯი $300 credit-იდან | **INFERENCE VERIFIED** (Veo) |
+| T1 — Veo აპლიკაციიდან (Preview, WIF) | Vercel OIDC → STS → SA impersonation → Veo 3.1 → GCS bucket → signed URL; ხარჯი $300 credit-იდან | **INFERENCE VERIFIED** (Veo) — ✓ 15:49 UTC (§8) |
 | T2 — Gemini text, Gemini image, Lyria Vertex-ზე (owner-ის ანგარიშით, Mac-იდან) | მოდელები ამ პროექტზე Vertex-ით პასუხობენ და credit-ზე იწერება — Part 1-ის (text/image/music → Vertex) წინაპირობა | Vertex-ზე ხელმისაწვდომობა: PROVEN; აპლიკაციის გზა ამ მოდალობებისთვის ჯერ არ არსებობს (§5) |
 
 ## 2. როდის არის უსაფრთხო
@@ -90,5 +90,35 @@ Google-ის მხრიდან დადასტურება (Cloud Mon
 200 ×3, 400 ×1, owner-ის gcloud credential-ით; `generativelanguage.googleapis.com` ამ პროექტზე — 0 მოთხოვნა (report §10.5).
 
 ### T1 — Veo
-ელოდება: owner-ის შესვლა PR #43-ის alias-ზე (პაროლით ან Google-ით, §3), შემდეგ ერთი ღილაკი `/ka/admin/veo-smoke`-ზე. AUTH VERIFIED — ✓ 14:21 UTC (report §9.7).
-Preview: `avatar-g-frontend-v3-git-22ebb4-…vercel.app` → უახლესი Ready build; კოდით შესვლის შესწორება პირველად `dpl_G1jduPBs7jKwUsrj1Cyik6SUCLQ2`-ზე (87122ff).
+შესვლა: owner-მა Supabase Redirect URLs-ში ზუსტი alias დაამატა (~14:44 UTC) და Google-ით შევიდა (14:45:07 `/auth/callback` 307 alias-ზე).
+პაროლით შესვლა 13:48-ზე და 13:57-ზე Supabase-მა უარყო (`invalid_credentials`, Supabase auth log, Master Task-ის თრედის მეშვეობით).
+
+**მცდელობა 1 (14:45:29 UTC, deployment 116ea69) — FAILED, ვიდეო არ შექმნილა:**
+- submit **PROVEN**: Vercel log `POST /api/admin/veo-smoke` 200,
+  `[veo] submit transport=vertex model=veo-3.1-fast-generate-001 aspect=16:9 duration=4s resolution=720p adjustments=0 → ok`.
+  ეს function-ის runtime-ში header-იდან OIDC token-ის აღებასაც ამტკიცებს (build-ის შემოწმება მხოლოდ build token-ს ფარავდა).
+- Google-ის მხრიდან **PROVEN** (Cloud Monitoring, 14:50 UTC, ბოლო 20 წთ): `aiplatform.googleapis.com`
+  `PredictionService.PredictLongRunning` **200 ×1**, credential = `serviceaccount:112389782429742732379` = `myavatar-veo@…`
+  (`gcloud iam service-accounts describe`), ანუ გასაღების გარეშე, WIF-ით.
+- შედეგი პირდაპირ არ წაკითხულა: operation-ის სახელი მაშინ log-ში არ იწერებოდა, გადატვირთვამ კი გვერდზე დაკარგა. bucket
+  ცარიელი დარჩა; იგივე payload-ით იგივე შეცდომა იქნებოდა (inferred).
+
+**მცდელობა 1b (14:52:30 UTC, იგივე deployment) — FAILED, ვიდეო არ შექმნილა:** owner-მა გვერდი გადატვირთა და ხელახლა
+დააჭირა. Monitoring: `PredictLongRunning` 200 ×1 (14:52:31), იგივე SA. ეკრანი 14:52:59: `failed: Veo 3 prompt enhancement
+cannot be disabled.` — operation `…/models/veo-3.1-fast-generate-001/operations/71e35314-405b-49b8-a4cf-8fe2dc46ecf9`.
+- მიზეზი: `lib/veo/payload.ts` Vertex-ს ყოველთვის `enhancePrompt: false`-ს უგზავნიდა; Veo 3.x ამას არ იღებს. ანუ Vertex-ზე
+  ყოველი Veo render (სტუდია, რეჟისორი, ეს ტესტი) ასე ჩავარდებოდა. Production ამას ჯერ არ ეხება: ის Gemini API-ით მიდის,
+  სადაც ეს ველი არ იგზავნება.
+- შესწორება: commit 75eef69 — ველი იგზავნება მხოლოდ `true`-ზე; `[veo] submit` log-ში operation-ის სახელიც იწერება;
+  გვერდი operation-ს reload-ის შემდეგაც ინახავს. ფასი: ვიდეო არ შექმნილა, ამიტომ მოსალოდნელია $0 (inferred; Billing-ით მოწმდება, §6).
+- მეორე დაკვირვება: ტელეფონის ბრაუზერმა ფონზე გადასვლისას polling შეაჩერა (14:45:29-ის შემდეგ მოთხოვნა არ ყოფილა) და
+  ეკრანზე დაბრუნებისას გააგრძელა. Vertex-ის ოპერაცია ამაზე არ არის დამოკიდებული.
+
+**მცდელობა 2 (15:48:21 UTC, deployment 75eef69) — PASSED: INFERENCE VERIFIED (Veo):**
+- Vercel log: `[veo] submit transport=vertex model=veo-3.1-fast-generate-001 aspect=16:9 duration=4s resolution=720p
+  adjustments=0 → ok op=…/operations/fbe5ed00-a3cd-47f2-ab4a-3d7f4bcd45b4`.
+- Monitoring: `PredictLongRunning` 200 ×1 (15:48:31), credential = `myavatar-veo@…` (WIF).
+- `fetchPredictOperation`: `done=true`, შეცდომის გარეშე, `raiMediaFilteredCount=0`.
+- bucket: `veo/admin-veo-smoke-1791474503054/0-0b0a94b5/3505283432834505055/sample_0.mp4`, 15:49:11 UTC, 638,497 B.
+- `ffprobe`: h264 1280×720, 24 fps, AAC, 4.01 წმ; 2-ე წამის კადრი prompt-ს ემთხვევა (ფინჯანი, ფანჯარა, ორთქლი).
+- ფასი ≈ $0.40 (inferred); ჯამი T1 + T2 ≈ $0.51. credit-ით დაფარვა — §6, owner-ის ფოტო ~24 სთ-ში.
