@@ -155,6 +155,17 @@ catalogue still lists Higgsfield / Udio / NanoBanana / Grok / FLUX rows. PR #44 
 tsc 0, jest 9789 passed, lint 0 errors) makes the catalogue Google-only, but it is unmerged and keeps known gaps (listed in
 the PR). **NOT PROVEN.**
 
+**ModelCatalog data and runtime check (Part 2 objective D, BUILT_NOT_PROVEN).** `lib/models/catalog.ts` holds the 28
+Google models the code calls (chat chains, REST tiers, STT, TTS, Live, the storyboard image model, Imagen 4, the six Veo
+ids, Lyria 3, embeddings, the Deep Research agent) and passes the Part 1 contract's validation. `verifiedAt` is set only
+from dated calls on record (the new project's key on 2026-10-02, Vertex T2 on 2026-10-08); Veo, Imagen 4 and the extra
+Live ids have none; the Gemini 2.5 text models are left out (listed, but refused for new projects). A test fails when
+the code's default model ids are not catalogued (D3). `lib/models/verify.ts` checks the catalog against the runtime for
+free (the key's model list, or `countTokens` on Vertex), switches off ids the runtime lacks and queues unknown ones for
+review without adding them; `GET /api/admin/model-catalog` (admin only) shows the result. **Not done:** the studio's
+model pickers still read `lib/providers/catalogue` (its non-Google rows go with owner action 9), and no runtime check has
+run on a deployment yet.
+
 ## L. Provider boundary
 
 **FAILED on `main` and on this branch.** 10 of the 20 usable catalog services run on a §A violation path today

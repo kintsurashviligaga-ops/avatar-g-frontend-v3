@@ -37,7 +37,8 @@ NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy,
           activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
-          the API key) → ModelCatalog data; PR #44's provider removals after action 9); A1 held until Veo T1 passes
+          the API key) → ModelCatalog data ✓ (lib/models, runtime check, admin report) → pickers on the catalog and
+          PR #44's provider removals after action 9); A1 held until Veo T1 passes
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
@@ -94,6 +95,9 @@ PHASE CHECKLIST:
           legs. Deep Research stays on the API key (Interactions API is Gemini-API only; stated in its client). Live,
           Imagen and the health probes are not on it. BUILT_NOT_PROVEN: no Vertex Gemini call from a Preview runtime
           yet (free check: GET /api/admin/google-transport). Production unchanged while unset.
+          D (ModelCatalog): lib/models/catalog.ts (28 Google models, verifiedAt only from dated calls, Gemini 2.5 text
+          left out), lib/models/verify.ts (free runtime check: models.list / Vertex countTokens; missing → off, unknown →
+          review queue), GET /api/admin/model-catalog. Studio pickers still read lib/providers/catalogue (action 9).
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement

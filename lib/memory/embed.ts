@@ -55,7 +55,7 @@ export async function embed(text: string): Promise<number[] | null> {
 
 // ─── Gemini ────────────────────────────────────────────────────────────────
 
-const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
+export const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
 const EMBED_DIM = 1536;
 
 /** The Vertex AI `:predict` body for the same model, task and dimension (exported for tests). */
