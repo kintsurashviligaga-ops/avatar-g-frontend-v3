@@ -356,6 +356,11 @@ export async function recordCompletedAsset(input: {
   source?: string;
   /** Telemetry sub-label (e.g. 'motion') → params.subtype; service_type stays a CHECK-allowed value. */
   subtype?: string;
+  /**
+   * A caller-supplied URL that was PROVEN readable when filed (storage-adapter verifyFileableUrl) →
+   * params.storage_verified. The Library re-signs a manual save's storage URL only when this is set.
+   */
+  storageVerified?: boolean;
 }): Promise<boolean> {
   const sb = client();
   if (!sb) return false;
@@ -368,7 +373,12 @@ export async function recordCompletedAsset(input: {
         status: 'completed' as JobStatus,
         current_stage: 'completed',
         pct: 100,
-        params: { prompt: input.prompt ?? null, source: input.source ?? 'smart-assistant', ...(input.subtype ? { subtype: input.subtype } : {}) },
+        params: {
+          prompt: input.prompt ?? null,
+          source: input.source ?? 'smart-assistant',
+          ...(input.subtype ? { subtype: input.subtype } : {}),
+          ...(input.storageVerified ? { storage_verified: true } : {}),
+        },
         result: { url: input.url },
         signed_url: input.url,
       },

@@ -196,6 +196,112 @@ export function parseSupabaseObjectUrl(url: string): { bucket: string; path: str
   }
 }
 
+/** A Supabase Storage object URL, with what parseSupabaseObjectUrl drops: which project, and how it grants access. */
+export interface StorageObjectRef {
+  bucket: string;
+  path: string;
+  /** `sign` = /object/sign/… (needs a valid token); `public` = /object/public/… (works only on a public bucket). */
+  access: 'sign' | 'public';
+  token: string | null;
+  /** Lower-cased hostname — compare with ownStorageHosts() before treating the object as ours. */
+  host: string;
+}
+
+/** parseSupabaseObjectUrl plus the access shape, token and host. Null for anything that is not a storage object URL. */
+export function describeSupabaseObjectUrl(url: string): StorageObjectRef | null {
+  const ref = parseSupabaseObjectUrl(url);
+  if (!ref) return null;
+  try {
+    const u = new URL(url);
+    const access = /\/storage\/v1\/object\/sign\//.test(u.pathname) ? 'sign' : 'public';
+    const token = u.searchParams.get('token');
+    return { ...ref, access, token: token && token.trim() ? token : null, host: u.hostname.toLowerCase() };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Hostnames of OUR Supabase project, from both env spellings the clients use (the service-role client prefers
+ * SUPABASE_URL, the browser NEXT_PUBLIC_SUPABASE_URL). parseSupabaseObjectUrl accepts ANY `*.supabase.co` host, so
+ * anything that signs with our service role must also check the URL names this project — another tenant's bucket
+ * can be called `renders` too.
+ */
+export function ownStorageHosts(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const hosts = new Set<string>();
+  for (const raw of [env.SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_URL]) {
+    if (!raw) continue;
+    try { hosts.add(new URL(raw).hostname.toLowerCase()); } catch { /* not a URL */ }
+  }
+  return hosts;
+}
+
+/**
+ * The buckets that hold user-facing media the Library shows — the ONLY buckets a stored Library URL may be
+ * re-signed in. Found by grepping every writer: `renders` (RENDER_BUCKET: films, montage, decks, 3D, longform),
+ * `uploads` (UPLOAD_BUCKET: user uploads, music, edits, storyboards) and `studio` (lib/studio/outputs STUDIO_BUCKET —
+ * spelled out here because that module imports this one). Never the twin bucket (biometrics), never `avatars`
+ * (profile/live-avatar faces), never `job-artifacts`.
+ */
+export function libraryMediaBuckets(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  const buckets = new Set(['renders', 'uploads', 'studio']);
+  for (const b of [env.RENDER_BUCKET, env.UPLOAD_BUCKET]) if (b && b.trim()) buckets.add(b.trim());
+  for (const b of [...buckets]) if (isTwinBucket(b)) buckets.delete(b);
+  return buckets;
+}
+
+export type FileableUrlVerdict =
+  /** One of our objects, proven readable through a currently valid signed URL — safe to re-sign later. */
+  | { ok: true; kind: 'own-signed'; bucket: string; path: string }
+  /** A public-bucket URL of ours: it never expires, so it is filed as-is and never re-signed. */
+  | { ok: true; kind: 'own-public' }
+  /** Anything else on the public internet (a provider's CDN, another Supabase tenant): filed as-is, never re-signed. */
+  | { ok: true; kind: 'external' }
+  | { ok: false; reason: 'invalid_url' | 'not_media_bucket' | 'unsigned' | 'not_readable' };
+
+/**
+ * May a caller file `url` into their Library?
+ *
+ * ⚠️ THE LIBRARY RE-SIGNS WHAT IT STORES WITH THE SERVICE ROLE. So a URL that names one of our objects is accepted
+ * only when it already PROVES access: a signed URL whose token our storage still honours (probed with a one-byte
+ * ranged GET to our own host — the token is bound to that exact bucket/path, so it cannot be re-pointed). A bare or
+ * expired `/object/sign/…` path, or a guess at someone else's object, is refused. Our storage paths are not
+ * user-prefixed (`captioned/<ts>-<rand>.mp4`), so "the path starts with your id" is not a rule that can be used.
+ */
+export async function verifyFileableUrl(
+  url: string,
+  opts: { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; timeoutMs?: number; isPublicUrl: (u: string) => boolean },
+): Promise<FileableUrlVerdict> {
+  const env = opts.env ?? process.env;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return { ok: false, reason: 'invalid_url' }; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return { ok: false, reason: 'invalid_url' };
+
+  const ref = describeSupabaseObjectUrl(url);
+  if (!ref || !ownStorageHosts(env).has(ref.host)) {
+    return opts.isPublicUrl(url) ? { ok: true, kind: 'external' } : { ok: false, reason: 'invalid_url' };
+  }
+  if (ref.access === 'public') return { ok: true, kind: 'own-public' };
+  if (!libraryMediaBuckets(env).has(ref.bucket)) return { ok: false, reason: 'not_media_bucket' };
+  if (!ref.token || parsed.protocol !== 'https:') return { ok: false, reason: 'unsigned' };
+
+  const doFetch = opts.fetchImpl ?? fetch;
+  try {
+    const res = await doFetch(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+      redirect: 'manual',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 8000),
+    });
+    void res.body?.cancel().catch(() => undefined);
+    if (res.status !== 200 && res.status !== 206) return { ok: false, reason: 'not_readable' };
+  } catch {
+    return { ok: false, reason: 'not_readable' };
+  }
+  return { ok: true, kind: 'own-signed', bucket: ref.bucket, path: ref.path };
+}
+
 /**
  * If `url` is one of OUR Supabase Storage objects, return a fresh 15-minute
  * signed URL for it; otherwise return the URL unchanged (external provider
