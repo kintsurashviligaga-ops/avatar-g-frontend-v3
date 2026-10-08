@@ -1,0 +1,7 @@
+{
+  "requestId": "gg-2026-10-08-gemini-text-1",
+  "model": "gemini-3.8-flash",
+  "approvedBy": "GG (decision card in the Master Task thread, option 'კი, ერთხელ')",
+  "approvedAt": "2026-10-08T18:27:39Z",
+  "note": "One short generateContent on Vertex from a Preview build. Delete this file once the result is read."
+}
