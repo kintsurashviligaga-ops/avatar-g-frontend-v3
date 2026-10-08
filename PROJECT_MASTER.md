@@ -43,6 +43,10 @@ MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus 
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
           build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
           production (nothing deployed); see the certification for every label.
+          After the owner's "continue" (2026-10-08 14:10 UTC): R7 silent fallbacks removed for image (no Grok / FLUX),
+          text (llmText and /api/pipeline Gemini only), music (Auto = Lyria alone; no MusicGen bed) and voice (no Azure /
+          Google behind ElevenLabs), commits 8a2d1b0f and 32abf9ad. Forbidden providers that are still the primary engine
+          are listed in the certification §L (Part 2).
 PHASE CHECKLIST:
 ◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +

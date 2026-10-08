@@ -160,7 +160,20 @@ the PR). **NOT PROVEN.**
 **FAILED on `main` and on this branch.** 10 of the 20 usable catalog services run on a §A violation path today
 (`docs/handoffs/service-taxonomy.md` §2): image = NanoBananaAI → Grok → FLUX; avatar = HeyGen / Replicate; music cascade
 includes Udio; product ad / motion / swap = Kling (Replicate / Higgsfield); 3D = Replicate TRELLIS; `/api/pipeline` text
-services fall back Gemini → Anthropic → OpenAI with no gate (R7 silent fallback). Only Veo can run on Vertex, and only in
+services fall back Gemini → Anthropic → OpenAI with no gate (R7 silent fallback).
+
+**Silent fallbacks removed on this branch (R7, commits `8a2d1b0f`, `32abf9ad`; BUILT_NOT_PROVEN, Production unchanged until
+a deploy).** Each request now uses one provider and a miss is the route's explicit error, refunded where the route charged:
+image has no Grok / FLUX leg behind NanoBanana; `lib/ai/llmText` (14 internal text callers, the director's planner among
+them) is Gemini only; `/api/pipeline` text tools and Terminal are Gemini only; music Auto is Lyria alone; the film music
+bed and the product-ad music have no MusicGen leg; TTS and film voice-over have no Azure / Google leg behind ElevenLabs.
+Every removed leg, put back, fails the new tests. Admin health now reports scene planning as live only on the Gemini key.
+
+**Forbidden providers still reachable as the primary (explicit, not silent; Part 2, owner action 9):** NanoBanana itself
+(`api.nanobananaapi.ai`, a third-party reseller, not Google); avatar HeyGen / SadTalker; swap / motion / product ad Kling,
+roop, Higgsfield; 3D TRELLIS; interior World Labs; music on an explicit pick of Udio or MusicGen, cover (MusicGen-melody),
+"your voice" songs (MiniMax, RVC), cover art (Pollinations); `/api/pipeline` voice on OpenAI TTS when Google-only is off;
+`lib/chat/ServiceManager` still imports the Grok image client. Only Veo can run on Vertex, and only in
 Preview. GCP Part 0 is CONFIGURED; Gemini text, Gemini image and Lyria **INFERENCE PROVEN on Vertex** from the owner's Mac
 (≈ $0.11, owner-approved 11:47 UTC); Imagen 4 is not available on Vertex for this project (404). The migration is Part 2.
 
@@ -301,7 +314,7 @@ Any one of these means NO LAUNCH.
 | §55 blocker | Where it stands |
 |---|---|
 | Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O): AUTH-1 code-check fix on PR #43 and this branch, not deployed; AUTH-2 Resend refuses mail until `myavatar.ge` is verified (owner action 1a) |
-| Wrong provider / silent fallback | 10 of 20 usable services still run on forbidden providers; `/api/pipeline` falls back to Anthropic / OpenAI (L) |
+| Wrong provider / silent fallback | Silent fallbacks removed on this branch for image, text, music and voice (not deployed). Forbidden providers are still the primary engine for avatar, swap / motion / product ad, 3D, interior, several music modes, and NanoBanana is a reseller (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | 9 tables open until migration `20261008a` is applied (O) |
 | Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is not applied and no live Veo clip yet (J) |
