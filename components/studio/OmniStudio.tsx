@@ -2093,11 +2093,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
       } catch { /* fail-soft */ }
     })();
-    // Record the spend in credit_transactions (fail-open if the table/route is absent).
-    void fetch('/api/credits/record', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ action: kind, creditsDelta: -credits }),
-    }).catch(() => {});
+    // The spend itself is already in credit_ledger (the server charged it); Settings → History reads that ledger,
+    // so the browser no longer reports amounts (the old POST /api/credits/record trusted a client creditsDelta).
     if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
     creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 4000);
   }, [locale]);
