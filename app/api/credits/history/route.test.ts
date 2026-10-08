@@ -28,6 +28,7 @@ jest.mock('../../../../lib/supabase/server', () => ({
 
 import { NextRequest } from 'next/server';
 import { GET } from './route';
+import { HISTORY_ACTIONS } from '../../../../lib/billing/creditHistory';
 
 const req = (qs = '') => new NextRequest(`https://myavatar.ge/api/credits/history${qs}`);
 
@@ -79,8 +80,6 @@ test('POST /api/credits/record no longer exists and no client code calls it', ()
 });
 
 test('the Settings history has a label for every action the ledger mapping can produce', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { HISTORY_ACTIONS } = require('../../../../lib/billing/creditHistory') as { HISTORY_ACTIONS: readonly string[] };
   const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'components', 'settings', 'SettingsView.tsx'), 'utf8');
   const table = src.slice(src.indexOf('const ACTION_LABEL'), src.indexOf('function CreditHistorySection'));
   for (const a of HISTORY_ACTIONS) expect(table).toMatch(new RegExp(`\\n\\s*${a}: \\{ emoji:`));
