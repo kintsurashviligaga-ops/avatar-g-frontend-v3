@@ -1,8 +1,8 @@
 /**
  * GET /api/video/engine — what the live Veo route can do, for the studio's Veo panel (docs/VEO_ENGINE.md §3).
  *
- * The panel asks instead of assuming: whether Veo's own sound can be switched off and whether Google may rewrite the
- * prompt are Vertex-only, and a control that silently does nothing is worse than one that is not offered. Booleans
+ * The panel asks instead of assuming: whether Veo's own sound can be switched off is Vertex-only, and a control that
+ * silently does nothing is worse than one that is not offered. Booleans
  * and a transport name only — never a model id, project, bucket or key.
  */
 import { NextResponse } from 'next/server';
@@ -19,7 +19,10 @@ export interface VideoEngineInfo {
   googleOnly: boolean;
   /** generateAudio=false is honoured (Vertex). The Gemini API always renders sound. */
   audioToggle: boolean;
-  /** enhancePrompt is honoured (Vertex). */
+  /**
+   * Whether Google's prompt rewriting can be switched OFF. Always false: Veo 3.x rewrites server-side on both transports
+   * and fails the operation on an explicit enhancePrompt=false (PROVEN 2026-10-08, GCP Part 0 T1). Kept for old clients.
+   */
   enhancePrompt: boolean;
   /** The schema-only cameraControl field is sent (Vertex + VEO_NATIVE_CAMERA_CONTROL=1); otherwise camera = prompt only. */
   nativeCameraControl: boolean;
@@ -32,7 +35,7 @@ export async function GET() {
     transport,
     googleOnly: isGoogleOnly(),
     audioToggle: vertex,
-    enhancePrompt: vertex,
+    enhancePrompt: false,
     nativeCameraControl: vertex && isTruthyFlag(process.env.VEO_NATIVE_CAMERA_CONTROL),
   };
   return NextResponse.json(body, { headers: { 'Cache-Control': 'private, max-age=60' } });

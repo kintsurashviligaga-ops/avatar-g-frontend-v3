@@ -51,8 +51,12 @@ PHASE CHECKLIST:
           impersonation, bucket list, signBlob; free). Paid test approved by owner 11:47 UTC: T2 PROVEN
           11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11; Cloud
           Monitoring: aiplatform GenerateContent 200×3/400×1, generativelanguage 0);
-          T1 Veo (INFERENCE VERIFIED) waits on the owner's sign-in on the PR #43 alias and one button press;
-          credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
+          T1 Veo: owner pressed /ka/admin/veo-smoke 14:45:29 UTC; Vertex accepted the submit via WIF (log "[veo] submit
+          transport=vertex … → ok", aiplatform PredictLongRunning 200 from SA myavatar-veo), then the operation FAILED
+          "Veo 3 prompt enhancement cannot be disabled" (op 71e35314-…): lib/veo/payload.ts sent enhancePrompt:false, so every
+          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch. Veo is NOT
+          INFERENCE VERIFIED until the retry produces the clip; the failed op is expected unbilled (Billing confirms).
+          Credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
           No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
           and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
@@ -78,7 +82,8 @@ BLOCKERS:
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
 · STOP-1: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
   with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
-  code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once (≈ $0.40, approved 11:47).
+  code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once more, on the Preview build
+  that carries 75eef69 (≈ $0.40, approved 11:47; the first press failed on enhancePrompt:false and produced no clip).
   AUTH itself is already verified (build log). Production env not yet.
   scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
 · Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
@@ -398,6 +403,10 @@ Agent G → Orchestrator → Video Capability → VideoDirector
 - იკრძალება: improve, rephrase, translate, expand, truncate, decorate
 - LLM-ს არ აქვს უფლება შეცვალოს prompt freeze-ის შემდეგ
 - Unit test: `prompt in === prompt out`
+> Implementation note (2026-10-08, PROVEN by GCP Part 0 T1): Veo 3.x always rewrites the prompt inside Google and fails the
+> operation on an explicit `enhancePrompt: false`. V3 is therefore enforced up to the wire: the director sends `Shot.prompt`
+> byte-for-byte and never asks for enhancement (lib/veo/payload.ts, lib/video/director/googleVeoProvider.ts); what Google's
+> model does with it afterwards is outside this system. The studio no longer offers a "let Google rewrite" switch.
 ### V4. CONSISTENCY GUARANTEE
 Shot List-ის განმავლობაში შენარჩუნებული:
 - ერთი character reference image

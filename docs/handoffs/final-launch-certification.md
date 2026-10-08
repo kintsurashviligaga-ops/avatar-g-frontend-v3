@@ -135,8 +135,8 @@ refused before any money is spent. 121 tests (`npx jest lib/video/director`), mu
 |---|---|
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
 | Wired into the product's video flow | **MISSING**: the studio's video tool still uses the existing engine path, not the director |
-| Live Veo run | BLOCKED_OWNER: Part 0 is AUTH VERIFIED for the Preview identity (build log of e222e38, 14:21:20 UTC: `mode:wif token:ok bucket:ok sign:ok`); the owner-approved one-clip smoke test (≈ $0.40) waits on the owner's sign-in on the PR #43 alias |
-| Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt |
+| Live Veo run | **FAILED, fix pending retry**: Part 0 is AUTH VERIFIED (build log of e222e38, 14:21:20 UTC). The owner's smoke press at 14:45:29 UTC reached Vertex via WIF (PredictLongRunning 200 from SA myavatar-veo), then the operation failed "Veo 3 prompt enhancement cannot be disabled" because `lib/veo/payload.ts` sent `enhancePrompt: false`. Fix `75eef69` (PR #43) is cherry-picked here; the clip waits on one more owner press on a Preview carrying it |
+| Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt. Limit (PROVEN by the T1 failure): Veo 3.x always rewrites the prompt inside Google and refuses `enhancePrompt: false`, so V3 holds on the wire, not inside the model; the studio's no-op "let Google rewrite" switch was removed |
 
 ## K. Model Catalog
 
