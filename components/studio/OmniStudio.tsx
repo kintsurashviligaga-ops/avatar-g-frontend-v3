@@ -144,6 +144,7 @@ import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studi
 import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { getService, serviceModeQuery } from '@/lib/catalog/services';
+import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -3124,6 +3125,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     window.addEventListener('omni:set-mode', onSet);
     return () => window.removeEventListener('omni:set-mode', onSet);
   }, []);
+  // The request a guest typed before Google sign-in reloaded the page (lib/studio/pendingPrompt): back on its tool, in
+  // an EMPTY composer, once — never sent. Declared before the deep-link effect below, so an explicit `?tool=` / `?mode=`
+  // / `&prompt=` link still decides.
+  useEffect(() => {
+    const p = takePendingPrompt();
+    if (!p) return;
+    if (p.tool !== 'chat') selectTool(p.tool);
+    setInput((prev) => (prev.trim() ? prev : p.text));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
   // Deep link: /dashboard?mode=music (the studio's Music tab, a shared link) opens that service. The param is
   // removed once applied, so a reload or a copied URL does not keep forcing it.
   useEffect(() => {
@@ -5452,7 +5463,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
     // video", a studio intent) is stopped HERE, before any request: the API routes reject guests too, but a 401 after
     // a spinner is a worse experience for something the UI already knows. The flag ChatChrome publishes on <html> is
-    // read synchronously, and the composer keeps its text — nothing is lost by signing in and pressing send again.
+    // read synchronously. The composer keeps its text for the in-page email code; Google sign-in reloads the page, so
+    // the text and the tool are also kept for the way back (lib/studio/pendingPrompt).
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       const guestText = (opts?.promptOverride ?? input).trim();
       // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
@@ -5462,9 +5474,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
         !isGenerativeCommand(guestText) && !detectStudioIntent(guestText) && routeAgentIntent(guestText)?.kind !== 'open';
       if (!plainChat) {
+        stashPendingPrompt(guestText, activeToolRef.current);
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
       }
+    } else {
+      // Signed in and sending: a request kept from before the sign-in is done or replaced.
+      clearPendingPrompt();
     }
     const text = (opts?.promptOverride ?? input).trim();
     // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
@@ -6856,6 +6872,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
       // send() stops a guest before any request; these three never pass through it, so the same gate is here.
       if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+        stashPendingPrompt(input, activeTool);
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
       }
