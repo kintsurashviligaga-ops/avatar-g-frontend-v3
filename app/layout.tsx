@@ -54,13 +54,10 @@ const metadataBaseUrl = SITE_URL;
 export const viewport: Viewport = {
 	width: 'device-width',
 	initialScale: 1,
-	// PHASE 39 (Master Contract V13) — product-owner directive: lock layout zoom on text focus.
-	// NOTE on mechanism: the ACTUAL iOS focus-auto-zoom fix is the `input{font-size:max(16px,1em)}`
-	// rule in globals.css (iOS Safari ignores maximum-scale/user-scalable for accessibility). These
-	// two are set per the directive and take effect on Android/other engines; iOS keeps pinch-zoom
-	// (WCAG 1.4.4) while the 16px rule stops the layout-breaking focus zoom everywhere.
-	maximumScale: 1,
-	userScalable: false,
+	// ⚠️ NO maximumScale / userScalable. They were set to stop the focus auto-zoom on text inputs, but on Android and
+	// every engine that honours them they also took away pinch-zoom for everyone — a WCAG 1.4.4 (Resize text) failure
+	// for low-vision users. The focus zoom is already fixed where it starts: the `font-size: max(16px, 1em)` rule on
+	// inputs in globals.css (a 16px+ field never triggers it), which stays.
 	viewportFit: 'cover',
 	// ⚠️ THE KEYBOARD FIX THAT NO AMOUNT OF JAVASCRIPT REPLACES. By default the on-screen keyboard resizes
 	// only the VISUAL viewport: the layout viewport — what `100dvh`, `fixed` and `inset-0` are measured
