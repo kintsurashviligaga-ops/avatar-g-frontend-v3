@@ -62,7 +62,7 @@ Two unrelated "Agent G routers": `lib/agents/agentGRouter.ts` and `lib/router/ag
 | music | `/api/ai/music` | Lyria, ElevenLabs Music, Udio cascade | 5/8/12 | **FAILED** (Udio) | — |
 | avatar | `/api/heygen/presenter`, `/api/video/lipsync` | HeyGen, Replicate SadTalker/Wav2Lip, ElevenLabs voice | 20 | **FAILED** | — |
 | remix | `/api/video/remix`, `/api/ai/edit*` | ffmpeg, ElevenLabs, Wav2Lip, NanoBanana, Kling/Veo | 15 | **FAILED** | — |
-| product | `/api/video/remix` op `productad` | Kling (Replicate) | video × 6 s | **FAILED** | — |
+| product | `/api/video/remix` op `productad` | Veo → Kling (Replicate) → Ken Burns still | video × 6 s | **FAILED** | — |
 | swap / vfx / motion | `/api/genjutsu/*`, `/api/motion-control` | Veo (vfx); Higgsfield Kling (swap, motion) | quotes 15, route uses genjutsu pricing | **FAILED** + R5 mismatch | — |
 | montage | `/api/v2/montage/render` | ffmpeg | none charged | OK | BUILT_NOT_PROVEN |
 | dubbing | `/api/v2/dubbing/start` | ElevenLabs Scribe, Gemini, TTS, ffmpeg | none charged | OK | BUILT_NOT_PROVEN |
