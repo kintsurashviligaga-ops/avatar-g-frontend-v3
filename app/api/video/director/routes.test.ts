@@ -239,3 +239,20 @@ describe('billing in production', () => {
     expect(engine.calls).toHaveLength(0);
   });
 });
+
+describe('GET /api/video/director — the studio asks before it hands a board over', () => {
+  it('is false while the flag is off, signed out, or for a non-admin under `admin`; true when open', async () => {
+    const { GET: capability } = await import('./route');
+    const enabled = async () => ((await (await capability(req('/api/video/director'))).json()) as { enabled: boolean }).enabled;
+    expect(await enabled()).toBe(true);
+    mockUser = null;
+    expect(await enabled()).toBe(false);
+    mockUser = { id: 'user-1', email: 'someone@example.com' };
+    process.env.VIDEO_DIRECTOR_RUNS = 'admin';
+    expect(await enabled()).toBe(false);
+    mockUser = { id: 'admin-1', email: 'admin@example.com' };
+    expect(await enabled()).toBe(true);
+    delete process.env.VIDEO_DIRECTOR_RUNS;
+    expect(await enabled()).toBe(false);
+  });
+});
