@@ -22,7 +22,27 @@ type Phase =
   | { kind: 'error'; message: string };
 
 const POLL_MS = 10_000;
-const POLL_LIMIT_MS = 8 * 60_000;
+const POLL_LIMIT_MS = 30 * 60_000;
+/** The submitted operation survives a reload, so polling resumes and the paid button stays locked until it settles. */
+const PENDING_KEY = 'veo-smoke-pending';
+
+function readPending(): { operation: string; startedAt: number } | null {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(PENDING_KEY) ?? 'null');
+    return v && typeof v.operation === 'string' && typeof v.startedAt === 'number' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePending(v: { operation: string; startedAt: number } | null): void {
+  try {
+    if (v) window.localStorage.setItem(PENDING_KEY, JSON.stringify(v));
+    else window.localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* private mode: the in-memory phase still works */
+  }
+}
 
 export default function VeoSmokePage() {
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -35,25 +55,34 @@ export default function VeoSmokePage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((q: Quote) => setQuote(q))
       .catch((e: Error) => setPhase({ kind: 'error', message: `admin access needed (${e.message})` }));
+    const pending = readPending();
+    if (pending) {
+      setPhase({ kind: 'polling', ...pending });
+      poll(pending.operation, pending.startedAt, 0);
+    }
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount; poll only reads its arguments
   }, []);
 
-  const poll = (operation: string, startedAt: number) => {
+  const poll = (operation: string, startedAt: number, delay = POLL_MS) => {
     timer.current = setTimeout(async () => {
       const now = Date.now();
       setElapsed(Math.round((now - startedAt) / 1000));
       try {
         const r = await fetch(`/api/admin/veo-smoke?op=${encodeURIComponent(operation)}`, { cache: 'no-store' });
         const j = await r.json();
-        if (j.state === 'succeeded') return setPhase({ kind: 'done', url: j.url, gcsUri: j.gcsUri, seconds: Math.round((now - startedAt) / 1000) });
         if (j.state === 'processing' && now - startedAt < POLL_LIMIT_MS) return poll(operation, startedAt);
+        if (j.state !== 'processing') writePending(null);
+        if (j.state === 'succeeded') return setPhase({ kind: 'done', url: j.url, gcsUri: j.gcsUri, seconds: Math.round((now - startedAt) / 1000) });
         setPhase({ kind: 'error', message: `${j.state}${j.reason ? `: ${j.reason}` : ''} — operation ${operation}` });
       } catch (e) {
+        // A network blip is not the job's outcome: keep asking, the paid button stays locked meanwhile.
+        if (now - startedAt < POLL_LIMIT_MS) return poll(operation, startedAt);
         setPhase({ kind: 'error', message: `${(e as Error).message} — operation ${operation}` });
       }
-    }, POLL_MS);
+    }, delay);
   };
 
   const run = async () => {
@@ -69,6 +98,7 @@ export default function VeoSmokePage() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) return setPhase({ kind: 'error', message: `HTTP ${r.status} ${j.error ?? ''} ${j.reason ?? ''} ${j.detail ?? ''}`.trim() });
     const startedAt = Date.now();
+    writePending({ operation: j.operation, startedAt });
     setPhase({ kind: 'polling', operation: j.operation, startedAt });
     poll(j.operation, startedAt);
   };
@@ -92,7 +122,11 @@ export default function VeoSmokePage() {
           ტესტის გაშვება
         </button>
         {phase.kind === 'submitting' && <p>იგზავნება…</p>}
-        {phase.kind === 'polling' && <p>Veo ამზადებს კლიპს… {elapsed} წმ</p>}
+        {phase.kind === 'polling' && (
+          <p>
+            Veo ამზადებს კლიპს… {elapsed} წმ <span className="block text-white/50 text-xs break-all">{phase.operation}</span>
+          </p>
+        )}
         {phase.kind === 'error' && <p className="text-red-400 break-all">{phase.message}</p>}
         {phase.kind === 'done' && (
           <div className="space-y-2">

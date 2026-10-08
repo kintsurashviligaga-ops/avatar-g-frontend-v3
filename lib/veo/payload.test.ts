@@ -66,7 +66,7 @@ describe('VeoPayloadError', () => {
 });
 
 describe('buildVertexPayload — full bodies', () => {
-  it('text-to-video: every parameter in place, one sample, enhancePrompt off, bucket output', () => {
+  it('text-to-video: every parameter in place, one sample, no enhancePrompt key, bucket output', () => {
     const body = buildVertexPayload(
       clip({ seed: 588875549, negativePrompt: 'watermark, subtitles, extra fingers' }),
       { storageUri: 'gs://myavatar-veo/veo/sess-1/0-abc/' },
@@ -82,7 +82,6 @@ describe('buildVertexPayload — full bodies', () => {
         negativePrompt: 'watermark, subtitles, extra fingers',
         personGeneration: 'allow_adult',
         generateAudio: true,
-        enhancePrompt: false,
         storageUri: 'gs://myavatar-veo/veo/sess-1/0-abc/',
       },
     });
@@ -99,7 +98,6 @@ describe('buildVertexPayload — full bodies', () => {
         sampleCount: 1,
         personGeneration: 'allow_adult',
         generateAudio: true,
-        enhancePrompt: false,
       },
     });
     const wire = JSON.stringify(body);
@@ -126,7 +124,6 @@ describe('buildVertexPayload — full bodies', () => {
         sampleCount: 1,
         personGeneration: 'allow_adult',
         generateAudio: true,
-        enhancePrompt: false,
       },
     });
   });
@@ -149,7 +146,6 @@ describe('buildVertexPayload — full bodies', () => {
         sampleCount: 1,
         personGeneration: 'allow_adult',
         generateAudio: true,
-        enhancePrompt: false,
         storageUri: 'gs://myavatar-veo',
       },
     });
@@ -195,6 +191,13 @@ describe('buildVertexPayload — full bodies', () => {
     const { parameters } = buildVertexPayload(clip({ generateAudio: false, enhancePrompt: true }));
     expect(parameters.generateAudio).toBe(false);
     expect(parameters.enhancePrompt).toBe(true);
+  });
+
+  it('enhancePrompt false is never sent: Veo 3.x fails the operation with "prompt enhancement cannot be disabled"', () => {
+    for (const enhancePrompt of [false, undefined]) {
+      const { parameters } = buildVertexPayload(clip({ enhancePrompt }));
+      expect(parameters).not.toHaveProperty('enhancePrompt');
+    }
   });
 
   it('4k on an 8 s clip is passed through', () => {
