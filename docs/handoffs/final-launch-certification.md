@@ -197,6 +197,8 @@ pricing decision (no pricing change without an SSoT update).
 | Stripe webhook writes (event dedupe, subscription sync) | **fixed this run**: service-role client instead of the anon client (unit). `webhook_events` must exist in Production (owner check) |
 | A paid render when the ledger cannot charge | **fixed this run**: refused with `billing_unavailable` in production instead of rendering free (unit). Before deploy, confirm `deduct_credits` and the service-role key exist in Production, or every render is refused |
 | Credit history | **fixed this run**: reads `credit_ledger`; the client-written `POST /api/credits/record` (forgeable "+N credits" rows) is gone (unit). Admin analytics still reads the now-unwritten `credit_transactions` (PARTIAL) |
+| BOG checkout in Production | **FAILED** (checked live 2026-10-08). All 4 Production checkouts (a 10 ₾ top-up on 2026-10-03, three Starter plans on 2026-10-03 and 2026-10-06) ended `init_failed` 0.5 to 1.7 s after their row was written, with no BOG order id: BOG never created an order, so no one was charged. The code kept no reason. The request matches BOG's documented shape (re-checked against api.bog.ge/docs on 2026-10-08) and the callback URL is https, so the cause is on the merchant side: the credentials (a wrong pair, or sandbox credentials without `BOG_ENV=sandbox`), or the merchant not yet enabled for online payments. **Fixed this run**: a refused order now stores BOG's answer in `bog_orders.reject_reason` and the log (unit), so one test checkout names the cause (owner action 5a) |
+| Any completed payment in Production | **None, ever** (checked live): BOG as above; Stripe has no subscription row and no `stripe:` or `sub:` ledger ref. Credit purchases in the ledger are only the `starter` grant and manual/admin rows |
 | Live payment, webhook delivery, invoices | BLOCKED_OWNER |
 | Tax / VAT | MISSING |
 
@@ -298,6 +300,7 @@ Only the owner can do these. Nothing below was done by Claude.
 | 3b | After the Veo retry in 2: set `VIDEO_DIRECTOR_RUNS=admin` on Preview only (on 2026-10-08 it was added to Production too; remove the Production scope), so an admin can run a storyboard shot by shot (paid Veo per shot) | J, VIDEO V1-V6 |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
 | 5 | Subscribe the Stripe **Live** webhook endpoint to `charge.refunded` and `charge.dispute.created` (dashboard.stripe.com/webhooks). The reversal runs only if that endpoint's URL is `/api/stripe/webhook` or `/api/webhooks/stripe`; `/api/billing/webhook` ignores both events. `webhook_events` does **not** exist in Production (checked live), so the webhook's dedupe is in-memory only; the credit grant (`sub:<invoice>`) and the reversal refs are idempotent on their own | N |
+| 5a | BOG: in BOG's business manager, confirm the merchant is enabled for online payments (api.bog.ge) and that `BOG_CLIENT_ID` / `BOG_SECRET_KEY` in Vercel Production are the **live** pair (a sandbox pair needs `BOG_ENV=sandbox`, and then takes no real money). After this branch is deployed, start one 10 ₾ top-up and stop at BOG's page (creating the order charges nothing); if it fails, `bog_orders.reject_reason` names the cause | N, §55 billing |
 | 6 | Before deploying this branch: confirm `deduct_credits` and `SUPABASE_SERVICE_ROLE_KEY` exist in Production (otherwise every paid render is now refused, not given away) | N |
 | 7 | Choose the canonical pricing table (`/pricing` 25/75/149 GEL vs studio 9/29/89 GEL) | M |
 | 8 | Decide the browser-control infrastructure (none exists) | H, BROWSER CONTROL |
@@ -320,7 +323,7 @@ Any one of these means NO LAUNCH.
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | None open in Production: the 9 tables do not exist there; `20261008a` applied (O) |
 | Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is applied (2026-10-08) and no live Veo clip yet (J) |
-| Wrong pricing / billing inconsistency | Two contradictory pack tables (M) |
+| Wrong pricing / billing inconsistency | Two contradictory pack tables (M). No payment has ever completed in Production: every BOG checkout failed at start (N, owner action 5a) |
 | Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
 | Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |
 | Fake capability claims | Fixed on this branch (`/hub` fake stats deleted, sitemap from the catalog), still live in Production until a deploy |

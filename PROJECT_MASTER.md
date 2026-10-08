@@ -32,7 +32,8 @@ CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
 NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry,
-          VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, 20261008c right after the deploy,
+          VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, BOG credentials / merchant
+          activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
           pricing table, browser infra, provider migration plan); then Part 2
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
