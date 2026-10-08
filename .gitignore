@@ -62,3 +62,6 @@ vercel-project-inspect.txt
 # Site imagery v2 (VFX presets, video hero banners, service cards, image style swatches): raw takes and contact sheets
 # stay local — only the manifest and the selected, resized finals under public/ are committed.
 /scripts/site-art/raw/
+
+# Written by scripts/gcp/preview-inference-check.cjs on a requested Preview build only
+/public/preview-checks/
