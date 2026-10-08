@@ -7,9 +7,9 @@ owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply
 |---|---|
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
 | CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
-| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში (§9.4); Preview-ზე admin-ის გახსნას ელოდება |
+| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში და log-შიც იწერება (§9.4); owner-ის Preview-ზე შესვლას (ელფოსტის კოდით) ელოდება |
 | INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); Veo ელოდება AUTH-ს (§10.5) |
-| Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11 (§10.5) |
+| Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11; Google-ის metrics-ითაც (§10.5) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
 | Least-privilege WIF კონფიგურაცია | **APPLIED** — `scripts/gcp/part0-wif.sh` |
 | Billing: ანგარიში, Alerts | **PROVEN** — ერთადერთი ანგარიში; 3 budget, read-back (§10.1–10.2) |
@@ -237,6 +237,26 @@ Preview-ის მისამართი არ არის და Site URL-�
 გამოსავალი: Preview-ის `/ka/admin`-ზე email + პაროლით შესვლა (redirect არ სჭირდება), ან Supabase → Authentication →
 URL Configuration → Redirect URLs-ში `https://avatar-g-frontend-v3-*-kintsurashviligaga-ops-projects.vercel.app/**` (owner-ის ცვლილება).
 
+მეორე მცდელობა (11:50–11:57 UTC, Vercel request log-ები, deployment `goznxr4r7` = 7bc680d): owner Preview-ზე იყო, მაგრამ
+შესული არა (`/api/credits/balance` → 401, `/api/admin/*` მოთხოვნა არ ყოფილა); ფოტოზე აქტიური ჩანართი Production-ის
+`myavatar.ge/dashboard` იყო.
+
+Redirect-ის გარეშე გზა (კოდიდან, PROVEN არ არის, სანამ owner არ შევა): სტუდიის შესვლის ფანჯარა (`components/chat/AuthModal.tsx`)
+ელფოსტაზე 6-ციფრიან კოდს აგზავნის (`/api/auth/email-otp/send`, Resend) და `verifyOtp()`-ით სესიას **იმავე origin-ზე** ქმნის, ანუ
+Supabase-ის Redirect URLs არ სჭირდება. Preview-ში ამისთვის საჭირო ცვლადები არის: `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`NEXT_PUBLIC_SUPABASE_*` (`vercel env ls preview`, მხოლოდ სახელები). Preview და Production ერთ Supabase-ს იყენებენ, ამიტომ ეს
+owner-ის ჩვეულებრივი ანგარიშის სესიაა; Production არ იცვლება.
+
+Redirect URL-ის შესახებ (რეკომენდაცია, ცვლილება არ გაკეთებულა): wildcard `avatar-g-frontend-v3-*-kintsurashviligaga-ops-projects.vercel.app`
+სხვა Vercel ანგარიშსაც შეუძლია დაემთხვეს — პროექტი სახელით `avatar-g-frontend-v3-x-kintsurashviligaga-ops-projects` production-ში
+ზუსტად ასეთ `*.vercel.app` მისამართს იღებს (inferred Vercel-ის დასახელების წესიდან). PKCE code-ის გაცვლას ეს ართულებს, მაგრამ
+უსაფრთხოა მხოლოდ branch alias-ის ზუსტი მისამართი: `https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app/**`.
+
+Probe-ის შედეგი log-შიც (commit f3578b8): Veo-ს ხაზი ერთ `console.warn`-ად იწერება —
+`[provider-probe] veo ok=<bool> transport:… · vertex:ready · auth:mode:wif token:… bucket:… sign:…` — ასე AUTH-ს Vercel runtime
+log-იდან ვკითხულობთ, owner-ის ფოტოს გარეშე. `console.warn` იმიტომ, რომ `next.config`-ის `removeConsole` build-ში
+error/warn-ის გარდა ყველაფერს შლის (`console.info` log-ამდე ვერ აღწევს). Unit test: 4 შემთხვევა (`route.test.ts`).
+
 ## 10. owner-ის 8 პუნქტი (2026-10-08 11:08 UTC): billing, მოდელები, კოდი, ტესტი
 ყველაფერი read-only-ა, გარდა `billingbudgets` API-ის ჩართვისა და 3 budget-ის შექმნისა (პუნქტი 8, owner-ის მითითება).
 ფასიანი არაფერი გაშვებულა. GCP — owner-ის Mac, `myavatar.ge@gmail.com`; Vercel — `vercel api`, მხოლოდ ცვლადების სახელები და target-ები.
@@ -324,3 +344,9 @@ Vertex-ზე owner-ის ანგარიშით (≈ $0.12). ჯამი
 **T2 შედეგი (11:49–11:52 UTC, owner-ის თანხმობით 11:47):** `gemini-3.8-flash` 200, `gemini-3.1-flash-image` 200 (PNG 1024×1024),
 `lyria-3-clip-preview` 200 (MP3 30.8 წმ) — ჯამი ≈ $0.11. Lyria-ს პირველი მოთხოვნა 400 იყო (`["AUDIO"]`; არ ირიცხება),
 მეორე `["AUDIO","TEXT"]`-ით გავიდა. დეტალები: test plan §8. credit-ით დაფარვა ~24 სთ-ში მოწმდება.
+
+**T2 Google-ის მხრიდან (PROVEN, Cloud Monitoring `serviceruntime.googleapis.com/api/request_count`, 12:00 UTC, ბოლო 3 სთ):**
+`aiplatform.googleapis.com` → `PredictionService.GenerateContent` **200 ×3, 400 ×1**, credential = owner-ის gcloud OAuth client;
+დანარჩენი მხოლოდ model-ის metadata (`GetPublisherModel`/`ListPublisherModels`, უფასო). `generativelanguage.googleapis.com`
+ამ პროექტზე იმავე 3 საათში — **0 მოთხოვნა**, ანუ ტესტი AI Studio-ს API-ზე არ წასულა. Monitoring billing-ს არ აჩვენებს:
+credit-ით დაფარვა მაინც Billing → Reports-ით მოწმდება (პუნქტი 7). სკრიპტი: owner-ის Mac `~/.myavatar-gcloud/mon.sh` (read-only).

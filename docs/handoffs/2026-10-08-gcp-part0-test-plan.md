@@ -22,6 +22,8 @@ T2 WIF-ზე არ არის დამოკიდებული: ის o
 
 ## 3. T1 — ერთი Veo კლიპი აპლიკაციის გზით
 **ვინ:** owner (admin-ის შესვლა Preview-ზე სჭირდება). **სად:** `<preview>/ka/admin/veo-smoke`.
+შესვლა Preview-ზე: სტუდიის „შესვლა" → ელფოსტა → „კოდით შესვლა" → 6-ციფრიანი კოდი. Google-ით არა: ის Production-ზე
+აბრუნებს (report §9.4). შემდეგ `<preview>/api/admin/provider-probe` — შედეგი Vercel log-შიც იწერება (`[provider-probe] veo …`).
 1. გვერდი აჩვენებს: `veo-3.1-fast-generate-001`, 4 წმ, 720p, ხმით, **≈ $0.40**, `Transport: vertex (pinned)`.
 2. „ტესტის გაშვება" → ბრაუზერის დადასტურება → `POST /api/admin/veo-smoke {confirm:"paid-test"}` — **ერთი** submit.
 3. გვერდი ყოველ 10 წმ-ში ამოწმებს; მზა კლიპი იქვე ითამაშებს (15-წუთიანი signed URL).
@@ -82,5 +84,9 @@ Part 1-ისთვის: (1) Gemini 3.8 Flash ნაგულისხმე�
 დონე ან output-ის ლიმიტი მკაფიოდ უნდა დააყენოს, თორემ პასუხი წყდება და ხარჯი იზრდება. (2) Lyria 3 Vertex-ზე
 `:generateContent`-ით მუშაობს მხოლოდ `responseModalities: ["AUDIO","TEXT"]`-ით.
 
+Google-ის მხრიდან დადასტურება (Cloud Monitoring, `aiplatform.googleapis.com`, ბოლო 3 სთ, 12:00 UTC): `GenerateContent`
+200 ×3, 400 ×1, owner-ის gcloud credential-ით; `generativelanguage.googleapis.com` ამ პროექტზე — 0 მოთხოვნა (report §10.5).
+
 ### T1 — Veo
-ელოდება: owner-ის შესვლა Preview-ზე (email + პაროლი), AUTH VERIFIED, შემდეგ ღილაკი `/ka/admin/veo-smoke`-ზე.
+ელოდება: owner-ის შესვლა Preview-ზე ელფოსტის კოდით, AUTH VERIFIED (log), შემდეგ ღილაკი `/ka/admin/veo-smoke`-ზე.
+Preview: `avatar-g-frontend-v3-git-22ebb4-…vercel.app` → `dpl_4cuJcnZ3tor8iqjArwiTRqvLVp54` (f3578b8).
