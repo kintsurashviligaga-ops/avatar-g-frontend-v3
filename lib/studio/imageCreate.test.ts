@@ -68,10 +68,10 @@ describe('the engine', () => {
     expect(imageModelFor(null).id).toBe('nb/auto');
     // The price does not depend on the model: one image's quote at every model and size (the route's only charge).
     expect(imageCredits(1)).toBe(creditCostFor('image'));
-    // The backup legs are real in the route (and prompt-only: an edit never reaches them).
-    expect(route).toMatch(/generateGrokImage\(finalPrompt\)/);
-    expect(route).toMatch(/generateFluxProImage\(finalPrompt/);
-    expect(route).toMatch(/!providerUrl && !referenceImageUrl/);
+    // ⚠️ NanoBanana is the route's ONLY engine (PROJECT_MASTER R7, no silent fallback): the Grok (xAI) and FLUX 1.1 Pro
+    // (Replicate) legs that stood behind it are gone, so the label the picker prints is the engine that renders.
+    expect(route).not.toMatch(/generateGrokImage|generateFluxProImage|@\/lib\/ai\/xaiImage|@\/lib\/ai\/fluxImage/);
+    expect(route.match(/\bgenerateNanoBananaImage\(/g)).toHaveLength(1);
   });
 });
 

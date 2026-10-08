@@ -6,8 +6,8 @@
  * (lib/ai/atlasClient.ts, which serves the same model under the HF-style id
  * "deepseek-ai/DeepSeek-V3-0324"). On the DIRECT API the flagship id is "deepseek-chat"
  * (→ DeepSeek-V3); "deepseek-reasoner" is R1. NOTE: `deepseek-chat` works ONLY here — it
- * 404s on Atlas (that was the P88b trap). Having BOTH routes to DeepSeek-V3 gives the film
- * pipeline resilience: if one is rate-limited/down, llmText fails over to the other — both premium.
+ * 404s on Atlas (that was the P88b trap). ⚠️ llmText no longer calls this (PROJECT_MASTER R7: Google + ElevenLabs
+ * only, no silent fallback); DeepSeek is a forbidden provider and its remaining callers are Part 2 migration work.
  *
  * A lean, fail-open sibling of atlasChat (returns null on any miss + a hard timeout) so the
  * latency-bounded storyboard planner never hangs on a dead socket. Env: DEEPSEEK_API_KEY,

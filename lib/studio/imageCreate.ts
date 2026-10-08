@@ -12,8 +12,8 @@
  *   · ENGINE — NanoBanana, at the endpoint the picked MODEL renders the size at (lib/providers/catalogue: Auto is the old
  *     size map — standard → v2-1k, high → v2-2k, ultra → pro-4k — and V2 / Pro pin the family). The request names the model
  *     (`model`, lib/studio/modelPick imageModelField) and the route validates it against the catalogue before any charge.
- *     If NanoBanana misses (or its breaker is open) a TEXT-ONLY prompt falls through to Grok, then FLUX 1.1 Pro, at the same
- *     price; those two are prompt-only, so an edit of the user's own picture never leaves NanoBanana (it refunds instead).
+ *     If NanoBanana misses (or its breaker is open) the route answers 502 provider_unavailable and refunds — there is no
+ *     Grok / FLUX leg any more (PROJECT_MASTER R7, no silent fallback).
  *   · REFERENCE — the route reads ONE `referenceImage` (a data: upload or an https URL); the send path takes the first image
  *     attachment. So the real limit is ONE reference, not the 14 a competitor's screen shows.
  */
@@ -23,7 +23,7 @@ import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 
 /**
  * ⚠️ THE UI OFFERED SIX OF THE ELEVEN RATIOS THAT WORK. /api/nanobanana/image applies NO allowlist — it forwards
- * `body.aspectRatio` straight through — and the FLUX 1.1 Pro fallback accepts eleven (FLUX_ASPECTS, lib/ai/fluxImage.ts:16).
+ * `body.aspectRatio` straight through (the removed FLUX 1.1 Pro fallback accepted the same eleven, lib/ai/fluxImage.ts:16).
  * The four added here are the ones people actually ask for and could not select: 4:5 is the Instagram feed ratio, 3:4 the
  * standard portrait print, 5:4 its landscape counterpart, and 21:9 cinemascope. Every one already rendered correctly end to
  * end; nothing but this list stood between the user and them.

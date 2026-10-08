@@ -16,6 +16,7 @@ import { BANK_FEE_RATE } from '@/lib/financials/constants';
 import { PRICING_TIERS } from '@/lib/billing/pricingConfig';
 import { atlasConfigured } from '@/lib/ai/atlasClient';
 import { deepseekConfigured } from '@/lib/ai/deepseekClient';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { runwayModel } from '@/lib/ai/runway';
 
 export const dynamic = 'force-dynamic';
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
       };
     } catch { /* fail-open → zeros */ }
 
-    // Provider-key state (presence only; mirrors llmText/health gates). scenePlanningLive is the decisive
+    // Provider-key state (presence only; scenePlanningLive is llmText's own gate). scenePlanningLive is the decisive
     // "is generation degraded to deterministic beats?" signal.
     const has = (...names: string[]) => names.some((n) => String(process.env[n] || '').trim().length > 0);
     const providers = {
@@ -88,10 +89,11 @@ export async function GET(request: NextRequest) {
       heygen: has('HEYGEN_API_KEY'),
       udio: has('UDIO_API_KEY'),
     };
-    const scenePlanningLive = providers.deepseekDirect || providers.atlasDeepseek || providers.gemini || providers.anthropic;
+    // llmText is Gemini ONLY (PROJECT_MASTER R7): a bound DeepSeek / Atlas / Anthropic key no longer plans any scene.
+    const scenePlanningLive = !!resolveGeminiKey();
 
     const warnings: string[] = [];
-    if (!scenePlanningLive) warnings.push('No text-LLM key bound — scene planning falls back to deterministic beats. Bind DEEPSEEK_API_KEY / ATLAS_API_KEY / GEMINI_API_KEY.');
+    if (!scenePlanningLive) warnings.push('No Gemini key bound — scene planning falls back to deterministic beats (llmText has no other provider). Bind GEMINI_API_KEY.');
     // TRACK 4 — HeyGen integration gate: the avatar/talking-photo path silently drops without this key.
     if (!providers.heygen) warnings.push('HEYGEN_API_KEY not bound — the HeyGen avatar/talking-photo path is unavailable (renders fall to the Replicate lip-sync leg).');
     if (/v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim())) warnings.push('REPLICATE_VIDEO_MODEL pinned to a v1.6 tier — unset it to restore the Kling v2.1 lock.');

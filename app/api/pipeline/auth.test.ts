@@ -2,8 +2,9 @@
 /**
  * POST /api/pipeline — `generate` is signed in only; the wizard's local steps stay open.
  *
- * ⚠️ `generate` reaches every key the platform has — Gemini Pro for the text services (Claude / OpenAI behind it),
- * Nano Banana, LTX, HeyGen + ElevenLabs, World Labs, Udio — and it had no session check at all. Pinned here:
+ * ⚠️ `generate` reaches every key the platform has — Gemini for the text services (only Gemini since R7: no Claude /
+ * OpenAI fallback — textGeminiOnly.test.ts), Nano Banana, LTX, HeyGen + ElevenLabs, World Labs, Udio — and it had no
+ * session check at all. Pinned here:
  *   · a guest `generate` → 401 before any provider (Gemini, Claude, or anything reached through fetch);
  *   · a guest can still walk detect_intent / get_questions / confirm (local lookups, no spend);
  *   · a signed-in `generate` passes the gate and reaches the text brain.
