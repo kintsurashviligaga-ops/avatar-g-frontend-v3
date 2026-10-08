@@ -39,6 +39,15 @@ q() { "$@" 2>&1 || true; }   # audit: show the error (e.g. PERMISSION_DENIED / N
 
 case "$MODE" in audit|plan|apply) ;; *) echo "MODE must be audit, plan or apply" >&2; exit 2;; esac
 
+# The owner named the one Google account for this project (2026-10-08). Never read or change GCP as anyone else.
+EXPECTED_ACCOUNT="${EXPECTED_ACCOUNT:-myavatar.ge@gmail.com}"
+ACTIVE_ACCOUNT="$(gcloud config get-value account 2>/dev/null || true)"
+if [[ "${ACTIVE_ACCOUNT,,}" != "${EXPECTED_ACCOUNT,,}" ]]; then
+  echo "✗ gcloud is signed in as '${ACTIVE_ACCOUNT:-nobody}', not ${EXPECTED_ACCOUNT}. Stop." >&2
+  echo "  Cloud Shell: open it as ${EXPECTED_ACCOUNT}, or run: gcloud auth login ${EXPECTED_ACCOUNT}" >&2
+  exit 3
+fi
+
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 POOL="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}"
 VERTEX_AGENT="service-${PROJECT_NUMBER}@gcp-sa-aiplatform.iam.gserviceaccount.com"
