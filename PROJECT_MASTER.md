@@ -38,7 +38,8 @@ NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy,
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
           the API key) → ModelCatalog data ✓ (lib/models, runtime check, admin report) → pickers on the catalog and
-          PR #44's provider removals after action 9); A1 held until Veo T1 passes
+          PR #44's provider removals after action 9); Veo T1 passed 15:49Z, so A1 (Veo Production env) now waits only on
+          the owner (a Production change)
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
@@ -71,8 +72,13 @@ PHASE CHECKLIST:
           T1 Veo: owner pressed /ka/admin/veo-smoke 14:45:29 UTC; Vertex accepted the submit via WIF (log "[veo] submit
           transport=vertex … → ok", aiplatform PredictLongRunning 200 from SA myavatar-veo), then the operation FAILED
           "Veo 3 prompt enhancement cannot be disabled" (op 71e35314-…): lib/veo/payload.ts sent enhancePrompt:false, so every
-          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch. Veo is NOT
-          INFERENCE VERIFIED until the retry produces the clip; the failed op is expected unbilled (Billing confirms).
+          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch.
+          T1 retry: INFERENCE VERIFIED (Veo) 2026-10-08 15:49 UTC via WIF on the PR #43 Preview (75eef69): submit 15:48:21,
+          veo-3.1-fast-generate-001, 4 s, 720p, op fbe5ed00-…; done, no error, raiMediaFilteredCount 0; MP4 in
+          gs://myavatar-veo-outputs (638,497 bytes, h264 1280x720 24 fps + AAC, 4.01 s, frame matches the prompt). Cloud
+          Monitoring: PredictLongRunning from SA myavatar-veo only; the AI Studio key unused. ≈ $0.40. The two failed ops
+          produced no video (Billing confirms they are unbilled). Gemini text on Vertex from the Preview runtime: AUTH
+          VERIFIED 18:13 UTC (Part 2 A2).
           Credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
           No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
@@ -84,7 +90,7 @@ PHASE CHECKLIST:
           docs/handoffs/part-1-report.md; §60 certification done (final-launch-certification.md), not launch ready.
 ◐ Part 2: Vertex Migration — in progress on claude/launch-certification-wmvitt (2026-10-08). Earlier WIP on unmerged
           origin/codex/vertex-ai-migration (503829dc) + PR #44 (green) is to be merged in, not redone (15 conflicts).
-          A1 (Veo Production env) cannot complete before Part 0 T1 (STOP-1).
+          Part 0 T1 passed 15:49Z (STOP-1 cleared); A1 (Veo Production env) is a Production change, so it waits on the owner.
           Step 1 done: Claude removed from the chat router (specialist-first and fallback) and Agent G's personality
           (Gemini only, explicit failure; certification §L).
           Owner 2026-10-08 17:16 UTC ("not now", action 9): Replicate / Udio / Higgsfield / HeyGen stay; PR #44 is NOT
@@ -116,7 +122,7 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-· STOP-1: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
+· ~~STOP-1~~ CLEARED 2026-10-08 15:49Z (Veo INFERENCE VERIFIED, see Part 0). Was: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
   with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
   code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once more, on the Preview build
   that carries 75eef69 (≈ $0.40, approved 11:47; the first press failed on enhancePrompt:false and produced no clip).
