@@ -227,7 +227,8 @@ interface BuiltClients {
    * via GoogleAuth.getCredentials(), which has no JWT branch and falls through to a GCE metadata probe →
    * "Unable to find credentials". Wrapping with `credentials` makes key-mode signing local (RSA, no network), and
    * for WIF GoogleAuth derives the service-account email from the impersonation URL and signs through IAM
-   * signBlob (the service account needs roles/iam.serviceAccountTokenCreator on itself).
+   * signBlob (the service account needs iam.serviceAccounts.signBlob on itself — the myavatarUrlSigner custom role
+   * from scripts/gcp/part0-wif.sh, not the broader roles/iam.serviceAccountTokenCreator).
    */
   googleAuth: GoogleAuth;
 }

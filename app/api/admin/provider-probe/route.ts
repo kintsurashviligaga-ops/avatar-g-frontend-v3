@@ -4,6 +4,7 @@ import { assertAdminAccess } from '@/lib/admin/guard';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { veoTransport } from '@/lib/veo/engine';
 import { isGoogleOnly } from '@/lib/veo/policy';
+import { checkVertexAuth } from '@/lib/veo/authCheck';
 import { vertexConfigProblems } from '@/lib/veo/vertexAuth';
 
 export const dynamic = 'force-dynamic';
@@ -101,15 +102,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     }),
 
     // VEO — which Google route renders clips right now, and what still keeps Vertex AI off (variable NAMES only).
+    // With Vertex configured it also proves the keyless chain works: token, bucket, signBlob — no Veo call, free.
     (async (): Promise<ProbeResult> => {
       const transport = veoTransport();
       const missing = vertexConfigProblems();
-      return {
-        provider: 'veo',
-        configured: transport !== null,
-        ok: transport !== null,
-        detail: `transport:${transport ?? 'none'} · google-only:${isGoogleOnly()} · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`,
-      };
+      const detail = `transport:${transport ?? 'none'} · google-only:${isGoogleOnly()} · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`;
+      if (missing.length) return { provider: 'veo', configured: transport !== null, ok: transport !== null, detail };
+      const auth = await checkVertexAuth(get);
+      return { provider: 'veo', configured: true, ok: transport !== null && auth.ok, detail: `${detail} · auth:${auth.steps.join(' ')}` };
     })(),
 
     probe('anthropic', process.env.ANTHROPIC_API_KEY, async (k) => {
