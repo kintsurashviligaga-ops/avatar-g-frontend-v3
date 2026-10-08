@@ -1,17 +1,16 @@
 # GCP Part 0 — Vertex AI WIF: ანგარიში (2026-10-08)
 
-სტატუსი: **Part 0 არ არის დასრულებული.** read-only audit ჩატარდა (owner-ის Cloud Shell, `myavatar.ge@gmail.com`,
-2026-10-08): პროექტი და billing დადასტურებულია, WIF-ის არცერთი ნაწილი ჯერ **არ არსებობს**. least-privilege
-კონფიგურაცია მზადაა და owner-ის თანხმობას ელოდება.
+სტატუსი: **GCP და Vercel — CONFIGURED (read-back-ით დადასტურებული). AUTH და INFERENCE ჯერ არ არის.**
+owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply გაეშვა owner-ის Mac-ზე `myavatar.ge@gmail.com`-ით (§9).
 
 | ფენა | სტატუსი |
 |---|---|
-| CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **NOT CONFIGURED** — pool/provider, `myavatar-veo` SA, custom role-ები და bucket არ არსებობს; 6-დან 4 API ჩართულია (§1) |
-| CONFIGURED (Vercel: OIDC Team mode, env vars) | **PARTIAL** — OIDC `enabled`, issuer mode `team` (PROVEN); Preview-ში 8-დან 5 ცვლადი სწორადაა, აკლია `GCP_PROJECT_NUMBER`, `GCP_VEO_BUCKET`, `VEO_TRANSPORT` (§6) |
-| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — გასაცვლელი provider ჯერ არ არსებობს |
+| CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
+| CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
+| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში (§9.4); Preview-ზე admin-ის გახსნას ელოდება |
 | INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** (ფასიანია — ცალკე თანხმობა სჭირდება) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
-| Least-privilege WIF კონფიგურაცია | **BUILT** — `scripts/gcp/part0-wif.sh`; apply ელოდება owner-ის თანხმობას |
+| Least-privilege WIF კონფიგურაცია | **APPLIED** — `scripts/gcp/part0-wif.sh` |
 
 ## 0. ანგარიში
 GCP-ზე ყოველი წაკითხვა და ცვლილება მხოლოდ `myavatar.ge@gmail.com`-ით (owner-ის მითითება, 2026-10-08).
@@ -191,3 +190,39 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
    (inference-ის გარეშე). INFERENCE VERIFIED — ერთი მოკლე Veo კლიპი მხოლოდ owner-ის ცალკე თანხმობით (ფასიანია).
 6. **owner (Console):** trial credit-ის ნაშთი/ვადა და budget-ები (Billing → Overview / Budgets & alerts).
 7. Production environment-ის დამატება (`VERCEL_ENVIRONMENTS=preview,production`) — მხოლოდ ზემოთქმულის შემდეგ და ცალკე თანხმობით.
+
+## 9. Apply (2026-10-08, owner-ის თანხმობა 11:00 UTC)
+
+### 9.1 გაშვება
+`MODE=apply scripts/gcp/part0-wif.sh` owner-ის Mac-ზე, gcloud 587.0.0 + beta, `myavatar.ge@gmail.com`. ყოველ გაშვებაზე
+სკრიპტი ჩამოიტვირთა კონკრეტული commit-იდან და sha256 შემოწმდა. სამი გაშვება დასჭირდა:
+1. გაჩერდა ნაბიჯ 5-ზე: `service-accounts add-iam-policy-binding`-ს Cloud Shell-ის გარეთ `--project` სჭირდება → 33bdbce.
+2. გაჩერდა Vertex AI Service Agent-ის bucket grant-ზე: ახლად შექმნილი agent IAM-ს ჯერ არ ჩანდა → retry, 2f9e101.
+3. `EXIT=0`. apply idempotent-ია, ამიტომ განმეორებამ არსებული არაფერი შეცვალა.
+
+### 9.2 Read-back (`MODE=audit`, apply-ის შემდეგ)
+| რა | შედეგი |
+|---|---|
+| API-ები | 6/6 ჩართულია |
+| pool `vercel` | `ACTIVE` |
+| provider `vercel-oidc` | `ACTIVE`; issuer `https://oidc.vercel.com/kintsurashviligaga-ops-projects`; audience `https://vercel.com/kintsurashviligaga-ops-projects`; condition = team id + project id + `['preview']`; mapping `google.subject=assertion.sub` + 3 attribute |
+| SA `myavatar-veo@…` | არსებობს, user-managed key **არ აქვს** |
+| ვის შეუძლია SA-ს გამოყენება | `workloadIdentityUser` → მხოლოდ `…/subject/owner:kintsurashviligaga-ops-projects:project:avatar-g-frontend-v3:environment:preview`; `myavatarUrlSigner` → მხოლოდ თავად SA |
+| project role | `myavatarVeoInvoker` → SA (Owner/Editor/aiplatform.user არა) |
+| custom role-ები | `myavatarVeoInvoker` (`aiplatform.endpoints.predict`), `myavatarUrlSigner` (`iam.serviceAccounts.signBlob`) |
+| bucket `gs://myavatar-veo-outputs` | US-CENTRAL1, uniform access, public access prevention `enforced`, Delete age 30 |
+| bucket IAM | `objectCreator` + `objectViewer` → SA და `service-467145118875@gcp-sa-aiplatform…`; დანარჩენი — GCS-ის ნაგულისხმევი legacy binding-ები project owner/editor/viewer-ზე |
+
+შენიშვნა: `roles/editor` default compute SA-ზე (§1.1) `projectEditor` legacy binding-ით ამ bucket-ზეც ვრცელდება.
+მოხსნა plan-ში არ იყო; რეკომენდაციაა ცალკე გადაწყვეტილებით.
+
+### 9.3 Vercel Preview (`vercel api`, GET read-back)
+`GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER=467145118875`, `GCP_SERVICE_ACCOUNT_EMAIL`, `GCP_WORKLOAD_IDENTITY_POOL_ID=vercel`,
+`GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID=vercel-oidc`, `GCP_VEO_BUCKET=gs://myavatar-veo-outputs`, `GCP_VEO_LOCATION=us-central1`,
+`VEO_TRANSPORT=vertex` — ყველა `plain`, მხოლოდ `preview`. ბოლო სამი დაემატა owner-ის თანხმობით. Production არ შეცვლილა.
+
+### 9.4 AUTH შემოწმება
+`/api/admin/provider-probe` (admin-only) Veo-ს ხაზზე, როცა Vertex კონფიგურირებულია, `lib/veo/authCheck.ts`-ით ამოწმებს:
+`token` (Vercel OIDC → STS → SA impersonation), `bucket` (ერთი ობიექტის სია) და `sign` (IAM signBlob). Veo არ
+იძახება, არაფერი ფასიანი; პასუხში მხოლოდ ნაბიჯების სახელები და redacted შეცდომებია. Unit test: 6 შემთხვევა,
+token-ის არგამოჩენის ჩათვლით. AUTH VERIFIED = Preview deployment-ზე `auth:mode:wif token:ok bucket:ok sign:ok`.
