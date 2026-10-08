@@ -65,10 +65,8 @@ const PINNED_VALUES: Record<string, Record<string, string[]>> = {
     target: ['gpt4', 'claude', 'gemini', 'flux', 'midjourney', 'dalle', 'kling', 'sora'],
     style: ['detailed', 'concise', 'creative', 'technical', 'cinematic'],
   },
-  voice: {
-    voice_style: ['neutral', 'warm', 'professional', 'dramatic', 'calm'],
-    language: ['ka', 'en', 'ru'],
-  },
+  // voice: no pickers — the style and language selects changed nothing (the text picks the voice) and were removed.
+  voice: {},
   software: { language: ['typescript', 'python', 'react', 'swift'] },
   business: { type: ['market', 'pitch', 'financial', 'competitor'] },
 };
@@ -178,7 +176,7 @@ describe('buildGenerateRequest — the same route and body as before', () => {
 
   test('prompt posts as prompt-builder; voice as voice', () => {
     expect(buildGenerateRequest(SERVICE_FORMS.prompt!, { prompt: 'x', target: 'flux' }, opts).body).toMatchObject({ serviceId: 'prompt-builder', answers: { target: 'flux' } });
-    expect(buildGenerateRequest(SERVICE_FORMS.voice!, { prompt: 'x', voice_style: 'calm', language: 'ka' }, opts).body).toMatchObject({ serviceId: 'voice', answers: { voice_style: 'calm', language: 'ka' } });
+    expect(buildGenerateRequest(SERVICE_FORMS.voice!, { prompt: 'x' }, opts).body).toMatchObject({ serviceId: 'voice', userInput: 'x', answers: {} });
   });
 
   test('software → /api/orbit/code-generation; business → /api/chat with the report type in the message', () => {

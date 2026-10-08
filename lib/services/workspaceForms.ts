@@ -451,6 +451,9 @@ export const SERVICE_FORMS: Readonly<Record<string, ServiceForm>> = {
     route: { kind: 'pipeline', serviceId: 'game', output: 'text' },
   },
 
+  // The voice is chosen by the text itself (Georgian → the native Georgian voice), and ElevenLabs speaks exactly what is
+  // typed. A „voice style" and a „language" picker sat here and changed nothing — the pipeline never read them for
+  // speech — so they are gone rather than left as controls that pretend.
   voice: {
     fields: [
       {
@@ -458,19 +461,6 @@ export const SERVICE_FORMS: Readonly<Record<string, ServiceForm>> = {
         label: { ka: 'გასახმოვანებელი ტექსტი', en: 'Text to speak', ru: 'Текст для озвучки' },
         placeholder: { ka: 'ჩაწერე ტექსტი, რომელიც ხმად უნდა იქცეს…', en: 'Type the text to turn into speech…', ru: 'Введите текст, который нужно озвучить…' },
       },
-      {
-        id: 'voice_style', type: 'select',
-        label: { ka: 'ხმის სტილი', en: 'Voice style', ru: 'Стиль голоса' },
-        options: [
-          { value: 'neutral', label: { ka: 'ნეიტრალური / ბუნებრივი', en: 'Neutral / natural', ru: 'Нейтральный / естественный' } },
-          { value: 'warm', label: { ka: 'თბილი და მეგობრული', en: 'Warm and friendly', ru: 'Тёплый и дружелюбный' } },
-          { value: 'professional', label: { ka: 'პროფესიული', en: 'Professional', ru: 'Деловой' } },
-          { value: 'dramatic', label: { ka: 'დრამატული / ექსპრესიული', en: 'Dramatic / expressive', ru: 'Драматичный / выразительный' } },
-          { value: 'calm', label: { ka: 'მშვიდი', en: 'Calm and soothing', ru: 'Спокойный' } },
-        ],
-        defaultValue: 'neutral',
-      },
-      { id: 'language', type: 'select', label: { ka: 'ენა', en: 'Language', ru: 'Язык' }, options: LANGUAGE_OPTIONS, defaultValue: 'ka' },
     ],
     actionLabel: { ka: 'გახმოვანება', en: 'Make the voiceover', ru: 'Озвучить' },
     previewHint: { ka: 'აუდიო აქ დაიკვრება', en: 'The audio plays here', ru: 'Аудио появится здесь' },

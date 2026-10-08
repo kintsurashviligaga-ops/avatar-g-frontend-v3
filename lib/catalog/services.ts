@@ -383,7 +383,8 @@ export const LEGACY_SLUG_TO_SERVICE: Readonly<Record<string, string>> = {
   interior: 'image.interior',
   avatar: 'avatar.talking',
   music: 'music.generate',
-  voice: 'voice.dubbing',
+  // NOT `voice`: that page is a text-to-speech voiceover (/api/pipeline voice), which no catalog service runs yet —
+  // pointing it at Dubbing named it after a different thing. See the migration matrix (voice.voiceover, FUTURE).
   'content-writer': 'text.write',
   podcast: 'text.write',
   text: 'text.write',

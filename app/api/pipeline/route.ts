@@ -28,6 +28,7 @@ import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generatio
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isGoogleOnly } from '@/lib/veo/policy';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -930,22 +931,28 @@ async function handleGenerate(
         genResult = await generateInterior(effectivePrompt, answers, mediaFiles);
         break;
       case 'voice': {
+        // ⚠️ THE SPEECH MODEL READ THE INSTRUCTIONS ALOUD. `effectivePrompt` is a prompt for a TEXT model: the clarifier
+        // wraps the user's words („Synthesize the following text in ka with a neutral tone:\n\n…") and the iteration
+        // store prepends the previous request („…\n\nRefinement request: …"). Text-to-speech has no instructions to
+        // follow — it says every character — so the voiceover opened with that English sentence. It speaks exactly
+        // what the user typed (rawScript), as the avatar branch above already does.
+        const speech = rawScript.trim();
         const elevenKey = process.env.ELEVENLABS_API_KEY;
         // v329 — Georgian → the CLONED native voice on eleven_v3 (the only model that
         // supports `ka`); other languages keep the configured voice on turbo. The old
         // code hard-coded turbo (which mangles Georgian) + the non-native voice.
-        const isKa = /[ა-ჿ]/.test(effectivePrompt);
+        const isKa = /[ა-ჿ]/.test(speech);
         const voiceId = isKa
           ? georgianVoiceId('female')
           : (process.env.ELEVENLABS_VOICE_ID || georgianVoiceId('female'));
-        const modelId = selectTtsModel(effectivePrompt);
+        const modelId = selectTtsModel(speech);
         if (elevenKey) {
           // Buffered (binary) — the plain endpoint returns audio bytes, and eleven_v3
           // is not reliably served by the streaming endpoint.
           const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
             headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-            body: JSON.stringify({ text: effectivePrompt.slice(0, 5000), model_id: modelId, voice_settings: voiceSettingsForModel(modelId) }),
+            body: JSON.stringify({ text: speech.slice(0, 5000), model_id: modelId, voice_settings: voiceSettingsForModel(modelId) }),
           });
 
           if (ttsRes.ok) {
@@ -957,8 +964,14 @@ async function handleGenerate(
           }
         }
 
+        // PROJECT_MASTER §A / R7: ElevenLabs is the voice provider. The OpenAI voice behind it was a silent vendor swap,
+        // so it runs only with the Google-only switch turned off (AI_GOOGLE_ONLY=0, the kill switch).
+        if (isAiGoogleOnly()) {
+          genResult = { outputKind: 'audio', error: 'Voice generation failed' };
+          break;
+        }
         try {
-          const dataUrl = await generateOpenAITtsDataUrl(effectivePrompt);
+          const dataUrl = await generateOpenAITtsDataUrl(speech);
           genResult = { outputKind: 'audio', resultUrl: dataUrl };
         } catch (ttsErr) {
           const ttsMsg = ttsErr instanceof Error ? ttsErr.message : 'Voice generation failed';
