@@ -10,6 +10,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import {
+  createSignedAssetUrl,
+  describeSupabaseObjectUrl,
+  ownStorageHosts,
+  removeStorageObjects,
+  uploadAndSign,
+} from '@/lib/orchestrator/storage-adapter';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,6 +33,38 @@ const PROVIDER_TIMEOUT_MS = 15_000;
 /** ElevenLabs voice ids are short alphanumerics; anything else never reaches a provider URL path. */
 const VOICE_ID_RE = /^[A-Za-z0-9]{1,64}$/;
 const OWNER_TAG_RE = /myavatar-owner:([0-9a-f-]{36})/i;
+/** The one object path a preview clip is ever stored at: `voices/<user id>/<voice id>.mp3`. */
+const PREVIEW_PATH_RE = /^voices\/([0-9a-f-]{36})\/[A-Za-z0-9]{1,64}\.mp3$/i;
+/** A preview link is minted fresh on every list, so it only has to outlive one Voice Lab session. */
+const PREVIEW_LINK_TTL_SEC = 6 * 60 * 60;
+
+/**
+ * Where preview clips live: the private upload bucket. ⚠️ They used to go to a `media` bucket that Production does not
+ * have, so every upload failed and no clone ever had a preview (checked live 2026-10-08).
+ */
+function previewBucket(): string {
+  return process.env.UPLOAD_BUCKET?.trim() || 'uploads';
+}
+
+function previewPath(userId: string, voiceId: string): string {
+  return `voices/${userId}/${voiceId}.mp3`;
+}
+
+/**
+ * A fresh link to the caller's OWN preview clip, or null.
+ *
+ * ⚠️ preview_url IS USER-WRITABLE (voice_samples RLS lets an owner update their row through PostgREST) and the link
+ * is signed with the service role. Signing whatever object the row names would let any signed-in user read any file
+ * in storage, so only the exact path POST writes for this caller, in our own project and bucket, is ever signed.
+ */
+async function previewLink(stored: unknown, userId: string): Promise<string | null> {
+  if (typeof stored !== 'string' || !stored) return null;
+  const ref = describeSupabaseObjectUrl(stored);
+  if (!ref || !ownStorageHosts().has(ref.host) || ref.bucket !== previewBucket()) return null;
+  const owner = ref.path.match(PREVIEW_PATH_RE)?.[1];
+  if (!owner || owner.toLowerCase() !== userId.toLowerCase()) return null;
+  return createSignedAssetUrl(ref.bucket, ref.path, PREVIEW_LINK_TTL_SEC);
+}
 
 /**
  * The description every clone is created with. It is the ONLY proof DELETE accepts that a provider voice belongs to
@@ -128,7 +167,10 @@ export async function GET(): Promise<NextResponse> {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ samples: (data ?? []) as VoiceSampleRow[] });
+    const samples = await Promise.all(
+      ((data ?? []) as VoiceSampleRow[]).map(async (row) => ({ ...row, preview_url: await previewLink(row.preview_url, user.id) })),
+    );
+    return NextResponse.json({ samples });
   } catch (error) {
     reportError(error, { route: '/api/voice/clone', op: 'GET' });
     return NextResponse.json({ error: 'Failed to list voice samples' }, { status: 500 });
@@ -228,31 +270,24 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }),
       });
 
-      if (ttsRes.ok) {
+      if (ttsRes.ok && VOICE_ID_RE.test(voiceId)) {
         const buf = Buffer.from(await ttsRes.arrayBuffer());
-        const storage = createServiceRoleClient();
-        const path = `voices/${user.id}/${voiceId}.mp3`;
-        const { error: uploadErr } = await storage.storage
-          .from('media')
-          .upload(path, buf, {
-            contentType: 'audio/mpeg',
-            upsert: true,
-          });
-
-        if (uploadErr) {
-          reportError(uploadErr, {
+        previewUrl = await uploadAndSign(
+          previewBucket(),
+          previewPath(user.id, voiceId),
+          buf.toString('base64'),
+          'audio/mpeg',
+          PREVIEW_LINK_TTL_SEC,
+        );
+        if (!previewUrl) {
+          reportError(new Error('Preview upload failed'), {
             route: '/api/voice/clone',
             op: 'preview-upload',
             userId: user.id,
             voiceId,
           });
-        } else {
-          const { data: signed } = await storage.storage
-            .from('media')
-            .createSignedUrl(path, 60 * 60 * 24 * 365);
-          previewUrl = signed?.signedUrl ?? null;
         }
-      } else {
+      } else if (!ttsRes.ok) {
         const detail = await ttsRes.text().catch(() => '');
         reportError(new Error('Preview synth failed'), {
           route: '/api/voice/clone',
@@ -381,6 +416,11 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     if (error) {
       reportError(error, { route: '/api/voice/clone', op: 'DELETE', userId: user.id, id });
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // The preview clip goes with the row. Only ever the caller's own folder: external_id is user-writable.
+    if (VOICE_ID_RE.test(sample.external_id)) {
+      await removeStorageObjects(previewBucket(), [previewPath(user.id, sample.external_id)]);
     }
 
     return NextResponse.json({ deleted: id, providerDeleted });
