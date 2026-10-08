@@ -84,17 +84,25 @@ if [[ "$MODE" == "audit" ]]; then
   q gcloud services list --enabled --project "$PROJECT_ID" --format='value(config.name)' \
     --filter="config.name:($(IFS=' '; echo "${APIS[*]}" | sed 's/ / OR /g'))"
   hr "workload identity pools / providers"
-  q gcloud iam workload-identity-pools list --location=global --format='table(name.basename(),state,disabled)'
-  for p in $(gcloud iam workload-identity-pools list --location=global --format='value(name.basename())' 2>/dev/null); do
-    q gcloud iam workload-identity-pools providers list --workload-identity-pool="$p" --location=global \
-      --format='yaml(name,state,oidc.issuerUri,oidc.allowedAudiences,attributeMapping,attributeCondition)'
+  # --show-deleted: a pool deleted in the last 30 days still holds its id, and create would fail on it.
+  q gcloud iam workload-identity-pools list --location=global --project "$PROJECT_ID" --show-deleted \
+    --format='table(name.basename(),state,disabled)'
+  for p in $(gcloud iam workload-identity-pools list --location=global --project "$PROJECT_ID" --format='value(name.basename())' 2>/dev/null); do
+    q gcloud iam workload-identity-pools providers list --workload-identity-pool="$p" --location=global --project "$PROJECT_ID" \
+      --show-deleted --format='yaml(name,state,oidc.issuerUri,oidc.allowedAudiences,attributeMapping,attributeCondition)'
   done
   hr "service accounts"
   q gcloud iam service-accounts list --project "$PROJECT_ID" --format='table(email,disabled)'
   hr "policy on $SA_EMAIL (who may impersonate / sign as it)"
   q gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --format=yaml
-  hr "user-managed keys on $SA_EMAIL (must be none)"
-  q gcloud iam service-accounts keys list --iam-account "$SA_EMAIL" --managed-by=user --format='table(name.basename(),validAfterTime)'
+  hr "user-managed keys on every service account (ours must have none)"
+  for sa in $(gcloud iam service-accounts list --project "$PROJECT_ID" --format='value(email)' 2>/dev/null); do
+    echo "$sa:"
+    q gcloud iam service-accounts keys list --iam-account "$sa" --managed-by=user --format='table(name.basename(),validAfterTime,disabled)'
+  done
+  hr "API keys (metadata only: names and restrictions, never the key string)"
+  q gcloud services api-keys list --project "$PROJECT_ID" \
+    --format='table(name.basename(),displayName,createTime,restrictions.apiTargets[].service.list())'
   hr "project roles held by service accounts"
   q gcloud projects get-iam-policy "$PROJECT_ID" --flatten='bindings[].members' \
     --filter='bindings.members:serviceAccount' --format='table(bindings.role,bindings.members)'
@@ -159,12 +167,12 @@ for role in roles/storage.objectCreator roles/storage.objectViewer; do
 done
 
 hr "6. workload identity pool $POOL_ID / provider $PROVIDER_ID"
-exists gcloud iam workload-identity-pools describe "$POOL_ID" --location=global ||
-  run gcloud iam workload-identity-pools create "$POOL_ID" --location=global --display-name="Vercel" \
+exists gcloud iam workload-identity-pools describe "$POOL_ID" --location=global --project "$PROJECT_ID" ||
+  run gcloud iam workload-identity-pools create "$POOL_ID" --location=global --project "$PROJECT_ID" --display-name="Vercel" \
     --description="Vercel OIDC for ${VERCEL_PROJECT_NAME}"
-provider_args=(--workload-identity-pool="$POOL_ID" --location=global --issuer-uri="$ISSUER"
+provider_args=(--workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID" --issuer-uri="$ISSUER"
   --allowed-audiences="$JWT_AUD" --attribute-mapping="$MAPPING" --attribute-condition="$CONDITION")
-if exists gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" --workload-identity-pool="$POOL_ID" --location=global; then
+if exists gcloud iam workload-identity-pools providers describe "$PROVIDER_ID" --workload-identity-pool="$POOL_ID" --location=global --project "$PROJECT_ID"; then
   run gcloud iam workload-identity-pools providers update-oidc "$PROVIDER_ID" "${provider_args[@]}"
 else
   run gcloud iam workload-identity-pools providers create-oidc "$PROVIDER_ID" "${provider_args[@]}"
