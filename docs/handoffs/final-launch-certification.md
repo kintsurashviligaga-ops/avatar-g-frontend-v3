@@ -160,7 +160,10 @@ pricing decision (no pricing change without an SSoT update).
 | Idempotent credit grants (by payment ref) | PROVEN (unit) |
 | Refund on failed generation | PROVEN (unit) |
 | Checkout amounts from server catalogues | PROVEN (unit) |
-{{BILLING_ROWS}}
+| Refund or dispute takes back the credits it bought | **fixed this run**, BUILT_NOT_PROVEN (unit: proportional, never more than granted, idempotent per charge, shortfall alerted). Needs the Stripe endpoint subscribed to `charge.refunded` and `charge.dispute.created` (owner). A dispute the merchant wins does not restore credits automatically |
+| Stripe webhook writes (event dedupe, subscription sync) | **fixed this run**: service-role client instead of the anon client (unit). `webhook_events` must exist in Production (owner check) |
+| A paid render when the ledger cannot charge | **fixed this run**: refused with `billing_unavailable` in production instead of rendering free (unit). Before deploy, confirm `deduct_credits` and the service-role key exist in Production, or every render is refused |
+| Credit history | **fixed this run**: reads `credit_ledger`; the client-written `POST /api/credits/record` (forgeable "+N credits" rows) is gone (unit). Admin analytics still reads the now-unwritten `credit_transactions` (PARTIAL) |
 | Live payment, webhook delivery, invoices | BLOCKED_OWNER |
 | Tax / VAT | MISSING |
 
@@ -172,7 +175,7 @@ pricing decision (no pricing change without an SSoT update).
 | Google OAuth, callback open-redirect guard | BUILT_NOT_PROVEN / PROVEN (unit) |
 | Session refresh, paid routes require auth | PROVEN (unit, static scan of 446 routes) |
 | Return to the workflow after login | PARTIAL (URL only, no prompt stash) |
-| RLS | {{RLS}} |
+| RLS | **FAILED until applied.** 8 tables had no RLS and `tracking_tokens` had a public SELECT policy. Migration `20261008a_rls_internal_tables_and_upload_limits.sql` fixes all 9 and verifies itself; it is written, **not applied** (owner applies it, then runs the Supabase security advisor). `agent_definitions` keeps an authenticated `USING(true)` read policy. No DB-level RLS test (MISSING) |
 | Admin routes | 3 inconsistent guards; `run-migration` and 2 other routes header-key only (Admin Panel audit thread) |
 
 ## P. Security
@@ -181,15 +184,25 @@ pricing decision (no pricing change without an SSoT update).
 |---|---|
 | SSRF on every caller-chosen fetch, ffmpeg included | **fixed this run**, PROVEN (unit) — see G |
 | Prompt injection | ReAct observations and Live page reads are labelled untrusted data; no adversarial live test (BUILT_NOT_PROVEN) |
-| Cross-user file access (`/api/studio/library`) | {{LIBRARY}} |
-| Upload MIME / size | {{UPLOAD}} |
+| Cross-user file access (`/api/studio/library`) | **fixed this run**, PROVEN (unit): `POST` needs a session and accepts only a currently valid signed link to our own storage (probed) or a public URL; `GET` re-signs only the caller's rows, on our project host, in our media buckets. Accepted gap: whoever holds a valid signed link can file that object |
+| Upload MIME / size | **fixed this run**, PROVEN (unit): images, video and audio only (415) and at most 50 MB (413) on `/api/upload` and `/api/upload/sign`; server renders and RVC zips moved to `renders`. The bucket-level cap is in migration `20261008a` (owner applies) |
 | Secrets | none found in logs or the repo; SA keys never created (WIF, keyless) |
 | HawkScan DAST | **not run**: `HAWK_API_KEY` is not set in this environment |
 | High-risk browser actions | n/a: no browser control exists (H) |
 
 ## Q. Files / Library
 
-{{FILES}}
+| Requirement | Label |
+|---|---|
+| Upload MIME and size | **fixed this run**, PROVEN (unit) — see P |
+| Malicious filename | PROVEN (by construction: names are server-generated) |
+| Duplicate upload | MISSING (no hash or dedupe) |
+| Signed URL lifetimes | BUILT_NOT_PROVEN: 15 min to 7 days for media; 1 year for voice-clone samples |
+| Cross-user access through the Library | **fixed this run**, PROVEN (unit) — see P |
+| Opening one's own private creation | **fixed this run** (owners got 403 on their own items), PROVEN (unit) |
+| Deletion | PARTIAL: the Library row goes, the storage object stays |
+| Saving and reusing generated assets | BUILT_NOT_PROVEN |
+| RLS proof | MISSING (no DB-level test) |
 
 ## R. Connectors
 
@@ -207,9 +220,9 @@ Screen-by-screen audit needs the running app (not done).
 ## T. Mobile
 
 Viewport `viewportFit: cover`, safe-area insets, 16 px inputs, 44 px composer targets (one 36 px exception): BUILT_NOT_PROVEN.
-Phone-viewport E2E specs (375×812) pass locally ({{E2E_PHONE}}). Real devices: BLOCKED_OWNER. Zoom: `app/layout.tsx` sets `maximumScale: 1` and `userScalable: false`; iOS Safari ignores both, but Android
-browsers obey them, so pinch-zoom is blocked there (WCAG 1.4.4, PARTIAL; kept because it is a recorded owner directive,
-Phase 39).
+Phone-viewport E2E specs (375×812) pass locally ({{E2E_PHONE}}). Real devices: BLOCKED_OWNER. Pinch-zoom: `maximumScale: 1` and `userScalable: false` were removed from the viewport (WCAG 1.4.4, fixed this run). The
+owner's Phase 39 directive (no layout zoom when a text field is focused) still holds through the 16 px input rule in
+`globals.css`, which is what prevents that zoom on iOS; Android never zooms on focus.
 
 ## U. Accessibility
 
@@ -220,8 +233,9 @@ screen-reader pass need the running app (not done).
 ## V. SEO
 
 Metadata, canonical, hreflang (ka, en, ru + x-default), OG and Twitter cards PROVEN (unit, `lib/seo/metadata.test.ts`).
-`app/sitemap.ts` lists the locale home pages, landing and service pages with per-URL hreflang; `app/robots.ts`
-exists. No test covers either (BUILT_NOT_PROVEN). The home page's main content is client-rendered (`OmniStudio` via `dynamic(ssr:false)`): PARTIAL.
+The sitemap's service pages now come from the catalog (`lib/seo/sitemapServices.ts`): game, tourism and voice are gone,
+editing, photo, text and software were added (fixed this run, PROVEN by `lib/seo/sitemap.test.ts`). `app/robots.ts`:
+BUILT_NOT_PROVEN. The home page's main content is client-rendered (`OmniStudio` via `dynamic(ssr:false)`): PARTIAL.
 
 ## W. Performance
 
@@ -237,7 +251,25 @@ reports healthy; no alert rules in the repo (GCP budgets alert; they do not cap)
 
 ## Y. Remaining owner actions
 
-{{OWNER}}
+Only the owner can do these. Nothing below was done by Claude.
+
+| # | Action | Unblocks |
+|---|---|---|
+| 1 | Deploy the OTP sign-in fix (PR #43) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
+| 2 | Part 0 AUTH probe on the PR #43 Preview (password sign-in, open `/api/admin/provider-probe`), then press the Veo smoke button once (approved clip, ≈ $0.40) | L, VIDEO V1-V6 |
+| 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
+| 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
+| 5 | Subscribe the Stripe webhook to `charge.refunded` and `charge.dispute.created`; confirm `webhook_events` exists in Production | N |
+| 6 | Before deploying this branch: confirm `deduct_credits` and `SUPABASE_SERVICE_ROLE_KEY` exist in Production (otherwise every paid render is now refused, not given away) | N |
+| 7 | Choose the canonical pricing table (`/pricing` 25/75/149 GEL vs studio 9/29/89 GEL) | M |
+| 8 | Decide the browser-control infrastructure (none exists) | H, BROWSER CONTROL |
+| 9 | Approve the provider migration plan (Part 2): strip Replicate, Udio, Kling/Higgsfield, HeyGen paths and their Production keys | L, PROVIDER BOUNDARY |
+| 10 | Imagen 4 quota / availability on Vertex for this project (404 today) | L |
+| 11 | Separate Preview and Production Supabase projects, or add the Preview redirect pattern to Supabase Auth | O, E2E on Preview |
+| 12 | Set the Sentry DSN; share Vercel Speed Insights | W, X |
+| 13 | Real-device pass (iPhone, Android) with Live voice: Google accepting `ask_agent_g`, mic → speech, same-context calls | E, T |
+| 14 | Credit coverage check in Cloud Billing → Credits ≈ 24 h after the T2 test | L |
+| 15 | Production deploy approval (step 26: nothing was promoted) | — |
 
 ---
 
