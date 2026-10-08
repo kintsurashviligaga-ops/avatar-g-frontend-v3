@@ -114,6 +114,23 @@ describe('LiveDock', () => {
     }
   });
 
+  it('a step finishing goes straight from its spinner to its check: no frame of the caption or the hint in between', () => {
+    const caps = [{ id: 'u', role: 'user' as const, text: 'make a cat video', final: true }];
+    const running: LiveStep = { id: 'p', kind: 'tool', name: 'prepare_generation', state: 'running', text: 'Preparing the studio…' };
+    const { rerender } = render(<LiveDock {...base} status="thinking" captions={caps} step={running} />);
+    const line = screen.getByTestId('live-dock-line');
+    // Every commit that changes what the line is (step → caption → step) leaves a record, even if a later one undoes it.
+    const seen = new MutationObserver(() => {});
+    seen.observe(line, { attributes: true, attributeFilter: ['data-kind'], attributeOldValue: true });
+    try {
+      rerender(<LiveDock {...base} status="listening" captions={caps} step={{ ...running, state: 'done', text: 'Studio prepared' }} />);
+      expect(seen.takeRecords().map((r) => r.oldValue)).toEqual([]);
+      expect(line).toHaveTextContent('Studio prepared');
+    } finally {
+      seen.disconnect();
+    }
+  });
+
   it('before anything was said, the line invites the user to talk', () => {
     render(<LiveDock {...base} status="listening" />);
     expect(screen.getByTestId('live-dock-line')).toHaveTextContent(LIVE_DOCK_STRINGS.en.hint);

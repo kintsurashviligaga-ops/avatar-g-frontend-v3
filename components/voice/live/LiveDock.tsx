@@ -230,9 +230,16 @@ const STEP_FRESH_MS = 5000;
 /** True for `ms` after `key` changes to a non-empty value (a finished step stays on the line for a moment). */
 function useFresh(key: string, ms: number): boolean {
   const [fresh, setFresh] = useState(key);
+  // A new key is fresh on the very render it arrives (set while rendering, so React redoes this render before
+  // committing). Set in an effect instead, the line showed the caption or the hint for one frame between a step's
+  // spinner and its check.
+  const [seen, setSeen] = useState(key);
+  if (seen !== key) {
+    setSeen(key);
+    setFresh(key);
+  }
   useEffect(() => {
     if (!key) return undefined;
-    setFresh(key);
     const id = setTimeout(() => setFresh(''), ms);
     return () => clearTimeout(id);
   }, [key, ms]);

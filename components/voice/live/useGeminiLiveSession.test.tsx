@@ -502,26 +502,42 @@ test('reentrancy: a double start is one call; End during the mint releases the m
 });
 
 test('a handshake with no setupComplete times out and retries ONCE on the legacy wire; a second miss is an error', async () => {
-  const h = harness();
-  const { result, unmount } = await startCall({ deps: h.deps, setupTimeoutMs: 30 });
-  act(() => FakeSocket.last.open()); // opens, but Google never answers
+  // Fake time: each socket's deadline runs from its construction, so on a loaded machine real time could spend the
+  // retry's whole 30 ms before the test opens it, and the retry would never send its setup.
+  jest.useFakeTimers();
+  try {
+    const h = harness();
+    const { result, unmount } = await startCall({ deps: h.deps, setupTimeoutMs: 30 });
+    act(() => FakeSocket.last.open()); // opens, but Google never answers
+    const elapse = (ms: number) => act(async () => {
+      jest.advanceTimersByTime(ms);
+      for (let i = 0; i < 20; i += 1) await Promise.resolve(); // the fresh mint settles
+    });
 
-  await waitFor(() => expect(FakeSocket.all).toHaveLength(2));
-  expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token for the retry
-  expect(result.current.degraded).toBe(true);
-  const ws2 = FakeSocket.last;
-  expect(ws2.url).toContain('access_token=tok2');
-  act(() => ws2.open());
-  const legacy = ws2.sent[0]!.setup;
-  expect(legacy.systemInstruction).toBeDefined();
-  expect(legacy).not.toHaveProperty('inputAudioTranscription');
-  expect(legacy).not.toHaveProperty('sessionResumption');
-  expect(legacy).not.toHaveProperty('contextWindowCompression');
+    await elapse(29);
+    expect(FakeSocket.all).toHaveLength(1); // not before the deadline
+    await elapse(1);
+    expect(FakeSocket.all).toHaveLength(2);
+    expect(h.fetchImpl).toHaveBeenCalledTimes(2); // fresh token for the retry
+    expect(result.current.degraded).toBe(true);
+    const ws2 = FakeSocket.last;
+    expect(ws2.url).toContain('access_token=tok2');
+    act(() => ws2.open());
+    const legacy = ws2.sent[0]!.setup;
+    expect(legacy.systemInstruction).toBeDefined();
+    expect(legacy).not.toHaveProperty('inputAudioTranscription');
+    expect(legacy).not.toHaveProperty('sessionResumption');
+    expect(legacy).not.toHaveProperty('contextWindowCompression');
 
-  await waitFor(() => expect(result.current.status).toBe('error'));
-  expect(result.current.error).toBe('setup_failed');
-  expect(h.track.stop).toHaveBeenCalled();
-  unmount();
+    await elapse(30);
+    expect(result.current.status).toBe('error');
+    expect(result.current.error).toBe('setup_failed');
+    expect(FakeSocket.all).toHaveLength(2); // ONCE: no third socket
+    expect(h.track.stop).toHaveBeenCalled();
+    unmount();
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test('a rejected setup (socket closed before setupComplete) retries on the legacy wire and connects', async () => {
