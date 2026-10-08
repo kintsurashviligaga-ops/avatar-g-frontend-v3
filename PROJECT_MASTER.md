@@ -146,6 +146,14 @@ BLOCKERS:
   Replicate/Udio keys are set in Production. Admin auth uses 3 inconsistent guards; run-migration and 2 other routes are
   header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
   Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
+  §55 admin P1: BUILT_NOT_PROVEN on PR #45 (one admin guard, run-migration off by default + admin session + own key).
+  Owner to confirm Supabase 'Confirm email' is ON.
+· STORAGE-1 (P0, found 2026-10-08 19:40Z, read-only check): Production storage.objects has a SELECT policy for role
+  public with USING (true) ("Public read music 1q2q05_0", made in the dashboard, names no bucket), so the public anon
+  key can list and download every object in every bucket, the private uploads (2,589 objects) and studio included.
+  Gateway logs 2026-09-30 19:00Z → 2026-10-08 19:45Z: 0 storage requests as anon/authenticated besides public-bucket
+  reads and signed uploads. Fix supabase/migrations/20261008d_storage_read_scope.sql (narrow to bucket_id = 'music',
+  self-verifying, safe before or after the deploy), NOT APPLIED: waits for the owner's yes (Production DDL).
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
