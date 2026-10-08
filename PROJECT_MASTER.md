@@ -30,11 +30,23 @@
 CURRENT PHASE: Part 1 (Audit + Foundation) — formally restarted 2026-10-08; Master Task §60 step 7
 CURRENT STATUS: In progress
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 572d5fac)
-NEXT ACTION: §60 step 7–9 — service inventory, canonical taxonomy, migration matrix (docs/handoffs/)
+LAST COMMIT: see `git log` on that branch (main = 572d5fac); draft PR #42
+NEXT ACTION: §60 steps 8–9 write-up (docs/handoffs/service-taxonomy.md), codex fix branch, full checks; then §60 step 14+
+MASTER TASK §60: steps 1–7 done · 10 ServiceCatalog (lib/catalog/services.ts) · 11 sidebar/rail/+ sheet/Plugins/services
+          read it (lib/catalog/nav.ts) · 12 Agent G routes chat requests via the catalog (lib/catalog/agentRoute.ts) ·
+          13 /hub and /workspace redirect to the studio, fake-stat shells deleted — all BUILT_NOT_PROVEN (unit-tested)
 PHASE CHECKLIST:
-◐ Part 0: Phase 0 (GCP Console) — OWNER ACTION REQUIRED. $300 credit seen in console (2026-10-06, Codex note);
-          WIF NOT configured, no SA key, Veo bucket unverified, no GCP_* vars in Vercel production.
+◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
+          GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
+          preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
+          bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
+          Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
+          on the PR #43 Preview). INFERENCE VERIFIED: not run (paid, needs separate consent).
+          Report docs/handoffs/2026-10-08-gcp-part0-report.md, script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
+          Billing (owner-confirmed from the AI Studio Billing screen, 2026-10-08): Google Cloud free credit $300.00 of
+          $300.00 remaining, valid until 2026-12-31, labelled "Not applicable to Gemini API"; separate AI Studio /
+          Gemini API balance $13.21, auto-reload OFF. UNVERIFIED: that gen-lang-client-0671348730 is linked to the
+          billing account holding the credit (GCP Part 0 thread checking). Paid tests ($5–10) only after owner approval.
 ◐ Part 1: Audit + Foundation — no part-1-report.md was ever written; restarted 2026-10-08.
 ◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
           self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
@@ -42,10 +54,17 @@ PHASE CHECKLIST:
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
-· STOP-1: Part 0 incomplete — owner must configure WIF (or issue SA key), bucket, and add GCP_* + transport vars in Vercel.
-· Master Task §4: the "Services Taxonomy Deep Research" report does not exist in the repo or project files — owner input.
+· STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
+  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then INFERENCE only with separate consent. Production env not yet.
+  scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
+· Part 2 findings from the Part 0 audit (no change made): API keys "API key 2" (Vertex express) and "Gemini API Key"
+  (AI Studio) exist on the project; Vercel has GEMINI_API_KEY in production + development; roles/editor on the default
+  compute SA.
+· Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
+· Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
+· Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
 · Part 1 Report: pending (docs/handoffs/part-1-report.md)
 · Part 2 Report: pending
 · Part 3 Report: pending
