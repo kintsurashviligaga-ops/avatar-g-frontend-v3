@@ -2,9 +2,15 @@
  * Database Subscription Management
  * 
  * Idempotent operations for managing subscriptions table
+ *
+ * ⚠️ TWO KINDS OF CALLER, TWO CLIENTS. The readers a signed-in user triggers (getUserSubscription,
+ * getCustomerIdForUser, …) keep the cookie client, so RLS still scopes them to that user. The WRITERS and the
+ * customer→user lookup are what the Stripe webhook calls — a request with no session cookie, where the route-handler
+ * client is anon and RLS silently hid every row: subscription sync on update/cancel/downgrade never landed. They use
+ * the service role (server-only; the webhook has already verified Stripe's signature).
  */
 
-import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 
 export interface Subscription {
@@ -80,7 +86,7 @@ export async function upsertSubscription(
   subscription: Stripe.Subscription,
   userId: string
 ): Promise<void> {
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
   const currentItem = subscription.items.data[0];
   const currentPeriodStart =
     typeof currentItem?.current_period_start === 'number'
@@ -130,7 +136,7 @@ export async function updateSubscriptionStatus(
   status: Subscription['status'],
   cancelAtPeriodEnd?: boolean
 ): Promise<void> {
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
 
   const updates: Partial<Subscription> = {
     status,
@@ -176,7 +182,7 @@ export async function hasActiveSubscription(userId: string): Promise<boolean> {
  * Get user ID from Stripe customer ID
  */
 export async function getUserIdFromCustomerId(customerId: string): Promise<string | null> {
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
 
   const { data, error } = await supabase
     .from('subscriptions')
@@ -203,7 +209,8 @@ export async function storeCustomerMapping(
   userId: string,
   stripeCustomerId: string
 ): Promise<void> {
-  const supabase = createRouteHandlerClient();
+  // Service role: the webhook (no session) calls this, and create-checkout passes the AUTHENTICATED user's own id.
+  const supabase = createServiceRoleClient();
 
   // Store in user_metadata or separate table
   const { error } = await supabase

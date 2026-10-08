@@ -10,7 +10,7 @@ import {
 } from '@/lib/stripe/subscriptions';
 import { updateAccountStatus } from '@/lib/stripe/connect';
 import { updateCommissionStatus } from '@/lib/stripe/payments';
-import { createRouteHandlerClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import {
   creditWalletGel,
   findUserIdForStripeSubscription,
@@ -42,6 +42,11 @@ export const runtime = 'nodejs'; // Stripe webhooks require Node.js runtime
 // ========================================
 // IDEMPOTENCY TRACKING
 // ========================================
+//
+// ⚠️ EVERY DATABASE CALL IN THIS FILE IS SERVICE ROLE. A webhook request carries no session cookie, so the
+// route-handler (cookie) client this file used to call was the ANON role: RLS hid every row, so the webhook_events
+// dedupe never found (or stored) an event, and the affiliate / order / seller lookups saw nothing. The caller is
+// Stripe, proven by the signature check in POST before any of this runs.
 
 const processedEvents = new Set<string>();
 
@@ -54,7 +59,7 @@ async function isEventProcessed(eventId: string): Promise<boolean> {
   }
 
   // Check database for persistence across restarts
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from('webhook_events')
     .select('id')
@@ -71,7 +76,7 @@ async function markEventProcessed(eventId: string): Promise<void> {
   processedEvents.add(eventId);
 
   // Also store in database for persistence
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
   const { error } = await supabase
     .from('webhook_events')
     .upsert({
@@ -87,7 +92,7 @@ async function markEventProcessed(eventId: string): Promise<void> {
 }
 
 async function getAffiliateForUser(userId: string): Promise<{ affiliateId: string; commissionPercent: number } | null> {
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
 
   const { data: referral } = await supabase
     .from('affiliate_referrals')
@@ -127,7 +132,7 @@ async function insertCommissionEvent(params: {
   status: 'pending' | 'available' | 'paid' | 'reversed';
   availableAt?: string | null;
 }) {
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
 
   const { data: existing } = await supabase
     .from('affiliate_commission_events')
@@ -408,7 +413,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
       const credits = Number(session.metadata?.credits);
       const userId = session.metadata?.user_id
         || (session.customer
-          ? (await createRouteHandlerClient()
+          ? (await createServiceRoleClient()
               .from('subscriptions')
               .select('user_id')
               .eq('stripe_customer_id', String(session.customer))
@@ -458,7 +463,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event) {
       await upsertSubscription(subscription, userId);
 
       // Trigger finance aggregation
-      const supabase = createRouteHandlerClient();
+      const supabase = createServiceRoleClient();
       await recomputeFinanceDailyAggregates(supabase, {
         start: new Date(),
         end: new Date(),
@@ -647,7 +652,7 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event) {
     const orderId = paymentIntent.metadata?.orderId;
     if (orderId) {
       try {
-        const supabase = createRouteHandlerClient();
+        const supabase = createServiceRoleClient();
         
         // Get order details
         const { data: order } = await supabase
@@ -745,7 +750,7 @@ async function handleChargeRefunded(event: Stripe.Event) {
  * tier invoice could not be credited.
  *
  * ⚠️ SERVICE ROLE, NOT createRouteHandlerClient(). A webhook has no session cookie, so the route-handler client is
- * anon and RLS hides every row — the reason the rest of this file cannot read `subscriptions` (docs/billing/TIERS.md).
+ * anon and RLS hides every row (docs/billing/TIERS.md) — which is why the whole file now uses the service role.
  */
 async function handleSubscriptionAllowance(event: Stripe.Event): Promise<void> {
   const invoice = event.data.object as unknown as InvoiceLike;
@@ -836,7 +841,7 @@ async function handleInvoicePaid(event: Stripe.Event) {
   });
 
   // Trigger finance aggregation
-  const supabase = createRouteHandlerClient();
+  const supabase = createServiceRoleClient();
   await recomputeFinanceDailyAggregates(supabase, {
     start: new Date(),
     end: new Date(),
@@ -860,7 +865,7 @@ async function handleAccountUpdated(event: Stripe.Event) {
     const userId = account.metadata?.user_id;
     if (!userId) {
       // Fallback: Look up user_id from database
-      const supabase = createRouteHandlerClient();
+      const supabase = createServiceRoleClient();
       const { data } = await supabase
         .from('seller_profiles')
         .select('user_id')

@@ -54,15 +54,21 @@ jest.mock('../../../../lib/finance/aggregates', () => ({ recomputeFinanceDailyAg
 jest.mock('../../../../lib/platform/queues', () => ({ enqueueQueueItem: jest.fn().mockResolvedValue(undefined) }));
 
 /**
- * Route-handler (anon, cookie) client — what the pre-existing code uses. Per-table results are configurable;
- * every write is recorded.
+ * Both Supabase clients, told apart: every read and write records WHICH client made it, so a test can prove the
+ * webhook (no session cookie → the route-handler client is anon) never goes through the anon client.
+ * Per-table results are configurable.
  */
+type MockClientKind = 'anon' | 'service';
 const mockDb: {
   rows: Record<string, unknown>;
-  writes: Array<{ table: string; op: string; payload: unknown }>;
-} = { rows: {}, writes: [] };
-function mockTable(table: string) {
-  const result = () => Promise.resolve({ data: mockDb.rows[table] ?? null, error: null });
+  writes: Array<{ table: string; op: string; payload: unknown; client: MockClientKind }>;
+  reads: Array<{ table: string; client: MockClientKind }>;
+} = { rows: {}, writes: [], reads: [] };
+function mockTable(table: string, client: MockClientKind) {
+  const result = () => {
+    mockDb.reads.push({ table, client });
+    return Promise.resolve({ data: mockDb.rows[table] ?? null, error: null });
+  };
   const chain: Record<string, unknown> = {};
   chain.select = () => chain;
   chain.eq = () => chain;
@@ -70,18 +76,18 @@ function mockTable(table: string) {
   chain.maybeSingle = result;
   chain.single = result;
   chain.upsert = (payload: unknown) => {
-    mockDb.writes.push({ table, op: 'upsert', payload });
+    mockDb.writes.push({ table, op: 'upsert', payload, client });
     return Promise.resolve({ error: null });
   };
   chain.insert = (payload: unknown) => {
-    mockDb.writes.push({ table, op: 'insert', payload });
+    mockDb.writes.push({ table, op: 'insert', payload, client });
     return Promise.resolve({ error: null });
   };
   return chain;
 }
 jest.mock('../../../../lib/supabase/server', () => ({
-  createRouteHandlerClient: () => ({ from: (t: string) => mockTable(t) }),
-  createServiceRoleClient: () => ({ from: (t: string) => mockTable(t) }),
+  createRouteHandlerClient: () => ({ from: (t: string) => mockTable(t, 'anon') }),
+  createServiceRoleClient: () => ({ from: (t: string) => mockTable(t, 'service') }),
 }));
 
 import { POST } from './route';
@@ -149,6 +155,7 @@ beforeEach(() => {
   for (const k of PRICE_ENVS) delete process.env[k];
   mockDb.rows = {};
   mockDb.writes.length = 0;
+  mockDb.reads.length = 0;
   mockConstructEvent.mockReset().mockImplementation(() => mockEvent);
   mockSubscriptionsRetrieve.mockReset();
   mockReportError.mockReset();
@@ -362,5 +369,30 @@ describe('pre-existing paths are unchanged', () => {
     const r = await deliver({ ...invoicePaid(), id: 'evt_ps_1', type: 'invoice.payment_succeeded' });
     expect(r.status).toBe(200);
     expect(mockGrantSubscriptionAllowance).not.toHaveBeenCalled();
+  });
+});
+
+describe('the webhook has no session — every database call is service role', () => {
+  it('the webhook_events dedupe is read and written through the service role, never the anon client', async () => {
+    const r = await deliver({ id: 'evt_dedupe_1', type: 'payment_intent.payment_failed', livemode: false, created: PERIOD_START, data: { object: { id: 'pi_1' } } });
+    expect(r.status).toBe(200);
+    expect(mockDb.reads).toContainEqual({ table: 'webhook_events', client: 'service' });
+    expect(mockDb.writes).toContainEqual(expect.objectContaining({ table: 'webhook_events', op: 'upsert', client: 'service' }));
+  });
+
+  it('a stored event id short-circuits the redelivery (the dedupe can now actually see the row)', async () => {
+    mockDb.rows.webhook_events = { id: 'row_1' };
+    const r = await deliver({ id: 'evt_dedupe_2', type: 'invoice.paid', livemode: false, created: PERIOD_START, data: { object: { id: 'in_x' } } });
+    expect(r.json).toEqual({ received: true, cached: true });
+    expect(mockGrantSubscriptionAllowance).not.toHaveBeenCalled();
+  });
+
+  it('no path in a full invoice.paid + affiliate run touches the anon client', async () => {
+    configureTiers();
+    mockDb.rows.affiliate_referrals = { affiliate_id: 'aff_1' };
+    mockDb.rows.affiliates = { id: 'aff_1', commission_percent: 10, is_active: true };
+    expect((await deliver(invoicePaid())).status).toBe(200);
+    expect(commissionInserts()).toHaveLength(1);
+    expect([...mockDb.reads, ...mockDb.writes].filter((x) => x.client === 'anon')).toEqual([]);
   });
 });
