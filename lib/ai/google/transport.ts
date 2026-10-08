@@ -25,7 +25,8 @@ import { normalizeModelId } from './models';
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-export type GoogleModelMethod = 'generateContent' | 'streamGenerateContent' | 'predict' | 'countTokens';
+/** `embedContent` exists on the Gemini API only; Vertex serves the same embedding model through `predict`. */
+export type GoogleModelMethod = 'generateContent' | 'streamGenerateContent' | 'predict' | 'countTokens' | 'embedContent';
 
 export interface GoogleModelCall {
   model: string;
@@ -87,6 +88,22 @@ export function googleTransportBlocker(apiKey: string | null | undefined): strin
   return (apiKey ?? '').trim() ? null : 'Gemini API key is not configured';
 }
 
+/**
+ * The attempts a key-rotating caller makes on the selected transport: one per key of its own pool on the Gemini API (a
+ * quota miss on one key moves to the next), exactly one on Vertex AI (one identity; the pool does not apply), none when
+ * the transport cannot serve. `undefined` stands for the transport's own credential.
+ */
+export function googleCallAttempts(keys: readonly string[]): Array<string | undefined> {
+  let kind: GeminiTransportKind;
+  try {
+    kind = googleTransportKind();
+  } catch {
+    return [];
+  }
+  if (kind === 'vertex') return googleAiConfigured() ? [undefined] : [];
+  return [...new Set(keys.map((k) => k.trim()).filter(Boolean))];
+}
+
 function modelId(model: string): string {
   const id = normalizeModelId(model);
   if (!id) throw new Error('Invalid Google model id');
@@ -123,9 +140,10 @@ function restTransport(kind: GeminiTransportKind): GoogleRestTransport {
     const id = modelId(model);
     const suffix = method === 'streamGenerateContent' ? '?alt=sse' : '';
     if (kind === 'vertex') {
+      if (method === 'embedContent') throw new Error('embedContent is a Gemini API method; on Vertex AI use predict');
       const config = vertexAiConfig();
       if (!config) throw new NotConfiguredError('vertex', vertexAiConfigProblems());
-      // Imagen-style predict models are regional; Gemini, the image model and Lyria answer on the global endpoint.
+      // predict models (Imagen, gemini-embedding-001) are regional; Gemini, the image model and Lyria answer on global.
       const location = method === 'predict' ? (process.env.GCP_PREDICT_LOCATION?.trim() || 'us-central1') : config.location;
       return {
         url: `${vertexPublisherBase(config.projectId, location)}/models/${id}:${method}${suffix}`,

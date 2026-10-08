@@ -36,8 +36,8 @@ NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy,
           VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, BOG credentials / merchant
           activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
-          (Claude R7 slice ✓ → A2 transport ✓ → remaining wrappers (embed, TTS, STT, research, orchestrator key pool) →
-          ModelCatalog data; PR #44's provider removals after action 9); A1 held until Veo T1 passes
+          (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
+          the API key) → ModelCatalog data; PR #44's provider removals after action 9); A1 held until Veo T1 passes
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
@@ -89,8 +89,11 @@ PHASE CHECKLIST:
           Owner 2026-10-08 17:16 UTC ("not now", action 9): Replicate / Udio / Higgsfield / HeyGen stay; PR #44 is NOT
           merged whole — only its Google transport is ported. The Udio / MusicGen picker rows wait for action 9 too.
           A2 groundwork done: lib/ai/google/transport.ts (contract selector, GEMINI_TRANSPORT=gemini_api|vertex, no
-          fallback) + provider.ts; Gemini client, llmText, chat stream, Agent G, storyboard image and Lyria on it
-          (BUILT_NOT_PROVEN: no Vertex Gemini call from a Preview runtime yet). Production unchanged while unset.
+          fallback) + provider.ts; Gemini client, llmText, chat stream, Agent G, storyboard image and Lyria on it,
+          then STT, read-aloud TTS, memory embeddings (Vertex :predict) and the orchestrator script / interior Gemini
+          legs. Deep Research stays on the API key (Interactions API is Gemini-API only; stated in its client). Live,
+          Imagen and the health probes are not on it. BUILT_NOT_PROVEN: no Vertex Gemini call from a Preview runtime
+          yet (free check: GET /api/admin/google-transport). Production unchanged while unset.
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement

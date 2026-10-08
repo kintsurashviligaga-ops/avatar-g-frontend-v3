@@ -25,7 +25,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { googleCallAttempts } from '@/lib/ai/google/transport';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import {
   buildScriptSystemPrompt,
@@ -63,8 +64,9 @@ async function analyzeAssetWithGemini(
   image: { base64: string; mimeType?: string },
   brief: string,
 ): Promise<{ text: string | null; error?: string }> {
-  const keys = geminiKeys();
-  if (keys.length === 0) return { text: null, error: 'no_gemini_key' };
+  // One attempt per pooled key on the Gemini API, one on Vertex AI (GEMINI_TRANSPORT).
+  const attempts = googleCallAttempts(geminiKeys());
+  if (attempts.length === 0) return { text: null, error: 'no_gemini_key' };
   // data-URL or raw base64 both accepted by @ai-sdk/google (proven in the chat route).
   const dataUrl = image.base64.startsWith('data:')
     ? image.base64
@@ -78,9 +80,9 @@ async function analyzeAssetWithGemini(
   // (quota/billing), rotate to the next configured key. With one key this is just
   // the retry path; with GEMINI_API_KEYS=k1,k2,… it zeroes out quota stalls.
   let lastErr = 'empty';
-  for (const apiKey of keys) {
-    const google = createGoogleGenerativeAI({ apiKey });
+  for (const apiKey of attempts) {
     try {
+      const google = createGoogleGenerativeAI({ apiKey });
       const { text } = await generateText({
         model: google(VISION_MODEL),
         maxRetries: 4,

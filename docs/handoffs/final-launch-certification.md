@@ -193,9 +193,15 @@ API key and no Veo bucket needed; an unconfigured transport is `NotConfiguredErr
 value fails closed. On it now: `lib/gemini/client` (19 importers) and `llmText` (11), the studio chat stream and grounded search
 (`chatStream`), Agent G's reply and intent parser, the storyboard image model and Lyria 3 (Vertex `:generateContent` with
 AUDIO + TEXT, as in T2). `lib/ai/google/provider.ts` points the existing `@ai-sdk/google` at the Vertex endpoint (no new
-package). Tests `lib/ai/google/transport.test.ts` (20). Still on the API key whatever the setting: the orchestrator
-script / interior routes (own key pool), embeddings, Deep Research (Interactions), TTS, STT, Live, Imagen, health probes;
-Veo keeps its own `VEO_TRANSPORT`. Nothing in Production changes until `GEMINI_TRANSPORT=vertex` is set
+package). Also on it: speech-to-text (`lib/voice-v2v/geminiStt`), read-aloud TTS (`/api/tts/gemini`; its TTS model is not
+yet proven on Vertex for this project, so a miss there is a 502, never the API key), memory embeddings (`gemini-embedding-001`
+through Vertex `:predict` in `GCP_PREDICT_LOCATION`, default `us-central1`; that its vectors match the stored Gemini API ones
+is Google's model identity, not measured here) and the Gemini legs of the orchestrator script / interior routes (one attempt
+on Vertex instead of one per pooled key). Tests `lib/ai/google/transport.test.ts` (25) and `/api/tts/gemini` (2 more).
+Still on the API key whatever the setting: Deep Research and Lyria's API-key path use the Interactions API, which exists
+on the Gemini API only (pinned and stated in `lib/research/interactionsClient.ts`, so with `vertex` a research run still
+bills the API key's account); Live (A3, needs a server relay); Imagen (Imagen 4 is 404 on Vertex here); the health probes,
+which check the API key (the transport's own check is the route below). Veo keeps its own `VEO_TRANSPORT`. Nothing in Production changes until `GEMINI_TRANSPORT=vertex` is set
 there. Not yet proven: one Vertex Gemini call from a Preview runtime (the service account holds
 `aiplatform.endpoints.predict`, which generateContent needs). The free proof is `GET /api/admin/google-transport` (admin
 only): `countTokens` on the chat and image models through the same transport, nothing generated or billed; it needs

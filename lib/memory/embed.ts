@@ -3,6 +3,7 @@ import 'server-only';
 import { reportError } from '@/lib/observability/report-error';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleModelFetch, googleTransportBlocker, googleTransportKind } from '@/lib/ai/google/transport';
 
 /**
  * Embed a piece of text as a 1536-dimensional vector.
@@ -11,7 +12,11 @@ import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
  *   1. Google Gemini `gemini-embedding-001` (output_dimensionality=1536) —
  *      primary because the project's Gemini key has free-tier embeddings
  *      capacity. Returns 1536-d vectors compatible with the pgvector
- *      `memories.embedding vector(1536)` column.
+ *      `memories.embedding vector(1536)` column. It goes through the Google
+ *      transport (GEMINI_TRANSPORT): `:embedContent` on the Gemini API, or the
+ *      same model's `:predict` on Vertex AI (Part 2 A2). ⚠️ That the Vertex
+ *      vectors match the stored Gemini API ones is Google's model identity,
+ *      not something this project has measured yet.
  *   2. OpenAI `text-embedding-3-small` — fallback when no Gemini key is
  *      configured or the Gemini call fails, and ONLY when AI_GOOGLE_ONLY is
  *      off (lib/ai/google/policy.ts). Also produces 1536-d vectors.
@@ -50,24 +55,32 @@ export async function embed(text: string): Promise<number[] | null> {
 
 // ─── Gemini ────────────────────────────────────────────────────────────────
 
-const GEMINI_EMBED_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
+const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
+const EMBED_DIM = 1536;
+
+/** The Vertex AI `:predict` body for the same model, task and dimension (exported for tests). */
+export function buildVertexEmbedBody(input: string): Record<string, unknown> {
+  return {
+    instances: [{ content: input, task_type: 'SEMANTIC_SIMILARITY' }],
+    parameters: { outputDimensionality: EMBED_DIM },
+  };
+}
 
 async function embedGemini(input: string): Promise<number[] | null> {
-  // resolveGeminiKey(): GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, else the GEMINI_API_KEYS pool.
-  const apiKey = resolveGeminiKey();
-  if (!apiKey) return null;
+  // resolveGeminiKey(): GEMINI_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, else the GEMINI_API_KEYS pool (Gemini API only).
+  if (googleTransportBlocker(resolveGeminiKey())) return null;
 
   try {
-    // ⚠️ The key travels in the x-goog-api-key header, never the URL: a `?key=` URL lands in fetch error
-    // messages, traces and proxy logs (and from there in reportError payloads).
-    const r = await fetch(GEMINI_EMBED_URL, {
+    const vertex = googleTransportKind() === 'vertex';
+    // ⚠️ On the Gemini API the key travels in the x-goog-api-key header, never the URL: a `?key=` URL lands in
+    // fetch error messages, traces and proxy logs (and from there in reportError payloads).
+    const r = await googleModelFetch(GEMINI_EMBED_MODEL, vertex ? 'predict' : 'embedContent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({
-        content: { parts: [{ text: input }] },
-        outputDimensionality: 1536,
-        taskType: 'SEMANTIC_SIMILARITY',
-      }),
+      body: JSON.stringify(
+        vertex
+          ? buildVertexEmbedBody(input)
+          : { content: { parts: [{ text: input }] }, outputDimensionality: EMBED_DIM, taskType: 'SEMANTIC_SIMILARITY' },
+      ),
       signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
     });
 
@@ -80,9 +93,12 @@ async function embedGemini(input: string): Promise<number[] | null> {
       return null;
     }
 
-    const json = (await r.json()) as { embedding?: { values?: number[] } };
-    const vec = json.embedding?.values;
-    if (!Array.isArray(vec) || vec.length !== 1536) {
+    const json = (await r.json()) as {
+      embedding?: { values?: number[] };
+      predictions?: Array<{ embeddings?: { values?: number[] } }>;
+    };
+    const vec = vertex ? json.predictions?.[0]?.embeddings?.values : json.embedding?.values;
+    if (!Array.isArray(vec) || vec.length !== EMBED_DIM) {
       reportError(new Error('Gemini embedContent: unexpected response shape'), {
         route: 'lib/memory/embed',
         provider: 'gemini',

@@ -14,7 +14,8 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { googleCallAttempts } from '@/lib/ai/google/transport';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
@@ -52,13 +53,14 @@ function extractJson(text: string): unknown {
 }
 
 async function analyzeGeometry(imageUrls: string[], brief: string): Promise<RoomGeometry | null> {
-  const keys = geminiKeys();
-  if (keys.length === 0 || imageUrls.length === 0) return null;
+  // One attempt per pooled key on the Gemini API, one on Vertex AI (GEMINI_TRANSPORT).
+  const attempts = googleCallAttempts(geminiKeys());
+  if (attempts.length === 0 || imageUrls.length === 0) return null;
   const content = [
     { type: 'text' as const, text: `${brief ? `Brief: "${brief}". ` : ''}Estimate the empty-room geometry from these ${imageUrls.length} view(s).` },
     ...imageUrls.map(u => ({ type: 'image' as const, image: u })),
   ];
-  for (const apiKey of keys) {
+  for (const apiKey of attempts) {
     try {
       const google = createGoogleGenerativeAI({ apiKey });
       const { text } = await generateText({ model: google(VISION_MODEL), maxRetries: 4, system: buildGeometrySystemPrompt(), messages: [{ role: 'user', content }] });

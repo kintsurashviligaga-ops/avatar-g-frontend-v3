@@ -17,6 +17,7 @@ import { isNotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { getVertexAccessToken } from '../../veo/vertexAuth';
 import {
   googleAiConfigured,
+  googleCallAttempts,
   googleModelFetch,
   googleTransportBlocker,
   googleTransportKind,
@@ -245,5 +246,72 @@ describe('the 19-importer Gemini REST client follows the transport', () => {
     expect(call(1).url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash:generateContent$/);
     expect(call(1).init.headers.Authorization).toBe('Bearer vertex-token');
     expect(call(1).init.headers['x-goog-api-key']).toBeUndefined();
+  });
+});
+
+describe('speech-to-text and embeddings follow the transport', () => {
+  const useVertex = () => {
+    process.env.GEMINI_TRANSPORT = 'vertex';
+    Object.assign(process.env, WIF);
+  };
+
+  it('Gemini STT on vertex: aiplatform generateContent, bearer token, the audio inline, no API key', async () => {
+    const { transcribeWithGeminiDetailed, hasGeminiSttKey } = await import('../../voice-v2v/geminiStt');
+    process.env.GEMINI_API_KEY = 'gemini-key';
+    useVertex();
+    expect(hasGeminiSttKey()).toBe(true);
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'გამარჯობა' }] } }] }), { status: 200 }));
+    const r = await transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'ka-GE', { models: ['gemini-3.8-flash'] });
+    expect(r.text).toBe('გამარჯობა');
+    expect(call(0).url).toMatch(/^https:\/\/aiplatform\.googleapis\.com\/v1\/projects\/gen-lang-client-0671348730\/locations\/global\/publishers\/google\/models\/gemini-3\.8-flash:generateContent$/);
+    expect(call(0).init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(call(0).init.headers['x-goog-api-key']).toBeUndefined();
+    const body = JSON.parse(String(call(0).init.body)) as { contents: Array<{ role: string; parts: Array<{ inline_data?: unknown }> }> };
+    expect(body.contents[0]!.role).toBe('user');
+    expect(body.contents[0]!.parts[1]!.inline_data).toEqual({ mime_type: 'audio/wav', data: 'QUJD' });
+  });
+
+  it('Gemini STT on an unconfigured vertex: an auth error, no call, and the API key is not used instead', async () => {
+    const { transcribeWithGeminiDetailed, hasGeminiSttKey } = await import('../../voice-v2v/geminiStt');
+    process.env.GEMINI_API_KEY = 'gemini-key';
+    process.env.GEMINI_TRANSPORT = 'vertex';
+    expect(hasGeminiSttKey()).toBe(false);
+    await expect(transcribeWithGeminiDetailed('QUJD', 'audio/wav', 'en-US')).rejects.toMatchObject({ code: 'auth' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('embeddings on vertex: the same model through regional predict, 1536 dimensions, values read from predictions', async () => {
+    const { embed } = await import('../../memory/embed');
+    useVertex();
+    const values = Array.from({ length: 1536 }, (_, i) => i / 1536);
+    fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ predictions: [{ embeddings: { values } }] }), { status: 200 }));
+    await expect(embed('hello')).resolves.toEqual(values);
+    expect(call(0).url).toBe(
+      'https://us-central1-aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/us-central1/publishers/google/models/gemini-embedding-001:predict',
+    );
+    expect(call(0).init.headers.Authorization).toBe('Bearer vertex-token');
+    expect(JSON.parse(String(call(0).init.body))).toEqual({
+      instances: [{ content: 'hello', task_type: 'SEMANTIC_SIMILARITY' }],
+      parameters: { outputDimensionality: 1536 },
+    });
+  });
+
+  it('embedContent is a Gemini API method: asking Vertex for it throws before any request', async () => {
+    useVertex();
+    await expect(googleModelFetch('gemini-embedding-001', 'embedContent', { method: 'POST' })).rejects.toThrow(/use predict/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('key-rotating callers (orchestrator script / interior routes)', () => {
+  it('one attempt per pooled key on the Gemini API, exactly one on Vertex, none when the transport cannot serve', () => {
+    expect(googleCallAttempts(['k1', ' k2 ', 'k1', ''])).toEqual(['k1', 'k2']);
+    expect(googleCallAttempts([])).toEqual([]);
+    process.env.GEMINI_TRANSPORT = 'vertex';
+    expect(googleCallAttempts(['k1', 'k2'])).toEqual([]); // unconfigured Vertex: the pool is NOT used instead
+    Object.assign(process.env, WIF);
+    expect(googleCallAttempts(['k1', 'k2'])).toEqual([undefined]);
+    process.env.GEMINI_TRANSPORT = 'bogus';
+    expect(googleCallAttempts(['k1'])).toEqual([]);
   });
 });

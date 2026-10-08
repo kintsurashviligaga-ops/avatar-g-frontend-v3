@@ -15,16 +15,19 @@ import 'server-only';
  * audio track Gemini also understands. (3) is UNVERIFIED for audio-only files (`native: false` marks it); the
  * real fix is the client recording WAV (AudioWorklet), which this route already accepts.
  *
- * The key is resolved through the shared pool (resolveGeminiKey) and travels in the x-goog-api-key HEADER — a key
- * in a URL lands in every proxy log, trace and error string on the way to Google. It is never logged or returned.
+ * The call goes through the Google transport (lib/ai/google/transport, GEMINI_TRANSPORT): on the Gemini API the key
+ * comes from the shared pool (resolveGeminiKey) and travels in the x-goog-api-key HEADER — a key in a URL lands in
+ * every proxy log, trace and error string on the way to Google; on Vertex AI it is a Workload Identity token. Neither
+ * is ever logged or returned, and a missing transport is an `auth` error, never a switch to the other one.
  */
+import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-
+/** True when the selected Google transport can serve a call (the name predates GEMINI_TRANSPORT). */
 export function hasGeminiSttKey(): boolean {
-  return resolveGeminiKey().length > 0;
+  return !googleTransportBlocker(resolveGeminiKey());
 }
 
 // ─── Model chain ─────────────────────────────────────────────────────────────
@@ -252,8 +255,8 @@ export async function transcribeWithGeminiDetailed(
   language: string,
   opts: { models?: readonly string[]; timeoutMs?: number } = {},
 ): Promise<GeminiSttResult> {
-  const key = resolveGeminiKey();
-  if (!key) throw new GeminiSttError('Gemini key is not configured', 'auth');
+  const notReady = googleTransportBlocker(resolveGeminiKey());
+  if (notReady) throw new GeminiSttError(notReady, 'auth');
   const models = (opts.models?.length ? [...opts.models] : geminiSttModelChain())
     .map((m) => normalizeModelId(m))
     .filter((m): m is string => !!m && !isRetiredModel(m));
@@ -267,20 +270,20 @@ export async function transcribeWithGeminiDetailed(
     if (remaining < 500) break;
     const thinkingConfig = thinkingFor(model);
     const body = JSON.stringify({
-      contents: [{ parts: [{ text: sttPrompt(language) }, { inline_data: { mime_type: mimeType, data: audioBase64 } }] }],
+      contents: [{ role: 'user', parts: [{ text: sttPrompt(language) }, { inline_data: { mime_type: mimeType, data: audioBase64 } }] }],
       generationConfig: { temperature: 0, maxOutputTokens: 1024, ...(thinkingConfig ? { thinkingConfig } : {}) },
     });
 
     let res: Response;
     try {
-      res = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      res = await googleModelFetch(model, 'generateContent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
         cache: 'no-store',
         body,
         signal: AbortSignal.timeout(remaining),
       });
     } catch (e) {
+      if (e instanceof NotConfiguredError) throw new GeminiSttError(e.message, 'auth', undefined, model);
       // A timeout / reset is not the model's fault, and the deadline is shared — stop here.
       throw new GeminiSttError(`Gemini STT network error on ${model}: ${e instanceof Error ? e.name : 'unknown'}`, 'network', undefined, model);
     }
