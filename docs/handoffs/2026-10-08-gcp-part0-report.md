@@ -230,6 +230,12 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 იძახება, არაფერი ფასიანი; პასუხში მხოლოდ ნაბიჯების სახელები და redacted შეცდომებია. Unit test: 6 შემთხვევა,
 token-ის არგამოჩენის ჩათვლით. AUTH VERIFIED = Preview deployment-ზე `auth:mode:wif token:ok bucket:ok sign:ok`.
 
+პირველი მცდელობა (11:18–11:20 UTC, Vercel request log-ები): owner-მა Preview-ზე `/ka/admin` გახსნა და Google-ით შევიდა,
+მაგრამ OAuth callback **Production**-ზე (`myavatar.ge/auth/callback`, 11:19:53) დაბრუნდა — Supabase Auth-ის Redirect URLs-ში
+Preview-ის მისამართი არ არის და Site URL-ზე გადავიდა. Preview-ზე სესია არ შეიქმნა, ამიტომ probe-მა 404 დააბრუნა.
+გამოსავალი: Preview-ის `/ka/admin`-ზე email + პაროლით შესვლა (redirect არ სჭირდება), ან Supabase → Authentication →
+URL Configuration → Redirect URLs-ში `https://avatar-g-frontend-v3-*-kintsurashviligaga-ops-projects.vercel.app/**` (owner-ის ცვლილება).
+
 ## 10. owner-ის 8 პუნქტი (2026-10-08 11:08 UTC): billing, მოდელები, კოდი, ტესტი
 ყველაფერი read-only-ა, გარდა `billingbudgets` API-ის ჩართვისა და 3 budget-ის შექმნისა (პუნქტი 8, owner-ის მითითება).
 ფასიანი არაფერი გაშვებულა. GCP — owner-ის Mac, `myavatar.ge@gmail.com`; Vercel — `vercel api`, მხოლოდ ცვლადების სახელები და target-ები.
