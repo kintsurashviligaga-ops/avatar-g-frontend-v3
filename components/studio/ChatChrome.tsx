@@ -68,6 +68,8 @@ import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
+import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
+import type { ServiceCategory } from '@/lib/catalog/services';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
@@ -763,11 +765,15 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const g = navCategories.find((x) => x.tools.indexOf(activeTool) > 0);
     if (g) setOpenCats((prev) => (prev.has(g.id) ? prev : new Set([...prev, g.id])));
   }, [activeTool, navCategories]);
-  const toggleCat = useCallback((id: string) => setOpenCats((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  }), []);
+  const toggleCat = useCallback((id: string) => {
+    // §50 — a category the user opens (not the auto-open above, which follows the active tool).
+    if (!openCats.has(id)) trackCategoryViewed(id as ServiceCategory | 'agent-g', 'sidebar');
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, [openCats]);
   const [searchOpen, setSearchOpen] = useState(false);
   // VOICE CONTROL (a Live call's open_panel, lib/voice/liveTools.ts): open the chat search, or show the history — the
   // phone's drawer, or a desktop sidebar that was collapsed to its rail.

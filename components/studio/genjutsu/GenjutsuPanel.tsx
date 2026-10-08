@@ -420,6 +420,7 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
 
       <GenerateButton
         stickyBottom
+        service="video.vfx"
         testId="vfx-generate"
         label={label}
         loadingLabel={c.generating}

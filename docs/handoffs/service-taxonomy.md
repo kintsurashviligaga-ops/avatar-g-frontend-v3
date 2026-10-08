@@ -251,8 +251,9 @@ no longer falls back to OpenAI TTS while `AI_GOOGLE_ONLY` is on (default), prove
 
 - §26 counts: `/services` and the Agent G system prompt read the catalog; `messages/{ka,en,ru}.json` lost the hard-coded
   "13 Services". Other hard-coded counts outside these pages are not yet swept (step 21/SEO).
-- §50 analytics identity: the catalog id is the analytics id, but the events (category viewed, service opened, quote shown,
-  generation confirmed / completed / failed, saved) are **MISSING**.
+- §50 analytics identity: the catalog id is the analytics id. The events (category viewed, service opened, quote shown,
+  generation confirmed / completed / failed, saved) fire from `lib/analytics/serviceEvents.ts`: **BUILT_NOT_PROVEN**
+  (certification §C lists what they cover and what not).
 - §51 search: `resolveService` answers KA/EN/RU aliases (dubbing, music video, product ad, lip sync, character swap,
   podcast are all tested) and powers Agent G, but there is no search box that uses it yet: **PARTIAL**.
 - §A boundary: 10 usable services on a violation path (§2). Fixing them is Part 2, blocked on Part 0 AUTH (STOP-1).

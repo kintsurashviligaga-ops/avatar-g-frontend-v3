@@ -72,7 +72,7 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
           value={p.form.dof} onChange={(dof) => p.onPatch({ dof })} />
       </section>
       <PromptCard value={p.form.brief} onChange={(brief) => p.onPatch({ brief })} placeholder={c.prompt} copy={copy} testId="photoshoot" />
-      <ShootFooter copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
+      <ShootFooter service="image.photoshoot" copy={copy} locale={p.locale} form={p.form} tiles={p.tiles} credits={p.credits} insufficient={p.insufficient}
         canGenerate={p.canGenerate} needSomething={c.needSomething} onGenerate={p.onGenerate} testId="photoshoot"
         onAspect={(aspect) => p.onPatch({ aspect })} onQuality={(quality) => p.onPatch({ quality })} onCount={(count) => p.onPatch({ count })} />
     </div>

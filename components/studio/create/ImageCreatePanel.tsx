@@ -401,6 +401,7 @@ export function ImageCreatePanel(p: ImageCreatePanelProps) {
             />
           ) : (
             <GenerateButton
+              service="image.generate"
               label={c.generate}
               credits={credits}
               insufficient={insufficient}

@@ -129,6 +129,7 @@ export function CreateBar({
         />
       </div>
       <GenerateButton
+        service="music.generate"
         testId="music-create"
         label={cc.create}
         credits={price}

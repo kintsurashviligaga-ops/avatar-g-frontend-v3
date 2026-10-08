@@ -66,7 +66,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
 
   test('Generate runs the composer\'s own run (so guests are stopped, the queue and the price gate are the same) and never re-implements it', () => {
     // `true` = the panel's own button: its price is on it, so that press IS the confirmation Agent G would otherwise ask for.
-    expect(mounted).toContain('onGenerate={() => runTool(true)}');
+    expect(mounted).toContain("onGenerate={() => runTool(true, 'panel')}");
     expect(mounted).not.toMatch(/runImageJob|runImageBatch|fetch\(/);
   });
 

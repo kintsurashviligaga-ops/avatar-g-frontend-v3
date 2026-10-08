@@ -1,5 +1,14 @@
 import { fireEvent, render } from '@testing-library/react';
 import { GenerateButton } from './GenerateButton';
+import { track } from '../../../lib/analytics/track';
+import { __resetServiceEvents } from '../../../lib/analytics/serviceEvents';
+
+jest.mock('../../../lib/analytics/track', () => ({ track: jest.fn() }));
+const mockTrack = track as jest.MockedFunction<typeof track>;
+beforeEach(() => {
+  mockTrack.mockClear();
+  __resetServiceEvents();
+});
 
 const setup = (props: Partial<React.ComponentProps<typeof GenerateButton>> = {}) => {
   const onClick = jest.fn();
@@ -71,4 +80,15 @@ test('an optional leading icon is decorative: shown before the label, never part
   expect(btn.getAttribute('aria-label')).toBe('Generate — 5 credits');
   const { btn: plain } = setup({ credits: 5 });
   expect(plain.querySelector('[aria-hidden="true"] svg[data-testid="lead"]')).toBeNull();
+});
+
+test('§50: a shown price is reported once under its catalog service; a free or unpriced button reports nothing', () => {
+  const { container } = render(<GenerateButton label="Generate" locale="en" onClick={jest.fn()} credits={60} service="image.generate" />);
+  expect(container.querySelector('button')).not.toBeNull();
+  expect(mockTrack.mock.calls).toEqual([['service_quote_shown', { service: 'image.generate', credits: 60, surface: 'panel' }]]);
+  mockTrack.mockClear();
+  setup({ credits: 60, free: true, service: 'video.generate' });
+  setup({ credits: 0, service: 'music.generate' });
+  setup({ credits: 60 });
+  expect(mockTrack).not.toHaveBeenCalled();
 });

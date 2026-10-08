@@ -57,8 +57,19 @@ counts (13 / 17 / 18 / 22 / 24 / 25 / 26) and prices. Two extra shells (`/hub`, 
   `/{lang}/services/<slug>` pages stay for SEO; their CTA opens the catalog service (`LEGACY_SLUG_TO_SERVICE`).
 - Status: **BUILT_NOT_PROVEN** in production (not deployed). Unit tests: `lib/catalog/*.test.ts`; E2E: the tool sheet and
   the desktop sidebar render the catalog's category lists (`tests/landing.spec.ts`, `tests/ui-newtools.spec.ts`, local run).
+- §50 analytics events: **BUILT_NOT_PROVEN** (not deployed). `lib/analytics/serviceEvents.ts` names the funnel by catalog id:
+  `catalog_category_viewed` (sidebar category opened), `catalog_service_opened` (sidebar, + sheet, `?tool=`, Agent G route,
+  voice), `service_quote_shown` (every priced Generate button and Agent G's card, de-duplicated),
+  `service_generation_confirmed` (panel / composer Generate, product / swap / remix run, Agent G card Create, voice
+  countdown, storyboard approve), `service_generation_completed` (the studio's one completion hook, free runs included),
+  `service_generation_failed` (film, image, image batch, music, lipsync; short codes only) and `service_result_saved`
+  (Save to library). Props are ids, counts and short codes, never prompts or URLs. They go through the existing tracker to
+  Vercel Web Analytics and `analytics_events` (exists in Production, RLS on, 27 rows in the last 7 days, checked 2026-10-08).
+  Tests: `lib/analytics/serviceEvents.test.ts`, `GenerateButton.test.tsx`. Not covered yet: the `/services` page (a server
+  component), Deep Research's Start sheet (no catalog id of its own), failures inside the separate lipsync / motion / VFX
+  panels, and the + sheet (it shows every category at once, so there is no "category opened").
 - Still open: 5 legacy registries are imported by legacy API routes (`/api/pipeline`, `/api/agents/*`) and must be deprecated
-  with them; §50 analytics events are MISSING; §51 has no search box (PARTIAL).
+  with them; §51 has no search box (PARTIAL).
 
 ## D. Agent G
 
