@@ -32,6 +32,7 @@ import {
   type BogPlanSummary,
 } from '@/lib/billing/bogCheckoutClient';
 import { track } from '@/lib/analytics/track';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -220,14 +221,16 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
     return () => { alive = false; };
   }, [open, authed]);
 
-  // Escape-to-close + lock body scroll while open (mirrors AuthModal).
+  // Focus moves into the sheet, Tab stays inside it, Escape closes it and focus returns to the control that opened it
+  // (useDialogA11y, as AuthModal). It had Escape only: keyboard and screen-reader users tabbed out behind the backdrop.
+  // `mounted` too: the sheet renders only after mount (portal), and the hook must run once the node exists.
+  const dialogRef = useDialogA11y<HTMLDivElement>(open && mounted, onClose);
+  // Lock body scroll while open (mirrors AuthModal).
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
-  }, [open, onClose]);
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
 
   const bog = rails?.bog === true;
   const noRail = rails !== null && !rails.bog && !rails.card;
@@ -310,6 +313,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={t.title}

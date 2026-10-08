@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, Check, Clapperboard, Code2, Palette, Plus, Sparkles, TrendingUp, Trash2, Wand2, X, type LucideIcon } from 'lucide-react';
+import { useDialogA11y } from '@/hooks/useDialogA11y';
 import {
   BUILT_IN_PERSONAS,
   personaName,
@@ -184,6 +185,9 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
     if (selectedId === id) choose('');
   }, [customs, selectedId, choose]);
 
+  // Focus into the sheet, Tab kept inside, Escape closes, focus returns to the opener (it had none of these).
+  const dialogRef = useDialogA11y<HTMLDivElement>(open, onClose);
+
   if (!open) return null;
 
   const row = 'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-app-elevated';
@@ -191,6 +195,7 @@ export default function PersonaPicker({ locale = 'ka', open, onClose, onSelect }
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

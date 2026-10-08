@@ -133,3 +133,16 @@ test('no rail at all: every pay button disabled, with a plain notice', async () 
   expect(pay.length).toBeGreaterThan(0);
   for (const b of pay) expect((b as HTMLButtonElement).disabled).toBe(true);
 });
+
+test('a real dialog: focus moves into it, Tab stays inside, Escape closes it', async () => {
+  const onClose = jest.fn();
+  render(<CreditsModal open locale="en" balanceGel={120} authed onClose={onClose} onSignIn={jest.fn()} />);
+  const dialog = screen.getByRole('dialog');
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  const focusables = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input:not([disabled])'));
+  focusables[focusables.length - 1]!.focus();
+  fireEvent.keyDown(window, { key: 'Tab' });
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
