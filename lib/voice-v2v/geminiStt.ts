@@ -22,7 +22,8 @@ import 'server-only';
  */
 import { NotConfiguredError } from '@/lib/contracts/geminiTransport';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
+import { googleModelFetch, googleTransportBlocker, googleTransportKind } from '@/lib/ai/google/transport';
+import { catalogEntry } from '@/lib/models/catalog';
 import { DEFAULT_STT_MODEL, isRetiredModel, normalizeModelId, sttModel } from '@/lib/ai/google/models';
 
 /** True when the selected Google transport can serve a call (the name predates GEMINI_TRANSPORT). */
@@ -41,12 +42,24 @@ export function hasGeminiSttKey(): boolean {
  */
 const STT_STEP_DOWNS = [DEFAULT_STT_MODEL, 'gemini-3.7-flash', 'gemini-flash-latest'] as const;
 
-/** [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped. */
+/** On Vertex AI, ids the ModelCatalog marks Gemini-API only (the `-latest` aliases answer 404 there) are skipped. */
+function onVertex(): boolean {
+  try {
+    return googleTransportKind() === 'vertex';
+  } catch {
+    return false;
+  }
+}
+
+/** [sttModel(), …step-downs], de-duplicated, retired and malformed ids dropped, and on Vertex the API-only aliases. */
 export function geminiSttModelChain(): string[] {
+  const vertex = onVertex();
   const out: string[] = [];
   for (const raw of [sttModel(), ...STT_STEP_DOWNS]) {
     const id = normalizeModelId(raw);
-    if (id && !isRetiredModel(id) && !out.includes(id)) out.push(id);
+    if (!id || isRetiredModel(id) || out.includes(id)) continue;
+    if (vertex && catalogEntry(id)?.transport === 'gemini_api') continue;
+    out.push(id);
   }
   return out;
 }

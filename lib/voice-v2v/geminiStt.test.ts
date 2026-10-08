@@ -110,6 +110,15 @@ describe('geminiSttModelChain', () => {
     process.env.GEMINI_STT_MODEL = 'gemini-2.5-flash';
     expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-flash-latest']);
   });
+
+  it('on Vertex AI the Gemini-API-only alias is skipped (it answers 404 there), even as an override', () => {
+    delete process.env.VOICE_V2V_GEMINI_MODEL;
+    process.env.GEMINI_TRANSPORT = 'vertex';
+    delete process.env.GEMINI_STT_MODEL;
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
+    process.env.GEMINI_STT_MODEL = 'gemini-pro-latest';
+    expect(geminiSttModelChain()).toEqual(['gemini-3.8-flash', 'gemini-3.7-flash']);
+  });
 });
 
 describe('classifySttStatus', () => {

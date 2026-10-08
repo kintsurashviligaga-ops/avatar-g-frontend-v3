@@ -27,6 +27,7 @@ const VERTEX_T2_2026_10_08 = '2026-10-08T11:53:00Z'; // GCP Part 0 T2 on Vertex 
 
 const NEW_KEY = 'Answered 200 on the new project\'s API key, 2026-10-02 (lib/ai/google/models.ts, commit d1d9a6d7).';
 const VERTEX_T2 = 'Answered on Vertex AI (global) in the GCP Part 0 T2 test, 2026-10-08 (docs/handoffs/2026-10-08-gcp-part0-test-plan.md §8).';
+const VERTEX_ALIAS_404 = 'Vertex AI (global) answered countTokens 404 for it from the Preview runtime, 2026-10-08T18:13Z (/api/preview/google-check).';
 
 const text = (
   id: string,
@@ -44,8 +45,8 @@ const text = (
 });
 
 export const MODEL_CATALOG: ModelCatalog = {
-  version: '2026-10-08.1',
-  updatedAt: '2026-10-08T18:00:00Z',
+  version: '2026-10-08.2',
+  updatedAt: '2026-10-08T18:20:00Z',
   entries: [
     // ── Gemini text (chat chains, REST tiers, llmText, STT) ────────────────────────────────────────────────────
     text('gemini-3.8-flash', 'Gemini 3.8 Flash', {
@@ -95,15 +96,21 @@ export const MODEL_CATALOG: ModelCatalog = {
     }),
     text('gemini-flash-latest', 'Gemini Flash (latest alias)', {
       enabled: true,
+      transport: 'gemini_api',
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
-      notes: 'Google alias; last STT step-down. Points at whichever Flash Google chooses, so no verifiedAt of its own.',
+      notes:
+        'Google alias; last STT step-down. Points at whichever Flash Google chooses, so no verifiedAt of its own. ' +
+        `Gemini API only: ${VERTEX_ALIAS_404}`,
     }),
     text('gemini-pro-latest', 'Gemini Pro (latest alias)', {
       enabled: true,
+      transport: 'gemini_api',
       capabilities: ['text', 'code', 'reasoning', 'transcribe'],
       focusModes: ['code', 'search', 'files', 'stt'],
-      notes: 'Google alias; observed answering as gemini-3.1-pro (lib/ai/google/models.ts). Allowed for STT only.',
+      notes:
+        'Google alias; observed answering as gemini-3.1-pro (lib/ai/google/models.ts). Allowed for STT only. ' +
+        `Gemini API only: ${VERTEX_ALIAS_404}`,
     }),
 
     // ── Image ───────────────────────────────────────────────────────────────────────────────────────────────────

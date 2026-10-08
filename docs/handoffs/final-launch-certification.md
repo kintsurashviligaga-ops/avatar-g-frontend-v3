@@ -220,10 +220,15 @@ Still on the API key whatever the setting: Deep Research and Lyria's API-key pat
 on the Gemini API only (pinned and stated in `lib/research/interactionsClient.ts`, so with `vertex` a research run still
 bills the API key's account); Live (A3, needs a server relay); Imagen (Imagen 4 is 404 on Vertex here); the health probes,
 which check the API key (the transport's own check is the route below). Veo keeps its own `VEO_TRANSPORT`. Nothing in Production changes until `GEMINI_TRANSPORT=vertex` is set
-there. Not yet proven: one Vertex Gemini call from a Preview runtime (the service account holds
-`aiplatform.endpoints.predict`, which generateContent needs). The free proof is `GET /api/admin/google-transport` (admin
-only): `countTokens` on the chat and image models through the same transport, nothing generated or billed; it needs
-`GEMINI_TRANSPORT=vertex` on Preview and a Preview build that carries this branch.
+there. The free proof is `countTokens` (nothing generated or billed) through the same transport: `GET
+/api/admin/google-transport` (admin, with Google's error text) and `GET /api/preview/google-check` (Vercel Preview only,
+404 elsewhere, no sign-in, statuses only, one run per 5 min per instance). **AUTH VERIFIED 2026-10-08T18:13Z** on the
+cert-branch Preview (ea665ba5, `GEMINI_TRANSPORT=vertex` on Preview only, set by the owner): transport vertex, location
+global, gemini-3.8-flash and gemini-3.1-flash-image 200 through the Preview's Workload Identity; the ModelCatalog check
+found 13 catalog ids on Vertex and 2 missing (`gemini-flash-latest`, `gemini-pro-latest`: Google aliases that exist on
+the Gemini API only, now marked so in the catalog and skipped by the STT step-downs on Vertex). Not yet INFERENCE
+VERIFIED from the Preview runtime: that needs one generation, which is paid and waits for the owner's consent (Gemini
+text, image and Lyria generation on Vertex were proven from the owner's Mac in T2).
 
 ## M. Pricing
 
