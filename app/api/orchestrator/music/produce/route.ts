@@ -1,15 +1,15 @@
 /**
  * POST /api/orchestrator/music/produce — Music Generation Swarm (SSE).
  *
- * brief → Agent S (Claude) designs song metrics (style, BPM, instrumental,
+ * brief → Agent S (Gemini) designs song metrics (style, BPM, instrumental,
  * lyrics) → dispatch to the music worker (Udio) → signed audio URL.
  * Streams: [Agent S: Architecting Lyric/Vibe Matrix…] →
  *          [Synthesizing Audio Frequency Spectrum…] → completed | failed.
- * Authenticated (dev-bypass under `next dev`). Fail-open: Claude miss →
+ * Authenticated (dev-bypass under `next dev`). Fail-open: Gemini miss →
  * deterministic metrics.
  */
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -22,7 +22,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 180;
 
-const MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -67,22 +66,15 @@ export async function POST(req: NextRequest) {
         }
         emit({ stage: 'architecting', pct: 12, ticker: '[Agent S: Architecting Lyric/Vibe Matrix…]' });
 
-        // Agent S — Claude metrics, fail-open to deterministic.
+        // Agent S — Gemini metrics (lib/ai/llmText: Gemini only, no second provider), fail-open to deterministic.
         let metrics = deterministicSongMetrics(prompt);
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (apiKey) {
-          try {
-            const client = new Anthropic({ apiKey });
-            const msg = await client.messages.create({
-              model: MODEL, max_tokens: 1200,
-              system: buildSongArchitectSystemPrompt(),
-              messages: [{ role: 'user', content: `Brief: "${prompt}". Return the JSON now.` }],
-            });
-            const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-            const parsed = extractJson(text);
-            if (parsed) metrics = normalizeSongMetrics(parsed, prompt);
-          } catch { /* keep deterministic */ }
-        }
+        const architected = await llmText({
+          user: `Brief: "${prompt}". Return the JSON now.`,
+          system: buildSongArchitectSystemPrompt(),
+          maxTokens: 1200, json: true, timeoutMs: 30_000,
+        });
+        const parsedMetrics = architected ? extractJson(architected) : null;
+        if (parsedMetrics) metrics = normalizeSongMetrics(parsedMetrics, prompt);
 
         emit({ stage: 'synthesizing', pct: 45, ticker: '[Synthesizing Audio Frequency Spectrum…]', style: metrics.style, bpm: metrics.bpm, instrumental: metrics.instrumental });
 

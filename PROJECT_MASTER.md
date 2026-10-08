@@ -98,6 +98,9 @@ PHASE CHECKLIST:
           D (ModelCatalog): lib/models/catalog.ts (28 Google models, verifiedAt only from dated calls, Gemini 2.5 text
           left out), lib/models/verify.ts (free runtime check: models.list / Vertex countTokens; missing → off, unknown →
           review queue), GET /api/admin/model-catalog. Studio pickers still read lib/providers/catalogue (action 9).
+          B1 Claude slice 2: the orchestrator script / produce / image / music / interior routes plan with Gemini
+          (llmText), no Anthropic SDK left under app/api/orchestrator; Claude only behind AI_GOOGLE_ONLY=0,
+          VIDEO_GOOGLE_ONLY=0 or FILM_VISION_QA=1.
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement

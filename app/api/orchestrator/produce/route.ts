@@ -1,7 +1,7 @@
 /**
  * POST /api/orchestrator/produce — one-call cinematic production (the fan-out).
  *
- * prompt → Agent A (Claude script, N×6s) → Agent I (LTX clips, generated +
+ * prompt → Agent A (Gemini script, N×6s) → Agent I (LTX clips, generated +
  * uploaded to Storage in parallel) → Agent H (ElevenLabs voiceover, best-effort)
  * → Agent L (CPU/GPU assemble) → final signed 30s master URL.
  *
@@ -11,11 +11,12 @@
  *
  * Authenticated (charges flow through the underlying per-agent routes). Honest
  * degradation: clips that fail are skipped (need ≥2 to assemble); voiceover is
- * best-effort; if Claude/LTX are unavailable the stream emits a `failed` event.
+ * best-effort; if LTX is unavailable the stream emits a `failed` event (a Gemini miss falls back to the deterministic
+ * breakdown).
  */
 import { NextRequest } from 'next/server';
 import { forwardSessionHeaders } from '@/lib/api/forwardSession';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -47,25 +48,13 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const SCRIPT_MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 interface ProduceBody { prompt?: string; totalDurationSec?: number; withVoice?: boolean; idempotencyKey?: string }
 
+/** Agent A — Gemini (lib/ai/llmText: Gemini only, no second provider); a miss is the deterministic breakdown. */
 async function planScript(prompt: string, totalSec: number): Promise<ScriptSegment[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return normalizeBreakdown(null, prompt, totalSec); // deterministic fallback
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({
-      model: SCRIPT_MODEL, max_tokens: 1500,
-      system: buildScriptSystemPrompt(),
-      messages: [{ role: 'user', content: buildScriptUserPrompt(prompt, totalSec) }],
-    });
-    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-    return normalizeBreakdown(extractJson(text), prompt, totalSec);
-  } catch {
-    return normalizeBreakdown(null, prompt, totalSec);
-  }
+  const text = await llmText({ user: buildScriptUserPrompt(prompt, totalSec), system: buildScriptSystemPrompt(), maxTokens: 1500, json: true, timeoutMs: 30_000 });
+  return normalizeBreakdown(text ? extractJson(text) : null, prompt, totalSec);
 }
 
 /** Generate one 6s LTX clip and upload it to Storage; returns the signed URL or null. Single attempt. */

@@ -187,6 +187,13 @@ Telegram) has no Claude Haiku fallback; a miss is its localized fallback line. T
 (7) and `lib/agentg/personality.test.ts` (3) fail on the old code. `/api/chat`, `/api/chat/gemini` and `/api/chat/stream`
 still keep an Anthropic leg that runs only when `AI_GOOGLE_ONLY=0` (default on, so off); it goes with B1.
 
+**Claude removed from the orchestrator routes (Part 2 B1, BUILT_NOT_PROVEN).** The script, produce, image / music
+produce and interior style / produce routes asked Claude for their JSON plan whenever `ANTHROPIC_API_KEY` was set, with no
+flag. They now take it from `lib/ai/llmText` (Gemini only, JSON mode, the platform budget gate) and keep their
+deterministic plan on a miss. Test `app/api/orchestrator/geminiOnly.test.ts` (4; its source scan fails on the old code).
+Claude is still reachable only behind flags: `AI_GOOGLE_ONLY=0` (chat routes, remix intent, prompt translation),
+`VIDEO_GOOGLE_ONLY=0` (auto marketing overlay copy) and `FILM_VISION_QA=1` (keyframe vision QA, off unless set).
+
 **Forbidden providers still reachable as the primary (explicit, not silent; Part 2, owner action 9):** NanoBanana itself
 (`api.nanobananaapi.ai`, a third-party reseller, not Google); avatar HeyGen / SadTalker; swap / motion / product ad Kling,
 roop, Higgsfield; 3D TRELLIS; interior World Labs; music on an explicit pick of Udio or MusicGen, cover (MusicGen-melody),

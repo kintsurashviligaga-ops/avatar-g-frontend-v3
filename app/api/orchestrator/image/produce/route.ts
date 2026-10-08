@@ -1,15 +1,15 @@
 /**
  * POST /api/orchestrator/image/produce — Image Generation Swarm (SSE).
  *
- * brief → Agent P (Claude) expands to a generation matrix (prompt + ratio +
+ * brief → Agent P (Gemini) expands to a generation matrix (prompt + ratio +
  * style) → dispatch to the production image worker (Replicate) → signed image URL.
  * Streams: [Agent P: Formulating Visual Prompt Matrix…] →
  *          [Dispatching to Production Multi-Model Worker…] → completed | failed.
- * Authenticated (dev-bypass under `next dev`). Fail-open: Claude miss →
+ * Authenticated (dev-bypass under `next dev`). Fail-open: Gemini miss →
  * deterministic directive, so it always dispatches.
  */
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
@@ -22,7 +22,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-const MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -67,22 +66,15 @@ export async function POST(req: NextRequest) {
         }
         emit({ stage: 'directing', pct: 12, ticker: '[Agent P: Formulating Visual Prompt Matrix…]' });
 
-        // Agent P — Claude expansion, fail-open to deterministic.
+        // Agent P — Gemini expansion (lib/ai/llmText: Gemini only, no second provider), fail-open to deterministic.
         let directive = deterministicImageDirective(prompt);
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (apiKey) {
-          try {
-            const client = new Anthropic({ apiKey });
-            const msg = await client.messages.create({
-              model: MODEL, max_tokens: 600,
-              system: buildImageDirectorSystemPrompt(),
-              messages: [{ role: 'user', content: `Brief: "${prompt}". Return the JSON now.` }],
-            }, { timeout: 30_000 }); // bound the directive call; catch below keeps the deterministic fallback
-            const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-            const parsed = extractJson(text);
-            if (parsed) directive = normalizeImageDirective(parsed, prompt);
-          } catch { /* keep deterministic */ }
-        }
+        const directed = await llmText({
+          user: `Brief: "${prompt}". Return the JSON now.`,
+          system: buildImageDirectorSystemPrompt(),
+          maxTokens: 600, json: true, timeoutMs: 30_000,
+        });
+        const parsedDirective = directed ? extractJson(directed) : null;
+        if (parsedDirective) directive = normalizeImageDirective(parsedDirective, prompt);
 
         emit({ stage: 'dispatching', pct: 45, ticker: '[Dispatching to Production Multi-Model Worker…]', ratio: directive.ratio, style: directive.style });
 

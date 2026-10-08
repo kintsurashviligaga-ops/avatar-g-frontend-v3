@@ -4,7 +4,7 @@
  * Dual-engine orchestration:
  *   1. (optional) Gemini 2.5 vision analyzes an uploaded asset (image) into a
  *      text description — the multi-modal ingestion stage.
- *   2. Claude (Sonnet) acts as the CEO orchestrator: it splits the brief
+ *   2. Gemini (lib/ai/llmText, no second provider) acts as the orchestrator: it splits the brief
  *      (+ Gemini's visual context) into N mathematically-exact 6-second shot
  *      manifests as strict JSON. 30s → exactly 5 shots.
  *
@@ -13,7 +13,7 @@
  *
  * Honest degradation at every hop:
  *   • no GEMINI key / vision error → skip analysis, use the brief alone.
- *   • no ANTHROPIC key / Claude error / unparseable JSON → deterministic
+ *   • Gemini miss (no key / error / budget refusal) or unparseable JSON → deterministic
  *     breakdown (HTTP 200, degraded:true). The pipeline never receives a 500.
  *
  * Request:  { prompt: string, totalDurationSec?: number,
@@ -22,7 +22,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { generateText } from 'ai';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
@@ -41,11 +41,10 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60; // vision retries (503 backoff) + Claude breakdown
+export const maxDuration = 60; // vision retries (503 backoff) + the Gemini breakdown
 
-// Claude (CEO orchestrator) — Sonnet by default for quality, env-overridable.
-const SCRIPT_MODEL =
-  process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
+// The breakdown model: the REST flash tier llmText calls (GEMINI_MODEL_FLASH overrides it).
+const SCRIPT_MODEL = geminiTierModel('flash');
 // Gemini (multi-modal ingestion) — a vision-capable Flash model.
 const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
 
@@ -130,15 +129,15 @@ export async function POST(req: NextRequest) {
   }
 
   // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate). Both stages spend the platform's keys — Gemini vision (retried up
-  // to 4× per key, rotated across every configured key) on a caller-supplied image, then a Claude breakdown — and
+  // to 4× per key, rotated across every configured key) on a caller-supplied image, then a Gemini breakdown — and
   // no screen in the product calls this route. "Honest degradation" below is about provider misses; it was never
-  // meant to make an anonymous POST a free Gemini + Claude call.
+  // meant to make an anonymous POST two free Gemini calls.
   const { user } = await authedClientFromRequest(req);
   if (mustSignInToGenerate(user?.id)) {
     return NextResponse.json(signInToGenerateBody(typeof body.locale === 'string' ? body.locale : 'ka'), { status: 401 });
   }
   // ⚠️ Signed-in was the only guard: sign-up is self-service, so one account could loop Gemini vision (up to 4 retries
-  // per configured key) + a Claude breakdown with no cap. Per-ACCOUNT daily helper cap (HELPER_USER).
+  // per configured key) + a Gemini breakdown with no cap. Per-ACCOUNT daily helper cap (HELPER_USER).
   if (user?.id) {
     const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.HELPER_USER);
     if (capped) return capped;
@@ -162,9 +161,19 @@ export async function POST(req: NextRequest) {
     error: av.error ? 'vision_unavailable' : null,
   };
 
-  // ── Stage 2: Claude CEO orchestrator → 6-second shot manifests ────────────
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  // ── Stage 2: Gemini orchestrator → 6-second shot manifests ────────────────
+  // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'script' config, append its learned
+  // directive to the system prompt so the loop's improvement reaches generation. Fail-soft.
+  const activeScriptCfg = await getActiveConfig('script').catch(() => null);
+  const scriptSystem = activeScriptCfg?.prompt ? `${buildScriptSystemPrompt()} ${activeScriptCfg.prompt}` : buildScriptSystemPrompt();
+  const text = await llmText({
+    user: buildScriptUserPrompt(effectivePrompt, totalSec),
+    system: scriptSystem,
+    maxTokens: 1500,
+    json: true,
+    timeoutMs: 30_000,
+  });
+  if (!text) {
     return NextResponse.json({
       segments: deterministicBreakdown(effectivePrompt, totalSec),
       model: 'deterministic',
@@ -172,37 +181,11 @@ export async function POST(req: NextRequest) {
       vision,
     });
   }
-
-  try {
-    const client = new Anthropic({ apiKey });
-    // SELF-IMPROVING (STEP 5): if an admin has APPROVED an active 'script' config, append its learned
-    // directive to the system prompt so the loop's improvement reaches generation. Fail-soft.
-    const activeScriptCfg = await getActiveConfig('script').catch(() => null);
-    const scriptSystem = activeScriptCfg?.prompt ? `${buildScriptSystemPrompt()} ${activeScriptCfg.prompt}` : buildScriptSystemPrompt();
-    const msg = await client.messages.create({
-      model: SCRIPT_MODEL,
-      max_tokens: 1500,
-      system: scriptSystem,
-      messages: [{ role: 'user', content: buildScriptUserPrompt(effectivePrompt, totalSec) }],
-    });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-    const parsed = extractJson(text);
-    const segments = normalizeBreakdown(parsed, effectivePrompt, totalSec);
-    return NextResponse.json({
-      segments,
-      model: SCRIPT_MODEL,
-      degraded: parsed === null,
-      vision,
-    });
-  } catch {
-    return NextResponse.json({
-      segments: deterministicBreakdown(effectivePrompt, totalSec),
-      model: 'deterministic',
-      degraded: true,
-      vision,
-    });
-  }
+  const parsed = extractJson(text);
+  return NextResponse.json({
+    segments: normalizeBreakdown(parsed, effectivePrompt, totalSec),
+    model: SCRIPT_MODEL,
+    degraded: parsed === null,
+    vision,
+  });
 }

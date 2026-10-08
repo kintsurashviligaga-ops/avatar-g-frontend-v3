@@ -3,16 +3,16 @@
  *
  * intake (≤3 photos OR 360° video + brief)
  *   → Agent N (Gemini)  : RoomGeometry
- *   → Agent K (Claude)  : StyleGuide + walkthrough prompts
+ *   → Agent K (Gemini)  : StyleGuide + walkthrough prompts
  *   → emits geometry+style for the inline Three.js RoomViewer.
  *
  * Streams professional telemetry tickers as it runs; ends with
  * { stage:'completed', geometry, style, walkthrough } or { stage:'failed', error }.
  * Authenticated. Fail-open at each hop (Gemini → deterministic geometry,
- * Claude → deterministic style) so the viewer always has something to mount.
+ * Gemini → deterministic style) so the viewer always has something to mount.
  */
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
 import { googleCallAttempts } from '@/lib/ai/google/transport';
@@ -33,7 +33,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
-const CLAUDE_MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 function geminiKeys(): string[] {
   const csv = (process.env.GEMINI_API_KEYS ?? '').split(',').map(s => s.trim()).filter(Boolean);
@@ -71,16 +70,11 @@ async function analyzeGeometry(imageUrls: string[], brief: string): Promise<Room
   return null;
 }
 
+/** Agent K — the style guide from Gemini (lib/ai/llmText: Gemini only, no second provider); null → the caller's default. */
 async function designStyle(geometry: RoomGeometry, brief: string) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({ model: CLAUDE_MODEL, max_tokens: 1200, system: buildStyleSystemPrompt(), messages: [{ role: 'user', content: buildStyleUserPrompt(geometry, brief) }] });
-    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-    const parsed = extractJson(text);
-    return parsed ? normalizeStyleGuide(parsed) : null;
-  } catch { return null; }
+  const text = await llmText({ user: buildStyleUserPrompt(geometry, brief), system: buildStyleSystemPrompt(), maxTokens: 1200, json: true, timeoutMs: 30_000 });
+  const parsed = text ? extractJson(text) : null;
+  return parsed ? normalizeStyleGuide(parsed) : null;
 }
 
 export async function POST(req: NextRequest) {
