@@ -1,7 +1,6 @@
 import 'server-only';
 import { generateText } from 'ai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
 import { geminiTierModel } from '@/lib/ai/google/models';
 
@@ -65,7 +64,6 @@ type SessionMemory = {
   lastDetectedEmotion: DetectedEmotion;
 };
 
-const ANTHROPIC_FALLBACK = 'claude-haiku-4-5-20251001';
 const MAX_REPLY_CHARS = 1500;
 const MAX_RETRIES = 2;
 
@@ -244,27 +242,9 @@ async function generateWithRetry(args: {
     }
   }
 
-  // Fallback: Anthropic Haiku
-  const anthropicKey = (process.env.ANTHROPIC_API_KEY ?? '').trim();
-  if (anthropicKey) {
-    try {
-      const anthropic = createAnthropic({ apiKey: anthropicKey });
-      const result = await generateText({
-        model: anthropic(ANTHROPIC_FALLBACK),
-        system: args.systemPrompt,
-        messages,
-        maxOutputTokens: 600,
-        temperature: 0.55,
-        maxRetries: 1,
-      });
-      if (result.text?.trim()) return trimReply(sanitizeOwnerNaming(result.text));
-    } catch (err) {
-      console.error('[AgentG.Personality] Anthropic fallback failed:', err instanceof Error ? err.message : err);
-      lastError = err;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('All AI providers failed');
+  // Gemini only (R7): no other vendor answers when Gemini fails. The caller replies with the localized
+  // fallbackReply() and tags the turn 'fallback', so a Gemini outage stays visible.
+  throw lastError instanceof Error ? lastError : new Error(geminiKey ? 'Gemini did not answer' : 'GEMINI_API_KEY not configured');
 }
 
 export async function generateAgentGPersonalityReply(input: PersonalityInput): Promise<PersonalityOutput> {

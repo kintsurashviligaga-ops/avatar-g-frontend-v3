@@ -169,6 +169,13 @@ them) is Gemini only; `/api/pipeline` text tools and Terminal are Gemini only; m
 bed and the product-ad music have no MusicGen leg; TTS and film voice-over have no Azure / Google leg behind ElevenLabs.
 Every removed leg, put back, fails the new tests. Admin health now reports scene planning as live only on the Gemini key.
 
+**Claude removed from chat (Part 2 step 1, BUILT_NOT_PROVEN).** `lib/chat/providerRouter` no longer sends "specialist"
+turns (code, maths, blueprints) to Claude before Gemini and no longer answers from Claude when Gemini fails; a Gemini
+miss is the explicit "Chat is temporarily unavailable" reply tagged `gemini`. Agent G's personality reply (web and
+Telegram) has no Claude Haiku fallback; a miss is its localized fallback line. Tests `lib/chat/textGeminiOnly.test.ts`
+(7) and `lib/agentg/personality.test.ts` (3) fail on the old code. `/api/chat`, `/api/chat/gemini` and `/api/chat/stream`
+still keep an Anthropic leg that runs only when `AI_GOOGLE_ONLY=0` (default on, so off); it goes with B1.
+
 **Forbidden providers still reachable as the primary (explicit, not silent; Part 2, owner action 9):** NanoBanana itself
 (`api.nanobananaapi.ai`, a third-party reseller, not Google); avatar HeyGen / SadTalker; swap / motion / product ad Kling,
 roop, Higgsfield; 3D TRELLIS; interior World Labs; music on an explicit pick of Udio or MusicGen, cover (MusicGen-melody),

@@ -83,6 +83,8 @@ PHASE CHECKLIST:
 ◐ Part 2: Vertex Migration — in progress on claude/launch-certification-wmvitt (2026-10-08). Earlier WIP on unmerged
           origin/codex/vertex-ai-migration (503829dc) + PR #44 (green) is to be merged in, not redone (15 conflicts).
           A1 (Veo Production env) cannot complete before Part 0 T1 (STOP-1).
+          Step 1 done: Claude removed from the chat router (specialist-first and fallback) and Agent G's personality
+          (Gemini only, explicit failure; certification §L). Udio / MusicGen picker rows come with the PR #44 merge (step 2).
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
