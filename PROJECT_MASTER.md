@@ -27,14 +27,16 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
-CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
+CURRENT PHASE: Part 2 (Vertex Migration + Provider Cleanup) — Part 1 complete 2026-10-08 (docs/handoffs/part-1-report.md);
+          Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
 CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
 NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry,
           VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, BOG credentials / merchant
           activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
-          pricing table, browser infra, provider migration plan); then Part 2
+          pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
+          (Claude/Udio R7 slice → merge PR #44's branch → A2 wrappers → ModelCatalog data); A1 held until Veo T1 passes
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
@@ -76,9 +78,11 @@ PHASE CHECKLIST:
           guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
           Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
           script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
-◐ Part 1: Audit + Foundation — restarted 2026-10-08; §60 certification done (final-launch-certification.md), not launch ready.
-◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
-          self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
+✓ Part 1: Audit + Foundation — complete 2026-10-08: audit, foundation contracts (lib/contracts), report
+          docs/handoffs/part-1-report.md; §60 certification done (final-launch-certification.md), not launch ready.
+◐ Part 2: Vertex Migration — in progress on claude/launch-certification-wmvitt (2026-10-08). Earlier WIP on unmerged
+          origin/codex/vertex-ai-migration (503829dc) + PR #44 (green) is to be merged in, not redone (15 conflicts).
+          A1 (Veo Production env) cannot complete before Part 0 T1 (STOP-1).
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
@@ -121,7 +125,7 @@ HANDOFF CHAIN:
 · Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
 · Part 0 Test plan: docs/handoffs/2026-10-08-gcp-part0-test-plan.md
 · Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
-· Part 1 Report: pending (docs/handoffs/part-1-report.md)
+· Part 1 Report: docs/handoffs/part-1-report.md (2026-10-08)
 · Part 2 Report: pending
 · Part 3 Report: pending
 · Part 4 Report: pending
