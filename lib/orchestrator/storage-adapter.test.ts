@@ -28,7 +28,7 @@ describe('parseSupabaseObjectUrl', () => {
 });
 
 describe('ensureBucket — the result is read, not thrown away', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { ensureBucket, __resetKnownBuckets } = require('./storage-adapter') as typeof import('./storage-adapter');
   beforeEach(() => __resetKnownBuckets());
   const fake = (answers: Array<string | null | Error>) => {
@@ -91,6 +91,7 @@ describe('ensureBucket — the result is read, not thrown away', () => {
 
 describe('storageObjectExists — true/false only when storage answered', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { storageObjectExists } = require('./storage-adapter') as typeof import('./storage-adapter');
   const fake = (answer: { data?: Array<{ name?: string | null }> | null; error?: { message: string } | null } | Error) => {
     const calls: Array<{ bucket: string; dir: string; opts: { limit: number; search: string } }> = [];

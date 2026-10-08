@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ url, amountGel: FOUNDER_VERIFICATION_GEL });
     } catch (e) {
+      console.error('[billing/founder-verify] checkout session failed', e instanceof Error ? e.message : e);
       return NextResponse.json(
         { error: 'gel_unsupported', message: 'founder verification failed' },
         { status: 502 },

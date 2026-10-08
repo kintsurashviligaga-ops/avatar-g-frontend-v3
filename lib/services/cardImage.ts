@@ -1,7 +1,7 @@
 /**
  * lib/services/cardImage.ts — which services have a card still at /services/<id>.webp (public/services/).
  *
- * The /services hub's cards load that file and fall back to an SVG scene on a 404 (components/ui/ServiceCardVisual).
+ * (The /services hub used to load these as card headers; it now draws its cards from lib/catalog/services.ts.)
  * A client component cannot ask the disk, so this list says which files ship: the workspace header
  * (components/services/unified/ServiceWorkspaceView) shows the still as its thumbnail instead of a Unicode glyph
  * (⬡ ◈ ▷ …, some of them emoji) when the id is here — and never requests a file that is not, so no header 404s.
