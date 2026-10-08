@@ -41,12 +41,13 @@ PHASE CHECKLIST:
           preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
           bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
           Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
-          on the PR #43 Preview). INFERENCE VERIFIED: not run — plan ready (≈ $0.52, cap $2), needs owner consent.
-          Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31,
-          labelled "Not applicable to Gemini API", and AI Studio / Gemini API balance $13.21, auto-reload OFF
-          (owner-confirmed from the AI Studio Billing screen, 2026-10-08). 3 budgets (PROVEN): $10/month test,
-          $300/year credit guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert,
-          they do not cap.
+          on the PR #43 Preview, signed in with email + password). Paid test approved by owner 11:47 UTC: T2 PROVEN
+          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11);
+          T1 Veo (INFERENCE VERIFIED) waits on AUTH; credit coverage checked ~24 h later in Billing.
+          No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
+          Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
+          and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
+          guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
           Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
           script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
 ◐ Part 1: Audit + Foundation — no part-1-report.md was ever written; restarted 2026-10-08.
@@ -56,6 +57,10 @@ PHASE CHECKLIST:
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
+· AUTH-1 (launch blocker, Production auth FAILED): email OTP sign-in, sign-up and password reset fail on Production and
+  Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
+  lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
+  thread (PR #43); stays FAILED for Production until that fix is deployed with the owner's approval.
 · STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
   pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
   (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
@@ -71,6 +76,11 @@ BLOCKERS:
     Image generation quota is 2 requests/min per model (increase request needed before launch).
   - Preview and Production share one Supabase, so any Preview studio test writes to the production DB.
   - API keys "API key 2" (aiplatform) and "Gemini API Key" (generativelanguage); roles/editor on the default compute SA.
+· Admin Panel audit 2026-10-08: no newer admin panel on any branch. Prod /ka/admin = main code. Pipeline card
+  (lib/pipeline/statusAgent.ts) is env-presence only and stale ('Udio primary' contradicts code, where Lyria is primary).
+  Replicate/Udio keys are set in Production. Admin auth uses 3 inconsistent guards; run-migration and 2 other routes are
+  header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
+  Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
