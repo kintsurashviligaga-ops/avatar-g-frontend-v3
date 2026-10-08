@@ -1,14 +1,14 @@
 # GCP Part 0 — Vertex AI WIF: ანგარიში (2026-10-08)
 
-სტატუსი: **GCP და Vercel — CONFIGURED (read-back-ით დადასტურებული). AUTH და INFERENCE ჯერ არ არის.** Billing Alerts — 3 budget (§10).
+სტატუსი: **GCP და Vercel — CONFIGURED (read-back-ით დადასტურებული). AUTH VERIFIED — Preview build-ის იდენტობით (§9.7). Veo-ს INFERENCE ჯერ არ არის.** Billing Alerts — 3 budget (§10).
 owner-მა plan დაამტკიცა 2026-10-08 11:00 UTC-ზე; apply გაეშვა owner-ის Mac-ზე `myavatar.ge@gmail.com`-ით (§9).
 
 | ფენა | სტატუსი |
 |---|---|
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **CONFIGURED** — read-back audit (§9.2) |
 | CONFIGURED (Vercel: OIDC Team mode, env vars) | **CONFIGURED** — OIDC `team`, Preview-ში 8/8 ცვლადი, `GCP_SERVICE_ACCOUNT_KEY` არ არის (§9.3) |
-| AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — შემოწმება ჩაშენდა `/api/admin/provider-probe`-ში და log-შიც იწერება (§9.4); owner-ის Preview-ზე შესვლას (ელფოსტის კოდით) ელოდება. კოდით შესვლა თავად იყო გაფუჭებული, Production-შიც (§9.5) |
-| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); Veo ელოდება AUTH-ს (§10.5) |
+| AUTH VERIFIED (STS exchange + impersonation) | **AUTH VERIFIED** (Preview build-ის იდენტობით, 2026-10-08 14:21:20 UTC): `env=preview` `token:ok bucket:ok sign:ok` (§9.7). function-ში header-იდან token-ის აღებას probe (§9.4) ან Veo კლიპი (T1) დაამტკიცებს. ელფოსტის კოდით შესვლა ორი მიზეზით არ მუშაობს, Production-შიც: კოდის შემოწმება (§9.5, შესწორებულია) და Resend-ის დომენი (§9.6, owner-ის ქმედება) |
+| INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** — owner-მა ტესტი დაამტკიცა (11:47); ელოდება owner-ის სესიას PR #43-ის alias-ზე და ერთ ღილაკს `/ka/admin/veo-smoke`-ზე (§10.5) |
 | Vertex inference: Gemini text, Gemini image, Lyria (owner-ის ანგარიშით) | **PROVEN** 11:49–11:52 UTC, ≈ $0.11; Google-ის metrics-ითაც (§10.5) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
 | Least-privilege WIF კონფიგურაცია | **APPLIED** — `scripts/gcp/part0-wif.sh` |
@@ -180,7 +180,7 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 ## 7. ტესტები
 - `bash -n scripts/gcp/part0-wif.sh`, `bash -n scripts/gcp/setup-veo-vertex.sh` — OK.
 - `MODE=plan` fake `gcloud`-ით: ბრძანებები, condition და principal-ები სწორად იბეჭდება (§4).
-- TypeScript/Jest: ამ branch-ის TS ცვლილებებს (admin veo-smoke, provider-probe, email OTP) თავისი unit test-ები აქვს (§9.4, §9.5, §10.5);
+- TypeScript/Jest: ამ branch-ის ცვლილებებს (admin veo-smoke, provider-probe, email OTP, build-ის AUTH შემოწმება) თავისი unit test-ები აქვს (§9.4, §9.5, §9.7, §10.5);
   `tsc` და `eslint` სუფთაა. სრული baseline-ს launch-certification თრედი ფლობს.
 - AUTH/INFERENCE (Veo): ჯერ არ გაშვებულა; T2 — §10.5.
 
@@ -191,8 +191,8 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 3. **owner (თანხმობა):** plan — `reports/2026-10-08-gcp-part0-plan.md` (2 API, bucket, SA, 2 custom role, grant-ები,
    pool/provider, ერთი impersonation binding, Preview-ში 3 ცვლადი). მხოლოდ ამის შემდეგ `MODE=apply` და read-back audit.
 4. ✓ **Vercel OIDC Team mode** — უკვე ჩართულია.
-5. **Claude:** AUTH VERIFIED — Preview deployment-ზე `/api/video/engine`-ის `transport` + token exchange
-   (inference-ის გარეშე). INFERENCE VERIFIED — ერთი მოკლე Veo კლიპი მხოლოდ owner-ის ცალკე თანხმობით (ფასიანია).
+5. ✓ **AUTH VERIFIED** — Preview build-ის იდენტობით, inference-ის გარეშე (§9.7). INFERENCE VERIFIED — ერთი მოკლე Veo კლიპი
+   (owner-ის თანხმობა 11:47), owner-ის ღილაკით PR #43-ის Preview-ზე (§10.5).
 6. ✓ **credit და budget-ები** — owner-ის ეკრანი + 3 budget (§10.1–10.2).
 7. Production environment-ის დამატება (`VERCEL_ENVIRONMENTS=preview,production`) — მხოლოდ ზემოთქმულის შემდეგ და ცალკე თანხმობით.
 
@@ -242,6 +242,12 @@ URL Configuration → Redirect URLs-ში `https://avatar-g-frontend-v3-*-kints
 შესული არა (`/api/credits/balance` → 401, `/api/admin/*` მოთხოვნა არ ყოფილა); ფოტოზე აქტიური ჩანართი Production-ის
 `myavatar.ge/dashboard` იყო.
 
+მესამე–მეხუთე მცდელობა (13:11, 13:44, 13:48 UTC, Vercel log-ის `deploymentId`/`branch`): owner **launch-certification** branch-ის
+Preview-ზე იყო (`223zig3as` = 66e2a1d, შემდეგ `emtpgywow`), არა PR #43-ისაზე, ამიტომ probe და veo-smoke იქ არც არსებობს. მიზეზი:
+Vercel-ის „ბოლო Preview" ყოველთვის launch-certification branch-ია, რადგან Master Task იქ ხშირად push-ავს. სესიის cookie
+domain-ზეა მიბმული, ამიტომ owner-ს ყოველთვის PR #43-ის branch alias-ის სრული ბმული ეგზავნება:
+`https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app` (PR #43-ის უახლესი Ready build).
+
 Redirect-ის გარეშე გზა (კოდიდან, PROVEN არ არის, სანამ owner არ შევა): სტუდიის შესვლის ფანჯარა (`components/chat/AuthModal.tsx`)
 ელფოსტაზე 6-ციფრიან კოდს აგზავნის (`/api/auth/email-otp/send`, Resend) და `verifyOtp()`-ით სესიას **იმავე origin-ზე** ქმნის, ანუ
 Supabase-ის Redirect URLs არ სჭირდება. Preview-ში ამისთვის საჭირო ცვლადები არის: `RESEND_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
@@ -278,7 +284,49 @@ owner-მა Preview-ზე „კოდით შესვლა" სცად�
   8-ციფრიანი კოდი → 200 და ფოსტა, 5-ციფრიანი → 502 ფოსტის გარეშე და ფორმის log-ით.
 
 Production ამ შესწორებას მხოლოდ main-ში merge-ისა და deploy-ის შემდეგ მიიღებს (owner-ის ცალკე თანხმობა). ეს **launch blocker**-ია
-და Master Task-ის თრედს გადაეცა. PROVEN გახდება, როცა owner Preview-ზე კოდით შევა (log: `email-otp/send` → 200).
+და Master Task-ის თრედს გადაეცა (launch-certification branch-ზე cherry-pick `0421377a`). შესწორება **PROVEN**-ია 13:57 UTC-ზე
+launch-certification-ის Preview-ზე: Supabase `generate_link` → 200 და კოდმა შემოწმება გაიარა (Vercel log). ფოსტა მაინც არ წავიდა —
+§9.6.
+
+### 9.6 Resend ფოსტას არ აგზავნის: `myavatar.ge` დადასტურებული არ არის (launch blocker, owner-ის ქმედება)
+იმავე მოთხოვნაზე (13:57:04 UTC, launch-certification-ის Preview) კოდის შემდეგ Resend-მა გაგზავნა უარყო:
+`[email-otp/send] resend 403 … The myavatar.ge domain is not verified` (Vercel log, PROVEN). ეს კოდის შეცდომა არ არის.
+- გამგზავნი: `MAIL_FROM` დაყენებული არ არის, ამიტომ route `MyAvatar <info@myavatar.ge>`-ს იყენებს
+  (`app/api/auth/email-otp/send/route.ts:23`).
+- `RESEND_API_KEY` ერთია Production-ისა და Preview-სთვის (`vercel api /v10/projects/…/env`, მხოლოდ სახელები და target-ები).
+  ანუ Production-შიც, 87122ff-ის deploy-ის შემდეგაც, კოდის, რეგისტრაციის და პაროლის აღდგენის წერილი არ წავა, სანამ დომენი
+  არ დადასტურდება.
+- owner-ის ქმედება: resend.com/domains (ის ანგარიში, რომლის key Vercel-შია) → Add Domain `myavatar.ge` → DNS-ში მოცემული
+  TXT/MX ჩანაწერები → Verify.
+- Master Task-მა ჩაწერა როგორც AUTH-2 (`PROJECT_MASTER.md`, `final-launch-certification.md` §Y 1a).
+
+AUTH-ისთვის ეს ნიშნავს: Preview-ზე კოდით შესვლა დომენის დადასტურებამდე არ იმუშავებს. PR #43-ის alias-ზე სესიის დარჩენილი
+გზები: email + პაროლი, ან Google, თუ owner Supabase → Authentication → URL Configuration → Redirect URLs-ში დაამატებს
+ზუსტად `https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app/**` (wildcard არა, §9.4). Admin-ია
+მხოლოდ allowlist-ის ანგარიში (`lib/auth/adminGuard.ts`), ანუ შესვლა იმავე ანგარიშით, რომლითაც owner production-ის `/ka/admin`-ში შედის.
+
+### 9.7 AUTH შესვლის გარეშე: Preview build-ის log (commit e222e38)
+Vercel build-ში OIDC token `VERCEL_OIDC_TOKEN` ცვლადშია (vercel.com/docs/oidc/reference: „from the VERCEL_OIDC_TOKEN environment
+variable in builds … or the x-vercel-oidc-token in Vercel functions"; build token 1 სთ). Preview build-ის token-ს იგივე `sub` აქვს
+(`…:environment:preview`), რაც Preview function-ისას, ანუ იგივე provider condition და impersonation binding მოქმედებს.
+
+`scripts/gcp/preview-auth-check.cjs` `vercel.json`-ის `buildCommand`-ში `next build`-მდე ეშვება. მხოლოდ Vercel Preview build-ზე,
+`VEO_TRANSPORT=vertex`-ით, ის იგივე სამ უფასო ნაბიჯს აკეთებს, რასაც `lib/veo/authCheck.ts`: STS → SA impersonation (`token`),
+bucket-ის ერთი ობიექტის სია (`bucket`), signBlob (`sign`). ბეჭდავს ერთ ხაზს
+`[gcp-auth-check] env=… sub=… ok=… mode:wif token:… bucket:… sign:…` — token-ის `sub`/`environment` claim-ები და redacted
+შეცდომები, token და ხელმოწერა **არასდროს**. Production, ლოკალური და CI build-ები skip-ის ხაზს ბეჭდავს. Build-ს არასდროს აჩერებს
+(exit 0, 30 წმ ლიმიტი). Unit test: 9 შემთხვევა (`scripts/gcp/preview-auth-check.test.ts`); ლოკალურად ყალბი token-ით რეალური STS
+`invalid_grant`-ით უარყოფს და სკრიპტი exit 0-ით სრულდება.
+
+რას ამტკიცებს: pool, provider condition, impersonation binding, bucket grant და signBlob role Preview-ის იდენტობისთვის. რას
+არა: function-ში token-ის header-იდან აღებას — ამას probe (§9.4) ან Veo კლიპი (T1) ამტკიცებს.
+
+შედეგი (**PROVEN**, `vercel inspect dpl_4MqG7yVGuceJ13aj8CtgyFvGstTr --logs`, commit e222e38, branch `claude/gcp-part0-wif-fmtfxp`):
+```
+2026-10-08T14:21:20.407Z  [gcp-auth-check] env=preview sub=owner:kintsurashviligaga-ops-projects:project:avatar-g-frontend-v3:environment:preview ok=true mode:wif token:ok bucket:ok sign:ok
+```
+ანუ Vercel-ის Preview იდენტობა GCP STS-მა მიიღო, `myavatar-veo` SA-ს impersonation გავიდა, bucket-ზე წვდომა და signBlob მუშაობს.
+ფასი: 0 (STS, IAM Credentials, GCS list, signBlob უფასოა; მოდელი არ გამოძახებულა).
 
 ## 10. owner-ის 8 პუნქტი (2026-10-08 11:08 UTC): billing, მოდელები, კოდი, ტესტი
 ყველაფერი read-only-ა, გარდა `billingbudgets` API-ის ჩართვისა და 3 budget-ის შექმნისა (პუნქტი 8, owner-ის მითითება).

@@ -14,16 +14,18 @@
 |---|---|
 | billing ანგარიში ერთადერთია და მხოლოდ ამ პროექტზეა მიბმული | ✓ PROVEN (report §10.1) |
 | Billing Alerts (3 budget) | ✓ PROVEN, read-back (report §10.2) |
-| owner-ის თანხმობა decision card-ზე | ○ ელოდება |
-| **T1-ისთვის დამატებით:** AUTH VERIFIED (`/api/admin/provider-probe` → `auth:mode:wif token:ok bucket:ok sign:ok`) | ○ ელოდება owner-ის ფოტოს |
-| **T1-ისთვის დამატებით:** Preview deployment, რომელშიც `/ka/admin/veo-smoke` გვერდია (PR #43) | ○ build push-ის შემდეგ |
+| owner-ის თანხმობა decision card-ზე | ✓ 11:47 UTC, „ორივე ტესტი" |
+| **T1-ისთვის დამატებით:** AUTH VERIFIED (`token:ok bucket:ok sign:ok`) | ✓ PROVEN 14:21 UTC, Preview build-ის log (report §9.7); probe (`/api/admin/provider-probe`) აღარ არის აუცილებელი |
+| **T1-ისთვის დამატებით:** Preview deployment, რომელშიც `/ka/admin/veo-smoke` გვერდია (PR #43) | ✓ `avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app` |
 
 T2 WIF-ზე არ არის დამოკიდებული: ის owner-ის Google ანგარიშით ეშვება, ამიტომ თანხმობისთანავე შეიძლება.
 
 ## 3. T1 — ერთი Veo კლიპი აპლიკაციის გზით
 **ვინ:** owner (admin-ის შესვლა Preview-ზე სჭირდება). **სად:** `<preview>/ka/admin/veo-smoke`.
-შესვლა Preview-ზე: სტუდიის „შესვლა" → ელფოსტა → „კოდით შესვლა" → ფოსტაში მოსული კოდი (6–10 ციფრი; 87122ff-მდე ეს გზა 502-ს აბრუნებდა, report §9.5). Google-ით არა: ის Production-ზე
-აბრუნებს (report §9.4). შემდეგ `<preview>/api/admin/provider-probe` — შედეგი Vercel log-შიც იწერება (`[provider-probe] veo …`).
+შესვლა Preview-ზე (admin-ის ანგარიშით, `lib/auth/adminGuard.ts`): email + პაროლი, ან Google — მხოლოდ მას შემდეგ, რაც owner
+Supabase Redirect URLs-ში ზუსტ alias-ს დაამატებს (report §9.4, §9.6); მის გარეშე Google Production-ზე აბრუნებს. ელფოსტის კოდი
+არ მუშაობს, სანამ Resend-ში `myavatar.ge` არ დადასტურდება (report §9.6). probe (`<preview>/api/admin/provider-probe`) სურვილისამებრ:
+AUTH უკვე დადასტურებულია build-ის log-ით (report §9.7).
 1. გვერდი აჩვენებს: `veo-3.1-fast-generate-001`, 4 წმ, 720p, ხმით, **≈ $0.40**, `Transport: vertex (pinned)`.
 2. „ტესტის გაშვება" → ბრაუზერის დადასტურება → `POST /api/admin/veo-smoke {confirm:"paid-test"}` — **ერთი** submit.
 3. გვერდი ყოველ 10 წმ-ში ამოწმებს; მზა კლიპი იქვე ითამაშებს (15-წუთიანი signed URL).
@@ -88,5 +90,5 @@ Google-ის მხრიდან დადასტურება (Cloud Mon
 200 ×3, 400 ×1, owner-ის gcloud credential-ით; `generativelanguage.googleapis.com` ამ პროექტზე — 0 მოთხოვნა (report §10.5).
 
 ### T1 — Veo
-ელოდება: owner-ის შესვლა Preview-ზე ელფოსტის კოდით, AUTH VERIFIED (log), შემდეგ ღილაკი `/ka/admin/veo-smoke`-ზე.
+ელოდება: owner-ის შესვლა PR #43-ის alias-ზე (პაროლით ან Google-ით, §3), შემდეგ ერთი ღილაკი `/ka/admin/veo-smoke`-ზე. AUTH VERIFIED — ✓ 14:21 UTC (report §9.7).
 Preview: `avatar-g-frontend-v3-git-22ebb4-…vercel.app` → უახლესი Ready build; კოდით შესვლის შესწორება პირველად `dpl_G1jduPBs7jKwUsrj1Cyik6SUCLQ2`-ზე (87122ff).
