@@ -39,7 +39,8 @@ NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy,
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
           the API key) → ModelCatalog data ✓ (lib/models, runtime check, admin report) → pickers on the catalog and
           PR #44's provider removals after action 9); Veo T1 passed 15:49Z, so A1 (Veo Production env) now waits only on
-          the owner (a Production change)
+          the owner (a Production change); Gemini on Vertex AUTH + INFERENCE VERIFIED on Preview 18:28Z, so switching
+          Production's GEMINI_TRANSPORT is the owner's call too. §50 service analytics events built (e144b27b).
 MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
           13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
           research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
