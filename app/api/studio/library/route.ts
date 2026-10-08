@@ -211,24 +211,75 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * DELETE /api/studio/library?id=<job_id> — soft-erase a library item from the
- * user's view. Only deletes the row owned by the AUTHENTICATED user; RLS at the
- * supabase layer enforces the .eq('user_id', user.id) — a tampered id can never
- * affect someone else's row. 401 when signed out (delete needs identity).
+ * DELETE /api/studio/library?id=<job_id> — delete a Library item: the row AND, when it is provably ours and nothing
+ * else in the Library points at it, the stored file.
+ *
+ * ⚠️ THE FILE USED TO STAY. Both Library screens confirm with "delete this file permanently", but this route only
+ * removed the generation_jobs row: the object stayed in storage, and a link copied or shared before the delete kept
+ * playing until its token expired. Now the object goes with the row, under the same proof GET demands before it
+ * re-signs with the service role (a SIGNED url on OUR host, in one of OUR media buckets), plus two more:
+ *   • not a manual save — POST proves a manual save was READABLE, not that it was the caller's to destroy;
+ *   • no other generation_jobs row names the object (the same film filed twice, or saved again by hand) — the
+ *     object goes with the last of them.
+ * Anything that fails a check, or that cannot be checked, is kept: an orphaned file costs storage, a wrongly
+ * deleted one is gone.
+ *
+ * The row is deleted through the caller's own session (RLS: owner-only), and only a row that delete actually
+ * returned can touch storage — a tampered id deletes nothing and removes nothing. 401 when signed out.
+ * `storage` in the response says what happened to the file: deleted | kept | failed | none (no file of ours).
  */
+type StorageOutcome = 'deleted' | 'kept' | 'failed' | 'none';
+
+/**
+ * A LIKE pattern for "a URL naming this object". Every character outside a plain path alphabet becomes `%`, so it
+ * matches the object however a row spelled it (percent-encoded or not); LIKE's own wildcards can only widen the
+ * match, which keeps more files, never fewer.
+ */
+function objectUrlPattern(bucket: string, path: string): string {
+  const loose = (s: string) => s.replace(/[^A-Za-z0-9/._-]/g, '%');
+  return `%/${loose(bucket)}/${loose(path)}%`;
+}
+
+async function removeLibraryObject(row: GenerationJobRow): Promise<StorageOutcome> {
+  const url = pickUrl(row);
+  const ref = url ? describeSupabaseObjectUrl(url) : null;
+  if (!ref) return 'none'; // no media, or a provider's URL — nothing of ours to delete
+  const params = (row.params ?? {}) as Record<string, unknown>;
+  if (params.source === 'manual-save') return 'kept';
+  if (ref.access !== 'sign' || !ownStorageHosts().has(ref.host) || !libraryMediaBuckets().has(ref.bucket)) return 'kept';
+  try {
+    const svc = createServiceRoleClient();
+    const pattern = objectUrlPattern(ref.bucket, ref.path);
+    const others = await Promise.all(['signed_url', 'result->>url'].map((column) =>
+      svc.from('generation_jobs').select('id').like(column, pattern).neq('id', row.id).limit(1)));
+    if (others.some((r) => r.error || !Array.isArray(r.data) || r.data.length > 0)) return 'kept';
+    const { error } = await svc.storage.from(ref.bucket).remove([ref.path]);
+    return error ? 'failed' : 'deleted';
+  } catch {
+    return 'failed';
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   const { supabase, user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ success: false, error: 'unauthenticated' }, { status: 401 });
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ success: false, error: 'id required' }, { status: 400 });
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('generation_jobs')
       .delete()
       .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select(JOB_COLUMNS);
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
+    const deleted = (Array.isArray(data) ? (data as unknown as GenerationJobRow[]) : []).find((row) => row.id === id && row.user_id === user.id);
+    const storage = deleted ? await removeLibraryObject(deleted) : 'none';
+    if (storage === 'failed') {
+      // eslint-disable-next-line no-console
+      console.warn('[library] row deleted, stored file could not be removed', { id });
+    }
+    return NextResponse.json({ success: true, storage });
   } catch (e) {
     return NextResponse.json({ success: false, error: e instanceof Error ? e.message : 'delete failed' }, { status: 500 });
   }

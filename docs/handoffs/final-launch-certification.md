@@ -163,7 +163,7 @@ music bed, narration or colour pass. 169 tests across the director, its routes a
 | Invariant | Label |
 |---|---|
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
-| Wired into the product's video flow | BUILT_NOT_PROVEN (unit + route + component tests): the studio's Approve runs the director when `VIDEO_DIRECTOR_RUNS` lets the user in; off by default, so Production is unchanged. Migration `20261008b` is applied (2026-10-08); needs the flag set on Preview (owner action 3b) before anyone can try it |
+| Wired into the product's video flow | BUILT_NOT_PROVEN (unit + route + component tests): the studio's Approve runs the director when `VIDEO_DIRECTOR_RUNS` lets the user in; off by default, so Production is unchanged. Migration `20261008b` is applied (2026-10-08); the flag is `admin` on Preview only since 16:42Z (owner action 3b done), so an admin can try it there; no director run has been tried live yet |
 | Live Veo run | **INFERENCE VERIFIED 2026-10-08 15:49Z** (Vertex, WIF, Preview of PR #43 at `75eef69`): veo-3.1-fast-generate-001, 4 s, 720p, op `fbe5ed00-…` done with no error and raiMediaFilteredCount 0; the MP4 in `gs://myavatar-veo-outputs` is h264 1280x720 24 fps + AAC, 4.01 s, and its frame matches the prompt. Cloud Monitoring shows PredictLongRunning from SA myavatar-veo only (AI Studio key unused). The earlier presses (14:45, 14:52) failed on `enhancePrompt: false` with no video; fix `75eef69` is cherry-picked here. Production still renders Veo through the API key until A1 (owner) |
 | Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt. Limit (PROVEN by the T1 failure): Veo 3.x always rewrites the prompt inside Google and refuses `enhancePrompt: false`, so V3 holds on the wire, not inside the model; the studio's no-op "let Google rewrite" switch was removed |
 
@@ -311,9 +311,9 @@ pricing decision (no pricing change without an SSoT update).
 | Signed URL lifetimes | BUILT_NOT_PROVEN: 15 min to 7 days for media; 1 year for voice-clone samples |
 | Cross-user access through the Library | **fixed this run**, PROVEN (unit) — see P |
 | Opening one's own private creation | **fixed this run** (owners got 403 on their own items), PROVEN (unit) |
-| Deletion | PARTIAL: the Library row goes, the storage object stays |
+| Deletion | **fixed this run**, BUILT_NOT_PROVEN (unit + Production data check, no live delete yet): DELETE removes the row through the owner's session and then the stored file, only when it is a signed URL on our host in a Library media bucket, not a manual save, and no other `generation_jobs` row names it; otherwise the file is kept and the response says `storage: kept`. Read-only check on Production: the reference pattern matches exactly the referencing rows for all 308 Library files (9 files sit in 2+ rows, none across users) |
 | Saving and reusing generated assets | BUILT_NOT_PROVEN |
-| RLS proof | MISSING (no DB-level test) |
+| RLS proof | PARTIAL: Production policies read on 2026-10-08, `generation_jobs` has owner-only SELECT and DELETE (`auth.uid() = user_id`); still no DB-level test |
 
 ## R. Connectors
 
@@ -397,7 +397,7 @@ Any one of these means NO LAUNCH.
 | Wrong provider / silent fallback | Silent fallbacks removed on this branch for image, text, music and voice (not deployed). Forbidden providers are still the primary engine for avatar, swap / motion / product ad, 3D, interior, several music modes, and NanoBanana is a reseller (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | None open in Production: the 9 tables do not exist there; `20261008a` applied (O) |
-| Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (off), unit-proven; its table is applied (2026-10-08) and no live Veo clip yet (J) |
+| Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (`admin` on Preview, off in Production), unit-proven; its table is applied (2026-10-08). One live Veo clip is INFERENCE VERIFIED on Vertex (PR #43's smoke button, not the director); no director run has been tried live yet (J) |
 | Wrong pricing / billing inconsistency | Two contradictory pack tables (M). No payment has ever completed in Production: every BOG checkout failed at start (N, owner action 5a) |
 | Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
 | Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |
