@@ -282,7 +282,11 @@ function promptExcerpt(prompt: string): string {
  */
 function logSubmit(result: CreateVeoClipResult): void {
   const { outcome: o, request: r } = result;
-  const verdict = o.ok ? 'ok' : `${o.reason}${o.status !== undefined ? ` http=${o.status}` : ''} retryable=${o.retryable}`;
+  // The operation name is not a secret (reading it needs the deployment's own credentials), and it is the only handle on
+  // a billed job whose caller went away before polling it.
+  const verdict = o.ok
+    ? `ok op=${o.operation.name}`
+    : `${o.reason}${o.status !== undefined ? ` http=${o.status}` : ''} retryable=${o.retryable}`;
   console.warn(
     `[veo] submit transport=${result.transport ?? 'none'} model=${result.model || 'none'} aspect=${r.aspect} ` +
       `duration=${r.durationSec}s resolution=${r.resolution} adjustments=${result.adjustments.length} → ${verdict} ` +

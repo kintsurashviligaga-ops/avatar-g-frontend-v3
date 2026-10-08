@@ -594,7 +594,7 @@ describe('createVeoClip — one concise log line', () => {
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(infoSpy).not.toHaveBeenCalled();
     expect(String(warnSpy.mock.calls[0]?.[0])).toBe(
-      `[veo] submit transport=vertex model=${VERTEX_MODEL} aspect=16:9 duration=8s resolution=1080p adjustments=1 → ok prompt="A lighthouse at dusk"`,
+      `[veo] submit transport=vertex model=${VERTEX_MODEL} aspect=16:9 duration=8s resolution=1080p adjustments=1 → ok op=${VERTEX_OP} prompt="A lighthouse at dusk"`,
     );
   });
 

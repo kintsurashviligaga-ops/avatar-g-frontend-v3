@@ -64,7 +64,8 @@ export interface VertexVeoParameters {
   negativePrompt?: string;
   personGeneration: PersonGeneration;
   generateAudio: boolean;
-  enhancePrompt: boolean;
+  /** Only ever `true`: Veo 3.x refuses `false` (see buildVertexPayload). */
+  enhancePrompt?: true;
   storageUri?: string;
 }
 
@@ -277,8 +278,10 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
     ...(negativePrompt ? { negativePrompt } : {}),
     personGeneration,
     generateAudio: req.generateAudio,
-    // Default OFF: the Omni director already compiled Google's prompt anatomy, and a rewritten prompt defeats the seed.
-    enhancePrompt: req.enhancePrompt === true,
+    // Never `false`: Veo 3.x on Vertex fails the whole operation with "Veo 3 prompt enhancement cannot be disabled"
+    // (PROVEN 2026-10-08, operation 71e35314-…, GCP Part 0 T1). Omitted means Google's default, which is on; `true` is sent
+    // only when asked for. The prompt still leaves us byte-for-byte; the rewrite happens inside Google.
+    ...(req.enhancePrompt === true ? { enhancePrompt: true as const } : {}),
     ...(opts.storageUri !== undefined ? { storageUri: opts.storageUri } : {}),
   };
   return { instances: [instance], parameters };

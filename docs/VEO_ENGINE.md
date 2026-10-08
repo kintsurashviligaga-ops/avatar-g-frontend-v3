@@ -158,7 +158,7 @@ All modules import types from `lib/veo/types.ts`. Server-only modules never log 
 - `buildVertexPayload(req: VeoClipRequest, opts: { storageUri?: string; personGeneration?: PersonGeneration }): { instances: [...]; parameters: {...} }`
   Instance: `prompt`, `image {gcsUri|bytesBase64Encoded, mimeType}`, `lastFrame`, `referenceImages[{image, referenceType:'asset'}]`,
   `cameraControl`. Parameters: `aspectRatio, durationSeconds, resolution, sampleCount: 1, seed?, negativePrompt?,
-  personGeneration, generateAudio, enhancePrompt (default false), storageUri?`. `VeoMedia` `url` kind is NOT allowed
+  personGeneration, generateAudio, enhancePrompt? (sent only when true: Veo 3.x fails the operation on an explicit false), storageUri?`. `VeoMedia` `url` kind is NOT allowed
   here (caller must upload to GCS or inline first) → throws `VeoPayloadError`.
 - `buildGeminiPayload(req: VeoClipRequest): {...}` — the production-proven shape: `image {bytesBase64Encoded, mimeType}`
   (live-probed 2026-07-25: `inlineData` → 400), `personGeneration: 'allow_all'` (live-probed: others → 400),

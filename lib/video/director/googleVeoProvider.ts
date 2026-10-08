@@ -6,7 +6,8 @@
  * A thin wrapper. What it adds to the engine is the refusal to let anything change a shot on the way to Google:
  *
  *   • The prompt goes to the engine byte-for-byte (V3): no trim, translation, prefix, suffix or framing hint.
- *     Vertex's enhancePrompt (Google-side rewriting) is pinned off.
+ *     Vertex's enhancePrompt is never requested. Veo 3.x still rewrites server-side and refuses an explicit `false`
+ *     (PROVEN 2026-10-08, GCP Part 0 T1), so V3 holds on the wire, not inside Google's model.
  *   • Seed and reference image: the shot's own value, else the consistency lock's (Objective A, V4).
  *   • PREFLIGHT, before any money is spent. createVeoClip normalises a request to what the model can do — it snaps
  *     5 s to 6 s, renders 1:1 as 16:9, drops a reference image on Lite, coerces a seed — and reports it only AFTER the
@@ -49,7 +50,7 @@ export interface VeoWireFields {
   negativePrompt?: string;
   seed?: number;
   referenceImageCount: number;
-  /** Vertex `enhancePrompt` — Google rewriting the prompt server-side. Must be false. */
+  /** Vertex `enhancePrompt: true` on the wire — asking Google to rewrite the prompt. Must be false (payload.ts never sends `false`). */
   enhancePrompt: boolean;
 }
 
@@ -99,7 +100,7 @@ export function veoWireFields(request: VeoClipRequest, transport: VeoTransport):
       negativePrompt: parameters.negativePrompt,
       seed: parameters.seed,
       referenceImageCount: instances[0].referenceImages?.length ?? 0,
-      enhancePrompt: parameters.enhancePrompt,
+      enhancePrompt: parameters.enhancePrompt === true,
     };
   }
   const { instances, parameters } = buildGeminiPayload(probe);
