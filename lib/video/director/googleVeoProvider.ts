@@ -15,9 +15,9 @@
  *     (VeoEnginePort.wire; the live port answers with lib/veo/payload's own builders), and a prompt, negative
  *     prompt, seed or reference that would not arrive exactly as frozen is a ShotError too.
  *
- * ⚠️ KNOWN ENGINE BEHAVIOUR: lib/veo/payload trims the prompt and the negative prompt. A shot whose prompt starts or
- * ends with whitespace therefore cannot reach Veo byte-for-byte on the live engine, and is refused here (reason
- * `unknown`, with the cause) rather than sent trimmed. planStoryboard never produces such a prompt.
+ * lib/veo/payload trims the prompt and the negative prompt for every other caller; the director's requests carry
+ * `verbatimPrompt: true`, so a prompt with surrounding whitespace goes out as written. The preflight still compares
+ * the wire against the frozen shot, so any future rewrite in the payload is refused here instead of sent.
  *
  * ⚠️ NEVER RE-SUBMITS. One createClip per call. Veo has no cancel: a cancellation stops the waiting, not a job
  * Google already accepted (it may still bill). A timed-out / ambiguous submit is reported, never re-POSTed.
@@ -278,6 +278,8 @@ export class GoogleVeoProvider implements VideoGenProvider {
         tier,
         // Google-side prompt rewriting would break V3 (and defeat the seed).
         enhancePrompt: false,
+        // V3 on the wire too: lib/veo/payload trims surrounding whitespace unless asked not to.
+        verbatimPrompt: true,
         ...(shot.negativePrompt !== undefined ? { negativePrompt: shot.negativePrompt } : {}),
         ...(seed !== undefined ? { seed } : {}),
         ...(reference !== undefined ? { referenceImages: [{ kind: 'url' as const, url: reference }] } : {}),

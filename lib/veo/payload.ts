@@ -218,9 +218,16 @@ function geminiImage(media: VeoMedia, field: MediaField): GeminiImage {
   return { bytesBase64Encoded: base64Of(media.base64, field), mimeType: mimeTypeOf(media.mimeType, field) };
 }
 
-function trimmedNegative(raw: string | undefined): string | undefined {
-  const negative = typeof raw === 'string' ? raw.trim() : '';
-  return negative || undefined;
+/** The prompt as it goes on the wire: trimmed, unless the request asks for it verbatim (V3). */
+function wirePrompt(req: VeoClipRequest): string {
+  return req.verbatimPrompt === true ? req.prompt : req.prompt.trim();
+}
+
+/** The negative prompt as it goes on the wire (verbatim like the prompt); blank → not sent. */
+function wireNegative(req: VeoClipRequest): string | undefined {
+  const raw = req.negativePrompt;
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  return req.verbatimPrompt === true ? raw : raw.trim();
 }
 
 /**
@@ -251,7 +258,7 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
     throw new VeoPayloadError('personGeneration', `personGeneration must be allow_all, allow_adult or dont_allow (got ${shown(personGeneration)})`);
   }
 
-  const instance: VertexVeoInstance = { prompt: req.prompt.trim() };
+  const instance: VertexVeoInstance = { prompt: wirePrompt(req) };
   if (req.startImage) instance.image = vertexImage(req.startImage, 'startImage');
   if (req.lastFrame) instance.lastFrame = vertexImage(req.lastFrame, 'lastFrame');
   if (references.length > 0) {
@@ -259,7 +266,7 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
   }
   if (req.cameraControl !== undefined) instance.cameraControl = req.cameraControl;
 
-  const negativePrompt = trimmedNegative(req.negativePrompt);
+  const negativePrompt = wireNegative(req);
   const parameters: VertexVeoParameters = {
     aspectRatio: req.aspect,
     durationSeconds: req.durationSec,
@@ -286,14 +293,14 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
 export function buildGeminiPayload(req: VeoClipRequest): GeminiVeoPayload {
   const references = validateClip(req);
 
-  const instance: GeminiVeoInstance = { prompt: req.prompt.trim() };
+  const instance: GeminiVeoInstance = { prompt: wirePrompt(req) };
   if (req.startImage) instance.image = geminiImage(req.startImage, 'startImage');
   if (req.lastFrame) instance.lastFrame = geminiImage(req.lastFrame, 'lastFrame');
   if (references.length > 0) {
     instance.referenceImages = references.map((media) => ({ image: geminiImage(media, 'referenceImages'), referenceType: 'asset' }));
   }
 
-  const negativePrompt = trimmedNegative(req.negativePrompt);
+  const negativePrompt = wireNegative(req);
   const parameters: GeminiVeoParameters = {
     aspectRatio: req.aspect,
     resolution: req.resolution,

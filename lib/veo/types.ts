@@ -154,6 +154,11 @@ export interface VeoClipRequest {
   personGeneration?: PersonGeneration;
   /** Vertex only. Default false: we compile our own prompt, and enhancement defeats the seed. */
   enhancePrompt?: boolean;
+  /**
+   * Send `prompt` and `negativePrompt` exactly as given (V3, the storyboard director): no trim. Default false, where
+   * surrounding whitespace is trimmed. The prompt must still contain something other than whitespace.
+   */
+  verbatimPrompt?: boolean;
 }
 
 /** One adjustment normalizeClipRequest made to fit the model's contract — logged and shown in the UI. */

@@ -215,6 +215,17 @@ describe('buildVertexPayload — full bodies', () => {
     expect('negativePrompt' in buildVertexPayload(clip({ negativePrompt: '   ' })).parameters).toBe(false);
   });
 
+  it('verbatimPrompt sends the prompt and the negative prompt exactly as given; a blank negative is still omitted', () => {
+    const prompt = `  ${PROMPT}\r\n`;
+    for (const build of [buildVertexPayload, buildGeminiPayload]) {
+      const body = build(clip({ prompt, negativePrompt: ' blur, watermark \n', verbatimPrompt: true }));
+      expect(body.instances[0].prompt).toBe(prompt);
+      expect(body.parameters.negativePrompt).toBe(' blur, watermark \n');
+      expect('negativePrompt' in build(clip({ negativePrompt: ' \n ', verbatimPrompt: true })).parameters).toBe(false);
+      expect(() => build(clip({ prompt: ' \n ', verbatimPrompt: true }))).toThrow(/non-empty prompt/);
+    }
+  });
+
   it('seed boundaries: 0 is a real seed (not "unset"), uint32 max is accepted', () => {
     expect(buildVertexPayload(clip({ seed: 0 })).parameters.seed).toBe(0);
     expect(buildVertexPayload(clip({ seed: 0xffff_ffff })).parameters.seed).toBe(4294967295);

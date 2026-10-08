@@ -63,7 +63,7 @@ describe('V3 — the prompt reaches the engine byte-for-byte', () => {
   it('adds nothing to the request: no framing hint, no resolution, no camera control, no extra media', async () => {
     const { engine, run } = setup();
     await run(makeShot({ id: 'a', order: 1, cameraMotion: 'slow push in', notes: 'make it moody' }));
-    expect(Object.keys(engine.calls[0]!.request).sort()).toEqual(['aspect', 'durationSec', 'enhancePrompt', 'prompt', 'tier']);
+    expect(Object.keys(engine.calls[0]!.request).sort()).toEqual(['aspect', 'durationSec', 'enhancePrompt', 'prompt', 'tier', 'verbatimPrompt']);
   });
 });
 
@@ -78,14 +78,31 @@ describe('the live wire (lib/veo/payload builders)', () => {
     }
   });
 
-  it('reports that the engine trims the prompt (known engine behaviour)', () => {
-    const wire = veoWireFields({ prompt: '  a fox \n', aspect: '16:9', durationSec: 8, resolution: '1080p', tier: 'fast', generateAudio: true }, 'gemini');
-    expect(wire.prompt).toBe('a fox');
+  it('the engine trims the prompt for other callers; verbatimPrompt sends it as written on both transports', () => {
+    const base = { aspect: '16:9', durationSec: 8, resolution: '1080p', tier: 'fast', generateAudio: true } as const;
+    expect(veoWireFields({ ...base, prompt: '  a fox \n' }, 'gemini').prompt).toBe('a fox');
+    for (const transport of ['vertex', 'gemini'] as const) {
+      const wire = veoWireFields({ ...base, prompt: '  a fox \n', negativePrompt: ' blur \n', verbatimPrompt: true }, transport);
+      expect(wire.prompt).toBe('  a fox \n');
+      expect(wire.negativePrompt).toBe(' blur \n');
+    }
   });
 
-  it('refuses — before any submit — a prompt the live transport would trim, instead of sending it changed', async () => {
+  it('sends a prompt with surrounding whitespace through the live wire exactly as written', async () => {
     const { engine, run } = setup({ wire: 'live' });
-    const result = await run(makeShot({ id: 'a', order: 1, prompt: ' A fox runs through snow.\n' }));
+    const prompt = ' A fox runs through snow.\n';
+    const negativePrompt = '  blurry footage \n';
+    const result = await run(makeShot({ id: 'a', order: 1, prompt, negativePrompt }));
+    expect(result.ok).toBe(true);
+    expect(engine.calls[0]!.request.prompt).toBe(prompt);
+    expect(engine.calls[0]!.request.negativePrompt).toBe(negativePrompt);
+    expect(engine.calls[0]!.request.verbatimPrompt).toBe(true);
+  });
+
+  it('still refuses — before any submit — a wire that would trim the prompt', async () => {
+    const { engine } = setup();
+    const provider = new GoogleVeoProvider({ engine: { ...engine, wire: (r) => ({ prompt: r.prompt.trim(), referenceImageCount: 0, enhancePrompt: false }) } });
+    const result = await provider.generateShot({ storyboardId: 'sb-1', shot: makeShot({ id: 'a', order: 1, prompt: ' A fox runs through snow.\n' }), consistencyLock: LOCK });
     const error = errorOf(result);
     expect(error.reason).toBe('unknown');
     expect(error.retryable).toBe(false);

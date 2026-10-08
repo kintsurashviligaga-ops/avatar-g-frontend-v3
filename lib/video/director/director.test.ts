@@ -87,9 +87,9 @@ describe('V2 / V6 — strict storyboard execution', () => {
       [{ kind: 'url', url: VILLAIN_REF }],
     ]);
     for (const r of sent) {
-      expect(r).toMatchObject({ aspect: '16:9', durationSec: 8, tier: 'fast', enhancePrompt: false });
+      expect(r).toMatchObject({ aspect: '16:9', durationSec: 8, tier: 'fast', enhancePrompt: false, verbatimPrompt: true });
       // Nothing added: exactly the frozen shot's fields, mapped.
-      expect(Object.keys(r).sort()).toEqual(['aspect', 'durationSec', 'enhancePrompt', 'prompt', 'referenceImages', 'seed', 'tier']);
+      expect(Object.keys(r).sort()).toEqual(['aspect', 'durationSec', 'enhancePrompt', 'prompt', 'referenceImages', 'seed', 'tier', 'verbatimPrompt']);
     }
 
     expect(run.clips.map((c) => c.shotId)).toEqual(['a', 'b', 'c']);
