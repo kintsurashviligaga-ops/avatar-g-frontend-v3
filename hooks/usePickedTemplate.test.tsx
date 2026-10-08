@@ -112,7 +112,8 @@ describe('the studio reads every request\'s templateId from the PICKED id, never
   test('every panel initialises from the shared defaults this file tests', () => {
     expect(absent([
       'useState<ImgAspect>(IMAGE_PANEL_DEFAULTS.aspect)',
-      'useState<ImgQuality>(IMAGE_PANEL_DEFAULTS.quality)',
+      // v32: the default's legacy size ('high') is read through tierFor — the one size the picker offers (Imagen 1K).
+      'useState<ImgQuality>(() => tierFor(IMAGE_PANEL_DEFAULTS.quality).quality)',
       'useState<string>(IMAGE_PANEL_DEFAULTS.style)',
       'useState<string>(VIDEO_PANEL_DEFAULTS.style)',
       // The length is any stop of lib/video/duration (4 s … 4 min), no longer one of three chips.
