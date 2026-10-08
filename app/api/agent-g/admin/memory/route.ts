@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getUserMemory } from '@/lib/agent-g/memory';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,10 +20,8 @@ function json(payload: Record<string, unknown>, status = 200): NextResponse {
 }
 
 export async function GET(req: Request) {
-  const expected = normalize(process.env.ADMIN_KEY);
-  const provided = normalize(req.headers.get('x-admin-key'));
-
-  if (!expected || !provided || provided !== expected) {
+  // Constant-time: a plain `===` leaks how many leading characters of a guess were right — and this reads any user's memory.
+  if (!secretMatches(req.headers.get('x-admin-key'), process.env.ADMIN_KEY)) {
     return json({ ok: false, error: 'Unauthorized' }, 401);
   }
 

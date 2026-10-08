@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin/guard';
+import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     // It was also dead: no migration creates profiles.role, so the select errors, the predicate is
     // false, and a genuine admin was 403'd here forever. Both halves are why this is not a rename —
     // the gate must never be a value the subject of the decision controls.
-    if (!isAdminUser(user)) {
+    if (!(await isAdminUserAsync(user))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

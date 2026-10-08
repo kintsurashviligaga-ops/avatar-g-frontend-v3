@@ -24,7 +24,7 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   // Admin only. A 404 rather than a 403 — an unauthorised caller should not learn the route exists.
   const { user } = await authedClientFromRequest(request);
-  const gate = assertAdminAccess(request, user);
+  const gate = await assertAdminAccess(request, user);
   if (!gate.ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   try {

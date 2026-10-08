@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   try {
     const sb = createSupabaseServerClient();
     const { data: { user } } = await sb.auth.getUser();
-    const gate = assertAdminAccess(request, user ?? null);
+    const gate = await assertAdminAccess(request, user ?? null);
     if (!gate.ok) return NextResponse.json({ error: gate.reason }, { status: user ? 403 : 401 });
 
     const daysParam = Number(new URL(request.url).searchParams.get('days'));

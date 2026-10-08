@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const gate = assertAdminAccess(request, user ?? null);
+    const gate = await assertAdminAccess(request, user ?? null);
     if (!gate.ok) return NextResponse.json({ error: gate.reason }, { status: user ? 403 : 401 });
 
     const has = (...names: string[]) => names.some((n) => String(process.env[n] || '').trim().length > 0);

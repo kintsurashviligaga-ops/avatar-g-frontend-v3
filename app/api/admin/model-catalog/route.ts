@@ -21,7 +21,7 @@ export const maxDuration = 30;
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
-  if (!assertAdminAccess(req, user).ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!(await assertAdminAccess(req, user)).ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const { catalog, check } = await verifiedModelCatalog({ force: req.nextUrl.searchParams.get('fresh') === '1' });
   return NextResponse.json({

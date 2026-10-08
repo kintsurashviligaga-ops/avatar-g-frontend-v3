@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     data: { user },
   } = await userSupabase.auth.getUser();
 
-  const admin = assertAdminAccess(request, user);
+  const admin = await assertAdminAccess(request, user);
   if (!admin.ok) {
     return NextResponse.json({ error: admin.reason }, { status: 403 });
   }
