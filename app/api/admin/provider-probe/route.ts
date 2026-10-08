@@ -107,9 +107,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const transport = veoTransport();
       const missing = vertexConfigProblems();
       const detail = `transport:${transport ?? 'none'} · google-only:${isGoogleOnly()} · vertex:${missing.length ? `missing ${missing.join(', ')}` : 'ready'}`;
-      if (missing.length) return { provider: 'veo', configured: transport !== null, ok: transport !== null, detail };
-      const auth = await checkVertexAuth(get);
-      return { provider: 'veo', configured: true, ok: transport !== null && auth.ok, detail: `${detail} · auth:${auth.steps.join(' ')}` };
+      const result: ProbeResult = missing.length
+        ? { provider: 'veo', configured: transport !== null, ok: transport !== null, detail }
+        : await checkVertexAuth(get).then((auth) => ({
+            provider: 'veo',
+            configured: true,
+            ok: transport !== null && auth.ok,
+            detail: `${detail} · auth:${auth.steps.join(' ')}`,
+          }));
+      // One log line, so the keyless-chain result can be read from the deployment's runtime logs and not only from the
+      // admin's screen. Statuses, variable NAMES and redacted errors only: checkVertexAuth never returns a token.
+      // console.warn, not info: next.config strips every console call but error/warn from deployed builds.
+      console.warn(`[provider-probe] veo ok=${result.ok} ${result.detail}`);
+      return result;
     })(),
 
     probe('anthropic', process.env.ANTHROPIC_API_KEY, async (k) => {
