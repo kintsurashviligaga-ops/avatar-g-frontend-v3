@@ -15,7 +15,7 @@ Step 26 is honoured: **nothing was promoted to production, merged to main, or ap
 | Item | Value |
 |---|---|
 | Branch | `claude/launch-certification-wmvitt` (draft PR #42, base `main`) |
-| SHA | Full retest on `70a5fe88` (2026-10-08 13:13 UTC). Since then: the OTP fix `0421377a` from PR #43 (tsc 0, 10 auth suites / 127 tests, `tests/auth-sheet.spec.ts` 8 / 8) and documentation only |
+| SHA | Full retest on `70a5fe88` (2026-10-08 13:13 UTC). Since then: the OTP fix `0421377a` from PR #43 (tsc 0, 10 auth suites / 127 tests, `tests/auth-sheet.spec.ts` 8 / 8) and documentation only. CI green on `e1dfffc2` |
 | `main` | `572d5fac` (2026-10-03) |
 | Production | https://myavatar.ge serves an older deployment (`dpl_ANGLbd7AGjDQyYHCGk5UJQsrp2Rr`, read 2026-10-08) built from `main`; none of this branch is live |
 | Preview | Vercel builds a Preview per push of PR #42 (Vercel Preview Comments check green). PR #43 (GCP Part 0) carries the Vertex WIF env, Preview only |
@@ -181,7 +181,7 @@ pricing decision (no pricing change without an SSoT update).
 
 | Requirement | Label |
 |---|---|
-| **Email OTP sign-in, sign-up, password reset in Production** | **FAILED** since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"; suspected `lib/auth/otpEmail.ts:50` accepts exactly 6 digits). Fix: 6–10 digit codes (PR #43 commit `87122ff`, also on this branch as `0421377a`; 10 suites / 127 auth tests and `tests/auth-sheet.spec.ts` 8 / 8 pass). FAILED in Production until deployed with owner approval |
+| **Email OTP sign-in, sign-up, password reset in Production** | **FAILED** since at least 2026-10-03, for two separate reasons. (1) AUTH-1, code check: Vercel log "no email_otp in generateLink response"; `lib/auth/otpEmail.ts` accepted exactly 6 digits. Fix: 6–10 digit codes (PR #43 commit `87122ff`, also on this branch as `0421377a`; 10 suites / 127 auth tests and `tests/auth-sheet.spec.ts` 8 / 8 pass). PROVEN on this branch's Preview (2026-10-08 13:57 UTC): Supabase `/admin/generate_link` answered 200 and the code passed the check. (2) AUTH-2, delivery: the same request then failed at Resend, `[email-otp/send] resend 403 "The myavatar.ge domain is not verified"` (Vercel log 13:57:04, deployment of `e1dfffc2`). `MAIL_FROM` is unset, so every auth code and `/api/mail/send` uses `info@myavatar.ge`, and one `RESEND_API_KEY` serves Production and Preview. Owner action: verify `myavatar.ge` in that Resend account. FAILED in Production until both are done |
 | Google OAuth, callback open-redirect guard | BUILT_NOT_PROVEN / PROVEN (unit) |
 | Session refresh, paid routes require auth | PROVEN (unit, static scan of 446 routes) |
 | Return to the workflow after login | PARTIAL (URL only, no prompt stash) |
@@ -266,6 +266,7 @@ Only the owner can do these. Nothing below was done by Claude.
 | # | Action | Unblocks |
 |---|---|---|
 | 1 | Deploy the OTP sign-in fix (PR #43; also on this branch) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
+| 1a | Verify the `myavatar.ge` domain in the Resend account whose key is `RESEND_API_KEY` (resend.com/domains → Add Domain → add the TXT / MX records at the DNS host → Verify). Until then every email code, sign-up and password reset is refused by Resend (403), on Preview and in Production | O, §55 "auth blocking normal flow" |
 | 2 | Part 0 AUTH probe on the PR #43 Preview (password sign-in, open `/api/admin/provider-probe`), then press the Veo smoke button once (approved clip, ≈ $0.40) | L, VIDEO V1-V6 |
 | 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
@@ -287,7 +288,7 @@ Any one of these means NO LAUNCH.
 
 | §55 blocker | Where it stands |
 |---|---|
-| Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O); fix on PR #43 and this branch, not deployed |
+| Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O): AUTH-1 code-check fix on PR #43 and this branch, not deployed; AUTH-2 Resend refuses mail until `myavatar.ge` is verified (owner action 1a) |
 | Wrong provider / silent fallback | 10 of 20 usable services still run on forbidden providers; `/api/pipeline` falls back to Anthropic / OpenAI (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | 9 tables open until migration `20261008a` is applied (O) |
