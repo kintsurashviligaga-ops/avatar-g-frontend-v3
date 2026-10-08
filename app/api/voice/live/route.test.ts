@@ -49,6 +49,12 @@ jest.mock('../../../../lib/research/runtime', () => ({
   researchLiveDeps: () => ({ getReport: (...a: unknown[]) => mockGetReport(...a) }),
 }));
 
+// The same conversation: the route lazily imports the chat-session store — mocked, so no Supabase, no server-only module.
+const mockGetTurns = jest.fn();
+jest.mock('../../../../lib/voice/liveThreadStore', () => ({
+  liveThreadDeps: () => ({ getTurns: (...a: unknown[]) => mockGetTurns(...a) }),
+}));
+
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
@@ -514,5 +520,61 @@ describe('talk to a research report (researchId)', () => {
   test('the report counts toward the budget estimate (it is part of the locked instruction)', async () => {
     await POST(post({ locale: 'en', researchId: RID }));
     expect(String(budgetMock.mock.calls[0]![0])).toContain('Dependence on one market.');
+  });
+});
+
+describe('the same conversation (chatSessionId)', () => {
+  const SID = '44444444-4444-4444-8444-444444444444';
+  const RID = '33333333-3333-4333-8333-333333333333';
+
+  beforeEach(() => {
+    mockGetTurns.mockReset().mockResolvedValue([
+      { role: 'assistant', content: 'Which style: cinematic or documentary?' },
+      { role: 'user', content: 'I want a video about a wine cellar' },
+    ]);
+    mockGetReport.mockReset().mockResolvedValue({ report: '# R\n\n## A\n\nText.', title: 'R' });
+  });
+
+  test('the server loads the turns for the SESSION user and locks them in, oldest first, before the call rule', async () => {
+    const res = await POST(post({ locale: 'en', chatSessionId: SID, transcribe: true }));
+    expect(res.status).toBe(200);
+    expect(mockGetTurns).toHaveBeenCalledWith('user-1', SID, 20);
+    const text = lockedText();
+    expect(text).toContain('EARLIER IN THIS CONVERSATION');
+    expect(text.indexOf('Person: I want a video about a wine cellar')).toBeLessThan(text.indexOf('You: Which style'));
+    expect(text.indexOf('</conversation_history>')).toBeLessThan(text.indexOf('LIVE VOICE CALL'));
+    const j = await res.json();
+    expect(j.setupMessage.setup.systemInstruction.parts[0].text).toContain('I want a video about a wine cellar');
+  });
+
+  test('a session that is not the caller\'s (or a store failure) → the call still opens, with no history', async () => {
+    mockGetTurns.mockResolvedValueOnce(null);
+    const res = await POST(post({ locale: 'en', chatSessionId: SID }));
+    expect(res.status).toBe(200);
+    expect(lockedText()).not.toContain('EARLIER IN THIS CONVERSATION');
+    mockGetTurns.mockRejectedValueOnce(new Error('db down'));
+    expect((await POST(post({ locale: 'en', chatSessionId: SID }))).status).toBe(200);
+  });
+
+  test('a malformed id never reaches the store, and history TEXT from the browser is ignored', async () => {
+    for (const bad of ['nope', '../../x', 42, { a: 1 }]) {
+      expect((await POST(post({ chatSessionId: bad }))).status).toBe(200);
+    }
+    expect(mockGetTurns).not.toHaveBeenCalled();
+    await POST(post({ chatSessionId: SID, history: 'EVIL INJECTED TEXT', messages: [{ role: 'user', content: 'EVIL INJECTED TEXT' }] }));
+    expect(lockedText(4)).not.toContain('EVIL INJECTED TEXT');
+  });
+
+  test('a report call is about the report: it does not carry the thread', async () => {
+    await POST(post({ locale: 'en', researchId: RID, chatSessionId: SID }));
+    expect(mockGetTurns).not.toHaveBeenCalled();
+    expect(lockedText()).toContain('REPORT CALL');
+    expect(lockedText()).not.toContain('EARLIER IN THIS CONVERSATION');
+  });
+
+  test('without a chatSessionId the instruction carries no history block', async () => {
+    await POST(post({ locale: 'en' }));
+    expect(mockGetTurns).not.toHaveBeenCalled();
+    expect(lockedText()).not.toContain('EARLIER IN THIS CONVERSATION');
   });
 });

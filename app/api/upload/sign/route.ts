@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient, authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { UPLOAD_MAX_BYTES, allowedUploadMime, uploadExtFor } from '@/lib/uploads/policy';
 
 /**
  * POST /api/upload/sign — issue a signed UPLOAD URL so the browser can PUT a large
@@ -21,21 +22,6 @@ export const maxDuration = 20;
 
 const BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
 
-function extFor(ct: string): string {
-  const c = ct.toLowerCase();
-  if (c.includes('mp4')) return 'mp4';
-  if (c.includes('webm')) return 'webm';
-  if (c.includes('quicktime') || c.includes('mov')) return 'mov';
-  if (c.includes('mpeg') || c.includes('mp3')) return 'mp3';
-  if (c.includes('wav')) return 'wav';
-  if (c.includes('ogg')) return 'ogg';
-  if (c.includes('aac') || c.includes('m4a')) return 'm4a';
-  if (c.includes('png')) return 'png';
-  if (c.includes('webp')) return 'webp';
-  if (c.includes('jpeg') || c.includes('jpg')) return 'jpg';
-  return 'bin';
-}
-
 export async function POST(req: NextRequest) {
   // ⚠️ THIS ROUTE HAD NO AUTH AND NO RATE LIMIT, and what it hands out is a SERVICE-ROLE signed
   // upload URL.
@@ -55,12 +41,22 @@ export async function POST(req: NextRequest) {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'auth required' }, { status: 401 });
 
-  let contentType = 'application/octet-stream';
-  try {
-    const body = (await req.json().catch(() => ({}))) as { contentType?: unknown };
-    if (typeof body.contentType === 'string' && body.contentType.trim()) contentType = body.contentType.trim();
-  } catch {
-    /* defaults */
+  // ⚠️ ANY CONTENT TYPE USED TO GET A TOKEN, AT ANY SIZE. Held to the shared upload policy now: images, video and
+  // audio only (415), and a declared size over the 50 MB cap is refused here (413) rather than after a long upload.
+  // The bucket enforces the same list and cap on the PUT itself (migration 20261008a), since no route sees those bytes.
+  const body = (await req.json().catch(() => ({}))) as { contentType?: unknown; size?: unknown; name?: unknown };
+  const contentType = allowedUploadMime(
+    typeof body.contentType === 'string' ? body.contentType : '',
+    typeof body.name === 'string' ? body.name : null,
+  );
+  if (!contentType) {
+    return NextResponse.json({ error: 'unsupported file type (images, video and audio only)' }, { status: 415 });
+  }
+  if (body.size !== undefined && body.size !== null) {
+    const size = Number(body.size);
+    if (!Number.isFinite(size) || size < 0 || size > UPLOAD_MAX_BYTES) {
+      return NextResponse.json({ error: 'file too large (50MB max)' }, { status: 413 });
+    }
   }
 
   let admin: ReturnType<typeof createServiceRoleClient>;
@@ -72,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   // OWNER-SCOPED PATH, matching /api/upload. An object now says who wrote it, so abuse is traceable
   // and a per-user cleanup is possible; the random suffix keeps concurrent uploads from colliding.
-  const path = `omni-uploads/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extFor(contentType)}`;
+  const path = `omni-uploads/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${uploadExtFor(contentType)}`;
   const { data: up, error: upErr } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
   if (upErr || !up) {
     return NextResponse.json({ error: upErr?.message || 'could not create upload url' }, { status: 502 });
@@ -84,5 +80,8 @@ export async function POST(req: NextRequest) {
     path,
     token: up.token,
     signedUrl: up.signedUrl,
+    // The type to PUT the bytes with — the bucket only accepts allowlisted types, so the browser must not
+    // fall back to an empty `file.type` / octet-stream on the upload itself.
+    contentType,
   });
 }

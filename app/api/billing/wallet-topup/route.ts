@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ url });
     } catch (e) {
+      console.error('[billing/wallet-topup] checkout session failed', e instanceof Error ? e.message : e);
       // Most commonly: the Stripe account does not support GEL settlement.
       return NextResponse.json(
         { error: 'gel_unsupported', message: 'wallet top-up failed' },

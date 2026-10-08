@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { isAllowedAudioUrl, isOwnSupabaseUrl, readBodyWithCap, fetchAllowlistedAudio, type FetchLike } from './allowlistedAudioFetch';
+import { isAllowedAudioUrl, isOwnSupabaseUrl, isPublicHttpUrl, readBodyWithCap, fetchAllowlistedAudio, type FetchLike } from './allowlistedAudioFetch';
 
 const ENV = { NEXT_PUBLIC_SUPABASE_URL: 'https://myproj.supabase.co' } as NodeJS.ProcessEnv;
 
@@ -128,4 +128,16 @@ describe('fetchAllowlistedAudio — redirect-safe', () => {
     const res = await fetchAllowlistedAudio('https://loop.supabase.co/x', { fetchImpl, env: ENV, maxHops: 3 });
     expect(res).toBeNull();
   });
+});
+
+describe('isPublicHttpUrl — the string pre-check', () => {
+  it.each([
+    'http://127.0.0.1/', 'http://2130706433/', 'http://0x7f.1/', 'http://169.254.169.254/', 'http://100.64.0.1/', 'http://192.0.0.170/',
+    'http://198.18.0.1/', 'http://10.0.0.1/', 'http://[::1]/', 'http://localhost/', 'http://metadata/', 'http://metadata.google.internal/',
+    'http://printer.local/', 'http://nas.lan/', 'https://user:pass@example.com/', 'ftp://example.com/', 'not a url',
+  ])('refuses %s', (u) => expect(isPublicHttpUrl(u)).toBe(false));
+
+  it.each(['https://example.com/a.mp4', 'http://cdn.example.org/x', 'https://93.184.216.34/x', 'https://abc.supabase.co/storage/v1/object/x'])(
+    'accepts %s', (u) => expect(isPublicHttpUrl(u)).toBe(true),
+  );
 });

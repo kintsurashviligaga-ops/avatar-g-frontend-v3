@@ -80,7 +80,7 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
   const [caps, setCaps] = useState<CapsState>({ status: 'loading' });
   const [balance, setBalance] = useState<number | null>(null);
   const [quote, setQuote] = useState<{ sig: string; credits: number; gel: number | null } | null>(null);
-  const [quoting, setQuoting] = useState(false);
+  const [, setQuoting] = useState(false);
   const [override, setOverride] = useState<{ key: string; credits: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

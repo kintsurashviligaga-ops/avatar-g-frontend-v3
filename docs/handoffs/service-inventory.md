@@ -24,8 +24,11 @@ Nothing below was executed against a paid provider; "runtime" means "the route t
    first or as fallback (`app/api/pipeline/route.ts`); Voice page = OpenAI TTS fallback. The Codex branch
    `codex/vertex-ai-migration` starts addressing this but is unmerged and red (see the status report).
 7. **Pricing has ≥10 sources** (§5). The studio's button price = route deduction for image / music / avatar / remix / model3d / video
-   (BUILT_NOT_PROVEN, unit-tested pairing), but swap / motion / VFX buttons quote `remix` (15) while the route prices with
-   `lib/genjutsu/pricing.ts` — a mismatch (R5 violation). Montage, dubbing and presentation charge nothing.
+   (BUILT_NOT_PROVEN, unit-tested pairing). Re-checked in step 18 (2026-10-08): the composer's swap calls `/api/video/remix`
+   `character` (quotes 15, charges `remix_video` 15), motion quotes and charges `creditCostFor('remix')` (15), the product ad
+   quotes and charges `video_30s` (25) for its 8 / 24 / 48 s choices, and the Genjutsu panel (VFX and its swap) shows the
+   server's own quote from `lib/genjutsu/pricing.ts`. So R5 holds there; the earlier "swap / VFX mismatch" was wrong.
+   Montage, dubbing and presentation charge nothing.
 
 ## 1. Registries
 
@@ -62,8 +65,8 @@ Two unrelated "Agent G routers": `lib/agents/agentGRouter.ts` and `lib/router/ag
 | music | `/api/ai/music` | Lyria, ElevenLabs Music, Udio cascade | 5/8/12 | **FAILED** (Udio) | — |
 | avatar | `/api/heygen/presenter`, `/api/video/lipsync` | HeyGen, Replicate SadTalker/Wav2Lip, ElevenLabs voice | 20 | **FAILED** | — |
 | remix | `/api/video/remix`, `/api/ai/edit*` | ffmpeg, ElevenLabs, Wav2Lip, NanoBanana, Kling/Veo | 15 | **FAILED** | — |
-| product | `/api/video/remix` op `productad` | Kling (Replicate) | video × 6 s | **FAILED** | — |
-| swap / vfx / motion | `/api/genjutsu/*`, `/api/motion-control` | Veo (vfx); Higgsfield Kling (swap, motion) | quotes 15, route uses genjutsu pricing | **FAILED** + R5 mismatch | — |
+| product | `/api/video/remix` op `productad` | Veo → Kling (Replicate) → Ken Burns still | video × 6 s | **FAILED** | — |
+| swap / vfx / motion | `/api/video/remix` (`character`), `/api/genjutsu/*`, `/api/motion-control` | roop via Replicate (composer swap); Veo (vfx); Higgsfield Kling (Genjutsu swap, motion) | composer swap and motion quote = charge 15; Genjutsu panel shows the route's quote | **FAILED** (§A providers) | — |
 | montage | `/api/v2/montage/render` | ffmpeg | none charged | OK | BUILT_NOT_PROVEN |
 | dubbing | `/api/v2/dubbing/start` | ElevenLabs Scribe, Gemini, TTS, ffmpeg | none charged | OK | BUILT_NOT_PROVEN |
 | model3d | `/api/v2/model3d/*` | Replicate TRELLIS (+ Imagen) | 5 | **FAILED** | — |

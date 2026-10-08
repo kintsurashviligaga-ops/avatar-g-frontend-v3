@@ -13,6 +13,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { PRESENTER_DEFAULT_FACE_URL, audioFingerprint, avatarChargeRef, avatarChargeSigningReady, chargeForPolledId, holdReleasableFor, signAvatarCharge, verifyAvatarCharge, withChargeToken } from '@/lib/billing/avatarCharge';
 import { randomUUID } from 'crypto';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 /**
  * /api/heygen/presenter — "Presenter mode"
@@ -59,7 +60,7 @@ async function rehostPresenterVideo(providerUrl: string): Promise<string> {
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.byteLength < 1024 || buf.byteLength > 80 * 1024 * 1024) return providerUrl;
     const path = `presenter/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
   } catch {
     return providerUrl;
   }
@@ -166,12 +167,23 @@ export async function POST(req: NextRequest) {
     //   3) upload the canonical DEFAULT_FACE_URL placeholder (or the caller's OWN faceUrl) — never
     //      another user's photo. We do NOT enumerate the shared account's talking_photo.list.
     const pinnedPhotoId = process.env.PRESENTER_TALKING_PHOTO_ID?.trim() || null;
-    let talkingPhotoId = pinnedPhotoId || cachedTalkingPhotoId;
+    // ⚠️ The warm-instance cache holds the DEFAULT face only. It used to cache whatever was uploaded — a caller's own
+    // faceUrl included — so the next caller on that instance was rendered with someone else's face.
+    const customFace = faceUrl !== DEFAULT_FACE_URL;
+    let talkingPhotoId = pinnedPhotoId || (customFace ? null : cachedTalkingPhotoId);
     if (!talkingPhotoId) {
-      const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
-      if (!faceRes || !faceRes.ok) return fail({ success: false, error: 'presenter face unreachable', detail: `${faceUrl.slice(0, 100)} → ${faceRes?.status ?? 'fetch error'}` }, 502);
-      const faceMime = faceRes.headers.get('content-type') || 'image/jpeg';
-      const faceBytes = new Uint8Array(await faceRes.arrayBuffer());
+      // A caller's faceUrl is a caller-chosen address: public only, redirects re-checked, an image, capped
+      // (lib/web/publicFetch). The error names no status — it used to echo the target's HTTP status, a port scanner.
+      let faceBytes: Uint8Array<ArrayBuffer> | null = null;
+      let faceMime = 'image/jpeg';
+      if (customFace) {
+        const face = await fetchPublicBytes(faceUrl, { maxBytes: 10 * 1024 * 1024, accept: /^image\//, timeoutMs: 15_000 });
+        if (face.ok) { faceBytes = new Uint8Array(face.bytes.byteLength); faceBytes.set(face.bytes); faceMime = face.contentType; }
+      } else {
+        const faceRes = await fetch(faceUrl, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+        if (faceRes?.ok) { faceMime = faceRes.headers.get('content-type') || faceMime; faceBytes = new Uint8Array(await faceRes.arrayBuffer()); }
+      }
+      if (!faceBytes?.byteLength) return fail({ success: false, error: 'presenter face unreachable' }, 502);
       const tpRes = await fetch('https://upload.heygen.com/v1/talking_photo', {
         method: 'POST', headers: { 'X-Api-Key': apiKey, 'Content-Type': faceMime }, body: faceBytes, signal: AbortSignal.timeout(30_000),
       }).catch(() => null);
@@ -181,7 +193,7 @@ export async function POST(req: NextRequest) {
     }
     if (!talkingPhotoId) return fail({ success: false, error: 'no dedicated presenter photo available — set PRESENTER_TALKING_PHOTO_ID' }, 502);
     // Cache ONLY a self-provisioned default-face upload; a pinned env id is already stable.
-    if (!pinnedPhotoId) cachedTalkingPhotoId = talkingPhotoId;
+    if (!pinnedPhotoId && !customFace) cachedTalkingPhotoId = talkingPhotoId;
 
     // 2) Generate the audio-driven video. Capture HeyGen's actual reply.
     const dimension = body.orientation === 'vertical'

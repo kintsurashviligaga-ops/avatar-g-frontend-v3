@@ -67,6 +67,7 @@ import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@
 import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
+import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { LIVE_ACTION_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveResultNote, type LiveResultRef, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
@@ -85,6 +86,7 @@ const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m)
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
@@ -219,14 +221,8 @@ function busyToastMessage(locale: Lang): string {
 // re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
 async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
   try {
-    const signRes = await fetch('/api/upload/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ contentType: mimeType }),
-    });
-    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
-    if (!signRes.ok || !sign.path || !sign.token) return null;
+    // The bytes first, so the sign call can declare their size and real type: /api/upload/sign and the bucket take
+    // images, video and audio up to 50 MB only (lib/uploads/policy).
     let blob: Blob;
     try {
       blob = await fetchRehostSource(dataUrl, mimeType);
@@ -234,8 +230,18 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
       if (e instanceof RehostSourceError) onBadSource?.(e);
       return null;
     }
+    const contentType = allowedUploadMime(mimeType) ?? allowedUploadMime(blob.type);
+    if (!contentType || blob.size > UPLOAD_MAX_BYTES) return null;
+    const signRes = await fetch('/api/upload/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ contentType, size: blob.size }),
+    });
+    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string; contentType?: string };
+    if (!signRes.ok || !sign.path || !sign.token) return null;
     const sb = createBrowserClient();
-    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
+    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: sign.contentType || contentType });
     if (error) return null;
     // Return the storage PATH — the consumer route signs a readable URL once the
     // object exists (it can't be signed before the upload lands).
@@ -300,8 +306,11 @@ const COPY: Record<Lang, {
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string; sbDrag: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
+  /** Screen-reader names of icon-only controls (they were English in every language). */
+  a11yFullscreen: string; a11yRemove: string; a11yRemoveFace: string; a11yRemoveFrame: string; a11yRemoveScript: string; a11yRemoveSoundtrack: string; a11yDuckingDb: string; a11yRemoveShot: string; aiGenerated: string;
 }> = {
   ka: {
+    a11yFullscreen: 'სრულ ეკრანზე გახსნა', a11yRemove: 'მოცილება', a11yRemoveFace: 'სახის მოცილება', a11yRemoveFrame: 'სცენის კადრის მოცილება', a11yRemoveScript: 'სცენარის მოცილება', a11yRemoveSoundtrack: 'საუნდტრეკის მოცილება', a11yDuckingDb: 'მუსიკის ჩახშობის სიღრმე (dB)', a11yRemoveShot: 'კადრის მოცილება', aiGenerated: 'AI-ით შექმნილი',
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე ფაილი…', empty: STUDIO_EMPTY.ka.sub,
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
@@ -327,6 +336,7 @@ const COPY: Record<Lang, {
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
   en: {
+    a11yFullscreen: 'Open full screen', a11yRemove: 'Remove', a11yRemoveFace: 'Remove face', a11yRemoveFrame: 'Remove scene frame', a11yRemoveScript: 'Remove script', a11yRemoveSoundtrack: 'Remove soundtrack', a11yDuckingDb: 'Music ducking depth (dB)', a11yRemoveShot: 'Remove shot', aiGenerated: 'AI-generated',
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
     placeholder: 'Type, record your voice, or attach a file…', empty: STUDIO_EMPTY.en.sub,
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
@@ -352,6 +362,7 @@ const COPY: Record<Lang, {
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
   ru: {
+    a11yFullscreen: 'Открыть на весь экран', a11yRemove: 'Удалить', a11yRemoveFace: 'Удалить лицо', a11yRemoveFrame: 'Удалить кадр сцены', a11yRemoveScript: 'Удалить сценарий', a11yRemoveSoundtrack: 'Удалить саундтрек', a11yDuckingDb: 'Глубина приглушения музыки (дБ)', a11yRemoveShot: 'Удалить кадр', aiGenerated: 'Создано ИИ',
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
     placeholder: 'Напишите, запишите голос или прикрепите файл…', empty: STUDIO_EMPTY.ru.sub,
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
@@ -1572,7 +1583,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* AI-generated indicator — kept clear of the re-roll button (top-right). The ANCHORED case gets the
             prominent "Source Reference Locked" badge below instead. */}
         {s.frameUrl && !s.anchored && (
-          <span title="AI-generated"
+          <span title={t.aiGenerated}
             className="pointer-events-none absolute right-9 top-1.5 z-20 rounded-full bg-app-accent/25 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent ring-1 ring-app-accent/40">🤖</span>
         )}
         {/* V1 — "Origin Identity Anchor Locked": this scene's frame IS the user's exact uploaded
@@ -2087,11 +2098,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
       } catch { /* fail-soft */ }
     })();
-    // Record the spend in credit_transactions (fail-open if the table/route is absent).
-    void fetch('/api/credits/record', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ action: kind, creditsDelta: -credits }),
-    }).catch(() => {});
+    // The spend itself is already in credit_ledger (the server charged it); Settings → History reads that ledger,
+    // so the browser no longer reports amounts (the old POST /api/credits/record trusted a client creditsDelta).
     if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
     creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 4000);
   }, [locale]);
@@ -4916,6 +4924,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       .then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
 
+  // THE THREAD → LIVE. A voice call opened from this chat continues it: the Live mint asks which chat session is on screen
+  // (lib/voice/liveThread) and the server loads that session's turns for the signed-in owner. Only the conversation on screen
+  // answers; a session cached for another thread never does.
+  useEffect(() => answerLiveThreadId(() => (
+    chatSessionCidRef.current === conversationIdRef.current ? chatSessionIdRef.current : null
+  )), []);
+
   // LIVE → THE THREAD. A Gemini Live call (components/voice/live) reports each finished turn — what the user said and
   // what the model said, as transcribed by Google — on the `myavatar:live-transcript` window event. A call used to
   // vanish when it ended; now it reads back in the chat like any other exchange and is saved to the history.
@@ -7317,7 +7332,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <div className={`mb-2 flex flex-wrap gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
                     {m.medias.map((md, mi) => (
                       isImage(md.mimeType) ? (
-                        <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
+                        <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label={t.a11yFullscreen}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                         </button>
@@ -8257,7 +8272,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <TemplateThumbImage src={face ? face.dataUrl : presetSrc!} size={48} className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
-                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
+                      <button type="button" aria-label={t.a11yRemoveFace} onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
                         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                     </>
                   ) : (
@@ -8456,7 +8471,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                           <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent pt-3 pb-0.5 text-center text-[8.5px] font-medium text-white">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                          <button type="button" aria-label="remove scene frame" onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
+                          <button type="button" aria-label={t.a11yRemoveFrame} onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
                             className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                         </div>
                       ) : (
@@ -8500,7 +8515,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Script loaded' : locale === 'ru' ? 'Сценарий загружен' : 'სცენარი ჩაიტვირთა'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoScriptDoc.name} · {videoScriptDoc.text.length.toLocaleString()} {locale === 'en' ? 'chars' : locale === 'ru' ? 'симв.' : 'სიმბ.'}</span>
-                    <button type="button" aria-label="remove script" onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
+                    <button type="button" aria-label={t.a11yRemoveScript} onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
@@ -8549,7 +8564,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
-                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
+                    <button type="button" aria-label={t.a11yRemoveSoundtrack} onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
@@ -8676,7 +8691,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           <span className="whitespace-nowrap text-[10.5px] text-app-muted">{locale === 'en' ? 'Depth' : locale === 'ru' ? 'Глубина' : 'სიღრმე'}</span>
                           <input type="range" min={-18} max={-6} step={6} value={videoDuckDb}
                             onChange={(e) => setVideoDuckDb(Number(e.target.value))}
-                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="ducking depth dB" />
+                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={t.a11yDuckingDb} />
                           <span className="w-12 text-right text-[10.5px] tabular-nums text-app-text">{videoDuckDb} dB</span>
                         </label>
                       )}
@@ -8815,7 +8830,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <div key={i} className="relative h-12 w-12 overflow-hidden rounded-lg ring-1 ring-app-border/20">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={src} alt={`shot ${i + 2}`} className="h-full w-full object-cover" />
-                          <button type="button" aria-label="remove shot" onClick={() => setProductImages((p) => p.filter((_, j) => j !== i))}
+                          <button type="button" aria-label={t.a11yRemoveShot} onClick={() => setProductImages((p) => p.filter((_, j) => j !== i))}
                             className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-md bg-black/70 text-[9px] text-white">✕</button>
                         </div>
                       ))}
@@ -9555,7 +9570,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </span>
                   </span>
                 )}
-                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
+                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label={t.a11yRemove}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
             ))}

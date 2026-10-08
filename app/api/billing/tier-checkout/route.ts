@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json({ url });
     } catch (e) {
+      console.error('[billing/tier-checkout] checkout session failed', e instanceof Error ? e.message : e);
       // Most commonly: the Stripe account does not support USD settlement.
       return NextResponse.json(
         { error: 'usd_unsupported', message: 'tier checkout failed' },

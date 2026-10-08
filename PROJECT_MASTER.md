@@ -27,25 +27,78 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
-CURRENT PHASE: Part 1 (Audit + Foundation) — formally restarted 2026-10-08; Master Task §60 step 7
-CURRENT STATUS: In progress
+CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
+CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 572d5fac)
-NEXT ACTION: §60 step 7–9 — service inventory, canonical taxonomy, migration matrix (docs/handoffs/)
+LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Part 0 AUTH + Veo smoke, apply migration
+          20261008a, Stripe refund/dispute events, pricing table, browser infra, provider migration plan); then Part 2
+MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
+          13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
+          research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
+          (not applied) · 17 V1–V6 director domain layer (not wired) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
+          from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
+          build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
+          production (nothing deployed); see the certification for every label.
 PHASE CHECKLIST:
-◐ Part 0: Phase 0 (GCP Console) — OWNER ACTION REQUIRED. $300 credit seen in console (2026-10-06, Codex note);
-          WIF NOT configured, no SA key, Veo bucket unverified, no GCP_* vars in Vercel production.
-◐ Part 1: Audit + Foundation — no part-1-report.md was ever written; restarted 2026-10-08.
+◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
+          GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
+          preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
+          bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
+          Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
+          on the PR #43 Preview, signed in with email + password). Paid test approved by owner 11:47 UTC: T2 PROVEN
+          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11);
+          T1 Veo (INFERENCE VERIFIED) waits on AUTH; credit coverage checked ~24 h later in Billing.
+          No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
+          Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
+          and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
+          guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
+          Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
+          script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
+◐ Part 1: Audit + Foundation — restarted 2026-10-08; §60 certification done (final-launch-certification.md), not launch ready.
 ◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
           self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
-· STOP-1: Part 0 incomplete — owner must configure WIF (or issue SA key), bucket, and add GCP_* + transport vars in Vercel.
-· Master Task §4: the "Services Taxonomy Deep Research" report does not exist in the repo or project files — owner input.
+· AUTH-1 (launch blocker, Production auth FAILED): email OTP sign-in, sign-up and password reset fail on Production and
+  Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
+  lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
+  thread (PR #43, commit 87122ff); since 13:55 UTC also on the cert branch (0421377a), so launch-certification Previews
+  carry it. Stays FAILED for Production until that fix is deployed with the owner's approval.
+· AUTH-2 (launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
+  /admin/generate_link 200, 13:57:06), then Resend refuses the mail: "resend 403 The myavatar.ge domain is not verified"
+  (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
+  serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
+  Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
+· STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
+  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
+  (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
+  scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
+· Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
+  - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,
+    image, music, TTS, STT, Live, embeddings, search, research) uses the Gemini Developer API key. Production has
+    GEMINI_API_KEY and no GCP_*/VEO_TRANSPORT, so all its Google spend, Veo included, hits the AI Studio balance.
+  - Silent fallbacks / forbidden providers still reachable: veoTransport auto → Gemini API; Claude with no gate
+    (providerRouter, agentg/personality, /api/pipeline); image NanoBanana → Grok → FLUX; music Lyria → Udio →
+    ElevenLabs → MusicGen; avatar HeyGen / SadTalker / LiveAvatar; OpenAI / Azure voice paths.
+  - Imagen 4 is not available on Vertex for this project (404): Part 1 image should target gemini-3.1-flash-image.
+    Image generation quota is 2 requests/min per model (increase request needed before launch).
+  - Preview and Production share one Supabase, so any Preview studio test writes to the production DB.
+  - API keys "API key 2" (aiplatform) and "Gemini API Key" (generativelanguage); roles/editor on the default compute SA.
+· Admin Panel audit 2026-10-08: no newer admin panel on any branch. Prod /ka/admin = main code. Pipeline card
+  (lib/pipeline/statusAgent.ts) is env-presence only and stale ('Udio primary' contradicts code, where Lyria is primary).
+  Replicate/Udio keys are set in Production. Admin auth uses 3 inconsistent guards; run-migration and 2 other routes are
+  header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
+  Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
+· Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
+· Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
+· Part 0 Test plan: docs/handoffs/2026-10-08-gcp-part0-test-plan.md
+· Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
 · Part 1 Report: pending (docs/handoffs/part-1-report.md)
 · Part 2 Report: pending
 · Part 3 Report: pending

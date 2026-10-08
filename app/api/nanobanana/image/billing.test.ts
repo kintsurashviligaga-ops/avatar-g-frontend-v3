@@ -55,14 +55,13 @@ const post = (body: unknown, locale?: string) =>
   });
 
 const BODY = { prompt: 'a lighthouse at dusk', quality: 'standard', aspectRatio: '1:1', jobId: 'tile-1' };
-let fetchSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
   (debitExistsForRef as jest.Mock).mockResolvedValue(false);
   (deductCredits as jest.Mock).mockResolvedValue({ ok: true });
   (refundCredits as jest.Mock).mockResolvedValue({ ok: true });
-  fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
+  jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());

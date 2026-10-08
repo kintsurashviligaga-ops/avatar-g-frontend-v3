@@ -20,7 +20,7 @@
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
+import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { consumeFreeAvatarChat, restoreFreeAvatarChat } from '@/lib/billing/wallet-ledger';
 import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import { buildSessionConfig } from '@/lib/orchestrator/avatar';
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
             useFreeSlot = true;
           } else {
             reservation = await reserveProduce(user.id, PRODUCE_COST.avatar, ref);
-            if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+            if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
             // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
             // render is abandoned (tab closed) and the in-route refund never fires. Credit path only — a
             // consumed free slot carries no debit, so it is NEVER stamped (the drainer would else mint credits).

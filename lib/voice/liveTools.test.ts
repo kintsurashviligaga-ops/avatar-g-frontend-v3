@@ -6,6 +6,7 @@
 import {
   LIVE_ACTIONS_RULE,
   LIVE_ACTION_NAMES,
+  LIVE_AGENT_TASK_MAX_CHARS,
   LIVE_ASPECT_RATIOS,
   LIVE_CODE_LANGUAGES,
   LIVE_CHAT_TEXT_MAX_CHARS,
@@ -52,7 +53,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
-      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage',
+      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -509,3 +510,68 @@ describe('the hands — validators', () => {
     expect(LIVE_ACTIONS_RULE).toMatch(/never\s+spend credits, pay, delete or sign out/);
   });
 });
+
+// ── 2026-10-08: ask_agent_g — a research task handed to Agent G's ReAct loop (POST /api/agent/run) ─────────────────
+describe('ask_agent_g', () => {
+  const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'ask_agent_g')!;
+
+  it('is declared LAST (the older declarations keep their order) with one required STRING `task`', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('ask_agent_g');
+    const p = decl().parameters!;
+    expect(p.type).toBe('OBJECT');
+    expect(Object.keys(p.properties!)).toEqual(['task']);
+    expect(p.properties!.task!.type).toBe('STRING');
+    expect(p.properties!.task!.description).toMatch(/at most 2000 characters/);
+    expect(p.required).toEqual(['task']);
+    expect(LIVE_AGENT_TASK_MAX_CHARS).toBe(2000);
+  });
+
+  it('tells the model what Agent G is for, that it is slow, and what it can never do', () => {
+    const d = decl().description;
+    expect(d).toMatch(/research or multi-step web task to Agent G, MyAvatar's main agent/);
+    expect(d).toMatch(/searches the web and reads pages/);
+    expect(d).toMatch(/written answer with its sources/);
+    expect(d).toMatch(/one Google search or one page is not enough/);
+    expect(d).toMatch(/up to about a minute, so tell the user you are on it/);
+    expect(d).toMatch(/cannot render media, spend credits, sign in, buy or press buttons on other sites/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/call ask_agent_g with the whole task/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/Tell the user you are on it first \(it can take up to a minute\)/);
+  });
+
+  it('accepts a task: cleaned like a prompt (controls and bidi overrides out, line breaks kept), trimmed', () => {
+    expect(ok('ask_agent_g', { task: '  Compare the three cheapest flights Tbilisi → Paris in May  ' }))
+      .toEqual({ type: 'ask_agent_g', task: 'Compare the three cheapest flights Tbilisi → Paris in May' });
+    expect(ok('ask_agent_g', { task: 'a\u0000b\u202Ec\r\nline 2\n\n\n\nline 3', extra: 1 }))
+      .toEqual({ type: 'ask_agent_g', task: 'abc\nline 2\n\nline 3' });
+  });
+
+  it('clamps a long task to 2,000 characters (never half an emoji)', () => {
+    const long = ok('ask_agent_g', { task: 'ა'.repeat(5000) }) as { task: string };
+    expect(long.task.length).toBe(LIVE_AGENT_TASK_MAX_CHARS);
+    const emoji = ok('ask_agent_g', { task: `${'a'.repeat(LIVE_AGENT_TASK_MAX_CHARS - 1)}😀😀` }) as { task: string };
+    expect(emoji.task.length).toBe(LIVE_AGENT_TASK_MAX_CHARS - 1);
+  });
+
+  it.each([
+    ['no arguments', undefined],
+    ['an array', ['task']],
+    ['a string', 'find hotels'],
+    ['no task', {}],
+    ['a number', { task: 42 }],
+    ['null', { task: null }],
+    ['only whitespace', { task: ' \n\t ' }],
+    ['only control characters', { task: '\u0000\u202E' }],
+  ])('rejects %s with a structured invalid_args error', (_label, args) => {
+    const e = err('ask_agent_g', args);
+    expect(e.code).toBe('invalid_args');
+    if (isObjArgs(args)) expect(e.field).toBe('task');
+  });
+
+  it('an inherited `task` is not read (own properties only)', () => {
+    expect(err('ask_agent_g', Object.create({ task: 'from the prototype' }))).toMatchObject({ code: 'invalid_args', field: 'task' });
+  });
+});
+
+function isObjArgs(v: unknown): boolean {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}

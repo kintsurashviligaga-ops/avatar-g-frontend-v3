@@ -62,6 +62,7 @@ import {
 } from '@/lib/voice/geminiLive';
 import { takePrimed as takePrimedLive, disposePrimed, type PrimedLive } from '@/lib/voice/livePrime';
 import { reportLiveFailure, type LiveFailureContext } from '@/lib/voice/liveTelemetry';
+import { requestLiveThreadId } from '@/lib/voice/liveThread';
 import { acquireMic, browserMicDeps, type MicDeps, type MicFailure, type MicResult } from '@/lib/voice/micAcquire';
 import { requestMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
@@ -215,6 +216,11 @@ export interface UseGeminiLiveSessionOptions {
    * for the signed-in owner and appends it to the instruction it locks into the token (app/api/voice/live).
    */
   researchId?: string | null;
+  /**
+   * The text-chat session this call continues (lib/voice/liveThread). Only the ID travels: the server loads the turns for the
+   * signed-in owner. Omitted → asked from the studio on screen at each fresh mint (requestLiveThreadId); null → no history.
+   */
+  chatSessionId?: string | null;
   endpoint?: string;
   setupTimeoutMs?: number;
   /** Transcript sink: called once per closed turn, user first. */
@@ -825,6 +831,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     const gen = genRef.current;
     const parity = o.parity !== false && !degradedRef.current;
     mintsRef.current += 1;
+    const threadId = typeof handle === 'string' ? null : o.chatSessionId !== undefined ? o.chatSessionId : requestLiveThreadId();
     let res: Response;
     // ⚠️ THE MINT HAD NO TIMEOUT. The route retries Google for up to ~28 s; a request that never answered (a captive
     // portal, a stalled proxy) left the screen on „დაკავშირება…“ forever. Bounded now: past MINT_TIMEOUT_MS it is a
@@ -842,6 +849,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
           personaId: o.personaId ?? null,
           customPersona: o.customPersona ?? null,
           ...(typeof o.researchId === 'string' && o.researchId ? { researchId: o.researchId } : {}),
+          // The chat so far, for a FRESH session only: a resumed one already holds it, and its setup must not change mid-call.
+          ...(typeof threadId === 'string' && threadId ? { chatSessionId: threadId } : {}),
           transcribe: parity,
           ...(parity ? { compression: true } : {}),
           ...(parity && handle !== undefined ? { resumptionHandle: handle } : {}),

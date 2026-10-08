@@ -10,6 +10,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { LIVE_SPOKEN_RULE } from '@/lib/agents/profile';
 import { MIC_CONSTRAINTS } from '@/lib/voice/micAcquire';
+import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { MIC_RELEASE_EVENT, type MicReleaseDetail } from '@/lib/voice/micBus';
 import { base64ToBytes, bytesToBase64 } from '@/lib/voice/pcm';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
@@ -647,6 +648,43 @@ test('researchId: ONLY the id rides in the mint (the server loads the report for
   const { unmount: u3 } = await connected({ deps: h3.deps, researchId: '' });
   expect(h3.mintBodies[0]).not.toHaveProperty('researchId');
   u3();
+});
+
+// ─── The same conversation (lib/voice/liveThread.ts) ───────────────────────────
+
+test('chatSessionId: only the id rides in a FRESH mint — from the option, else asked from the studio on screen; a resume never carries it', async () => {
+  const SID = '55555555-5555-4555-8555-555555555555';
+  const h = harness();
+  const { unmount } = await connected({ deps: h.deps, chatSessionId: SID });
+  expect(h.mintBodies[0]).toMatchObject({ chatSessionId: SID, transcribe: true });
+  unmount();
+
+  // Omitted → the studio on screen answers (OmniStudio registers answerLiveThreadId).
+  FakeSocket.all = [];
+  const off = answerLiveThreadId(() => SID);
+  const h2 = harness();
+  const { unmount: u2 } = await connected({ deps: h2.deps });
+  expect(h2.mintBodies[0]).toMatchObject({ chatSessionId: SID });
+  u2();
+
+  // null → no history, even with a studio answering.
+  FakeSocket.all = [];
+  const h3 = harness();
+  const { unmount: u3 } = await connected({ deps: h3.deps, chatSessionId: null });
+  expect(h3.mintBodies[0]).not.toHaveProperty('chatSessionId');
+  u3();
+  off();
+
+  // A resume that needs a new token mints WITH the handle and WITHOUT the thread: the session already holds it.
+  FakeSocket.all = [];
+  const h4 = harness((n) => ({ token: `tok${n}`, model: 'models/gemini-2.5-flash-native-audio-latest', expiresAt: n === 1 ? new Date(Date.now() + 1_000).toISOString() : future() }));
+  const { ws, unmount: u4 } = await connected({ deps: h4.deps, chatSessionId: SID });
+  act(() => ws.receive({ sessionResumptionUpdate: { newHandle: 'h-7', resumable: true } }));
+  act(() => ws.receive({ goAway: { timeLeft: '9s' } }));
+  await waitFor(() => expect(h4.mintBodies).toHaveLength(2));
+  expect(h4.mintBodies[1]).toMatchObject({ resumptionHandle: 'h-7' });
+  expect(h4.mintBodies[1]).not.toHaveProperty('chatSessionId');
+  u4();
 });
 
 test('without the opt-in nothing asks for actions; parity:false mints with tools:false (lock = the tool-less frame)', async () => {

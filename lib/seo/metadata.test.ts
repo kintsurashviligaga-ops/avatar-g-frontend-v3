@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { OG_IMAGE, OG_LOCALE, SITE_NAME, pageMetadata, seoLang, shareCards } from './metadata';
 import { SITE_URL } from './site';
 
@@ -134,6 +134,15 @@ describe('the layouts above the pages', () => {
     expect(og(metadata).images).toEqual([OG_IMAGE]);
     expect(og(metadata).url).toBeUndefined();
     expect(tw(metadata).images).toEqual([OG_IMAGE.url]);
+  });
+
+  it('root viewport lets users zoom (WCAG 1.4.4); the focus-zoom fix is the 16px input rule, which stays', async () => {
+    const { viewport } = (await import('../../app/layout')) as { viewport: Viewport };
+    expect(viewport).not.toHaveProperty('maximumScale');
+    expect(viewport).not.toHaveProperty('userScalable');
+    expect(viewport).toMatchObject({ width: 'device-width', initialScale: 1 });
+    const css = readFileSync(join(__dirname, '..', '..', 'app', 'globals.css'), 'utf8');
+    expect(css).toMatch(/textarea,\s*select\s*\{[^}]*font-size:\s*max\(16px,\s*1em\)/);
   });
 
   it.each(LANGS)('[locale] (%s): no hreflang cluster, og:url, icons, manifest or origin of its own to leak downward', async (l) => {

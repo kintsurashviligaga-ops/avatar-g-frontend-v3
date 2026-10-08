@@ -506,20 +506,22 @@ const LOCALIZED_SERVICE_META: Record<string, LocalizedServiceMeta> = {
   'voice': {
     icon: '🎙',
     agentId: 'audio-agent',
+    // Was „Voice Clone — clone any voice in seconds… dubbing… export MP3/WAV". The page does none of that: it turns
+    // typed text into speech with a fixed voice per language. Named for what it does.
     headline: {
-      en: 'Voice Clone',
-      ka: 'ხმის კლონი',
-      ru: 'Клон голоса',
+      en: 'Voiceover',
+      ka: 'გახმოვანება',
+      ru: 'Озвучка',
     },
     description: {
-      en: 'Clone any voice in seconds and generate professional-grade voice narration, dubbing, and audio content in Georgian, English, or Russian.',
-      ka: 'ნებისმიერი ხმის კლონირება წამებში და პროფესიონალური ხმოვანი ნარაციის, დუბლირების და აუდიო კონტენტის გენერაცია.',
-      ru: 'Клонируйте любой голос за секунды и создавайте профессиональные озвучки, дубляж и аудиоконтент.',
+      en: 'Turn your text into natural speech — Georgian is read by a native Georgian voice.',
+      ka: 'აქციე შენი ტექსტი ბუნებრივ მეტყველებად — ქართულს ქართული ხმა კითხულობს.',
+      ru: 'Превратите текст в естественную речь — грузинский читает носитель языка.',
     },
     features: {
-      en: ['Voice cloning from sample', 'Text-to-speech narration', 'Multi-language support', 'Export as MP3/WAV'],
-      ka: ['ხმის კლონირება ნიმუშიდან', 'ტექსტი-ხმამდე ნარაცია', 'მრავალენოვანი მხარდაჭერა', 'ექსპორტი MP3/WAV'],
-      ru: ['Клонирование голоса из образца', 'Озвучка текста', 'Поддержка нескольких языков', 'Экспорт MP3/WAV'],
+      en: ['Text to speech', 'Native Georgian voice', 'Georgian, English, Russian text', 'Plays right on the page'],
+      ka: ['ტექსტიდან მეტყველება', 'ქართული მშობლიური ხმა', 'ქართული, ინგლისური, რუსული ტექსტი', 'იკვრება პირდაპირ გვერდზე'],
+      ru: ['Текст в речь', 'Родной грузинский голос', 'Текст на грузинском, английском, русском', 'Воспроизводится прямо на странице'],
     },
   },
 };

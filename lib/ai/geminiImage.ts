@@ -13,7 +13,7 @@
  */
 import 'server-only';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
@@ -46,14 +46,10 @@ async function toInlinePart(src: string): Promise<{ inlineData: { mimeType: stri
       const m = src.match(/^data:([^;,]+);base64,(.+)$/);
       return m && m[1] && m[2] ? { inlineData: { mimeType: m[1], data: m[2] } } : null;
     }
-    if (!isPublicHttpUrl(src)) return null;
-    const res = await fetch(src, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) return null;
-    const mimeType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
-    if (!/^image\/(jpeg|png|webp)$/.test(mimeType)) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!buf.byteLength || buf.byteLength > MAX_REF_BYTES) return null;
-    return { inlineData: { mimeType, data: buf.toString('base64') } };
+    // A caller's reference: public only, redirects re-checked, DNS-pinned, capped while downloading (lib/web/publicFetch).
+    const got = await fetchPublicBytes(src, { maxBytes: MAX_REF_BYTES, accept: /^image\/(jpeg|png|webp)$/, timeoutMs: 15_000 });
+    if (!got.ok || !got.bytes.byteLength) return null;
+    return { inlineData: { mimeType: got.contentType, data: got.bytes.toString('base64') } };
   } catch {
     return null;
   }

@@ -26,13 +26,13 @@ import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { classifyProviderError } from '@/lib/api/providerError';
 import { reportError } from '@/lib/observability/report-error';
 import { randomUUID } from 'node:crypto';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 // A Motion Control render is a single short (5-10s) Kling i2v clip — priced as one paid video op, the
 // same tier as a remix. The reservation is taken BEFORE the submit under a fresh server ref; the jobId handed back
 // carries a signed charge token naming that ref (lib/services/motion/chargeToken), which /status reads to refund a
 // failed render through the ledger.
 const MOTION_COST = creditCostFor('remix');
-
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // submit-only — returns fast; the wait happens via /status polling
@@ -52,8 +52,10 @@ async function normalizeStartImage(src: string, userId: string): Promise<string>
       const b64 = src.includes(',') ? src.split(',')[1] ?? '' : '';
       if (b64) buf = Buffer.from(b64, 'base64');
     } else if (/^https?:\/\//i.test(src)) {
-      const r = await fetch(src, { signal: AbortSignal.timeout(20_000) });
-      if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+      // A caller-chosen address: public only, every redirect re-checked, an image, at most 20 MB (lib/web/publicFetch).
+      // It used to be a bare fetch — any URL, any size, redirects followed — and the result was re-hosted for the caller.
+      const r = await fetchPublicBytes(src, { maxBytes: 20 * 1024 * 1024, accept: /^image\//, timeoutMs: 20_000 });
+      if (r.ok) buf = r.bytes;
     } else {
       const signed = await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', src, 3600);
       if (signed) { const r = await fetch(signed, { signal: AbortSignal.timeout(20_000) }); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }

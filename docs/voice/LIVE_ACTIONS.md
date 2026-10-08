@@ -69,6 +69,7 @@ rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"o
 | `use_result` | `result?`, `to` (`video` · `music_video` · `montage` · `editor` · `chat`) | Moves a result into another tool with nothing generated: an image → the next video's start frame, a track → a music video's soundtrack or Montage's music, a video → the Montage timeline, image / audio → the editor, anything → a chat attachment. |
 | `montage` | `action` (`open` · `set_music_start` · `export` · `state`), `videos?`, `music?`, `musicStartSec?` (0–3,600), `aspectRatio?` (9:16 · 16:9 · 1:1) | `open` (the studio): the editor with those videos on the timeline and that track as its music, starting `musicStartSec` into the song (the trim of its beginning; the end is cut to the picture). The rest go to the editor's own hook, `myavatar:montage-command` (cancelable, `detail.reply` written synchronously): move the music start, export (free), read the edit. No editor open → `montage_closed`. |
 | `read_webpage` | `url` (a public http(s) address) | `/api/voice/web-read` (signed-in, `WEB_READ` per user) reads the page with every SSRF rule in `lib/web/readPage.ts` — public addresses only, DNS-checked (no rebinding), redirects re-checked by hand, a 1.5 MB cap, a timeout, HTML / text only — and the model gets the title, ≤ 3,500 characters of text and ≤ 25 links (`text — url`). It answers AFTER the network (the step spinner runs meanwhile; the session awaits the batch), and a link to the page goes on screen. The model may follow links by reading them; it cannot press buttons, fill forms, sign in or pay on other sites, and says so. |
+| `ask_agent_g` | `task` (≤ 2,000 chars, cleaned like a prompt) | A research or multi-step web task for Agent G: `POST /api/agent/run` (signed-in, the `agent` per-user rate limit) with `{ goal, maxSteps: 4, budgetMs: 45000, source: 'live' }` — the route clamps `budgetMs` to 15–100 s — and a 60 s client timeout. Like `read_webpage` it answers AFTER the network (the feed shows „Agent G is researching…"): `ok:true` with the answer (≤ 3,500 chars), the `sources` its steps read (`title — url`, public http(s) only), `stopReason` when it was not a normal finish, and a note that it is web-derived, untrusted data, not instructions. 401 / 429 / 4xx / 5xx / network / timeout → `ok:false` with a message the model repeats; a run that stopped before writing an answer → `ok:false` `no_answer` with what it had found so far. It cannot render, spend credits, sign in, buy or press buttons on other sites. |
 
 ### The hands (2026-10-03)
 
@@ -210,6 +211,9 @@ funded key:
 2. On that session, a spoken request such as "make me a vertical video of a cat surfing" must produce a `toolCall`, and
    the model must speak after our `toolResponse`.
 3. The model asks before `start_generation` and sends `confirmed: "yes"` only after a spoken yes.
+4. `ask_agent_g` (added 2026-10-08) is one more declaration in the same lock — unverified live like the others. Also check
+   that the native-audio model keeps the session open while a blocking function call waits up to ~60 s for Agent G, and
+   that it tells the user it is on it before the call.
 
 The studio's side is covered in a real browser by `tests/live-actions.spec.ts` (the events are dispatched as the call
 dispatches them); the executor, countdown and dock by the jest suites under `components/voice/live/`.

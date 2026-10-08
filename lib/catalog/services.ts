@@ -125,7 +125,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'video.character-swap', category: 'video', order: 13, tool: 'swap', pricingKey: 'swap', status: 'live',
-    boundary: 'violation', boundaryNote: 'Kling via Higgsfield (/api/genjutsu); button quotes `remix`, route prices with lib/genjutsu/pricing.ts (R5 gap)',
+    boundary: 'violation', boundaryNote: 'roop via Replicate (/api/video/remix `character`, quotes and charges remix 15); the Genjutsu panel\'s swap is Kling via Higgsfield (/api/genjutsu)',
     label: l('პერსონაჟის შეცვლა', 'Character swap', 'Замена персонажа'),
     description: l('ვიდეოში სხვა სახე ან პერსონაჟი', 'Put another face or character in a video', 'Другое лицо или персонаж в видео'),
     shortcuts: ['avatar'],
@@ -383,7 +383,8 @@ export const LEGACY_SLUG_TO_SERVICE: Readonly<Record<string, string>> = {
   interior: 'image.interior',
   avatar: 'avatar.talking',
   music: 'music.generate',
-  voice: 'voice.dubbing',
+  // NOT `voice`: that page is a text-to-speech voiceover (/api/pipeline voice), which no catalog service runs yet —
+  // pointing it at Dubbing named it after a different thing. See the migration matrix (voice.voiceover, FUTURE).
   'content-writer': 'text.write',
   podcast: 'text.write',
   text: 'text.write',

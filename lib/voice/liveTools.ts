@@ -56,6 +56,9 @@ export const LIVE_ACTION_NAMES = [
   'use_result',
   'montage',
   'read_webpage',
+  // 2026-10-08 (launch blocker „Live Voice unable to invoke Agent G tools"): a research / multi-step web task goes to
+  // Agent G's own ReAct loop (POST /api/agent/run — web_search + scrape_webpage) and its written answer comes back.
+  'ask_agent_g',
 ] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
@@ -126,6 +129,8 @@ export const LIVE_START_COUNTDOWN_MS = 3000;
 export const LIVE_TARGET_MAX_CHARS = 120;
 /** type_text: what goes into a field. */
 export const LIVE_TYPE_TEXT_MAX_CHARS = 4000;
+/** ask_agent_g: the task handed to Agent G (the same cap as /api/agent/run's `goal`). */
+export const LIVE_AGENT_TASK_MAX_CHARS = 2000;
 /** A result is numbered newest first (1 = the latest) in get_screen_state's `results`. */
 export const LIVE_RESULT_MAX_N = 50;
 export const LIVE_RESULT_KINDS = ['image', 'video', 'audio'] as const;
@@ -473,6 +478,24 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       required: ['url'],
     },
   },
+  {
+    name: 'ask_agent_g',
+    description:
+      'Hand a research or multi-step web task to Agent G, MyAvatar\'s main agent: it searches the web and reads pages, then '
+      + 'returns a written answer with its sources. Use it when one Google search or one page is not enough (several '
+      + 'searches, comparing sources, a short report). It can take up to about a minute, so tell the user you are on it. '
+      + 'It cannot render media, spend credits, sign in, buy or press buttons on other sites.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        task: {
+          type: 'STRING',
+          description: `The whole task in plain words: what to find out and what the answer should cover (at most ${LIVE_AGENT_TASK_MAX_CHARS} characters).`,
+        },
+      },
+      required: ['task'],
+    },
+  },
 ] as LiveFunctionDeclaration[]);
 
 /**
@@ -503,6 +526,9 @@ export const LIVE_ACTIONS_RULE = [
   'continue the plan with the next step, or tell the user in one sentence.',
   'read_webpage reads a public page (title, text, links) so you can answer about it or follow its links; you cannot press',
   'buttons, fill forms, sign in or pay on other websites — say so honestly and offer to read or open the page instead.',
+  'When one search or one page is not enough, call ask_agent_g with the whole task: Agent G searches and reads pages and',
+  'returns a written answer with sources. Tell the user you are on it first (it can take up to a minute), then give the',
+  'answer briefly in their language.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
 ].join(' ');
@@ -555,11 +581,13 @@ export interface MontageAction {
 }
 /** A public page to read — `url` is normalised by validateLiveUrl. */
 export interface ReadWebpageAction { type: 'read_webpage'; url: string }
+/** A research task for Agent G (POST /api/agent/run) — `task` is cleaned and cut at LIVE_AGENT_TASK_MAX_CHARS. */
+export interface AskAgentGAction { type: 'ask_agent_g'; task: string }
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
   | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
   | ShowCodeAction | OpenUrlAction | EndCallAction
-  | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction;
+  | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction | AskAgentGAction;
 
 /**
  * What the studio writes back onto the event detail (`detail.reply`) while it handles an action — synchronously, inside
@@ -1119,6 +1147,17 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     const checked = validateLiveUrl(own(args, 'url'));
     if (!checked.ok) return fail(checked.code, checked.message, 'url');
     return { ok: true, action: { type: 'read_webpage', url: checked.url } };
+  },
+
+  ask_agent_g(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with task.');
+    const raw = own(args, 'task');
+    if (typeof raw !== 'string') return fail('invalid_args', 'task must be text: what Agent G should find out.', 'task');
+    // Like a prompt: controls and bidi overrides out, line breaks kept, cut at the cap (a long dictated task is not
+    // worth a retry round-trip mid-call — the route would refuse anything longer anyway).
+    const task = cleanText(raw, LIVE_AGENT_TASK_MAX_CHARS);
+    if (!task) return fail('invalid_args', 'A non-empty task is required: what Agent G should find out.', 'task');
+    return { ok: true, action: { type: 'ask_agent_g', task } };
   },
 };
 

@@ -88,3 +88,18 @@ test('generations still rendering show their progress; a queued one says so', ()
   expect(screen.getByText('42%')).toBeInTheDocument();
   expect(screen.getByText('Queued')).toBeInTheDocument();
 });
+
+test('ask_agent_g is a step of its own — „Agent G is researching…" while it runs — in ka, en and ru', () => {
+  const running: LiveActivityItem = { id: 'g1', kind: 'tool', state: 'running', name: 'ask_agent_g' };
+  const done: LiveActivityItem = { ...running, state: 'done' };
+  render(<LiveActivityFeed activity={[running]} locale="en" />);
+  const row = document.querySelector('[data-kind="tool"]')!;
+  expect(row).toHaveTextContent('Agent G is researching…');
+  expect(row.querySelector('[data-mark="running"]')).not.toBeNull();
+  expect(liveCurrentStep([running], 'en')).toMatchObject({ name: 'ask_agent_g', text: 'Agent G is researching…' });
+  expect(liveCurrentStep([running], 'ka')).toMatchObject({ text: 'აგენტი G იკვლევს…' });
+  expect(liveCurrentStep([running], 'ru')).toMatchObject({ text: 'Агент G изучает вопрос…' });
+  expect(liveCurrentStep([done], 'en')).toMatchObject({ state: 'done', text: 'Agent G answered' });
+  expect(liveCurrentStep([done], 'ka')).toMatchObject({ text: 'აგენტი G-ის პასუხი მზადაა' });
+  expect(liveCurrentStep([{ ...running, state: 'failed' }], 'ru')).toMatchObject({ text: 'Агент G изучает вопрос — Не получилось' });
+});

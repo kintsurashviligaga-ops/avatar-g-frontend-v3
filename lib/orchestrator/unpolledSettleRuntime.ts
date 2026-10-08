@@ -25,7 +25,7 @@ const MODEL3D_BUCKET = 'renders';
 const model3dPath = (predictionId: string) => `models3d/${predictionId}.glb`;
 
 /** Download a finished provider video and store it as a 7-day signed object. null on any miss (retried next tick). */
-async function rehostVideo(url: string, path: string, bucket = 'uploads'): Promise<string | null> {
+async function rehostVideo(url: string, path: string, bucket = 'renders'): Promise<string | null> {
   if (!/^https:\/\//i.test(url)) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
