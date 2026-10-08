@@ -4,6 +4,7 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
 import {
   buildOtpEmail,
+  describeOtpShape,
   extractEmailOtp,
   isEmailTakenError,
   isOtpPurpose,
@@ -154,8 +155,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!code) {
       // The provider answered but without a usable code — a contract change. Fail rather than mail a
       // blank or wrong code, which is indistinguishable from a broken account to the person receiving it.
+      // The shape only (key names, the value's type and length), never the value: enough to see the next contract change.
       // eslint-disable-next-line no-console
-      console.error('[email-otp/send] no email_otp in generateLink response');
+      console.error(`[email-otp/send] no email_otp in generateLink response: ${describeOtpShape(data)}`);
       return NextResponse.json({ error: 'send_failed' }, { status: 502 });
     }
 
@@ -175,8 +177,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'send_failed' }, { status: 502 });
     }
 
-    // `ok` and nothing else — never the code, never whether the account already existed.
-    return NextResponse.json({ ok: true });
+    // `ok` and the code's LENGTH (a project-wide Supabase setting, 6–10, the same for every address) so the sheet knows
+    // when the code is complete — never the code, never whether the account already existed.
+    return NextResponse.json({ ok: true, length: code.length });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[email-otp/send]', err instanceof Error ? err.message : err);
