@@ -15,7 +15,7 @@ Step 26 is honoured: **nothing was promoted to production, merged to main, or ap
 | Item | Value |
 |---|---|
 | Branch | `claude/launch-certification-wmvitt` (draft PR #42, base `main`) |
-| SHA | Code verified at `70a5fe88` (2026-10-08 13:13 UTC); later commits on the branch change documentation only |
+| SHA | Full retest on `70a5fe88` (2026-10-08 13:13 UTC). Since then: the OTP fix `0421377a` from PR #43 (tsc 0, 10 auth suites / 127 tests, `tests/auth-sheet.spec.ts` 8 / 8) and documentation only |
 | `main` | `572d5fac` (2026-10-03) |
 | Production | https://myavatar.ge serves an older deployment (`dpl_ANGLbd7AGjDQyYHCGk5UJQsrp2Rr`, read 2026-10-08) built from `main`; none of this branch is live |
 | Preview | Vercel builds a Preview per push of PR #42 (Vercel Preview Comments check green). PR #43 (GCP Part 0) carries the Vertex WIF env, Preview only |
