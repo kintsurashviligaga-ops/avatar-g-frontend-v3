@@ -6,10 +6,19 @@
  *
  * The cases that matter most are the money ones: nothing charged without a confirmed price; a POST sent once
  * even when it times out; refunds that pay back exactly what was taken, once, whatever races happen.
+ *
+ * ⚠️ MyAvatar v32 (lib/providers/policy) retired Higgsfield, the only provider the registry knows. quote/create now refuse
+ * every model before an estimate, a translation, a charge or a row — whatever HF_ENABLED_MODELS says — and production
+ * has no adapter at all (createHiggsfieldAdapter → null). What still runs is the settling of jobs that were ALREADY in
+ * flight at the cutover: those are seeded here exactly as the old create left them (row + debit + slot), and their
+ * webhooks, refunds, cancels and sweeps must still pay back exactly what was taken, once.
  */
 import { createStudioSaga, publicJob, type SagaDeps } from './saga';
 import { ProviderError, type ProviderAdapter, type ProviderStatus } from '@/lib/providers/types';
-import type { JobPatch, JobStatus, StoredOutput, StudioJob, StudioStore } from './store';
+import type { JobPatch, JobStatus, NewStudioJob, StoredOutput, StudioJob, StudioStore } from './store';
+import { MODELS } from '@/lib/providers/registry';
+import { isProviderPermitted } from '@/lib/providers/policy';
+import { createHiggsfieldAdapter } from '@/lib/providers/higgsfield/adapter';
 import type { Semaphore } from './semaphore';
 
 /* ─── fakes ────────────────────────────────────────────────────────────────────────────────── */
@@ -131,17 +140,19 @@ function fakeProvider(script: Script = {}) {
   return { provider, calls };
 }
 
-function setup(script: Script = {}, opts: { balance?: number; slots?: number; copy?: 'ok' | 'fail'; env?: Record<string, string> } = {}) {
+function setup(script: Script = {}, opts: { balance?: number; slots?: number; copy?: 'ok' | 'fail'; env?: Record<string, string>; provider?: null } = {}) {
   const { store, rows } = memoryStore();
   const ledger = fakeLedger(opts.balance);
   const sem = countingSemaphore(opts.slots);
   const { provider, calls } = fakeProvider(script);
   const alerts: string[] = [];
   const filed: string[] = [];
+  const translations: string[] = [];
   let seq = 0;
   const deps: SagaDeps = {
     store,
-    provider,
+    // `provider: null` is production's wiring under v32 (createHiggsfieldAdapter returns null whatever the env holds).
+    provider: opts.provider === null ? null : provider,
     ledger: ledger.port,
     semaphore: sem,
     async copyOutputs(job, urls) {
@@ -151,11 +162,12 @@ function setup(script: Script = {}, opts: { balance?: number; slots?: number; co
     async fileInLibrary(job) { filed.push(job.id); },
     webhookUrlFor: (id) => `https://myavatar.ge/api/webhooks/higgsfield?job=${id}&sig=x`,
     alert: (m) => { alerts.push(m); },
+    translatePrompt: async (t) => { translations.push(t); return 'Tbilisi at night, cinematic'; },
     now: () => clock,
     newId: () => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`,
     env: { HF_USD_GEL_RATE: '2.7', HF_GEL_MARGIN: '1.35', ...opts.env } as NodeJS.ProcessEnv,
   };
-  return { saga: createStudioSaga(deps), rows, ledger, sem, calls, alerts, filed, store };
+  return { saga: createStudioSaga(deps), rows, ledger, sem, calls, alerts, filed, store, translations };
 }
 
 const USER = 'user-1';
@@ -166,37 +178,76 @@ const status = (rows: Map<string, StudioJob>, id: string): JobStatus => rows.get
 
 beforeEach(() => { clock = Date.parse('2026-09-29T10:00:00Z'); });
 
-/* ─── price confirmation ───────────────────────────────────────────────────────────────────── */
+/**
+ * A job that was already in flight when v32 retired Higgsfield, exactly as the old create left it: the row, the debit under
+ * its ref and — once the provider had it — its concurrency slot. (quote/create cannot make one any more.)
+ */
+let legacySeq = 0;
+async function seedLegacy(
+  ctx: ReturnType<typeof setup>,
+  patch: JobPatch & { status: JobStatus },
+  opts: { model?: 'std' | 'pro'; debited?: boolean } = {},
+): Promise<string> {
+  const id = `00000000-0000-4000-9000-${String(++legacySeq).padStart(12, '0')}`;
+  const pro = opts.model === 'pro';
+  const job: NewStudioJob = {
+    id, user_id: USER, service: 'video', provider: 'higgsfield',
+    model_id: pro ? 'hf/kling-3-pro-t2v' : T2V.modelId,
+    provider_endpoint: pro ? 'kling-video/v3.0/pro/text-to-video' : 'kling-video/v3.0/std/text-to-video',
+    input: { prompt: 'Tbilisi at night, cinematic' }, prompt_original: T2V.params.prompt,
+    estimate_provider_credits: 6, estimate_usd: pro ? 0.8 : 0.4, estimate_gel: pro ? 3 : PRICE_GEL,
+    charge_credits: pro ? 30 : 15, charge_ref: `studio:${id}`,
+  };
+  await ctx.store.insert(job);
+  if (opts.debited ?? true) expect(await ctx.ledger.port.deduct(USER, job.charge_credits, job.charge_ref)).toEqual({ ok: true });
+  await ctx.store.patch(id, { submitted_at: iso(clock), next_poll_at: iso(clock + 2 * 60_000), ...patch });
+  if (['submitting', 'submit_unknown', 'queued', 'in_progress'].includes(patch.status)) await ctx.sem.acquire(id, 60_000);
+  return id;
+}
 
-describe('no money moves without a confirmed price', () => {
-  test('quote → 1.50 ₾ / 15 credits, provider USD never rounds a credit away', async () => {
-    const { saga } = setup();
-    const q = await saga.quote(T2V.modelId, T2V.params);
-    expect(q.ok && q.price).toMatchObject({ credits: 15, gel: 1.5 });
-  });
+const EVERY_MODEL = MODELS.map((m) => m.id).join(',');
+const LIVE = 'For 16:9 video without video input, your request costs roughly $0.2056 per second of generated video at 480p, $0.4622 at 720p, and $1.1372 at 1080p. Each 1,000 video tokens costs $0.0214 at 480p or 720p and $0.0234 at 1080p.';
+const OUT = ['https://cdn.higgsfield.ai/out.mp4'];
 
-  test('create without confirmedGel → confirmation_required, nothing charged, nothing submitted', async () => {
-    const { saga, ledger, calls, rows } = setup();
-    const r = await saga.create({ userId: USER, ...T2V });
-    expect(r).toMatchObject({ ok: false, code: 'confirmation_required', price: { credits: 15 } });
-    expect(ledger.entries).toEqual([]);
-    expect(calls.submit).toBe(0);
-    expect(rows.size).toBe(0);
-  });
+/* ─── v32: nothing new starts ──────────────────────────────────────────────────────────────── */
 
-  test('a confirmed price that no longer matches → price_changed, nothing charged', async () => {
-    const { saga, ledger, calls } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: 1.2 });
-    expect(r).toMatchObject({ ok: false, code: 'price_changed', price: { gel: 1.5 } });
-    expect(ledger.entries).toEqual([]);
-    expect(calls.submit).toBe(0);
-  });
-
-  test('invalid params never reach the provider (not even for an estimate)', async () => {
-    const { saga, calls } = setup();
-    const r = await saga.create({ userId: USER, modelId: T2V.modelId, params: { prompt: 'x', duration: 99 }, confirmedGel: PRICE_GEL });
-    expect(r).toMatchObject({ ok: false, code: 'invalid_input' });
+describe('v32: no Higgsfield job can be started — no estimate, translation, charge, row or POST', () => {
+  test('every registered model is a retired provider\'s, and quote refuses each one even where HF_ENABLED_MODELS names it', async () => {
+    const { saga, calls } = setup({}, { env: { HF_ENABLED_MODELS: EVERY_MODEL } });
+    expect(MODELS.length).toBeGreaterThan(0);
+    for (const m of MODELS) {
+      expect(isProviderPermitted(m.provider)).toBe(false);
+      expect(await saga.quote(m.id, { prompt: 'x' })).toEqual({ ok: false, code: 'model_unavailable' });
+    }
     expect(calls.estimate).toBe(0);
+  });
+
+  test.each<[string, Script, { modelId: string; params: Record<string, unknown>; confirmedGel?: number }]>([
+    ['without a confirmed price (was: confirmation_required)', {}, { ...T2V }],
+    ['at the price the old quote showed (was: 15 credits charged and a POST)', {}, { ...T2V, confirmedGel: PRICE_GEL }],
+    ['at a stale price (was: price_changed)', {}, { ...T2V, confirmedGel: 1.2 }],
+    ['with invalid params (was: invalid_input)', {}, { modelId: T2V.modelId, params: { prompt: 'x', duration: 99 }, confirmedGel: PRICE_GEL }],
+    ['for a model priced from the provider\'s description (was: Seedance at 85 credits)', { describe: LIVE }, { modelId: 'hf/seedance-2.5-t2v', params: { prompt: 'ზღვა', duration: 5, resolution: '720p', aspect_ratio: '16:9' }, confirmedGel: 8.5 }],
+    ['for an image model (was: translated as an image)', {}, { modelId: 'hf/soul-2', params: { prompt: 'წითელი ვაშლი' }, confirmedGel: 1 }],
+  ])('create %s → model_unavailable', async (_name, script, req) => {
+    const ctx = setup(script, { env: { HF_ENABLED_MODELS: EVERY_MODEL } });
+    expect(await ctx.saga.create({ userId: USER, ...req })).toEqual({ ok: false, code: 'model_unavailable' });
+    expect(ctx.calls).toMatchObject({ estimate: 0, submit: 0, status: 0, cancel: 0 });
+    expect(ctx.translations).toEqual([]);
+    expect(ctx.ledger.entries).toEqual([]);
+    expect(ctx.rows.size).toBe(0);
+  });
+
+  test('the refusal comes before the ledger: a short balance or a ledger error leaves no failed row and no entry (was: insufficient_credits / billing_unavailable)', async () => {
+    const short = setup({}, { balance: 5, env: { HF_ENABLED_MODELS: EVERY_MODEL } });
+    expect(await short.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL })).toEqual({ ok: false, code: 'model_unavailable' });
+    expect(short.rows.size).toBe(0);
+    expect(short.ledger.state.balance).toBe(5);
+    const broken = setup({}, { env: { HF_ENABLED_MODELS: EVERY_MODEL } });
+    broken.ledger.state.deductMode = 'error-after-commit';
+    expect(await broken.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL })).toEqual({ ok: false, code: 'model_unavailable' });
+    expect(broken.ledger.entries).toEqual([]);
+    expect(broken.ledger.state.balance).toBe(1000);
   });
 
   test('an unknown or disabled model is refused before anything else', async () => {
@@ -214,52 +265,28 @@ describe('no money moves without a confirmed price', () => {
     expect(calls.submit).toBe(0);
     expect(ledger.entries).toEqual([]);
   });
-});
 
-/* ─── token-priced models (the provider only describes the price) ──────────────────────────── */
-
-describe('models the provider only DESCRIBES', () => {
-  const LIVE = 'For 16:9 video without video input, your request costs roughly $0.2056 per second of generated video at 480p, $0.4622 at 720p, and $1.1372 at 1080p. Each 1,000 video tokens costs $0.0214 at 480p or 720p and $0.0234 at 1080p.';
-
-  test('Seedance is priced locally from the description — and charged exactly that', async () => {
-    const { saga, ledger } = setup({ describe: LIVE });
-    const params = { prompt: 'ზღვა', duration: 5, resolution: '720p', aspect_ratio: '16:9' };
-    const q = await saga.quote('hf/seedance-2.5-t2v', params);
-    // $2.3112 × 2.7 × 1.35 = 8.424 ₾ → 85 credits → 8.50 ₾
-    expect(q.ok && q.price).toMatchObject({ credits: 85, gel: 8.5 });
-    const r = await saga.create({ userId: USER, modelId: 'hf/seedance-2.5-t2v', params, confirmedGel: 8.5 });
-    expect(r.ok).toBe(true);
-    expect(ledger.entries[0]!.delta).toBe(-85);
-  });
-
-  test('a described model with NO local pricing is refused — nothing is charged without a price', async () => {
-    const { saga, alerts, ledger } = setup({ describe: 'priced by magic' });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    expect(r).toMatchObject({ ok: false, code: 'provider_unavailable' });
-    expect(alerts).toContain('hf_unpriced_model');
-    expect(ledger.entries).toEqual([]);
+  test('production has no adapter, whatever the env holds — the saga is built with provider: null and quotes nothing', async () => {
+    expect(createHiggsfieldAdapter({ HF_API_KEY: 'test-key', HF_API_SECRET: 'test-secret', HF_ENABLED_MODELS: EVERY_MODEL } as NodeJS.ProcessEnv)).toBeNull();
+    const { saga } = setup({}, { provider: null, env: { HF_ENABLED_MODELS: EVERY_MODEL } });
+    expect(await saga.quote(T2V.modelId, T2V.params)).toEqual({ ok: false, code: 'not_configured' });
   });
 });
 
-/* ─── the happy path ───────────────────────────────────────────────────────────────────────── */
+/* ─── legacy jobs: the happy path ──────────────────────────────────────────────────────────── */
 
-describe('happy path', () => {
-  test('reserve → submit once with a signed webhook → completed webhook → finalize → our storage, settled, filed', async () => {
-    const { saga, rows, ledger, calls, sem, filed } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    const id = r.job.id;
-    expect(r.job.status).toBe('queued');
-    expect(calls.submit).toBe(1);
+describe('a legacy job still settles', () => {
+  test('queued → in_progress → completed webhook → finalize → our storage, settled at the confirmed price, filed', async () => {
+    const ctx = setup();
+    const { saga, rows, ledger, calls, sem, filed } = ctx;
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-std-0001' });
     expect(ledger.entries).toEqual([{ ref: `studio:${id}`, delta: -15 }]);
     expect(sem.held.has(id)).toBe(true);
 
-    const reqId = rows.get(id)!.provider_request_id!;
-    await saga.applyEvent({ jobId: id, requestId: reqId, status: 'in_progress' });
+    await saga.applyEvent({ jobId: id, requestId: 'req-legacy-std-0001', status: 'in_progress' });
     expect(status(rows, id)).toBe('in_progress');
 
-    await saga.applyEvent({ jobId: id, requestId: reqId, status: 'completed', outputUrls: ['https://cdn.higgsfield.ai/out.mp4'] });
+    await saga.applyEvent({ jobId: id, requestId: 'req-legacy-std-0001', status: 'completed', outputUrls: OUT });
     expect(status(rows, id)).toBe('finalizing');
     expect(sem.held.has(id)).toBe(false); // the provider slot frees as soon as the provider is done
 
@@ -269,17 +296,17 @@ describe('happy path', () => {
     expect(done.charged_gel).toBe(1.5);
     expect(filed).toEqual([id]);
     expect(ledger.state.balance).toBe(1000 - 15);
-    // and the user-facing view carries no provider id, endpoint or internal error text
+    expect(calls.submit).toBe(0);
+    // and the user-facing view carries no provider id, endpoint or internal error text — but both prompts (§7)
     expect(Object.keys(publicJob(done, ['https://signed']))).not.toEqual(expect.arrayContaining(['provider_request_id', 'provider_endpoint', 'error_detail']));
+    expect(publicJob(done)).toMatchObject({ promptOriginal: 'თბილისი ღამით, კინემატოგრაფიული', promptSent: 'Tbilisi at night, cinematic' });
   });
 
   test('a finalize whose copy fails stays finalizing (retried later) — the user is never handed a provider URL', async () => {
-    const { saga, rows } = setup({}, { copy: 'fail' });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const id = r.job.id;
-    await saga.applyEvent({ jobId: id, requestId: rows.get(id)!.provider_request_id!, status: 'completed', outputUrls: ['https://cdn.higgsfield.ai/o.mp4'] });
-    const j = await saga.finalize(rows.get(id)!);
+    const ctx = setup({}, { copy: 'fail' });
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-std-0002' });
+    await ctx.saga.applyEvent({ jobId: id, requestId: 'req-legacy-std-0002', status: 'completed', outputUrls: ['https://cdn.higgsfield.ai/o.mp4'] });
+    const j = await ctx.saga.finalize(ctx.rows.get(id)!);
     expect(j.status).toBe('finalizing');
     expect(publicJob(j).outputUrls).toEqual([]);
   });
@@ -288,54 +315,40 @@ describe('happy path', () => {
 /* ─── the POST is sent once ────────────────────────────────────────────────────────────────── */
 
 describe('a generation POST is never repeated', () => {
-  test('a submit timeout → submit_unknown, exactly ONE POST, credits held; the webhook (job id in its URL) reconciles', async () => {
-    const { saga, rows, calls, ledger, alerts } = setup({
-      submit: async () => { throw new ProviderError('timeout', { ambiguous: true }); },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const id = r.job.id;
-    expect(r.job.status).toBe('submit_unknown');
-    expect(calls.submit).toBe(1);
-    expect(ledger.state.balance).toBe(985); // still reserved — the request may be running
-    expect(alerts).toContain('hf_submit_ambiguous');
-
-    // The sweeper must NOT re-POST it…
+  test('a legacy submit_unknown (its POST timed out) is never re-POSTed; the webhook (job id in its URL) reconciles it', async () => {
+    const ctx = setup();
+    const { saga, rows, calls, ledger } = ctx;
+    const id = await seedLegacy(ctx, { status: 'submit_unknown', error_code: 'timeout' });
     clock += 3 * 60_000;
     await saga.sweep();
-    expect(calls.submit).toBe(1);
-
-    // …and the webhook, which knows the job by its URL, tells us the request id and the outcome.
+    expect(calls.submit).toBe(0);
+    expect(ledger.state.balance).toBe(985); // still reserved — the request may be running
     await saga.applyEvent({ jobId: id, requestId: 'late-request-123456', status: 'completed', outputUrls: ['https://cdn.higgsfield.ai/x.mp4'] });
     expect(rows.get(id)!.provider_request_id).toBe('late-request-123456');
     expect(status(rows, id)).toBe('finalizing');
   });
 
   test('an unreconciled submit_unknown is refunded after the model’s window — and still never re-POSTed', async () => {
-    const { saga, rows, calls, ledger, alerts } = setup({
-      submit: async () => { throw new ProviderError('network', { ambiguous: true }); },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'submit_unknown', error_code: 'network' });
     clock += 21 * 60_000; // Kling std window is 20 min
-    const rep = await saga.sweep();
+    const rep = await ctx.saga.sweep();
     expect(rep.unknownExpired).toBe(1);
-    expect(status(rows, r.job.id)).toBe('failed');
-    expect(ledger.state.balance).toBe(1000);
-    expect(calls.submit).toBe(1);
-    expect(alerts).toContain('hf_submit_unreconciled');
+    expect(status(ctx.rows, id)).toBe('failed');
+    expect(ctx.ledger.state.balance).toBe(1000);
+    expect(ctx.calls.submit).toBe(0);
+    expect(ctx.alerts).toContain('hf_submit_unreconciled');
+    expect(ctx.sem.held.has(id)).toBe(false);
   });
 
   test('a crash mid-POST (row left `submitting`) is treated as ambiguous, not resubmitted', async () => {
-    const { saga, rows, store, calls } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    await store.patch(r.job.id, { status: 'submitting', provider_request_id: null } as JobPatch);
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'submitting', attempts: 1 });
     clock += 3 * 60_000;
-    const rep = await saga.sweep();
+    const rep = await ctx.saga.sweep();
     expect(rep.submittingToUnknown).toBe(1);
-    expect(status(rows, r.job.id)).toBe('submit_unknown');
-    expect(calls.submit).toBe(1);
+    expect(status(ctx.rows, id)).toBe('submit_unknown');
+    expect(ctx.calls.submit).toBe(0);
   });
 });
 
@@ -343,13 +356,11 @@ describe('a generation POST is never repeated', () => {
 
 describe('refunds pay back exactly what was taken, once', () => {
   test('failed → refunded in full; a duplicate failed event and a racing poll refund nothing more', async () => {
-    const { saga, rows, ledger, sem } = setup({ status: 'failed' });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const id = r.job.id;
-    const req = rows.get(id)!.provider_request_id!;
-    await saga.applyEvent({ jobId: id, requestId: req, status: 'failed', error: 'Generation failed' });
-    await saga.applyEvent({ jobId: id, requestId: req, status: 'failed', error: 'Generation failed' });
+    const ctx = setup({ status: 'failed' });
+    const { saga, rows, ledger, sem } = ctx;
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-fail-01' });
+    await saga.applyEvent({ jobId: id, requestId: 'req-legacy-fail-01', status: 'failed', error: 'Generation failed' });
+    await saga.applyEvent({ jobId: id, requestId: 'req-legacy-fail-01', status: 'failed', error: 'Generation failed' });
     clock += 10 * 60_000;
     await saga.sweep();
     expect(status(rows, id)).toBe('failed');
@@ -360,196 +371,80 @@ describe('refunds pay back exactly what was taken, once', () => {
   });
 
   test('nsfw → refunded, coded content_rejected (the UI says why and that the money came back)', async () => {
-    const { saga, rows, ledger } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    await saga.applyEvent({ jobId: r.job.id, requestId: rows.get(r.job.id)!.provider_request_id!, status: 'nsfw' });
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'nsfw', error_code: 'content_rejected', refund_state: 'done' });
-    expect(ledger.state.balance).toBe(1000);
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-nsfw-1' });
+    await ctx.saga.applyEvent({ jobId: id, requestId: 'req-legacy-nsfw-1', status: 'nsfw' });
+    expect(ctx.rows.get(id)).toMatchObject({ status: 'nsfw', error_code: 'content_rejected', refund_state: 'done' });
+    expect(ctx.ledger.state.balance).toBe(1000);
   });
 
   test('completed with no outputs is a failure, refunded', async () => {
-    const { saga, rows, ledger } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    await saga.applyEvent({ jobId: r.job.id, requestId: rows.get(r.job.id)!.provider_request_id!, status: 'completed', outputUrls: [] });
-    expect(status(rows, r.job.id)).toBe('failed');
-    expect(ledger.state.balance).toBe(1000);
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'in_progress', provider_request_id: 'req-legacy-empty1' });
+    await ctx.saga.applyEvent({ jobId: id, requestId: 'req-legacy-empty1', status: 'completed', outputUrls: [] });
+    expect(status(ctx.rows, id)).toBe('failed');
+    expect(ctx.ledger.state.balance).toBe(1000);
   });
 
-  test('insufficient credits → job failed, provider never called', async () => {
-    const { saga, calls, rows } = setup({}, { balance: 5 });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    expect(r).toMatchObject({ ok: false, code: 'insufficient_credits' });
-    expect(calls.submit).toBe(0);
-    expect([...rows.values()][0]).toMatchObject({ status: 'failed', refund_state: 'nothing_to_refund' });
-  });
-
-  test('a ledger error AFTER the debit committed is still refunded — the ledger, not the error, decides', async () => {
-    const { saga, ledger } = setup();
-    ledger.state.deductMode = 'error-after-commit';
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    expect(r).toMatchObject({ ok: false, code: 'billing_unavailable' });
-    expect(ledger.state.balance).toBe(1000);
+  test('the ledger, not the crash, decides: a row stuck in `reserving` refunds what was debited — and nothing where nothing was', async () => {
+    const ctx = setup();
+    const debited = await seedLegacy(ctx, { status: 'reserving' });
+    const never = await seedLegacy(ctx, { status: 'reserving' }, { debited: false });
+    expect(ctx.ledger.state.balance).toBe(985);
+    clock += 6 * 60_000;
+    const rep = await ctx.saga.sweep();
+    expect(rep.reservingRecovered).toBe(2);
+    expect(ctx.rows.get(debited)).toMatchObject({ status: 'failed', error_code: 'billing_unavailable', refund_state: 'done', refunded_credits: 15 });
+    expect(ctx.rows.get(never)).toMatchObject({ status: 'failed', refund_state: 'nothing_to_refund', refunded_credits: 0 });
+    expect(ctx.ledger.state.balance).toBe(1000);
+    expect(ctx.calls.submit).toBe(0);
   });
 
   test('a refund that fails to land is retried by the sweeper, exactly once when it does', async () => {
-    const { saga, rows, ledger } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
+    const ctx = setup();
+    const { saga, rows, ledger } = ctx;
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-retry1' });
     const realRefund = ledger.port.refundByRef;
     ledger.port.refundByRef = async () => ({ ok: false, refunded: 0, reason: 'error' });
-    await saga.applyEvent({ jobId: r.job.id, requestId: rows.get(r.job.id)!.provider_request_id!, status: 'failed' });
-    expect(rows.get(r.job.id)!.refund_state).toBe('pending');
+    await saga.applyEvent({ jobId: id, requestId: 'req-legacy-retry1', status: 'failed' });
+    expect(rows.get(id)!.refund_state).toBe('pending');
     ledger.port.refundByRef = realRefund;
     await saga.sweep();
     await saga.sweep();
-    expect(rows.get(r.job.id)!.refund_state).toBe('done');
+    expect(rows.get(id)!.refund_state).toBe('done');
     expect(ledger.state.balance).toBe(1000);
   });
 });
 
-/* ─── provider errors ──────────────────────────────────────────────────────────────────────── */
+/* ─── v32: a job still waiting for a slot ──────────────────────────────────────────────────── */
 
-describe('provider errors', () => {
-  test('concurrency 400 → pending (credits kept, slot released), drained by the sweeper later', async () => {
-    let busy = true;
-    const { saga, rows, calls, sem } = setup({
-      submit: async () => {
-        if (busy) throw new ProviderError('concurrency', { httpStatus: 400 });
-        return { requestId: 'req-after-queue-01', status: 'queued' };
-      },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(r.job.status).toBe('pending');
-    expect(sem.held.has(r.job.id)).toBe(false);
-    busy = false;
-    const rep = await saga.sweep();
-    expect(rep.drained).toBe(1);
-    expect(status(rows, r.job.id)).toBe('queued');
-    expect(calls.submit).toBe(2); // the first POST was definitively REJECTED (400), so this is not a repeat
+describe('v32: a legacy job still waiting for a slot is refunded in full, never sent', () => {
+  test('production wiring (no adapter): the sweeper settles every reserved/pending job as a refund — no request leaves, no fallback stands in', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
+    try {
+      const ctx = setup({}, { provider: null });
+      const pending = await seedLegacy(ctx, { status: 'pending' }, { model: 'pro' }); // the old concurrency-400 path left it here
+      const reserved = await seedLegacy(ctx, { status: 'reserved' });
+      expect(ctx.ledger.state.balance).toBe(1000 - 30 - 15);
+      const rep = await ctx.saga.sweep();
+      expect(rep.drained).toBe(2);
+      for (const id of [pending, reserved]) expect(ctx.rows.get(id)).toMatchObject({ status: 'failed', error_code: 'not_configured', refund_state: 'done' });
+      expect(ctx.rows.get(pending)!.model_id).toBe('hf/kling-3-pro-t2v'); // the same-family std fallback did not stand in
+      expect(ctx.ledger.state.balance).toBe(1000);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
-  test('our own semaphore full → pending without a POST at all', async () => {
-    const { saga, calls, rows } = setup({}, { slots: 0 });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(status(rows, r.job.id)).toBe('pending');
-    expect(calls.submit).toBe(0);
-  });
-
-  test('403 (our Higgsfield credits exhausted) → admin alert + full refund', async () => {
-    const { saga, rows, ledger, alerts } = setup({
-      submit: async () => { throw new ProviderError('credits_exhausted', { httpStatus: 403 }); },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(alerts).toContain('hf_credits_exhausted');
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'failed', error_code: 'provider_unavailable' });
-    expect(ledger.state.balance).toBe(1000);
-  });
-
-  test('model unavailable → same-family fallback when it costs no more than was confirmed', async () => {
-    let first = true;
-    const { saga, rows, calls } = setup({
-      submit: async () => {
-        if (first) { first = false; throw new ProviderError('model_unavailable', { httpStatus: 503 }); }
-        return { requestId: 'req-fallback-0001', status: 'queued' };
-      },
-    });
-    // Pro is quoted at 2× → 30 credits; the std fallback costs 15 ≤ 30, so it may stand in.
-    const q = await saga.quote('hf/kling-3-pro-t2v', T2V.params);
-    if (!q.ok) throw new Error('quote failed');
-    const r = await saga.create({ userId: USER, modelId: 'hf/kling-3-pro-t2v', params: T2V.params, confirmedGel: q.price.gel });
-    if (!r.ok) throw new Error('create failed');
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'queued', model_id: 'hf/kling-3-std-t2v' });
-    expect(calls.endpoints).toEqual(['kling-video/v3.0/pro/text-to-video', 'kling-video/v3.0/std/text-to-video']);
-  });
-
-  test('model unavailable with no eligible fallback → refunded', async () => {
-    const { saga, rows, ledger } = setup({
-      submit: async () => { throw new ProviderError('model_unavailable', { httpStatus: 404 }); },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'failed', error_code: 'model_unavailable' });
-    expect(ledger.state.balance).toBe(1000);
-  });
-
-  test('422 validation → refunded as invalid_input', async () => {
-    const { saga, rows, ledger } = setup({
-      submit: async () => { throw new ProviderError('validation', { httpStatus: 422 }); },
-    });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'failed', error_code: 'invalid_input' });
-    expect(ledger.state.balance).toBe(1000);
-  });
-});
-
-/* ─── §7: the prompt the user wrote vs the prompt the model reads ─────────────────────────── */
-
-describe('prompt translation', () => {
-  function withTranslator(translate: (t: string, m: 'image' | 'video') => Promise<string>, script: Script = {}) {
-    const ctx = setup(script);
-    const calls: Array<{ text: string; medium: string }> = [];
-    const saga = createStudioSaga({
-      store: ctx.store,
-      provider: fakeProvider(script).provider,
-      ledger: ctx.ledger.port,
-      semaphore: ctx.sem,
-      copyOutputs: async () => null,
-      fileInLibrary: async () => undefined,
-      webhookUrlFor: () => null,
-      alert: () => undefined,
-      translatePrompt: async (t, m) => { calls.push({ text: t, medium: m }); return translate(t, m); },
-      now: () => clock,
-      newId: () => '00000000-0000-4000-8000-00000000abcd',
-      env: { HF_USD_GEL_RATE: '2.7', HF_GEL_MARGIN: '1.35' } as NodeJS.ProcessEnv,
-    });
-    return { ...ctx, saga, calls };
-  }
-
-  test('the model gets English, the user keeps Georgian, and both are shown', async () => {
-    const t = withTranslator(async () => 'Tbilisi at night, cinematic');
-    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const row = t.rows.get(r.job.id)!;
-    expect(row.input.prompt).toBe('Tbilisi at night, cinematic');
-    expect(row.prompt_original).toBe('თბილისი ღამით, კინემატოგრაფიული');
-    expect(t.calls).toEqual([{ text: 'თბილისი ღამით, კინემატოგრაფიული', medium: 'video' }]);
-    expect(publicJob(row)).toMatchObject({ promptOriginal: 'თბილისი ღამით, კინემატოგრაფიული', promptSent: 'Tbilisi at night, cinematic' });
-  });
-
-  test('live estimates never pay for a translation — only the confirmed create does', async () => {
-    const t = withTranslator(async () => 'x');
-    await t.saga.quote(T2V.modelId, T2V.params);
-    await t.saga.quote(T2V.modelId, T2V.params);
-    await t.saga.create({ userId: USER, ...T2V }); // unconfirmed → no translation either
-    expect(t.calls).toEqual([]);
-  });
-
-  test('a translation the schema refuses (over-long) is dropped — the original is sent, never a truncation', async () => {
-    const t = withTranslator(async () => 'x'.repeat(3000));
-    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(t.rows.get(r.job.id)!.input.prompt).toBe(T2V.params.prompt);
-  });
-
-  test('a translator that throws never blocks a paid generation', async () => {
-    const t = withTranslator(async () => { throw new Error('translator down'); });
-    const r = await t.saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(t.rows.get(r.job.id)!.input.prompt).toBe(T2V.params.prompt);
-  });
-
-  test('images are translated as images', async () => {
-    const t = withTranslator(async () => 'a red apple');
-    const q = await t.saga.quote('hf/soul-2', { prompt: 'წითელი ვაშლი' });
-    if (!q.ok) throw new Error('quote failed');
-    await t.saga.create({ userId: USER, modelId: 'hf/soul-2', params: { prompt: 'წითელი ვაშლი' }, confirmedGel: q.price.gel });
-    expect(t.calls[0]).toEqual({ text: 'წითელი ვაშლი', medium: 'image' });
+  test('cancel before the provider had it → full refund, without asking the provider', async () => {
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'pending' });
+    const c = await ctx.saga.cancel(id, USER);
+    expect(c.ok).toBe(true);
+    expect(ctx.calls.cancel).toBe(0);
+    expect(ctx.rows.get(id)).toMatchObject({ status: 'canceled', refund_state: 'done' });
+    expect(ctx.ledger.state.balance).toBe(1000);
   });
 });
 
@@ -557,51 +452,56 @@ describe('prompt translation', () => {
 
 describe('events and cancel', () => {
   test('an event naming a different request id for the job is ignored', async () => {
-    const { saga, rows, ledger, alerts } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const res = await saga.applyEvent({ jobId: r.job.id, requestId: 'someone-elses-request', status: 'failed' });
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-mine-01' });
+    const res = await ctx.saga.applyEvent({ jobId: id, requestId: 'someone-elses-request', status: 'failed' });
     expect(res).toMatchObject({ applied: false, reason: 'request_mismatch' });
-    expect(status(rows, r.job.id)).toBe('queued');
-    expect(ledger.state.balance).toBe(985);
-    expect(alerts).toContain('hf_event_request_mismatch');
+    expect(status(ctx.rows, id)).toBe('queued');
+    expect(ctx.ledger.state.balance).toBe(985);
+    expect(ctx.alerts).toContain('hf_event_request_mismatch');
   });
 
-  test('cancel while queued at the provider → provider cancel + full refund', async () => {
-    const { saga, rows, ledger, calls } = setup({ cancel: true });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    const c = await saga.cancel(r.job.id, USER);
-    expect(c.ok).toBe(true);
-    expect(calls.cancel).toBe(1);
-    expect(rows.get(r.job.id)).toMatchObject({ status: 'canceled', refund_state: 'done' });
-    expect(ledger.state.balance).toBe(1000);
+  test('cancel while queued at the provider: refunded in full where the provider confirms it; refused (credits kept for the webhook) where production has no adapter to ask', async () => {
+    const withAdapter = setup({ cancel: true });
+    const a = await seedLegacy(withAdapter, { status: 'queued', provider_request_id: 'req-legacy-cancel1' });
+    expect((await withAdapter.saga.cancel(a, USER)).ok).toBe(true);
+    expect(withAdapter.calls.cancel).toBe(1);
+    expect(withAdapter.rows.get(a)).toMatchObject({ status: 'canceled', refund_state: 'done' });
+    expect(withAdapter.ledger.state.balance).toBe(1000);
+
+    const production = setup({}, { provider: null });
+    const b = await seedLegacy(production, { status: 'queued', provider_request_id: 'req-legacy-cancel2' });
+    expect(await production.saga.cancel(b, USER)).toEqual({ ok: false, code: 'cannot_cancel' });
+    expect(status(production.rows, b)).toBe('queued');
+    expect(production.ledger.state.balance).toBe(985);
   });
 
   test('cancel once the provider started → refused, nothing refunded', async () => {
-    const { saga, rows, ledger } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    await saga.applyEvent({ jobId: r.job.id, requestId: rows.get(r.job.id)!.provider_request_id!, status: 'in_progress' });
-    expect(await saga.cancel(r.job.id, USER)).toEqual({ ok: false, code: 'cannot_cancel' });
-    expect(ledger.state.balance).toBe(985);
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'in_progress', provider_request_id: 'req-legacy-start1' });
+    expect(await ctx.saga.cancel(id, USER)).toEqual({ ok: false, code: 'cannot_cancel' });
+    expect(ctx.ledger.state.balance).toBe(985);
   });
 
   test('another user cannot cancel (or even see) my job', async () => {
-    const { saga } = setup();
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
-    expect(await saga.cancel(r.job.id, 'intruder')).toEqual({ ok: false, code: 'not_found' });
+    const ctx = setup();
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-other1' });
+    expect(await ctx.saga.cancel(id, 'intruder')).toEqual({ ok: false, code: 'not_found' });
   });
 
-  test('the sweeper polls a job whose webhook never came, and settles it', async () => {
-    const { saga, rows, calls } = setup({ status: 'completed', outputs: ['https://cdn.higgsfield.ai/p.mp4'] });
-    const r = await saga.create({ userId: USER, ...T2V, confirmedGel: PRICE_GEL });
-    if (!r.ok) throw new Error('create failed');
+  test('the sweeper polls a job whose webhook never came, and settles it; with no adapter (production) it polls nothing', async () => {
+    const ctx = setup({ status: 'completed', outputs: ['https://cdn.higgsfield.ai/p.mp4'] });
+    const id = await seedLegacy(ctx, { status: 'queued', provider_request_id: 'req-legacy-poll01' });
     clock += 5 * 60_000;
-    const rep = await saga.sweep();
-    expect(calls.status).toBe(1);
+    const rep = await ctx.saga.sweep();
+    expect(ctx.calls.status).toBe(1);
     expect(rep.finalized).toBe(1);
-    expect(status(rows, r.job.id)).toBe('completed');
+    expect(status(ctx.rows, id)).toBe('completed');
+
+    const production = setup({}, { provider: null });
+    const p = await seedLegacy(production, { status: 'queued', provider_request_id: 'req-legacy-poll02' });
+    clock += 5 * 60_000;
+    expect((await production.saga.sweep()).polled).toBe(0);
+    expect(status(production.rows, p)).toBe('queued');
   });
 });
