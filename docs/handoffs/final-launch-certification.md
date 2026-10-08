@@ -136,7 +136,7 @@ refused before any money is spent. 121 tests (`npx jest lib/video/director`), mu
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
 | Wired into the product's video flow | **MISSING**: the studio's video tool still uses the existing engine path, not the director |
 | Live Veo run | BLOCKED_OWNER: waits on Part 0 AUTH VERIFIED; then the owner-approved one-clip smoke test (≈ $0.40) |
-| Byte-for-byte on the wire | PARTIAL: `lib/veo/payload.ts` trims prompts, so the provider refuses a prompt with leading/trailing whitespace instead of sending it changed |
+| Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt |
 
 ## K. Model Catalog
 
