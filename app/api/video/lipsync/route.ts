@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
         const buf = Buffer.from(await r.arrayBuffer());
         if (buf.byteLength && buf.byteLength <= 80 * 1024 * 1024) {
           const path = `lipsync/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-          const signed = await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800);
+          const signed = await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800);
           if (signed) hosted = signed;
         }
       }

@@ -62,7 +62,7 @@ const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt'
 async function hostMp4(buf: Buffer, tag: string): Promise<string | null> {
   if (buf.byteLength < 1_024) return null;
   const path = `remix/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-  return (await uploadBufferAndSign('uploads', path, buf, 'video/mp4', 604_800)) ?? null;
+  return (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800)) ?? null;
 }
 
 /**

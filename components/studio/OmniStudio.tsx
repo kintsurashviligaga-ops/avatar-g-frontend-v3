@@ -86,6 +86,7 @@ const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m)
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
@@ -220,14 +221,8 @@ function busyToastMessage(locale: Lang): string {
 // re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
 async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
   try {
-    const signRes = await fetch('/api/upload/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ contentType: mimeType }),
-    });
-    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
-    if (!signRes.ok || !sign.path || !sign.token) return null;
+    // The bytes first, so the sign call can declare their size and real type: /api/upload/sign and the bucket take
+    // images, video and audio up to 50 MB only (lib/uploads/policy).
     let blob: Blob;
     try {
       blob = await fetchRehostSource(dataUrl, mimeType);
@@ -235,8 +230,18 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
       if (e instanceof RehostSourceError) onBadSource?.(e);
       return null;
     }
+    const contentType = allowedUploadMime(mimeType) ?? allowedUploadMime(blob.type);
+    if (!contentType || blob.size > UPLOAD_MAX_BYTES) return null;
+    const signRes = await fetch('/api/upload/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ contentType, size: blob.size }),
+    });
+    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string; contentType?: string };
+    if (!signRes.ok || !sign.path || !sign.token) return null;
     const sb = createBrowserClient();
-    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
+    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: sign.contentType || contentType });
     if (error) return null;
     // Return the storage PATH — the consumer route signs a readable URL once the
     // object exists (it can't be signed before the upload lands).

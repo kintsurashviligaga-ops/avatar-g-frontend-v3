@@ -532,7 +532,7 @@ export async function overlayMasterUrl(videoUrl: string, m: MarketingOverlay): P
     if (!res.ok) return null;
     const out = await readFile(outPath);
     const path = `films/overlay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, out.toString('base64'), 'video/mp4', 604_800)) ?? null;
+    return (await uploadAndSign('renders', path, out.toString('base64'), 'video/mp4', 604_800)) ?? null;
   } catch {
     return null;
   } finally {

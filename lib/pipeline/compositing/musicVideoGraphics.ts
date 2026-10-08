@@ -165,7 +165,7 @@ export async function enhanceMusicVideoGraphics(videoUrl: string, opts: MusicVid
     const buf = await readFile(outPath);
     if (buf.byteLength < 4096) return null;
     const path = `films/mvgfx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
   } catch (err) {
     console.warn('[mv-graphics] error:', err instanceof Error ? err.message : err);
     return null;

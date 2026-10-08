@@ -72,7 +72,7 @@ export async function prepareDatasetZip(voiceUrl: string, name: string): Promise
     for (const f of files) zip.file(`dataset/${name}/${f}`, await readFile(join(outDir, f)));
     const zipBuf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
     const path = `rvc-datasets/${Date.now()}-${name}.zip`;
-    return (await uploadAndSign('uploads', path, zipBuf.toString('base64'), 'application/zip', 3600)) || null;
+    return (await uploadAndSign('renders', path, zipBuf.toString('base64'), 'application/zip', 3600)) || null;
   } catch {
     return null;
   } finally {
@@ -117,7 +117,7 @@ export async function rehostModel(modelUrl: string): Promise<string> {
     const buf = Buffer.from(await r.arrayBuffer());
     if (!buf.byteLength || buf.byteLength > 200 * 1024 * 1024) return modelUrl;
     const path = `rvc-models/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.zip`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'application/zip', 60 * 60 * 24 * 365)) || modelUrl;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'application/zip', 60 * 60 * 24 * 365)) || modelUrl;
   } catch {
     return modelUrl;
   }

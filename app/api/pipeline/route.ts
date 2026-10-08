@@ -347,7 +347,7 @@ async function rehostHeygenVideo(providerUrl: string): Promise<string> {
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.byteLength < 1024 || buf.byteLength > 80 * 1024 * 1024) return providerUrl;
     const path = `avatar/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) || providerUrl;
   } catch {
     return providerUrl;
   }

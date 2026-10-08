@@ -45,7 +45,7 @@ function bin(): string | null {
 async function host(buf: Buffer, tag: string, ext: 'mp4' | 'm4a', contentType: string): Promise<string | null> {
   if (buf.byteLength < 512) return null;
   const path = `edits/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  return (await uploadBufferAndSign('uploads', path, buf, contentType, WEEK_SEC)) ?? null;
+  return (await uploadBufferAndSign('renders', path, buf, contentType, WEEK_SEC)) ?? null;
 }
 
 /** Common libx264 encode tail — uniform, faststart, frame-precise (re-encode, not stream-copy). */

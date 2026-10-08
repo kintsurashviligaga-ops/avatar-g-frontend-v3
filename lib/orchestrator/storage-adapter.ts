@@ -11,8 +11,14 @@
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { isTwinBucket } from '@/lib/avatar/twinStorage';
+import { storageContentType } from '@/lib/uploads/policy';
 
 export const SIGNED_URL_TTL_SEC = 900; // 15 minutes
+
+/** The bucket browsers upload into (UPLOAD_BUCKET, default `uploads`) — capped at 50 MB, media types only. */
+export function isUserUploadBucket(bucket: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return bucket === ((env.UPLOAD_BUCKET && env.UPLOAD_BUCKET.trim()) || 'uploads');
+}
 
 function client(): ReturnType<typeof createServiceRoleClient> | null {
   try {
@@ -336,7 +342,7 @@ export async function uploadAndSign(
   await ensureBucket(sb as unknown as BucketApi, bucket);
   try {
     const bytes = Buffer.from(base64.includes(',') ? base64.split(',')[1] ?? '' : base64, 'base64');
-    const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType, upsert: true });
+    const { error } = await sb.storage.from(bucket).upload(path, bytes, { contentType: storageContentType(contentType, path), upsert: true });
     if (error) {
       // eslint-disable-next-line no-console
       console.warn(`[storage] upload to ${bucket}/${path} failed:`, error.message);
@@ -381,10 +387,11 @@ export async function uploadBufferAndSign(
   // same hang class the assemble clip-downloads were hardened against. On trip we
   // fall through to the retry / null so the route's saga can compensate.
   const UPLOAD_TIMEOUT_MS = 90_000;
+  const type = storageContentType(contentType, path);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { error } = await Promise.race([
-        sb.storage.from(bucket).upload(path, buffer, { contentType, upsert: true }),
+        sb.storage.from(bucket).upload(path, buffer, { contentType: type, upsert: true }),
         new Promise<{ error: { message: string } }>((resolve) =>
           setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS)),
       ]);
@@ -395,7 +402,9 @@ export async function uploadBufferAndSign(
       // fileSizeLimit predates large video masters rejects them for size. Raise
       // the cap once and let the next attempt retry. Fail-open: a perms error just
       // falls through to null and the saga compensates.
-      if (/maximum allowed size|exceeded|too large|payload too large/i.test(error.message)) {
+      // ⚠️ NEVER the user-upload bucket: its 50 MB cap is deliberate (lib/uploads/policy, migration 20261008a), and
+      // raising it here would quietly undo that for every signed browser upload. Server renders belong in `renders`.
+      if (/maximum allowed size|exceeded|too large|payload too large/i.test(error.message) && !isUserUploadBucket(bucket)) {
         try {
           await sb.storage.updateBucket(bucket, { public: false, fileSizeLimit: LARGE_FILE_LIMIT });
           // eslint-disable-next-line no-console

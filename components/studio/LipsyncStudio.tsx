@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
+import { storageContentType } from '@/lib/uploads/policy';
 import { UploadCloud, Film, Music2, Wand2, Loader2, X, AlertTriangle } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { describeServiceError, describeGenerationFailure } from './ui/serviceError';
@@ -125,7 +126,9 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
     try {
       const res = await fetch('/api/upload', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataUrl: p.dataUrl, contentType: p.type }), credentials: 'include',
+        // Typed from the file name when the browser left `type` empty (.mov / .mkv): /api/upload only takes
+        // images, video and audio, and an untyped file would otherwise be refused as octet-stream.
+        body: JSON.stringify({ dataUrl: p.dataUrl, contentType: storageContentType(p.type, p.name) }), credentials: 'include',
       });
       // /api/upload is auth-gated: a logged-out user gets 401, which previously
       // surfaced only as a generic "lip-sync failed". Distinguish it so we can

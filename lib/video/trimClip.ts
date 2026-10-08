@@ -41,7 +41,7 @@ export async function trimClip(videoUrl: string, startSec: number, durationSec: 
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
     const path = `films/heyseg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[trim] failed (keeping the LTX clip for this scene):', err instanceof Error ? err.message : err);

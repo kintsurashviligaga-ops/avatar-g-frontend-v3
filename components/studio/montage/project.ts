@@ -43,7 +43,7 @@ export interface MediaSource {
   /** Localized upload failure, shown on the clip. */
   error?: string;
   /** Why it failed: 'auth' is fixed by signing in, not by changing the file. */
-  errorKind?: 'auth' | 'rate' | 'too-large' | 'fail';
+  errorKind?: 'auth' | 'rate' | 'too-large' | 'type' | 'fail';
   /** Source length in seconds; 0 when the browser could not decode it (the server measures those). */
   durationSec: number;
 }
