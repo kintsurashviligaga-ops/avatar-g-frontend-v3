@@ -61,7 +61,7 @@ MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus 
           the myavatar.ge endpoint is in Live mode, so the owner adds the two events. Schema drift found: the code calls
           124 table names that do not exist in Production (certification §O).
 PHASE CHECKLIST:
-◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
+✓ Part 0: Phase 0 (GCP) — INFERENCE VERIFIED (Veo) 2026-10-08 15:49 UTC; CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
           preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
           bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
@@ -70,18 +70,12 @@ PHASE CHECKLIST:
           impersonation, bucket list, signBlob; free). Paid test approved by owner 11:47 UTC: T2 PROVEN
           11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11; Cloud
           Monitoring: aiplatform GenerateContent 200×3/400×1, generativelanguage 0);
-          T1 Veo: owner pressed /ka/admin/veo-smoke 14:45:29 UTC; Vertex accepted the submit via WIF (log "[veo] submit
-          transport=vertex … → ok", aiplatform PredictLongRunning 200 from SA myavatar-veo), then the operation FAILED
-          "Veo 3 prompt enhancement cannot be disabled" (op 71e35314-…): lib/veo/payload.ts sent enhancePrompt:false, so every
-          Vertex Veo render would fail. Fix 75eef69 (PR #43), cherry-picked to the launch-certification branch.
-          T1 retry: INFERENCE VERIFIED (Veo) 2026-10-08 15:49 UTC via WIF on the PR #43 Preview (75eef69): submit 15:48:21,
-          veo-3.1-fast-generate-001, 4 s, 720p, op fbe5ed00-…; done, no error, raiMediaFilteredCount 0; MP4 in
-          gs://myavatar-veo-outputs (638,497 bytes, h264 1280x720 24 fps + AAC, 4.01 s, frame matches the prompt). Cloud
-          Monitoring: PredictLongRunning from SA myavatar-veo only; the AI Studio key unused. ≈ $0.40. The two failed ops
-          produced no video (Billing confirms they are unbilled). Gemini text on Vertex from the Preview runtime: AUTH
-          VERIFIED 18:13 UTC (Part 2 A2).
-          Credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
-          No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
+          T1 Veo INFERENCE VERIFIED 15:49 UTC on the PR #43 Preview (deployment 75eef69): operation fbe5ed00 done, no RAI
+          filter, gs://myavatar-veo-outputs/veo/admin-veo-smoke-1791474503054/…/sample_0.mp4 (4.01 s h264 1280x720 + AAC,
+          638,497 B), PredictLongRunning 200 as the myavatar-veo SA (WIF, no key), ≈ $0.40. Presses at 14:45 and 14:52
+          failed on our enhancePrompt=false payload (no video); fixed in 75eef69. Gemini on Vertex from the Preview runtime:
+          AUTH VERIFIED 18:13, INFERENCE VERIFIED 18:28 (Master Task thread). Spend ≈ $0.51 in all (inferred);
+          credit coverage (owner item 7) BLOCKED_OWNER until the Billing → Reports/Credits photo, from ~2026-10-09 16:00 UTC.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
           and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
           guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
@@ -124,11 +118,10 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-· ~~STOP-1~~ CLEARED 2026-10-08 15:49Z (Veo INFERENCE VERIFIED, see Part 0). Was: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
-  with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
-  code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once more, on the Preview build
-  that carries 75eef69 (≈ $0.40, approved 11:47; the first press failed on enhancePrompt:false and produced no clip).
-  AUTH itself is already verified (build log). Production env not yet.
+· STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
+  Production is a separate owner decision (env + deploy).
+· Part 0 item 7 (BLOCKED_OWNER): owner sends a photo of Billing → Reports (project gen-lang-client-0671348730, group by SKU)
+  and Billing → Credits from ~2026-10-09 16:00 UTC; expected Subtotal ≈ $0 and credit ≈ $299.49.
   scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
 · Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
   - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,
