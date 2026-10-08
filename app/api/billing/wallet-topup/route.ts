@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         cancelUrl: `${origin}/dashboard?topup=canceled`,
       });
       return NextResponse.json({ url });
-    } catch (e) {
+    } catch {
       // Most commonly: the Stripe account does not support GEL settlement.
       return NextResponse.json(
         { error: 'gel_unsupported', message: 'wallet top-up failed' },

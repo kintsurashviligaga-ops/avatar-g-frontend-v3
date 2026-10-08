@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
         metadata: { is_founder_verification: 'true', target_ledger: 'fiat_gel' },
       });
       return NextResponse.json({ url, amountGel: FOUNDER_VERIFICATION_GEL });
-    } catch (e) {
+    } catch {
       return NextResponse.json(
         { error: 'gel_unsupported', message: 'founder verification failed' },
         { status: 502 },

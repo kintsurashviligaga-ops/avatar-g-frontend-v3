@@ -2,9 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-  ArrowUpRight,
   CalendarDays,
-  Check,
   ChevronRight,
   HelpCircle,
   Clock3,
@@ -12,12 +10,9 @@ import {
   ExternalLink,
   Info,
   KeyRound,
-  ListFilter,
   Play,
-  RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
   Terminal,
   X,
 } from 'lucide-react';
@@ -184,7 +179,7 @@ export default function CalendarLabPage() {
               <div className="flex items-center gap-2"><Terminal className="h-4 w-4 text-cyan-300" /><span className="text-sm font-semibold text-white">Request used for this test</span></div>
               <button onClick={handleCopy} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-400 transition hover:border-cyan-300/30 hover:text-white"><Copy className="h-3.5 w-3.5" />{copied ? 'Copied' : 'Copy JSON'}</button>
             </div>
-            <pre className="overflow-x-auto p-5 text-xs leading-6 text-slate-300"><code><span className="text-slate-600">// google_calendar_search_events</span>{'\n'}{requestBody}</code></pre>
+            <pre className="overflow-x-auto p-5 text-xs leading-6 text-slate-300"><code><span className="text-slate-600">{'// google_calendar_search_events'}</span>{'\n'}{requestBody}</code></pre>
           </div>
 
           <div className="rounded-3xl border border-white/[0.09] bg-white/[0.03] p-5">

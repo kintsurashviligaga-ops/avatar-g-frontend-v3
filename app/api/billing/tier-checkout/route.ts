@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         metadata: { user_id: user.id, tier_id: tier.id, credits: String(tier.creditsIncluded) },
       });
       return NextResponse.json({ url });
-    } catch (e) {
+    } catch {
       // Most commonly: the Stripe account does not support USD settlement.
       return NextResponse.json(
         { error: 'usd_unsupported', message: 'tier checkout failed' },
