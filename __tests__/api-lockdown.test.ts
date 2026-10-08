@@ -141,6 +141,8 @@ const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
   'app/api/genjutsu/capabilities/route.ts': 'VFX open/soon flags (env + credential-PRESENCE reads only: it builds no request and calls no provider); coarse open|soon on the wire',
   'app/api/ai/music/engines/route.ts': 'music engine availability (env presence checks + the circuit-breaker flags), booleans only, no provider call — IP READ bucket',
   'app/api/studio/catalogue/route.ts': 'model-picker availability: ids + yes/no + a reason word from env / flags / credential PRESENCE (hfAuthHeaderFromEnv builds no request) and the music breakers; no provider call — IP READ bucket',
+  'app/api/preview/google-check/route.ts':
+    'Google transport proof on a Vercel PREVIEW only (404 and no call elsewhere): countTokens / models.list, which generate and bill nothing; statuses only on the wire; one run per 5 min per instance',
 };
 
 const ROUTES = FILES.filter((f) => /^app\/api\/.+\/route\.[jt]sx?$/.test(rel(f)));
