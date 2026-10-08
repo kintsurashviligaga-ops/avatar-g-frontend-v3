@@ -72,7 +72,7 @@ budget-guarded (PROVEN, unit: `app/api/voice/live/route.test.ts`).
 | Mic → model → speech | BUILT_NOT_PROVEN | live-verified once on 2026-09-30 per the route header; E2E `tests/live-voice-e2e.spec.ts` mocks Google WS (passes locally) |
 | Same context, text → voice | **BUILT_NOT_PROVEN (fixed this run)** | the mint now carries the chat session id; the route loads the owner's newest turns into a bounded, delimited history block (`lib/voice/liveThread.ts`, 11 + 5 + 1 tests, mutation-checked). Unverified live: depends on `chat_sessions.session_id` existing in Production (migration `20260801_durable_chat_history.sql`) |
 | Same context, voice → text | BUILT_NOT_PROVEN | each finished voice turn is appended to the thread and saved |
-| Invoke Agent G tools | {{LIVE_AGENT}} |
+| Invoke Agent G tools | **BUILT_NOT_PROVEN (fixed this run)** | new Live function `ask_agent_g` hands a research task to Agent G's loop (`POST /api/agent/run`, web_search + scrape_webpage, 4 steps, 45 s budget, 60 s client timeout) and returns the answer, its sources and an untrusted-data note; failures map to a sentence the model repeats (219958d2; 55 suites / 947 tests in voice + agent, mutation-checked). Unverified live: Google accepting the extra function in the token lock, and the call staying open while it waits |
 | Search | BUILT_NOT_PROVEN | Google Search grounding locked into the token |
 | Web read | PROVEN (unit) | `/api/voice/web-read`, SSRF rules in `lib/web/readPage.test.ts` |
 | Browser control | **MISSING** | see H |
