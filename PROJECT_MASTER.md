@@ -27,14 +27,20 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
-CURRENT PHASE: Part 1 (Audit + Foundation) — formally restarted 2026-10-08; Master Task §60 step 7
-CURRENT STATUS: In progress
+CURRENT PHASE: Part 1 (Audit + Foundation) — Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
+CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
 LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 572d5fac); draft PR #42
-NEXT ACTION: §60 steps 8–9 write-up (docs/handoffs/service-taxonomy.md), codex fix branch, full checks; then §60 step 14+
-MASTER TASK §60: steps 1–7 done · 10 ServiceCatalog (lib/catalog/services.ts) · 11 sidebar/rail/+ sheet/Plugins/services
-          read it (lib/catalog/nav.ts) · 12 Agent G routes chat requests via the catalog (lib/catalog/agentRoute.ts) ·
-          13 /hub and /workspace redirect to the studio, fake-stat shells deleted — all BUILT_NOT_PROVEN (unit-tested)
+LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
+NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Part 0 AUTH + Veo smoke, apply migration
+          20261008a, Stripe refund/dispute events, pricing table, browser infra, provider migration plan); then Part 2
+MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus read it · 12 Agent G catalog routing ·
+          13 /hub and /workspace redirect, fake stats deleted · 15 Live call carries the text chat; ask_agent_g hands
+          research to Agent G · 16 SSRF guard on every caller-chosen fetch; library re-sign, upload MIME/size, RLS migration
+          (not applied) · 17 V1–V6 director domain layer (not wired) · 18 Stripe refund/dispute reversal, ledger fail-closed
+          in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
+          from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
+          build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
+          production (nothing deployed); see the certification for every label.
 PHASE CHECKLIST:
 ◐ Part 0: Phase 0 (GCP) — CONFIGURED (read-back proven), owner-approved apply 2026-10-08 11:00 UTC.
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
@@ -50,7 +56,7 @@ PHASE CHECKLIST:
           guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
           Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
           script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
-◐ Part 1: Audit + Foundation — no part-1-report.md was ever written; restarted 2026-10-08.
+◐ Part 1: Audit + Foundation — restarted 2026-10-08; §60 certification done (final-launch-certification.md), not launch ready.
 ◐ Part 2: Vertex Migration — WIP ONLY on unmerged origin/codex/vertex-ai-migration (503829dc, 2026-10-06),
           self-reported 25 failing suites, not deployable. Cannot complete before Part 0 (STOP-1).
 □ Part 3: Video Pipeline Rebuild + Browser + Security + Tests

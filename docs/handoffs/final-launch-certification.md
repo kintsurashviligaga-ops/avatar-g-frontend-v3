@@ -6,8 +6,6 @@ Labels: **PROVEN** (a check that ran proves it) · **BUILT_NOT_PROVEN** (code + 
 "Unit" proof means the code path is tested with providers mocked; it is never a claim about production.
 Nothing here was run against a paid provider except the owner-approved GCP Part 0 T2 test (≈ $0.11, see L).
 
-> **DRAFT.** Fields in `{{…}}` are filled after the final retest on the final HEAD; until then this file is not the certification.
-
 Step 26 is honoured: **nothing was promoted to production, merged to main, or applied to the database.**
 
 ---
@@ -17,7 +15,7 @@ Step 26 is honoured: **nothing was promoted to production, merged to main, or ap
 | Item | Value |
 |---|---|
 | Branch | `claude/launch-certification-wmvitt` (draft PR #42, base `main`) |
-| SHA | {{SHA}} |
+| SHA | Code verified at `70a5fe88` (2026-10-08 13:13 UTC); later commits on the branch change documentation only |
 | `main` | `572d5fac` (2026-10-03) |
 | Production | https://myavatar.ge serves an older deployment (`dpl_ANGLbd7AGjDQyYHCGk5UJQsrp2Rr`, read 2026-10-08) built from `main`; none of this branch is live |
 | Preview | Vercel builds a Preview per push of PR #42 (Vercel Preview Comments check green). PR #43 (GCP Part 0) carries the Vertex WIF env, Preview only |
@@ -26,7 +24,19 @@ Step 26 is honoured: **nothing was promoted to production, merged to main, or ap
 
 ## B. Build
 
-{{BUILD}}
+All run on `70a5fe88` in the cloud sandbox, 2026-10-08 (logs not committed; numbers copied from the runs).
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit -p tsconfig.json` | exit 0, no errors |
+| `npx next lint` | exit 0: 0 errors, 35 warnings (pre-existing classes: `jsx-a11y` aria props, hook deps) |
+| `npx jest --forceExit` (full) | **643 / 643 suites, 10,294 passed, 3 skipped, 0 failed** (baseline on `main` at the start: 613 suites, 9,784 passed) |
+| `npm run build` with CI's dummy env | exit 0, "Compiled successfully"; shared first-load JS 89 kB; `/[locale]` 306 kB first load |
+| Playwright, all 27 local specs (251 tests), fresh `next dev`, 3 workers | 239 passed, 10 skipped (8 pre-existing `test.fixme`, screenshot-only, env-gated), 2 failed under load: `landing.spec.ts:116` (dev server reset the connection, ECONNRESET) and `swarm-pipelines.spec.ts:28` (60 s timeout across six cold route compiles). **Both pass when re-run alone on a fresh server (4 / 4).** |
+| GitHub CI on PR #42 | green on every pushed head through `70a5fe88` |
+| HawkScan DAST | not run: `HAWK_API_KEY` is not set |
+
+Not proven by any of the above: anything against real providers, real Supabase, real Stripe, or a real phone. Those are in Y.
 
 ## C. Services architecture
 
@@ -220,7 +230,7 @@ Screen-by-screen audit needs the running app (not done).
 ## T. Mobile
 
 Viewport `viewportFit: cover`, safe-area insets, 16 px inputs, 44 px composer targets (one 36 px exception): BUILT_NOT_PROVEN.
-Phone-viewport E2E specs (375×812) pass locally ({{E2E_PHONE}}). Real devices: BLOCKED_OWNER. Pinch-zoom: `maximumScale: 1` and `userScalable: false` were removed from the viewport (WCAG 1.4.4, fixed this run). The
+Phone-viewport E2E specs (375×812) pass locally (78 / 78 phone-titled tests in the full run on `70a5fe88`). Real devices: BLOCKED_OWNER. Pinch-zoom: `maximumScale: 1` and `userScalable: false` were removed from the viewport (WCAG 1.4.4, fixed this run). The
 owner's Phase 39 directive (no layout zoom when a text field is focused) still holds through the 16 px input rule in
 `globals.css`, which is what prevents that zoom on iOS; Android never zooms on focus.
 
@@ -270,6 +280,22 @@ Only the owner can do these. Nothing below was done by Claude.
 | 13 | Real-device pass (iPhone, Android) with Live voice: Google accepting `ask_agent_g`, mic → speech, same-context calls | E, T |
 | 14 | Credit coverage check in Cloud Billing → Credits ≈ 24 h after the T2 test | L |
 | 15 | Production deploy approval (step 26: nothing was promoted) | — |
+
+### §55 launch blockers still open on this branch
+
+Any one of these means NO LAUNCH.
+
+| §55 blocker | Where it stands |
+|---|---|
+| Auth blocking normal flow | Email OTP sign-in, sign-up and reset FAILED in Production (O); fix on PR #43, not deployed |
+| Wrong provider / silent fallback | 10 of 20 usable services still run on forbidden providers; `/api/pipeline` falls back to Anthropic / OpenAI (L) |
+| Browser nonfunctional | No browser control exists (H) |
+| RLS failure | 9 tables open until migration `20261008a` is applied (O) |
+| Broken V1–V6 | Domain layer built and unit-proven; not wired into the product, no live Veo run (J) |
+| Wrong pricing / billing inconsistency | Two contradictory pack tables (M) |
+| Live Voice unable to invoke Agent G tools | Built (`ask_agent_g`), not proven on a live call (E) |
+| Unresolved P1 | Admin panel: `run-migration` executes SQL on Production behind a header key only; 3 inconsistent admin guards (Admin Panel audit) |
+| Fake capability claims | Fixed on this branch (`/hub` fake stats deleted, sitemap from the catalog), still live in Production until a deploy |
 
 ---
 
