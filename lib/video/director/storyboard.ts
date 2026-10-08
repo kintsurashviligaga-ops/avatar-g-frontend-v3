@@ -261,6 +261,23 @@ export function isFrozen(value: unknown): value is FrozenStoryboard {
 }
 
 /**
+ * A frozen storyboard read back from OUR OWN storage (a run row the server wrote from freeze()'s output). JSON loses
+ * the object freeze, so the brand, the approval and every rule are checked again and the graph is frozen anew with its
+ * original frozenAt. Never call this on a client's body: the client sends drafts, and only freeze() approves them.
+ */
+export function restoreFrozen(stored: unknown): FrozenStoryboard {
+  const problems: string[] = [];
+  if (!isRecord(stored)) throw new StoryboardValidationError(['not a stored storyboard'], 'cannot restore the frozen storyboard');
+  if (stored.__frozen !== true || typeof stored.frozenAt !== 'string' || !stored.frozenAt) problems.push('it was never frozen');
+  if (stored.approvedByUser !== true) problems.push('the user has not approved this storyboard');
+  const validation = validateStoryboard(stored);
+  if (!validation.ok) problems.push(...validation.problems);
+  if (problems.length > 0) throw new StoryboardValidationError(problems, 'cannot restore the frozen storyboard');
+  const frozen: FrozenStoryboard = { ...copyStoryboard(stored as unknown as Storyboard), __frozen: true, frozenAt: stored.frozenAt as string };
+  return deepFreeze(frozen);
+}
+
+/**
  * The "edit" decision (V2): a frozen storyboard is never changed, so an edit starts from a new, unapproved draft copy.
  * The user edits it, approves it, and freezes it again — which is a new FrozenStoryboard with its own frozenAt.
  */

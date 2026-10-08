@@ -135,7 +135,7 @@ refused before any money is spent. 121 tests (`npx jest lib/video/director`), mu
 |---|---|
 | V1–V6 in the domain layer | BUILT_NOT_PROVEN (unit) |
 | Wired into the product's video flow | **MISSING**: the studio's video tool still uses the existing engine path, not the director |
-| Live Veo run | BLOCKED_OWNER: waits on Part 0 AUTH VERIFIED; then the owner-approved one-clip smoke test (≈ $0.40) |
+| Live Veo run | BLOCKED_OWNER: Part 0 is AUTH VERIFIED for the Preview identity (build log of e222e38, 14:21:20 UTC: `mode:wif token:ok bucket:ok sign:ok`); the owner-approved one-clip smoke test (≈ $0.40) waits on the owner's sign-in on the PR #43 alias |
 | Byte-for-byte on the wire | BUILT_NOT_PROVEN (unit): the director's requests carry `verbatimPrompt: true`, so `lib/veo/payload.ts` sends the prompt and negative prompt exactly as given on both transports (commit `a24bb320`; other callers keep the trim). The preflight still refuses any wire that would alter a prompt |
 
 ## K. Model Catalog
@@ -267,7 +267,7 @@ Only the owner can do these. Nothing below was done by Claude.
 |---|---|---|
 | 1 | Deploy the OTP sign-in fix (PR #43; also on this branch) after review: email sign-in, sign-up and password reset are FAILED in Production | O, §55 "auth blocking normal flow" |
 | 1a | Verify the `myavatar.ge` domain in the Resend account whose key is `RESEND_API_KEY` (resend.com/domains → Add Domain → add the TXT / MX records at the DNS host → Verify). Until then every email code, sign-up and password reset is refused by Resend (403), on Preview and in Production | O, §55 "auth blocking normal flow" |
-| 2 | Part 0 AUTH probe on the PR #43 Preview (password sign-in, open `/api/admin/provider-probe`), then press the Veo smoke button once (approved clip, ≈ $0.40) | L, VIDEO V1-V6 |
+| 2 | Sign in as admin on the PR #43 Preview alias (password, or Google once that exact alias + `/**` is in Supabase Redirect URLs), then press the Veo smoke button on `/ka/admin/veo-smoke` once (approved clip, ≈ $0.40). AUTH itself is already verified from the build log | L, VIDEO V1-V6 |
 | 3 | Apply `supabase/migrations/20261008a_rls_internal_tables_and_upload_limits.sql`, then run the Supabase security advisor | O (RLS), P (uploads) |
 | 4 | Confirm the Supabase global upload limit is ≥ 50 MB; if `UPLOAD_BUCKET` is not `uploads`, apply the migration's bucket section to it | P |
 | 5 | Subscribe the Stripe webhook to `charge.refunded` and `charge.dispute.created`; confirm `webhook_events` exists in Production | N |

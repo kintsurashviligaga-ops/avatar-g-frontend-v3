@@ -4,7 +4,7 @@
  * validateStoryboard reports every problem; freeze refuses an unapproved or invalid storyboard and returns a deep-frozen,
  * independent copy that nothing can mutate; isFrozen recognises only what freeze produced; an edit is a new draft.
  */
-import { draftFromFrozen, freeze, isFrozen, shotsInOrder, StoryboardValidationError, validateStoryboard } from './storyboard';
+import { draftFromFrozen, freeze, isFrozen, restoreFrozen, shotsInOrder, StoryboardValidationError, validateStoryboard } from './storyboard';
 import { HERO_REF, makeShot, makeStoryboard, threeShots } from './testing/fixtures';
 import type { FrozenStoryboard, Shot, Storyboard } from './types';
 
@@ -191,5 +191,23 @@ describe('shotsInOrder', () => {
     const frozen = freeze(makeStoryboard(shots));
     expect(shotsInOrder(frozen).map((s) => s.id)).toEqual(['a', 'b', 'c']);
     expect(frozen.shots.map((s) => s.id)).toEqual(['b', 'c', 'a']);
+  });
+});
+
+describe('restoreFrozen', () => {
+  it('turns a stored copy of freeze() output back into a frozen storyboard with its original frozenAt', () => {
+    const frozen = freeze(makeStoryboard(threeShots({ prompt: '  verbatim, spaces kept  ' })), CLOCK);
+    const restored = restoreFrozen(JSON.parse(JSON.stringify(frozen)));
+    expect(isFrozen(restored)).toBe(true);
+    expect(restored.frozenAt).toBe(frozen.frozenAt);
+    expect(restored.shots.map((s) => s.prompt)).toEqual(frozen.shots.map((s) => s.prompt));
+  });
+
+  it('refuses anything freeze() did not approve, or that no longer passes the rules', () => {
+    const frozen = JSON.parse(JSON.stringify(freeze(makeStoryboard(threeShots()), CLOCK))) as Record<string, unknown>;
+    expect(() => restoreFrozen(makeStoryboard(threeShots()))).toThrow(StoryboardValidationError);
+    expect(() => restoreFrozen({ ...frozen, approvedByUser: false })).toThrow(/not approved/);
+    expect(() => restoreFrozen({ ...frozen, totalDurationSeconds: 99 })).toThrow(StoryboardValidationError);
+    expect(() => restoreFrozen(null)).toThrow(StoryboardValidationError);
   });
 });

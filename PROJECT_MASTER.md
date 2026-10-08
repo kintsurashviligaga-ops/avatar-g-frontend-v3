@@ -46,10 +46,13 @@ PHASE CHECKLIST:
           GCP gen-lang-client-0671348730 (467145118875): pool vercel / provider vercel-oidc (team id + project id +
           preview only), SA myavatar-veo (no keys), custom roles myavatarVeoInvoker + myavatarUrlSigner,
           bucket gs://myavatar-veo-outputs (private, 30-day delete). Vercel: OIDC team mode, 8/8 GCP vars in Preview only;
-          Preview /api/video/engine → transport vertex. AUTH VERIFIED: pending (admin opens /api/admin/provider-probe
-          on the PR #43 Preview, signed in with email + password). Paid test approved by owner 11:47 UTC: T2 PROVEN
-          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11);
-          T1 Veo (INFERENCE VERIFIED) waits on AUTH; credit coverage checked ~24 h later in Billing.
+          Preview /api/video/engine → transport vertex. AUTH VERIFIED 2026-10-08 14:21:20 UTC with the Preview build identity
+          (build log of e222e38: "[gcp-auth-check] env=preview … ok=true mode:wif token:ok bucket:ok sign:ok"; STS,
+          impersonation, bucket list, signBlob; free). Paid test approved by owner 11:47 UTC: T2 PROVEN
+          11:49–11:52 (gemini-3.8-flash, gemini-3.1-flash-image, lyria-3-clip-preview on Vertex, owner account, ≈ $0.11; Cloud
+          Monitoring: aiplatform GenerateContent 200×3/400×1, generativelanguage 0);
+          T1 Veo (INFERENCE VERIFIED) waits on the owner's sign-in on the PR #43 alias and one button press;
+          credit coverage checked ~24 h later in Billing. Production still sends every Google call through GEMINI_API_KEY.
           No further paid generation without new owner consent (owner 11:56 UTC); Production unchanged.
           Billing: single account 01AE3E-0F0B75-C73B11, linked only to this project (PROVEN); $300 credit to 2026-12-31
           and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
@@ -73,9 +76,10 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-· STOP-1: Part 0 AUTH — owner signs in on the PR #43 Preview /ka/admin and opens /api/admin/provider-probe;
-  pass = "auth:mode:wif token:ok bucket:ok sign:ok". Then the paid test only after the owner approves it
-  (T1 Veo via /ka/admin/veo-smoke ≈ $0.40; T2 Gemini text/image + Lyria on Vertex ≈ $0.12). Production env not yet.
+· STOP-1: Part 0 T1 — owner signs in (admin account) on https://avatar-g-frontend-v3-git-22ebb4-kintsurashviligaga-ops-projects.vercel.app
+  with a password, or with Google after adding exactly that alias + "/**" to Supabase Redirect URLs (no wildcard; email
+  code cannot work until Resend is fixed), then presses the button on /ka/admin/veo-smoke once (≈ $0.40, approved 11:47).
+  AUTH itself is already verified (build log). Production env not yet.
   scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
 · Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
   - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,

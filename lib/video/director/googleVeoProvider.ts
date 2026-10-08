@@ -210,6 +210,20 @@ function pollError(shotId: string, o: Exclude<VeoPollOutcome, { state: 'processi
   return shotError(shotId, 'veo_internal', 'Veo failed while rendering this clip.', true, o.reason);
 }
 
+/** A submitted shot: plain JSON, so a route can store it and check it in a later request. */
+export interface ShotTicket {
+  operationName: string;
+  /** What the clip is being rendered with (V6 audit), known at submit time. */
+  metadata: ShotMetadata;
+}
+
+export type SubmitShotResult = { ok: true; ticket: ShotTicket } | { ok: false; error: ShotError };
+
+export type CheckShotResult =
+  | { state: 'processing' }
+  | { state: 'done'; clipUrl: string; metadata: ShotMetadata }
+  | { state: 'failed'; error: ShotError };
+
 // ── The provider ─────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Veo takes about a minute per clip; polling faster only burns quota (the cadence every other Veo caller uses). */
@@ -238,9 +252,40 @@ export class GoogleVeoProvider implements VideoGenProvider {
     this.maxPolls = Math.max(1, Math.ceil((opts.maxWaitMs ?? VEO_MAX_WAIT_MS) / Math.max(1, this.pollIntervalMs)));
   }
 
+  /**
+   * The whole shot in one call: submitShot, then checkShot every pollIntervalMs until the clip is done, fails or the
+   * wait budget runs out. For a caller that can hold a process that long; a serverless route uses the two halves.
+   */
   async generateShot(input: ShotGenerationInput, cancellation?: CancellationToken): Promise<ShotGenerationResult> {
+    const { shot } = input;
+    if (cancellation?.aborted) throw new ShotCancelledError(shot.id);
+    const submitted = await this.submitShot(input, cancellation);
+    if (!submitted.ok) return submitted;
+
+    input.onStage?.('generating');
+    for (let i = 0; i < this.maxPolls; i++) {
+      if (cancellation?.aborted) throw new ShotCancelledError(shot.id);
+      await this.engine.sleep(this.pollIntervalMs);
+      if (cancellation?.aborted) throw new ShotCancelledError(shot.id);
+      const checked = await this.checkShot({ ...input, ticket: submitted.ticket });
+      if (checked.state === 'processing') continue;
+      if (checked.state === 'failed') return { ok: false, error: checked.error };
+      return { ok: true, clipUrl: checked.clipUrl, metadata: checked.metadata };
+    }
+    const minutes = Math.round((this.maxPolls * this.pollIntervalMs) / 60_000);
+    return {
+      ok: false,
+      error: shotError(shot.id, 'veo_internal', `Veo did not finish this clip within ${minutes} min. It may still finish (and bill); a retry renders a new one.`, true),
+    };
+  }
+
+  /**
+   * Preflight and submit one shot — at most one createClip. On success the ticket is everything checkShot needs later,
+   * in a later request: it is plain JSON, so a route can store it with the shot.
+   */
+  async submitShot(input: ShotGenerationInput, cancellation?: CancellationToken): Promise<SubmitShotResult> {
     const { shot, consistencyLock: lock, storyboardId } = input;
-    const fail = (reason: ShotErrorReason, message: string, retryable: boolean, raw?: string): ShotGenerationResult => ({
+    const fail = (reason: ShotErrorReason, message: string, retryable: boolean, raw?: string): { ok: false; error: ShotError } => ({
       ok: false,
       error: shotError(shot.id, reason, message, retryable, raw),
     });
@@ -307,42 +352,11 @@ export class GoogleVeoProvider implements VideoGenProvider {
       return fail(first ? reasonForField(first.field) : 'unknown', 'The engine changed this shot after it was submitted, so the clip was discarded. Retry renders it as frozen.', true, created.adjustments.map((a) => a.reason).join('; '));
     }
 
-    input.onStage?.('generating');
-    const operationName = created.outcome.operation.name;
-    let outcome: VeoPollOutcome = { state: 'processing' };
-    for (let i = 0; i < this.maxPolls && outcome.state === 'processing'; i++) {
-      if (cancellation?.aborted) throw new ShotCancelledError(shot.id);
-      await this.engine.sleep(this.pollIntervalMs);
-      if (cancellation?.aborted) throw new ShotCancelledError(shot.id);
-      try {
-        outcome = await this.engine.pollClip(operationName);
-      } catch {
-        // A poll that throws is a transient miss, like the engine's own network misses: keep waiting.
-        outcome = { state: 'processing' };
-      }
-    }
-    if (outcome.state === 'processing') {
-      const minutes = Math.round((this.maxPolls * this.pollIntervalMs) / 60_000);
-      return fail('veo_internal', `Veo did not finish this clip within ${minutes} min. It may still finish (and bill); a retry renders a new one.`, true);
-    }
-    if (outcome.state !== 'succeeded') return { ok: false, error: pollError(shot.id, outcome) };
-    const video = outcome.videos[0];
-    if (!video) return fail('veo_internal', 'Veo finished without returning a video.', true);
-
-    input.onStage?.('finalizing');
-    let clipUrl: string | null;
-    try {
-      clipUrl = await this.engine.deliver(video, { storyboardId, shotId: shot.id, order: shot.order, operationName, aspect: created.request.aspect });
-    } catch {
-      clipUrl = null;
-    }
-    if (!clipUrl) return fail('unknown', 'Veo rendered the clip but it could not be saved to storage. A retry renders it again.', true);
-
     const metadata: ShotMetadata = {
       providerName: this.providerName,
       model: created.model,
       transport: created.transport ?? transport,
-      operationName,
+      operationName: created.outcome.operation.name,
       durationSeconds: created.request.durationSec,
       aspectRatio: created.request.aspect,
       quality: created.request.tier,
@@ -351,7 +365,35 @@ export class GoogleVeoProvider implements VideoGenProvider {
       ...(seedSource ? { seedSource } : {}),
       ...(referenceSource ? { referenceImageSource: referenceSource } : {}),
     };
-    return { ok: true, clipUrl, metadata };
+    return { ok: true, ticket: { operationName: created.outcome.operation.name, metadata } };
+  }
+
+  /**
+   * One poll of a submitted shot. Never re-submits. A poll that throws is a transient miss (`processing`), like the
+   * engine's own network misses. On success the clip is delivered to our storage before it is reported done.
+   */
+  async checkShot(input: ShotGenerationInput & { ticket: ShotTicket }): Promise<CheckShotResult> {
+    const { shot, storyboardId, ticket } = input;
+    let outcome: VeoPollOutcome;
+    try {
+      outcome = await this.engine.pollClip(ticket.operationName);
+    } catch {
+      return { state: 'processing' };
+    }
+    if (outcome.state === 'processing') return { state: 'processing' };
+    if (outcome.state !== 'succeeded') return { state: 'failed', error: pollError(shot.id, outcome) };
+    const video = outcome.videos[0];
+    if (!video) return { state: 'failed', error: shotError(shot.id, 'veo_internal', 'Veo finished without returning a video.', true) };
+
+    input.onStage?.('finalizing');
+    let clipUrl: string | null;
+    try {
+      clipUrl = await this.engine.deliver(video, { storyboardId, shotId: shot.id, order: shot.order, operationName: ticket.operationName, aspect: ticket.metadata.aspectRatio as VeoAspect });
+    } catch {
+      clipUrl = null;
+    }
+    if (!clipUrl) return { state: 'failed', error: shotError(shot.id, 'unknown', 'Veo rendered the clip but it could not be saved to storage. A retry renders it again.', true) };
+    return { state: 'done', clipUrl, metadata: ticket.metadata };
   }
 
   /** Null when the shot reaches Veo exactly as frozen; otherwise the ShotError that stops it before any spend. */
