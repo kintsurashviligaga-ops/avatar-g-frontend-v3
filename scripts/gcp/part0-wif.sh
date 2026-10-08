@@ -125,6 +125,9 @@ exists() { [[ "$MODE" == "apply" ]] && "$@" >/dev/null 2>&1; }
 if [[ "$MODE" == "apply" ]]; then
   billing="$(gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled)' 2>/dev/null || echo false)"
   [[ "$(lower "$billing")" == "true" ]] || { echo "✗ billing is not linked to $PROJECT_ID — stop" >&2; exit 1; }
+  # Step 5 provisions the Vertex AI Service Agent, which only `gcloud beta` can do (Cloud Shell has it).
+  gcloud beta services identity create --help >/dev/null 2>&1 ||
+    { echo "✗ needs the gcloud beta component: gcloud components install beta — stop before changing anything" >&2; exit 1; }
 fi
 [[ "$MODE" == "plan" ]] && echo "PLAN for $PROJECT_ID ($PROJECT_NUMBER) — nothing below has been run"
 

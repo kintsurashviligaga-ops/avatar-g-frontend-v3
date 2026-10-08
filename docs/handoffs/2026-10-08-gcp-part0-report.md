@@ -7,7 +7,7 @@
 | ფენა | სტატუსი |
 |---|---|
 | CONFIGURED (GCP: APIs, pool/provider, SA, IAM, bucket) | **NOT CONFIGURED** — pool/provider, `myavatar-veo` SA, custom role-ები და bucket არ არსებობს; 6-დან 4 API ჩართულია (§1) |
-| CONFIGURED (Vercel: OIDC Team mode, env vars) | **UNVERIFIED** — Vercel API 403 |
+| CONFIGURED (Vercel: OIDC Team mode, env vars) | **PARTIAL** — OIDC `enabled`, issuer mode `team` (PROVEN); Preview-ში 8-დან 5 ცვლადი სწორადაა, აკლია `GCP_PROJECT_NUMBER`, `GCP_VEO_BUCKET`, `VEO_TRANSPORT` (§6) |
 | AUTH VERIFIED (STS exchange + impersonation) | **NOT RUN** — გასაცვლელი provider ჯერ არ არსებობს |
 | INFERENCE VERIFIED (Veo-ს რეალური გამოძახება) | **NOT RUN** (ფასიანია — ცალკე თანხმობა სჭირდება) |
 | კოდის token flow ოფიციალურ დოკუმენტაციასთან | **REVIEWED — შესაბამისობაშია** (§3) |
@@ -20,8 +20,12 @@ GCP-ზე ყოველი წაკითხვა და ცვლილე
 
 ## 1. რა შევამოწმე და რით
 
-**Audit:** owner-მა read-only ბლოკი (ცვლილების გარეშე, prompt-ები გამორთული) გაუშვა Cloud Shell-ში
-`myavatar.ge@gmail.com`-ით და output-ის ფოტო დააბრუნა; ქვემოთ ყველა მნიშვნელობა ფოტოსთან არის გადამოწმებული.
+**Audit 1:** owner-მა read-only ბლოკი (ცვლილების გარეშე, prompt-ები გამორთული) გაუშვა Cloud Shell-ში
+`myavatar.ge@gmail.com`-ით და output-ის ფოტო დააბრუნა.
+**Audit 2:** `MODE=audit scripts/gcp/part0-wif.sh` (commit fb02b0d, sha256 შემოწმებული) Claude-მა გაუშვა owner-ის Mac-ზე,
+gcloud 587.0.0 ცალკე config-ით (`~/.config/gcloud-myavatar`), `myavatar.ge@gmail.com`-ით (owner-ის Allow). ორივე
+audit ერთსა და იმავეს აჩვენებს; Audit 2 დამატებით ამოწმებს წაშლილ pool-ებს, SA key-ებს და API key-ების metadata-ს.
+**Vercel:** owner-ის Mac-ზე `vercel` CLI (`kintsurashviligaga-ops`), მხოლოდ GET მოთხოვნები.
 
 | რა | შედეგი | სტატუსი |
 |---|---|---|
@@ -31,15 +35,19 @@ GCP-ზე ყოველი წაკითხვა და ცვლილე
 | budget / alert | `billingbudgets.googleapis.com` პროექტზე ჩართული არ არის (`SERVICE_DISABLED`), ამიტომ gcloud-მა ვერ წაიკითხა | **UNVERIFIED** — Console → Billing → Budgets & alerts |
 | trial credit-ის ნაშთი და ვადა | gcloud-ით არ ჩანს | **UNVERIFIED** — Console → Billing → Overview / Credits |
 | API-ები | ჩართულია: `aiplatform`, `iam`, `iamcredentials`, `sts`. **არ ჩანს:** `serviceusage`, `storage` | PROVEN (§5) |
-| WIF pool / provider | არცერთი | PROVEN (წაშლილი pool-ები სიაში არ ჩანს; შემოწმდება `--show-deleted`-ით) |
+| WIF pool / provider | არცერთი, წაშლილიც არა (`--show-deleted`) | PROVEN |
 | service account-ები | `vertex-express@…`, `467145118875-compute@developer…`, `ais-gemini-key-e53c…@467145118875.iam…` | PROVEN |
-| `myavatar-veo@…` SA | `NOT_FOUND` (ამიტომ key-ებიც არ აქვს) | PROVEN |
+| `myavatar-veo@…` SA | `NOT_FOUND` | PROVEN |
+| user-managed SA key-ები | არცერთ SA-ზე არ არის | PROVEN |
+| API key-ები (metadata) | `API key 2` (2026-10-03, შეზღუდულია `aiplatform`-ზე — Vertex express mode); `Gemini API Key` (2026-10-01, `generativelanguage` — AI Studio) | PROVEN |
 | SA-ების project role-ები | `aiplatform.expressUser` → `vertex-express`; `roles/editor` → default compute SA; დანარჩენი Google-ის service agent-ებია (compute, instanceGroupManager, notebooks) | PROVEN |
 | Vertex AI Service Agent | project IAM-ში არ ჩანს (`service-467145118875@gcp-sa-aiplatform…`) | plan-ის ნაბიჯი 5 ქმნის |
 | custom role-ები | არცერთი | PROVEN |
 | bucket-ები | არცერთი; სახელი `myavatar-veo-outputs` თავისუფალია (GCS JSON API, ანონიმური → `404 notFound`) | PROVEN |
-| Vercel project/team API | 403 (`scope "kintsurashviligaga-ops-projects"`) | UNVERIFIED |
-| Vercel team slug | `kintsurashviligaga-ops-projects` — Vercel-ის 403 პასუხი team id-ს ამ scope-ად ასახელებს (არა გამოცნობა) | საბოლოოდ დასტურდება AUTH ტესტით |
+| Vercel team | `GET /v2/teams/team_YGQH…` → slug **`kintsurashviligaga-ops-projects`** | PROVEN |
+| Vercel project OIDC | `GET /v9/projects/prj_k4LQ…` → `oidcTokenConfig: {enabled: true, issuerMode: "team"}` | PROVEN |
+| Vercel issuer discovery | `https://oidc.vercel.com/kintsurashviligaga-ops-projects/.well-known/openid-configuration` → `issuer` ემთხვევა, RS256 | PROVEN (შენიშვნა: არარსებულ slug-ზეც 200-ს აბრუნებს, ამიტომ slug-ს თავად ის არ ადასტურებს) |
+| Vercel Preview env | იხ. §6 | PROVEN |
 
 ### 1.1 უსაფრთხოების დაკვირვებები (ცვლილება არ გაკეთებულა)
 1. **`roles/editor` default compute SA-ზე** (`467145118875-compute@developer…`) — Google-ის ნაგულისხმევი, ფართო
@@ -47,7 +55,9 @@ GCP-ზე ყოველი წაკითხვა და ცვლილე
 2. **`vertex-express` (`roles/aiplatform.expressUser`) და `ais-gemini-key-…`** — Vertex express mode-ისა და AI Studio-ს
    API key-ების SA-ები. ესე იგი პროექტზე API key-ზე დაფუძნებული გზები შეიძლება არსებობდეს, რაც WIF-only მიზანს და
    „AI Studio-ზე fallback არა" წესს ეწინააღმდეგება. ახლა არაფერს ვცვლი: production შეიძლება მათ ჯერ კიდევ იყენებდეს
-   (Part 2). შემდეგი read-only შემოწმება: API key-ების metadata (key string-ის გარეშე) და ამ SA-ების user-managed key-ები.
+   (Part 2). Audit 2-მა დაადასტურა: პროექტზე ორი API key არსებობს (`API key 2` → aiplatform, `Gemini API Key` →
+   generativelanguage), Vercel-ში `GEMINI_API_KEY` production-სა და development-ში არის. ეს AI Studio-ს გზაა;
+   მისი გათიშვა Vertex-ის INFERENCE VERIFIED-ის და Part 2-ის შემდეგ, owner-ის გადაწყვეტილებით.
 3. **budget alert არ ჩანს.** INFERENCE ტესტამდე რეკომენდებულია budget alert (თავად budget არაფერს იხდის; owner-ის თანხმობით).
 
 Repo-ს მდგომარეობა (branch `claude/launch-certification-wmvitt` @ d563e82, საიდანაც ეს branch არის):
@@ -152,16 +162,17 @@ Vercel-ის დოკის მაგალითი წერს `getSubjectT
 ## 6. Vercel environment variables (მხოლოდ **Preview**)
 | სახელი | მნიშვნელობა | სტატუსი |
 |---|---|---|
-| `GCP_PROJECT_ID` | `gen-lang-client-0671348730` | owner-ის მიერ მოცემული |
-| `GCP_PROJECT_NUMBER` | `467145118875` | PROVEN (audit) |
-| `GCP_SERVICE_ACCOUNT_EMAIL` | `myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com` | apply-ის შემდეგ |
-| `GCP_WORKLOAD_IDENTITY_POOL_ID` | `vercel` | apply-ის შემდეგ |
-| `GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID` | `vercel-oidc` | apply-ის შემდეგ |
-| `GCP_VEO_BUCKET` | `gs://myavatar-veo-outputs` (სახელი თავისუფალია) | apply-ის შემდეგ |
-| `GCP_VEO_LOCATION` | `us-central1` | — |
-| `VEO_TRANSPORT` | `vertex` | — |
+| `GCP_PROJECT_ID` | `gen-lang-client-0671348730` | **Preview-ში არის** (PROVEN) |
+| `GCP_PROJECT_NUMBER` | `467145118875` (PROVEN audit-ით) | **აკლია** — plan V |
+| `GCP_SERVICE_ACCOUNT_EMAIL` | `myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com` | **Preview-ში არის**; SA თავად apply-ით იქმნება |
+| `GCP_WORKLOAD_IDENTITY_POOL_ID` | `vercel` | **Preview-ში არის**; pool apply-ით იქმნება |
+| `GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID` | `vercel-oidc` | **Preview-ში არის**; provider apply-ით იქმნება |
+| `GCP_VEO_BUCKET` | `gs://myavatar-veo-outputs` (სახელი თავისუფალია) | **აკლია** — plan V |
+| `GCP_VEO_LOCATION` | `us-central1` | **Preview-ში არის** (PROVEN) |
+| `VEO_TRANSPORT` | `vertex` | **აკლია** — plan V |
 `GCP_SERVICE_ACCOUNT_KEY` — **არ** ისმება. `GEMINI_TRANSPORT` და Gemini-ს Vertex ცვლადები — ჯერ არა (Part 2).
-Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Team**.
+Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Team** — PROVEN (API). არსებული 5 ცვლადი Preview-ში
+დღეს 09:37 UTC-ზე ჩაიწერა (`plain`, git branch-ის გარეშე).
 
 ## 7. ტესტები
 - `bash -n scripts/gcp/part0-wif.sh`, `bash -n scripts/gcp/setup-veo-vertex.sh` — OK.
@@ -171,12 +182,11 @@ Vercel → Settings → Security → OIDC Federation: Enabled, Issuer Mode **Tea
 
 ## 8. ბლოკერები და შემდეგი ნაბიჯი
 1. ✓ **read-only audit** — ჩატარდა (§1).
-2. **Claude:** gcloud owner-ის Mac-ზე (owner-ის თანხმობა 10:44), ცალკე config-ით `~/.config/gcloud-myavatar`, მხოლოდ
-   `myavatar.ge@gmail.com`; შესვლის Allow-ს owner აჭერს. შემდეგ დამატებითი read-only შემოწმება (წაშლილი pool-ები,
-   API key-ების metadata, SA key-ები, Vertex Service Agent) და `MODE=plan` რეალურ პროექტზე.
-3. **owner (თანხმობა):** plan-ის ზუსტი ცვლილებები — 2 API, bucket, SA, 2 custom role, grant-ები, pool/provider, ერთი
-   impersonation binding. მხოლოდ ამის შემდეგ `MODE=apply` და read-back audit.
-4. **Vercel:** OIDC Federation Team mode და §6-ის ცვლადები მხოლოდ Preview-ში.
+2. ✓ **gcloud owner-ის Mac-ზე** (owner-ის თანხმობა 10:44): Google-ის არქივი `~/.myavatar-gcloud`-ში (sha256 =
+   Homebrew cask-ის ჩანაწერი), config `~/.config/gcloud-myavatar`, მხოლოდ `myavatar.ge@gmail.com`. Audit 2 და `MODE=plan` გაეშვა.
+3. **owner (თანხმობა):** plan — `reports/2026-10-08-gcp-part0-plan.md` (2 API, bucket, SA, 2 custom role, grant-ები,
+   pool/provider, ერთი impersonation binding, Preview-ში 3 ცვლადი). მხოლოდ ამის შემდეგ `MODE=apply` და read-back audit.
+4. ✓ **Vercel OIDC Team mode** — უკვე ჩართულია.
 5. **Claude:** AUTH VERIFIED — Preview deployment-ზე `/api/video/engine`-ის `transport` + token exchange
    (inference-ის გარეშე). INFERENCE VERIFIED — ერთი მოკლე Veo კლიპი მხოლოდ owner-ის ცალკე თანხმობით (ფასიანია).
 6. **owner (Console):** trial credit-ის ნაშთი/ვადა და budget-ები (Billing → Overview / Budgets & alerts).
