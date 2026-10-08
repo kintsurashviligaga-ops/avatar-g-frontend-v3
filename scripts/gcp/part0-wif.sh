@@ -96,11 +96,11 @@ if [[ "$MODE" == "audit" ]]; then
   hr "service accounts"
   q gcloud iam service-accounts list --project "$PROJECT_ID" --format='table(email,disabled)'
   hr "policy on $SA_EMAIL (who may impersonate / sign as it)"
-  q gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --format=yaml
+  q gcloud iam service-accounts get-iam-policy "$SA_EMAIL" --project "$PROJECT_ID" --format=yaml
   hr "user-managed keys on every service account (ours must have none)"
   for sa in $(gcloud iam service-accounts list --project "$PROJECT_ID" --format='value(email)' 2>/dev/null); do
     echo "$sa:"
-    q gcloud iam service-accounts keys list --iam-account "$sa" --managed-by=user --format='table(name.basename(),validAfterTime,disabled)'
+    q gcloud iam service-accounts keys list --iam-account "$sa" --project "$PROJECT_ID" --managed-by=user --format='table(name.basename(),validAfterTime,disabled)'
   done
   hr "API keys (metadata only: names and restrictions, never the key string)"
   q gcloud services api-keys list --project "$PROJECT_ID" \
@@ -143,7 +143,7 @@ printf '{"rule":[{"action":{"type":"Delete"},"condition":{"age":%d}}]}\n' "$RETE
 run gcloud storage buckets update "gs://$BUCKET" --lifecycle-file="$lifecycle"
 
 hr "3. service account $SA_EMAIL (no keys)"
-exists gcloud iam service-accounts describe "$SA_EMAIL" ||
+exists gcloud iam service-accounts describe "$SA_EMAIL" --project "$PROJECT_ID" ||
   run gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT_ID" --display-name="MyAvatar Veo renderer (WIF only, no keys)"
 
 hr "4. custom roles: Veo invoker (project) and URL signer (on the SA itself)"
@@ -159,7 +159,7 @@ exists gcloud iam roles describe "$SIGNER_ROLE_ID" --project "$PROJECT_ID" ||
 hr "5. grants"
 run gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$SA_EMAIL" \
   --role="projects/$PROJECT_ID/roles/$INVOKER_ROLE_ID" --condition=None
-run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --member="serviceAccount:$SA_EMAIL" \
+run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --project "$PROJECT_ID" --member="serviceAccount:$SA_EMAIL" \
   --role="projects/$PROJECT_ID/roles/$SIGNER_ROLE_ID"
 # App: uploads inputs (create, never overwrite: ifGenerationMatch=0) and signs read URLs (signer needs objects.get).
 for role in roles/storage.objectCreator roles/storage.objectViewer; do
@@ -185,7 +185,7 @@ fi
 
 hr "7. who may impersonate $SA_EMAIL: exactly one subject per allowed environment"
 while read -r principal; do
-  run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --role=roles/iam.workloadIdentityUser --member="$principal"
+  run gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" --project "$PROJECT_ID" --role=roles/iam.workloadIdentityUser --member="$principal"
 done < <(subject_principals)
 
 hr "8. remove the broad grants an earlier setup-veo-vertex.sh run would have left (ignored when absent)"
@@ -195,9 +195,9 @@ stale=(
 )
 for s in "${stale[@]}"; do
   if [[ "$MODE" == "plan" ]]; then
-    run gcloud iam service-accounts remove-iam-policy-binding "$SA_EMAIL" --role="${s%%|*}" --member="${s#*|}"
+    run gcloud iam service-accounts remove-iam-policy-binding "$SA_EMAIL" --project "$PROJECT_ID" --role="${s%%|*}" --member="${s#*|}"
   else
-    gcloud iam service-accounts remove-iam-policy-binding "$SA_EMAIL" --role="${s%%|*}" --member="${s#*|}" >/dev/null 2>&1 || true
+    gcloud iam service-accounts remove-iam-policy-binding "$SA_EMAIL" --project "$PROJECT_ID" --role="${s%%|*}" --member="${s#*|}" >/dev/null 2>&1 || true
   fi
 done
 for m in "serviceAccount:$SA_EMAIL" "serviceAccount:$VERTEX_AGENT"; do
