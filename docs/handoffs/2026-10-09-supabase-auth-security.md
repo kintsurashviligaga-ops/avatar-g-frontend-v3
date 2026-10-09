@@ -64,7 +64,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 | Admin accounts | PROVEN (read-only) | 2 accounts match: the founder address (confirmed, signed in 2026-10-08) and 1 panel-granted address (confirmed). 0 `app_metadata` roles. The second built-in address has no account (cannot be claimed without its inbox, since Confirm email is ON). |
 | Anonymous caller is refused | **PROVEN live** (from GG's Mac, 11:5xZ) | `/api/admin/users` 403, `/stats` 401, `/admins` 403, `/financials` 401, `/payments` 401, `/flags` 403, `/credits` 404; `run-migration` GET and POST with a wrong key 404; forged auth cookie on `/users` 403; `/ka/admin` renders the login screen. |
 | Signed-in non-admin is refused | BUILT_NOT_PROVEN live (unit-proven) | `lib/admin/adminGate.test.ts`, admin route tests. Live test needs no Resend: GG signs in with Google as `myavatar.ge@gmail.com` (not on any admin list) and opens https://myavatar.ge/ka/admin; Claude reads the `/api/admin/*` statuses in the Vercel log. No such request in the last 24 h (13:5xZ: only the anonymous probes above). |
-| Admin can sign in | PROVEN (sign-in) / NOT PROVEN (panel opened live) | Founder account signed in with Google 2026-10-09 12:32:13Z (auth log `login`, provider google). No signed-in `/ka/admin` or `/api/admin/*` 200 in the Vercel log for the last 24 h, so the panel opening for the admin is not yet shown live. |
+| Admin can sign in and open the panel | **PROVEN live** (14:12Z) | Founder account signed in with Google 2026-10-09 12:32:13Z (auth log `login`, provider google). GG opened https://myavatar.ge/ka/admin in that session: the panel rendered with live data (GG's photo 14:13Z) and the Vercel log shows `GET /ka/admin` 200 then `GET /api/admin/presence` (guarded by `isAdmin()`, 403 otherwise) 200 every 15 s from 14:12:34Z. In a signed-out incognito window the same URL shows the admin login screen (photo). |
 
 ### 5. RLS, Storage, sessions, service role
 
@@ -104,6 +104,7 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 - Propagation PROVEN at once: `ns1.vercel-dns.com`, `1.1.1.1` and `8.8.8.8` all answer the four values; the DKIM string matches the pasted value byte for byte.
 - Impact: none on the website (`myavatar.ge` and `www` still 307 to the locale). `send.myavatar.ge` was only reachable through the `*` ALIAS and answered 404 (no project there); with its own MX/TXT it no longer takes the wildcard, which serves nothing anyway.
 - Not used: Resend's „Auto configure" (it would give Resend standing access to the Vercel account).
+- **Resend: VERIFIED.** GG pressed Verify DNS Records; GG's photo (14:10Z): status **Verified**, domain events „DNS verified" 18:07 and „Domain verified" 18:08 Tbilisi time (14:07–14:08Z), DKIM, MX and SPF rows each Verified, sending enabled, receiving off.
 
 ### 7. Log-in by code created accounts for unknown addresses (found and fixed 2026-10-09)
 
