@@ -75,7 +75,7 @@ async function translateBatch(
   const raw = await llmText({
     system: systemPrompt(target, source),
     user,
-    geminiFirst: true, // Master Task §1.2 — Gemini is primary; the chain still covers an outage.
+    geminiFirst: true, // Master Task §1.2 — Gemini is the only provider (R7); a miss falls back to line-by-line, then the source text.
     maxTokens: Math.min(8000, 220 * texts.length + 400),
     timeoutMs: 90_000,
   });

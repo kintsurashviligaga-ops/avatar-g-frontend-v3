@@ -3,22 +3,23 @@
  *
  * intake (≤3 photos OR 360° video + brief)
  *   → Agent N (Gemini)  : RoomGeometry
- *   → Agent K (Claude)  : StyleGuide + walkthrough prompts
+ *   → Agent K (Gemini)  : StyleGuide + walkthrough prompts
  *   → emits geometry+style for the inline Three.js RoomViewer.
  *
  * Streams professional telemetry tickers as it runs; ends with
  * { stage:'completed', geometry, style, walkthrough } or { stage:'failed', error }.
  * Authenticated. Fail-open at each hop (Gemini → deterministic geometry,
- * Claude → deterministic style) so the viewer always has something to mount.
+ * Gemini → deterministic style) so the viewer always has something to mount.
  */
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { llmText } from '@/lib/ai/llmText';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { googleCallAttempts } from '@/lib/ai/google/transport';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
-import { reserveProduce, refundProduce, idemRef, type Reservation } from '@/lib/orchestrator/produceBilling';
+import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
@@ -32,7 +33,6 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const VISION_MODEL = process.env.GEMINI_VISION_MODEL ?? geminiTierModel('flash');
-const CLAUDE_MODEL = process.env.ANTHROPIC_SCRIPT_MODEL ?? process.env.ANTHROPIC_MODEL ?? 'claude-haiku-4-5-20251001';
 
 function geminiKeys(): string[] {
   const csv = (process.env.GEMINI_API_KEYS ?? '').split(',').map(s => s.trim()).filter(Boolean);
@@ -52,13 +52,14 @@ function extractJson(text: string): unknown {
 }
 
 async function analyzeGeometry(imageUrls: string[], brief: string): Promise<RoomGeometry | null> {
-  const keys = geminiKeys();
-  if (keys.length === 0 || imageUrls.length === 0) return null;
+  // One attempt per pooled key on the Gemini API, one on Vertex AI (GEMINI_TRANSPORT).
+  const attempts = googleCallAttempts(geminiKeys());
+  if (attempts.length === 0 || imageUrls.length === 0) return null;
   const content = [
     { type: 'text' as const, text: `${brief ? `Brief: "${brief}". ` : ''}Estimate the empty-room geometry from these ${imageUrls.length} view(s).` },
     ...imageUrls.map(u => ({ type: 'image' as const, image: u })),
   ];
-  for (const apiKey of keys) {
+  for (const apiKey of attempts) {
     try {
       const google = createGoogleGenerativeAI({ apiKey });
       const { text } = await generateText({ model: google(VISION_MODEL), maxRetries: 4, system: buildGeometrySystemPrompt(), messages: [{ role: 'user', content }] });
@@ -69,16 +70,11 @@ async function analyzeGeometry(imageUrls: string[], brief: string): Promise<Room
   return null;
 }
 
+/** Agent K — the style guide from Gemini (lib/ai/llmText: Gemini only, no second provider); null → the caller's default. */
 async function designStyle(geometry: RoomGeometry, brief: string) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const client = new Anthropic({ apiKey });
-    const msg = await client.messages.create({ model: CLAUDE_MODEL, max_tokens: 1200, system: buildStyleSystemPrompt(), messages: [{ role: 'user', content: buildStyleUserPrompt(geometry, brief) }] });
-    const text = msg.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('');
-    const parsed = extractJson(text);
-    return parsed ? normalizeStyleGuide(parsed) : null;
-  } catch { return null; }
+  const text = await llmText({ user: buildStyleUserPrompt(geometry, brief), system: buildStyleSystemPrompt(), maxTokens: 1200, json: true, timeoutMs: 30_000 });
+  const parsed = text ? extractJson(text) : null;
+  return parsed ? normalizeStyleGuide(parsed) : null;
 }
 
 export async function POST(req: NextRequest) {
@@ -107,7 +103,7 @@ export async function POST(req: NextRequest) {
       try {
         if (user) {
           reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref);
-          if (!reservation.proceed) { emit({ stage: 'failed', error: 'insufficient_credits', reason: reservation.reason, balance: reservation.balance }); return; }
+          if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
           // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
           // render is abandoned (tab closed) and the in-route refund below never fires. Only when charged.
           if (jobId && reservation.charged) await recordJobReservation(jobId, { ref, credits: PRODUCE_COST.interior });

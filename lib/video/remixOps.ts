@@ -14,8 +14,7 @@
 import 'server-only';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,7 +44,8 @@ function predictionProgress(status?: string, logs?: unknown): number {
   return ord * 1_000_000 + logLen;
 }
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 const BIN = ffmpegStatic as unknown as string | null;
 
 const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p'];
@@ -62,7 +62,7 @@ const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt'
 async function hostMp4(buf: Buffer, tag: string): Promise<string | null> {
   if (buf.byteLength < 1_024) return null;
   const path = `remix/${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-  return (await uploadBufferAndSign('uploads', path, buf, 'video/mp4', 604_800)) ?? null;
+  return (await uploadBufferAndSign('renders', path, buf, 'video/mp4', 604_800)) ?? null;
 }
 
 /**

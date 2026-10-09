@@ -10,15 +10,15 @@
  * caller keeps the cinematic LTX clip for that scene.
  */
 import 'server-only';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
-const exec = promisify(execFile);
+/** ffmpeg never fetches a URL itself: http(s) inputs are downloaded through the public-fetch guard first. */
+const exec = ffmpegExec;
 
 export async function trimClip(videoUrl: string, startSec: number, durationSec: number): Promise<string | null> {
   const bin = ffmpegStatic as unknown as string | null;
@@ -41,7 +41,7 @@ export async function trimClip(videoUrl: string, startSec: number, durationSec: 
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) return null;
     const path = `films/heyseg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-    return (await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
+    return (await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800)) ?? null;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[trim] failed (keeping the LTX clip for this scene):', err instanceof Error ? err.message : err);

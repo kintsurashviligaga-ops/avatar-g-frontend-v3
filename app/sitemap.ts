@@ -1,5 +1,6 @@
 import { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/seo/site";
+import { sitemapServiceSlugs } from "@/lib/seo/sitemapServices";
 
 /**
  * Dynamic sitemap. Every entry MUST be a canonical, 200-returning URL — a
@@ -8,7 +9,7 @@ import { SITE_URL } from "@/lib/seo/site";
  * The whole app is locale-prefixed (`/[locale]/…`); the bare `/pricing`,
  * `/dashboard`, … paths all 307-redirect to their `/{locale}/…` form, so we
  * list the redirect *target* (the canonical 200) rather than the redirector.
- * Verified live (2026-06): the 14 service slugs below all 200 — note the slug
+ * Service slugs come from the catalog (lib/seo/sitemapServices) — note the slug
  * is `prompt` (not `prompt-builder`, which 308-redirects), and there is NO
  * `/dashboard/billing` route (it 404s), so it is intentionally omitted.
  */
@@ -75,12 +76,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     }))
   );
 
-  // All 14 core AI service landing pages (dynamic `[slug]` route), per locale.
-  const services = [
-    'avatar', 'video', 'image', 'music', 'voice',
-    'game', 'interior', 'prompt', 'terminal',
-    'content-writer', 'podcast', 'character', 'event', 'tourism',
-  ];
+  // The service landing pages (dynamic `[slug]` route), per locale — only slugs the catalog maps to a usable service
+  // with a real page, never a redirect (lib/seo/sitemapServices). The old hand-kept list advertised `game`, `tourism`
+  // and `voice`, which no catalog service runs.
+  const services = sitemapServiceSlugs();
   const servicePages = locales.flatMap(locale =>
     services.map(service => ({
       url: `${baseUrl}/${locale}/services/${service}`,

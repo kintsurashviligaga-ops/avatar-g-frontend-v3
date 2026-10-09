@@ -3,9 +3,9 @@
  * status route — which of them the server would actually run right now. Pure and isomorphic (the picker, the desktop
  * "Engines & prices" list and the route all import it): no React, no env, no I/O.
  *
- * ⚠️ THIS LIST IS THE ROUTE'S CHAIN, NOT A WISH LIST. Lyria 3 → Udio → ElevenLabs Music → MusicGen is the order the
- * route tries them in (`composeTrackUrl`); "Auto" is that chain, and a specific pick moves one engine to the FRONT of
- * it (the rest stay behind it as fallbacks, so a pick never turns a busy engine into a failed render). An engine the
+ * ⚠️ THESE ARE THE ENGINES THE ROUTE CAN RUN, NOT A WISH LIST — AND IT RUNS ONE PER REQUEST (PROJECT_MASTER R7, no silent
+ * fallback). "Auto" is Lyria 3 alone; a specific pick runs that engine alone. A miss is an explicit, refunded failure,
+ * never another engine's track (`composeTrackUrl`). The order below is only the order the picker lists them in. An engine the
  * server would refuse — no key, or its circuit breaker open after repeated failures — is shown but cannot be picked, and
  * MusicGen (instrumental-only) cannot be picked for a song. Nothing here changes a price: every engine bills by length.
  */
@@ -16,7 +16,7 @@ export type { MusicEngineId };
 /** What the user asked for: the chain as it stands, or one engine first. */
 export type MusicEnginePref = 'auto' | MusicEngineId;
 
-/** The route's failover order — also the order the picker lists them in. */
+/** Every engine the route can run, in the order the picker lists them. Not a failover order: one engine runs per request (R7). */
 export const MUSIC_ENGINE_CHAIN: readonly MusicEngineId[] = ['lyria', 'udio', 'elevenlabs-music', 'musicgen'];
 
 export function isMusicEngineId(v: unknown): v is MusicEngineId {
@@ -125,13 +125,13 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
   ka: {
     auto: {
       name: 'ავტო',
-      role: (n) => (n.length ? `ცდის თანმიმდევრობით: ${n.join(' → ')}` : 'ირჩევს საუკეთესო ხელმისაწვდომ ძრავს'),
+      role: (n) => (n.length ? `მხოლოდ ${n.join(', ')} · სხვა ძრავაზე არ გადადის` : 'Lyria 3 ახლა მიუწვდომელია'),
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · სიმღერები ვოკალით ან ინსტრუმენტული' },
       udio: { name: 'Udio', role: 'სრული სიმღერები, შენს სიგრძეზე მოჭრილი' },
       'elevenlabs-music': { name: 'ElevenLabs Music', role: 'სიმღერები ვოკალით · ზუსტი ხანგრძლივობა' },
-      musicgen: { name: 'MusicGen', role: 'მხოლოდ ინსტრუმენტული · სარეზერვო ძრავა' },
+      musicgen: { name: 'MusicGen', role: 'მხოლოდ ინსტრუმენტული' },
     },
     blocked: {
       off: 'ჩართული არ არის',
@@ -147,13 +147,13 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
   en: {
     auto: {
       name: 'Auto',
-      role: (n) => (n.length ? `Tries in order: ${n.join(' → ')}` : 'Picks the best engine that is available'),
+      role: (n) => (n.length ? `${n.join(', ')} only · never switches engine` : 'Lyria 3 is not available right now'),
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · songs with vocals, or instrumentals' },
       udio: { name: 'Udio', role: 'Full songs, trimmed to your length' },
       'elevenlabs-music': { name: 'ElevenLabs Music', role: 'Songs with vocals · exact length' },
-      musicgen: { name: 'MusicGen', role: 'Instrumental only · fallback engine' },
+      musicgen: { name: 'MusicGen', role: 'Instrumental only' },
     },
     blocked: {
       off: 'Not switched on',
@@ -169,13 +169,13 @@ export const ENGINE_COPY: Readonly<Record<Lang, EngineCopy>> = {
   ru: {
     auto: {
       name: 'Авто',
-      role: (n) => (n.length ? `Пробует по порядку: ${n.join(' → ')}` : 'Выбирает лучший доступный движок'),
+      role: (n) => (n.length ? `Только ${n.join(', ')} · без смены движка` : 'Lyria 3 сейчас недоступна'),
     },
     engines: {
       lyria: { name: 'Lyria 3', role: 'Google · песни с вокалом или инструментал' },
       udio: { name: 'Udio', role: 'Полные песни, обрезаются до вашей длины' },
       'elevenlabs-music': { name: 'ElevenLabs Music', role: 'Песни с вокалом · точная длина' },
-      musicgen: { name: 'MusicGen', role: 'Только инструментал · запасной движок' },
+      musicgen: { name: 'MusicGen', role: 'Только инструментал' },
     },
     blocked: {
       off: 'Не включён',

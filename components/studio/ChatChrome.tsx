@@ -21,7 +21,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import {
   Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
 } from 'lucide-react';
-import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
+import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { isStudioPath } from '@/lib/routing/landing';
 
 /** The chat's own icon, from the tool list — the hub row and the tool rows can never draw different marks. */
@@ -67,6 +68,9 @@ import { LEGAL_LINKS, legalDoc, legalHref } from '@/lib/legal/links';
 import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
+import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
+import { searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
+import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
 import StudioLibraryGrid from '@/components/studio/StudioLibraryGrid';
@@ -107,25 +111,25 @@ function dropUnadoptedPrime(): void {
 }
 
 const COPY: Record<Lang, {
-  menu: string; settings: string; newChat: string; topUp: string; services: string; language: string;
+  menu: string; settings: string; newChat: string; topUp: string; language: string;
   favorites: string; persona: string; billing: string; soon: string;
   account: string; accountGuest: string; library: string; login: string; signup: string; signupFree: string;
   signOut: string; theme: string; legal: string; privacy: string; terms: string; support: string; deleteAccount: string;
 }> = {
   ka: {
-    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', services: 'სერვისები', language: 'ენა',
+    menu: 'მენიუ', settings: 'პარამეტრები', newChat: 'ახალი ჩატი', topUp: 'შევსება', language: 'ენა',
     favorites: 'რჩეულები', persona: 'პერსონა', billing: 'ბილინგი', soon: 'მალე',
     account: 'ანგარიში', accountGuest: 'სტუმარი', library: 'ბიბლიოთეკა · ისტორია', login: 'შესვლა', signup: 'რეგისტრაცია', signupFree: 'დარეგისტრირდი უფასოდ',
     signOut: 'გასვლა', theme: 'თემა', legal: 'სამართლებრივი', privacy: 'კონფიდენციალურობა', terms: 'წესები და პირობები', support: 'დახმარება', deleteAccount: 'ანგარიშის წაშლა',
   },
   en: {
-    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', services: 'Services', language: 'Language',
+    menu: 'Menu', settings: 'Settings', newChat: 'New chat', topUp: 'Top up', language: 'Language',
     favorites: 'Favorites', persona: 'Persona', billing: 'Billing', soon: 'Soon',
     account: 'Account', accountGuest: 'Guest', library: 'Library · History', login: 'Log in', signup: 'Sign up', signupFree: 'Sign up for free',
     signOut: 'Sign out', theme: 'Theme', legal: 'Legal', privacy: 'Privacy Policy', terms: 'Terms of Service', support: 'Support', deleteAccount: 'Delete account',
   },
   ru: {
-    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', services: 'Сервисы', language: 'Язык',
+    menu: 'Меню', settings: 'Настройки', newChat: 'Новый чат', topUp: 'Пополнить', language: 'Язык',
     favorites: 'Избранное', persona: 'Персона', billing: 'Биллинг', soon: 'Скоро',
     account: 'Аккаунт', accountGuest: 'Гость', library: 'Библиотека · История', login: 'Войти', signup: 'Регистрация', signupFree: 'Регистрация бесплатно',
     signOut: 'Выйти', theme: 'Тема', legal: 'Правовое', privacy: 'Конфиденциальность', terms: 'Условия', support: 'Поддержка', deleteAccount: 'Удалить аккаунт',
@@ -749,10 +753,28 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // The tools the user switched off in the hub's Plugins tab leave the sidebar and the rail (never the one they are on).
   // ⚠️ Menus only — selectTool, ?tool= and the studio still open a hidden tool (lib/plugins/catalog.ts).
   const hiddenTools = useHiddenTools();
-  const navPrimary = useMemo(() => visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
-  const navMore = useMemo(() => visibleToolIds(MORE_TOOLS, hiddenTools, activeTool), [hiddenTools, activeTool]);
-  const [moreOpen, setMoreOpen] = useState(false);
-  useEffect(() => { if (activeTool && (MORE_TOOLS as readonly string[]).includes(activeTool)) setMoreOpen(true); }, [activeTool]);
+  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK, each category
+  // holding only its tools that are still switched on — a category with none left is not drawn.
+  const navGroups = useMemo(() => toolGroups()
+    .map((g) => ({ ...g, tools: visibleToolIds(g.tools, hiddenTools, activeTool) }))
+    .filter((g) => g.tools.length > 0), [hiddenTools, activeTool]);
+  const navCategories = useMemo(() => navGroups.filter((g) => g.id !== 'agent-g'), [navGroups]);
+  // A category row opens its first tool; its chevron shows the rest. The category holding the active tool opens itself.
+  const [openCats, setOpenCats] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (!activeTool) return;
+    const g = navCategories.find((x) => x.tools.indexOf(activeTool) > 0);
+    if (g) setOpenCats((prev) => (prev.has(g.id) ? prev : new Set([...prev, g.id])));
+  }, [activeTool, navCategories]);
+  const toggleCat = useCallback((id: string) => {
+    // §50 — a category the user opens (not the auto-open above, which follows the active tool).
+    if (!openCats.has(id)) trackCategoryViewed(id as ServiceCategory | 'agent-g', 'sidebar');
+    setOpenCats((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, [openCats]);
   const [searchOpen, setSearchOpen] = useState(false);
   // VOICE CONTROL (a Live call's open_panel, lib/voice/liveTools.ts): open the chat search, or show the history — the
   // phone's drawer, or a desktop sidebar that was collapsed to its rail.
@@ -778,6 +800,21 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const url = `/${locale}/dashboard?tool=${id}`;
     // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
     // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
+    if (isStudioPath(pathname)) window.location.assign(url);
+    else router.push(url);
+  }, [onStudioHome, router, locale, pathname]);
+  // A service found by the search opens like a menu row, but as the SERVICE: its tool, its mode („Music video" is the
+  // Video tool in music-video mode) and its own analytics id. Outside the studio its catalog link carries the same.
+  const openService = useCallback((s: ServiceDefinition) => {
+    if (!s.tool) return;
+    setSidebarOpen(false);
+    setConvQuery('');
+    if (onStudioHome) {
+      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface: 'search' } }));
+      return;
+    }
+    const url = serviceHref(s.id, locale);
+    if (!url) return;
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
   }, [onStudioHome, router, locale, pathname]);
@@ -941,7 +978,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     selectTool('chat');
     window.setTimeout(() => { focusComposer(); }, 250);
   }, [selectTool]);
-  const tSearch = locale === 'en' ? 'Search chats…' : locale === 'ru' ? 'Поиск по чатам…' : 'ძებნა ჩატებში…';
+  const tSearch = locale === 'en' ? 'Search services and chats…' : locale === 'ru' ? 'Поиск сервисов и чатов…' : 'ძებნა: სერვისები და ჩატები…';
   const tNoMatch = locale === 'en' ? 'Nothing found' : locale === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა';
   const tLibrary = locale === 'en' ? 'Library' : locale === 'ru' ? 'Библиотека' : 'ბიბლიოთეკა';
   const tClearAll = locale === 'en' ? 'Clear all' : locale === 'ru' ? 'Очистить' : 'გასუფთავება';
@@ -973,6 +1010,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     const q = convQuery.trim().toLowerCase();
     return q ? conversations.filter((c) => (c.title || '').toLowerCase().includes(q)) : conversations;
   }, [conversations, convQuery]);
+  // §51 — the same box finds SERVICES, by the words a person would type in any UI language (the catalog's aliases, the
+  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed.
+  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery) : []), [convQuery]);
 
   const convGroups = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -1141,41 +1181,58 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* „სერვისები“ — every tool the studio has, from ONE list (lib/studio/tools.ts). In the studio a row
-              switches the tool in place; anywhere else it opens the studio on it. The composer's „+“ sheet
-              reads the same list, so a service can never be reachable from one door and missing from the other. */}
-          <p className={sideHdr}>{t.services}</p>
-          <div className="space-y-0.5">
-            {navPrimary.filter((id) => id !== 'chat').map((id) => {
-              const { Icon } = TOOL_META[id];
-              const on = onStudioHome && activeTool === id;
-              return (
-                // data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar).
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
-                  className={`${sideRow} ${on ? 'bg-app-elevated' : ''}`}>
-                  <Icon className={`h-[17px] w-[17px] ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
-                </button>
-              );
-            })}
-            {/* „მეტი“ only while there is something under it — every one of them may be switched off in Plugins. */}
-            {navMore.length > 0 && (
-            <button type="button" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} className={`${sideRow} text-app-muted`}>
-              <ChevronRight className={`h-[17px] w-[17px] transition-transform ${moreOpen ? 'rotate-90' : ''}`} aria-hidden="true" /> {tMore}
-            </button>
-            )}
-            {moreOpen && navMore.map((id) => {
-              const { Icon } = TOOL_META[id];
-              const on = onStudioHome && activeTool === id;
-              return (
-                <button key={id} type="button" onClick={() => selectTool(id)} aria-current={on ? 'true' : undefined}
-                  className={`${sideRow} pl-5 ${on ? 'bg-app-elevated' : ''}`}>
-                  <Icon className={`h-4 w-4 ${on ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
-                  <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet and the Plugins tab read the
+              same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
+              switches the tool in place; anywhere else it opens the studio on it. */}
+          {(['create', 'work'] as const).map((grp) => {
+            const cats = navCategories.filter((g) => g.group === grp);
+            if (cats.length === 0) return null;
+            return (
+              <div key={grp} data-testid={`sidebar-group-${grp}`}>
+                <p className={sideHdr}>{NAV_GROUP_LABEL[grp][lang]}</p>
+                <div className="space-y-0.5">
+                  {cats.map((g) => {
+                    const lead = g.tools[0]!;
+                    const rest = g.tools.slice(1);
+                    const { Icon } = TOOL_META[lead];
+                    const inCat = onStudioHome && activeTool !== null && g.tools.includes(activeTool);
+                    const on = onStudioHome && activeTool === lead;
+                    const open = openCats.has(g.id);
+                    return (
+                      <div key={g.id}>
+                        <div className="flex items-center gap-0.5">
+                          {/* data-tour: an anchor the first-run tour can point at (lib/onboarding/tour.ts — step 2 uses tool-avatar). */}
+                          <button type="button" onClick={() => selectTool(lead)} aria-current={on ? 'true' : undefined} data-tour={`tool-${lead}`}
+                            className={`${sideRow} min-w-0 flex-1 ${on ? 'bg-app-elevated' : ''}`}>
+                            <Icon className={`h-[17px] w-[17px] ${inCat ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                            <span className="min-w-0 truncate">{g.label[lang]}</span>
+                          </button>
+                          {rest.length > 0 && (
+                            <button type="button" onClick={() => toggleCat(g.id)} aria-expanded={open} aria-label={`${g.label[lang]}: ${tMore}`} title={tMore}
+                              data-testid={`sidebar-cat-toggle-${g.id}`}
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-muted transition-colors hover:bg-app-elevated hover:text-app-text touch-manipulation [@media(pointer:fine)]:h-10 [@media(pointer:fine)]:w-10">
+                              <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                        {open && rest.map((id) => {
+                          const { Icon: SubIcon } = TOOL_META[id];
+                          const subOn = onStudioHome && activeTool === id;
+                          return (
+                            <button key={id} type="button" onClick={() => selectTool(id)} aria-current={subOn ? 'true' : undefined} data-tour={`tool-${id}`}
+                              className={`${sideRow} pl-7 ${subOn ? 'bg-app-elevated' : ''}`}>
+                              <SubIcon className={`h-4 w-4 ${subOn ? 'text-app-accent' : 'text-app-muted'}`} aria-hidden="true" />
+                              <span className="min-w-0 truncate">{TOOL_META[id].name[lang]}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
 
           {/* „ბოლო“ — the chat history. */}
           <div className="mt-3 flex items-center justify-between gap-1.5 pr-1">
@@ -1199,12 +1256,13 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
               className="mb-2 w-full rounded-lg bg-app-elevated px-2.5 py-2 !text-[13px] !text-app-text placeholder:text-app-muted/70 focus:outline-none focus:ring-1 focus:ring-app-accent"
             />
           )}
+          {serviceHits.length > 0 && <ServiceSearchResults services={serviceHits} lang={lang} onOpen={openService} rowClassName={sideRow} />}
           {authed && onStudioHome && !historySynced && conversations.length === 0 ? (
             <SkeletonList count={3} locale={lang} rowClassName="h-11 w-full rounded-lg [@media(pointer:fine)]:h-[38px]" className="space-y-0.5 pb-2" testId="history-skeleton" />
           ) : conversations.length === 0 ? (
             <EmptyState compact icon={ChatIcon} line={tNoHistory} actionLabel={tStartChat} onAction={startChat} testId="history-empty" />
           ) : convMatches.length === 0 ? (
-            <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
+            serviceHits.length > 0 ? null : <p className="px-2.5 py-1 text-[12px] text-app-muted">{tNoMatch}</p>
           ) : (
             <div className="space-y-2 pb-2">
               {convGroups.map((g) => (
@@ -1304,12 +1362,14 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           <button type="button" onClick={() => setSidebarCollapsedPersist(false)} aria-label={tExpand} title={tExpand} className={railBtn}><PanelLeft className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <button type="button" onClick={handleNewChat} aria-label={tNewSession} title={tNewSession} className={railBtn}><PenSquare className="h-[18px] w-[18px]" aria-hidden="true" /></button>
           <span className="my-1 h-px w-6 bg-app-border/15" aria-hidden="true" />
-          {navPrimary.map((id) => {
+          {/* One icon per category (its first tool), Agent G first — the rail is the sidebar's categories, folded. */}
+          {navGroups.map((g) => {
+            const id = g.tools[0]!;
             const { Icon } = TOOL_META[id];
-            const on = onStudioHome && activeTool === id;
-            const name = TOOL_META[id].name[lang];
+            const on = onStudioHome && activeTool !== null && g.tools.includes(activeTool);
+            const name = g.id === 'agent-g' ? TOOL_META.chat.name[lang] : g.label[lang];
             return (
-              <button key={id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
+              <button key={g.id} type="button" onClick={() => selectTool(id)} aria-label={name} title={name} aria-current={on ? 'true' : undefined} data-tour={`tool-${id}`}
                 className={`${railBtn} ${on ? 'bg-app-elevated !text-app-accent' : ''}`}><Icon className="h-[18px] w-[18px]" aria-hidden="true" /></button>
             );
           })}

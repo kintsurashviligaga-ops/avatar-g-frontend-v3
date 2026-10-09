@@ -446,6 +446,7 @@ export function normalizeClipRequest(input: VeoClipInput, modelId: string, trans
     ...(cameraControl ? { cameraControl } : {}),
     ...(input.personGeneration !== undefined ? { personGeneration: input.personGeneration } : {}),
     ...(input.enhancePrompt !== undefined ? { enhancePrompt: input.enhancePrompt } : {}),
+    ...(input.verbatimPrompt === true ? { verbatimPrompt: true } : {}),
   };
   return { request, adjustments };
 }

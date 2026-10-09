@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withPublicMediaUrls } from '@/lib/security/publicMediaUrl';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,5 +45,5 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ creation: data });
+  return NextResponse.json({ creation: withPublicMediaUrls(data) });
 }

@@ -73,7 +73,7 @@ const QUESTION_LEAD = new RegExp(
  */
 const KA_IMPERATIVE_STEMS = [
   'გამიკეთ', 'გააკეთ', 'დამიმზად', 'დაამზად', 'შემიქმენ', 'შექმენ',
-  'დამიგენერირ', 'დააგენერირ', 'გადათარგმნ', 'გადმოაკეთ', 'გადააკეთ',
+  'დამიგენერირ', 'დააგენერირ', 'გადათარგმნ', 'გადამითარგმნ', 'გადმოაკეთ', 'გადააკეთ',
   'დამიდუბლირ', 'დაადუბლირ', 'დამიმონტაჟ', 'დაამონტაჟ',
   'გააერთიან', 'გამიერთიან', 'შემიდგინ', 'შემიკრიბ',
   'მინდა', 'მჭირდებ', 'დაიწყ', 'გახსენ', 'გამიხსენ',
@@ -81,6 +81,16 @@ const KA_IMPERATIVE_STEMS = [
 
 const IMPERATIVE_LEAD = new RegExp(
   `^\\s*(?:please\\s+)?(?:(?:make|create|generate|build|produce|render|do|give me|i want|i need|i'd like|let's|start|open|turn|convert|dub|translate|assemble|stitch|splice|combine|merge|edit|cut|design|prepare|дублируй|сделай|создай|сгенерируй|собери|склей|переведи|озвучь|хочу|нужно|начни|открой|подготовь)|(?:${KA_IMPERATIVE_STEMS})${L}*)${B1}`,
+  'iu',
+);
+
+/**
+ * Georgian puts the verb LAST and marks „for me" inside it: „მუსიკა დამირემიქსე", „პრეზენტაცია გამიკეთე",
+ * „კატა დამიხატე". A lead-only gate never sees these. Preverb + `მი` + stem + imperative `-ე/-ი` is a request
+ * wherever it stands; the declaratives that share the shape („შემიძლია", „გამიხარდა") end in `-ა` and do not match.
+ */
+const KA_FOR_ME_IMPERATIVE = new RegExp(
+  `${B0}(?:და|გა|შე|გადა|მო|ა|ჩა|ამო|გამო|წა)მი${L}{2,}[ეი]${B1}`,
   'iu',
 );
 
@@ -97,7 +107,10 @@ const SERVICE_NOUNS: Array<{ service: StudioService; re: RegExp }> = [
   // ⚠️ The Georgian stem needs its PREVERB: the imperative is `დაადუბლირე`, and the start-of-token guard
   // rejected it because `დაა` is a letter sitting where the guard demands none. Only the bare `დუბლირ`
   // form — which nobody types — could ever match.
-  { service: 'dubbing', re: new RegExp(`${B0}(?:dub(?:bing|bed)?|voice[\\s-]?over\\s+in|lip[\\s-]?dub|(?:დაა|და|გადა|გა)?დუბლირ${L}*|(?:გა)?ახმოვან${L}*|გახმოვან${L}*|дубляж|дублир${L}*|озвуч${L}*)${B1}|(?:translate|გადათარგმნე|переведи)${B1}[\\s\\S]{0,40}(?:video|clip|ვიდეო|видео)`, 'iu') },
+  // ⚠️ Georgian puts the object FIRST and the verb takes the „for me" marker: „ამ ვიდეოს ხმა ქართულად
+  // გადამითარგმნე" (Master Task §52). The verb-first arm alone, spelled `გადათარგმნე`, never saw it — so the
+  // canonical Georgian dubbing request fell to plain chat. Both orders, and `გადა(მი)თარგმნ…`, are covered.
+  { service: 'dubbing', re: new RegExp(`${B0}(?:dub(?:bing|bed)?|voice[\\s-]?over\\s+in|lip[\\s-]?dub|(?:დაა|და|გადა|გა)?დუბლირ${L}*|(?:გა)?ახმოვან${L}*|გახმოვან${L}*|дубляж|дублир${L}*|озвуч${L}*)${B1}|(?:translate|გადა(?:მი)?თარგმნ${L}*|переведи)${B1}[\\s\\S]{0,40}(?:video|clip|ვიდეო|видео)|(?:video|clip|ვიდეო|видео)[\\s\\S]{0,40}${B0}(?:translate|გადა(?:მი)?თარგმნ${L}*|переведи)${B1}`, 'iu') },
   { service: 'presentation', re: new RegExp(`${B0}(?:presentation|slide\\s*deck|slides?|deck|powerpoint|keynote|პრეზენტაცი${L}*|სლაიდ${L}*|презентаци${L}*|слайд${L}*)${B1}`, 'iu') },
   { service: 'model3d', re: new RegExp(`${B0}(?:3\\s*-?\\s*d\\s*(?:model|object|mesh|asset)|three[\\s-]?d\\s*model|glb|3d\\s*მოდელ${L}*|სამგანზომილებ${L}*|3d[\\s-]?модел${L}*|трёхмерн${L}*)${B1}`, 'iu') },
   // Montage LAST: its nouns (clips, footage) are the most likely to appear incidentally.
@@ -209,6 +222,15 @@ function mineTopic(t: string, service: StudioService): string | undefined {
   return s.length >= 2 ? s.slice(0, 200) : undefined;
 }
 
+/** A question about a service ("what is dubbing?", „რამდენი ღირს…") — never a request to open one. */
+export const isServiceQuestion = (text: string): boolean => QUESTION_LEAD.test(text.slice(0, 400));
+
+/** An imperative lead, a deictic object ("dub THIS") or a Georgian „for me" imperative anywhere („…გამიკეთე"). */
+export const looksLikeRequest = (text: string): boolean => {
+  const t = text.slice(0, 400);
+  return IMPERATIVE_LEAD.test(t) || DEICTIC.test(t) || KA_FOR_ME_IMPERATIVE.test(t);
+};
+
 /**
  * Route a sentence to a studio service, or null.
  *
@@ -233,8 +255,9 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
   // video is named anywhere, this is not a dubbing request and must fall through to the voice/chat path.
   if (hit.service === 'dubbing' && TEXT_OBJECT.test(t) && !VIDEO_OBJECT.test(t)) return null;
 
-  // Needs a reason to believe this is a REQUEST: an imperative lead, or a deictic object ("dub THIS").
-  if (!IMPERATIVE_LEAD.test(t) && !DEICTIC.test(t)) return null;
+  // Needs a reason to believe this is a REQUEST: an imperative lead, a deictic object ("dub THIS"), or a Georgian
+  // verb-final „…გამიკეთე".
+  if (!looksLikeRequest(t)) return null;
 
   const params: StudioIntent['params'] = {};
   if (hit.service === 'dubbing') {

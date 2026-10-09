@@ -38,7 +38,14 @@ export async function GET(request: NextRequest) {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
-    if (error) return apiError(error, 500, 'Failed to load channels');
+    // The runtime status (is the bot configured?) does not depend on the user's stored links, and it is all the hub
+    // reads. A failed links query (in Production `agent_g_channels` does not exist, checked 2026-10-08) used to turn
+    // the whole answer into a 500, so every signed-in user saw Telegram and WhatsApp as broken. It is reported, not
+    // hidden: `channels_unavailable` says the list could not be read, and the error is logged.
+    if (error) {
+      console.error('[agent-g/channels] stored links unavailable:', error.code ?? '', error.message);
+      return apiSuccess({ guest: false, channels: [], channels_unavailable: true, runtime_status: runtimeStatuses });
+    }
 
     return apiSuccess({ guest: false, channels: data ?? [], runtime_status: runtimeStatuses });
   } catch (error) {

@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { RATE_LIMITS, checkRateLimit, checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
+import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { ttsModel } from '@/lib/ai/google/models';
@@ -144,8 +145,8 @@ export async function POST(req: NextRequest) {
     if (capped) return capped;
   }
 
-  const apiKey = resolveGeminiKey();
-  if (!apiKey) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
+  // The selected Google transport (GEMINI_TRANSPORT) must be able to serve; the error name predates Vertex.
+  if (googleTransportBlocker(resolveGeminiKey())) return NextResponse.json({ error: 'gemini_key_missing' }, { status: 503 });
 
   const model = ttsModel();
   const profile = resolveAgentProfile({
@@ -167,12 +168,12 @@ export async function POST(req: NextRequest) {
   // generate text, but it should only be used for TTS"). Even with it, the preview TTS model very
   // occasionally still slips into answer-mode, so we retry.
   const callGemini = async (): Promise<Response> =>
-    // The key rides in a header — a key in a URL lands in every proxy and access log on the way to Google.
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    // Through the Google transport: the API key rides in a header (never the URL), or Vertex gets a WIF token.
+    // ⚠️ The TTS model on Vertex AI is not proven for this project yet — a miss there is a 502, not a switch.
+    googleModelFetch(model, 'generateContent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `Read aloud verbatim: ${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text: `Read aloud verbatim: ${text}` }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {

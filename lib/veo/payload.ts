@@ -64,7 +64,8 @@ export interface VertexVeoParameters {
   negativePrompt?: string;
   personGeneration: PersonGeneration;
   generateAudio: boolean;
-  enhancePrompt: boolean;
+  /** Only ever `true`: Veo 3.x refuses `false` (see buildVertexPayload). */
+  enhancePrompt?: true;
   storageUri?: string;
 }
 
@@ -218,9 +219,16 @@ function geminiImage(media: VeoMedia, field: MediaField): GeminiImage {
   return { bytesBase64Encoded: base64Of(media.base64, field), mimeType: mimeTypeOf(media.mimeType, field) };
 }
 
-function trimmedNegative(raw: string | undefined): string | undefined {
-  const negative = typeof raw === 'string' ? raw.trim() : '';
-  return negative || undefined;
+/** The prompt as it goes on the wire: trimmed, unless the request asks for it verbatim (V3). */
+function wirePrompt(req: VeoClipRequest): string {
+  return req.verbatimPrompt === true ? req.prompt : req.prompt.trim();
+}
+
+/** The negative prompt as it goes on the wire (verbatim like the prompt); blank → not sent. */
+function wireNegative(req: VeoClipRequest): string | undefined {
+  const raw = req.negativePrompt;
+  if (typeof raw !== 'string' || !raw.trim()) return undefined;
+  return req.verbatimPrompt === true ? raw : raw.trim();
 }
 
 /**
@@ -251,7 +259,7 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
     throw new VeoPayloadError('personGeneration', `personGeneration must be allow_all, allow_adult or dont_allow (got ${shown(personGeneration)})`);
   }
 
-  const instance: VertexVeoInstance = { prompt: req.prompt.trim() };
+  const instance: VertexVeoInstance = { prompt: wirePrompt(req) };
   if (req.startImage) instance.image = vertexImage(req.startImage, 'startImage');
   if (req.lastFrame) instance.lastFrame = vertexImage(req.lastFrame, 'lastFrame');
   if (references.length > 0) {
@@ -259,7 +267,7 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
   }
   if (req.cameraControl !== undefined) instance.cameraControl = req.cameraControl;
 
-  const negativePrompt = trimmedNegative(req.negativePrompt);
+  const negativePrompt = wireNegative(req);
   const parameters: VertexVeoParameters = {
     aspectRatio: req.aspect,
     durationSeconds: req.durationSec,
@@ -270,8 +278,10 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
     ...(negativePrompt ? { negativePrompt } : {}),
     personGeneration,
     generateAudio: req.generateAudio,
-    // Default OFF: the Omni director already compiled Google's prompt anatomy, and a rewritten prompt defeats the seed.
-    enhancePrompt: req.enhancePrompt === true,
+    // Never `false`: Veo 3.x on Vertex fails the whole operation with "Veo 3 prompt enhancement cannot be disabled"
+    // (PROVEN 2026-10-08, operation 71e35314-…, GCP Part 0 T1). Omitted means Google's default, which is on; `true` is sent
+    // only when asked for. The prompt still leaves us byte-for-byte; the rewrite happens inside Google.
+    ...(req.enhancePrompt === true ? { enhancePrompt: true as const } : {}),
     ...(opts.storageUri !== undefined ? { storageUri: opts.storageUri } : {}),
   };
   return { instances: [instance], parameters };
@@ -286,14 +296,14 @@ export function buildVertexPayload(req: VeoClipRequest, opts: VertexPayloadOptio
 export function buildGeminiPayload(req: VeoClipRequest): GeminiVeoPayload {
   const references = validateClip(req);
 
-  const instance: GeminiVeoInstance = { prompt: req.prompt.trim() };
+  const instance: GeminiVeoInstance = { prompt: wirePrompt(req) };
   if (req.startImage) instance.image = geminiImage(req.startImage, 'startImage');
   if (req.lastFrame) instance.lastFrame = geminiImage(req.lastFrame, 'lastFrame');
   if (references.length > 0) {
     instance.referenceImages = references.map((media) => ({ image: geminiImage(media, 'referenceImages'), referenceType: 'asset' }));
   }
 
-  const negativePrompt = trimmedNegative(req.negativePrompt);
+  const negativePrompt = wireNegative(req);
   const parameters: GeminiVeoParameters = {
     aspectRatio: req.aspect,
     resolution: req.resolution,

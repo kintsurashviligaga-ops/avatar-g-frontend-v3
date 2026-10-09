@@ -33,8 +33,11 @@ jest.mock('../../../../../lib/orchestrator/jobs', () => ({
   safeJobId: jest.fn((_v: unknown, fallback: string) => fallback),
 }));
 jest.mock('../../../../../lib/orchestrator/storage-adapter', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/storage-adapter'),
   // A bare storage path is signed into a public https URL, as the real adapter does.
   createSignedAssetUrl: jest.fn(async (bucket: string, path: string) => `https://x.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=t`),
+  // No live token in this test: a signed URL of ours passes only as the caller's own upload.
+  verifyFileableUrl: jest.fn(async () => ({ ok: false, reason: 'not_readable' })),
 }));
 
 // eslint-disable-next-line import/first
@@ -52,12 +55,16 @@ const post = (body: unknown) =>
   }) as unknown as Parameters<typeof POST>[0]);
 
 const edit = (over: Record<string, unknown> = {}) => ({
-  shots: [{ url: 'u/clip-1', kind: 'video', startSec: 0, endSec: 6, muted: false, transition: 'cut' }],
+  shots: [{ url: 'omni-uploads/user-1/clip-1', kind: 'video', startSec: 0, endSec: 6, muted: false, transition: 'cut' }],
   aspect: '9:16',
-  musicUrl: 'u/song',
+  musicUrl: 'omni-uploads/user-1/song',
   musicOnly: false,
   ...over,
 });
+
+const savedSupabaseUrl = process.env.SUPABASE_URL;
+beforeAll(() => { process.env.SUPABASE_URL = 'https://x.supabase.co'; });
+afterAll(() => { if (savedSupabaseUrl === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = savedSupabaseUrl; });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -85,7 +92,7 @@ describe('musicStartSec', () => {
     expect(runMontage).toHaveBeenCalledTimes(1);
     const req = (runMontage as jest.Mock).mock.calls[0][0];
     expect(req.musicStartSec).toBe(42.5);
-    expect(req.musicUrl).toBe('https://x.supabase.co/storage/v1/object/sign/uploads/u/song?token=t');
+    expect(req.musicUrl).toBe('https://x.supabase.co/storage/v1/object/sign/uploads/omni-uploads/user-1/song?token=t');
   });
 
   it.each([0, null, undefined])('%s is the top of the song — nothing extra reaches the pipeline', async (musicStartSec) => {
@@ -113,5 +120,36 @@ describe('musicStartSec', () => {
     mockUser = null;
     expect((await post(edit({ musicStartSec: 5 }))).status).toBe(401);
     expect(runMontage).not.toHaveBeenCalled();
+  });
+});
+
+describe('owner check (lib/security/callerMedia)', () => {
+  const shot = (url: string) => [{ url, kind: 'video', startSec: 0, endSec: 6, muted: false, transition: 'cut' }];
+
+  it('another account’s bare upload path is a 403 — nothing signed, no job, no render', async () => {
+    for (const over of [{ shots: shot('omni-uploads/user-2/clip-1') }, { musicUrl: 'omni-uploads/user-2/song' }]) {
+      const res = await post(edit(over));
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: 'media_not_yours' });
+    }
+    expect(createJob).not.toHaveBeenCalled();
+    expect(runMontage).not.toHaveBeenCalled();
+  });
+
+  it('a signed URL of ours to someone else’s upload, token no longer live, is a 403 (runMontage would re-sign it)', async () => {
+    const res = await post(edit({ shots: shot('https://x.supabase.co/storage/v1/object/sign/uploads/omni-uploads/user-2/clip-1?token=old') }));
+    expect(res.status).toBe(403);
+    expect(runMontage).not.toHaveBeenCalled();
+  });
+
+  it('the caller’s own upload URL with an expired token still renders', async () => {
+    const res = await post(edit({ shots: shot('https://x.supabase.co/storage/v1/object/sign/uploads/omni-uploads/user-1/clip-1?token=old') }));
+    expect(res.status).toBe(200);
+    expect(runMontage).toHaveBeenCalledTimes(1);
+  });
+
+  it('an external clip URL is not ours to judge: it still meets only the public-address check', async () => {
+    const res = await post(edit({ shots: shot('https://cdn.example.com/clip.mp4') }));
+    expect(res.status).toBe(200);
   });
 });

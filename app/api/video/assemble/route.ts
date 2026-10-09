@@ -30,6 +30,7 @@ import { isAdminUser } from '@/lib/chat/filmComposite';
 import { consumeFreeFilm, restoreFreeFilm } from '@/lib/billing/wallet-ledger';
 import { markFreeOutput } from '@/lib/billing/entitlements';
 import { reSignIfInternal, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { firstUnreadableOwnUrl } from '@/lib/security/callerMedia';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
@@ -48,10 +49,9 @@ import { textToHostedSpeech, sanitizeSpokenText } from '@/lib/chat/filmVoiceover
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { estimateFilmCostUsd } from '@/lib/pipeline/cost';
 import { saveClipCheckpoints } from '@/lib/pipeline/checkpoints';
-import { generateMusic } from '@/lib/ai/replicate';
-// ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY (MusicGen as the silent-
-// safety last resort). Udio is intentionally NOT imported here so it can never score a
-// video; it stays confined to the standalone /api/ai/music surface.
+// ISSUE 5 — the VIDEO pipeline uses ElevenLabs Music ONLY. Udio is intentionally NOT imported here so it can
+// never score a video; it stays confined to the standalone /api/ai/music surface — and Replicate MusicGen, once the
+// "silent-safety last resort", is gone too (PROJECT_MASTER R7: no silent fallback — see resolveMusicBed).
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -158,8 +158,8 @@ interface AssembleBody {
    *  the one ad price, not a second charge. Unlike filmTokenId it triggers NO
    *  film-specific side-effects (no assembling/failed status writes, no 'cut' transition). */
   billingToken?: string | null;
-  /** PHASE 55 §2 — the film brief, used to compose a cohesive fallback score
-   *  on Replicate MusicGen when the upstream Udio track is missing. */
+  /** PHASE 55 §2 — the film brief, used to compose the ElevenLabs Music score
+   *  when no upstream / uploaded track is supplied. */
   scorePrompt?: string | null;
   /** B2B commercials only — the director's marketing copy. When present, the finished
    *  master gets animated lower-third / price / CTA overlays burned in (fail-open). */
@@ -171,7 +171,7 @@ interface AssembleBody {
    *  heuristic; omitted → fall back to isMusicVideoBrief(scorePrompt). */
   musicVideoMode?: boolean;
   /** v330 — a user-supplied soundtrack (uploaded beat/song). When present it BECOMES
-   *  the master music bed, bypassing BOTH the Udio score and the MusicGen fallback,
+   *  the master music bed, bypassing the ElevenLabs Music score,
    *  and the LTX/compositing pipeline anchors onto it. */
   customAudioUrl?: string | null;
   /** v330 — caption language for the burned-in lower-third (ka/en/ru). Drives the
@@ -279,6 +279,19 @@ async function assembleImpl(req: NextRequest) {
     const gate = requireAuthForGeneration(uid);
     if (gate.response) return gate.response;
   }
+  // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
+  // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
+  // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).
+  {
+    const named: unknown[] = [
+      ...segments.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.slice(0, 16).map((s) => s?.url) : []),
+    ];
+    if ((await firstUnreadableOwnUrl(named, uid)) >= 0) {
+      return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips or audio files is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
+    }
+  }
 
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
@@ -383,7 +396,7 @@ async function assembleImpl(req: NextRequest) {
   const musicBugSpec = musicVideoMode ? deriveMusicBug(body.scorePrompt ?? '', body.vocalGender, captionLang) : null;
 
   // STEP 3 (v331) — AUDIO BED runs CONCURRENTLY with the segment re-signing rather
-  // than strictly before it, so a slow score gen (EL Music / MusicGen) no longer
+  // than strictly before it, so a slow score gen (EL Music) no longer
   // SERIALLY eats the stitch's window — the cause of the ~197s "dispatch stalled"
   // timeout. `audioTotalSec` is derived from the RAW segments (re-signing changes
   // URLs, not durations) so the score gen can start without waiting on the re-sign.
@@ -393,13 +406,12 @@ async function assembleImpl(req: NextRequest) {
     segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0),
   )));
 
-  // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is the MAIN
-  // engine for instrumentals + sung vocals (and ElevenLabs sound-generation already
-  // powers the SFX/effects leg upstream); Replicate MusicGen is the silent-safety last
-  // resort. Udio is NOT used for video — it stays on the standalone /api/ai/music
-  // surface only. Fail-open at every tier — never a 500.
-  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  MusicGen  >  silent
-  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | 'musicgen' | null;
+  // AUDIO BED — VIDEO pipeline is ElevenLabs-ONLY (ISSUE 5). ElevenLabs is THE engine
+  // for instrumentals + sung vocals (and ElevenLabs sound-generation already powers the
+  // SFX/effects leg upstream). Udio is NOT used for video — it stays on the standalone
+  // /api/ai/music surface only. Fail-open — never a 500.
+  //   custom upload / upstream musicUrl  >  ElevenLabs Music  >  no music (scoreFallback: null)
+  type AudioEngine = 'custom-upload' | 'upstream' | 'elevenlabs-music' | null;
   const resolveMusicBed = async (): Promise<{ url: string | null; fallback: AudioEngine }> => {
     // A user-uploaded soundtrack (or an upstream track) is the master bed and wins.
     if (body.customAudioUrl) {
@@ -410,8 +422,8 @@ async function assembleImpl(req: NextRequest) {
     if (body.musicUrl) return { url: await reSignIfInternal(body.musicUrl), fallback: 'upstream' };
     if (body.noMusic) return { url: null, fallback: null };
 
-    // ONE shared song spec, so ElevenLabs AND the Udio fallback render the SAME brief
-    // (e.g. a sung Georgian R&B track for a music video, or an instrumental film score).
+    // ONE shared song spec (e.g. a sung Georgian R&B track for a music video, or an
+    // instrumental film score) — the brief ElevenLabs Music composes from.
     const { prompt, instrumental } = buildElevenMusicPrompt({
       brief: typeof body.scorePrompt === 'string' ? body.scorePrompt : '',
       totalSec: audioTotalSec,
@@ -434,35 +446,18 @@ async function assembleImpl(req: NextRequest) {
         if (url) return { url, fallback: 'elevenlabs-music' };
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn('[assemble] ElevenLabs Music failed → falling back to MusicGen:', err instanceof Error ? err.message : err);
+        console.warn('[assemble] ElevenLabs Music failed → film has no music (no fallback, R7):', err instanceof Error ? err.message : err);
       }
     }
 
     // ISSUE 5 — the Udio fallback that used to sit here has been REMOVED so the video
-    // pipeline never scores a film with Udio. ElevenLabs Music is the only premium
-    // engine for video; if it misses we drop straight to MusicGen below.
-
-    // FALLBACK — Replicate MusicGen (last resort before silent). Budget-guarded.
-    const STITCH_RESERVE_MS = 70_000; // CPU stitch + overlay + response headroom
-    const SCORE_BUDGET_MS = 120_000;
-    if ((MAX_FN_MS - (Date.now() - fnT0)) > SCORE_BUDGET_MS + STITCH_RESERVE_MS && process.env.REPLICATE_API_TOKEN) {
-      const brief =
-        typeof body.scorePrompt === 'string' && body.scorePrompt.trim()
-          ? body.scorePrompt.trim()
-          : 'emotional orchestral instrumental, cohesive cinematic film score';
-      try {
-        const score = await Promise.race([
-          generateMusic(`${brief}, ${audioTotalSec}-second continuous film score, instrumental`, audioTotalSec),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('musicgen score timed out')), SCORE_BUDGET_MS)),
-        ]);
-        // eslint-disable-next-line no-console
-        console.log('[assemble] MusicGen score ready:', score.audioUrl ? 'yes' : 'no');
-        if (score.audioUrl) return { url: score.audioUrl, fallback: 'musicgen' };
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[assemble] MusicGen score fallback failed (film stays silent):', err instanceof Error ? err.message : err);
-      }
-    }
+    // pipeline never scores a film with Udio.
+    //
+    // ⚠️ …AND SO HAS THE REPLICATE MUSICGEN ONE THAT REPLACED IT (PROJECT_MASTER R7 — no silent fallback). With
+    // REPLICATE_API_TOKEN set, an ElevenLabs miss was quietly re-scored on MusicGen, a provider the platform no longer
+    // allows, and the film shipped with a bed nobody chose. The score is one leg of a film that otherwise renders, so an
+    // ElevenLabs miss is that leg's own explicit outcome: no music, `scoreFallback: null` in the response — which the
+    // studio already turns into its "music unavailable" note (lib/chat/filmDelivery) — and never a second provider.
     return { url: null, fallback: null };
   };
 
@@ -790,7 +785,7 @@ async function assembleImpl(req: NextRequest) {
         }
         let timer: ReturnType<typeof setTimeout> | null = null;
         // v330 — make the deadline RELATIVE to time already spent on the synchronous
-        // audio legs (EL Music / MusicGen). A fixed 270s deadline could push total past
+        // audio legs (EL Music). A fixed 270s deadline could push total past
         // maxDuration (300s) → platform hard-kill BEFORE this timer fires → saga compensate
         // skipped → stranded credits. Cap it to the remaining budget (minus a response/
         // compensate reserve) so the timer always fires inside the function.

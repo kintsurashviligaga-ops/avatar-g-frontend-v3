@@ -16,7 +16,8 @@ import sharp from 'sharp';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { klingSubmit, klingConfigured, KLING_MODELS } from '@/lib/ai/klingClient';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
-import { uploadBufferAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
+import { ownsUploadObject, resolveCallerMedia } from '@/lib/security/callerMedia';
 import { createJob } from '@/lib/orchestrator/jobs';
 import { hasSufficientBalance, deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
@@ -26,13 +27,13 @@ import { billingLocale, ledgerUnavailableBody } from '@/lib/api/billingCopy';
 import { classifyProviderError } from '@/lib/api/providerError';
 import { reportError } from '@/lib/observability/report-error';
 import { randomUUID } from 'node:crypto';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 // A Motion Control render is a single short (5-10s) Kling i2v clip — priced as one paid video op, the
 // same tier as a remix. The reservation is taken BEFORE the submit under a fresh server ref; the jobId handed back
 // carries a signed charge token naming that ref (lib/services/motion/chargeToken), which /status reads to refund a
 // failed render through the ledger.
 const MOTION_COST = creditCostFor('remix');
-
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // submit-only — returns fast; the wait happens via /status polling
@@ -52,11 +53,14 @@ async function normalizeStartImage(src: string, userId: string): Promise<string>
       const b64 = src.includes(',') ? src.split(',')[1] ?? '' : '';
       if (b64) buf = Buffer.from(b64, 'base64');
     } else if (/^https?:\/\//i.test(src)) {
-      const r = await fetch(src, { signal: AbortSignal.timeout(20_000) });
-      if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+      // A caller-chosen address: public only, every redirect re-checked, an image, at most 20 MB (lib/web/publicFetch).
+      // It used to be a bare fetch — any URL, any size, redirects followed — and the result was re-hosted for the caller.
+      const r = await fetchPublicBytes(src, { maxBytes: 20 * 1024 * 1024, accept: /^image\//, timeoutMs: 20_000 });
+      if (r.ok) buf = r.bytes;
     } else {
-      const signed = await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', src, 3600);
-      if (signed) { const r = await fetch(signed, { signal: AbortSignal.timeout(20_000) }); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
+      // A bare storage path: signed only for the caller who owns it (the POST refuses anyone else's first).
+      const own = await resolveCallerMedia(src, userId, 3600);
+      if (own.ok && own.own) { const r = await fetch(own.url, { signal: AbortSignal.timeout(20_000) }); if (r.ok) buf = Buffer.from(await r.arrayBuffer()); }
     }
     if (!buf?.byteLength) return src;
     const fixed = await sharp(buf).rotate().jpeg({ quality: 92 }).toBuffer();
@@ -81,6 +85,11 @@ export async function POST(req: Request) {
   const motionPrompt = body?.motionPrompt?.trim();
   if (!characterImageUrl || !motionPrompt) {
     return NextResponse.json({ error: 'characterImageUrl + motionPrompt required' }, { status: 400 });
+  }
+  // A bare storage path is read with the service role below, and the result comes back to the caller: it must be
+  // their own upload (lib/security/callerMedia), never another account's photo.
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(characterImageUrl) && !ownsUploadObject(characterImageUrl.replace(/^\/+/, ''), user.id)) {
+    return NextResponse.json({ error: 'media_not_yours' }, { status: 403 });
   }
   // Billing gate — Motion Control was a REVENUE LEAK: it fired a paid Kling render with no charge. Gate
   // on balance up front (fail-open on read miss; the post-submit deduct is the real backstop) so a broke

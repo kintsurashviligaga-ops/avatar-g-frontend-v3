@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { uploadAndSign, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { ownsUploadObject } from '@/lib/security/callerMedia';
 import { prepareDatasetZip, startRvcTraining, pollRvcPrediction, rehostModel, rvcNameFor } from '@/lib/audio/rvc';
 import { saveTrainingJob, getLatestTraining, markTrainingDone, markTrainingFailed, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -68,11 +69,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 400 });
   }
 
+  // A bare storage path is signed with the service role, so it must be the caller's own upload
+  // (lib/security/callerMedia): training a voice on another account's recording is refused, never signed.
+  if (!isUrl && !voiceRef.startsWith('data:') && !ownsUploadObject(voiceRef.replace(/^\/+/, ''), userId)) {
+    return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 403 });
+  }
   const voiceUrl = voiceRef.startsWith('data:')
     ? await hostVoiceData(voiceRef)
     : isUrl
       ? voiceRef
-      : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceRef, 3600);
+      : await createSignedAssetUrl(process.env.UPLOAD_BUCKET || 'uploads', voiceRef.replace(/^\/+/, ''), 3600);
   if (!voiceUrl) return NextResponse.json({ success: false, error: 'Could not read the voice file.' }, { status: 502 });
 
   const name = rvcNameFor(userId);

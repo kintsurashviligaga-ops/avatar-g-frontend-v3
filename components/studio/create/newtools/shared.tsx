@@ -57,13 +57,15 @@ function ShootChips({ aspect, quality, count, photos, copy, locale, onAspect, on
   return <ChipBar chips={chips} closeLabel={copy.close} testId={testId} />;
 }
 
-export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, canGenerate, needSomething, onAspect, onQuality, onCount, onGenerate, testId }: {
+export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, canGenerate, needSomething, onAspect, onQuality, onCount, onGenerate, testId, service }: {
   copy: ShootCopy; locale: string;
   form: { photos: readonly { w: number; h: number }[]; aspect: AspectChoice; quality: ShootQuality; count: ShootCount };
   tiles: number; credits: number;
   insufficient: boolean; canGenerate: boolean; needSomething: string;
   onAspect: (a: AspectChoice) => void; onQuality: (q: ShootQuality) => void; onCount: (c: ShootCount) => void;
   onGenerate: () => void; testId: string;
+  /** The catalog service (image.photoshoot / image.interior), for the quote-shown event. */
+  service?: string;
 }) {
   return (
     <footer data-testid={`${testId}-footer`}
@@ -79,7 +81,7 @@ export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, 
       {!canGenerate && <Hint testId={`${testId}-need`}>{needSomething}</Hint>}
       <GenerateButton
         label={copy.generate} credits={credits} insufficient={insufficient} disabled={!canGenerate} locale={locale}
-        onClick={onGenerate} testId={`${testId}-generate`}
+        onClick={onGenerate} testId={`${testId}-generate`} service={service}
       />
     </footer>
   );

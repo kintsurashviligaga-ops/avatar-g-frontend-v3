@@ -22,7 +22,8 @@ import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinema
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
-import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
+import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
+import { fetchPublic } from '@/lib/web/publicFetch';
 import { burnCaptionSegments } from '@/lib/pipeline/compositing/caption-burn';
 import { alignmentToCaptionSegments, type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pipeline/audio/audioMix';
@@ -144,12 +145,13 @@ async function download(url: string, dest: string, signal?: AbortSignal): Promis
   }
   const timer = setTimeout(() => { timedOut = true; ac.abort(); }, DOWNLOAD_TIMEOUT_MS);
   try {
-    if (!isPublicHttpUrl(url)) throw new Error('blocked host');
-    const r = await fetch(url, { signal: ac.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    // A clip URL can come from the caller: public hosts only, every redirect re-checked, the connection DNS-pinned
+    // (lib/web/publicFetch). It used to be a string check of the first address and a fetch that followed redirects.
+    const got = await fetchPublic(url, { signal: ac.signal, timeoutMs: DOWNLOAD_TIMEOUT_MS + 1_000 });
+    if (!got.ok) throw new Error(got.error === 'http_error' ? `HTTP ${got.status ?? 'error'}` : got.error === 'invalid_url' || got.error === 'blocked_host' ? 'blocked host' : got.error);
     // Cap the body DURING download so one asset can't OOM the function (clips ~10MB, a 60s master is
     // well under 200MB); over-cap / unreadable → named error → the saga compensate runs.
-    const buf = await readBodyWithCap(r, 200_000_000);
+    const buf = await readBodyWithCap(got.res, 200_000_000);
     if (!buf) throw new Error('exceeded 200MB cap or unreadable body');
     await writeFile(dest, buf);
     return dest;

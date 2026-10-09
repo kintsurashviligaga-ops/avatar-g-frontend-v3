@@ -9,13 +9,16 @@
  * Models available to this project's key (listed 2026-09-29): gemini-3.1-flash-image (GA, default),
  * gemini-3-pro-image (GA, higher fidelity), gemini-2.5-flash-image. Override with GEMINI_FRAME_MODEL.
  *
- * NEVER THROWS: null on any miss (no key, 4xx/5xx, safety block, no image part, timeout).
+ * The endpoint and credential come from the selected Google transport (lib/ai/google/transport): the API key, or
+ * Vertex AI with Workload Identity when GEMINI_TRANSPORT=vertex (gemini-3.1-flash-image answered there in the Part 0
+ * T2 test, 2026-10-08).
+ *
+ * NEVER THROWS: null on any miss (no transport, 4xx/5xx, safety block, no image part, timeout).
  */
 import 'server-only';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
-import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
-
-const GL_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+import { googleModelFetch, googleTransportBlocker } from '@/lib/ai/google/transport';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 const MAX_REF_BYTES = 12 * 1024 * 1024;
 
 export function geminiFrameModel(): string {
@@ -46,14 +49,10 @@ async function toInlinePart(src: string): Promise<{ inlineData: { mimeType: stri
       const m = src.match(/^data:([^;,]+);base64,(.+)$/);
       return m && m[1] && m[2] ? { inlineData: { mimeType: m[1], data: m[2] } } : null;
     }
-    if (!isPublicHttpUrl(src)) return null;
-    const res = await fetch(src, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) return null;
-    const mimeType = (res.headers.get('content-type') || 'image/jpeg').split(';')[0]!.trim();
-    if (!/^image\/(jpeg|png|webp)$/.test(mimeType)) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!buf.byteLength || buf.byteLength > MAX_REF_BYTES) return null;
-    return { inlineData: { mimeType, data: buf.toString('base64') } };
+    // A caller's reference: public only, redirects re-checked, DNS-pinned, capped while downloading (lib/web/publicFetch).
+    const got = await fetchPublicBytes(src, { maxBytes: MAX_REF_BYTES, accept: /^image\/(jpeg|png|webp)$/, timeoutMs: 15_000 });
+    if (!got.ok || !got.bytes.byteLength) return null;
+    return { inlineData: { mimeType: got.contentType, data: got.bytes.toString('base64') } };
   } catch {
     return null;
   }
@@ -72,16 +71,14 @@ export function buildGeminiImageBody(prompt: string, inlineRefs: Array<{ inlineD
 }
 
 export async function generateGeminiImage(args: GeminiImageArgs): Promise<GeminiImageResult | null> {
-  const key = resolveGeminiKey();
-  if (!key || !args.prompt?.trim()) return null;
+  if (googleTransportBlocker(resolveGeminiKey()) || !args.prompt?.trim()) return null;
   const model = (args.model || geminiFrameModel()).trim();
   const refs = (await Promise.all((args.referenceImages ?? []).slice(0, 3).map(toInlinePart)))
     .filter((p): p is { inlineData: { mimeType: string; data: string } } => !!p);
   try {
-    const res = await fetch(`${GL_BASE}/models/${model}:generateContent`, {
+    // Header auth on either transport: no credential ever lands in a URL (logs, traces, error messages).
+    const res = await googleModelFetch(model, 'generateContent', {
       method: 'POST',
-      // Header auth: the key never lands in a URL (logs, traces, error messages).
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       cache: 'no-store',
       body: JSON.stringify(buildGeminiImageBody(args.prompt, refs, args.aspectRatio)),
       signal: AbortSignal.timeout(args.timeoutMs ?? 90_000),

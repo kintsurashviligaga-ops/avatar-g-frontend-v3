@@ -5,7 +5,8 @@
  *
  *   · a web search: "Searching the web · ‘weather in Tbilisi’" with a spinner, then "Searched" and the pages the
  *     answer stands on as small chips (they open in a new tab — the call keeps running);
- *   · each tool step (prepare a studio, put code on screen, open a studio, end the call): running → ✓ / failed;
+ *   · each tool step (prepare a studio, put code on screen, open a studio, Agent G researching, end the call):
+ *     running → ✓ / failed;
  *   · generations still rendering (the job tray, which the full-screen call covers): label + a progress bar.
  *
  * Newest first, at most three rows of steps plus two jobs, so it never pushes the captions off a phone screen. The
@@ -17,7 +18,7 @@
  * how it ended — so the dock can show a spinner, then a check.
  */
 import {
-  AlertCircle, ArrowUpDown, Check, Clapperboard, Code2, Cpu, Eye, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
+  AlertCircle, ArrowUpDown, Bot, Check, Clapperboard, Code2, Cpu, Eye, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
   MessageSquarePlus, Search, SlidersHorizontal, Sparkles, Square, Wand2, X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -68,6 +69,7 @@ const S: Record<Locale, Strings> = {
       open_panel: { running: 'პანელს ვხსნი', done: 'პანელი გაიხსნა' },
       call_view: { running: 'ხედს ვცვლი', done: 'ხედი შეიცვალა' },
       open_url: { running: 'ბმულს ვამზადებ', done: 'ბმული ეკრანზეა — შეეხე' },
+      ask_agent_g: { running: 'აგენტი G იკვლევს', done: 'აგენტი G-ის პასუხი მზადაა' },
     },
     tool: { running: 'ვასრულებ', done: 'შესრულდა' },
     failed: 'ვერ შესრულდა',
@@ -95,6 +97,7 @@ const S: Record<Locale, Strings> = {
       open_panel: { running: 'Opening a panel', done: 'Panel open' },
       call_view: { running: 'Changing the view', done: 'View changed' },
       open_url: { running: 'Getting the link ready', done: 'Link on screen — tap it' },
+      ask_agent_g: { running: 'Agent G is researching', done: 'Agent G answered' },
     },
     tool: { running: 'Working', done: 'Done' },
     failed: 'Didn’t work',
@@ -122,6 +125,7 @@ const S: Record<Locale, Strings> = {
       open_panel: { running: 'Открываю панель', done: 'Панель открыта' },
       call_view: { running: 'Меняю вид', done: 'Вид изменён' },
       open_url: { running: 'Готовлю ссылку', done: 'Ссылка на экране — нажмите' },
+      ask_agent_g: { running: 'Агент G изучает вопрос', done: 'Агент G ответил' },
     },
     tool: { running: 'Выполняю', done: 'Готово' },
     failed: 'Не получилось',
@@ -147,6 +151,7 @@ const TOOL_ICON: Record<string, ReactNode> = {
   open_panel: <PanelRight size={16} aria-hidden />,
   call_view: <Monitor size={16} aria-hidden />,
   open_url: <Globe size={16} aria-hidden />,
+  ask_agent_g: <Bot size={16} aria-hidden />,
 };
 
 /**

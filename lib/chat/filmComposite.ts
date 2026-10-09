@@ -867,9 +867,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   const compositeId = `film:${input.sessionId}:${Date.now()}`;
 
   // ── Pre-flight: balance gate (skips anonymous; downstream gate covers them) ─
-  // Hoisted to function scope so the per-clip billing step below can waive charges for a
-  // FREE (promo) or founder/admin film (they bypass the pre-flight gate but were still charged).
-  let clipBillingWaived = false;
+  // (Clip legs never charge: the film is debited once up front and renderClip always gets the waiver — see its call.)
   // Tracked so a film that dispatches nothing can hand the slot back (see the restore below).
   let freeFilmConsumed = false;
   // ⚠️ THE FILM IS CHARGED ONCE, UP FRONT, AT ITS QUOTE (lib/credits/videoPricing — the number on the Generate button).
@@ -907,7 +905,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // wallet gate (their personal wallet may legitimately be 0 while the platform
     // LTX balance funds the real render). Checked only when no free film applies.
     const founderBypass = hasFreeFilm ? false : await isAdminUser(input.userId);
-    clipBillingWaived = hasFreeFilm || founderBypass;
     // ⚠️ THE FREE FILM IS PAID BY THE PLATFORM — and anyone gets one by signing up. On Veo Standard ($0.40/s) a 48 s
     // free film is $19.20 of Google spend for an e-mail address; on Fast ($0.12/s at 1080p) it is $5.76. Google-only
     // free films therefore render on Fast at most (Lite stays Lite). Founder/admin renders and paid films keep the

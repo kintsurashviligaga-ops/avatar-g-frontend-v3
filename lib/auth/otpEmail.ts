@@ -1,5 +1,5 @@
 /**
- * lib/auth/otpEmail.ts — the pure half of self-delivered 6-digit auth codes.
+ * lib/auth/otpEmail.ts — the pure half of self-delivered auth codes (6–10 digits, Supabase's setting).
  *
  * WHY WE DELIVER THE MAIL OURSELVES: Supabase renders whatever its "Confirm signup" / "Magic Link"
  * templates contain. Those templates ship with `{{ .ConfirmationURL }}`, which produces a LINK, and this
@@ -25,7 +25,7 @@
  * - `register` — SIGN-UP (2026-10-03, the owner: an address that already has an account must not register again).
  *                A new address gets an UNCONFIRMED account and a confirmation code; a confirmed one is refused with
  *                `account_exists`, and the sheet sends the person to log in.
- * - `recovery` — „forgot password": a 6-digit RESET code for an existing account. It verifies with
+ * - `recovery` — „forgot password": a RESET code for an existing account. It verifies with
  *                `type: 'recovery'` and the sheet then asks for the new password.
  */
 export type OtpPurpose = 'signup' | 'signin' | 'continue' | 'register' | 'recovery';
@@ -45,9 +45,27 @@ export function isOtpPurpose(v: unknown): v is OtpPurpose {
   return v === 'signup' || v === 'signin' || v === 'continue' || v === 'register' || v === 'recovery';
 }
 
-/** Exactly six digits. Anything else means the provider response changed and must not be mailed. */
-export function isSixDigitCode(v: unknown): v is string {
-  return typeof v === 'string' && /^\d{6}$/.test(v);
+/**
+ * A Supabase email code: 6 to 10 digits, the range of the project's „Email OTP Length" setting. Anything else means the
+ * provider response changed and must not be mailed.
+ *
+ * ⚠️ IT WAS EXACTLY SIX (2026-10-01 → 10-08). Every send in the Vercel logs answered 502 `no email_otp in generateLink
+ * response` (production 10-03 07:18 and 07:24, Preview 10-08 12:08), so code sign-in, sign-up and password reset never
+ * delivered a code. GoTrue's email_otp is digits only, so the likely cause is a project OTP length other than 6
+ * (inferred; the send now logs the shape if it still fails). The sheet learns the length from the send's answer.
+ */
+export function isEmailOtpCode(v: unknown): v is string {
+  return typeof v === 'string' && /^\d{6,10}$/.test(v);
+}
+
+/** What a generateLink answer held where the code should be — key names and a length, never the value (for the log). */
+export function describeOtpShape(response: unknown): string {
+  const r = (response && typeof response === 'object' ? response : {}) as Record<string, unknown>;
+  const inner = (r.data && typeof r.data === 'object' ? r.data : r) as Record<string, unknown>;
+  const props = (inner.properties && typeof inner.properties === 'object' ? inner.properties : {}) as Record<string, unknown>;
+  const v = props.email_otp ?? inner.email_otp;
+  const kind = typeof v === 'string' ? `string(${v.length}${/^\d+$/.test(v) ? ', digits' : ''})` : typeof v;
+  return `keys=[${Object.keys(inner).join(',')}] properties=[${Object.keys(props).join(',')}] email_otp=${kind}`;
 }
 
 /**
@@ -61,11 +79,11 @@ export function extractEmailOtp(response: unknown): string | null {
   if (!response || typeof response !== 'object') return null;
   const r = response as Record<string, unknown>;
   const direct = r.email_otp;
-  if (isSixDigitCode(direct)) return direct;
+  if (isEmailOtpCode(direct)) return direct;
   const props = r.properties;
   if (props && typeof props === 'object') {
     const nested = (props as Record<string, unknown>).email_otp;
-    if (isSixDigitCode(nested)) return nested;
+    if (isEmailOtpCode(nested)) return nested;
   }
   // The SDK wraps everything one level deeper in `data`.
   const data = r.data;
@@ -243,7 +261,7 @@ export interface OtpMail {
  * notification without opening the mail, which is what every provider does and what people expect.
  */
 export function buildOtpEmail(code: string, purpose: OtpPurpose, locale: OtpLocale): OtpMail | null {
-  if (!isSixDigitCode(code)) return null;
+  if (!isEmailOtpCode(code)) return null;
   const c = COPY[locale][purpose];
   const safe = esc(code);
   const html = [

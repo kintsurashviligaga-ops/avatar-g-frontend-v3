@@ -30,6 +30,12 @@ jest.mock('node:fs/promises', () => ({
   rm: jest.fn(async () => undefined),
 }));
 jest.mock('ffmpeg-static', () => '/usr/bin/ffmpeg-test');
+// The argv remixOps BUILDS is under test; the download-first guard (./ffmpegExec) has its own tests.
+jest.mock('./ffmpegExec', () => {
+  const { promisify } = jest.requireActual('node:util');
+  const { execFile } = jest.requireMock('node:child_process');
+  return { ffmpegExec: (bin: string, args: string[], opts: unknown) => promisify(execFile)(bin, args, opts) };
+});
 jest.mock('../orchestrator/storage-adapter', () => ({ uploadBufferAndSign: jest.fn(async () => 'https://cdn.test/muxed.mp4') }));
 jest.mock('../agent/optimizer/activeConfig', () => ({ getActiveConfig: jest.fn() }));
 jest.mock('./modelLock', () => ({ VIDEO_PRIMARY: 'test' }));

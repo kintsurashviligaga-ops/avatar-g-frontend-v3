@@ -31,6 +31,11 @@ jest.mock('../../../../lib/api/rate-limit', () => {
   }
 });
 
+jest.mock('../../../../lib/veo/vertexAuth', () => ({
+  ...jest.requireActual('../../../../lib/veo/vertexAuth'),
+  getVertexAccessToken: jest.fn(async () => 'vertex-token'),
+}));
+
 jest.mock('../../../../lib/services/billing/chatBudget', () => {
   const actual = jest.requireActual('../../../../lib/services/billing/chatBudget');
   return { ...actual, chatBudgetAllows: jest.fn(async () => true), bookChatUsage: jest.fn(async () => undefined) };
@@ -241,6 +246,37 @@ test('a budget refusal is a 503 before Google is called', async () => {
 
 test('no Gemini key → 503 gemini_key_missing', async () => {
   delete process.env.GEMINI_API_KEY;
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  expect(res.status).toBe(503);
+  expect(fetchSpy).not.toHaveBeenCalled();
+});
+
+test('GEMINI_TRANSPORT=vertex: the same request goes to Vertex AI with a bearer token and no API key', async () => {
+  Object.assign(process.env, {
+    GEMINI_TRANSPORT: 'vertex',
+    GCP_PROJECT_ID: 'gen-lang-client-0671348730',
+    GCP_PROJECT_NUMBER: '467145118875',
+    GCP_SERVICE_ACCOUNT_EMAIL: 'myavatar-veo@gen-lang-client-0671348730.iam.gserviceaccount.com',
+    GCP_WORKLOAD_IDENTITY_POOL_ID: 'vercel-pool',
+    GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID: 'vercel-provider',
+  });
+  delete process.env.GCP_GEMINI_LOCATION;
+  delete process.env.GCP_VEO_LOCATION;
+  const res = await POST(post({ text: 'hello', locale: 'en' }));
+  expect(res.status).toBe(200);
+  expect(sentUrl()).toBe(
+    'https://aiplatform.googleapis.com/v1/projects/gen-lang-client-0671348730/locations/global/publishers/google/models/gemini-2.5-flash-preview-tts:generateContent',
+  );
+  expect(sentHeaders().Authorization).toBe('Bearer vertex-token');
+  expect(sentHeaders()['x-goog-api-key']).toBeUndefined();
+  expect(sent().generationConfig.responseModalities).toEqual(['AUDIO']);
+});
+
+test('GEMINI_TRANSPORT=vertex without its config → 503, and the API key is not used instead', async () => {
+  process.env.GEMINI_TRANSPORT = 'vertex';
+  for (const k of ['GCP_PROJECT_ID', 'GCP_PROJECT_NUMBER', 'GCP_SERVICE_ACCOUNT_EMAIL', 'GCP_WORKLOAD_IDENTITY_POOL_ID', 'GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID']) {
+    delete process.env[k];
+  }
   const res = await POST(post({ text: 'hello', locale: 'en' }));
   expect(res.status).toBe(503);
   expect(fetchSpy).not.toHaveBeenCalled();

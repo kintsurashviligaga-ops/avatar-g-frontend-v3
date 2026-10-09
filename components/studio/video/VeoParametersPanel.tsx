@@ -265,7 +265,7 @@ export function VeoParametersPanel({ plan, dispatch, locale, engine, sceneTexts,
       {/* ── ADVANCED ────────────────────────────────────────────────────────────────────────────────── */}
       <Disclosure
         label={tr(locale, 'დამატებითი', 'Advanced', 'Дополнительно')}
-        badge={(plan.negativePrompt.trim() ? 1 : 0) + (plan.seedLock ? 0 : 1) + (plan.enhancePrompt ? 1 : 0) || undefined}
+        badge={(plan.negativePrompt.trim() ? 1 : 0) + (plan.seedLock ? 0 : 1) || undefined}
       >
         <label htmlFor="veo-negative" className="block min-w-0">
           <span className="mb-1 flex items-baseline justify-between gap-2">
@@ -280,12 +280,12 @@ export function VeoParametersPanel({ plan, dispatch, locale, engine, sceneTexts,
         <ToggleRow on={plan.seedLock} onChange={(on) => dispatch({ type: 'seedLock', on })}
           label={tr(locale, 'ერთი seed ყველა სცენაზე', 'One seed for every scene', 'Один seed на все сцены')}
           hint={tr(locale, 'სცენებს შორის სტილი და პერსონაჟი უფრო მდგრადია.', 'Holds the look and the character steadier from scene to scene.', 'Стиль и персонаж стабильнее от сцены к сцене.')} />
-        <ToggleRow on={plan.enhancePrompt} onChange={(on) => dispatch({ type: 'enhancePrompt', on })}
-          disabled={!engine?.enhancePrompt}
-          label={tr(locale, 'Google-მა გადაწეროს აღწერა', 'Let Google rewrite the prompt', 'Google переписывает описание')}
-          hint={engine?.enhancePrompt
-            ? tr(locale, 'ჩვენი რეჟისორი აღწერას უკვე წერს; ჩართვა seed-ის ეფექტს ასუსტებს.', 'Our director already writes the prompt; this weakens the seed lock.', 'Режиссёр уже пишет описание; включение ослабляет seed.')
-            : tr(locale, 'ხელმისაწვდომია Vertex AI-ზე გადასვლის შემდეგ.', 'Available once rendering moves to Vertex AI.', 'Доступно после перехода на Vertex AI.')} />
+        {/* No "let Google rewrite the prompt" switch: Veo 3.x always refines the prompt on Google's side and fails the whole
+            operation on an explicit enhancePrompt=false (PROVEN 2026-10-08, GCP Part 0 T1), so an OFF state would do nothing. */}
+        <Hint>{tr(locale,
+          'Veo 3 აღწერას ყოველთვის თავისი მხრიდან ხვეწს და ეს არ ითიშება. ჩვენი რეჟისორის ტექსტი Google-მდე უცვლელად მიდის.',
+          'Veo 3 always refines the prompt on Google’s side, and that cannot be switched off. Our director’s text reaches Google unchanged.',
+          'Veo 3 всегда дорабатывает описание на стороне Google, и это не отключается. Текст нашего режиссёра доходит до Google без изменений.')}</Hint>
       </Disclosure>
     </div>
   );

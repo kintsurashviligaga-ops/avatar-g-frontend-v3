@@ -12,8 +12,6 @@ import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { applyApiGuards } from '@/lib/api/guard';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { isProviderTripped, recordProviderResult } from '@/lib/orchestrator/idempotency';
-import { generateGrokImage } from '@/lib/ai/xaiImage';
-import { generateFluxProImage } from '@/lib/ai/fluxImage';
 import { debitExistsForRef, deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { billingLocale, ledgerUnavailableBody, replayRefusedBody } from '@/lib/api/billingCopy';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -89,16 +87,11 @@ export async function POST(req: NextRequest) {
 
   // ⚠️ THERE IS DELIBERATELY NO EARLY RETURN ON A MISSING NANOBANANA KEY.
   //
-  // This route used to hard-return 500 here when NANOBANANA_API_KEY was absent — BEFORE the try block, so
-  // the two designed fallback legs (Grok/xAI, then FLUX 1.1 Pro) could never run. A single expired or
-  // rotated key therefore took image generation in the whole product to 100% dead: every prompt and every
-  // ×4 tile came back "Image generation failed. Try again." while XAI_API_KEY and REPLICATE_API_TOKEN sat
-  // wired up and perfectly able to produce the image.
-  //
-  // The early return was not load-bearing — nothing here reads the key. lib/nanobanana/client.ts re-reads
-  // it and throws, that throw is already caught below, and the catch sets providerText and falls through
-  // to Grok → FLUX exactly as the cascade intends. A key rotation now DEGRADES instead of breaking, and
-  // the 502-with-refund still fires if every leg genuinely misses.
+  // Nothing here reads the key. lib/nanobanana/client.ts re-reads NANOBANANA_API_KEY and throws; that throw is
+  // caught below like any other NanoBanana miss and answered by the 502 provider_unavailable path, with the
+  // reserved credit returned. (The early return was first removed so the Grok → FLUX fallback legs could run on a
+  // dead key; those legs are gone under PROJECT_MASTER R7 — see the breaker below — so a missing or rotated key is
+  // now simply an explicit, refunded failure.)
 
   // ── PRE-RENDER RESERVE STATE (TOCTOU fix) ────────────────────────────────────
   // The credit is now DEBITED before the provider call (inside the try, once the tray jobId
@@ -251,9 +244,9 @@ export async function POST(req: NextRequest) {
     }
 
     const endpoint    = pick.endpoint;
-    // ⚠️ EVERY ENGINE THIS ROUTE CAN REACH READS ENGLISH ONLY — NanoBanana, Grok and FLUX 1.1 Pro are
-    // all trained overwhelmingly on English text. Nothing here translated anything, so a Georgian brief
-    // arrived as noise, each engine fell back to its priors, and the user was handed a competent image
+    // ⚠️ THE ENGINE READS ENGLISH ONLY — NanoBanana is trained overwhelmingly on English text.
+    // Nothing here translated anything, so a Georgian brief
+    // arrived as noise, the engine fell back to its priors, and the user was handed a competent image
     // of something they never asked for. Only the DESCRIPTION is translated (subject, style, colours,
     // camera) — this route carries no text the image must reproduce verbatim. `prompt` itself is left
     // alone on purpose: it is what recordCompletedAsset files below and what the Library shows back.
@@ -302,16 +295,21 @@ export async function POST(req: NextRequest) {
       }, { status: 502 });
     }
 
-    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to the primary
-    // image provider. If NanoBanana has tripped (3 hard failures inside the cooldown) skip it and
-    // fail-FAST to the Grok backup, instead of burning ~50s on a known-bad provider. Every outcome
-    // is recorded so the breaker opens/closes itself. Fail-open: no Redis → primary always runs.
+    // CIRCUIT BREAKER (Task 5.3) — consult the Redis breaker BEFORE dispatching to NanoBanana. If it
+    // has tripped (3 hard failures inside the cooldown) skip it and answer the 502-refund below at once,
+    // instead of burning ~50s on a known-bad provider. Every outcome is recorded so the breaker
+    // opens/closes itself. Fail-open: no Redis → NanoBanana always runs.
+    //
+    // ⚠️ NANOBANANA IS THIS ROUTE'S ONLY ENGINE — THERE IS NO FALLBACK (PROJECT_MASTER R7, "NO SILENT FALLBACK").
+    // A miss here — a throw, a reply with no image URL, or the breaker open — used to cascade to Grok (xAI) and
+    // then FLUX 1.1 Pro (Replicate): two providers the owner's policy forbids, rendering under the model the user
+    // picked and billed as if it were that model. One request, one provider: every miss is the explicit
+    // 502 provider_unavailable below, with the reserved credit returned through refundReserve.
     const nbTripped = await isProviderTripped('nanobanana').catch(() => false);
     let providerUrl: string | null = null;
-    let backupB64: string | null = null;
     let providerText: string | undefined;
     let credits: number | undefined;
-    let model = `NanoBananaAI ${endpoint.toUpperCase()}`;
+    const model = `NanoBananaAI ${endpoint.toUpperCase()}`;
     if (!nbTripped) {
       try {
         // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
@@ -323,9 +321,9 @@ export async function POST(req: NextRequest) {
           style:       knownStyle || undefined,
           ...(referenceImageUrl ? { referenceImageDataUrl: referenceImageUrl } : {}),
           // Poll budget matched to the engine's REAL latency AND to what this function can afford.
-          // maxDuration is 300s; the FLUX leg (45s) + the re-host copy (25s) still have to run AFTER
-          // this returns, so the primary may never own more than ~150s or the fallback is unreachable
-          // and Vercel 504s the lambda before the refund path at the bottom can fire.
+          // maxDuration is 300s; the re-host copy (25s) and the refund path still have to run AFTER
+          // this returns, so NanoBanana may never own more than ~150s or Vercel 504s the lambda
+          // before the refund at the bottom can fire.
           pollMaxAttempts: endpoint === 'pro-4k' || endpoint === 'v2-4k' ? 60 : 40, // 150s / 100s
           pollIntervalMs:  2500,
         });
@@ -338,50 +336,16 @@ export async function POST(req: NextRequest) {
         providerText = e instanceof Error ? e.message : undefined;
       }
     } else {
+      providerText = 'nanobanana circuit breaker open';
       // eslint-disable-next-line no-console
-      console.warn('[nanobanana/image] breaker OPEN for nanobanana → fail-fast to Grok backup');
+      console.warn('[nanobanana/image] breaker OPEN for nanobanana → explicit 502 (no fallback engine, R7)');
     }
 
-    // BACKUP LEG — breaker OPEN or the primary returned no image → route to the Grok backup (the
-    // designed image fallback). Returns null when XAI_API_KEY isn't set (leg simply unavailable →
-    // the 502 below fires exactly as before, no regression).
-    // GUARD !referenceImageUrl: Grok/FLUX are PROMPT-ONLY (no image input), so for an EDIT request (a
-    // reference image is set, e.g. "edit this photo") they'd ignore the source and return an UNRELATED
-    // new image — which we'd deliver as success and still charge. When only NanoBanana can honor the
-    // reference and it missed, skip these legs so the 502-refund path below fires instead.
-    if (!providerUrl && !referenceImageUrl && !(await isProviderTripped('grok').catch(() => false))) {
-      try {
-        const grok = await generateGrokImage(finalPrompt);
-        if (grok?.url) { providerUrl = grok.url; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
-        else if (grok?.b64) { backupB64 = grok.b64; model = `Grok ${grok.model}`; await recordProviderResult('grok', true).catch(() => {}); }
-        else if (grok) { await recordProviderResult('grok', false).catch(() => {}); }
-      } catch (e) {
-        await recordProviderResult('grok', false).catch(() => {});
-        if (!providerText) providerText = e instanceof Error ? e.message : undefined;
-      }
-    }
-
-    // FINAL LEG — FLUX 1.1 Pro (owner-chosen image fallback quality, 2026-07-11). Only fires when
-    // BOTH NanoBanana AND Grok missed, so it rarely runs (minimal added cost) but keeps a high-quality
-    // image coming through instead of a 502. Fail-open: null → the 502 below fires as before.
-    // Same edit-guard as the Grok leg: FLUX 1.1 Pro is prompt-only, so it must not substitute an unrelated
-    // image for an edit request — skip it when a reference image is set so the 502-refund path fires.
-    if (!providerUrl && !backupB64 && !referenceImageUrl && !(await isProviderTripped('flux-pro').catch(() => false))) {
-      try {
-        const flux = await generateFluxProImage(finalPrompt, body.aspectRatio ?? '1:1');
-        if (flux) { providerUrl = flux; model = 'FLUX 1.1 Pro'; await recordProviderResult('flux-pro', true).catch(() => {}); }
-        else { await recordProviderResult('flux-pro', false).catch(() => {}); }
-      } catch (e) {
-        await recordProviderResult('flux-pro', false).catch(() => {});
-        if (!providerText) providerText = e instanceof Error ? e.message : undefined;
-      }
-    }
-
-    if (!providerUrl && !backupB64) {
+    if (!providerUrl) {
       // ⚠️ THE MESSAGE USED TO SAY "your credit was returned" WHENEVER A CREDIT HAD BEEN RESERVED — before the refund
       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
-      console.error('[nanobanana/image] every engine missed:', (providerText ?? 'no image URL').slice(0, 300));
+      console.error('[nanobanana/image] NanoBanana missed (no fallback engine, R7):', (providerText ?? 'no image URL').slice(0, 300));
       return NextResponse.json({
         success: false,
         code:    'provider_unavailable',
@@ -389,8 +353,9 @@ export async function POST(req: NextRequest) {
         // ⚠️ THE CLIENT SHOWS `message` AND DROPS `error` for every code except insufficient_credits
         // (OmniStudio.runImageJob; describeOpFailure does the same). Without this field the honest
         // reason — and the fact that the credit was returned — was replaced by "Image generation failed".
-        message: `ვერ შევქმენი სურათი — ყველა ძრავა დროებით მიუწვდომელია${refunded ? ', კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / Every image engine is unavailable right now${refunded ? ' — your credit was returned' : ''}. Please try again.`,
-        // The engines' own failure text (providerText) stays server-side; the body carries only our code.
+        // (One engine, so the copy no longer says "every image engine".)
+        message: `ვერ შევქმენი სურათი — სურათის ძრავა დროებით მიუწვდომელია${refunded ? ', კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / The image engine is unavailable right now${refunded ? ' — your credit was returned' : ''}. Please try again.`,
+        // The engine's own failure text (providerText) stays server-side; the body carries only our code.
         error:   'provider_unavailable',
       }, { status: 502 });
     }
@@ -401,48 +366,29 @@ export async function POST(req: NextRequest) {
     // the bytes to our `*.supabase.co` bucket (CSP-allowed) returns a stable,
     // signed URL the client can display + download. Fail-open: if the copy fails,
     // fall back to the raw provider URL (better than nothing).
-    let hostedUrl = providerUrl ?? '';
-    if (backupB64) {
-      // Grok returned raw base64 (no provider CDN URL to re-fetch) → upload the bytes directly.
-      try {
-        const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-        const signed = await uploadAndSign('uploads', path, backupB64, 'image/png', 604800);
-        if (signed) hostedUrl = signed;
-      } catch { /* fail-open — final guard below rejects an empty url */ }
-    } else if (providerUrl) {
-      try {
-        // Time-box the copy: a slow provider CDN must NOT hang the function until the
-        // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
-        const ac = new AbortController();
-        const to = setTimeout(() => ac.abort(), 25_000);
-        const r = await fetch(providerUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
-        if (r.ok) {
-          const ct = r.headers.get('content-type') || 'image/png';
-          const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
-          const buf = Buffer.from(await r.arrayBuffer());
-          // Guard against pathologically large payloads blowing the function's memory.
-          if (buf.byteLength <= 18 * 1024 * 1024) {
-            const b64 = buf.toString('base64');
-            const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-            const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
-            if (signed) hostedUrl = signed;
-          }
+    // (The base64 upload branch and its `host_failed` 502 served only the removed Grok leg, which could answer bytes
+    // instead of a URL. NanoBanana always answers a URL, so a failed copy keeps that URL and there is always an asset.)
+    let hostedUrl = providerUrl;
+    try {
+      // Time-box the copy: a slow provider CDN must NOT hang the function until the
+      // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 25_000);
+      const r = await fetch(providerUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
+      if (r.ok) {
+        const ct = r.headers.get('content-type') || 'image/png';
+        const ext = /jpe?g/i.test(ct) ? 'jpg' : /webp/i.test(ct) ? 'webp' : 'png';
+        const buf = Buffer.from(await r.arrayBuffer());
+        // Guard against pathologically large payloads blowing the function's memory.
+        if (buf.byteLength <= 18 * 1024 * 1024) {
+          const b64 = buf.toString('base64');
+          const path = `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const signed = await uploadAndSign('uploads', path, b64, ct, 604800); // 7-day signed URL
+          if (signed) hostedUrl = signed;
         }
-      } catch {
-        /* fail-open — keep the provider URL */
       }
-    }
-
-    // A backup-b64 upload miss can leave no usable URL → treat as a provider miss (502).
-    if (!hostedUrl) {
-      const refunded = await refundReserve(); // no deliverable asset → give the reserved credit back
-      return NextResponse.json({
-        success: false,
-        code:    'host_failed',
-        refunded,
-        message: `სურათი შეიქმნა, მაგრამ ატვირთვა ვერ მოხერხდა${refunded ? ' — კრედიტი დაბრუნდა' : ''}. სცადე ხელახლა. / The image was generated but could not be stored${refunded ? ' — your credit was returned' : ''}. Please try again.`,
-        error:   'Image host failed',
-      }, { status: 502 });
+    } catch {
+      /* fail-open — keep the provider URL */
     }
 
     // File the finished asset. The credit was already RESERVED up front (see the reserve above),

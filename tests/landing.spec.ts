@@ -259,17 +259,19 @@ for (const vp of VIEWPORTS) {
       const sheet = page.getByTestId('tool-sheet');
       await expect(sheet).toBeVisible();
       await expect(sheet.getByTestId('attach')).toHaveCount(0);
-      const tools = sheet.getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button');
-      await expect(tools.nth(0)).toContainText('ჩატი'); // the hub leads the one tool list
-      await expect(tools.nth(1)).toContainText('ვიდეო');
-      await expect(tools.nth(1)).toHaveAttribute('aria-pressed', 'true');
-      await expect(tools.nth(2)).toContainText('სურათი');
-      await expect(tools.nth(3)).toContainText('ფოტოგრაფი');
-      await expect(tools.nth(4)).toContainText('ინტერიერის დიზაინერი');
-      await expect(tools.nth(5)).toContainText('მუსიკა');
-      await expect(tools.nth(6)).toContainText('ავატარი');
-      // Nothing is lost one level down: the product ad, the swap, motion and the four studios.
-      await expect(sheet.getByRole('list', { name: 'მეტი' }).getByRole('button').first()).toContainText('პროდუქტის რეკლამა');
+      // The sheet reads the service catalog (§60 step 11): Agent G's chat leads, then one list per category.
+      const group = (name: string) => sheet.getByRole('list', { name, exact: true }).getByRole('button');
+      await expect(sheet.getByRole('list').first()).toHaveAccessibleName('Agent G');
+      await expect(group('Agent G').first()).toContainText('ჩატი');
+      await expect(group('ვიდეო').first()).toContainText('ვიდეო');
+      await expect(group('ვიდეო').first()).toHaveAttribute('aria-pressed', 'true');
+      await expect(group('სურათი და ფოტო').nth(0)).toContainText('სურათი');
+      await expect(group('სურათი და ფოტო').nth(1)).toContainText('ფოტოგრაფი');
+      await expect(group('სურათი და ფოტო').nth(2)).toContainText('ინტერიერის დიზაინერი');
+      await expect(group('მუსიკა').first()).toContainText('მუსიკა');
+      await expect(group('ავატარი').first()).toContainText('ავატარი');
+      // Nothing is lost: the product ad, the swap and motion sit in Video's own list.
+      await expect(group('ვიდეო').nth(1)).toContainText('პროდუქტის რეკლამა');
     });
 
     test('a service in the sidebar switches the studio and is marked as the active one', async ({ page }) => {
@@ -316,7 +318,7 @@ for (const vp of VIEWPORTS) {
     test('picking the tool that is already on keeps it', async ({ page }) => {
       await openDashboard(page);
       await page.getByTestId('plus').click();
-      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ხელსაწყოები' }).getByRole('button').filter({ hasText: 'ვიდეო' }).first();
+      const video = page.getByTestId('tool-sheet').getByRole('list', { name: 'ვიდეო', exact: true }).getByRole('button').first();
       await expect(video).toHaveAttribute('aria-pressed', 'true');
       await video.click();
       await expect(page.getByTestId('tool-sheet')).toHaveCount(0); // the sheet closed

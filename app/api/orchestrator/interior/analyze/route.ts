@@ -12,7 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { generateText } from 'ai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@/lib/ai/google/provider';
+import { googleCallAttempts } from '@/lib/ai/google/transport';
 import { geminiTierModel } from '@/lib/ai/google/models';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import {
@@ -58,8 +59,9 @@ export async function POST(req: NextRequest) {
   if (images.length === 0) return NextResponse.json({ error: 'at least 1 photo required' }, { status: 400 });
   const brief = String(body.brief ?? '').trim();
 
-  const keys = geminiKeys();
-  if (keys.length === 0) {
+  // One attempt per pooled key on the Gemini API, one on Vertex AI (GEMINI_TRANSPORT); none → deterministic.
+  const attempts = googleCallAttempts(geminiKeys());
+  if (attempts.length === 0) {
     return NextResponse.json({ geometry: { ...DEFAULT_ROOM_GEOMETRY }, model: 'deterministic', degraded: true });
   }
 
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
     })),
   ];
 
-  for (const apiKey of keys) {
+  for (const apiKey of attempts) {
     try {
       const google = createGoogleGenerativeAI({ apiKey });
       const { text } = await generateText({

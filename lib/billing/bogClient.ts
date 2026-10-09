@@ -144,12 +144,21 @@ export function tokenLifetimeMs(expiresIn: unknown, nowMs: number): number {
   return Math.min(Math.max(ms - 60_000, 30_000), 60 * 60_000);
 }
 
-/** A bearer token, from cache unless `forceRefresh`. null on any failure (fail closed: no token, no order). */
-export async function getBogAccessToken(cfg: BogConfig, deps: BogFetchDeps, forceRefresh = false): Promise<string | null> {
+/**
+ * A short, storable account of what BOG answered: HTTP status + the start of the body, whitespace collapsed, the
+ * secret scrubbed in case anything ever echoes it. Goes into bog_orders.reject_reason and the logs — never to the
+ * browser.
+ */
+function describeAnswer(cfg: BogConfig, status: number, text: string): string {
+  const body = text.split(cfg.secretKey).join('[redacted]').replace(/\s+/g, ' ').trim().slice(0, 140);
+  return body ? `HTTP ${status} ${body}` : `HTTP ${status}`;
+}
+
+async function requestBogToken(cfg: BogConfig, deps: BogFetchDeps, forceRefresh: boolean): Promise<{ token: string } | { failure: string }> {
   const now = deps.now ? deps.now() : Date.now();
   const key = `${cfg.environment}:${cfg.clientId}:${cfg.oauthUrl}`;
   const hit = tokenCache.get(key);
-  if (!forceRefresh && hit && hit.expiresAt > now) return hit.token;
+  if (!forceRefresh && hit && hit.expiresAt > now) return { token: hit.token };
   const basic = Buffer.from(`${cfg.clientId}:${cfg.secretKey}`).toString('base64');
   try {
     const res = await deps.fetch(cfg.oauthUrl, {
@@ -164,15 +173,21 @@ export async function getBogAccessToken(cfg: BogConfig, deps: BogFetchDeps, forc
     });
     if (!res.ok) {
       tokenCache.delete(key);
-      return null;
+      return { failure: `oauth ${describeAnswer(cfg, res.status, await res.text().catch(() => ''))}` };
     }
     const json = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
-    if (typeof json.access_token !== 'string' || !json.access_token) return null;
+    if (typeof json.access_token !== 'string' || !json.access_token) return { failure: 'oauth answer had no access_token' };
     tokenCache.set(key, { token: json.access_token, expiresAt: now + tokenLifetimeMs(json.expires_in, now) });
-    return json.access_token;
+    return { token: json.access_token };
   } catch {
-    return null;
+    return { failure: 'oauth: no usable answer (network, timeout or not JSON)' };
   }
+}
+
+/** A bearer token, from cache unless `forceRefresh`. null on any failure (fail closed: no token, no order). */
+export async function getBogAccessToken(cfg: BogConfig, deps: BogFetchDeps, forceRefresh = false): Promise<string | null> {
+  const r = await requestBogToken(cfg, deps, forceRefresh);
+  return 'token' in r ? r.token : null;
 }
 
 // ─── Requests ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -191,12 +206,15 @@ export interface BogResponse {
   /** 0 = no response (network/timeout/no token). */
   status: number;
   json: unknown;
+  /** When !ok: what went wrong, in words safe to store (see describeAnswer). */
+  failure?: string;
 }
 
 async function bogCall(cfg: BogConfig, deps: BogFetchDeps, call: BogCall): Promise<BogResponse> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getBogAccessToken(cfg, deps, attempt > 0);
-    if (!token) return { ok: false, status: 0, json: null };
+    const auth = await requestBogToken(cfg, deps, attempt > 0);
+    if (!('token' in auth)) return { ok: false, status: 0, json: null, failure: auth.failure };
+    const token = auth.token;
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
     if (call.body !== undefined) headers['Content-Type'] = 'application/json';
     if (call.idempotencyKey) headers['Idempotency-Key'] = call.idempotencyKey;
@@ -212,7 +230,7 @@ async function bogCall(cfg: BogConfig, deps: BogFetchDeps, call: BogCall): Promi
         redirect: 'manual',
       });
     } catch {
-      return { ok: false, status: 0, json: null };
+      return { ok: false, status: 0, json: null, failure: `${call.method} ${call.path}: no answer (network or timeout)` };
     }
     // An expired/revoked token: one retry with a fresh one. Safe for POSTs — a 401 is refused before processing,
     // and every money-moving call carries an Idempotency-Key anyway.
@@ -224,9 +242,11 @@ async function bogCall(cfg: BogConfig, deps: BogFetchDeps, call: BogCall): Promi
     } catch {
       json = null;
     }
-    return { ok: res.ok, status: res.status, json };
+    return res.ok
+      ? { ok: true, status: res.status, json }
+      : { ok: false, status: res.status, json, failure: `${call.method} ${call.path} ${describeAnswer(cfg, res.status, text)}` };
   }
-  return { ok: false, status: 401, json: null };
+  return { ok: false, status: 401, json: null, failure: `${call.method} ${call.path} HTTP 401 twice (a fresh token was refused too)` };
 }
 
 /**
@@ -263,13 +283,20 @@ export interface BogOrderParams {
   readonly cardOnly?: boolean;
 }
 
-/** Create an order. Returns BOG's order id + the hosted page URL, or null on any failure. */
+/**
+ * Create an order. Returns BOG's order id + the hosted page URL, or null on any failure — and then tells `report`
+ * why (the OAuth answer, BOG's error body, or no answer at all), so a refused checkout is not a silent mystery.
+ */
 export async function createBogOrder(
   cfg: BogConfig,
   deps: BogFetchDeps,
   p: BogOrderParams,
+  report: (failure: string) => void = () => undefined,
 ): Promise<{ orderId: string; redirectUrl: string } | null> {
-  if (!Number.isFinite(p.amountGel) || p.amountGel <= 0 || !p.externalOrderId) return null;
+  if (!Number.isFinite(p.amountGel) || p.amountGel <= 0 || !p.externalOrderId) {
+    report('invalid amount or order id');
+    return null;
+  }
   const amount = money(p.amountGel);
   const res = await bogCall(cfg, deps, {
     method: 'POST',
@@ -291,12 +318,18 @@ export async function createBogOrder(
       ...(p.cardOnly ? { payment_method: ['card'] } : {}),
     },
   });
-  if (!res.ok || !res.json || typeof res.json !== 'object') return null;
-  const j = res.json as { id?: unknown; _links?: { redirect?: { href?: unknown } } };
+  if (!res.ok) {
+    report(res.failure ?? `HTTP ${res.status}`);
+    return null;
+  }
+  const j = (res.json && typeof res.json === 'object' ? res.json : {}) as { id?: unknown; _links?: { redirect?: { href?: unknown } } };
   const orderId = typeof j.id === 'string' ? j.id : null;
   const href = j._links?.redirect?.href;
   const redirectUrl = typeof href === 'string' && /^https:\/\//i.test(href) ? href : null;
-  if (!orderId || !redirectUrl) return null;
+  if (!orderId || !redirectUrl) {
+    report(`POST /ecommerce/orders HTTP ${res.status} without an order id or an https redirect`);
+    return null;
+  }
   return { orderId, redirectUrl };
 }
 

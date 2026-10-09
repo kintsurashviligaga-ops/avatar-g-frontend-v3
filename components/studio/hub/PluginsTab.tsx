@@ -96,7 +96,7 @@ export function PluginsTab({ locale, authed }: { locale: string; authed: boolean
 
       {PLUGIN_GROUPS.map((g) => (
         <section key={g.id} aria-labelledby={`${headId}-${g.id}`}>
-          <h3 id={`${headId}-${g.id}`} className="px-1 pb-1 pt-1 text-[12px] font-medium text-app-muted">{g.id === 'primary' ? c.plugPrimary : c.plugMore}</h3>
+          <h3 id={`${headId}-${g.id}`} className="px-1 pb-1 pt-1 text-[12px] font-medium text-app-muted">{g.label[toolLang(locale)]}</h3>
           <ul className="space-y-0.5">
             {g.tools.map((id) => <PluginRow key={id} id={id} locale={locale} on={!hidden.has(id)} interactive={interactive} />)}
           </ul>

@@ -17,6 +17,7 @@ import {
   Eraser, Maximize2, Smile, Palette, Share2, Check, Music2, Waves, Mic, Gauge, Wand2, CornerUpLeft,
 } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { BTN_PRIMARY, BTN_SECONDARY, BTN_GHOST } from './ui/tokens';
 import { Slider } from './ui/controls';
 import { easedPct } from './ui/GenerationProgress';
@@ -252,13 +253,17 @@ async function uploadClip(file: File): Promise<UploadResult> {
   try {
     // Both legs are bounded so a stalled upload can never strand the caller's loader: the sign call goes through
     // postJson (aborts on hang), and the supabase PUT is raced against a timeout (it's a supabase-js call, not fetch).
-    const signed = await postJson('/api/upload/sign', { contentType: file.type || 'application/octet-stream' }, 60_000);
+    // Images / video / audio up to 50 MB only (lib/uploads/policy) — the bucket refuses anything else, so an
+    // untyped file is typed from its name rather than sent as octet-stream.
+    const contentType = allowedUploadMime(file.type, file.name);
+    if (!contentType || file.size > UPLOAD_MAX_BYTES) return { error: 'fail' };
+    const signed = await postJson('/api/upload/sign', { contentType, size: file.size, name: file.name }, 60_000);
     if (signed.status === 401) return { error: 'auth' };
     if (signed.status === 429) return { error: 'rate' };
-    const sign = signed.body as { bucket?: string; path?: string; token?: string } | null;
+    const sign = signed.body as { bucket?: string; path?: string; token?: string; contentType?: string } | null;
     if (!signed.ok || !sign?.path || !sign?.token) return { error: 'fail' };
     const sb = createBrowserClient();
-    const put = sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, file, { contentType: file.type || 'application/octet-stream' });
+    const put = sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, file, { contentType: sign.contentType || contentType });
     const { error } = await withTimeout(put, 300_000, { error: { message: 'upload timeout' } } as Awaited<typeof put>);
     return error ? { error: 'fail' } : { path: sign.path };
   } catch { return { error: 'fail' }; }

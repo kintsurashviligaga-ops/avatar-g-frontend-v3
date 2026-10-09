@@ -489,7 +489,18 @@ const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: 
   image: { emoji: '🖼', ka: 'სურათი', en: 'Image', ru: 'Фото' },
   avatar: { emoji: '🎭', ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
   remix: { emoji: '🎞', ka: 'რემიქსი', en: 'Remix', ru: 'Ремикс' },
+  voice: { emoji: '🎙', ka: 'ხმა', en: 'Voice', ru: 'Голос' },
+  interior: { emoji: '🛋', ka: 'ინტერიერი', en: 'Interior', ru: 'Интерьер' },
+  research: { emoji: '🔎', ka: 'კვლევა', en: 'Research', ru: 'Исследование' },
+  chat: { emoji: '💬', ka: 'ჩატი', en: 'Chat', ru: 'Чат' },
   topup: { emoji: '💳', ka: 'შევსება', en: 'Top-up', ru: 'Пополнение' },
+  subscription: { emoji: '⭐', ka: 'გამოწერა', en: 'Subscription', ru: 'Подписка' },
+  refund: { emoji: '↩', ka: 'დაბრუნება', en: 'Refund', ru: 'Возврат' },
+  reversal: { emoji: '⤺', ka: 'გადახდის გაუქმება', en: 'Payment reversed', ru: 'Отмена платежа' },
+  bonus: { emoji: '🎁', ka: 'ბონუსი', en: 'Bonus', ru: 'Бонус' },
+  adjustment: { emoji: '🛠', ka: 'კორექტირება', en: 'Adjustment', ru: 'Корректировка' },
+  usage: { emoji: '⚙', ka: 'გამოყენება', en: 'Usage', ru: 'Использование' },
+  credit: { emoji: '➕', ka: 'ჩარიცხვა', en: 'Credit', ru: 'Зачисление' },
 };
 
 function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {

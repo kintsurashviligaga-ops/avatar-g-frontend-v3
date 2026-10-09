@@ -125,6 +125,21 @@ test('plan: priced by the catalogue (Creator = 108 ₾, 525 credits), card-only,
   expect(updatesTo()).toEqual(expect.arrayContaining([expect.objectContaining({ card_saved: true })]));
 });
 
+test('BOG refuses the order → 502, the row is init_failed and says why (BOG\'s answer, the environment); nothing to pay', async () => {
+  const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  mockCreateOrder.mockImplementationOnce(async (_cfg: unknown, _deps: unknown, _p: unknown, report: (r: string) => void) => {
+    report('oauth HTTP 401 {"error":"unauthorized_client"}');
+    return null;
+  });
+  const res = await POST(post({ kind: 'topup', amountGel: 10 }));
+  expect(res.status).toBe(502);
+  expect(await res.json()).toMatchObject({ error_code: 'BOG_ORDER' });
+  const reason = 'init (production): oauth HTTP 401 {"error":"unauthorized_client"}';
+  expect(updatesTo()).toEqual([expect.objectContaining({ status: 'init_failed', reject_reason: reason })]);
+  expect(err).toHaveBeenCalledWith(expect.stringContaining(reason));
+  expect(mockSaveCard).not.toHaveBeenCalled();
+});
+
 test('plan: a merchant without automatic payments still sells the month, honestly marked non-renewing', async () => {
   mockSaveCard.mockResolvedValueOnce(false);
   const body = await (await POST(post({ kind: 'plan', tierId: 'starter' }))).json();
@@ -149,10 +164,4 @@ test('no order row → no BOG order (a payment we could not credit is never star
   mockDb.insertError = { message: 'relation does not exist' };
   expect((await POST(post({ kind: 'topup', amountGel: 20 }))).status).toBe(503);
   expect(mockCreateOrder).not.toHaveBeenCalled();
-});
-
-test('BOG refuses the order → 502 and the row is marked init_failed', async () => {
-  mockCreateOrder.mockResolvedValueOnce(null);
-  expect((await POST(post({ kind: 'topup', amountGel: 20 }))).status).toBe(502);
-  expect(updatesTo()).toEqual([expect.objectContaining({ status: 'init_failed' })]);
 });

@@ -64,7 +64,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // keeps as the 3D message's thumbnail. At resolveUploadRef's default hour, every photo-mode thumbnail
   // went blank in saved history about an hour after it was made.
   const body = raw && typeof raw === 'object'
-    ? { ...(raw as Record<string, unknown>), imageUrl: await resolveUploadRef((raw as Record<string, unknown>).imageUrl, WEEK_SEC) }
+    ? { ...(raw as Record<string, unknown>), imageUrl: await resolveUploadRef((raw as Record<string, unknown>).imageUrl, user.id, WEEK_SEC) }
     : raw;
 
   const parsed = validateModel3dRequest(body);

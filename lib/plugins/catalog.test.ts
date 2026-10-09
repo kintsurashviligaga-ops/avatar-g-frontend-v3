@@ -1,7 +1,8 @@
 /**
  * The plugin list IS the studio's tool list (minus the always-on chat), and the menus' hiding rule keeps the active tool.
  */
-import { ALL_TOOLS, MORE_TOOLS, PRIMARY_TOOLS } from '@/lib/studio/tools';
+import { ALL_TOOLS, PRIMARY_TOOLS } from '@/lib/studio/tools';
+import { toolGroups } from '@/lib/catalog/nav';
 import { DISABLED_TOOLS_MAX, LOCKED_TOOLS, PLUGGABLE_TOOLS, PLUGIN_GROUPS, isPluggableTool, normalizeDisabledTools, visibleToolIds } from './catalog';
 
 test('every studio tool is pluggable except the chat, in the product order', () => {
@@ -10,7 +11,9 @@ test('every studio tool is pluggable except the chat, in the product order', () 
   expect(DISABLED_TOOLS_MAX).toBe(ALL_TOOLS.length - 1);
   // The migration's cap (32) must stay above the real list.
   expect(DISABLED_TOOLS_MAX).toBeLessThanOrEqual(32);
-  expect(PLUGIN_GROUPS.map((g) => g.tools)).toEqual([PRIMARY_TOOLS, MORE_TOOLS]);
+  // The same groups as the sidebar and the „+" sheet: the service catalog's categories, every tool once.
+  expect(PLUGIN_GROUPS.map((g) => g.tools)).toEqual(toolGroups().map((g) => g.tools));
+  expect(PLUGIN_GROUPS.flatMap((g) => g.tools).sort()).toEqual([...ALL_TOOLS].sort());
   expect(isPluggableTool('music')).toBe(true);
   expect(isPluggableTool('chat')).toBe(false);
   expect(isPluggableTool('teleport')).toBe(false);

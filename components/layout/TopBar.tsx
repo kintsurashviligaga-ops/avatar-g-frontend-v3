@@ -46,7 +46,7 @@ export function TopBar({ userEmail, onLogout, isLoggingOut }: TopBarProps) {
         {/* Center nav links */}
         <nav className="hidden lg:flex items-center gap-1">
           {[
-            { href: withLocalePath('/workspace', locale), label: 'Dashboard', icon: LayoutGrid },
+            { href: withLocalePath('/dashboard', locale), label: 'Dashboard', icon: LayoutGrid },
             { href: '/jobs', label: 'Jobs', icon: Briefcase },
           ].map(({ href, label, icon: Icon }) => {
             const active = pathname === href;

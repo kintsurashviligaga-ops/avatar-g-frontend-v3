@@ -12,7 +12,7 @@ type Loc = 'ka' | 'en' | 'ru';
 // '/library' only worked via a redirect hop and showed an English label. Resolve the
 // active locale from the pathname and build locale-aware hrefs + localized labels.
 const coreItems: Array<{ href: string; icon: typeof LayoutGrid; labels: Record<Loc, string> }> = [
-  { href: '/workspace', icon: LayoutGrid, labels: { ka: 'მთავარი', en: 'Dashboard', ru: 'Панель' } },
+  { href: '/dashboard', icon: LayoutGrid, labels: { ka: 'მთავარი', en: 'Dashboard', ru: 'Панель' } },
   { href: '/jobs', icon: Briefcase, labels: { ka: 'დავალებები', en: 'Jobs Center', ru: 'Задачи' } },
   { href: '/library', icon: Library, labels: { ka: 'ბიბლიოთეკა', en: 'Assets Library', ru: 'Библиотека' } },
   { href: '/billing', icon: Wallet, labels: { ka: 'ბილინგი', en: 'Billing', ru: 'Оплата' } },

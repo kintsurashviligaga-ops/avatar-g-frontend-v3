@@ -16,7 +16,8 @@ import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
-import { reSignIfInternal, createSignedAssetUrl, parseSupabaseObjectUrl, uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { promptToEnglish } from '@/lib/ai/promptToEnglish';
 import { saveEditorOutput } from '@/lib/orchestrator/saveEditorOutput';
@@ -72,14 +73,13 @@ function inputFor(action: PhotoAction, image: string, prompt?: string): Record<s
   }
 }
 
-/** Resolve a client media ref (bare storage path / OUR signed URL) → fetchable URL. SSRF-guarded (own storage only). */
-async function resolveMedia(v: unknown): Promise<string | null> {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!s || s.length > 4000) return null;
-  if (/^https:\/\//i.test(s)) return parseSupabaseObjectUrl(s) ? reSignIfInternal(s) : null;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null;
-  return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600);
+/**
+ * Resolve a client media ref (bare storage path / OUR signed URL) → fetchable URL. SSRF-guarded (own storage only)
+ * and owner-guarded: the object must be the caller's (lib/security/callerMedia), never another account's photo.
+ */
+async function resolveMedia(v: unknown, userId: string): Promise<string | null> {
+  const r = await resolveCallerMedia(v, userId, 3600);
+  return r.ok && r.own ? r.url : null;
 }
 function firstUrl(output: unknown): string | null {
   if (typeof output === 'string') return output;
@@ -92,7 +92,7 @@ function firstUrl(output: unknown): string | null {
  * The PATH is what enables CHAINING: it's an own-storage ref the SSRF-guarded resolveMedia accepts, so the
  * result can be fed straight back into the next action. Fail-soft → null (caller shows the raw Replicate URL).
  */
-async function rehost(srcUrl: string): Promise<{ url: string; path: string } | null> {
+async function rehost(srcUrl: string, userId: string): Promise<{ url: string; path: string } | null> {
   try {
     const res = await fetch(srcUrl, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return null;
@@ -100,7 +100,8 @@ async function rehost(srcUrl: string): Promise<{ url: string; path: string } | n
     const ext = /jpe?g/.test(ct) ? 'jpg' : /webp/.test(ct) ? 'webp' : 'png';
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength < 64) return null;
-    const path = `photo-studio/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Under the caller's id: the PATH comes back for chaining, and resolveMedia signs a bare path only for its owner.
+    const path = `photo-studio/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const signed = await uploadAndSign(UPLOAD_BUCKET, path, buf.toString('base64'), ct, 604_800);
     return signed ? { url: signed, path } : null;
   } catch {
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
   if (!process.env.REPLICATE_API_TOKEN) {
     return NextResponse.json({ url: null, error: 'photo_studio_unconfigured', message: 'AI Photo Studio needs REPLICATE_API_TOKEN.' }, { status: 503 });
   }
-  const src = await resolveMedia(body?.mediaUrl);
+  const src = await resolveMedia(body?.mediaUrl, guard.userId);
   if (!src) return NextResponse.json({ url: null, error: 'could not resolve image (upload it first)' }, { status: 400 });
 
   // ATOMIC chain billing: reserve the SUM of all links up front (reserve-before-render). A positive 'insufficient'
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
       const raw = out.status === 'succeeded' ? firstUrl(out.output) : null;
       if (!raw) throw new Error(`${act} produced no output`);
       // Re-host each intermediary so the NEXT model consumes a persistent URL (Replicate outputs expire).
-      const hosted = await rehost(raw);
+      const hosted = await rehost(raw, guard.userId);
       finalHosted = hosted;
       curUrl = hosted?.url ?? raw;
     }

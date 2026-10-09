@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { JOB_COLUMNS, type GenerationJobRow } from '@/lib/orchestrator/jobs';
 import { serviceTypeForKind } from '@/lib/jobs/durableJobs';
+import { describeSupabaseObjectUrl, ownStorageHosts } from '@/lib/orchestrator/storage-adapter';
+import { callerMayRead } from '@/lib/security/callerMedia';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -53,6 +55,16 @@ interface TrackBody {
  * user-facing writer. Fully fail-open + additive: any miss returns 200 and NEVER blocks the render.
  * Unauth → 200 no-op.
  */
+/**
+ * May this client-reported result URL be filed? Anything not on our storage host, or a public URL (never re-signed),
+ * is filed as given. A signed URL of ours must pass the caller check: own upload, own Library row, or a live token.
+ */
+async function mayFileUrl(url: string, userId: string): Promise<boolean> {
+  const ref = describeSupabaseObjectUrl(url);
+  if (!ref || ref.access !== 'sign' || !ownStorageHosts().has(ref.host)) return true;
+  return callerMayRead(url, ref, userId);
+}
+
 /** Client params minus server bookkeeping: every `_`-prefixed key (`_reserve`, …) is the server's alone. */
 function clientParams(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -118,8 +130,14 @@ export async function POST(req: NextRequest) {
         .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'complete') {
+      const url = typeof body.url === 'string' ? body.url.slice(0, 2000) : null;
+      // ⚠️ THE LIBRARY RE-SIGNS THIS URL WITH THE SERVICE ROLE on every read (app/api/studio/library), and so does
+      // every editor that trusts the caller's own Library rows (lib/security/callerMedia). A client-chosen URL naming
+      // ANOTHER account's object (a path learnt elsewhere, an expired link someone kept) would have become a
+      // permanent, freshly signed link to it. A URL of ours is filed only when the caller can read it right now.
+      if (url && !(await mayFileUrl(url, user.id))) return NextResponse.json({ ok: false, error: 'url_not_verified' });
       const { error } = await ownLive()
-        .update({ status: 'completed', pct: 100, signed_url: typeof body.url === 'string' ? body.url.slice(0, 2000) : null })
+        .update({ status: 'completed', pct: 100, signed_url: url })
         .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'fail') {

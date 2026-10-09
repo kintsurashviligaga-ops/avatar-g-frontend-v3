@@ -56,9 +56,12 @@ export function isPublicHttpUrl(raw: string): boolean {
   let u: URL;
   try { u = new URL(raw); } catch { return false; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-  const host = u.hostname.toLowerCase();
-  if (!host || host === 'localhost' || host.endsWith('.local')) return false;
-  if (host.includes(':')) return false; // IPv6 literal (hostname is unbracketed) → block ::1 / fc00::/7 / fe80::/10
+  if (u.username || u.password) return false; // user@host spellings hide the real host from a reader
+  const host = u.hostname.toLowerCase().replace(/\.$/, '');
+  if (!host || !host.includes('.')) return false; // empty or a single-label name ("metadata", "localhost")
+  if (/(^|\.)(localhost|localdomain|local|internal|intranet|lan|home\.arpa)$/.test(host)) return false; // incl. metadata.google.internal
+  if (host.includes(':') || host.startsWith('[')) return false; // IPv6 literal → block ::1 / fc00::/7 / fe80::/10 / mapped v4
+  // The WHATWG parser has already rewritten every IPv4 spelling (2130706433, 0x7f.1, 0177.0.0.1) into a dotted quad.
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (m) {
     const a = Number(m[1]); const b = Number(m[2]);
@@ -66,8 +69,12 @@ export function isPublicHttpUrl(raw: string): boolean {
     if (a === 169 && b === 254) return false;                  // link-local incl. cloud metadata 169.254.169.254
     if (a === 192 && b === 168) return false;                  // private
     if (a === 172 && b >= 16 && b <= 31) return false;         // private
+    if (a === 100 && b >= 64 && b <= 127) return false;        // carrier-grade NAT
+    if (a === 192 && b === 0 && Number(m[3]) === 0) return false; // IETF protocol assignments
+    if (a === 198 && (b === 18 || b === 19)) return false;     // benchmarking
     if (a >= 224) return false;                                // multicast / reserved
   }
+  // A string check only: a public NAME can still resolve inside. Code that fetches uses lib/web/publicFetch.
   return true;
 }
 

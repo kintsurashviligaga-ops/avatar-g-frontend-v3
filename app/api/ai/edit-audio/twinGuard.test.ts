@@ -43,6 +43,7 @@ import { audioProcess } from '../../../../lib/audio/audioOps';
 import { TWIN_PRIVATE_BUCKET, twinVoicePath } from '../../../../lib/avatar/enroll';
 
 const VICTIM = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+const CALLER = 'attacker-0000-4000-8000-000000000000';
 const VOICE = twinVoicePath(VICTIM, 'webm');
 const post = (mediaUrl: string) =>
   POST(new NextRequest('https://myavatar.ge/api/ai/edit-audio', {
@@ -62,10 +63,19 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 test('sanity: the caller\'s own bare upload path is signed and processed', async () => {
-  const res = await post('audio-studio/1-abc.mp3');
+  const res = await post(`audio-studio/${CALLER}/1-abc.mp3`);
   expect(res.status).toBe(200);
-  expect(signed).toEqual([{ bucket: 'uploads', path: 'audio-studio/1-abc.mp3' }]);
+  expect(signed).toEqual([{ bucket: 'uploads', path: `audio-studio/${CALLER}/1-abc.mp3` }]);
   expect(processedSrc()[0]).toMatch(/token=MINTED/);
+});
+
+test('another account\'s upload, or an id-less path, is refused before anything is signed', async () => {
+  for (const p of [`omni-uploads/${VICTIM}/1-abc.mp3`, `audio-studio/${VICTIM}/1-abc.mp3`, 'audio-studio/1-abc.mp3']) {
+    const res = await post(p);
+    expect(res.status).toBe(400);
+  }
+  expect(signed).toEqual([]);
+  expect(processedSrc()).toEqual([]);
 });
 
 test('a bare twin path never reaches the twin bucket', async () => {

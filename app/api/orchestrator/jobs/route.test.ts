@@ -61,3 +61,51 @@ describe('POST /api/orchestrator/jobs — a progress note, never a billing recor
     expect((await res.json()).ok).toBe(true);
   });
 });
+
+describe("POST /api/orchestrator/jobs 'complete' — the Library re-signs what is filed, so a URL of ours must be the caller's", () => {
+  const HOST = 'https://proj.supabase.co';
+  const signedUrl = (path: string, token = 'old') => `${HOST}/storage/v1/object/sign/uploads/${path}?token=${token}`;
+  const ENV = { ...process.env };
+  const realFetch = global.fetch;
+  let tokenLive = false;
+  const probes: string[] = [];
+  beforeEach(() => {
+    process.env = { ...ENV, SUPABASE_URL: HOST };
+    tokenLive = false;
+    probes.length = 0;
+    // verifyFileableUrl's one-byte probe: our storage honours the token (206) or not (400).
+    global.fetch = jest.fn(async (u: RequestInfo | URL) => { probes.push(String(u)); return new Response(null, { status: tokenLive ? 206 : 400 }); }) as typeof fetch;
+  });
+  afterAll(() => { process.env = ENV; global.fetch = realFetch; });
+  const filed = () => calls.find((x) => x.op === 'update')?.payload as { signed_url?: string } | undefined;
+
+  it("refuses a signed URL of ours naming another account's upload whose token is dead — nothing is filed", async () => {
+    const res = await post({ op: 'complete', id: 'job-1', url: signedUrl('omni-uploads/someone-else/photo.png') });
+    expect(await res.json()).toEqual({ ok: false, error: 'url_not_verified' });
+    expect(filed()).toBeUndefined();
+    expect(probes).toHaveLength(1);
+  });
+
+  it("files the caller's own upload, even with an expired token (no probe needed)", async () => {
+    const url = signedUrl(`omni-uploads/${mockUser.id}/photo.png`);
+    expect((await (await post({ op: 'complete', id: 'job-1', url })).json()).ok).toBe(true);
+    expect(filed()?.signed_url).toBe(url);
+    expect(probes).toEqual([]);
+  });
+
+  it('files any URL of ours whose token storage honours right now (the caller holds a live grant)', async () => {
+    tokenLive = true;
+    const url = signedUrl('renders/edits/concat-1.mp4', 'live').replace('/uploads/', '/');
+    expect((await (await post({ op: 'complete', id: 'job-1', url })).json()).ok).toBe(true);
+    expect(filed()?.signed_url).toBe(url);
+  });
+
+  it('files external and public URLs as given (the Library never re-signs them)', async () => {
+    for (const url of ['https://replicate.delivery/x/out.png', `${HOST}/storage/v1/object/public/music/t.mp3`, `https://other.supabase.co/storage/v1/object/sign/uploads/a.png?token=x`]) {
+      calls.length = 0;
+      expect((await (await post({ op: 'complete', id: 'job-1', url })).json()).ok).toBe(true);
+      expect(filed()?.signed_url).toBe(url);
+    }
+    expect(probes).toEqual([]);
+  });
+});

@@ -7,6 +7,9 @@
  *   · DELETE calls ElevenLabs DELETE /v1/voices/{id} BEFORE the row goes — and only for a voice the provider says
  *     was cloned for THIS caller. The row's external_id is user-writable (RLS insert/update), so a row naming the
  *     platform's Georgian voice or another user's clone must never delete it.
+ *   · the preview clip lives at `voices/<user>/<voice>.mp3` in the private upload bucket (it used to target a `media`
+ *     bucket Production does not have, so no clone ever had one); the list re-signs ONLY that path for the caller,
+ *     because preview_url is user-writable and the signer is the service role; DELETE removes the clip too.
  */
 jest.mock('server-only', () => ({}));
 
@@ -14,6 +17,7 @@ let mockUser: { id: string } | null = null;
 let lookupRow: Record<string, unknown> | null = null;
 let insertError: { message: string } | null = null;
 let rowDeletes = 0;
+let listRows: Array<Record<string, unknown>> = [];
 
 function queryBuilder() {
   let op: 'select' | 'insert' | 'delete' | 'update' = 'select';
@@ -26,7 +30,7 @@ function queryBuilder() {
     update: jest.fn(() => { op = 'update'; return b; }),
     eq: jest.fn(() => b),
     neq: jest.fn(() => b),
-    order: jest.fn(async () => ({ data: [], error: null })),
+    order: jest.fn(async () => ({ data: listRows, error: null })),
     maybeSingle: jest.fn(async () => ({ data: lookupRow, error: null })),
     single: jest.fn(async () => (op === 'insert' && !insertError
       ? { data: { id: 'row-new', ...inserted }, error: null }
@@ -52,8 +56,18 @@ jest.mock('../../../../lib/api/rate-limit', () => ({
 
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 
+const mockUploadAndSign = jest.fn();
+const mockSign = jest.fn();
+const mockRemove = jest.fn();
+jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({
+  ...jest.requireActual('../../../../lib/orchestrator/storage-adapter'),
+  uploadAndSign: (...a: unknown[]) => mockUploadAndSign(...a),
+  createSignedAssetUrl: (...a: unknown[]) => mockSign(...a),
+  removeStorageObjects: (...a: unknown[]) => mockRemove(...a),
+}));
+
 import { NextRequest, NextResponse } from 'next/server';
-import { POST, DELETE } from './route';
+import { GET, POST, DELETE } from './route';
 import { checkRateLimit, RATE_LIMITS } from '../../../../lib/api/rate-limit';
 
 const rateMock = checkRateLimit as jest.MockedFunction<typeof checkRateLimit>;
@@ -74,7 +88,13 @@ beforeEach(() => {
   lookupRow = null;
   insertError = null;
   rowDeletes = 0;
+  listRows = [];
   process.env.ELEVENLABS_API_KEY = 'test-el-key';
+  process.env.SUPABASE_URL = 'https://proj.supabase.co';
+  delete process.env.UPLOAD_BUCKET;
+  mockUploadAndSign.mockResolvedValue(`https://proj.supabase.co/storage/v1/object/sign/uploads/voices/${USER_ID}/${VOICE_ID}.mp3?token=T1`);
+  mockSign.mockImplementation(async (bucket: string, path: string) => `https://proj.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=FRESH`);
+  mockRemove.mockResolvedValue(undefined);
   fetchSpy = jest.spyOn(global, 'fetch');
   warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -152,6 +172,30 @@ describe('POST', () => {
     expect(String(sent.get('name'))).toHaveLength(100);
   });
 
+  test('the preview clip is stored at voices/<user>/<voice>.mp3 in the private upload bucket, never `media`', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+    const res = await POST(upload());
+    expect(res.status).toBe(201);
+    expect(mockUploadAndSign).toHaveBeenCalledWith(
+      'uploads', `voices/${USER_ID}/${VOICE_ID}.mp3`, Buffer.from([1, 2, 3]).toString('base64'), 'audio/mpeg', 6 * 60 * 60,
+    );
+    const body = await res.json();
+    expect(body.previewUrl).toContain(`/uploads/voices/${USER_ID}/${VOICE_ID}.mp3`);
+    expect(body.sample.preview_url).toBe(body.previewUrl);
+  });
+
+  test('a failed preview upload still saves the clone, without a preview', async () => {
+    mockUploadAndSign.mockResolvedValueOnce(null);
+    fetchSpy
+      .mockResolvedValueOnce(json({ voice_id: VOICE_ID }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1]), { status: 200 }));
+    const res = await POST(upload());
+    expect(res.status).toBe(201);
+    expect((await res.json()).sample.preview_url).toBeNull();
+  });
+
   test('a provider rejection never echoes the provider body to the user', async () => {
     fetchSpy.mockResolvedValueOnce(new Response('{"detail":"quota exceeded, upgrade at elevenlabs.io/billing"}', { status: 401 }));
     const res = await POST(upload());
@@ -192,6 +236,7 @@ describe('DELETE', () => {
     expect(init!.method).toBe('DELETE');
     expect((init!.headers as Record<string, string>)['xi-api-key']).toBe('test-el-key');
     expect(rowDeletes).toBe(1);
+    expect(mockRemove).toHaveBeenCalledWith('uploads', [`voices/${USER_ID}/${VOICE_ID}.mp3`]);
   });
 
   test('a provider delete failure keeps the row (502) so the user can retry', async () => {
@@ -244,6 +289,7 @@ describe('DELETE', () => {
     expect(res.status).toBe(200);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(rowDeletes).toBe(1);
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 
   test('a row that is not the caller\'s (or does not exist) → 404, nothing deleted anywhere', async () => {
@@ -269,5 +315,48 @@ describe('DELETE', () => {
     expect(res.status).toBe(503);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(rowDeletes).toBe(0);
+  });
+});
+
+// ── GET ──────────────────────────────────────────────────────────────────────
+
+describe('GET', () => {
+  const stored = (bucket: string, path: string, host = 'proj.supabase.co') =>
+    `https://${host}/storage/v1/object/sign/${bucket}/${path}?token=OLD`;
+
+  test('re-signs the caller\'s own preview clip on every list', async () => {
+    listRows = [{ id: 'r1', user_id: USER_ID, preview_url: stored('uploads', `voices/${USER_ID}/${VOICE_ID}.mp3`) }];
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const { samples } = await res.json();
+    expect(samples[0].preview_url).toBe(`https://proj.supabase.co/storage/v1/object/sign/uploads/voices/${USER_ID}/${VOICE_ID}.mp3?token=FRESH`);
+    expect(mockSign).toHaveBeenCalledWith('uploads', `voices/${USER_ID}/${VOICE_ID}.mp3`, 6 * 60 * 60);
+  });
+
+  test.each([
+    ['another user\'s clip', stored('uploads', `voices/${OTHER_USER}/${VOICE_ID}.mp3`)],
+    ['any other file in the bucket', stored('uploads', `${USER_ID}/photo.jpg`)],
+    ['a path that climbs out of the folder', stored('uploads', `voices/${USER_ID}/../${OTHER_USER}/x.mp3`)],
+    ['another bucket', stored('renders', `voices/${USER_ID}/${VOICE_ID}.mp3`)],
+    ['the twin bucket', stored('twins', `${USER_ID}/voice.webm`)],
+    ['another Supabase project', stored('uploads', `voices/${USER_ID}/${VOICE_ID}.mp3`, 'evil.supabase.co')],
+    ['a provider link', 'https://cdn.example.com/a.mp3'],
+    ['garbage', 'not a url'],
+  ])('never signs a user-written preview_url that names %s', async (_label, url) => {
+    listRows = [{ id: 'r1', user_id: USER_ID, preview_url: url }];
+    const { samples } = await (await GET()).json();
+    expect(samples[0].preview_url).toBeNull();
+    expect(mockSign).not.toHaveBeenCalled();
+  });
+
+  test('a row with no preview stays without one', async () => {
+    listRows = [{ id: 'r1', user_id: USER_ID, preview_url: null }];
+    const { samples } = await (await GET()).json();
+    expect(samples[0].preview_url).toBeNull();
+  });
+
+  test('a guest is refused (401)', async () => {
+    mockUser = null;
+    expect((await GET()).status).toBe(401);
   });
 });

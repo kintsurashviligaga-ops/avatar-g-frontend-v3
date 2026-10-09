@@ -1,698 +1,228 @@
-﻿import Link from 'next/link';
-import { StudioPageShell } from '@/components/studio/StudioPageShell';
-import { signInPath } from '@/lib/routing/signIn';
-import Image from 'next/image';
+import Link from 'next/link';
 import type { Metadata } from 'next';
-import type { ComponentType } from 'react';
-import { ServiceCardVisual } from '@/components/ui/ServiceCardVisual';
+import { ArrowRight, MessageSquare } from 'lucide-react';
+import { StudioPageShell } from '@/components/studio/StudioPageShell';
 import { JsonLd } from '@/components/seo/JsonLd';
 import { serviceItemListSchema } from '@/lib/seo/schema';
 import { localeAlternates } from '@/lib/seo/hreflang';
 import { OG_IMAGE } from '@/lib/seo/metadata';
-import { getLocalizedMeta } from '@/lib/services/metadata';
-
-// The 14 canonical AI service landing pages (matches app/sitemap.ts) — for the ItemList structured data.
-const CATALOG_SLUGS = [
-  'avatar', 'video', 'image', 'music', 'voice', 'game', 'interior',
-  'prompt', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism',
-] as const;
+import { TOOL_META } from '@/lib/studio/tools';
 import {
-  Briefcase,
-  Calendar,
-  Camera,
-  Clapperboard,
-  Code2,
-  Cpu,
-  VenetianMask,
-  Eye,
-  FileText,
-  Film,
-  Gamepad2,
-  ImageIcon,
-  Mic2,
-  Music2,
-  PenLine,
-  Plane,
-  Puzzle,
-  Radio,
-  Scissors,
-  ShoppingCart,
-  Sofa,
-  UserCircle2,
-  Wand2,
-  Workflow,
-  ArrowRight,
-  Sparkles,
-  LayoutGrid,
-  Zap,
-} from 'lucide-react';
+  SERVICE_CATEGORIES, LEGACY_SLUG_TO_SERVICE, countServices, getService, servicesInCategory, serviceHref,
+  type ServiceDefinition,
+} from '@/lib/catalog/services';
+import { NAV_GROUP_LABEL } from '@/lib/catalog/nav';
 
-type ServicesPageProps = {
-  params: Promise<{ locale: string }>;
-};
+/**
+ * /{lang}/services — the service catalog as a page (Master Task §20). Everything on it comes from lib/catalog/services.ts:
+ * the categories, the cards, the count in the headline, the links. A card opens the service in the studio
+ * (`/{lang}/dashboard?tool=…`), the one working window (§17–§18) — there is no second implementation here.
+ *
+ * ⚠️ IT USED TO BE 26 HAND-WRITTEN ENGLISH CARDS under „24 connected modules": an online shop, a business suite, a tourism
+ * agent, a workflow builder and an „Expansion Slot" among them, none of which the studio runs (docs/handoffs/service-inventory.md).
+ * A service is on this page only if the catalog says a person can use it today.
+ */
 
-// Localized metadata for the services hub. Previously this top-level,
-// high-traffic page inherited the generic locale-layout title (and an
-// always-Georgian description, even on /en and /ru) — fixed here per locale
-// with a self-referential canonical and matching social cards.
-const SERVICES_META: Record<string, { title: string; description: string }> = {
-  ka: { title: 'ყველა AI სერვისი', description: 'ერთ სივრცეში — ჩატი, სურათი, ვიდეო, მუსიკა, ხმა, ავატარი, ინტერიერი და აპლიკაციის შემქმნელი.' },
-  en: { title: 'All AI Services', description: 'One window — chat, image, video, music, voice, avatar, interior design and an app builder.' },
-  ru: { title: 'Все AI-сервисы', description: 'В одном окне — чат, изображения, видео, музыка, голос, аватар, дизайн интерьера и конструктор приложений.' },
+type ServicesPageProps = { params: Promise<{ locale: string }> };
+type Lang = 'ka' | 'en' | 'ru';
+const langOf = (locale: string): Lang => (locale === 'en' || locale === 'ru' ? locale : 'ka');
+
+const SERVICES_META: Record<Lang, { title: string; description: string }> = {
+  ka: { title: 'AI სერვისები', description: 'ვიდეო, სურათი, ავატარი, მუსიკა, ხმა, ტექსტი, დიზაინი და კოდი — ერთ სტუდიაში, Agent G-სთან ერთად.' },
+  en: { title: 'AI services', description: 'Video, image, avatar, music, voice, writing, design and code — in one studio, with Agent G.' },
+  ru: { title: 'AI-сервисы', description: 'Видео, изображения, аватар, музыка, голос, тексты, дизайн и код — в одной студии, вместе с Agent G.' },
 };
-const SERVICES_OG_LOCALE: Record<string, string> = { ka: 'ka_GE', en: 'en_US', ru: 'ru_RU' };
+const OG_LOCALE: Record<Lang, string> = { ka: 'ka_GE', en: 'en_US', ru: 'ru_RU' };
 
 export async function generateMetadata({ params }: ServicesPageProps): Promise<Metadata> {
   const { locale } = await params;
-  const m = SERVICES_META[locale] ?? SERVICES_META['en']!;
-  const canonical = `/${locale}/services`;
+  const m = SERVICES_META[langOf(locale)];
   return {
     title: m.title,
     description: m.description,
-    // Iteration 2 — add the hreflang `languages` cluster (was canonical-only, so the in-page hreflang
-    // fell back to the [locale] layout's homepage cluster → pointed at the locale ROOT, not /services).
     alternates: localeAlternates(locale, '/services'),
     openGraph: {
-      type: 'website',
-      title: m.title,
-      description: m.description,
-      url: canonical,
-      siteName: 'MyAvatar',
-      locale: SERVICES_OG_LOCALE[locale] ?? 'en_US',
-      images: [{ ...OG_IMAGE, alt: m.title }],
+      type: 'website', title: m.title, description: m.description, url: `/${locale}/services`, siteName: 'MyAvatar',
+      locale: OG_LOCALE[langOf(locale)], images: [{ ...OG_IMAGE, alt: m.title }],
     },
     twitter: { card: 'summary_large_image', title: m.title, description: m.description, images: [OG_IMAGE.url] },
   };
 }
 
-type ServiceId =
-  | 'avatar'
-  | 'video'
-  | 'editing'
-  | 'music'
-  | 'photo'
-  | 'image'
-  | 'media'
-  | 'text'
-  | 'prompt'
-  | 'visual-intel'
-  | 'workflow'
-  | 'shop'
-  | 'agent-g'
-  | 'software'
-  | 'business'
-  | 'tourism'
-  | 'game'
-  | 'interior'
-  | 'voice'
-  | 'content-writer'
-  | 'podcast'
-  | 'character'
-  | 'event'
-  | 'prompt-builder'
-  | 'terminal'
-  | 'next';
-
-type ServiceItem = {
-  id: ServiceId;
-  title: string;
-  description: string;
-  tag: string;
-  icon: ComponentType<{ className?: string }>;
-};
-
-const SERVICE_ITEMS: ServiceItem[] = [
-  {
-    id: 'avatar',
-    title: 'Build Your AI Avatar',
-    description: 'Design identity-ready avatars for campaigns, channels, and branded experiences.',
-    tag: 'Create',
-    icon: UserCircle2,
-  },
-  {
-    id: 'video',
-    title: 'AI Video Studio',
-    description: 'Generate cinematic AI video sequences with production-grade speed and control.',
-    tag: 'Create',
-    icon: Clapperboard,
-  },
-  {
-    id: 'editing',
-    title: 'Universal Video Editing',
-    description: 'Polish raw outputs into launch-ready edits with fast, consistent pipelines.',
-    tag: 'Edit',
-    icon: Scissors,
-  },
-  {
-    id: 'music',
-    title: 'AI Music Studio',
-    description: 'Compose adaptive soundtracks and brand-aligned audio for every format.',
-    tag: 'Create',
-    icon: Music2,
-  },
-  {
-    id: 'photo',
-    title: 'AI Photo Studio',
-    description: 'Produce polished studio-quality photo assets from one unified workspace.',
-    tag: 'Create',
-    icon: Camera,
-  },
-  {
-    id: 'image',
-    title: 'AI Image Creator',
-    description: 'Generate campaign visuals and creative concepts with precision and style.',
-    tag: 'Create',
-    icon: ImageIcon,
-  },
-  {
-    id: 'media',
-    title: 'Media Production Hub',
-    description: 'Coordinate multi-format production and keep outputs consistent across channels.',
-    tag: 'Optimize',
-    icon: Film,
-  },
-  {
-    id: 'text',
-    title: 'Text Intelligence',
-    description: 'Refine messaging, structure, and strategic copy with AI-assisted quality control.',
-    tag: 'Analyze',
-    icon: FileText,
-  },
-  {
-    id: 'prompt',
-    title: 'Prompt Builder',
-    description: 'Standardize high-performance prompts to improve repeatability and output quality.',
-    tag: 'Optimize',
-    icon: Wand2,
-  },
-  {
-    id: 'visual-intel',
-    title: 'Visual Intelligence',
-    description: 'Evaluate visuals, detect quality gaps, and guide smarter creative decisions.',
-    tag: 'Analyze',
-    icon: Eye,
-  },
-  {
-    id: 'workflow',
-    title: 'Build Automated Workflows',
-    description: 'Connect modules into automated flows that reduce manual operations.',
-    tag: 'Automate',
-    icon: Workflow,
-  },
-  {
-    id: 'shop',
-    title: 'Online Shop',
-    description: 'Publish products, assets, and offers through connected commerce operations.',
-    tag: 'Sell',
-    icon: ShoppingCart,
-  },
-  {
-    id: 'agent-g',
-    title: 'Agent G — Your AI Director',
-    description: 'Coordinate modules, route tasks, and orchestrate your entire AI production system.',
-    tag: 'Coordinate',
-    icon: Cpu,
-  },
-  {
-    id: 'software',
-    title: 'Software Development',
-    description: 'Build systems, product features, and integrations around your AI workflows.',
-    tag: 'Build',
-    icon: Code2,
-  },
-  {
-    id: 'business',
-    title: 'Business Agent',
-    description: 'Drive operations, strategic execution, and day-to-day business automation.',
-    tag: 'Scale',
-    icon: Briefcase,
-  },
-  {
-    id: 'tourism',
-    title: 'Tourism AI',
-    description: 'Deliver tourism-focused automation and localized intelligent guest experiences.',
-    tag: 'Vertical',
-    icon: Plane,
-  },
-  {
-    id: 'game',
-    title: 'AI Game Creator',
-    description: 'Build interactive games, simulations, and playable experiences using AI.',
-    tag: 'Create',
-    icon: Gamepad2,
-  },
-  {
-    id: 'interior',
-    title: 'AI Interior Designer',
-    description: 'Redesign rooms and spaces with professional AI-powered interior design tools.',
-    tag: 'Design',
-    icon: Sofa,
-  },
-  {
-    id: 'voice',
-    title: 'Voice Clone',
-    description: 'Clone voices and generate professional-grade narration, dubbing, and audio content.',
-    tag: 'Create',
-    icon: Mic2,
-  },
-  {
-    id: 'content-writer',
-    title: 'Content Writer',
-    description: 'Write SEO articles, social media copy, email campaigns, and marketing content with AI.',
-    tag: 'Write',
-    icon: PenLine,
-  },
-  {
-    id: 'podcast',
-    title: 'Podcast Studio',
-    description: 'Generate full episode scripts with speaker cues, segments, and timestamps.',
-    tag: 'Write',
-    icon: Radio,
-  },
-  {
-    id: 'character',
-    title: 'Character AI',
-    description: 'Design rich AI characters with backstories, personality profiles, and dialogue samples.',
-    tag: 'Create',
-    icon: VenetianMask,
-  },
-  {
-    id: 'event',
-    title: 'Event Studio',
-    description: 'Generate AI event materials: programs, MC scripts, invitations, and promo packs.',
-    tag: 'Create',
-    icon: Calendar,
-  },
-  {
-    id: 'prompt-builder',
-    title: 'Prompt Builder',
-    description: 'Build structured, optimized prompts for any AI model. Design, test, and export templates.',
-    tag: 'Optimize',
-    icon: Wand2,
-  },
-  {
-    id: 'terminal',
-    title: 'Terminal & Coding',
-    description: 'AI-powered code generation, scripts, and CLI tools in any language.',
-    tag: 'Build',
-    icon: Code2,
-  },
-  {
-    id: 'next',
-    title: 'Expansion Slot',
-    description: 'Reserve capacity for next-generation modules and enterprise extension layers.',
-    tag: 'Expand',
-    icon: Puzzle,
-  },
-];
-
-const SERVICE_BY_ID = new Map<ServiceId, ServiceItem>(SERVICE_ITEMS.map((item) => [item.id, item]));
-
-type Category = {
-  id: string;
-  title: string;
-  summary: string;
-  serviceIds: ServiceId[];
-};
-
-const CATEGORIES: Category[] = [
-  {
-    id: 'creative-generation',
-    title: 'Avatar & Creative Generation',
-    summary: 'Create, render, edit, and export visual, audio, and avatar-driven assets.',
-    serviceIds: ['avatar', 'video', 'editing', 'music', 'photo', 'image', 'voice', 'game', 'interior'],
-  },
-  {
-    id: 'creative-intelligence',
-    title: 'Content & Writing',
-    summary: 'Generate, evaluate, and standardize all written and scripted content.',
-    serviceIds: ['content-writer', 'podcast', 'character', 'event', 'media', 'text', 'prompt-builder', 'visual-intel'],
-  },
-  {
-    id: 'automation-orchestration',
-    title: 'Automation & Orchestration',
-    summary: 'Connect modules into workflows and let Agent G coordinate execution.',
-    serviceIds: ['workflow', 'agent-g', 'terminal'],
-  },
-  {
-    id: 'commerce-business-development',
-    title: 'Commerce, Business & Development',
-    summary: 'Turn AI output into stores, products, code, and business systems.',
-    serviceIds: ['shop', 'software', 'business'],
-  },
-  {
-    id: 'vertical-future',
-    title: 'Vertical & Industry Modules',
-    summary: 'Specialized AI for tourism, travel planning, and enterprise expansion.',
-    serviceIds: ['tourism'],
-  },
-];
-
-type PageText = {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  workflowLabel: string;
-  workflowSub: string;
-  ctaEyebrow: string;
-  ctaTitle: string;
-  ctaDescription: string;
-  exploreCta: string;
-  startCta: string;
-};
-
-const PAGE_TEXT: Record<string, PageText> = {
-  en: {
-    eyebrow: 'AI ECOSYSTEM',
-    title: 'Your AI Factory',
-    subtitle: '24 connected AI-powered modules working together in one ecosystem.',
-    description:
-      'From avatar creation to content production, automation, software, commerce, and business execution — MyAvatar connects every service into one intelligent workflow.',
-    workflowLabel: 'Create → Optimize → Automate → Sell → Scale',
-    workflowSub:
-      'From avatar and media generation to orchestration, business operations, and vertical expansion.',
-    ctaEyebrow: 'START YOUR WORKFLOW',
-    ctaTitle: 'Build, automate, and scale with MyAvatar',
-    ctaDescription:
-      'Choose one service or combine multiple modules into a full AI-powered production pipeline.',
-    exploreCta: 'Explore Services',
-    startCta: 'Get Started Free',
-  },
-  ka: {
-    eyebrow: 'AI ეკოსისტემა',
-    title: 'შენი AI ქარხანა',
-    subtitle: '24 ურთიერთდაკავშირებული AI-ით მართული მოდული — ერთ ეკოსისტემაში.',
-    description:
-      'ავატარის შექმნიდან კონტენტ-წარმოებამდე, ავტომატიზაცია, პროგრამული უზრუნველყოფა, კომერცია და ბიზნეს-ოპერაციები — MyAvatar-ი ყველა სერვისს ერთ ინტელექტუალურ workflow-ში აერთიანებს.',
-    workflowLabel: 'შექმნა → ოპტიმიზაცია → ავტომატიზაცია → გაყიდვა → მასშტაბი',
-    workflowSub:
-      'ავატარისა და მედიის გენერაციიდან ორკესტრაციამდე, ბიზნეს-ოპერაციებამდე და ვერტიკალურ გაფართოებამდე.',
-    ctaEyebrow: 'WORKFLOW-ის გაშვება',
-    ctaTitle: 'შექმენი, ავტომატიზაციე და გახარე MyAvatar-ით',
-    ctaDescription:
-      'აირჩიე ერთი სერვისი ან გააერთიანე მრავალი მოდული სრულ AI-ით მართულ პაიპლაინად.',
-    exploreCta: 'სერვისების ნახვა',
-    startCta: 'უფასოდ დაწყება',
-  },
-  ru: {
-    eyebrow: 'AI ЭКОСИСТЕМА',
-    title: 'Ваша AI Фабрика',
-    subtitle: '24 взаимосвязанных AI-модулей, работающих вместе в единой экосистеме.',
-    description:
-      'От создания аватаров до производства контента, автоматизации, разработки ПО, коммерции и бизнес-операций — MyAvatar объединяет все сервисы в один интеллектуальный workflow.',
-    workflowLabel: 'Создать → Оптимизировать → Автоматизировать → Продать → Масштабировать',
-    workflowSub:
-      'От генерации аватаров и медиа до оркестрации, бизнес-операций и вертикального расширения.',
-    ctaEyebrow: 'ЗАПУСТИТЬ WORKFLOW',
-    ctaTitle: 'Создавайте, автоматизируйте и масштабируйте с MyAvatar',
-    ctaDescription:
-      'Выберите один сервис или объедините несколько модулей в полноценный AI-пайплайн.',
-    exploreCta: 'Все сервисы',
-    startCta: 'Начать бесплатно',
-  },
-};
-
-function ServiceCard({ service, locale, isCore = false }: { service: ServiceItem; locale: string; isCore?: boolean }) {
-  const Icon = service.icon;
-  const openLabel = locale === 'ka' ? 'გახსნა' : locale === 'ru' ? 'Открыть' : 'Open Module';
-  return (
-    <Link
-      href={`/${locale}/services/${service.id}`}
-      className='group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-cyan-500/5'
-      style={{ backgroundColor: 'var(--card-bg)', border: isCore ? '1px solid var(--color-accent)' : '1px solid var(--color-border)' }}
-    >
-      <ServiceCardVisual serviceId={service.id} variant="card" className="rounded-t-2xl" />
-      <div className='relative z-10 flex flex-1 flex-col p-5 md:p-6'>
-        {isCore && (
-          <span className='mb-3 inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.16em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-            CORE ORCHESTRATOR
-          </span>
-        )}
-        <div className='mb-4 flex items-center justify-between gap-3'>
-          <div className='inline-flex h-11 w-11 items-center justify-center rounded-xl transition-all group-hover:scale-110' style={{ background: isCore ? 'linear-gradient(135deg, var(--color-accent), rgba(34,211,238,0.8))' : 'var(--color-accent-soft)', color: isCore ? '#fff' : 'var(--color-accent)' }}>
-            <Icon className='h-5 w-5' />
-          </div>
-          <span className='rounded-full px-2.5 py-1 text-[10px] font-medium tracking-[0.08em]' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}>
-            {service.tag}
-          </span>
-        </div>
-        <h3 className='mb-2 text-lg font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
-        <p className='text-sm leading-relaxed' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-        <div className='mt-auto pt-5 flex items-center gap-1.5 text-xs font-medium transition-transform group-hover:translate-x-1' style={{ color: 'var(--color-accent)' }}>
-          {openLabel}
-          <ArrowRight className='h-3 w-3' />
-        </div>
-      </div>
-    </Link>
-  );
+/** „7 სერვისი" / "7 services" / «7 сервисов» — with the Russian plural. */
+function servicesWord(n: number, lang: Lang): string {
+  if (lang === 'ka') return `${n} სერვისი`;
+  if (lang === 'en') return `${n} ${n === 1 ? 'service' : 'services'}`;
+  const mod10 = n % 10, mod100 = n % 100;
+  const w = mod10 === 1 && mod100 !== 11 ? 'сервис' : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'сервиса' : 'сервисов';
+  return `${n} ${w}`;
 }
 
-function AgentGFeaturedCard({ service, locale }: { service: ServiceItem; locale: string }) {
-  const Icon = service.icon;
-  const openLabel = locale === 'ka' ? 'მოდულის გახსნა' : locale === 'ru' ? 'Открыть модуль' : 'Open Module';
+const COPY: Record<Lang, {
+  eyebrow: string; title: string; lead: (services: number, categories: number) => string;
+  agentTitle: string; agentText: string; agentCta: string; open: string; beta: string;
+  /** On a shortcut card: the category that owns the service (§24 — the card opens that one service). */
+  alsoIn: string;
+  closingTitle: string; closingText: string; closingCta: string;
+}> = {
+  ka: {
+    eyebrow: 'სერვისები',
+    title: 'ერთი სტუდია. ყველაფერი, რასაც ქმნი.',
+    lead: (s, c) => `${servicesWord(s, 'ka')} ${c} კატეგორიაში. თითოეული იხსნება იმავე სტუდიაში, სადაც Agent G გელოდება.`,
+    agentTitle: 'Agent G',
+    agentText: 'უთხარი, რა გინდა — ტექსტით ან ხმით. Agent G თავად შეარჩევს სერვისს, გეტყვის ფასს და შექმნის შედეგს.',
+    agentCta: 'ჩატის გახსნა',
+    open: 'სტუდიაში გახსნა',
+    beta: 'ბეტა',
+    alsoIn: 'კატეგორია',
+    closingTitle: 'დაიწყე ერთი იდეით',
+    closingText: 'ფასი ღილაკზე წერია, სანამ დაადასტურებ.',
+    closingCta: 'სტუდიის გახსნა',
+  },
+  en: {
+    eyebrow: 'Services',
+    title: 'One studio. Everything you make.',
+    lead: (s, c) => `${servicesWord(s, 'en')} in ${c} categories. Each one opens in the same studio, where Agent G is waiting.`,
+    agentTitle: 'Agent G',
+    agentText: 'Say what you want, by text or voice. Agent G picks the service, tells you the price and makes the result.',
+    agentCta: 'Open the chat',
+    open: 'Open in the studio',
+    beta: 'Beta',
+    alsoIn: 'Category',
+    closingTitle: 'Start from one idea',
+    closingText: 'The price is on the button before you confirm.',
+    closingCta: 'Open the studio',
+  },
+  ru: {
+    eyebrow: 'Сервисы',
+    title: 'Одна студия. Всё, что вы создаёте.',
+    lead: (s, c) => `${servicesWord(s, 'ru')} в ${c} категориях. Каждый открывается в той же студии, где вас ждёт Agent G.`,
+    agentTitle: 'Agent G',
+    agentText: 'Скажите, что нужно, текстом или голосом. Agent G сам выберет сервис, назовёт цену и создаст результат.',
+    agentCta: 'Открыть чат',
+    open: 'Открыть в студии',
+    beta: 'Бета',
+    alsoIn: 'Раздел',
+    closingTitle: 'Начните с одной идеи',
+    closingText: 'Цена указана на кнопке до подтверждения.',
+    closingCta: 'Открыть студию',
+  },
+};
+
+/** The SEO landing pages that belong to a catalog service — the ItemList points at them, never at a page with no runtime. */
+const SEO_PAGES: readonly string[] = ['video', 'image', 'avatar', 'music', 'voice', 'interior', 'content-writer', 'podcast', 'prompt', 'terminal'];
+
+function ServiceCard({ service, locale, lang, shortcutOf }: { service: ServiceDefinition; locale: string; lang: Lang; shortcutOf?: string }) {
+  const c = COPY[lang];
+  const href = serviceHref(service.id, locale);
+  if (!href || !service.tool) return null;
+  const { Icon } = TOOL_META[service.tool];
   return (
-    <Link
-      href={`/${locale}/services/${service.id}`}
-      className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10'
-      style={{ backgroundColor: 'var(--card-bg)', border: '1px solid var(--color-accent)' }}
-    >
-      <div className='grid grid-cols-1 md:grid-cols-[1fr_1.4fr]'>
-        <ServiceCardVisual serviceId="agent-g" variant="banner" className="rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none min-h-[180px]" />
-        <div className='relative z-10 flex flex-col justify-center p-6 md:p-8'>
-          <span className='mb-3 inline-flex w-fit rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-            CORE ORCHESTRATOR
-          </span>
-          <div className='flex items-center gap-3 mb-2'>
-            <div className='inline-flex h-12 w-12 items-center justify-center rounded-xl transition-transform group-hover:scale-110' style={{ background: 'linear-gradient(135deg, var(--color-accent), rgba(34,211,238,0.8))', color: '#fff' }}>
-              <Icon className='h-6 w-6' />
-            </div>
-            <h3 className='text-xl md:text-2xl font-semibold leading-tight' style={{ color: 'var(--color-text)' }}>{service.title}</h3>
-          </div>
-          <p className='mt-2 text-sm leading-relaxed max-w-lg' style={{ color: 'var(--color-text-secondary)' }}>{service.description}</p>
-          <div className='mt-5 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-semibold w-fit transition-all group-hover:translate-x-1 group-hover:shadow-lg group-hover:shadow-cyan-500/20' style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}>
-            {openLabel}
-            <ArrowRight className='h-3.5 w-3.5' />
-          </div>
-        </div>
-      </div>
-    </Link>
+    <li>
+      <Link href={href} data-service-id={service.id}
+        className="group flex h-full min-h-[44px] flex-col rounded-2xl border border-white/10 bg-app-surface p-5 transition-colors hover:bg-app-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent">
+        <span className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-app-elevated text-app-accent"><Icon className="h-5 w-5" aria-hidden="true" /></span>
+          <span className="min-w-0 flex-1 text-[16px] font-semibold leading-tight text-app-text">{service.label[lang]}</span>
+          {service.status === 'beta' && <span className="shrink-0 text-[11px] font-medium uppercase tracking-wider text-app-muted">{c.beta}</span>}
+        </span>
+        <span className="mt-3 text-[14px] leading-relaxed text-app-muted">{service.description[lang]}</span>
+        {shortcutOf && <span className="mt-2 text-[12px] text-app-muted">{c.alsoIn}: {shortcutOf}</span>}
+        <span className="mt-auto flex items-center gap-1.5 pt-4 text-[13px] font-medium text-app-accent">
+          {c.open}<ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+        </span>
+      </Link>
+    </li>
   );
 }
 
 export default async function LocalizedServicesPage({ params }: ServicesPageProps) {
   const { locale } = await params;
-  const text: PageText = PAGE_TEXT[locale] ?? PAGE_TEXT.en!;
-  const agentG = SERVICE_BY_ID.get('agent-g');
+  const lang = langOf(locale);
+  const c = COPY[lang];
 
-  if (!agentG) {
-    return null;
-  }
+  const sections = SERVICE_CATEGORIES
+    .map((cat) => ({ cat, items: servicesInCategory(cat.id).filter(({ service }) => service.visibleInServices && service.tool) }))
+    .filter((s) => s.items.length > 0);
+  const total = countServices();
+  const categoryLabel = (id: string) => SERVICE_CATEGORIES.find((x) => x.id === id)?.label[lang] ?? id;
 
-  const studioCta = locale === 'ka' ? 'AI სტუდიის გახსნა' : locale === 'ru' ? 'Открыть AI Студию' : 'Open AI Studio';
-  const studioDesc = locale === 'ka'
-    ? 'ყველა სერვისი ერთ სტუდიაში — დეშბორდი, პაიპლაინები, რეალტაიმ გენერაცია'
-    : locale === 'ru'
-      ? 'Все сервисы в одной студии — дашборд, пайплайны, генерация в реальном времени'
-      : 'All services in one studio — dashboard, pipelines, real-time generation';
-  const hubLabel = locale === 'ka' ? 'AI ᲡᲢᲣᲓᲘᲐ' : locale === 'ru' ? 'AI СТУДИЯ' : 'AI STUDIO';
-
-  // ItemList structured data over the real service catalog (localized names via the metadata SSoT).
-  const catalogServices = CATALOG_SLUGS
-    .map((slug): { slug: string; name: string } | null => { const m = getLocalizedMeta(slug, locale); return m ? { slug, name: m.headline } : null; })
-    .filter((s): s is { slug: string; name: string } => s !== null);
-  const itemListSchema = serviceItemListSchema({ locale, name: 'MyAvatar AI Services', services: catalogServices });
+  const itemList = serviceItemListSchema({
+    locale,
+    name: 'MyAvatar AI Services',
+    services: SEO_PAGES
+      .map((slug) => ({ slug, s: getService(LEGACY_SLUG_TO_SERVICE[slug] ?? '') }))
+      .filter((x): x is { slug: string; s: ServiceDefinition } => !!x.s)
+      .map(({ slug, s }) => ({ slug, name: s.label[lang] })),
+  });
 
   return (
     <StudioPageShell locale={locale}>
-    <section className='relative overflow-hidden px-4 py-16 sm:px-6 md:py-20 lg:px-10 lg:py-24 bg-transparent' style={{ color: 'var(--color-text)' }}>
-      <JsonLd data={itemListSchema} />
-      <div className='relative mx-auto flex w-full max-w-7xl flex-col gap-12 md:gap-16'>
-        <header className='mx-auto max-w-4xl text-center'>
-          <div className='mx-auto mb-5 relative w-[83px] h-[83px] sm:w-[104px] sm:h-[104px]'>
-            <div className='absolute inset-[10%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)', filter: 'blur(8px)' }} />
-            <Image
-              src="/brand/rocket-mark.png"
-              alt="MyAvatar"
-              fill
-              sizes="104px"
-              priority
-              className='object-contain drop-shadow-[0_4px_16px_rgba(14,165,233,0.22)]'
-            />
-          </div>
-          <p className='mb-3 inline-flex rounded-full px-4 py-1.5 text-xs font-semibold tracking-[0.2em]' style={{ backgroundColor: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-            {text.eyebrow}
-          </p>
-          <h1 className='text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl' style={{ color: 'var(--color-text)' }}>{text.title}</h1>
-          <p className='mx-auto mt-4 max-w-3xl text-lg sm:text-xl' style={{ color: 'var(--color-text-secondary)' }}>{text.subtitle}</p>
-          <p className='mx-auto mt-5 max-w-3xl text-sm leading-relaxed sm:text-base' style={{ color: 'var(--color-text-tertiary)' }}>{text.description}</p>
+      <JsonLd data={itemList} />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-4 py-12 sm:px-6 md:gap-16 md:py-16">
+        <header className="max-w-3xl">
+          <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-app-accent">{c.eyebrow}</p>
+          <h1 className="mt-3 text-[34px] font-bold leading-[1.1] tracking-tight text-app-text sm:text-[48px]">{c.title}</h1>
+          <p className="mt-4 text-[17px] leading-relaxed text-app-muted" data-testid="services-count">{c.lead(total, sections.length)}</p>
+          <nav aria-label={c.eyebrow} className="mt-6 flex flex-wrap gap-2">
+            {sections.map(({ cat }) => (
+              <a key={cat.id} href={`#${cat.id}`}
+                className="inline-flex min-h-[44px] items-center rounded-full border border-white/10 px-4 text-[14px] text-app-text transition-colors hover:bg-app-elevated">
+                {cat.label[lang]}
+              </a>
+            ))}
+          </nav>
         </header>
 
-        {/* ═══ AI STUDIO CTA BANNER ═══ */}
-        <Link
-          href={`/${locale}/hub`}
-          className='group relative block overflow-hidden rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10'
-          style={{
-            background: 'linear-gradient(135deg, rgba(34,211,238,0.06), rgba(14,165,233,0.06))',
-            border: '1px solid rgba(34,211,238,0.2)',
-          }}
-        >
-          <div className='absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity' style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 60%)' }} />
-          <div className='relative flex items-center gap-4 px-6 py-5 sm:px-8 sm:py-6'>
-            <div className='flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center' style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.15), rgba(14,165,233,0.15))', border: '1px solid rgba(34,211,238,0.2)' }}>
-              <LayoutGrid className='w-6 h-6 sm:w-7 sm:h-7' style={{ color: '#22d3ee' }} />
+        {/* Agent G is the layer every service is reached through (§16) — not one card among the others. */}
+        <section aria-labelledby="agent-g-title" className="rounded-3xl border border-white/10 bg-app-surface p-6 md:p-8">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl">
+              <h2 id="agent-g-title" className="flex items-center gap-3 text-[24px] font-bold text-app-text">
+                <MessageSquare className="h-6 w-6 text-app-accent" aria-hidden="true" />{c.agentTitle}
+              </h2>
+              <p className="mt-3 text-[16px] leading-relaxed text-app-muted">{c.agentText}</p>
             </div>
-            <div className='flex-1 min-w-0'>
-              <div className='flex items-center gap-2 mb-1'>
-                <span className='text-[10px] font-bold tracking-[0.25em]' style={{ color: '#22d3ee' }}>{hubLabel}</span>
-                <Sparkles className='w-3 h-3' style={{ color: '#22d3ee' }} />
-              </div>
-              <p className='text-sm sm:text-base font-medium' style={{ color: 'var(--color-text)' }}>{studioDesc}</p>
-            </div>
-            <div className='flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all group-hover:translate-x-1' style={{ background: 'linear-gradient(135deg, #22d3ee, #06b6d4)', color: '#fff' }}>
-              {studioCta}
-              <ArrowRight className='w-4 h-4' />
-            </div>
+            <Link href={`/${locale}/dashboard?tool=chat`}
+              className="inline-flex min-h-[44px] shrink-0 items-center gap-2 self-start rounded-full bg-app-accent px-6 text-[15px] font-semibold text-app-bg transition-opacity hover:opacity-90 md:self-auto">
+              {c.agentCta}<ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
           </div>
-        </Link>
-
-        {/* ═══ QUICK SERVICE ACCESS ROW ═══ */}
-        <div className='flex flex-wrap items-center justify-center gap-2.5'>
-          {SERVICE_ITEMS.slice(0, 10).map((service) => {
-            const Icon = service.icon;
-            return (
-              <Link
-                key={service.id}
-                href={`/${locale}/services/${service.id}`}
-                className='group flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all hover:-translate-y-0.5 hover:shadow-md'
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
-              >
-                <Icon className='w-3.5 h-3.5 transition-colors group-hover:text-cyan-400' />
-                <span className='truncate'>{service.title.replace(/^(AI |Build |Universal )/i, '')}</span>
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Agent G — Featured orchestrator card */}
-        <section>
-          <AgentGFeaturedCard service={agentG} locale={locale} />
         </section>
 
-        <section className='space-y-8 md:space-y-10'>
-          {CATEGORIES.map((category) => {
-            const count = category.serviceIds.length;
-            return (
-            <article key={category.id} className='rounded-3xl p-5 sm:p-6 md:p-8' style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
-              <div className='mb-5 md:mb-6 flex items-start justify-between gap-4'>
-                <div>
-                  <h2 className='text-2xl font-semibold tracking-tight md:text-3xl' style={{ color: 'var(--color-text)' }}>{category.title}</h2>
-                  <p className='mt-2 max-w-3xl text-sm leading-relaxed md:text-base' style={{ color: 'var(--color-text-secondary)' }}>{category.summary}</p>
-                </div>
-                <span className='flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold' style={{ background: 'var(--color-accent-soft)', color: 'var(--color-accent)', border: '1px solid var(--color-accent)' }}>
-                  <Zap className='w-3 h-3' />
-                  {count} {locale === 'ka' ? 'მოდული' : locale === 'ru' ? 'модулей' : 'modules'}
-                </span>
-              </div>
-              <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'>
-                {category.serviceIds.map((serviceId) => {
-                  const service = SERVICE_BY_ID.get(serviceId);
-                  if (!service) return null;
-                  const isCore = serviceId === 'agent-g';
-                  return <ServiceCard key={serviceId} service={service} locale={locale} isCore={isCore} />;
-                })}
-              </div>
-            </article>
-            );
-          })}
-        </section>
-
-        {/* ═══ CINEMATIC POSTER ═══ */}
-        <section
-          className='relative overflow-hidden rounded-3xl'
-          style={{
-            background: 'linear-gradient(170deg, #080e18 0%, #0a0f1a 30%, #06111d 60%, #030a14 100%)',
-            border: '1px solid rgba(34,211,238,0.15)',
-            boxShadow: '0 0 80px rgba(34,211,238,0.06), 0 20px 60px rgba(0,0,0,0.5)',
-          }}
-        >
-          {/* Ambient glow layers */}
-          <div className='absolute inset-0 pointer-events-none' aria-hidden='true'>
-            <div className='absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px]' style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34,211,238,0.08) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-            <div className='absolute bottom-0 right-0 w-[500px] h-[300px]' style={{ background: 'radial-gradient(ellipse at 80% 100%, rgba(14,165,233,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-            <div className='absolute top-1/2 left-0 w-[400px] h-[400px] -translate-y-1/2' style={{ background: 'radial-gradient(ellipse at 0% 50%, rgba(14,165,233,0.05) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-            {/* Grid overlay */}
-            <div className='absolute inset-0 opacity-[0.03]' style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
-            {/* Scan line */}
-            <div className='absolute left-0 right-0 h-px opacity-20' style={{ top: '40%', background: 'linear-gradient(90deg, transparent, rgba(34,211,238,0.4), transparent)' }} />
-          </div>
-
-          <div className='relative z-10 flex flex-col items-center text-center px-6 sm:px-10 py-16 sm:py-20 lg:py-28'>
-            {/* Brand mark */}
-            <div className='relative w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] mb-8'>
-              <div className='absolute inset-[-20%] rounded-full' style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)', filter: 'blur(16px)' }} />
-              <Image src="/brand/rocket-mark.png" alt="MyAvatar" fill sizes="96px" className='object-contain drop-shadow-[0_4px_24px_rgba(34,211,238,0.3)]' />
-            </div>
-
-            {/* Eyebrow */}
-            <p className='mb-4 text-[10px] sm:text-xs font-black tracking-[0.35em] uppercase' style={{ color: 'rgba(34,211,238,0.7)' }}>AI-POWERED CREATIVE ECOSYSTEM</p>
-
-            {/* Headline */}
-            <h2 className='max-w-3xl text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]'>
-              <span style={{ color: '#fff' }}>The Future of </span>
-              <span style={{ background: 'linear-gradient(135deg, #22d3ee, #38bdf8, #38bdf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>AI Creation</span>
-            </h2>
-
-            {/* Sub */}
-            <p className='mt-5 max-w-xl text-sm sm:text-base leading-relaxed' style={{ color: 'rgba(255,255,255,0.45)' }}>
-              {text.ctaDescription}
-            </p>
-
-            {/* Service orbit — the modules as line icons. They were fifteen emoji (🎭 🎬 🎵 …): emoji as UI, banned by
-                docs/DESIGN.md §6, and drawn differently on every platform. Decorative: the cards above name them. */}
-            <div className='mt-10 flex flex-wrap items-center justify-center gap-3 max-w-lg' aria-hidden='true'>
-              {[VenetianMask, Clapperboard, Music2, Camera, ImageIcon, PenLine, Eye, Zap, ShoppingCart, Cpu, Code2, Briefcase, Plane, Gamepad2, Sofa].map((OrbitIcon, i) => (
-                <div
-                  key={i}
-                  className='flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl'
-                  style={{
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    color: 'rgba(255,255,255,0.6)',
-                  }}
-                >
-                  <OrbitIcon className='h-[18px] w-[18px]' strokeWidth={1.5} />
-                </div>
+        {(['create', 'work'] as const).map((grp) => {
+          const inGroup = sections.filter(({ cat }) => (cat.group === 'agent' ? 'work' : cat.group) === grp);
+          if (inGroup.length === 0) return null;
+          return (
+            <div key={grp} className="flex flex-col gap-10">
+              <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-app-muted">{NAV_GROUP_LABEL[grp][lang]}</p>
+              {inGroup.map(({ cat, items }) => (
+                <section key={cat.id} id={cat.id} aria-labelledby={`${cat.id}-title`} className="scroll-mt-20" data-category={cat.id}>
+                  <div className="mb-4 flex items-baseline justify-between gap-4">
+                    <h2 id={`${cat.id}-title`} className="text-[24px] font-bold tracking-tight text-app-text md:text-[28px]">{cat.label[lang]}</h2>
+                    <span className="shrink-0 text-[13px] tabular-nums text-app-muted">{servicesWord(items.length, lang)}</span>
+                  </div>
+                  <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {items.map(({ service, shortcut }) => (
+                      <ServiceCard key={service.id} service={service} locale={locale} lang={lang}
+                        shortcutOf={shortcut ? categoryLabel(service.category) : undefined} />
+                    ))}
+                  </ul>
+                </section>
               ))}
             </div>
+          );
+        })}
 
-            {/* CTA row */}
-            <div className='mt-10 flex flex-wrap items-center justify-center gap-3'>
-              <Link
-                href={signInPath(locale, { mode: 'signup' })}
-                className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-bold transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/20'
-                style={{ background: 'linear-gradient(135deg, #22d3ee, #06b6d4)', color: '#fff' }}
-              >
-                {text.startCta}
-                <ArrowRight className='h-4 w-4' />
-              </Link>
-              <Link
-                href={`/${locale}/services`}
-                className='inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-semibold transition-all hover:-translate-y-0.5'
-                style={{ background: 'rgba(255,255,255,0.04)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                {text.exploreCta}
-              </Link>
-            </div>
-
-            {/* Bottom tagline */}
-            <p className='mt-12 text-[11px] tracking-[0.15em] font-medium' style={{ color: 'rgba(255,255,255,0.2)' }}>
-              {text.workflowLabel}
-            </p>
-          </div>
+        <section className="rounded-3xl border border-white/10 p-6 text-center md:p-10">
+          <h2 className="text-[24px] font-bold text-app-text md:text-[32px]">{c.closingTitle}</h2>
+          <p className="mt-3 text-[16px] text-app-muted">{c.closingText}</p>
+          <Link href={`/${locale}/dashboard`}
+            className="mt-6 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-app-accent px-6 text-[15px] font-semibold text-app-bg transition-opacity hover:opacity-90">
+            {c.closingCta}<ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
         </section>
       </div>
-    </section>
     </StudioPageShell>
   );
 }

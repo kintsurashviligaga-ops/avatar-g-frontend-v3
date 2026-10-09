@@ -6,6 +6,8 @@ import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import { buildPlatformPrompt, PLATFORM_UI_LABELS, type PlatformPromptLocale } from './platformPrompt';
 import { ALL_TOOLS, TOOL_META } from '@/lib/studio/tools';
+import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
+import { getService } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_PACKAGES, CREDIT_VALUE_GEL, creditCostFor, creditsToGel } from '@/lib/credits/pricing';
 
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
@@ -184,7 +186,16 @@ describe('buildPlatformPrompt — locale variants', () => {
   it.each(LOCALES)('points at the %s labels of the real buttons', (locale) => {
     const p = build(locale);
     const ui = PLATFORM_UI_LABELS[locale];
-    for (const label of [ui.toolsSheet, ui.attach, ui.services, ui.liveVoice, ui.topUp]) expect(p).toContain(`"${label}"`);
+    for (const label of [ui.toolsSheet, ui.attach, ui.liveVoice, ui.topUp]) expect(p).toContain(`"${label}"`);
+    // The side menu's headings come from the catalog nav, not a copy.
+    for (const g of ['create', 'work'] as const) expect(p).toContain(`"${NAV_GROUP_LABEL[g][locale]}"`);
+  });
+
+  it.each(LOCALES)('lists the %s tools under the side menu\'s categories and names what is not available yet', (locale) => {
+    const p = build(locale);
+    for (const g of toolGroups()) expect(p).toContain(`${g.label[locale]}:\n- ${TOOL_META[g.tools[0]!].name[locale]}`);
+    expect(p).toContain('NOT AVAILABLE YET:');
+    expect(p).toContain(getService('music.remix')!.label[locale]);
   });
 
   it('falls back to Georgian for an unknown locale', () => {
@@ -214,7 +225,7 @@ describe('PLATFORM_UI_LABELS stay in sync with the UI', () => {
 
   it.each(LOCALES)('every %s button label exists verbatim in components/', (locale) => {
     const ui = PLATFORM_UI_LABELS[locale];
-    for (const label of [ui.toolsSheet, ui.attach, ui.services, ui.liveVoice, ui.topUp]) {
+    for (const label of [ui.toolsSheet, ui.attach, ui.liveVoice, ui.topUp]) {
       expect({ label, found: corpus.includes(`'${label}'`) }).toEqual({ label, found: true });
     }
   });

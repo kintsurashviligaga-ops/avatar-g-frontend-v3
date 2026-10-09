@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 
 const exec = promisify(execFile);
 
@@ -27,12 +28,10 @@ export async function transcodeVoiceToMp3(sourceUrl: string): Promise<string | n
   if (!bin || !sourceUrl) return null;
   let dir = '';
   try {
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), 25_000);
-    const r = await fetch(sourceUrl, { signal: ac.signal }).finally(() => clearTimeout(to));
-    if (!r.ok) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (!buf.byteLength || buf.byteLength > 25 * 1024 * 1024) return null;
+    // Public hosts only, capped while streaming (lib/web/publicFetch).
+    const got = await fetchPublicBytes(sourceUrl, { maxBytes: 25 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs: 25_000 });
+    if (!got.ok || !got.bytes.byteLength) return null;
+    const buf = got.bytes;
 
     dir = await mkdtemp(join(tmpdir(), 'voice_'));
     const inPath = join(dir, 'in');

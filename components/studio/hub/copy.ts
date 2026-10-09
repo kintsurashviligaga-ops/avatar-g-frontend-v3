@@ -31,7 +31,7 @@ export interface HubCopy {
   notifTitle: string; notifSub: string; waTitle: string; waSub: string; tgTitle: string; tgSub: string;
   tgChecking: string; tgReady: string; tgOff: string; tgLoadFailed: string;
   // ── plugins tab
-  plugLead: string; plugNote: string; plugPrimary: string; plugMore: string; plugAlwaysOn: string;
+  plugLead: string; plugNote: string; plugAlwaysOn: string;
   plugSignIn: string; plugSoon: string; plugLoadFailed: string; plugSaveFailed: string; plugSaving: string; plugSaved: string;
   // ── skills tab
   skillsLead: string; states: Record<SkillState, string>;
@@ -51,7 +51,7 @@ const ka: HubCopy = {
   tgOff: 'Telegram აქ ჯერ არ არის ჩართული.', tgLoadFailed: 'სტატუსი ვერ ჩაიტვირთა.',
   plugLead: 'გამორთე ხელსაწყოები, რომლებსაც არ იყენებ — ისინი გაქრება გვერდითი მენიუდან და „+“ მენიუდან. ჩართვა ნებისმიერ დროს შეგიძლია.',
   plugNote: 'გამორთვა მხოლოდ მენიუს ალაგებს: ფასები და შენი ანგარიშის შესაძლებლობები არ იცვლება.',
-  plugPrimary: 'მთავარი ხელსაწყოები', plugMore: 'მეტი ხელსაწყო', plugAlwaysOn: 'ყოველთვის ჩართულია',
+  plugAlwaysOn: 'ყოველთვის ჩართულია',
   plugSignIn: 'შედი ანგარიშში, რომ აირჩიო, რომელი ხელსაწყოები გამოჩნდეს.', plugSoon: 'ხელსაწყოების არჩევა მალე გაიხსნება.',
   plugLoadFailed: 'შენი არჩევანი ვერ ჩაიტვირთა.', plugSaveFailed: 'ვერ შეინახა — გადამრთველი წინა მდგომარეობას დაუბრუნდა.', plugSaving: 'ინახება…', plugSaved: 'შენახულია',
   skillsLead: 'რა შეუძლია Agent G-ს. თითოეულის სტატუსი ამ საიტზე მოწმდება — ეს არ არის დაპირება.',
@@ -85,7 +85,7 @@ const en: HubCopy = {
   tgOff: 'Telegram is not switched on here yet.', tgLoadFailed: 'The status could not be loaded.',
   plugLead: 'Switch off the tools you do not use — they leave your sidebar and the + menu. Switch them back on any time.',
   plugNote: 'Switching a tool off only tidies your menus. Prices and what your account can do stay the same.',
-  plugPrimary: 'Main tools', plugMore: 'More tools', plugAlwaysOn: 'Always on',
+  plugAlwaysOn: 'Always on',
   plugSignIn: 'Sign in to choose which tools you see.', plugSoon: 'Choosing your tools opens soon.',
   plugLoadFailed: 'Your choices could not be loaded.', plugSaveFailed: 'That could not be saved — the switch is back as it was.', plugSaving: 'Saving…', plugSaved: 'Saved',
   skillsLead: 'What Agent G can do. Each status is checked on this site — it is not a promise.',
@@ -119,7 +119,7 @@ const ru: HubCopy = {
   tgOff: 'Telegram здесь пока не включён.', tgLoadFailed: 'Не удалось загрузить статус.',
   plugLead: 'Отключите инструменты, которыми не пользуетесь, — они исчезнут из боковой панели и меню «+». Включить их снова можно в любой момент.',
   plugNote: 'Отключение только упрощает ваше меню. Цены и возможности аккаунта не меняются.',
-  plugPrimary: 'Основные инструменты', plugMore: 'Другие инструменты', plugAlwaysOn: 'Всегда включён',
+  plugAlwaysOn: 'Всегда включён',
   plugSignIn: 'Войдите, чтобы выбрать, какие инструменты видеть.', plugSoon: 'Выбор инструментов скоро откроется.',
   plugLoadFailed: 'Не удалось загрузить ваш выбор.', plugSaveFailed: 'Не удалось сохранить — переключатель вернулся в прежнее положение.', plugSaving: 'Сохраняем…', plugSaved: 'Сохранено',
   skillsLead: 'Что умеет Agent G. Статус каждого пункта проверяется на этом сайте — это не обещание.',

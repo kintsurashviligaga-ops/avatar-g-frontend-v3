@@ -19,6 +19,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
+import { MEDIA_TYPES, fetchPublicBytes } from '@/lib/web/publicFetch';
 
 const exec = promisify(execFile);
 
@@ -28,19 +29,10 @@ export async function extractKeyframes(videoUrl: string, count = 4, timeoutMs = 
   let dir: string | null = null;
   try {
     // 1) bounded download — a QA sample must never pin the function or OOM.
-    const ac = new AbortController();
-    const to = setTimeout(() => ac.abort(), timeoutMs);
-    let buf: Buffer;
-    try {
-      const res = await fetch(videoUrl, { signal: ac.signal });
-      if (!res.ok) return [];
-      // Reject an over-large body BEFORE buffering it into RAM (a true upfront guard, not post-hoc).
-      const advertised = Number(res.headers.get('content-length') || 0);
-      if (advertised > 200 * 1024 * 1024) return [];
-      buf = Buffer.from(await res.arrayBuffer());
-    } finally {
-      clearTimeout(to);
-    }
+    //    Public hosts only, capped while streaming (lib/web/publicFetch).
+    const got = await fetchPublicBytes(videoUrl, { maxBytes: 200 * 1024 * 1024, accept: MEDIA_TYPES, timeoutMs });
+    if (!got.ok) return [];
+    const buf = got.bytes;
     if (!buf.length || buf.length > 200 * 1024 * 1024) return [];
     dir = await mkdtemp(join(tmpdir(), 'visqa-'));
     const src = join(dir, 'master.mp4');

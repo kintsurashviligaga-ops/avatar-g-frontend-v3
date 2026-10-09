@@ -1,7 +1,9 @@
 /** Shared fixtures for the research UI tests. Not shipped: only *.test.ts(x) import it. */
 import type { ResearchJobPublic } from '@/lib/research/types';
 
-export const NOW = Date.parse('2026-10-02T12:00:00.000Z');
+// The fixtures are relative to the real clock: the store and the toasts read Date.now(), and a pinned date expired the
+// one-day toast window (TOAST_MAX_AGE_MS) on 2026-10-03 — six tests went red with no code change.
+export const NOW = Date.now();
 
 export function job(over: Partial<ResearchJobPublic> = {}): ResearchJobPublic {
   return {

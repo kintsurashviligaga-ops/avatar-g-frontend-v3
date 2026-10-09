@@ -17,7 +17,7 @@ import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate
 import { execute } from '@/lib/ai/chatEngine';
 import { getAllAgents } from '@/lib/agents/agentRegistry';
 import { getAuthContext, checkDailyBudget, sanitizePrompt } from '@/lib/security/apiGuard';
-import { AGENT_G_SYSTEM_PROMPT } from '@/lib/agent-g-orchestrator';
+import { agentGSystemPrompt } from '@/lib/agent-g-orchestrator';
 import { chatBudgetAllows, bookChatUsage, BUDGET_EXHAUSTED_MESSAGE } from '@/lib/services/billing/chatBudget';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -325,7 +325,7 @@ export async function POST(req: NextRequest) {
     if (throttled || unavailable) {
       // Real fallback: try Gemini, then Anthropic, before giving up
       const failures: FallbackFailures = {};
-      const realFallback = await tryRealFallback(fallbackHistory, failures, fallbackUserId);
+      const realFallback = await tryRealFallback(fallbackHistory, failures, fallbackUserId, fallbackLoc);
       if (realFallback) {
         return apiSuccess({
           response: realFallback.text,
@@ -409,6 +409,7 @@ async function tryRealFallback(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   failures: FallbackFailures = {},
   userId: string | null = null,
+  loc: Loc = 'ka',
 ): Promise<{ text: string; provider: string; model: string } | null> {
   if (!messages.length) return null;
 
@@ -419,7 +420,7 @@ async function tryRealFallback(
   }
 
   // Gemini — the product chain (current models, typed errors, rotation), booked with real usage.
-  const g = await geminiReply(messages, userId);
+  const g = await geminiReply(messages, userId, undefined, { locale: loc });
   if (g) {
     setCached(messages, { text: g.text, provider: 'gemini', model: g.model }, userId);
     return { text: g.text, provider: 'gemini', model: g.model };
@@ -434,7 +435,8 @@ async function tryRealFallback(
       const anthropic = createAnthropic({ apiKey });
       const result = await generateText({
         model: anthropic('claude-haiku-4-5-20251001'),
-        system: AGENT_G_SYSTEM_PROMPT,
+        // No Google Search tool on this leg, so the prompt must not promise one.
+        system: agentGSystemPrompt({ locale: loc, googleSearch: false }),
         messages,
         maxOutputTokens: 2048,
         temperature: 0.7,

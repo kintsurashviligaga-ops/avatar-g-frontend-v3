@@ -7,7 +7,7 @@ import { runMontage } from '@/lib/services/montage/montagePipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
-import { createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { firstUnreadableOwnUrl, resolveCallerMedia } from '@/lib/security/callerMedia';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,13 +43,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // it here, at the moment the pipeline is about to fetch it. Anything already http(s) is left alone and
   // still faces the SSRF check below — a path is not a way to reach an arbitrary host, since it can only
   // ever name an object inside our own upload bucket.
-  const bucket = process.env.UPLOAD_BUCKET || 'uploads';
   // Only a BARE path is resolved; `data:`/`file:`/any other scheme is left untouched and rejected
-  // downstream by the validator for not being an http(s) url.
+  // downstream by the validator for not being an http(s) url. A path is signed only for the caller who owns it
+  // (lib/security/callerMedia): another account's upload is refused, never signed.
+  let foreignPath = false;
   const signIfPath = async (v: unknown): Promise<unknown> => {
     const s = typeof v === 'string' ? v.trim() : '';
     if (!s || /^[a-z][a-z0-9+.-]*:/i.test(s)) return v;
-    return (await createSignedAssetUrl(bucket, s, 3600).catch(() => null)) ?? v;
+    const r = await resolveCallerMedia(s, user.id, 3600);
+    if (!r.ok && r.reason === 'not_owner') foreignPath = true;
+    return r.ok ? r.url : v;
   };
   const resolvedBody = await (async () => {
     if (!body || typeof body !== 'object') return body;
@@ -63,6 +66,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       : b.shots;
     return { ...b, shots, musicUrl: await signIfPath(b.musicUrl) };
   })();
+
+  if (foreignPath) return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips is not yours.' }, { status: 403 });
 
   const parsed = validateMontageRequest(resolvedBody);
   if (!parsed.ok || !parsed.request) {
@@ -82,6 +87,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   if (request.musicUrl && !isPublicHttpUrl(request.musicUrl)) {
     return NextResponse.json({ error: 'invalid_request', message: 'musicUrl must be a public http(s) URL' }, { status: 400 });
+  }
+  // runMontage re-signs every shot URL of ours with the service role (stale Library clips), so a signed URL of ours
+  // must be the caller's to read: own upload, own Library row, or a token that is still live.
+  if ((await firstUnreadableOwnUrl(request.shots.map((s) => s.url), user.id)) >= 0) {
+    return NextResponse.json({ error: 'media_not_yours', message: 'One of the clips is not yours, or its link has expired. Open it again from your Library.' }, { status: 403 });
   }
 
   const totalSec = timelineDuration(request.shots);

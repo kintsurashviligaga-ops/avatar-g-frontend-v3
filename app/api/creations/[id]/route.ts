@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { withPublicMediaUrls } from '@/lib/security/publicMediaUrl';
 
 export const runtime  = 'nodejs';
 export const dynamic  = 'force-dynamic';
@@ -23,9 +24,11 @@ export async function GET(
   const { id } = params;
   const supabase = createServiceRoleClient();
 
+  // ⚠️ user_id IS SELECTED FOR THE OWNER CHECK, NOT RETURNED. The select used to omit it, so `isOwner` compared
+  // undefined to the caller's id and was false for everyone: an owner opening their own private creation got 403.
   const { data, error } = await supabase
     .from('user_creations')
-    .select('id, kind, service, title, prompt, url, thumbnail_url, duration_seconds, credits_used, is_public, share_token, created_at, metadata')
+    .select('id, user_id, kind, service, title, prompt, url, thumbnail_url, duration_seconds, credits_used, is_public, share_token, created_at, metadata')
     .eq('id', id)
     .maybeSingle();
 
@@ -33,15 +36,17 @@ export async function GET(
   if (!data)  return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   // Allow owner or public items
+  const { user_id: ownerId, ...creation } = data as Record<string, unknown>;
   const user = await getAuthenticatedUser(request);
-  const isOwner  = user && (data as Record<string, unknown>)['user_id'] === user.id;
-  const isPublic = (data as Record<string, unknown>)['is_public'] === true;
+  const isOwner  = !!user && typeof ownerId === 'string' && ownerId === user.id;
+  const isPublic = creation['is_public'] === true;
 
   if (!isOwner && !isPublic) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json({ creation: data });
+  // A public creation is read by strangers: only an https link goes out (the owner can write any string into it).
+  return NextResponse.json({ creation: withPublicMediaUrls(creation as { url?: string | null; thumbnail_url?: string | null }) });
 }
 
 // ── PATCH: update title / is_public ──────────────────────────────────────────

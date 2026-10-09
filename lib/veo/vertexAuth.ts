@@ -14,13 +14,14 @@
  */
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { getVercelOidcToken } from '@vercel/oidc';
 import { ExternalAccountClient, GoogleAuth, JWT, type AuthClient } from 'google-auth-library';
 import type { VertexConfig } from './types';
 
 export const VERTEX_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 /** Veo on Vertex is served from us-central1 only (Google locations table, 2026-09). */
 export const VEO_DEFAULT_LOCATION = 'us-central1';
+/** Gemini, the image model and Lyria 3 on Vertex: the global endpoint (proven in the Part 0 T2 test, 2026-10-08). */
+export const GEMINI_DEFAULT_LOCATION = 'global';
 
 const WIF_VARS = [
   'GCP_PROJECT_NUMBER',
@@ -136,20 +137,26 @@ function parseServiceAccountKey(raw: string): ServiceAccountKey | null {
   return { clientEmail, privateKey, ...(privateKeyId ? { privateKeyId } : {}) };
 }
 
-function readVertexEnv(env: EnvSource): EnvReading {
+/**
+ * `requireVeo` (default) reads the Veo transport's config: location GCP_VEO_LOCATION (us-central1) and the output bucket
+ * are required. Without it, the Gemini transport's: project and auth only, location GCP_GEMINI_LOCATION (default
+ * `global`, where Gemini 3.x, the image model and Lyria 3 answered in the Part 0 T2 test), no bucket.
+ */
+function readVertexEnv(env: EnvSource, requireVeo = true): EnvReading {
   const problems: string[] = [];
 
   const projectId = clean(env.GCP_PROJECT_ID);
   if (!projectId) problems.push('GCP_PROJECT_ID');
   else if (!PROJECT_ID_RE.test(projectId)) problems.push('GCP_PROJECT_ID (malformed)');
 
-  const location = clean(env.GCP_VEO_LOCATION) || VEO_DEFAULT_LOCATION;
-  if (!LOCATION_RE.test(location)) problems.push('GCP_VEO_LOCATION (malformed)');
+  const locationVar = requireVeo ? 'GCP_VEO_LOCATION' : 'GCP_GEMINI_LOCATION';
+  const location = clean(env[locationVar]) || (requireVeo ? VEO_DEFAULT_LOCATION : GEMINI_DEFAULT_LOCATION);
+  if (!LOCATION_RE.test(location)) problems.push(`${locationVar} (malformed)`);
 
   const bucketRaw = clean(env.GCP_VEO_BUCKET);
   const bucket = bucketRaw ? normalizeBucket(bucketRaw) : null;
-  if (!bucketRaw) problems.push('GCP_VEO_BUCKET');
-  else if (!bucket) problems.push('GCP_VEO_BUCKET (malformed)');
+  if (requireVeo && !bucketRaw) problems.push('GCP_VEO_BUCKET');
+  else if (requireVeo && !bucket) problems.push('GCP_VEO_BUCKET (malformed)');
 
   const wif = Object.fromEntries(WIF_VARS.map((n) => [n, clean(env[n])])) as Record<WifVar, string>;
   const wifAny = WIF_VARS.some((n) => wif[n]);
@@ -184,8 +191,8 @@ function readVertexEnv(env: EnvSource): EnvReading {
     }
   }
 
-  if (problems.length || !auth || !bucket) return { config: null, problems, key: null };
-  return { config: { projectId, location, bucket, auth }, problems: [], key };
+  if (problems.length || !auth || (requireVeo && !bucket)) return { config: null, problems, key: null };
+  return { config: { projectId, location, bucket: bucket ?? '', auth }, problems: [], key };
 }
 
 /** The Vertex transport's config, or null unless project, bucket and one auth mode are complete and well-formed. */
@@ -196,6 +203,17 @@ export function vertexConfig(env: EnvSource = process.env): VertexConfig | null 
 /** What keeps vertexConfig() null — env variable names (suffixed " (malformed)" when set but unusable). [] when complete. */
 export function vertexConfigProblems(env: EnvSource = process.env): string[] {
   return readVertexEnv(env).problems;
+}
+
+/** The Gemini transport's config (project, location, auth — no bucket), or null. Same auth rules as vertexConfig(). */
+export function vertexAiConfig(env: EnvSource = process.env): Omit<VertexConfig, 'bucket'> | null {
+  const config = readVertexEnv(env, false).config;
+  return config ? { projectId: config.projectId, location: config.location, auth: config.auth } : null;
+}
+
+/** What keeps vertexAiConfig() null — variable names only. [] when complete. */
+export function vertexAiConfigProblems(env: EnvSource = process.env): string[] {
+  return readVertexEnv(env, false).problems;
 }
 
 /**
@@ -209,6 +227,9 @@ export function vertexConfigProblems(env: EnvSource = process.env): string[] {
 async function vercelSubjectToken(): Promise<string> {
   let detail = 'empty token';
   try {
+    // Loaded on first use: @vercel/oidc pulls jose's browser ESM build, which a jsdom test of any module that only
+    // reaches this file through lib/ai/google/transport cannot parse. Same module, same call, just not at import.
+    const { getVercelOidcToken } = await import('@vercel/oidc');
     const token = await getVercelOidcToken();
     if (token) return token;
   } catch (err) {
@@ -262,7 +283,9 @@ function buildClients(config: VertexConfig, key: ServiceAccountKey | null): Buil
   return { client, googleAuth };
 }
 
-let memo: ({ fingerprint: string } & BuiltClients) | null = null;
+type Memo = ({ fingerprint: string } & BuiltClients) | null;
+/** One slot per reading (Veo needs the bucket, Gemini does not), so a Gemini-only env never evicts the Veo client. */
+const memo: { veo: Memo; gemini: Memo } = { veo: null, gemini: null };
 
 /** A digest of everything the clients are built from; a rotated key with the same email still changes it. */
 function fingerprintOf(reading: EnvReading): string {
@@ -271,21 +294,26 @@ function fingerprintOf(reading: EnvReading): string {
     .digest('hex');
 }
 
-function currentClients(): BuiltClients {
-  const reading = readVertexEnv(process.env);
+function currentClients(requireVeo = true): BuiltClients {
+  const reading = readVertexEnv(process.env, requireVeo);
   if (!reading.config) {
     throw new VertexAuthError('not_configured', `Vertex AI is not configured: ${reading.problems.join(', ')}`);
   }
   const fingerprint = fingerprintOf(reading);
-  if (memo && memo.fingerprint === fingerprint) return memo;
+  const slot = requireVeo ? 'veo' : 'gemini';
+  const cached = memo[slot];
+  if (cached && cached.fingerprint === fingerprint) return cached;
   const built = buildClients(reading.config, reading.key);
-  memo = { fingerprint, ...built };
+  memo[slot] = { fingerprint, ...built };
   return built;
 }
 
-/** The memoised Vertex auth client (IdentityPoolClient for WIF, JWT for a key). Throws VertexAuthError('not_configured'). */
-export function getVertexAuthClient(): AuthClient {
-  return currentClients().client;
+/**
+ * The memoised Vertex auth client (IdentityPoolClient for WIF, JWT for a key). Throws VertexAuthError('not_configured').
+ * `requireVeo: false` is the Gemini transport's: it needs no bucket (see readVertexEnv).
+ */
+export function getVertexAuthClient(requireVeo = true): AuthClient {
+  return currentClients(requireVeo).client;
 }
 
 /** The same client wrapped for @google-cloud/storage, able to sign V4 URLs in both modes (see BuiltClients). */
@@ -319,8 +347,8 @@ function describeAuthFailure(err: unknown): { message: string; status?: number }
 }
 
 /** A bearer token for Vertex REST calls. google-auth-library caches and refreshes it, so call it per request. */
-export async function getVertexAccessToken(): Promise<string> {
-  const client = getVertexAuthClient();
+export async function getVertexAccessToken(requireVeo = true): Promise<string> {
+  const client = getVertexAuthClient(requireVeo);
   let token: string | null | undefined;
   try {
     ({ token } = await client.getAccessToken());
@@ -335,5 +363,6 @@ export async function getVertexAccessToken(): Promise<string> {
 
 /** Drops the memoised clients so the next call rebuilds from the current env. Tests only. */
 export function __resetVertexAuthForTests(): void {
-  memo = null;
+  memo.veo = null;
+  memo.gemini = null;
 }

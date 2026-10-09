@@ -8,7 +8,7 @@
  *   · ElevenLabs     — `hasElevenLabsMusicKey()`
  *   · MusicGen       — Replicate's token (the route always lists it, but without a token every call would fail)
  * plus each engine's Redis circuit breaker (`isProviderTripped`): three consecutive failures open it for ~30 s, and the
- * chain skips a tripped engine — so an engine that is out of funds shows as busy instead of being offered.
+ * route will not run a tripped engine — so an engine that is out of funds shows as busy instead of being offered.
  * "+ Audio" (MusicGen's melody model) and "+ Voice" (MiniMax) both run on Replicate, hence `references`.
  *
  * Booleans only — never a key, a model id or a URL. Fail-open on the breaker read (a Redis blip shows engines as ready,
@@ -50,6 +50,9 @@ export async function musicEnginesStatus(
   return {
     engines,
     references: { cover: replicate, voice: replicate },
-    chain: MUSIC_ENGINE_CHAIN.filter((id) => engines[id].configured && !engines[id].busy),
+    // ⚠️ AUTO IS LYRIA ALONE — the route no longer fails over (PROJECT_MASTER R7). This listed every configured engine
+    // that was not busy, which was true while a Lyria miss rerouted down the chain; reported now, it would promise the
+    // picker's "Auto" a fallback the route no longer runs. Empty when Lyria cannot run: Auto then fails explicitly.
+    chain: engines.lyria.configured && !engines.lyria.busy ? ['lyria'] : [],
   };
 }

@@ -28,7 +28,7 @@ describe('parseSupabaseObjectUrl', () => {
 });
 
 describe('ensureBucket — the result is read, not thrown away', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { ensureBucket, __resetKnownBuckets } = require('./storage-adapter') as typeof import('./storage-adapter');
   beforeEach(() => __resetKnownBuckets());
   const fake = (answers: Array<string | null | Error>) => {
@@ -91,6 +91,7 @@ describe('ensureBucket — the result is read, not thrown away', () => {
 
 describe('storageObjectExists — true/false only when storage answered', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { storageObjectExists } = require('./storage-adapter') as typeof import('./storage-adapter');
   const fake = (answer: { data?: Array<{ name?: string | null }> | null; error?: { message: string } | null } | Error) => {
     const calls: Array<{ bucket: string; dir: string; opts: { limit: number; search: string } }> = [];
@@ -130,5 +131,54 @@ describe('storageObjectExists — true/false only when storage answered', () => 
     await expect(storageObjectExists('renders', 'models3d/pred1.glb', fake(new Error('ECONNRESET')).sb)).resolves.toBeNull();
     // The module-level mock makes createServiceRoleClient throw → no client.
     await expect(storageObjectExists('renders', 'models3d/pred1.glb')).resolves.toBeNull();
+  });
+});
+
+describe('library filing helpers — what may be re-signed with the service role', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sa = require('./storage-adapter') as typeof import('./storage-adapter');
+  const OWN = 'https://proj.supabase.co';
+  const env = { NEXT_PUBLIC_SUPABASE_URL: OWN } as unknown as NodeJS.ProcessEnv;
+  const isPublicUrl = () => true;
+  const asFetch = (f: jest.Mock) => f as unknown as typeof fetch;
+
+  test('describeSupabaseObjectUrl keeps the access shape, the token and the host', () => {
+    expect(sa.describeSupabaseObjectUrl(`${OWN}/storage/v1/object/sign/renders/a/b.mp4?token=t1`))
+      .toEqual({ bucket: 'renders', path: 'a/b.mp4', access: 'sign', token: 't1', host: 'proj.supabase.co' });
+    expect(sa.describeSupabaseObjectUrl(`${OWN}/storage/v1/object/public/renders/a.mp4`))
+      .toEqual({ bucket: 'renders', path: 'a.mp4', access: 'public', token: null, host: 'proj.supabase.co' });
+    expect(sa.describeSupabaseObjectUrl('https://cdn.example.com/a.mp4')).toBeNull();
+  });
+
+  test('ownStorageHosts reads both env spellings; libraryMediaBuckets honours the env names and never the twin bucket', () => {
+    const both = { SUPABASE_URL: 'https://A.supabase.co', NEXT_PUBLIC_SUPABASE_URL: OWN } as unknown as NodeJS.ProcessEnv;
+    expect([...sa.ownStorageHosts(both)].sort()).toEqual(['a.supabase.co', 'proj.supabase.co']);
+    expect(sa.ownStorageHosts({} as NodeJS.ProcessEnv).size).toBe(0);
+    expect([...sa.libraryMediaBuckets({} as NodeJS.ProcessEnv)].sort()).toEqual(['renders', 'studio', 'uploads']);
+    expect(sa.libraryMediaBuckets({ RENDER_BUCKET: 'films' } as unknown as NodeJS.ProcessEnv).has('films')).toBe(true);
+    expect(sa.libraryMediaBuckets({ UPLOAD_BUCKET: 'twins' } as unknown as NodeJS.ProcessEnv).has('twins')).toBe(false);
+  });
+
+  test('verifyFileableUrl: a redirect from storage is not proof of access', async () => {
+    const fetchImpl = jest.fn(async () => new Response(null, { status: 302, headers: { location: 'https://elsewhere' } }));
+    await expect(sa.verifyFileableUrl(`${OWN}/storage/v1/object/sign/renders/a.mp4?token=t`, { env, isPublicUrl, fetchImpl: asFetch(fetchImpl) }))
+      .resolves.toEqual({ ok: false, reason: 'not_readable' });
+  });
+
+  test('verifyFileableUrl: 200 and 206 both prove access; an http:// signed URL of ours is refused as unsigned', async () => {
+    for (const status of [200, 206]) {
+      const fetchImpl = jest.fn(async () => new Response('x', { status }));
+      await expect(sa.verifyFileableUrl(`${OWN}/storage/v1/object/sign/uploads/edits/c.mp4?token=t`, { env, isPublicUrl, fetchImpl: asFetch(fetchImpl) }))
+        .resolves.toEqual({ ok: true, kind: 'own-signed', bucket: 'uploads', path: 'edits/c.mp4' });
+    }
+    await expect(sa.verifyFileableUrl('http://proj.supabase.co/storage/v1/object/sign/renders/a.mp4?token=t', { env, isPublicUrl }))
+      .resolves.toEqual({ ok: false, reason: 'unsigned' });
+  });
+
+  test('verifyFileableUrl: external URLs defer to the public-address check', async () => {
+    await expect(sa.verifyFileableUrl('https://cdn.example.com/a.mp4', { env, isPublicUrl: () => false }))
+      .resolves.toEqual({ ok: false, reason: 'invalid_url' });
+    await expect(sa.verifyFileableUrl('https://cdn.example.com/a.mp4', { env, isPublicUrl }))
+      .resolves.toEqual({ ok: true, kind: 'external' });
   });
 });

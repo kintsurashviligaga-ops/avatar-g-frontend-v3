@@ -22,9 +22,15 @@ it('reports NO user when the session is not readable', async () => {
 });
 
 it('reports founder on the founder email', async () => {
-  mockGetUser.mockResolvedValue({ data: { user: { email: 'KintsurashviliGaga@gmail.com', user_metadata: {} } } });
+  mockGetUser.mockResolvedValue({ data: { user: { email: 'KintsurashviliGaga@gmail.com', email_confirmed_at: '2026-01-01T00:00:00Z', user_metadata: {} } } });
   const r = await whoami();
   expect(r).toMatchObject({ hasUser: true, emailIsFounder: true, isAdmin: true });
+});
+
+it('an unconfirmed founder email is not an admin (the same rule /admin uses)', async () => {
+  mockGetUser.mockResolvedValue({ data: { user: { email: 'KintsurashviliGaga@gmail.com', user_metadata: {} } } });
+  const r = await whoami();
+  expect(r).toMatchObject({ hasUser: true, emailIsFounder: true, isAdmin: false });
 });
 
 it('reports a non-founder account distinctly', async () => {

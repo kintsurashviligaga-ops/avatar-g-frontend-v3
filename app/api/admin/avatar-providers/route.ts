@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,7 +21,8 @@ const norm = (v: string | null | undefined) => String(v || '').trim();
 
 function authorized(req: NextRequest): boolean {
   const expected = norm(process.env.MIGRATION_RUN_KEY) || norm(process.env.ADMIN_KEY);
-  return Boolean(expected) && norm(req.headers.get('x-admin-key')) === expected;
+  // Constant-time: a plain `===` leaks how many leading characters of a guess were right.
+  return secretMatches(req.headers.get('x-admin-key'), expected);
 }
 
 const isKa = (s: string | undefined) => /georg|^ka\b|ka-|ქართ/i.test(String(s || ''));

@@ -53,8 +53,8 @@ describe('what the gate does with each verdict', () => {
   });
   test('only a decision lets a prompt through: a confirmed card, or the panel\'s own Generate button', () => {
     expect(src).toContain("void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });");
-    expect(src).toContain('onGenerate={() => runTool(true)}');
-    expect(src).toContain('onGenerate: () => runTool(true),');
+    expect(src).toContain("onGenerate={() => runTool(true, 'panel')}");
+    expect(src).toContain("onGenerate: () => runTool(true, 'panel'),");
     expect(src).toContain('void send({ promptOverride: prompt, explicit: true })');
   });
   test('the composer\'s own buttons never count as explicit (a click event is not `true`)', () => {

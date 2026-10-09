@@ -53,6 +53,9 @@ import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, 
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
 import type { Transition } from '@/lib/veo/types';
 import { VeoParametersPanel, useVeoEngineInfo } from './video/VeoParametersPanel';
+import { DirectorRunOverlay, useDirectorRunsEnabled } from './video/DirectorRunOverlay';
+import { studioToDirectorStoryboard } from '@/lib/video/director/fromStudio';
+import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/types';
 import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
@@ -67,6 +70,7 @@ import { chatModeOption, displayNameFor, isChatModeId, type ChatModeId } from '@
 import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
+import { answerLiveThreadId } from '@/lib/voice/liveThread';
 import { LIVE_ACTION_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveResultNote, type LiveResultRef, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
@@ -85,6 +89,7 @@ const MotionControlPanel = dynamic(() => import('./MotionControlPanel').then((m)
 const GenjutsuPanel = dynamic(() => import('./genjutsu/GenjutsuPanel').then((m) => m.GenjutsuPanel), { ssr: false, loading: () => <div aria-hidden="true" className="h-[1240px] animate-pulse rounded-3xl bg-app-elevated/40" /> });
 import { chunkForTts } from '@/lib/audio/ttsChunks';
 import { createBrowserClient } from '@/lib/supabase/browser';
+import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
@@ -96,6 +101,7 @@ import { productCtaText, generateVoiceoverScript, type ProductCtaOption } from '
 import { isAdImageMime, AD_IMAGE_MAX_BYTES, MAX_AD_IMAGES, AD_HOOK_MAX_CHARS } from '@/lib/ads/adInputValidation';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { track } from '@/lib/analytics/track';
+import { serviceForTool, trackGenerationCompleted, trackGenerationConfirmed, trackGenerationFailed, trackQuoteShown, trackResultSaved, trackServiceOpened, type ServiceSurface } from '@/lib/analytics/serviceEvents';
 import { ensureNotificationPermission, fireCompletionNotification } from '@/lib/notify/browserNotify';
 import { useStudioBridge } from '@/store/useStudioBridge';
 import { serializeStoryboardMatrix, type StoryboardMatrixCell } from '@/lib/pipeline/storyboardBridge';
@@ -117,6 +123,15 @@ import { SERVICE_CATALOGUE } from '@/lib/services/serviceCatalogue';
 import type { PanelService as ParamsPanelService } from './ServiceParamsPanel';
 // …plus the two image workspaces (interior · photoshoot), which draw their own panel (components/studio/create) and park the mode at chat like a studio panel.
 type PanelService = ParamsPanelService | 'interior' | 'photoshoot';
+
+/** §50 — the catalog service a finished run is reported under when its call site does not name a more exact one. */
+const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' | 'remix', string>> = {
+  image: 'image.generate',
+  music: 'music.generate',
+  video: 'video.generate',
+  avatar: 'avatar.talking',
+  remix: 'video.remix',
+};
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
 import { useHiddenTools, visibleToolIds } from './hub';
@@ -125,7 +140,11 @@ import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
-import { MORE_TOOLS, PRIMARY_TOOLS, TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
+import { toolGroups } from '@/lib/catalog/nav';
+import { routeAgentIntent } from '@/lib/catalog/agentRoute';
+import { getService, serviceModeQuery } from '@/lib/catalog/services';
+import { clearPendingPrompt, stashPendingPrompt, takePendingPrompt } from '@/lib/studio/pendingPrompt';
 import { makeMusicRegenSpec, musicRegenBilledSeconds, musicRegenBody, musicRequestTemplateId, type MusicRegenSpec } from '@/lib/studio/musicRegen';
 import { SLIDER_DEFAULT, musicStyleLine, stylesFromLine, type MusicControlMode, type VocalGender } from '@/lib/ai/musicControls';
 import { MusicCreatePanel } from './create/MusicCreatePanel';
@@ -217,14 +236,8 @@ function busyToastMessage(locale: Lang): string {
 // re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
 async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
   try {
-    const signRes = await fetch('/api/upload/sign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ contentType: mimeType }),
-    });
-    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string };
-    if (!signRes.ok || !sign.path || !sign.token) return null;
+    // The bytes first, so the sign call can declare their size and real type: /api/upload/sign and the bucket take
+    // images, video and audio up to 50 MB only (lib/uploads/policy).
     let blob: Blob;
     try {
       blob = await fetchRehostSource(dataUrl, mimeType);
@@ -232,8 +245,18 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
       if (e instanceof RehostSourceError) onBadSource?.(e);
       return null;
     }
+    const contentType = allowedUploadMime(mimeType) ?? allowedUploadMime(blob.type);
+    if (!contentType || blob.size > UPLOAD_MAX_BYTES) return null;
+    const signRes = await fetch('/api/upload/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ contentType, size: blob.size }),
+    });
+    const sign = (await signRes.json().catch(() => ({}))) as { bucket?: string; path?: string; token?: string; contentType?: string };
+    if (!signRes.ok || !sign.path || !sign.token) return null;
     const sb = createBrowserClient();
-    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: mimeType });
+    const { error } = await sb.storage.from(sign.bucket || 'uploads').uploadToSignedUrl(sign.path, sign.token, blob, { contentType: sign.contentType || contentType });
     if (error) return null;
     // Return the storage PATH — the consumer route signs a readable URL once the
     // object exists (it can't be signed before the upload lands).
@@ -298,8 +321,11 @@ const COPY: Record<Lang, {
   sbTitle: string; sbReview: string; sbGenerate: string; sbRegen: string; sbCancel: string; sbCreating: string; sbFailed: string; sbScene: string; sbEditHint: string; sbReroll: string; sbFrames: string; sbEditPromptAction: string; sbChangeBaseAction: string; sbGenerating: string; sbEmpty: string; sbMoveEarlier: string; sbMoveLater: string; sbDeleteScene: string; sbAddScene: string; sbSourceLocked: string; sbAnchorLocked: string; sbPipeScript: string; sbPipeBoard: string; sbPipeRender: string; sbCompiling: string; sbReady: string; sbAutoFill: string; sbRenderNote: string; sbDrag: string;
   charPhoto: string; charPhotoOn: string;
   historyTitle: string; historyEmpty: string; historyNew: string; deleteLabel: string;
+  /** Screen-reader names of icon-only controls (they were English in every language). */
+  a11yFullscreen: string; a11yRemove: string; a11yRemoveFace: string; a11yRemoveFrame: string; a11yRemoveScript: string; a11yRemoveSoundtrack: string; a11yDuckingDb: string; a11yRemoveShot: string; aiGenerated: string;
 }> = {
   ka: {
+    a11yFullscreen: 'სრულ ეკრანზე გახსნა', a11yRemove: 'მოცილება', a11yRemoveFace: 'სახის მოცილება', a11yRemoveFrame: 'სცენის კადრის მოცილება', a11yRemoveScript: 'სცენარის მოცილება', a11yRemoveSoundtrack: 'საუნდტრეკის მოცილება', a11yDuckingDb: 'მუსიკის ჩახშობის სიღრმე (dB)', a11yRemoveShot: 'კადრის მოცილება', aiGenerated: 'AI-ით შექმნილი',
     title: 'ჭკვიანი ასისტენტი', subtitle: 'ინტელექტუალური მულტიმოდალური ასისტენტი',
     placeholder: 'დაწერე, ჩაწერე ხმა, ან მიამაგრე ფაილი…', empty: STUDIO_EMPTY.ka.sub,
     thinking: 'ფიქრობს…', recording: 'იწერება…', micHint: 'ხმის ჩაწერა',
@@ -325,6 +351,7 @@ const COPY: Record<Lang, {
     historyTitle: 'ისტორია', historyEmpty: 'ჯერ საუბრები არ არის', historyNew: 'ახალი ჩატი', deleteLabel: 'წაშლა',
   },
   en: {
+    a11yFullscreen: 'Open full screen', a11yRemove: 'Remove', a11yRemoveFace: 'Remove face', a11yRemoveFrame: 'Remove scene frame', a11yRemoveScript: 'Remove script', a11yRemoveSoundtrack: 'Remove soundtrack', a11yDuckingDb: 'Music ducking depth (dB)', a11yRemoveShot: 'Remove shot', aiGenerated: 'AI-generated',
     title: 'Smart Assistant', subtitle: 'Intelligent multimodal assistant',
     placeholder: 'Type, record your voice, or attach a file…', empty: STUDIO_EMPTY.en.sub,
     thinking: 'Thinking…', recording: 'Recording…', micHint: 'Record voice',
@@ -350,6 +377,7 @@ const COPY: Record<Lang, {
     historyTitle: 'History', historyEmpty: 'No chats yet', historyNew: 'New chat', deleteLabel: 'Delete',
   },
   ru: {
+    a11yFullscreen: 'Открыть на весь экран', a11yRemove: 'Удалить', a11yRemoveFace: 'Удалить лицо', a11yRemoveFrame: 'Удалить кадр сцены', a11yRemoveScript: 'Удалить сценарий', a11yRemoveSoundtrack: 'Удалить саундтрек', a11yDuckingDb: 'Глубина приглушения музыки (дБ)', a11yRemoveShot: 'Удалить кадр', aiGenerated: 'Создано ИИ',
     title: 'Умный ассистент', subtitle: 'Интеллектуальный мультимодальный ассистент',
     placeholder: 'Напишите, запишите голос или прикрепите файл…', empty: STUDIO_EMPTY.ru.sub,
     thinking: 'Думает…', recording: 'Запись…', micHint: 'Записать голос',
@@ -1570,7 +1598,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* AI-generated indicator — kept clear of the re-roll button (top-right). The ANCHORED case gets the
             prominent "Source Reference Locked" badge below instead. */}
         {s.frameUrl && !s.anchored && (
-          <span title="AI-generated"
+          <span title={t.aiGenerated}
             className="pointer-events-none absolute right-9 top-1.5 z-20 rounded-full bg-app-accent/25 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent ring-1 ring-app-accent/40">🤖</span>
         )}
         {/* V1 — "Origin Identity Anchor Locked": this scene's frame IS the user's exact uploaded
@@ -2035,9 +2063,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Credit-deduction toast for a finished generation. Pricing lives in
   // lib/credits/pricing.ts (single source of truth); the GEL wallet stays the real
   // balance. Declared above renderFilm/send so both can reference it.
-  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number; credits?: number }) => {
+  const notifyCredit = useCallback((kind: 'image' | 'music' | 'video' | 'avatar' | 'remix', opts?: { seconds?: number; count?: number; credits?: number; service?: string }) => {
     // A film passes its exact quote (videoQuote — the number on its Generate button); every other call keeps the table.
     const credits = typeof opts?.credits === 'number' ? opts.credits : creditCostFor(kind, opts);
+    // §50 — the finished run, by catalog id (a free trial run counts too, so this comes before the price check).
+    trackGenerationCompleted(opts?.service ?? COMPLETED_SERVICE[kind], credits);
     if (credits <= 0) return;
     // PHASE 4 Task 1 — track the generation (fail-silent). One hook covers every kind.
     // notifyCredit is declared before the video panel state, so only call params are
@@ -2085,11 +2115,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
       } catch { /* fail-soft */ }
     })();
-    // Record the spend in credit_transactions (fail-open if the table/route is absent).
-    void fetch('/api/credits/record', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ action: kind, creditsDelta: -credits }),
-    }).catch(() => {});
+    // The spend itself is already in credit_ledger (the server charged it); Settings → History reads that ledger,
+    // so the browser no longer reports amounts (the old POST /api/credits/record trusted a client creditsDelta).
     if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
     creditToastTimerRef.current = setTimeout(() => setCreditToast(null), 4000);
   }, [locale]);
@@ -2405,6 +2432,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
+  // V1–V6 director runs (VIDEO_DIRECTOR_RUNS): when on for this user, an approved board renders shot by shot through
+  // the director instead of the film render. Off → false → nothing below changes.
+  const directorRunsOn = useDirectorRunsEnabled();
   useEffect(() => { dispatchVeo({ type: 'format', format: formatForOrientation(videoOrientation) }); }, [videoOrientation]);
   useEffect(() => { dispatchVeo({ type: 'length', lengthSec: videoDuration }); }, [videoDuration]);
   // PHASE 2 L5 / Master Contract V3 — per-render i2v engine. Google VEO is the wired PRIMARY i2v engine
@@ -2690,6 +2720,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
+  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard } | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   // Which storyboard scene is currently re-rolling its single frame (null = none).
   const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
@@ -2963,9 +2994,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (id === 'video' || id === 'product' || id === 'swap' || id === 'remix' || id === 'motion' || id === 'image' || id === 'vfx') setOptionsOpen(true);
   }, [setMode, setPanelService]);
   applyToolRef.current = applyTool;
-  const selectTool = useCallback((id: ToolId) => {
+  /** `surface` — where the pick came from, for the §50 `catalog_service_opened` event (none: a restart, not a pick). */
+  const selectTool = useCallback((id: ToolId, surface?: ServiceSurface, service?: string | null) => {
     switchToolSession(id);
     applyTool(id);
+    if (surface) trackServiceOpened(service ?? serviceForTool(id), surface, id);
   }, [switchToolSession, applyTool]);
 
   // A desktop is Google AI Studio's three columns: the settings are a panel on the right, open by default and
@@ -3056,8 +3089,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const activePersona = useActivePersona(locale);
   // The sidebar picks a tool through `omni:set-tool`; it learns which one is active from `omni:tool-changed` and
   // from <html data-tool> (read on its mount — a child's first effect runs before its parent's listener exists).
+  // The sidebar SEARCH (§51) sends a service instead of a bare tool: `{ tool, service, surface }` — its mode comes with
+  // it (Music video = the Video tool in music-video mode) and it is counted under its own catalog id.
   useEffect(() => {
-    const onSet = (e: Event) => { const d = (e as CustomEvent<unknown>).detail; if (isToolId(d)) selectTool(d); };
+    const onSet = (e: Event) => {
+      const d = (e as CustomEvent<unknown>).detail;
+      if (isToolId(d)) { selectTool(d, 'sidebar'); return; }
+      const o = d && typeof d === 'object' ? (d as { tool?: unknown; service?: unknown }) : null;
+      if (!o || !isToolId(o.tool)) return;
+      const service = typeof o.service === 'string' ? getService(o.service) : undefined;
+      if (service && service.tool !== o.tool) return;
+      selectTool(o.tool, 'search', service?.id ?? null);
+      const m = service ? serviceModeQuery(service.id)?.mode : undefined;
+      if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);
+    };
     window.addEventListener('omni:set-tool', onSet);
     return () => window.removeEventListener('omni:set-tool', onSet);
   }, [selectTool]);
@@ -3080,6 +3125,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     window.addEventListener('omni:set-mode', onSet);
     return () => window.removeEventListener('omni:set-mode', onSet);
   }, []);
+  // The request a guest typed before Google sign-in reloaded the page (lib/studio/pendingPrompt): back on its tool, in
+  // an EMPTY composer, once — never sent. Declared before the deep-link effect below, so an explicit `?tool=` / `?mode=`
+  // / `&prompt=` link still decides.
+  useEffect(() => {
+    const p = takePendingPrompt();
+    if (!p) return;
+    if (p.tool !== 'chat') selectTool(p.tool);
+    setInput((prev) => (prev.trim() ? prev : p.text));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
+  }, []);
   // Deep link: /dashboard?mode=music (the studio's Music tab, a shared link) opens that service. The param is
   // removed once applied, so a reload or a copied URL does not keep forcing it.
   useEffect(() => {
@@ -3088,7 +3143,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // `?tool=` — any tool, by the id the sidebar uses (/dashboard?tool=product from a page outside the studio).
       const tl = url.searchParams.get('tool');
       if (isToolId(tl)) {
-        selectTool(tl);
+        // `&mode=` rides along for the Video tool: a catalog link to Music video is `?tool=video&mode=musicvideo`
+        // (lib/catalog/services.serviceHref — /services and the sidebar search). It used to open plain Video.
+        const vm = url.searchParams.get('mode');
+        const videoMode = tl === 'video' && (vm === 'musicvideo' || vm === 'documentary') ? vm : null;
+        selectTool(tl, 'deep-link', serviceForTool(tl, { videoMode }));
+        if (videoMode) { setVideoMode(videoMode); url.searchParams.delete('mode'); }
         url.searchParams.delete('tool');
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
         return;
@@ -3571,9 +3631,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
+      if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
       if (mine() && res.ok && res.masterUrl) {
         const filmSeconds = filmScenes * (clipSec ?? FILM_CLIP_SEC);
-        notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }) });
+        notifyCredit('video', { seconds: filmSeconds, credits: videoQuote({ seconds: filmSeconds, tier: veo.tier, mode: videoMode }), service: serviceForTool('video', { videoMode }) ?? undefined });
         finalUrl = res.masterUrl;
       }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
@@ -3728,6 +3789,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Canceled render (own signal aborted / superseded genId): leave it — when queued the
       // engine has already settled this job as canceled via its own cancel path.
       if (!mine()) return;
+      trackGenerationFailed(serviceForTool('video', { videoMode }), 'exception');
       patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) } : null);
       // Queued mode: propagate so the job settles FAILED (tray + durable row) via onSettle.
       if (jobCtx) throw err instanceof Error ? err : new Error('video failed');
@@ -4005,9 +4067,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (enrich) {
           setStage(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
           const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
-          if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+          if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
         }
-        landVideo(res.url); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(res.url, 'film');
+        landVideo(res.url); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(res.url, 'film');
         return res.url;
       }
       const n = sceneCountForDuration(duration); // 8→1 · 24→3 · 48→6, the same 8s grid the server renders
@@ -4042,7 +4104,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         clearInterval(watchdog);
       }
       if (clips.length < 2) {
-        if (clips[0]) { landVideo(clips[0].url); notifyCredit('video', { seconds: 6 }); autoSaveToLibrary(clips[0].url, 'film'); return clips[0].url; }
+        if (clips[0]) { landVideo(clips[0].url); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(clips[0].url, 'film'); return clips[0].url; }
         throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
       }
       setStage(enrich
@@ -4054,7 +4116,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // bed is sized against the real film rather than an assumed one.
       const finalUrl = await assemble(clips.map((c) => ({ url: c.url, durationSec: c.clipSec })));
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays).
-      if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+      if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration, service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
       if (clips[0]) { landVideo(clips[0].url); return clips[0].url; } // fail-open: show the first clip
       throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
@@ -4596,6 +4658,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // does not recognise falls back rather than being echoed.
         // `refunded: true` — sent only when the route's refund landed — becomes the one refund notice.
         const reason = describeGenerationFailure(j, locale, t.imageFailed);
+        trackGenerationFailed('image.generate', j.code ?? j.error ?? null);
         // A refusal for want of credits is the one failure with an obvious next step — offer it.
         updateBubble(bubbleId, { text: `⚠️ ${reason || t.imageFailed}`, regen: spec, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'image failed');
@@ -4665,6 +4728,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // is exactly when the failure becomes visible. Net result was a bare X and no explanation.
             // The tile shows this to the user — same rule as the bubble above.
             const reason = describeGenerationFailure(j, locale, t.imageFailed);
+            trackGenerationFailed('image.generate', j.code ?? j.error ?? null);
             updateTile(tileIdx, { status: 'failed', jobId, error: reason });
             // The catch below re-stamps the tile with the thrown message — throw the MAPPED line, not `j.error`
             // (a raw code such as `provider_unavailable` used to overwrite the sentence the tile had just shown).
@@ -4839,6 +4903,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The copyright case keeps its own copy — it is the one refusal with a specific, already-written
         // Georgian explanation. Everything else goes through the shared mapper instead of printing
         // whatever the music provider wrote in English.
+        trackGenerationFailed('music.generate', j.code ?? j.error ?? null);
         updateBubble(bubbleId, { text: /copyright|copyrighted/i.test(j.error || '') ? t.lyricsBlocked : `⚠️ ${describeGenerationFailure(j, locale, t.musicFailed)}`, ...(j.code === 'insufficient_credits' ? { topUp: true } : {}) });
         throw new Error(j.error || 'music failed');
       },
@@ -4913,6 +4978,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     void ensureChatSession(role === 'user' ? text : undefined)
       .then((sid) => { if (sid) void saveMessage(sid, role, text); });
   }, [ensureChatSession]);
+
+  // THE THREAD → LIVE. A voice call opened from this chat continues it: the Live mint asks which chat session is on screen
+  // (lib/voice/liveThread) and the server loads that session's turns for the signed-in owner. Only the conversation on screen
+  // answers; a session cached for another thread never does.
+  useEffect(() => answerLiveThreadId(() => (
+    chatSessionCidRef.current === conversationIdRef.current ? chatSessionIdRef.current : null
+  )), []);
 
   // LIVE → THE THREAD. A Gemini Live call (components/voice/live) reports each finished turn — what the user said and
   // what the model said, as transcribed by Google — on the `myavatar:live-transcript` window event. A call used to
@@ -5391,7 +5463,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // generate command, not a studio request — goes through. Every paid tool (a non-chat mode, files, "make me a
     // video", a studio intent) is stopped HERE, before any request: the API routes reject guests too, but a 401 after
     // a spinner is a worse experience for something the UI already knows. The flag ChatChrome publishes on <html> is
-    // read synchronously, and the composer keeps its text — nothing is lost by signing in and pressing send again.
+    // read synchronously. The composer keeps its text for the in-page email code; Google sign-in reloads the page, so
+    // the text and the tool are also kept for the way back (lib/studio/pendingPrompt).
     if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
       const guestText = (opts?.promptOverride ?? input).trim();
       // Talk typed with a focus tool open is a chat turn too — Agent G's gate below answers it in words — so a visitor who
@@ -5399,11 +5472,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const talkInFocus = (mode === 'image' || mode === 'video' || mode === 'music' || mode === 'lipsync') && isConversational(guestText);
       const plainChat =
         (mode === 'chat' || talkInFocus) && attachments.length === 0 && !!guestText &&
-        !isGenerativeCommand(guestText) && !detectStudioIntent(guestText);
+        !isGenerativeCommand(guestText) && !detectStudioIntent(guestText) && routeAgentIntent(guestText)?.kind !== 'open';
       if (!plainChat) {
+        stashPendingPrompt(guestText, activeToolRef.current);
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
       }
+    } else {
+      // Signed in and sending: a request kept from before the sign-in is done or replaced.
+      clearPendingPrompt();
     }
     const text = (opts?.promptOverride ?? input).trim();
     // Was this send's text dictated (mic) or typed? Drives inputMethod + whether the reply auto-plays.
@@ -5467,7 +5544,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const chatOrder: GateMode | null = (() => {
       if (!inChat || !text || opts?.confirmed) return null;
       if (chatPend) return chatPend.mode;
-      if (!isGenerativeCommand(text) || detectStudioIntent(text)) return null;
+      // A catalog service with its own tool („make a product ad…") is not a picture: Agent G opens that tool below.
+      if (!isGenerativeCommand(text) || detectStudioIntent(text) || routeAgentIntent(text)) return null;
       const lane = resolveGenerativeLane(text, detectIntent(text));
       if (lane === 'image_generation' && !attachments.some((a) => !isImage(a.mimeType))) return 'image';
       if (lane === 'music_generation' && !isVideoIntent(text) && !attachments.some((a) => !isAudio(a.mimeType))) return 'music';
@@ -5529,6 +5607,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               : 0;
         gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now(), inChat } : null;
         const card: AgentGCardState = { kind: verdict.kind, target: gateMode, prompt: promptText, credits, ...(inChat ? { madeIn: 'chat' as const } : {}) };
+        trackQuoteShown(serviceForTool(gateMode as ToolId), credits, 'agent-card');
         setMessages((prev) => [
           ...prev,
           { role: 'user', text },
@@ -5686,6 +5765,45 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         { role: 'assistant', text: head + filled + files + tail },
       ]);
       setInput(''); stopDictationEcho();
+      return;
+    }
+
+    // AGENT G × THE SERVICE CATALOG (Master Task §52). The tools with no sentence path of their own — product ad,
+    // character swap, motion transfer, VFX, video remix, interior, photographer — open from the chat the way the panels
+    // above do: the tool opens, nothing renders, nothing is charged. A request for a service that does not exist yet
+    // („მუსიკა დამირემიქსე" — an AUDIO remix) is answered honestly with the nearest real one, never with the video
+    // remix. lib/catalog/agentRoute decides; it returns null for everything the routers above and below already own.
+    const agentRoute = mode === 'chat' && text ? routeAgentIntent(text) : null;
+    if (agentRoute) {
+      const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
+      const en = lang === 'en', ru = lang === 'ru';
+      const label = agentRoute.service.label[lang];
+      let reply: string;
+      // The video-tab tools take the composer's words as their prompt, so the words stay there; the panel tools
+      // (interior, photographer) have their own fields, and the sentence is already in the thread.
+      let keepWords = false;
+      if (agentRoute.kind === 'open') {
+        applyToolRef.current?.(agentRoute.tool);
+        trackServiceOpened(agentRoute.service.id, 'agent-g', agentRoute.tool);
+        keepWords = agentRoute.tool === 'product' || agentRoute.tool === 'swap' || agentRoute.tool === 'vfx' || agentRoute.tool === 'remix' || agentRoute.tool === 'motion';
+        const head = en ? `Opened **${label}**.` : ru ? `Открыл **${label}**.` : `გავხსენი **${label}**.`;
+        const files = attachments.length
+          ? (en ? ' Your attached file is still in the composer — pick it in the panel to use it.'
+            : ru ? ' Ваш файл остался в поле ввода — выберите его в панели.'
+              : ' შენი ფაილი შეტანის ველში დარჩა — აირჩიე პანელში გამოსაყენებლად.')
+          : '';
+        const tail = en ? ' Review the settings and start when you’re ready.'
+          : ru ? ' Проверьте настройки и запустите, когда будете готовы.'
+            : ' გადახედე პარამეტრებს და დაიწყე, როცა მზად იქნები.';
+        reply = head + files + tail;
+      } else {
+        const alt = agentRoute.alternative?.label[lang];
+        reply = (en ? `**${label}** isn’t available yet.` : ru ? `**${label}** пока недоступен.` : `**${label}** ჯერ არ არის ხელმისაწვდომი.`)
+          + (alt ? (en ? ` Available instead: **${alt}** — describe what you want.` : ru ? ` Вместо этого доступно: **${alt}** — опишите, что нужно.` : ` ამის ნაცვლად ხელმისაწვდომია **${alt}** — აღწერე, რა გინდა.`) : '');
+      }
+      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
+      if (!keepWords) setInput('');
+      stopDictationEcho();
       return;
     }
 
@@ -6059,8 +6177,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             return next;
           });
           if (mine() && url) notifyCredit('avatar');
+          else if (mine()) trackGenerationFailed('avatar.talking', failReason ? 'refused' : 'no_result');
         } catch {
           if (!mine()) return;
+          trackGenerationFailed('avatar.talking', 'exception');
           setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.lipsyncFailed}` }; return next; });
         } finally {
           if (mine()) setBusy(false);
@@ -6310,7 +6430,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // ~5s clip from one frame. Delivering the second while the card shows the first is the single
           // most misleading outcome in the remix surface.
           updateBubble(bubbleId, { text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url, orientation: orient === 'landscape' ? 'landscape' : orient === 'square' ? 'square' : 'vertical' });
-          if (j.charged) notifyCredit('remix');
+          if (j.charged) notifyCredit('remix', { service: 'video.character-swap' });
           autoSaveToLibrary(j.url, 'film');
           return j.url;
         }
@@ -6748,14 +6868,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       : activeTool === 'remix' ? !!remixVideo && !remixBusy && !busy && (!remixNeedsText || !!input.trim()) && !(remixOp === 'music' && !remixTrack)
         : activeTool === 'motion' || activeTool === 'vfx' || shootActive || mode === 'surgical' ? false
           : canSend;
-  const runTool = (explicitFlag?: boolean) => {
+  const runTool = (explicitFlag?: boolean, surface: ServiceSurface = 'composer') => {
     if (activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix') {
       // send() stops a guest before any request; these three never pass through it, so the same gate is here.
       if (typeof document !== 'undefined' && document.documentElement.dataset.authed === '0') {
+        stashPendingPrompt(input, activeTool);
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
       }
       if (!canRun) { openSettings(); return; }
+      trackGenerationConfirmed(serviceForTool(activeTool), surface, composerQuote ?? null);
       // The words are consumed (product: its hook; remix: the edit's text) or have no use (swap) — the box empties
       // either way, so a second tap cannot start a second paid job with the same leftover text.
       if (activeTool === 'product') generateProductAd(input);
@@ -6770,6 +6892,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // tap): the composer opens the panel, as for motion — it never renders the Google model in its place.
     if ((activeTool === 'image' || activeTool === 'video') && higgsfieldPicked(activeTool)) { openSettings(); return; }
     // `=== true`: the composer's buttons pass the click event as the first argument, which must NOT count as explicit.
+    // §50: an explicit press is the confirmation; a plain send may still stop at Agent G's card (confirmGate reports that one).
+    if (explicitFlag === true) trackGenerationConfirmed(serviceForTool(activeTool, { videoMode }), surface);
     void send(explicitFlag === true ? { explicit: true } : undefined);
   };
   // ── LIVE → THE STUDIO: the handler (registered above as liveApiRef / liveRunRef) ─────────────────────────────────
@@ -6863,12 +6987,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'prepare_generation': {
         // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
         if (d.tool === 'presentation' || d.tool === 'model3d') {
-          selectTool(d.tool);
+          selectTool(d.tool, 'voice');
           setStudioPrefill({ topic: d.prompt.slice(0, 2000) });
           reply({ ok: true, tool: d.tool, applied: { [d.tool === 'presentation' ? 'topic' : 'description']: true } });
           return true;
         }
-        selectTool(d.tool);
+        selectTool(d.tool, 'voice');
         setInput(d.prompt.slice(0, 2000));
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
         const price = livePrice(d.tool, { musicSec });
@@ -6877,7 +7001,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'open_studio':
-        selectTool(d.tool);
+        selectTool(d.tool, 'voice');
         if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
         return true;
       case 'update_settings': {
@@ -6907,7 +7031,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       case 'chat_send': {
         if (busy) { reply({ ok: false, error: 'busy', message: 'The chat is still answering; wait a moment or stop it first.' }); return true; }
         if (activeTool === 'chat') liveChatSendRef.current(d.text);
-        else { pendingLiveChatRef.current = d.text; selectTool('chat'); }
+        else { pendingLiveChatRef.current = d.text; selectTool('chat', 'voice'); }
         reply({ ok: true });
         return true;
       }
@@ -7022,7 +7146,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   liveRunRef.current = (): boolean => {
     // The countdown ran out: run what is on screen through the studio's own path (balance checks; a video's storyboard).
     if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim() || busy || genActiveRef.current) return false;
-    runTool(true);
+    runTool(true, 'voice');
     return true;
   };
 
@@ -7121,6 +7245,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const saveToLibrary = useCallback(async (url: string, kind: 'film' | 'image' | 'music', prompt?: string) => {
     if (!url || savedUrls.has(url)) return;
     setSavedUrls((s) => new Set(s).add(url));
+    trackResultSaved(kind === 'image' ? 'image.generate' : kind === 'music' ? 'music.generate' : serviceForTool(activeToolRef.current), 'result', kind);
     try {
       const r = await fetch('/api/studio/library', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
@@ -7245,8 +7370,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     gatePendingRef.current = null;
     setGateFrom(null);
     resolveGateCard(idx);
+    trackGenerationConfirmed(serviceForTool(card.target as ToolId, { videoMode }), 'agent-card', card.credits || null);
     void send({ promptOverride: card.prompt, confirmed: true, ...(card.madeIn === 'chat' ? { target: card.target } : {}) });
-  }, [resolveGateCard, send]);
+  }, [resolveGateCard, send, videoMode]);
   const editGate = useCallback((idx: number) => {
     const card = messagesRef.current[idx]?.agentG;
     if (!card || card.done) return;
@@ -7276,7 +7402,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <div className={`mb-2 flex flex-wrap gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
                     {m.medias.map((md, mi) => (
                       isImage(md.mimeType) ? (
-                        <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label="open fullscreen">
+                        <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label={t.a11yFullscreen}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                         </button>
@@ -8122,7 +8248,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             negative={imgNegative} onNegative={setImgNegative}
             advancedExtraDirty={!!imgBoardScript.trim()}
             balance={creditsBalance}
-            onGenerate={() => runTool(true)}
+            onGenerate={() => runTool(true, 'panel')}
             // The one top-up the studio has: ChatChrome owns CreditsModal and opens it on this event.
             onTopUp={() => window.dispatchEvent(new CustomEvent('myavatar:open-credits'))}
             advancedExtra={(
@@ -8216,7 +8342,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <TemplateThumbImage src={face ? face.dataUrl : presetSrc!} size={48} className="h-12 w-12 rounded-lg object-cover ring-1 ring-app-accent/40" />
                       )}
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {presetSrc ? (locale === 'en' ? 'Preset chosen' : locale === 'ru' ? 'Пресет выбран' : 'არჩეულია') : (locale === 'en' ? 'Face ready' : locale === 'ru' ? 'Лицо готово' : 'სახე მზადაა')}</span>
-                      <button type="button" aria-label="remove face" onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
+                      <button type="button" aria-label={t.a11yRemoveFace} onClick={(e) => { e.stopPropagation(); setLipPreset(null); setAttachments((prev) => prev.filter((a) => !isImage(a.mimeType) && !isVideo(a.mimeType))); }}
                         className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                     </>
                   ) : (
@@ -8333,7 +8459,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 onRemoveAudio: () => setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }),
               }}
               generate={{
-                onGenerate: () => runTool(true),
+                onGenerate: () => runTool(true, 'panel'),
                 busy: busy || storyboardBusy,
                 canGenerate: canRun,
                 balanceCredits: videoBalanceCredits,
@@ -8415,7 +8541,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                           <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent pt-3 pb-0.5 text-center text-[8.5px] font-medium text-white">{locale === 'en' ? 'Scene' : locale === 'ru' ? 'Сц.' : 'სცენა'} {i + 1}</span>
-                          <button type="button" aria-label="remove scene frame" onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
+                          <button type="button" aria-label={t.a11yRemoveFrame} onClick={() => setVideoCharacterRefs((p) => p.filter((_, k) => k !== i))}
                             className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                         </div>
                       ) : (
@@ -8459,7 +8585,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><FileText size={16} /></span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Script loaded' : locale === 'ru' ? 'Сценарий загружен' : 'სცენარი ჩაიტვირთა'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoScriptDoc.name} · {videoScriptDoc.text.length.toLocaleString()} {locale === 'en' ? 'chars' : locale === 'ru' ? 'симв.' : 'სიმბ.'}</span>
-                    <button type="button" aria-label="remove script" onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
+                    <button type="button" aria-label={t.a11yRemoveScript} onClick={(e) => { e.stopPropagation(); setVideoScriptDoc(null); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
@@ -8508,7 +8634,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-app-bg/60 text-app-accent"><Music2 size={16} /></span>
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-app-accent"><Check size={12} /> {locale === 'en' ? 'Soundtrack' : locale === 'ru' ? 'Саундтрек' : 'საუნდტრეკი'}</span>
                     <span className="max-w-full truncate px-1 text-[10px] leading-tight text-app-muted">{videoSoundtrack.name}</span>
-                    <button type="button" aria-label="remove soundtrack" onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
+                    <button type="button" aria-label={t.a11yRemoveSoundtrack} onClick={(e) => { e.stopPropagation(); setVideoSoundtrack((prev) => { if (prev?.previewUrl) { try { URL.revokeObjectURL(prev.previewUrl); } catch { /* noop */ } } return null; }); }}
                       className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
                   </>
                 ) : (
@@ -8635,7 +8761,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           <span className="whitespace-nowrap text-[10.5px] text-app-muted">{locale === 'en' ? 'Depth' : locale === 'ru' ? 'Глубина' : 'სიღრმე'}</span>
                           <input type="range" min={-18} max={-6} step={6} value={videoDuckDb}
                             onChange={(e) => setVideoDuckDb(Number(e.target.value))}
-                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label="ducking depth dB" />
+                            className="h-1.5 flex-1 cursor-pointer accent-app-accent" aria-label={t.a11yDuckingDb} />
                           <span className="w-12 text-right text-[10.5px] tabular-nums text-app-text">{videoDuckDb} dB</span>
                         </label>
                       )}
@@ -8774,7 +8900,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <div key={i} className="relative h-12 w-12 overflow-hidden rounded-lg ring-1 ring-app-border/20">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={src} alt={`shot ${i + 2}`} className="h-full w-full object-cover" />
-                          <button type="button" aria-label="remove shot" onClick={() => setProductImages((p) => p.filter((_, j) => j !== i))}
+                          <button type="button" aria-label={t.a11yRemoveShot} onClick={() => setProductImages((p) => p.filter((_, j) => j !== i))}
                             className="absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-md bg-black/70 text-[9px] text-white">✕</button>
                         </div>
                       ))}
@@ -9020,7 +9146,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               onClearAudio={() => setAttachments((prev) => prev.filter((a) => !isAudio(a.mimeType)))}
               recording={{ active: voiceRecording, sec: voiceRecSec, start: () => void startVoiceRecording(), stop: stopVoiceRecording }}
               trainedVoice={{ available: hasTrainedVoice, on: useMyVoice, onChange: setUseMyVoice }}
-              onCreate={(prompt) => { void send({ promptOverride: prompt, explicit: true }); }}
+              onCreate={(prompt) => { trackGenerationConfirmed('music.generate', 'panel'); void send({ promptOverride: prompt, explicit: true }); }}
               result={{ track: musicTrack, actions: musicActions, label: t.modeMusic }}
             />
           );
@@ -9514,7 +9640,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </span>
                   </span>
                 )}
-                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label="remove"
+                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label={t.a11yRemove}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
             ))}
@@ -10108,9 +10234,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           onReorder={reorderScene}
           onAddScene={addScene}
           onGenerate={() => {
+            trackGenerationConfirmed(serviceForTool('video', { videoMode }), 'storyboard');
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
+            if (directorRunsOn) {
+              // The director renders exactly this board (V2/V3/V6): its scenes' text, frame, length and tier, nothing
+              // added — the music bed, narration and colour pass of the film render are not part of a director run.
+              const board = storyboard;
+              const seed = veoPlan.seedLock && Number.isInteger(board.seed) && board.seed >= 0 && board.seed <= 0xffff_ffff ? board.seed : undefined;
+              setStoryboard(null);
+              setDirectorBoard({
+                studio: board,
+                director: studioToDirectorStoryboard(board, { id: `board-${Date.now().toString(36)}`, quality: veoPlan.tier, clipSec: FILM_CLIP_SEC, ...(seed !== undefined ? { seed } : {}) }),
+              });
+              return;
+            }
             const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
             // REFERENCE MODE — the photos ride as Veo asset references and Veo composes every scene itself, so the
             // board's frames are only the plan: sending them would make each clip animate FROM a frame (Veo cannot
@@ -10138,6 +10277,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             void createStoryboard(sb.filmPrompt, sb.refs, sb.orientation);
           }}
           onCancel={() => { try { storyboardAbortRef.current?.abort(); } catch { /* noop */ } setStoryboard(null); }}
+        />
+      )}
+
+      {directorBoard && (
+        <DirectorRunOverlay
+          storyboard={directorBoard.director}
+          locale={locale}
+          onEdit={() => { const back = directorBoard.studio; setDirectorBoard(null); setStoryboard(back); }}
+          onClose={() => setDirectorBoard(null)}
         />
       )}
 
@@ -10218,11 +10366,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
-      tools={visibleToolIds(PRIMARY_TOOLS, hiddenTools, activeTool).map(toolEntry)}
-      studios={visibleToolIds(MORE_TOOLS, hiddenTools, activeTool).map(toolEntry)}
+      // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar and the Plugins tab.
+      sections={toolGroups().map((g) => ({
+        id: g.id,
+        label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
+        tools: visibleToolIds(g.tools, hiddenTools, activeTool).map(toolEntry),
+      }))}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
-      onTool={(id) => { if (isToolId(id)) selectTool(id); }}
+      onTool={(id) => { if (isToolId(id)) selectTool(id, 'tool-sheet'); }}
     />
     </div>
   );

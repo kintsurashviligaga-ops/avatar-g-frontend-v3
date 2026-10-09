@@ -5,9 +5,10 @@
  *
  * ⚠️ The route did `STYLE_SUFFIXES[label] ?? label`: unknown text was appended to the render prompt verbatim (any
  * length, newlines, bidi overrides) AND forwarded raw as NanoBanana's `style` parameter; an inherited key like
- * 'constructor' "matched" and appended a function's source. Pinned at the arguments every engine receives. The
- * NanoBanana leg throws and both fallbacks miss, so the request ends on the 502-refund path: no fetch, no re-host,
- * no spend — every provider, the ledger and the idempotency store are mocked.
+ * 'constructor' "matched" and appended a function's source. Pinned at the arguments NanoBanana receives. The
+ * NanoBanana leg throws, so the request ends on the 502-refund path (it is the route's only engine — no Grok / FLUX
+ * fallback, PROJECT_MASTER R7): no fetch, no re-host, no spend — every provider, the ledger and the idempotency store
+ * are mocked.
  */
 jest.mock('server-only', () => ({}));
 
@@ -66,27 +67,24 @@ beforeEach(() => {
 });
 afterEach(() => fetchSpy.mockRestore());
 
-/** What NanoBanana was handed, and the prompt the prompt-only fallbacks were handed. */
-async function render(style: unknown): Promise<{ nb: { prompt: string; style?: string }; grokPrompt: string; fluxPrompt: string }> {
+/** What NanoBanana was handed. */
+async function render(style: unknown): Promise<{ nb: { prompt: string; style?: string } }> {
   const res = await POST(post({ prompt: PROMPT, quality: 'standard', aspectRatio: '1:1', ...(style === undefined ? {} : { style }) }));
-  expect(res.status).toBe(502); // every leg was made to miss
+  expect(res.status).toBe(502); // NanoBanana was made to miss, and nothing stands behind it
   expect(refundCredits).toHaveBeenCalledTimes(1);
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(generateNanoBananaImage).toHaveBeenCalledTimes(1);
-  return {
-    nb: (generateNanoBananaImage as jest.Mock).mock.calls[0][0],
-    grokPrompt: (generateGrokImage as jest.Mock).mock.calls[0][0],
-    fluxPrompt: (generateFluxProImage as jest.Mock).mock.calls[0][0],
-  };
+  // R7 — the old prompt-only fallbacks are never reached.
+  expect(generateGrokImage).not.toHaveBeenCalled();
+  expect(generateFluxProImage).not.toHaveBeenCalled();
+  return { nb: (generateNanoBananaImage as jest.Mock).mock.calls[0][0] };
 }
 
 test('free text is capped at 80 characters, stripped of bidi/zero-width characters and the smuggled line, and NOT forwarded as the provider style', async () => {
-  const { nb, grokPrompt, fluxPrompt } = await render(HOSTILE);
+  const { nb } = await render(HOSTILE);
   expect(nb.style).toBeUndefined();
-  for (const p of [nb.prompt, grokPrompt, fluxPrompt]) {
-    expect(p).toBe(`${PROMPT}, ${CLEAN}`);
-    expect(p).not.toMatch(/[‮​\n]/);
-  }
+  expect(nb.prompt).toBe(`${PROMPT}, ${CLEAN}`);
+  expect(nb.prompt).not.toMatch(/[‮​\n]/);
   // The in-flight mutex keys on the same cleaned value the prompt uses.
   expect((hashPayload as jest.Mock).mock.calls[0][0].s).toBe(CLEAN);
 });

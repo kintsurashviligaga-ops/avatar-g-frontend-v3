@@ -43,7 +43,7 @@ describe("purpose 'continue'", () => {
     mockGenerateLink.mockResolvedValueOnce(otp('123456'));
     const res = await send({ email: 'Known@Example.com', purpose: 'continue', locale: 'ka' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, length: 6 });
     expect(mockGenerateLink).toHaveBeenCalledTimes(1);
     expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'known@example.com' });
     const sent = JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body));
@@ -57,7 +57,7 @@ describe("purpose 'continue'", () => {
       .mockResolvedValueOnce(otp('654321'));
     const res = await send({ email: 'new@example.com', purpose: 'continue', locale: 'en' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, length: 6 });
     const [, second] = mockGenerateLink.mock.calls;
     expect(second[0]).toMatchObject({ type: 'signup', email: 'new@example.com' });
     expect(String(second[0].password).length).toBeGreaterThanOrEqual(32); // nobody can guess it
@@ -117,7 +117,7 @@ describe("purpose 'register' (sign up) — an address with an account cannot reg
     mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'n1', email_confirmed_at: null }, properties: { email_otp: '424242' } }, error: null });
     const res = await send({ email: 'New@Example.com', purpose: 'register', locale: 'ka' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(await res.json()).toEqual({ ok: true, length: 6 });
     const [args] = mockGenerateLink.mock.calls[0] as [{ type: string; email: string; password: string; options: { data: Record<string, unknown> } }];
     expect(args).toMatchObject({ type: 'signup', email: 'new@example.com', options: { data: { password_set: false } } });
     expect(args.password.length).toBeGreaterThanOrEqual(32);
@@ -194,5 +194,29 @@ describe('the address budget (inbox flooding)', () => {
     expect(res.status).toBe(429);
     expect(mockGenerateLink).not.toHaveBeenCalled();
     expect(mail).not.toHaveBeenCalled();
+  });
+});
+
+describe('the code length (the Supabase project setting, 6–10 digits)', () => {
+  it('mails a longer code and tells the sheet its length', async () => {
+    mockGenerateLink.mockResolvedValueOnce(otp('01234567'));
+    const res = await send({ email: 'member@example.com', purpose: 'signin', locale: 'ka' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, length: 8 });
+    const sent = JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body));
+    expect(sent.subject).toContain('01234567');
+  });
+
+  it('refuses a code it cannot read, logs the shape without the value, and mails nothing', async () => {
+    const err = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockGenerateLink.mockResolvedValueOnce(otp('12345'));
+    const res = await send({ email: 'member@example.com', purpose: 'signin' });
+    expect(res.status).toBe(502);
+    expect(mail).not.toHaveBeenCalled();
+    expect(err).toHaveBeenCalledWith(
+      '[email-otp/send] no email_otp in generateLink response: keys=[properties] properties=[email_otp] email_otp=string(5, digits)',
+    );
+    expect(JSON.stringify(err.mock.calls)).not.toContain('12345"');
+    err.mockRestore();
   });
 });

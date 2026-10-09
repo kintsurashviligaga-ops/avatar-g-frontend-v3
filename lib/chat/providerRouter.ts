@@ -13,7 +13,6 @@ import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replic
 import { resolveModel } from '@/lib/replicate/models';
 import { createPrediction, pollUntilDone } from '@/lib/replicate/client';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
-import { isPublicHttpUrl, readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
@@ -23,7 +22,6 @@ import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
 import { buildEnforcedMusicStyle } from './outputEnforcement';
-import Anthropic from '@anthropic-ai/sdk';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
@@ -59,22 +57,6 @@ export interface OrchestratorInput {
   customInstructions?: string;
 }
 
-/**
- * PHASE 49 §1 — Strict hybrid cognitive routing.
- *
- * Gemini is the PRIMARY foundational core for all default interactions: the
- * conversational agent, standard UI responses, prompt execution and Georgian
- * linguistic processing. Claude is a SECONDARY SPECIALIST — invoked first only
- * for complex programming, deep science/math parsing, or large technical
- * blueprints, where its long-form reasoning is worth the latency. Everything
- * else stays Gemini-led (Claude remains the silent fallback so chat never dark).
- *
- * Pure + exported so the routing decision is unit-tested in isolation.
- */
-// The routing decision lives in a dependency-free module so it can be
-// unit-tested in isolation (providerRouter itself pulls in heavy provider SDKs).
-export { prefersClaudeSpecialist } from './specialistRouting';
-import { prefersClaudeSpecialist } from './specialistRouting';
 // Film-render routing predicate — dependency-free module so the contract is unit-testable.
 export { hasFilmDispatchSignal } from './filmDispatchSignal';
 import { hasFilmDispatchSignal } from './filmDispatchSignal';
@@ -817,6 +799,7 @@ const INTERIOR_REDESIGN_MODEL = process.env.REPLICATE_INTERIOR_MODEL || 'black-f
 // it can be unit-tested in isolation (providerRouter pulls in heavy SDKs).
 export { shouldRedesignInterior } from './interiorRouting';
 import { shouldRedesignInterior } from './interiorRouting';
+import { fetchPublicBytes } from '@/lib/web/publicFetch';
 
 /** Normalize the many shapes a Replicate image output can take into a URL. */
 function extractReplicateImageUrl(output: unknown): string | null {
@@ -994,23 +977,15 @@ async function loadImageAsDataUrl(imageUrl: string): Promise<string> {
     throw new Error('Interior generation requires a valid image URL or data URL.');
   }
 
-  // SSRF + hang + OOM guards on a caller-supplied URL: block internal hosts, cap the wait, cap the body.
-  // The multimodal caller wraps this and degrades to text on throw, so failing closed here is safe.
-  if (!isPublicHttpUrl(imageUrl)) {
-    throw new Error('Reference image must be a public URL.');
+  // SSRF + hang + OOM guards on a caller-supplied URL (lib/web/publicFetch): public hosts only, every redirect
+  // re-checked, the connection DNS-pinned, an image, 10 MB. The multimodal caller wraps this and degrades to text on
+  // throw, so failing closed here is safe.
+  const got = await fetchPublicBytes(imageUrl, { maxBytes: 10_000_000, accept: /^image\//, timeoutMs: 15_000 });
+  if (!got.ok) {
+    throw new Error(got.error === 'too_large' ? 'Reference image too large (max 10MB).' : got.error === 'blocked_host' || got.error === 'invalid_url'
+      ? 'Reference image must be a public URL.' : 'Unable to load reference image.');
   }
-
-  const response = await fetch(imageUrl, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) {
-    throw new Error(`Unable to load reference image (${response.status})`);
-  }
-
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
-  const bytes = await readBodyWithCap(response, 10_000_000);
-  if (!bytes) {
-    throw new Error('Reference image too large (max 10MB).');
-  }
-  return ensureImageDataUrl(bytes.toString('base64'), contentType);
+  return ensureImageDataUrl(got.bytes.toString('base64'), got.contentType || 'image/jpeg');
 }
 
 function runOutputValidation(input: {
@@ -1469,89 +1444,22 @@ function toChatResponse(
 
 // ─── Text LLM path ──────────────────────────────────────────────────────────
 
-/**
- * Claude (Anthropic) completion. Returns a normalized ChatResponse on success,
- * or null on failure so the caller can fall back. `routedAs` records WHY Claude
- * was chosen ('specialist' = §1 complex-task lead, 'fallback' = Gemini surrendered).
- */
-async function tryClaudeCompletion(
-  input: OrchestratorInput,
-  detected: DetectedIntent,
-  systemPrompt: string,
-  opts: { routedAs: 'specialist' | 'fallback'; geminiError?: string | null } = { routedAs: 'fallback' },
-): Promise<ChatResponse | null> {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) return null;
-  try {
-    const anthropic = new Anthropic({ apiKey: anthropicKey });
-    // Specialist work (code/science/blueprints) earns the stronger Sonnet model
-    // and a larger token budget; the fallback path keeps the fast/cheap default.
-    const model = process.env.ANTHROPIC_MODEL
-      || (opts.routedAs === 'specialist' ? 'claude-sonnet-4-5-20250929' : 'claude-haiku-4-5-20251001');
-    const msg = await anthropic.messages.create({
-      model,
-      max_tokens: opts.routedAs === 'specialist' ? 4096 : 1024,
-      system: systemPrompt,
-      messages: [
-        ...input.history.map((h) => ({
-          role: h.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-          content: h.content,
-        })),
-        { role: 'user' as const, content: input.message },
-      ],
-    });
-    const text = msg.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-      .trim();
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'text',
-      message: text || '…',
-      metadata: {
-        provider: 'anthropic',
-        model: msg.model,
-        tokensIn: msg.usage?.input_tokens,
-        tokensOut: msg.usage?.output_tokens,
-        confidence: detected.confidence,
-        routedAs: opts.routedAs,
-        ...(opts.geminiError ? { geminiFallbackFrom: opts.geminiError } : {}),
-      },
-    };
-  } catch (error) {
-    console.error(`[providerRouter] Claude ${opts.routedAs} completion failed:`, error);
-    return null;
-  }
-}
-
 async function handleTextIntent(
   input: OrchestratorInput,
   detected: DetectedIntent,
 ): Promise<ChatResponse> {
-  // PHASE 49 §1 — Strict hybrid core. Gemini is PRIMARY for every default,
-  // conversational and Georgian interaction; Claude is the SECONDARY SPECIALIST.
-  // OpenAI stays fully out of the runtime path.
+  // Gemini is the only text engine (R7, provider policy: Google + ElevenLabs). No other vendor answers a chat
+  // turn, first or as a fallback: a Gemini miss is an explicit "unavailable" reply with provider 'gemini'.
   const ctx = toGeminiServiceContext(input.serviceContext);
   const systemPrompt = withCustomInstructions(getGeminiSystemPrompt(ctx, input.locale || 'ka'), input.customInstructions);
   let geminiError: string | null = null;
 
-  // Specialist lead: complex programming / deep science-math / large technical
-  // blueprints go to Claude FIRST. If Claude is unavailable we transparently
-  // fall through to the Gemini-primary path below (chat never goes dark).
-  if (prefersClaudeSpecialist(input.message) && process.env.ANTHROPIC_API_KEY) {
-    const specialist = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'specialist' });
-    if (specialist) return specialist;
-  }
-
   if (process.env.GEMINI_API_KEY) {
     const prefersPro = input.message.length > 1200 || input.history.length > 12 || ctx === 'interior' || ctx === 'business';
     // Transient Gemini conditions (model overloaded / rate-limited) are worth a
-    // fast retry before surrendering to Claude — the GA endpoints intermittently
+    // fast retry before giving up — the GA endpoints intermittently
     // return 503 UNAVAILABLE under load. We retry only these (never a hung call),
-    // with short backoff, so Gemini stays the primary engine instead of bleeding
-    // traffic to the fallback on momentary blips.
+    // with short backoff, so a momentary blip does not become an "unavailable" reply.
     const isTransient = (msg: string) =>
       /\b(429|503)\b|overloaded|unavailable|resource_exhausted|rate limit|try again/i.test(msg);
     const MAX_ATTEMPTS = 3;
@@ -1560,8 +1468,7 @@ async function handleTextIntent(
       let geminiTimer: ReturnType<typeof setTimeout> | undefined;
       try {
         // Hard 9s cap per attempt so a hung Gemini call can't block up to
-        // maxDuration. A timeout is NOT treated as transient (no retry) — it
-        // drops to the Claude fallback to preserve "zero breakdown visibility".
+        // maxDuration. A timeout is NOT treated as transient (no retry).
         const gemini = await Promise.race([
           generateWithGemini({
             prompt: input.message,
@@ -1600,7 +1507,7 @@ async function handleTextIntent(
           continue;
         }
         console.warn(
-          `[providerRouter] Gemini text path failed after ${attempt} attempt(s), falling back to Claude:`,
+          `[providerRouter] Gemini text path failed after ${attempt} attempt(s):`,
           geminiError,
         );
         break;
@@ -1608,26 +1515,22 @@ async function handleTextIntent(
     }
   }
 
-  // ── Claude fallback (Anthropic) — keeps chat alive when Gemini surrenders ──
-  if (process.env.ANTHROPIC_API_KEY) {
-    const fallback = await tryClaudeCompletion(input, detected, systemPrompt, { routedAs: 'fallback', geminiError });
-    if (fallback) return fallback;
+  if (process.env.GEMINI_API_KEY) {
     return {
       success: false,
       intent: detected.intent,
       responseType: 'text',
       message: 'Chat is temporarily unavailable. Please try again shortly.',
-      metadata: { provider: 'anthropic', ...(geminiError ? { geminiError } : {}) },
+      metadata: { provider: 'gemini', ...(geminiError ? { geminiError } : {}) },
     };
   }
 
-  // Neither provider configured / Gemini failed with no Claude fallback.
   return {
     success: false,
     intent: detected.intent,
     responseType: 'text',
     message: 'Chat is temporarily unavailable (cognitive core not configured).',
-    metadata: { provider: 'gemini', error: geminiError || 'GEMINI_API_KEY / ANTHROPIC_API_KEY not configured' },
+    metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
   };
 }
 

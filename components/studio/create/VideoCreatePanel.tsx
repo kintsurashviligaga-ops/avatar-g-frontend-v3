@@ -210,7 +210,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
                 hints={hfHints} images={refs.images} balanceCredits={generate.balanceCredits} onTopUp={generate.onTopUp}
                 onNeedPrompt={() => { setNeeded(true); promptRef.current?.focus(); }} buttonTestId="video-generate" />
             ) : (
-              <GenerateButton label={vc(VIDEO_COPY.generate, locale)} credits={credits} free={free} insufficient={insufficient}
+              <GenerateButton service="video.generate" label={vc(VIDEO_COPY.generate, locale)} credits={credits} free={free} insufficient={insufficient}
                 loading={generate.busy} loadingLabel={vc(VIDEO_COPY.rendering, locale)} locale={locale} onClick={onGenerate} testId="video-generate" />
             )}
           </VideoGenerateBar>

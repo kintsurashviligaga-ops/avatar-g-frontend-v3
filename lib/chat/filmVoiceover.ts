@@ -31,8 +31,7 @@ import { castRoster, collapseVoicedTurns, type CastTurn, type VoicedTurn } from 
 import { llmText } from '@/lib/ai/llmText';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText, type ElevenLabsModelId } from '@/lib/audio/tts-model';
-import { synthesizeGoogleTts, genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
-import { synthesizeAzureGeorgian, azureTtsConfigured } from '@/lib/audio/azure-tts';
+import { genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -209,23 +208,12 @@ export function parseDialogueScript(script: string): DialogueTurn[] {
   return merged;
 }
 
-/**
- * Synthesise via Google Cloud TTS — used as the GEORGIAN-NATIVE fallback. Google
- * ships voices trained on ka-GE (Chirp3-HD / Neural2), which sound far more human
- * than ElevenLabs' non-native multilingual approximation. Returns null on any miss.
- */
-async function synthesizeViaGoogle(text: string, gender?: TtsGender): Promise<{ base64: string; contentType: string } | null> {
-  const audio = await synthesizeGoogleTts(text, { gender });
-  if (!audio) return null;
-  const buf = Buffer.from(audio);
-  if (buf.byteLength < 1024) return null;
-  return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-}
-
 async function synthesizeVoiceover(
   text: string,
   voiceIdOverride?: string | null,
-  gender?: TtsGender,
+  // Only ever steered the Azure / Google fallback voices, which are gone (R7, below). The ElevenLabs voice is already
+  // gender-matched by every caller through `voiceIdOverride`; kept so the call sites stay as they are.
+  _gender?: TtsGender,
   // PHASE 2 L1 — optional tone-driven voice-setting nudges, merged OVER the model
   // defaults. Empty/{} → byte-identical to the previous behaviour.
   extraVoiceSettings?: Record<string, number>,
@@ -236,8 +224,8 @@ async function synthesizeVoiceover(
   // PRIMARY: ElevenLabs. For Georgian the caller passes a CLONED native-Georgian
   // voice (KA_VOICE_DEFAULTS — real Georgian speakers, IVC) read on eleven_v3 (the
   // ka-capable model) → natural, accent-free, and the user's own chosen voices.
-  // For non-Georgian it's the configured voice on turbo. Azure (generic native ka)
-  // and Google are fallbacks only, so the cloned voices always win for Georgian.
+  // For non-Georgian it's the configured voice on turbo. ElevenLabs is the ONLY provider
+  // here — see the R7 note at the end of this function.
   if (apiKey) {
     const voiceId =
       (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
@@ -286,24 +274,20 @@ async function synthesizeVoiceover(
         });
         if (out) return out;
       } catch {
-        /* fall through to the Google fallback below */
+        /* fall through to the explicit miss below */
       } finally {
         clearTimeout(timer);
       }
     }
   }
 
-  // Fallback when ElevenLabs is absent/down. For Georgian, Azure native ka voices
-  // (Eka/Giorgi) come before Google.
-  if (georgian && azureTtsConfigured()) {
-    const a = await synthesizeAzureGeorgian(text, gender === 'MALE' ? 'male' : 'female');
-    if (a) {
-      const buf = Buffer.from(a);
-      if (buf.byteLength >= 512) return { base64: buf.toString('base64'), contentType: 'audio/mpeg' };
-    }
-  }
-  const g = await synthesizeViaGoogle(text, gender);
-  if (g) return g;
+  // ⚠️ NO FALLBACK PROVIDER (PROJECT_MASTER R7 — no silent fallback). When ElevenLabs was absent or down this fell to
+  // Azure's native ka voices (Eka/Giorgi) for Georgian, then to Google Cloud TTS — so a film, a dub or an avatar line
+  // could be voiced by a different provider's different voice from the one the user cast, with nothing to say so, and
+  // Azure is not an allowed provider at all. A request uses ONE provider: ElevenLabs (the eleven_v3 → multilingual_v2
+  // retry above stays on it). Its miss is this function's explicit outcome — null — which every caller already
+  // handles as its own no-voice path (a film keeps its music-only master; the dub / redub / presenter routes answer
+  // their existing error).
   return null;
 }
 

@@ -183,6 +183,34 @@ describe('createBogOrder', () => {
     expect(await createBogOrder(cfg, { fetch: f.fetch }, { ...params, amountGel: 0 })).toBeNull();
     expect(f.calls).toHaveLength(0);
   });
+
+  test('a failure says why: the OAuth answer, BOG\'s error body, or no answer — and never echoes the secret', async () => {
+    const why = async (responses: Array<{ status: number; body?: unknown }> | 'throw') => {
+      resetBogTokenCache();
+      const reasons: string[] = [];
+      const f =
+        responses === 'throw'
+          ? ((async () => {
+              throw new Error('ECONNRESET');
+            }) as unknown as typeof fetch)
+          : fakeFetch(responses).fetch;
+      expect(await createBogOrder(cfg, { fetch: f }, params, (r) => reasons.push(r))).toBeNull();
+      expect(reasons).toHaveLength(1);
+      return reasons[0];
+    };
+    expect(await why([{ status: 401, body: { error: 'unauthorized_client', error_description: 'Invalid client secret secret-1' } }])).toBe(
+      'oauth HTTP 401 {"error":"unauthorized_client","error_description":"Invalid client secret [redacted]"}',
+    );
+    expect(await why('throw')).toBe('oauth: no usable answer (network, timeout or not JSON)');
+    expect(await why([TOKEN, { status: 403, body: { message: 'Merchant is not active' } }])).toBe(
+      'POST /ecommerce/orders HTTP 403 {"message":"Merchant is not active"}',
+    );
+    expect(await why([TOKEN, { status: 401 }, { status: 200, body: { access_token: 'tok-2', expires_in: 3600 } }, { status: 401 }])).toBe(
+      'POST /ecommerce/orders HTTP 401',
+    );
+    expect(await why([TOKEN, { status: 200, body: { id: 'x' } }])).toBe('POST /ecommerce/orders HTTP 200 without an order id or an https redirect');
+    expect(await why([TOKEN, { status: 400, body: 'x'.repeat(500) }])).toMatch(/^POST \/ecommerce\/orders HTTP 400 "x{139}$/);
+  });
 });
 
 describe('saved cards', () => {

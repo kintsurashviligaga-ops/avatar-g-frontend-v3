@@ -1,3 +1,4 @@
+/** @jest-environment node */
 import { htmlToReadableText, scrapeWebpage } from './scrapeWebpage';
 
 describe('scrape_webpage extraction (STEP 3, pure)', () => {
@@ -33,5 +34,27 @@ describe('scrape_webpage extraction (STEP 3, pure)', () => {
     const r = await scrapeWebpage({ url: 'http://127.0.0.1:0/nope' });
     expect(r.ok).toBe(false);
     expect(typeof r.error).toBe('string');
+  });
+
+  const PUBLIC = async () => [{ address: '93.184.216.34', family: 4 }];
+
+  it('a public page that redirects to the metadata service is refused — nothing internal reaches the trace', async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (u: string) => {
+      seen.push(u);
+      return new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/computeMetadata/v1/?recursive=true' } });
+    }) as unknown as typeof fetch;
+    const r = await scrapeWebpage({ url: 'https://example.com/innocent' }, { fetchImpl, lookupImpl: PUBLIC });
+    expect(r).toEqual({ ok: false, url: 'https://example.com/innocent', error: 'blocked host' });
+    expect(seen).toEqual(['https://example.com/innocent']);
+  });
+
+  it('reads a public page through the safe reader', async () => {
+    const fetchImpl = (async () => new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })) as unknown as typeof fetch;
+    const r = await scrapeWebpage({ url: 'https://example.com/pricing', maxChars: 500 }, { fetchImpl, lookupImpl: PUBLIC });
+    expect(r.ok).toBe(true);
+    expect(r.title).toBe('Acme Pricing');
+    expect(r.text).toMatch(/Pro is \$29\/mo\./);
+    expect(r.text).not.toMatch(/track\(\)/);
   });
 });

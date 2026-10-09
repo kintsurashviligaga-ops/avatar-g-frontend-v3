@@ -22,7 +22,8 @@ import { georgianVoiceId } from '@/lib/audio/georgian-voice';
 import { convertSongWithRvc } from '@/lib/audio/rvc';
 import { getUserVoiceModel, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { uploadAndSign, reSignIfInternal, createSignedAssetUrl } from '@/lib/orchestrator/storage-adapter';
+import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
+import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { deductCredits, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { creditCostFor } from '@/lib/credits/pricing';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -32,22 +33,15 @@ import { createJob, failJob, recordCompletedFilm } from '@/lib/orchestrator/jobs
 import { reportError } from '@/lib/observability/report-error';
 import { settleParams } from '@/lib/orchestrator/unpolledSettle';
 
-// Same bucket uploadBigFile() / the /api/upload/sign route write user files into.
-const UPLOAD_BUCKET = process.env.UPLOAD_BUCKET || 'uploads';
-
 // Resolve an incoming media reference to a provider-fetchable https URL:
-//  • external https → passed through · internal Supabase https → re-signed ·
-//  • a BARE storage path from uploadBigFile() (e.g. "omni-uploads/…") → signed.
-// Anything else (data:, other schemes) → null. This is the fix that makes the
-// "attach a video/photo" lipsync flow actually work — uploadBigFile returns a PATH,
-// which the old https-only guard silently rejected.
-async function resolveMedia(v: unknown): Promise<string | null> {
-  if (typeof v !== 'string') return null;
-  const s = v.trim();
-  if (!s || s.length > 4000) return null;
-  if (/^https:\/\//i.test(s)) return reSignIfInternal(s);
-  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) return null; // reject data:/file:/other schemes
-  return createSignedAssetUrl(UPLOAD_BUCKET, s, 3600); // bare internal storage path
+//  • external https → passed through · one of OUR objects (a signed URL, or a BARE storage path from
+//    uploadBigFile(), e.g. "omni-uploads/<uid>/…") → signed, but only for the caller who owns it
+//    (lib/security/callerMedia: another account's upload is refused, never signed).
+// Anything else (data:, other schemes) → null. Bare paths are what make the "attach a video/photo" lipsync flow
+// work — uploadBigFile returns a PATH, which the old https-only guard silently rejected.
+async function resolveMedia(v: unknown, userId: string | null): Promise<string | null> {
+  const r = await resolveCallerMedia(v, userId, 3600);
+  return r.ok ? r.url : null;
 }
 
 export const dynamic = 'force-dynamic';
@@ -106,7 +100,7 @@ export async function GET(req: NextRequest) {
         const buf = Buffer.from(await r.arrayBuffer());
         if (buf.byteLength && buf.byteLength <= 80 * 1024 * 1024) {
           const path = `lipsync/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`;
-          const signed = await uploadAndSign('uploads', path, buf.toString('base64'), 'video/mp4', 604_800);
+          const signed = await uploadAndSign('renders', path, buf.toString('base64'), 'video/mp4', 604_800);
           if (signed) hosted = signed;
         }
       }
@@ -215,12 +209,12 @@ export async function POST(req: NextRequest) {
   // lit face, and feeding it a stylized cinematic SCENE FRAME is exactly why the
   // music-video lip-sync was returning null (the HeyGen path itself self-tests as
   // working). `sceneIndex` rides along for callers that lip-sync a single scene clip.
-  const characterUrl = await resolveMedia(body.characterRef);
-  const videoUrl = characterUrl ?? (await resolveMedia(body.videoUrl));
+  const characterUrl = await resolveMedia(body.characterRef, userId);
+  const videoUrl = characterUrl ?? (await resolveMedia(body.videoUrl, userId));
   // Same reasoning as the provider gate above: a bare null told the user their files were wrong when the
   // real problem is that the reference could not be resolved to a fetchable URL at all.
   if (!videoUrl) return NextResponse.json({ jobId: null, error: 'media_unresolved', code: 'media_unresolved' }, { status: 400 });
-  let audioUrl: string = (await resolveMedia(body.audioUrl)) ?? videoUrl;
+  let audioUrl: string = (await resolveMedia(body.audioUrl, userId)) ?? videoUrl;
 
   // ── RESERVE before any paid work. This replaces the read-only hasSufficientBalance gate, which failed OPEN on a
   // ledger error (its own try/catch AND the helper's internal `return true`) — a DB blip meant a free render — and
