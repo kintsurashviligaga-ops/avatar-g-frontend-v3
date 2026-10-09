@@ -20,7 +20,7 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, PenSquare, Search, Wallet,
+  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Music2, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
@@ -70,7 +70,7 @@ import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
 import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
-import { searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
+import { getService, searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
 import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
@@ -803,12 +803,12 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   }, [onStudioHome, router, locale, pathname]);
   // A service found by the search opens like a menu row, but as the SERVICE: its tool, its mode („Music video" is the
   // Video tool in music-video mode) and its own analytics id. Outside the studio its catalog link carries the same.
-  const openService = useCallback((s: ServiceDefinition) => {
+  const openService = useCallback((s: ServiceDefinition, surface: 'search' | 'sidebar' = 'search') => {
     if (!s.tool) return;
     setSidebarOpen(false);
     setConvQuery('');
     if (onStudioHome) {
-      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface: 'search' } }));
+      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface } }));
       return;
     }
     const url = serviceHref(s.id, locale);
@@ -1212,6 +1212,19 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                             </button>
                           )}
                         </div>
+                        {/* A mode of the lead tool with a row of its own (lib/catalog/nav.ts modeServices): „Music video" under
+                            Video, always shown, because a mode reachable only from inside the panel was not found. */}
+                        {g.modeServices.map((sid) => {
+                          const s = getService(sid);
+                          if (!s) return null;
+                          return (
+                            <button key={sid} type="button" onClick={() => openService(s, 'sidebar')} data-testid={`sidebar-service-${sid}`}
+                              className={`${sideRow} pl-7`}>
+                              <Music2 className="h-4 w-4 text-app-muted" aria-hidden="true" />
+                              <span className="min-w-0 truncate">{s.label[lang]}</span>
+                            </button>
+                          );
+                        })}
                         {open && rest.map((id) => {
                           const { Icon: SubIcon } = TOOL_META[id];
                           const subOn = onStudioHome && activeTool === id;

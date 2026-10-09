@@ -109,11 +109,13 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live', boundary: 'google',
-    label: l('მუსიკალური ვიდეო', 'Music video', 'Музыкальный клип'),
+    label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'),
     description: l('სიმღერიდან ვიდეოკლიპი', 'A clip for your song', 'Клип для вашей песни'),
-    modes: [{ id: 'musicvideo', label: l('მუსიკალური ვიდეო', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
+    modes: [{ id: 'musicvideo', label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
     shortcuts: ['music'],
-    aliases: ['music video', 'მუსიკალური ვიდეო', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
+    // A row of its own under Video in the sidebar (lib/catalog/nav.ts modeServices): the mode was not findable otherwise.
+    visibleInSidebar: true,
+    aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({
     id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'live',

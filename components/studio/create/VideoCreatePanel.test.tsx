@@ -57,10 +57,10 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
 const gen = () => screen.getByTestId('video-generate') as HTMLButtonElement;
 const price = () => gen().getAttribute('data-price');
 
-describe('element order — header → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
+describe('element order — header → film|music switch → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
   test('the DOM order is the reference’s', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
+    const ids = ['video-tool-switch', 'video-mode-choice', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
       'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
@@ -82,6 +82,19 @@ describe('element order — header → hero → references → prompt → model 
     fireEvent.click(screen.getByTestId('video-close'));
     expect(calls.onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 FAST');
+  });
+
+  test('film or music video is a visible switch at the top of the panel (the owner could not find music video): one tap picks it', () => {
+    const { calls, rerender } = setup();
+    const choice = screen.getByTestId('video-mode-choice');
+    expect(choice.getAttribute('role')).toBe('radiogroup');
+    expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('video-mode-musicvideo').textContent).toContain('Music video');
+    fireEvent.click(screen.getByTestId('video-mode-musicvideo'));
+    expect(calls.onMode).toHaveBeenCalledWith('musicvideo');
+    rerender({ mode: 'musicvideo' });
+    expect(screen.getByTestId('video-mode-musicvideo').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('false');
   });
 
   test('the hero title follows the Veo tier', () => {
@@ -329,9 +342,8 @@ describe('format and model pickers', () => {
       expect(sheet.textContent).not.toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: t })}`);
     }
     expect(sheet.textContent).not.toMatch(/credit/i);
-    // The mode switch rides at the top and does not close the sheet.
-    fireEvent.click(within(sheet).getByTestId('video-mode-musicvideo'));
-    expect(calls.onMode).toHaveBeenCalledWith('musicvideo');
+    // The film / music-video switch is on the panel, not in the model sheet.
+    expect(within(sheet).queryByTestId('video-mode-choice')).toBeNull();
     // A model is one tap: it sets the tier (the tier IS the model on the film route) and closes.
     fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });

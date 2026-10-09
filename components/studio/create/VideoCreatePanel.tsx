@@ -4,7 +4,7 @@
  * VideoCreatePanel — the video tool's create screen (ref4 / ref5), one component for the phone's sheet and the desktop's
  * right column (the same element, only the surrounding scroll container differs).
  *
- * Order, top to bottom: header (tool name + tool switcher, ✕) → HERO model card ("✎ Change") →
+ * Order, top to bottom: header (tool name + tool switcher, ✕) → Film | Music video switch → HERO model card ("✎ Change") →
  * "Add references" (images → the film's reference frames, audio → the soundtrack) → Prompt (+ "@ Elements", 🔊 On/Off) →
  * Model row → [length] [format] [resolution] tiles → quality (Economy · Fast · Max quality, each with its price) →
  * disclosures (Story & style · Voice & music · Advanced) → Generate ✦ N, pinned.
@@ -16,7 +16,7 @@
  * THE MODEL is the studio's one ModelPicker (components/studio/ui/ModelPicker): Google first — Veo 3.1 Lite · Fast · Max
  * quality, which the film route runs (`veo.tier` — the tier IS the model; Fast is the default) — then the Higgsfield video
  * models, open where this deployment can run them and dimmed with why where it cannot. "✎ Change", the Model row and the
- * resolution tile open it; the documentary / music-video switch rides at its top. The pick is remembered in this browser
+ * resolution tile open it. The film / music-video switch sits on the panel itself, under the header. The pick is remembered in this browser
  * (lib/studio/modelPick) and re-applied when the panel mounts; whatever changes the tier (the quality row, the desktop table)
  * is remembered too. No price in it — the price is on Generate.
  *
@@ -183,6 +183,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
   return (
     <div data-testid="video-create-panel" className="space-y-3">
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
+      <VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />
       <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
       {/* No Create | Extend tabs: Extend is not open yet (Veo continues a clip from its last frame; until that path is ready a
           long film is made with the length picker), and a whole tab that only said „soon" was the first thing under the model. */}
@@ -229,7 +230,6 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
         onOpenChange={(o) => setSheet(o ? 'model' : null)}
         trigger="none"
         title={vc(VIDEO_COPY.modelTitle, locale)}
-        header={<VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />}
         testId="video-model-sheet"
       />
     </div>

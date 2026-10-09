@@ -3184,11 +3184,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const onSet = (e: Event) => {
       const d = (e as CustomEvent<unknown>).detail;
       if (isToolId(d)) { selectTool(d, 'sidebar'); return; }
-      const o = d && typeof d === 'object' ? (d as { tool?: unknown; service?: unknown }) : null;
+      const o = d && typeof d === 'object' ? (d as { tool?: unknown; service?: unknown; surface?: unknown }) : null;
       if (!o || !isToolId(o.tool)) return;
       const service = typeof o.service === 'string' ? getService(o.service) : undefined;
       if (service && service.tool !== o.tool) return;
-      selectTool(o.tool, 'search', service?.id ?? null);
+      selectTool(o.tool, o.surface === 'sidebar' ? 'sidebar' : 'search', service?.id ?? null);
       const m = service ? serviceModeQuery(service.id)?.mode : undefined;
       if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);
     };
@@ -8897,26 +8897,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               />
             </div>
 
-            {/* 1 · MASTER AUDIO MODE — Music Video vs Documentary (the voice-overlap fix) */}
-            <div className="rounded-xl border border-app-border/15 bg-app-elevated/40 p-3.5 shadow-[0_2px_12px_rgba(0,0,0,0.12)]">
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text"><SlidersHorizontal size={14} aria-hidden="true" className="text-app-accent" /> {locale === 'en' ? 'Mode' : locale === 'ru' ? 'Режим' : 'რეჟიმი'}</span>
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                {([
-                  ['musicvideo', Music2, locale === 'en' ? 'Music Video' : locale === 'ru' ? 'Клип' : 'მუსიკ. ვიდეო', locale === 'en' ? 'A sung music clip' : locale === 'ru' ? 'Клип с песней' : 'მუსიკალური კლიპი'],
-                  ['documentary', Mic, locale === 'en' ? 'Documentary' : locale === 'ru' ? 'Документальный' : 'დოკუმენტური', locale === 'en' ? 'A narrated film' : locale === 'ru' ? 'Фильм с диктором' : 'ნაწერიანი ფილმი'],
-                ] as const).map(([id, Icon, label, sub]) => {
-                  const on = videoMode === id;
-                  return (
-                    <button key={id} type="button" onClick={() => setVideoMode(id)}
-                      className={`flex min-w-0 flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2.5 text-left transition active:scale-[0.99] ${on ? 'border-app-accent/60 bg-app-accent/15 ring-1 ring-app-accent/30' : 'border-app-border/20 bg-app-bg/40 hover:bg-app-bg/60'}`}>
-                      {/* One column: the settings are 300 px wide on a desktop, and „დოკუმენტური" beside „მუსიკ. ვიდეო" clipped. */}
-                      <span className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${on ? 'text-app-accent' : 'text-app-text'}`}><Icon size={14} className="shrink-0" /> {label}</span>
-                      <span className="text-[10.5px] leading-tight text-app-muted">{sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Film vs music video is the switch at the top of the panel (VideoModeChoice), not a card in here. */}
 
             {/* 2 · CHARACTER REFERENCE — up to 3 photos. The FIRST is the main identity →
                 Kling i2v start_image; all are sent to the pipeline (referenceImages) + stored
