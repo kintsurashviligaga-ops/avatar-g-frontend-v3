@@ -110,7 +110,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 15 | KA / EN / RU | key parity PROVEN | Claude | არა |
 | 16 | Mobile | BUILT_NOT_PROVEN | GG (მოწყობილობები) | არა |
 | 17 | E2E | ლოკალური; Preview-ზე ავტორიზებული E2E არ არის | Claude + GG (Supabase გაყოფა) | არა |
-| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1, PR #50, flag-ის უკან; Preview E2E აკლია) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
+| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1 + execution foundation, PR #50, flag-ის უკან; Preview E2E აკლია; sandbox BLOCKED_OWNER, Task API MISSING) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
@@ -238,6 +238,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** Billing → Reports (project `gen-lang-client-0671348730`, SKU-ით) და Billing → Credits-ის ფოტო; მოსალოდნელია Subtotal ≈ $0 და კრედიტი ≈ $299.49 (სულ ≈ $0.51 დაიხარჯა, გამოთვლილი).
 
 ### 4.19 Agent G: ავტონომიური media და ფაილების შესრულება
+- **Execution foundation (GG, 2026-10-09 11:15Z, 9 პუნქტი):** PR #50-ზე აშენდა, flag-ის უკან, migration-ის გარეშე: მონტაჟი აღარ მუშაობს მოთხოვნის შიგნით (`run` რიგში აყენებს, worker lease-ით ასრულებს, heartbeat 15 წმ, ერთი retry, per-minute sweep); დასრულებული job-ი აღარ იხსნება; „შეჩერება“ ffmpeg-ს რეალურად კლავს; refund-ის ვალი იმავე ჩანაწერში იწერება და sweep ფარავს; tool-ების typed allowlist (მოდელს job-ის დაწყება ან ხარჯვა არ შეუძლია); sandbox-ის კონტრაქტი (runner-ი ჯერ უარს ამბობს). სტატუსები EF-1 … EF-9, phase 2-ის გადაწყვეტილებები (migration, sandbox host, worker host) და migration-ის DRAFT (არ არის გამოყენებული): `docs/handoffs/2026-10-09-agent-g-execution-foundation.md`. AG-4-ის PARTIAL ამით დახურულია (BUILT_NOT_PROVEN).
 - **სტატუსი (2026-10-09, slice 1):** BUILT_NOT_PROVEN. აშენებულია PR #50-ზე, `AGENT_G_MEDIA_EXEC` flag-ის უკან (Production-ში გამორთულია; Preview-ზე მხოლოდ ადმინისთვის). AG-1 … AG-7 დაწერილი და ტესტირებულია, AG-4-ის ერთი ნაწილი PARTIAL-ია, AG-8 (Preview E2E) აკლია. დეტალები: `PROJECT_MASTER.md` Section F.
 - **რა გაკეთდა:**
   - beat-ის ამოცნობა (`lib/services/montage/beatPlan.ts`, `beatAnalysis.ts`): ტემპი და პირველი beat ffmpeg-ის PCM-იდან; ჭრა მთელ beat-ებზე, 30 fps-ის ბადეზე.
