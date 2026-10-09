@@ -20,6 +20,9 @@ import type { TaskDeps, TaskKind } from './taskService';
 
 // The job tray's own projection (/api/orchestrator/jobs reads the same columns in Production).
 const COLS = JOB_COLUMNS;
+// A list also carries the studio queue's place, so the tray can lay waiting renders out again after a reload; where the
+// column is missing (migration 20260704 not applied) the list falls back to COLS, as /api/orchestrator/jobs does.
+const LIST_COLS = `${JOB_COLUMNS},position_in_queue`;
 
 function rowOf(d: Record<string, unknown>): TaskRow | null {
   if (typeof d.id !== 'string' || typeof d.user_id !== 'string') return null;
@@ -38,6 +41,7 @@ function rowOf(d: Record<string, unknown>): TaskRow | null {
     error: s(d.error),
     created_at: s(d.created_at),
     updated_at: s(d.updated_at),
+    position_in_queue: typeof d.position_in_queue === 'number' ? d.position_in_queue : null,
   };
 }
 
@@ -106,11 +110,15 @@ export function liveTaskDeps(): TaskDeps {
       const c = sb();
       if (!c) return [];
       try {
-        let q = c.from('generation_jobs').select(COLS).eq('user_id', userId).order('updated_at', { ascending: false }).limit(limit);
-        if (active) q = q.in('status', ['pending', 'processing']);
-        const { data, error } = await q;
+        const run = (cols: string) => {
+          let q = c.from('generation_jobs').select(cols).eq('user_id', userId).order('updated_at', { ascending: false }).limit(limit);
+          if (active) q = q.in('status', ['pending', 'processing']);
+          return q;
+        };
+        let { data, error } = await run(LIST_COLS);
+        if (error && /position_in_queue/i.test(error.message ?? '')) ({ data, error } = await run(COLS));
         if (error) { reportError(new Error(error.message), { fn: 'tasks.listRows' }); return []; }
-        return ((data ?? []) as Record<string, unknown>[]).map(rowOf).filter((r): r is TaskRow => r !== null);
+        return ((data ?? []) as unknown as Record<string, unknown>[]).map(rowOf).filter((r): r is TaskRow => r !== null);
       } catch (e) {
         reportError(e, { fn: 'tasks.listRows' });
         return [];

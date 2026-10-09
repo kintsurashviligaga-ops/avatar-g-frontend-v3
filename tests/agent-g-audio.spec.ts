@@ -29,7 +29,7 @@ const fileQuote = { ...linkQuote, jobId: '33333333-3333-4444-8555-666666666666',
 
 interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; library: Array<Record<string, unknown>>; chat: string[] }
 
-async function open(page: Page, enabled: boolean): Promise<Calls> {
+async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {}): Promise<Calls> {
   const calls: Calls = { quote: [], run: [], reads: [], cancel: [], library: [], chat: [] };
   await page.addInitScript(() => {
     try {
@@ -50,7 +50,7 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
     await r.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
   });
   // The task as a worker moves it (lib/tasks/taskView TaskView): extracting, checking, then delivered.
-  const task = (t: Record<string, unknown>) => ({ id: JOB, kind: 'agent-audio-extract', service: 'music', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t });
+  const task = (t: Record<string, unknown>) => ({ id: JOB, kind: 'agent-audio-extract', service: 'music', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null, ...t });
   const views = [
     task({ status: 'running', stage: 'extract', pct: 40, attempt: 1, cancellable: true }),
     task({ status: 'running', stage: 'qc', pct: 85, attempt: 1, cancellable: true }),
@@ -60,7 +60,15 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
   await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
       const id = new URL(r.request().url()).searchParams.get('id');
-      if (id) calls.reads.push(id);
+      if (!id) {
+        // The job tray's list of live tasks (?active=1). With `live`, the job is already running somewhere (another
+        // tab, before a reload), so the list carries it while it is live; it never moves the job on.
+        const now = views[0];
+        const tasks = opts.live && now && (now.status === 'running' || now.status === 'queued') ? [now] : [];
+        await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tasks }) });
+        return;
+      }
+      calls.reads.push(id);
       const task = views.length > 1 ? views.shift() : views[0];
       await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, task }) });
       return;
@@ -192,6 +200,31 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(calls.run).toEqual([]);
+  });
+
+  test('after a reload the job tray shows the running extraction and stops it through the task route, once', async ({ page }) => {
+    await open(page, true);
+    // This test's own task route (registered last, so it wins): live in the tray's list until the cancel lands.
+    const cancels: unknown[] = [];
+    const running = { id: JOB, kind: 'agent-audio-extract', service: 'music', status: 'running', stage: 'extract', pct: 30, attempt: 1, result: null, error: null, cancellable: true, label: null, position: null, createdAt: null, updatedAt: null };
+    await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
+      if (r.request().method() === 'POST') {
+        cancels.push(r.request().postDataJSON());
+        await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"task":null}' });
+        return;
+      }
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tasks: cancels.length ? [] : [running] }) });
+    });
+    await page.reload();
+    const tray = page.getByTestId('job-tray');
+    await expect(tray.getByText('Agent G · MP3')).toBeVisible({ timeout: 45_000 });
+    await expect(tray.getByText('Fetching the file and turning its sound into MP3')).toBeVisible();
+    await tray.getByRole('button', { name: 'Cancel' }).dblclick();
+    await expect.poll(() => cancels).toEqual([{ action: 'cancel', id: JOB }]);
+    // The row gives its stop up at once, so a second tap could not send a second cancel.
+    await expect(tray.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+    await page.waitForTimeout(500);
+    expect(cancels).toHaveLength(1);
   });
 
   test('Stop while it runs: one cancel to the task route, and the follow ends it as stopped', async ({ page }) => {

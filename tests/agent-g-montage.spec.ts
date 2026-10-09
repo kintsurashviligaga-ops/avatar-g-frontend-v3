@@ -12,6 +12,8 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  *   · Start queues that signed plan once, the chat follows the job (its stage on the card), and the master plays in the
  *     same thread;
  *   · Cancel drops the plan and runs nothing;
+ *   · a job already running (another tab, a reload) shows in the job tray with its stop, and leaves the tray the moment
+ *     the chat's own card narrates it, so one job is never drawn twice;
  *   · while the route says the feature is closed to this user, the chat keeps its old flow.
  */
 
@@ -32,7 +34,7 @@ const QUOTE = { jobId: '11111111-2222-4333-8444-555555555555', credits: 0, total
 
 interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; remixIntent: unknown[] }
 
-async function open(page: Page, enabled: boolean): Promise<Calls> {
+async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {}): Promise<Calls> {
   const calls: Calls = { quote: [], run: [], reads: [], cancel: [], remixIntent: [] };
   await page.addInitScript(() => {
     try {
@@ -51,7 +53,7 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
   });
   await page.route('**/api/video/remix', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"mocked"}' }));
   // The task as a worker moves it (lib/tasks/taskView TaskView): rendering (one read), then delivered.
-  const task = (t: Record<string, unknown>) => ({ id: QUOTE.jobId, kind: 'agent-montage', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t });
+  const task = (t: Record<string, unknown>) => ({ id: QUOTE.jobId, kind: 'agent-montage', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null, ...t });
   const views = [
     task({ status: 'running', stage: 'stitch', pct: 55, attempt: 1, cancellable: true }),
     task({ status: 'completed', pct: 100, result: { url: 'https://media.test/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } }),
@@ -60,7 +62,15 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
   await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
       const id = new URL(r.request().url()).searchParams.get('id');
-      if (id) calls.reads.push(id);
+      if (!id) {
+        // The job tray's list of live tasks (?active=1). With `live`, the job is already running somewhere (another
+        // tab, before a reload), so the list carries it while it is live; it never moves the job on.
+        const now = views[0];
+        const tasks = opts.live && now && (now.status === 'running' || now.status === 'queued') ? [now] : [];
+        await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tasks }) });
+        return;
+      }
+      calls.reads.push(id);
       const task = views.length > 1 ? views.shift() : views[0];
       await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, task }) });
       return;
@@ -148,6 +158,24 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect.poll(() => chat.length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(chat[0]).toContain('looks great');
     expect(chat[0]).not.toMatch(/data:(video|audio)\//);
+  });
+
+  test('a montage already running shows once: in the tray, with its stop, until the chat\'s own card takes it over', async ({ page }) => {
+    const calls = await open(page, true, { live: true });
+    const tray = page.getByTestId('job-tray');
+    // Running before this page opened (another tab, a reload): the tray is the only place it shows, and it can stop it.
+    await expect(tray.getByText('Agent G · montage')).toBeVisible({ timeout: 20_000 });
+    await expect(tray.getByRole('button', { name: 'Cancel' })).toBeVisible();
+
+    await attachAndSend(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card).toHaveAttribute('data-phase', 'running');
+    // The card narrates that job now, so the tray lets go of it at once (one owner per job): never two bars for one job.
+    await expect(tray.getByText('Agent G · montage')).toHaveCount(0);
+    await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    expect(calls.cancel).toEqual([]);
   });
 
   test('Cancel drops the plan and runs nothing', async ({ page }) => {

@@ -56,8 +56,9 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. URL-to-Audio (owner, 12:34Z;
           Section F-AU): link or upload → MP3 in the chat, text + Live Voice, platforms refused with an upload offer,
           BUILT_NOT_PROVEN on PR #50 (local real-internet + real-ffmpeg E2E passed); AU-8 = the same admin Preview run as
-          AG-8. One Task API (EF-7, /api/tasks) BUILT_NOT_PROVEN on PR #50: the chat's job cards follow and stop
-          jobs only through it. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
+          AG-8. One Task API (EF-7, /api/tasks) BUILT_NOT_PROVEN on PR #50: the chat's job cards, the job tray, the
+          service panels and the montage export read (and stop) jobs only through it; the tray stops Agent G jobs and
+          never draws a job a chat card already shows. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
           the progress card (components/studio/ui/LoadingLoop.tsx; poster only under reduced motion / Save-Data), PR #50.
           Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
           automatically) in BLOCKERS below. Owner actions in
@@ -985,8 +986,14 @@ F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
        (queued | running | completed | failed | cancelled, stage, pct, attempt, result, cancellable) for every
        generation_jobs row of the caller: a studio render from its columns, a montage or audio extraction through its
        executor (that read is also the job's recovery, only while the flag is open to the caller). The chat's montage
-       and MP3 cards, and Live Voice's Stop, follow and stop jobs only through it. Text turns and voice sessions keep
-       no tasks of their own (they start these jobs). Not moved: the job tray (/api/orchestrator/jobs). The older
+       and MP3 cards, and Live Voice's Stop, follow and stop jobs only through it. Since 2026-10-09 (after the owner's
+       15:02Z "Yes continue") every screen reads it: the job tray (its list, now with the owner's label and the queue
+       place), the service panels' and the montage export's progress, and a reload's batch tiles (one read per id).
+       The tray offers Stop on an Agent G job (POST /api/tasks, once) and leaves any job a chat card narrates to that
+       card, so one job is never drawn twice; a studio render stays read-only there (no server-side stop). Own
+       rate-limit bucket (TASKS, 120/min per user) instead of the shared read budget. Text turns and voice sessions
+       keep no tasks of their own (they start these jobs). Not moved: the tray's WRITES (create / progress / settle /
+       queue place) stay on /api/orchestrator/jobs, whose GET remains for the MCP server app. The older
        /api/tasks/<uuid> routes (agent_g_tasks) now require a session and the owner's id (they read through the
        service role with no owner check before). Handoff §7 step 4.
 ◐ EF-8 BUILT_NOT_PROVEN. The master plays in the same bubble with Download; Library via the completed row

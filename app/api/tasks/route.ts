@@ -31,7 +31,7 @@ const notFound = () => NextResponse.json({ ok: false, error: 'not_found', messag
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
-  const limited = await checkRateLimit(req, RATE_LIMITS.READ, user.id);
+  const limited = await checkRateLimit(req, RATE_LIMITS.TASKS, user.id);
   if (limited) return limited;
 
   const deps = liveTaskDeps();
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
-  const limited = await checkRateLimit(req, RATE_LIMITS.READ, user.id);
+  const limited = await checkRateLimit(req, RATE_LIMITS.TASKS, user.id);
   if (limited) return limited;
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

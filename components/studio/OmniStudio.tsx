@@ -147,6 +147,7 @@ import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, runAgentAudio } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
+import { peekTask } from '@/lib/agent/media/jobFollow';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
@@ -970,6 +971,8 @@ type RegenSpec = ImageRegenSpec | MusicRegenSpec;
 // received, rethrown and then dropped, and the floating tray that would have shown it unmounts once the
 // batch stops being active — i.e. exactly when the failure becomes visible.
 interface BatchTile { status: 'pending' | 'done' | 'failed'; url?: string; jobId?: string; error?: string }
+/** How many still-pending batch tiles one load reconciles (one task read each); any beyond wait for the next load. */
+const BATCH_RECONCILE_MAX = 24;
 interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // TASK 4 — Cinema-video parallelism gate. When ON, the flagship `renderFilm` dispatches
 // through the Cap-3 queue (per-job signal + durable row + tray progress) so multiple films
@@ -5160,26 +5163,28 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // It also must not adopt the old session id here: doing so made a brand-new chat write into the
         // PREVIOUS session row — the same corruption startNewConversation was fixed for.
         if (messagesRef.current.some((m) => m.batch?.tiles.some((t) => t.status === 'pending' && t.jobId))) {
-          // #3 — reconcile still-pending batch tiles against the durable generation_jobs rows.
-          const res = await fetch('/api/orchestrator/jobs?limit=50', { credentials: 'include' });
-          if (!res.ok || !alive) return;
-          const { jobs } = (await res.json().catch(() => ({ jobs: [] }))) as { jobs: { id: string; status: string; signed_url: string | null }[] };
-          const byId = new Map((jobs || []).map((j) => [j.id, j]));
+          // #3 — reconcile still-pending batch tiles against their durable generation_jobs rows, each read by its id
+          // through the one task route (lib/tasks). A read that told nothing (offline, 429, 5xx) leaves the tile alone.
+          const ids = Array.from(new Set(messagesRef.current.flatMap((m) => m.batch?.tiles.flatMap((t) => (t.status === 'pending' && t.jobId ? [t.jobId] : [])) ?? [])))
+            .slice(0, BATCH_RECONCILE_MAX);
+          const reads = await Promise.all(ids.map(async (id) => [id, await peekTask((u, init) => fetch(u, init), id)] as const));
+          if (!alive) return;
+          const byId = new Map(reads);
           setMessages((prev) => prev.map((m) => {
             if (!m.batch) return m;
             let changed = false;
             const tiles = m.batch.tiles.map((t): BatchTile => {
-              if (t.status !== 'pending' || !t.jobId) return t;
-              changed = true;
-              const row = byId.get(t.jobId);
+              if (t.status !== 'pending' || !t.jobId || !byId.has(t.jobId)) return t;
+              const task = byId.get(t.jobId);
+              if (task === null) return t; // the read told nothing: keep the spinner, the next load reads it again
               // ⚠️ A NON-TERMINAL ROW IS NOT A FAILURE. This used to be a two-way branch — completed, or
               // failed — so a tile whose row was still 'processing' or 'queued' (the NORMAL state for a
               // render that is still going) was painted as a red X the moment the page reloaded. The
               // render carried on, the credit stayed spent, and the user was looking at a dead tile for
               // work that was about to succeed. Only a genuinely terminal row can fail a tile; anything
               // still in flight stays pending so the poll can finish it.
-              if (row?.status === 'completed' && row.signed_url) return { status: 'done', url: row.signed_url, jobId: t.jobId };
-              if (!row || row.status === 'failed' || row.status === 'canceled') return { status: 'failed', jobId: t.jobId };
+              if (task !== 'gone' && task?.status === 'completed' && task.result?.url) { changed = true; return { status: 'done', url: task.result.url, jobId: t.jobId }; }
+              if (task === 'gone' || task?.status === 'failed' || task?.status === 'cancelled') { changed = true; return { status: 'failed', jobId: t.jobId }; }
               return t;
             });
             return changed ? { ...m, batch: { ...m.batch, tiles } } : m;
@@ -7645,6 +7650,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text';
     fileRef.current?.click();
   }, [locale, inputSourceRef]);
+
+  // ONE OWNER PER JOB (the JobTray's rule): a running Agent G card narrates its own job, so the tray leaves that job to
+  // it, and gets it back the moment the card stops narrating (the run ended, or a new thread replaced the chat) while
+  // the job may still run server-side. Derived from the cards on screen, so a claim can never outlive its card.
+  const agentCardJobs = useMemo(() => messages
+    .flatMap((m) => [m.montage, m.audioJob])
+    .flatMap((c) => (c?.phase === 'running' && c.quote?.jobId ? [c.quote.jobId] : []))
+    .sort().join(','), [messages]);
+  useEffect(() => {
+    if (!agentCardJobs) return;
+    const ids = agentCardJobs.split(',');
+    const q = useJobQueue.getState();
+    ids.forEach((jobId) => q.claimInline(jobId));
+    return () => ids.forEach((jobId) => q.releaseInline(jobId));
+  }, [agentCardJobs]);
 
   // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
   useEffect(() => { setGateFrom(null); }, [mode]);

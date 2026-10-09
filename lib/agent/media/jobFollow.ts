@@ -8,6 +8,9 @@
  * second job (the server replays it), so an answer lost on the way is simply asked for again. The status read is also
  * what wakes a worker when none has the job, so a closed connection, a locked phone or a worker that died costs
  * nothing: the job goes on server-side either way. Browser-side, every effect injected (fetch, the clock).
+ *
+ * The one-read and stop helpers at the end (peekTask, cancelTask) are the rest of the studio's task client: the job
+ * tray, the service panels and the montage export read and stop their jobs through them.
  */
 
 /** How often the job is read while it is queued or running. */
@@ -122,6 +125,24 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
     // 429 or a 5xx: read again on the next tick.
   }
   return spec.lost('network');
+}
+
+/**
+ * One read of a task (/api/tasks?id=), for a studio card that narrates its own job or a reload that settles a tile:
+ * the task; 'gone' when the route says the caller has no such task; null when the read told nothing (offline, signed
+ * out, rate-limited, a server error, a deployment without the route), so the caller keeps what it had.
+ */
+export async function peekTask(f: Fetch, id: string): Promise<TaskView | 'gone' | null> {
+  try {
+    const res = await f(`${TASKS_ROUTE}?id=${encodeURIComponent(id)}`, { credentials: 'include', cache: 'no-store' });
+    const body = await readJson(res);
+    if (res.ok && body?.ok === true && body.task && typeof body.task === 'object') return body.task as TaskView;
+    // The route's own not_found carries a message; a 404 page for a missing route does not.
+    if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') return 'gone';
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** Stop a task (/api/tasks). The run's own follow then reports it as cancelled. */

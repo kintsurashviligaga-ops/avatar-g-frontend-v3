@@ -41,6 +41,8 @@ async function prepare(page: Page) {
   await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `u/e2e-${++n}`, token: 't' }) }));
   await page.route(/supabase\.co\/storage\/v1\/object\/upload\/sign/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/e2e"}' }));
   await page.route('**/api/orchestrator/jobs*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"jobs":[]}' }));
+  // The one task route: the job tray's list and the export's own progress read (by its id) find nothing here.
+  await page.route(/\/api\/tasks(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"tasks":[]}' }));
 }
 
 async function shot(page: Page, name: string) {

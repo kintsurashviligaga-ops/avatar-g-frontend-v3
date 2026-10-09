@@ -12,7 +12,7 @@ jest.mock('../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 } },
+  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, TASKS: { maxRequests: 120, windowMs: 60_000 } },
 }));
 jest.mock('../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
 
@@ -20,7 +20,7 @@ type Row = import('../../../lib/tasks/taskView').TaskRow;
 const mockRows: Row[] = [];
 const mockKind = {
   status: jest.fn(async (r: Row) => ({
-    task: { id: r.id, kind: 'agent-montage', service: 'film', status: 'running', stage: 'stitch', pct: 40, attempt: 1, result: null, error: null, cancellable: true, createdAt: null, updatedAt: null },
+    task: { id: r.id, kind: 'agent-montage', service: 'film', status: 'running', stage: 'stitch', pct: 40, attempt: 1, result: null, error: null, cancellable: true, label: null, position: null, createdAt: null, updatedAt: null },
     needsWorker: true,
   })),
   view: jest.fn((r: Row) => ({ id: r.id, kind: 'agent-montage', status: r.status === 'failed' ? 'cancelled' : 'running' })),
@@ -49,8 +49,9 @@ jest.mock('../../../lib/tasks/taskLive', () => {
   };
 });
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '../../../lib/supabase/server';
+import { checkRateLimit, RATE_LIMITS } from '../../../lib/api/rate-limit';
 import { GET, POST } from './route';
 
 const ENV = { ...process.env };
@@ -140,4 +141,21 @@ test('stop: a lease job through its executor (200); a studio render 409 not_canc
   expect(mockKind.cancel).toHaveBeenCalledTimes(1);
   expect((await post({ action: 'delete', id: 'job-m' })).status).toBe(400);
   expect((await post('not json')).status).toBe(400);
+});
+
+test('its own rate-limit bucket, keyed by the user: the tray, the panels and the chat cards poll it, not the shared read budget', async () => {
+  await get('?active=1');
+  await get('?id=job-m');
+  await post({ action: 'cancel', id: 'job-m' });
+  expect(checkRateLimit).toHaveBeenCalledTimes(3);
+  for (const call of (checkRateLimit as jest.Mock).mock.calls) {
+    expect(call[1]).toBe(RATE_LIMITS.TASKS);
+    expect(call[2]).toBe('user-1');
+  }
+  // Over the limit: its 429 is the answer, and nothing is read or stopped.
+  (checkRateLimit as jest.Mock).mockResolvedValueOnce(NextResponse.json({ error: 'rate_limited' }, { status: 429 }));
+  expect((await get('?id=job-m')).status).toBe(429);
+  (checkRateLimit as jest.Mock).mockResolvedValueOnce(NextResponse.json({ error: 'rate_limited' }, { status: 429 }));
+  expect((await post({ action: 'cancel', id: 'job-m' })).status).toBe(429);
+  expect(mockKind.cancel).toHaveBeenCalledTimes(1);
 });

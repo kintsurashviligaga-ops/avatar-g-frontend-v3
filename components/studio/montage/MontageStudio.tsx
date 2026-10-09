@@ -48,6 +48,7 @@ import { Timeline, type TimelineHandle } from './Timeline';
 import { useLibrary, isVideoItem, type LibraryItem } from './useLibrary';
 import { usePlayer, type PlayerClip } from './usePlayer';
 import { listenForMontageCommands, type MontageCommandHost } from './voiceCommands';
+import { peekTask } from '@/lib/agent/media/jobFollow';
 
 interface Tool { id: string; label: string; Icon: typeof Film; run: () => void; disabled?: boolean }
 
@@ -510,13 +511,12 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
         while (!stop.done) {
           await new Promise((r) => setTimeout(r, 2500));
           if (stop.done || !mounted.current) return;
-          const res = await fetch('/api/orchestrator/jobs?status=active&limit=20', { credentials: 'include' }).catch(() => null);
-          const j = (await res?.json().catch(() => null)) as { jobs?: Array<Record<string, unknown>> } | null;
-          const row = j?.jobs?.find((x) => x.id === clientJobId);
-          if (!row || stop.done || !mounted.current) continue;
-          const pct = Number(row.pct ?? 0);
+          // The one task route (lib/tasks): this export's own stage and percent, read by its id.
+          const task = await peekTask((u, init) => fetch(u, init), clientJobId);
+          if (!task || task === 'gone' || stop.done || !mounted.current) continue;
+          const pct = Number(task.pct ?? 0);
           setExp((cur) => (cur?.phase === 'running'
-            ? { phase: 'running', stage: String(row.current_stage ?? '') || cur.stage, pct: Number.isFinite(pct) && pct > cur.pct ? pct : cur.pct }
+            ? { phase: 'running', stage: task.stage || cur.stage, pct: Number.isFinite(pct) && pct > cur.pct ? pct : cur.pct }
             : cur));
         }
       })();

@@ -16,6 +16,7 @@
 import { create } from 'zustand';
 import { JobQueue, type Job, type SubmitInput } from '@/lib/jobs/jobQueue';
 import { trackJobCreate, trackJobPosition } from '@/lib/jobs/trackJob';
+import { cancelTask } from '@/lib/agent/media/jobFollow';
 
 /** The user-chosen concurrency cap: 3 render at once, overflow queues with a position. */
 export const MAX_CONCURRENT_RENDERS = 3;
@@ -50,9 +51,10 @@ interface JobQueueState {
   jobs: Job[];
   /**
    * Server-OBSERVED jobs hydrated from `generation_jobs` (DURABLE PROGRESS). These are
-   * renders that started server-side and survive a page reload — the hydration hook polls
-   * GET /api/orchestrator/jobs and republishes them here so the tray shows live bars synced
-   * to the DB `pct`/`current_stage`. They have no local runner (read-only in the tray).
+   * jobs that run server-side and survive a page reload — the hydration hook polls the one
+   * task route (GET /api/tasks?active=1) and republishes them here so the tray shows live bars
+   * synced to the task's stage and percent. They have no local runner; only the ones the server
+   * can stop (`cancellable`) get a cancel, which goes through `cancelDurable`.
    */
   durableJobs: Job[];
   /**
@@ -67,6 +69,11 @@ interface JobQueueState {
   releaseInline: (id: string) => void;
   submit: (input: SubmitInput) => string;
   cancel: (id: string) => void;
+  /**
+   * Stop an OBSERVED job the server can stop (POST /api/tasks { action: 'cancel' }). The row loses its cancel at once
+   * (no double press); a refused or unreachable stop gives it back. The next poll drops the stopped job from the tray.
+   */
+  cancelDurable: (id: string) => Promise<boolean>;
   clearFinished: () => void;
   setDurableJobs: (jobs: Job[]) => void;
   /** Active (rendering) + waiting (queued) count — for the composer's soft gate. */
@@ -98,6 +105,17 @@ export const useJobQueue = create<JobQueueState>((set, get) => {
       return id;
     },
     cancel: (id) => queue.cancel(id),
+    cancelDurable: async (id) => {
+      const job = get().durableJobs.find((j) => j.id === id);
+      if (!job?.cancellable) return false;
+      const mark = (cancellable: boolean) =>
+        set((s) => ({ durableJobs: s.durableJobs.map((j) => (j.id === id ? { ...j, cancellable } : j)) }));
+      mark(false);
+      const ok = await cancelTask((input, init) => fetch(input, init), id);
+      // Give the cancel back only while the job is still listed and nothing newer has replaced the flag.
+      if (!ok && get().durableJobs.some((j) => j.id === id && j.cancellable === false && (j.status === 'queued' || j.status === 'rendering'))) mark(true);
+      return ok;
+    },
     clearFinished: () => queue.clearFinished(),
     setDurableJobs: (durableJobs) => set({ durableJobs }),
     inFlight: () => get().jobs.filter((j) => j.status === 'rendering' || j.status === 'queued').length,

@@ -142,6 +142,9 @@ export const RATE_LIMITS = {
   READ:      { maxRequests: 100, windowMs: 60_000,       keyPrefix: 'rl:read'  } as const,
   WRITE:     { maxRequests: 20,  windowMs: 60_000,       keyPrefix: 'rl:write' } as const,
   EXPENSIVE: { maxRequests: 5,   windowMs: 60_000,       keyPrefix: 'rl:exp'   } as const,
+  // /api/tasks (EF-7): every progress surface polls it (the job tray every 7 s, a studio panel or montage every 2.5 s,
+  // a chat job card every 3 s), so it has its own bucket instead of draining READ, which every other read route shares.
+  TASKS:     { maxRequests: 120, windowMs: 60_000,       keyPrefix: 'rl:tasks' } as const,
   // Voice-mode ephemeral-token mint (IP-keyed burst guard). Voice is intentionally FREE for signed-in
   // users (no credit gate), so this is deliberately forgiving — a legit user reconnecting / toggling the
   // ♀/♂ voice (each swap re-mints) / re-opening the call must not hit a "Too many requests" wall at 5.

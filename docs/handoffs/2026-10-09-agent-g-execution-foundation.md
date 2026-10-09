@@ -17,7 +17,7 @@ tested, and (where it renders) run locally on the real bundled ffmpeg, but not y
 | 4 | Atomic credit reservation/refund, job idempotency, audit persistence | EF-4 | PARTIAL | one row per quote (insert = idempotency), billing hold, ledger-bounded refund owed in the failing write; the `deduct_credits` same-ref race needs a migration (§6). Montage is free today, so the priced path is unit-tested only |
 | 5 | Typed allowlisted tool registry | EF-5 | PARTIAL | `lib/agent/tools/registry.ts` + allowlist test; the live agent's 4 tools are typed specs. Agent G drives only the montage today; the other Studio/FFmpeg operations come as slice 2 (§7) |
 | 6 | Isolated Python/Node sandbox, limited, network deny by default | EF-6 | BLOCKED_OWNER | contract + refusing runner `lib/agent/sandbox/policy.ts` (6 tests). A real runner needs an isolated host = paid infrastructure (§5 B) |
-| 7 | Text, Live Voice and Media Jobs in one Task API | EF-7 | BUILT_NOT_PROVEN | `GET/POST /api/tasks` (`lib/tasks`), one `TaskView` per `generation_jobs` row; the chat's montage and MP3 cards and Live Voice's Stop use only it; §7 step 4 below. Tests: `lib/tasks/*.test.ts` 19, `app/api/tasks/route.test.ts` 5, legacy owner check 3 (fails on the old routes), Playwright audio 6 (new: Stop while running posts one cancel to `/api/tasks`) + montage 4 + live-actions 4 (routes mocked) |
+| 7 | Text, Live Voice and Media Jobs in one Task API | EF-7 | BUILT_NOT_PROVEN | `GET/POST /api/tasks` (`lib/tasks`), one `TaskView` per `generation_jobs` row; every screen reads it: the chat's montage and MP3 cards, Live Voice's Stop, the job tray (Stop on Agent G jobs, no double display), the service panels, the montage export and a reload's batch tiles; §7 step 4 below. Tests: `lib/tasks/*.test.ts` 21, `app/api/tasks/route.test.ts` 6, `lib/jobs/durableJobs.test.ts` 20, `components/studio/JobTray.test.tsx` 5, `lib/agent/media/jobFollow.test.ts` 3, legacy owner check 3 (fails on the old routes), Playwright audio 7 + montage 5 (new: the tray stops a running extraction once; a running montage shows once, tray then card) + live-actions 4 (routes mocked) |
 | 8 | Result in the same chat: playable preview, Download, Library | EF-8 | BUILT_NOT_PROVEN | browser test `tests/agent-g-montage.spec.ts` 4/4 (routes mocked): the master plays in the thread with Download; the completed row is the Library item |
 | 9 | Authorized E2E (upload → plan → confirm → queue → render → QC → delivery) + crash/retry/refund tests | EF-9 | PARTIAL | crash, retry, cancel, refund-debt and sweep tests built; local real-ffmpeg E2E through the queue passes; the authorized run on a Preview needs an admin session (§7 step 1) |
 
@@ -205,10 +205,23 @@ store and every test stay as they are.
    - **Moved onto it:** the chat's job follower (`lib/agent/media/jobFollow`) reads only `/api/tasks`, and Stop on
      the montage and MP3 cards (and Live Voice's stop action, which presses the same Stop) posts only there. The
      kinds' own `?jobId=` reads stay for compatibility.
-   - **Not moved:** the job tray still reads and writes `/api/orchestrator/jobs`; the older `jobs` table
-     (`/api/jobs/*`) and `agent_g_tasks` are separate stores. The `agent_g_tasks` routes (`/api/tasks/<uuid>/status`,
-     `/cancel`) read through the service role with no owner check; they now require a session and the owner's id
-     (the table is not in Production, so this was latent).
+   - **Moved onto it next (2026-10-09, after GG's 15:02Z "Yes continue"):** every other screen that read job rows.
+     The job tray lists `GET /api/tasks?active=1&limit=20` (`hooks/useDurableProgress` → `lib/jobs/durableJobs`
+     `mapActiveTasks`); a task now carries the owner's own label (prompt, brief or title, 80 chars) and, while a
+     studio render waits, its queue place, so the tray keeps the layout it had. An Agent G job shows as
+     „Agent G · montage" / „Agent G · MP3" with its stage in the card's words, and its row has Stop:
+     `useJobQueue.cancelDurable` posts `{ action: 'cancel', id }` once (the button goes at once; a refused stop gives
+     it back). A studio render stays read-only (no server-side stop). A running chat card claims its job id
+     (`claimInline`, derived from the cards on screen), so the tray never draws the same job twice and gets it back
+     when the card is gone. The service panels and the montage export read their own job by id (`peekTask`), and a
+     reload's batch tiles are settled one read per id (a read that tells nothing leaves the tile pending; only the
+     route's own `not_found` or a failed/cancelled task fails it). `/api/tasks` has its own rate-limit bucket
+     (`RATE_LIMITS.TASKS`, 120/min per user), so these polls do not eat the shared read budget.
+   - **Not moved:** the tray's writes (`lib/jobs/trackJob`: create, progress, settle, queue place) stay on
+     `/api/orchestrator/jobs`, whose GET stays for the MCP server app (`apps/myavatar-mcp-server`). The older `jobs`
+     table (`/api/jobs/*`) and `agent_g_tasks` are separate stores. The `agent_g_tasks` routes
+     (`/api/tasks/<uuid>/status`, `/cancel`) read through the service role with no owner check; they now require a
+     session and the owner's id (the table is not in Production, so this was latent).
 5. **Sandbox runner** (after B): implement `SandboxRunner` on the approved host; jobs only as confirmed actions.
 6. **Dedicated worker host** (after C): the same worker code, a different trigger.
 

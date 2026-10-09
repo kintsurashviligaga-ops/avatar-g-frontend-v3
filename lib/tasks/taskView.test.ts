@@ -3,7 +3,7 @@
  * One shape for every task (EF-7): a studio render from its row's columns, an Agent G montage and an audio extraction
  * from their executors' own owner views. A raw error text never leaves the server; only a code does.
  */
-import { isFinal, parseTaskId, taskFromAudio, taskFromMontage, taskFromRow, type TaskRow } from './taskView';
+import { LABEL_MAX, isFinal, parseTaskId, taskFromAudio, taskFromMontage, taskFromRow, type TaskRow } from './taskView';
 
 const row = (r: Partial<TaskRow> = {}): TaskRow => ({
   id: 'prod_1700000000000_ab12',
@@ -31,9 +31,26 @@ describe('a studio render (no lease)', () => {
   test('queued and running carry the row stage and percent; nothing can be stopped server-side', () => {
     expect(taskFromRow(row())).toEqual({
       id: 'prod_1700000000000_ab12', kind: 'render', service: 'film', status: 'queued', stage: null, pct: null, attempt: null,
-      result: null, error: null, cancellable: false, createdAt: '2026-10-09T10:00:00Z', updatedAt: '2026-10-09T10:01:00Z',
+      result: null, error: null, cancellable: false, label: null, position: null, createdAt: '2026-10-09T10:00:00Z', updatedAt: '2026-10-09T10:01:00Z',
     });
     expect(taskFromRow(row({ status: 'processing', current_stage: 'render', pct: 40 }))).toMatchObject({ status: 'running', stage: 'render', pct: 40, cancellable: false });
+  });
+
+  test('its label is the owner\'s own words: the prompt, else the brief, else the title, trimmed and cut short', () => {
+    expect(taskFromRow(row({ params: { prompt: '  A red car on a coast road  ', brief: 'b' } })).label).toBe('A red car on a coast road');
+    expect(taskFromRow(row({ params: { prompt: '   ', brief: 'Launch reel' } })).label).toBe('Launch reel');
+    expect(taskFromRow(row({ params: { title: 'Deck' } })).label).toBe('Deck');
+    expect(taskFromRow(row({ params: { prompt: 'x'.repeat(200) } })).label).toHaveLength(LABEL_MAX);
+    expect(taskFromRow(row({ params: { prompt: 42 } })).label).toBeNull();
+    expect(taskFromRow(row({ params: null })).label).toBeNull();
+  });
+
+  test('its queue place shows only while it waits, and only a real one (1, 2, …)', () => {
+    expect(taskFromRow(row({ status: 'pending', position_in_queue: 2 }))).toMatchObject({ status: 'queued', position: 2 });
+    expect(taskFromRow(row({ status: 'pending', position_in_queue: 0 })).position).toBeNull();
+    expect(taskFromRow(row({ status: 'pending', position_in_queue: null })).position).toBeNull();
+    expect(taskFromRow(row({ status: 'processing', position_in_queue: 3 })).position).toBeNull();
+    expect(taskFromRow(row({ status: 'completed', position_in_queue: 1 })).position).toBeNull();
   });
 
   test('completed: the signed URL first, then the result URL fields; the media follows the service', () => {

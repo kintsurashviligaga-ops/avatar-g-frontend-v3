@@ -44,6 +44,10 @@ export interface TaskView {
   error: string | null;
   /** May its owner stop it now (POST /api/tasks { action: 'cancel' })? */
   cancellable: boolean;
+  /** The owner's own words for a studio render (its prompt, brief or title, cut short); null for a lease job. */
+  label: string | null;
+  /** 1-based place in the studio's client queue while a render waits for a slot; null otherwise. */
+  position: number | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -62,6 +66,8 @@ export interface TaskRow {
   error: string | null;
   created_at: string | null;
   updated_at: string | null;
+  /** The studio queue's place for a waiting render (migration 20260704; absent where the column is missing). */
+  position_in_queue?: number | null;
 }
 
 /** Ids are generation_jobs keys: a UUID for Agent G, `prod_<ms>_<rand>`-style for studio renders. */
@@ -71,13 +77,23 @@ export function parseTaskId(x: unknown): string | null {
 }
 
 const MEDIA: Record<string, TaskMedia> = { film: 'video', avatar: 'video', interior: 'image', image: 'image', music: 'audio', voice: 'audio' };
-const meta = (row: TaskRow) => ({ id: row.id, service: row.service_type, createdAt: row.created_at, updatedAt: row.updated_at });
+const meta = (row: TaskRow) => ({ id: row.id, service: row.service_type, label: null, position: null, createdAt: row.created_at, updatedAt: row.updated_at });
 const str = (x: unknown): string | null => (typeof x === 'string' && x ? x : null);
+
+/** Longest label a task carries (the tray cuts it shorter). */
+export const LABEL_MAX = 80;
+
+/** A studio render's own words: its prompt, else its brief, else its title. */
+function labelOf(params: Record<string, unknown> | null): string | null {
+  const p = params ?? {};
+  const raw = [p.prompt, p.brief, p.title].find((x) => typeof x === 'string' && x.trim());
+  return typeof raw === 'string' ? raw.trim().slice(0, LABEL_MAX) : null;
+}
 
 /** A studio render (no lease): the row's own columns. */
 export function taskFromRow(row: TaskRow): TaskView {
   const r = row.result ?? {};
-  const base = { ...meta(row), kind: 'render', attempt: null, cancellable: false };
+  const base = { ...meta(row), kind: 'render', attempt: null, cancellable: false, label: labelOf(row.params) };
   if (row.status === 'completed') {
     const url = str(row.signed_url) ?? str(r.url) ?? str(r.videoUrl) ?? str(r.audioUrl) ?? str(r.imageUrl);
     return {
@@ -89,8 +105,10 @@ export function taskFromRow(row: TaskRow): TaskView {
     const cancelled = /^cancel/i.test(row.error ?? '');
     return { ...base, status: cancelled ? 'cancelled' : 'failed', stage: null, pct: null, result: null, error: cancelled ? 'cancelled' : 'failed' };
   }
+  const waiting = row.status === 'pending';
+  const place = typeof row.position_in_queue === 'number' && row.position_in_queue > 0 ? Math.floor(row.position_in_queue) : null;
   return {
-    ...base, status: row.status === 'pending' ? 'queued' : 'running',
+    ...base, status: waiting ? 'queued' : 'running', position: waiting ? place : null,
     stage: row.current_stage, pct: typeof row.pct === 'number' ? row.pct : null, result: null, error: null,
   };
 }
