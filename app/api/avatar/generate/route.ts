@@ -35,16 +35,18 @@ export async function POST(request: NextRequest) {
 
     // 1. Auth check
     const supabase = createRouteHandlerClient();
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    
-    if (authError || !session) {
+    // getUser(), not getSession(): getSession() trusts the cookie without asking the Auth server, so a stale or
+    // tampered session would pass this check. getUser() validates the token with Supabase Auth.
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
         { status: 401 }
       );
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
 
     // 2. Parse + validate request body
     const body: GenerateAvatarRequest = await request.json();
