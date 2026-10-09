@@ -144,6 +144,7 @@ import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
+import { agentRedo } from '@/lib/agent/media/redoChat';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, runAgentAudio } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
@@ -5514,35 +5515,38 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Plans whose Start already went out: a double tap lands before the card re-renders as 'running', and a second run
   // request would come back 409 and mark a card failed while its edit is still going.
   const montageRunsRef = useRef(new Set<string>());
-  const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
-    const id = `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const newAgentMontageBubble = useCallback((text: string, files: Media[]): Msg => ({
+    role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
+    montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? '') },
+  }), [locale]);
+  // Quote the plan into an Agent G montage bubble already in the thread (a new turn, or ↻ under a finished one).
+  const quoteAgentMontageInto = useCallback(async (id: string, text: string, files: Media[]) => {
     const names = files.map((f) => f.name ?? '');
-    // The bubble shows the clips and the track; the MODEL never gets them (`modelMedias: []`): this turn's files went to
-    // the edit, and resending them inline with the next chat turns (lib/chat/mediaWindow) would overflow that request.
-    setMessages((prev) => [...prev,
-      { role: 'user', text, medias: files, modelMedias: [] },
-      { role: 'assistant', id, text: readingText(locale), montage: { phase: 'reading', prompt: text, names } },
-    ]);
-    persistChatTurn('user', text);
     const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: (d, m) => uploadBigFile(d, m) }, { prompt: text, files });
     patchMsgById(id, (m) => (r.ok
       ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
       : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code } }));
-  }, [locale, patchMsgById, persistChatTurn]);
+  }, [locale, patchMsgById]);
+  const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
+    const bubble = newAgentMontageBubble(text, files);
+    // The bubble shows the clips and the track; the MODEL never gets them (`modelMedias: []`): this turn's files went to
+    // the edit, and resending them inline with the next chat turns (lib/chat/mediaWindow) would overflow that request.
+    setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
+    persistChatTurn('user', text);
+    await quoteAgentMontageInto(bubble.id!, text, files);
+  }, [newAgentMontageBubble, persistChatTurn, quoteAgentMontageInto]);
 
   // AGENT G — "take the MP3 out of this" (lib/agent/media/audioExtract): a link, or one attached video or audio file.
   // Agent G checks the source (no video platform and no way around one: a platform link is refused by name, with the
   // offer to upload the user's own or a licensed file), its rights and what it will make, and shows that plan as a card;
   // nothing is fetched or decoded before Start. The worker's MP3 lands in this bubble's player (Download, Library).
   const audioRunsRef = useRef(new Set<string>());
-  const startAgentAudio = useCallback(async (text: string, ask: AudioAsk, file?: Media) => {
-    const id = `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    // The file went to the extraction; the MODEL never gets it inline (`modelMedias: []`), as with the montage.
-    setMessages((prev) => [...prev,
-      { role: 'user', text, ...(file ? { medias: [file], modelMedias: [] } : {}) },
-      { role: 'assistant', id, text: checkingText(ask.source, locale), audioJob: { phase: 'checking' } },
-    ]);
-    persistChatTurn('user', text);
+  const newAgentAudioBubble = useCallback((ask: AudioAsk): Msg => ({
+    role: 'assistant', id: `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: checkingText(ask.source, locale),
+    audioJob: { phase: 'checking' },
+  }), [locale]);
+  // Check the source and quote the plan into an Agent G audio bubble already in the thread (a new turn, or ↻).
+  const quoteAgentAudioInto = useCallback(async (id: string, ask: AudioAsk, file?: Media) => {
     const f = (u: string, init?: RequestInit) => fetch(u, init);
     const r = ask.source === 'link'
       ? await quoteAudioLink(f, ask.url)
@@ -5566,7 +5570,35 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         noRetry: true,
         audioJob: { phase: 'failed', error: r.code, offerUpload: ask.source === 'link' && OFFER_UPLOAD.has(r.code) },
       }));
-  }, [locale, patchMsgById, persistChatTurn]);
+  }, [locale, patchMsgById]);
+  const startAgentAudio = useCallback(async (text: string, ask: AudioAsk, file?: Media) => {
+    const bubble = newAgentAudioBubble(ask);
+    // The file went to the extraction; the MODEL never gets it inline (`modelMedias: []`), as with the montage.
+    setMessages((prev) => [...prev, { role: 'user', text, ...(file ? { medias: [file], modelMedias: [] } : {}) }, bubble]);
+    persistChatTurn('user', text);
+    await quoteAgentAudioInto(bubble.id!, ask, file);
+  }, [newAgentAudioBubble, persistChatTurn, quoteAgentAudioInto]);
+
+  // ↻ under the last reply. Under an Agent G card that has finished (lib/agent/media/redoChat) it asks Agent G again with the
+  // same turn, in place of the old bubble: a fresh plan card, nothing runs before Start. It used to re-stream a chat answer
+  // there, and the chat model, handed the clips and the words, answered with advice instead of the card.
+  const regenerateReply = useCallback(() => {
+    if (busy) return;
+    let lastA = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]!.role === 'assistant') { lastA = i; break; }
+    }
+    if (lastA < 0) return;
+    const old = messages[lastA]!;
+    const redo = agentRedo(old, messages[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn });
+    if (redo.kind === 'chat') { regenerateChat(); return; }
+    if (redo.kind === 'none' || !old.id) return;
+    const bubble = redo.kind === 'montage' ? newAgentMontageBubble(redo.text, redo.files) : newAgentAudioBubble(redo.ask);
+    setMessages((prev) => prev.map((m) => (m.id === old.id ? bubble : m)));
+    void (redo.kind === 'montage'
+      ? quoteAgentMontageInto(bubble.id!, redo.text, redo.files)
+      : quoteAgentAudioInto(bubble.id!, redo.ask, redo.file));
+  }, [busy, messages, agentMontageOn, agentAudioOn, regenerateChat, newAgentMontageBubble, newAgentAudioBubble, quoteAgentMontageInto, quoteAgentAudioInto]);
 
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
@@ -8229,8 +8261,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         className={`${act} ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}>
                         <ThumbsDown size={18} aria-hidden="true" />
                       </button>
-                      {isLast && !busy && (
-                        <button type="button" onClick={() => regenerateChat()} aria-label={t.regenerate} title={t.regenerate} className={act}>
+                      {isLast && !busy && agentRedo(m, messages[i - 1], { montage: agentMontageOn, audio: agentAudioOn }).kind !== 'none' && (
+                        <button type="button" onClick={() => regenerateReply()} aria-label={t.regenerate} title={t.regenerate} className={act}>
                           <RotateCcw size={18} aria-hidden="true" />
                         </button>
                       )}
@@ -8316,7 +8348,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

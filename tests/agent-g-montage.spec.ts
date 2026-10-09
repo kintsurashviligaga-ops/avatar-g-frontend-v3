@@ -189,6 +189,30 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     expect(calls.run).toEqual([]);
   });
 
+  // The Preview admin run of 2026-10-09: Stop, then ↻ under Agent G's reply — the chat model got the clips and answered
+  // with advice („use the Montage tool…") in place of the card. ↻ there now asks Agent G again with the same turn.
+  test('↻ under a finished montage asks Agent G again with the same files, never the chat model', async ({ page }) => {
+    const calls = await open(page, true);
+    const chat: unknown[] = [];
+    await page.route('**/api/chat/gemini', (r) => { chat.push(r.request().postData()); return r.fulfill({ status: 500, body: '' }); });
+    await attachAndSend(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    const regen = page.getByRole('button', { name: 'Regenerate', exact: true });
+    await expect(regen).toHaveCount(0); // an open card: its own buttons are the way
+    await page.getByTestId('agent-montage-cancel').click();
+    await expect(card).toHaveCount(0);
+
+    await regen.click();
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    expect(calls.quote).toHaveLength(2);
+    expect(calls.quote[1]).toMatchObject({ action: 'quote', prompt: 'cut these to the music' });
+    expect((calls.quote[1]!.files as string[])).toHaveLength(3);
+    await expect(page.getByTestId('agent-montage-card')).toHaveCount(1); // in place of the old bubble, not a second one
+    expect(calls.run).toEqual([]);   // nothing runs before Start
+    expect(chat).toEqual([]);        // and the chat model never saw the turn
+  });
+
   test('a real-size song (over the chat\'s ~4 MB inline cap) is taken for the montage and uploaded — never sent to the chat', async ({ page }) => {
     const calls = await open(page, true);
     const chat: unknown[] = [];
