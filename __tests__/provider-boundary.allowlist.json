@@ -1,0 +1,143 @@
+{
+  "note": "Frozen 2026-10-09 from the tree: runtime files that still reach a non-Google, non-ElevenLabs AI vendor (R7). Only delete lines; __tests__/provider-boundary.test.ts fails on a new file and on a stale line.",
+  "files": {
+    "replicate": [
+      "app/api/admin/provider-probe/route.ts",
+      "app/api/film/storyboard/route.ts",
+      "app/api/health/public/route.ts",
+      "app/api/health/services/route.ts",
+      "app/api/v2/model3d/status/route.ts",
+      "app/api/video/generate-hero/route.ts",
+      "app/api/video/generate-promo/route.ts",
+      "lib/ai/fluxImage.ts",
+      "lib/ai/klingClient.ts",
+      "lib/ai/lipsync.ts",
+      "lib/ai/replicate.ts",
+      "lib/audio/rvc.ts",
+      "lib/chat/ServiceManager.ts",
+      "lib/config.ts",
+      "lib/orchestrator/unpolledSettleRuntime.ts",
+      "lib/pipeline/anchorFrame.ts",
+      "lib/pipeline/lipsync/lipsyncNode.ts",
+      "lib/providers/replicate.ts",
+      "lib/replicate/client.ts",
+      "lib/security/csp.js",
+      "lib/services/model3d/replicate3dClient.ts",
+      "lib/video/remixOps.ts",
+      "lib/video/videoProviderCascade.ts",
+      "lib/voice-v2v/replicateStt.ts"
+    ],
+    "openai": [
+      "app/api/health/services/route.ts",
+      "app/api/pipeline/route.ts",
+      "lib/agent-g/voice/stt.ts",
+      "lib/ai/chatEngine.ts",
+      "lib/ai/openai.ts",
+      "lib/config.ts",
+      "lib/memory/embed.ts",
+      "lib/openai.ts",
+      "lib/providers/openai.ts",
+      "lib/security/csp.js",
+      "lib/system/provider-health.ts",
+      "lib/voice-v2v/providers.ts",
+      "services/voice-v2v-node/server.mjs"
+    ],
+    "openrouter": [
+      "lib/ai/chatEngine.ts",
+      "lib/providers/openrouter.ts"
+    ],
+    "anthropic": [
+      "app/api/admin/provider-probe/route.ts",
+      "app/api/chat/gemini/route.ts",
+      "app/api/chat/route.ts",
+      "app/api/chat/stream/route.ts",
+      "app/api/health/services/route.ts",
+      "app/api/video/remix-intent/route.ts",
+      "lib/ai/promptToEnglish.ts",
+      "lib/pipeline/agents/claude-director.ts",
+      "lib/pipeline/quality/vision-gate.ts",
+      "lib/system/provider-health.ts"
+    ],
+    "heygen": [
+      "app/api/admin/avatar-providers/route.ts",
+      "app/api/admin/provider-probe/route.ts",
+      "app/api/health/public/route.ts",
+      "app/api/health/services/route.ts",
+      "app/api/heygen/avatar/route.ts",
+      "app/api/heygen/presenter/route.ts",
+      "app/api/pipeline/route.ts",
+      "lib/ai/lipsync.ts",
+      "lib/chat/ServiceManager.ts",
+      "lib/pipeline/lipsync/lipsyncNode.ts",
+      "lib/security/csp.js",
+      "lib/system/provider-health.ts"
+    ],
+    "runway": [
+      "lib/ai/runway.ts",
+      "lib/config.ts"
+    ],
+    "kling": [
+      "lib/video/videoProviderCascade.ts"
+    ],
+    "higgsfield": [
+      "lib/providers/higgsfield/client.ts"
+    ],
+    "liveavatar": [
+      "app/api/admin/avatar-providers/route.ts",
+      "app/api/avatar/live/session/route.ts",
+      "lib/security/csp.js"
+    ],
+    "ltx": [
+      "app/api/health/services/route.ts",
+      "app/api/ltx-video/route.ts",
+      "app/api/pipeline/route.ts",
+      "lib/chat/ServiceManager.ts",
+      "lib/security/csp.js",
+      "lib/system/provider-health.ts",
+      "lib/video/videoProviderCascade.ts"
+    ],
+    "luma": [
+      "lib/video/videoProviderCascade.ts"
+    ],
+    "stability": [
+      "lib/config.ts",
+      "lib/providers/stability.ts"
+    ],
+    "worldlabs": [
+      "lib/system/provider-health.ts",
+      "lib/worldlabs/client.ts"
+    ],
+    "xai": [
+      "lib/ai/xaiImage.ts"
+    ],
+    "deepseek": [
+      "lib/ai/deepseekClient.ts",
+      "lib/providers/deepseek.ts"
+    ],
+    "atlascloud": [
+      "lib/ai/atlasClient.ts"
+    ],
+    "nanobananaapi": [
+      "app/api/health/services/route.ts",
+      "lib/models/catalog.ts",
+      "lib/nanobanana/client.ts"
+    ],
+    "cartesia": [
+      "lib/voice-v2v/providers.ts"
+    ],
+    "deepgram": [
+      "lib/voice-v2v/providers.ts"
+    ],
+    "udio": [
+      "app/api/health/services/route.ts",
+      "lib/system/provider-health.ts",
+      "lib/udio/client.ts"
+    ],
+    "pollinations": [
+      "app/api/ai/music/route.ts"
+    ],
+    "tavily": [
+      "lib/ai/webSearch.ts"
+    ]
+  }
+}

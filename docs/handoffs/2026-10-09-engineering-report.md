@@ -137,9 +137,11 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **პასუხისმგებელი:** GG (action 9: 2026-10-08 17:16Z „ჯერ არა“), შემდეგ Claude.
 - **დამოკიდებულება:** action 9; Google-ის ჩამნაცვლებელი თითო სერვისზე (image → `gemini-3.1-flash-image`; music → Lyria; avatar / 3D / swap-ს Google-ის ჩამნაცვლებელი არ აქვს → „მალე“).
 - **კოდში დარჩენილი ჩუმი fallback:** avatar-ის lip-sync HeyGen-ის ჩავარდნისას SadTalker-ზე (Replicate) გადადის (`lib/ai/lipsync.ts:318-350`) — R7-ის დარღვევა; action 9-თან ერთად უნდა მოიხსნას.
-- **ამ branch-ზე (Production-ში არა):** `/api/ai` აღარ იძახებს Anthropic-ს (`claude-sonnet-4-6`) — ახლა Gemini-ა, `76e8c525`.
+- **Production-შია (PR #48, `7126682`):** `/api/ai` აღარ იძახებს Anthropic-ს (`claude-sonnet-4-6`) — ახლა Gemini-ა, `76e8c525`.
+- **ამ branch-ზე, Production-ში არა (`ba74fa21`):** `/api/orbit/agent` Google-only-ში (ნაგულისხმევი) 404-ს აბრუნებს. აქამდე ნებისმიერ შესულ მომხმარებელს OpenRouter / OpenAI-ის პასუხს აძლევდა (`chatEngine.executeStream`), კრედიტის ჩამოჭრის გარეშე, თუმცა მას არცერთი ეკრანი არ იძახებს. Music-ის cover art Google-only-ში აღარ მიდის Pollinations.ai-ზე (გარე უფასო სერვისი, რომელსაც ყოველი ფასიანი brief-ის ინგლისური თარგმანი ეგზავნებოდა); track ახლა cover-ის გარეშე მოდის (`coverUrl` არ არის, როგორც cover-ის ნებისმიერი ჩავარდნისას). Google-ის cover GG-ის image ძრავის გადაწყვეტილებაა (action 9). ორივე ბრუნდება მხოლოდ `AI_GOOGLE_ONLY=0`-ით.
+- **Regression guard (`ba74fa21`):** `__tests__/provider-boundary.test.ts` კითხულობს `app/`, `lib/`, `components/`, `workers/`, `services/`, `hooks/`, `store/`, `types/`, `middleware.ts`-ის runtime კოდს (კომენტარებს არა): აკრძალული vendor-ის host string / template literal-ში ან SDK-ის value import. დღევანდელი მდგომარეობა გაყინულია `__tests__/provider-boundary.allowlist.json`-ში: 22 vendor, 60 ფაილი, 94 ჩანაწერი. ახალი ფაილი აკრძალულ vendor-თან → ტესტი ვარდება; ფაილი, რომელიც vendor-ს აღარ იძახებს, სიიდან უნდა წაიშალოს (სია მხოლოდ მცირდება). შემოწმდა: ახალ ფაილში `api.replicate.com` → ვარდება.
 - **მტკიცებულება:** სერტიფიკაცია §L; PR #44-ის აუდიტი (3.2).
-- **DoD:** სტატიკური ტესტი, რომელიც ვარდება, თუ `app/`, `lib/`, `workers/`, `services/` რომელიმე აკრძალულ host-ს იძახებს; Production-დან ამოღებულია Replicate / Udio / Higgsfield / HeyGen გასაღებები; Google-ის ძრავის გარეშე დარჩენილი სერვისები კატალოგში „მალე“-ა.
+- **DoD:** სტატიკური ტესტი, რომელიც ვარდება, თუ `app/`, `lib/`, `workers/`, `services/` რომელიმე აკრძალულ host-ს იძახებს (ratchet არის, allowlist-ი ცარიელი უნდა გახდეს); Production-დან ამოღებულია Replicate / Udio / Higgsfield / HeyGen გასაღებები; Google-ის ძრავის გარეშე დარჩენილი სერვისები კატალოგში „მალე“-ა.
 
 ### 4.5 Video Director V1–V6
 - **სტატუსი:** BUILT_NOT_PROVEN. Director (169 ტესტი) სტუდიოშია `VIDEO_DIRECTOR_RUNS`-ის უკან: Preview-ზე `admin`, Production-ში გამორთული. `director_runs` ცხრილი Production-შია, 0 ჩანაწერი. ცოცხლად ერთი Veo კლიპია დამტკიცებული (smoke ღილაკი), director-ის გაშვება — არც ერთი.
@@ -187,14 +189,14 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 ### 4.12 Security
 - **სტატუსი:** PARTIAL. დახურულია: STORAGE-1 (P0), ფუნქციების 17 warning, request-ით დასახელებული მედიის ხელმოწერა, share გვერდის `javascript:` ბმული, ElevenLabs voice id, avatars `owner_id` გაჟონვა, `jobs`-ის ორი გზა. ღიაა:
-  - `renders` bucket public (494 ობიექტი) → `20261009b` მზადაა, **GG-ის „კი“ სჭირდება**;
+  - ~~`renders` bucket public (494 ობიექტი)~~ → `20261009b` გაშვებულია 07:14Z (GG-ის „Deploy + renders“), PROVEN (ნაწილი 7);
   - leaked-password protection (4.2);
   - `vector` გაფართოება `public`-ში (დაბალი; გადატანას `match_memories`-ის `search_path`-ის შეცვლაც სჭირდება);
   - `avatars` bucket public (პროფილის და Live avatar-ის ფოტოები `getPublicUrl`-ით; დიზაინის გადაწყვეტილებაა, GG);
   - HawkScan DAST არ გაშვებულა (`HAWK_API_KEY` არ არის);
   - prompt injection-ის adversarial ტესტი და DB დონის RLS ტესტი CI-ში — MISSING.
-  - ამ branch-ზე დახურულია, Production-ში ჯერ არა (`76e8c525`): ანონიმური realtime voice token, ცნობილი dev secret-ით ხელმოწერა, `mock-stt` ყალბი transcript, `/api/ai`-ის უფასო ფასიანი გამოძახება.
-- **პასუხისმგებელი:** GG (`20261009b`-ის თანხმობა, Auth პარამეტრი, `HAWK_API_KEY`), Claude (ტესტები).
+  - დახურულია და Production-შია PR #48-ით (`7126682`, 07:13Z): ანონიმური realtime voice token, ცნობილი dev secret-ით ხელმოწერა, `mock-stt` ყალბი transcript, `/api/ai`-ის უფასო ფასიანი გამოძახება.
+- **პასუხისმგებელი:** GG (Auth პარამეტრი, `HAWK_API_KEY`; `20261009b` გაშვებულია), Claude (ტესტები).
 - **DoD:** Advisor 0 warning (ან თითოეული წერილობით მიღებული); `renders` private და ძველი signed ბმულები მუშაობს; DAST high finding-ების გარეშე; adversarial ტესტები CI-ში.
 
 ### 4.13 Library
@@ -208,7 +210,11 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** GG admin-ით შედის და პანელი იხსნება; არა-admin `/api/admin/*`-ზე 404-ს იღებს; Pipeline ბარათი კოდის რეალურ ძრავებს აჩვენებს (ტესტით).
 
 ### 4.15 KA / EN / RU
-- **სტატუსი:** key parity PROVEN დღეს (`[i18n-parity] OK`; 2026-10-08-ზე 742 / 742 / 742). ეკრან-ეკრან აუდიტი არ გაკეთებულა.
+- **სტატუსი:** key parity PROVEN დღეს (`[i18n-parity] OK`; 2026-10-08-ზე 742 / 742 / 742). სტატიკური აუდიტი გაკეთდა 2026-10-09 (`ba74fa21`), სქრინებით აუდიტი — არა. მეთოდი: import graph `app/**/page|layout`-იდან (569 ფაილი მისაწვდომია), ka/en-only ternary-ები და `{ ka, en }` ობიექტები `ru`-ს გარეშე, `t('key')`-ები, რომლებიც `messages/`-ში არ არის. ნაპოვნი და გასწორებული:
+  - `/account/billing` ჩატვირთვისას სამივე ენაზე `billing.history.loading`-ს წერდა (key არ არსებობდა; next-intl key-ს აჩვენებს, `|| 'Loading…'` არ მუშაობს) → key დამატებულია + ტესტი, რომელიც კოდის ყოველ literal `t(key)`-ს `ka.json`-ში ამოწმებს (`lib/i18n/messagesParity.test.ts`);
+  - ვიდეოს „სცენები და კამერა“ პანელის 43 ვარიანტი (მოძრაობა, კადრი, რაკურსი, ობიექტივი) რუსულ UI-ში ინგლისურად ჩანდა → რუსული სახელები + ტესტი (`lib/veo/cinematography.test.ts`);
+  - საფულის „min“ ნიშანი რუსულად → „мин.“.
+  - დანარჩენი: მისაწვდომ ეკრანებზე ka/en-only ternary-ების უმეტესობა შრიფტის ზომაა (ქართულს უფრო დიდი სჭირდება), არა ტექსტი. Admin პანელი (11 ფაილი) მხოლოდ ka / en-ია — admin-ისთვის, მიზანმიმართულად. `lib/business-agent/generator.ts` და `dialogueLanguageWarning` რუსულს არ იცნობს, მაგრამ მათ არცერთი ეკრანი არ იძახებს. ინგლისურად hardcoded ტექსტის (თარგმანის გარეშე) ავტომატური ძებნა და სქრინები — NOT PROVEN.
 - **პასუხისმგებელი:** Claude.
 - **DoD:** ყველა გვერდი სამ ენაზე სქრინებით, უთარგმნელი სტრიქონების ავტომატური ძებნა (ლათინური ტექსტი ka/ru UI-ში) ნულზე.
 
@@ -218,7 +224,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** iPhone და Android-ზე: სტუდიო, შესვლა, Live voice, checkout — ჩავარდნის გარეშე.
 
 ### 4.17 E2E
-- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09, ეს branch (`76e8c525`+), ლოკალურად: სრული გაშვება Supabase env-ის გარეშე — 220 passed, 21 failed, 10 skipped; 21-ის ხელახლა გაშვება CI-ის dummy Supabase ცვლადებით — 19 passed; დარჩენილი 2 ცალკე, ორჯერ: `live-voice-e2e.spec.ts:30` ორჯერვე გავიდა (დატვირთვა იყო), `landing.spec.ts:380` („when the image lands…“) 5-დან 4-ჯერ ვარდება (phone და desktop). მიზეზი: `/brand/v1/card-image.jpg`-ის მოთხოვნა იგზავნება, პასუხი არ მოდის, სურათი 0×0 რჩება. ეს branch ამ ეკრანს და static ფაილებს არ ეხება; ტესტი CI-ში არ გადის. **NOT PROVEN** — გამოსაკვლევია (Claude). ჯამი: 241 არა-skipped ტესტიდან 240 გადის. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
+- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09, ეს branch (`76e8c525`+), ლოკალურად: სრული გაშვება Supabase env-ის გარეშე — 220 passed, 21 failed, 10 skipped; 21-ის ხელახლა გაშვება CI-ის dummy Supabase ცვლადებით — 19 passed; დარჩენილი 2 ცალკე, ორჯერ: `live-voice-e2e.spec.ts:30` ორჯერვე გავიდა (დატვირთვა იყო), `landing.spec.ts:380` („when the image lands…“) 5-დან 4-ჯერ ვარდება (phone და desktop). მიზეზი: `/brand/v1/card-image.jpg`-ის მოთხოვნა იგზავნება, პასუხი არ მოდის, სურათი 0×0 რჩება. ეს branch ამ ეკრანს და static ფაილებს არ ეხება; ტესტი CI-ში არ გადის. 2026-10-09 გამოკვლევა: service worker არ არის (`sw.js` მხოლოდ production-ში რეგისტრირდება, Playwright `next dev`-ს უშვებს); Supabase-ის dummy host სწრაფად ვარდება. 15 წამზე სურათის მოთხოვნასთან ერთად 28–36 `/api/*` მოთხოვნა ელოდება `next dev`-ის route-ების პირველ კომპილაციას. დასკვნა: ეს მოთხოვნები Chrome-ის 6 კავშირს ერთ host-ზე ავსებს და სურათი რიგში რჩება. **PROVEN, რომ dev სერვერის ეფექტია:** იგივე ტესტი `7c8dd9b3`-ის production build-ზე (`next build` + `next start`, CI-ის dummy Supabase env) 10 / 10 გავიდა (phone + desktop, `--repeat-each=5`); `next dev`-ზე (`76e8c525`+, landing-ს და static ფაილებს მას შემდეგ არაფერი შეხებია) 5-დან 4 ვარდებოდა. Production-ის სურათის ჩვენებას არ ეხება. ამავე გაშვებამ სხვა რამ აჩვენა: production build-ზე მთელი `landing.spec.ts`-დან (54) 4–5 ტესტი ვარდება, რომლებიც `next dev`-ზე გადის, ორი მიზეზით: (1) phone-ზე `?tool=video` ბმული Video-ს Create ფურცელს ხსნის (`OmniStudio.tsx:2994`, დიზაინით: Video-ს prompt ფურცელშია), და ფურცლის ფონი header-ის „შესვლა“-ს და „+“-ს ფარავს (3 ტესტი, 60 წმ timeout); (2) production build `/api/analytics/track`-ზე POST-ს აგზავნის, ტესტი კი ცარიელ Enter-ზე არცერთ POST-ს არ ელის. რატომ არ ხსნის dev სერვერი იმავე ფურცელს, არ გამოკვლეულა. ტესტები არ შეცვლილა. მნიშვნელობა: CI-ის E2E `next dev`-ზე გადის, ამიტომ Production-ის phone ქცევას ბოლომდე არ ასახავს — NOT PROVEN, Claude. ჯამი: 241 არა-skipped ტესტიდან 240 გადის. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
 - **პასუხისმგებელი:** Claude; GG — Preview-სა და Production-ის Supabase-ის გაყოფა (owner action 11) და სატესტო ანგარიში.
 - **DoD:** CI-ში E2E Preview-ზე, სატესტო ანგარიშით, ცალკე Supabase-ზე: შესვლა, ერთი უფასო მოქმედება, Library, გასვლა.
 
@@ -231,13 +237,13 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 **DONE (კოდი Production-შია):** AUTH-1; ერთიანი admin წესი და `run-migration` 404; request-ით დასახელებული მედიის მფლობელის შემოწმება; share ბმულები მხოლოდ https; ჩუმი fallback-ების მოხსნა (image, text, music, voice); ServiceCatalog და `/hub` → სტუდიო; voice id-ის შემოწმება; avatars `user_id`-ზე; `jobs`-ის ორი გზა დახურული; uploads 50 MB / მხოლოდ მედია; STORAGE-1; ფუნქციების hardening.
 
-**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b` (არ არის გაშვებული); PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`).
+**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** ~~PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b`; PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`)~~ — Production-შია PR #48-ით (`7126682`, ნაწილი 7). ახალი (`ba74fa21`): `/api/orbit/agent` 404 Google-only-ში; music cover art აღარ მიდის Pollinations-ზე; აკრძალული vendor-ების ratchet ტესტი; ka / en / ru: billing key, კამერის 43 რუსული სახელი, „мин.“.
 
-**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch).
+**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch). `7c8dd9b3`-ზე: jest **702 / 702 suite, 10,817 passed, 3 skipped**; `tsc` 0; eslint სუფთა შეცვლილ ფაილებზე; `next build` წარმატებით; `[i18n-parity] OK`.
 
-**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; `landing.spec.ts:380` (სურათის ჩვენება, ლოკალურად).
+**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; ~~`landing.spec.ts:380`~~ (dev სერვერის ეფექტი, PROVEN 4.17); production build-ზე phone-ის 3 landing ტესტი და analytics POST (4.17).
 
-**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); `20261009b`-ის თანხმობა; Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
+**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
 
 ## 6. გამოსწორების რიგი
 
@@ -247,7 +253,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 |---|---|---|---|
 | 1 | GG | Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
 | 2 | GG | Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება | Advisor warning; admin წესის საფუძველი |
-| 3 | GG → Claude | `20261009b`-ზე „კი“ → გაშვება და შემოწმება | `renders` public gap |
+| 3 | ~~GG → Claude~~ | ~~`20261009b`-ზე „კი“ → გაშვება და შემოწმება~~ **შესრულდა 07:14Z** | `renders` public gap |
 | 4 | GG → Claude | BOG live credentials (≈ 2026-10-10) → უფასო 10 ₾ შემოწმება → ერთი რეალური გადახდა | billing blocker |
 | 5 | GG → Claude | კანონიკური ფასების ცხრილი → ერთი SSoT კოდში + ტესტი | pricing blocker |
 | 6 | GG → Claude | action 9 (აკრძალული provider-ების მოხსნა) და image ძრავის გადაწყვეტილება (მხოლოდ Google, თუ reseller მომხმარებლის არჩევით) → PR #44-ის #1 და #3 + აკრძალული host-ების ტესტი | provider boundary blocker |
@@ -256,8 +262,34 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
 | 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); `landing.spec.ts:380`-ის მიზეზი; ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); drift-ის სტატიკური ტესტი | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 
 Claude-ის დამოუკიდებელი შემდეგი სამუშაოები (Production / Billing / ბაზის ცვლილების გარეშე): 12-ე რიგი; PR #44-ის #3-ის photoshoot / interior ნაწილი; Vertex Production-ის ზუსტი ბრძანებების მომზადება GG-სთვის. PR #44-ის #2, #4, #5 უკვე ამ branch-ზეა.
+
+## 7. დამატება: PR #48-ის deploy და `20261009b` (2026-10-09 07:08–07:15Z)
+
+GG-მა 07:08:11Z ბარათზე აირჩია „Deploy + renders“.
+
+| რა | შედეგი | მტკიცებულება |
+|---|---|---|
+| merge | PR #48 → `main`, merge commit `7126682e` (head `07b12b61`) | GitHub |
+| CI `main`-ზე | მწვანე: CI 407, E2E 1079, ორივე `7126682e`-ზე | GitHub Actions |
+| Production | `7126682` ~07:13Z-დან | `/api/health` 07:13:30Z |
+| `20261009b` | გაშვებულია 07:14Z; `renders` `public = false`, 494 ობიექტი; migration history `20261009071401` | `storage.buckets`, `list_migrations` |
+| საჯარო შემოწმება | `renders`-ის public ბმული → 400 „Bucket not found“; `/api/admin/veo-smoke` სესიის გარეშე 404; `/api/health/providers` სესიის გარეშე 401; `run-migration` 404; `/ka` 200; `/ka/login` → სტუდია 200 | Firecrawl, `maxAge 0` |
+
+Rollback: Vercel Instant Rollback `66d7163`-ის deployment-ზე (GG) ან PR #48-ის merge-ის revert `main`-ზე; `renders`-ისთვის `UPDATE storage.buckets SET public = true WHERE id = 'renders';`.
+BUILT_NOT_PROVEN live: signed ბმულები private `renders`-ზე (Supabase-ის დიზაინით მუშაობს, შემოწმებისთვის ბმული არ შექმნილა); შესული მომხმარებლის `/api/ai` და ხმის token. **Verdict: Production Ready — არა.**
+
+## 8. დამატება: Claude-ის რიგი 12 (2026-10-09 07:35–07:55Z, branch-ზე, Production-ში არა)
+
+| Commit | რა | მტკიცებულება |
+|---|---|---|
+| `ba74fa21` | `/api/orbit/agent` → 404 Google-only-ში (აქამდე OpenRouter / OpenAI ნებისმიერ შესულ მომხმარებელზე, კრედიტის გარეშე; ეკრანი არ იძახებს). Music cover art → აღარ მიდის Pollinations.ai-ზე Google-only-ში. აკრძალული vendor-ების ratchet ტესტი (22 vendor, 60 ფაილი გაყინულია allowlist-ში) | `app/api/orbit/agent/route.test.ts` (2; ძველ route-ზე 1 ვარდება); `app/api/ai/music/style.test.ts` (ახალი ტესტი ძველ route-ზე ვარდება); `__tests__/provider-boundary.test.ts` (ახალ ფაილში `api.replicate.com` → ვარდება) |
+| `7c8dd9b3` | ka / en / ru: `billing.history.loading` (სამივე ენაზე key-ს წერდა); ვიდეოს კამერის 43 ვარიანტი რუსულად; საფულის „мин.“; ტესტი, რომელიც კოდის ყოველ literal `t(key)`-ს ამოწმებს | `lib/i18n/messagesParity.test.ts` (ძველ messages-ზე ვარდება); `lib/veo/cinematography.test.ts` |
+| — | `landing.spec.ts:380` — dev სერვერის ეფექტი, PROVEN (4.17) | production build-ზე 10 / 10 |
+
+Production-ში მოსახვედრად ეს ორი commit `main`-ში merge-ს და deploy-ს საჭიროებს — GG-ის ცალკე თანხმობით. Production-ში ცვლილება: `/api/orbit/agent` 404; music track cover-ის გარეშე (Google-ის cover — action 9). DB, env, ფასი, ფასიანი გამოძახება არ იცვლება. **Verdict: Production Ready — არა.**
+

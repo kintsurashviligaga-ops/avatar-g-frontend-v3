@@ -36,16 +36,16 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           Production serves 185b84d (~05:15Z), public checks passed. PR #47 (avatars on user_id, editing jobs scoped to
           the caller) merged as 66d7163f on the owner's "Deploy" (05:38:07Z); Production serves 66d7163 (~05:44Z), public
           checks passed. 20261009a (function hardening) applied ~05:39Z on the owner's "გაუშვი"; advisor warnings 22 -> 2.
+          PR #48 (/api/ai on Gemini, voice token for signed-in users, Upstash fast-fail, PR #43's Part 0 tooling, admin
+          engine reports) merged as 7126682e on the owner's "Deploy + renders" (07:08:11Z); Production serves 7126682
+          (~07:13Z), public checks passed; 20261009b (renders private) applied 07:14Z and read back.
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
 LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 66d7163f = Production; the branch is ahead by certification records,
-          PR #43's remaining code 0d239f26, migration file 20261009b (not applied), three PR #44 fixes 76e8c525
-          (Redis fast-fail, /api/ai off Claude onto Gemini with charge-before/refund, voice hardening), the admin
-          Pipeline card naming the real engines (d387508e), the providers health and Lyria reports doing the same
-          (505066c4) and the report;
-          draft PR #48);
-          PRs #42, #45, #46 and #47 merged
+LAST COMMIT: see `git log` on that branch (main = 7126682e = Production, PR #48 merged 2026-10-09 07:08Z; on top, in
+          draft PR #49, not deployed: certification records, ba74fa21 (/api/orbit/agent 404 and music cover art off
+          Pollinations under Google-only; provider-boundary ratchet test) and 7c8dd9b3 (ka/en/ru fixes + missing-key test));
+          PRs #42, #45, #46, #47 and #48 merged
 NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
@@ -158,11 +158,12 @@ BLOCKERS:
   header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
   Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
   §55 admin P1: deployed 2026-10-09 (PR #45 via 9f1bff6): one admin guard, run-migration off by default + admin
-  session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card is stale in
-  Production; fixed on the cert branch (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
-  Lyria), not deployed (report §4.14). /api/health/providers and the Lyria miss report fixed the same way (505066c4). Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
-· renders bucket (P2): public in Production (494 objects). supabase/migrations/20261009b_renders_private.sql written
-  2026-10-09, NOT applied: needs the owner's yes.
+  session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card was stale in
+  Production; fixed (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
+  Lyria) and deployed with PR #48 (7126682, 2026-10-09 ~07:13Z); /api/health/providers and the Lyria miss report fixed
+  the same way (505066c4), same deploy. Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
+· renders bucket (P2): FIXED 2026-10-09 07:14Z: 20261009b applied on the owner's "Deploy + renders" (07:08:11Z);
+  storage.buckets reads public = false (494 objects), the public object URL answers 400 (certification §A).
 · Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
   price a credit differently (≈ 4.3–5.6 vs 10 credits per lari); owner picks the canonical table.
 · STORAGE-1 (P0, found 2026-10-08 19:40Z, read-only check): Production storage.objects has a SELECT policy for role
