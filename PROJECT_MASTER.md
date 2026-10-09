@@ -36,9 +36,16 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           Production serves 185b84d (~05:15Z), public checks passed. PR #47 (avatars on user_id, editing jobs scoped to
           the caller) merged as 66d7163f on the owner's "Deploy" (05:38:07Z); Production serves 66d7163 (~05:44Z), public
           checks passed. 20261009a (function hardening) applied ~05:39Z on the owner's "გაუშვი"; advisor warnings 22 -> 2.
+          2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
+          Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
 LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (deployed head 9c2b46c4: CI green; main = 66d7163f); PRs #42, #46 and #47 merged
-NEXT ACTION: owner actions in final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
+LAST COMMIT: see `git log` on that branch (main = 66d7163f = Production; the branch is ahead by certification records,
+          PR #43's remaining code 0d239f26, migration file 20261009b (not applied), three PR #44 fixes 76e8c525
+          (Redis fast-fail, /api/ai off Claude onto Gemini with charge-before/refund, voice hardening) and the report;
+          draft PR #48);
+          PRs #42, #45, #46 and #47 merged
+NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
+          final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
@@ -53,8 +60,8 @@ MASTER TASK §60: steps 1–25 done (2026-10-08). 10 ServiceCatalog · 11 menus 
           VIDEO_DIRECTOR_RUNS (unset = off; table migration 20261008b applied 2026-10-08) · 18 Stripe refund/dispute reversal, ledger fail-closed
           in production, ledger-backed history · 20 a11y focus traps, ka/en/ru labels, pinch-zoom restored · 21 sitemap
           from the catalog. Final retest on 70a5fe88: tsc 0; lint 0 errors; jest 643 suites / 10,294 passed / 3 skipped;
-          build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). All BUILT_NOT_PROVEN in
-          production (nothing deployed); see the certification for every label.
+          build OK; Playwright 239 passed, 10 skipped, 2 load failures that pass alone (4/4). Deployed 2026-10-09; most
+          of it is still BUILT_NOT_PROVEN live; see the certification for every label.
           After the owner's "continue" (2026-10-08 14:10 UTC): R7 silent fallbacks removed for image (no Grok / FLUX),
           text (llmText and /api/pipeline Gemini only), music (Auto = Lyria alone; no MusicGen bed) and voice (no Azure /
           Google behind ElevenLabs), commits 8a2d1b0f and 32abf9ad. Forbidden providers that are still the primary engine
@@ -85,11 +92,15 @@ PHASE CHECKLIST:
           and AI Studio $13.21 auto-reload OFF (owner-confirmed). 3 budgets (PROVEN): $10/month test, $300/year credit
           guard (both gross, credits excluded), $1/month out-of-pocket (after credits). Budgets alert, they do not cap.
           Report docs/handoffs/2026-10-08-gcp-part0-report.md §9–10, test plan docs/handoffs/2026-10-08-gcp-part0-test-plan.md,
-          script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43).
+          script scripts/gcp/part0-wif.sh (branch claude/gcp-part0-wif-fmtfxp, PR #43; ported with the rest of PR #43's
+          missing code to the cert branch 2026-10-09, 0d239f26).
 ✓ Part 1: Audit + Foundation — complete 2026-10-08: audit, foundation contracts (lib/contracts), report
           docs/handoffs/part-1-report.md; §60 certification done (final-launch-certification.md), not launch ready.
 ◐ Part 2: Vertex Migration — in progress on claude/launch-certification-wmvitt (2026-10-08). Earlier WIP on unmerged
-          origin/codex/vertex-ai-migration (503829dc) + PR #44 (green) is to be merged in, not redone (15 conflicts).
+          origin/codex/vertex-ai-migration (503829dc) + PR #44 (green): not merged whole (owner, below); what of it is
+          still needed is listed in docs/handoffs/2026-10-09-engineering-report.md §3.2 (audit 2026-10-09,
+          docs/handoffs/2026-10-09-pr44-audit.md); its #2, #4 and #5 are ported (76e8c525), #1 (Google image engine)
+          waits on the owner's reseller decision (action 9).
           Part 0 T1 passed 15:49Z (STOP-1 cleared); A1 (Veo Production env) is a Production change, so it waits on the owner.
           Step 1 done: Claude removed from the chat router (specialist-first and fallback) and Agent G's personality
           (Gemini only, explicit failure; certification §L).
@@ -127,7 +138,7 @@ BLOCKERS:
   Production is a separate owner decision (env + deploy).
 · Part 0 item 7 (BLOCKED_OWNER): owner sends a photo of Billing → Reports (project gen-lang-client-0671348730, group by SKU)
   and Billing → Credits from ~2026-10-09 16:00 UTC; expected Subtotal ≈ $0 and credit ≈ $299.49.
-  scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool).
+  scripts/gcp/setup-veo-vertex.sh AUTH=wif is superseded (it trusted the whole pool); since 0d239f26 it refuses AUTH=wif.
 · Part 1–2 findings from the Part 0 audit (report §10.3–10.4, no change made):
   - Only Veo can run on Vertex, and only in Preview (VEO_TRANSPORT=vertex pinned). Every other Google call (chat,
     image, music, TTS, STT, Live, embeddings, search, research) uses the Gemini Developer API key. Production has
@@ -144,8 +155,13 @@ BLOCKERS:
   Replicate/Udio keys are set in Production. Admin auth uses 3 inconsistent guards; run-migration and 2 other routes are
   header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
   Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
-  §55 admin P1: BUILT_NOT_PROVEN on PR #45 (one admin guard, run-migration off by default + admin session + own key).
-  Owner to confirm Supabase 'Confirm email' is ON.
+  §55 admin P1: deployed 2026-10-09 (PR #45 via 9f1bff6): one admin guard, run-migration off by default + admin
+  session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card is still stale
+  (Claude, report §4.14). Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
+· renders bucket (P2): public in Production (494 objects). supabase/migrations/20261009b_renders_private.sql written
+  2026-10-09, NOT applied: needs the owner's yes.
+· Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
+  price a credit differently (≈ 4.3–5.6 vs 10 credits per lari); owner picks the canonical table.
 · STORAGE-1 (P0, found 2026-10-08 19:40Z, read-only check): Production storage.objects has a SELECT policy for role
   public with USING (true) ("Public read music 1q2q05_0", made in the dashboard, names no bucket), so the public anon
   key can list and download every object in every bucket, the private uploads (2,589 objects) and studio included.
@@ -156,7 +172,8 @@ BLOCKERS:
 · Master Task §4 Deep Research: done by Claude on the owner's instruction (2026-10-08) → docs/handoffs/service-taxonomy.md.
 · Vercel connector has no access to team kintsurashviligaga-ops-projects (403) — deploy state readable only via public URL.
 HANDOFF CHAIN:
-· Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (branch claude/gcp-part0-wif-fmtfxp, PR #43)
+· Part 0 Report: docs/handoffs/2026-10-08-gcp-part0-report.md (PR #43; on the cert branch since 0d239f26)
+· Engineering report + launch blocker matrix: docs/handoffs/2026-10-09-engineering-report.md (2026-10-09)
 · Part 0 Test plan: docs/handoffs/2026-10-08-gcp-part0-test-plan.md
 · Service inventory: docs/handoffs/service-inventory.md · taxonomy + migration matrix: docs/handoffs/service-taxonomy.md
 · Part 1 Report: docs/handoffs/part-1-report.md (2026-10-08)
