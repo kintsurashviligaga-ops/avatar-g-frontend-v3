@@ -93,8 +93,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | # | სფერო | სტატუსი | პასუხისმგებელი | §55 blocker? |
 |---|---|---|---|---|
-| 1 | Auth / Resend | **RESOLVED** Resend-ისთვის (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live. **AUTH-4:** კოდით რეგისტრაცია Production-ში ყველასთვის FAILED (GoTrue კოდს აუქმებს, როცა takeover-ის დაცვა პაროლს ცვლის); fix `776c7ff` PR #51-ზე, PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU) | GG (PR #51 → main) | კი, მხოლოდ ელფოსტით რეგისტრაციისთვის (Google-ით რეგისტრაცია მუშაობს) |
-| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 და AUTH-4 (PR #51) Production-ში არ არის | GG (PR #51-ის merge; სურვილისამებრ cert-alias Redirect URL) | არა |
+| 1 | Auth / Resend | **RESOLVED** Resend-ისთვის (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live. **AUTH-4:** კოდით რეგისტრაცია Production-ში ყველასთვის FAILED იყო 16:01Z-მდე (GoTrue კოდს აუქმებს, როცა takeover-ის დაცვა პაროლს ცვლის); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU) და Production-შია 16:01Z-დან (PR #52, `6c7dff4`), live ჯერ არ შემოწმებულა | GG (ერთი რეგისტრაცია myavatar.ge-ზე ახალი მისამართით) | კი, მხოლოდ ელფოსტით რეგისტრაციისთვის, live შემოწმებამდე (Google-ით რეგისტრაცია მუშაობს) |
+| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 Production-შია PR #52-ით (`6c7dff4`) და PROVEN live ~16:02Z; AUTH-4 Production-შია, live შემოწმებას ელის | GG (AUTH-4-ის live რეგისტრაცია; სურვილისამებრ cert-alias Redirect URL) | არა |
 | 3 | Vertex migration | Preview-ზე PROVEN, Production-ში არა | GG (IAM + env), Claude (შემოწმება) | არა პირდაპირ (provider boundary-ს ნაწილი) |
 | 4 | Provider boundary | **FAILED** | GG (action 9), შემდეგ Claude | კი |
 | 5 | Video Director V1–V6 | BUILT_NOT_PROVEN | GG (Preview-ზე ერთი გაშვება), Claude | კი |
@@ -114,7 +114,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
-- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. კოდით რეგისტრაცია Production-ში FAILED (AUTH-4); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU; auth log: generate_link → PUT /admin/users → generate_link → /verify 200 user_signedup). PR #51-ზე ასევე `6aa0770` (mailto: მისამართი; GoTrue-ს უარი → 400 invalid_email) და `adc28d7` (სახელი ≠ ახალი პაროლი), BUILT_NOT_PROVEN live. Production-ში მოხვდება, როცა PR #51 main-ს მიაღწევს (GG-ის სიტყვა). ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. კოდით რეგისტრაცია Production-ში FAILED (AUTH-4); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU; auth log: generate_link → PUT /admin/users → generate_link → /verify 200 user_signedup). PR #51-ზე ასევე `6aa0770` (mailto: მისამართი; GoTrue-ს უარი → 400 invalid_email) და `adc28d7` (სახელი ≠ ახალი პაროლი), BUILT_NOT_PROVEN live. **განახლება 16:05Z:** GG-მა 15:47:19Z აირჩია „ჰოტფიქსი ახლა“; ოთხივე auth fix PR #52-ით (`6c7dff4`) Production-შია 16:01Z-დან (§12). AUTH-3 PROVEN live; AUTH-4 და ორი დამატება live შემოწმებას ელის (GG-ის რეგისტრაცია myavatar.ge-ზე). ქვემოთ თავდაპირველი ჩანაწერია.
 - **სტატუსი (თავდაპირველი):** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
 - **პასუხისმგებელი:** GG.
 - **დამოკიდებულება:** `myavatar.ge`-ის DNS-ზე წვდომა; Resend ანგარიში, რომლის გასაღებიც `RESEND_API_KEY`-შია.
@@ -357,3 +357,18 @@ Production, DB, env, ფასი არ შეცვლილა. merge და 
 | GG-ის გადაწყვეტილებები: ~~1 ობოლი გვერდების გაუქმება~~ (GG-მა 09:32Z ბარათზე აირჩია „გაუქმება“: სამივე მისამართი redirect-ს აკეთებს, გვერდის ფაილები წაშლილია, `lib/routing/shellRedirects.test.ts`), 2 Deep Research-ის მიგრაცია, 3 Plugins-ის მიგრაცია, 4 Stripe-ის ცხრილები (Stripe Live-თან ერთად), 5 WhatsApp / push ცხრილები | drift doc, „Decisions for the owner“ |
 
 Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. merge და deploy GG-ის სიტყვას ელის.
+
+## 12. დამატება: auth ჰოტფიქსი Production-ში (PR #52, 2026-10-09 15:47–16:05Z)
+
+GG-მა 15:47:19Z Supabase Auth-ის ნაკადში ბარათზე აირჩია „ჰოტფიქსი ახლა“. ნაკადმა `main`-იდან გახსნა PR #52 მხოლოდ ოთხი auth commit-ით (იგივე ფაილები, რაც PR #51-ზე): AUTH-3, AUTH-4, mailto: მისამართი, სახელი ≠ პაროლი.
+
+| ნაბიჯი | მტკიცებულება |
+|---|---|
+| CI | verify და preview-e2e მწვანე `ef694b0`-ზე; ლოკალურად jest 702/702, Playwright auth 8/8 |
+| Merge | `main` = `6c7dff46` (15:56:50Z, `git log origin/main`) |
+| Deploy | `dpl_Ghoo53ZCY76BVF2iZsM984SmhQ6p` Ready 16:01Z; `/api/health` 6c7dff4, `/ka` და `/ru` 200 (Supabase Auth-ის ნაკადის შემოწმება; აქედან proxy myavatar.ge-ს ვერ აღწევს). migration და env ცვლილება არ ყოფილა |
+| AUTH-3 live | **PROVEN** ~16:02Z: უცნობ მისამართზე lookup none, `signin` send 404 `no_account`; auth log-ში `generate_link` არ არის, 0 ახალი მომხმარებელი |
+| AUTH-4 live | BUILT_NOT_PROVEN Production-ში: GG-ს სთხოვეს ერთი რეგისტრაცია myavatar.ge/ka-ზე ახალი მისამართით |
+| Rollback | Vercel Instant Rollback `29e7d67`-ის deployment-ზე ან `6c7dff4`-ის revert |
+
+PR #50-ის (ეს branch) და `main`-ის ცვლილებებს საერთო ფაილი არ აქვთ (`29e7d67`-დან), ამიტომ PR #50 → `main` კონფლიქტის გარეშე რჩება; `main` ამ branch-ში არ შერწყმულა. PR #51-ის `/api/avatar/generate`-ის ცვლილება PR #52-ში არ შედიოდა და Production-ში არ არის.
