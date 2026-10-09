@@ -48,7 +48,9 @@ LAST COMMIT: see `git log` on that branch (main = 29e7d67b = Production since ~0
           on the owner's "Deploy": ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
           provider-boundary ratchet test; 7c8dd9b3 ka/en/ru fixes + missing-key test; certification records);
           PRs #42, #45, #46, #47, #48 and #49 merged
-NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
+NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. NEXT ENGINEERING STAGE (owner,
+          2026-10-09 09:32Z, critical): Agent G autonomous media & file execution, Section F (slice 1: clips + music
+          → MP4 in the chat), after the PR #50 / schema-drift work. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
@@ -831,6 +833,68 @@ Post-build, verify:
 □ Approval dialogs inline
 □ Browser actions inline
 □ No page reloads for mode switches
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION F — AGENT G: AUTONOMOUS MEDIA & FILE EXECUTION (owner, 2026-10-09 09:32Z; CRITICAL, NEXT STAGE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Owner's order (Master Task thread): the next engineering stage after PR #50 / schema drift; it must not stop the
+current work. Agent G is a real autonomous executor, not only a planner or a prompt generator.
+F1. EXECUTION TOOLS
+· Agent G calls the EXISTING FFmpeg (lib/video/ffmpegExec.ts), media processing, Library and job systems.
+· Python or any other code runs ONLY in an isolated sandbox with strict permissions and resource limits.
+F2. AUTONOMOUS WORKFLOW
+· task → receive files → analyse → plan → Quote / Confirm when it costs → background run → QC → final result.
+F3. ONE WINDOW
+· The processed video / audio / image / document appears in the same chat: playable preview, Download, saved
+  to the Library.
+F4. DURABLE BACKGROUND JOBS
+· Progress, cancel, retry, recovery, idempotency, cost control, refund on failure (Credit Ledger).
+F5. SAFETY
+· No free shell commands on the Production server. Only allowed operations, only on the caller's own files,
+  isolation, audit log.
+F6. E2E
+· Upload several clips, ask Agent G to cut them to music; prove the final MP4 is created, plays in the chat and
+  downloads.
+RULES
+· No duplicate pipeline: reuse lib/video/ffmpegExec.ts, the Studio lanes, the Credit Ledger, Workers, the Library.
+· First remove the media-execution limitation described in lib/agent/react/bindLiveAgent.ts (no media tool on
+  purpose: the old orchestrate_media left permanently pending jobs and reserved no credit; a media tool needs a
+  real worker and the ledger reserve / refund saga first).
+· One complete end-to-end vertical slice first (F6: clips + music → MP4 in chat), then the other services.
+· No Production deploy and no new paid infrastructure without the owner's consent (a code sandbox host is new
+  infrastructure: owner decision).
+DEFINITION OF DONE (slice 1, "cut my clips to this music")
+□ AG-1 Agent G's live tool registry has a media tool that runs an existing Studio lane (no new pipeline);
+       unit-tested with every provider mocked.
+□ AG-2 Inputs are only the caller's own uploaded files (callerMedia owner check); limits on count, size, total
+       duration and run time; ffmpeg arguments built from an allowlist, never from model text.
+□ AG-3 Quote before spend: the price shows inline in the chat and nothing is charged until the user confirms.
+□ AG-4 Durable job: one job row with progress; cancel; retry with the same idempotency key never charges twice;
+       a run that dies is recovered or refunded by the sweeper; failure → ledger refund.
+□ AG-5 QC before delivery: ffprobe the output (duration matches the music within tolerance, video + audio
+       streams, playable codec); a failed QC refunds and says why.
+□ AG-6 One Window: the MP4 plays inline in the same chat, has Download, and is in the Library.
+□ AG-7 Audit log row per execution (who, which files, which operation, cost, result).
+□ AG-8 E2E proven on a Preview (F6) with the job id, ffprobe output and a screenshot recorded; labels per
+       the certification vocabulary (PROVEN only with that proof).
+STATUS: MISSING (2026-10-09). Design and plan: docs/handoffs/2026-10-09-engineering-report.md §4.19.
+CURRENT STATE (2026-10-09, read from the code)
+· The studio chat routes on the client (OmniStudio send()); /api/chat/gemini streams text only. The ReAct agent
+  (/api/agent/run) is called only by Live voice ask_agent_g and AgentTerminal, and has no media tool.
+· The montage lane (/api/v2/montage/render, lib/services/montage) already turns N clips + one track into one MP4
+  (ffmpeg-static on Vercel, up to 600 s, renders bucket, generation_jobs row = Library). It charges no credits.
+· Silent deviation today: several videos + a track + "cut to the music" in the chat go to remix, which uses only
+  the first video, charges 15 credits and drops the other clips without a word.
+· No beat detection exists. The composer allows 5 attachments; audio counts toward the ~4 MB inline cap.
+SLICE 1 PLAN (behind AGENT_G_MEDIA_EXEC, default off, so a PR #50 merge turns nothing half-built on)
+· lib/services/montage/beatPlan.ts: onsets + tempo from the track (ffmpeg PCM), shot windows on the beats.
+· One server action in two phases: quote (analyse, plan, price; spends nothing) and run (only after the user
+  confirms; idempotency key; ledger reserve + refund when priced; generation_jobs progress; ffprobe QC; audit
+  log), calling the existing runMontage.
+· bindLiveAgent.ts gets a tool that prepares the quote only; running needs the user's confirm.
+· OmniStudio: ≥2 videos + 1 track + montage intent → upload all → quote card inline → confirm → MP4 in the same
+  chat (player, Download) and in the Library.
+· Owner decisions: the price of an Agent G montage (free today in Montage Studio); a code sandbox host (not in
+  slice 1).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PART 0 — PHASE 0 (OWNER ACTION REQUIRED)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

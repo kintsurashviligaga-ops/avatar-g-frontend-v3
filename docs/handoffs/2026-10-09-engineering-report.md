@@ -110,6 +110,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 15 | KA / EN / RU | key parity PROVEN | Claude | არა |
 | 16 | Mobile | BUILT_NOT_PROVEN | GG (მოწყობილობები) | არა |
 | 17 | E2E | ლოკალური; Preview-ზე ავტორიზებული E2E არ არის | Claude + GG (Supabase გაყოფა) | არა |
+| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **MISSING** | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
@@ -187,7 +188,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **მტკიცებულება:** `docs/handoffs/2026-10-08-production-schema-drift.md`.
 - **Regression guard (2026-10-09, ნაწილი 9):** `__tests__/schema-drift.test.ts` + `__tests__/schema-drift.snapshot.json`. Snapshot წაკითხულია Production-იდან 08:25Z-ზე (read-only): 52 ცხრილი, 39 ფუნქცია (pgvector-ის გარეშე), იგივე 52, რაც 2026-10-08-ზე. ტესტი კითხულობს runtime კოდის `.from()` / `.rpc()` სახელებს (literal ან იმავე ფაილის `const`; `.storage.from()` bucket-ია და გამოტოვებულია). დღეს კოდი 166 ცხრილს და 27 ფუნქციას იძახებს; Production-ში არ არის **125 ცხრილი და 11 ფუნქცია**, ისინი გაყინულია `missing`-ში (სია მხოლოდ მცირდება); 5 ფაილი სახელს run time-ში აწყობს (`dynamic`). ახალი სახელი, რომელიც Production-ში არ არის → ტესტი ვარდება. შემოწმდა: `missing`-იდან ცხრილის და ფუნქციის ამოღება, `missing`-ში კოდისთვის უცნობი სახელის ჩამატება, `dynamic`-იდან ფაილის ამოღება → 4 ტესტი ვარდება.
 - **ახლად ნაპოვნი (ტრიაჟისთვის, არაფერი შეცვლილა):** 2026-10-08-ის სიას `const`-ით დასახელებული 3 ცხრილი აკლდა: `research_jobs`, `research_context_files` (Research / Connectors; `lib/research/capabilities.ts` ჯერ ამოწმებს ცხრილს და „მალე“-ს აჩვენებს, ანუ შეგნებულად დახურულია), `user_plugin_settings` (`lib/plugins/settings.ts`). `app/api/invoices/generate` იძახებს `.from('auth.users')`-ს, რაც PostgREST-ში ვერასოდეს იმუშავებს (მკვდარი გზა: `orders` ცხრილიც არ არის, ეკრანი არ იძახებს). 11 ფუნქცია არ არის, მათ შორის `deduct_credits_transaction`, `ensure_user_billing_rows`, `reset_user_credits_if_due` (`lib/billing/enforce.ts`, Stripe webhook), `claim_next_job` (`workers/shared/queue.ts`), `match_rag_documents`.
-- **ტრიაჟი (2026-10-09, ნაწილი 11):** ყველა ცოცხალი გზა ხელით წაკითხულია; შედეგი და GG-ის 5 გადაწყვეტილება `docs/handoffs/2026-10-08-production-schema-drift.md`-ის ბოლო ნაწილშია. მოკლედ: `debit_wallet_gel` მკვდარია (ჩამოჭრას არც ერთი ცოცხალი გზა არ ითხოვს; ფილმი და მუსიკალური ვიდეო თანხას წინასწარ ჭრის), ანუ შემოსავლის დანაკარგი არ არის; RAG მკვდარია; Research და Plugins შეგნებულად დახურულია; სამი ობოლი გვერდი (`/services/workflow`, `/account/invoices`, `/admin/disputes`) მისამართით გახსნისას არ მუშაობს. გასწორდა: Vapi-ს ორი webhook საიდუმლოს გარეშე ხელმოწერას არ ამოწმებდა (`7cc1a781`).
+- **ტრიაჟი (2026-10-09, ნაწილი 11):** ყველა ცოცხალი გზა ხელით წაკითხულია; შედეგი და GG-ის 5 გადაწყვეტილება (1-ლი მიღებულია: ობოლი გვერდები გაუქმდა) `docs/handoffs/2026-10-08-production-schema-drift.md`-ის ბოლო ნაწილშია. მოკლედ: `debit_wallet_gel` მკვდარია (ჩამოჭრას არც ერთი ცოცხალი გზა არ ითხოვს; ფილმი და მუსიკალური ვიდეო თანხას წინასწარ ჭრის), ანუ შემოსავლის დანაკარგი არ არის; RAG მკვდარია; Research და Plugins შეგნებულად დახურულია; სამი ობოლი გვერდი (`/services/workflow`, `/account/invoices`, `/admin/disputes`) მისამართით გახსნისას არ მუშაობს. გასწორდა: Vapi-ს ორი webhook საიდუმლოს გარეშე ხელმოწერას არ ამოწმებდა (`7cc1a781`).
 - **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; ~~სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს~~ (ნაწილი 9).
 
 ### 4.12 Security
@@ -236,6 +237,26 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **პასუხისმგებელი:** GG, 2026-10-09 16:00Z-ის შემდეგ.
 - **DoD:** Billing → Reports (project `gen-lang-client-0671348730`, SKU-ით) და Billing → Credits-ის ფოტო; მოსალოდნელია Subtotal ≈ $0 და კრედიტი ≈ $299.49 (სულ ≈ $0.51 დაიხარჯა, გამოთვლილი).
 
+### 4.19 Agent G: ავტონომიური media და ფაილების შესრულება
+- **სტატუსი:** MISSING. Agent G-ს (`lib/agent/react/bindLiveAgent.ts`) media tool შეგნებულად არ აქვს: ძველი `orchestrate_media` მხოლოდ `generation_jobs`-ში წერდა რიგს, რომელსაც არავინ ასრულებდა, და კრედიტს არ იჭერდა. ამიტომ Agent G დღეს მხოლოდ brief-ს წერს და მომხმარებელს Studio-ში აგზავნის.
+- **პასუხისმგებელი:** Claude (slice 1 და შემდეგ სხვა სერვისები); GG: კოდის sandbox-ის ინფრასტრუქტურა (ახალი, შესაძლოა ფასიანი), Preview-ზე E2E-ის დადასტურება, deploy.
+- **დამოკიდებულება:** არსებული Studio lane-ები, `lib/video/ffmpegExec.ts`, Credit Ledger (reserve / refund), job-ის ცხრილები, Library. Production-ში `service_jobs` არ არის (4.11), ამიტომ slice 1 Production-ში არსებულ job ცხრილს უნდა დაეყრდნოს.
+- **მტკიცებულება:** `PROJECT_MASTER.md` Section F (GG-ის 6 პუნქტი, წესები, DoD AG-1 … AG-8).
+- **არსებული მდგომარეობა (2026-10-09, კოდის წაკითხვით):**
+  - Studio-ს ჩატი მარშრუტს კლიენტში ირჩევს (`components/studio/OmniStudio.tsx` `send()`); `/api/chat/gemini` მხოლოდ ტექსტს აბრუნებს. ReAct აგენტს (`/api/agent/run`) მხოლოდ Live voice-ის `ask_agent_g` და AgentTerminal იძახებს.
+  - Montage lane (`/api/v2/montage/render`, `lib/services/montage/*`) უკვე აკეთებს N კლიპი + მუსიკა → ერთი MP4-ს (`ffmpeg-static` Vercel-ზე, 600 წმ-მდე, `renders` bucket, `generation_jobs`-ის რიგი = Library). კრედიტს არ ჭრის (Montage Studio-ში export უფასოა).
+  - **ჩუმი გადახვევა დღეს:** ჩატში რამდენიმე ვიდეო + ტრეკი + „მუსიკაზე დაამონტაჟე“ remix-ზე მიდის: იღებს მხოლოდ პირველ ვიდეოს, ჭრის 15 კრედიტს, დანარჩენ კლიპებს ჩუმად აგდებს.
+  - beat-ის ამოცნობა კოდში არ არის. Composer: მაქსიმუმ 5 მიმაგრება; აუდიო ~4 MB inline ლიმიტში ითვლება, ამიტომ 3 MB-ზე დიდი მუსიკა უარყოფილია.
+- **Slice 1-ის გეგმა (ახალი pipeline-ის გარეშე):**
+  1. `lib/services/montage/beatPlan.ts` (ახალი, სუფთა ფუნქციები): ffmpeg-ით მუსიკის PCM → ენერგიის onset-ები და ტემპი → თითო კლიპის `startSec` / `endSec` beat-ებზე, მუსიკის სიგრძით (300 წმ-მდე), `musicOnly: true`.
+  2. ერთი სერვერის მოქმედება, ორი ფაზით: `quote` (ანალიზი, გეგმა, ფასი; არაფერს ხარჯავს) და `run` (მხოლოდ დადასტურების შემდეგ; idempotency key; ფასიანის შემთხვევაში ledger reserve + `recordJobReservation` + refund შეცდომისას; `generation_jobs`-ში პროგრესი; ffprobe QC; audit log). ის არსებულ `runMontage`-ს იძახებს.
+  3. `bindLiveAgent.ts`: ReAct აგენტს ემატება tool, რომელიც მხოლოდ quote-ს ამზადებს; შესრულება მხოლოდ მომხმარებლის დადასტურებით (ასე იხსნება „media tool არ არის“ შეზღუდვა ხარჯის რისკის გარეშე).
+  4. OmniStudio: ≥2 ვიდეო + 1 აუდიო + მონტაჟის განზრახვა → ყველა ფაილი `uploadBigFile`-ით → quote ბარათი ჩატში → დადასტურება → MP4 იმავე ჩატში (player, Download), Library-ში. ჩუმი remix-ის გზა ამ შემთხვევაში აღარ ირთვება.
+  5. ყველაფერი `AGENT_G_MEDIA_EXEC` flag-ის უკან (default off), რომ PR #50-ის merge-მა ნახევრად აშენებული არაფერი ჩართოს.
+  6. ტესტები: beat planner, quote არ ხარჯავს, იგივე key ორჯერ არ ჭრის, შეცდომა აბრუნებს, სხვისი ფაილი უარყოფილია; შემდეგ E2E Preview-ზე.
+- **GG-ის გადაწყვეტილება:** Agent G-ის მონტაჟის ფასი (დღეს Montage Studio-ში უფასოა; ფასის დამატება ფასების ცხრილის ცვლილებაა). კოდის (Python) sandbox ახალი ინფრასტრუქტურაა: slice 1-ში არ შედის, ცალკე გადაწყვეტილებაა.
+- **DoD (slice 1, „ჩემი კლიპები ამ მუსიკაზე დაამონტაჟე“):** Agent G-ის tool არსებულ lane-ს იძახებს; მხოლოდ მომხმარებლის საკუთარი ფაილები; ფასი ჩატში ჩანს და დადასტურებამდე არაფერი იჭრება; job-ს აქვს პროგრესი, cancel, retry ორმაგი ჩამოჭრის გარეშე, recovery, refund; ffprobe QC; MP4 იმავე ჩატში ირთვება, ჩამოიტვირთება და Library-შია; audit log; E2E Preview-ზე ჩაწერილი მტკიცებულებით.
+
 ## 5. შეჯამება: DONE / PROVEN / NOT PROVEN / BLOCKED / NEXT ACTION
 
 **DONE (კოდი Production-შია):** AUTH-1; ერთიანი admin წესი და `run-migration` 404; request-ით დასახელებული მედიის მფლობელის შემოწმება; share ბმულები მხოლოდ https; ჩუმი fallback-ების მოხსნა (image, text, music, voice); ServiceCatalog და `/hub` → სტუდიო; voice id-ის შემოწმება; avatars `user_id`-ზე; `jobs`-ის ორი გზა დახურული; uploads 50 MB / მხოლოდ მედია; STORAGE-1; ფუნქციების hardening.
@@ -264,10 +285,11 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 8 | GG → Claude | Preview-ზე ერთი director run → ledger-ის შემოწმება → Production flag-ის გადაწყვეტა | V1–V6 blocker |
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
-| 11 | Claude → GG | ~~schema drift-ის ტრიაჟი~~ (ნაწილი 11); რჩება GG-ის 5 გადაწყვეტილება (drift doc-ის ბოლოს) | drift |
+| 11 | Claude → GG | ~~schema drift-ის ტრიაჟი~~ (ნაწილი 11); ~~ობოლი გვერდები~~ (GG, 09:32Z); რჩება GG-ის 4 გადაწყვეტილება (drift doc-ის ბოლოს) | drift |
 | 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); ~~drift-ის სტატიკური ტესტი~~ (ნაწილი 9, 4.11) | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
+| 15 | Claude | **შემდეგი საინჟინრო ეტაპი (GG, 09:32Z, კრიტიკული):** Agent G-ის media შესრულება, ჯერ ერთი სრული slice (კლიპები + მუსიკა → MP4 ჩატში), მერე სხვა სერვისები (4.19, PROJECT_MASTER Section F) | Agent G ორკესტრატორად |
 
 Claude-ის დამოუკიდებელი შემდეგი სამუშაოები (Production / Billing / ბაზის ცვლილების გარეშე): 12-ე რიგი; PR #44-ის #3-ის photoshoot / interior ნაწილი; Vertex Production-ის ზუსტი ბრძანებების მომზადება GG-სთვის. PR #44-ის #2, #4, #5 უკვე ამ branch-ზეა.
 
@@ -319,6 +341,6 @@ Production, DB, env, ფასი არ შეცვლილა. merge და 
 |---|---|
 | ყოველი route-ის და გვერდის import-ის გზა მიყვანილია დაკარგულ ცხრილამდე / ფუნქციამდე, მერე თითო ხელით წაკითხული. 11 ფუნქციიდან არც ერთი ცოცხალ გზაზე არ ტყდება: `debit_wallet_gel` მკვდარია (`deduct: true` არავინ გადასცემს; `filmComposite.ts:1084`), `match_rag_documents` მკვდარია (`useRag: true`-ს კლიენტი არ აგზავნის), დანარჩენი მკვდარ ან გამორთულ გზებზეა | drift doc, „Triage update (2026-10-09)“ |
 | `7cc1a781`: `/api/voice/webhook` და `/api/voice/inbound` `VAPI_WEBHOOK_SECRET`-ის გარეშე ხელმოწერას არ ამოწმებდა: ნებისმიერს შეეძლო `voice_calls`-ში ჩანაწერის შექმნა ნებისმიერი `user_id`-ით. ახლა 503. Production-ის `voice_calls` ცარიელია (0 ჩანაწერი, select), ანუ ცოცხალი Vapi არ იყენებდა | ახალი ტესტი 6 / 6, ძველ კოდზე 2 ვარდება; `voice.spec.ts` dev სერვერზე 4 passed; jest 704 / 704 suite; `tsc` 0; eslint სუფთა |
-| GG-ის გადაწყვეტილებები: 1 ობოლი გვერდების გაუქმება (რეკომენდებული), 2 Deep Research-ის მიგრაცია, 3 Plugins-ის მიგრაცია, 4 Stripe-ის ცხრილები (Stripe Live-თან ერთად), 5 WhatsApp / push ცხრილები | drift doc, „Decisions for the owner“ |
+| GG-ის გადაწყვეტილებები: ~~1 ობოლი გვერდების გაუქმება~~ (GG-მა 09:32Z ბარათზე აირჩია „გაუქმება“: სამივე მისამართი redirect-ს აკეთებს, გვერდის ფაილები წაშლილია, `lib/routing/shellRedirects.test.ts`), 2 Deep Research-ის მიგრაცია, 3 Plugins-ის მიგრაცია, 4 Stripe-ის ცხრილები (Stripe Live-თან ერთად), 5 WhatsApp / push ცხრილები | drift doc, „Decisions for the owner“ |
 
 Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. merge და deploy GG-ის სიტყვას ელის.
