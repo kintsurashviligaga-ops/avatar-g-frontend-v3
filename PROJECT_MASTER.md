@@ -53,7 +53,11 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           BUILT_NOT_PROVEN on PR #50, behind AGENT_G_MEDIA_EXEC (off in Production); AG-8 needs a Preview run by an
           admin. Execution foundation (owner, 11:15Z; Section F-EF): durable lease queue, real cancel, refund outbox,
           typed tool allowlist and sandbox contract built on PR #50; phase-2 decisions (migration, sandbox host,
-          worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. Owner actions in
+          worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. URL-to-Audio (owner, 12:34Z;
+          Section F-AU): link or upload → MP3 in the chat, text + Live Voice, platforms refused with an upload offer,
+          BUILT_NOT_PROVEN on PR #50 (local real-internet + real-ffmpeg E2E passed); AU-8 = the same admin Preview run as
+          AG-8. Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
+          automatically) in BLOCKERS below. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
@@ -143,6 +147,25 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
+  2026-10-09 (Supabase Auth thread, report docs/handoffs/2026-10-09-supabase-auth-security.md on draft PR #51, copy in
+  /mnt/project-files/reports/): root cause PROVEN: myavatar.ge (DNS at Vercel) has no MX, SPF, DKIM or DMARC record
+  (vercel dns ls + dig); Resend shows the domain "Not Started". Production RESEND_API_KEY is set (a probe reached Resend).
+  Code generation PROVEN (14x /admin/generate_link 200, last 2026-10-08 14:42Z). Owner: open myavatar.ge in Resend and
+  paste the DKIM value; Claude adds the records with vercel dns add (additive only); owner presses Verify.
+· AUTH-3 (found and fixed 2026-10-09, PR #51 5216aa7, BUILT_NOT_PROVEN until deploy): a sign-in code request for an
+  address with no account created an unconfirmed user (GoTrue turns an admin magiclink for an unknown address into a
+  sign-up; proven live 12:48Z). Now 'signin' asks public.auth_account_status first and answers 404 no_account. The one
+  probe account (example.com, no mail sent) was deleted ~12:55Z after the owner's card tap (1 auth.users + 1 profiles
+  row; users back to 22).
+· Supabase Auth / security, 2026-10-09 (PR #51 report): Confirm email PROVEN ON (mailer_autoconfirm=false); Google OAuth
+  PROVEN working (8 Google identities, /authorize → /callback 302); GitHub provider on with 0 users (owner may turn it
+  off); Site URL PROVEN https://myavatar.ge; Redirect URLs PARTIAL (the cert alias git-ef1fad/** is missing, owner adds
+  it); leaked-password protection BLOCKED_OWNER (dashboard toggle; the org is on Pro, no upgrade needed); table RLS PROVEN
+  52/52 (anon and a signed-in stranger see 0 rows); 31 SECURITY DEFINER functions, none callable by anon/authenticated,
+  all with a fixed search_path; storage PROVEN (public read only on music, renders private); admin: anonymous probes on
+  myavatar.ge PROVEN refused (401/403/404, forged cookie 403), signed-in non-admin BUILT_NOT_PROVEN live;
+  /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
+  (PR #51, BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
   Production is a separate owner decision (env + deploy).
 · Part 0 item 7 (BLOCKED_OWNER): owner sends a photo of Billing → Reports (project gen-lang-client-0671348730, group by SKU)
@@ -168,7 +191,8 @@ BLOCKERS:
   session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card was stale in
   Production; fixed (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
   Lyria) and deployed with PR #48 (7126682, 2026-10-09 ~07:13Z); /api/health/providers and the Lyria miss report fixed
-  the same way (505066c4), same deploy. Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
+  the same way (505066c4), same deploy. 'Confirm email' PROVEN ON 2026-10-09 (Supabase Auth thread); leaked-password
+  protection is still the owner's toggle.
 · renders bucket (P2): FIXED 2026-10-09 07:14Z: 20261009b applied on the owner's "Deploy + renders" (07:08:11Z);
   storage.buckets reads public = false (494 objects), the public object URL answers 400 (certification §A).
 · Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
@@ -942,6 +966,33 @@ F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
        (Playwright 4/4, routes mocked).
 ◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; the
        authorized run on a Preview needs an admin session (handoff §7 step 1).
+F-AU. URL-TO-AUDIO / MEDIA EXTRACTION (owner, 2026-10-09 12:34Z, Master Task; handoff
+  docs/handoffs/2026-10-09-agent-g-url-to-audio.md). A video or audio link (or one upload) + "ამ ვიდეოდან MP3 ამოიღე" →
+  plan card → Start → MP3 in the same chat bubble. On PR #50 (f566264e, 780b3426) behind AGENT_G_MEDIA_EXEC; nothing
+  deployed, migrated or switched on; free (no model or provider is called, FFmpeg only).
+◐ AU-1 BUILT_NOT_PROVEN. Link + rights check: 32 platforms refused by every page and CDN host, streams (HLS/DASH) refused,
+       before any request (lib/agent/media/audioSource.ts); the link must open on a public host and serve a video/audio
+       file (lib/web/publicFetch). Rights: licensed (Wikimedia Commons API, HTTP Link rel=license), own (the caller's
+       upload), else unverified and the card says Start only for the user's own or licensed file.
+◐ AU-2 BUILT_NOT_PROVEN. Only direct media files on public hosts; the source rule re-checked on every redirect hop; a
+       leased worker (audioWorker.ts) runs ffmpeg-static: MP3 192 kbps CBR, stereo, 44.1 kHz, 200 MB / 60 min caps.
+◐ AU-3 BUILT_NOT_PROVEN. Same bubble: player with the file name, "0:05 · 120 KB · MP3 192 kbps", Download, Save to
+       Library. MP3 in the private renders bucket (audio/extract-<job>.mp3), 7-day signed link.
+◐ AU-4 BUILT_NOT_PROVEN. One generation_jobs row per signed quote (idempotent Start), the F-EF lease queue (90 s lease,
+       15 s heartbeat, one retry), Stop kills ffmpeg, status read + per-minute sweep recover orphans, qcMp3 before
+       delivery, audit.agent_g.media op audio_extract.
+◐ AU-5 BUILT_NOT_PROVEN. Platform / stream / page / unreachable link → refusal naming the platform + "Upload a file"
+       (file picker, request pre-typed, "rights: yours" plan). No yt-dlp, no extractor, no workaround of any kind.
+◐ AU-6 BUILT_NOT_PROVEN. Text: the chat's own branch and the ReAct tool quote_audio_from_link (plans only, returns
+       audioQuote). Live Voice: extract_audio plan / start (only with confirmed "yes") / stop, same card, the plan read
+       back as an [App] note. Not tried on a real Gemini Live call.
+◐ AU-7 BUILT_NOT_PROVEN. Reuses the montage shape, generation_jobs queue, sweep, quote token, audit stream; the job
+       follower moved to lib/agent/media/jobFollow.ts for both. Registry: audio_extract_run. No new provider.
+□ AU-8 MISSING. Preview run with an admin session (same as AG-8): job id, the MP3 and a screenshot.
+       Local proof 2026-10-09 13:01Z: real internet fetch of MDN shared-assets flower.mp4 (published for reuse) + real
+       ffmpeg + the real queue code (storage and DB local) → MP3 5.09 s, 122,941 B, 192 kb/s 44.1 kHz stereo, QC passed;
+       YouTube refused before any request. Playwright tests/agent-g-audio.spec.ts 5/5 (routes mocked, real MP3); jest
+       725 suites / 11,188 passed; tsc clean; build 207 pages.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PART 0 — PHASE 0 (OWNER ACTION REQUIRED)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
