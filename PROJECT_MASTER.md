@@ -61,7 +61,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           never draws a job a chat card already shows. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
           the progress card (components/studio/ui/LoadingLoop.tsx; poster only under reduced motion / Save-Data), PR #50.
           Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
-          automatically) in BLOCKERS below. Owner actions in
+          automatically) in BLOCKERS below; email sign-up by code is broken in Production (AUTH-4) until PR #51
+          reaches main (fix PROVEN on its Preview 15:27:39Z). Owner actions in
           final-launch-certification.md §Y (Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
@@ -163,13 +164,22 @@ BLOCKERS:
   each Verified). Live on Production (owner's hands, Vercel + auth logs): email code log-in (KA) PROVEN 14:17Z (send 200,
   Resend accepted, generate_link 200, 8-digit code in the inbox, /verify 200 login 14:17:43Z); password reset (EN)
   PROVEN 14:26Z (myavatar.ge@gmail.com, a non-admin: recovery code → /verify 200 → PUT /user 200 → login with the new
-  password 14:26:51Z). Signed-in non-admin refused PROVEN live 14:50Z (myavatar.ge@gmail.com signed in 14:49:59Z, /en/admin showed "Admin access restricted", server log "[admin] access denied" for that address 14:50:00Z). Still open:
-  sign-up by code (RU, pending: needs a new address the owner owns). Resend "Auto configure" is not used.
+  password 14:26:51Z). Signed-in non-admin refused PROVEN live 14:50Z (myavatar.ge@gmail.com signed in 14:49:59Z, /en/admin showed "Admin access restricted", server log "[admin] access denied" for that address 14:50:00Z). Sign-up
+  by code: see AUTH-4 (FAILED on Production, fix PROVEN on the PR #51 Preview). Resend "Auto configure" is not used.
 · AUTH-3 (found and fixed 2026-10-09, PR #51 5216aa7, BUILT_NOT_PROVEN until deploy): a sign-in code request for an
   address with no account created an unconfirmed user (GoTrue turns an admin magiclink for an unknown address into a
   sign-up; proven live 12:48Z). Now 'signin' asks public.auth_account_status first and answers 404 no_account. The one
   probe account (example.com, no mail sent) was deleted ~12:55Z after the owner's card tap (1 auth.users + 1 profiles
   row; users back to 22).
+· AUTH-4 (found 2026-10-09; email sign-up by code FAILED on Production for everyone): GoTrue voids a pending code when
+  the sign-up takeover guard rotates the password, so every sign-up code mailed was already dead. Fix 776c7ff on PR #51
+  PROVEN on the PR #51 Preview 15:27:39Z (the owner signed up, RU; auth log generate_link → PUT /admin/users →
+  generate_link → /verify 200 user_signedup). Production stays FAILED until PR #51 reaches main (owner's word).
+  Follow-ups on PR #51, BUILT_NOT_PROVEN live: 6aa0770 (a mailto: address pasted from a link is read as the address; an
+  address GoTrue refuses answers 400 invalid_email, not "could not send"); adc28d7 (the sign-up profile step refuses a
+  name equal to the new password, KA/EN/RU; Playwright auth-sheet 8/8). Report §8/§9 (d73a5d6), copy in
+  /mnt/project-files/reports/. Email auth now: OTP log-in, password reset and Resend PROVEN on Production; sign-up
+  PROVEN on the Preview only; AUTH-3 and AUTH-4 both wait on PR #51 → main.
 · Supabase Auth / security, 2026-10-09 (PR #51 report): Confirm email PROVEN ON (mailer_autoconfirm=false); Google OAuth
   PROVEN working (8 Google identities, /authorize → /callback 302); GitHub provider on with 0 users (owner may turn it
   off); Site URL PROVEN https://myavatar.ge; Redirect URLs PARTIAL (the cert alias git-ef1fad/** is missing, owner adds
@@ -183,8 +193,8 @@ BLOCKERS:
   APIs share the one isAdmin() rule, unit-tested); 14:45:17Z the owner removed the one panel-granted admin
   (DELETE /api/admin/admins 200): public.admin_emails has 0 rows, the only admins are the 2 built-in addresses, no
   app_metadata role grants admin; email OTP log-in and reset PROVEN live (AUTH-2 above); Supabase Auth VERIFIED
-  (PR #51 report 55e1a84; still open: sign-up by code (RU), the optional cert-alias Redirect URL, and AUTH-3 until
-  PR #51 reaches main);
+  (PR #51 report 55e1a84; still open: the optional cert-alias Redirect URL, and AUTH-3 + AUTH-4 (sign-up by code,
+  PROVEN on the PR #51 Preview 15:27:39Z) until PR #51 reaches main);
   /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
   (PR #51, BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in

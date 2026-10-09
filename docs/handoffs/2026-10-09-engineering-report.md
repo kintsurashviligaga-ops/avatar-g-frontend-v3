@@ -93,8 +93,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | # | სფერო | სტატუსი | პასუხისმგებელი | §55 blocker? |
 |---|---|---|---|---|
-| 1 | Auth / Resend | **RESOLVED** (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live; კოდით რეგისტრაცია (RU) ჯერ არ შემოწმებულა | GG (RU რეგისტრაციის E2E) | აღარ |
-| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 (PR #51) Production-ში არ არის | GG (PR #51-ის merge; სურვილისამებრ cert-alias Redirect URL) | არა |
+| 1 | Auth / Resend | **RESOLVED** Resend-ისთვის (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live. **AUTH-4:** კოდით რეგისტრაცია Production-ში ყველასთვის FAILED (GoTrue კოდს აუქმებს, როცა takeover-ის დაცვა პაროლს ცვლის); fix `776c7ff` PR #51-ზე, PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU) | GG (PR #51 → main) | კი, მხოლოდ ელფოსტით რეგისტრაციისთვის (Google-ით რეგისტრაცია მუშაობს) |
+| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 და AUTH-4 (PR #51) Production-ში არ არის | GG (PR #51-ის merge; სურვილისამებრ cert-alias Redirect URL) | არა |
 | 3 | Vertex migration | Preview-ზე PROVEN, Production-ში არა | GG (IAM + env), Claude (შემოწმება) | არა პირდაპირ (provider boundary-ს ნაწილი) |
 | 4 | Provider boundary | **FAILED** | GG (action 9), შემდეგ Claude | კი |
 | 5 | Video Director V1–V6 | BUILT_NOT_PROVEN | GG (Preview-ზე ერთი გაშვება), Claude | კი |
@@ -114,7 +114,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
-- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. დარჩა: კოდით რეგისტრაცია (RU). ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. კოდით რეგისტრაცია Production-ში FAILED (AUTH-4); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU; auth log: generate_link → PUT /admin/users → generate_link → /verify 200 user_signedup). PR #51-ზე ასევე `6aa0770` (mailto: მისამართი; GoTrue-ს უარი → 400 invalid_email) და `adc28d7` (სახელი ≠ ახალი პაროლი), BUILT_NOT_PROVEN live. Production-ში მოხვდება, როცა PR #51 main-ს მიაღწევს (GG-ის სიტყვა). ქვემოთ თავდაპირველი ჩანაწერია.
 - **სტატუსი (თავდაპირველი):** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
 - **პასუხისმგებელი:** GG.
 - **დამოკიდებულება:** `myavatar.ge`-ის DNS-ზე წვდომა; Resend ანგარიში, რომლის გასაღებიც `RESEND_API_KEY`-შია.
