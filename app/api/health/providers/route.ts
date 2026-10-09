@@ -6,6 +6,11 @@ import { DEEPSEEK_DEFAULT_MODEL, deepseekConfigured } from '@/lib/ai/deepseekCli
 import { GEMINI_MODELS } from '@/lib/gemini/client';
 import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { runwayModel } from '@/lib/ai/runway';
+import { geminiFrameModel } from '@/lib/ai/geminiImage';
+import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
+import { resolveModel } from '@/lib/veo/capabilities';
+import { veoTransport } from '@/lib/veo/engine';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,6 +35,8 @@ export async function GET(request: NextRequest) {
     if (!gate.ok) return NextResponse.json({ error: gate.reason }, { status: user ? 403 : 401 });
 
     const has = (...names: string[]) => names.some((n) => String(process.env[n] || '').trim().length > 0);
+    const googleOnly = isGoogleOnly();
+    const veo = veoTransport();
 
     // Text-LLM keys. Only `gemini` is a brain llmText uses (R7); the rest show which forbidden keys are still bound.
     const text = {
@@ -60,13 +67,24 @@ export async function GET(request: NextRequest) {
         ltx: has('LTX_API_KEY'),
         udio: has('UDIO_API_KEY'),
       },
-      // Active model config (P90) — base image defaults to FLUX 1.1 Pro unless IMAGE_PRIMARY_PROVIDER=nanobanana;
-      // video clips read REPLICATE_VIDEO_MODEL (a v1.6 value here is the usual "Kling v1.6" cause).
+      // The engines the code runs today (the same reads as lib/pipeline/statusAgent). Google-only (VIDEO_GOOGLE_ONLY, on by
+      // default): film clips are Veo alone and the storyboard/anchor frames are Gemini's image model. The Replicate legs
+      // (Kling clips via REPLICATE_VIDEO_MODEL, the FLUX anchor behind AUTO_ANCHOR_FRAME=1) run only with it switched off.
       pipeline: {
+        googleOnly,
+        // Chat text-to-image (ServiceManager.resolveImageProvider): FLUX 1.1 Pro on Replicate unless IMAGE_PRIMARY_PROVIDER=nanobanana.
         imageBase: /^nanobanana$/i.test((process.env.IMAGE_PRIMARY_PROVIDER || '').trim()) ? 'NanoBanana' : 'FLUX 1.1 Pro',
-        videoClipModel: (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim(),
-        videoPinnedToV16: /v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim()),
-        anchor: /^(fast|schnell)$/i.test((process.env.ANCHOR_MODEL || '').trim()) ? 'FLUX Schnell' : 'FLUX 1.1 Pro',
+        videoClipEngine: googleOnly ? 'Veo' : 'Veo → Runway/Kling/LTX (legacy cascade)',
+        // null when Google-only has no Veo route at all: every film leg then fails (no other engine).
+        videoClipModel: googleOnly
+          ? (veo ? resolveModel(veo, STUDIO_DEFAULT_VEO_TIER) : null)
+          : (process.env.REPLICATE_VIDEO_MODEL || 'kwaivgi/kling-v2.1').trim(),
+        videoPinnedToV16: !googleOnly && /v1[.\-]?6/i.test((process.env.REPLICATE_VIDEO_MODEL || '').trim()),
+        anchor: googleOnly
+          ? `Gemini ${geminiFrameModel()}`
+          : /^(1|true|on)$/i.test((process.env.AUTO_ANCHOR_FRAME || '').trim())
+            ? (/^(fast|schnell)$/i.test((process.env.ANCHOR_MODEL || '').trim()) ? 'FLUX Schnell' : 'FLUX 1.1 Pro')
+            : 'nano-banana → FLUX (Replicate)',
       },
       runwayModel: runwayModel(),
     });
