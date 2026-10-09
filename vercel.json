@@ -218,6 +218,10 @@
     {
       "path": "/api/cron/research-sweep",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/agent/media/sweep",
+      "schedule": "* * * * *"
     }
   ]
 }

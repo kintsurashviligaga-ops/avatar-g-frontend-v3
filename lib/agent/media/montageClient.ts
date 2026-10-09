@@ -3,20 +3,24 @@
  * the plan, run it on the user's Start, follow its progress, stop it. Browser-side, every effect injected (fetch, the
  * upload, the clock), so the whole conversation with /api/agent/media/montage is tested without a network.
  *
- * Progress and recovery read the generation_jobs row the run writes (GET /api/orchestrator/jobs, the job tray's own
- * endpoint): `run` is synchronous, so while it is open the row's stage and percent are the progress, and when the
- * connection drops before the answer (a phone locks, a proxy times out) the row still says how the edit ended. The job
- * keeps running server-side either way and lands in the Library.
+ * `run` only queues the edit and answers at once; a worker renders it (lib/agent/media/montageWorker). The chat then
+ * reads the job (GET /api/agent/media/montage?jobId=…) every few seconds for its stage and percent until it is delivered
+ * or failed. That read is also what wakes a worker when none has the job, so a closed connection, a locked phone or a
+ * worker that died costs nothing: the edit goes on server-side and lands in the Library either way.
  */
 import type { MontageQuote } from './montageExec';
 import { codeOf, type ChatErrorCode } from './montageChat';
 
 const ROUTE = '/api/agent/media/montage';
-const JOBS = '/api/orchestrator/jobs';
-/** How often the progress is read while the run is open. */
+/** How often the job is read while it is queued or rendering. */
 export const POLL_MS = 3_000;
-/** How long a dropped run is followed on its job row: the route's own 600 s budget plus the QC probe. */
-export const RECOVER_MS = 11 * 60_000;
+/** How many times `run` is sent when its answer does not come back (it is idempotent per quote). */
+export const SEND_TRIES = 3;
+/**
+ * How long the chat follows a job: a wait for a worker, a first attempt that dies at the route's 600 s budget, the lease
+ * lapsing (90 s), and the one retry at full length.
+ */
+export const FOLLOW_MS = 25 * 60_000;
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -88,66 +92,81 @@ export type ClientRun =
   | { ok: true; videoUrl: string; durationSec: number; aspect: string }
   | { ok: false; code: ChatErrorCode };
 
-interface JobRow { id?: string; status?: string; current_stage?: string | null; pct?: number | null; signed_url?: string | null; result?: Record<string, unknown> | null; error?: string | null }
+/** The job as the route reports it (lib/agent/media/montageExec JobView). */
+type View = Record<string, unknown> & { ok?: unknown; jobId?: unknown; status?: unknown };
 
-async function readRow(f: Fetch, jobId: string, active: boolean): Promise<JobRow | null> {
-  try {
-    const res = await f(`${JOBS}?${active ? 'status=active&' : ''}limit=20`, { credentials: 'include', cache: 'no-store' });
-    const body = await readJson(res);
-    const jobs = Array.isArray(body?.jobs) ? (body!.jobs as JobRow[]) : [];
-    return jobs.find((j) => j.id === jobId) ?? null;
-  } catch {
-    return null;
+const done = (v: View): ClientRun | null => {
+  if (v.status === 'completed' && typeof v.videoUrl === 'string' && v.videoUrl) {
+    return { ok: true, videoUrl: v.videoUrl, durationSec: Number(v.durationSec) || 0, aspect: String(v.aspect ?? '') };
   }
-}
+  // A failed job carries its reason as a code (cancelled, render_failed, qc_failed, a charge that never finished, …).
+  if (v.status === 'failed') return { ok: false, code: codeOf(500, { error: v.error }) };
+  return null;
+};
 
-/** Run the plan the user confirmed, reporting progress; when the answer never arrives, follow the job row to its end. */
+/**
+ * Queue the plan the user confirmed, then follow the job to its end, reporting its progress. Re-sending `run` for the
+ * same quote never starts a second edit (the server replays the job), so an answer lost on the way is simply asked
+ * for again.
+ */
 export async function runAgentMontage(
   deps: RunDeps,
   input: { request: unknown; token: string; prompt?: string; jobId: string },
 ): Promise<ClientRun> {
-  let settled = false;
-  const answer = (async (): Promise<ClientRun | 'dropped'> => {
+  let jobId = input.jobId;
+  let queued = false;
+  const report = (v: View) => deps.onProgress(typeof v.pct === 'number' ? v.pct : null, typeof v.stage === 'string' ? v.stage : null);
+
+  // ── queue it ───────────────────────────────────────────────────────────────────────────────────────────────────────
+  for (let tries = 0; tries < SEND_TRIES && !queued; tries++) {
+    if (tries) await deps.sleep(POLL_MS);
     try {
       const res = await post(deps.fetch, { action: 'run', request: input.request, token: input.token, prompt: input.prompt });
-      const body = await readJson(res);
-      if (res.ok && body?.ok === true && typeof body.videoUrl === 'string') {
-        return { ok: true, videoUrl: body.videoUrl, durationSec: Number(body.durationSec) || 0, aspect: String(body.aspect ?? '') };
+      const body = (await readJson(res)) as View | null;
+      if (res.ok && body?.ok === true) {
+        if (typeof body.jobId === 'string') jobId = body.jobId;
+        const end = done(body);
+        if (end) return end;
+        queued = true;
+        report(body);
+      } else if (body?.error === 'already_failed') {
+        queued = true; // an earlier send of this run got through and the edit ended: its row says how
+      } else if (body && res.status < 500) {
+        return { ok: false, code: codeOf(res.status, body) };
       }
-      // A gateway timeout or an empty body says nothing about the edit itself: the row does.
-      if (!body || res.status === 504) return 'dropped';
-      return { ok: false, code: codeOf(res.status, body) };
+      // No body, or a gateway error: whether it was queued is unknown. Send it again.
     } catch {
-      return 'dropped';
-    } finally {
-      settled = true;
+      // The connection dropped. Send it again.
     }
-  })();
+  }
 
-  const follow = (async () => {
-    while (!settled) {
-      await deps.sleep(POLL_MS);
-      if (settled) return;
-      const row = await readRow(deps.fetch, input.jobId, true);
-      if (row && !settled) deps.onProgress(typeof row.pct === 'number' ? row.pct : null, row.current_stage ?? null);
-    }
-  })();
-
-  const first = await answer;
-  await follow;
-  if (first !== 'dropped') return first;
-
-  // Recovery: the connection went, the job did not. Read its row until it ends.
-  const until = deps.now() + RECOVER_MS;
+  // ── follow it ──────────────────────────────────────────────────────────────────────────────────────────────────────
+  const until = deps.now() + FOLLOW_MS;
+  let unknown = 0;
   while (deps.now() < until) {
-    const row = await readRow(deps.fetch, input.jobId, false);
-    if (row?.status === 'completed') {
-      const url = (row.result?.videoUrl as string | undefined) ?? row.signed_url ?? null;
-      if (url) return { ok: true, videoUrl: url, durationSec: Number(row.result?.durationSec) || 0, aspect: String(row.result?.aspect ?? '') };
-    }
-    if (row?.status === 'failed') return { ok: false, code: /cancel/i.test(row.error ?? '') ? 'cancelled' : 'render_failed' };
-    if (row) deps.onProgress(typeof row.pct === 'number' ? row.pct : null, row.current_stage ?? null);
     await deps.sleep(POLL_MS);
+    let res: Response;
+    let body: View | null;
+    try {
+      res = await deps.fetch(`${ROUTE}?jobId=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store' });
+      body = (await readJson(res)) as View | null;
+    } catch {
+      continue; // offline for a moment: the job goes on
+    }
+    if (res.ok && body?.ok === true) {
+      queued = true;
+      const end = done(body);
+      if (end) return end;
+      report(body);
+      continue;
+    }
+    if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
+      // No such job: the run never got through (or this is not the user's). Give it a few reads, then say so.
+      if (queued || ++unknown >= 3) return { ok: false, code: queued ? 'not_found' : 'network' };
+      continue;
+    }
+    if (res.status === 401 || res.status === 404) return { ok: false, code: codeOf(res.status, body) };
+    // 429 or a 5xx: read again on the next tick.
   }
   return { ok: false, code: 'network' };
 }

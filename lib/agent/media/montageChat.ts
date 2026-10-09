@@ -115,6 +115,9 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
 }
 
 const STAGE: Record<string, Record<Lang, string>> = {
+  queued: { ka: 'რიგშია, მალე დავიწყებ', en: 'Queued, starting shortly', ru: 'В очереди, скоро начну' },
+  starting: { ka: 'მონტაჟს ვიწყებ', en: 'Starting the edit', ru: 'Запускаю монтаж' },
+  retrying: { ka: 'სერვერი შეფერხდა, მონტაჟს თავიდან ვიწყებ', en: 'The server stalled, so I am starting the edit again', ru: 'Сервер остановился, начинаю монтаж заново' },
   resolve: { ka: 'ფაილებს ვამზადებ', en: 'Preparing the files', ru: 'Готовлю файлы' },
   bridge: { ka: 'ფაილებს ვამზადებ', en: 'Preparing the files', ru: 'Готовлю файлы' },
   normalize: { ka: 'კადრებს ვჭრი და ერთ ფორმატში მოვყავარ', en: 'Cutting the shots to one format', ru: 'Нарезаю кадры в один формат' },

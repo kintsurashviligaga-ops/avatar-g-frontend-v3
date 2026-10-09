@@ -1,15 +1,22 @@
 /**
  * lib/agent/media/montageExec.ts — Agent G cuts the user's clips to their music, as a real job.
  *
- * The first media execution Agent G does itself (PROJECT_MASTER Section F, slice 1), in three calls:
+ * The first media execution Agent G does itself (PROJECT_MASTER Section F, slice 1). The request side, in four calls:
  *
  *   quote   the caller's own files only → probe each (clip or track?) → find the track's beat → plan the cuts →
  *           price it. Spends nothing and writes nothing; returns the plan and a signed quote (./quoteToken).
- *   run     only with that quote, which the USER confirmed in the chat: one job row under the quote's job id (so a
- *           second run of the same quote reports the first instead of rendering again) → reserve credits when the
- *           edit costs any → the EXISTING montage lane (lib/services/montage runMontage, ffmpeg-static) → QC of the
- *           master → completed row (= the Library) or failed row + refund. Every step leaves an audit event.
- *   cancel  the owner stops a running job; the render stops before its next leg and nothing is delivered.
+ *   run     only with that quote, which the USER confirmed in the chat: one queued job row under the quote's job id
+ *           (so a second run of the same quote reports the first instead of queueing again) → credits charged when the
+ *           edit costs any → answered at once. The render itself is the worker's (./montageWorker): it holds a lease
+ *           on the row, renews it while the montage lane renders, QCs the master and delivers it. A worker that dies
+ *           is replaced (one retry); a job that cannot finish is failed and its charge paid back exactly once.
+ *   status  the owner reads where the job is; a job no worker has (yet, or any more) is handed to one.
+ *   cancel  the owner stops a queued or running job; its worker kills its ffmpeg at the next heartbeat.
+ *
+ * Execution foundation (owner, 2026-10-09 11:15Z): the queue is lib/orchestrator/jobLease on generation_jobs (no new
+ * table); every state change is a compare-and-set; the refund a failure owes is written WITH the failure (the outbox
+ * entry) and paid by whoever gets there first, through lib/orchestrator/ledger refundDebitByRef, which pays back only
+ * what the ledger shows was debited under the ref, so a debt can never mint credits.
  *
  * No new pipeline and no free-form commands: the only operation is the montage lane, its request is built here from
  * probed numbers and checked by the lane's own validator, and ffmpeg only ever reads files through
@@ -30,7 +37,8 @@ import {
   type MontageRequest,
 } from '@/lib/services/montage/montagePlan';
 import { planBeatCuts, type BeatGrid } from '@/lib/services/montage/beatPlan';
-import { MAX_FILES, aspectFromClips, aspectFromPrompt, montageBody, qcMaster, sortInputs } from './montageAsk';
+import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
+import { MAX_FILES, aspectFromClips, aspectFromPrompt, montageBody, sortInputs } from './montageAsk';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
 
 /**
@@ -42,21 +50,19 @@ export const MONTAGE_PRICE_CREDITS = 0;
 
 export type FileRef = { ok: true; url: string } | { ok: false; reason: 'not_yours' | 'unreadable' };
 
-export interface JobSnap {
-  userId: string;
-  status: string;
-  result: Record<string, unknown> | null;
-}
+/** generation_jobs rows of Agent G montages carry this queue kind in params._exec. */
+export const MONTAGE_KIND = 'agent-montage';
 
 export interface AuditEvent {
   userId: string;
   op: 'montage';
-  phase: 'quote' | 'run' | 'cancel';
-  outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled';
+  phase: 'quote' | 'run' | 'cancel' | 'refund';
+  outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled' | 'retried' | 'lost';
   jobId?: string;
   files?: number;
   credits?: number;
   durationSec?: number;
+  attempt?: number;
   detail?: string;
 }
 
@@ -65,23 +71,22 @@ export interface MontageExecDeps {
   resolveFile(ref: string, userId: string): Promise<FileRef>;
   probe(url: string): Promise<BannerProbe | null>;
   analyzeTrack(url: string): Promise<{ probe: BannerProbe; grid: BeatGrid | null } | null>;
-  render(req: MontageRequest, opts: { jobId: string; shouldContinue: () => Promise<boolean> }): Promise<MontageOutcome>;
-  jobs: {
-    create(input: { id: string; userId: string; params: Record<string, unknown> }): Promise<boolean>;
-    snapshot(id: string): Promise<JobSnap | null>;
-    fail(id: string, error: string): Promise<void>;
-    complete(id: string, out: { signedUrl: string; result: Record<string, unknown> }): Promise<void>;
-  };
+  /** The montage lane. Aborting `signal` kills the ffmpeg of the leg that is running; `onStage` reports each leg. */
+  render(req: MontageRequest, opts: { jobId: string; signal: AbortSignal; onStage: (step: string, pct: number) => Promise<unknown> }): Promise<MontageOutcome>;
+  /** generation_jobs as a lease queue (lib/orchestrator/jobLease). */
+  store: LeaseStore;
   billing: {
     reserve(userId: string, credits: number, ref: string): Promise<{ proceed: boolean; charged: boolean; reason: string }>;
-    recordReservation(jobId: string, r: { ref: string; credits: number }): Promise<void>;
-    refund(userId: string, credits: number, ref: string, charged: boolean): Promise<void>;
+    /** Pay back what the ledger shows was debited under `ref` (at most `credits`), once. 'nothing' = no debit to pay back. */
+    refund(userId: string, ref: string, credits: number): Promise<'refunded' | 'nothing' | 'error'>;
   };
   audit(ev: AuditEvent): Promise<void>;
   /** The quote-signing key; empty = quotes cannot be made (fail closed). */
   key(): string;
   now(): number;
   newId(): string;
+  /** Calls `tick` every `ms` until the returned function is called (the worker's heartbeat). */
+  every(ms: number, tick: () => Promise<void>): () => void;
 }
 
 export type MontageErrorCode =
@@ -115,9 +120,14 @@ export interface MontageQuote {
 }
 
 export type QuoteResult = { ok: true; quote: MontageQuote; request: MontageRequest; token: string } | MontageError;
-export type RunResult =
-  | { ok: true; jobId: string; videoUrl: string; durationSec: number; aspect: string; replay: boolean; qc?: string[] }
-  | (MontageError & { problems?: string[] });
+
+/** Where a job is, as its owner sees it. */
+export type JobView =
+  | { ok: true; jobId: string; status: 'queued' | 'running'; stage: string | null; pct: number; attempt: number }
+  | { ok: true; jobId: string; status: 'completed'; videoUrl: string; durationSec: number; aspect: string }
+  | { ok: true; jobId: string; status: 'failed'; error: MontageErrorCode };
+
+export type RunResult = (JobView & { replay: boolean }) | MontageError;
 
 const err = (error: MontageErrorCode, message: string, extra: Partial<MontageError> = {}): MontageError =>
   ({ ok: false, error, message, ...extra });
@@ -232,10 +242,59 @@ export interface RunInput {
   prompt?: unknown;
 }
 
-const CANCELLED = 'cancelled by the user';
+export const CANCELLED = 'cancelled by the user';
 
-/** Run a quote the user confirmed. Never twice for one quote; refunds whatever it charged when it does not deliver. */
-export async function runMontageJob(deps: MontageExecDeps, input: RunInput): Promise<RunResult> {
+/** The error column of a failed row → the code the chat speaks. Rows are written `<code>: <detail>`. */
+export function codeOfRowError(error: string | null): MontageErrorCode {
+  const e = error ?? '';
+  if (/^cancel/i.test(e)) return 'cancelled';
+  for (const code of ['qc_failed', 'insufficient_credits', 'billing_unavailable', 'invalid_request'] as const) {
+    if (e.startsWith(code)) return code;
+  }
+  return 'render_failed';
+}
+
+/** The owner's view of a row. */
+export function viewOf(row: LeaseRow): JobView {
+  if (row.status === 'completed') {
+    const r = row.result ?? {};
+    const url = typeof r.videoUrl === 'string' ? r.videoUrl : row.signedUrl ?? '';
+    return {
+      ok: true, jobId: row.id, status: 'completed', videoUrl: url,
+      durationSec: typeof r.durationSec === 'number' ? r.durationSec : 0, aspect: typeof r.aspect === 'string' ? r.aspect : '',
+    };
+  }
+  if (row.status === 'failed') return { ok: true, jobId: row.id, status: 'failed', error: codeOfRowError(row.error) };
+  return {
+    ok: true, jobId: row.id, status: row.status === 'pending' ? 'queued' : 'running',
+    stage: row.stage, pct: row.pct, attempt: row.exec?.attempt ?? 0,
+  };
+}
+
+/** The charge a row claims, if any. A claim, not a fact: the refund pays back only what the ledger shows. */
+export function reserveOf(row: LeaseRow): { ref: string; credits: number } | null {
+  const r = row.params._reserve as { ref?: unknown; credits?: unknown } | undefined;
+  return r && typeof r.ref === 'string' && typeof r.credits === 'number' && r.credits > 0 ? { ref: r.ref, credits: r.credits } : null;
+}
+
+/** Pay a final row's debt (its refund), then clear it. Safe to call by everyone, any number of times. */
+export async function payDebt(deps: MontageExecDeps, row: LeaseRow): Promise<void> {
+  if (!row.exec?.owe) return;
+  const reserve = reserveOf(row);
+  const paid = reserve ? await deps.billing.refund(row.userId, reserve.ref, reserve.credits) : 'nothing';
+  if (paid === 'error') {
+    await deps.audit({ userId: row.userId, op: 'montage', phase: 'refund', outcome: 'failed', jobId: row.id, credits: reserve?.credits, detail: 'refund did not land; the sweep retries it' });
+    return;
+  }
+  await settled(deps.store, row.id);
+  await deps.audit({ userId: row.userId, op: 'montage', phase: 'refund', outcome: 'ok', jobId: row.id, credits: reserve?.credits, detail: paid });
+}
+
+/**
+ * Queue a quote the user confirmed. Never twice for one quote; charges (when the edit costs anything) only after its
+ * row exists, holding the row from the workers until the charge landed. The render is the worker's.
+ */
+export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput): Promise<RunResult> {
   const { userId } = input;
   const valid = validateMontageRequest(input.request);
   if (!valid.ok || !valid.request) return err('invalid_request', valid.error ?? 'The edit is not valid.');
@@ -251,11 +310,15 @@ export async function runMontageJob(deps: MontageExecDeps, input: RunInput): Pro
   const { j: jobId, c: credits } = check.claims;
   const totalSec = timelineDuration(request.shots);
   const prompt = typeof input.prompt === 'string' ? input.prompt.trim().slice(0, 500) : '';
+  const ref = produceRef('agent-montage', jobId);
 
   // ── one job per quote: the insert is the idempotency check ───────────────────────────────────────────────────────
-  const created = await deps.jobs.create({
+  const put = await enqueue(deps.store, {
     id: jobId,
     userId,
+    serviceType: 'film',
+    kind: MONTAGE_KIND,
+    hold: credits > 0,
     params: {
       subtype: 'montage',
       via: 'agent-g',
@@ -264,83 +327,67 @@ export async function runMontageJob(deps: MontageExecDeps, input: RunInput): Pro
       orientation: request.aspect === '9:16' ? 'vertical' : 'landscape',
       durationSec: totalSec,
       ...(prompt ? { prompt } : {}),
+      _job: { request },
+      ...(credits > 0 ? { _reserve: { ref, credits } } : {}),
     },
   });
-  if (!created) {
-    const snap = await deps.jobs.snapshot(jobId);
-    if (!snap || snap.userId !== userId) return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'replayed', jobId, detail: snap.status });
-    const url = typeof snap.result?.videoUrl === 'string' ? snap.result.videoUrl : '';
-    if (snap.status === 'completed' && url) {
-      const d = typeof snap.result?.durationSec === 'number' ? snap.result.durationSec : totalSec;
-      return { ok: true, jobId, videoUrl: url, durationSec: d, aspect: request.aspect, replay: true };
-    }
-    if (snap.status === 'failed') return err('already_failed', 'This edit already ran and did not finish. Ask again for a fresh quote.', { jobId });
-    return err('in_progress', 'This edit is already being made.', { jobId });
+  if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
+  if (put === 'exists') {
+    const row = await deps.store.read(jobId);
+    if (!row || row.userId !== userId) return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
+    const view = viewOf(row);
+    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'replayed', jobId, detail: view.status });
+    if (view.status === 'failed') return err('already_failed', 'This edit already ran and did not finish. Ask again for a fresh quote.', { jobId });
+    return { ...view, replay: true };
   }
 
-  // ── pay, when it costs anything ────────────────────────────────────────────────────────────────────────────────
-  const ref = produceRef('agent-montage', jobId);
-  let charged = false;
+  // ── pay, when it costs anything; the row is held from the workers until then ────────────────────────────────────
   if (credits > 0) {
     const r = await deps.billing.reserve(userId, credits, ref);
     if (!r.proceed) {
       const code = r.reason === 'insufficient' ? 'insufficient_credits' : 'billing_unavailable';
-      await deps.jobs.fail(jobId, code);
+      await failPending(deps.store, jobId, code);
       await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'refused', jobId, credits, detail: code });
       return err(code, code === 'insufficient_credits' ? 'Not enough credits for this edit.' : 'Billing is unavailable; nothing was charged.', { jobId });
     }
-    charged = r.charged;
-    if (charged) await deps.billing.recordReservation(jobId, { ref, credits });
+    if (!(await release(deps.store, jobId))) {
+      // Cancelled while it was being charged (the cancel owes the refund and paid it), or the store is down.
+      const row = await deps.store.read(jobId);
+      if (row?.status === 'failed') return { ...viewOf(row), replay: false };
+      return err('jobs_unavailable', 'The job could not be started; anything charged is paid back by the sweep.', { jobId });
+    }
   }
-  await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec, detail: 'started' });
-
-  const isCancelled = async () => (await deps.jobs.snapshot(jobId))?.status === 'failed';
-  const stop = async (code: MontageErrorCode, message: string, detail: string, problems?: string[]): Promise<RunResult> => {
-    const cancelled = code === 'cancelled';
-    if (!cancelled) await deps.jobs.fail(jobId, detail);
-    await deps.billing.refund(userId, credits, ref, charged);
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: cancelled ? 'cancelled' : 'failed', jobId, credits, detail });
-    return { ...err(code, message, { jobId }), ...(problems ? { problems } : {}) };
-  };
-
-  // ── render: the existing montage lane ──────────────────────────────────────────────────────────────────────────
-  let outcome: MontageOutcome;
-  try {
-    outcome = await deps.render(request, { jobId, shouldContinue: async () => !(await isCancelled()) });
-  } catch (e) {
-    outcome = { ok: false, step: 'resolve', error: e instanceof Error ? e.message : 'render failed' };
-  }
-  if (await isCancelled()) return stop('cancelled', 'The edit was cancelled.', CANCELLED);
-  if (!outcome.ok) return stop('render_failed', `The edit failed at ${outcome.step}.`, `${outcome.step}: ${outcome.error}`.slice(0, 300));
-
-  // ── QC before delivery ─────────────────────────────────────────────────────────────────────────────────────────
-  const problems: string[] = [];
-  if (!outcome.result.hasMusic) problems.push('the music did not mix');
-  const qc = qcMaster(await deps.probe(outcome.result.videoUrl), totalSec);
-  problems.push(...qc.problems);
-  if (problems.length) return stop('qc_failed', 'The finished edit failed its check and was not delivered.', `qc: ${problems.join('; ')}`, problems);
-  if (await isCancelled()) return stop('cancelled', 'The edit was cancelled.', CANCELLED);
-
-  const videoUrl = outcome.result.videoUrl;
-  await deps.jobs.complete(jobId, {
-    signedUrl: videoUrl,
-    result: { videoUrl, subtype: 'montage', via: 'agent-g', durationSec: qc.durationSec, aspect: request.aspect },
-  });
-  await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, credits, durationSec: qc.durationSec, detail: 'delivered' });
-  return { ok: true, jobId, videoUrl, durationSec: qc.durationSec, aspect: request.aspect, replay: false };
+  await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec, detail: 'queued' });
+  return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }
 
-/** The owner stops a running edit. */
+/** A pending row no worker took within this long is handed to one by the owner's status read. */
+export const KICK_AFTER_MS = 15_000;
+
+/** Where the owner's job is, and whether it needs a worker now (none took it, or its worker stopped renewing). */
+export async function montageJobStatus(
+  deps: MontageExecDeps,
+  input: { userId: string; jobId: unknown },
+): Promise<{ view: JobView; needsWorker: boolean } | MontageError> {
+  const jobId = typeof input.jobId === 'string' ? input.jobId : '';
+  const row = jobId ? await deps.store.read(jobId) : null;
+  if (!row || row.userId !== input.userId || row.exec?.kind !== MONTAGE_KIND) return err('not_found', 'No such edit.');
+  const now = deps.now();
+  const needsWorker = claimable(row, now) && (row.status === 'processing' || now - row.createdAt >= KICK_AFTER_MS);
+  return { view: viewOf(row), needsWorker };
+}
+
+/** The owner stops a queued or running edit. Its worker kills the render at its next heartbeat; a charge is paid back now. */
 export async function cancelMontageJob(
   deps: MontageExecDeps,
   input: { userId: string; jobId: unknown },
 ): Promise<{ ok: true } | MontageError> {
   const jobId = typeof input.jobId === 'string' ? input.jobId : '';
-  const snap = jobId ? await deps.jobs.snapshot(jobId) : null;
-  if (!snap || snap.userId !== input.userId) return err('not_found', 'No such edit.');
-  if (snap.status === 'completed' || snap.status === 'failed') return err('not_running', 'This edit is no longer running.', { jobId });
-  await deps.jobs.fail(jobId, CANCELLED);
+  const before = jobId ? await deps.store.read(jobId) : null;
+  if (!before || before.exec?.kind !== MONTAGE_KIND) return err('not_found', 'No such edit.');
+  const r = await cancel(deps.store, jobId, input.userId, CANCELLED, reserveOf(before) !== null);
+  if (!r.ok) return r.reason === 'final' ? err('not_running', 'This edit is no longer running.', { jobId }) : err('not_found', 'No such edit.');
   await deps.audit({ userId: input.userId, op: 'montage', phase: 'cancel', outcome: 'cancelled', jobId });
+  await payDebt(deps, r.row);
   return { ok: true };
 }

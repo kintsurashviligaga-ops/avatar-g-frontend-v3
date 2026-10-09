@@ -87,9 +87,19 @@ describe('quote_montage_to_music (Agent G media execution, quote only)', () => {
     const t = buildLiveToolRegistry(media()).find((x) => x.name === 'quote_montage_to_music')!;
     await t.run({});
     await t.run({ aspect: '16:9' });
-    await expect(t.run({})).resolves.toMatchObject({ error: 'quote_limit' });
+    await expect(t.run({})).resolves.toMatchObject({ error: 'call_limit' });
     expect(mockQuote).toHaveBeenCalledTimes(2);
     mockQuote.mockReset();
+  });
+
+  test('the model shapes the plan, never the files: a bad aspect or length is an observation and quotes nothing', async () => {
+    const t = buildLiveToolRegistry(media()).find((x) => x.name === 'quote_montage_to_music')!;
+    await expect(t.run({ aspect: '4:5' })).resolves.toMatchObject({ error: 'invalid_input' });
+    await expect(t.run({ targetSec: 9_999 })).resolves.toMatchObject({ error: 'invalid_input' });
+    expect(mockQuote).not.toHaveBeenCalled();
+    mockQuote.mockResolvedValueOnce(QUOTE);
+    await t.run({ targetSec: '30' }); // a number sent as text is read as the number
+    expect(mockQuote.mock.calls[0][1]).toMatchObject({ targetSec: 30, files: ['u/a.mp4', 'u/b.mp4', 'u/c.mp4', 'u/song.mp3'] });
   });
 
   test('the system prompt says the plan starts only on Confirm when the tool is on', async () => {
@@ -142,7 +152,8 @@ test('kill switch off: web_search stays on Tavily', async () => {
 });
 
 test('an empty query never reaches a provider', async () => {
-  await expect(tool('web_search').run({})).resolves.toEqual({ error: 'query required' });
+  await expect(tool('web_search').run({})).resolves.toMatchObject({ error: 'invalid_input' });
+  await expect(tool('web_search').run({ query: '   ' })).resolves.toMatchObject({ error: 'invalid_input' });
   expect(mockGrounded).not.toHaveBeenCalled();
   expect(mockTavily).not.toHaveBeenCalled();
 });

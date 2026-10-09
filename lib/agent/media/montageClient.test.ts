@@ -1,9 +1,9 @@
 /** @jest-environment node */
 /**
- * The studio's calls for Agent G's montage, with a scripted server: uploads, the plan, the run with its progress, a
- * dropped connection followed to the job's end, and Stop.
+ * The studio's calls for Agent G's montage, with a scripted server: uploads, the plan, the run queued and followed to
+ * its end with its progress, a lost answer sent again, and Stop.
  */
-import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage, POLL_MS, RECOVER_MS } from './montageClient';
+import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage, FOLLOW_MS, POLL_MS, SEND_TRIES } from './montageClient';
 
 type Call = { url: string; body?: Record<string, unknown> };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -65,64 +65,111 @@ describe('run', () => {
     let t = 0;
     return { now: () => t, sleep: async (ms: number) => { t += ms; await Promise.resolve(); } };
   };
+  const QUEUED = { ok: true, jobId: 'job-1', status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
+  const running = (pct: number, stage = 'stitch') => ({ ok: true, jobId: 'job-1', status: 'running', stage, pct, attempt: 1 });
+  const DELIVERED = { ok: true, jobId: 'job-1', status: 'completed', videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' };
+  const reads = (s: { calls: Call[] }) => s.calls.filter((c) => !c.body);
 
-  test('posts the signed plan once, reports the row\'s progress while it is open, and returns the master', async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    let polls = 0;
-    const s = server(async (c) => {
-      if (c.url.startsWith('/api/orchestrator/jobs')) {
-        polls += 1;
-        if (polls === 2) release();
-        return json(200, { jobs: [{ id: 'other', pct: 99 }, { id: 'job-1', status: 'processing', pct: 40 + polls, current_stage: 'stitch' }] });
-      }
-      await gate;
-      return json(200, { ok: true, jobId: 'job-1', videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9', replay: false });
-    });
+  test('queues the signed plan once, follows the job with its progress, and returns the master', async () => {
+    const views = [running(10, 'starting'), running(55), DELIVERED];
+    const s = server((c) => (c.body ? json(200, QUEUED) : json(200, views.shift())));
     const progress: Array<[number | null, string | null]> = [];
     const r = await runAgentMontage(
       { fetch: s.fetch, ...clock(), onProgress: (p, st) => progress.push([p, st]) },
       { request: { shots: [1] }, token: 'tok', prompt: 'p', jobId: 'job-1' },
     );
     expect(r).toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' });
-    expect(s.calls.filter((c) => c.body?.action === 'run')).toEqual([
+    expect(s.calls.filter((c) => c.body)).toEqual([
       { url: '/api/agent/media/montage', body: { action: 'run', request: { shots: [1] }, token: 'tok', prompt: 'p' } },
     ]);
-    expect(progress[0]).toEqual([41, 'stitch']);
-    expect(s.calls.find((c) => c.url.startsWith('/api/orchestrator/jobs'))!.url).toBe('/api/orchestrator/jobs?status=active&limit=20');
+    expect(progress).toEqual([[0, 'queued'], [10, 'starting'], [55, 'stitch']]);
+    expect(reads(s).map((c) => c.url)).toEqual(Array(3).fill('/api/agent/media/montage?jobId=job-1'));
   });
 
-  test('a refusal comes back with its code (an expired plan, a cancel)', async () => {
+  test('a replay of a delivered job answers at once, with no reads', async () => {
+    const s = server(() => json(200, { ...DELIVERED, replay: true }));
+    expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+      .toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' });
+    expect(s.calls).toHaveLength(1);
+  });
+
+  test('a refusal comes back with its code (an expired plan, too few credits)', async () => {
     const r = await runAgentMontage(
       { fetch: server(() => json(409, { ok: false, error: 'quote_expired', message: 'm' })).fetch, ...clock(), onProgress: () => {} },
       { request: {}, token: 't', jobId: 'job-1' },
     );
     expect(r).toEqual({ ok: false, code: 'quote_expired' });
+    expect(await runAgentMontage(
+      { fetch: server(() => json(402, { ok: false, error: 'insufficient_credits', message: 'm' })).fetch, ...clock(), onProgress: () => {} },
+      { request: {}, token: 't', jobId: 'job-1' },
+    )).toEqual({ ok: false, code: 'insufficient_credits' });
   });
 
-  test('a dropped connection is followed on the job row to its end: delivered', async () => {
-    let reads = 0;
+  test('a job that ends failed reads as its reason: cancelled, a failed QC, a render that died twice', async () => {
+    for (const [error, code] of [['cancelled', 'cancelled'], ['qc_failed', 'qc_failed'], ['render_failed', 'render_failed'], ['something_new', 'render_failed']]) {
+      const s = server((c) => (c.body ? json(200, QUEUED) : json(200, { ok: true, jobId: 'job-1', status: 'failed', error })));
+      expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+        .toEqual({ ok: false, code });
+    }
+  });
+
+  test('a lost answer is sent again (the server replays the same job, never a second one), then followed', async () => {
+    let sends = 0;
     const s = server((c) => {
-      if (c.body?.action === 'run') return new Response('upstream timeout', { status: 504 });
-      reads += 1;
-      return json(200, { jobs: [{ id: 'job-1', status: reads < 3 ? 'processing' : 'completed', pct: 80, signed_url: 'https://m/signed.mp4', result: reads < 3 ? null : { videoUrl: 'https://m/out.mp4', durationSec: 12, aspect: '9:16' } }] });
+      if (c.body) {
+        sends += 1;
+        if (sends === 1) return Promise.reject(new Error('reset'));
+        if (sends === 2) return new Response('upstream timeout', { status: 504 });
+        return json(200, { ...QUEUED, replay: true });
+      }
+      return json(200, DELIVERED);
     });
     const r = await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' });
-    expect(r).toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 12, aspect: '9:16' });
-    // Recovery reads every status, not only the active ones: the row it waits for is about to stop being active.
-    expect(s.calls.some((c) => c.url === '/api/orchestrator/jobs?limit=20')).toBe(true);
+    expect(r).toMatchObject({ ok: true, videoUrl: 'https://m/out.mp4' });
+    expect(sends).toBe(3);
   });
 
-  test('a dropped connection whose job was stopped reads as cancelled; one that never ends gives up as network', async () => {
-    const stopped = server((c) => (c.body ? Promise.reject(new Error('reset')) : json(200, { jobs: [{ id: 'job-1', status: 'failed', error: 'cancelled by the user' }] })));
-    expect(await runAgentMontage({ fetch: stopped.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+  test('an earlier send that got through and failed: the job is read for its real reason', async () => {
+    let sends = 0;
+    const s = server((c) => {
+      if (c.body) return ++sends === 1 ? Promise.reject(new Error('reset')) : json(409, { ok: false, error: 'already_failed', message: 'm', jobId: 'job-1' });
+      return json(200, { ok: true, jobId: 'job-1', status: 'failed', error: 'cancelled' });
+    });
+    expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
       .toEqual({ ok: false, code: 'cancelled' });
-    const lost = server((c) => (c.body ? Promise.reject(new Error('reset')) : json(200, { jobs: [] })));
-    const k = clock();
-    expect(await runAgentMontage({ fetch: lost.fetch, ...k, onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+  });
+
+  test('offline for a while, or a busy server, does not end the follow; the job does', async () => {
+    let n = 0;
+    const s = server((c) => {
+      if (c.body) return json(200, QUEUED);
+      n += 1;
+      if (n <= 3) return Promise.reject(new Error('offline'));
+      if (n <= 5) return json(n === 4 ? 429 : 503, { error: 'busy' });
+      return json(200, DELIVERED);
+    });
+    expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+      .toMatchObject({ ok: true });
+    expect(n).toBe(6);
+  });
+
+  test('a run that never got through is "network"; a session that ended is "unauthenticated"; a job that never ends gives up', async () => {
+    const never = server((c) => (c.body ? Promise.reject(new Error('reset')) : json(404, { ok: false, error: 'not_found', message: 'No such edit.' })));
+    expect(await runAgentMontage({ fetch: never.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
       .toEqual({ ok: false, code: 'network' });
-    expect(k.now()).toBeGreaterThanOrEqual(RECOVER_MS);
-    expect(lost.calls.length).toBeLessThanOrEqual(RECOVER_MS / POLL_MS + 3);
+    expect(never.calls.filter((c) => c.body)).toHaveLength(SEND_TRIES);
+    expect(reads(never)).toHaveLength(3);
+
+    const out = server((c) => (c.body ? json(200, QUEUED) : json(401, { error: 'unauthenticated' })));
+    expect(await runAgentMontage({ fetch: out.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+      .toEqual({ ok: false, code: 'unauthenticated' });
+
+    const stuck = server((c) => (c.body ? json(200, QUEUED) : json(200, running(40))));
+    const k = clock();
+    expect(await runAgentMontage({ fetch: stuck.fetch, ...k, onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+      .toEqual({ ok: false, code: 'network' });
+    expect(k.now()).toBeGreaterThanOrEqual(FOLLOW_MS);
+    expect(reads(stuck).length).toBeLessThanOrEqual(FOLLOW_MS / POLL_MS + 1);
   });
 });
 

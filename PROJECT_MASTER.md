@@ -51,7 +51,9 @@ LAST COMMIT: see `git log` on that branch (main = 29e7d67b = Production since ~0
 NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Agent G autonomous media & file
           execution (owner, 2026-10-09 09:32Z, critical), Section F: slice 1 (clips + music → MP4 in the chat) is
           BUILT_NOT_PROVEN on PR #50, behind AGENT_G_MEDIA_EXEC (off in Production); AG-8 needs a Preview run by an
-          admin. Owner actions in
+          admin. Execution foundation (owner, 11:15Z; Section F-EF): durable lease queue, real cancel, refund outbox,
+          typed tool allowlist and sandbox contract built on PR #50; phase-2 decisions (migration, sandbox host,
+          worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
@@ -881,12 +883,11 @@ and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
        the plan as a card (shots, length, BPM, format, price, unused clips named) and starts nothing before Start.
        Price: free (owner's choice 2026-10-09 09:43Z, "უფასო"; pricing table unchanged); the priced path
        (reserve under ref agent-montage:<job>, refund on failure) is built and tested for a later price.
-◐ AG-4 BUILT_NOT_PROVEN / PARTIAL. One generation_jobs row per quote (the quote's job id is the idempotency
-       key: a second run of the same quote replays the result or refuses, never renders twice); stage + percent
-       on the row (the chat card shows them); Stop cancels between steps; a dropped connection is followed on the
-       row for 11 minutes. PARTIAL: a function that dies mid-run leaves the row `processing` until the existing
-       drain-renders reap leg fails it (and refunds a recorded reservation) — that leg runs only when
-       RENDER_DRAINER_ENABLED is set, which this sandbox cannot read in Production.
+◐ AG-4 BUILT_NOT_PROVEN (superseded by EF-1…EF-3 below, 2026-10-09 ~13Z). One generation_jobs row per quote
+       (the quote's job id is the idempotency key: a second run replays the job, never renders twice). `run` only
+       queues; a worker renders under a lease with a 15 s heartbeat; a worker that dies is retried once, then the
+       sweep fails the row and pays the refund it owes; Stop kills the running ffmpeg. The chat follows the job
+       (GET ?jobId=) for up to 25 minutes. No longer depends on RENDER_DRAINER_ENABLED.
 ◐ AG-5 BUILT_NOT_PROVEN. The master is probed before delivery: picture and sound, H.264 + AAC, length within
        max(1 s, 3 %) of the plan, and the track actually mixed; a failure is not shown, fails the job and refunds.
 ◐ AG-6 BUILT_NOT_PROVEN. The master plays in the same chat bubble (player, Download, Share, Save, Edit) and is a
@@ -917,6 +918,30 @@ FILES
   app/api/agent/run (optional `files`), montagePipeline `shouldContinue`.
 NEXT (after AG-8): the same quote → confirm → job → QC → result shape for the other ffmpeg operations (trim,
   captions, aspect, audio mix) — slice 2; a code sandbox needs a host (owner decision, new infrastructure).
+F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
+  docs/handoffs/2026-10-09-agent-g-execution-foundation.md, with the phase-2 decisions and a migration DRAFT that is
+  NOT applied). All on PR #50 behind AGENT_G_MEDIA_EXEC; nothing deployed, migrated or switched on.
+◐ EF-1 BUILT_NOT_PROVEN. Durable queue on generation_jobs, no migration: lease state in params._exec, every change a
+       compare-and-set on its version (lib/orchestrator/jobLease.ts); `run` answers `queued`, a worker renders
+       (lib/agent/media/montageWorker.ts); workers start after the answer, on the owner's status read, and from the
+       per-minute sweep (/api/agent/media/sweep, Production only, inert while the flag is off).
+◐ EF-2 BUILT_NOT_PROVEN. completed/failed are terminal (lib/orchestrator/jobs.ts guards every write and reports whether
+       it landed); a failure that owes a refund records the debt in the same write (outbox), payDebt clears it;
+       reconciliation = sweep + status read; drain-renders leaves leased rows alone; /api/orchestrator/jobs refuses
+       client writes on a leased row.
+◐ EF-3 BUILT_NOT_PROVEN. Lease 90 s, heartbeat 15 s, one retry after a lapsed lease, render/QC failure final at once;
+       cancel SIGKILLs the running ffmpeg (AbortSignal through ffmpegExec; real-ffmpeg test checks the PID is gone).
+◐ EF-4 PARTIAL. Idempotent insert per quote, billing hold → charge → release, refund bounded by the ledger
+       (netDebitedForRef), audit rows. deduct_credits' same-ref race needs migration C (owner).
+◐ EF-5 PARTIAL. Typed allowlist lib/agent/tools/registry.ts (effects read/prepare/quote only; a quote names the confirmed
+       action the user's press runs); the live agent's 4 tools are typed specs. More Studio operations = slice 2.
+□ EF-6 BLOCKED_OWNER. Sandbox contract lib/agent/sandbox/policy.ts (python/node, capped limits, network denied, no
+       secrets) and a runner that refuses everything; a real runner needs an isolated paid host (decision B).
+□ EF-7 MISSING. One Task API for text, live voice and media jobs: design in the handoff §7 step 4.
+◐ EF-8 BUILT_NOT_PROVEN. The master plays in the same bubble with Download; Library via the completed row
+       (Playwright 4/4, routes mocked).
+◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; the
+       authorized run on a Preview needs an admin session (handoff §7 step 1).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PART 0 — PHASE 0 (OWNER ACTION REQUIRED)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
