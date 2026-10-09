@@ -114,6 +114,16 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 - **PROVEN on the PR #51 Preview (13:49:44Z), not yet in Production.** The Preview uses the Production database. Checked first with SQL that the function exists, `service_role` may execute it, and it answers `exists: false` for the probe address. Then, from GG's Mac: `POST /api/auth/lookup` → `{"status":"none"}`; only because of that answer (scripted gate), `POST /api/auth/email-otp/send` `{purpose: "signin"}` for `no-account-probe-2-1009@example.com` → **404 `no_account`**. Auth log 13:49–13:51Z: no `/admin/generate_link` call. SQL after: 22 users, 0 probe rows, 0 users created in the last 15 minutes. Production still runs the old route until PR #51 reaches main (GG's word).
 - **The probe account:** GG chose „delete" on the card at 12:54:05Z. Deleted ~12:55Z with one guarded statement (that id, that address, unconfirmed, never signed in, created 12:48Z): 1 `auth.users` row + 1 `profiles` row. Users back to 22. Nothing else touched.
 
+### 8. Live end-to-end on Production (GG's hands, Claude reads the logs)
+
+| Flow | Status | Evidence |
+|---|---|---|
+| Email OTP log-in (KA) | **PROVEN live** 14:17Z | GG, incognito, https://myavatar.ge/ka, founder address, „კოდით შესვლა": Vercel `POST /api/auth/lookup` 200 (14:17:17Z) → `POST /api/auth/email-otp/send` 200 (14:17:26Z; Resend accepted the mail, no 403) → auth log `/admin/generate_link` 200 (14:17:27Z) → 8-digit code arrived in the inbox (GG's photo) → `/verify` 200 with a `login` event (14:17:43Z) → signed in (photo: studio with the account's balance). Three password attempts before it answered 400 „Invalid login credentials" (14:16:24–14:17:24Z), as they should for a wrong password. |
+| Admin sign-in and panel | PROVEN live 14:12Z | §4. |
+| Password reset + signed-in non-admin refused (EN) | pending | Next: `myavatar.ge@gmail.com` (not an admin) through „Forgot password?" on https://myavatar.ge/en, then `/en/admin`. |
+| Sign-up by code (RU) | pending | Needs a new address GG owns; creates one real account. |
+| Google OAuth, session refresh | PROVEN live | §1, §5 (real traffic). |
+
 ## Owner actions (exact)
 
 1. **Resend domain (launch blocker AUTH-2).** The domain is already added (status Not Started).
