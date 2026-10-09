@@ -187,6 +187,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **მტკიცებულება:** `docs/handoffs/2026-10-08-production-schema-drift.md`.
 - **Regression guard (2026-10-09, ნაწილი 9):** `__tests__/schema-drift.test.ts` + `__tests__/schema-drift.snapshot.json`. Snapshot წაკითხულია Production-იდან 08:25Z-ზე (read-only): 52 ცხრილი, 39 ფუნქცია (pgvector-ის გარეშე), იგივე 52, რაც 2026-10-08-ზე. ტესტი კითხულობს runtime კოდის `.from()` / `.rpc()` სახელებს (literal ან იმავე ფაილის `const`; `.storage.from()` bucket-ია და გამოტოვებულია). დღეს კოდი 166 ცხრილს და 27 ფუნქციას იძახებს; Production-ში არ არის **125 ცხრილი და 11 ფუნქცია**, ისინი გაყინულია `missing`-ში (სია მხოლოდ მცირდება); 5 ფაილი სახელს run time-ში აწყობს (`dynamic`). ახალი სახელი, რომელიც Production-ში არ არის → ტესტი ვარდება. შემოწმდა: `missing`-იდან ცხრილის და ფუნქციის ამოღება, `missing`-ში კოდისთვის უცნობი სახელის ჩამატება, `dynamic`-იდან ფაილის ამოღება → 4 ტესტი ვარდება.
 - **ახლად ნაპოვნი (ტრიაჟისთვის, არაფერი შეცვლილა):** 2026-10-08-ის სიას `const`-ით დასახელებული 3 ცხრილი აკლდა: `research_jobs`, `research_context_files` (Research / Connectors; `lib/research/capabilities.ts` ჯერ ამოწმებს ცხრილს და „მალე“-ს აჩვენებს, ანუ შეგნებულად დახურულია), `user_plugin_settings` (`lib/plugins/settings.ts`). `app/api/invoices/generate` იძახებს `.from('auth.users')`-ს, რაც PostgREST-ში ვერასოდეს იმუშავებს (მკვდარი გზა: `orders` ცხრილიც არ არის, ეკრანი არ იძახებს). 11 ფუნქცია არ არის, მათ შორის `deduct_credits_transaction`, `ensure_user_billing_rows`, `reset_user_credits_if_due` (`lib/billing/enforce.ts`, Stripe webhook), `claim_next_job` (`workers/shared/queue.ts`), `match_rag_documents`.
+- **ტრიაჟი (2026-10-09, ნაწილი 11):** ყველა ცოცხალი გზა ხელით წაკითხულია; შედეგი და GG-ის 5 გადაწყვეტილება `docs/handoffs/2026-10-08-production-schema-drift.md`-ის ბოლო ნაწილშია. მოკლედ: `debit_wallet_gel` მკვდარია (ჩამოჭრას არც ერთი ცოცხალი გზა არ ითხოვს; ფილმი და მუსიკალური ვიდეო თანხას წინასწარ ჭრის), ანუ შემოსავლის დანაკარგი არ არის; RAG მკვდარია; Research და Plugins შეგნებულად დახურულია; სამი ობოლი გვერდი (`/services/workflow`, `/account/invoices`, `/admin/disputes`) მისამართით გახსნისას არ მუშაობს. გასწორდა: Vapi-ს ორი webhook საიდუმლოს გარეშე ხელმოწერას არ ამოწმებდა (`7cc1a781`).
 - **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; ~~სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს~~ (ნაწილი 9).
 
 ### 4.12 Security
@@ -263,7 +264,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 8 | GG → Claude | Preview-ზე ერთი director run → ledger-ის შემოწმება → Production flag-ის გადაწყვეტა | V1–V6 blocker |
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
-| 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
+| 11 | Claude → GG | ~~schema drift-ის ტრიაჟი~~ (ნაწილი 11); რჩება GG-ის 5 გადაწყვეტილება (drift doc-ის ბოლოს) | drift |
 | 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); ~~drift-ის სტატიკური ტესტი~~ (ნაწილი 9, 4.11) | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
@@ -311,3 +312,13 @@ Production, DB, env, ფასი არ შეცვლილა; Supabase-ზ�
 | `tests/landing.spec.ts`: `openDashboard` phone-ზე ამოწმებს, რომ ფურცელი გაიხსნა, მერე Escape-ით ხურავს; ცარიელი Enter-ის ტესტი `/api/analytics/track`-ს ფონურ მოთხოვნად თვლის (ჯობი არ არის). ძველი კომენტარები StrictMode-ის შემოვლაზე (`ui-image.spec.ts`, OmniStudio) განახლდა | `next dev`, ყველა 27 spec: 240 passed, 10 skipped, 1 failed (`landing.spec.ts:389`, სურათის ჩამოსვლა, dev სერვერის ცნობილი ეფექტი, 4.17); production build: `landing` + `ui-image` + `vfx-genjutsu` 88 / 88; jest 703 / 703 suite; `next build` წარმატებით |
 
 Production, DB, env, ფასი არ შეცვლილა. merge და deploy GG-ის სიტყვას ელის.
+
+## 11. დამატება: schema drift-ის ტრიაჟი (2026-10-09 09:10–09:50Z; მხოლოდ branch-ზე)
+
+| რა | მტკიცებულება |
+|---|---|
+| ყოველი route-ის და გვერდის import-ის გზა მიყვანილია დაკარგულ ცხრილამდე / ფუნქციამდე, მერე თითო ხელით წაკითხული. 11 ფუნქციიდან არც ერთი ცოცხალ გზაზე არ ტყდება: `debit_wallet_gel` მკვდარია (`deduct: true` არავინ გადასცემს; `filmComposite.ts:1084`), `match_rag_documents` მკვდარია (`useRag: true`-ს კლიენტი არ აგზავნის), დანარჩენი მკვდარ ან გამორთულ გზებზეა | drift doc, „Triage update (2026-10-09)“ |
+| `7cc1a781`: `/api/voice/webhook` და `/api/voice/inbound` `VAPI_WEBHOOK_SECRET`-ის გარეშე ხელმოწერას არ ამოწმებდა: ნებისმიერს შეეძლო `voice_calls`-ში ჩანაწერის შექმნა ნებისმიერი `user_id`-ით. ახლა 503. Production-ის `voice_calls` ცარიელია (0 ჩანაწერი, select), ანუ ცოცხალი Vapi არ იყენებდა | ახალი ტესტი 6 / 6, ძველ კოდზე 2 ვარდება; `voice.spec.ts` dev სერვერზე 4 passed; jest 704 / 704 suite; `tsc` 0; eslint სუფთა |
+| GG-ის გადაწყვეტილებები: 1 ობოლი გვერდების გაუქმება (რეკომენდებული), 2 Deep Research-ის მიგრაცია, 3 Plugins-ის მიგრაცია, 4 Stripe-ის ცხრილები (Stripe Live-თან ერთად), 5 WhatsApp / push ცხრილები | drift doc, „Decisions for the owner“ |
+
+Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. merge და deploy GG-ის სიტყვას ელის.

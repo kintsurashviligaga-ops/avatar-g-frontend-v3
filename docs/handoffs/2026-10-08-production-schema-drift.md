@@ -114,3 +114,63 @@ support chat, referral panel; the main admin panel.
   owner's approval.
 - Owner action 5 must point at the right endpoint: the refund / dispute reversal runs only if the Live endpoint's URL
   is `/api/stripe/webhook` or `/api/webhooks/stripe`, not `/api/billing/webhook`.
+
+## Triage update (2026-10-09, fix order row 11)
+
+Read-only again: code on branch head `7cc1a781`; every path below is byte-identical to Production `29e7d67`. Production
+`public` still has the same 52 tables (read 08:25Z). Since 2026-10-08 the static ratchet `__tests__/schema-drift.test.ts`
+also reads `.rpc()` names and `const`-named tables, so the gap is now **125 tables and 11 functions** (new names:
+`research_jobs`, `research_context_files`, `user_plugin_settings`, `auth.users`; `media`, `onboarding_events` and
+`payment_provider_configs` left the list). The reachability map follows every route and page import graph to a missing
+name; it over-approximates (a shared import reaches a table its branch never touches), so each hit below was read by hand.
+
+### The 11 missing functions
+
+| Function | Caller | Class | Why |
+|---|---|---|---|
+| `debit_wallet_gel` | `lib/observability/agentTrace.ts` | DEAD | debits only with `deduct: true`; no live caller sets it (film passes `deduct: billable` with the waiver on, `filmComposite.ts:1084`; music video passes `false`). Both charge once up front through RPCs that exist. **No revenue gap.** |
+| `match_rag_documents` | `lib/rag/retrieve.ts` | DEAD | runs only when `/api/chat/orchestrate` gets `useRag: true`; no client sends it |
+| `founder_financial_audit` | `lib/monetization/audit-engine.ts` | BROKEN, founder-only | the founder's chat audit command answers with the RPC error; no user sees it |
+| `ensure_user_billing_rows`, `reset_user_credits_if_due`, `deduct_credits_transaction` | `lib/billing/enforce.ts`; `/api/billing/webhook` | DEAD / SILENT | enforce throws on the missing `credits`; its only reachable caller is the Pipeline page below. The billing webhook is the known SILENT row above |
+| `claim_next_job` | `workers/shared/queue.ts` | DEAD | a separate worker process, not deployed on Vercel; no route imports it |
+| `claim_longform_jobs`, `claim_longform_scenes` | `lib/video/longform/runtime.ts` | DEAD | `LONGFORM_VIDEO_ENABLED` is off (`/api/video/capabilities` answers `longform: false`) |
+| `add_value`, `deduct_from_wallet` | `lib/commerce/server.ts` | DEAD | marketplace / shop commerce, no UI |
+
+### Gated by design (a probe shows "opening soon"; nothing 500s)
+
+- **Deep Research + Connectors** (`research_jobs`, `research_context_files`): `lib/research/capabilities.ts` probes the
+  table; `/api/research` answers `available: false`. Migration `supabase/migrations/20261003b_research_jobs.sql` is
+  prepared, not applied.
+- **Plugins tab** (`user_plugin_settings`): `lib/plugins/settings.ts` probes the table; the switches show disabled.
+  Migration `20261003e_user_plugin_settings.sql` is prepared, not applied.
+
+### Pages reachable only by typing the address (no link, not in the sitemap or the services hub)
+
+| Page | Missing | What happens |
+|---|---|---|
+| `/{lang}/services/workflow` (Pipeline builder) | `credits`, `workflow_definitions`, `workflow_runs` | Save and Run POST `/api/app/workflows`; `getBillingSnapshot` throws on `credits` → 500; the button stops with no message |
+| `/{lang}/account/invoices` | `invoices`, `shops`, `invoice_counters` | list answers 500 → error toast; its create and detail links are 404 pages |
+| `/{lang}/admin/disputes` | `disputes`, `orders` | not linked from the admin panel; any signed-in user can open it; `/api/disputes` fails on the missing tables, so the list is empty. Latent: its "admin view" has no admin check, only the caller's RLS, so the table must never be created without a policy |
+| `/{lang}/account/billing` (also where `/account/payments|business|returns` land) | `stripe_invoices`, `stripe_payments`, `user_profiles` | `/api/finance/me/summary` always 500 and the page hides that block; Stripe subscription status still reads `subscriptions`. Tied to the payments decision |
+
+### Fixed on the branch (code only, no DB change)
+
+- **Vapi webhooks failed open.** `/api/voice/webhook` and `/api/voice/inbound` skipped the signature check when
+  `VAPI_WEBHOOK_SECRET` was unset, so anyone could POST a call event and write `voice_calls` rows (any `user_id`, phone
+  number, transcript) through the service role. Both now answer 503 until the secret is set (`7cc1a781`, test
+  `app/api/voice/webhook/route.test.ts`, 6 cases; the 2 fail-closed cases fail on the old code). Production's
+  `voice_calls` had **0 rows** (read 2026-10-09), so no live Vapi integration used the unsigned path, and the Vapi
+  revenue-leak question above is moot: no call was ever recorded.
+
+### Decisions for the owner (each new table is a database change)
+
+1. **Orphan pages:** retire `/services/workflow`, `/account/invoices` and `/admin/disputes` (redirect like the other old
+   pages, delete the page files) — recommended, code only — or keep them. `/account/billing` waits for decision 4.
+2. **Deep Research:** apply `20261003b` to open it, or keep "opening soon". Recommended: keep closed until the launch
+   blockers are cleared (it also runs paid Gemini calls).
+3. **Plugins tab:** apply `20261003e`, or keep it disabled. Low value either way; recommended: keep.
+4. **Stripe-side tables** (`webhook_events` dedupe, `user_profiles`, `stripe_invoices`, `stripe_payments`, affiliates,
+   finance aggregates): decide together with the Stripe Live / pricing-table decision (owner actions 5 and the Stripe
+   webhook URL).
+5. **WhatsApp link and push** (`agent_g_channels`, `agent_g_connect_codes`, `agent_g_channel_events`,
+   `push_subscriptions`): create the tables with an RLS review, or remove the two cards. Unchanged from 2026-10-08.
