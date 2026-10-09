@@ -64,7 +64,10 @@ export function GenerateButton({
   const off = disabled || loading;
   return (
     <div
-      className={stickyBottom ? 'sticky bottom-0 z-10 -mx-1 bg-gradient-to-t from-app-bg via-app-bg/95 to-transparent px-1 pt-3' : ''}
+      // ⚠️ `sticky bottom-0` sticks INSIDE the scroller's bottom padding, so the form scrolling past showed under the button
+      // (the Music panel). The shadow is a solid skirt of the surface's colour that fills that strip: the phone sheet is
+      // app-surface, the desktop column app-bg.
+      className={stickyBottom ? 'sticky bottom-0 z-10 -mx-1 bg-gradient-to-t from-app-surface via-app-surface/95 to-transparent px-1 pt-3 shadow-[0_16px_0_0_rgb(var(--app-surface))] lg:from-app-bg lg:via-app-bg/95 lg:shadow-[0_16px_0_0_rgb(var(--app-bg))]' : ''}
       style={stickyBottom ? { paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' } : undefined}
     >
       <button

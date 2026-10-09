@@ -22,15 +22,18 @@ export function PanelHeader({ Icon, title, copy, onSwitch, onClose, testId }: {
   Icon: LucideIcon; title: string; copy: ShootCopy; onSwitch: () => void; onClose: () => void; testId: string;
 }) {
   return (
-    <header data-testid={`${testId}-header`} className="sticky top-0 z-20 -mx-1 flex min-h-[60px] items-center justify-between gap-2 bg-app-surface px-1 pb-1 pt-0.5 lg:bg-app-bg">
+    // ⚠️ `sticky top-0` sticks INSIDE the scroller's top padding (the column's py-4), so the form scrolled up showed in that
+    // strip above the header. The shadow is a solid skirt of the surface's own colour that fills it (the footer's twin).
+    <header data-testid={`${testId}-header`} className="sticky top-0 z-20 -mx-1 flex min-h-[60px] items-center justify-between gap-2 bg-app-surface px-1 pb-1 pt-0.5 shadow-[0_-16px_0_0_rgb(var(--app-surface))] lg:bg-app-bg lg:shadow-[0_-16px_0_0_rgb(var(--app-bg))]">
       <button type="button" onClick={onSwitch} aria-haspopup="dialog" aria-label={`${title} — ${copy.switchTool}`} data-testid={`${testId}-switch`}
         className="flex min-h-[44px] min-w-0 flex-1 items-center gap-2.5 rounded-2xl pr-2 text-left transition-colors hover:bg-app-elevated/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent"><Icon size={21} aria-hidden="true" /></span>
-        <span className="line-clamp-2 min-w-0 break-words text-[20px] font-semibold leading-tight tracking-tight text-app-text lg:text-[17px] xl:text-[18px]">{title}</span>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent lg:h-9 lg:w-9"><Icon size={21} aria-hidden="true" /></span>
+        {/* break-normal: a name wraps between words, never inside one („Photograph / er" in the 300 px column). */}
+        <span className="line-clamp-2 min-w-0 break-normal text-[20px] font-semibold leading-tight tracking-tight text-app-text lg:text-[17px] xl:text-[18px]">{title}</span>
         <ChevronDown size={18} aria-hidden="true" className="shrink-0 text-app-muted" />
       </button>
       <button type="button" onClick={onClose} aria-label={copy.close} title={copy.close} data-testid={`${testId}-close`}
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-app-elevated text-app-text transition-colors hover:bg-app-elevated/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-app-elevated text-app-text transition-colors hover:bg-app-elevated/70 lg:h-10 lg:w-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
         <X size={18} aria-hidden="true" />
       </button>
     </header>
@@ -171,14 +174,16 @@ const OPTION_OFF = 'bg-app-elevated/70 text-app-text ring-app-border/10 hover:bg
 
 export function ChipBar({ chips, closeLabel, testId }: { chips: readonly ChipSpec<string | number>[]; closeLabel: string; testId: string }) {
   const [open, setOpen] = useState<string | null>(null);
+  // Smaller in the 300 px desktop column, so the three (shape · quality · count) sit on ONE row and the sticky footer
+  // leaves the form room; the phone sheet keeps the 52 px thumb targets.
   return (
     <section data-testid={`${testId}-chips`} aria-label={chips.map((c) => c.label).join(' · ')}>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 lg:gap-1.5">
         {chips.map((c) => (
           <button key={c.id} type="button" aria-haspopup="dialog" aria-expanded={open === c.id}
             aria-label={`${c.label}: ${c.value}`} data-testid={`${testId}-chip-${c.id}`}
             onClick={() => setOpen(c.id)}
-            className="inline-flex min-h-[52px] items-center gap-2.5 rounded-full bg-app-elevated/80 px-5 text-[16px] font-medium tabular-nums text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
+            className="inline-flex min-h-[52px] items-center gap-2.5 rounded-full bg-app-elevated/80 px-5 text-[16px] font-medium tabular-nums lg:min-h-[44px] lg:gap-2 lg:px-3.5 lg:text-[15px] text-app-text ring-1 ring-app-border/10 transition-colors hover:bg-app-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
             {c.icon}
             <span>{c.value}</span>
           </button>
@@ -221,7 +226,9 @@ export function ChipBar({ chips, closeLabel, testId }: { chips: readonly ChipSpe
   );
 }
 
-// ─── A labelled single-choice row that scrolls inside itself (room type, camera settings) ─────────────────────────
+// ─── A labelled single-choice row (room type, camera settings) ──────────────────────────────────────────────────
+// ⚠️ IT WRAPS. It was a row that scrolled sideways with its scrollbar hidden, and in the 300 px column every row ended in a
+// chip cut in half („Stu", „Low ar") — the owner read it as the panel spilling out of its frame (2026-10-09 18:28Z).
 
 export interface ScrollOption<V extends string> { value: V | null; label: string }
 
@@ -231,7 +238,7 @@ export function ChipScroller<V extends string>({ label, options, value, onChange
   return (
     <div role="radiogroup" aria-label={label} data-testid={testId} className="min-w-0">
       <p aria-hidden="true" className="mb-1.5 text-[12.5px] font-semibold text-app-text">{label}</p>
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex flex-wrap gap-1.5">
         {options.map((o) => {
           const on = o.value === value;
           return (

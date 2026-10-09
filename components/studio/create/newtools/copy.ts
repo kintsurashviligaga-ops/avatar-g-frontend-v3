@@ -30,6 +30,9 @@ export interface ShootCopy {
   generate: string;
   loading: string;
   close: string;
+  /** The carousel's arrows (TemplateCarousel). */
+  prev: string;
+  next: string;
   switchTool: string;
   addPhoto: string;
   takePhoto: string;
@@ -106,6 +109,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     generate: 'შექმნა',
     loading: 'იქმნება…',
     close: 'დახურვა',
+    prev: 'წინა',
+    next: 'შემდეგი',
     switchTool: 'ხელსაწყოს არჩევა',
     addPhoto: 'ფოტოს დამატება',
     takePhoto: 'კამერა',
@@ -199,6 +204,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     generate: 'Generate',
     loading: 'Creating…',
     close: 'Close',
+    prev: 'Previous',
+    next: 'More',
     switchTool: 'Choose a tool',
     addPhoto: 'Add photo',
     takePhoto: 'Camera',
@@ -292,6 +299,8 @@ export const SHOOT_COPY: Record<Lang, ShootCopy> = {
     generate: 'Создать',
     loading: 'Создаётся…',
     close: 'Закрыть',
+    prev: 'Назад',
+    next: 'Ещё',
     switchTool: 'Выбрать инструмент',
     addPhoto: 'Добавить фото',
     takePhoto: 'Камера',
