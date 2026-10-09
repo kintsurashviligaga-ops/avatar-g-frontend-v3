@@ -2763,12 +2763,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, []);
 
   // Auto-stick to the newest message — but only when the user is already near the
-  // bottom, so reading scrollback isn't yanked away mid-generation.
+  // bottom, so reading scrollback isn't yanked away mid-generation. "Near" is also where the
+  // feed's last scroll left it: a tall result landing at once (a finished Agent G card with its
+  // player) grows the feed past the 160 px measured here, and the result then sat under the composer.
   useEffect(() => {
     const el = feedRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (dist < 160) scrollToBottom();
+    if (dist < 160 || nearBottomRef.current) scrollToBottom();
   }, [messages, busy, scrollToBottom]);
 
   // TRACK 3 — when the mobile keyboard opens, the shell shrinks (ChatChrome subtracts keyboardOffset)
