@@ -203,6 +203,22 @@ describe("purpose 'register' (sign up) — an address with an account cannot reg
     expect(res.status).toBe(200);
     expect(mockUpdateUser).toHaveBeenCalledWith('p1', { password: expect.any(String) });
   });
+  it('an address pasted from a mail link (mailto:) is the address', async () => {
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'm1', email_confirmed_at: null }, properties: { email_otp: '616161' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'm1', email_confirmed_at: null }, properties: { email_otp: '626262' } }, error: null });
+    const res = await send({ email: 'mailto:Someone+ru@Example.com', purpose: 'register', locale: 'ru' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink.mock.calls[0][0]).toMatchObject({ email: 'someone+ru@example.com' });
+    expect(JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body)).to).toEqual(['someone+ru@example.com']);
+  });
+  it(`an address GoTrue refuses as malformed is the person's typo (400 invalid_email), not „could not send"`, async () => {
+    mockGenerateLink.mockResolvedValueOnce({ data: null, error: { code: 'validation_failed', message: 'Unable to validate email address: invalid format' } });
+    const res = await send({ email: 'a,b@example.com', purpose: 'register' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid_email' });
+    expect(mail).not.toHaveBeenCalled();
+  });
 });
 
 describe("purpose 'recovery' (forgot password) — a reset CODE by email", () => {

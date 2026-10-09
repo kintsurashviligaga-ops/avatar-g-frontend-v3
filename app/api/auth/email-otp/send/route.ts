@@ -4,6 +4,7 @@ import type { GenerateLinkParams } from '@supabase/supabase-js';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
 import { accountExists } from '@/lib/auth/accountStatus';
+import { withoutMailto } from '@/lib/auth/identifier';
 import {
   buildOtpEmail,
   describeOtpShape,
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     | { email?: unknown; purpose?: unknown; password?: unknown; locale?: unknown }
     | null;
 
-  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const email = typeof body?.email === 'string' ? withoutMailto(body.email).toLowerCase() : '';
   if (!isPlausibleEmail(email)) {
     return NextResponse.json({ error: 'invalid_email' }, { status: 400 });
   }
@@ -162,6 +163,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // cost people a dead wait.) Nothing is generated and nothing is mailed.
       if ((purpose === 'signin' || purpose === 'recovery') && isUserNotFoundError(msg)) {
         return NextResponse.json({ error: 'no_account' }, { status: 404 });
+      }
+      // An address our loose check let through but GoTrue's stricter one refuses is the person's typo, not an outage:
+      // the sheet says „check the address" instead of „could not send, try in a minute".
+      if (/unable to validate email address/.test(msg)) {
+        return NextResponse.json({ error: 'invalid_email' }, { status: 400 });
       }
 
       // Everything else is a REAL failure and is logged, whatever the purpose. (It used to be swallowed as „code
