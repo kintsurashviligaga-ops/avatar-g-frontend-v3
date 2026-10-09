@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { isPublicMediaUrl } from '@/lib/security/publicMediaUrl';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 
@@ -49,8 +50,9 @@ const saveSchema = z.object({
   service:          z.string().min(1).max(60),
   title:            z.string().max(200).optional(),
   prompt:           z.string().max(2000).optional(),
-  url:              z.string().url().optional(),
-  thumbnail_url:    z.string().url().optional(),
+  // https only: these links end up as the share page's href / src for other people (z.url() alone takes javascript:).
+  url:              z.string().url().refine(isPublicMediaUrl, 'https URL required').optional(),
+  thumbnail_url:    z.string().url().refine(isPublicMediaUrl, 'https URL required').optional(),
   duration_seconds: z.number().positive().optional(),
   credits_used:     z.number().int().min(0).default(0),
   task_id:          z.string().uuid().optional(),

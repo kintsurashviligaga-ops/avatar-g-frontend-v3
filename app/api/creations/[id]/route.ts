@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { withPublicMediaUrls } from '@/lib/security/publicMediaUrl';
 
 export const runtime  = 'nodejs';
 export const dynamic  = 'force-dynamic';
@@ -44,7 +45,8 @@ export async function GET(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  return NextResponse.json({ creation });
+  // A public creation is read by strangers: only an https link goes out (the owner can write any string into it).
+  return NextResponse.json({ creation: withPublicMediaUrls(creation as { url?: string | null; thumbnail_url?: string | null }) });
 }
 
 // ── PATCH: update title / is_public ──────────────────────────────────────────

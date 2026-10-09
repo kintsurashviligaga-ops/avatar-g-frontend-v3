@@ -65,3 +65,10 @@ test('unknown id → 404', async () => {
   mockRow = null;
   expect((await get()).status).toBe(404);
 });
+
+test('a public creation whose owner wrote a javascript: link into it goes out with that link removed', async () => {
+  mockRow = { ...mockRow!, is_public: true, url: 'javascript:alert(document.cookie)', thumbnail_url: 'https://x/t.jpg' };
+  const r = await get();
+  expect(r.status).toBe(200);
+  expect(r.json.creation).toMatchObject({ url: null, thumbnail_url: 'https://x/t.jpg' });
+});

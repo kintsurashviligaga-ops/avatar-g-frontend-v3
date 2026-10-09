@@ -5,6 +5,7 @@
  */
 import type { Metadata } from 'next';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withPublicMediaUrls } from '@/lib/security/publicMediaUrl';
 import SharePageClient from './SharePageClient';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,8 @@ async function getCreation(token: string): Promise<Creation | null> {
     .eq('is_public', true)
     .maybeSingle();
   if (error || !data) return null;
-  return data as Creation;
+  // The owner can write any string into these two columns; only an https link reaches the page (and its og:image).
+  return withPublicMediaUrls(data as Creation);
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
