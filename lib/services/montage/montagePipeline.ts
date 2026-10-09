@@ -65,14 +65,23 @@ function toTransition(t: 'crossfade' | 'fade' | undefined): Transition {
 
 export async function runMontage(
   req: MontageRequest,
-  opts: { jobId?: string | null } = {},
+  opts: {
+    jobId?: string | null;
+    /**
+     * Asked before each leg; false stops the render there (Agent G's cancel, lib/agent/media/montageExec). A leg already
+     * running is not interrupted. A check that throws counts as "go on": a flaky read must not kill a good render.
+     */
+    shouldContinue?: () => Promise<boolean>;
+  } = {},
 ): Promise<MontageOutcome> {
   const jobId = opts.jobId ?? null;
   const stepsRun: MontageStep[] = [];
   const { w, h } = ASPECT_DIMS[req.aspect];
+  const halted = async (): Promise<boolean> => (opts.shouldContinue ? !(await opts.shouldContinue().catch(() => true)) : false);
 
   try {
     // ── LEG 1 · resolve ────────────────────────────────────────────────────────────────────────────
+    if (await halted()) return { ok: false, step: 'resolve', error: 'cancelled' };
     await stage(jobId, 'resolve');
     const resolved: string[] = [];
     for (const shot of req.shots) {
@@ -84,6 +93,7 @@ export async function runMontage(
     stepsRun.push('resolve');
 
     // ── LEG 2 · bridge stills ──────────────────────────────────────────────────────────────────────
+    if (await halted()) return { ok: false, step: 'bridge', error: 'cancelled' };
     await stage(jobId, 'bridge');
     let bridged = 0;
     for (let i = 0; i < req.shots.length; i += 1) {
@@ -99,6 +109,7 @@ export async function runMontage(
 
     // ── LEG 3 · normalize ──────────────────────────────────────────────────────────────────────────
     // Ken Burns clips are already produced at the target aspect, so only real video needs this pass.
+    if (await halted()) return { ok: false, step: 'normalize', error: 'cancelled' };
     await stage(jobId, 'normalize');
     for (let i = 0; i < req.shots.length; i += 1) {
       const shot = req.shots[i];
@@ -111,6 +122,7 @@ export async function runMontage(
     stepsRun.push('normalize');
 
     // ── LEG 4 · stitch ─────────────────────────────────────────────────────────────────────────────
+    if (await halted()) return { ok: false, step: 'stitch', error: 'cancelled' };
     await stage(jobId, 'stitch');
     const totalSec = timelineDuration(req.shots);
     const plan = buildConcatPlan(req.shots, { musicOnly: req.musicOnly, aspect: req.aspect });
@@ -147,6 +159,7 @@ export async function runMontage(
     // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
     let videoUrl = master;
     if (req.musicUrl) {
+      if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
       await stage(jobId, 'music');
       // 'under' keeps the clips' own audio and ducks the bed beneath it. 'replace' would DELETE it —
       // the same trap that silently removed Veo's native dialogue in the film pipeline.

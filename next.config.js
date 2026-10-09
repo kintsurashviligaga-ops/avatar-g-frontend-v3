@@ -118,6 +118,9 @@ const nextConfig = {
       // Montage: conform pass per source + the N-input stitch + the music mux, all ffmpeg-static. Captions
       // rasterise through @resvg (drawtext is unavailable on Vercel — no libfreetype), so both binaries ride.
       '/api/v2/montage/render': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Agent G's montage (lib/agent/media): probes every file and decodes the track with ffmpeg, then runs the same
+      // montage lane as above.
+      '/api/agent/media/montage': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Presentation: every slide is rasterised SVG→PNG through @resvg. No ffmpeg. Without this entry the
       // deck builds and then renders nothing — Vercel's container has no system fonts, so resvg is the
       // only thing that draws text at all (verified: Georgian renders 12.5k ink pixels with the bundled
