@@ -185,7 +185,9 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **პასუხისმგებელი:** Claude (ტრიაჟი: ფუნქცია ცოცხალია თუ მკვდარი, მკვდრის ამოღება ან გამორთვა), GG (ყოველი ახალი ცხრილი = ბაზის ცვლილება).
 - **დამოკიდებულება:** Preview და Production ერთ Supabase-ს იყენებს (owner action 11), ამიტომ მიგრაციის Preview-ზე ცდა Production-ს ეხება.
 - **მტკიცებულება:** `docs/handoffs/2026-10-08-production-schema-drift.md`.
-- **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს.
+- **Regression guard (2026-10-09, ნაწილი 9):** `__tests__/schema-drift.test.ts` + `__tests__/schema-drift.snapshot.json`. Snapshot წაკითხულია Production-იდან 08:25Z-ზე (read-only): 52 ცხრილი, 39 ფუნქცია (pgvector-ის გარეშე), იგივე 52, რაც 2026-10-08-ზე. ტესტი კითხულობს runtime კოდის `.from()` / `.rpc()` სახელებს (literal ან იმავე ფაილის `const`; `.storage.from()` bucket-ია და გამოტოვებულია). დღეს კოდი 166 ცხრილს და 27 ფუნქციას იძახებს; Production-ში არ არის **125 ცხრილი და 11 ფუნქცია**, ისინი გაყინულია `missing`-ში (სია მხოლოდ მცირდება); 5 ფაილი სახელს run time-ში აწყობს (`dynamic`). ახალი სახელი, რომელიც Production-ში არ არის → ტესტი ვარდება. შემოწმდა: `missing`-იდან ცხრილის და ფუნქციის ამოღება, `missing`-ში კოდისთვის უცნობი სახელის ჩამატება, `dynamic`-იდან ფაილის ამოღება → 4 ტესტი ვარდება.
+- **ახლად ნაპოვნი (ტრიაჟისთვის, არაფერი შეცვლილა):** 2026-10-08-ის სიას `const`-ით დასახელებული 3 ცხრილი აკლდა: `research_jobs`, `research_context_files` (Research / Connectors; `lib/research/capabilities.ts` ჯერ ამოწმებს ცხრილს და „მალე“-ს აჩვენებს, ანუ შეგნებულად დახურულია), `user_plugin_settings` (`lib/plugins/settings.ts`). `app/api/invoices/generate` იძახებს `.from('auth.users')`-ს, რაც PostgREST-ში ვერასოდეს იმუშავებს (მკვდარი გზა: `orders` ცხრილიც არ არის, ეკრანი არ იძახებს). 11 ფუნქცია არ არის, მათ შორის `deduct_credits_transaction`, `ensure_user_billing_rows`, `reset_user_credits_if_due` (`lib/billing/enforce.ts`, Stripe webhook), `claim_next_job` (`workers/shared/queue.ts`), `match_rag_documents`.
+- **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; ~~სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს~~ (ნაწილი 9).
 
 ### 4.12 Security
 - **სტატუსი:** PARTIAL. დახურულია: STORAGE-1 (P0), ფუნქციების 17 warning, request-ით დასახელებული მედიის ხელმოწერა, share გვერდის `javascript:` ბმული, ElevenLabs voice id, avatars `owner_id` გაჟონვა, `jobs`-ის ორი გზა. ღიაა:
@@ -262,7 +264,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
 | 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); drift-ის სტატიკური ტესტი | admin, i18n, regression guard |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); ~~drift-ის სტატიკური ტესტი~~ (ნაწილი 9, 4.11) | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 
@@ -293,3 +295,10 @@ BUILT_NOT_PROVEN live: signed ბმულები private `renders`-ზე (Su
 
 **Deploy:** GG-მა 08:02:01Z ბარათზე აირჩია „Deploy“. PR #49 → `main`, merge commit `29e7d67b`; main-ის CI 411 და E2E 1083 მწვანე; Production `29e7d67` 08:07:48Z-ზე (`/api/health`). საჯარო შემოწმება: `/ka` 200, `run-migration` 404, `/ru/login` → `/ru/dashboard` 200. `/api/orbit/agent`-ის 404 და cover-ის არარსებობა live — BUILT_NOT_PROVEN (POST აქედან ვერ იგზავნება; unit ტესტები ფარავს). Rollback: Vercel Instant Rollback `7126682`-ის deployment-ზე (GG) ან merge-ის revert. DB, env, ფასი, ფასიანი გამოძახება არ შეცვლილა. **Verdict: Production Ready — არა.**
 
+## 9. დამატება: schema drift-ის სტატიკური ტესტი (2026-10-09 08:15–08:35Z; მხოლოდ branch-ზე)
+
+| Commit | რა | მტკიცებულება |
+|---|---|---|
+| ამ ნაწილის commit (PR #50) | `__tests__/schema-drift.test.ts`: კოდი ვერ დაამატებს `.from()` / `.rpc()` სახელს, რომელიც Production-ში არ არის. Snapshot: 52 ცხრილი, 39 ფუნქცია; ცნობილი ხარვეზები: 125 ცხრილი, 11 ფუნქცია, 5 dynamic ფაილი (4.11) | ტესტი 7 / 7; snapshot-ის 4 მუტაცია → 4 ტესტი ვარდება; `tsc` 0; eslint სუფთა |
+
+Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. რიგი 11-ის ტრიაჟი (რომელი ფუნქცია მოვაშოროთ / გამოვრთოთ, რომელს სჭირდება ცხრილი) რჩება; ყოველი ახალი ცხრილი GG-ის თანხმობით.
