@@ -1,5 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin/guard';
+import { isAdminUserAsync } from '@/lib/admin/guard';
 import { gatherAdminStats, type AdminStats } from '@/lib/admin/stats';
 import { listUsers, type AdminUserPage } from '@/lib/admin/users';
 import { checkPipelineHealth, type PipelineHealth } from '@/lib/pipeline/statusAgent';
@@ -20,8 +20,8 @@ export default async function AdminPage({ params }: Props) {
   const supabase = createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // SECURITY (v358): authorize with isAdminUser — the SAME allowlist ∪ app_metadata gate the admin APIs
-  // use. NEVER user_metadata: it is client-writable via supabase.auth.updateUser, so any signed-in user
+  // SECURITY (v358): authorize with isAdminUserAsync — the ONE admin rule every admin API uses (lib/auth/adminGuard
+  // isAdminIdentity: app_metadata role, or a verified email on the code ∪ env ∪ panel-granted allowlist). NEVER user_metadata: it is client-writable via supabase.auth.updateUser, so any signed-in user
   // could forge is_admin/role and reach this page's service-role data + user PII.
   //
   // v358 replaces the old "bounce non-admins to /dashboard" behaviour with a STRICT sign-in gate:
@@ -32,7 +32,7 @@ export default async function AdminPage({ params }: Props) {
   if (!user) {
     return <AdminLogin locale={locale} redirectTo={`/${locale}/admin`} />;
   }
-  if (!isAdminUser(user)) {
+  if (!(await isAdminUserAsync(user))) {
     // eslint-disable-next-line no-console
     console.warn(`[admin] access denied | email=${user.email ?? 'none'}`);
     return <AdminAccessDenied locale={locale} email={user.email ?? null} />;

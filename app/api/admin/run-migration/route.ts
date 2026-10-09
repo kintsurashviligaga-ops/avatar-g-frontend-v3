@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createRouteHandlerClient } from '@/lib/supabase/server';
+import { isAdminIdentity } from '@/lib/auth/adminGuard';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,10 +20,15 @@ export const dynamic = 'force-dynamic';
  *   3. a direct Postgres connection string.
  * This route tries (1) then (2) and reports precisely which path executed.
  *
- * Auth: x-admin-key header == MIGRATION_RUN_KEY (or ADMIN_KEY). Trigger:
- *   curl -X POST -H "x-admin-key: <KEY>" -H 'content-type: application/json' \
- *        -d '{"file":"20260523_wallet_and_onboarding.sql"}' \
- *        https://myavatar.ge/api/admin/run-migration
+ * ⚠️ THIS ROUTE RUNS SQL ON THE PRODUCTION DATABASE, SO IT IS OFF UNLESS SOMEONE TURNS IT ON. It used to answer anyone
+ * holding one shared header key (MIGRATION_RUN_KEY, or the general ADMIN_KEY), compared with a plain `===`, with no
+ * signed-in identity and no record of who ran what: a leaked key was SQL on production. Now ALL of these must hold:
+ *   1. ADMIN_MIGRATION_ROUTE=enabled in this deployment's env — otherwise 404, as if the route did not exist.
+ *      A database migration needs the owner's approval anyway; the switch makes that approval explicit.
+ *   2. the caller is signed in as an admin (the one admin rule, lib/auth/adminGuard isAdminIdentity);
+ *   3. x-admin-key equals MIGRATION_RUN_KEY (its own key — the general ADMIN_KEY no longer opens it), compared in
+ *      constant time.
+ * Every attempt past the switch logs who, which file and the outcome (never the key).
  */
 
 const norm = (v: string | null | undefined) => String(v || '').trim();
@@ -160,14 +168,34 @@ async function execSql(sql: string): Promise<SqlResult> {
   return { ok: false, detail: attempts.map((a) => `${a.via}: ${a.detail}`).join(' | ') };
 }
 
-function authorized(req: NextRequest): boolean {
-  const expected = norm(process.env.MIGRATION_RUN_KEY) || norm(process.env.ADMIN_KEY);
-  return Boolean(expected) && norm(req.headers.get('x-admin-key')) === expected;
+type Gate = { ok: true; email: string } | { ok: false; res: NextResponse };
+
+/** The three checks in the header, in order. While the switch is off the answer is a plain 404. */
+async function authorize(req: NextRequest): Promise<Gate> {
+  if (norm(process.env.ADMIN_MIGRATION_ROUTE).toLowerCase() !== 'enabled') {
+    return { ok: false, res: NextResponse.json({ error: 'Not found' }, { status: 404, headers: { 'Cache-Control': 'no-store' } }) };
+  }
+  let email = '';
+  let admin = false;
+  try {
+    const { data: { user } } = await createRouteHandlerClient().auth.getUser();
+    email = user?.email ?? '';
+    admin = await isAdminIdentity(user);
+  } catch {
+    admin = false;
+  }
+  const keyOk = secretMatches(req.headers.get('x-admin-key'), process.env.MIGRATION_RUN_KEY);
+  if (!admin || !keyOk) {
+    console.warn(`[run-migration] refused | admin=${admin} key=${keyOk} email=${email || 'none'}`);
+    return { ok: false, res: NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 }) };
+  }
+  return { ok: true, email };
 }
 
 /** GET → verify only (pg_proc check, no mutation). */
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  if (!authorized(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const gate = await authorize(req);
+  if (!gate.ok) return gate.res;
   const file = norm(req.nextUrl.searchParams.get('file')) || '20260523_wallet_and_onboarding.sql';
   const fns = EXPECTED_FNS[file] ?? [];
   if (fns.length === 0) return NextResponse.json({ ok: true, file, verified: [], note: 'no functions to verify for this file' });
@@ -179,7 +207,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
 /** POST → apply the migration, then verify. */
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  if (!authorized(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+  const gate = await authorize(req);
+  if (!gate.ok) return gate.res;
 
   let file = '20260523_wallet_and_onboarding.sql';
   try { const b = (await req.json()) as { file?: string }; if (b.file) file = b.file; } catch { /* default */ }
@@ -193,6 +222,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const applied = await execSql(sql);
+  console.warn(`[run-migration] applied | by=${gate.email} file=${file} ok=${applied.ok} via=${applied.via ?? 'none'}`);
   if (!applied.ok) return NextResponse.json({ ok: false, file, error: applied.detail }, { status: 502 });
 
   const fns = EXPECTED_FNS[file] ?? [];

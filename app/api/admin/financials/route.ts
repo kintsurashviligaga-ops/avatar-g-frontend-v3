@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    const gate = assertAdminAccess(request, user ?? null);
+    const gate = await assertAdminAccess(request, user ?? null);
     if (!gate.ok) {
       // 401 when unauthenticated, 403 when signed-in-but-not-admin.
       return NextResponse.json({ error: gate.reason }, { status: user ? 403 : 401 });

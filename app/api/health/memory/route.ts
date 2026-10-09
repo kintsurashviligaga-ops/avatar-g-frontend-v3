@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin/guard';
+import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   // isAdminUser is the SAME allowlist ∪ app_metadata gate the admin panel uses (never client-writable user_metadata).
   const { user } = await authedClientFromRequest(req).catch(() => ({ user: null }));
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!isAdminUser(user)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!(await isAdminUserAsync(user))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Migration 007: the memory table + the chat_sessions soft-delete column (probed via is_deleted).
   const [memory, trash] = await Promise.all([

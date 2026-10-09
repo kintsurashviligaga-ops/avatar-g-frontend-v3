@@ -73,6 +73,56 @@ export function invalidateAdminAllowlist(): void {
   extraCache = null;
 }
 
+/** The admin role claims, read from `app_metadata` ONLY (service-role-set, never client-writable). */
+type AdminRoleClaim = { role?: string; roles?: string[]; is_admin?: boolean };
+
+/** Minimal shape of a Supabase auth user this module reads. */
+export type AdminCandidate = {
+  email?: string | null;
+  email_confirmed_at?: string | null;
+  app_metadata?: Record<string, unknown> | null;
+};
+
+/**
+ * True when the user carries a server-set admin role in `app_metadata`.
+ * ⚠️ NEVER `user_metadata`: any signed-in user can write it via `supabase.auth.updateUser`.
+ */
+export function hasAdminRoleClaim(user: AdminCandidate | null | undefined): boolean {
+  const meta = (user?.app_metadata ?? {}) as AdminRoleClaim;
+  if (meta.is_admin === true) return true;
+  if (meta.role === 'admin' || meta.role === 'owner') return true;
+  return Array.isArray(meta.roles) && (meta.roles.includes('admin') || meta.roles.includes('owner'));
+}
+
+/**
+ * The email an allowlist may match: lowercase, and ONLY once Supabase has confirmed it. An email that was typed into
+ * a sign-up form but never confirmed proves nothing about who holds the inbox, so it can never match the allowlist.
+ * (Google sign-in and confirmed password accounts carry `email_confirmed_at`.)
+ */
+export function verifiedEmail(user: AdminCandidate | null | undefined): string | null {
+  const email = user?.email?.trim().toLowerCase();
+  if (!email || !user?.email_confirmed_at) return null;
+  return email;
+}
+
+/**
+ * ⚠️ THE ONE ADMIN RULE. The /admin page, every admin API and the ops endpoints all answer "is this user an admin?"
+ * here, so a user is never an admin on one screen and a stranger on the next. Before this, the page used
+ * (static list ∪ app_metadata), most APIs used (static list ∪ panel-granted list) and a third set used
+ * (static list ∪ app_metadata ∪ key): an admin added from the Admins tab could call the APIs but not open the page.
+ *
+ * Admin = a server-set app_metadata role, OR a verified email on the effective allowlist (code ∪ ADMIN_EMAILS env ∪
+ * panel-granted rows). The panel-granted part fails CLOSED (see adminEmailsFromDb).
+ */
+export async function isAdminIdentity(user: AdminCandidate | null | undefined): Promise<boolean> {
+  if (!user) return false;
+  if (hasAdminRoleClaim(user)) return true;
+  const email = verifiedEmail(user);
+  if (!email) return false;
+  if (adminAllowlist().includes(email)) return true;
+  return (await adminEmailsFromDb()).includes(email);
+}
+
 export async function isAdmin(): Promise<boolean> {
   try {
     const supabase = createRouteHandlerClient();
@@ -82,11 +132,11 @@ export async function isAdmin(): Promise<boolean> {
       error,
     } = await supabase.auth.getUser();
 
-    if (error || !user || !user.email) {
+    if (error || !user) {
       return false;
     }
 
-    return (await effectiveAdminAllowlist()).includes(user.email.toLowerCase());
+    return await isAdminIdentity(user);
   } catch (err) {
     console.error('[Admin Guard] Error checking admin status:', err);
     return false;

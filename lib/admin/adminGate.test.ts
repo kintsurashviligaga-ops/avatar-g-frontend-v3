@@ -54,7 +54,7 @@ const codeOf = (f: string) =>
  * The gate must therefore be IMPORTED from a module that owns the allowlist — or be an explicit shared
  * secret (`x-admin-key`, for machine callers, not users) or a local email allowlist constant.
  */
-const IMPORTED_GATE = /import\s*\{[^}]*\b(isAdmin|isAdminUser|isAdminEmail|assertAdminAccess|assertAdmin|requireAdmin|hasValidAdminKey)\b[^}]*\}\s*from\s*['"][^'"]*(adminGuard|admin\/guard)['"]/;
+const IMPORTED_GATE = /import\s*\{[^}]*\b(isAdmin|isAdminUser|isAdminUserAsync|isAdminIdentity|isAdminEmail|assertAdminAccess|assertAdmin|requireAdmin|hasValidAdminKey)\b[^}]*\}\s*from\s*['"][^'"]*(adminGuard|admin\/guard)['"]/;
 const LOCAL_SECRET = /x-admin-key|ADMIN_EMAILS/;
 const isGated = (src: string) => IMPORTED_GATE.test(src) || LOCAL_SECRET.test(src);
 

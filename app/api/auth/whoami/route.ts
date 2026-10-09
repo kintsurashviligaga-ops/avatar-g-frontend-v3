@@ -13,7 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin/guard';
+import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -29,13 +29,14 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     hasUser = Boolean(user);
     email = user?.email ?? null;
-    metaRole = isAdminUser(user);
+    metaRole = await isAdminUserAsync(user);
   } catch {
     // fail-open: a diagnostic must never 500
   }
 
   const emailIsFounder = email?.trim().toLowerCase() === ADMIN_EMAIL;
-  const isAdmin = emailIsFounder || metaRole;
+  // The same rule /admin uses (lib/auth/adminGuard isAdminIdentity), so this diagnostic cannot disagree with the page.
+  const isAdmin = metaRole;
 
   return NextResponse.json({
     hasUser,

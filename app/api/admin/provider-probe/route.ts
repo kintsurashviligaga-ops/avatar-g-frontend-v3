@@ -57,7 +57,7 @@ const get = (url: string, init?: RequestInit) =>
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
-  const gate = assertAdminAccess(req, user);
+  const gate = await assertAdminAccess(req, user);
   // 404, not 403 — an unauthorised caller should not learn the route exists.
   if (!gate.ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 

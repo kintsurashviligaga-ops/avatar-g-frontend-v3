@@ -15,6 +15,6 @@ export const maxDuration = 30;
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   const { user } = await authedClientFromRequest(req);
-  if (!assertAdminAccess(req, user).ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!(await assertAdminAccess(req, user)).ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(await checkGoogleTransport());
 }

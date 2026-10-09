@@ -9,19 +9,17 @@
 import { NextResponse } from 'next/server';
 import { checkPipelineHealth } from '@/lib/pipeline/statusAgent';
 import { createServerClient } from '@/lib/supabase/server';
-import { isAdminUser } from '@/lib/admin/guard';
+import { isAdminUserAsync } from '@/lib/admin/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const ADMIN_EMAIL = 'kintsurashviligaga@gmail.com';
 
 export async function GET() {
   const publicPayload = { status: 'operational', timestamp: new Date().toISOString() };
   try {
     const supabase = createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const isAdmin = isAdminUser(user) || user?.email?.toLowerCase() === ADMIN_EMAIL;
+    const isAdmin = await isAdminUserAsync(user);
     if (!isAdmin) return NextResponse.json(publicPayload);
 
     const health = await checkPipelineHealth();
