@@ -1,6 +1,6 @@
 /**
- * lib/catalog/nav.ts — how the studio's menus group its tools: the sidebar, the composer's „+" sheet, the collapsed rail
- * and the Plugins tab. All four read THIS, and this reads the service catalog, so a tool sits under the category its
+ * lib/catalog/nav.ts — how the studio's menus group its tools: the sidebar, the composer's „+" sheet and the collapsed
+ * rail. All three read THIS, and this reads the service catalog, so a tool sits under the category its
  * catalog services belong to — never a second, hand-kept split (the old PRIMARY / MORE halves were exactly that).
  *
  * Master Task §21–§22: no wall of 17 equal-weight rows. Agent G (the chat) comes first and on its own — writing, code and

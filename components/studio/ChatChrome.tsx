@@ -88,7 +88,6 @@ import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
-import { HubHost, HubRailButton, HubSidebarRow, useHiddenTools, visibleToolIds } from '@/components/studio/hub';
 import { dedupeConversations } from '@/lib/chat/conversationSync';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -754,14 +753,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     window.addEventListener('myavatar:open-new-chat', on);
     return () => window.removeEventListener('myavatar:open-new-chat', on);
   }, [handleNewChat]);
-  // The tools the user switched off in the hub's Plugins tab leave the sidebar and the rail (never the one they are on).
-  // ⚠️ Menus only — selectTool, ?tool= and the studio still open a hidden tool (lib/plugins/catalog.ts).
-  const hiddenTools = useHiddenTools();
-  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK, each category
-  // holding only its tools that are still switched on — a category with none left is not drawn.
-  const navGroups = useMemo(() => toolGroups()
-    .map((g) => ({ ...g, tools: visibleToolIds(g.tools, hiddenTools, activeTool) }))
-    .filter((g) => g.tools.length > 0), [hiddenTools, activeTool]);
+  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK. Every tool is
+  // always listed: the „Plugins" switches that hid tools from it were retired 2026-10-09 (the owner: „confusing").
+  const navGroups = useMemo(() => toolGroups().filter((g) => g.tools.length > 0), []);
   const navCategories = useMemo(() => navGroups.filter((g) => g.id !== 'agent-g'), [navGroups]);
   // A category row opens its first tool; its chevron shows the rest. The category holding the active tool opens itself.
   const [openCats, setOpenCats] = useState<ReadonlySet<string>>(() => new Set());
@@ -1174,7 +1168,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
           </button>
           <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
-          <HubSidebarRow locale={lang} className={sideRow} onPicked={() => setSidebarOpen(false)} />
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
             {activePersonaName
@@ -1185,7 +1178,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet and the Plugins tab read the
+          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet reads the
               same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
               switches the tool in place; anywhere else it opens the studio on it. */}
           {(['create', 'work'] as const).map((grp) => {
@@ -1373,7 +1366,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           })}
           <span className="flex-1" aria-hidden="true" />
           <button type="button" onClick={() => router.push(`/${locale}/library`)} aria-label={tLibrary} title={tLibrary} className={railBtn}><FolderOpen className="h-[18px] w-[18px]" aria-hidden="true" /></button>
-          <HubRailButton locale={lang} className={railBtn} />
           <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.settings} title={t.settings} className={railBtn}><Settings className="h-[18px] w-[18px]" aria-hidden="true" /></button>
         </nav>
       )}
@@ -1632,10 +1624,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* Deep Research: the watcher, toasts, start sheet, report viewer, Connectors and the report's Live call
           (components/studio/research). Renders nothing until the server says the feature exists here. */}
       <ResearchHost locale={lang} authed={authed} userId={userId} />
-
-      {/* Connectors · Plugins · Skills (components/studio/hub): the user's switched-off tools (read on sign-in, so the menus
-          above hide them) and the hub sheet, opened from the sidebar row, the rail or `myavatar:hub-open`. */}
-      <HubHost locale={lang} authed={authed} userId={userId} />
 
       {/* DAY-5 real-time voice overlay. The launcher moved INTO the composer (OmniStudio's
           Gemini-style live-voice chip, right of the dictation mic), which dispatches

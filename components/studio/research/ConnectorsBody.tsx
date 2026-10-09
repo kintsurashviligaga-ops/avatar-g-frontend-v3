@@ -1,9 +1,8 @@
 'use client';
 
 /**
- * ConnectorsBody — where the user's OWN documents come from, and an honest account of what works. Drawn by two hosts: the
- * research ConnectorsSheet (opened from Deep Research) and the Connectors tab of the Connectors · Plugins · Skills hub
- * (components/studio/hub) — one body, so the two can never disagree about what is connected.
+ * ConnectorsBody — where the user's OWN documents come from, and an honest account of what works. Drawn by the research
+ * ConnectorsSheet (opened from Deep Research). The Connectors · Plugins · Skills hub that also drew it was retired 2026-10-09.
  *
  *   Local files   WORKS: pick a PDF / DOCX / TXT / MD → the text is extracted (txt/md in the browser, PDF and DOCX by
  *                 /api/utils/extract-text) → /api/connectors/files stores the TEXT only → a research run can attach it.
@@ -23,7 +22,7 @@ const MAX_BINARY_BYTES = 3 * 1024 * 1024;
 
 export function ConnectorsBody({ locale, authed }: { locale: string; authed: boolean }) {
   const c = researchCopy(locale);
-  // Heading ids are per instance: the hub and the research sheet may both be in the page.
+  // Heading ids are per instance, so two copies in one page never share an id.
   const uid = useId();
   const localH = `${uid}-local-h`;
   const soonH = `${uid}-soon-h`;

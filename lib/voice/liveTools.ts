@@ -85,7 +85,7 @@ export const LIVE_CHAT_MODELS = ['fast', 'thinking', 'pro', 'lite'] as const;
 export type LiveChatModel = (typeof LIVE_CHAT_MODELS)[number];
 
 /** Panels a call may open. `settings` = the open studio's own settings panel. */
-export const LIVE_PANELS = ['settings', 'credits', 'persona', 'connectors', 'search', 'history'] as const;
+export const LIVE_PANELS = ['settings', 'credits', 'persona', 'search', 'history'] as const;
 export type LivePanel = (typeof LIVE_PANELS)[number];
 
 export const LIVE_STOP_TARGETS = ['reply', 'generation', 'all'] as const;
@@ -336,7 +336,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'open_panel',
     description: 'Open a panel: settings (the open studio\'s settings), credits (balance and top-up), persona (the assistant\'s '
-      + 'persona), connectors (connectors and plugins), search (search the chats), history (the list of chats).',
+      + 'persona), search (search the chats), history (the list of chats).',
     parameters: {
       type: 'OBJECT',
       properties: { panel: { type: 'STRING', enum: [...LIVE_PANELS], description: 'The panel to open.' } },

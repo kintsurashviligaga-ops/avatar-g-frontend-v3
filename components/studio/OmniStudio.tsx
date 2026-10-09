@@ -134,7 +134,6 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
 };
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
-import { useHiddenTools, visibleToolIds } from './hub';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
@@ -3134,8 +3133,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [toolPickOnly, setToolPickOnly] = useState(false);
   // The Deep Research and Connectors rows of the plus sheet - an empty list until the server says the feature exists here.
   const researchExtras = useResearchToolExtras(locale, () => input);
-  // Tools switched off in the hub's Plugins tab leave the „+" sheet (never the active one). ⚠️ A menu row only — not access control.
-  const hiddenTools = useHiddenTools();
   // „+" routes a photo or a file to where the ACTIVE tool reads it (critic, 2026-09-29): the composer's attachments
   // feed video · image · music · avatar · chat, but a product ad, a swap and a remix read their own slots.
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -7290,7 +7287,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           openSettings();
         } else if (d.panel === 'credits') window.dispatchEvent(new CustomEvent('myavatar:open-credits'));
         else if (d.panel === 'persona') window.dispatchEvent(new Event(OPEN_PERSONA_EVENT));
-        else if (d.panel === 'connectors') window.dispatchEvent(new CustomEvent('myavatar:hub-open'));
         else if (d.panel === 'search') window.dispatchEvent(new CustomEvent('myavatar:open-search'));
         else if (d.panel === 'history') window.dispatchEvent(new CustomEvent('myavatar:open-sidebar'));
         return true;
@@ -10775,11 +10771,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onClose={() => setToolSheetOpen(false)}
       locale={locale}
       title={toolPickOnly ? (locale === 'en' ? 'Choose a tool' : locale === 'ru' ? 'Выберите инструмент' : 'აირჩიე ხელსაწყო') : undefined}
-      // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar and the Plugins tab.
+      // The service catalog's categories (lib/catalog/nav.ts) — the same groups as the sidebar, every tool listed.
       sections={toolGroups().map((g) => ({
         id: g.id,
         label: g.label[locale === 'en' || locale === 'ru' ? locale : 'ka'],
-        tools: visibleToolIds(g.tools, hiddenTools, activeTool).map(toolEntry),
+        tools: g.tools.map(toolEntry),
       }))}
       extras={activeTool === 'chat' && !toolPickOnly ? researchExtras : []}
       activeId={activeTool}
