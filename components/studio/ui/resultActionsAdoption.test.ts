@@ -27,9 +27,10 @@ const codeOf = (f: string) =>
 /**
  * Panels wired to the shared actions. Add to this list as more are migrated — never shrink it.
  * (The standalone Dubbing / 3D / Montage studio pages were deleted with the old shell on 2026-10-01; their panels live
- * on in ServiceParamsPanel inside the studio, which is asserted below.)
+ * on in ServiceParamsPanel inside the studio, which is asserted below. The Lip-Sync Studio page went with the old Film
+ * Studio surfaces on 2026-10-09; the result panes below carry the same actions.)
  */
-const WIRED = ['LipsyncStudio.tsx'];
+const WIRED = [join('create', 'newtools', 'ShootResultPane.tsx'), join('create', 'VideoStage.tsx'), join('montage', 'ExportView.tsx')];
 
 describe('ResultActions adoption', () => {
   it.each(WIRED)('%s renders the shared result actions', (f) => {

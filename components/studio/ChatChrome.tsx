@@ -20,7 +20,7 @@ import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
+  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
@@ -1057,11 +1057,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // (visible on ALL viewports — the header is always sticky) whenever an explicit onBack
   // is given OR we're on a non-dashboard surface, defaulting the action to the chat home.
   const onLibrary = (pathname ?? '').includes('/library');
-  // The studio row exists per DEPLOYMENT (STUDIO_V2, published on <html> by the root layout), never per route.
-  const [studioV2, setStudioV2] = useState(false);
-  useEffect(() => { setStudioV2(document.documentElement.dataset.studioV2 === '1'); }, []);
-  const tStudio = lang === 'en' ? 'Studio' : lang === 'ru' ? 'Студия' : 'სტუდია';
-  const tBeta = lang === 'en' ? 'Beta' : lang === 'ru' ? 'Бета' : 'ბეტა';
   const showBack = Boolean(onBack) || onLibrary;
   const goBack = onBack ?? (() => router.push(`/${locale}/dashboard`));
   // Secondary surfaces opened ON TOP of the studio (e.g. /library) get a CLOSE (X)
@@ -1299,12 +1294,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {/* Who you are and what you have — the balance, language and account live HERE now, not in a header row
             that had five controls fighting the wordmark for 390 px. */}
         <div className="space-y-1 border-t border-app-border/10 px-2 pt-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
-          {studioV2 && (
-            <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/studio`); }} className={sideRow}>
-              <Clapperboard className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tStudio}
-              <span className="ml-auto rounded-full bg-app-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{tBeta}</span>
-            </button>
-          )}
           {authed ? (
             // The balance and the way to raise it are one control — the SAME CreditsModal from everywhere.
             <button type="button" onClick={() => { setSidebarOpen(false); setCreditsOpen(true); }} data-iap-external

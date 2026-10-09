@@ -55,17 +55,11 @@ describe('POST /api/video/lipsync callers', () => {
   it('finds the known callers (the scan is not silently empty)', () => {
     expect(usage.map((u) => u.file)).toEqual(expect.arrayContaining([
       join('components', 'studio', 'OmniStudio.tsx'),
-      join('components', 'studio', 'LipsyncStudio.tsx'),
       join('components', 'studio', 'MotionControlPanel.tsx'),
     ]));
   });
 
   it.each(usage.map((u) => [u.file, u] as const))('%s polls every job it starts', (_f, u) => {
     expect(u.polls).toBeGreaterThanOrEqual(u.starts);
-  });
-
-  it('the Film Studio no longer starts a lip-sync job it never polls', () => {
-    const src = codeOf(join(ROOT, 'components', 'studio', 'ConversationalFilmStudio.tsx'));
-    expect(src).not.toMatch(STARTS);
   });
 });

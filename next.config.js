@@ -376,12 +376,11 @@ const nextConfig = {
       ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
       ['admin/disputes', '/:locale/admin'],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
-    // /{lang}/studio is the new studio only where STUDIO_V2 is on (lib/studio/flags). Elsewhere it goes home with a
-    // real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale] loading.tsx starts the response
-    // first), which a crawler reads as a 200 page.
-    if (!/^(1|true|on)$/i.test(String(process.env.STUDIO_V2 ?? '').trim())) {
-      legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
-    }
+    // /{lang}/studio — the „Studio Beta" second studio — is RETIRED everywhere, whatever STUDIO_V2 says (the owner,
+    // 2026-10-09 18:25Z: „too confusing"; it was a second set of Video / Image / Avatar / Music tabs beside the studio's own
+    // tools). It goes home with a real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale]
+    // loading.tsx starts the response first), which a crawler reads as a 200 page.
+    legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
     // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias open
     // the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides along (Next merges it into the
     // destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. /auth/callback is NOT matched (exact sources).

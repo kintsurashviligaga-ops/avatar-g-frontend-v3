@@ -18,28 +18,10 @@ import { join } from 'node:path';
 const dir = join(__dirname, '..');
 const src = (f: string) => readFileSync(join(dir, f), 'utf8');
 
-/** Studios migrated to the shared progress card. Grow this list; never shrink it. */
-const WITH_PROGRESS = ['LipsyncStudio.tsx'];
 // The standalone Montage / Dubbing / Slides / 3D / Music studio PAGES were deleted with the old shell (2026-10-01,
-// docs/DESIGN.md §13); their work happens in the studio's ServiceParamsPanel, which is held to the same bar below.
-
-describe('progress parity', () => {
-  it.each(WITH_PROGRESS)('%s uses the shared GenerationProgress card', (f) => {
-    expect(src(f)).toContain('<GenerationProgress');
-  });
-
-  it.each(WITH_PROGRESS)('%s drives it from a real elapsed clock', (f) => {
-    // A card with a frozen `elapsed` is the same lie as the bar it replaced. Assert the CONTRACT — the
-    // value comes from a wall-clock delta — not one spelling of it: Music floors to whole seconds on a
-    // 250ms interval and is just as correct, and an over-specific regex failed it for no reason.
-    expect(src(f)).toMatch(/setElapsed\([^)]*Date\.now\(\)\s*-/);
-  });
-
-  it.each(WITH_PROGRESS)('%s resets the clock when the run ends', (f) => {
-    // Otherwise the next run starts its estimate from the previous run's total.
-    expect(src(f)).toMatch(/if \(!busy\) \{ setElapsed\(0\); return; \}/);
-  });
-});
+// docs/DESIGN.md §13), and the Lip-Sync Studio page — the last one on the shared progress card — with the old Film Studio
+// surfaces (2026-10-09, the owner's „remove what is old"; the Avatar tool does its job). Their work happens in the studio's
+// ServiceParamsPanel, which is held to the same bar below.
 
 describe('the in-studio service panels (successor of the deleted standalone studios)', () => {
   const panel = () => src('ServiceParamsPanel.tsx');
