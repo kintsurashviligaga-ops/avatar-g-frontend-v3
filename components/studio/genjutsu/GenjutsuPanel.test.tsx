@@ -1,6 +1,6 @@
 /**
  * The VFX panel, with its network mocked: a preset tap enables Generate with NOTHING typed, the price on the button IS
- * lib/genjutsu/pricing, a locked mode is inert (no request can leave it), a guest is sent to sign-in, and a balance that
+ * lib/genjutsu/pricing, a mode that is not open is not offered, a shut mode is inert (no request can leave it), a guest is sent to sign-in, and a balance that
  * cannot pay turns the tap into "top up". The money itself is pinned by the route tests.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -73,14 +73,32 @@ test('Generate sends the contract: the preset id, the format, the price it displ
   await waitFor(() => expect(screen.getByTestId('vfx-job')).toBeTruthy());
 });
 
-test('a locked mode is shown with a plain "soon" line, its inputs are inert and its button cannot send anything', async () => {
+test('a mode that is not open is not offered: no Motion or Swap tab, no tab bar, no engine row for them', async () => {
+  await mount();
+  expect(screen.queryByTestId('vfx-modes')).toBeNull();
+  expect(screen.queryByRole('radio', { name: /Motion|Swap/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Engines & prices/ }));
+  expect(document.querySelectorAll('[data-engine^="scene-"]').length).toBe(2);
+  expect(document.querySelectorAll('[data-engine^="motion-"], [data-engine^="swap-"]').length).toBe(0);
+});
+
+test('once Motion and Swap open, the three tabs are offered', async () => {
+  (fetchCapabilities as jest.Mock).mockResolvedValue({ scene: OPEN.scene, motion: { open: true, state: 'open' }, swap: { open: true, state: 'open' } });
+  await mount();
+  expect(screen.getByTestId('vfx-modes').querySelectorAll('[role="radio"]').length).toBe(3);
+  fireEvent.click(screen.getByRole('radio', { name: /Motion/ }));
+  expect(screen.getByTestId('vfx-video-input')).toBeTruthy();
+  expect(screen.queryByTestId('vfx-locked')).toBeNull();
+});
+
+test('a shut mode is shown with a plain "soon" line, its inputs are inert and its button cannot send anything', async () => {
+  (fetchCapabilities as jest.Mock).mockResolvedValue({ ...OPEN, scene: { open: false, state: 'soon' } });
   await mount();
   fireEvent.click(document.querySelector('[data-preset="ice"]')!);
-  fireEvent.click(screen.getByRole('radio', { name: /Motion/ }));
   expect(screen.getByTestId('vfx-locked').textContent).toContain('Soon');
   expect(generate().disabled).toBe(true);
   expect(generate().hasAttribute('data-price')).toBe(false);
-  expect((screen.getByTestId('vfx-video-input') as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByTestId('vfx-prompt') as HTMLTextAreaElement).disabled).toBe(true);
   fireEvent.click(generate());
   expect(startGeneration).not.toHaveBeenCalled();
 });

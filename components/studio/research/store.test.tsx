@@ -163,7 +163,7 @@ describe('the „+" sheet rows (useResearchToolExtras)', () => {
     const { result } = renderHook(() => useResearchToolExtras('en', () => text));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(result.current.map((r) => r.id)).toEqual(['research', 'connectors']);
-    expect(result.current.map((r) => r.title)).toEqual(['Deep Research', 'Connectors']);
+    expect(result.current.map((r) => r.title)).toEqual(['Deep Research', 'My documents']);
     text = 'seed from the box, edited';
     act(() => result.current[0]!.onPick());
     expect(getResearchState().start).toEqual({ prompt: 'seed from the box, edited' });
@@ -183,7 +183,7 @@ describe('the „+" sheet rows (useResearchToolExtras)', () => {
     expect(heard).toHaveBeenCalledTimes(1);
     expect(getResearchState().start).toBeNull();
     expect(result.current[0]!.title).toBe('Deep Research');
-    expect(result.current[1]!.title).toBe('კონექტორები');
+    expect(result.current[1]!.title).toBe('ჩემი დოკუმენტები');
   });
 });
 

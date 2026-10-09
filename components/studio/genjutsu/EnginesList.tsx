@@ -7,6 +7,7 @@
  *
  * The scene prices are the SAME numbers the Generate button shows and the route charges — they come from
  * lib/genjutsu/pricing, never from a literal here. A row is a button (44 px): tapping it picks that op and quality.
+ * Only the rows of the modes the panel offers (`ops`) are listed, so a closed mode is not advertised here either.
  */
 import { Check } from 'lucide-react';
 import { Disclosure } from '@/components/studio/ui/controls';
@@ -31,16 +32,18 @@ export interface EnginesListProps {
   /** null = capabilities not answered yet (no chip shown, nothing promised). */
   open: Record<GenjutsuOp, boolean | null>;
   onSelect: (op: GenjutsuOp, quality: GenjutsuQuality) => void;
+  /** The modes the panel offers; rows of any other mode are not listed. */
+  ops: readonly GenjutsuOp[];
 }
 
-export function EnginesList({ locale, op, quality, open, onSelect }: EnginesListProps) {
+export function EnginesList({ locale, op, quality, open, onSelect, ops }: EnginesListProps) {
   const c = copyFor(locale);
   const lang = toLang(locale);
   return (
     <div data-testid="vfx-engines">
       <Disclosure label={c.engines}>
         <ul className="space-y-1">
-          {ROWS.map((r) => {
+          {ROWS.filter((r) => ops.includes(r.op)).map((r) => {
             const credits = genjutsuCredits({ op: r.op, quality: r.quality });
             const on = r.op === op && r.quality === quality;
             const state = open[r.op];

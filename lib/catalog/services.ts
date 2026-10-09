@@ -153,7 +153,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   svc({
     id: 'video.remix', category: 'video', order: 16, tool: 'remix', pricingKey: 'remix', status: 'live',
     boundary: 'violation', boundaryNote: 'restyle/character ops can reach Kling / Replicate Wav2Lip / NanoBanana',
-    label: l('ვიდეო რემიქსი', 'Video remix', 'Видео-ремикс'),
+    label: l('ვიდეოს რემიქსი', 'Video remix', 'Ремикс видео'),
     description: l('შეცვალე არსებული ვიდეო: სტილი, სუბტიტრები, ხმა', 'Change a video you have: style, captions, voice', 'Измените своё видео: стиль, субтитры, голос'),
     aliases: ['video remix', 'remix this video', 'remix my video', 'remix the video', 'restyle', 'add captions', 'add subtitles', 'ვიდეოს რემიქსი', 'ვიდეო რემიქსი', 'ვიდეო დამირემიქსე', 'ვიდეოს სუბტიტრ', 'ремикс видео', 'субтитры к видео'],
   }),

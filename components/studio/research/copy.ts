@@ -45,7 +45,7 @@ export interface ResearchCopy {
 }
 
 const ka: ResearchCopy = {
-  toolTitle: 'Deep Research', toolSub: 'ეძებს ინტერნეტში და წერს ანგარიშს წყაროებით', connectorsTitle: 'კონექტორები', connectorsSub: 'შენი დოკუმენტები კვლევისთვის', sidebarRow: 'Deep Research',
+  toolTitle: 'Deep Research', toolSub: 'ეძებს ინტერნეტში და წერს ანგარიშს წყაროებით', connectorsTitle: 'ჩემი დოკუმენტები', connectorsSub: 'ფაილები კვლევისთვის', sidebarRow: 'Deep Research',
   startTitle: 'Deep Research', startLead: 'აგენტი ეძებს ინტერნეტში, კითხულობს ნაპოვნს და წერს ანგარიშს წყაროებით. მუშაობს ფონურად.',
   promptLabel: 'რა გავიკვლიოთ?', promptPlaceholder: 'მაგ. როგორ ვითარდება ელექტრომობილების ბაზარი კავკასიაში და ვინ არიან მთავარი მოთამაშეები?',
   docsLabel: 'შენი დოკუმენტები (არასავალდებულო)', docsNone: 'დოკუმენტები ჯერ არ გაქვს.', docsManage: 'მართვა', docsAdd: 'დოკუმენტის დამატება', docsLimit: (m) => `კვლევას მაქსიმუმ ${m} დოკუმენტი შეიძლება დაერთოს.`,
@@ -63,14 +63,14 @@ const ka: ResearchCopy = {
   readLoading: 'ხმა მზადდება…', readReading: 'იკითხება', readPaused: 'პაუზაზეა', readPartial: 'იკითხება ანგარიშის დასაწყისი. მთლიანის მოსასმენად გამოიყენე „შეაჯამე“ ან ცოცხალი საუბარი.', readFailed: 'წაკითხვა ვერ მოხერხდა. სცადე თავიდან.', summarize: 'შეაჯამე', takeaways: 'ამოიღე მთავარი არსი',
   askLabel: 'შეკითხვა ანგარიშზე', askPlaceholder: 'დასვი შეკითხვა ანგარიშზე…', askSend: 'გაგზავნა', askBusy: 'პასუხს ვამზადებთ…', askHint: 'დაწერე ან თქვი: „შეაჯამე“, „ამოიღე მთავარი არსი“, „წამიკითხე“.', askYou: 'შენ', answerReadAloud: 'პასუხის წაკითხვა',
   micStart: 'მიკროფონის ჩართვა', micStop: 'მიკროფონის გამორთვა', loadingReport: 'ანგარიში იტვირთება…', loadFailed: 'ანგარიშის ჩატვირთვა ვერ მოხერხდა.', retry: 'თავიდან ცდა', runningNote: 'ანგარიში ჯერ მზად არ არის. შეგიძლია დახურო — გაცნობებთ.', openSource: 'წყაროს გახსნა',
-  connHeading: 'კონექტორები', connLead: 'ბმული შენს დოკუმენტებთან. კვლევა მათ ვებთან ერთად გამოიყენებს.', connLocal: 'ლოკალური ფაილები', connLocalSub: 'ატვირთე PDF, DOCX, TXT ან MD — ვინახავთ მხოლოდ ტექსტს.',
+  connHeading: 'ჩემი დოკუმენტები', connLead: 'ბმული შენს დოკუმენტებთან. კვლევა მათ ვებთან ერთად გამოიყენებს.', connLocal: 'ლოკალური ფაილები', connLocalSub: 'ატვირთე PDF, DOCX, TXT ან MD — ვინახავთ მხოლოდ ტექსტს.',
   connAdd: 'ფაილის დამატება', connAdding: 'იტვირთება…', connEmpty: 'ფაილები ჯერ არ გაქვს.', connChars: (n) => `${n.toLocaleString('en')} სიმბოლო`, connRemove: (name) => `წაშლა: ${name}`,
   connSoon: 'მალე', connSoonNote: 'ჯერ არ არის ხელმისაწვდომი. დაკავშირების ღილაკს არ გაჩვენებთ, სანამ ნამდვილად არ იმუშავებს.', connUnavailable: 'ფაილების შენახვა ჯერ არ არის ჩართული.',
   connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `მაქსიმუმ ${m} დოკუმენტი. წაშალე ერთი, რომ ახალი დაამატო.`, connUploadFailed: 'ფაილის ატვირთვა ვერ მოხერხდა.', connUnreadable: 'ფაილში წასაკითხი ტექსტი ვერ ვიპოვეთ (სკანირებული PDF?).', connLoadFailed: 'სია ვერ ჩაიტვირთა.', connSignIn: 'ფაილების დასამატებლად შედი ანგარიშში.', connTooLarge: 'ფაილი ძალიან დიდია (მაქსიმუმ 3 მბ).', connSignInButton: 'შესვლა',
 };
 
 const en: ResearchCopy = {
-  toolTitle: 'Deep Research', toolSub: 'Searches the web and writes a cited report', connectorsTitle: 'Connectors', connectorsSub: 'Your own documents for research', sidebarRow: 'Deep Research',
+  toolTitle: 'Deep Research', toolSub: 'Searches the web and writes a cited report', connectorsTitle: 'My documents', connectorsSub: 'Files for research', sidebarRow: 'Deep Research',
   startTitle: 'Deep Research', startLead: 'An agent searches the web, reads what it finds and writes a report with sources. It runs in the background.',
   promptLabel: 'What should we research?', promptPlaceholder: 'e.g. How is the electric-car market in the Caucasus developing, and who are the main players?',
   docsLabel: 'Your documents (optional)', docsNone: 'No documents yet.', docsManage: 'Manage', docsAdd: 'Add documents', docsLimit: (m) => `A research can use up to ${m} documents.`,
@@ -88,14 +88,14 @@ const en: ResearchCopy = {
   readLoading: 'Preparing the voice…', readReading: 'Reading aloud', readPaused: 'Paused', readPartial: 'Reading the start of the report. To hear all of it, use Summarize or go live.', readFailed: 'Reading aloud did not work. Please try again.', summarize: 'Summarize', takeaways: 'Key takeaways',
   askLabel: 'Ask about this report', askPlaceholder: 'Ask about this report…', askSend: 'Send', askBusy: 'Preparing the answer…', askHint: 'Type or say: “Summarize”, “Key takeaways”, “Read it to me”.', askYou: 'You', answerReadAloud: 'Read the answer aloud',
   micStart: 'Start the microphone', micStop: 'Stop the microphone', loadingReport: 'Loading the report…', loadFailed: 'The report could not be loaded.', retry: 'Try again', runningNote: 'The report is not ready yet. You can close this — we will tell you.', openSource: 'Open source',
-  connHeading: 'Connectors', connLead: 'Bring your own documents. A research reads them alongside the web.', connLocal: 'Local files', connLocalSub: 'Upload a PDF, DOCX, TXT or MD — we keep the text only.',
+  connHeading: 'My documents', connLead: 'Bring your own documents. A research reads them alongside the web.', connLocal: 'Local files', connLocalSub: 'Upload a PDF, DOCX, TXT or MD — we keep the text only.',
   connAdd: 'Add a file', connAdding: 'Uploading…', connEmpty: 'No files yet.', connChars: (n) => `${n.toLocaleString('en')} characters`, connRemove: (name) => `Delete ${name}`,
   connSoon: 'Soon', connSoonNote: 'Not available yet. There is no connect button until it truly works.', connUnavailable: 'File storage is not switched on yet.',
   connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `Up to ${m} documents. Delete one to add another.`, connUploadFailed: 'The file could not be uploaded.', connUnreadable: 'We could not find readable text in that file (a scanned PDF?).', connLoadFailed: 'The list could not be loaded.', connSignIn: 'Sign in to add files.', connTooLarge: 'That file is too large (3 MB at most).', connSignInButton: 'Sign in',
 };
 
 const ru: ResearchCopy = {
-  toolTitle: 'Deep Research', toolSub: 'Ищет в сети и пишет отчёт с источниками', connectorsTitle: 'Коннекторы', connectorsSub: 'Ваши документы для исследований', sidebarRow: 'Deep Research',
+  toolTitle: 'Deep Research', toolSub: 'Ищет в сети и пишет отчёт с источниками', connectorsTitle: 'Мои документы', connectorsSub: 'Файлы для исследований', sidebarRow: 'Deep Research',
   startTitle: 'Deep Research', startLead: 'Агент ищет в интернете, читает найденное и пишет отчёт с источниками. Работает в фоне.',
   promptLabel: 'Что исследовать?', promptPlaceholder: 'Напр.: как развивается рынок электромобилей на Кавказе и кто основные игроки?',
   docsLabel: 'Ваши документы (необязательно)', docsNone: 'Документов пока нет.', docsManage: 'Управлять', docsAdd: 'Добавить документы', docsLimit: (m) => `К исследованию можно приложить до ${m} документов.`,
@@ -113,7 +113,7 @@ const ru: ResearchCopy = {
   readLoading: 'Готовим голос…', readReading: 'Читаю вслух', readPaused: 'На паузе', readPartial: 'Читается начало отчёта. Чтобы услышать всё, используйте «Суммируй» или живой разговор.', readFailed: 'Не удалось прочитать вслух. Попробуйте снова.', summarize: 'Суммируй', takeaways: 'Выдели главное',
   askLabel: 'Вопрос по отчёту', askPlaceholder: 'Задайте вопрос по отчёту…', askSend: 'Отправить', askBusy: 'Готовим ответ…', askHint: 'Напишите или скажите: «Суммируй», «Выдели главное», «Прочитай».', askYou: 'Вы', answerReadAloud: 'Прочитать ответ вслух',
   micStart: 'Включить микрофон', micStop: 'Выключить микрофон', loadingReport: 'Загружаем отчёт…', loadFailed: 'Не удалось загрузить отчёт.', retry: 'Повторить', runningNote: 'Отчёт ещё не готов. Можно закрыть — мы сообщим.', openSource: 'Открыть источник',
-  connHeading: 'Коннекторы', connLead: 'Ваши собственные документы. Исследование читает их наряду с сетью.', connLocal: 'Локальные файлы', connLocalSub: 'Загрузите PDF, DOCX, TXT или MD — мы храним только текст.',
+  connHeading: 'Мои документы', connLead: 'Ваши собственные документы. Исследование читает их наряду с сетью.', connLocal: 'Локальные файлы', connLocalSub: 'Загрузите PDF, DOCX, TXT или MD — мы храним только текст.',
   connAdd: 'Добавить файл', connAdding: 'Загружаем…', connEmpty: 'Файлов пока нет.', connChars: (n) => `${n.toLocaleString('en')} символов`, connRemove: (name) => `Удалить ${name}`,
   connSoon: 'Скоро', connSoonNote: 'Пока недоступно. Кнопки подключения не будет, пока оно по-настоящему не заработает.', connUnavailable: 'Хранение файлов пока не включено.',
   connFormats: 'PDF · DOCX · TXT · MD', connFilesLimit: (m) => `До ${m} документов. Удалите один, чтобы добавить новый.`, connUploadFailed: 'Не удалось загрузить файл.', connUnreadable: 'В файле не удалось найти читаемый текст (скан PDF?).', connLoadFailed: 'Не удалось загрузить список.', connSignIn: 'Войдите, чтобы добавлять файлы.', connTooLarge: 'Файл слишком большой (не более 3 МБ).', connSignInButton: 'Войти',

@@ -792,30 +792,42 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
   // studio on that tool (`?tool=`, read once by OmniStudio).
   const onStudioHome = isStudioPath(pathname) && !onBack;
+  // In the studio a pick is an `omni:set-tool` event, which the studio answers by cancelling it. While the studio's code is
+  // still loading nobody listens, and a fast first tap on a row did nothing. Then the pick waits in the address (`?tool=`,
+  // `&mode=`), which the studio reads once when it mounts — the same deep link a page outside the studio uses.
+  const askStudio = useCallback((detail: unknown, href: string) => {
+    const ev = new CustomEvent('omni:set-tool', { detail, cancelable: true });
+    window.dispatchEvent(ev);
+    if (ev.defaultPrevented) return;
+    const want = new URL(href, window.location.href);
+    const here = new URL(window.location.href);
+    want.searchParams.forEach((v, k) => here.searchParams.set(k, v));
+    window.history.replaceState(window.history.state, '', `${here.pathname}${here.search}`);
+  }, []);
   const selectTool = useCallback((id: ToolId) => {
     setSidebarOpen(false);
-    if (onStudioHome) { window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: id })); return; }
+    if (onStudioHome) { askStudio(id, `/${locale}/dashboard?tool=${id}`); return; }
     const url = `/${locale}/dashboard?tool=${id}`;
     // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
     // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
-  }, [onStudioHome, router, locale, pathname]);
+  }, [onStudioHome, router, locale, pathname, askStudio]);
   // A service found by the search opens like a menu row, but as the SERVICE: its tool, its mode („Music video" is the
   // Video tool in music-video mode) and its own analytics id. Outside the studio its catalog link carries the same.
   const openService = useCallback((s: ServiceDefinition, surface: 'search' | 'sidebar' = 'search') => {
     if (!s.tool) return;
     setSidebarOpen(false);
     setConvQuery('');
+    const url = serviceHref(s.id, locale);
     if (onStudioHome) {
-      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface } }));
+      askStudio({ tool: s.tool, service: s.id, surface }, url ?? `/${locale}/dashboard?tool=${s.tool}`);
       return;
     }
-    const url = serviceHref(s.id, locale);
     if (!url) return;
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
-  }, [onStudioHome, router, locale, pathname]);
+  }, [onStudioHome, router, locale, pathname, askStudio]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
@@ -1013,8 +1025,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return q ? conversations.filter((c) => (c.title || '').toLowerCase().includes(q)) : conversations;
   }, [conversations, convQuery]);
   // §51 — the same box finds SERVICES, by the words a person would type in any UI language (the catalog's aliases, the
-  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed.
-  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery) : []), [convQuery]);
+  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed. Only what a person can
+  // open: a „Soon" row for something that does not exist yet was one more thing to read (the owner, 2026-10-09 18:25Z).
+  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery).filter((s) => s.status !== 'coming-soon') : []), [convQuery]);
 
   const convGroups = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);

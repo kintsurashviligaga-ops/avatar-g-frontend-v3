@@ -18,8 +18,8 @@ export const VIDEO_COPY = {
 
   modeDocumentary: T('ფილმი', 'Film', 'Фильм'),
   modeMusicVideo: T('მუსიკალური კლიპი', 'Music video', 'Клип'),
-  modeDocumentarySub: T('დიქტორის ხმით', 'With a narrator', 'С диктором'),
-  modeMusicVideoSub: T('სიმღერაზე აწყობილი', 'Cut to a song', 'Под песню'),
+  modeDocumentarySub: T('დიქტორით', 'With a narrator', 'С диктором'),
+  modeMusicVideoSub: T('სიმღერით', 'Cut to a song', 'Под песню'),
 
   // references
   refsTitle: T('დაამატე რეფერენსები', 'Add references', 'Добавьте референсы'),

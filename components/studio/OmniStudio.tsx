@@ -3181,13 +3181,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // The sidebar SEARCH (§51) sends a service instead of a bare tool: `{ tool, service, surface }` — its mode comes with
   // it (Music video = the Video tool in music-video mode) and it is counted under its own catalog id.
   useEffect(() => {
+    // Handling it cancels the event: that is how the sidebar knows the studio heard it (ChatChrome askStudio).
     const onSet = (e: Event) => {
       const d = (e as CustomEvent<unknown>).detail;
-      if (isToolId(d)) { selectTool(d, 'sidebar'); return; }
+      if (isToolId(d)) { e.preventDefault(); selectTool(d, 'sidebar'); return; }
       const o = d && typeof d === 'object' ? (d as { tool?: unknown; service?: unknown; surface?: unknown }) : null;
       if (!o || !isToolId(o.tool)) return;
       const service = typeof o.service === 'string' ? getService(o.service) : undefined;
       if (service && service.tool !== o.tool) return;
+      e.preventDefault();
       selectTool(o.tool, o.surface === 'sidebar' ? 'sidebar' : 'search', service?.id ?? null);
       const m = service ? serviceModeQuery(service.id)?.mode : undefined;
       if (o.tool === 'video' && (m === 'musicvideo' || m === 'documentary')) setVideoMode(m);
@@ -10730,7 +10732,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               aria-label={`${toolLabel} — ${changeToolWord}`} title={changeToolWord} data-testid="panel-tool-switch"
               className="flex min-h-[44px] w-full min-w-0 touch-manipulation items-center gap-2.5 rounded-2xl px-1 text-left transition-colors hover:bg-app-elevated/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-app-accent/15 text-app-accent"><ToolIcon size={18} aria-hidden="true" /></span>
-              <span className="min-w-0 truncate text-[16px] font-bold tracking-tight text-app-text">{toolLabel}</span>
+              {/* Two lines, broken between words, never „მოძრაობის გადატა…": a tool's name is how the user knows where they are. */}
+              <span className="line-clamp-2 min-w-0 break-normal text-[16px] font-bold leading-tight tracking-tight text-app-text">{toolLabel}</span>
               <ChevronDown size={16} aria-hidden="true" className="shrink-0 text-app-muted" />
             </button>
           </h2>

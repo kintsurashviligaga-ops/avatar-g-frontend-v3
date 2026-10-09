@@ -69,6 +69,10 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           clock), never replaced line by line and never vanishing; the tray no longer flashes a finished job; own
           video and audio players (waveform) in place of the browser's; the feed's scrollbar out of the column.
           components/studio/AgentTaskCard.tsx, lib/agent/media/taskSteps.ts, ChatVideoPlayer, ChatAudioPlayer; PR #50.
+          Service simplification (owner, 18:25Z): the old hub, Music Video director, Lip-Sync studio, /studio „Studio
+          Beta" and the Connectors · Plugins · Skills hub retired; Music video has its own sidebar row and a switch at
+          the top of the Video panel; clearer tool names; VFX offers only open modes. BUILT_NOT_PROVEN on PR #50;
+          service-by-service table and owner items in docs/handoffs/2026-10-09-service-audit.md.
           Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z):
           AUTH-3 PROVEN live 16:02Z, email sign-up by code (AUTH-4) PROVEN live 16:09:05Z (the owner's KA sign-up);

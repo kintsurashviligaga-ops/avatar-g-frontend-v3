@@ -25,7 +25,7 @@ import { genjutsuCredits } from '@/lib/genjutsu/pricing';
 import { getPreset } from '@/lib/genjutsu/presets';
 import { selectReferences } from '@/lib/genjutsu/selection';
 import { USER_PROMPT_MAX_CHARS } from '@/lib/genjutsu/limits';
-import { toLang, type GenjutsuAspect, type GenjutsuOp, type GenjutsuQuality } from '@/lib/genjutsu/types';
+import { GENJUTSU_OPS, toLang, type GenjutsuAspect, type GenjutsuOp, type GenjutsuQuality } from '@/lib/genjutsu/types';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { LiveStatus, generationAnnouncement } from '@/components/studio/ui/LiveStatus';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
@@ -124,6 +124,9 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
     motion: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.motion.open : false,
     swap: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.swap.open : false,
   };
+  // Scene is always offered; Motion and Swap only once they are open (they also have their own tools). The mode in use
+  // stays offered even if it closes under the user, so they can read why and switch back.
+  const offered = GENJUTSU_OPS.filter((o) => o === 'scene' || o === op || open[o] === true);
   const opOpen = open[op];
   const locked = opOpen === false;
   const hasCharacter = selection.used.some((u) => u.role === 'character');
@@ -326,10 +329,12 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
       <HeroCard locale={locale} preset={preset} onChange={heroChange} />
       <PresetCarousel locale={locale} activeId={presetId} onPick={(id) => { setPresetId(id); setNotice(null); }} />
 
-      <div className="space-y-2">
-        <ModeTabs locale={locale} value={op} onChange={changeOp} open={open} />
-        <p data-testid="vfx-mode-hint" className="px-1 text-[11.5px] leading-snug text-app-muted">{c.modeHint[op]}</p>
-      </div>
+      {offered.length > 1 && (
+        <div className="space-y-2">
+          <ModeTabs locale={locale} value={op} onChange={changeOp} open={open} ops={offered} />
+          <p data-testid="vfx-mode-hint" className="px-1 text-[11.5px] leading-snug text-app-muted">{c.modeHint[op]}</p>
+        </div>
+      )}
 
       {locked && (
         <div data-testid="vfx-locked" role="status" className="space-y-1 rounded-2xl bg-app-elevated/50 p-3 ring-1 ring-app-border/15">
@@ -408,6 +413,7 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
         op={op}
         quality={q}
         open={open}
+        ops={offered}
         onSelect={(nextOp, nextQ) => { changeOp(nextOp); setQuality(nextQ); }}
       />
 

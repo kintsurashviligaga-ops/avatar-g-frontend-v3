@@ -46,6 +46,11 @@ async function fit(page: Page) {
       const lh = parseFloat(getComputedStyle(h).lineHeight) || 20;
       if (h.getBoundingClientRect().height > lh * 1.5) broken.push(t);
     }
+    // The video tiles' values (length · format · resolution) are cut with „…" when they do not fit — „1080p" read „108…".
+    for (const el of Array.from(panel.querySelectorAll('[data-testid^="video-tile-"] span.truncate'))) {
+      const h = el as HTMLElement;
+      if (h.scrollWidth > h.clientWidth + 1) cut.push(`video tile "${(h.textContent ?? '').trim()}"`);
+    }
     return { out, cut, broken };
   });
 }

@@ -81,6 +81,14 @@ counts (13 / 17 / 18 / 22 / 24 / 25 / 26) and prices. Two extra shells (`/hub`, 
   with surface `search`. Same change fixed a broken shortcut: the catalog link to Music video
   (`?tool=video&mode=musicvideo`, used by /services) opened plain Video; the studio now applies the mode. Tests:
   `services.test.ts` (searchServices, serviceModeQuery), `ServiceSearchResults.test.tsx`, `serviceSearch.wiring.test.ts`.
+- Service audit (owner, 2026-10-09 18:25Z: „remove everything superfluous … check one by one everything we offer"):
+  **BUILT_NOT_PROVEN** on PR #50 (cert Preview only, Production unchanged). Retired: the three-card hub (`#hub`), the old
+  Music Video director (`#film`), the Lip-Sync studio (`#lipsync`), `/{lang}/studio` „Studio Beta" (now a redirect home)
+  and the Connectors · Plugins · Skills hub; Music video is a sidebar row of its own and a Film | Music video switch at
+  the top of the Video panel; four tools renamed so the name says what they do (Video remix, VFX effects, Motion
+  transfer, Video editing); „Soon" rows left the sidebar search; VFX offers only its open modes. Service-by-service
+  table and owner items: `docs/handoffs/2026-10-09-service-audit.md`. Tests: `tests/simplified-studio.spec.ts`,
+  `tests/vfx-genjutsu.spec.ts`, `nav.test.ts`, `VideoCreatePanel.test.tsx`, `serviceSearch.wiring.test.ts`.
 - Still open: 5 legacy registries are imported by legacy API routes (`/api/pipeline`, `/api/agents/*`) and must be deprecated
   with them.
 
@@ -144,10 +152,12 @@ ElevenLabs only). The approve-then-run gate for high-risk browser actions (§32)
 ## I. One Window
 
 The studio (`/{lang}` guests, `/{lang}/dashboard` signed in) is the only workspace: `/hub` and `/workspace` redirect to it;
-every menu (sidebar, + sheet, tools picker, plugins, `/services`) reads the catalog; Agent G is first; every catalog service
+every menu (sidebar, + sheet, tools picker, `/services`) reads the catalog; Agent G is first; every catalog service
 opens inside the studio by `?tool=` (no separate app). Legacy `/services/<slug>` pages remain as SEO landing pages whose
-CTA opens the studio. `/{lang}/studio` (Studio V2 behind `STUDIO_V2`, off) is still a second implementation waiting for a
-merge-or-retire decision. **BUILT_NOT_PROVEN** (deployed 2026-10-09; `/ka/hub` landing on the studio is PROVEN live, the rest is not checked live).
+CTA opens the studio. `/{lang}/studio` (Studio V2) was retired on PR #50 on the owner's word (2026-10-09 18:25Z,
+4cde9d04): it redirects home and its UI is deleted; its API routes stay behind `STUDIO_V2` so a started job can still
+finish or refund (owner: unset the env in Production). The `#hub`, `#film` and `#lipsync` surfaces now open Chat, Video
+and Avatar; the Plugins hub is gone (f28c2181). **BUILT_NOT_PROVEN** (deployed 2026-10-09; `/ka/hub` landing on the studio is PROVEN live, the rest is not checked live).
 
 ## J. Video V1–V6
 
@@ -352,6 +362,8 @@ pricing change without an SSoT update).
 
 ## R. Connectors
 
+The sidebar's Connectors · Plugins · Skills hub was removed on PR #50 (f28c2181, owner 2026-10-09 18:25Z: „confusing");
+Web Push moved to Settings. The connector list lives only in Deep Research, renamed „My documents".
 Truthful labels (PROVEN, unit): Local files is ready; Google Drive, OneDrive, Notion and Dropbox are "soon" and `connect()`
 refuses; Telegram / WhatsApp are status lines. No OAuth, no token storage, no scopes (MISSING by design until a connector
 ships). Vocabulary lacks Beta / Disabled (PARTIAL).

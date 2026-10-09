@@ -106,14 +106,14 @@ describe('ListSheet', () => {
     expect(getResearchState().list).toBe(false);
   });
 
-  test('an empty list says so; New research appears only when the feature exists; Connectors always opens', () => {
+  test('an empty list says so; New research appears only when the feature exists; My documents always opens', () => {
     act(() => researchActions.ingestList([]));
     const { rerender } = render(<ListSheet locale="en" />);
     expect(screen.getByText('No research yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /New research/ })).toBeNull();
     act(() => researchActions.setCredits(120)); // no caps yet → no-op, still hidden
     expect(screen.queryByRole('button', { name: /New research/ })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Connectors/ }));
+    fireEvent.click(screen.getByRole('button', { name: /My documents/ }));
     expect(getResearchState().connectors).toBe(true);
     rerender(<ListSheet locale="en" />);
   });

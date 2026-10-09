@@ -271,8 +271,8 @@ export const browserLiveActionEnv: LiveActionEnv = {
 
 const STUDIO_NAME: Record<string, string> = {
   video: 'Video', image: 'Image', music: 'Music', avatar: 'Avatar', chat: 'Chat', photoshoot: 'Photographer',
-  interior: 'Interior designer', remix: 'Remix', product: 'Product ad', swap: 'Character swap', vfx: 'VFX', motion: 'Motion',
-  montage: 'Montage (video editor)', dubbing: 'Dubbing', model3d: '3D model', presentation: 'Presentation', photo: 'Photo culling',
+  interior: 'Interior designer', remix: 'Video remix', product: 'Product ad', swap: 'Character swap', vfx: 'VFX effects', motion: 'Motion transfer',
+  montage: 'Video editing', dubbing: 'Dubbing', model3d: '3D model', presentation: 'Presentation', photo: 'Photo culling',
 };
 const MODEL_NAME: Record<LiveChatModel, string> = { fast: '3.8 Flash', thinking: '3.8 Flash Thinking', pro: '3.1 Pro', lite: '3.1 Flash-Lite' };
 
