@@ -218,7 +218,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** iPhone და Android-ზე: სტუდიო, შესვლა, Live voice, checkout — ჩავარდნის გარეშე.
 
 ### 4.17 E2E
-- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09-ის ლოკალური გაშვება მიმდინარეობს; შედეგი აქ ჩაიწერება. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
+- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09, ეს branch (`76e8c525`+), ლოკალურად: სრული გაშვება Supabase env-ის გარეშე — 220 passed, 21 failed, 10 skipped; 21-ის ხელახლა გაშვება CI-ის dummy Supabase ცვლადებით — 19 passed; დარჩენილი 2 ცალკე, ორჯერ: `live-voice-e2e.spec.ts:30` ორჯერვე გავიდა (დატვირთვა იყო), `landing.spec.ts:380` („when the image lands…“) 5-დან 4-ჯერ ვარდება (phone და desktop). მიზეზი: `/brand/v1/card-image.jpg`-ის მოთხოვნა იგზავნება, პასუხი არ მოდის, სურათი 0×0 რჩება. ეს branch ამ ეკრანს და static ფაილებს არ ეხება; ტესტი CI-ში არ გადის. **NOT PROVEN** — გამოსაკვლევია (Claude). ჯამი: 241 არა-skipped ტესტიდან 240 გადის. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
 - **პასუხისმგებელი:** Claude; GG — Preview-სა და Production-ის Supabase-ის გაყოფა (owner action 11) და სატესტო ანგარიში.
 - **DoD:** CI-ში E2E Preview-ზე, სატესტო ანგარიშით, ცალკე Supabase-ზე: შესვლა, ერთი უფასო მოქმედება, Library, გასვლა.
 
@@ -233,9 +233,9 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 **DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b` (არ არის გაშვებული); PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`).
 
-**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 696 / 696.
+**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch).
 
-**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex.
+**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; `landing.spec.ts:380` (სურათის ჩვენება, ლოკალურად).
 
 **BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); `20261009b`-ის თანხმობა; Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
 
@@ -256,7 +256,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
 | 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); providers health-ის და Lyria-ს ძველი ტექსტი; ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); `landing.spec.ts:380`-ის მიზეზი; providers health-ის და Lyria-ს ძველი ტექსტი; ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 

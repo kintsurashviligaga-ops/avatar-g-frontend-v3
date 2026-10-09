@@ -38,6 +38,7 @@ All run on `70a5fe88` in the cloud sandbox, 2026-10-08 (logs not committed; numb
 | Deployed head `5013d87c`, full jest (2026-10-09) | **684 / 684 suites, 10,678 passed, 3 skipped, 0 failed** |
 | Branch head `0d239f26`, 2026-10-09 ~06:10Z | tsc 0; `next lint` 0 errors, 35 warnings; **jest 696 / 696 suites, 10,776 passed, 3 skipped, 0 failed**; `scripts/check-i18n-parity.ts` OK |
 | Branch head `76e8c525` (PR #44 ports), 2026-10-09 ~06:25Z | tsc 0; eslint clean on the 15 changed files; **jest 698 / 698 suites, 10,789 passed, 3 skipped, 0 failed** |
+| Playwright, all 27 local specs (251 tests), 2026-10-09 on `76e8c525`+ | Without Supabase env: 220 passed, 21 failed, 10 skipped. The 21 again with CI's dummy Supabase env: 19 passed. Of the last 2, alone ×2: `live-voice-e2e.spec.ts:30` passed both (load); `landing.spec.ts:380` (the landed image) fails 4 of 5 runs, phone and desktop: the request for `/brand/v1/card-image.jpg` is sent and never answered, so the image stays 0×0. Not touched by this branch, not in CI; open (engineering report §4.17) |
 | HawkScan DAST | not run: `HAWK_API_KEY` is not set |
 
 Not proven by any of the above: anything against real providers, real Supabase, real Stripe, or a real phone. Those are in Y.
