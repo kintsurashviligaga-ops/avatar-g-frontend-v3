@@ -79,7 +79,8 @@ describe('the reference picture', () => {
   test('the route reads ONE referenceImage (a string), so the limit is one — never an array', () => {
     expect(IMAGE_MAX_REFERENCES).toBe(1);
     expect(route).toMatch(/referenceImage\?: string;/);
-    expect(route).not.toMatch(/referenceImages|referenceImage\?: string\[\]/);
+    // (`referenceImages: [referenceImageUrl]` is the Google image call under MEDIA_GOOGLE_ONLY: still the one picture.)
+    expect(route).not.toMatch(/body\.referenceImages|referenceImages\?: |referenceImage\?: string\[\]/);
   });
 });
 

@@ -163,8 +163,12 @@ test('a cancel during the conform leg kills its ffmpeg: the worker stops within 
   if (!queued.ok) throw new Error(queued.error);
   const run = workMontageJob(deps, { jobId: queued.jobId, worker: 'w-cancel' });
   await reached;
-  await new Promise((r) => setTimeout(r, 300));
-  const conform = encoders();
+  // Poll for the encoder (5 s cap) rather than a fixed 300 ms: under the full parallel suite it can take longer to spawn.
+  let conform = encoders();
+  for (let i = 0; i < 50 && conform.length === 0; i += 1) {
+    await new Promise((r) => setTimeout(r, 100));
+    conform = encoders();
+  }
   expect(conform.length).toBeGreaterThan(0); // the conform ffmpeg is running now
   expect(await cancelMontageJob(deps, { userId: 'u', jobId: queued.jobId })).toEqual({ ok: true });
   const t0 = Date.now();

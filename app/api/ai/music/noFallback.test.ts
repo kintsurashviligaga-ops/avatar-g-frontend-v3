@@ -156,3 +156,26 @@ describe('"sing in my voice" — a missed conversion is said, not hidden', () =>
     expect(json).not.toHaveProperty('voiceApplied');
   });
 });
+
+describe('MEDIA_GOOGLE_ONLY on — outside engines refuse before the reserve, Lyria still composes', () => {
+  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
+
+  test.each([
+    ['an Udio pick', { ...BED, engine: 'udio' }],
+    ['a MusicGen pick', { ...BED, engine: 'musicgen' }],
+    ['sing in my voice (RVC)', { ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }],
+  ])('%s → 503 google_only, nothing charged, no engine run', async (_label, body) => {
+    const res = await POST(post(body));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, code: 'google_only' });
+    expect(deductCredits).not.toHaveBeenCalled();
+    for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic] as jest.Mock[]) {
+      expect(engine).not.toHaveBeenCalled();
+    }
+  });
+
+  test('Auto still runs Lyria', async () => {
+    const json = await (await POST(post(BED))).json();
+    expect(json).toMatchObject({ success: true, engine: 'Lyria' });
+  });
+});

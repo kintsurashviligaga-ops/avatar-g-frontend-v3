@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration } from '@/lib/api/generationGuard';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -9,6 +10,10 @@ import { normalizeOutput } from '@/lib/replicate/normalizer';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   try {
     const body = await req.json();
 

@@ -14,6 +14,7 @@
  * avoid pushing a multi-MB soundtrack data-URI at the provider). Response:
  *   { url: string | null }
  */
+import { isMediaGoogleOnly, refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { lipsyncCreate, filmLipsyncCreate, lipsyncFetch, hasLipsyncProvider, lipsyncStatus, heygenSelfTest, heygenHealthCheck } from '@/lib/ai/lipsync';
@@ -71,6 +72,8 @@ export async function GET(req: NextRequest) {
   // lip-sync stage skips with a surfaced reason instead of trapping the user behind a doomed render.
   // Cheap + cached + fail-open (see heygenHealthCheck) — no paid render, unlike ?selftest.
   if (req.nextUrl.searchParams.get('health') === 'heygen') {
+    // MEDIA_GOOGLE_ONLY: POST refuses, so the film skips its lip-sync stage at once with the "engine unavailable" line.
+    if (isMediaGoogleOnly()) return NextResponse.json({ ok: false, reason: 'google_only' });
     return NextResponse.json(await heygenHealthCheck());
   }
   const polledId = req.nextUrl.searchParams.get('id');
@@ -180,6 +183,10 @@ export async function GET(req: NextRequest) {
  * poll knows the job is paid and can refund the reservation if the provider reports a terminal failure.
  */
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const rl = await checkRateLimit(req, RATE_LIMITS.WRITE); if (rl) return rl;
   // ⚠️ SIGNED-IN ONLY (lib/auth/generationGate), before anything that costs money. This route spends ElevenLabs
   // (TTS) and HeyGen/Replicate (render) on the platform's keys, and its balance gate only ever applied to a

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
@@ -351,6 +352,14 @@ export async function POST(req: NextRequest) {
 
   if (!prompt) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
+  }
+
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Lyria (Google) and ElevenLabs Music compose; everything else here is an
+  // outside engine — an explicit Udio / MusicGen pick, a cover (MusicGen-melody), a sampled voice (MiniMax) or a trained
+  // voice (RVC) — so the switch refuses those requests here, before the reserve. Off (the default) → no-op.
+  if (audioReference || voiceReference || useMyVoice || preferredEngine === 'udio' || preferredEngine === 'musicgen') {
+    const outside = refuseOutsideEngine(req);
+    if (outside) return outside;
   }
 
   // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').

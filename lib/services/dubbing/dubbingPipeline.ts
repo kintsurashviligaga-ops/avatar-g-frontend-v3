@@ -23,6 +23,7 @@
  */
 import 'server-only';
 import { extractInstrumentalStem } from '@/lib/audio/instrumentalStem';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -208,7 +209,9 @@ export async function runDubbing(
     // that fails because a separator was unavailable would be a regression caused by an improvement.
     let bedUrl: string | null = req.preserveBackgroundAudio ? req.sourceVideoUrl : null;
     let bedSeparated = false;
-    if (bedUrl) {
+    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Demucs is an outside engine, so with the switch on the dub keeps the
+    // ducked original bed (bedSeparated stays false and is reported as such).
+    if (bedUrl && !isMediaGoogleOnly()) {
       const stem = await extractInstrumentalStem(bedUrl).catch(() => null);
       if (stem?.url) { bedUrl = stem.url; bedSeparated = true; }
     }

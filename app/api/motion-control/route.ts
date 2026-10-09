@@ -8,6 +8,7 @@
  * returns { jobId } in ~2s; the client polls GET /api/motion-control/status?id=…,
  * which finalizes (re-host + optional music) once Kling succeeds.
  */
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -71,6 +72,10 @@ async function normalizeStartImage(src: string, userId: string): Promise<string>
 }
 
 export async function POST(req: Request) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const { user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const rl = await checkRateLimit(req as NextRequest, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // paid Kling submit

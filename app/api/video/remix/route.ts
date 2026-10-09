@@ -16,6 +16,7 @@
  *
  * Request: { op, videoUrl, ... per-op params }   Response: { url, error? }
  */
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -66,6 +67,8 @@ async function resolveMedia(v: unknown, userId: string | null): Promise<string |
 
 const ok = (url: string | null, extra: Record<string, unknown> = {}) => NextResponse.json({ url, ...extra });
 const fail = (error: string) => NextResponse.json({ url: null, error });
+/** The remix ops with no Google / ElevenLabs engine (MEDIA_GOOGLE_ONLY refuses them). */
+const OUTSIDE_ENGINE_OPS = new Set(['restyle', 'character', 'background_remove', 'redub']);
 
 // Lip-sync (Wav2Lip) create + bounded poll — the redub op's engine.
 async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | null> {
@@ -139,6 +142,14 @@ export async function POST(req: NextRequest) {
   // character_swap identity photo + speed_ramp factor (flattened from params.*).
   if (body.characterRef === undefined && p.characterRef !== undefined) body.characterRef = p.characterRef;
   if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
+
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): these four ops reach outside engines (NanoBanana + Kling, roop, sync
+  // lip-sync), so the switch refuses them here, before the charge. The ffmpeg ops, ElevenLabs voiceover / music and the
+  // Veo product ad still run. Off (the default) → no-op.
+  if (OUTSIDE_ENGINE_OPS.has(op)) {
+    const outside = refuseOutsideEngine(req);
+    if (outside) return outside;
+  }
 
   // AUTH + CREDIT GATE (audit HIGH): remix reached paid providers with NO auth or credit
   // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard

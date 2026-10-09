@@ -61,6 +61,7 @@ const GEMINI_OK = { base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-fl
 beforeEach(() => {
   jest.clearAllMocks();
   delete process.env.IMAGE_PRIMARY_PROVIDER;
+  delete process.env.MEDIA_GOOGLE_ONLY;
   imagenOn.mockReturnValue(false);
   blocker.mockReturnValue(null);
   gemini.mockResolvedValue(GEMINI_OK);
@@ -149,4 +150,43 @@ it("a photo edit sends the photo to Google image and requires it to load (an edi
   flux.mockRejectedValue(new Error('down'));
   await new ServiceManager().execute(req({ imageUrl: 'https://x.supabase.co/me.jpg' }));
   expect(gemini).toHaveBeenCalledWith(expect.objectContaining({ referenceImages: ['https://x.supabase.co/me.jpg'], requireReferences: true }));
+});
+
+describe('MEDIA_GOOGLE_ONLY on — no outside engine runs, whatever is configured or picked', () => {
+  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
+  afterAll(() => { delete process.env.MEDIA_GOOGLE_ONLY; });
+
+  it('the configured NanoBanana is skipped; Google image answers', async () => {
+    process.env.IMAGE_PRIMARY_PROVIDER = 'nanobanana';
+    const r = await new ServiceManager().execute(req());
+    expect(r.success).toBe(true);
+    expect(r.metadata.imageFallback).toBe('google-only->gemini-image');
+    expect(nano).not.toHaveBeenCalled();
+    expect(flux).not.toHaveBeenCalled();
+    expect(grok).not.toHaveBeenCalled();
+  });
+
+  it('an explicit FLUX pick does not reach FLUX', async () => {
+    await new ServiceManager().execute(req({ selectedOptions: { imageModel: 'flux' } }));
+    expect(flux).not.toHaveBeenCalled();
+    expect(gemini).toHaveBeenCalled();
+  });
+
+  it('Imagen (when enabled) runs first for a prompt-only request', async () => {
+    imagenOn.mockReturnValue(true);
+    imagen.mockResolvedValue([{ base64: 'aW1n', mimeType: 'image/png' }]);
+    await new ServiceManager().execute(req());
+    expect(imagen).toHaveBeenCalled();
+    expect(flux).not.toHaveBeenCalled();
+    expect(nano).not.toHaveBeenCalled();
+  });
+
+  it('Google unavailable is an honest failure, not an outside engine', async () => {
+    blocker.mockReturnValue('no key');
+    const r = await new ServiceManager().execute(req());
+    expect(r.success).toBe(false);
+    expect(flux).not.toHaveBeenCalled();
+    expect(nano).not.toHaveBeenCalled();
+    expect(grok).not.toHaveBeenCalled();
+  });
 });

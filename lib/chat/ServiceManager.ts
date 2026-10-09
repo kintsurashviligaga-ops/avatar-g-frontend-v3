@@ -32,6 +32,7 @@ import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isGoogleOnly } from '@/lib/veo/policy';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -413,6 +414,16 @@ export class ServiceManager {
     //   · Imagen (opt-in, GEMINI_IMAGEN_ENABLED) → Gemini image → an honest failure;
     //   · otherwise the configured engine (FLUX, or NanoBanana when picked / IMAGE_PRIMARY_PROVIDER=nanobanana)
     //     → Gemini image → that engine's honest failure.
+    //
+    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off): no outside engine runs at all, whatever was
+    // configured or picked: Imagen (prompt-only, when enabled) → Gemini image → an honest failure.
+    if (isMediaGoogleOnly()) {
+      if (hasGeminiImagenProvider() && !request.imageUrl) {
+        const imagen = await this.tryImagenImage(request);
+        if (imagen) return imagen;
+      }
+      return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
+    }
     if (this.imagenApplies(request)) {
       const imagen = await this.tryImagenImage(request);
       if (imagen) return imagen;

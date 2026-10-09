@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -17,6 +18,10 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   // ⚠️ THIS ROUTE HAD NO AUTH GATE AT ALL. It ran a paid upscale for anyone who could reach the URL and
   // then attributed the result to DEMO_VOICE_USER_ID when no session existed — so guest spend was not
   // merely unbilled, it was filed under a placeholder account where nothing would ever reconcile it.

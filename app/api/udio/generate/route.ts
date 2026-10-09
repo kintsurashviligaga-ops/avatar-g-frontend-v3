@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateUdioTrack } from '@/lib/udio/client';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -13,6 +14,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const rateLimitError = await checkRateLimit(req, RATE_LIMITS.AI);
   if (rateLimitError) return rateLimitError;
 

@@ -135,3 +135,13 @@ test('a reference video is never claimed: the run is image-to-video and the repl
   expect((klingSubmit as jest.Mock).mock.calls[0][0]).not.toHaveProperty('videoUrl');
   expect((createJob as jest.Mock).mock.calls[0][0].params.method).toBe('i2v');
 });
+
+test('MEDIA_GOOGLE_ONLY on → 503 google_only before any charge or Kling submit', async () => {
+  process.env.MEDIA_GOOGLE_ONLY = '1';
+  const res = await POST(post());
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, code: 'google_only', jobId: null });
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(klingSubmit).not.toHaveBeenCalled();
+  expect(createJob).not.toHaveBeenCalled();
+});
