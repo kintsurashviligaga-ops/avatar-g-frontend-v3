@@ -187,14 +187,14 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 ### 4.12 Security
 - **სტატუსი:** PARTIAL. დახურულია: STORAGE-1 (P0), ფუნქციების 17 warning, request-ით დასახელებული მედიის ხელმოწერა, share გვერდის `javascript:` ბმული, ElevenLabs voice id, avatars `owner_id` გაჟონვა, `jobs`-ის ორი გზა. ღიაა:
-  - `renders` bucket public (494 ობიექტი) → `20261009b` მზადაა, **GG-ის „კი“ სჭირდება**;
+  - ~~`renders` bucket public (494 ობიექტი)~~ → `20261009b` გაშვებულია 07:14Z (GG-ის „Deploy + renders“), PROVEN (ნაწილი 7);
   - leaked-password protection (4.2);
   - `vector` გაფართოება `public`-ში (დაბალი; გადატანას `match_memories`-ის `search_path`-ის შეცვლაც სჭირდება);
   - `avatars` bucket public (პროფილის და Live avatar-ის ფოტოები `getPublicUrl`-ით; დიზაინის გადაწყვეტილებაა, GG);
   - HawkScan DAST არ გაშვებულა (`HAWK_API_KEY` არ არის);
   - prompt injection-ის adversarial ტესტი და DB დონის RLS ტესტი CI-ში — MISSING.
-  - ამ branch-ზე დახურულია, Production-ში ჯერ არა (`76e8c525`): ანონიმური realtime voice token, ცნობილი dev secret-ით ხელმოწერა, `mock-stt` ყალბი transcript, `/api/ai`-ის უფასო ფასიანი გამოძახება.
-- **პასუხისმგებელი:** GG (`20261009b`-ის თანხმობა, Auth პარამეტრი, `HAWK_API_KEY`), Claude (ტესტები).
+  - დახურულია და Production-შია PR #48-ით (`7126682`, 07:13Z): ანონიმური realtime voice token, ცნობილი dev secret-ით ხელმოწერა, `mock-stt` ყალბი transcript, `/api/ai`-ის უფასო ფასიანი გამოძახება.
+- **პასუხისმგებელი:** GG (Auth პარამეტრი, `HAWK_API_KEY`; `20261009b` გაშვებულია), Claude (ტესტები).
 - **DoD:** Advisor 0 warning (ან თითოეული წერილობით მიღებული); `renders` private და ძველი signed ბმულები მუშაობს; DAST high finding-ების გარეშე; adversarial ტესტები CI-ში.
 
 ### 4.13 Library
@@ -237,7 +237,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 **NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; `landing.spec.ts:380` (სურათის ჩვენება, ლოკალურად).
 
-**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); `20261009b`-ის თანხმობა; Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
+**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
 
 ## 6. გამოსწორების რიგი
 
@@ -247,7 +247,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 |---|---|---|---|
 | 1 | GG | Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
 | 2 | GG | Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება | Advisor warning; admin წესის საფუძველი |
-| 3 | GG → Claude | `20261009b`-ზე „კი“ → გაშვება და შემოწმება | `renders` public gap |
+| 3 | ~~GG → Claude~~ | ~~`20261009b`-ზე „კი“ → გაშვება და შემოწმება~~ **შესრულდა 07:14Z** | `renders` public gap |
 | 4 | GG → Claude | BOG live credentials (≈ 2026-10-10) → უფასო 10 ₾ შემოწმება → ერთი რეალური გადახდა | billing blocker |
 | 5 | GG → Claude | კანონიკური ფასების ცხრილი → ერთი SSoT კოდში + ტესტი | pricing blocker |
 | 6 | GG → Claude | action 9 (აკრძალული provider-ების მოხსნა) და image ძრავის გადაწყვეტილება (მხოლოდ Google, თუ reseller მომხმარებლის არჩევით) → PR #44-ის #1 და #3 + აკრძალული host-ების ტესტი | provider boundary blocker |
@@ -261,3 +261,19 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 
 Claude-ის დამოუკიდებელი შემდეგი სამუშაოები (Production / Billing / ბაზის ცვლილების გარეშე): 12-ე რიგი; PR #44-ის #3-ის photoshoot / interior ნაწილი; Vertex Production-ის ზუსტი ბრძანებების მომზადება GG-სთვის. PR #44-ის #2, #4, #5 უკვე ამ branch-ზეა.
+
+## 7. დამატება: PR #48-ის deploy და `20261009b` (2026-10-09 07:08–07:15Z)
+
+GG-მა 07:08:11Z ბარათზე აირჩია „Deploy + renders“.
+
+| რა | შედეგი | მტკიცებულება |
+|---|---|---|
+| merge | PR #48 → `main`, merge commit `7126682e` (head `07b12b61`) | GitHub |
+| CI `main`-ზე | მწვანე: CI 407, E2E 1079, ორივე `7126682e`-ზე | GitHub Actions |
+| Production | `7126682` ~07:13Z-დან | `/api/health` 07:13:30Z |
+| `20261009b` | გაშვებულია 07:14Z; `renders` `public = false`, 494 ობიექტი; migration history `20261009071401` | `storage.buckets`, `list_migrations` |
+| საჯარო შემოწმება | `renders`-ის public ბმული → 400 „Bucket not found“; `/api/admin/veo-smoke` სესიის გარეშე 404; `/api/health/providers` სესიის გარეშე 401; `run-migration` 404; `/ka` 200; `/ka/login` → სტუდია 200 | Firecrawl, `maxAge 0` |
+
+Rollback: Vercel Instant Rollback `66d7163`-ის deployment-ზე (GG) ან PR #48-ის merge-ის revert `main`-ზე; `renders`-ისთვის `UPDATE storage.buckets SET public = true WHERE id = 'renders';`.
+BUILT_NOT_PROVEN live: signed ბმულები private `renders`-ზე (Supabase-ის დიზაინით მუშაობს, შემოწმებისთვის ბმული არ შექმნილა); შესული მომხმარებლის `/api/ai` და ხმის token. **Verdict: Production Ready — არა.**
+
