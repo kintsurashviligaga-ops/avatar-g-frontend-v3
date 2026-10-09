@@ -120,7 +120,8 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 |---|---|---|
 | Email OTP log-in (KA) | **PROVEN live** 14:17Z | GG, incognito, https://myavatar.ge/ka, founder address, „კოდით შესვლა": Vercel `POST /api/auth/lookup` 200 (14:17:17Z) → `POST /api/auth/email-otp/send` 200 (14:17:26Z; Resend accepted the mail, no 403) → auth log `/admin/generate_link` 200 (14:17:27Z) → 8-digit code arrived in the inbox (GG's photo) → `/verify` 200 with a `login` event (14:17:43Z) → signed in (photo: studio with the account's balance). Three password attempts before it answered 400 „Invalid login credentials" (14:16:24–14:17:24Z), as they should for a wrong password. |
 | Admin sign-in and panel | PROVEN live 14:12Z | §4. |
-| Password reset + signed-in non-admin refused (EN) | pending | Next: `myavatar.ge@gmail.com` (not an admin) through „Forgot password?" on https://myavatar.ge/en, then `/en/admin`. |
+| Password reset (EN) | **PROVEN live** 14:26Z | GG, incognito, https://myavatar.ge/en, `myavatar.ge@gmail.com` (not an admin, had no password), „Forgot password?": `email-otp/send` 200 → auth log `/admin/generate_link` 200 (`user_recovery_requested`, 14:26:07Z) → code from the inbox → `/verify` 200 (14:26:18Z) → `PUT /user` 200 `user_modified` (new password, 14:26:32Z) → `/logout` 204 ×2 (other sessions signed out, as the sheet says) → `POST /token` 200 `login` with the new password (14:26:51Z) → signed in (photo: `/en/dashboard`). An earlier round (codes 14:20:35Z and 14:22:13Z, verify 14:24:55Z, logout 14:25:42Z) ended without a password change; GG then repeated it. |
+| Signed-in non-admin refused | pending | Next: `/en/admin` in that same session. |
 | Sign-up by code (RU) | pending | Needs a new address GG owns; creates one real account. |
 | Google OAuth, session refresh | PROVEN live | §1, §5 (real traffic). |
 
