@@ -198,14 +198,8 @@ type Lang = 'ka' | 'en' | 'ru';
  *  widening this file's 100-key COPY interface for a single word. */
 const SOON_LABEL: Record<Lang, string> = { ka: 'მალე', en: 'Soon', ru: 'Скоро' };
 
-/** Display names for the chat line that confirms which studio a sentence opened. */
-const SERVICE_LABEL: Record<string, { ka: string; en: string; ru: string }> = {
-  montage: { ka: 'მონტაჟი', en: 'Montage', ru: 'Монтаж' },
-  dubbing: { ka: 'დუბლირება', en: 'Dubbing', ru: 'Дубляж' },
-  presentation: { ka: 'პრეზენტაცია', en: 'Presentation', ru: 'Презентация' },
-  model3d: { ka: '3D მოდელი', en: '3D Model', ru: '3D-модель' },
-  avatar: { ka: 'ავატარი', en: 'Avatar', ru: 'Аватар' },
-};
+/** A studio's name in a chat line: the one tool-name source (lib/studio/tools TOOL_META), so the chat says what the sidebar says. */
+const serviceLabel = (id: string, locale: string): string => (isToolId(id) ? toolName(id, locale) : id);
 
 /**
  * The platform serializes generation to ONE render at a time. When a user tries to
@@ -5943,9 +5937,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         .filter((a) => isVideo(a.mimeType) || isImage(a.mimeType))
         .map((a) => ({ url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const), ...(a.name ? { name: a.name } : {}) }));
       const en = locale === 'en', ru = locale === 'ru';
+      const name = serviceLabel('montage', locale);
       const reply = media.length
-        ? (en ? `Opened **Montage** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **Монтаж** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **მონტაჟი** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
-        : (en ? 'Opened **Montage** — add your videos or photos.' : ru ? 'Открыл **Монтаж** — добавьте видео или фото.' : 'გავხსენი **მონტაჟი** — დაამატე ვიდეოები ან ფოტოები.');
+        ? (en ? `Opened **${name}** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **${name}** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **${name}** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
+        : (en ? `Opened **${name}** — add your videos or photos.` : ru ? `Открыл **${name}** — добавьте видео или фото.` : `გავხსენი **${name}** — დაამატე ვიდეოები ან ფოტოები.`);
       setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
       setMontageSeed(media.length ? media : null);
       if (media.length) setAttachments([]);
@@ -5964,7 +5959,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setPanelService(studio.service as PanelService);
         setStudioPrefill(studio.params);
       }
-      const label = SERVICE_LABEL[studio.service]?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? studio.service;
+      const label = serviceLabel(studio.service, locale);
       // ⚠️ THIS REPLY CLAIMED A CAPTURE THAT OFTEN DID NOT HAPPEN. "Opened X with what you described" was
       // printed unconditionally — including when the sentence yielded no parameters at all, and, before
       // `topic` was mined, for every deck and 3D request, whose SUBJECT is the entire description. Telling
@@ -8237,7 +8232,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <ChatVideoPlayer
                       src={m.videoUrl}
                       locale={locale}
-                      label={locale === 'en' ? 'Montage' : locale === 'ru' ? 'Монтаж' : 'მონტაჟი'}
+                      label={toolName('montage', locale)}
                       // The master has its height only once its frame is known: keep the feed on it if the user was at the bottom.
                       onMeta={() => { if (nearBottomRef.current) scrollToBottom(); }}
                       className={`${m.orientation === 'vertical' ? 'aspect-[9/16] w-[min(70vw,300px)]' : m.orientation === 'square' ? 'aspect-square w-[min(75vw,360px)]' : 'aspect-video w-full'} max-h-[72dvh]`}
@@ -8448,7 +8443,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             {...(montageMusicSeed ? { initialMusic: montageMusicSeed } : {})}
             {...(montageAspectSeed ? { initialAspect: montageAspectSeed } : {})}
             onDelivered={(videoUrl, aspect) => {
-              const label = SERVICE_LABEL.montage?.[locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'] ?? 'Montage';
+              const label = serviceLabel('montage', locale);
               const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
               // The edit's own format, so a 9:16 Reel is drawn as a 9:16 player (not in the video tool's current shape).
               const orientation = aspect === '9:16' ? 'vertical' as const : aspect === '1:1' ? 'square' as const : 'landscape' as const;
@@ -9462,7 +9457,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             )}
 
-            {videoTab === 'vfx' && <GenjutsuPanel locale={locale} />}
+            {videoTab === 'vfx' && (
+              <GenjutsuPanel
+                locale={locale}
+                onDelivered={(videoUrl, aspect) => {
+                  const label = serviceLabel('vfx', locale);
+                  const done = locale === 'en' ? `**${label}** — ready.` : locale === 'ru' ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
+                  setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl, orientation: aspect === '9:16' ? 'vertical' : 'landscape' }]);
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -9622,7 +9626,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // and picks up the video branch's player, download, share, save and edit affordances for free.
             onDelivered={(svc, r) => {
               const en = locale === 'en', ru = locale === 'ru';
-              const label = SERVICE_LABEL[svc]?.[en ? 'en' : ru ? 'ru' : 'ka'] ?? svc;
+              const label = serviceLabel(svc, locale);
               const done = en ? `**${label}** — ready.` : ru ? `**${label}** — готово.` : `**${label}** — მზადაა.`;
               if (r.videoUrl) {
                 setMessages((prev) => [...prev, { role: 'assistant', text: done, videoUrl: r.videoUrl }]);

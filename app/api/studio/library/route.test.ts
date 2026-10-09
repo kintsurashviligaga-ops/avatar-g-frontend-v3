@@ -22,7 +22,7 @@ const mockSignCalls: Array<{ bucket: string; paths: string[]; ttl: number }> = [
 
 function mockQuery() {
   const chain: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'neq', 'order', 'range']) chain[m] = () => chain;
+  for (const m of ['select', 'eq', 'neq', 'order', 'range', 'like', 'limit']) chain[m] = () => chain;
   chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: mockRows, error: null });
   return chain;
 }
@@ -215,5 +215,22 @@ describe('POST — signed-in only, and only URLs the caller can already read', (
     expect(res.status).toBe(200);
     expect(saved()).toEqual([expect.objectContaining({ storageVerified: false })]);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST — one file, one Library row', () => {
+  test('a storage object the caller already has (the remix route filed it) is answered as saved, with no second row', async () => {
+    const url = signed('renders', 'remix/1700-out.mp4');
+    mockRows = [row('vremix:restyle:job-1', `${OWN}/storage/v1/object/sign/renders/remix/1700-out.mp4?token=SERVER`)];
+    const res = await POST(post({ url, kind: 'film' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, already: true });
+    expect(mockRecord).not.toHaveBeenCalled();
+  });
+
+  test('a new object is filed as before', async () => {
+    const res = await POST(post({ url: signed('renders', 'remix/new.mp4'), kind: 'film' }));
+    expect(res.status).toBe(200);
+    expect(mockRecord).toHaveBeenCalledTimes(1);
   });
 });

@@ -58,9 +58,11 @@ type CapsState = { status: 'loading' } | { status: 'ready'; ops: Capabilities } 
 
 export interface GenjutsuPanelProps {
   locale: string;
+  /** A finished render, once per video: the studio posts it to the chat like every other tool's result. */
+  onDelivered?: (videoUrl: string, aspect: string) => void;
 }
 
-export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
+export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
   const c = copyFor(locale);
   const lang = toLang(locale);
 
@@ -98,6 +100,13 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
 
   const refreshBalance = useCallback(() => { void fetchBalanceCredits().then(setBalance); }, []);
   const { job, begin, reset } = useGenjutsuJob(locale, () => { creditsUpdated(); refreshBalance(); });
+  // The result used to stay in this panel only: switching tools or reloading lost it from view (the Library had it).
+  const deliveredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (job.phase !== 'ready' || !onDelivered || deliveredRef.current === job.videoUrl) return;
+    deliveredRef.current = job.videoUrl;
+    onDelivered(job.videoUrl, job.aspect);
+  }, [job, onDelivered]);
 
   useEffect(() => {
     let live = true;

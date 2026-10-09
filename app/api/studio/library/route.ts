@@ -184,7 +184,7 @@ const REFUSAL: Record<string, string> = {
   not_readable: 'That link has expired or cannot be read.',
 };
 export async function POST(req: NextRequest) {
-  const { user } = await authedClientFromRequest(req);
+  const { supabase, user } = await authedClientFromRequest(req);
   if (!user) return NextResponse.json({ success: false, error: 'unauthenticated' }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { url?: unknown; kind?: unknown; prompt?: unknown };
   const url = typeof body.url === 'string' ? body.url.trim() : '';
@@ -197,6 +197,21 @@ export async function POST(req: NextRequest) {
   const rawKind = typeof body.kind === 'string' ? body.kind.trim() : '';
   const kind: ProduceKind = (VALID_KINDS as string[]).includes(rawKind) ? (rawKind as ProduceKind) : 'film';
   const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 500) : null;
+  // ONE FILE, ONE LIBRARY ROW. Remix, character swap and product ad file their result server-side (vremix:* rows) and
+  // the studio also auto-saves it here, so every such render showed twice. A storage object of ours the caller already
+  // has in the Library is answered as saved, with no second row. Read through the caller's own session (RLS: owner
+  // only); a failed check files as before, since a duplicate costs less than a lost save.
+  const ref = verdict.kind === 'own-signed' ? describeSupabaseObjectUrl(url) : null;
+  if (ref) {
+    try {
+      const pattern = objectUrlPattern(ref.bucket, ref.path);
+      const found = await Promise.all(['signed_url', 'result->>url'].map((column) =>
+        supabase.from('generation_jobs').select('id').eq('user_id', user.id).like(column, pattern).limit(1)));
+      if (found.some((r) => !r.error && Array.isArray(r.data) && r.data.length > 0)) {
+        return NextResponse.json({ success: true, already: true });
+      }
+    } catch { /* file it */ }
+  }
   try {
     const ok = await recordCompletedAsset({
       id: randomUUID(), userId: user.id, serviceType: kind, url, prompt, source: 'manual-save',

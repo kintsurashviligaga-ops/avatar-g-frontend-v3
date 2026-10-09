@@ -86,7 +86,7 @@ const COPY = {
   en: {
     close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
-    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
+    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model',
     duration: 'Duration', sourceVideo: 'Video URL', targetLang: 'Target language', keepBg: 'Background audio', subs: 'Subtitles',
     topic: 'Topic', slides: 'Slides', deckLang: 'Language', withImages: 'With images',
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
