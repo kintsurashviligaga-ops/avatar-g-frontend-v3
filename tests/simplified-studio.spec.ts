@@ -84,3 +84,63 @@ test('the Video panel shows Film | Music video at its top, and a tap switches it
   await expect(panel.getByTestId('video-tiles')).toContainText('9:16');
   if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-mode.png` });
 });
+
+test('Music video keeps the retired director\'s look and the storyboard: genre and light reach the brief, scenes can be edited', async ({ page }) => {
+  test.setTimeout(240_000);
+  await quiet(page);
+  // Nothing is planned or rendered for real: the plan call answers three scenes that already have frames (so none are
+  // generated), every other storyboard call answers empty, and each plan brief is kept.
+  const briefs: string[] = [];
+  await page.route('**/api/film/storyboard**', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const body = route.request().postDataJSON() as { prompt?: string; planOnly?: boolean };
+    if (!body.planOnly) return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+    if (typeof body.prompt === 'string') briefs.push(body.prompt);
+    const scenes = [1, 2, 3].map((ordinal) => ({ ordinal, beat: ['wide', 'medium', 'close'][ordinal - 1], prompt: `Scene ${ordinal} on the rooftop`, frameUrl: '/templates/image/product.jpg' }));
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, seed: 7, scenes }) });
+  });
+  await page.goto('/en/dashboard?tool=video');
+  const panel = page.getByTestId('video-create-panel').filter({ visible: true }).first();
+  await expect(panel).toBeVisible({ timeout: 45_000 });
+  // The dummy-Supabase dev server has no session; pin "signed in" so the panel's Generate is not a sign-in wall.
+  await page.evaluate(() => {
+    const el = document.documentElement;
+    const pin = () => { if (el.dataset.authed !== '1') el.dataset.authed = '1'; };
+    pin();
+    new MutationObserver(pin).observe(el, { attributes: true, attributeFilter: ['data-authed'] });
+  });
+
+  // Film mode has no look row; Music video shows it right under the switch.
+  await expect(panel.getByTestId('mv-look')).toHaveCount(0);
+  await panel.getByTestId('video-mode-musicvideo').click();
+  const look = panel.getByTestId('mv-look');
+  await expect(look).toBeVisible();
+  const [lb, hero] = await Promise.all([look.boundingBox(), panel.getByTestId('video-hero').boundingBox()]);
+  expect(lb!.y).toBeLessThan(hero!.y);
+
+  await panel.getByTestId('mv-genre-blues').click();
+  await panel.getByTestId('mv-light-golden').click();
+  await expect(panel.getByTestId('mv-genre-blues')).toHaveAttribute('aria-pressed', 'true');
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-look.png` });
+
+  await panel.getByTestId('video-prompt').locator('textarea').fill('A singer on a rooftop at dusk');
+  await panel.getByTestId('video-generate').click();
+  await expect.poll(() => briefs.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  expect(briefs[0]).toContain('A singer on a rooftop at dusk');
+  expect(briefs[0]).toContain('soulful blues music video');
+  expect(briefs[0]).toContain('golden-hour sunlight');
+  // No character photo was given, so the brief does not tell the director to feature one.
+  expect(briefs[0]).not.toContain('uploaded character');
+
+  // The storyboard opens in the Video tool with its scene controls: re-roll, move, delete, add — and Generate.
+  await expect(page.getByTestId('storyboard-generate')).toBeVisible({ timeout: 20_000 });
+  const reroll = page.getByRole('button', { name: 'Re-roll this frame' });
+  await expect(reroll).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Move later' }).first()).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Delete scene' }).first()).toBeEnabled();
+  await expect(page.getByText('#4', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add scene' }).click();
+  // The added scene is #4; it has no frame yet, so it offers its own "generate this frame" button.
+  await expect(page.getByText('#4', { exact: true })).toBeVisible();
+  if (process.env.SHOTS_DIR) await page.screenshot({ path: `${process.env.SHOTS_DIR}/video-music-storyboard.png` });
+});

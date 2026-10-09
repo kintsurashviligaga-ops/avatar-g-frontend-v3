@@ -102,6 +102,8 @@ export interface VideoCreatePanelProps {
   story: ReactNode;
   voice: ReactNode;
   advanced: ReactNode;
+  /** Shown under the Film | Music video switch while Music video is picked (the clip's genre and light). */
+  musicLook?: ReactNode;
   storySummary?: string;
   voiceSummary?: string;
   storyOpenWhen?: boolean;
@@ -184,6 +186,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
     <div data-testid="video-create-panel" className="space-y-3">
       <VideoCreateHeader locale={locale} title={p.toolName} onSwitchTool={p.onSwitchTool} onClose={p.onClose} />
       <VideoModeChoice locale={locale} mode={mode} onMode={p.onMode} />
+      {mode === 'musicvideo' && p.musicLook}
       <VideoHero locale={locale} tier={tier} mode={mode} format={format} seconds={seconds} onChange={() => setSheet('model')} {...(hfName ? { title: hfName } : {})} />
       {/* No Create | Extend tabs: Extend is not open yet (Veo continues a clip from its last frame; until that path is ready a
           long film is made with the length picker), and a whole tab that only said „soon" was the first thing under the model. */}

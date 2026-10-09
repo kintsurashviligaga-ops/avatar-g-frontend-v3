@@ -97,6 +97,16 @@ describe('element order — header → film|music switch → hero → references
     expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('false');
   });
 
+  test('the clip look (genre + light) sits under the switch only while Music video is picked', () => {
+    const look = <div data-testid="mv-look-slot">look</div>;
+    const { rerender } = setup({ musicLook: look });
+    expect(screen.queryByTestId('mv-look-slot')).toBeNull();
+    rerender({ mode: 'musicvideo', musicLook: look });
+    const slot = screen.getByTestId('mv-look-slot');
+    expect(screen.getByTestId('video-mode-choice').compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(screen.getByTestId('video-hero')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test('the hero title follows the Veo tier', () => {
     const { rerender } = setup();
     rerender({ plan: initialVeoPlan({ tier: 'standard' }) });

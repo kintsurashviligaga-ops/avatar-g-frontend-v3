@@ -47,7 +47,10 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { driveFilmStudio, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
+import { FilmQaBadge } from './FilmQaBadge';
+import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
 import { FILM_CLIP_SEC, FILM_SCENE_COUNT, mergeSceneCaptions } from '@/lib/chat/filmPipeline';
 import { formatForOrientation, initialVeoPlan, toRenderOptions, veoPlanReducer, type VeoRenderOptions } from '@/lib/video/veoPlan';
 import { SceneMetaSchema } from '@/lib/veo/renderOptions';
@@ -1050,6 +1053,8 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
+  /** The assembler's quality check on a finished film (FilmQaBadge under the player). */
+  filmQa?: FilmQaSummary;
   /** Orientation of a video result, so the player uses the right aspect box on reload. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** The queue job rendering this bubble, when it is not the bubble's own id — what its ResultCard's cancel stops. */
@@ -1374,6 +1379,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.audioInfo ? { audioInfo: m.audioInfo } : {}),
       ...(m.coverUrl ? { coverUrl: m.coverUrl } : {}),
       ...(m.videoUrl ? { videoUrl: m.videoUrl } : {}),
+      ...(m.filmQa ? { filmQa: m.filmQa } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
       ...(m.researchId ? { researchId: m.researchId } : {}),
       ...(m.notice ? { notice: true } : {}),
@@ -2447,6 +2453,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // 'musicvideo' → the song rules the master (narrator omitted, backing ducked −12 dB);
   // 'documentary' → narration-forward (voice on top, music ducked under it).
   const [videoMode, setVideoMode] = useState<'musicvideo' | 'documentary'>(VIDEO_PANEL_DEFAULTS.mode);
+  // The music video's look (genre + light, components/studio/create/MusicVideoLook): words added to the brief, nothing else.
+  const [mvLook, setMvLook] = useState<MusicVideoLookValue>({ genre: null, lighting: null });
   // PHASE 2 L1 — Cinema vs Product-Ad tab (orthogonal to videoMode's music/documentary axis).
   // TASK 1 — 'videoswap': upload a video + a character photo → regenerate a ~5s clip with
   // the new character (honest capability: Kling is i2v-only, so it re-animates a keyframe).
@@ -3719,7 +3727,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
-            ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
+            ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
@@ -6283,7 +6291,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const baseText = text || (scriptBlock
         ? (locale === 'en' ? 'Make a cinematic film that follows the attached script.' : locale === 'ru' ? 'Сними фильм строго по приложенному сценарию.' : 'შექმენი კინო ზუსტად ატაჩ სკრიპტის მიხედვით.')
         : (locale === 'en' ? 'A cinematic film' : locale === 'ru' ? 'Кинематографичный фильм' : 'კინემატოგრაფიული ფილმი'));
-      const styledText = videoStyle ? `${baseText}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : baseText;
+      const styledBase = videoStyle ? `${baseText}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : baseText;
+      // A music video's picked genre / light (MusicVideoLook) join the brief the way the retired Music Video director did it.
+      const styledText = videoMode === 'musicvideo' && (mvLook.genre || mvLook.lighting)
+        ? composeMusicVideoPrompt({ userPrompt: styledBase, genreId: mvLook.genre, cameraId: null, lightingId: mvLook.lighting, hasCharacter: refs.length > 0 })
+        : styledBase;
       // The manual fields are AUTHORITATIVE in the brief → the Director (runPromptAgent) follows them
       // instead of inventing a different story / character / setting.
       const filmPrompt = `${styledText}`
@@ -6554,7 +6566,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -7910,6 +7922,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
                       <div className="text-[10.5px] font-medium tabular-nums text-app-muted/70">{Math.round(videoResultDur[i]! * 10) / 10}{locale === 'en' ? ' s' : locale === 'ru' ? ' с' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
                     )}
+                    <FilmQaBadge qa={m.filmQa} locale={locale} />
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
@@ -8874,6 +8887,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               voiceSummary={videoSoundtrack?.name}
               storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
               voiceOpenWhen={videoMode === 'musicvideo' || !!videoSoundtrack}
+              musicLook={<MusicVideoLook locale={locale} value={mvLook} onChange={setMvLook} />}
               story={<>
             {/* 0 · START HERE — one tap sets mode, length, format and look together.
                 The panel has 57 controls. Each is reasonable; the combination is not, because a
