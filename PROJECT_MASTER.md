@@ -73,8 +73,9 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Beta" and the Connectors · Plugins · Skills hub retired; Music video has its own sidebar row and a switch at
           the top of the Video panel; clearer tool names; VFX offers only open modes. BUILT_NOT_PROVEN on PR #50;
           service-by-service table and owner items in docs/handoffs/2026-10-09-service-audit.md.
-          Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
-          automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z):
+          Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
+          automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
+          this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
           AUTH-3 PROVEN live 16:02Z, email sign-up by code (AUTH-4) PROVEN live 16:09:05Z (the owner's KA sign-up);
           every Supabase Auth E2E row is PROVEN on Production. Owner actions in
           final-launch-certification.md §Y (Stripe Live refund/dispute events,
@@ -167,7 +168,7 @@ BLOCKERS:
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
-  2026-10-09 (Supabase Auth thread, report docs/handoffs/2026-10-09-supabase-auth-security.md on draft PR #51, copy in
+  2026-10-09 (Supabase Auth thread, report docs/handoffs/2026-10-09-supabase-auth-security.md, on this branch too since 2026-10-09, copy in
   /mnt/project-files/reports/): root cause PROVEN: myavatar.ge (DNS at Vercel) has no MX, SPF, DKIM or DMARC record
   (vercel dns ls + dig); Resend shows the domain "Not Started". Production RESEND_API_KEY is set (a probe reached Resend).
   Code generation PROVEN (14x /admin/generate_link 200, last 2026-10-08 14:42Z). Fix 2026-10-09: the owner pasted the
@@ -214,7 +215,8 @@ BLOCKERS:
   (PR #51 report 55e1a84; every Supabase Auth E2E row PROVEN live on Production by 16:09Z 2026-10-09; still open: only
   the optional cert-alias Redirect URL);
   /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
-  (PR #51 only, not in the PR #52 hotfix; BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
+  (not in the PR #52 hotfix; ported from PR #51 40992a8d onto this branch 2026-10-09, BUILT_NOT_PROVEN until deploy).
+  PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
   Production is a separate owner decision (env + deploy).
 · Part 0 item 7 (BLOCKED_OWNER): owner sends a photo of Billing → Reports (project gen-lang-client-0671348730, group by SKU)
