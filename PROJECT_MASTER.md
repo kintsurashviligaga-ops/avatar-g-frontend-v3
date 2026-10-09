@@ -968,12 +968,17 @@ and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
 ◐ AG-7 BUILT_NOT_PROVEN. analytics_events row `audit.agent_g.media` per quote, start, delivery, refusal and
        cancel (user, job, file count, credits, length, outcome), written with the service role; users have no
        policy on the table and /api/analytics/track refuses the `audit.` prefix.
-□ AG-8 MISSING. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
+◐ AG-8 PARTIAL. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
        there), real clips + a track, then the job id, ffprobe of the master and a screenshot recorded.
-       Preview admin run 2026-10-09 (owner, from ~16:20Z, PARTIAL): Stop on a running montage ended it with 0
-       credits spent (16:49Z); two bugs found and fixed on PR #50: ↻ under the stopped card asked the chat model
-       (1656bd54), and at the end the card popped up in the job tray and vanished (the card let go of its job and
-       the tray's last list still read „running"; fixed with the task-panel card). Master MP4 + MP3 still to run.
+       Preview admin run 2026-10-09 (owner): job 2bb56123 quoted 16:48:25Z (4 files, 10.566 s plan), queued,
+       started, stopped by the owner at 58 % 16:49:02Z (status failed „cancelled by the user", 0 credits);
+       job cf55ed33 quoted 16:56:42Z, queued 16:57:00Z, started 16:57:01Z, delivered 16:58:24Z: master 10.57 s
+       16:9 in the private renders bucket, 0 credits (generation_jobs + audit.agent_g.media rows, read 18:19Z).
+       The worker's own probe passed before delivery; an outside ffprobe was not possible from the sandbox (proxy
+       403 on storage) and the owner had no screenshot of the end, which is one of the two bugs found and fixed
+       on PR #50: at the end the card popped up in the job tray and vanished (the card let go of its job and the
+       tray's last list still read „running"; fixed with the task-panel card); ↻ under the stopped card asked
+       the chat model (1656bd54). MP3 (AU-8) still to run.
        Local proof so far (real ffmpeg 7.0.2, network and storage faked): 3 clips (one portrait) + a 120 BPM
        track → plan 119.96 BPM, first beat 0.238 s (true 0.25), 5 shots, 9.5 s; master H.264/AAC 9.53 s
        (lib/agent/media/montageExec.ffmpeg.test.ts).
