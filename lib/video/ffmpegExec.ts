@@ -45,7 +45,8 @@ function localName(url: string, n: number): string {
   return `in${n}.${ext}`;
 }
 
-export type FfmpegIo = Pick<PublicFetchOptions, 'fetchImpl' | 'lookupImpl'>;
+/** `allowUrl`: the caller's own rule for every download hop (lib/web/publicFetch), on top of the public-host rule. */
+export type FfmpegIo = Pick<PublicFetchOptions, 'fetchImpl' | 'lookupImpl' | 'allowUrl'>;
 
 const ambient = new AsyncLocalStorage<AbortSignal>();
 

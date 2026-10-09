@@ -29,7 +29,8 @@ export const AUDIT_EVENT = 'audit.agent_g.media';
  *  the track) before every render. */
 const SOURCE_TTL_SEC = 3600;
 
-async function audit(ev: AuditEvent): Promise<void> {
+/** One audit row (shared with ./audioLive). Never throws; a lost row is reported. */
+export async function audit(ev: AuditEvent): Promise<void> {
   try {
     const { userId, ...props } = ev;
     const { error } = await createServiceRoleClient().from('analytics_events').insert({ user_id: userId, event_name: AUDIT_EVENT, props });
@@ -74,20 +75,27 @@ export function liveMontageDeps(): MontageExecDeps {
       },
     },
     audit,
-    // Same construction as lib/orchestrator/jobChargeToken: a dedicated secret, else the service-role key; none = no quotes.
-    key: () => process.env.AGENT_G_QUOTE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    key: quoteKey,
     now: () => Date.now(),
     newId: () => randomUUID(),
-    every(ms, tick) {
-      let busy = false;
-      const timer = setInterval(() => {
-        if (busy) return;
-        busy = true;
-        void tick().catch((e) => reportError(e, { fn: 'agentMedia.heartbeat' })).finally(() => { busy = false; });
-      }, ms);
-      return () => clearInterval(timer);
-    },
+    every,
   };
+}
+
+/** Same construction as lib/orchestrator/jobChargeToken: a dedicated secret, else the service-role key; none = no quotes. */
+export function quoteKey(): string {
+  return process.env.AGENT_G_QUOTE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+}
+
+/** The worker's heartbeat timer: `tick` every `ms`, never two at once, until the returned stop is called. */
+export function every(ms: number, tick: () => Promise<void>): () => void {
+  let busy = false;
+  const timer = setInterval(() => {
+    if (busy) return;
+    busy = true;
+    void tick().catch((e) => reportError(e, { fn: 'agentMedia.heartbeat' })).finally(() => { busy = false; });
+  }, ms);
+  return () => clearInterval(timer);
 }
 
 /** A name for one worker run, written as the lease owner. */

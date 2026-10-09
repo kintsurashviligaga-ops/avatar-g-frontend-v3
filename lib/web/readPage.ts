@@ -126,7 +126,8 @@ export async function readWebPage(rawUrl: string, opts: ReadPageOptions = {}): P
       'Accept-Language': 'ka,en;q=0.8,ru;q=0.6',
     },
   });
-  if (!got.ok) return got;
+  // No `allowUrl` is passed here, so 'refused_url' cannot happen; it reads as a blocked host if it ever did.
+  if (!got.ok) return { ok: false, error: got.error === 'refused_url' ? 'blocked_host' : got.error, ...(got.status ? { status: got.status } : {}) };
   const { res, url } = got;
 
   const type = (res.headers.get('content-type') || '').toLowerCase();

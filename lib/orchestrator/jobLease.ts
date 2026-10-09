@@ -224,7 +224,8 @@ async function finish(
   return false;
 }
 
-export function complete(store: LeaseStore, id: string, owner: string, out: { signedUrl: string; result: Record<string, unknown> }): Promise<boolean> {
+/** Deliver the row. `signedUrl` null keeps it out of the Library (lib/agent/media/audioExtract: filed only on the user's Save). */
+export function complete(store: LeaseStore, id: string, owner: string, out: { signedUrl: string | null; result: Record<string, unknown> }): Promise<boolean> {
   return finish(store, id, owner, { status: 'completed', stage: 'completed', pct: 100, signedUrl: out.signedUrl, result: out.result, error: null }, {});
 }
 

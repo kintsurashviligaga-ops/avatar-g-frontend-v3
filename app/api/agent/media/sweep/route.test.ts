@@ -1,14 +1,18 @@
 /** @jest-environment node */
 /**
  * /api/agent/media/sweep: refused without the cron secret, inert while AGENT_G_MEDIA_EXEC is closed (it does not even
- * build the live wiring), and otherwise one sweep that may work one job. The sweep itself is tested in
- * lib/agent/media/montageWorker.test.ts.
+ * build the live wiring), and otherwise one sweep of each queue that works at most one job. The sweeps themselves are
+ * tested in lib/agent/media/montageWorker.test.ts and audioWorker.test.ts.
  */
 jest.mock('server-only', () => ({}));
 const mockSweep = jest.fn();
 jest.mock('../../../../../lib/agent/media/montageWorker', () => ({ sweepMontageJobs: (...a: unknown[]) => mockSweep(...a) }));
 const mockDeps = jest.fn(() => ({ live: true }));
 jest.mock('../../../../../lib/agent/media/montageLive', () => ({ liveMontageDeps: () => mockDeps(), newWorkerId: () => 'w-cron' }));
+const mockAudioSweep = jest.fn();
+jest.mock('../../../../../lib/agent/media/audioWorker', () => ({ sweepAudioJobs: (...a: unknown[]) => mockAudioSweep(...a) }));
+const mockAudioDeps = jest.fn(() => ({ audio: true }));
+jest.mock('../../../../../lib/agent/media/audioLive', () => ({ liveAudioDeps: () => mockAudioDeps() }));
 jest.mock('../../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: () => false }));
 
@@ -38,14 +42,29 @@ test('closed (the Production default): skipped without touching the queue', asyn
   expect(await (await call('Bearer s3cret')).json()).toEqual({ ok: true, skipped: 'agent media execution is closed' });
   expect(mockDeps).not.toHaveBeenCalled();
   expect(mockSweep).not.toHaveBeenCalled();
+  expect(mockAudioDeps).not.toHaveBeenCalled();
+  expect(mockAudioSweep).not.toHaveBeenCalled();
 });
 
-test('open: one sweep as one worker, and its report; a throw is a 500', async () => {
+test('open: one sweep of each queue as one worker, and their reports; a throw is a 500', async () => {
   process.env.AGENT_G_MEDIA_EXEC = 'admin';
   mockSweep.mockResolvedValueOnce({ gaveUp: ['a'], paid: [], waiting: [] });
+  mockAudioSweep.mockResolvedValueOnce({ gaveUp: [], waiting: ['x'], worked: { jobId: 'x', result: { ran: true, outcome: 'delivered', audioUrl: 'u' } } });
   const res = await call('Bearer s3cret');
-  expect(await res.json()).toEqual({ ok: true, gaveUp: ['a'], paid: [], waiting: [] });
+  expect(await res.json()).toEqual({
+    ok: true, gaveUp: ['a'], paid: [], waiting: [],
+    audio: { gaveUp: [], waiting: ['x'], worked: { jobId: 'x', result: { ran: true, outcome: 'delivered', audioUrl: 'u' } } },
+  });
   expect(mockSweep).toHaveBeenCalledWith({ live: true }, { worker: 'w-cron', work: true });
+  expect(mockAudioSweep).toHaveBeenCalledWith({ audio: true }, { worker: 'w-cron', work: true });
   mockSweep.mockRejectedValueOnce(new Error('db down'));
   expect((await call('Bearer s3cret')).status).toBe(500);
+});
+
+test('a montage worked in this run leaves the audio queue to be reaped only, not worked', async () => {
+  process.env.AGENT_G_MEDIA_EXEC = 'on';
+  mockSweep.mockResolvedValueOnce({ gaveUp: [], paid: [], waiting: ['m'], worked: { jobId: 'm', result: { ran: true } } });
+  mockAudioSweep.mockResolvedValueOnce({ gaveUp: ['dead'], waiting: ['x'] });
+  expect(await (await call('Bearer s3cret')).json()).toMatchObject({ audio: { gaveUp: ['dead'], waiting: ['x'] } });
+  expect(mockAudioSweep).toHaveBeenCalledWith({ audio: true }, { worker: 'w-cron', work: false });
 });
