@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       const result = await supabase
         .from('avatars')
         .select('*')
-        .eq('owner_id', ownerId)
+        .eq('user_id', ownerId) // the column is `user_id`; `owner_id` exists nowhere, so this always came back null
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();

@@ -26,8 +26,10 @@ export async function GET(request: NextRequest) {
         .single(),
       supabase
         .from('avatars')
-        .select('image_url, thumbnail_url, created_at')
-        .eq('owner_id', user.id)
+        // `avatars` has `user_id` and `image_url`; the `owner_id` / `thumbnail_url` it asked for exist nowhere, so the
+        // avatar always came back null.
+        .select('image_url, created_at')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       isAuthenticated: true,
       isPremium: plan === 'PREMIUM' || plan === 'ENTERPRISE',
-      avatarUrl: avatar?.image_url || avatar?.thumbnail_url || null,
+      avatarUrl: avatar?.image_url || null,
     });
   } catch (error) {
     return NextResponse.json(

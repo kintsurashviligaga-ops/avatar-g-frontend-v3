@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         .from('avatars')
         .select('id')
         .eq('id', input.avatar_id)
-        .eq('owner_id', userId)
+        .eq('user_id', userId) // `avatars` has user_id; owner_id made every avatar "not found"
         .single();
 
       if (avatarError || !avatar) {

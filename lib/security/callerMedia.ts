@@ -43,6 +43,26 @@ export function ownsUploadObject(path: string, userId: string | null | undefined
   return OWNED_UPLOAD_PREFIXES.some((prefix) => path.startsWith(`${prefix}/${userId}/`));
 }
 
+/** The bucket the editing agent reads its sources from and writes its outputs to. */
+export const EDITING_BUCKET = 'job-artifacts';
+
+/**
+ * True when a `jobs` row's object is one POST /api/editing/jobs minted for THIS user: `editing-input/<uid>/…` for a
+ * source, `editing-output/<uid>/…` for anything the agent writes. The bucket and path come from the row, and a signed-in
+ * user can write their own `jobs` rows, so the editing routes sign or download nothing else. The input path ends in the
+ * uploaded file's own extension, so this does not demand the strict SAFE_PATH characters, only no `..`, `//` or `\`.
+ */
+export function ownsEditingObject(
+  bucket: unknown,
+  path: unknown,
+  userId: string | null | undefined,
+  kind: 'input' | 'output',
+): boolean {
+  if (!userId || bucket !== EDITING_BUCKET || typeof path !== 'string') return false;
+  if (path.includes('..') || path.includes('//') || path.includes('\\')) return false;
+  return path.startsWith(`editing-${kind}/${userId}/`);
+}
+
 export interface CallerMediaDeps {
   env?: NodeJS.ProcessEnv;
   sign?: (bucket: string, path: string, ttlSec: number) => Promise<string | null>;

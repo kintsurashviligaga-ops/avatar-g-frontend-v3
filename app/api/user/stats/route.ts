@@ -54,7 +54,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const { data: avatars, count: avatarCount } = await supabase
           .from('avatars')
           .select('*', { count: 'exact' })
-          .eq('owner_id', user.id)
+          .eq('user_id', user.id) // `avatars` has user_id, not owner_id
           .limit(5);
 
         stats.total = (avatarCount || 0);
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         const { count: todayCount } = await supabase
           .from('avatars')
           .select('*', { count: 'exact' })
-          .eq('owner_id', user.id)
+          .eq('user_id', user.id)
           .gte('created_at', today.toISOString())
           .limit(1);
 
