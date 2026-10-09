@@ -33,9 +33,11 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           DEPLOYED 2026-10-09: PR #42 merged into main as 9f1bff68 (03:28Z); Production serves 9f1bff6 (~03:36Z);
           public checks passed (certification §A); 20261008c (uploads 50 MB, media only) applied 03:38Z and verified.
           PR #46 (voice id check, avatars list by session) merged as 185b84d9 on the owner's "Deploy" (05:08:54Z);
-          Production serves 185b84d (~05:15Z), public checks passed. 20261009a (function hardening) awaits the owner's yes.
+          Production serves 185b84d (~05:15Z), public checks passed. PR #47 (avatars on user_id, editing jobs scoped to
+          the caller) merged as 66d7163f on the owner's "Deploy" (05:38:07Z); Production serves 66d7163 (~05:44Z), public
+          checks passed. 20261009a (function hardening) applied ~05:39Z on the owner's "გაუშვი"; advisor warnings 22 -> 2.
 LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (deployed head 0e8e7480: CI green; main = 185b84d9); PRs #42 and #46 merged
+LAST COMMIT: see `git log` on that branch (deployed head 9c2b46c4: CI green; main = 66d7163f); PRs #42, #46 and #47 merged
 NEXT ACTION: owner actions in final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
