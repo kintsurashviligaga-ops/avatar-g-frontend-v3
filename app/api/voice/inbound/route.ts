@@ -15,18 +15,19 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
 
-    // Verify the Vapi webhook signature when a secret is configured (parity with /api/voice/webhook).
     // Inbound is a Vapi-origin callback with no user session, so the HMAC is what proves the payload is
     // genuinely from Vapi rather than a spoofed request seeding voice_calls rows.
+    // ⚠️ FAIL CLOSED (as /api/voice/webhook): with VAPI_WEBHOOK_SECRET unset this used to skip the check entirely.
     const secret = String(process.env.VAPI_WEBHOOK_SECRET || '').trim();
-    if (secret) {
-      const signatureHeader =
-        request.headers.get('x-vapi-signature') ||
-        request.headers.get('x-vapi-signature-256') ||
-        request.headers.get('x-signature');
-      if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
-        return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
-      }
+    if (!secret) {
+      return NextResponse.json({ error: 'not_configured' }, { status: 503 });
+    }
+    const signatureHeader =
+      request.headers.get('x-vapi-signature') ||
+      request.headers.get('x-vapi-signature-256') ||
+      request.headers.get('x-signature');
+    if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
+      return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
     }
 
     let payload: Record<string, unknown>;
