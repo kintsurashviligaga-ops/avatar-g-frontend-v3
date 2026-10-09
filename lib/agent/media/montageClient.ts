@@ -10,19 +10,11 @@
  */
 import type { MontageQuote } from './montageExec';
 import { codeOf, type ChatErrorCode } from './montageChat';
+import { cancelJob, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps, type JobViewBody } from './jobFollow';
+
+export { FOLLOW_MS, POLL_MS, SEND_TRIES } from './jobFollow';
 
 const ROUTE = '/api/agent/media/montage';
-/** How often the job is read while it is queued or rendering. */
-export const POLL_MS = 3_000;
-/** How many times `run` is sent when its answer does not come back (it is idempotent per quote). */
-export const SEND_TRIES = 3;
-/**
- * How long the chat follows a job: a wait for a worker, a first attempt that dies at the route's 600 s budget, the lease
- * lapsing (90 s), and the one retry at full length.
- */
-export const FOLLOW_MS = 25 * 60_000;
-
-type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export interface ClientFile { dataUrl: string; mimeType: string; name?: string }
 
@@ -36,21 +28,9 @@ export type ClientQuote =
   | { ok: true; quote: MontageQuote; request: unknown; token: string }
   | { ok: false; code: ChatErrorCode; files?: number[] };
 
-const post = (f: Fetch, body: unknown) =>
-  f(ROUTE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
-
-async function readJson(res: Response): Promise<Record<string, unknown> | null> {
-  try { return (await res.json()) as Record<string, unknown>; } catch { return null; }
-}
-
 /** Is Agent G's montage open to this user? A closed or unreachable route is simply "no": the chat keeps its old flow. */
-export async function montageEnabled(f: Fetch): Promise<boolean> {
-  try {
-    const res = await f(ROUTE, { credentials: 'include', cache: 'no-store' });
-    return res.ok && (await readJson(res))?.enabled === true;
-  } catch {
-    return false;
-  }
+export function montageEnabled(f: Fetch): Promise<boolean> {
+  return routeEnabled(f, ROUTE);
 }
 
 /** Upload every attachment (in order, three at a time) and ask for the plan. Spends nothing. */
@@ -69,7 +49,7 @@ export async function quoteAgentMontage(deps: QuoteDeps, input: { prompt: string
   if (missing.length) return { ok: false, code: 'upload_failed', files: missing };
 
   try {
-    const res = await post(deps.fetch, { action: 'quote', files: paths, prompt: input.prompt });
+    const res = await postJson(deps.fetch, ROUTE, { action: 'quote', files: paths, prompt: input.prompt });
     const body = await readJson(res);
     if (res.ok && body?.ok === true) {
       return { ok: true, quote: body.quote as MontageQuote, request: body.request, token: String(body.token) };
@@ -81,21 +61,13 @@ export async function quoteAgentMontage(deps: QuoteDeps, input: { prompt: string
   }
 }
 
-export interface RunDeps {
-  fetch: Fetch;
-  sleep: (ms: number) => Promise<void>;
-  now: () => number;
-  onProgress: (pct: number | null, stage: string | null) => void;
-}
+export type RunDeps = FollowDeps;
 
 export type ClientRun =
   | { ok: true; videoUrl: string; durationSec: number; aspect: string }
   | { ok: false; code: ChatErrorCode };
 
-/** The job as the route reports it (lib/agent/media/montageExec JobView). */
-type View = Record<string, unknown> & { ok?: unknown; jobId?: unknown; status?: unknown };
-
-const done = (v: View): ClientRun | null => {
+const done = (v: JobViewBody): ClientRun | null => {
   if (v.status === 'completed' && typeof v.videoUrl === 'string' && v.videoUrl) {
     return { ok: true, videoUrl: v.videoUrl, durationSec: Number(v.durationSec) || 0, aspect: String(v.aspect ?? '') };
   }
@@ -105,78 +77,24 @@ const done = (v: View): ClientRun | null => {
 };
 
 /**
- * Queue the plan the user confirmed, then follow the job to its end, reporting its progress. Re-sending `run` for the
- * same quote never starts a second edit (the server replays the job), so an answer lost on the way is simply asked
- * for again.
+ * Queue the plan the user confirmed, then follow the job to its end, reporting its progress (./jobFollow). Re-sending
+ * `run` for the same quote never starts a second edit (the server replays the job).
  */
-export async function runAgentMontage(
+export function runAgentMontage(
   deps: RunDeps,
   input: { request: unknown; token: string; prompt?: string; jobId: string },
 ): Promise<ClientRun> {
-  let jobId = input.jobId;
-  let queued = false;
-  const report = (v: View) => deps.onProgress(typeof v.pct === 'number' ? v.pct : null, typeof v.stage === 'string' ? v.stage : null);
-
-  // ── queue it ───────────────────────────────────────────────────────────────────────────────────────────────────────
-  for (let tries = 0; tries < SEND_TRIES && !queued; tries++) {
-    if (tries) await deps.sleep(POLL_MS);
-    try {
-      const res = await post(deps.fetch, { action: 'run', request: input.request, token: input.token, prompt: input.prompt });
-      const body = (await readJson(res)) as View | null;
-      if (res.ok && body?.ok === true) {
-        if (typeof body.jobId === 'string') jobId = body.jobId;
-        const end = done(body);
-        if (end) return end;
-        queued = true;
-        report(body);
-      } else if (body?.error === 'already_failed') {
-        queued = true; // an earlier send of this run got through and the edit ended: its row says how
-      } else if (body && res.status < 500) {
-        return { ok: false, code: codeOf(res.status, body) };
-      }
-      // No body, or a gateway error: whether it was queued is unknown. Send it again.
-    } catch {
-      // The connection dropped. Send it again.
-    }
-  }
-
-  // ── follow it ──────────────────────────────────────────────────────────────────────────────────────────────────────
-  const until = deps.now() + FOLLOW_MS;
-  let unknown = 0;
-  while (deps.now() < until) {
-    await deps.sleep(POLL_MS);
-    let res: Response;
-    let body: View | null;
-    try {
-      res = await deps.fetch(`${ROUTE}?jobId=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store' });
-      body = (await readJson(res)) as View | null;
-    } catch {
-      continue; // offline for a moment: the job goes on
-    }
-    if (res.ok && body?.ok === true) {
-      queued = true;
-      const end = done(body);
-      if (end) return end;
-      report(body);
-      continue;
-    }
-    if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
-      // No such job: the run never got through (or this is not the user's). Give it a few reads, then say so.
-      if (queued || ++unknown >= 3) return { ok: false, code: queued ? 'not_found' : 'network' };
-      continue;
-    }
-    if (res.status === 401 || res.status === 404) return { ok: false, code: codeOf(res.status, body) };
-    // 429 or a 5xx: read again on the next tick.
-  }
-  return { ok: false, code: 'network' };
+  return sendAndFollow<ClientRun>(deps, {
+    route: ROUTE,
+    runBody: { action: 'run', request: input.request, token: input.token, prompt: input.prompt },
+    jobId: input.jobId,
+    done,
+    refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),
+    lost: (why) => ({ ok: false, code: why }),
+  });
 }
 
 /** Stop a running edit. The run's own answer then reports it as cancelled. */
-export async function cancelAgentMontage(f: Fetch, jobId: string): Promise<boolean> {
-  try {
-    const res = await post(f, { action: 'cancel', jobId });
-    return res.ok;
-  } catch {
-    return false;
-  }
+export function cancelAgentMontage(f: Fetch, jobId: string): Promise<boolean> {
+  return cancelJob(f, ROUTE, jobId);
 }

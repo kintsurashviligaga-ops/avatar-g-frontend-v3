@@ -53,7 +53,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
-      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g',
+      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -515,8 +515,8 @@ describe('the hands — validators', () => {
 describe('ask_agent_g', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'ask_agent_g')!;
 
-  it('is declared LAST (the older declarations keep their order) with one required STRING `task`', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('ask_agent_g');
+  it('is declared after the older ones (they keep their order) with one required STRING `task`', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('ask_agent_g');
     const p = decl().parameters!;
     expect(p.type).toBe('OBJECT');
     expect(Object.keys(p.properties!)).toEqual(['task']);
@@ -569,6 +569,50 @@ describe('ask_agent_g', () => {
 
   it('an inherited `task` is not read (own properties only)', () => {
     expect(err('ask_agent_g', Object.create({ task: 'from the prototype' }))).toMatchObject({ code: 'invalid_args', field: 'task' });
+  });
+});
+
+// ── 2026-10-09: extract_audio — Agent G's MP3 from a link or the user's file, in the chat, by voice ────────────────────
+describe('extract_audio', () => {
+  const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'extract_audio')!;
+
+  it('is declared LAST with a required action (plan · start · stop), an optional url and the start confirmation', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('extract_audio');
+    const p = decl().parameters!;
+    expect(Object.keys(p.properties!)).toEqual(['action', 'url', 'confirmed']);
+    expect(p.properties!.action!.enum).toEqual(['plan', 'start', 'stop']);
+    expect(p.properties!.confirmed!.enum).toEqual(['yes']);
+    expect(p.required).toEqual(['action']);
+  });
+
+  it('tells the model it is free, that platforms are refused with no workaround, and that start needs a yes', () => {
+    const d = decl().description;
+    expect(d).toMatch(/Free, no credits/);
+    expect(d).toMatch(/video platforms[\s\S]*refused by their terms: never look for a way around/);
+    expect(d).toMatch(/upload their own or a licensed file/);
+    expect(d).toMatch(/only after the user clearly says yes/);
+    expect(d).toMatch(/starting confirms the file is theirs or licensed/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/call extract_audio with action "plan"/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/offer the\s+upload instead, never a workaround/);
+  });
+
+  it('plan: with a public link (normalised), or none (the studio picks the source)', () => {
+    expect(ok('extract_audio', { action: 'plan', url: ' https://media.example.com/talk.mp4 ' }))
+      .toEqual({ type: 'extract_audio', action: 'plan', url: 'https://media.example.com/talk.mp4' });
+    expect(ok('extract_audio', { action: 'plan' })).toEqual({ type: 'extract_audio', action: 'plan' });
+    expect(ok('extract_audio', { action: 'plan', url: '' })).toEqual({ type: 'extract_audio', action: 'plan' });
+    expect(err('extract_audio', { action: 'plan', url: 'javascript:alert(1)' })).toMatchObject({ field: 'url' });
+    expect(err('extract_audio', { action: 'plan', url: 'http://192.168.0.1/a.mp4' })).toMatchObject({ field: 'url' });
+  });
+
+  it('start only with confirmed "yes"; stop needs nothing; anything else is refused', () => {
+    expect(ok('extract_audio', { action: 'start', confirmed: 'yes' })).toEqual({ type: 'extract_audio', action: 'start' });
+    expect(ok('extract_audio', { action: 'start', confirmed: ' YES ' })).toEqual({ type: 'extract_audio', action: 'start' });
+    expect(err('extract_audio', { action: 'start' })).toMatchObject({ code: 'invalid_args', field: 'confirmed' });
+    expect(err('extract_audio', { action: 'start', confirmed: 'maybe' })).toMatchObject({ field: 'confirmed' });
+    expect(ok('extract_audio', { action: 'stop' })).toEqual({ type: 'extract_audio', action: 'stop' });
+    expect(err('extract_audio', { action: 'download' })).toMatchObject({ code: 'invalid_args', field: 'action' });
+    expect(err('extract_audio', 'plan')).toMatchObject({ code: 'invalid_args' });
   });
 });
 

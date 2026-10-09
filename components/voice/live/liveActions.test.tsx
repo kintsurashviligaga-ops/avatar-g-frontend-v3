@@ -548,6 +548,24 @@ describe('the hands: click · type_text · download · use_result · montage · 
       .toMatchObject({ ok: false, error: 'montage_closed' });
   });
 
+  test('extract_audio goes to the studio (the chat\'s Agent G card); its words go back, and no studio says so', () => {
+    const ok = handsEnv({ reply: { ok: true, message: 'Agent G is checking media.example.com now.' } });
+    const out = executeLiveToolCall(call('x1', 'extract_audio', { action: 'plan', url: 'https://media.example.com/a.mp4' }), ok.env);
+    expect(ok.actions[0]).toMatchObject({ type: 'extract_audio', action: 'plan', url: 'https://media.example.com/a.mp4' });
+    expect(out).toMatchObject({ response: { response: { ok: true, summary: 'Agent G is checking media.example.com now.' } }, screen: true });
+    expect(out.pending).toBeUndefined(); // nothing waits on the network: the plan follows as an [App] note
+
+    const none = handsEnv({ reply: { ok: false, error: 'no_plan', message: 'No Agent G audio plan is waiting on screen.' } });
+    expect(executeLiveToolCall(call('x2', 'extract_audio', { action: 'start', confirmed: 'yes' }), none.env).response.response)
+      .toEqual({ ok: false, error: 'no_plan', message: 'No Agent G audio plan is waiting on screen.' });
+    // start without the user's yes never reaches the studio
+    const unconfirmed = handsEnv();
+    expect(executeLiveToolCall(call('x3', 'extract_audio', { action: 'start' }), unconfirmed.env).response.response).toMatchObject({ ok: false, field: 'confirmed' });
+    expect(unconfirmed.actions).toEqual([]);
+    expect(executeLiveToolCall(call('x4', 'extract_audio', { action: 'stop' }), handsEnv({ studio: false }).env).response.response)
+      .toMatchObject({ ok: false, error: 'studio_unavailable' });
+  });
+
   test('read_webpage answers after the page is read: the text, the links, and a link on screen', async () => {
     const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }] } };
     const h = handsEnv({ page });

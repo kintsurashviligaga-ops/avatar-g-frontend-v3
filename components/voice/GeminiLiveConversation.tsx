@@ -185,8 +185,11 @@ export default function GeminiLiveConversation({
     const onResult = (e: Event) => {
       const n = (e as CustomEvent<LiveResultNote>).detail;
       if (!n || typeof n !== 'object') return;
-      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, 160) : '';
-      const note = n.kind === 'failed'
+      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, n.kind === 'plan' ? 240 : 160) : '';
+      const note = n.kind === 'plan'
+        ? `[App] Agent G's plan is on screen${what ? `: ${what}` : ''}. Tell the user in one or two sentences and ask whether to `
+          + 'start it; call extract_audio with action "start" only after a clear yes.'
+        : n.kind === 'failed'
         ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
         : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
           + 'If the user asked for more steps, continue with the next one now; otherwise tell them in one short sentence.';

@@ -684,6 +684,14 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         screen: true,
       };
     }
+    case 'extract_audio': {
+      // The chat's own Agent G audio card (OmniStudio): plan puts it on screen (the source is checked over the network,
+      // so the plan arrives as an [App] note), start presses its Start, stop cancels. All free; nothing here waits.
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'Agent G could not do that here.');
+      return { response: answer({ ok: true, summary: detail.reply?.message ?? 'Done.' }), screen: true };
+    }
     case 'montage': {
       if (action.action === 'open') {
         const detail: LiveActionEventDetail = { ...action };

@@ -13,16 +13,19 @@ import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';
 import { CONFIRMED_ACTIONS, allowlistOf, bindTools, defineTool, type ToolEffect } from './registry';
 
-test('the live allowlist, exactly: three that read or prepare, one that quotes and leads to the user-confirmed montage run', () => {
+test('the live allowlist, exactly: three that read or prepare, two that quote and lead to a user-confirmed run', () => {
   // Changing this list is a review decision: a new tool lands here with its effect, or not at all.
   expect(allowlistOf(LIVE_TOOL_SPECS)).toEqual({
     web_search: 'read',
     scrape_webpage: 'read',
     prepare_instagram_post: 'prepare',
     quote_montage_to_music: 'quote',
+    quote_audio_from_link: 'quote',
   });
-  expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['montage_run']);
+  expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['montage_run', 'audio_extract_run']);
   expect(CONFIRMED_ACTIONS.montage_run).toMatchObject({ route: '/api/agent/media/montage', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
+  expect(CONFIRMED_ACTIONS.audio_extract_run).toMatchObject({ route: '/api/agent/media/audio', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
+  expect(Object.keys(CONFIRMED_ACTIONS)).toEqual(['montage_run', 'audio_extract_run']);
   for (const s of LIVE_TOOL_SPECS) expect(s.limit).toBeGreaterThan(0);
 });
 

@@ -20,8 +20,11 @@ jest.mock('../../ads/adRenderJob', () => ({ startAdRenderJob: (...a: unknown[]) 
 const mockQuote = jest.fn();
 jest.mock('../media/montageExec', () => ({ quoteMontage: (...a: unknown[]) => mockQuote(...a) }));
 jest.mock('../media/montageLive', () => ({ liveMontageDeps: () => ({ live: true }) }));
+const mockAudioQuote = jest.fn();
+jest.mock('../media/audioExtract', () => ({ quoteAudioExtract: (...a: unknown[]) => mockAudioQuote(...a) }));
+jest.mock('../media/audioLive', () => ({ liveAudioDeps: () => ({ liveAudio: true }) }));
 
-import { buildLiveToolRegistry, runLiveAgent, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
+import { buildLiveToolRegistry, runLiveAgent, AGENT_AUDIO_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
 
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
@@ -47,6 +50,63 @@ test('without files the registry has no media tool, and no render tool ever', ()
   // Files alone are not enough: media execution must be open to this user (the route decides from the session).
   expect(buildLiveToolRegistry({ ...CTX, files: ['u/a.mp4'], media: false }).map((t) => t.name)).not.toContain('quote_montage_to_music');
   expect(buildLiveToolRegistry({ ...CTX, files: [], media: true }).map((t) => t.name)).not.toContain('quote_montage_to_music');
+});
+
+describe('quote_audio_from_link (Agent G audio extraction, quote only)', () => {
+  const QUOTE = {
+    ok: true,
+    quote: { jobId: 'a-1', credits: 0, source: 'link', host: 'media.example.com', name: 'talk.mp3', bytes: 2_000_000, contentType: 'video/mp4', rights: { status: 'unverified' }, bitrateKbps: 192, maxSec: 3600, expiresAt: 9 },
+    request: { source: { kind: 'link', url: 'https://media.example.com/talk.mp4' } },
+    token: 'secret-token',
+  };
+  const on = (onAudioQuote = jest.fn()): AgentContext => ({ ...CTX, media: true, onAudioQuote });
+
+  test('offered only when media execution is open to this user; no file needed', () => {
+    expect(buildLiveToolRegistry(CTX).map((t) => t.name)).not.toContain('quote_audio_from_link');
+    expect(buildLiveToolRegistry({ ...CTX, media: false }).map((t) => t.name)).not.toContain('quote_audio_from_link');
+    expect(buildLiveToolRegistry(on()).map((t) => t.name)).toContain('quote_audio_from_link');
+  });
+
+  test('plans from the link; the model sees the plan and the rights, never the token; the card gets the signed plan', async () => {
+    mockAudioQuote.mockResolvedValueOnce(QUOTE);
+    const onAudioQuote = jest.fn();
+    const t = buildLiveToolRegistry(on(onAudioQuote)).find((x) => x.name === 'quote_audio_from_link')!;
+    const obs = await t.run({ url: ' https://media.example.com/talk.mp4 ', file: 'someone-else/x.mp4' });
+    expect(mockAudioQuote).toHaveBeenCalledWith({ liveAudio: true }, { userId: CTX.userId, url: 'https://media.example.com/talk.mp4' });
+    expect(obs).toMatchObject({ planned: true, extracted: false, credits: 0, host: 'media.example.com', name: 'talk.mp3', rights: 'unverified', format: 'MP3 192 kbps', maxMinutes: 60 });
+    expect((obs as { next: string }).next).toMatch(/theirs or licensed/);
+    expect(JSON.stringify(obs)).not.toMatch(/secret-token/);
+    expect(onAudioQuote).toHaveBeenCalledWith(QUOTE);
+  });
+
+  test('a video platform comes back by name with the upload offer, and nothing reaches the card', async () => {
+    mockAudioQuote.mockResolvedValueOnce({ ok: false, error: 'platform', message: 'Not from a video platform.', platform: 'YouTube' });
+    const onAudioQuote = jest.fn();
+    const t = buildLiveToolRegistry(on(onAudioQuote)).find((x) => x.name === 'quote_audio_from_link')!;
+    await expect(t.run({ url: 'https://youtu.be/abc' })).resolves.toEqual({
+      error: 'platform', message: 'Not from a video platform.', platform: 'YouTube', offer: expect.stringMatching(/upload their own or a licensed/),
+    });
+    expect(onAudioQuote).not.toHaveBeenCalled();
+  });
+
+  test('two plans per request, and a missing link is an observation', async () => {
+    const t = buildLiveToolRegistry(on()).find((x) => x.name === 'quote_audio_from_link')!;
+    await expect(t.run({})).resolves.toMatchObject({ error: 'invalid_input' });
+    mockAudioQuote.mockResolvedValue(QUOTE);
+    await t.run({ url: 'https://media.example.com/a.mp4' });
+    await t.run({ url: 'https://media.example.com/b.mp4' });
+    await expect(t.run({ url: 'https://media.example.com/c.mp4' })).resolves.toMatchObject({ error: 'call_limit' });
+    expect(mockAudioQuote).toHaveBeenCalledTimes(2);
+    mockAudioQuote.mockReset();
+  });
+
+  test('the system prompt carries the audio rule only when the tool is on', async () => {
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}').mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('take the mp3 out of this', on());
+    await runLiveAgent('hello', CTX);
+    expect(mockLlm.mock.calls[0][0].system).toContain(AGENT_AUDIO_NOTE);
+    expect(mockLlm.mock.calls[1][0].system).not.toContain(AGENT_AUDIO_NOTE);
+  });
 });
 
 describe('quote_montage_to_music (Agent G media execution, quote only)', () => {

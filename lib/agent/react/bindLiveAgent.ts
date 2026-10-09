@@ -5,8 +5,9 @@ import 'server-only';
  * to real infrastructure:
  *   - llm      → llmText. Under AI_GOOGLE_ONLY (the default) that is Gemini ONLY (`googleOnly`); with the
  *                kill switch off it is the old multi-vendor chain (DeepSeek → Atlas → Gemini → Anthropic).
- *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), and quote_montage_to_music when
- *                the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them (quote only, see MEDIA).
+ *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), quote_montage_to_music when
+ *                the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them, and quote_audio_from_link
+ *                when AGENT_G_MEDIA_EXEC is open to them (both quote only, see MEDIA).
  *                They are the typed allowlist LIVE_TOOL_SPECS (lib/agent/tools/registry): each input is parsed by its
  *                schema before the tool runs, each tool has a per-request call limit and an effect class, and no
  *                effect lets the model start a job or spend credits.
@@ -26,6 +27,12 @@ import 'server-only';
  * every file is checked to be the caller's own (lib/security/callerMedia). Every other render still belongs to the
  * Studio lanes: the agent writes the brief and sends the user there (AGENT_MEDIA_NOTE).
  *
+ * `quote_audio_from_link` is the same contract for "take the MP3 out of this video": it checks the link (a direct media
+ * file on a public host; a video platform is refused by name, never worked around), its rights and its size, and
+ * returns the plan (lib/agent/media/audioExtract.quoteAudioExtract). It downloads and decodes nothing; the signed plan
+ * goes back through `onAudioQuote` (the route's `audioQuote`) and the extraction runs only on the user's Start
+ * (/api/agent/media/audio `run`: the lease queue, its worker, QC, the user's private storage). It is free.
+ *
  * The coordinator's control flow is unit-tested at $0 (coordinator.test.ts); this file's wiring is tested with
  * every provider mocked (bindLiveAgent.test.ts).
  */
@@ -40,6 +47,7 @@ import { bindTools, defineTool, type ToolSpec } from '@/lib/agent/tools/registry
 import { webSearch } from '@/lib/ai/webSearch';
 import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
+import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 
 export interface AgentContext {
   userId: string;
@@ -49,6 +57,8 @@ export interface AgentContext {
   media?: boolean;
   /** Receives every signed quote the media tool makes; the route hands the last one to the client's confirm card. */
   onMediaQuote?: (quote: Extract<QuoteResult, { ok: true }>) => void;
+  /** Receives every signed audio-extraction plan; the route hands the last one to the client's Start card. */
+  onAudioQuote?: (quote: Extract<AudioQuoteResult, { ok: true }>) => void;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -66,10 +76,22 @@ export const AGENT_MONTAGE_NOTE =
   'already made. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
   'them to run it in the MyAvatar Studio, where it is created and billed.';
 
+/** Added to either note when the audio tool is on: the agent plans the extraction and never claims it ran. */
+export const AGENT_AUDIO_NOTE =
+  'When the user sends a link to a video or audio file and wants its sound as an MP3, call quote_audio_from_link with ' +
+  'that link. It checks the source and its rights and returns the plan; it downloads nothing. Video platforms ' +
+  '(YouTube, TikTok, Instagram, Facebook and the like) are refused by their terms: never look for a way around that; ' +
+  'tell the user to upload their own or a licensed file in the MyAvatar chat instead. The extraction starts only when ' +
+  'the user presses Start on the plan in the MyAvatar chat, and it is free; never say the MP3 is already made.';
+
 /** Each quote downloads and decodes every attached file: two per request (say, a second format) is plenty. */
 export const MAX_QUOTES_PER_RUN = 2;
 /** The tool is offered only for a request with files, and only when media execution is open to this user. */
 export const montageToolOn = (ctx: AgentContext): boolean => ctx.media === true && (ctx.files?.length ?? 0) > 0;
+/** The audio tool needs no files (the link is in the user's words), only media execution open to this user. */
+export const audioToolOn = (ctx: AgentContext): boolean => ctx.media === true;
+/** An audio quote reads a link's headers only (no download), but two per request is plenty. */
+export const MAX_AUDIO_QUOTES_PER_RUN = 2;
 
 /** Collapse the ReAct transcript into a single llmText call. */
 async function llmAdapter(
@@ -164,6 +186,50 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_audio_from_link: plan only, from a link the user sent (see MEDIA in the header). A platform refusal names the
+  // platform so the agent can offer the upload instead; the plan's token never reaches the model.
+  defineTool({
+    name: 'quote_audio_from_link',
+    effect: 'quote',
+    confirms: 'audio_extract_run',
+    description:
+      'PLAN ONLY — take the sound out of a video or audio file at a public link, as an MP3 (192 kbps). Input {url}. ' +
+      'Checks that the link is a direct media file (video platforms are refused), its rights and size; returns the plan. Downloads nothing until the user presses Start; free.',
+    input: z.object({ url: z.string().trim().min(8).max(2048) }),
+    offered: (ctx) => audioToolOn(ctx),
+    limit: MAX_AUDIO_QUOTES_PER_RUN,
+    run: async ({ url }, ctx) => {
+      // Loaded on use: the storage client and the source checks stay off the path of every other request.
+      const [{ quoteAudioExtract }, { liveAudioDeps }] = await Promise.all([
+        import('@/lib/agent/media/audioExtract'),
+        import('@/lib/agent/media/audioLive'),
+      ]);
+      const r = await quoteAudioExtract(liveAudioDeps(), { userId: ctx.userId, url });
+      if (!r.ok) {
+        return {
+          error: r.error,
+          message: r.message,
+          ...(r.platform ? { platform: r.platform, offer: 'Ask the user to upload their own or a licensed copy of the file in the MyAvatar chat.' } : {}),
+        };
+      }
+      ctx.onAudioQuote?.(r);
+      const q = r.quote;
+      return {
+        planned: true,
+        extracted: false,
+        credits: q.credits,
+        host: q.host,
+        name: q.name,
+        bytes: q.bytes,
+        rights: q.rights.status === 'licensed' ? `licensed (${q.rights.license ?? 'licence named by the source'})` : q.rights.status,
+        format: `MP3 ${q.bitrateKbps} kbps`,
+        maxMinutes: Math.round(q.maxSec / 60),
+        next: q.rights.status === 'unverified'
+          ? 'The rights could not be checked: pressing Start is the user saying the file is theirs or licensed to them. Nothing starts before that.'
+          : 'The user presses Start on the plan; nothing starts before that.',
+      };
+    },
+  }),
 ];
 
 /** Build the real tool registry for one authenticated request. */
@@ -178,7 +244,7 @@ export async function runLiveAgent(
   opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
 ): Promise<ReActResult> {
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
-  const systemExtra = [mediaNote, opts?.systemExtra?.trim()].filter(Boolean).join('\n\n');
+  const systemExtra = [mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', opts?.systemExtra?.trim()].filter(Boolean).join('\n\n');
   return runReActLoop({
     llm: llmAdapter,
     tools: buildLiveToolRegistry(ctx, { goal: userGoal }),

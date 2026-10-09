@@ -11,8 +11,11 @@
  * The only media tool QUOTES: optional `files` (the user's own uploads, at most 13) give the agent
  * quote_montage_to_music when AGENT_G_MEDIA_EXEC is open to this user. It renders nothing; the signed
  * quote comes back as `mediaQuote` for the client's confirm card, and the edit runs only on that
- * confirm (/api/agent/media/montage `run`). Without files, or with the flag closed, there is no media
- * tool and the agent writes a brief for the Studio instead (see bindLiveAgent.ts).
+ * confirm (/api/agent/media/montage `run`). Without files, or with the flag closed, there is no montage
+ * tool and the agent writes a brief for the Studio instead (see bindLiveAgent.ts). With the flag open the
+ * agent also has quote_audio_from_link ("take the MP3 out of this link"): it checks the link and its rights
+ * and plans, nothing more; its signed plan comes back as `audioQuote` and the extraction runs only on the
+ * user's Start (/api/agent/media/audio `run`).
  *
  * Auth required (the userId attributes the booked LLM/search spend and scopes the per-user rate
  * limit). Publishing to social is prepare-only by construction — this route can never post on the
@@ -88,9 +91,13 @@ export async function POST(req: NextRequest) {
       : DEFAULT_BUDGET_MS;
   const deadlineMs = Date.now() + budgetMs;
   let mediaQuote: Parameters<NonNullable<AgentContext['onMediaQuote']>>[0] | undefined;
-  const ctx: AgentContext = files?.length
-    ? { userId: user.id, files, media: agentMediaOpenTo(user), onMediaQuote: (q) => { mediaQuote = q; } }
-    : { userId: user.id };
+  let audioQuote: Parameters<NonNullable<AgentContext['onAudioQuote']>>[0] | undefined;
+  const ctx: AgentContext = {
+    userId: user.id,
+    media: agentMediaOpenTo(user),
+    onAudioQuote: (q) => { audioQuote = q; },
+    ...(files?.length ? { files, onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; } } : {}),
+  };
   const result = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs });
   if (result.stopReason === 'llm_error') {
     // `source` labels the report only (a voice call's failures are told apart); it changes nothing about the run.
@@ -98,6 +105,6 @@ export async function POST(req: NextRequest) {
     reportError(new Error('agent run ended in llm_error'), { route: 'agent.run', userId: user.id, ...source });
   }
   const status = result.stopReason === 'llm_error' ? 502 : 200;
-  // The last plan the agent made, signed, for the confirm card: nothing has rendered and nothing is charged yet.
-  return NextResponse.json(mediaQuote ? { ...result, mediaQuote } : result, { status });
+  // The last plan of each kind the agent made, signed, for the confirm card: nothing has run and nothing is charged yet.
+  return NextResponse.json({ ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}) }, { status });
 }
