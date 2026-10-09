@@ -12,8 +12,8 @@ Labels: PROVEN (checked live today), BUILT_NOT_PROVEN, PARTIAL, MISSING, BLOCKED
 | Supabase connector: SQL, advisors, logs | Works on Production (read-only queries; role probes inside a transaction). |
 | GoTrue public `GET /auth/v1/settings` (publishable key) | Works from GG's Mac (the cloud sandbox proxy blocks `*.supabase.co`). |
 | Supabase Management API (`/v1/projects/{ref}/config/auth`) | **Not reachable**: the `SUPABASE_ACCESS_TOKEN` kept in the Mac checkout's `.env.local` and `.vercel/.env.production.local` answers 401 „Invalid access token" (checked 12:47Z, value never printed); no Supabase CLI login. Site URL, Redirect URLs, SMTP, OTP length/expiry, leaked-password toggle cannot be read or changed by Claude. |
-| Vercel CLI on GG's Mac | Works for `vercel dns ls/add`, and `vercel logs --environment production` reads runtime logs. `vercel env run -e production` hands `RESEND_API_KEY` over **empty** (protected value), so the Resend API cannot be called from here. |
-| Chrome on GG's Mac | **Read-only** (computer use grants browsers screenshot access only; no clicks or typing, no Claude-in-Chrome in this thread). |
+| Vercel CLI on GG's Mac | Works for `vercel dns ls/add`, and `vercel logs --environment production` reads runtime logs. `RESEND_API_KEY` is set for Production and Preview (`vercel env ls`), but `vercel env run` and `vercel env pull` both hand it over **empty** (sensitive value; rechecked 13:46Z for both environments, temp file deleted), and no other copy exists in the Mac checkout. So the Resend API (domain records, Verify) cannot be called from here. |
+| Chrome on GG's Mac | **Read-only**: computer use can grant a browser (Chrome or Safari) only the screenshot tier, by design; no clicks or typing, and no Claude-in-Chrome tool in this thread (rechecked 13:45Z after GG asked Claude to click). Clicks in Resend and the Supabase dashboard therefore stay with GG. |
 | `myavatar.ge` HTTP | Works from GG's Mac (sandbox blocked). |
 
 No Production configuration, user, row, table or policy was changed. No secret was printed.
@@ -27,7 +27,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 | Confirm email | **PROVEN ON** | `/auth/v1/settings` → `"mailer_autoconfirm": false` (11:5xZ). Nothing to change. |
 | Sign-ups open | PROVEN | `"disable_signup": false`. |
 | Email provider | PROVEN on | `external.email: true`. |
-| Google OAuth | **PROVEN working** | `external.google: true`; auth logs 2026-10-08: 8× `/authorize` 302 → 8× `/callback` 302, `Login` events; 8 Google identities. |
+| Google OAuth | **PROVEN working** | `external.google: true`; auth logs 2026-10-08: 8× `/authorize` 302 → 8× `/callback` 302, `Login` events; 8 Google identities. Again 2026-10-09 12:32:09–13Z: `/authorize` → Google → `/callback` 302 with a `login` event (provider google) from https://myavatar.ge. |
 | GitHub OAuth | PROVEN **enabled, unused** | `external.github: true`, 0 GitHub identities. The sign-in screen shows a GitHub button because it reads this flag. Recommendation below (owner, optional). |
 | Anonymous sign-ins | PROVEN off | `anonymous_users: false`. |
 | Email OTP code generation | **PROVEN working** | auth logs: 14× `/admin/generate_link` 200 (last 2026-10-08 14:42Z). AUTH-1 (6-digit check) is fixed and live since 9f1bff6. |
@@ -63,8 +63,8 @@ No Production configuration, user, row, table or policy was changed. No secret w
 | One rule for page + APIs | PROVEN in code, live since PR #45 (9f1bff6) | `isAdminIdentity()`: `app_metadata` role, or a **confirmed** email on code ∪ `ADMIN_EMAILS` ∪ panel-granted list (fails closed). `user_metadata` never counts. |
 | Admin accounts | PROVEN (read-only) | 2 accounts match: the founder address (confirmed, signed in 2026-10-08) and 1 panel-granted address (confirmed). 0 `app_metadata` roles. The second built-in address has no account (cannot be claimed without its inbox, since Confirm email is ON). |
 | Anonymous caller is refused | **PROVEN live** (from GG's Mac, 11:5xZ) | `/api/admin/users` 403, `/stats` 401, `/admins` 403, `/financials` 401, `/payments` 401, `/flags` 403, `/credits` 404; `run-migration` GET and POST with a wrong key 404; forged auth cookie on `/users` 403; `/ka/admin` renders the login screen. |
-| Signed-in non-admin is refused | BUILT_NOT_PROVEN live (unit-proven) | `lib/admin/adminGate.test.ts`, admin route tests. A live probe needs a normal test account (best on the cert Preview). |
-| Admin can sign in | PROVEN | founder account last sign-in 2026-10-08; refresh tokens rotate hourly in the audit log. |
+| Signed-in non-admin is refused | BUILT_NOT_PROVEN live (unit-proven) | `lib/admin/adminGate.test.ts`, admin route tests. Live test needs no Resend: GG signs in with Google as `myavatar.ge@gmail.com` (not on any admin list) and opens https://myavatar.ge/ka/admin; Claude reads the `/api/admin/*` statuses in the Vercel log. No such request in the last 24 h (13:5xZ: only the anonymous probes above). |
+| Admin can sign in | PROVEN (sign-in) / NOT PROVEN (panel opened live) | Founder account signed in with Google 2026-10-09 12:32:13Z (auth log `login`, provider google). No signed-in `/ka/admin` or `/api/admin/*` 200 in the Vercel log for the last 24 h, so the panel opening for the admin is not yet shown live. |
 
 ### 5. RLS, Storage, sessions, service role
 
@@ -74,6 +74,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 | SECURITY DEFINER functions | PROVEN | 31 functions; none executable by `anon` or `authenticated`; all have a fixed `search_path`. |
 | Storage | PROVEN | Policies: public read only on `music`; service-role insert/update on `music`. Buckets public: `avatars`, `music`; private: `renders` (since 20261009b), `uploads`, `studio`, `twins`, `fonts`. |
 | Auth sessions | PROVEN (read-only) | 44 sessions, 38 idle > 30 days, no timebox or inactivity timeout set. Refresh-token failures in logs are ordinary `refresh_token_not_found`. Optional owner setting below. |
+| Session refresh | **PROVEN live** (real traffic) | Auth log 2026-10-08 14:00Z → 2026-10-09 13:55Z: `POST /token` `grant_type=refresh_token` 200 ×27 (last 12:59Z), 400 ×3 (expired tokens); `GET /user` 200 from https://myavatar.ge throughout. |
 | Service role in browser code | PROVEN (static) | New guard `lib/security/serverAuthBoundary.test.ts`: no `SUPABASE_SERVICE_ROLE_KEY` / `createServiceRoleClient` in `components/`, `hooks/` or any `'use client'` file; no `NEXT_PUBLIC_*SECRET*`/`*SERVICE_ROLE*`; `lib/supabase/server.ts` is `server-only`. |
 | Server identity check | **FIXED (BUILT_NOT_PROVEN until deploy)** | `app/api/avatar/generate` decided the caller with `auth.getSession()` (cookie only, not validated). Now `auth.getUser()`. Low impact before the fix (its writes go through RLS with the user's JWT), but it was the only route doing this. Guard test blocks it from coming back. |
 
@@ -95,7 +96,8 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 
 - **Found live:** the 12:48Z probe asked `/api/auth/email-otp/send` for a **sign-in** code for an address with no account. The code comment and the unit test assumed GoTrue answers „user not found"; GoTrue instead turns a magiclink for an unknown address into a sign-up and **created an unconfirmed user** (plus its `profiles` row from the signup trigger). No mail went out.
 - **Impact before the fix:** the sign-in sheet asks `/api/auth/lookup` first, so people were sent to sign-up; but any direct call (or a lookup answering `unknown`) left an unconfirmed account behind and never answered `no_account`.
-- **Fix (PR #51, BUILT_NOT_PROVEN until deploy):** for `signin` the route asks `public.auth_account_status` first (`accountExists()` in `lib/auth/accountStatus.ts`) and answers `404 no_account` without calling Supabase Auth. If the database cannot answer it falls through as before. Tests: `app/api/auth/email-otp/send/route.test.ts`, `lib/auth/accountStatus.test.ts`.
+- **Fix (PR #51):** for `signin` the route asks `public.auth_account_status` first (`accountExists()` in `lib/auth/accountStatus.ts`) and answers `404 no_account` without calling Supabase Auth. If the database cannot answer it falls through as before. Tests: `app/api/auth/email-otp/send/route.test.ts`, `lib/auth/accountStatus.test.ts`.
+- **PROVEN on the PR #51 Preview (13:49:44Z), not yet in Production.** The Preview uses the Production database. Checked first with SQL that the function exists, `service_role` may execute it, and it answers `exists: false` for the probe address. Then, from GG's Mac: `POST /api/auth/lookup` → `{"status":"none"}`; only because of that answer (scripted gate), `POST /api/auth/email-otp/send` `{purpose: "signin"}` for `no-account-probe-2-1009@example.com` → **404 `no_account`**. Auth log 13:49–13:51Z: no `/admin/generate_link` call. SQL after: 22 users, 0 probe rows, 0 users created in the last 15 minutes. Production still runs the old route until PR #51 reaches main (GG's word).
 - **The probe account:** GG chose „delete" on the card at 12:54:05Z. Deleted ~12:55Z with one guarded statement (that id, that address, unconfirmed, never signed in, created 12:48Z): 1 `auth.users` row + 1 `profiles` row. Users back to 22. Nothing else touched.
 
 ## Owner actions (exact)
@@ -121,7 +123,7 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
   5× `live-voice-e2e` (the runner had no `PLAYWRIGHT_SUPABASE_URL`, so the fixture's session cookie named another project), `swarm-pipelines` produce-route check (expects the `next dev` bypass on a local URL), `ui-image` phone thumbnail (passes on `next dev`).
   Re-run on `next dev` with the matching env: `swarm-pipelines` + `ui-image` 18/18; `live-voice-e2e` 4/5, the fifth passed 3/3 alone (`--repeat-each 3`) and on the cert branch: a load flake, not a regression.
 - Focused: auth, admin and security suites 19/19 (305 tests).
-- Live probes listed in §4 (anonymous) and §5 (role probes). Production logs read: Supabase auth and audit logs (last 24 h). Vercel runtime logs not read (connector 403; CLI not needed for this finding).
+- Live probes listed in §4 (anonymous), §5 (role probes) and §7 (log-in fix on the Preview). Production logs read: Supabase auth and audit logs (last 24 h) and Vercel runtime logs via the CLI on GG's Mac (`/api/admin`, `email-otp`).
 
 ## Lines for PROJECT_MASTER.md and the launch certification
 
