@@ -5,6 +5,7 @@ import { applyApiGuards } from '@/lib/api/guard';
 import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToChat, signInToGenerateBody } from '@/lib/auth/generationGate';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,6 +21,14 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  // ⚠️ GOOGLE-ONLY → 404. executeStream is the multi-vendor chatEngine (OpenRouter / OpenAI), and no screen calls this
+  // route, so while AI_GOOGLE_ONLY is on (the default) it does not exist rather than answer from a forbidden vendor
+  // (R7). Before 2026-10-09 any signed-in user could POST here and get an OpenRouter/OpenAI answer with no credit
+  // charged. AI_GOOGLE_ONLY=0 (the kill switch) brings the old stream back.
+  if (isAiGoogleOnly()) {
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }
+
   const gate = await applyApiGuards(request, { limit: RATE_LIMITS.AI, label: 'orbit.agent' });
   if (gate.response) return gate.response;
 
