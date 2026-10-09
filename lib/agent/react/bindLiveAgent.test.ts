@@ -1,8 +1,9 @@
 /** @jest-environment node */
 /**
  * The live agent binding: Gemini-only brain + Google-grounded web_search under AI_GOOGLE_ONLY (the default),
- * the old chain + Tavily with the kill switch off, and NO media tool (orchestrate_media queued orphaned,
- * unbilled generation_jobs rows). Every provider is mocked — no network, no spend.
+ * the old chain + Tavily with the kill switch off, and no render tool (orchestrate_media queued orphaned, unbilled
+ * generation_jobs rows). The one media tool, quote_montage_to_music, exists only for a request with files when media
+ * execution is open to the user, and it only quotes. Every provider is mocked — no network, no spend.
  */
 jest.mock('server-only', () => ({}));
 
@@ -16,7 +17,11 @@ jest.mock('../tools/scrapeWebpage', () => ({ scrapeWebpage: jest.fn(async () => 
 const mockStartJob = jest.fn(async () => 'job-1');
 jest.mock('../../ads/adRenderJob', () => ({ startAdRenderJob: (...a: unknown[]) => (mockStartJob as (...x: unknown[]) => Promise<string>)(...a) }));
 
-import { buildLiveToolRegistry, runLiveAgent, AGENT_MEDIA_NOTE } from './bindLiveAgent';
+const mockQuote = jest.fn();
+jest.mock('../media/montageExec', () => ({ quoteMontage: (...a: unknown[]) => mockQuote(...a) }));
+jest.mock('../media/montageLive', () => ({ liveMontageDeps: () => ({ live: true }) }));
+
+import { buildLiveToolRegistry, runLiveAgent, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
 
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
@@ -35,10 +40,65 @@ const tool = (name: string) => {
   return t;
 };
 
-test('the registry has no media/render tool', () => {
+test('without files the registry has no media tool, and no render tool ever', () => {
   const names = buildLiveToolRegistry(CTX).map((t) => t.name);
   expect(names).toEqual(['web_search', 'scrape_webpage', 'prepare_instagram_post']);
   expect(names).not.toContain('orchestrate_media');
+  // Files alone are not enough: media execution must be open to this user (the route decides from the session).
+  expect(buildLiveToolRegistry({ ...CTX, files: ['u/a.mp4'], media: false }).map((t) => t.name)).not.toContain('quote_montage_to_music');
+  expect(buildLiveToolRegistry({ ...CTX, files: [], media: true }).map((t) => t.name)).not.toContain('quote_montage_to_music');
+});
+
+describe('quote_montage_to_music (Agent G media execution, quote only)', () => {
+  const QUOTE = {
+    ok: true,
+    quote: { jobId: 'j-1', credits: 0, totalSec: 30, shots: 10, clips: 3, aspect: '9:16', beatSynced: true, bpm: 120, musicStartSec: 0.2, unusedFiles: [2], expiresAt: 9 },
+    request: { shots: [{ url: 'https://signed/a' }] },
+    token: 'secret-token',
+  };
+  const media = (onMediaQuote = jest.fn()): AgentContext => ({ ...CTX, files: ['u/a.mp4', 'u/b.mp4', 'u/c.mp4', 'u/song.mp3'], media: true, onMediaQuote });
+
+  test('quotes from the request files and the goal; the model sees the plan, never the token or the signed links', async () => {
+    mockQuote.mockResolvedValueOnce(QUOTE);
+    const onMediaQuote = jest.fn();
+    const t = buildLiveToolRegistry(media(onMediaQuote), { goal: 'make a reel to this song' }).find((x) => x.name === 'quote_montage_to_music')!;
+    const obs = await t.run({ aspect: '9:16', files: ['someone-else/x.mp4'] });
+    expect(mockQuote).toHaveBeenCalledWith({ live: true }, {
+      userId: CTX.userId, files: ['u/a.mp4', 'u/b.mp4', 'u/c.mp4', 'u/song.mp3'], prompt: 'make a reel to this song', aspect: '9:16', targetSec: undefined,
+    });
+    expect(obs).toEqual({
+      planned: true, rendered: false, credits: 0, shots: 10, clips: 3, lengthSec: 30, aspect: '9:16', beatSynced: true, bpm: 120,
+      unusedFiles: [3], next: 'The user confirms the plan on its card; nothing starts before that.',
+    });
+    expect(JSON.stringify(obs)).not.toMatch(/secret-token|signed/);
+    expect(onMediaQuote).toHaveBeenCalledWith(QUOTE);
+  });
+
+  test('a refusal is an observation naming the files 1-based; nothing reaches the card', async () => {
+    mockQuote.mockResolvedValueOnce({ ok: false, error: 'media_not_yours', message: 'File 2 is not yours.', files: [1] });
+    const onMediaQuote = jest.fn();
+    const t = buildLiveToolRegistry(media(onMediaQuote)).find((x) => x.name === 'quote_montage_to_music')!;
+    await expect(t.run({})).resolves.toEqual({ error: 'media_not_yours', message: 'File 2 is not yours.', files: [2] });
+    expect(onMediaQuote).not.toHaveBeenCalled();
+  });
+
+  test('at most two plans per request: each one decodes every file', async () => {
+    mockQuote.mockResolvedValue(QUOTE);
+    const t = buildLiveToolRegistry(media()).find((x) => x.name === 'quote_montage_to_music')!;
+    await t.run({});
+    await t.run({ aspect: '16:9' });
+    await expect(t.run({})).resolves.toMatchObject({ error: 'quote_limit' });
+    expect(mockQuote).toHaveBeenCalledTimes(2);
+    mockQuote.mockReset();
+  });
+
+  test('the system prompt says the plan starts only on Confirm when the tool is on', async () => {
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('cut these to the song', media());
+    const system = mockLlm.mock.calls[0][0].system as string;
+    expect(system).toContain(AGENT_MONTAGE_NOTE);
+    expect(system).not.toContain(AGENT_MEDIA_NOTE);
+  });
 });
 
 test('Google-only (default): the brain is llmText with googleOnly, and the system prompt says renders happen in the Studio', async () => {

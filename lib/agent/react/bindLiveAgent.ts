@@ -5,17 +5,23 @@ import 'server-only';
  * to real infrastructure:
  *   - llm      → llmText. Under AI_GOOGLE_ONLY (the default) that is Gemini ONLY (`googleOnly`); with the
  *                kill switch off it is the old multi-vendor chain (DeepSeek → Atlas → Gemini → Anthropic).
- *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only)
+ *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), and quote_montage_to_music when
+ *                the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them (quote only, see MEDIA)
  *
  * web_search is Gemini + Google Search grounding under AI_GOOGLE_ONLY (lib/agent/tools/googleSearch.ts) and
  * Tavily otherwise — the same `{ answer, results[] }` shape either way.
  *
- * ⚠️ THERE IS NO MEDIA TOOL, ON PURPOSE. `orchestrate_media` used to call startAdRenderJob, which only
- * INSERTS a `generation_jobs` row — nothing in the codebase ever calls processAdRenderJob, and the drain-renders
- * cron reaps `processing` rows only. Every call left a permanently `pending` "video" in the user's history, and
- * no credit was ever reserved or debited for it. Renders belong to the Studio lanes, which reserve credits
- * before they spend; the agent writes the brief and sends the user there (AGENT_MEDIA_NOTE). Re-adding a
- * media tool needs a real worker AND the ledger reserve/refund saga first.
+ * MEDIA: ONE TOOL, AND IT ONLY QUOTES. `orchestrate_media` was removed because it called startAdRenderJob, which only
+ * INSERTED a `generation_jobs` row: nothing ever processed it, and no credit was reserved or debited. A media tool came
+ * back only with a real worker and the ledger reserve/refund saga behind it, and that is lib/agent/media (Agent G's
+ * media execution, slice 1): `quote_montage_to_music` cuts the clips the user attached to THIS request to the music
+ * track they attached, on the beat. The tool analyses, plans and prices (montageExec.quoteMontage); it renders nothing
+ * and spends nothing. The signed quote goes back to the caller (`onMediaQuote` → the route's `mediaQuote`), and the
+ * render runs only when the user confirms it (/api/agent/media/montage `run`: the existing montage lane, one job per
+ * quote, QC, refund, audit). The tool exists only when AGENT_G_MEDIA_EXEC opens it to this user (the route decides,
+ * from the session) AND the request carries files; the agent never sees a URL it could swap for someone else's, and
+ * every file is checked to be the caller's own (lib/security/callerMedia). Every other render still belongs to the
+ * Studio lanes: the agent writes the brief and sends the user there (AGENT_MEDIA_NOTE).
  *
  * The coordinator's control flow is unit-tested at $0 (coordinator.test.ts); this file's wiring is tested with
  * every provider mocked (bindLiveAgent.test.ts).
@@ -27,16 +33,37 @@ import { scrapeWebpage } from '@/lib/agent/tools/scrapeWebpage';
 import { prepareInstagramPost, prepareInstagramPostInput } from '@/lib/agent/tools/prepareInstagramPost';
 import { groundedWebSearch } from '@/lib/agent/tools/googleSearch';
 import { webSearch } from '@/lib/ai/webSearch';
+import type { QuoteResult } from '@/lib/agent/media/montageExec';
 
 export interface AgentContext {
   userId: string;
+  /** The files the user attached to THIS request (their upload paths or our signed links), in their order. */
+  files?: string[];
+  /** Agent G's media execution is open to this user (lib/agent/media/access, decided from the session by the route). */
+  media?: boolean;
+  /** Receives every signed quote the media tool makes; the route hands the last one to the client's confirm card. */
+  onMediaQuote?: (quote: Extract<QuoteResult, { ok: true }>) => void;
 }
 
-/** Always appended to the system prompt: the agent cannot render, so it must not promise a render. */
+/** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
 export const AGENT_MEDIA_NOTE =
   'You cannot start video, image or music renders from here. When the user wants media made, put a ' +
   'ready-to-use brief (prompt, style, duration, aspect) in your final answer and tell them to run it in the ' +
   'MyAvatar Studio, where it is created and billed.';
+
+/** Appended instead when the request carries the user's files and the montage tool is on. */
+export const AGENT_MONTAGE_NOTE =
+  'The user attached files to this request. When they want their video clips cut to their music track, call ' +
+  'quote_montage_to_music: it analyses the files, finds the beat and returns the plan and its price. It renders ' +
+  'nothing: the user sees the plan with a Confirm button and the edit starts only when they press it. Tell them what ' +
+  'the plan is (shots, length, beat, format, any clip left out and why) and that it starts on Confirm; never say it is ' +
+  'already made. For any other video, image or music render, put a ready-to-use brief in your final answer and tell ' +
+  'them to run it in the MyAvatar Studio, where it is created and billed.';
+
+/** Each quote downloads and decodes every attached file: two per request (say, a second format) is plenty. */
+export const MAX_QUOTES_PER_RUN = 2;
+/** The tool is offered only for a request with files, and only when media execution is open to this user. */
+export const montageToolOn = (ctx: AgentContext): boolean => ctx.media === true && (ctx.files?.length ?? 0) > 0;
 
 /** Collapse the ReAct transcript into a single llmText call. */
 async function llmAdapter(
@@ -51,8 +78,47 @@ async function llmAdapter(
   return llmText({ system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: isAiGoogleOnly() });
 }
 
+/** quote_montage_to_music: plan and price only, from the request's own files (see MEDIA in the header). */
+function montageQuoteTool(ctx: AgentContext, goal: string): AgentTool {
+  let quotes = 0;
+  return {
+    name: 'quote_montage_to_music',
+    description:
+      "PLAN ONLY — cut the video clips the user attached to the music track they attached, on the beat. Input {aspect?: '9:16'|'16:9'|'1:1', targetSec?}. " +
+      'Uses only the files attached to this request. Returns the plan (shots, length, bpm, format, unused files) and its price in credits; renders nothing until the user confirms.',
+    run: async (input) => {
+      if (quotes >= MAX_QUOTES_PER_RUN) return { error: 'quote_limit', message: `At most ${MAX_QUOTES_PER_RUN} plans per request.` };
+      quotes += 1;
+      const i = (input ?? {}) as { aspect?: unknown; targetSec?: unknown };
+      // Loaded on use: ffmpeg and the storage client stay off the path of every request that has no files.
+      const [{ quoteMontage }, { liveMontageDeps }] = await Promise.all([
+        import('@/lib/agent/media/montageExec'),
+        import('@/lib/agent/media/montageLive'),
+      ]);
+      const r = await quoteMontage(liveMontageDeps(), { userId: ctx.userId, files: ctx.files, prompt: goal, aspect: i.aspect, targetSec: i.targetSec });
+      if (!r.ok) return { error: r.error, message: r.message, ...(r.files ? { files: r.files.map((f) => f + 1) } : {}) };
+      ctx.onMediaQuote?.(r);
+      const q = r.quote;
+      // The model gets the plan, never the token or the signed links: those go to the user's confirm card only.
+      return {
+        planned: true,
+        rendered: false,
+        credits: q.credits,
+        shots: q.shots,
+        clips: q.clips,
+        lengthSec: q.totalSec,
+        aspect: q.aspect,
+        beatSynced: q.beatSynced,
+        bpm: q.bpm,
+        unusedFiles: q.unusedFiles.map((f) => f + 1),
+        next: 'The user confirms the plan on its card; nothing starts before that.',
+      };
+    },
+  };
+}
+
 /** Build the real tool registry for one authenticated request. */
-export function buildLiveToolRegistry(ctx: AgentContext): AgentTool[] {
+export function buildLiveToolRegistry(ctx: AgentContext, opts?: { goal?: string }): AgentTool[] {
   return [
     {
       name: 'web_search',
@@ -82,6 +148,7 @@ export function buildLiveToolRegistry(ctx: AgentContext): AgentTool[] {
         return prepareInstagramPost(parsed.data);
       },
     },
+    ...(montageToolOn(ctx) ? [montageQuoteTool(ctx, opts?.goal ?? '')] : []),
   ];
 }
 
@@ -91,10 +158,11 @@ export async function runLiveAgent(
   ctx: AgentContext,
   opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
 ): Promise<ReActResult> {
-  const systemExtra = [AGENT_MEDIA_NOTE, opts?.systemExtra?.trim()].filter(Boolean).join('\n\n');
+  const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
+  const systemExtra = [mediaNote, opts?.systemExtra?.trim()].filter(Boolean).join('\n\n');
   return runReActLoop({
     llm: llmAdapter,
-    tools: buildLiveToolRegistry(ctx),
+    tools: buildLiveToolRegistry(ctx, { goal: userGoal }),
     userGoal,
     maxSteps: opts?.maxSteps,
     systemExtra,

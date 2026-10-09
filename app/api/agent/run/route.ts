@@ -8,8 +8,11 @@
  *
  * Google-only by default (AI_GOOGLE_ONLY, lib/ai/google/policy.ts): the brain is Gemini alone and
  * web_search is Gemini + Google Search grounding — both decided in lib/agent/react/bindLiveAgent.ts.
- * There is no render tool: the old `orchestrate_media` queued generation_jobs rows nothing ever
- * processed, unbilled (see bindLiveAgent.ts).
+ * The only media tool QUOTES: optional `files` (the user's own uploads, at most 13) give the agent
+ * quote_montage_to_music when AGENT_G_MEDIA_EXEC is open to this user. It renders nothing; the signed
+ * quote comes back as `mediaQuote` for the client's confirm card, and the edit runs only on that
+ * confirm (/api/agent/media/montage `run`). Without files, or with the flag closed, there is no media
+ * tool and the agent writes a brief for the Studio instead (see bindLiveAgent.ts).
  *
  * Auth required (the userId attributes the booked LLM/search spend and scopes the per-user rate
  * limit). Publishing to social is prepare-only by construction — this route can never post on the
@@ -21,7 +24,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
-import { runLiveAgent } from '@/lib/agent/react/bindLiveAgent';
+import { runLiveAgent, type AgentContext } from '@/lib/agent/react/bindLiveAgent';
+import { agentMediaOpenTo } from '@/lib/agent/media/access';
+import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
 
@@ -50,7 +55,7 @@ export async function POST(req: NextRequest) {
   const rate = await checkProduceRate(user.id, Date.now(), 'agent');
   if (!rate.ok) return rateLimitedResponse(rate);
 
-  let body: { goal?: unknown; maxSteps?: unknown; budgetMs?: unknown; source?: unknown };
+  let body: { goal?: unknown; maxSteps?: unknown; budgetMs?: unknown; source?: unknown; files?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -59,6 +64,15 @@ export async function POST(req: NextRequest) {
   const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
   if (!goal) return NextResponse.json({ error: 'goal is required' }, { status: 400 });
   if (goal.length > MAX_GOAL_CHARS) return NextResponse.json({ error: `goal too long (max ${MAX_GOAL_CHARS})` }, { status: 413 });
+
+  // The user's own files for the media tool: strings only, at most MAX_FILES (montageExec checks each is theirs).
+  let files: string[] | undefined;
+  if (body.files !== undefined) {
+    const ok = Array.isArray(body.files) && body.files.length <= MAX_FILES
+      && body.files.every((f) => typeof f === 'string' && f.trim() && f.length <= 2048);
+    if (!ok) return NextResponse.json({ error: `files must be at most ${MAX_FILES} file references` }, { status: 400 });
+    files = (body.files as string[]).map((f) => f.trim());
+  }
 
   const maxSteps =
     typeof body.maxSteps === 'number' && Number.isFinite(body.maxSteps)
@@ -73,12 +87,17 @@ export async function POST(req: NextRequest) {
       ? Math.min(Math.max(MIN_BUDGET_MS, Math.floor(body.budgetMs)), MAX_BUDGET_MS)
       : DEFAULT_BUDGET_MS;
   const deadlineMs = Date.now() + budgetMs;
-  const result = await runLiveAgent(goal, { userId: user.id }, { maxSteps, deadlineMs });
+  let mediaQuote: Parameters<NonNullable<AgentContext['onMediaQuote']>>[0] | undefined;
+  const ctx: AgentContext = files?.length
+    ? { userId: user.id, files, media: agentMediaOpenTo(user), onMediaQuote: (q) => { mediaQuote = q; } }
+    : { userId: user.id };
+  const result = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs });
   if (result.stopReason === 'llm_error') {
     // `source` labels the report only (a voice call's failures are told apart); it changes nothing about the run.
     const source = body.source === 'live' ? { source: 'live', budgetMs } : {};
     reportError(new Error('agent run ended in llm_error'), { route: 'agent.run', userId: user.id, ...source });
   }
   const status = result.stopReason === 'llm_error' ? 502 : 200;
-  return NextResponse.json(result, { status });
+  // The last plan the agent made, signed, for the confirm card: nothing has rendered and nothing is charged yet.
+  return NextResponse.json(mediaQuote ? { ...result, mediaQuote } : result, { status });
 }

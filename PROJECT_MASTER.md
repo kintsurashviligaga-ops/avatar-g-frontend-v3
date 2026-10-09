@@ -48,9 +48,10 @@ LAST COMMIT: see `git log` on that branch (main = 29e7d67b = Production since ~0
           on the owner's "Deploy": ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
           provider-boundary ratchet test; 7c8dd9b3 ka/en/ru fixes + missing-key test; certification records);
           PRs #42, #45, #46, #47, #48 and #49 merged
-NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. NEXT ENGINEERING STAGE (owner,
-          2026-10-09 09:32Z, critical): Agent G autonomous media & file execution, Section F (slice 1: clips + music
-          → MP4 in the chat), after the PR #50 / schema-drift work. Owner actions in
+NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Agent G autonomous media & file
+          execution (owner, 2026-10-09 09:32Z, critical), Section F: slice 1 (clips + music → MP4 in the chat) is
+          BUILT_NOT_PROVEN on PR #50, behind AGENT_G_MEDIA_EXEC (off in Production); AG-8 needs a Preview run by an
+          admin. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
@@ -863,38 +864,59 @@ RULES
 · No Production deploy and no new paid infrastructure without the owner's consent (a code sandbox host is new
   infrastructure: owner decision).
 DEFINITION OF DONE (slice 1, "cut my clips to this music")
-□ AG-1 Agent G's live tool registry has a media tool that runs an existing Studio lane (no new pipeline);
-       unit-tested with every provider mocked.
-□ AG-2 Inputs are only the caller's own uploaded files (callerMedia owner check); limits on count, size, total
-       duration and run time; ffmpeg arguments built from an allowlist, never from model text.
-□ AG-3 Quote before spend: the price shows inline in the chat and nothing is charged until the user confirms.
-□ AG-4 Durable job: one job row with progress; cancel; retry with the same idempotency key never charges twice;
-       a run that dies is recovered or refunded by the sweeper; failure → ledger refund.
-□ AG-5 QC before delivery: ffprobe the output (duration matches the music within tolerance, video + audio
-       streams, playable codec); a failed QC refunds and says why.
-□ AG-6 One Window: the MP4 plays inline in the same chat, has Download, and is in the Library.
-□ AG-7 Audit log row per execution (who, which files, which operation, cost, result).
-□ AG-8 E2E proven on a Preview (F6) with the job id, ffprobe output and a screenshot recorded; labels per
-       the certification vocabulary (PROVEN only with that proof).
-STATUS: MISSING (2026-10-09). Design and plan: docs/handoffs/2026-10-09-engineering-report.md §4.19.
-CURRENT STATE (2026-10-09, read from the code)
-· The studio chat routes on the client (OmniStudio send()); /api/chat/gemini streams text only. The ReAct agent
-  (/api/agent/run) is called only by Live voice ask_agent_g and AgentTerminal, and has no media tool.
-· The montage lane (/api/v2/montage/render, lib/services/montage) already turns N clips + one track into one MP4
-  (ffmpeg-static on Vercel, up to 600 s, renders bucket, generation_jobs row = Library). It charges no credits.
-· Silent deviation today: several videos + a track + "cut to the music" in the chat go to remix, which uses only
-  the first video, charges 15 credits and drops the other clips without a word.
-· No beat detection exists. The composer allows 5 attachments; audio counts toward the ~4 MB inline cap.
-SLICE 1 PLAN (behind AGENT_G_MEDIA_EXEC, default off, so a PR #50 merge turns nothing half-built on)
-· lib/services/montage/beatPlan.ts: onsets + tempo from the track (ffmpeg PCM), shot windows on the beats.
-· One server action in two phases: quote (analyse, plan, price; spends nothing) and run (only after the user
-  confirms; idempotency key; ledger reserve + refund when priced; generation_jobs progress; ffprobe QC; audit
-  log), calling the existing runMontage.
-· bindLiveAgent.ts gets a tool that prepares the quote only; running needs the user's confirm.
-· OmniStudio: ≥2 videos + 1 track + montage intent → upload all → quote card inline → confirm → MP4 in the same
-  chat (player, Download) and in the Library.
-· Owner decisions: the price of an Agent G montage (free today in Montage Studio); a code sandbox host (not in
-  slice 1).
+Labels 2026-10-09: nothing here is PROVEN until AG-8 runs on a Preview. BUILT_NOT_PROVEN = written, unit-tested,
+and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
+◐ AG-1 BUILT_NOT_PROVEN. bindLiveAgent.ts has quote_montage_to_music (the limitation note is replaced): it
+       analyses, plans and prices from the files attached to THAT request and renders nothing; the signed quote
+       goes to the client (/api/agent/run `mediaQuote`) and the run happens only on the user's confirm through
+       /api/agent/media/montage `run`, which calls the existing runMontage (no new pipeline). On only when
+       AGENT_G_MEDIA_EXEC is open to the user and the request has files. Tests: bindLiveAgent.test.ts,
+       app/api/agent/run/route.test.ts (44 in all), every provider mocked.
+◐ AG-2 BUILT_NOT_PROVEN. Every file goes through resolveCallerMedia and must be our storage and the caller's
+       own (an outside link is refused). Limits: 12 clips + 1 track, 50 MB per upload (existing sign route),
+       30 shots, 120 s master, 1.5–8 s per shot, 330 s of track analysed, 90 s per probe, 600 s per run. ffmpeg
+       arguments come from validateMontageRequest and the montage lane's own builders, never from model or user
+       text. The quote is HMAC-signed over the exact plan, the user, the price and a 30-minute expiry.
+◐ AG-3 BUILT_NOT_PROVEN. The quote spends nothing (tested: no job row, no reserve, no render). The chat shows
+       the plan as a card (shots, length, BPM, format, price, unused clips named) and starts nothing before Start.
+       Price: free (owner's choice 2026-10-09 09:43Z, "უფასო"; pricing table unchanged); the priced path
+       (reserve under ref agent-montage:<job>, refund on failure) is built and tested for a later price.
+◐ AG-4 BUILT_NOT_PROVEN / PARTIAL. One generation_jobs row per quote (the quote's job id is the idempotency
+       key: a second run of the same quote replays the result or refuses, never renders twice); stage + percent
+       on the row (the chat card shows them); Stop cancels between steps; a dropped connection is followed on the
+       row for 11 minutes. PARTIAL: a function that dies mid-run leaves the row `processing` until the existing
+       drain-renders reap leg fails it (and refunds a recorded reservation) — that leg runs only when
+       RENDER_DRAINER_ENABLED is set, which this sandbox cannot read in Production.
+◐ AG-5 BUILT_NOT_PROVEN. The master is probed before delivery: picture and sound, H.264 + AAC, length within
+       max(1 s, 3 %) of the plan, and the track actually mixed; a failure is not shown, fails the job and refunds.
+◐ AG-6 BUILT_NOT_PROVEN. The master plays in the same chat bubble (player, Download, Share, Save, Edit) and is a
+       Library item through its completed generation_jobs row. Browser test tests/agent-g-montage.spec.ts (routes
+       mocked) 4/4. In the chat: up to 4 clips + 1 track (the composer's 5-file tray), 20 MB per file; a song over
+       the chat's ~4 MB inline cap is admitted for the montage only (it is uploaded, never sent inline). The montage
+       turn's files never go back to the chat model with later turns (the browser test fails without that).
+◐ AG-7 BUILT_NOT_PROVEN. analytics_events row `audit.agent_g.media` per quote, start, delivery, refusal and
+       cancel (user, job, file count, credits, length, outcome), written with the service role; users have no
+       policy on the table and /api/analytics/track refuses the `audit.` prefix.
+□ AG-8 MISSING. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
+       there), real clips + a track, then the job id, ffprobe of the master and a screenshot recorded.
+       Local proof so far (real ffmpeg 7.0.2, network and storage faked): 3 clips (one portrait) + a 120 BPM
+       track → plan 119.96 BPM, first beat 0.238 s (true 0.25), 5 shots, 9.5 s; master H.264/AAC 9.53 s
+       (lib/agent/media/montageExec.ffmpeg.test.ts).
+STATUS: BUILT_NOT_PROVEN (2026-10-09, branch claude/launch-certification-wmvitt / PR #50). Off in Production
+       (AGENT_G_MEDIA_EXEC unset = off; admin-only on a Preview). Design: docs/handoffs/2026-10-09-engineering-
+       report.md §4.19.
+WHAT CHANGES FOR THE USER (once the flag is on for them)
+· Clips + one track + words like "cut these to the music" / „დაამონტაჟე მუსიკაზე" / «смонтируй под музыку» no
+  longer go to the remix (first clip only, 15 credits, the rest dropped): Agent G uploads every file, reads the
+  beat, shows the plan, and edits on Start. One clip + "add music" still goes to the remix (the whole clip under a
+  song); a trim stays a trim; a question about the video stays a question. With the flag off nothing changes.
+FILES
+· lib/services/montage/beatPlan.ts (+ beatAnalysis.ts), lib/video/probeBanner.ts, lib/agent/media/* (access,
+  quoteToken, montageAsk, montageExec, montageLive, montageChat, montageClient), app/api/agent/media/montage,
+  components/studio/AgentMontageCard.tsx, OmniStudio send() branch, lib/agent/react/bindLiveAgent.ts,
+  app/api/agent/run (optional `files`), montagePipeline `shouldContinue`.
+NEXT (after AG-8): the same quote → confirm → job → QC → result shape for the other ffmpeg operations (trim,
+  captions, aspect, audio mix) — slice 2; a code sandbox needs a host (owner decision, new infrastructure).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PART 0 — PHASE 0 (OWNER ACTION REQUIRED)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

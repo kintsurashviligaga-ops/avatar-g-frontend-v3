@@ -140,6 +140,9 @@ import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
+import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
+import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
+import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
@@ -947,7 +950,7 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
 }
 
 
-interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean; /** A track let past the inline cap for Agent G's montage: it may travel only as an upload (send() enforces it). */ uploadOnly?: boolean }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -1013,7 +1016,7 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1948,6 +1951,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
   const [busy, setBusy] = useState(false);
+  // AGENT G's MEDIA EXECUTION (slice 1, lib/agent/media): is „cut my clips to my track" open to this user? The route
+  // decides (AGENT_G_MEDIA_EXEC: off in Production unless the owner turns it on, admins on a Preview); while it says no,
+  // the chat keeps its old flow untouched.
+  const [agentMontageOn, setAgentMontageOn] = useState(false);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -2637,7 +2644,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   attachmentCountRef.current = attachments.length;
   // What the tray already carries INLINE (a video is not inline: it is uploaded to storage when its request runs).
   const inlineBytesRef = useRef(0);
-  inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) ? sum : sum + a.dataUrl.length), 0);
+  inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) || a.uploadOnly ? sum : sum + a.dataUrl.length), 0);
   const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
     const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
     let room = MAX_ATTACHMENTS - attachmentCountRef.current;
@@ -2668,18 +2675,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
         // song passed the caps above and then failed at Send with only a generic error. Everything except a video
         // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
-        if (kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES) {
+        // …except a song in the chat while Agent G's montage is open to this user: the montage (and the video remix) UPLOAD
+        // their track, browser → storage, so a real song (a 320 kbps MP3 is ~7 MB) may pass. It is marked, and send() lets
+        // it go only down those two paths: anywhere else it would be put in the request body and fail at Send.
+        const overInline = kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES;
+        const uploadOnly = overInline && kind === 'audio' && mode === 'chat' && agentMontageOn;
+        if (overInline && !uploadOnly) {
           toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES));
           continue;
         }
-        if (kind !== 'video') inlineBytesRef.current += dataUrl.length;
+        if (kind !== 'video' && !uploadOnly) inlineBytesRef.current += dataUrl.length;
         room -= 1;
-        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(uploadOnly ? { uploadOnly: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
       } catch {
         toast.error(rejectionMessage('unreadable', lang, label));
       }
     }
-  }, [locale, mode, isScriptFile, loadScriptFile]);
+  }, [locale, mode, isScriptFile, loadScriptFile, agentMontageOn]);
   const onChatDrop = useCallback((e: React.DragEvent) => {
     if (!dragHasFiles(e)) return;
     e.preventDefault();
@@ -3086,6 +3098,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     mo.observe(el, { attributes: true, attributeFilter: ['data-authed', 'data-first-name'] });
     return () => mo.disconnect();
   }, []);
+  // Asked again on every sign-in (an in-page email code does not reload the page); a guest never has it.
+  useEffect(() => {
+    if (guest) { setAgentMontageOn(false); return; }
+    let live = true;
+    void montageEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentMontageOn(on); });
+    return () => { live = false; };
+  }, [guest]);
   // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
   // while the Video tool is the active one, cached, and fail-safe (a lock is never wrongly opened, a free chip never wrongly
   // shown). The price itself is pure: lib/video/createPanel.videoQuote.
@@ -5465,6 +5484,33 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a typed command would. Both effects are purely additive — they never touch the STT internals. tryAgentGRoute is
   // strictly gated (attached asset + imperative edit), so ordinary dictation is a no-op.
 
+  // ── AGENT G · CUT THE CLIPS TO THE TRACK (media execution, slice 1: lib/agent/media) ──────────────────────────────────
+  // Clips + one track + „cut these to the music" used to fall into the video remix below: the FIRST clip only, the song
+  // laid under it, a charge, and every other clip dropped without a word. Now Agent G reads every file (lengths, format,
+  // the beat), shows the plan and its price as a card, and edits only on Start — one job per plan, checked before it is
+  // shown, refunded if it fails. The result is this thread's own video bubble and a Library item (the job row).
+  const patchMsgById = useCallback((id: string, fn: (m: Msg) => Msg) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  }, []);
+  // Plans whose Start already went out: a double tap lands before the card re-renders as 'running', and a second run
+  // request would come back 409 and mark a card failed while its edit is still going.
+  const montageRunsRef = useRef(new Set<string>());
+  const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
+    const id = `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const names = files.map((f) => f.name ?? '');
+    // The bubble shows the clips and the track; the MODEL never gets them (`modelMedias: []`): this turn's files went to
+    // the edit, and resending them inline with the next chat turns (lib/chat/mediaWindow) would overflow that request.
+    setMessages((prev) => [...prev,
+      { role: 'user', text, medias: files, modelMedias: [] },
+      { role: 'assistant', id, text: readingText(locale), montage: { phase: 'reading', prompt: text, names } },
+    ]);
+    persistChatTurn('user', text);
+    const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: (d, m) => uploadBigFile(d, m) }, { prompt: text, files });
+    patchMsgById(id, (m) => (r.ok
+      ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
+      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code } }));
+  }, [locale, patchMsgById, persistChatTurn]);
+
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
@@ -5499,6 +5545,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
+    // A track let past the inline cap for Agent G's montage (ingestFiles) travels only as an upload: Agent G's montage and
+    // the video remix upload it; any other path would put it in the request body and fail at the platform's ~4.5 MB limit.
+    if (attachments.some((a) => a.uploadOnly)) {
+      const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const montage = mode === 'chat' && agentMontageOn && beatMontageAsk(text, kinds);
+      const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
+      if (!montage && !remix) { toast.error(trackTooBigText(locale)); return; }
+    }
     // ⚠️ `mode` IS STICKY, AND THE MODE INTERCEPTS BELOW CLAIM EVERY TURN WITHOUT READING THE MESSAGE.
     // `mode` is plain component state (declared ~1497) that persists until something sets it back, and the
     // avatar branch begins with a bare `if (mode === 'lipsync')` — no intent check of any kind. So once
@@ -5709,6 +5763,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // NOT auto-submit: these all spend credits, and "it started rendering because of a sentence I typed"
     // is not a recoverable surprise. Routing is conservative by construction (see lib/chat/studioIntent):
     // a question about a service never opens its form.
+    // Agent G cuts the attached clips to the attached track (see startAgentMontage): only when the route opened it to this
+    // user and the message asks for exactly that (lib/agent/media/montageChat.beatMontageAsk); everything else is untouched.
+    if (mode === 'chat' && agentMontageOn && attachments.length > 1) {
+      const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      if (beatMontageAsk(text, kinds)) {
+        const files = attachments;
+        setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho();
+        void startAgentMontage(text, files);
+        return;
+      }
+    }
     const studio = mode === 'chat' ? detectStudioIntent(text) : null;
     if (studio?.service === 'montage') {
       // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with the
@@ -6338,7 +6403,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -7390,6 +7455,45 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setInput(card.prompt);
   }, [resolveGateCard]);
 
+  // Agent G's montage card: Start runs the signed plan (once — the card leaves 'quoted' before the request goes), the row's
+  // stage and percent are its progress, and the master lands in this bubble. Cancel drops a plan; Stop asks the server to
+  // stop a running edit between steps (the run then answers „cancelled", and nothing was charged).
+  const confirmAgentMontage = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.montage;
+    if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
+    montageRunsRef.current.add(id);
+    patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null } }));
+    const r = await runAgentMontage({
+      fetch: (u, init) => fetch(u, init),
+      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+      now: () => Date.now(),
+      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running' && m.montage.stage !== 'stopping'
+        ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), stage } }
+        : m)),
+    }, { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId });
+    if (r.ok) {
+      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || card.quote!.totalSec, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || card.quote!.aspect), montage: { ...m.montage!, phase: 'done' } }));
+      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
+    } else {
+      const stopped = r.code === 'cancelled';
+      patchMsgById(id, (m) => ({ ...m, text: stopped ? errorText('cancelled', locale) : `⚠️ ${errorText(r.code, locale)}`, noRetry: true, montage: { ...m.montage!, phase: stopped ? 'cancelled' : 'failed', error: r.code } }));
+    }
+  }, [locale, patchMsgById]);
+  const stopAgentMontage = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.montage;
+    if (!card) return;
+    if (card.phase === 'quoted') {
+      patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n${errorText('cancelled', locale)}`, montage: { ...m.montage!, phase: 'dismissed' } }));
+      return;
+    }
+    if (card.phase !== 'running' || card.stage === 'stopping' || !card.quote) return;
+    patchMsgById(id, (m) => ({ ...m, montage: { ...m.montage!, stage: 'stopping' } }));
+    if (!(await cancelAgentMontage((u, init) => fetch(u, init), card.quote.jobId))) {
+      // The stop did not reach the server: the edit goes on, so the button comes back.
+      patchMsgById(id, (m) => (m.montage?.stage === 'stopping' ? { ...m, montage: { ...m.montage, stage: null } } : m));
+    }
+  }, [locale, patchMsgById]);
+
   // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
   useEffect(() => { setGateFrom(null); }, [mode]);
 
@@ -8030,10 +8134,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.agentG && (
                   <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
                 )}
+                {m.role === 'assistant' && m.montage && m.id && (
+                  <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} />
+                )}
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmAgentMontage, stopAgentMontage]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

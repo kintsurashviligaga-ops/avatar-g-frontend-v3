@@ -110,7 +110,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 15 | KA / EN / RU | key parity PROVEN | Claude | არა |
 | 16 | Mobile | BUILT_NOT_PROVEN | GG (მოწყობილობები) | არა |
 | 17 | E2E | ლოკალური; Preview-ზე ავტორიზებული E2E არ არის | Claude + GG (Supabase გაყოფა) | არა |
-| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **MISSING** | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
+| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1, PR #50, flag-ის უკან; Preview E2E აკლია) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
@@ -238,7 +238,17 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** Billing → Reports (project `gen-lang-client-0671348730`, SKU-ით) და Billing → Credits-ის ფოტო; მოსალოდნელია Subtotal ≈ $0 და კრედიტი ≈ $299.49 (სულ ≈ $0.51 დაიხარჯა, გამოთვლილი).
 
 ### 4.19 Agent G: ავტონომიური media და ფაილების შესრულება
-- **სტატუსი:** MISSING. Agent G-ს (`lib/agent/react/bindLiveAgent.ts`) media tool შეგნებულად არ აქვს: ძველი `orchestrate_media` მხოლოდ `generation_jobs`-ში წერდა რიგს, რომელსაც არავინ ასრულებდა, და კრედიტს არ იჭერდა. ამიტომ Agent G დღეს მხოლოდ brief-ს წერს და მომხმარებელს Studio-ში აგზავნის.
+- **სტატუსი (2026-10-09, slice 1):** BUILT_NOT_PROVEN. აშენებულია PR #50-ზე, `AGENT_G_MEDIA_EXEC` flag-ის უკან (Production-ში გამორთულია; Preview-ზე მხოლოდ ადმინისთვის). AG-1 … AG-7 დაწერილი და ტესტირებულია, AG-4-ის ერთი ნაწილი PARTIAL-ია, AG-8 (Preview E2E) აკლია. დეტალები: `PROJECT_MASTER.md` Section F.
+- **რა გაკეთდა:**
+  - beat-ის ამოცნობა (`lib/services/montage/beatPlan.ts`, `beatAnalysis.ts`): ტემპი და პირველი beat ffmpeg-ის PCM-იდან; ჭრა მთელ beat-ებზე, 30 fps-ის ბადეზე.
+  - `lib/agent/media/montageExec.ts`: `quote` (ანალიზი, გეგმა, ფასი; არაფერს ხარჯავს, HMAC ხელმოწერა 30 წუთით), `run` (ერთი job თითო quote-ზე, არსებული `runMontage`, ffprobe QC, refund, audit), `cancel`.
+  - `/api/agent/media/montage` (GET enabled, POST quote / run / cancel), `/api/analytics/track` აღარ იღებს `audit.` event-ებს.
+  - `bindLiveAgent.ts`: „media tool არ არის“ შეზღუდვა მოხსნილია. ახალი tool `quote_montage_to_music` მხოლოდ quote-ს ამზადებს მოთხოვნის ფაილებიდან; შესრულება მხოლოდ მომხმარებლის დადასტურებით. `/api/agent/run` იღებს `files`-ს და აბრუნებს `mediaQuote`-ს.
+  - ჩატი (`OmniStudio` + `AgentMontageCard`): კლიპები + ერთი მუსიკა + „დაამონტაჟე მუსიკაზე“ → ყველა ფაილი იტვირთება → გეგმის ბარათი (კადრები, სიგრძე, BPM, ფორმატი, „უფასო“) → „დაწყება“ → პროგრესი და „შეჩერება“ → MP4 იმავე ჩატში (player, Download) და Library-ში. ჩუმი remix-ის გზა ამ შემთხვევაში აღარ ირთვება. 4 მბ-ზე დიდი მუსიკა მხოლოდ მონტაჟისთვის მიიღება (იტვირთება, inline არ იგზავნება).
+  - ფასი: უფასო (GG, 09:43Z); ფასების ცხრილი არ შეცვლილა.
+- **მტკიცებულება (ლოკალური):** jest სრული 10938 გავიდა; ახალი ტესტები (beat planner 17, probe 3, executor და agent media 35, route 4, agent run და bindLiveAgent 44, chat და client 32); რეალურ ffmpeg-ზე: 120 BPM ტრეკი → 119.96 BPM, პირველი beat 0.238 წმ (სინამდვილეში 0.25), master H.264/AAC 9.53 წმ 9.5 წმ-იან გეგმაზე; ბრაუზერის ტესტი (route-ები mock) 4/4, მეზობელი ჩატის / gate / montage ტესტები 24/24.
+- **რა აკლია:** AG-8: Preview-ზე ადმინის სესიით რეალური კლიპები + მუსიკა, job id, ffprobe და screenshot. AG-4: Vercel-ის ფუნქცია თუ შუაში მოკვდა, job რიგი `processing`-ში რჩება, სანამ drain-renders-ის reap leg არ მოხსნის (ის მხოლოდ `RENDER_DRAINER_ENABLED`-ით მუშაობს). ჩატში მაქსიმუმ 4 კლიპი + 1 მუსიკაა (composer-ის 5 ფაილი); route 12 კლიპს იღებს.
+- **ძველი მდგომარეობა (slice 1-მდე):** Agent G-ს (`lib/agent/react/bindLiveAgent.ts`) media tool შეგნებულად არ ჰქონდა: ძველი `orchestrate_media` მხოლოდ `generation_jobs`-ში წერდა რიგს, რომელსაც არავინ ასრულებდა, და კრედიტს არ იჭერდა.
 - **პასუხისმგებელი:** Claude (slice 1 და შემდეგ სხვა სერვისები); GG: კოდის sandbox-ის ინფრასტრუქტურა (ახალი, შესაძლოა ფასიანი), Preview-ზე E2E-ის დადასტურება, deploy.
 - **დამოკიდებულება:** არსებული Studio lane-ები, `lib/video/ffmpegExec.ts`, Credit Ledger (reserve / refund), job-ის ცხრილები, Library. Production-ში `service_jobs` არ არის (4.11), ამიტომ slice 1 Production-ში არსებულ job ცხრილს უნდა დაეყრდნოს.
 - **მტკიცებულება:** `PROJECT_MASTER.md` Section F (GG-ის 6 პუნქტი, წესები, DoD AG-1 … AG-8).
@@ -289,7 +299,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); ~~drift-ის სტატიკური ტესტი~~ (ნაწილი 9, 4.11) | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
-| 15 | Claude | **შემდეგი საინჟინრო ეტაპი (GG, 09:32Z, კრიტიკული):** Agent G-ის media შესრულება, ჯერ ერთი სრული slice (კლიპები + მუსიკა → MP4 ჩატში), მერე სხვა სერვისები (4.19, PROJECT_MASTER Section F) | Agent G ორკესტრატორად |
+| 15 | Claude → GG | **Agent G-ის media შესრულება (GG, 09:32Z, კრიტიკული):** slice 1 (კლიპები + მუსიკა → MP4 ჩატში) აშენებულია PR #50-ზე (BUILT_NOT_PROVEN); შემდეგი: Preview E2E ადმინის სესიით (AG-8), მერე სხვა სერვისები (4.19, PROJECT_MASTER Section F) | Agent G ორკესტრატორად |
 
 Claude-ის დამოუკიდებელი შემდეგი სამუშაოები (Production / Billing / ბაზის ცვლილების გარეშე): 12-ე რიგი; PR #44-ის #3-ის photoshoot / interior ნაწილი; Vertex Production-ის ზუსტი ბრძანებების მომზადება GG-სთვის. PR #44-ის #2, #4, #5 უკვე ამ branch-ზეა.
 

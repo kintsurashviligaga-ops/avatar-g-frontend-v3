@@ -13,6 +13,8 @@ jest.mock('../../../../lib/orchestrator/rate-limit', () => ({
   rateLimitedResponse: (r: { retryAfterSec?: number }) =>
     new Response(JSON.stringify({ error: 'rate_limited', retryAfter: r.retryAfterSec ?? 60 }), { status: 429 }),
 }));
+const mockOpen = jest.fn(() => false);
+jest.mock('../../../../lib/agent/media/access', () => ({ agentMediaOpenTo: (...a: unknown[]) => (mockOpen as (...x: unknown[]) => boolean)(...a) }));
 const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
 
@@ -108,4 +110,40 @@ it('the goal rules are unchanged: required, at most 2,000 characters', async () 
   expect((await call({ budgetMs: 45_000 })).status).toBe(400);
   expect((await call({ goal: 'x'.repeat(2001), budgetMs: 45_000 })).status).toBe(413);
   expect(mockRun).not.toHaveBeenCalled();
+});
+
+// ── Agent G media execution: the request's files, and the signed quote for the confirm card ──────────────────────────
+describe('files and the media quote', () => {
+  const ctxOf = () => mockRun.mock.calls[mockRun.mock.calls.length - 1]![1] as { userId: string; files?: string[]; media?: boolean; onMediaQuote?: (q: unknown) => void };
+
+  it('no files: the context is the user alone, and no flag is read', async () => {
+    await call({ goal: 'research' });
+    expect(ctxOf()).toEqual({ userId: 'u-1' });
+    expect(mockOpen).not.toHaveBeenCalled();
+  });
+
+  it('files go to the agent with whether media execution is open to this user', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    await call({ goal: 'cut these to the song', files: [' u-1/a.mp4 ', 'u-1/song.mp3'] });
+    expect(ctxOf()).toMatchObject({ userId: 'u-1', files: ['u-1/a.mp4', 'u-1/song.mp3'], media: true });
+    expect(mockOpen).toHaveBeenCalledWith({ id: 'u-1' });
+  });
+
+  it('the plan the tool signed comes back as mediaQuote; nothing about it is run here', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'j' }, request: {}, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { onMediaQuote?: (x: unknown) => void }) => {
+      ctx.onMediaQuote?.(q);
+      return { answer: 'Here is the plan', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'cut', files: ['u-1/a.mp4', 'u-1/s.mp3'] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', mediaQuote: q });
+  });
+
+  it.each([[['x'].concat(Array(13).fill('y'))], ['u-1/a.mp4'], [[1, 2]], [['']]])('rejects files=%j', async (files) => {
+    const res = await call({ goal: 'cut', files });
+    expect(res.status).toBe(400);
+    expect(mockRun).not.toHaveBeenCalled();
+  });
 });
