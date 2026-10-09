@@ -20,7 +20,7 @@ jest.mock('../supabase/server', () => ({
   }),
 }));
 
-import { callerMayRead, firstUnreadableOwnUrl, ownsUploadObject, resolveCallerMedia, type CallerMediaDeps } from './callerMedia';
+import { callerMayRead, firstUnreadableOwnUrl, ownsEditingObject, ownsUploadObject, resolveCallerMedia, type CallerMediaDeps } from './callerMedia';
 import { describeSupabaseObjectUrl } from '../orchestrator/storage-adapter';
 
 const ME = '11111111-2222-4333-8444-555555555555';
@@ -62,6 +62,29 @@ describe('ownsUploadObject', () => {
   test('no user owns nothing', () => {
     expect(ownsUploadObject(`omni-uploads//1.png`, '')).toBe(false);
     expect(ownsUploadObject(`omni-uploads/null/1.png`, null)).toBe(false);
+  });
+});
+
+describe('ownsEditingObject', () => {
+  test('the caller\'s own editing input and output in job-artifacts', () => {
+    expect(ownsEditingObject('job-artifacts', `editing-input/${ME}/1700000000000-abc123.mp4`, ME, 'input')).toBe(true);
+    expect(ownsEditingObject('job-artifacts', `editing-input/${ME}/1700000000000-abc123.Mov File`, ME, 'input')).toBe(true);
+    expect(ownsEditingObject('job-artifacts', `editing-output/${ME}/run/export/output_mp4_1080p.mp4`, ME, 'output')).toBe(true);
+  });
+  test.each([
+    ['another user', 'job-artifacts', `editing-input/${YOU}/x.mp4`, 'input'],
+    ['another bucket', 'uploads', `editing-input/${ME}/x.mp4`, 'input'],
+    ['an output path asked as input', 'job-artifacts', `editing-output/${ME}/x.mp4`, 'input'],
+    ['dot segments', 'job-artifacts', `editing-output/${ME}/../${YOU}/x.mp4`, 'output'],
+    ['a double slash', 'job-artifacts', `editing-output/${ME}//x.mp4`, 'output'],
+    ['a backslash', 'job-artifacts', `editing-output/${ME}/..\\x.mp4`, 'output'],
+    ['a bare id with no folder', 'job-artifacts', `editing-output/${ME}`, 'output'],
+    ['a non-string path', 'job-artifacts', 42, 'output'],
+  ])('refuses %s', (_label, bucket, path, kind) => {
+    expect(ownsEditingObject(bucket, path, ME, kind as 'input' | 'output')).toBe(false);
+  });
+  test('no user owns nothing', () => {
+    expect(ownsEditingObject('job-artifacts', `editing-output/${ME}/x.mp4`, null, 'output')).toBe(false);
   });
 });
 

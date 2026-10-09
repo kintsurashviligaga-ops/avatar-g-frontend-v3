@@ -1223,19 +1223,22 @@ export default function UnifiedServiceLayout({
         const latestJson = await latestRes.json() as {
           data?: {
             avatar?: {
+              image_url?: string | null;
               preview_image_url?: string | null;
               model_url?: string | null;
             } | null;
           };
         };
         const avatar = latestJson?.data?.avatar;
-        const latestUrl = avatar?.preview_image_url || avatar?.model_url || null;
+        // The table's image column is `image_url`; the other two are older names kept for rows shaped the old way.
+        const imageUrl = avatar?.image_url || avatar?.preview_image_url || null;
+        const latestUrl = imageUrl || avatar?.model_url || null;
         if (latestUrl) {
           setImportedAvatarUrl(latestUrl);
-          if (avatar?.preview_image_url) {
+          if (imageUrl) {
             setPreviewArtifact({
               type: 'image',
-              url: avatar.preview_image_url,
+              url: imageUrl,
               label: locale === 'ka' ? 'შემოტანილი ავატარი' : locale === 'ru' ? 'Импортированный аватар' : 'Imported Avatar',
               mimeType: 'image/jpeg',
               generationStatus: 'succeeded',

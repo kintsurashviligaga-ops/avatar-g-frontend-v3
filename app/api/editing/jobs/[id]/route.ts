@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { EDITING_BUCKET, ownsEditingObject } from '@/lib/security/callerMedia';
 import { editingAgent, type EditingProgress } from '@/workers/gpu/agents/editingAgent';
 
 export const dynamic = 'force-dynamic';
@@ -63,6 +64,23 @@ function withProgress(
       progress,
     },
   };
+}
+
+/**
+ * ⚠️ The row decides what the service role downloads and where it writes, and a signed-in user can write their own
+ * `jobs` rows. So a queued job runs only when every source and the output prefix are the ones POST /api/editing/jobs
+ * minted for this user (`editing-input/<uid>/…`, `editing-output/<uid>/…` in `job-artifacts`).
+ */
+function payloadIsCallers(payload: Record<string, unknown> | null, userId: string): boolean {
+  const p = asRecord(payload);
+  const sources = Array.isArray(p.source_assets) ? p.source_assets : [];
+  const prefix = typeof p.output_path_prefix === 'string' ? p.output_path_prefix : '';
+  return (
+    sources.length > 0 &&
+    sources.every((asset) => ownsEditingObject(asRecord(asset).bucket, asRecord(asset).path, userId, 'input')) &&
+    prefix.length > 0 &&
+    ownsEditingObject(EDITING_BUCKET, `${prefix}/`, userId, 'output')
+  );
 }
 
 async function loadJob(serviceClient: ReturnType<typeof createServiceRoleClient>, userId: string, jobId: string) {
@@ -212,8 +230,14 @@ async function processQueuedEditingJob(serviceClient: ReturnType<typeof createSe
   return failed as JobRow;
 }
 
-async function signExports(serviceClient: ReturnType<typeof createServiceRoleClient>, result: Record<string, unknown> | null) {
-  const rawExports = Array.isArray(result?.exports) ? (result?.exports as ExportRow[]) : [];
+async function signExports(
+  serviceClient: ReturnType<typeof createServiceRoleClient>,
+  result: Record<string, unknown> | null,
+  userId: string,
+) {
+  // ⚠️ Only the caller's own outputs: `result.exports` names a bucket and path, and the row is user-writable.
+  const rawExports = (Array.isArray(result?.exports) ? (result?.exports as ExportRow[]) : [])
+    .filter((item) => ownsEditingObject(item?.bucket, item?.path, userId, 'output'));
 
   return Promise.all(rawExports.map(async (item) => {
     const { data } = await serviceClient.storage
@@ -245,8 +269,12 @@ export async function GET(
       return apiError(new Error('Job not found'), 404, 'Editing job not found');
     }
 
+    if (loadedJob.status === 'queued' && !payloadIsCallers(loadedJob.payload, user.id)) {
+      return apiError(new Error('Editing job names storage the caller does not own'), 403, 'Access denied');
+    }
+
     const job = await processQueuedEditingJob(serviceClient, loadedJob);
-    const exports = await signExports(serviceClient, job.result);
+    const exports = await signExports(serviceClient, job.result, user.id);
     const primaryUrl = exports[0]?.signed_url ?? null;
     const progress = extractProgress(job.result);
 

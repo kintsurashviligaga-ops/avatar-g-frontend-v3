@@ -63,5 +63,5 @@ test('a session reads its own rows, whatever owner_id says', async () => {
   sessionUser = { id: ME };
   const res = await get(`?owner_id=${VICTIM}`, 'good');
   expect(res.status).toBe(200);
-  expect(queried).toEqual([{ column: 'owner_id', value: ME }]);
+  expect(queried).toEqual([{ column: 'user_id', value: ME }]);
 });
