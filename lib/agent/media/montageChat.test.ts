@@ -71,6 +71,10 @@ describe('what Agent G says', () => {
   test('stages, errors, and the codes a response carries', () => {
     expect(stageText('stitch', 'ka')).toBe('კადრებს ვაერთებ');
     expect(stageText(null, 'en')).toBe('Starting the edit');
+    // The queue's own stages: waiting for a worker, a worker starting, and the one retry after a worker died.
+    expect(stageText('queued', 'ka')).toBe('რიგშია, მალე დავიწყებ');
+    expect(stageText('starting', 'ru')).toBe('Запускаю монтаж');
+    expect(stageText('retrying', 'en')).toBe('The server stalled, so I am starting the edit again');
     expect(errorText('media_not_yours', 'en', [1], ['a.mp4', 'b.mp4'])).toBe('“b.mp4” is not one of your uploads, so I cannot use it.');
     expect(errorText('render_failed', 'ka')).toContain('არაფერი ჩამოგეჭრა');
     expect(errorText('whatever', 'ru')).toContain('Ничего не списано');

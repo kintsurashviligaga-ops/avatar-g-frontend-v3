@@ -13,6 +13,12 @@
  * route may stream after the request scope. Everything is best-effort and
  * fail-OPEN: if Supabase is unconfigured or a write throws, generation still
  * proceeds — persistence is an enhancement, never a gate.
+ *
+ * ⚠️ TERMINAL IS TERMINAL. `completed` and `failed` are final: updateJobStage, completeJob, failJob and
+ * recordJobSettle only move a row that is still `pending` or `processing`, and answer whether one moved. They
+ * used to write by id alone, so a late stage write revived a cancelled or reaped job, and a render finishing
+ * after the drainer had failed and refunded it turned the row back into `completed` (the user kept the video
+ * AND the refund). A false answer means nothing moved: the row is already final, missing, or the write failed.
  */
 
 import 'server-only';
@@ -75,6 +81,9 @@ export interface GenerationJobRow {
 
 const TABLE = 'generation_jobs';
 
+/** The statuses a row can still move from; `completed` and `failed` are final. */
+export const LIVE_STATUSES: readonly JobStatus[] = ['pending', 'processing'];
+
 function client(): ReturnType<typeof createServiceRoleClient> | null {
   try {
     return createServiceRoleClient();
@@ -132,9 +141,9 @@ export async function createJob(input: {
 }
 
 /**
- * Merge a `_settle` record (lib/orchestrator/unpolledSettle) into an EXISTING job row and mark it `processing`, so
- * the cron can settle the job if its browser never polls again. Best-effort and never throws; returns true on a
- * confirmed write. Only call once credits were actually charged — the record names the ref to refund.
+ * Merge a `_settle` record (lib/orchestrator/unpolledSettle) into an EXISTING, still live job row and mark it
+ * `processing`, so the cron can settle the job if its browser never polls again. Best-effort and never throws; returns
+ * true on a confirmed write (false for a row that is already final). Only call once credits were actually charged — the record names the ref to refund.
  */
 export async function recordJobSettle(id: string, settle: Record<string, unknown>): Promise<boolean> {
   const sb = client();
@@ -143,11 +152,13 @@ export async function recordJobSettle(id: string, settle: Record<string, unknown
     const { data } = await sb.from(TABLE).select('params').eq('id', id).maybeSingle();
     const raw = (data as { params?: unknown } | null)?.params;
     const prev = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-    const { error } = await sb
+    const { data: moved, error } = await sb
       .from(TABLE)
       .update({ status: 'processing', current_stage: 'rendering', params: { ...prev, ...settle } })
-      .eq('id', id);
-    return !error;
+      .eq('id', id)
+      .in('status', [...LIVE_STATUSES])
+      .select('id');
+    return !error && Array.isArray(moved) && moved.length > 0;
   } catch (e) {
     reportError(e, { fn: 'recordJobSettle', id });
     return false;
@@ -184,40 +195,45 @@ export async function recordJobReservation(id: string, reserve: { ref: string; c
   }
 }
 
-/** Patch arbitrary columns by job id. Internal; never throws. */
-async function patch(id: string, fields: Record<string, unknown>): Promise<void> {
+/** Write `fields` onto a row that is still live. True when a row moved. Internal; never throws. */
+async function transition(id: string, fields: Record<string, unknown>, fn: string): Promise<boolean> {
   const sb = client();
-  if (!sb) return;
+  if (!sb || !id) return false;
   try {
-    await sb.from(TABLE).update(fields).eq('id', id);
-  } catch {
-    /* fail-open */
+    const { data, error } = await sb.from(TABLE).update(fields).eq('id', id).in('status', [...LIVE_STATUSES]).select('id');
+    if (error) {
+      reportError(new Error(error.message), { fn, id });
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  } catch (e) {
+    reportError(e, { fn, id });
+    return false;
   }
 }
 
-/** Advance a job's stage/progress (status → processing). */
-export async function updateJobStage(id: string, stage: string | null, pct: number | null): Promise<void> {
+/** Advance a live job's stage/progress (status → processing). False when the row is final or missing. */
+export async function updateJobStage(id: string, stage: string | null, pct: number | null): Promise<boolean> {
   const fields: Record<string, unknown> = { status: 'processing' };
   if (stage !== null) fields.current_stage = stage;
   if (pct !== null && Number.isFinite(pct)) fields.pct = Math.max(0, Math.min(100, Math.round(pct)));
-  await patch(id, fields);
+  return transition(id, fields, 'updateJobStage');
 }
 
-/** Mark a job completed and capture the final media payload for re-render. */
+/** Mark a live job completed with its final media payload. False when it was already final (failed, cancelled, reaped). */
 export async function completeJob(
   id: string,
   out: { signedUrl: string | null; result: Record<string, unknown> },
-): Promise<void> {
-  await patch(id, {
+): Promise<boolean> {
+  return transition(id, {
     status: 'completed',
     current_stage: 'completed',
     pct: 100,
     signed_url: out.signedUrl,
     result: out.result,
-  });
+  }, 'completeJob');
 }
 
-/** Mark a job failed with a short reason. */
 /**
  * The user_id that OWNS a job row, or null when the row does not exist / cannot be read.
  *
@@ -267,8 +283,9 @@ export async function jobSnapshot(id: string): Promise<{ userId: string; status:
   }
 }
 
-export async function failJob(id: string, error: string): Promise<void> {
-  await patch(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) });
+/** Mark a live job failed with a short reason. False when it was already final (a delivered job never turns failed). */
+export async function failJob(id: string, error: string): Promise<boolean> {
+  return transition(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) }, 'failJob');
 }
 
 /**

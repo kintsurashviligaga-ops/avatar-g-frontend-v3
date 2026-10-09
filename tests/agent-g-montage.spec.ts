@@ -9,7 +9,8 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  *   · clips + one track + „cut these to the music" asks /api/agent/media/montage for a PLAN with EVERY file, in order — not
  *     the video remix, which took the first clip and dropped the rest;
  *   · the plan is a card with its numbers and price; nothing runs until Start;
- *   · Start runs that signed plan once, and the master plays in the same thread;
+ *   · Start queues that signed plan once, the chat follows the job (its stage on the card), and the master plays in the
+ *     same thread;
  *   · Cancel drops the plan and runs nothing;
  *   · while the route says the feature is closed to this user, the chat keeps its old flow.
  */
@@ -29,10 +30,10 @@ function wav(seconds = 6, rate = 8000): Buffer {
 
 const QUOTE = { jobId: '11111111-2222-4333-8444-555555555555', credits: 0, totalSec: 19.97, shots: 8, clips: 2, aspect: '16:9', beatSynced: true, bpm: 119.96, musicStartSec: 0.23, unusedFiles: [], expiresAt: Date.now() + 1_800_000 };
 
-interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; cancel: unknown[]; remixIntent: unknown[] }
+interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; remixIntent: unknown[] }
 
 async function open(page: Page, enabled: boolean): Promise<Calls> {
-  const calls: Calls = { quote: [], run: [], cancel: [], remixIntent: [] };
+  const calls: Calls = { quote: [], run: [], reads: [], cancel: [], remixIntent: [] };
   await page.addInitScript(() => {
     try {
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
@@ -44,15 +45,22 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
   await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't' }) }));
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
-  await page.route('**/api/orchestrator/jobs**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jobs: [{ id: QUOTE.jobId, status: 'processing', pct: 55, current_stage: 'stitch' }] }) }));
   await page.route('**/api/video/remix-intent', async (r: Route) => {
     calls.remixIntent.push(r.request().postDataJSON());
     await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ op: 'add_music', params: {} }) });
   });
   await page.route('**/api/video/remix', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"mocked"}' }));
-  await page.route('**/api/agent/media/montage', async (r: Route) => {
+  // The job as a worker moves it: rendering (one read), then delivered.
+  const views = [
+    { ok: true, jobId: QUOTE.jobId, status: 'running', stage: 'stitch', pct: 55, attempt: 1 },
+    { ok: true, jobId: QUOTE.jobId, status: 'completed', videoUrl: 'https://media.test/agent-montage.mp4', durationSec: 19.97, aspect: '16:9' },
+  ];
+  await page.route(/\/api\/agent\/media\/montage(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
-      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled }) });
+      const jobId = new URL(r.request().url()).searchParams.get('jobId');
+      if (jobId) calls.reads.push(jobId);
+      const body = jobId ? (views.length > 1 ? views.shift() : views[0]) : { enabled };
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
       return;
     }
     const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -61,8 +69,8 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
       await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, quote: QUOTE, request: { shots: ['signed plan'] }, token: 'signed-token' }) });
     } else if (body.action === 'run') {
       calls.run.push(body);
-      await new Promise((res) => setTimeout(res, 3_500)); // long enough for one progress read
-      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, jobId: QUOTE.jobId, videoUrl: 'https://media.test/agent-montage.mp4', durationSec: 19.97, aspect: '16:9', replay: false }) });
+      // `run` only queues: it answers at once, and a worker renders.
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, jobId: QUOTE.jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false }) });
     } else {
       calls.cancel.push(body);
       await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
@@ -118,8 +126,11 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect(page.getByText('Joining the shots')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
     await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Download', exact: true }).first()).toBeVisible(); // playable, and downloadable
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
     expect(calls.run).toEqual([{ action: 'run', request: { shots: ['signed plan'] }, token: 'signed-token', prompt: 'cut these to the music' }]);
+    expect(calls.reads.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(calls.reads)).toEqual(new Set([QUOTE.jobId]));
 
     // The next chat turn does not carry the clips or the track: they went to the edit, not to the model.
     const chat: string[] = [];

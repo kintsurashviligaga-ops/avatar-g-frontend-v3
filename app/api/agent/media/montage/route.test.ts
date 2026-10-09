@@ -15,21 +15,26 @@ jest.mock('../../../../../lib/api/rate-limit', () => ({
   RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } },
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
-jest.mock('../../../../../lib/agent/media/montageLive', () => ({ liveMontageDeps: () => ({}) }));
+jest.mock('../../../../../lib/agent/media/montageLive', () => ({ liveMontageDeps: () => ({}), newWorkerId: () => 'w-1' }));
 jest.mock('../../../../../lib/agent/media/montageExec', () => ({
   quoteMontage: jest.fn(async (_d: unknown, input: { userId: string }) => ({ ok: true, quote: { jobId: 'j1' }, request: {}, token: 't', who: input.userId })),
-  runMontageJob: jest.fn(async () => ({ ok: false, error: 'quote_expired', message: 'expired' })),
+  enqueueMontageJob: jest.fn(async () => ({ ok: false, error: 'quote_expired', message: 'expired' })),
+  montageJobStatus: jest.fn(async () => ({ ok: false, error: 'not_found', message: 'No such edit.' })),
   cancelMontageJob: jest.fn(async () => ({ ok: false, error: 'not_found', message: 'No such edit.' })),
 }));
+jest.mock('../../../../../lib/agent/media/montageWorker', () => ({ workMontageJob: jest.fn(async () => ({ ran: true, outcome: 'delivered', videoUrl: 'x' })) }));
 
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '../../../../../lib/supabase/server';
-import { quoteMontage } from '../../../../../lib/agent/media/montageExec';
+import { enqueueMontageJob, montageJobStatus, quoteMontage } from '../../../../../lib/agent/media/montageExec';
+import { workMontageJob } from '../../../../../lib/agent/media/montageWorker';
 import { GET, POST } from './route';
 
 const ENV = { ...process.env };
-const req = (body?: unknown) =>
-  new NextRequest('https://myavatar.ge/api/agent/media/montage', {
+const CTX = Symbol.for('@vercel/request-context');
+let waitUntil: jest.Mock;
+const req = (body?: unknown, query = '') =>
+  new NextRequest(`https://myavatar.ge/api/agent/media/montage${query}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { 'content-type': 'application/json' },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -41,9 +46,12 @@ beforeEach(() => {
   delete process.env.AGENT_G_MEDIA_EXEC;
   delete process.env.VERCEL_ENV;
   mockUser = { id: 'user-1', email: 'admin@example.com' };
+  waitUntil = jest.fn();
+  (globalThis as Record<symbol, unknown>)[CTX] = { get: () => ({ waitUntil }) };
 });
 afterAll(() => {
   process.env = ENV;
+  delete (globalThis as Record<symbol, unknown>)[CTX];
 });
 
 test('closed by default: POST is a 404 before the session is read, GET says disabled', async () => {
@@ -77,4 +85,46 @@ test('the user id is the session, not anything in the body; refusals map to stat
   expect((await POST(req({ action: 'run', request: {}, token: 't' }))).status).toBe(409);
   expect((await POST(req({ action: 'cancel', jobId: 'j' }))).status).toBe(404);
   expect((await POST(req({ action: 'nope' }))).status).toBe(400);
+});
+
+describe('the render runs in a worker after the answer, never in the request', () => {
+  beforeEach(() => { process.env.AGENT_G_MEDIA_EXEC = 'on'; });
+
+  test('run answers "queued" at once and hands the job to a worker after the response', async () => {
+    (enqueueMontageJob as jest.Mock).mockResolvedValueOnce({ ok: true, jobId: 'j9', status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false });
+    (workMontageJob as jest.Mock).mockImplementationOnce(() => new Promise(() => {})); // a render that never ends…
+    const res = await POST(req({ action: 'run', request: {}, token: 't' })); // …does not hold the answer
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, jobId: 'j9', status: 'queued' });
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    expect((workMontageJob as jest.Mock).mock.calls[0][1]).toEqual({ jobId: 'j9', worker: 'w-1' });
+  });
+
+  test('a replay of a delivered job starts nothing', async () => {
+    (enqueueMontageJob as jest.Mock).mockResolvedValueOnce({ ok: true, jobId: 'j9', status: 'completed', videoUrl: 'v', durationSec: 9, aspect: '9:16', replay: true });
+    expect((await POST(req({ action: 'run', request: {}, token: 't' }))).status).toBe(200);
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  test("the owner's status read: the view, and a worker only when the job has none", async () => {
+    (montageJobStatus as jest.Mock).mockResolvedValueOnce({ view: { ok: true, jobId: 'j9', status: 'running', stage: 'stitch', pct: 88, attempt: 1 }, needsWorker: false });
+    const live = await GET(req(undefined, '?jobId=j9'));
+    expect(await live.json()).toMatchObject({ status: 'running', pct: 88 });
+    expect((montageJobStatus as jest.Mock).mock.calls[0][1]).toEqual({ userId: 'user-1', jobId: 'j9' });
+    expect(waitUntil).not.toHaveBeenCalled();
+
+    (montageJobStatus as jest.Mock).mockResolvedValueOnce({ view: { ok: true, jobId: 'j9', status: 'running', stage: 'stitch', pct: 88, attempt: 1 }, needsWorker: true });
+    await GET(req(undefined, '?jobId=j9'));
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+  });
+
+  test('a job read is closed like the rest: flag off 404, signed out 401, not yours 404', async () => {
+    delete process.env.AGENT_G_MEDIA_EXEC;
+    expect((await GET(req(undefined, '?jobId=j9'))).status).toBe(404);
+    process.env.AGENT_G_MEDIA_EXEC = 'on';
+    mockUser = null;
+    expect((await GET(req(undefined, '?jobId=j9'))).status).toBe(401);
+    mockUser = { id: 'user-1', email: 'admin@example.com' };
+    expect((await GET(req(undefined, '?jobId=j9'))).status).toBe(404);
+  });
 });

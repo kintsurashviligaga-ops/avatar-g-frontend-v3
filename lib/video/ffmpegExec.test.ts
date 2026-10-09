@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { ffmpegExec } from './ffmpegExec';
+import { ffmpegExec, withFfmpegSignal } from './ffmpegExec';
 
 const bin = ffmpegStatic as unknown as string;
 const PUBLIC = async () => [{ address: '93.184.216.34', family: 4 }];
@@ -68,5 +68,51 @@ describe('ffmpegExec', () => {
     const r = await ffmpegExec(bin, ['-hide_banner', '-i', url, '-i', url, '-map', '0:v', '-map', '1:v', '-f', 'null', '-'], { timeout: 30_000 }, { fetchImpl: serve(new Uint8Array(clip), 'video/mp4', seen), lookupImpl: PUBLIC });
     expect(seen).toHaveLength(1);
     expect(r.stderr).toMatch(/Input #1, mov,mp4/);
+  });
+});
+
+describe('cancel: an aborted job stops its ffmpeg', () => {
+  // An encode that would run for a minute: a long synthetic source through libx264 into the null muxer.
+  const LONG = ['-hide_banner', '-f', 'lavfi', '-i', 'testsrc=duration=600:size=640x360:rate=30', '-c:v', 'libx264', '-preset', 'veryslow', '-f', 'null', '-'];
+
+  test('the running child is killed when the context signal aborts, and the call rejects', async () => {
+    const ctl = new AbortController();
+    const started = Date.now();
+    const p = withFfmpegSignal(ctl.signal, () => ffmpegExec(bin, LONG, { timeout: 120_000 }));
+    setTimeout(() => ctl.abort(), 300);
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    // …and the encoder is gone, not left burning the CPU behind a rejected promise.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(() => execFileSync('pgrep', ['-f', 'testsrc=duration=600'])).toThrow();
+  });
+
+  test('nested calls see the same signal (the ops between a job and ffmpeg pass nothing)', async () => {
+    const ctl = new AbortController();
+    const op = async () => { await new Promise((r) => setTimeout(r, 10)); return ffmpegExec(bin, LONG, { timeout: 120_000 }); };
+    const p = withFfmpegSignal(ctl.signal, async () => op());
+    setTimeout(() => ctl.abort(), 300);
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  test('a call after the abort never spawns ffmpeg', async () => {
+    const ctl = new AbortController();
+    ctl.abort();
+    await expect(withFfmpegSignal(ctl.signal, () => ffmpegExec('/definitely/not/ffmpeg', ['-version']))).rejects.toThrow('ffmpeg cancelled');
+  });
+
+  test('a download in flight is dropped', async () => {
+    const ctl = new AbortController();
+    const fetchImpl = ((_u: string, init?: RequestInit) => new Promise<Response>((_res, rej) => {
+      init?.signal?.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    })) as unknown as typeof fetch;
+    const p = withFfmpegSignal(ctl.signal, () => ffmpegExec(bin, ['-i', 'https://cdn.example/slow.mp4', '-f', 'null', '-'], {}, { fetchImpl, lookupImpl: PUBLIC }));
+    setTimeout(() => ctl.abort(), 50);
+    await expect(p).rejects.toThrow('ffmpeg cancelled');
+  });
+
+  test('without a signal nothing changes', async () => {
+    const r = await ffmpegExec(bin, ['-hide_banner', '-f', 'lavfi', '-i', 'testsrc=duration=0.2:size=32x32:rate=10', '-f', 'null', '-']);
+    expect(r.stderr).toMatch(/testsrc/);
   });
 });

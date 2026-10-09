@@ -7455,9 +7455,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setInput(card.prompt);
   }, [resolveGateCard]);
 
-  // Agent G's montage card: Start runs the signed plan (once — the card leaves 'quoted' before the request goes), the row's
-  // stage and percent are its progress, and the master lands in this bubble. Cancel drops a plan; Stop asks the server to
-  // stop a running edit between steps (the run then answers „cancelled", and nothing was charged).
+  // Agent G's montage card: Start queues the signed plan (once — the card leaves 'quoted' before the request goes), the
+  // job's stage and percent are its progress, and the master lands in this bubble. Cancel drops a plan; Stop cancels the
+  // job: its worker kills the running render and anything charged is paid back (the follow then reads „cancelled").
   const confirmAgentMontage = useCallback(async (id: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.montage;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
