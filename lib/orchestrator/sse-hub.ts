@@ -14,7 +14,8 @@
  * to in-memory when Upstash is unconfigured.
  */
 
-import { Redis } from '@upstash/redis';
+import type { Redis } from '@upstash/redis';
+import { createUpstashRedis } from '@/lib/platform/upstash';
 import type { PipelineTopic } from './events';
 
 export interface BridgeEvent {
@@ -32,7 +33,7 @@ function redis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
-  try { return new Redis({ url, token }); } catch { return null; }
+  try { return createUpstashRedis(url, token); } catch { return null; }
 }
 
 // Survive Next.js dev hot-reloads by parking the registry on globalThis.

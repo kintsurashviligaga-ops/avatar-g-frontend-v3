@@ -80,10 +80,11 @@ const ALLOWLIST: Record<string, string> = {
   //    NEW routes while these known gaps are worked down (goal: empty this section).
   // (elevenlabs/sound LEFT this list 2026-10-02: sign-in through the generation gate + a per-account AUDIO_GEN_USER cap.)
   // ── WS2: interactive voice routes. Client-facing + rate-limited; user-auth is a PRODUCT decision here, listed
-  //    as a reasoned exception rather than broken. voice/realtime/session soft-auths (getAuthenticatedUser) + is
-  //    inert in prod without VOICE_V2V_WS_URL + is WS-token gated. (voice/transcribe LEFT this list 2026-09-30:
-  //    it now requires sign-in through the generation gate + a per-user STT_USER cap, and ?diag is admin-only.)
-  'app/api/voice/realtime/session/route.ts': 'Realtime voice session-token minter — soft-auths, inert without VOICE_V2V_WS_URL, WS-token gated; user-auth is a product decision',
+  //    as a reasoned exception rather than broken. voice/realtime/session reads the session with getAuthenticatedUser
+  //    (not one of the signals above) and since 2026-10-09 answers 401 without it — pinned in the voice block below.
+  //    (voice/transcribe LEFT this list 2026-09-30: it now requires sign-in through the generation gate + a per-user
+  //    STT_USER cap, and ?diag is admin-only.)
+  'app/api/voice/realtime/session/route.ts': 'Realtime voice session-token minter — 401 without a session (getAuthenticatedUser, pinned below), VOICE_TOKEN + VOICE_TOKEN_USER caps, inert without VOICE_V2V_WS_URL',
   // ── Health / status / diagnostic monitoring: reference or PING provider endpoints (env presence,
   //    /v1/user, /v2/voices) — no media generation, no drain. Should ideally be admin-gated; low risk.
   'app/api/health/public/route.ts': 'Public health — pings provider status endpoints (/v1/user, /v2/voices), no generation',
@@ -161,6 +162,25 @@ describe('voice/telephony hardening (regression guards)', () => {
     expect(/requireUser\s*\(/.test(src)).toBe(true);
     expect(/userId:\s*z\.string/.test(src)).toBe(false);
     expect(/admin\.getUserById\s*\(/.test(src)).toBe(false);
+  });
+
+  it('the realtime voice token needs a session and is capped per IP and per account (2026-10-09)', () => {
+    const src = read('app/api/voice/realtime/session/route.ts');
+    expect(/if\s*\(\s*!user\s*\)\s*return[^;]*status:\s*401/.test(src)).toBe(true);
+    expect(src).toMatch(/checkRateLimit\(\s*request\s*,\s*RATE_LIMITS\.VOICE_TOKEN\s*\)/);
+    expect(src).toMatch(/checkRateLimitByKey\(\s*user\.id\s*,\s*RATE_LIMITS\.VOICE_TOKEN_USER\s*\)/);
+    // …and the token is signed with a real secret or not at all (no well-known dev secret in any environment).
+    const session = read('lib/voice-v2v/session.ts');
+    expect(session).not.toMatch(/voice-v2v-local-dev-secret/);
+    expect(session).toMatch(/throw new Error\('voice_session_secret_missing'\)/);
+  });
+
+  it('the call transcriber never invents a transcript and caps the audio (2026-10-09)', () => {
+    const src = read('app/api/agent-g/calls/transcribe/route.ts');
+    // It used to answer { provider: 'mock-stt' } with the client's own hint (or "Transcribed audio from …") as if heard.
+    expect(src).not.toMatch(/mock-stt|Transcribed audio from/);
+    expect(src).toMatch(/audio\.size > 25_000_000/);
+    expect(src).toMatch(/audioBase64: z\.string\(\)\.min\(1\)\.max\(35_000_000\)/);
   });
 
   it('the job-notify route is gated by the internal worker token (no anonymous paid-call trigger)', () => {

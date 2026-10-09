@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Redis } from '@upstash/redis';
+import { createUpstashRedis } from '@/lib/platform/upstash';
 import { opsCallerAllowed } from '@/lib/security/opsAccess';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
@@ -114,7 +114,7 @@ async function verifyRedis(): Promise<
     }
 
     // Initialize Redis client (REST-based for serverless)
-    const redis = new Redis({ url, token });
+    const redis = createUpstashRedis(url, token);
 
     // Test with unique key (prevents cache pollution)
     const testKey = `health:${Date.now()}:${Math.random()

@@ -30,7 +30,7 @@ function getSessionSecret(): string {
     return fallback;
   }
 
-  return 'voice-v2v-local-dev-secret';
+  throw new Error('voice_session_secret_missing');
 }
 
 function signTokenPayload(encodedPayload: string): string {

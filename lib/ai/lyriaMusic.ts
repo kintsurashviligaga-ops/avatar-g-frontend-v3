@@ -14,10 +14,11 @@
  *   (Probed: /interactions → 200 with a ~900KB audio/mpeg blob; the models:*:generateContent
  *    path 503s for lyria-3 — so /interactions is the CORRECT surface, not :generateContent.)
  *
- * LIVE-BY-DEFAULT when a Gemini key is present (the endpoint + models are verified working); a single
- * kill-switch LYRIA_ENABLED=0 reverts instantly to the Udio→ElevenLabs→MusicGen chain. EVERY path is
- * null/failure-safe: no key/access, quota, timeout, or a contract drift returns null → the caller's
- * failover serves the track. (Lyria 3 is a PREVIEW model — transient 503s simply fall back and retry.)
+ * LIVE-BY-DEFAULT when a Gemini key is present (the endpoint + models are verified working); LYRIA_ENABLED=0
+ * switches it off, which leaves studio music's Auto with NO engine (app/api/ai/music: "Lyria is not configured").
+ * EVERY path is null/failure-safe: no key/access, quota, timeout, or a contract drift returns null, and the
+ * music route answers that with an explicit 502 and a refund. Nothing runs behind Lyria (R7: the old
+ * Udio → ElevenLabs → MusicGen failover was removed), so a transient preview-model 503 is a failed request.
  *
  * On Vertex AI (GEMINI_TRANSPORT=vertex, Part 2 A2) there is no Interactions surface: the same model answers
  * `:generateContent` on the global endpoint, and ONLY with `responseModalities: ["AUDIO","TEXT"]` (["AUDIO"] alone is a
@@ -31,10 +32,12 @@ import { isEnabledByDefault } from '@/lib/env/flag';
 
 const INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const GEN_TIMEOUT_MS = 150_000; // bounded under the route's 300s ceiling
+/** What a Lyria miss falls back to, as the fallback report states it: nothing (R7) — the music route fails and refunds. */
+export const LYRIA_FALLBACK = 'nothing (no fallback engine, R7): the request fails and is refunded';
 
 /** Default Lyria 3 model (env-overridable via LYRIA_MODEL). `clip` is the RELIABLE default — verified live
  *  200 + audio (audio/mpeg). `pro` gives full-length arrangements but currently 500s under "high demand",
- *  which would defeat the point (fall back to Udio) — switch to it once it's stable. */
+ *  which would fail those requests outright — switch to it once it's stable. */
 export function lyriaModel(): string {
   return (process.env.LYRIA_MODEL || 'lyria-3-clip-preview').trim();
 }
@@ -124,8 +127,8 @@ async function recordMusicUsage(): Promise<void> {
 }
 
 /**
- * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss so the
- * caller falls back to the next music provider. Never throws.
+ * Generate a Lyria 3 track (instrumental OR vocal song). Returns { base64, mime } or null on ANY miss; the
+ * caller turns null into its own explicit failure (no other engine runs behind Lyria, R7). Never throws.
  */
 export async function generateLyriaTrack(args: { prompt: string; lyrics?: string; instrumental?: boolean }): Promise<LyriaTrack | null> {
   const key = resolveGeminiKey();
@@ -133,11 +136,11 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
 
   // BUDGET GATE (Master Task §2.1.1). Music is a real per-track provider charge, so it passes the same
   // guard as image/video. A refusal returns null — the SAME shape every other miss returns here — so the
-  // caller's existing fallback chain handles it without a new error path. `guardedCall` books the cost
+  // caller's existing failure path (502 + refund) handles it without a new error path. `guardedCall` books the cost
   // only on success, and fails OPEN if the guard itself is broken.
   if (!(await musicWithinBudget())) {
     // eslint-disable-next-line no-console
-    console.warn('[lyria] refused by the platform budget guard → caller falls back');
+    console.warn('[lyria] refused by the platform budget guard → the request fails (no fallback, R7)');
     return null;
   }
 
@@ -164,13 +167,13 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
         });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', status: res.status, detail: body, model: lyriaModel() });
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model: lyriaModel() });
       return null;
     }
     const j = await res.json().catch(() => null);
     const audio = extractAudio(j);
     if (!audio) {
-      reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: 'response carried no audio', model: lyriaModel() });
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: 'response carried no audio', model: lyriaModel() });
       return null;
     }
     // Book the spend AFTER a real track came back — a failed/empty generation costs us nothing, and
@@ -178,7 +181,7 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
     void recordMusicUsage();
     return audio;
   } catch (e) {
-    reportGeminiFallback({ leg: 'lyria', fallbackTo: 'Udio/ElevenLabs/MusicGen', detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
+    reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
     return null;
   }
 }

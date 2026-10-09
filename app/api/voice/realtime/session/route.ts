@@ -1,3 +1,4 @@
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { randomUUID } from 'node:crypto';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,10 +32,15 @@ function resolveWsUrl(request: NextRequest): string | null {
 
 export async function POST(request: NextRequest) {
   try {
+    const limited = await checkRateLimit(request, RATE_LIMITS.VOICE_TOKEN);
+    if (limited) return limited;
     const parsed = schema.safeParse(await request.json().catch(() => ({})));
     const language: RealtimeVoiceLanguage = parsed.success ? parsed.data.language : 'ka-GE';
 
     const user = await getAuthenticatedUser(request).catch(() => null);
+    if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const userLimited = await checkRateLimitByKey(user.id, RATE_LIMITS.VOICE_TOKEN_USER);
+    if (userLimited) return userLimited;
     const sessionId = randomUUID();
 
     const tokenData = issueRealtimeSessionToken({
