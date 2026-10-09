@@ -28,8 +28,8 @@
  *    run only when the user explicitly picks one. A FILM's score is ElevenLabs Music at /api/video/assemble —
  *    a miss ships the film without music; the Udio and MusicGen fallbacks were removed.
  *  - Lip-sync: film masters (kind:'film') → sync/lipsync-2 on Replicate only (lib/ai/lipsync filmLipsyncCreate);
- *    avatar talking-photo → HeyGen, falling to SadTalker on Replicate when HeyGen misses — a legacy cross-vendor
- *    fallback still in lipsyncCreate. (The assemble-stage FILM_LIPSYNC_ENABLED pass is a DB/env flag, off by default.)
+ *    avatar talking-photo → HeyGen, or SadTalker on Replicate when HeyGen is off — one engine per job, a HeyGen miss is
+ *    not re-run on SadTalker (2026-10-09). (The assemble-stage FILM_LIPSYNC_ENABLED pass is a DB/env flag, off by default.)
  *  - Subtitles burn via ffmpeg-static + SVG→PNG (resvg) — Vercel's Linux ffmpeg-static
  *    has NO libfreetype/libass, so drawtext/subtitles filters are unavailable; Georgian
  *    glyphs come from the bundled FiraGO font. See lib/pipeline/compositing/caption-burn.ts.
@@ -151,8 +151,8 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
     });
 
     // 3 · LIP-SYNC — film masters: sync/lipsync-2 on Replicate (filmLipsyncCreate — the only engine for kind:'film').
-    //     Avatar talking-photo: HeyGen, then SadTalker on Replicate when HeyGen misses (lipsyncCreate). Both vendors
-    //     are legacy (neither Google nor ElevenLabs); their removal awaits the owner.
+    //     Avatar talking-photo: HeyGen, or SadTalker on Replicate when HeyGen is off (lipsyncCreate, one engine per job).
+    //     Both vendors are legacy (neither Google nor ElevenLabs); their removal awaits the owner.
     const hasHeygen = present(env.HEYGEN_API_KEY);
     const lipsyncAvail = hasReplicate || hasHeygen;
     const lipsyncTier: ServiceTier = hasReplicate ? 'high' : hasHeygen ? 'medium' : 'unavailable';
@@ -163,7 +163,7 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       tier: lipsyncTier,
       note: !lipsyncAvail
         ? 'no REPLICATE_API_TOKEN / HEYGEN_API_KEY'
-        : `film: sync/lipsync-2${mark(hasReplicate)} · avatar: HeyGen${mark(hasHeygen)} → SadTalker${mark(hasReplicate)} (Replicate) — legacy vendors`,
+        : `film: sync/lipsync-2${mark(hasReplicate)} · avatar: ${hasHeygen ? `HeyGen${mark(hasHeygen)}` : `SadTalker${mark(hasReplicate)} (Replicate)`} — legacy vendors`,
       icon: dot(lipsyncAvail, lipsyncTier),
     });
 
@@ -239,7 +239,6 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       const autoAnchor = /^(1|true|on)$/i.test((env.AUTO_ANCHOR_FRAME || '').trim());
       warnings.push(`VIDEO_GOOGLE_ONLY is off — legacy multi-vendor paths are live: clips can fall from Veo to Runway/Kling/LTX and storyboard frames come from Replicate${autoAnchor ? ', plus a FLUX Auto-Anchor (AUTO_ANCHOR_FRAME)' : ''}.`);
     }
-    if (hasHeygen && hasReplicate) warnings.push('Avatar lip-sync falls from HeyGen to SadTalker (Replicate) on a HeyGen miss — a cross-vendor fallback still in code (R7).');
     const unavailable = services.filter((s) => !s.available);
     if (unavailable.length) warnings.push(`${unavailable.length} service(s) unavailable: ${unavailable.map((s) => s.service).join(', ')}`);
 

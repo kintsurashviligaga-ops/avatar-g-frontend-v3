@@ -270,18 +270,15 @@ async function generateAvatar(
 
   const photoFile = mediaFiles.find(f => f.type === 'image');
 
-  // ── USER PHOTO → talk THAT face via the HeyGen→SadTalker cascade (lipsyncCreate).
-  // HeyGen caps photo-avatars at 3 with NO working API delete, so a brand-new user face
-  // can't always get a HeyGen talking_photo slot — lipsyncCreate tries HeyGen first
-  // (best quality when a slot is free) and falls through to SadTalker on Replicate (no
-  // cap), which animates the user's actual photo. Either way the user's face talks.
+  // ── USER PHOTO → talk THAT face via lipsyncCreate: HeyGen when configured, otherwise SadTalker on Replicate. One
+  // engine per job (2026-10-09): a HeyGen miss (e.g. its 3-photo-avatar cap) is a miss, not a SadTalker re-run.
   if (photoFile) {
     const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
     const faceUrl = await uploadAndSign('uploads', `avatar-face/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`, raw, photoFile.mimeType || 'image/jpeg', 3600);
     if (!faceUrl) return { outputKind: 'video', error: 'photo upload failed' };
     const jobId = await lipsyncCreate(faceUrl, audioUrl);
     if (!jobId) return { outputKind: 'video', error: 'lip-sync provider unavailable' };
-    // Poll to completion (HeyGen or SadTalker), bounded by the route budget (~240s).
+    // Poll to completion, bounded by the route budget (~240s).
     const deadline = Date.now() + 240_000;
     let out: string | null = null;
     while (Date.now() < deadline) {

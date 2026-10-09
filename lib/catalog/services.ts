@@ -198,7 +198,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── AVATAR ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'avatar.talking', category: 'avatar', order: 30, tool: 'avatar', pricingKey: 'avatar', status: 'live',
-    boundary: 'violation', boundaryNote: 'HeyGen talking photo; Replicate SadTalker/Wav2Lip fallback (ElevenLabs voice is allowed)',
+    boundary: 'violation', boundaryNote: 'HeyGen talking photo, or Replicate SadTalker when HeyGen is off; one engine per job, no fallback (ElevenLabs voice is allowed)',
     label: l('მოლაპარაკე ავატარი', 'Talking avatar', 'Говорящий аватар'),
     description: l('ფოტო ალაპარაკდება შენი ტექსტით ან ხმით', 'A photo speaks your script or voice', 'Фото говорит вашим текстом или голосом'),
     visibleInSidebar: true,
