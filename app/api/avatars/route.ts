@@ -6,8 +6,6 @@ import { apiError, apiSuccess } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const getSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -32,7 +30,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = getSupabaseClient();
     const authHeader = request.headers.get('authorization');
-    const ownerIdParam = url.searchParams?.get?.('owner_id')?.trim() || null;
+    // ⚠️ ONLY THE SESSION'S OWN ROWS. A `?owner_id=<uuid>` used to stand in for a missing session, and the query below
+    // runs on the service role, so anyone could read another user's avatars — their voice id (a clone, after
+    // PATCH /api/voice/clone sets a default), system prompt and image. The parameter is ignored now
+    // (/api/avatars/latest was closed the same way in d24c69c7).
     let resolvedOwnerId: string | null = null;
 
     if (authHeader?.startsWith('Bearer ')) {
@@ -43,19 +44,6 @@ export async function GET(request: NextRequest) {
           resolvedOwnerId = data.user.id;
         }
       }
-    }
-
-    if (!resolvedOwnerId && ownerIdParam) {
-      if (!UUID_RE.test(ownerIdParam)) {
-        return apiSuccess({
-          avatars: [],
-          total: 0,
-          limit: 0,
-          offset: 0,
-        });
-      }
-
-      resolvedOwnerId = ownerIdParam;
     }
 
     if (!resolvedOwnerId) {

@@ -99,3 +99,21 @@ test("a provider failure is answered with the sanitised class, never the provide
   expect(res.status).toBeGreaterThanOrEqual(400);
   expect(raw).not.toMatch(/ElevenLabs|invalid_api_key|sk_live/);
 });
+
+test('a voice id that is not one is refused (400) before the provider: it would sit in the ElevenLabs URL path', async () => {
+  mockUser = { id: 'user-1' };
+  for (const body of [
+    { text: 'hello', provider_voice_id: '../voices/abc/settings/edit?x=' },
+    { text: 'hello', voiceId: 'abc#x' },
+    { text: 'hello', voiceId: 42 },
+  ]) {
+    const res = await call(body);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'voiceId is not a valid voice id' });
+  }
+  expect(voiceMock).not.toHaveBeenCalled();
+
+  const ok = await call({ text: 'hello', voiceId: '21m00Tcm4TlvDq8ikWAM' });
+  expect(ok.status).toBe(200);
+  expect(voiceMock).toHaveBeenCalledWith('hello', '21m00Tcm4TlvDq8ikWAM', 'neutral');
+});

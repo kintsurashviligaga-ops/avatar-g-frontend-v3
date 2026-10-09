@@ -7,6 +7,7 @@ import { generateVoice } from '@/lib/ai/elevenlabs';
 import type { VoiceJob } from '@/lib/voice-lab/types';
 import { getBillingSnapshot } from '@/lib/billing/enforce';
 import { checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { requestedVoiceId } from '@/lib/audio/voiceId';
 
 /** The most text one voice job may synthesize — ElevenLabs bills per character. */
 const MAX_VOICE_TEXT_CHARS = 5000;
@@ -71,6 +72,11 @@ export async function POST(request: NextRequest) {
     if (rawText.length > MAX_VOICE_TEXT_CHARS) {
       return apiError(new Error('text too long'), 413, `Voice text is limited to ${MAX_VOICE_TEXT_CHARS} characters`);
     }
+    // The voice goes into the ElevenLabs URL path (lib/audio/voiceId), so it is checked before a job row exists.
+    const askedVoice = requestedVoiceId(payload.data.input.provider_voice_id);
+    if (askedVoice === null) {
+      return apiError(new Error('invalid provider_voice_id'), 400, 'provider_voice_id is not a valid voice id');
+    }
 
     const supabase = createServiceRoleClient();
 
@@ -98,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     const input = payload.data.input;
     const sourceText = String(input.text ?? input.prompt ?? '').trim();
-    const voiceId = String(input.provider_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? '').trim();
+    const voiceId = askedVoice ?? String(process.env.ELEVENLABS_VOICE_ID ?? '').trim();
     const snapshot = await getBillingSnapshot(user.id);
     const qualityByPlan: Record<string, 'draft' | 'standard' | 'studio'> = {
       FREE: 'draft',

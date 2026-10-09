@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateVoice } from '@/lib/ai/elevenlabs';
+import { requestedVoiceId } from '@/lib/audio/voiceId';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
@@ -222,7 +223,8 @@ export async function POST(
     switch (resolvedService) {
       case 'voice-synthesis': {
         const text = String(body.text ?? body.prompt ?? '').trim();
-        const voiceId = String(body.provider_voice_id ?? body.voiceId ?? process.env.ELEVENLABS_VOICE_ID ?? '').trim();
+        const askedVoice = requestedVoiceId(body.provider_voice_id ?? body.voiceId);
+        const voiceId = askedVoice ?? String(process.env.ELEVENLABS_VOICE_ID ?? '').trim();
         const emotion = String(body.emotion ?? 'neutral');
 
         if (!text) {
@@ -232,6 +234,10 @@ export async function POST(
           return jsonError(`text is limited to ${MAX_VOICE_CHARS} characters`, 413);
         }
 
+        // The voice goes into the ElevenLabs URL path (lib/audio/voiceId).
+        if (askedVoice === null) {
+          return jsonError('voiceId is not a valid voice id');
+        }
         if (!voiceId) {
           return jsonError('Voice provider is not configured', 503);
         }

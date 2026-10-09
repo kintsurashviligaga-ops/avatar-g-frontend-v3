@@ -28,7 +28,7 @@ import { synthesizeAzureGeorgian } from '../audio/azure-tts';
 import { uploadAndSign } from '../orchestrator/storage-adapter';
 
 const KA = 'გამარჯობა, ეს არის ტესტი.';
-const VOICE = 'voice-ka-test';
+const VOICE = 'voiceKaTest01';
 const ENV = { ...process.env };
 let fetchSpy: jest.SpyInstance;
 
@@ -74,4 +74,11 @@ test('no ElevenLabs key → null, without a call to anyone', async () => {
   expect(await textToHostedSpeech(KA, VOICE)).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();
   noOtherProvider();
+});
+
+test('a voice override that is not a voice id → null, and nothing is fetched (it would sit in the provider URL path)', async () => {
+  expect(await textToHostedSpeech(KA, '../voices/someone/settings/edit?x=')).toBeNull();
+  expect(fetchSpy).not.toHaveBeenCalled();
+  noOtherProvider();
+  expect(uploadAndSign).not.toHaveBeenCalled();
 });

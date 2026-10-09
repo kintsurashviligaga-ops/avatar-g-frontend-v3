@@ -1,6 +1,9 @@
 import { withRetry } from "@/lib/utils/withRetry";
+import { isElevenLabsVoiceId } from "@/lib/audio/voiceId";
 
 export async function generateVoice(text: string, voiceId: string, emotion: string = "neutral") {
+  // The id goes into the URL path with the platform key; callers pass request input (lib/audio/voiceId).
+  if (!isElevenLabsVoiceId(voiceId)) throw new Error("Voice generation failed: invalid voice id");
   try {
     // Retry transient ElevenLabs failures (5xx / network) before giving up.
     const audioBuffer = await withRetry(async () => {

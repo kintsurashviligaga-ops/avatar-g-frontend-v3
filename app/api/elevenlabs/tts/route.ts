@@ -10,6 +10,7 @@ import { numbersToGeorgianWords } from '@/lib/chat/georgianNumbers';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { authedClientFromRequest } from '@/lib/supabase/server';
+import { isElevenLabsVoiceId, requestedVoiceId } from '@/lib/audio/voiceId';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -182,7 +183,7 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   // Georgian text/locale → the dedicated premium Georgian voice (trained on
   // ElevenLabs) when configured; otherwise the default voice. An explicit
-  // body.voiceId always wins.
+  // body.voiceId always wins — when it is a voice id at all (lib/audio/voiceId: it goes into the provider URL path).
   const isGeorgian = body.locale === 'ka' || /[ა-ჿ]/.test(text);
 
   // NUMERIC NORMALIZATION (V2) — spell Arabic digits as Georgian cardinal words BEFORE synthesis so
@@ -195,9 +196,11 @@ export async function POST(req: NextRequest) {
   // read on eleven_v3. Picked BEFORE the English ELEVENLABS_VOICE_ID so Georgian
   // never gets an English voice. An explicit body.voiceId still wins.
   const kaVoice = georgianVoiceId(body.gender === 'male' ? 'male' : 'female');
-  const voiceId = body.voiceId
-    ?? body.voice_id
-    ?? (isGeorgian ? kaVoice : (process.env.ELEVENLABS_VOICE_ID ?? kaVoice));
+  const asked = requestedVoiceId(body.voiceId ?? body.voice_id);
+  if (asked === null) {
+    return NextResponse.json({ error: 'voiceId is not a valid voice id' }, { status: 400 });
+  }
+  const voiceId = asked ?? (isGeorgian ? kaVoice : (process.env.ELEVENLABS_VOICE_ID?.trim() || kaVoice));
 
   // v329 — Georgian routes to eleven_v3 (the only model that supports `ka`);
   // everything else keeps the low-latency turbo default.
@@ -206,7 +209,7 @@ export async function POST(req: NextRequest) {
   // Primary: ElevenLabs (cloned Georgian voice on eleven_v3). eleven_v3 is NOT
   // reliably served by the low-latency /stream endpoint, so for v3 use the buffered
   // endpoint directly; other models stream first then fall back to buffered.
-  if (apiKey) {
+  if (apiKey && isElevenLabsVoiceId(voiceId)) {
     if (modelId !== 'eleven_v3') {
       const streamed = await streamElevenLabs(text, voiceId, apiKey, modelId, body.voiceStyle);
       if (streamed) return streamed;
