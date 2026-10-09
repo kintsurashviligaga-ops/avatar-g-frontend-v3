@@ -90,7 +90,20 @@ No Production configuration, user, row, table or policy was changed. No secret w
 - `dig`: no MX or TXT on `myavatar.ge`, nothing on `send.myavatar.ge`, no `resend._domainkey.myavatar.ge`, no `_dmarc`.
 - The app sends from `MyAvatar <info@myavatar.ge>` (`MAIL_FROM` default, `app/api/auth/email-otp/send/route.ts:23`). Resend refuses a sender whose domain is not verified → 403 → the route answers 502 → no code reaches the person. Supabase itself generates the code fine (§1).
 
-The DKIM key is unique to the domain and only Resend shows it. Claude cannot read it (no Resend login, browser read-only, key not retrievable), so GG opens the domain page and pastes the DKIM value; Claude adds all records with the Vercel CLI (additive only, website records untouched) and checks propagation; GG presses Verify.
+The DKIM key is unique to the domain and only Resend shows it. Claude cannot read it (no Resend login, browser read-only, key not retrievable), so GG opened the domain page and pasted the DKIM value (14:00:42Z); Claude added the records with the Vercel CLI; GG presses Verify.
+
+**DNS records added 2026-10-09 ~14:02Z (additive only).** Resend domain region: Tokyo (`ap-northeast-1`, GG's photo 14:00Z). Before: 3 CAA + 2 ALIAS (apex and `*`), unchanged after.
+
+| Record id (rollback: `vercel dns rm <id>`) | Name | Type | Value |
+|---|---|---|---|
+| `rec_560f9c29eee79e60d2305798` | `resend._domainkey` | TXT | `p=MIGfMA0GCSqGSIb3…2QIDAQAB` (1024-bit RSA public key, checked with openssl) |
+| `rec_99755b55743aeb80f54a6442` | `send` | MX 10 | `feedback-smtp.ap-northeast-1.amazonses.com` |
+| `rec_9628cf1d4c29ed6a04f0f6fe` | `send` | TXT | `v=spf1 include:amazonses.com ~all` |
+| `rec_fc9703e01c73e8c20e2e52fa` | `_dmarc` | TXT | `v=DMARC1; p=none;` (Resend's optional row; monitoring only, rejects nothing) |
+
+- Propagation PROVEN at once: `ns1.vercel-dns.com`, `1.1.1.1` and `8.8.8.8` all answer the four values; the DKIM string matches the pasted value byte for byte.
+- Impact: none on the website (`myavatar.ge` and `www` still 307 to the locale). `send.myavatar.ge` was only reachable through the `*` ALIAS and answered 404 (no project there); with its own MX/TXT it no longer takes the wildcard, which serves nothing anyway.
+- Not used: Resend's „Auto configure" (it would give Resend standing access to the Vercel account).
 
 ### 7. Log-in by code created accounts for unknown addresses (found and fixed 2026-10-09)
 
