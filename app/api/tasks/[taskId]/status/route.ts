@@ -2,6 +2,10 @@
  * GET /api/tasks/{taskId}/status
  *
  * Task status polling endpoint with progress %, ETA, and step-level detail.
+ *
+ * Owner-only: a session is required and the task is read with the caller's user id, so anyone else's task is the same
+ * 404 as none (the service role bypasses RLS, so the filter here is the only check). The one task route for jobs on
+ * generation_jobs is /api/tasks (lib/tasks); this one serves the older Agent G pipeline's agent_g_tasks.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
@@ -37,13 +41,15 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid taskId' }, { status: 400 });
   }
 
-  const supabase = createServiceRoleClient();
-  await getAuthenticatedUser(request); // optional
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const supabase = createServiceRoleClient();
   const { data: task, error: taskError } = await supabase
     .from('agent_g_tasks')
     .select('id, status, goal, plan, results, created_at, updated_at')
     .eq('id', taskId)
+    .eq('user_id', user.id)
     .maybeSingle();
 
   if (taskError) return NextResponse.json({ error: 'Database error' }, { status: 500 });

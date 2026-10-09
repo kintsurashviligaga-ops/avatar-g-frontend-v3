@@ -56,7 +56,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. URL-to-Audio (owner, 12:34Z;
           Section F-AU): link or upload → MP3 in the chat, text + Live Voice, platforms refused with an upload offer,
           BUILT_NOT_PROVEN on PR #50 (local real-internet + real-ffmpeg E2E passed); AU-8 = the same admin Preview run as
-          AG-8. Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
+          AG-8. One Task API (EF-7, /api/tasks) BUILT_NOT_PROVEN on PR #50: the chat's job cards follow and stop
+          jobs only through it. Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
           automatically) in BLOCKERS below. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
@@ -961,7 +962,14 @@ F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
        action the user's press runs); the live agent's 4 tools are typed specs. More Studio operations = slice 2.
 □ EF-6 BLOCKED_OWNER. Sandbox contract lib/agent/sandbox/policy.ts (python/node, capped limits, network denied, no
        secrets) and a runner that refuses everything; a real runner needs an isolated paid host (decision B).
-□ EF-7 MISSING. One Task API for text, live voice and media jobs: design in the handoff §7 step 4.
+◐ EF-7 BUILT_NOT_PROVEN. One Task API (app/api/tasks, lib/tasks): GET ?id= / list and POST cancel, one TaskView
+       (queued | running | completed | failed | cancelled, stage, pct, attempt, result, cancellable) for every
+       generation_jobs row of the caller: a studio render from its columns, a montage or audio extraction through its
+       executor (that read is also the job's recovery, only while the flag is open to the caller). The chat's montage
+       and MP3 cards, and Live Voice's Stop, follow and stop jobs only through it. Text turns and voice sessions keep
+       no tasks of their own (they start these jobs). Not moved: the job tray (/api/orchestrator/jobs). The older
+       /api/tasks/<uuid> routes (agent_g_tasks) now require a session and the owner's id (they read through the
+       service role with no owner check before). Handoff §7 step 4.
 ◐ EF-8 BUILT_NOT_PROVEN. The master plays in the same bubble with Download; Library via the completed row
        (Playwright 4/4, routes mocked).
 ◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; the

@@ -1,7 +1,8 @@
 /**
  * lib/agent/media/jobFollow.ts — the studio's half of an Agent G job on the lease queue (lib/orchestrator/jobLease),
  * shared by the montage (./montageClient) and the audio extraction (./audioClient): send `run` for the plan the user
- * confirmed, then read the job every few seconds for its stage and percent until it is delivered or failed.
+ * confirmed to the job's own route, then read the TASK (/api/tasks, one shape for every job: lib/tasks/taskView) every
+ * few seconds for its stage and percent until it is delivered or failed. Stop goes through the same task route.
  *
  * `run` only queues and answers at once; a worker does the work. Re-sending `run` for the same quote never starts a
  * second job (the server replays it), so an answer lost on the way is simply asked for again. The status read is also
@@ -19,7 +20,12 @@ export const SEND_TRIES = 3;
  */
 export const FOLLOW_MS = 25 * 60_000;
 
+import type { TaskView } from '@/lib/tasks/taskView';
+
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
+
+/** The one task route (app/api/tasks): read, list, stop. */
+export const TASKS_ROUTE = '/api/tasks';
 
 export interface FollowDeps {
   fetch: Fetch;
@@ -28,7 +34,7 @@ export interface FollowDeps {
   onProgress: (pct: number | null, stage: string | null) => void;
 }
 
-/** The job as a route reports it (an executor's JobView). */
+/** The `run` answer as a job's route reports it (an executor's JobView). */
 export type JobViewBody = Record<string, unknown> & { ok?: unknown; jobId?: unknown; status?: unknown };
 
 export const postJson = (f: Fetch, route: string, body: unknown) =>
@@ -39,13 +45,14 @@ export async function readJson(res: Response): Promise<Record<string, unknown> |
 }
 
 export interface FollowSpec<R> {
+  /** The job's own route, where `run` goes. */
   route: string;
   /** The `run` request, sent verbatim (action: 'run', the signed plan, its token). */
   runBody: Record<string, unknown>;
   /** The quote's job id (the server may answer with the same). */
   jobId: string;
-  /** A finished job's result, or null while it is still going. */
-  done: (v: JobViewBody) => R | null;
+  /** A finished task's result (or its failure in the chat's codes), or null while it is still going. */
+  done: (t: TaskView) => R | null;
   /** A refusal (or a failed job's reason) in the chat's own codes. */
   refused: (status: number, body: unknown) => R;
   /** The follow ended without an answer: the run never got through (network) or the job is gone (not_found). */
@@ -56,7 +63,10 @@ export interface FollowSpec<R> {
 export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): Promise<R> {
   let jobId = spec.jobId;
   let queued = false;
-  const report = (v: JobViewBody) => deps.onProgress(typeof v.pct === 'number' ? v.pct : null, typeof v.stage === 'string' ? v.stage : null);
+  // A replayed run that already ended is read at once instead of after a poll interval.
+  let readNow = false;
+  const report = (v: { pct?: unknown; stage?: unknown }) =>
+    deps.onProgress(typeof v.pct === 'number' ? v.pct : null, typeof v.stage === 'string' ? v.stage : null);
 
   // ── queue it ───────────────────────────────────────────────────────────────────────────────────────────────────────
   for (let tries = 0; tries < SEND_TRIES && !queued; tries++) {
@@ -66,12 +76,12 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
       const body = (await readJson(res)) as JobViewBody | null;
       if (res.ok && body?.ok === true) {
         if (typeof body.jobId === 'string') jobId = body.jobId;
-        const end = spec.done(body);
-        if (end) return end;
         queued = true;
-        report(body);
+        readNow = body.status === 'completed' || body.status === 'failed';
+        if (!readNow) report(body as { pct?: unknown; stage?: unknown });
       } else if (body?.error === 'already_failed') {
-        queued = true; // an earlier send of this run got through and the job ended: its row says how
+        queued = true; // an earlier send of this run got through and the job ended: its task says how
+        readNow = true;
       } else if (body && res.status < 500) {
         return spec.refused(res.status, body);
       }
@@ -85,20 +95,22 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
   const until = deps.now() + FOLLOW_MS;
   let unknown = 0;
   while (deps.now() < until) {
-    await deps.sleep(POLL_MS);
+    if (readNow) readNow = false;
+    else await deps.sleep(POLL_MS);
     let res: Response;
-    let body: JobViewBody | null;
+    let body: Record<string, unknown> | null;
     try {
-      res = await deps.fetch(`${spec.route}?jobId=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store' });
-      body = (await readJson(res)) as JobViewBody | null;
+      res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store' });
+      body = await readJson(res);
     } catch {
       continue; // offline for a moment: the job goes on
     }
-    if (res.ok && body?.ok === true) {
+    const task = body?.ok === true && body.task && typeof body.task === 'object' ? (body.task as TaskView) : null;
+    if (res.ok && task) {
       queued = true;
-      const end = spec.done(body);
+      const end = spec.done(task);
       if (end) return end;
-      report(body);
+      report(task);
       continue;
     }
     if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
@@ -112,10 +124,10 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
   return spec.lost('network');
 }
 
-/** Ask a job's route to stop it. The run's own follow then reports it as cancelled. */
-export async function cancelJob(f: Fetch, route: string, jobId: string): Promise<boolean> {
+/** Stop a task (/api/tasks). The run's own follow then reports it as cancelled. */
+export async function cancelTask(f: Fetch, id: string): Promise<boolean> {
   try {
-    return (await postJson(f, route, { action: 'cancel', jobId })).ok;
+    return (await postJson(f, TASKS_ROUTE, { action: 'cancel', id })).ok;
   } catch {
     return false;
   }

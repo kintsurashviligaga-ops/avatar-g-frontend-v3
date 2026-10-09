@@ -125,6 +125,8 @@ const nextConfig = {
       '/api/agent/media/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // …and its audio extraction: ffmpeg takes the sound out of a video as an MP3 (lib/agent/media/audioLive).
       '/api/agent/media/audio': ['./node_modules/ffmpeg-static/**'],
+      // …and the one task route (lib/tasks): reading a lease job that no worker holds starts one there, montage or audio.
+      '/api/tasks': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Presentation: every slide is rasterised SVG→PNG through @resvg. No ffmpeg. Without this entry the
       // deck builds and then renders nothing — Vercel's container has no system fonts, so resvg is the
       // only thing that draws text at all (verified: Georgian renders 12.5k ink pixels with the bundled

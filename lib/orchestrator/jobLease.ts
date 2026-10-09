@@ -308,7 +308,8 @@ type Sb = {
 
 const COLS = 'id,user_id,status,current_stage,pct,params,result,signed_url,error,created_at';
 
-function toRow(d: Record<string, unknown>): LeaseRow | null {
+/** A generation_jobs row (its column names) as a LeaseRow; null when it has no id or owner. */
+export function leaseRowOf(d: Record<string, unknown>): LeaseRow | null {
   if (typeof d.id !== 'string' || typeof d.user_id !== 'string') return null;
   const params = d.params && typeof d.params === 'object' && !Array.isArray(d.params) ? (d.params as Record<string, unknown>) : {};
   const result = d.result && typeof d.result === 'object' && !Array.isArray(d.result) ? (d.result as Record<string, unknown>) : null;
@@ -353,7 +354,7 @@ export function supabaseLeaseStore(client: () => Sb | null, report: (e: unknown,
     try {
       const { data, error } = await build(c.from(TABLE).select(COLS));
       if (error) { report(new Error(error.message), { fn }); return []; }
-      return ((data ?? []) as Record<string, unknown>[]).map(toRow).filter((r): r is LeaseRow => r !== null);
+      return ((data ?? []) as Record<string, unknown>[]).map(leaseRowOf).filter((r): r is LeaseRow => r !== null);
     } catch (e) {
       report(e, { fn });
       return [];
@@ -382,7 +383,7 @@ export function supabaseLeaseStore(client: () => Sb | null, report: (e: unknown,
       try {
         const { data, error } = await c.from(TABLE).select(COLS).eq('id', id).maybeSingle();
         if (error || !data) return null;
-        return toRow(data as Record<string, unknown>);
+        return leaseRowOf(data as Record<string, unknown>);
       } catch {
         return null;
       }

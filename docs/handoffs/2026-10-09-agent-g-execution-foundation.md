@@ -17,7 +17,7 @@ tested, and (where it renders) run locally on the real bundled ffmpeg, but not y
 | 4 | Atomic credit reservation/refund, job idempotency, audit persistence | EF-4 | PARTIAL | one row per quote (insert = idempotency), billing hold, ledger-bounded refund owed in the failing write; the `deduct_credits` same-ref race needs a migration (§6). Montage is free today, so the priced path is unit-tested only |
 | 5 | Typed allowlisted tool registry | EF-5 | PARTIAL | `lib/agent/tools/registry.ts` + allowlist test; the live agent's 4 tools are typed specs. Agent G drives only the montage today; the other Studio/FFmpeg operations come as slice 2 (§7) |
 | 6 | Isolated Python/Node sandbox, limited, network deny by default | EF-6 | BLOCKED_OWNER | contract + refusing runner `lib/agent/sandbox/policy.ts` (6 tests). A real runner needs an isolated host = paid infrastructure (§5 B) |
-| 7 | Text, Live Voice and Media Jobs in one Task API | EF-7 | MISSING | design and order in §7 step 4; nothing built yet |
+| 7 | Text, Live Voice and Media Jobs in one Task API | EF-7 | BUILT_NOT_PROVEN | `GET/POST /api/tasks` (`lib/tasks`), one `TaskView` per `generation_jobs` row; the chat's montage and MP3 cards and Live Voice's Stop use only it; §7 step 4 below. Tests: `lib/tasks/*.test.ts` 19, `app/api/tasks/route.test.ts` 5, legacy owner check 3 (fails on the old routes), Playwright audio 6 (new: Stop while running posts one cancel to `/api/tasks`) + montage 4 + live-actions 4 (routes mocked) |
 | 8 | Result in the same chat: playable preview, Download, Library | EF-8 | BUILT_NOT_PROVEN | browser test `tests/agent-g-montage.spec.ts` 4/4 (routes mocked): the master plays in the thread with Download; the completed row is the Library item |
 | 9 | Authorized E2E (upload → plan → confirm → queue → render → QC → delivery) + crash/retry/refund tests | EF-9 | PARTIAL | crash, retry, cancel, refund-debt and sweep tests built; local real-ffmpeg E2E through the queue passes; the authorized run on a Preview needs an admin session (§7 step 1) |
 
@@ -188,10 +188,27 @@ store and every test stay as they are.
 2. **Migration A + C**, on GG's word only; then the store switches to columns (no behaviour change).
 3. **Slice 2 through the registry**: trim, captions, aspect and audio mix as `quote` specs, each leading to a confirmed
    action and a worker kind on the same queue (`kind` in `_exec`), reusing `lib/video/remixOps` and `surgicalOps`.
-4. **One Task API** (EF-7): a read side first. `GET /api/tasks?ref=` returns one `TaskView`
-   (`queued | running | completed | failed | cancelled`, stage, pct, result, attempt) for a media job (the lease row),
-   a live voice session and a text turn, each through an adapter over its existing store; then `POST /api/tasks/cancel`.
-   The chat, the job tray and Agent G read only TaskViews. No new table for this step.
+4. **One Task API** (EF-7), BUILT_NOT_PROVEN 2026-10-09. `GET /api/tasks?id=` returns one `TaskView`
+   (`queued | running | completed | failed | cancelled`, stage, pct, attempt, result, cancellable), `GET /api/tasks`
+   the caller's newest 20 (`active=1`: live only), `POST /api/tasks { action: 'cancel', id }` stops one. No new table.
+   - **What a task is here.** Every piece of work that outlives its request is a `generation_jobs` row: a studio
+     render, an Agent G montage, an audio extraction. A text turn and a Live Voice session keep no task store of
+     their own: they START these jobs (the chat's cards, Live's `extract_audio` / montage actions), so one adapter
+     over `generation_jobs` covers all three surfaces. A studio render is read from its columns; a lease job through
+     its executor's own owner view (`montageJobStatus`, `audioJobStatus`), so the task route and the job's own route
+     can never disagree. That read is also recovery (a job no worker holds gets one), but only while
+     AGENT_G_MEDIA_EXEC is open to the caller: while closed, the route reads and stops, it never starts work.
+   - **Owner-only.** Session required; every query carries the caller's id (service role, so the filter is the
+     check); anyone else's id is the same 404 as none. A raw error text never leaves the server, only a code.
+   - **Stop.** A lease job stops through its executor (ffmpeg killed at the next heartbeat, the charge paid back).
+     A studio render has no server-side stop: 409 `not_cancellable`, never faked.
+   - **Moved onto it:** the chat's job follower (`lib/agent/media/jobFollow`) reads only `/api/tasks`, and Stop on
+     the montage and MP3 cards (and Live Voice's stop action, which presses the same Stop) posts only there. The
+     kinds' own `?jobId=` reads stay for compatibility.
+   - **Not moved:** the job tray still reads and writes `/api/orchestrator/jobs`; the older `jobs` table
+     (`/api/jobs/*`) and `agent_g_tasks` are separate stores. The `agent_g_tasks` routes (`/api/tasks/<uuid>/status`,
+     `/cancel`) read through the service role with no owner check; they now require a session and the owner's id
+     (the table is not in Production, so this was latent).
 5. **Sandbox runner** (after B): implement `SandboxRunner` on the approved host; jobs only as confirmed actions.
 6. **Dedicated worker host** (after C): the same worker code, a different trigger.
 

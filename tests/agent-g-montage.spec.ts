@@ -50,17 +50,27 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
     await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ op: 'add_music', params: {} }) });
   });
   await page.route('**/api/video/remix', (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"mocked"}' }));
-  // The job as a worker moves it: rendering (one read), then delivered.
+  // The task as a worker moves it (lib/tasks/taskView TaskView): rendering (one read), then delivered.
+  const task = (t: Record<string, unknown>) => ({ id: QUOTE.jobId, kind: 'agent-montage', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t });
   const views = [
-    { ok: true, jobId: QUOTE.jobId, status: 'running', stage: 'stitch', pct: 55, attempt: 1 },
-    { ok: true, jobId: QUOTE.jobId, status: 'completed', videoUrl: 'https://media.test/agent-montage.mp4', durationSec: 19.97, aspect: '16:9' },
+    task({ status: 'running', stage: 'stitch', pct: 55, attempt: 1, cancellable: true }),
+    task({ status: 'completed', pct: 100, result: { url: 'https://media.test/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } }),
   ];
+  // The one task route (/api/tasks): the chat follows the job there and stops it there.
+  await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
+    if (r.request().method() === 'GET') {
+      const id = new URL(r.request().url()).searchParams.get('id');
+      if (id) calls.reads.push(id);
+      const task = views.length > 1 ? views.shift() : views[0];
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, task }) });
+      return;
+    }
+    calls.cancel.push(r.request().postDataJSON());
+    await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"task":null}' });
+  });
   await page.route(/\/api\/agent\/media\/montage(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
-      const jobId = new URL(r.request().url()).searchParams.get('jobId');
-      if (jobId) calls.reads.push(jobId);
-      const body = jobId ? (views.length > 1 ? views.shift() : views[0]) : { enabled };
-      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled }) });
       return;
     }
     const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -72,8 +82,7 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
       // `run` only queues: it answers at once, and a worker renders.
       await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, jobId: QUOTE.jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false }) });
     } else {
-      calls.cancel.push(body);
-      await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+      await r.fulfill({ status: 400, contentType: 'application/json', body: '{"ok":false,"error":"bad_action"}' });
     }
   });
   await page.goto('/en/dashboard?tool=chat');

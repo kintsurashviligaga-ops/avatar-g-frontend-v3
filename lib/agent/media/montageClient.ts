@@ -4,13 +4,14 @@
  * upload, the clock), so the whole conversation with /api/agent/media/montage is tested without a network.
  *
  * `run` only queues the edit and answers at once; a worker renders it (lib/agent/media/montageWorker). The chat then
- * reads the job (GET /api/agent/media/montage?jobId=…) every few seconds for its stage and percent until it is delivered
+ * reads the task (GET /api/tasks?id=…, lib/tasks) every few seconds for its stage and percent until it is delivered
  * or failed. That read is also what wakes a worker when none has the job, so a closed connection, a locked phone or a
  * worker that died costs nothing: the edit goes on server-side and lands in the Library either way.
  */
 import type { MontageQuote } from './montageExec';
 import { codeOf, type ChatErrorCode } from './montageChat';
-import { cancelJob, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps, type JobViewBody } from './jobFollow';
+import type { TaskView } from '@/lib/tasks/taskView';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
 
 export { FOLLOW_MS, POLL_MS, SEND_TRIES } from './jobFollow';
 
@@ -67,12 +68,12 @@ export type ClientRun =
   | { ok: true; videoUrl: string; durationSec: number; aspect: string }
   | { ok: false; code: ChatErrorCode };
 
-const done = (v: JobViewBody): ClientRun | null => {
-  if (v.status === 'completed' && typeof v.videoUrl === 'string' && v.videoUrl) {
-    return { ok: true, videoUrl: v.videoUrl, durationSec: Number(v.durationSec) || 0, aspect: String(v.aspect ?? '') };
+const done = (t: TaskView): ClientRun | null => {
+  if (t.status === 'completed' && t.result?.url) {
+    return { ok: true, videoUrl: t.result.url, durationSec: Number(t.result.durationSec) || 0, aspect: String(t.result.aspect ?? '') };
   }
-  // A failed job carries its reason as a code (cancelled, render_failed, qc_failed, a charge that never finished, …).
-  if (v.status === 'failed') return { ok: false, code: codeOf(500, { error: v.error }) };
+  // A failed task carries its reason as a code (cancelled, render_failed, qc_failed, a charge that never finished, …).
+  if (t.status === 'failed' || t.status === 'cancelled') return { ok: false, code: codeOf(500, { error: t.error ?? 'render_failed' }) };
   return null;
 };
 
@@ -96,5 +97,5 @@ export function runAgentMontage(
 
 /** Stop a running edit. The run's own answer then reports it as cancelled. */
 export function cancelAgentMontage(f: Fetch, jobId: string): Promise<boolean> {
-  return cancelJob(f, ROUTE, jobId);
+  return cancelTask(f, jobId);
 }

@@ -49,18 +49,28 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
     calls.library.push(r.request().postDataJSON() as Record<string, unknown>);
     await r.fulfill({ status: 200, contentType: 'application/json', body: '{"success":true}' });
   });
-  // The job as a worker moves it: extracting, checking, then delivered.
+  // The task as a worker moves it (lib/tasks/taskView TaskView): extracting, checking, then delivered.
+  const task = (t: Record<string, unknown>) => ({ id: JOB, kind: 'agent-audio-extract', service: 'music', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t });
   const views = [
-    { ok: true, jobId: JOB, status: 'running', stage: 'extract', pct: 40, attempt: 1 },
-    { ok: true, jobId: JOB, status: 'running', stage: 'qc', pct: 85, attempt: 1 },
-    { ok: true, jobId: JOB, status: 'completed', audioUrl: AUDIO_URL, name: 'flower.mp3', durationSec: 5.09, bytes: 122_941, bitrateKbps: 192, rights: { status: 'unverified' } },
+    task({ status: 'running', stage: 'extract', pct: 40, attempt: 1, cancellable: true }),
+    task({ status: 'running', stage: 'qc', pct: 85, attempt: 1, cancellable: true }),
+    task({ status: 'completed', pct: 100, result: { url: AUDIO_URL, media: 'audio', name: 'flower.mp3', durationSec: 5.09, bytes: 122_941, bitrateKbps: 192, rights: { status: 'unverified' } } }),
   ];
+  // The one task route (/api/tasks): the chat follows the job there and stops it there.
+  await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
+    if (r.request().method() === 'GET') {
+      const id = new URL(r.request().url()).searchParams.get('id');
+      if (id) calls.reads.push(id);
+      const task = views.length > 1 ? views.shift() : views[0];
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, task }) });
+      return;
+    }
+    calls.cancel.push(r.request().postDataJSON());
+    await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"task":null}' });
+  });
   await page.route(/\/api\/agent\/media\/audio(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
-      const jobId = new URL(r.request().url()).searchParams.get('jobId');
-      if (jobId) calls.reads.push(jobId);
-      const body = jobId ? (views.length > 1 ? views.shift() : views[0]) : { enabled };
-      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled }) });
       return;
     }
     const body = r.request().postDataJSON() as Record<string, unknown>;
@@ -77,8 +87,7 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
       calls.run.push(body);
       await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, jobId: JOB, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false }) });
     } else {
-      calls.cancel.push(body);
-      await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+      await r.fulfill({ status: 400, contentType: 'application/json', body: '{"ok":false,"error":"bad_action"}' });
     }
   });
   await page.goto('/en/dashboard?tool=chat');
@@ -183,6 +192,33 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(calls.run).toEqual([]);
+  });
+
+  test('Stop while it runs: one cancel to the task route, and the follow ends it as stopped', async ({ page }) => {
+    await open(page, true);
+    // This test's own task route (registered last, so it wins): running until the cancel lands, then cancelled.
+    const cancels: unknown[] = [];
+    const base = { id: JOB, kind: 'agent-audio-extract', service: 'music', result: null, createdAt: null, updatedAt: null };
+    await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
+      if (r.request().method() === 'POST') {
+        cancels.push(r.request().postDataJSON());
+        await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"task":null}' });
+        return;
+      }
+      const task = cancels.length
+        ? { ...base, status: 'cancelled', stage: null, pct: null, attempt: null, error: 'cancelled', cancellable: false }
+        : { ...base, status: 'running', stage: 'extract', pct: 30, attempt: 1, error: null, cancellable: true };
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, task }) });
+    });
+    await say(page, `Extract the MP3 from this video ${LINK}`);
+    await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-audio-start').click();
+    await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'running');
+    await page.getByTestId('agent-audio-stop').click();
+    await expect.poll(() => cancels, { timeout: 10_000 }).toEqual([{ action: 'cancel', id: JOB }]);
+    await expect(page.getByText('Stopped.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
+    expect(cancels).toHaveLength(1);
   });
 
   test('Live Voice: extract_audio plans on the same card, the call hears the plan, and start runs it', async ({ page }) => {

@@ -5,7 +5,8 @@
  */
 import type { AudioQuote, AudioRights } from './audioExtract';
 import { audioCodeOf, type AudioChatCode } from './audioChat';
-import { cancelJob, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps, type JobViewBody } from './jobFollow';
+import type { TaskView } from '@/lib/tasks/taskView';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
 
 const ROUTE = '/api/agent/media/audio';
 
@@ -49,19 +50,20 @@ export type AudioClientRun =
   | { ok: true; audioUrl: string; name: string; durationSec: number; bytes: number; bitrateKbps: number; rights: AudioRights | null }
   | { ok: false; code: AudioChatCode };
 
-const done = (v: JobViewBody): AudioClientRun | null => {
-  if (v.status === 'completed' && typeof v.audioUrl === 'string' && v.audioUrl) {
+const done = (t: TaskView): AudioClientRun | null => {
+  const r = t.result;
+  if (t.status === 'completed' && r?.url) {
     return {
       ok: true,
-      audioUrl: v.audioUrl,
-      name: typeof v.name === 'string' && v.name ? v.name : 'audio.mp3',
-      durationSec: Number(v.durationSec) || 0,
-      bytes: Number(v.bytes) || 0,
-      bitrateKbps: Number(v.bitrateKbps) || 0,
-      rights: v.rights && typeof v.rights === 'object' ? (v.rights as AudioRights) : null,
+      audioUrl: r.url,
+      name: r.name || 'audio.mp3',
+      durationSec: Number(r.durationSec) || 0,
+      bytes: Number(r.bytes) || 0,
+      bitrateKbps: Number(r.bitrateKbps) || 0,
+      rights: r.rights && typeof r.rights === 'object' ? (r.rights as AudioRights) : null,
     };
   }
-  if (v.status === 'failed') return { ok: false, code: audioCodeOf(500, { error: v.error }) };
+  if (t.status === 'failed' || t.status === 'cancelled') return { ok: false, code: audioCodeOf(500, { error: t.error ?? 'extract_failed' }) };
   return null;
 };
 
@@ -79,5 +81,5 @@ export function runAgentAudio(deps: FollowDeps, input: { request: unknown; token
 
 /** Stop a running extraction. The run's own follow then reports it as cancelled. */
 export function cancelAgentAudio(f: Fetch, jobId: string): Promise<boolean> {
-  return cancelJob(f, ROUTE, jobId);
+  return cancelTask(f, jobId);
 }

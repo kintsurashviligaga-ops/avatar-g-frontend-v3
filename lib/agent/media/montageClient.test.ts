@@ -1,7 +1,8 @@
 /** @jest-environment node */
 /**
- * The studio's calls for Agent G's montage, with a scripted server: uploads, the plan, the run queued and followed to
- * its end with its progress, a lost answer sent again, and Stop.
+ * The studio's calls for Agent G's montage, with a scripted server: uploads, the plan, the run queued on the montage
+ * route and followed to its end through the one task route (/api/tasks) with its progress, a lost answer sent again,
+ * and Stop (through the task route too).
  */
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage, FOLLOW_MS, POLL_MS, SEND_TRIES } from './montageClient';
 
@@ -65,13 +66,21 @@ describe('run', () => {
     let t = 0;
     return { now: () => t, sleep: async (ms: number) => { t += ms; await Promise.resolve(); } };
   };
+  // The montage route's answer to `run` (its executor's JobView)…
   const QUEUED = { ok: true, jobId: 'job-1', status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
-  const running = (pct: number, stage = 'stitch') => ({ ok: true, jobId: 'job-1', status: 'running', stage, pct, attempt: 1 });
   const DELIVERED = { ok: true, jobId: 'job-1', status: 'completed', videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' };
+  // …and the task route's answer to a read (lib/tasks/taskView TaskView).
+  const task = (t: Record<string, unknown>) => ({
+    ok: true,
+    task: { id: 'job-1', kind: 'agent-montage', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t },
+  });
+  const running = (pct: number, stage = 'stitch') => task({ status: 'running', stage, pct, attempt: 1, cancellable: true });
+  const COMPLETED = task({ status: 'completed', pct: 100, result: { url: 'https://m/out.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } });
+  const failed = (error: string) => task({ status: error === 'cancelled' ? 'cancelled' : 'failed', error });
   const reads = (s: { calls: Call[] }) => s.calls.filter((c) => !c.body);
 
   test('queues the signed plan once, follows the job with its progress, and returns the master', async () => {
-    const views = [running(10, 'starting'), running(55), DELIVERED];
+    const views = [running(10, 'starting'), running(55), COMPLETED];
     const s = server((c) => (c.body ? json(200, QUEUED) : json(200, views.shift())));
     const progress: Array<[number | null, string | null]> = [];
     const r = await runAgentMontage(
@@ -83,14 +92,18 @@ describe('run', () => {
       { url: '/api/agent/media/montage', body: { action: 'run', request: { shots: [1] }, token: 'tok', prompt: 'p' } },
     ]);
     expect(progress).toEqual([[0, 'queued'], [10, 'starting'], [55, 'stitch']]);
-    expect(reads(s).map((c) => c.url)).toEqual(Array(3).fill('/api/agent/media/montage?jobId=job-1'));
+    expect(reads(s).map((c) => c.url)).toEqual(Array(3).fill('/api/tasks?id=job-1'));
   });
 
-  test('a replay of a delivered job answers at once, with no reads', async () => {
-    const s = server(() => json(200, { ...DELIVERED, replay: true }));
-    expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
+  test('a replay of a delivered job is read at once, with no wait', async () => {
+    const s = server((c) => (c.body ? json(200, { ...DELIVERED, replay: true }) : json(200, COMPLETED)));
+    const k = clock();
+    const progress: unknown[] = [];
+    expect(await runAgentMontage({ fetch: s.fetch, ...k, onProgress: (...a) => progress.push(a) }, { request: {}, token: 't', jobId: 'job-1' }))
       .toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' });
-    expect(s.calls).toHaveLength(1);
+    expect(s.calls).toHaveLength(2);
+    expect(k.now()).toBe(0);
+    expect(progress).toEqual([]);
   });
 
   test('a refusal comes back with its code (an expired plan, too few credits)', async () => {
@@ -107,7 +120,7 @@ describe('run', () => {
 
   test('a job that ends failed reads as its reason: cancelled, a failed QC, a render that died twice', async () => {
     for (const [error, code] of [['cancelled', 'cancelled'], ['qc_failed', 'qc_failed'], ['render_failed', 'render_failed'], ['something_new', 'render_failed']]) {
-      const s = server((c) => (c.body ? json(200, QUEUED) : json(200, { ok: true, jobId: 'job-1', status: 'failed', error })));
+      const s = server((c) => (c.body ? json(200, QUEUED) : json(200, failed(error))));
       expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
         .toEqual({ ok: false, code });
     }
@@ -122,7 +135,7 @@ describe('run', () => {
         if (sends === 2) return new Response('upstream timeout', { status: 504 });
         return json(200, { ...QUEUED, replay: true });
       }
-      return json(200, DELIVERED);
+      return json(200, COMPLETED);
     });
     const r = await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' });
     expect(r).toMatchObject({ ok: true, videoUrl: 'https://m/out.mp4' });
@@ -133,7 +146,7 @@ describe('run', () => {
     let sends = 0;
     const s = server((c) => {
       if (c.body) return ++sends === 1 ? Promise.reject(new Error('reset')) : json(409, { ok: false, error: 'already_failed', message: 'm', jobId: 'job-1' });
-      return json(200, { ok: true, jobId: 'job-1', status: 'failed', error: 'cancelled' });
+      return json(200, failed('cancelled'));
     });
     expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
       .toEqual({ ok: false, code: 'cancelled' });
@@ -146,7 +159,7 @@ describe('run', () => {
       n += 1;
       if (n <= 3) return Promise.reject(new Error('offline'));
       if (n <= 5) return json(n === 4 ? 429 : 503, { error: 'busy' });
-      return json(200, DELIVERED);
+      return json(200, COMPLETED);
     });
     expect(await runAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
       .toMatchObject({ ok: true });
@@ -154,7 +167,7 @@ describe('run', () => {
   });
 
   test('a run that never got through is "network"; a session that ended is "unauthenticated"; a job that never ends gives up', async () => {
-    const never = server((c) => (c.body ? Promise.reject(new Error('reset')) : json(404, { ok: false, error: 'not_found', message: 'No such edit.' })));
+    const never = server((c) => (c.body ? Promise.reject(new Error('reset')) : json(404, { ok: false, error: 'not_found', message: 'No such task.' })));
     expect(await runAgentMontage({ fetch: never.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' }))
       .toEqual({ ok: false, code: 'network' });
     expect(never.calls.filter((c) => c.body)).toHaveLength(SEND_TRIES);
@@ -173,9 +186,10 @@ describe('run', () => {
   });
 });
 
-test('Stop posts a cancel for the job', async () => {
+test('Stop posts a cancel for the task to the task route', async () => {
   const s = server(() => json(200, { ok: true }));
   expect(await cancelAgentMontage(s.fetch, 'job-1')).toBe(true);
-  expect(s.calls).toEqual([{ url: '/api/agent/media/montage', body: { action: 'cancel', jobId: 'job-1' } }]);
+  expect(s.calls).toEqual([{ url: '/api/tasks', body: { action: 'cancel', id: 'job-1' } }]);
+  expect(await cancelAgentMontage(server(() => json(409, { ok: false, error: 'not_running' })).fetch, 'job-1')).toBe(false);
   expect(await cancelAgentMontage(async () => { throw new Error('x'); }, 'job-1')).toBe(false);
 });

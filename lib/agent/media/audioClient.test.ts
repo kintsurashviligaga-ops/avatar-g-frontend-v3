@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
  * The studio's calls for Agent G's audio extraction, with a scripted server: the plan for a link and for an uploaded
- * file, a platform refusal that names the platform, the run queued and followed to the MP3 with its progress, a job
- * that ends failed, and Stop. The shared follower's edge cases (lost answers, offline, a job that never ends) are pinned
+ * file, a platform refusal that names the platform, the run queued and followed through the task route (/api/tasks) to
+ * the MP3 with its progress, a job that ends failed or cancelled, and Stop. The shared follower's edge cases (lost answers, offline, a job that never ends) are pinned
  * through the montage in ./montageClient.test.ts.
  */
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, runAgentAudio } from './audioClient';
@@ -60,8 +60,15 @@ describe('quote', () => {
 
 describe('run', () => {
   const QUEUED = { ok: true, jobId: 'job-1', status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
-  const running = (pct: number, stage: string) => ({ ok: true, jobId: 'job-1', status: 'running', stage, pct, attempt: 1 });
-  const DONE = { ok: true, jobId: 'job-1', status: 'completed', audioUrl: 'https://s/a.mp3?token=t', name: 'Concert.mp3', durationSec: 189.5, bytes: 4_546_000, bitrateKbps: 192, rights: { status: 'own' } };
+  const task = (t: Record<string, unknown>) => ({
+    ok: true,
+    task: { id: 'job-1', kind: 'agent-audio-extract', service: 'music', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, createdAt: null, updatedAt: null, ...t },
+  });
+  const running = (pct: number, stage: string) => task({ status: 'running', stage, pct, attempt: 1, cancellable: true });
+  const DONE = task({
+    status: 'completed', pct: 100,
+    result: { url: 'https://s/a.mp3?token=t', media: 'audio', name: 'Concert.mp3', durationSec: 189.5, bytes: 4_546_000, bitrateKbps: 192, rights: { status: 'own' } },
+  });
 
   test('queues once, follows with progress, and returns the MP3 with its name, length and size', async () => {
     const views = [running(10, 'extract'), running(80, 'qc'), DONE];
@@ -71,19 +78,21 @@ describe('run', () => {
     expect(r).toEqual({ ok: true, audioUrl: 'https://s/a.mp3?token=t', name: 'Concert.mp3', durationSec: 189.5, bytes: 4_546_000, bitrateKbps: 192, rights: { status: 'own' } });
     expect(s.calls.filter((c) => c.body)).toEqual([{ url: '/api/agent/media/audio', body: { action: 'run', request: { v: 1 }, token: 'tok' } }]);
     expect(progress).toEqual([[0, 'queued'], [10, 'extract'], [80, 'qc']]);
-    expect(s.calls.filter((c) => !c.body).map((c) => c.url)).toEqual(Array(3).fill('/api/agent/media/audio?jobId=job-1'));
+    expect(s.calls.filter((c) => !c.body).map((c) => c.url)).toEqual(Array(3).fill('/api/tasks?id=job-1'));
   });
 
-  test('a job that ends failed reads as its reason; a refused run as its code', async () => {
-    const failed = server((c) => (c.body ? json(200, QUEUED) : json(200, { ok: true, jobId: 'job-1', status: 'failed', error: 'no_audio' })));
+  test('a job that ends failed or cancelled reads as its reason; a refused run as its code', async () => {
+    const failed = server((c) => (c.body ? json(200, QUEUED) : json(200, task({ status: 'failed', error: 'no_audio' }))));
     expect(await runAgentAudio({ fetch: failed.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' })).toEqual({ ok: false, code: 'no_audio' });
+    const stopped = server((c) => (c.body ? json(200, QUEUED) : json(200, task({ status: 'cancelled', error: 'cancelled' }))));
+    expect(await runAgentAudio({ fetch: stopped.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' })).toEqual({ ok: false, code: 'cancelled' });
     const expired = server(() => json(409, { ok: false, error: 'quote_expired', message: 'm' }));
     expect(await runAgentAudio({ fetch: expired.fetch, ...clock(), onProgress: () => {} }, { request: {}, token: 't', jobId: 'job-1' })).toEqual({ ok: false, code: 'quote_expired' });
   });
 });
 
-test('Stop posts a cancel for the job', async () => {
+test('Stop posts a cancel for the task to the task route', async () => {
   const s = server(() => json(200, { ok: true }));
   expect(await cancelAgentAudio(s.fetch, 'job-1')).toBe(true);
-  expect(s.calls).toEqual([{ url: '/api/agent/media/audio', body: { action: 'cancel', jobId: 'job-1' } }]);
+  expect(s.calls).toEqual([{ url: '/api/tasks', body: { action: 'cancel', id: 'job-1' } }]);
 });
