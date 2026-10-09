@@ -68,19 +68,24 @@ function instrumentalPrompt(brief: string, totalSec: number): string {
   );
 }
 
-/** Resolve the funk instrumental bed → hosted URL (EL Music instrumental, MusicGen fallback). */
-async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSignal): Promise<string | null> {
+/**
+ * Resolve the funk instrumental bed → hosted URL. ONE ENGINE: ElevenLabs Music when its key is present, MusicGen
+ * (Replicate) only on a deployment without one.
+ * ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). An ElevenLabs miss used to
+ * fall through to MusicGen, an outside engine nobody chose; it is now a miss (null — the caller reports it).
+ */
+export async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSignal): Promise<string | null> {
   if (hasElevenLabsMusicKey()) {
     try {
       const { audio, contentType } = await composeElevenLabsMusic({
         prompt: instrumentalPrompt(brief, totalSec), lengthMs: totalSec * 1000, instrumental: true, signal,
       });
       const path = `films/kabed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800);
-      if (url) return url;
+      return await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[ka-song] EL instrumental failed → MusicGen:', err instanceof Error ? err.message : err);
+      console.warn('[ka-song] EL instrumental failed (no other engine is tried):', err instanceof Error ? err.message : err);
+      return null;
     }
   }
   try {
