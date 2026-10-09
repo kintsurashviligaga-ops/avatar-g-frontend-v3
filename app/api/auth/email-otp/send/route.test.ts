@@ -5,12 +5,19 @@
 jest.mock('server-only', () => ({}));
 const mockGenerateLink = jest.fn();
 const mockUpdateUser = jest.fn(async () => ({ data: null, error: null }));
+// public.auth_account_status: an account exists unless a test says otherwise.
+const mockRpc = jest.fn(async (..._a: unknown[]): Promise<{ data: unknown; error: { message?: string } | null }> => ({
+  data: { exists: true, confirmed: true, password: null }, error: null,
+}));
 jest.mock('../../../../../lib/supabase/server', () => ({
   isSupabaseConfiguredServer: () => true,
-  createServiceRoleClient: () => ({ auth: { admin: {
-    generateLink: (...a: unknown[]) => mockGenerateLink(...a),
-    updateUserById: (...a: unknown[]) => mockUpdateUser(...a),
-  } } }),
+  createServiceRoleClient: () => ({
+    auth: { admin: {
+      generateLink: (...a: unknown[]) => mockGenerateLink(...a),
+      updateUserById: (...a: unknown[]) => mockUpdateUser(...a),
+    } },
+    rpc: (...a: unknown[]) => mockRpc(...a),
+  }),
 }));
 const mockByKey = jest.fn(async (..._a: unknown[]): Promise<Response | null> => null);
 jest.mock('../../../../../lib/api/rate-limit', () => ({
@@ -30,6 +37,7 @@ const send = (body: Record<string, unknown>) =>
 const mail = jest.fn();
 beforeEach(() => {
   mockGenerateLink.mockReset();
+  mockRpc.mockClear();
   mockByKey.mockReset().mockResolvedValue(null);
   mail.mockReset().mockResolvedValue(new Response('{}', { status: 200 }));
   process.env.RESEND_API_KEY = 're_test';
@@ -101,12 +109,36 @@ describe("purpose 'signin' (log in with a code)", () => {
     expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'member@example.com' });
     expect(JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body)).subject).toContain('sign-in code');
   });
-  it('an unknown address is told „no account" — nothing is created and nothing is mailed', async () => {
+  it('an unknown address is told „no account" — Supabase Auth is never asked, so nothing is created or mailed', async () => {
+    // GoTrue turns a magiclink for an unknown address into a sign-up and CREATES the user (Production, 2026-10-09).
+    mockRpc.mockResolvedValueOnce({ data: { exists: false, confirmed: false, password: null }, error: null });
+    const res = await send({ email: 'Ghost@Example.com', purpose: 'signin' });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'no_account' });
+    expect(mockRpc).toHaveBeenCalledWith('auth_account_status', { p_email: 'ghost@example.com', p_phone: null });
+    expect(mockGenerateLink).not.toHaveBeenCalled();
+    expect(mail).not.toHaveBeenCalled();
+  });
+  it('an unfinished sign-up (row exists, unconfirmed) still gets its code', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { exists: true, confirmed: false, password: false }, error: null });
+    mockGenerateLink.mockResolvedValueOnce(otp('131313'));
+    const res = await send({ email: 'pending@example.com', purpose: 'signin' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink).toHaveBeenCalledWith({ type: 'magiclink', email: 'pending@example.com' });
+  });
+  it('if the database cannot answer, log-in still works (falls through to Supabase Auth)', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'function does not exist' } });
+    mockGenerateLink.mockResolvedValueOnce(otp('141414'));
+    const res = await send({ email: 'member@example.com', purpose: 'signin' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink).toHaveBeenCalledTimes(1);
+  });
+  it('a GoTrue „user not found" is still answered no_account', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'timeout' } });
     mockGenerateLink.mockResolvedValueOnce({ data: null, error: { message: 'User not found' } });
     const res = await send({ email: 'ghost@example.com', purpose: 'signin' });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'no_account' });
-    expect(mockGenerateLink).toHaveBeenCalledTimes(1);
     expect(mail).not.toHaveBeenCalled();
   });
 });
