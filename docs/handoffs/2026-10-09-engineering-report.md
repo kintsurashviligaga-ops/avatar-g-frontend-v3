@@ -35,6 +35,7 @@
 | `0d239f26` | PR #43-დან გადმოტანილია ის, რაც `main`-ს ჯერ არ ჰქონდა (ნაწილი 3.1). PR #43-ის `veo-smoke` route-ში ნაპოვნი და გასწორებული შეცდომა: `assertAdminAccess` `main`-ზე async-ია, PR #43 კი `.ok`-ს promise-ზე კითხულობდა, ამიტომ route მფლობელსაც 404-ს უბრუნებდა (`app/api/admin/veo-smoke/route.test.ts` ძველ კოდზე ვარდება) |
 | `e1f5cba9` | `supabase/migrations/20261009b_renders_private.sql` — `renders` bucket private. **არ არის გაშვებული**, GG-ის თანხმობას ელის (ნაწილი 4, Security) |
 | `76e8c525` | PR #44-დან სამი უსაფრთხო fix (ნაწილი 3.2: #2, #4, #5): Redis fast-fail; `/api/ai` Claude-იდან Gemini-ზე, ჩამოჭრა გამოძახებამდე; ხმის hardening. ახალი ტესტები; env, ბაზა, ფასიანი გამოძახება არ იცვლება. **Production-ში არ არის** |
+| `d387508e` | Admin-ის „Pipeline“ ბარათი ახლა კოდის რეალურ ძრავებს ასახელებს: კლიპები Veo 3.1, კადრები Gemini, სტუდიის სურათი NanoBanana reseller, TTS ElevenLabs, მუსიკა Lyria 3; ტესტი 13 (ძველ ფაილზე 11 ვარდება). **Production-ში არ არის** |
 | (ეს ფაილი) | ეს ანგარიში; PROJECT_MASTER-ის State Tracker და სერტიფიკაცია შეჯერებულია |
 
 სრული retest `0d239f26`-ზე: `tsc` 0 შეცდომა; `next lint` 0 შეცდომა, 35 warning (ძველი კლასები); jest **696 / 696 suite, 10,776 passed, 3 skipped, 0 failed**; ka/en/ru key parity OK (`scripts/check-i18n-parity.ts`). `76e8c525`-ზე: `tsc` 0; eslint შეცვლილ 15 ფაილზე სუფთაა; jest **698 / 698 suite, 10,789 passed, 3 skipped, 0 failed**. Playwright: ნაწილი 4, E2E. HawkScan DAST არ გაშვებულა (`HAWK_API_KEY` არ არის).
@@ -135,6 +136,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **სტატუსი:** FAILED. ჩუმი fallback-ები მოხსნილია (image, text, music, voice; deployed). Primary-დ ჯერ კიდევ აკრძალული provider-ებია: avatar (HeyGen / SadTalker), swap / motion / product ad (Kling, Higgsfield), 3D (TRELLIS), interior (World Labs), music-ის რამდენიმე რეჟიმი (Udio, MusicGen, MiniMax, RVC), cover art (Pollinations); image NanoBanana third-party reseller-ია, არა Google.
 - **პასუხისმგებელი:** GG (action 9: 2026-10-08 17:16Z „ჯერ არა“), შემდეგ Claude.
 - **დამოკიდებულება:** action 9; Google-ის ჩამნაცვლებელი თითო სერვისზე (image → `gemini-3.1-flash-image`; music → Lyria; avatar / 3D / swap-ს Google-ის ჩამნაცვლებელი არ აქვს → „მალე“).
+- **კოდში დარჩენილი ჩუმი fallback:** avatar-ის lip-sync HeyGen-ის ჩავარდნისას SadTalker-ზე (Replicate) გადადის (`lib/ai/lipsync.ts:318-350`) — R7-ის დარღვევა; action 9-თან ერთად უნდა მოიხსნას.
 - **ამ branch-ზე (Production-ში არა):** `/api/ai` აღარ იძახებს Anthropic-ს (`claude-sonnet-4-6`) — ახლა Gemini-ა, `76e8c525`.
 - **მტკიცებულება:** სერტიფიკაცია §L; PR #44-ის აუდიტი (3.2).
 - **DoD:** სტატიკური ტესტი, რომელიც ვარდება, თუ `app/`, `lib/`, `workers/`, `services/` რომელიმე აკრძალულ host-ს იძახებს; Production-დან ამოღებულია Replicate / Udio / Higgsfield / HeyGen გასაღებები; Google-ის ძრავის გარეშე დარჩენილი სერვისები კატალოგში „მალე“-ა.
@@ -201,7 +203,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** შესული მომხმარებელი ქმნის, ინახავს, ხელახლა ხსნის და შლის ნამუშევარს; ფაილი storage-იდანაც იშლება; სხვა მომხმარებელი მას ვერ ხედავს.
 
 ### 4.14 Admin
-- **სტატუსი:** Production-შია (PR #45). `run-migration` 404 PROVEN live; ერთიანი admin წესი BUILT_NOT_PROVEN live. Admin-ის „Pipeline“ ბარათი (`lib/pipeline/statusAgent.ts`) ჯერ კიდევ მცდარს ამბობს: „Udio (primary)“, FLUX anchor, Kling-ის კლიპები Replicate-ით — კოდში music Auto = Lyria, ფილმის კლიპები Veo-ზეა.
+- **სტატუსი:** Production-შია (PR #45). `run-migration` 404 PROVEN live; ერთიანი admin წესი BUILT_NOT_PROVEN live. „Pipeline“ ბარათი Production-ში ჯერ მცდარს ამბობს („Udio (primary)“, FLUX anchor, Kling); ამ branch-ზე გასწორებულია (`d387508e`). სხვაგან დარჩენილი ძველი ტექსტი: `app/api/health/providers/route.ts:69` („FLUX 1.1 Pro“ anchor), `lib/ai/lyriaMusic.ts`-ის შეცდომის ტექსტი (Udio / MusicGen fallback, რომელიც აღარ არსებობს).
 - **პასუხისმგებელი:** Claude (ბარათის გასწორება), GG (admin-ით შესვლის ცოცხალი შემოწმება; „Confirm email“, 4.2).
 - **DoD:** GG admin-ით შედის და პანელი იხსნება; არა-admin `/api/admin/*`-ზე 404-ს იღებს; Pipeline ბარათი კოდის რეალურ ძრავებს აჩვენებს (ტესტით).
 
@@ -229,7 +231,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 **DONE (კოდი Production-შია):** AUTH-1; ერთიანი admin წესი და `run-migration` 404; request-ით დასახელებული მედიის მფლობელის შემოწმება; share ბმულები მხოლოდ https; ჩუმი fallback-ების მოხსნა (image, text, music, voice); ServiceCatalog და `/hub` → სტუდიო; voice id-ის შემოწმება; avatars `user_id`-ზე; `jobs`-ის ორი გზა დახურული; uploads 50 MB / მხოლოდ მედია; STORAGE-1; ფუნქციების hardening.
 
-**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b` (არ არის გაშვებული); PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`).
+**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b` (არ არის გაშვებული); PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`).
 
 **PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 696 / 696.
 
@@ -254,7 +256,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
 | 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | Admin Pipeline ბარათი; ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); providers health-ის და Lyria-ს ძველი ტექსტი; ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 

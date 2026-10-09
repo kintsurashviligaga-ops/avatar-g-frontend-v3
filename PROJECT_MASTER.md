@@ -41,7 +41,8 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
 LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
 LAST COMMIT: see `git log` on that branch (main = 66d7163f = Production; the branch is ahead by certification records,
           PR #43's remaining code 0d239f26, migration file 20261009b (not applied), three PR #44 fixes 76e8c525
-          (Redis fast-fail, /api/ai off Claude onto Gemini with charge-before/refund, voice hardening) and the report;
+          (Redis fast-fail, /api/ai off Claude onto Gemini with charge-before/refund, voice hardening), the admin
+          Pipeline card naming the real engines (d387508e) and the report;
           draft PR #48);
           PRs #42, #45, #46 and #47 merged
 NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
@@ -156,8 +157,9 @@ BLOCKERS:
   header-key only. Fixes are planned after Part 0 on claude/admin-panel-audit-co2mng, stacked on launch-certification.
   Report /mnt/project-files/reports/2026-10-08-admin-panel-audit.md.
   §55 admin P1: deployed 2026-10-09 (PR #45 via 9f1bff6): one admin guard, run-migration off by default + admin
-  session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card is still stale
-  (Claude, report §4.14). Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
+  session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card is stale in
+  Production; fixed on the cert branch (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
+  Lyria), not deployed (report §4.14). Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
 · renders bucket (P2): public in Production (494 objects). supabase/migrations/20261009b_renders_private.sql written
   2026-10-09, NOT applied: needs the owner's yes.
 · Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
