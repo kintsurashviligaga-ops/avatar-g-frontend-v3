@@ -11,8 +11,9 @@ Labels: PROVEN (checked live today), BUILT_NOT_PROVEN, PARTIAL, MISSING, BLOCKED
 |---|---|
 | Supabase connector: SQL, advisors, logs | Works on Production (read-only queries; role probes inside a transaction). |
 | GoTrue public `GET /auth/v1/settings` (publishable key) | Works from GG's Mac (the cloud sandbox proxy blocks `*.supabase.co`). |
-| Supabase Management API (`/v1/projects/{ref}/config/auth`) | **Not reachable**: no access token exists in the sandbox or on the Mac (no Supabase CLI login). Site URL, Redirect URLs, SMTP, OTP length/expiry, leaked-password toggle cannot be read or changed by Claude. |
-| Vercel CLI on GG's Mac | Works for `vercel dns ls` (read-only). |
+| Supabase Management API (`/v1/projects/{ref}/config/auth`) | **Not reachable**: the `SUPABASE_ACCESS_TOKEN` kept in the Mac checkout's `.env.local` and `.vercel/.env.production.local` answers 401 „Invalid access token" (checked 12:47Z, value never printed); no Supabase CLI login. Site URL, Redirect URLs, SMTP, OTP length/expiry, leaked-password toggle cannot be read or changed by Claude. |
+| Vercel CLI on GG's Mac | Works for `vercel dns ls/add`, and `vercel logs --environment production` reads runtime logs. `vercel env run -e production` hands `RESEND_API_KEY` over **empty** (protected value), so the Resend API cannot be called from here. |
+| Chrome on GG's Mac | **Read-only** (computer use grants browsers screenshot access only; no clicks or typing, no Claude-in-Chrome in this thread). |
 | `myavatar.ge` HTTP | Works from GG's Mac (sandbox blocked). |
 
 No Production configuration, user, row, table or policy was changed. No secret was printed.
@@ -31,7 +32,8 @@ No Production configuration, user, row, table or policy was changed. No secret w
 | Anonymous sign-ins | PROVEN off | `anonymous_users: false`. |
 | Email OTP code generation | **PROVEN working** | auth logs: 14× `/admin/generate_link` 200 (last 2026-10-08 14:42Z). AUTH-1 (6-digit check) is fixed and live since 9f1bff6. |
 | Email OTP delivery | **BLOCKED_OWNER** | see §6. |
-| Site URL / Redirect URLs | BLOCKED_OWNER (cannot read) | Management API not reachable. Google callbacks to myavatar.ge succeed, so Production's own URL is allowed. Check list below. |
+| Site URL | **PROVEN** `https://myavatar.ge` | GG's dashboard photo, 2026-10-09 12:43Z. |
+| Redirect URLs | **PARTIAL** | Photo: `https://myavatar.ge/**`, `http://localhost:3000/**`, the PR #43 Preview alias `…-git-22ebb4-…/**`. No bare `*`. **Missing:** the cert Preview alias `https://avatar-g-frontend-v3-git-ef1fad-kintsurashviligaga-ops-projects.vercel.app/**` (Google sign-in on that Preview falls back to the Site URL). Additive fix, owner action 3. |
 | Custom SMTP | BLOCKED_OWNER (cannot read) | The app sends its own codes through Resend; Supabase's mailer is used only by the admin sign-in screen's "forgot password" (`components/auth/AuthScreen.tsx` → `resetPasswordForEmail`) and Supabase system mails. |
 | Users | PROVEN (read-only counts) | 22 users: 16 email+password, 6 Google; 4 unconfirmed, none newer than 7 days, none ever signed in; 0 banned, 0 anonymous, 0 MFA. |
 
@@ -44,7 +46,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 
 | Finding | Decision |
 |---|---|
-| WARN Leaked password protection disabled | **BLOCKED_OWNER**: dashboard-only toggle, and Supabase offers it only on the Pro plan and above (docs: auth/password-security). Steps below. |
+| WARN Leaked password protection disabled | **BLOCKED_OWNER**: dashboard-only toggle (Claude has no Management API token and read-only browser access). Supabase offers it on Pro and above; GG's dashboard shows the organization on **Pro**, so it should switch on without an upgrade. Never upgrade for it. Steps below. |
 | WARN `vector` extension in `public` | **No change (accepted)**. One column and one function use it; moving it is a DB migration that can break that function's type lookup, and the RAG path it serves is off. Not worth the risk now; revisit with the RAG work. |
 | INFO 23× RLS enabled, no policy | **Intended**: service-role-only tables (admin_emails, director_runs, voice_calls, …). Anon and a signed-in stranger read 0 rows from them (§5). |
 
@@ -52,7 +54,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 
 - Effect: new passwords and password changes that appear in HaveIBeenPwned are rejected. Existing sessions and Google sign-ins are unaffected.
 - Rollback: the same toggle off.
-- Could not be applied by Claude (no Management API token, dashboard only).
+- Could not be applied by Claude (no Management API token, dashboard only, browser read-only).
 
 ### 4. Admin access (one rule)
 
@@ -77,29 +79,37 @@ No Production configuration, user, row, table or policy was changed. No secret w
 
 ### 6. Why Production Email OTP does not arrive
 
-**PROVEN root cause: `myavatar.ge` has no mail DNS records at all.**
+**PROVEN root cause: `myavatar.ge` has no mail DNS records at all, so Resend has never verified the domain.**
+
+- Resend (GG's photo, 12:43Z): `myavatar.ge` is added, status **Not Started**.
+- Production has a Resend key: a 12:48Z probe reached Resend (Vercel log: `[email-otp/send] resend 422`, Resend refusing an `example.com` recipient), not the route's `503 mail_not_configured`.
 
 - DNS for `myavatar.ge` is served by Vercel (`ns1/ns2.vercel-dns.com`).
 - `vercel dns ls myavatar.ge` (11:5xZ): only CAA records and two ALIAS records for the website. No TXT, no MX.
 - `dig`: no MX or TXT on `myavatar.ge`, nothing on `send.myavatar.ge`, no `resend._domainkey.myavatar.ge`, no `_dmarc`.
 - The app sends from `MyAvatar <info@myavatar.ge>` (`MAIL_FROM` default, `app/api/auth/email-otp/send/route.ts:23`). Resend refuses a sender whose domain is not verified → 403 → the route answers 502 → no code reaches the person. Supabase itself generates the code fine (§1).
 
-Owner action needed (Claude has no Resend account access): add the domain in Resend to get its unique DKIM key. The DNS part can then be done by Claude through the Vercel CLI on GG's Mac, if GG pastes the records Resend shows (they are public values, not secrets).
+The DKIM key is unique to the domain and only Resend shows it. Claude cannot read it (no Resend login, browser read-only, key not retrievable), so GG opens the domain page and pastes the DKIM value; Claude adds all records with the Vercel CLI (additive only, website records untouched) and checks propagation; GG presses Verify.
+
+### 7. Log-in by code created accounts for unknown addresses (found and fixed 2026-10-09)
+
+- **Found live:** the 12:48Z probe asked `/api/auth/email-otp/send` for a **sign-in** code for an address with no account. The code comment and the unit test assumed GoTrue answers „user not found"; GoTrue instead turns a magiclink for an unknown address into a sign-up and **created an unconfirmed user** (plus its `profiles` row from the signup trigger). No mail went out.
+- **Impact before the fix:** the sign-in sheet asks `/api/auth/lookup` first, so people were sent to sign-up; but any direct call (or a lookup answering `unknown`) left an unconfirmed account behind and never answered `no_account`.
+- **Fix (PR #51, BUILT_NOT_PROVEN until deploy):** for `signin` the route asks `public.auth_account_status` first (`accountExists()` in `lib/auth/accountStatus.ts`) and answers `404 no_account` without calling Supabase Auth. If the database cannot answer it falls through as before. Tests: `app/api/auth/email-otp/send/route.test.ts`, `lib/auth/accountStatus.test.ts`.
+- **The probe account:** GG chose „delete" on the card at 12:54:05Z. Deleted ~12:55Z with one guarded statement (that id, that address, unconfirmed, never signed in, created 12:48Z): 1 `auth.users` row + 1 `profiles` row. Users back to 22. Nothing else touched.
 
 ## Owner actions (exact)
 
-1. **Resend domain (launch blocker AUTH-2).**
-   Open https://resend.com/domains → **Add Domain** → `myavatar.ge` → Add.
-   Resend shows 3–4 records: an MX and a TXT (SPF) on `send`, a TXT on `resend._domainkey`, optionally `_dmarc`.
-   Either paste those rows in the thread (Claude adds them to Vercel DNS), or add them yourself at
-   https://vercel.com/kintsurashviligaga-ops-projects/~/domains/myavatar.ge → Add Record, exactly as Resend shows.
-   Then press **Verify** in Resend. Expected: status "Verified" within minutes to an hour. Then a code sign-in on https://myavatar.ge/ka delivers mail.
-   Rollback: delete those DNS records (they do not touch the website records).
-2. **Leaked password protection.** https://supabase.com/dashboard/project/zwksnayknzggdcenqqxy/auth/attack-protection → "Prevent use of leaked passwords" → ON → Save.
-   If the toggle is locked, the project is on the Free plan; the feature needs Pro (paid). Then it is your call: upgrade, or accept the warning.
-3. **URL configuration check (read and send a photo, or fix):** https://supabase.com/dashboard/project/zwksnayknzggdcenqqxy/auth/url-configuration
-   Site URL `https://myavatar.ge`. Redirect URLs should contain `https://myavatar.ge/**` and, for Google sign-in on the cert Preview,
-   `https://avatar-g-frontend-v3-git-ef1fad-kintsurashviligaga-ops-projects.vercel.app/**`. No bare `*` wildcard.
+1. **Resend domain (launch blocker AUTH-2).** The domain is already added (status Not Started).
+   Open it in Resend (https://resend.com/domains → `myavatar.ge`) and paste the DKIM value (`resend._domainkey` row) in the thread.
+   Claude adds the MX + SPF TXT on `send` and the DKIM TXT with `vercel dns add` (additive only) and checks propagation.
+   Then press **Verify** in Resend. Expected: "Verified". Then a code sign-in on https://myavatar.ge/ka delivers mail.
+   Rollback: `vercel dns rm` those record ids (they do not touch the website records).
+2. **Leaked password protection.** Supabase dashboard → project → **Authentication → Attack Protection** (sidebar; the direct
+   `/auth/attack-protection` URL given earlier answers 404) → "Prevent use of leaked passwords" → ON → Save.
+   If it is locked or asks for an upgrade, skip it and say so: never upgrade for it.
+3. **Redirect URL (additive):** Authentication → URL Configuration → Add URL →
+   `https://avatar-g-frontend-v3-git-ef1fad-kintsurashviligaga-ops-projects.vercel.app/**` → Save. Site URL stays `https://myavatar.ge`.
 4. **Optional:** turn GitHub sign-in off (0 users use it): https://supabase.com/dashboard/project/zwksnayknzggdcenqqxy/auth/providers → GitHub → off. Effect: the GitHub button disappears; rollback: on.
 5. **Optional, after step 1:** Supabase custom SMTP through Resend (Authentication → Emails → SMTP Settings: host `smtp.resend.com`, port 465, user `resend`, password = a Resend API key, sender `info@myavatar.ge`), so the admin "forgot password" mail is not limited by Supabase's default mailer.
 

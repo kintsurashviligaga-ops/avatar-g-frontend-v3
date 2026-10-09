@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
+import { accountExists } from '@/lib/auth/accountStatus';
 import {
   buildOtpEmail,
   describeOtpShape,
@@ -118,6 +119,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       ({ data, error } = await admin.auth.admin.generateLink({ type: 'recovery', email }));
     } else {
       // 'signin' and the legacy 'continue' start from a sign-in (magiclink) code.
+      // ⚠️ LOG-IN MUST NOT CREATE AN ACCOUNT. For an address with no account GoTrue does not answer „user not found" to
+      // a magiclink: it quietly runs a sign-up and creates the user (proven on Production 2026-10-09). So 'signin' asks
+      // the database first and answers no_account without touching Supabase Auth. If the database cannot answer, it
+      // falls through as before ('continue' creates on purpose, below).
+      if (purpose === 'signin' && (await accountExists(admin, email)) === false) {
+        return NextResponse.json({ error: 'no_account' }, { status: 404 });
+      }
       ({ data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email }));
       // THE 2026-10-01 ONE-FIELD FLOW ('continue', still answered for tabs running that build): an address with no
       // account gets one, created UNCONFIRMED with a random password, and the code is the only way in. Same OK either way.
