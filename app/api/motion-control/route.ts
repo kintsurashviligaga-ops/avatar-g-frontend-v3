@@ -1,8 +1,7 @@
 /**
  * POST /api/motion-control — animate a character photo with Kling (Replicate).
- * Body: { characterImageUrl (data-url or https), referenceVideoUrl?, motionPrompt,
- *         duration?, aspectRatio? }. With a reference video it requests V2V (which
- *         currently degrades to motion-prompt I2V — Replicate has no true V2V Kling).
+ * Body: { characterImageUrl (data-url or https), motionPrompt, duration?, aspectRatio? }. Image-to-video only:
+ *         Replicate has no video-to-video Kling, and a `referenceVideoUrl` is ignored (see `method` below).
  *
  * ASYNC: Kling v2.1-master takes 3-7 min — a blocking wait 504s on Vercel (the
  * "Generate motion → HTTP 504" report). This route now only SUBMITS the job and
@@ -78,7 +77,7 @@ export async function POST(req: Request) {
   if (!klingConfigured()) return NextResponse.json({ error: 'video engine not configured' }, { status: 503 });
 
   const body = (await req.json().catch(() => null)) as {
-    characterImageUrl?: string; referenceVideoUrl?: string; motionPrompt?: string;
+    characterImageUrl?: string; motionPrompt?: string;
     duration?: number; aspectRatio?: string; qualityMode?: string;
   } | null;
   const characterImageUrl = body?.characterImageUrl?.trim();
@@ -100,8 +99,10 @@ export async function POST(req: Request) {
 
   const duration: 5 | 10 = body?.duration === 10 ? 10 : 5;
   const aspectRatio = (['9:16', '16:9', '1:1'].includes(String(body?.aspectRatio)) ? body!.aspectRatio : '9:16') as '9:16' | '16:9' | '1:1';
-  const referenceVideoUrl = body?.referenceVideoUrl?.trim();
-  const method: 'v2v' | 'i2v' = referenceVideoUrl ? 'v2v' : 'i2v';
+  // ⚠️ ALWAYS PHOTO + DESCRIPTION. A `referenceVideoUrl` used to turn the reply into method 'v2v' while Kling rendered the
+  // same image-to-video (Replicate's Kling has no video-to-video model): the user was told their video's motion was
+  // copied when it was never read. It is ignored, and the reply and the job row say what actually ran.
+  const method = 'i2v' as const;
   // Speed/quality → Kling model. fast = v1.6-pro (~3 min), quality = v2.1-master
   // (~12 min, best-looking). klingSubmit auto-adds cfg_scale for the v1.6 model.
   const modelName = body?.qualityMode === 'quality' ? KLING_MODELS.V21_MASTER : KLING_MODELS.V16_PRO;
@@ -164,7 +165,6 @@ export async function POST(req: Request) {
       duration,
       aspectRatio,
       modelName,
-      ...(referenceVideoUrl ? { videoUrl: referenceVideoUrl } : {}),
     });
   } catch (e: unknown) {
     // Nothing was submitted, so nothing will ever render for this reservation — give it back (ledger-capped, once).

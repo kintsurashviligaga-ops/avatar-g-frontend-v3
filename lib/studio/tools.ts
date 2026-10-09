@@ -39,7 +39,7 @@ export const TOOL_META: Record<ToolId, { Icon: LucideIcon; name: L10n; sub: L10n
   swap: { Icon: Repeat, name: { ka: 'პერსონაჟის შეცვლა', en: 'Character swap', ru: 'Замена персонажа' }, sub: { ka: 'ვიდეოში სხვა სახე', en: 'Put another face in a video', ru: 'Другое лицо в видео' } },
   // ⚠️ The line says only what is open: today a photo becomes an 8 s VFX scene; motion transfer and swaps unlock in the panel itself.
   vfx: { Icon: Sparkles, name: { ka: 'VFX ეფექტები', en: 'VFX effects', ru: 'VFX-эффекты' }, sub: { ka: 'ერთი შეხებით VFX ეფექტები შენი ფოტოებისთვის', en: 'One-tap VFX effects for your photos', ru: 'VFX-эффекты в одно касание для ваших фото' } },
-  motion: { Icon: PersonStanding, name: { ka: 'მოძრაობის გადატანა', en: 'Motion transfer', ru: 'Перенос движения' }, sub: { ka: 'ფოტო იმოძრავებს ვიდეოს მიხედვით', en: 'A photo moves like a reference', ru: 'Фото двигается по образцу' } },
+  motion: { Icon: PersonStanding, name: { ka: 'მოძრაობის გადატანა', en: 'Motion transfer', ru: 'Перенос движения' }, sub: { ka: 'ფოტო იმოძრავებს შენი აღწერით', en: 'A photo moves the way you describe', ru: 'Фото двигается по описанию' } },
   montage: { Icon: Scissors, name: { ka: 'ვიდეოს მონტაჟი', en: 'Video editing', ru: 'Видеомонтаж' }, sub: { ka: 'კადრებიდან ერთი ფილმი', en: 'One film from your clips', ru: 'Один фильм из ваших клипов' } },
   dubbing: { Icon: Languages, name: { ka: 'დუბლაჟი', en: 'Dubbing', ru: 'Дубляж' }, sub: { ka: 'ვიდეო სხვა ენაზე', en: 'A video in another language', ru: 'Видео на другом языке' } },
   model3d: { Icon: Box, name: { ka: '3D მოდელი', en: '3D model', ru: '3D-модель' }, sub: { ka: 'ტექსტიდან ან ფოტოდან', en: 'From text or a photo', ru: 'Из текста или фото' } },

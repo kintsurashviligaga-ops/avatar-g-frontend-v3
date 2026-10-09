@@ -137,10 +137,12 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'live',
     boundary: 'violation', boundaryNote: 'Kling via Higgsfield / Replicate (/api/motion-control)',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
-    description: l('ფოტო იმოძრავებს ვიდეოს მიხედვით', 'A photo moves like a reference video', 'Фото двигается по образцу'),
+    // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
+    // but no engine here reads one (Replicate's Kling has no video-to-video) and the panel's video slot never left the
+    // browser; the slot is gone (2026-10-09). Whether to keep this next to Veo image→video is the owner's call.
+    description: l('ფოტო იმოძრავებს შენი აღწერით', 'A photo moves the way you describe', 'Фото двигается по вашему описанию'),
     shortcuts: ['avatar'],
-    // Not „animate this photo": that is image→video, which the chat sends to Veo (§A). Motion transfer needs a
-    // reference video, so only its own name routes here.
+    // Not „animate this photo": that is image→video, which the chat sends to Veo (§A). Only its own name routes here.
     aliases: ['motion transfer', 'motion control', 'copy the motion', 'მოძრაობის გადატანა', 'перенос движения'],
   }),
   svc({
