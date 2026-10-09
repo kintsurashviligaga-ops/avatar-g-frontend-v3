@@ -358,6 +358,14 @@ const nextConfig = {
       // and charged for an image. Master Task §19 / §27: one primary workspace, no fake numbers — they land in the studio.
       ['hub', '/:locale/dashboard'], ['hub/:path*', '/:locale/dashboard'],
       ['workspace', '/:locale/dashboard'], ['workspace/:path*', '/:locale/dashboard'],
+      // Three more pages nothing linked to, each over tables Production does not have (schema drift triage, retired on
+      // the owner's word 2026-10-09; docs/handoffs/2026-10-08-production-schema-drift.md): the Pipeline builder (another
+      // shell beside the studio; Save and Run answered 500 on the missing `credits` / `workflow_definitions`), the seller
+      // invoice list (`invoices`, `shops`; its create and detail links were 404s) and the admin disputes view
+      // (`disputes`, `orders`).
+      ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
+      ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
+      ['admin/disputes', '/:locale/admin'],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
     // /{lang}/studio is the new studio only where STUDIO_V2 is on (lib/studio/flags). Elsewhere it goes home with a
     // real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale] loading.tsx starts the response

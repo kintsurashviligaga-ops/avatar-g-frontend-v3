@@ -164,8 +164,11 @@ name; it over-approximates (a shared import reaches a table its branch never tou
 
 ### Decisions for the owner (each new table is a database change)
 
-1. **Orphan pages:** retire `/services/workflow`, `/account/invoices` and `/admin/disputes` (redirect like the other old
-   pages, delete the page files) — recommended, code only — or keep them. `/account/billing` waits for decision 4.
+1. ~~**Orphan pages:** retire `/services/workflow`, `/account/invoices` and `/admin/disputes`~~ — **decided 2026-10-09
+   09:32Z (owner chose "retire" on the card); done on the branch:** each address redirects (307) like the other old
+   pages (`/services/workflow` → dashboard, `/account/invoices` → `/account/billing`, `/admin/disputes` → `/admin`) and
+   the page files are deleted (`lib/routing/shellRedirects.test.ts`). Their API routes stay (no UI calls them).
+   `/account/billing` waits for decision 4.
 2. **Deep Research:** apply `20261003b` to open it, or keep "opening soon". Recommended: keep closed until the launch
    blockers are cleared (it also runs paid Gemini calls).
 3. **Plugins tab:** apply `20261003e`, or keep it disabled. Low value either way; recommended: keep.
