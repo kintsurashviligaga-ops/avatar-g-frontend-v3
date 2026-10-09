@@ -43,10 +43,12 @@ describe('the option lists the UI renders', () => {
 
   it.each<[string, readonly CinematographyOption<string>[]]>([
     ['CAMERA_MOVES', CAMERA_MOVES], ['SHOT_SIZES', SHOT_SIZES], ['CAMERA_ANGLES', CAMERA_ANGLES], ['LENS_LOOKS', LENS_LOOKS],
-  ])('%s: every option has a Georgian label, an English label, and a phrase unless it is auto', (_name, list) => {
+  ])('%s: every option has a Georgian, an English and a Russian label, and a phrase unless it is auto', (_name, list) => {
     for (const o of list) {
       expect(o.ka).toMatch(GEORGIAN);
       expect(o.en.trim()).not.toBe('');
+      // Until 2026-10-09 the Russian studio showed these in English.
+      expect(o.ru).toMatch(/[Ѐ-ӿ]/);
       if (o.id === 'auto') expect(o.phrase).toBe('');
       else expect(o.phrase.trim()).not.toBe('');
       // The prompt phrase is English — no Georgian letters may reach Veo.

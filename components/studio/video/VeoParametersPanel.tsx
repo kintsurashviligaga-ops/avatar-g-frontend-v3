@@ -51,7 +51,7 @@ export function useVeoEngineInfo(): VeoEngineInfo | null {
 
 const tr = (locale: Locale, ka: string, en: string, ru: string): string => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
 /** cinematography options carry ka + en; Russian reads the English term (they are film-craft terms). */
-const optLabel = <T extends string>(o: CinematographyOption<T>, locale: Locale): string => (locale === 'ka' ? o.ka : o.en);
+const optLabel = <T extends string>(o: CinematographyOption<T>, locale: Locale): string => tr(locale, o.ka, o.en, o.ru);
 
 const TRANSITIONS: ReadonlyArray<{ id: Transition; glyph: string; ka: string; en: string; ru: string }> = [
   { id: 'cut', glyph: '▮', ka: 'ჭრა', en: 'Cut', ru: 'Склейка' },

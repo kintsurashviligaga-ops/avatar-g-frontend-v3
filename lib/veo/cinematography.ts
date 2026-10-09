@@ -23,11 +23,12 @@ import type {
   VertexCameraControl,
 } from './types';
 
-/** One UI option: Georgian + English labels, and the English phrase the prompt receives ('' for auto). */
+/** One UI option: Georgian, English and Russian labels, and the English phrase the prompt receives ('' for auto). */
 export interface CinematographyOption<T extends string> {
   readonly id: T;
   readonly ka: string;
   readonly en: string;
+  readonly ru: string;
   readonly phrase: string;
 }
 
@@ -37,58 +38,58 @@ type OptionTable<T extends string> = Record<T, Omit<CinematographyOption<T>, 'id
 // the table's insertion order (string keys enumerate in insertion order), which is the order the UI shows.
 
 const MOVES: OptionTable<CameraMove> = {
-  auto: { ka: 'ავტომატური', en: 'Auto', phrase: '' },
-  static: { ka: 'სტატიკური', en: 'Static', phrase: 'static shot (the camera holds completely still)' },
-  pan_left: { ka: 'პანორამა მარცხნივ', en: 'Pan left', phrase: 'pan left (the camera rotates horizontally from a fixed position)' },
-  pan_right: { ka: 'პანორამა მარჯვნივ', en: 'Pan right', phrase: 'pan right (the camera rotates horizontally from a fixed position)' },
-  tilt_up: { ka: 'დახრა ზემოთ', en: 'Tilt up', phrase: 'tilt up (the camera rotates vertically from a fixed position)' },
-  tilt_down: { ka: 'დახრა ქვემოთ', en: 'Tilt down', phrase: 'tilt down (the camera rotates vertically from a fixed position)' },
-  push_in: { ka: 'მიახლოება', en: 'Push in', phrase: 'dolly in (the camera physically moves toward the subject)' },
-  pull_out: { ka: 'დაშორება', en: 'Pull out', phrase: 'dolly out (the camera physically moves away from the subject)' },
-  truck_left: { ka: 'გვერდითი სვლა მარცხნივ', en: 'Truck left', phrase: 'truck left (the camera physically moves sideways to the left)' },
-  truck_right: { ka: 'გვერდითი სვლა მარჯვნივ', en: 'Truck right', phrase: 'truck right (the camera physically moves sideways to the right)' },
-  pedestal_up: { ka: 'ვერტიკალური აწევა', en: 'Pedestal up', phrase: 'pedestal up (the camera physically rises straight up)' },
-  pedestal_down: { ka: 'ვერტიკალური დაშვება', en: 'Pedestal down', phrase: 'pedestal down (the camera physically lowers straight down)' },
-  zoom_in: { ka: 'ზუმით მიახლოება', en: 'Zoom in', phrase: 'zoom in (a lens zoom that narrows the field of view, not a dolly)' },
-  zoom_out: { ka: 'ზუმით დაშორება', en: 'Zoom out', phrase: 'zoom out (a lens zoom that widens the field of view, not a dolly)' },
-  orbit: { ka: 'წრიული', en: 'Orbit', phrase: 'arc shot orbiting the subject' },
-  crane_up: { ka: 'კრანით აწევა', en: 'Crane up', phrase: 'crane shot rising' },
-  crane_down: { ka: 'კრანით დაშვება', en: 'Crane down', phrase: 'crane shot descending' },
-  aerial: { ka: 'საჰაერო', en: 'Aerial', phrase: 'aerial drone shot' },
-  handheld: { ka: 'ხელის კამერა', en: 'Handheld', phrase: 'handheld camera' },
+  auto: { ka: 'ავტომატური', en: 'Auto', ru: 'Авто', phrase: '' },
+  static: { ka: 'სტატიკური', en: 'Static', ru: 'Статичный', phrase: 'static shot (the camera holds completely still)' },
+  pan_left: { ka: 'პანორამა მარცხნივ', en: 'Pan left', ru: 'Панорама влево', phrase: 'pan left (the camera rotates horizontally from a fixed position)' },
+  pan_right: { ka: 'პანორამა მარჯვნივ', en: 'Pan right', ru: 'Панорама вправо', phrase: 'pan right (the camera rotates horizontally from a fixed position)' },
+  tilt_up: { ka: 'დახრა ზემოთ', en: 'Tilt up', ru: 'Наклон вверх', phrase: 'tilt up (the camera rotates vertically from a fixed position)' },
+  tilt_down: { ka: 'დახრა ქვემოთ', en: 'Tilt down', ru: 'Наклон вниз', phrase: 'tilt down (the camera rotates vertically from a fixed position)' },
+  push_in: { ka: 'მიახლოება', en: 'Push in', ru: 'Наезд', phrase: 'dolly in (the camera physically moves toward the subject)' },
+  pull_out: { ka: 'დაშორება', en: 'Pull out', ru: 'Отъезд', phrase: 'dolly out (the camera physically moves away from the subject)' },
+  truck_left: { ka: 'გვერდითი სვლა მარცხნივ', en: 'Truck left', ru: 'Сдвиг влево', phrase: 'truck left (the camera physically moves sideways to the left)' },
+  truck_right: { ka: 'გვერდითი სვლა მარჯვნივ', en: 'Truck right', ru: 'Сдвиг вправо', phrase: 'truck right (the camera physically moves sideways to the right)' },
+  pedestal_up: { ka: 'ვერტიკალური აწევა', en: 'Pedestal up', ru: 'Подъём камеры', phrase: 'pedestal up (the camera physically rises straight up)' },
+  pedestal_down: { ka: 'ვერტიკალური დაშვება', en: 'Pedestal down', ru: 'Опускание камеры', phrase: 'pedestal down (the camera physically lowers straight down)' },
+  zoom_in: { ka: 'ზუმით მიახლოება', en: 'Zoom in', ru: 'Зум вперёд', phrase: 'zoom in (a lens zoom that narrows the field of view, not a dolly)' },
+  zoom_out: { ka: 'ზუმით დაშორება', en: 'Zoom out', ru: 'Зум назад', phrase: 'zoom out (a lens zoom that widens the field of view, not a dolly)' },
+  orbit: { ka: 'წრიული', en: 'Orbit', ru: 'Облёт', phrase: 'arc shot orbiting the subject' },
+  crane_up: { ka: 'კრანით აწევა', en: 'Crane up', ru: 'Кран вверх', phrase: 'crane shot rising' },
+  crane_down: { ka: 'კრანით დაშვება', en: 'Crane down', ru: 'Кран вниз', phrase: 'crane shot descending' },
+  aerial: { ka: 'საჰაერო', en: 'Aerial', ru: 'С воздуха', phrase: 'aerial drone shot' },
+  handheld: { ka: 'ხელის კამერა', en: 'Handheld', ru: 'Ручная камера', phrase: 'handheld camera' },
 };
 
 const SHOTS: OptionTable<ShotSize> = {
-  auto: { ka: 'ავტომატური', en: 'Auto', phrase: '' },
-  extreme_wide: { ka: 'ძალიან საერთო ხედი', en: 'Extreme wide', phrase: 'extreme wide establishing shot' },
-  wide: { ka: 'საერთო ხედი', en: 'Wide', phrase: 'wide shot' },
-  full: { ka: 'სრული ხედი', en: 'Full', phrase: 'full shot framing the subject head to toe' },
-  medium: { ka: 'საშუალო ხედი', en: 'Medium', phrase: 'medium shot' },
-  medium_close: { ka: 'საშუალო ახლო ხედი', en: 'Medium close-up', phrase: 'medium close-up' },
-  close_up: { ka: 'ახლო ხედი', en: 'Close-up', phrase: 'close-up' },
-  extreme_close_up: { ka: 'ძალიან ახლო ხედი', en: 'Extreme close-up', phrase: 'extreme close-up' },
+  auto: { ka: 'ავტომატური', en: 'Auto', ru: 'Авто', phrase: '' },
+  extreme_wide: { ka: 'ძალიან საერთო ხედი', en: 'Extreme wide', ru: 'Сверхобщий план', phrase: 'extreme wide establishing shot' },
+  wide: { ka: 'საერთო ხედი', en: 'Wide', ru: 'Общий план', phrase: 'wide shot' },
+  full: { ka: 'სრული ხედი', en: 'Full', ru: 'Полный план', phrase: 'full shot framing the subject head to toe' },
+  medium: { ka: 'საშუალო ხედი', en: 'Medium', ru: 'Средний план', phrase: 'medium shot' },
+  medium_close: { ka: 'საშუალო ახლო ხედი', en: 'Medium close-up', ru: 'Средне-крупный план', phrase: 'medium close-up' },
+  close_up: { ka: 'ახლო ხედი', en: 'Close-up', ru: 'Крупный план', phrase: 'close-up' },
+  extreme_close_up: { ka: 'ძალიან ახლო ხედი', en: 'Extreme close-up', ru: 'Сверхкрупный план', phrase: 'extreme close-up' },
 };
 
 const ANGLES: OptionTable<CameraAngle> = {
-  auto: { ka: 'ავტომატური', en: 'Auto', phrase: '' },
-  eye_level: { ka: 'თვალის დონე', en: 'Eye level', phrase: 'eye-level shot' },
-  low: { ka: 'ქვედა რაკურსი', en: 'Low angle', phrase: 'low-angle shot looking up at the subject' },
-  high: { ka: 'ზედა რაკურსი', en: 'High angle', phrase: 'high-angle shot looking down at the subject' },
-  birds_eye: { ka: 'ზემოდან (ფრინველის თვალით)', en: "Bird's-eye", phrase: "bird's-eye view from directly overhead" },
-  worms_eye: { ka: 'ქვემოდან (მიწის დონიდან)', en: "Worm's-eye", phrase: "worm's-eye view from ground level looking up" },
-  dutch: { ka: 'დახრილი კადრი', en: 'Dutch angle', phrase: 'Dutch angle with a tilted horizon' },
-  over_shoulder: { ka: 'მხრის უკნიდან', en: 'Over the shoulder', phrase: 'over-the-shoulder shot' },
-  pov: { ka: 'პირველი პირის ხედი', en: 'POV', phrase: 'point-of-view (POV) shot' },
+  auto: { ka: 'ავტომატური', en: 'Auto', ru: 'Авто', phrase: '' },
+  eye_level: { ka: 'თვალის დონე', en: 'Eye level', ru: 'На уровне глаз', phrase: 'eye-level shot' },
+  low: { ka: 'ქვედა რაკურსი', en: 'Low angle', ru: 'Нижний ракурс', phrase: 'low-angle shot looking up at the subject' },
+  high: { ka: 'ზედა რაკურსი', en: 'High angle', ru: 'Верхний ракурс', phrase: 'high-angle shot looking down at the subject' },
+  birds_eye: { ka: 'ზემოდან (ფრინველის თვალით)', en: "Bird's-eye", ru: 'С высоты птичьего полёта', phrase: "bird's-eye view from directly overhead" },
+  worms_eye: { ka: 'ქვემოდან (მიწის დონიდან)', en: "Worm's-eye", ru: 'Снизу (с уровня земли)', phrase: "worm's-eye view from ground level looking up" },
+  dutch: { ka: 'დახრილი კადრი', en: 'Dutch angle', ru: 'Голландский угол', phrase: 'Dutch angle with a tilted horizon' },
+  over_shoulder: { ka: 'მხრის უკნიდან', en: 'Over the shoulder', ru: 'Из-за плеча', phrase: 'over-the-shoulder shot' },
+  pov: { ka: 'პირველი პირის ხედი', en: 'POV', ru: 'От первого лица', phrase: 'point-of-view (POV) shot' },
 };
 
 const LENSES: OptionTable<LensLook> = {
-  auto: { ka: 'ავტომატური', en: 'Auto', phrase: '' },
-  wide_angle: { ka: 'ფართოკუთხიანი ობიექტივი', en: 'Wide-angle lens', phrase: 'wide-angle lens' },
-  standard: { ka: 'სტანდარტული ობიექტივი', en: 'Standard lens', phrase: 'standard 50mm lens with natural perspective' },
-  telephoto: { ka: 'ტელეობიექტივი', en: 'Telephoto', phrase: 'telephoto lens with compressed perspective' },
-  macro: { ka: 'მაკრო', en: 'Macro', phrase: 'macro lens revealing fine detail' },
-  shallow_focus: { ka: 'ბუნდოვანი ფონი', en: 'Shallow focus', phrase: 'shallow depth of field with soft background bokeh' },
-  deep_focus: { ka: 'ღრმა ფოკუსი', en: 'Deep focus', phrase: 'deep focus with foreground and background both sharp' },
+  auto: { ka: 'ავტომატური', en: 'Auto', ru: 'Авто', phrase: '' },
+  wide_angle: { ka: 'ფართოკუთხიანი ობიექტივი', en: 'Wide-angle lens', ru: 'Широкоугольный объектив', phrase: 'wide-angle lens' },
+  standard: { ka: 'სტანდარტული ობიექტივი', en: 'Standard lens', ru: 'Стандартный объектив', phrase: 'standard 50mm lens with natural perspective' },
+  telephoto: { ka: 'ტელეობიექტივი', en: 'Telephoto', ru: 'Телеобъектив', phrase: 'telephoto lens with compressed perspective' },
+  macro: { ka: 'მაკრო', en: 'Macro', ru: 'Макро', phrase: 'macro lens revealing fine detail' },
+  shallow_focus: { ka: 'ბუნდოვანი ფონი', en: 'Shallow focus', ru: 'Размытый фон', phrase: 'shallow depth of field with soft background bokeh' },
+  deep_focus: { ka: 'ღრმა ფოკუსი', en: 'Deep focus', ru: 'Глубокий фокус', phrase: 'deep focus with foreground and background both sharp' },
 };
 
 function toList<T extends string>(table: OptionTable<T>): readonly CinematographyOption<T>[] {

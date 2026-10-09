@@ -181,7 +181,7 @@ export function WalletRefillModal({
                   {busy === tier ? <Loader2 size={18} className="animate-spin" /> : `${tier} ₾`}
                   {tier === MIN_REFILL_GEL && (
                     <span className={`absolute -top-2 left-1/2 -translate-x-1/2 text-[8.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full whitespace-nowrap ${skin.minBadge}`}>
-                      {locale === 'ka' ? 'მინ.' : 'min'}
+                      {locale === 'ka' ? 'მინ.' : locale === 'ru' ? 'мин.' : 'min'}
                     </span>
                   )}
                   {isPower && (

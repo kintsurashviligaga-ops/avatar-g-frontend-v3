@@ -347,6 +347,7 @@
     "history": {
       "title": "Payment History",
       "subtitle": "Your recent invoices and transactions",
+      "loading": "Loading payment history…",
       "invoices": "Invoices",
       "payments": "Transactions",
       "totalPaid": "Total Paid",
