@@ -35,6 +35,8 @@ export interface GeminiImageArgs {
   aspectRatio?: string;
   model?: string;
   timeoutMs?: number;
+  /** Every reference must load, or nothing is generated: an edit of the user's photo never quietly becomes a new image. */
+  requireReferences?: boolean;
 }
 
 export interface GeminiImageResult {
@@ -73,8 +75,10 @@ export function buildGeminiImageBody(prompt: string, inlineRefs: Array<{ inlineD
 export async function generateGeminiImage(args: GeminiImageArgs): Promise<GeminiImageResult | null> {
   if (googleTransportBlocker(resolveGeminiKey()) || !args.prompt?.trim()) return null;
   const model = (args.model || geminiFrameModel()).trim();
-  const refs = (await Promise.all((args.referenceImages ?? []).slice(0, 3).map(toInlinePart)))
+  const wanted = (args.referenceImages ?? []).slice(0, 3);
+  const refs = (await Promise.all(wanted.map(toInlinePart)))
     .filter((p): p is { inlineData: { mimeType: string; data: string } } => !!p);
+  if (args.requireReferences && refs.length < wanted.length) return null;
   try {
     // Header auth on either transport: no credential ever lands in a URL (logs, traces, error messages).
     const res = await googleModelFetch(model, 'generateContent', {
