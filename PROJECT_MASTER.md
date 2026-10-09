@@ -162,8 +162,8 @@ BLOCKERS:
   each Verified). Live on Production (owner's hands, Vercel + auth logs): email code log-in (KA) PROVEN 14:17Z (send 200,
   Resend accepted, generate_link 200, 8-digit code in the inbox, /verify 200 login 14:17:43Z); password reset (EN)
   PROVEN 14:26Z (myavatar.ge@gmail.com, a non-admin: recovery code → /verify 200 → PUT /user 200 → login with the new
-  password 14:26:51Z). Still open: signed-in non-admin refused live (pending, the same session opens /en/admin), sign-up
-  by code (RU, pending: needs a new address the owner owns). Resend "Auto configure" is not used.
+  password 14:26:51Z). Signed-in non-admin refused PROVEN live 14:50Z (myavatar.ge@gmail.com signed in 14:49:59Z, /en/admin showed "Admin access restricted", server log "[admin] access denied" for that address 14:50:00Z). Still open:
+  sign-up by code (RU, pending: needs a new address the owner owns). Resend "Auto configure" is not used.
 · AUTH-3 (found and fixed 2026-10-09, PR #51 5216aa7, BUILT_NOT_PROVEN until deploy): a sign-in code request for an
   address with no account created an unconfirmed user (GoTrue turns an admin magiclink for an unknown address into a
   sign-up; proven live 12:48Z). Now 'signin' asks public.auth_account_status first and answers 404 no_account. The one
@@ -176,8 +176,11 @@ BLOCKERS:
   52/52 (anon and a signed-in stranger see 0 rows); 31 SECURITY DEFINER functions, none callable by anon/authenticated,
   all with a fixed search_path; storage PROVEN (public read only on music, renders private); admin: anonymous probes on
   myavatar.ge PROVEN refused (401/403/404, forged cookie 403), admin sign-in + panel PROVEN live 14:12Z (owner's admin
-  account, admin API 200 in the logs), signed-in non-admin BUILT_NOT_PROVEN live; email OTP log-in and reset PROVEN
-  live (AUTH-2 above);
+  account, admin API 200 in the logs), signed-in non-admin refused PROVEN live 14:50Z, so admin security PROVEN (the
+  APIs share the one isAdmin() rule, unit-tested); 14:45:17Z the owner removed the one panel-granted admin
+  (DELETE /api/admin/admins 200): public.admin_emails has 0 rows, the only admins are the 2 built-in addresses, no
+  app_metadata role grants admin; email OTP log-in and reset PROVEN live (AUTH-2 above); Supabase Auth stays PARTIAL
+  until the owner turns on leaked-password protection;
   /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
   (PR #51, BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
