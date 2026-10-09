@@ -618,13 +618,14 @@ export async function POST(req: NextRequest) {
         if (!frame) return failRefund('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.', 'frame-read');
         // TASK 1 — character swap with an UPLOADED PHOTO.
         const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef, remixUid) : null;
-        // PRIMARY (closer-to-source): roop video face-swap — the SAME video with the face
-        // replaced throughout, motion preserved. Tried first when a swap photo is present;
-        // on any miss we fall through to the keyframe-regenerate path below (a fresh ~5s clip
-        // seeded by one frame — Kling is i2v-only, so that path can't preserve motion).
+        // A swap photo → roop video face-swap: the SAME video with the face replaced throughout, motion preserved.
+        // ⚠️ NO SILENT SWITCH (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). A roop miss used to
+        // fall through to the keyframe path below: two other outside engines (NanoBanana, then Kling) making a different
+        // product — a fresh ~5s clip from one frame, the original motion gone — for the same 15 credits. It now refunds.
         if (op === 'character' && swapPhoto) {
           const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
           if (swapped) return await finishOk(swapped, { method: 'faceswap' });
+          return failRefund('სახის შეცვლა ვერ მოხერხდა.', 'faceswap-miss');
         }
         // ⚠️ TRANSLATED HERE AND NOWHERE ELSE IN THIS ROUTE, AND THE SCOPE IS THE WHOLE POINT.
         // On these three ops `text` is a DESCRIPTION of what to generate — the replacement
@@ -656,7 +657,11 @@ export async function POST(req: NextRequest) {
           referenceImageDataUrl: frame,
           aspectRatio: aspect,
         }).catch(() => null);
-        const startImage = styled?.url || frame;
+        // ⚠️ A MISSED EDIT IS A FAILURE, NOT THE ORIGINAL FRAME RE-ANIMATED. The start image used to fall back to the frame, sending the
+        // UNCHANGED frame on to Kling, so a restyle / background swap / character change that never happened came back as
+        // a "reanimated" clip of the original, charged in full and labelled as done.
+        if (!styled?.url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : op === 'background_remove' ? 'ფონის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.', 'edit-miss');
+        const startImage = styled.url;
         // Same brief, same English-only engine (Kling). Reuses editText so the translation costs
         // one call, not two; the English defaults are unchanged when the user typed nothing.
         const motionPrompt = op === 'restyle' ? (editText || 'cinematic motion') : (editText || 'natural character motion');
@@ -682,13 +687,12 @@ export async function POST(req: NextRequest) {
         const method = animated ? 'reanimated' : 'stillPan';
         // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
         // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
-        // source frame is silently dropped — worst on the raw-frame fallback (NanoBanana miss →
-        // startImage = the source-aspect frame). Post-fit to the requested aspect, mirroring the
+        // source frame is silently dropped. Post-fit to the requested aspect, mirroring the
         // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
         const fitted = await fitAspect(url, aspect).catch(() => null);
         // Fail-open keeps the clip — correct — but the requested aspect was then silently dropped and
         // the card went on displaying it as though it had been honoured. Report what shipped.
-        return await finishOk(fitted || url, { still: styled?.url ?? null, method, aspectApplied: Boolean(fitted) });
+        return await finishOk(fitted || url, { still: styled.url, method, aspectApplied: Boolean(fitted) });
       }
 
       default:
