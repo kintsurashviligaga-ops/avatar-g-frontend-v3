@@ -38,7 +38,8 @@ All run on `70a5fe88` in the cloud sandbox, 2026-10-08 (logs not committed; numb
 | Deployed head `5013d87c`, full jest (2026-10-09) | **684 / 684 suites, 10,678 passed, 3 skipped, 0 failed** |
 | Branch head `0d239f26`, 2026-10-09 ~06:10Z | tsc 0; `next lint` 0 errors, 35 warnings; **jest 696 / 696 suites, 10,776 passed, 3 skipped, 0 failed**; `scripts/check-i18n-parity.ts` OK |
 | Branch head `76e8c525` (PR #44 ports), 2026-10-09 ~06:25Z | tsc 0; eslint clean on the 15 changed files; **jest 698 / 698 suites, 10,789 passed, 3 skipped, 0 failed** |
-| Playwright, all 27 local specs (251 tests), 2026-10-09 on `76e8c525`+ | Without Supabase env: 220 passed, 21 failed, 10 skipped. The 21 again with CI's dummy Supabase env: 19 passed. Of the last 2, alone ×2: `live-voice-e2e.spec.ts:30` passed both (load); `landing.spec.ts:380` (the landed image) fails 4 of 5 runs, phone and desktop: the request for `/brand/v1/card-image.jpg` is sent and never answered, so the image stays 0×0. Not touched by this branch, not in CI; open (engineering report §4.17) |
+| Playwright, all 27 local specs (251 tests), 2026-10-09 on `76e8c525`+ | Without Supabase env: 220 passed, 21 failed, 10 skipped. The 21 again with CI's dummy Supabase env: 19 passed. Of the last 2, alone ×2: `live-voice-e2e.spec.ts:30` passed both (load); `landing.spec.ts:380` (the landed image) fails 4 of 5 runs, phone and desktop: the request for `/brand/v1/card-image.jpg` is sent and never answered, so the image stays 0×0. Not touched by this branch, not in CI. **Cause PROVEN 2026-10-09: the dev server.** On a production build of `7c8dd9b3` (`next build` + `next start`, CI's dummy env) it passes 10 / 10 (phone + desktop, repeat ×5). The same build fails 4–5 other `landing.spec.ts` tests that pass on `next dev`: on a phone `?tool=video` opens the Video Create sheet (by design, `OmniStudio.tsx:2994`) whose backdrop covers the header, and the build POSTs `/api/analytics/track`; why `next dev` differs is not investigated (engineering report §4.17) |
+| Branch head `7c8dd9b3`, 2026-10-09 ~07:45Z | tsc 0; eslint clean on the changed files; **jest 702 / 702 suites, 10,817 passed, 3 skipped, 0 failed**; `next build` succeeded (CI's dummy env); `[i18n-parity] OK` |
 | HawkScan DAST | not run: `HAWK_API_KEY` is not set |
 
 Not proven by any of the above: anything against real providers, real Supabase, real Stripe, or a real phone. Those are in Y.
@@ -221,9 +222,16 @@ Claude is still reachable only behind flags: `AI_GOOGLE_ONLY=0` (chat routes, re
 **Forbidden providers still reachable as the primary (explicit, not silent; Part 2, owner action 9):** NanoBanana itself
 (`api.nanobananaapi.ai`, a third-party reseller, not Google); avatar HeyGen / SadTalker; swap / motion / product ad Kling,
 roop, Higgsfield; 3D TRELLIS; interior World Labs; music on an explicit pick of Udio or MusicGen, cover (MusicGen-melody),
-"your voice" songs (MiniMax, RVC), cover art (Pollinations); `/api/pipeline` voice on OpenAI TTS when Google-only is off;
+"your voice" songs (MiniMax, RVC), cover art (Pollinations; off under Google-only on this branch, `ba74fa21`, not deployed); `/api/pipeline` voice on OpenAI TTS when Google-only is off;
 `lib/chat/ServiceManager` still imports the Grok image client. The owner chose "not now" on removing them (decision card,
 2026-10-08 17:16 UTC): action 9 stays open, and PR #44's provider removals are not merged into this branch.
+
+**On this branch, not deployed (`ba74fa21`, BUILT_NOT_PROVEN live):** `/api/orbit/agent` answered any signed-in user from
+OpenRouter / OpenAI (`chatEngine.executeStream`) with no credit charged and no `AI_GOOGLE_ONLY` gate, though no screen calls it;
+it now answers 404 under Google-only. Music cover art no longer goes to Pollinations.ai under Google-only (the track ships
+without a cover). Ratchet `__tests__/provider-boundary.test.ts`: runtime code may not gain a new non-Google,
+non-ElevenLabs AI vendor (API host in a literal or an SDK value import); today's 60 files / 22 vendors are frozen in
+`__tests__/provider-boundary.allowlist.json`, which may only shrink. Tests fail on the old code.
 
 GCP Part 0 is CONFIGURED; Gemini text, Gemini image and Lyria **INFERENCE PROVEN on Vertex** from the owner's Mac
 (≈ $0.11, owner-approved 11:47 UTC); Imagen 4 is not available on Vertex for this project (404).
@@ -347,7 +355,15 @@ Starter, Pro, Premium, Empire, Enterprise, Stripe ID, Orbit Solar System) and th
 same 17 names plus 4 keys no code reads (`metadata.title`, `seller.growth.cac` / `ltv`, `services.svc_avatar_name`). The
 `payments` namespace went with the page that used it (N: `/account/payments`). The 8 English-only
 `aria-label`s and the `AI-generated` badge title in `OmniStudio.tsx` now read from ka/en/ru copy (fixed, 8edefd82).
-Screen-by-screen audit needs the running app (not done).
+Static audit 2026-10-09 (`7c8dd9b3`, not deployed): import graph from every `app/**/page|layout` (569 files), ka/en-only
+ternaries and `{ ka, en }` objects without `ru`, and literal `t(key)` calls missing from `messages/`. Fixed:
+`/account/billing` showed `billing.history.loading` while loading in every language (key missing; next-intl renders the
+path, so `|| 'Loading…'` never fired), now a key plus a test over every literal `t(key)`; the video "Scenes & camera"
+panel's 43 camera options were English in the Russian UI, now Russian (test requires Cyrillic); the wallet "min" badge
+reads "мин.". Left: most remaining ka/en-only ternaries on reachable screens are font sizes, not text; the admin panel
+(11 files) is ka / en on purpose; `lib/business-agent/generator.ts` and `dialogueLanguageWarning` have no Russian but no
+screen calls them. A screen-by-screen audit with screenshots, and a search for untranslated hardcoded English, need
+the running app (not done).
 
 ## T. Mobile
 
