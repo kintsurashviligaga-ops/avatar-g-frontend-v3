@@ -115,9 +115,12 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 
 ## Tests run
 
-- `npx jest` full: 713/713 suites, 10,942 tests passed (3 skipped).
-- `npx tsc --noEmit`: clean. eslint on changed files: clean.
-- Focused: auth, admin and security suites 26/26.
+- `npx jest` full: 713/713 suites, 10,942 tests passed (3 skipped) on 40992a8; after the log-in fix and the cert-branch merge (ecfd611): **718/718 suites, 11,020 passed** (3 skipped).
+- `npx tsc --noEmit`: clean. eslint on changed files: clean. `next build` (CI dummy env): passes, 207/207 pages.
+- Playwright, full suite on the local production build (ecfd611): 238 passed, 10 skipped, 7 failed. None is from this branch:
+  5× `live-voice-e2e` (the runner had no `PLAYWRIGHT_SUPABASE_URL`, so the fixture's session cookie named another project), `swarm-pipelines` produce-route check (expects the `next dev` bypass on a local URL), `ui-image` phone thumbnail (passes on `next dev`).
+  Re-run on `next dev` with the matching env: `swarm-pipelines` + `ui-image` 18/18; `live-voice-e2e` 4/5, the fifth passed 3/3 alone (`--repeat-each 3`) and on the cert branch: a load flake, not a regression.
+- Focused: auth, admin and security suites 19/19 (305 tests).
 - Live probes listed in §4 (anonymous) and §5 (role probes). Production logs read: Supabase auth and audit logs (last 24 h). Vercel runtime logs not read (connector 403; CLI not needed for this finding).
 
 ## Lines for PROJECT_MASTER.md and the launch certification
