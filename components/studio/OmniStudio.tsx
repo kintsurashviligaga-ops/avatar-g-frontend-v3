@@ -114,7 +114,7 @@ import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
 import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
-import { computeCloudAdditions } from '@/lib/chat/conversationSync';
+import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
 import { loadSelectedPersonaId, loadCustomPersonas } from './PersonaPicker';
@@ -1298,8 +1298,10 @@ function loadConversations(): Conversation[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(omniConversationsKey(currentUid())) ?? '[]') as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages))
+    // Each conversation once (lib/chat/conversationSync.dedupeConversations): an archive that already holds copies of one
+    // server session — the re-import fixed there — reads, and so saves, as one row again.
+    return dedupeConversations(parsed
+      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages)))
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   } catch { return []; }
 }
@@ -1417,8 +1419,16 @@ function upsertConversation(id: string, messages: Msg[], tool?: string): void {
   // against local BY serverSid, so with it missing every mount re-imported the same server sessions as
   // new rows — the history would grow a duplicate of itself on every page load. Invisible until the
   // schema was fixed, because until then there were no cloud rows to duplicate.
+  // Opening a chat is not working in it: an unchanged transcript keeps its time, so a row picked from History stays where
+  // it was in the list instead of jumping to the top on every click.
+  const prev = idx >= 0 ? list[idx] : undefined;
+  const unchanged = !!prev && (
+    (prev.messages.length === lean.length && JSON.stringify(prev.messages) === JSON.stringify(lean))
+    // A cloud row filling in with its own transcript is the same conversation, not new work in it.
+    || (prev.messages.length === 0 && !!serverSidOf(prev))
+  );
   const conv: Conversation = {
-    id, title: conversationTitle(lean), messages: lean, updatedAt: Date.now(),
+    id, title: conversationTitle(lean), messages: lean, updatedAt: unchanged ? (prev!.updatedAt ?? Date.now()) : Date.now(),
     ...((idx >= 0 && list[idx]?.serverSid) || readSessionMap(currentUid())[id]
       ? { serverSid: (idx >= 0 && list[idx]?.serverSid) || readSessionMap(currentUid())[id] }
       : {}),
@@ -1950,6 +1960,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** Always-current mirror: a server session is resolved for the conversation open at the moment a turn is saved. */
   const conversationIdRef = useRef(conversationId);
   conversationIdRef.current = conversationId;
+  /** The `cloud:` conversation whose transcript is loading (resumeConversation): not saved until it is in. */
+  const hydratingRef = useRef<string | null>(null);
+  // A chat picked in History before this studio had loaded arrives through the mount handoff (currentConversationId) with
+  // no transcript when it lives on the server: it is guarded from the first render and loaded once mounted (below).
+  const openedEmptyCloudRef = useRef<boolean | null>(null);
+  if (openedEmptyCloudRef.current === null) {
+    const c = loadConversations().find((x) => x.id === conversationId);
+    openedEmptyCloudRef.current = !!c && !!serverSidOf(c) && c.messages.length === 0;
+    if (openedEmptyCloudRef.current) hydratingRef.current = conversationId;
+  }
   const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
   // Mirror of `messages` for the mount-hydration effect below (reads the current view without a
   // stale-closure / exhaustive-deps churn).
@@ -2788,6 +2808,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Persist the active conversation once a generation settles (never per token).
   // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
+    // ⚠️ A CLOUD ROW BEING OPENED IS EMPTY FOR A MOMENT (its transcript is on the way), and saving that moment deleted the
+    // row — an empty conversation is removed — so it came back without its server session and the next sync imported it
+    // again: one more History row per open. Nothing is saved for it until the transcript is in.
+    if (hydratingRef.current === conversationId && messages.length === 0) return;
     if (!busy) {
       upsertConversation(conversationId, messages, activeToolRef.current);
       // Notify the left sidebar's history list (ChatChrome) to refresh.
@@ -2801,7 +2825,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     unparkTypeAhead();
     const settle = endChatStream();
     if (settle) { genIdRef.current += 1; setBusy(false); }
-    upsertConversation(conversationId, settle ? settle(messages) : messages, activeToolRef.current); // save current before leaving
+    // Save the current chat before leaving it (re-opening the one on screen leaves nothing: an empty cloud row would be deleted).
+    if (id !== conversationId) upsertConversation(conversationId, settle ? settle(messages) : messages, activeToolRef.current);
     setConversationId(id);
     setCurrentConversationId(id);
     const convo = loadConversations().find((c) => c.id === id);
@@ -2810,17 +2835,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (convo?.tool && isToolId(convo.tool)) writeToolSessions({ ...readToolSessions(), [convo.tool]: id });
     // A "cloud:" entry (a conversation from ANOTHER device, merged into the sidebar) carries a serverSid
     // and no local messages yet → continue writing to the SAME Supabase session + lazy-load its transcript.
-    if (convo?.serverSid && (convo.messages?.length ?? 0) === 0) {
-      chatSessionIdRef.current = convo.serverSid; // ensureChatSession returns this → no session fork
+    const sid = serverSidOf(convo);
+    if (sid && (convo?.messages?.length ?? 0) === 0) {
+      chatSessionIdRef.current = sid; // ensureChatSession returns this → no session fork
       chatSessionCidRef.current = id;
+      // The row's server session is remembered under its id, so every later save of it carries the session along.
+      const uid = currentUid();
+      if (uid) rememberConversationSid(uid, id, sid);
+      hydratingRef.current = id;
       setMessages([]);
+      let msgs: Msg[] = [];
       try {
-        const rows = await getMessages(convo.serverSid);
-        const msgs: Msg[] = rows
+        const rows = await getMessages(sid);
+        msgs = rows
           .filter((r) => r.role === 'user' || r.role === 'assistant')
           .map((r) => ({ role: r.role as 'user' | 'assistant', text: r.content }));
-        setMessages(msgs);
       } catch { /* fail-open → empty view; the server row persists, a re-open can hydrate */ }
+      // An empty answer (offline, a read error) keeps the guard: the row stays a cloud row instead of being deleted.
+      if (msgs.length && hydratingRef.current === id) hydratingRef.current = null;
+      // Only if the user is still on it: a click on another chat while this loaded has already replaced the view.
+      if (conversationIdRef.current === id) setMessages(msgs);
     } else {
       setMessages(loadConversationMessages(id));
     }
@@ -2890,7 +2924,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Bridge: the persistent left sidebar (ChatChrome) drives chat-history resume + new-chat
   // via window events — so the sidebar works without prop-threading through the chrome.
   useEffect(() => {
-    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) resumeConversation(id); };
+    // preventDefault tells the sidebar the pick was taken (ChatChrome hands it over at mount otherwise).
+    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) { e.preventDefault(); resumeConversation(id); } };
     const onNew = () => startNewConversation();
     const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
     const onClear = () => clearAllConversations();
@@ -2905,6 +2940,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
   }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
+  useEffect(() => {
+    if (openedEmptyCloudRef.current) void resumeConversation(conversationIdRef.current);
+    // Mount only: the handoff is one-shot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // A generation is in flight via the Cap-3 QUEUE (image/music/product) when any job is rendering/queued.
   // The queue path never sets `busy`, so without this the inline loading card's clock/bar sat frozen and

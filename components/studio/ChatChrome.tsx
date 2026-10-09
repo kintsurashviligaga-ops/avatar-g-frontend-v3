@@ -88,6 +88,7 @@ import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
 import { HubHost, HubRailButton, HubSidebarRow, useHiddenTools, visibleToolIds } from '@/components/studio/hub';
+import { dedupeConversations } from '@/lib/chat/conversationSync';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -679,8 +680,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as unknown;
       if (!Array.isArray(raw)) return;
       setConversations(
-        raw
-          .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string')
+        // One row per conversation (lib/chat/conversationSync): two rows under one id also gave React two children with one
+        // key, and a list re-ordered by a click then kept stale copies on screen.
+        dedupeConversations(raw
+          .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string'))
           .map((c) => ({ id: c.id, title: (c.title || 'New chat').trim() || 'New chat', updatedAt: c.updatedAt ?? 0 }))
           .sort((a, b) => b.updatedAt - a.updatedAt)
           // Every chat the studio keeps (OmniStudio's CONV_MAX, 40). At 20 the search could not find chats 21–40 that
@@ -823,7 +826,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
     // active conversation and navigate; OmniStudio restores it from localStorage on mount.
     if (isStudioPath(pathname)) {
-      window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
+      // The studio answers by cancelling the event. While its code is still loading nobody does, and the pick was lost: the
+      // chat stayed empty. Then it waits in the one-shot handoff the studio reads when it mounts.
+      const ev = new CustomEvent('myavatar:resume-conversation', { detail: { id }, cancelable: true });
+      window.dispatchEvent(ev);
+      if (!ev.defaultPrevented) { try { window.localStorage.setItem(OMNI_RESUME_KEY, id); } catch { /* ignore */ } }
     } else {
       // One-shot handoff: OmniStudio consumes this on mount. Writing OMNI_CURRENT_ID_KEY instead would
       // make the chat sticky across every later refresh, which is the behaviour we just removed.

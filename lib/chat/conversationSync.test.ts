@@ -1,4 +1,4 @@
-import { computeCloudAdditions, type SyncConversation, type ServerSession } from './conversationSync';
+import { computeCloudAdditions, dedupeConversations, type SyncConversation, type ServerSession } from './conversationSync';
 
 const local = (id: string, title: string, updatedAt: number, serverSid?: string): SyncConversation => ({ id, title, updatedAt, ...(serverSid ? { serverSid } : {}) });
 const srv = (session_id: string, title: string | null, updated_at: string): ServerSession => ({ session_id, title, updated_at });
@@ -81,5 +81,47 @@ describe('a deleted chat stays deleted', () => {
 
   it('ignores junk in the tombstone list', () => {
     expect(computeCloudAdditions([], server, ['', null as unknown as string]).length).toBe(2);
+  });
+});
+
+describe('one History row per conversation (owner report 2026-10-09 18:26Z)', () => {
+  const LONG = 'ექსტრაქტ გაუკეთე mp3 და დაადე მუსიკა ამ ვიდეოდან https://youtube.com/shorts/x?si=y';
+  const server: ServerSession[] = [{ session_id: 'a36', title: LONG.slice(0, 80), updated_at: '2026-10-09T12:19:40Z' }];
+
+  it('a cloud row that lost its serverSid field is still that session: no second import', () => {
+    // Opening a cloud row used to rewrite it without `serverSid`; the next mount imported the session again, same id.
+    const local = [{ id: 'cloud:a36', title: `${LONG.slice(0, 52)}…`, updatedAt: 5 }];
+    expect(computeCloudAdditions(local, server)).toEqual([]);
+  });
+
+  it('the sidebar\'s 52-character title and the server\'s 80-character title are one first line', () => {
+    const local = [{ id: 'c_1', title: `${LONG.slice(0, 52)}…`, updatedAt: 5 }];
+    expect(computeCloudAdditions(local, server)).toEqual([]);
+  });
+
+  it('a short shared prefix is not enough to call two chats one', () => {
+    const local = [{ id: 'c_1', title: 'ექსტრაქტ…', updatedAt: 5 }];
+    expect(computeCloudAdditions(local, server).map((c) => c.id)).toEqual(['cloud:a36']);
+  });
+
+  it('heals an archive that already holds copies: one row per id and per server session, the transcript kept', () => {
+    const rows = [
+      { id: 'cloud:a36', title: 't', updatedAt: 9, messages: [{ role: 'user', text: 'x' }], tool: 'chat' },
+      { id: 'cloud:a36', title: 't', updatedAt: 3, serverSid: 'a36', messages: [] },
+      { id: 'c_2', title: 'u', updatedAt: 7, serverSid: 'a36', messages: [] },
+      { id: 'c_3', title: 'other', updatedAt: 8, messages: [{ role: 'user', text: 'y' }] },
+      { id: 'c_3', title: 'other', updatedAt: 1, messages: [] },
+    ];
+    const out = dedupeConversations(rows);
+    expect(out.map((c) => c.id)).toEqual(['cloud:a36', 'c_3']);
+    expect(out[0]).toMatchObject({ serverSid: 'a36', tool: 'chat', updatedAt: 9 });
+    expect(out[0]!.messages).toHaveLength(1);
+    expect(out[1]!.messages).toHaveLength(1);
+  });
+
+  it('leaves a clean archive as it is', () => {
+    const rows = [{ id: 'a', title: 'a', updatedAt: 2, messages: [] }, { id: 'b', title: 'b', updatedAt: 1, serverSid: 's', messages: [] }];
+    expect(dedupeConversations(rows)).toEqual(rows);
+    expect(dedupeConversations(null as unknown as typeof rows)).toEqual([]);
   });
 });
