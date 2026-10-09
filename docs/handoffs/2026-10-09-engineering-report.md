@@ -203,7 +203,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** შესული მომხმარებელი ქმნის, ინახავს, ხელახლა ხსნის და შლის ნამუშევარს; ფაილი storage-იდანაც იშლება; სხვა მომხმარებელი მას ვერ ხედავს.
 
 ### 4.14 Admin
-- **სტატუსი:** Production-შია (PR #45). `run-migration` 404 PROVEN live; ერთიანი admin წესი BUILT_NOT_PROVEN live. „Pipeline“ ბარათი Production-ში ჯერ მცდარს ამბობს („Udio (primary)“, FLUX anchor, Kling); ამ branch-ზე გასწორებულია (`d387508e`). სხვაგან დარჩენილი ძველი ტექსტი: `app/api/health/providers/route.ts:69` („FLUX 1.1 Pro“ anchor), `lib/ai/lyriaMusic.ts`-ის შეცდომის ტექსტი (Udio / MusicGen fallback, რომელიც აღარ არსებობს).
+- **სტატუსი:** Production-შია (PR #45). `run-migration` 404 PROVEN live; ერთიანი admin წესი BUILT_NOT_PROVEN live. „Pipeline“ ბარათი Production-ში ჯერ მცდარს ამბობს („Udio (primary)“, FLUX anchor, Kling); ამ branch-ზე გასწორებულია (`d387508e`). სხვაგან დარჩენილი ძველი ტექსტიც გასწორდა `505066c4`-ში: `/api/health/providers`-ის `pipeline` ბლოკი Google-only რეჟიმში ახლა Veo-ს და Gemini-ის frame მოდელს ასახელებს (FLUX anchor და Kling მხოლოდ Google-only-ის გამორთვისას), Lyria-ს შეცდომის ანგარიში კი აღარ ამბობს Udio / MusicGen fallback-ს (მის უკან არაფერი ეშვება, R7). ორივე ტესტით დაფიქსირებულია; Production-ში ჯერ არ არის.
 - **პასუხისმგებელი:** Claude (ბარათის გასწორება), GG (admin-ით შესვლის ცოცხალი შემოწმება; „Confirm email“, 4.2).
 - **DoD:** GG admin-ით შედის და პანელი იხსნება; არა-admin `/api/admin/*`-ზე 404-ს იღებს; Pipeline ბარათი კოდის რეალურ ძრავებს აჩვენებს (ტესტით).
 
@@ -256,7 +256,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
 | 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); `landing.spec.ts:380`-ის მიზეზი; providers health-ის და Lyria-ს ძველი ტექსტი; ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); `landing.spec.ts:380`-ის მიზეზი; ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ka/en/ru ეკრანების აუდიტი; აკრძალული host-ების და drift-ის სტატიკური ტესტები | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
 
