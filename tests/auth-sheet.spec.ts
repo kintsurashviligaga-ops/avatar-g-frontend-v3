@@ -138,6 +138,12 @@ test.describe('the sign-in sheet', () => {
     // The session exists now — and nothing (the first-login welcome) may open on top of the step still to fill in.
     await expect(page.getByRole('dialog')).toHaveCount(1);
     expect(b.verifies).toEqual([{ email: 'new@example.com', token: '123456', type: 'email', gotrue_meta_security: {} }]);
+    // The password typed into the name field too (a real sign-up, 2026-10-09) is refused: it would show in plain text.
+    await page.getByTestId('auth-name').fill('a-long-passphrase');
+    await page.getByTestId('auth-new-password').fill('a-long-passphrase');
+    await page.getByTestId('auth-finish').click();
+    await expect(sheet(page).getByRole('alert')).toHaveText('სახელის ველში პაროლი წერია. ჩაწერე სახელი ან დატოვე ცარიელი.');
+    expect(b.userUpdates).toHaveLength(0);
     await page.getByTestId('auth-name').fill('ნინო');
     await page.getByTestId('auth-new-password').fill('short');
     await expect(page.getByTestId('auth-finish')).toBeDisabled();

@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import type { GenerateLinkParams } from '@supabase/supabase-js';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createServiceRoleClient, isSupabaseConfiguredServer } from '@/lib/supabase/server';
+import { accountExists } from '@/lib/auth/accountStatus';
+import { withoutMailto } from '@/lib/auth/identifier';
 import {
   buildOtpEmail,
   describeOtpShape,
@@ -56,7 +59,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     | { email?: unknown; purpose?: unknown; password?: unknown; locale?: unknown }
     | null;
 
-  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const email = typeof body?.email === 'string' ? withoutMailto(body.email).toLowerCase() : '';
   if (!isPlausibleEmail(email)) {
     return NextResponse.json({ error: 'invalid_email' }, { status: 400 });
   }
@@ -96,6 +99,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let data: unknown = null;
     let error: { message?: string; code?: string } | null = null;
     const randomPassword = () => randomBytes(32).toString('base64url');
+    // Every code is asked for through here, so the takeover guard below can ask for the same code again.
+    let lastLink: GenerateLinkParams | null = null;
+    const generateLink = (params: GenerateLinkParams) => {
+      lastLink = params;
+      return admin.auth.admin.generateLink(params);
+    };
 
     if (purpose === 'register') {
       // SIGN-UP (2026-10-03). A new address gets an UNCONFIRMED account with a random password nobody knows — the code
@@ -106,7 +115,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // person to log in. It says the address is registered — the answer sign-up exists to give — under the same
       // AUTH_IP / per-address limits as every code. An UNCONFIRMED row (a sign-up nobody finished) is not an account:
       // it gets a fresh code below.
-      ({ data, error } = await admin.auth.admin.generateLink({
+      ({ data, error } = await generateLink({
         type: 'signup', email, password: randomPassword(), options: { data: { password_set: false } },
       }));
       if (error && (error.code === 'email_exists' || isEmailTakenError(error.message))) {
@@ -115,23 +124,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     } else if (purpose === 'recovery') {
       // „Forgot password": Supabase's own RECOVERY code (generateLink sends nothing; we mail it). It verifies with
       // type 'recovery', which signs the person in, and the sheet asks for the new password.
-      ({ data, error } = await admin.auth.admin.generateLink({ type: 'recovery', email }));
+      ({ data, error } = await generateLink({ type: 'recovery', email }));
     } else {
       // 'signin' and the legacy 'continue' start from a sign-in (magiclink) code.
-      ({ data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email }));
+      // ⚠️ LOG-IN MUST NOT CREATE AN ACCOUNT. For an address with no account GoTrue does not answer „user not found" to
+      // a magiclink: it quietly runs a sign-up and creates the user (proven on Production 2026-10-09). So 'signin' asks
+      // the database first and answers no_account without touching Supabase Auth. If the database cannot answer, it
+      // falls through as before ('continue' creates on purpose, below).
+      if (purpose === 'signin' && (await accountExists(admin, email)) === false) {
+        return NextResponse.json({ error: 'no_account' }, { status: 404 });
+      }
+      ({ data, error } = await generateLink({ type: 'magiclink', email }));
       // THE 2026-10-01 ONE-FIELD FLOW ('continue', still answered for tabs running that build): an address with no
       // account gets one, created UNCONFIRMED with a random password, and the code is the only way in. Same OK either way.
       if (purpose === 'continue' && error && isUserNotFoundError(error.message)) {
-        ({ data, error } = await admin.auth.admin.generateLink({ type: 'signup', email, password: randomPassword() }));
+        ({ data, error } = await generateLink({ type: 'signup', email, password: randomPassword() }));
       }
     }
 
     // ⚠️ PRE-ACCOUNT TAKEOVER. An address can already hold an UNCONFIRMED account whose password a stranger chose (the
     // retired two-field sign-up never proved the address). The code proves the address now — so whatever password the
     // unproven account carried must not survive into the owner's account.
+    // ⚠️ …AND THE CODE WE MAIL MUST BE ASKED FOR AFTER THAT. GoTrue clears every pending one-time token of a user whose
+    // password changes (confirmation_token, recovery_token, auth.one_time_tokens), so the code generated above dies with
+    // the rotation. Proven on Production 2026-10-09: generate_link → PUT /admin/users → /verify 403 otp_expired 13 s
+    // later, confirmation_token empty — every email sign-up was mailed a dead code. Ask again; that code is the one mailed.
     const pending = (data as { user?: { id?: string; email_confirmed_at?: string | null } } | null)?.user;
-    if ((purpose === 'continue' || purpose === 'register') && !error && pending?.id && !pending.email_confirmed_at) {
+    if ((purpose === 'continue' || purpose === 'register') && !error && pending?.id && !pending.email_confirmed_at && lastLink) {
       await admin.auth.admin.updateUserById(pending.id, { password: randomPassword() });
+      ({ data, error } = await generateLink(lastLink));
     }
 
     if (error) {
@@ -142,6 +163,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // cost people a dead wait.) Nothing is generated and nothing is mailed.
       if ((purpose === 'signin' || purpose === 'recovery') && isUserNotFoundError(msg)) {
         return NextResponse.json({ error: 'no_account' }, { status: 404 });
+      }
+      // An address our loose check let through but GoTrue's stricter one refuses is the person's typo, not an outage:
+      // the sheet says „check the address" instead of „could not send, try in a minute".
+      if (/unable to validate email address/.test(msg)) {
+        return NextResponse.json({ error: 'invalid_email' }, { status: 400 });
       }
 
       // Everything else is a REAL failure and is logged, whatever the purpose. (It used to be swallowed as „code

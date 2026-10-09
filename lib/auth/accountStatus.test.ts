@@ -1,4 +1,4 @@
-import { isAccountStatus, lookupAccountStatus, statusFromRow } from './accountStatus';
+import { accountExists, isAccountStatus, lookupAccountStatus, statusFromRow } from './accountStatus';
 
 describe('statusFromRow — the database answer → what the sign-in sheet does', () => {
   it.each([
@@ -39,5 +39,22 @@ describe('lookupAccountStatus', () => {
   it('isAccountStatus guards the client side of the wire', () => {
     expect(['none', 'password', 'code', 'unknown'].every(isAccountStatus)).toBe(true);
     expect(isAccountStatus('admin')).toBe(false);
+  });
+});
+
+describe('accountExists — does the address have an account row at all (log-in must not create one)', () => {
+  const client = (result: { data: unknown; error: unknown } | Error) => ({
+    rpc: jest.fn(async () => { if (result instanceof Error) throw result; return result as { data: unknown; error: null }; }),
+  });
+
+  it('reads `exists` directly: an unconfirmed row exists, no row does not', async () => {
+    expect(await accountExists(client({ data: { exists: false, confirmed: false, password: null }, error: null }), 'a@example.com')).toBe(false);
+    expect(await accountExists(client({ data: { exists: true, confirmed: false, password: false }, error: null }), 'a@example.com')).toBe(true);
+  });
+
+  it('is null (not false) when the database cannot answer, so the caller never refuses on a guess', async () => {
+    expect(await accountExists(client({ data: null, error: { message: 'boom' } }), 'a@example.com')).toBeNull();
+    expect(await accountExists(client({ data: { exists: 'no' }, error: null }), 'a@example.com')).toBeNull();
+    expect(await accountExists(client(new Error('network')), 'a@example.com')).toBeNull();
   });
 });

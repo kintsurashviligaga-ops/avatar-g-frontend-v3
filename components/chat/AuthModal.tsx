@@ -93,6 +93,7 @@ const COPY = {
     errEmail: 'შეიყვანე სწორი ელფოსტა.', errPhone: 'შეიყვანე ტელეფონის ნომერი, მაგ. 599 12 34 56.',
     errPassword: 'პაროლი არასწორია.', errCredentials: 'ელფოსტა ან პაროლი არასწორია.',
     errWeak: `პაროლი უნდა იყოს მინიმუმ ${MIN_PASSWORD} სიმბოლო.`, errPwned: 'ეს პაროლი ძალიან გავრცელებულია — აირჩიე სხვა.',
+    errNameIsPassword: 'სახელის ველში პაროლი წერია. ჩაწერე სახელი ან დატოვე ცარიელი.',
     errMismatch: 'პაროლები არ ემთხვევა.', errCode: 'კოდი არასწორია. შეამოწმე და სცადე ხელახლა.',
     errExpired: 'კოდს ვადა გაუვიდა — გამოითხოვე ახალი.', errCodeLength: (n: number) => `შეიყვანე ${n}-ნიშნა კოდი.`,
     errRate: 'ძალიან ბევრი მცდელობა — სცადე რამდენიმე წუთში.', errRateIn: (m: number) => `ძალიან ბევრი მცდელობა — სცადე ${m} წუთში.`,
@@ -125,6 +126,7 @@ const COPY = {
     errEmail: 'Enter a valid email address.', errPhone: 'Enter a phone number with the country code, e.g. +995 599 12 34 56.',
     errPassword: 'That password is not correct.', errCredentials: 'Email or password is not correct.',
     errWeak: `Use at least ${MIN_PASSWORD} characters.`, errPwned: 'That password is too common — choose another one.',
+    errNameIsPassword: 'The Name field holds your password. Enter your name, or leave it empty.',
     errMismatch: "The passwords don't match.", errCode: "That code isn't right. Check it and try again.",
     errExpired: 'That code has expired — request a new one.', errCodeLength: (n: number) => `Enter the ${n}-digit code.`,
     errRate: 'Too many attempts — try again in a few minutes.', errRateIn: (m: number) => `Too many attempts — try again in ${m} min.`,
@@ -157,6 +159,7 @@ const COPY = {
     errEmail: 'Введите корректный адрес эл. почты.', errPhone: 'Введите номер с кодом страны, напр. +995 599 12 34 56.',
     errPassword: 'Неверный пароль.', errCredentials: 'Неверная почта или пароль.',
     errWeak: `Минимум ${MIN_PASSWORD} символов.`, errPwned: 'Этот пароль слишком распространён — выберите другой.',
+    errNameIsPassword: 'В поле «Имя» указан пароль. Введите имя или оставьте поле пустым.',
     errMismatch: 'Пароли не совпадают.', errCode: 'Неверный код. Проверьте и попробуйте снова.',
     errExpired: 'Срок действия кода истёк — запросите новый.', errCodeLength: (n: number) => `Введите ${n}-значный код.`,
     errRate: 'Слишком много попыток — попробуйте через несколько минут.', errRateIn: (m: number) => `Слишком много попыток — попробуйте через ${m} мин.`,
@@ -519,6 +522,9 @@ export default function AuthModal({ open, locale, onClose, onAuthed, initialMode
   const saveProfile = useCallback(async (skipPassword: boolean) => {
     clearMessages();
     if (!skipPassword && password.length < MIN_PASSWORD) { setError(t.errWeak); return; }
+    // The name is shown in the menu and the profile. A password typed into it (a real sign-up, 2026-10-09) would sit there
+    // in plain text, so the two may not be the same.
+    if (!skipPassword && name.trim() && name.trim() === password) { setError(t.errNameIsPassword); return; }
     const s = supabaseOr();
     if (!s) return;
     setBusy(true);

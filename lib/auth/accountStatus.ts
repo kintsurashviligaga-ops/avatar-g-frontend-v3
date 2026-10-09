@@ -35,6 +35,25 @@ interface RpcClient {
   rpc(fn: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>;
 }
 
+/**
+ * Does the address have an account row at all (confirmed or not)? `null` when the database cannot answer.
+ *
+ * Log-in by code needs this BEFORE it asks Supabase for a code: GoTrue's `generate_link` turns a magiclink for an
+ * address with no account into a sign-up and CREATES the user (proven on Production 2026-10-09 — one sign-in probe for
+ * an unknown address left an unconfirmed account behind). `statusFromRow` folds „no row" and „unconfirmed" into
+ * `none`, so this reads `exists` directly.
+ */
+export async function accountExists(admin: RpcClient, email: string): Promise<boolean | null> {
+  try {
+    const { data, error } = await admin.rpc('auth_account_status', { p_email: email, p_phone: null });
+    if (error || !data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const exists = (data as { exists?: unknown }).exists;
+    return typeof exists === 'boolean' ? exists : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Ask the database. Fails SOFT to `unknown` — the sheet then offers every way in rather than a wrong one. */
 export async function lookupAccountStatus(
   admin: RpcClient,
