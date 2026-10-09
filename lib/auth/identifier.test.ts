@@ -6,6 +6,13 @@ describe('the one sign-in field', () => {
     expect(parseIdentifier('giorgi@example', { phone: true })).toEqual({ kind: 'invalid' });
   });
 
+  it('reads an address copied from a mail link (mailto:) as the address', () => {
+    expect(parseIdentifier('mailto:kintsurashviligaga+ru@gmail.com', { phone: false }))
+      .toEqual({ kind: 'email', email: 'kintsurashviligaga+ru@gmail.com' });
+    expect(parseIdentifier(' MAILTO: Giorgi@Example.GE ', { phone: true })).toEqual({ kind: 'email', email: 'giorgi@example.ge' });
+    expect(parseIdentifier('mailto:', { phone: true })).toEqual({ kind: 'invalid' });
+  });
+
   it('reads a Georgian mobile however it is typed', () => {
     for (const typed of ['599 12 34 56', '599123456', '599-12-34-56', '(599) 12 34 56', '+995 599 12 34 56', '995599123456', '00995599123456', '0599123456']) {
       expect(parseIdentifier(typed, { phone: true })).toEqual({ kind: 'phone', phone: '+995599123456' });

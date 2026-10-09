@@ -16,6 +16,12 @@ export type Identifier =
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** An address copied from a mail link arrives as `mailto:name@host` (iPhone „Copy" on a link, 2026-10-09: GoTrue
+ *  refused it as „invalid format" and the sheet said the code could not be sent). The scheme is not part of it. */
+export function withoutMailto(raw: string): string {
+  return raw.trim().replace(/^mailto:\s*/i, '');
+}
+
 /** Does the text look like the person is typing a phone number (so far)? Drives the field's icon. */
 export function looksLikePhone(raw: string): boolean {
   const t = raw.trim();
@@ -40,7 +46,7 @@ export function normalizePhone(raw: string): string | null {
 }
 
 export function parseIdentifier(raw: string, opts: { phone: boolean }): Identifier {
-  const t = (raw ?? '').trim();
+  const t = withoutMailto(raw ?? '');
   if (!t) return { kind: 'invalid' };
   if (t.includes('@')) {
     const email = t.toLowerCase();
