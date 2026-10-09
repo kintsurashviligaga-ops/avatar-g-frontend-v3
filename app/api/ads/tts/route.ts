@@ -11,6 +11,7 @@ import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { synthesizeWithTimestamps } from '@/lib/elevenlabs/ttsTimestamps';
 import { georgianVoiceId } from '@/lib/audio/georgian-voice';
+import { requestedVoiceId } from '@/lib/audio/voiceId';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
   if (text.length > 2000) return NextResponse.json({ error: 'text too long (max 2000 chars)' }, { status: 413 });
 
   const gender = body.gender === 'male' ? 'male' : 'female';
-  const voiceId = (typeof body.voiceId === 'string' && body.voiceId.trim()) || georgianVoiceId(gender);
+  const askedVoice = requestedVoiceId(body.voiceId);
+  if (askedVoice === null) return NextResponse.json({ error: 'voiceId is not a valid voice id' }, { status: 400 });
+  const voiceId = askedVoice ?? georgianVoiceId(gender);
 
   const r = await synthesizeWithTimestamps(text, voiceId, { stability: 0.48 });
   if (!r.ok) {

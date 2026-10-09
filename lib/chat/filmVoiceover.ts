@@ -33,6 +33,7 @@ import { isGoogleOnly } from '@/lib/veo/policy';
 import { selectTtsModel, voiceSettingsForModel, isGeorgianText, type ElevenLabsModelId } from '@/lib/audio/tts-model';
 import { genderForPersona, type TtsGender } from '@/lib/audio/google-tts';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE, georgianVoiceId } from '@/lib/audio/georgian-voice';
+import { isElevenLabsVoiceId } from '@/lib/audio/voiceId';
 import { resolveVoiceId, personaToGender, toneToVoiceSettings, type VoiceLanguage, type VoicePersonaSel, type VoiceTone } from '@/lib/chat/voiceMap';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { withElevenLabsSlot } from '@/lib/elevenlabs/concurrency';
@@ -231,8 +232,9 @@ async function synthesizeVoiceover(
       (voiceIdOverride && voiceIdOverride.trim() ? voiceIdOverride.trim() : null) ??
       ((georgian && process.env.ELEVENLABS_GEORGIAN_VOICE_ID
         ? process.env.ELEVENLABS_GEORGIAN_VOICE_ID
-        : undefined) ?? process.env.ELEVENLABS_VOICE_ID);
-    if (voiceId) {
+        : undefined) ?? process.env.ELEVENLABS_VOICE_ID)?.trim(); // a pasted env value often ends in a newline
+    // An override that is not a voice id never reaches the provider URL path (lib/audio/voiceId): no voice, no call.
+    if (voiceId && isElevenLabsVoiceId(voiceId)) {
       const primaryModel = selectTtsModel(text);
       // eleven_v3 is the ONLY EL model with native `ka`, but it is alpha / limited-access — if the
       // account can't use it the request 4xxs and Georgian voiceover fails entirely (avatar + video

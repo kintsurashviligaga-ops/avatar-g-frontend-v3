@@ -28,13 +28,14 @@
 **⚠️ AGENT: განაახლე ეს სექცია ყოველი Part-ის დასრულებისას.**
 ```
 CURRENT PHASE: Part 2 (Vertex Migration + Provider Cleanup) — Part 1 complete 2026-10-08 (docs/handoffs/part-1-report.md);
-          Master Task §60 steps 1–25 done, step 26 STOP (no promotion)
-CURRENT STATUS: Certification written: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN)
-LAST SESSION: 2026-10-08 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (code verified at 70a5fe88; main = 572d5fac); draft PR #42, CI green
-NEXT ACTION: owner actions in final-launch-certification.md §Y (OTP fix deploy, Resend domain, Veo smoke retry,
-          VIDEO_DIRECTOR_RUNS=admin on Preview only, Stripe Live refund/dispute events, BOG credentials / merchant
-          activation (every Production BOG checkout failed at start), 20261008c right after the deploy,
+          Master Task §60 steps 1–25 done; step 26 held until the owner approved the deploy (2026-10-09 03:19:58Z)
+CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-certification.md, §57 block all NO / NOT PROVEN).
+          DEPLOYED 2026-10-09: PR #42 merged into main as 9f1bff68 (03:28Z); Production serves 9f1bff6 (~03:36Z);
+          public checks passed (certification §A); 20261008c (uploads 50 MB, media only) applied 03:38Z and verified.
+LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
+LAST COMMIT: see `git log` on that branch (deployed head 5013d87c: jest 684 suites green, CI green; main = 9f1bff68); PR #42 merged
+NEXT ACTION: owner actions in final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
+          BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
           the API key) → ModelCatalog data ✓ (lib/models, runtime check, admin report) → pickers on the catalog and
@@ -112,7 +113,7 @@ BLOCKERS:
   Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
   lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
   thread (PR #43, commit 87122ff); since 13:55 UTC also on the cert branch (0421377a), so launch-certification Previews
-  carry it. Stays FAILED for Production until that fix is deployed with the owner's approval.
+  carry it. Deployed to Production 2026-10-09 (9f1bff6, owner-approved); sign-in still fails there until AUTH-2.
 · AUTH-2 (launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
   /admin/generate_link 200, 13:57:06), then Resend refuses the mail: "resend 403 The myavatar.ge domain is not verified"
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
