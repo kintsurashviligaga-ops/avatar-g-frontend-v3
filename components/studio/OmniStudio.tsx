@@ -2933,8 +2933,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const chatOnly = activeTool === 'chat';
   /** The two image workspaces draw their own header, panel and result pane (components/studio/create). */
   const shootActive = activeTool === 'interior' || activeTool === 'photoshoot';
-  // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks, but
-  // the `chatOnly` effect below closes the sheet again when `next dev`'s Strict Mode re-runs the mount effects after a deep link.
+  // Entering either one shows its panel (a phone's sheet; on a desktop it reveals the column). setPanelService already asks;
+  // this held the sheet open through `next dev`'s Strict Mode re-run of the `chatOnly` effect below, which no longer closes
+  // anything on mount (2026-10-09).
   useEffect(() => { if (shootActive) setOptionsOpen(true); }, [shootActive]);
   // ── EVERY SERVICE ITS OWN SESSION ────────────────────────────────────────────────────────────────────────────
   // ⚠️ ONE THREAD FOR EVERY TOOL. A chat, then Video, then the Photographer all landed in ONE conversation: image results
@@ -3023,16 +3024,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (isDesktop) setPanelOpen(true); else setOptionsOpen(true);
   }, [isDesktop, activeTool]);
   // The Music tool's Create screen IS its settings: choosing the tool (a deep link, the + sheet, the sidebar) opens them on a
-  // phone. An effect on the derived tool, not a line in selectTool: on a `?tool=music` deep link selectTool runs inside the
-  // mount effects, and a StrictMode re-run of the chat-only effect below (still holding the first render's chatOnly = true)
-  // would close a sheet opened there in the same pass. This one fires once the tool HAS changed, after that settles.
+  // phone. An effect on the derived tool, not a line in selectTool: it fires once the tool HAS changed, whichever path changed
+  // it. (It was also the way around a StrictMode re-run of the chat-only effect below closing a deep link's sheet; that
+  // effect no longer closes anything on mount.)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when the TOOL changes; a viewport change must not re-open it
   useEffect(() => { if (activeTool === 'music' && !isDesktop) setOptionsOpen(true); }, [activeTool]);
   useEffect(() => { if (mode === 'surgical' || mode === 'photo') setOptionsOpen(false); }, [mode]);
   // Entering the chat puts a phone's settings sheet away (it has nothing to show there), so switching back to a tool
   // never springs a sheet open by itself. The desktop PANEL is not touched: `panelOpen` is the user's choice, and
   // leaving the chat brings the panel back exactly as it was (AI Studio).
-  useEffect(() => { if (chatOnly) setOptionsOpen(false); }, [chatOnly]);
+  // Only on the way INTO the chat: on mount there is nothing to put away, and the dev-only StrictMode re-run (still
+  // holding the first render's chatOnly = true) closed the sheet a `?tool=video` deep link had just opened, so
+  // `next dev` and the E2E suite showed a phone a studio Production never serves.
+  const wasChatOnly = useRef(chatOnly);
+  useEffect(() => {
+    if (chatOnly && !wasChatOnly.current) setOptionsOpen(false);
+    wasChatOnly.current = chatOnly;
+  }, [chatOnly]);
   // The JobTray floats at the right edge; on a desktop it moves left of the settings column instead of over it.
   const settingsSurfaceRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
