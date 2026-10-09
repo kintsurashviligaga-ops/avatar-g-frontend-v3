@@ -42,11 +42,11 @@ No Production configuration, user, row, table or policy was changed. No secret w
 
 ### 2. Security Advisor (11:52Z)
 
-0 errors. 2 warnings, 23 info.
+0 errors. 2 warnings, 23 info. **Re-run 14:56Z (after GG switched leaked-password protection on): 0 errors, 1 warning (`vector`, accepted), 23 info.**
 
 | Finding | Decision |
 |---|---|
-| WARN Leaked password protection disabled | **BLOCKED_OWNER**: dashboard-only toggle (Claude has no Management API token and read-only browser access). Supabase offers it on Pro and above; GG's dashboard shows the organization on **Pro**, so it should switch on without an upgrade. Never upgrade for it. Steps below. |
+| WARN Leaked password protection disabled | **RESOLVED 14:55Z — PROVEN ON.** GG switched it on (Authentication → Attack Protection → „Configure in email provider" → Email provider → „Prevent use of leaked passwords" → Save; photo „Successfully updated settings", 14:55Z). No upgrade was needed (org on Pro). The Security Advisor re-run at 14:56Z no longer lists this warning. Checked at the same time that nothing else moved: public `/auth/v1/settings` still `mailer_autoconfirm: false` (Confirm email ON), sign-up allowed, providers email/google/github; and captcha is **off** (an empty `POST /auth/v1/token?grant_type=password` answers `validation_failed`, not a captcha refusal). GG had briefly toggled „Enable Captcha protection" on that page without a secret; Claude asked for Cancel before any save, because the site sends no captcha token and every sign-in would have failed. |
 | WARN `vector` extension in `public` | **No change (accepted)**. One column and one function use it; moving it is a DB migration that can break that function's type lookup, and the RAG path it serves is off. Not worth the risk now; revisit with the RAG work. |
 | INFO 23× RLS enabled, no policy | **Intended**: service-role-only tables (admin_emails, director_runs, voice_calls, …). Anon and a signed-in stranger read 0 rows from them (§5). |
 
@@ -54,7 +54,7 @@ No Production configuration, user, row, table or policy was changed. No secret w
 
 - Effect: new passwords and password changes that appear in HaveIBeenPwned are rejected. Existing sessions and Google sign-ins are unaffected.
 - Rollback: the same toggle off.
-- Could not be applied by Claude (no Management API token, dashboard only, browser read-only).
+- Could not be applied by Claude (no Management API token, dashboard only, browser read-only). **Applied by GG 14:55Z** (see §2). In the current dashboard the switch sits in the Email provider settings; the Attack Protection page only links to it.
 
 ### 4. Admin access (one rule)
 
@@ -127,12 +127,12 @@ The DKIM key is unique to the domain and only Resend shows it. Claude cannot rea
 
 ## Owner actions (exact)
 
-1. **Resend domain (launch blocker AUTH-2).** The domain is already added (status Not Started).
+1. **DONE: Verified 14:08Z (§6).** ~~**Resend domain (launch blocker AUTH-2).**~~ The domain is already added (status Not Started).
    Open it in Resend (https://resend.com/domains → `myavatar.ge`) and paste the DKIM value (`resend._domainkey` row) in the thread.
    Claude adds the MX + SPF TXT on `send` and the DKIM TXT with `vercel dns add` (additive only) and checks propagation.
    Then press **Verify** in Resend. Expected: "Verified". Then a code sign-in on https://myavatar.ge/ka delivers mail.
    Rollback: `vercel dns rm` those record ids (they do not touch the website records).
-2. **Leaked password protection.** Supabase dashboard → project → **Authentication → Attack Protection** (sidebar; the direct
+2. **DONE 14:55Z.** ~~**Leaked password protection.**~~ Supabase dashboard → project → **Authentication → Attack Protection** (sidebar; the direct
    `/auth/attack-protection` URL given earlier answers 404) → "Prevent use of leaked passwords" → ON → Save.
    If it is locked or asks for an upgrade, skip it and say so: never upgrade for it.
 3. **Redirect URL (additive):** Authentication → URL Configuration → Add URL →
