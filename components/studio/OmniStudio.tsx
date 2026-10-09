@@ -325,7 +325,7 @@ const COPY: Record<Lang, {
   modeChat: string; modeImage: string; imgPlaceholder: string; generatingImage: string; imageFailed: string; imgDownload: string; editImage: string; share: string; linkCopied: string; remix: string; remixPlaceholder: string; remixGenerating: string;
   magicHint: string;
   modeMusic: string; musicPlaceholder: string; generatingMusic: string; musicFailed: string; lyricsBlocked: string;
-  modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string;
+  modeVideo: string; videoPlaceholder: string; generatingVideo: string; videoFailed: string; generatingMyVoice: string; myVoiceCreate: string; myVoiceLyricsPh: string; myVoiceReady: string; writeLyricsBtn: string; upscaleBtn: string; upscaling: string; upscaleFailed: string; myVoiceNotApplied: string;
   modeLipsync: string; lipsyncPlaceholder: string; generatingLipsync: string; lipsyncFailed: string; lipsyncNeedFiles: string; lipsyncAuth: string; lipAudioLabel: string;
   modeRemix: string; remixUploadHint: string; remixRunning: string; remixDone: string; remixFailed: string; remixNeedVideo: string;
   remixNeedTrack: string; remixNeedCaption: string;
@@ -351,7 +351,7 @@ const COPY: Record<Lang, {
     modeMusic: 'მუსიკა', musicPlaceholder: 'აღწერე მუსიკა (მაგ. ეპიკური კინო-სცენა)…',
     generatingMusic: 'მუსიკა იქმნება… (1–3 წუთი)', musicFailed: 'მუსიკის გენერაცია ვერ მოხერხდა. სცადე თავიდან.', lyricsBlocked: '⚠️ ლირიკა დაიბლოკა (საავტორო უფლებები). შეცვალე სიტყვები ან დააჭირე „✨ ლირიკა დამიწერე".',
     modeVideo: 'ვიდეო', videoPlaceholder: STUDIO_EMPTY.ka.videoPlaceholder,
-    generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.',
+    generatingVideo: 'ვიდეო იქმნება… სცენარი, სცენები და საბოლოო მონტაჟი', videoFailed: 'ვიდეოს გენერაცია ვერ მოხერხდა — შესაძლოა სერვისი დროებით დატვირთულია. სცადე თავიდან რამდენიმე წუთში.', generatingMyVoice: '🎵 სიმღერა იქმნება შენი ხმით… (~2–3 წუთი, დაელოდე)', myVoiceCreate: 'ჩემი ხმით შექმნა', myVoiceLyricsPh: 'დაწერე ლირიკა — რას იმღერებს შენი ხმა', myVoiceReady: 'დაწერე ლირიკა და შექმენი', writeLyricsBtn: '✨ ლირიკა დამიწერე', upscaleBtn: '⬆ HD გადიდება', upscaling: '🔍 ვადიდებ HD-მდე…', upscaleFailed: 'გადიდება ვერ მოხერხდა.', myVoiceNotApplied: 'შენი ხმის გადატანა ვერ მოხერხდა: ეს სიმღერა AI ვოკალითაა.',
     modeLipsync: 'ავატარი', lipsyncPlaceholder: 'ჩაწერე ტექსტი — AI წამყვანი ალაპარაკდება შენი ხმით (ან მიამაგრე ფოტო, რომ ის ალაპარაკდეს)…',
     modeRemix: 'რემიქსი', remixUploadHint: 'ატვირთე ვიდეო რედაქტირებისთვის', remixRunning: 'ვიდეო მუშავდება…', remixDone: 'მზადაა', remixFailed: 'რემიქსი ვერ მოხერხდა. სცადე თავიდან.', remixNeedVideo: 'ჯერ ატვირთე ვიდეო.',
     remixNeedTrack: '🎵 მუსიკის ჩასამატებლად ვიდეოსთან ერთად აუდიო ფაილიც მიამაგრე (MP3 / WAV), მერე გამომიგზავნე.',
@@ -377,7 +377,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Music', musicPlaceholder: 'Describe the music (e.g. epic cinematic scene)…',
     generatingMusic: 'Composing music… (1–3 min)', musicFailed: 'Music generation failed. Try again.', lyricsBlocked: '⚠️ Lyrics were blocked (copyright). Change the words or tap "✨ Write lyrics".',
     modeVideo: 'Video', videoPlaceholder: STUDIO_EMPTY.en.videoPlaceholder,
-    generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.',
+    generatingVideo: 'Producing video… storyboard, scenes, then final montage', videoFailed: 'Video generation failed — the service may be busy. Please try again in a few minutes.', generatingMyVoice: '🎵 Creating a song in your voice… (~2–3 min, please wait)', myVoiceCreate: 'Create with my voice', myVoiceLyricsPh: 'Write lyrics — what your voice will sing', myVoiceReady: 'Write lyrics & create', writeLyricsBtn: '✨ Write lyrics', upscaleBtn: '⬆ HD upscale', upscaling: '🔍 Upscaling to HD…', upscaleFailed: 'Upscale failed.', myVoiceNotApplied: 'Your voice could not be applied: this song has the AI vocal.',
     modeLipsync: 'Avatar', lipsyncPlaceholder: 'Type a script — an AI presenter speaks it in your voice (or attach a photo to make it talk)…',
     modeRemix: 'Remix', remixUploadHint: 'Upload a video to edit', remixRunning: 'Processing video…', remixDone: 'Ready', remixFailed: 'Remix failed. Try again.', remixNeedVideo: 'Upload a video first.',
     remixNeedTrack: '🎵 To add music, attach an audio file (MP3 / WAV) alongside the video, then send.',
@@ -403,7 +403,7 @@ const COPY: Record<Lang, {
     modeMusic: 'Музыка', musicPlaceholder: 'Опишите музыку (напр. эпичная кино-сцена)…',
     generatingMusic: 'Создаю музыку… (1–3 мин)', musicFailed: 'Не удалось создать музыку. Попробуйте снова.', lyricsBlocked: '⚠️ Текст заблокирован (авторские права). Измените слова или нажмите «✨ Написать текст».',
     modeVideo: 'Видео', videoPlaceholder: STUDIO_EMPTY.ru.videoPlaceholder,
-    generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.',
+    generatingVideo: 'Создаю видео… раскадровка, сцены и монтаж', videoFailed: 'Не удалось создать видео — сервис может быть загружен. Попробуйте через несколько минут.', generatingMyVoice: '🎵 Создаю песню вашим голосом… (~2–3 мин, подождите)', myVoiceCreate: 'Создать моим голосом', myVoiceLyricsPh: 'Напишите текст — что споёт ваш голос', myVoiceReady: 'Напишите текст и создайте', writeLyricsBtn: '✨ Написать текст', upscaleBtn: '⬆ HD увеличить', upscaling: '🔍 Увеличиваю до HD…', upscaleFailed: 'Не удалось увеличить.', myVoiceNotApplied: 'Ваш голос применить не удалось: в песне AI-вокал.',
     modeLipsync: 'Аватар', lipsyncPlaceholder: 'Введите текст — AI-ведущий озвучит его вашим голосом (или прикрепите фото, чтобы оно заговорило)…',
     modeRemix: 'Ремикс', remixUploadHint: 'Загрузите видео для редактирования', remixRunning: 'Обработка видео…', remixDone: 'Готово', remixFailed: 'Ремикс не удался. Попробуйте снова.', remixNeedVideo: 'Сначала загрузите видео.',
     remixNeedTrack: '🎵 Чтобы добавить музыку, прикрепите аудиофайл (MP3 / WAV) вместе с видео и отправьте.',
@@ -4977,7 +4977,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             ...(m.useTrained ? {} : isVoiceClone ? { voiceReference: uploadedAudioUrl } : uploadedAudioUrl ? { audioReference: uploadedAudioUrl } : {}),
           }),
         });
-        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: unknown };
+        const j = (await res.json().catch(() => ({}))) as { success?: boolean; url?: string; error?: string; coverUrl?: string; engine?: string; code?: string; controls?: unknown; voiceApplied?: boolean };
         onProgress({ pct: 100 });
         if (j.success && j.url) {
           // A COVER (audioReference: an uploaded track, not a trained/cloned voice) is billed a FLAT 30s
@@ -4990,7 +4990,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const sungByUser = m.useTrained || isVoiceClone;
           // The slider note's mode, only when a slider reached the engine (the route's `controls.applied`).
           const controlsMode = musicControlsModeOf(j.controls);
-          updateBubble(bubbleId, { text: '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(controlsMode ? { musicControlsMode: controlsMode } : {}), regen: makeMusicRegenSpec({
+          // A trained voice whose conversion missed delivers the composed song: say so on the bubble (the route's
+          // `voiceApplied: false`), never pass the AI vocal off as the user's own.
+          updateBubble(bubbleId, { text: j.voiceApplied === false ? t.myVoiceNotApplied : '', audioUrl: j.url, ...(j.coverUrl ? { coverUrl: j.coverUrl } : {}), ...(j.engine ? { engine: j.engine } : {}), ...(controlsMode ? { musicControlsMode: controlsMode } : {}), regen: makeMusicRegenSpec({
             prompt: m.prompt, genre: m.genre, instrumental: sungByUser ? false : m.instrumental, lyrics: m.lyrics,
             durationSec: coverBilledFlat30 ? 30 : m.duration, tempo: m.tempo, ...(sungByUser ? {} : { vocalGender: m.voiceType }),
             weirdness: sliders.weirdness, styleInfluence: sliders.styleInfluence,
