@@ -16,7 +16,7 @@
 | Production commit | `66d7163` | `https://myavatar.ge/api/health` 05:52:57Z: `"commit":"66d7163"` |
 | GitHub CI `main`-ზე | მწვანე: CI run 398 და „E2E - Preview Contract“ 1070, ორივე `66d7163f`-ზე | GitHub Actions |
 | Supabase Production migrations | 14 ჩანაწერი; ბოლო `20261009a_function_hardening` (05:39:14Z) | `list_migrations`, project `zwksnayknzggdcenqqxy` |
-| Security Advisor | 0 error, 2 warning (`vector` `public`-ში; leaked-password protection), 23 info | 2026-10-09 05:39Z-ის შემდეგ |
+| Security Advisor | 0 error, 1 warning (`vector` `public`-ში, მიღებული); leaked-password protection ჩართულია 14:55Z-დან | 2026-10-09 14:56Z (Supabase Auth ნაკადის ხელახალი გაშვება; 05:39Z-ზე იყო 0 / 2 / 23 info) |
 | Production ცხრილები | 52 `public` ცხრილი, RLS ჩართულია 52-ზე | `pg_tables`, 06:0xZ |
 | Storage buckets | `uploads` private 50 MB; `renders`, `avatars`, `music` public; `studio`, `twins`, `fonts` private | `storage.buckets` |
 | გადახდები | 4 BOG შეკვეთა, 4-ვე `init_failed` (ბოლო 2026-10-06); დასრულებული გადახდა არც ერთი | `bog_orders` |
@@ -93,8 +93,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | # | სფერო | სტატუსი | პასუხისმგებელი | §55 blocker? |
 |---|---|---|---|---|
-| 1 | Auth / Resend | **FAILED** Production-ში | GG (Resend დომენი) | კი |
-| 2 | Supabase Auth პარამეტრები | BLOCKED_OWNER | GG | არა (security) |
+| 1 | Auth / Resend | **RESOLVED** (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live; კოდით რეგისტრაცია (RU) ჯერ არ შემოწმებულა | GG (RU რეგისტრაციის E2E) | აღარ |
+| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 (PR #51) Production-ში არ არის | GG (PR #51-ის merge; სურვილისამებრ cert-alias Redirect URL) | არა |
 | 3 | Vertex migration | Preview-ზე PROVEN, Production-ში არა | GG (IAM + env), Claude (შემოწმება) | არა პირდაპირ (provider boundary-ს ნაწილი) |
 | 4 | Provider boundary | **FAILED** | GG (action 9), შემდეგ Claude | კი |
 | 5 | Video Director V1–V6 | BUILT_NOT_PROVEN | GG (Preview-ზე ერთი გაშვება), Claude | კი |
@@ -106,22 +106,24 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 11 | Supabase schema drift | **FAILED** (124 / 160) | Claude (ტრიაჟი) + GG (თითო ფუნქციაზე) | არა პირდაპირ |
 | 12 | Security | PARTIAL | GG (2 თანხმობა), Claude | P0 დახურულია |
 | 13 | Library | BUILT_NOT_PROVEN, RLS PROVEN | Claude + GG (live ტესტი) | არა |
-| 14 | Admin | deployed; ნაწილი PROVEN | Claude + GG | P1 დახურულია |
+| 14 | Admin | deployed; Admin Security **PROVEN** live (admin შესვლა 14:12Z, non-admin უარი 14:50Z, ანონიმური უარი); `admin_emails` 0 ჩანაწერი, admin მხოლოდ 2 ჩაშენებული მისამართია | Claude + GG | P1 დახურულია |
 | 15 | KA / EN / RU | key parity PROVEN | Claude | არა |
 | 16 | Mobile | BUILT_NOT_PROVEN | GG (მოწყობილობები) | არა |
 | 17 | E2E | ლოკალური; Preview-ზე ავტორიზებული E2E არ არის | Claude + GG (Supabase გაყოფა) | არა |
-| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1 + execution foundation, PR #50, flag-ის უკან; Preview E2E აკლია; sandbox BLOCKED_OWNER, Task API MISSING) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
+| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1 + execution foundation, PR #50, flag-ის უკან; Preview E2E აკლია; sandbox BLOCKED_OWNER, Task API BUILT_NOT_PROVEN `/api/tasks`) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
-- **სტატუსი:** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. დარჩა: კოდით რეგისტრაცია (RU). ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (თავდაპირველი):** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
 - **პასუხისმგებელი:** GG.
 - **დამოკიდებულება:** `myavatar.ge`-ის DNS-ზე წვდომა; Resend ანგარიში, რომლის გასაღებიც `RESEND_API_KEY`-შია.
 - **მტკიცებულება:** Vercel log 2026-10-08 13:57:04Z `resend 403 "The myavatar.ge domain is not verified"`; Supabase `generate_link` 200 იმავე მოთხოვნაზე.
 - **DoD:** resend.com/domains-ში `myavatar.ge` = Verified → Production-ში ერთი ახალი რეგისტრაცია კოდით შედის → პაროლის აღდგენის წერილი მოდის → Vercel log-ში 403 აღარ ჩანს.
 
 ### 4.2 Supabase Auth პარამეტრები
-- **სტატუსი:** BLOCKED_OWNER.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** VERIFIED. GG-მ leaked-password protection ჩართო 14:55Z (Pro, upgrade არ დასჭირდა); Advisor 14:56Z: 0 error, 1 warning (`vector`, მიღებული); „Confirm email“ ON (`mailer_autoconfirm=false`); Captcha გამორთულია. ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (თავდაპირველი):** BLOCKED_OWNER.
 - **პასუხისმგებელი:** GG (Supabase Dashboard → Authentication).
 - **რა:** (ა) leaked-password protection ჩართვა (Security Advisor-ის ერთ-ერთი 2 დარჩენილი warning); (ბ) დადასტურება, რომ „Confirm email“ ჩართულია — PR #45-ის admin წესი დადასტურებულ ელფოსტას ეყრდნობა.
 - **DoD:** Advisor-ში leaked-password warning აღარ არის; Auth settings-ის სქრინი „Confirm email: on“.
@@ -274,11 +276,11 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 **DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** ~~PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b`; PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`)~~ — Production-შია PR #48-ით (`7126682`, ნაწილი 7). ახალი (`ba74fa21`, Production-შია `29e7d67`-ით 08:07Z-დან): `/api/orbit/agent` 404 Google-only-ში; music cover art აღარ მიდის Pollinations-ზე; აკრძალული vendor-ების ratchet ტესტი; ka / en / ru: billing key, კამერის 43 რუსული სახელი, „мин.“.
 
-**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch). `7c8dd9b3`-ზე: jest **702 / 702 suite, 10,817 passed, 3 skipped**; `tsc` 0; eslint სუფთა შეცვლილ ფაილებზე; `next build` წარმატებით; `[i18n-parity] OK`.
+**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning (14:56Z-დან 0 / 1, leaked-password ჩართულია); Auth live (2026-10-09): კოდით შესვლა, პაროლის აღდგენა, admin შესვლა, non-admin უარი; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch). `7c8dd9b3`-ზე: jest **702 / 702 suite, 10,817 passed, 3 skipped**; `tsc` 0; eslint სუფთა შეცვლილ ფაილებზე; `next build` წარმატებით; `[i18n-parity] OK`.
 
-**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; ~~`landing.spec.ts:380`~~ (dev სერვერის ეფექტი, PROVEN 4.17); ~~production build-ზე phone-ის 3 landing ტესტი და analytics POST~~ (მიზეზი PROVEN, გასწორდა, ნაწილი 10).
+**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; ~~admin წესი ცოცხლად~~ (PROVEN 14:12Z / 14:50Z); mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; ~~`landing.spec.ts:380`~~ (dev სერვერის ეფექტი, PROVEN 4.17); ~~production build-ზე phone-ის 3 landing ტესტი და analytics POST~~ (მიზეზი PROVEN, გასწორდა, ნაწილი 10).
 
-**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
+**BLOCKED (GG):** ~~Resend დომენი; leaked-password + „Confirm email“~~ (შესრულდა 2026-10-09; დარჩა RU კოდით რეგისტრაციის E2E); BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
 
 ## 6. გამოსწორების რიგი
 
@@ -286,8 +288,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | რიგი | ვინ | რა | რას ხსნის |
 |---|---|---|---|
-| 1 | GG | Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
-| 2 | GG | Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება | Advisor warning; admin წესის საფუძველი |
+| 1 | ~~GG~~ | ~~Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify)~~ **შესრულდა 14:10Z** (შესვლა და აღდგენა PROVEN live) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
+| 2 | ~~GG~~ | ~~Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება~~ **შესრულდა** (Confirm email ON; leaked-password ON 14:55Z) | Advisor warning; admin წესის საფუძველი |
 | 3 | ~~GG → Claude~~ | ~~`20261009b`-ზე „კი“ → გაშვება და შემოწმება~~ **შესრულდა 07:14Z** | `renders` public gap |
 | 4 | GG → Claude | BOG live credentials (≈ 2026-10-10) → უფასო 10 ₾ შემოწმება → ერთი რეალური გადახდა | billing blocker |
 | 5 | GG → Claude | კანონიკური ფასების ცხრილი → ერთი SSoT კოდში + ტესტი | pricing blocker |

@@ -172,15 +172,18 @@ BLOCKERS:
 · Supabase Auth / security, 2026-10-09 (PR #51 report): Confirm email PROVEN ON (mailer_autoconfirm=false); Google OAuth
   PROVEN working (8 Google identities, /authorize → /callback 302); GitHub provider on with 0 users (owner may turn it
   off); Site URL PROVEN https://myavatar.ge; Redirect URLs PARTIAL (the cert alias git-ef1fad/** is missing, owner adds
-  it); leaked-password protection BLOCKED_OWNER (dashboard toggle; the org is on Pro, no upgrade needed); table RLS PROVEN
+  it); leaked-password protection ON since 14:55Z (the owner, Pro plan, no upgrade; Security Advisor re-run 14:56Z:
+  0 errors, 1 warning = the accepted vector-in-public; Confirm email still ON, providers email/google/github, Captcha
+  off); table RLS PROVEN
   52/52 (anon and a signed-in stranger see 0 rows); 31 SECURITY DEFINER functions, none callable by anon/authenticated,
   all with a fixed search_path; storage PROVEN (public read only on music, renders private); admin: anonymous probes on
   myavatar.ge PROVEN refused (401/403/404, forged cookie 403), admin sign-in + panel PROVEN live 14:12Z (owner's admin
   account, admin API 200 in the logs), signed-in non-admin refused PROVEN live 14:50Z, so admin security PROVEN (the
   APIs share the one isAdmin() rule, unit-tested); 14:45:17Z the owner removed the one panel-granted admin
   (DELETE /api/admin/admins 200): public.admin_emails has 0 rows, the only admins are the 2 built-in addresses, no
-  app_metadata role grants admin; email OTP log-in and reset PROVEN live (AUTH-2 above); Supabase Auth stays PARTIAL
-  until the owner turns on leaked-password protection;
+  app_metadata role grants admin; email OTP log-in and reset PROVEN live (AUTH-2 above); Supabase Auth VERIFIED
+  (PR #51 report 55e1a84; still open: sign-up by code (RU), the optional cert-alias Redirect URL, and AUTH-3 until
+  PR #51 reaches main);
   /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
   (PR #51, BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
@@ -209,7 +212,7 @@ BLOCKERS:
   Production; fixed (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
   Lyria) and deployed with PR #48 (7126682, 2026-10-09 ~07:13Z); /api/health/providers and the Lyria miss report fixed
   the same way (505066c4), same deploy. 'Confirm email' PROVEN ON 2026-10-09 (Supabase Auth thread); leaked-password
-  protection is still the owner's toggle.
+  protection ON since 14:55Z 2026-10-09 (the owner's toggle).
 · renders bucket (P2): FIXED 2026-10-09 07:14Z: 20261009b applied on the owner's "Deploy + renders" (07:08:11Z);
   storage.buckets reads public = false (494 objects), the public object URL answers 400 (certification §A).
 · Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
