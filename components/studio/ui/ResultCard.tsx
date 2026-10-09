@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Film, Image as ImageIcon, ImagePlus, Maximize2, Music2, RotateCcw, ScanFace, X } from 'lucide-react';
+import { LoadingLoop } from './LoadingLoop';
 
 /**
  * ResultCard — one tile for a generation from the moment it is asked for to the moment it is on screen:
  * queued → rendering → finalizing → ready (or error). The tile has the RESULT's shape from the start (a 9:16
  * video is a 9:16 tile while it renders), so the feed does not jump when the media arrives, and what the user
- * watches while waiting is a quiet shimmer and a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
+ * watches while waiting is the loading loop (./LoadingLoop: the avatar forming out of light, the owner's clip,
+ * 2026-10-09) under a thin accent bar — not a spinner (docs/DESIGN.md §5, §8).
  *
  * Honest progress, same rules as GenerationProgress: a server-reported percent wins; otherwise elapsed / cap,
  * held at 92 % until the job is actually ready. The bar never claims "done" on a guess.
@@ -78,7 +80,7 @@ export interface ResultCardProps {
   capSec?: number;
   /** A stage the pipeline reported — the second line under the caption. */
   stage?: string;
-  /** A frame to show faintly under the shimmer (e.g. the first storyboard frame). */
+  /** A frame to show faintly behind a failed job (e.g. the first storyboard frame); a working tile shows the loop. */
   poster?: string | null;
   media?: { type: 'video' | 'image'; url: string; poster?: string | null };
   error?: string;
@@ -137,6 +139,9 @@ export function ResultCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={media.url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
           )
+        ) : working ? (
+          // Queued, rendering, finalizing: the loading loop fills the tile in the result's own shape.
+          <LoadingLoop />
         ) : (
           <>
             {/* The plate: a faint frame when there is one, a quiet shimmer always — never an empty spinner. */}

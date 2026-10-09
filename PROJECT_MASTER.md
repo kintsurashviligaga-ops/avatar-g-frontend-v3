@@ -57,9 +57,11 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Section F-AU): link or upload → MP3 in the chat, text + Live Voice, platforms refused with an upload offer,
           BUILT_NOT_PROVEN on PR #50 (local real-internet + real-ffmpeg E2E passed); AU-8 = the same admin Preview run as
           AG-8. One Task API (EF-7, /api/tasks) BUILT_NOT_PROVEN on PR #50: the chat's job cards follow and stop
-          jobs only through it. Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
+          jobs only through it. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
+          the progress card (components/studio/ui/LoadingLoop.tsx; poster only under reduced motion / Save-Data), PR #50.
+          Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
           automatically) in BLOCKERS below. Owner actions in
-          final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
+          final-launch-certification.md §Y (Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
@@ -138,12 +140,13 @@ PHASE CHECKLIST:
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
-· AUTH-1 (launch blocker, Production auth FAILED): email OTP sign-in, sign-up and password reset fail on Production and
-  Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
+· AUTH-1 (RESOLVED in Production 2026-10-09; was a launch blocker): email OTP sign-in, sign-up and password reset failed
+  on Production and Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
   lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
   thread (PR #43, commit 87122ff); since 13:55 UTC also on the cert branch (0421377a), so launch-certification Previews
-  carry it. Deployed to Production 2026-10-09 (9f1bff6, owner-approved); sign-in still fails there until AUTH-2.
-· AUTH-2 (launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
+  carry it. Deployed to Production 2026-10-09 (9f1bff6, owner-approved); with AUTH-2 resolved, code log-in and reset
+  are PROVEN live there (below).
+· AUTH-2 (RESOLVED 2026-10-09 14:10Z; was a launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
   /admin/generate_link 200, 13:57:06), then Resend refuses the mail: "resend 403 The myavatar.ge domain is not verified"
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
@@ -151,8 +154,16 @@ BLOCKERS:
   2026-10-09 (Supabase Auth thread, report docs/handoffs/2026-10-09-supabase-auth-security.md on draft PR #51, copy in
   /mnt/project-files/reports/): root cause PROVEN: myavatar.ge (DNS at Vercel) has no MX, SPF, DKIM or DMARC record
   (vercel dns ls + dig); Resend shows the domain "Not Started". Production RESEND_API_KEY is set (a probe reached Resend).
-  Code generation PROVEN (14x /admin/generate_link 200, last 2026-10-08 14:42Z). Owner: open myavatar.ge in Resend and
-  paste the DKIM value; Claude adds the records with vercel dns add (additive only); owner presses Verify.
+  Code generation PROVEN (14x /admin/generate_link 200, last 2026-10-08 14:42Z). Fix 2026-10-09: the owner pasted the
+  DKIM value; the Supabase Auth thread added four records with vercel dns add, additive only, website records untouched
+  (rollback: vercel dns rm rec_560f9c29eee79e60d2305798 resend._domainkey TXT, rec_99755b55743aeb80f54a6442 send MX,
+  rec_9628cf1d4c29ed6a04f0f6fe send TXT SPF, rec_fc9703e01c73e8c20e2e52fa _dmarc TXT p=none); propagation PROVEN at
+  once (ns1.vercel-dns.com, 1.1.1.1, 8.8.8.8); owner pressed Verify: Resend domain VERIFIED (photo 14:10Z, DKIM/MX/SPF
+  each Verified). Live on Production (owner's hands, Vercel + auth logs): email code log-in (KA) PROVEN 14:17Z (send 200,
+  Resend accepted, generate_link 200, 8-digit code in the inbox, /verify 200 login 14:17:43Z); password reset (EN)
+  PROVEN 14:26Z (myavatar.ge@gmail.com, a non-admin: recovery code → /verify 200 → PUT /user 200 → login with the new
+  password 14:26:51Z). Still open: signed-in non-admin refused live (pending, the same session opens /en/admin), sign-up
+  by code (RU, pending: needs a new address the owner owns). Resend "Auto configure" is not used.
 · AUTH-3 (found and fixed 2026-10-09, PR #51 5216aa7, BUILT_NOT_PROVEN until deploy): a sign-in code request for an
   address with no account created an unconfirmed user (GoTrue turns an admin magiclink for an unknown address into a
   sign-up; proven live 12:48Z). Now 'signin' asks public.auth_account_status first and answers 404 no_account. The one
@@ -164,7 +175,9 @@ BLOCKERS:
   it); leaked-password protection BLOCKED_OWNER (dashboard toggle; the org is on Pro, no upgrade needed); table RLS PROVEN
   52/52 (anon and a signed-in stranger see 0 rows); 31 SECURITY DEFINER functions, none callable by anon/authenticated,
   all with a fixed search_path; storage PROVEN (public read only on music, renders private); admin: anonymous probes on
-  myavatar.ge PROVEN refused (401/403/404, forged cookie 403), signed-in non-admin BUILT_NOT_PROVEN live;
+  myavatar.ge PROVEN refused (401/403/404, forged cookie 403), admin sign-in + panel PROVEN live 14:12Z (owner's admin
+  account, admin API 200 in the logs), signed-in non-admin BUILT_NOT_PROVEN live; email OTP log-in and reset PROVEN
+  live (AUTH-2 above);
   /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
   (PR #51, BUILT_NOT_PROVEN until deploy). PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
