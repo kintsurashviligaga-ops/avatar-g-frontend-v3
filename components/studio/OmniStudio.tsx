@@ -187,6 +187,8 @@ import type { ImageResultActions } from '@/components/studio/create/ImageResultP
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -2460,7 +2462,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     attachRouteKindRef.current = kind;
     const el = attachRouteRef.current;
     if (!el) return;
-    el.accept = kind === 'swap' ? 'image/*,video/mp4,video/quicktime,.mp4,.mov' : 'image/*,audio/*,video/*';
+    el.accept = kind === 'swap' ? 'image/*,video/mp4,video/quicktime,.mp4,.mov' : `image/*,${AUDIO_ACCEPT},video/*`;
     el.multiple = kind === 'avatar';
     el.click();
   }, []);
@@ -7447,34 +7449,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       : t.remixUploadHint)
             : mode === 'image' ? t.imgPlaceholder : mode === 'music' ? t.musicPlaceholder : mode === 'video' ? t.videoPlaceholder : mode === 'lipsync' ? t.lipsyncPlaceholder : t.placeholder;
 
-  // Force a REAL download. The <a download> attribute is ignored cross-origin (Supabase
-  // signed URLs), so the old button just opened the file in a new tab. Fetch → blob →
-  // save instead; fail-open to opening it.
+  // Save a result to the device (lib/media/saveMedia): fetch → blob → one correctly named file, so a cross-origin signed
+  // URL really saves; on an iPhone a picture or a clip goes through the share sheet, the only way into Photos (a plain
+  // download lands in Files). Fail-open to opening the file.
   const dl = useCallback(async (url: string, filename: string) => {
-    try {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error('fetch failed');
-      const blob = await r.blob();
-      // Name the file with the SINGLE extension that matches the blob's ACTUAL mime. The old code
-      // hardcoded ".png"; when the provider returns a JPEG, iOS Safari appends the real extension
-      // and you get "myavatar-image.png.jpeg". Strip any provided extension, then append the right
-      // one so the OS reads it natively as one saveable image.
-      const mime = (blob.type || '').toLowerCase();
-      const extFromMime = /jpe?g/.test(mime) ? 'jpg' : /png/.test(mime) ? 'png' : /webp/.test(mime) ? 'webp'
-        : /gif/.test(mime) ? 'gif' : /mp4/.test(mime) ? 'mp4' : /webm/.test(mime) ? 'webm'
-          : /mpeg|mp3/.test(mime) ? 'mp3' : /wav/.test(mime) ? 'wav' : /m4a|aac/.test(mime) ? 'm4a' : '';
-      const cleanUrl = (url.split(/[?#]/)[0] ?? url);
-      const extFromUrl = (/\.([a-z0-9]{2,4})$/i.exec(cleanUrl)?.[1] ?? '').toLowerCase();
-      const ext = extFromMime || extFromUrl || 'jpg';
-      const base = filename.replace(/\.[a-z0-9]{2,4}$/i, '') || 'myavatar';
-      const obj = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = obj; a.download = `${base}.${ext}`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(obj), 5000);
-    } catch {
-      window.open(url, '_blank', 'noopener');
-    }
+    await saveMedia(url, filename, { fallbackExt: 'jpg' });
   }, []);
 
   // Share an output (image / track / talking-video). Best UX: hand the real FILE to the
@@ -9637,7 +9616,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
             {(remixOp === 'music' || remixOp === 'redub') && (
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-app-border/30 bg-app-bg/40 px-4 py-3 text-[12px] font-medium text-app-muted transition-colors hover:border-app-accent/50 hover:text-app-text">
-                <input type="file" accept="audio/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickRemixMedia(f, 'track'); e.currentTarget.value = ''; }} />
+                <input type="file" accept={AUDIO_ACCEPT} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pickRemixMedia(f, 'track'); e.currentTarget.value = ''; }} />
                 {remixTrack ? <><Check size={14} className="text-app-accent" /> <span className="max-w-[180px] truncate">{remixTrack.name}</span></> : <><Music2 size={14} /> {remixOp === 'music' ? (locale === 'en' ? 'Add a music track' : locale === 'ru' ? 'Добавить трек' : 'დაამატე ტრეკი') : (locale === 'en' ? 'Or upload audio (optional)' : locale === 'ru' ? 'Или загрузите аудио (опц.)' : 'ან ატვირთე აუდიო (არჩევითი)')}</>}
               </label>
             )}
@@ -10079,7 +10058,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* Input surface — one clean rounded pill. The picker accepts MULTIPLE files
             (images / video / audio / pdf), capped at MAX_ATTACHMENTS. */}
-        <input ref={fileRef} type="file" multiple accept="image/*,audio/*,video/*,application/pdf,text/*,.txt,.md,.pdf,.docx,.doc,.rtf,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml,.log,.srt,.vtt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.cs,.go,.rs,.rb,.php,.sh,.sql,.css" className="hidden" onChange={(e) => {
+        <input ref={fileRef} type="file" multiple accept={`image/*,${AUDIO_ACCEPT},video/*,application/pdf,text/*,.txt,.md,.pdf,.docx,.doc,.rtf,.csv,.tsv,.json,.xml,.html,.htm,.yaml,.yml,.log,.srt,.vtt,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.cs,.go,.rs,.rb,.php,.sh,.sql,.css`} className="hidden" onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
           e.target.value = '';
           // In VIDEO mode a document attached via the "+" IS the film script → ingestFiles loads it into

@@ -49,6 +49,7 @@ import { useLibrary, isVideoItem, type LibraryItem } from './useLibrary';
 import { usePlayer, type PlayerClip } from './usePlayer';
 import { listenForMontageCommands, type MontageCommandHost } from './voiceCommands';
 import { peekTask } from '@/lib/agent/media/jobFollow';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
 
 interface Tool { id: string; label: string; Icon: typeof Film; run: () => void; disabled?: boolean }
 
@@ -761,7 +762,7 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
       <input
         ref={musicFileRef}
         type="file"
-        accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg"
+        accept={AUDIO_ACCEPT}
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"

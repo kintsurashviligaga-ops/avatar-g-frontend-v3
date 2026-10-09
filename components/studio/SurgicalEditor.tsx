@@ -26,6 +26,8 @@ import { photoActions, audioAction } from '@/lib/ai/agentG';
 import { parseVideoEditCommand } from '@/lib/ai/videoEditCommands';
 import { parseAudioEditCommand } from '@/lib/ai/audioEditCommands';
 import { parsePhotoEditSliders } from '@/lib/ai/photoEditSliders';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 type Lang = 'ka' | 'en' | 'ru';
 const norm = (l: string): Lang => (l === 'en' || l === 'ru' ? l : 'ka');
@@ -284,45 +286,12 @@ function extFromUrl(url: string, fallback: string): string {
 }
 
 /**
- * Force a real file download. A cross-origin `<a download>` is ignored by browsers (it navigates instead), so we
- * fetch the asset into a Blob and download THAT — the reliable path on mobile Safari/Chrome. Falls back to a direct
- * link if the fetch is CORS-blocked (rare — our storage + Replicate delivery allow GET).
+ * Save a result to the device (lib/media/saveMedia): fetch → blob → download, since a cross-origin `<a download>` only
+ * navigates. On an iPhone a picture or a clip goes through the share sheet ("Save Image" / "Save Video" → Photos); a
+ * plain download lands in Files. Audio and every other device keep the download.
  */
 async function downloadAsset(url: string, filename: string): Promise<void> {
-  let blob: Blob | null = null;
-  try {
-    const res = await fetch(url, { credentials: 'omit' });
-    if (res.ok) blob = await res.blob();
-  } catch { /* fall through to the plain link below */ }
-
-  // iOS: SAVE TO PHOTOS, not Files.
-  //
-  // `<a download>` on iOS always lands in Files — that is the whole complaint. The only route into the
-  // camera roll from a web page is the share sheet with an actual FILE payload: iOS then offers
-  // "Save Video" / "Save Image", which writes to Photos. Sharing a URL (which is what the Share button
-  // did) offers no such option, because there is nothing to save — only a link to copy.
-  if (blob) {
-    const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-    const nav = navigator as Navigator & {
-      canShare?: (d: { files?: File[] }) => boolean;
-      share?: (d: { files?: File[]; title?: string }) => Promise<void>;
-    };
-    if (typeof nav.share === 'function' && nav.canShare?.({ files: [file] })) {
-      try { await nav.share({ files: [file], title: filename }); return; }
-      // A cancelled sheet is a deliberate user action, not a failure — do NOT then force a download.
-      catch (e) { if ((e as Error).name === 'AbortError') return; }
-    }
-    const obj = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = obj; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(obj), 5000);
-    return;
-  }
-
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
-  document.body.appendChild(a); a.click(); a.remove();
+  await saveMedia(url, filename);
 }
 
 /**
@@ -1219,7 +1188,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
               {/* SIBLING, not a child: a nested input's programmatic click bubbles back into the zone and iOS
                   cancels the picker. */}
               <input ref={emptyPickRef} type="file"
-                accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : 'audio/*'}
+                accept={workspaceMode === 'video' ? 'video/*' : workspaceMode === 'photo' ? 'image/*' : AUDIO_ACCEPT}
                 multiple className="hidden"
                 onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.currentTarget.value = ''; addFiles(picked, laneKind); }} />
             </div>
@@ -1252,7 +1221,7 @@ export default function SurgicalEditor({ locale, onExit, initialAsset, onReturnT
                 {!isPhoto && !isAudio && <span className="text-[9px] font-bold tabular-nums leading-none">{distinctClipIds.length}/{MAX_SEQ_CLIPS}</span>}
                 {/* Array.from BEFORE the reset — see the note on addFiles. `e.target.files` is LIVE, and
                     `value = ''` empties it, so reading it afterwards yields nothing. */}
-                <input type="file" accept="video/*,image/*,audio/*" multiple className="hidden"
+                <input type="file" accept={`video/*,image/*,${AUDIO_ACCEPT}`} multiple className="hidden"
                   onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.currentTarget.value = ''; addFiles(picked); }} />
               </label>
             </div>

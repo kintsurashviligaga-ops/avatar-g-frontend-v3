@@ -73,6 +73,7 @@ import { summarizeFilmPipeline, type StageState } from '@/lib/chat/filmStudioSta
 import { filmStarterPrompts } from '@/lib/chat/filmStarterPrompts';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
 import { Wordmark } from '@/components/brand/Wordmark';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
 
 interface Slot {
   dataUrl: string;
@@ -1509,7 +1510,7 @@ export function ConversationalFilmStudio({
                   <input
                     ref={mvAudioInputRef}
                     type="file"
-                    accept="audio/*"
+                    accept={AUDIO_ACCEPT}
                     className="hidden"
                     onChange={(e) => onPickSoundtrack(e.target.files?.[0])}
                   />

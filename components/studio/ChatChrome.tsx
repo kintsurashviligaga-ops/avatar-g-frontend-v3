@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ViewportDebugOverlay } from '@/components/studio/ViewportDebugOverlay';
+import { SaveReadyPrompt } from '@/components/studio/ui/SaveReadyPrompt';
 import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
@@ -1076,6 +1077,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   return (
     <>
     <ViewportDebugOverlay />
+    <SaveReadyPrompt locale={locale} />
     <div className="ag-fixed-shell fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{
       // ⚠️ WAS `calc(100dvh - keyboardOffset)`, WHICH DOUBLE-SUBTRACTS ON ANDROID. Chrome's `dvh` is the
       // DYNAMIC viewport and already shrinks when the keyboard opens, so subtracting the offset removed

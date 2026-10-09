@@ -23,6 +23,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { describeServiceError } from './ui/serviceError';
+import { saveMedia } from '@/lib/media/saveMedia';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
   Inbox, RefreshCw, Trash2, AlertTriangle, Boxes,
@@ -184,26 +185,15 @@ const LibraryCard = memo(function LibraryCard({
     else { v.pause(); setPlaying(false); }
   }, []);
 
-  // Download via blob so a cross-origin signed URL actually saves (an <a download>
-  // is ignored cross-origin). Fallback: open the URL in a new tab.
+  // lib/media/saveMedia: a blob download (an <a download> is ignored cross-origin), on an iPhone the share
+  // sheet for pictures and clips so they reach Photos. Fallback: open the URL in a new tab.
   const handleDownload = useCallback(async () => {
     setDownloading(true);
     try {
-      const res = await fetch(item.url, { cache: 'no-store' });
-      const blob = await res.blob();
       // .glb first: the mesh rides under service_type 'image', so extension-by-kind alone renamed a
       // model to .png and made the downloaded file unopenable.
       const ext = is3d(item.url) ? 'glb' : isVideo(item.kind) ? 'mp4' : isAudio(item.kind) ? 'mp3' : 'png';
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = `myavatar-${item.kind}-${item.id.slice(0, 8)}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(href), 4000);
-    } catch {
-      window.open(item.url, '_blank', 'noopener,noreferrer');
+      await saveMedia(item.url, `myavatar-${item.kind}-${item.id.slice(0, 8)}`, { fallbackExt: ext });
     } finally {
       setDownloading(false);
     }

@@ -11,8 +11,9 @@ import { Film, Music2, Plus, X } from 'lucide-react';
 import type { ParamSpec } from '@/lib/providers/paramSpec';
 import { mediaSpecs, type MediaValues, type StudioModel } from '@/lib/studio/ui/dock';
 import { FIRST_FRAME, PARAM_LABEL, T, tx, type Lang } from './copy';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
 
-const ACCEPT: Record<string, string> = { image: 'image/*', video: 'video/*', audio: 'audio/*' };
+const ACCEPT: Record<string, string> = { image: 'image/*', video: 'video/*', audio: AUDIO_ACCEPT };
 
 export interface MediaSlotsProps {
   model: StudioModel;

@@ -107,7 +107,7 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {})
 }
 
 async function attachAndSend(page: Page, text: string, song: Buffer = wav()): Promise<void> {
-  await page.locator('input[type=file][multiple][accept^="image/*,audio/*,video/*"]').setInputFiles([
+  await page.locator('input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]').setInputFiles([
     { name: 'beach.webm', mimeType: 'video/webm', buffer: CLIP },
     { name: 'city.webm', mimeType: 'video/webm', buffer: CLIP },
     { name: 'song.wav', mimeType: 'audio/wav', buffer: song },
@@ -256,5 +256,85 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect.poll(() => calls.remixIntent.length, { timeout: 20_000 }).toBe(1);
     expect(calls.quote).toEqual([]);
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+  });
+});
+
+// The owner's iPhone, 2026-10-09 18:36Z: Download put the clip in Files, not in Photos, and the chat's picker hid the MP3s.
+// On an iPhone a picture or a clip now goes through the share sheet as a FILE (iOS then offers "Save Video" → Photos);
+// a desktop still downloads; the picker names the audio types, which the iPhone needs to show the tracks.
+const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+
+async function finishMontage(page: Page): Promise<void> {
+  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'video/mp4', body: CLIP }));
+  await attachAndSend(page, 'cut these to the music');
+  await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+  await page.getByTestId('agent-montage-start').click();
+  await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+}
+
+test.describe('saving the master to the device', () => {
+  test('the chat\'s picker names the audio types an iPhone needs to show MP3s', async ({ page }) => {
+    await open(page, true);
+    const accept = await page.locator('input[type=file][multiple][accept*="application/pdf"]').first().getAttribute('accept');
+    expect(accept?.split(',')).toEqual(expect.arrayContaining(['audio/*', 'audio/mpeg', 'audio/x-m4a', '.mp3', '.m4a', '.wav']));
+  });
+
+  test('a desktop downloads the MP4 under one right extension', async ({ page }) => {
+    await open(page, true);
+    await finishMontage(page);
+    const [file] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download', exact: true }).first().click()]);
+    expect(file.suggestedFilename()).toMatch(/^myavatar-montage-\d+\.mp4$/);
+  });
+
+  test.describe('on an iPhone', () => {
+    test.use({ userAgent: IPHONE_UA });
+    test('Download hands the clip to the share sheet as a video file (→ Save Video → Photos), not to Files', async ({ page }) => {
+      await page.addInitScript(() => {
+        const w = window as unknown as { __shared: Array<{ name: string; type: string; size: number }> };
+        w.__shared = [];
+        Object.defineProperty(navigator, 'canShare', { configurable: true, value: (d: { files?: File[] }) => !!d.files?.length });
+        Object.defineProperty(navigator, 'share', {
+          configurable: true,
+          value: async (d: { files?: File[] }) => { for (const f of d.files ?? []) w.__shared.push({ name: f.name, type: f.type, size: f.size }); },
+        });
+      });
+      await open(page, true);
+      await finishMontage(page);
+      const downloads: string[] = [];
+      page.on('download', (d) => downloads.push(d.suggestedFilename()));
+      await page.getByRole('button', { name: 'Download', exact: true }).first().click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __shared: unknown[] }).__shared.length), { timeout: 10_000 }).toBe(1);
+      const [shared] = await page.evaluate(() => (window as unknown as { __shared: Array<{ name: string; type: string; size: number }> }).__shared);
+      expect(shared!.type).toBe('video/mp4');
+      expect(shared!.name).toMatch(/^myavatar-montage-\d+\.mp4$/);
+      expect(shared!.size).toBe(CLIP.length);
+      await page.waitForTimeout(500);
+      expect(downloads).toEqual([]);
+    });
+
+    test('when the tap has expired, one more tap on "Save to Photos" opens the sheet with the same file', async ({ page }) => {
+      await page.addInitScript(() => {
+        const w = window as unknown as { __shared: string[]; __tries: number };
+        w.__shared = [];
+        w.__tries = 0;
+        Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+        Object.defineProperty(navigator, 'share', {
+          configurable: true,
+          // The first call stands for a share sheet iOS refused because the fetch outlasted the tap.
+          value: async (d: { files?: File[] }) => {
+            w.__tries += 1;
+            if (w.__tries === 1) throw Object.assign(new Error('expired'), { name: 'NotAllowedError' });
+            for (const f of d.files ?? []) w.__shared.push(f.name);
+          },
+        });
+      });
+      await open(page, true);
+      await finishMontage(page);
+      await page.getByRole('button', { name: 'Download', exact: true }).first().click();
+      await expect(page.getByTestId('save-ready')).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('save-ready-go').click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __shared: string[] }).__shared), { timeout: 10_000 }).toEqual([expect.stringMatching(/\.mp4$/)]);
+      await expect(page.getByTestId('save-ready')).toHaveCount(0);
+    });
   });
 });

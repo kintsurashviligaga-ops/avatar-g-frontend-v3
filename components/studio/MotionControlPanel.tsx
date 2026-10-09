@@ -9,6 +9,7 @@ import { useRef, useState } from 'react';
 import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
@@ -389,7 +390,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         <div className="space-y-2">
           <div className="flex items-center gap-2"><CheckCircle size={13} className="text-green-400" /><span className="text-xs text-green-400">{t.done} ✅</span></div>
           <video src={result} controls playsInline className="w-full rounded-2xl" />
-          <a href={result} download="motion-control.mp4" className="flex w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 py-2.5 text-sm text-app-text hover:bg-app-elevated/40">⬇️ {t.dl}</a>
+          <button type="button" onClick={() => void saveMedia(result, 'motion-control.mp4')} className="flex w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 py-2.5 text-sm text-app-text hover:bg-app-elevated/40">⬇️ {t.dl}</button>
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
 import { storageContentType } from '@/lib/uploads/policy';
+import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { UploadCloud, Film, Music2, Wand2, Loader2, X, AlertTriangle } from 'lucide-react';
 import { GenerationProgress } from './ui/GenerationProgress';
 import { describeServiceError, describeGenerationFailure } from './ui/serviceError';
@@ -238,7 +239,7 @@ export default function LipsyncStudio({ locale = 'ka' }: { locale?: Lang }) {
           onClear={() => setVideo(null)}
         />
         <Dropzone
-          accept="audio/*" label={t.audioLabel} hint={t.audioHint} picked={audio} replaceLabel={t.replace}
+          accept={AUDIO_ACCEPT} label={t.audioLabel} hint={t.audioHint} picked={audio} replaceLabel={t.replace}
           icon={<Music2 size={18} />}
           onPick={(f) => { void readFile(f).then(setAudio).catch(() => setError(t.failed)); }}
           onClear={() => setAudio(null)}
