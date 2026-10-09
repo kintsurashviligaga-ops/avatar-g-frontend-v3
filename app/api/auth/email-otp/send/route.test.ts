@@ -89,9 +89,37 @@ describe("purpose 'continue'", () => {
 describe('pre-account takeover', () => {
   it("an UNCONFIRMED account's password (anyone could have set it) is replaced before its owner gets in", async () => {
     mockUpdateUser.mockClear();
-    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'u1', email_confirmed_at: null }, properties: { email_otp: '222222' } }, error: null });
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'u1', email_confirmed_at: null }, properties: { email_otp: '222222' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'u1', email_confirmed_at: null }, properties: { email_otp: '232323' } }, error: null });
     await send({ email: 'victim@example.com', purpose: 'continue' });
     expect(mockUpdateUser).toHaveBeenCalledWith('u1', { password: expect.any(String) });
+  });
+  it('the code mailed is asked for AFTER the password change — GoTrue voids pending codes when a password changes', async () => {
+    // Production 2026-10-09: generate_link → PUT /admin/users → /verify 403 otp_expired; the first code was dead on arrival.
+    mockUpdateUser.mockClear();
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'u3', email_confirmed_at: null }, properties: { email_otp: '11111111' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'u3', email_confirmed_at: null }, properties: { email_otp: '22222222' } }, error: null });
+    const res = await send({ email: 'Fresh@Example.com', purpose: 'register', locale: 'ru' });
+    expect(res.status).toBe(200);
+    expect(mockGenerateLink).toHaveBeenCalledTimes(2);
+    expect(mockGenerateLink.mock.calls[1][0]).toEqual(mockGenerateLink.mock.calls[0][0]);
+    const [rotate] = mockUpdateUser.mock.invocationCallOrder;
+    const [first, second] = mockGenerateLink.mock.invocationCallOrder;
+    expect(first).toBeLessThan(rotate);
+    expect(rotate).toBeLessThan(second);
+    const sent = JSON.parse(String((mail.mock.calls[0][1] as RequestInit).body));
+    expect(sent.subject).toContain('22222222');
+    expect(sent.subject).not.toContain('11111111');
+  });
+  it('if asking again fails, nothing dead is mailed', async () => {
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'u4', email_confirmed_at: null }, properties: { email_otp: '444444' } }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'Database error' } });
+    const res = await send({ email: 'fresh2@example.com', purpose: 'register' });
+    expect(res.status).toBe(502);
+    expect(mail).not.toHaveBeenCalled();
   });
   it('a confirmed account keeps its password', async () => {
     mockUpdateUser.mockClear();
@@ -146,7 +174,9 @@ describe("purpose 'signin' (log in with a code)", () => {
 describe("purpose 'register' (sign up) — an address with an account cannot register again", () => {
   it('a new address gets an unconfirmed account (random password, password_set false) and a confirmation code', async () => {
     mockUpdateUser.mockClear();
-    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'n1', email_confirmed_at: null }, properties: { email_otp: '424242' } }, error: null });
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'n1', email_confirmed_at: null }, properties: { email_otp: '111111' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'n1', email_confirmed_at: null }, properties: { email_otp: '424242' } }, error: null });
     const res = await send({ email: 'New@Example.com', purpose: 'register', locale: 'ka' });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, length: 6 });
@@ -166,7 +196,9 @@ describe("purpose 'register' (sign up) — an address with an account cannot reg
   });
   it('an unfinished sign-up (unconfirmed) is not an account: a fresh code, and any stranger-chosen password is replaced', async () => {
     mockUpdateUser.mockClear();
-    mockGenerateLink.mockResolvedValueOnce({ data: { user: { id: 'p1', email_confirmed_at: null }, properties: { email_otp: '515151' } }, error: null });
+    mockGenerateLink
+      .mockResolvedValueOnce({ data: { user: { id: 'p1', email_confirmed_at: null }, properties: { email_otp: '515151' } }, error: null })
+      .mockResolvedValueOnce({ data: { user: { id: 'p1', email_confirmed_at: null }, properties: { email_otp: '525252' } }, error: null });
     const res = await send({ email: 'pending@example.com', purpose: 'register' });
     expect(res.status).toBe(200);
     expect(mockUpdateUser).toHaveBeenCalledWith('p1', { password: expect.any(String) });
