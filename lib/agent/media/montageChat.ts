@@ -56,8 +56,16 @@ export interface AgentMontageState {
   prompt?: string;
   /** The attachments' names, in the order sent: the quote names unused files by index. */
   names?: string[];
+  /** Attachments settled so far while the plan is read (the upload step's „2/4"). */
+  uploaded?: number;
   pct?: number;
+  /** The job's last stage: kept through a stop or a failure, so the card marks the step it ended on. */
   stage?: string | null;
+  /** Stop was pressed and has not come back yet. */
+  stopping?: boolean;
+  /** When the current working stretch began (the bubble, then Start) and when the run ended: the card's clock. */
+  t0?: number;
+  t1?: number;
   error?: string;
 }
 

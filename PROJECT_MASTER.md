@@ -64,6 +64,11 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           service panels and the montage export read (and stop) jobs only through it; the tray stops Agent G jobs and
           never draws a job a chat card already shows. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
           the progress card (components/studio/ui/LoadingLoop.tsx; poster only under reduced motion / Save-Data), PR #50.
+          Agent G's chat cards as task panels (owner, 17:02Z, after the Preview run): one card per job from the moment
+          the message is sent to the end and after it (upload → analysis → plan → … → saved, ✓ / spinner / circle, a
+          clock), never replaced line by line and never vanishing; the tray no longer flashes a finished job; own
+          video and audio players (waveform) in place of the browser's; the feed's scrollbar out of the column.
+          components/studio/AgentTaskCard.tsx, lib/agent/media/taskSteps.ts, ChatVideoPlayer, ChatAudioPlayer; PR #50.
           Supabase Auth review (2026-10-09, draft PR #51, not merged into this branch: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z):
           AUTH-3 PROVEN live 16:02Z, email sign-up by code (AUTH-4) PROVEN live 16:09:05Z (the owner's KA sign-up);
@@ -956,7 +961,8 @@ and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
        max(1 s, 3 %) of the plan, and the track actually mixed; a failure is not shown, fails the job and refunds.
 ◐ AG-6 BUILT_NOT_PROVEN. The master plays in the same chat bubble (player, Download, Share, Save, Edit) and is a
        Library item through its completed generation_jobs row. Browser test tests/agent-g-montage.spec.ts (routes
-       mocked) 4/4. In the chat: up to 4 clips + 1 track (the composer's 5-file tray), 20 MB per file; a song over
+       mocked) 6/6. The card is a task panel (components/studio/AgentTaskCard.tsx): every step from the upload to
+       the saved master stays on it, and it stays after the run with the result under it (owner, 17:02Z). In the chat: up to 4 clips + 1 track (the composer's 5-file tray), 20 MB per file; a song over
        the chat's ~4 MB inline cap is admitted for the montage only (it is uploaded, never sent inline). The montage
        turn's files never go back to the chat model with later turns (the browser test fails without that).
 ◐ AG-7 BUILT_NOT_PROVEN. analytics_events row `audit.agent_g.media` per quote, start, delivery, refusal and
@@ -964,6 +970,10 @@ and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
        policy on the table and /api/analytics/track refuses the `audit.` prefix.
 □ AG-8 MISSING. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
        there), real clips + a track, then the job id, ffprobe of the master and a screenshot recorded.
+       Preview admin run 2026-10-09 (owner, from ~16:20Z, PARTIAL): Stop on a running montage ended it with 0
+       credits spent (16:49Z); two bugs found and fixed on PR #50: ↻ under the stopped card asked the chat model
+       (1656bd54), and at the end the card popped up in the job tray and vanished (the card let go of its job and
+       the tray's last list still read „running"; fixed with the task-panel card). Master MP4 + MP3 still to run.
        Local proof so far (real ffmpeg 7.0.2, network and storage faked): 3 clips (one portrait) + a 120 BPM
        track → plan 119.96 BPM, first beat 0.238 s (true 0.25), 5 shots, 9.5 s; master H.264/AAC 9.53 s
        (lib/agent/media/montageExec.ffmpeg.test.ts).

@@ -54,8 +54,16 @@ export interface AgentAudioState {
   /** The signed plan, sent back verbatim on Start (the server checks it against the token). */
   request?: unknown;
   token?: string;
+  /** A link or the user's file: names the card's first step before the plan comes back. */
+  source?: 'link' | 'file';
   pct?: number;
+  /** The job's last stage: kept through a stop or a failure, so the card marks the step it ended on. */
   stage?: string | null;
+  /** Stop was pressed and has not come back yet. */
+  stopping?: boolean;
+  /** When the current working stretch began (the bubble, then Start) and when the run ended: the card's clock. */
+  t0?: number;
+  t1?: number;
   error?: string;
   /** The refusal is one the user can answer by uploading their own (or a licensed) file: the card offers it. */
   offerUpload?: boolean;

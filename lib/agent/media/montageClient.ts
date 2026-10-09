@@ -23,6 +23,8 @@ export interface QuoteDeps {
   fetch: Fetch;
   /** Puts one attachment in the user's own uploads and returns its storage path (null = it did not land). */
   upload: (dataUrl: string, mimeType: string) => Promise<string | null>;
+  /** Each attachment that has settled (landed or not), as it happens: the chat card's „2/4" on its upload step. */
+  onUploaded?: (settled: number, total: number) => void;
 }
 
 export type ClientQuote =
@@ -38,11 +40,14 @@ export function montageEnabled(f: Fetch): Promise<boolean> {
 export async function quoteAgentMontage(deps: QuoteDeps, input: { prompt: string; files: ClientFile[] }): Promise<ClientQuote> {
   const paths: Array<string | null> = new Array(input.files.length).fill(null);
   let next = 0;
+  let settled = 0;
   const worker = async () => {
     while (next < input.files.length) {
       const i = next++;
       const file = input.files[i]!;
       paths[i] = await deps.upload(file.dataUrl, file.mimeType).catch(() => null);
+      settled += 1;
+      try { deps.onUploaded?.(settled, input.files.length); } catch { /* a progress line never stops the quote */ }
     }
   };
   await Promise.all([worker(), worker(), worker()]);

@@ -126,7 +126,7 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
     expect(calls.quote).toEqual([{ action: 'quote', url: LINK }]);
     await expect(card).toContainText('media.example.com');
-    await expect(card).toContainText('MP3 · 192 kbps');
+    await expect(card).toContainText('MP3 192 kbps');
     await expect(page.getByTestId('agent-audio-rights')).toHaveAttribute('data-rights', 'unverified');
     await expect(page.getByTestId('agent-audio-start')).toContainText('free');
     await expect(page.getByText('Plan: take out the sound and save it as “flower.mp3” (MP3, 192 kbps).')).toBeVisible();
@@ -139,14 +139,19 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await page.getByTestId('agent-audio-start').dblclick();
     await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'running');
     await expect(page.getByTestId('agent-audio-stop')).toBeVisible();
-    await expect(page.getByText(/Fetching the file and turning its sound into MP3|Checking the result/).first()).toBeVisible({ timeout: 10_000 });
+    // Every step stays on the card; the job's stage (extract, then qc) is the one in progress.
+    await expect(card.locator('li[aria-current="step"]')).toHaveAttribute('data-step', /^(extract|qc)$/, { timeout: 10_000 });
+    await expect(card.locator('li[data-step="source"]')).toHaveAttribute('data-state', 'done');
 
     const player = page.locator('audio[src^="https://media.test/renders/audio/extract-flower.mp3"]');
     await expect(player).toBeAttached({ timeout: 25_000 });
     await expect(page.getByText('Ready: “flower.mp3”, 0:05 · 120 KB. Play it here, download it, or save it to your Library.')).toBeVisible();
     await expect(page.getByText('0:05 · 120 KB · MP3 192 kbps')).toBeVisible(); // the player's own line
     await expect(page.getByText('flower.mp3', { exact: true })).toBeVisible();     // the player's label is the file name
-    await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
+    // The card stays after the run: every step ticked, nothing left to press.
+    await expect(card).toHaveAttribute('data-phase', 'done');
+    await expect(card.locator('li[data-state="done"]')).toHaveCount(6);
+    await expect(page.getByTestId('agent-audio-stop')).toHaveCount(0);
     expect(calls.run).toEqual([{ action: 'run', request: { source: 'signed plan' }, token: 'signed-token' }]);
     expect(new Set(calls.reads)).toEqual(new Set([JOB]));
     await page.screenshot({ path: 'test-results/agent-g-audio-2-done.png' });
@@ -187,7 +192,7 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     expect(calls.quote[1]).toEqual({ action: 'quote', file: 'omni-uploads/u/file-1', name: 'beach.webm' });
     await expect(page.getByTestId('agent-audio-rights')).toHaveAttribute('data-rights', 'own');
     await expect(plan).toContainText('your file');
-    await expect(page.getByTestId('agent-audio-rights')).toHaveText('rights: yours');
+    await expect(page.getByTestId('agent-audio-rights')).toHaveText('yours');
     await page.screenshot({ path: 'test-results/agent-g-audio-4-own-file.png' });
     expect(calls.chat).toEqual([]); // the file went to the extraction, never inline to the chat model
   });
@@ -197,7 +202,8 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await say(page, `rip the audio from ${LINK} as mp3`);
     await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
     await page.getByTestId('agent-audio-cancel').click();
-    await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
+    await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'dismissed');
+    await expect(page.getByTestId('agent-audio-start')).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(calls.run).toEqual([]);
   });
@@ -250,7 +256,10 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await page.getByTestId('agent-audio-stop').click();
     await expect.poll(() => cancels, { timeout: 10_000 }).toEqual([{ action: 'cancel', id: JOB }]);
     await expect(page.getByText('Stopped.')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('agent-audio-card')).toHaveCount(0);
+    // The card stays, stopped on the step it was at; no Stop left to press.
+    await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'cancelled');
+    await expect(page.getByTestId('agent-audio-card').locator('li[data-step="extract"]')).toHaveAttribute('data-state', 'stopped');
+    await expect(page.getByTestId('agent-audio-stop')).toHaveCount(0);
     expect(cancels).toHaveLength(1);
   });
 

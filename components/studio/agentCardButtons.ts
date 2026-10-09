@@ -1,0 +1,3 @@
+/** The Agent G cards' two button looks (AgentMontageCard, AgentAudioCard): the step's main action, and a quiet one. */
+export const primaryBtn = 'inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-app-accent px-4 py-2 text-[13px] font-semibold text-app-bg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg';
+export const quietBtn = 'inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-app-border/30 px-4 py-2 text-[13px] font-medium text-app-text transition-colors hover:bg-app-border/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60';

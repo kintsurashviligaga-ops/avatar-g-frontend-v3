@@ -142,11 +142,17 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     // A double tap is still one Start.
     await page.getByTestId('agent-montage-start').dblclick();
     await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'running');
-    await expect(page.getByText('Joining the shots')).toBeVisible({ timeout: 10_000 });
+    // Every step stays on the card; the job's stage is the one in progress (the mock reads stitch at 55 %, then done).
+    await expect(card.locator('li[data-step="stitch"]')).toHaveAttribute('data-state', 'active', { timeout: 10_000 });
+    await expect(card.locator('li[data-step="upload"]')).toHaveAttribute('data-state', 'done');
     await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
     await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Download', exact: true }).first()).toBeVisible(); // playable, and downloadable
-    await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+    // The card stays after the run (the owner's „it popped up and vanished"): every step ticked, nothing left to press.
+    await expect(card).toHaveAttribute('data-phase', 'done');
+    await expect(card.locator('li[data-state="done"]')).toHaveCount(8);
+    await expect(card).toContainText('8/8 steps');
+    await expect(page.getByTestId('agent-montage-stop')).toHaveCount(0);
     expect(calls.run).toEqual([{ action: 'run', request: { shots: ['signed plan'] }, token: 'signed-token', prompt: 'cut these to the music' }]);
     expect(calls.reads.length).toBeGreaterThanOrEqual(2);
     expect(new Set(calls.reads)).toEqual(new Set([QUOTE.jobId]));
@@ -174,7 +180,19 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect(card).toHaveAttribute('data-phase', 'running');
     // The card narrates that job now, so the tray lets go of it at once (one owner per job): never two bars for one job.
     await expect(tray.getByText('Agent G · montage')).toHaveCount(0);
+    // From here on, note any moment the tray shows the job again. Its list was read while the job ran, so if the card let
+    // go at the end, that stale „running" row popped up until the next read and vanished (the owner's Preview run).
+    await page.evaluate(() => {
+      const w = window as unknown as { __trayFlash?: boolean };
+      w.__trayFlash = false;
+      const check = () => { if (document.querySelector('[data-testid="job-tray"]')?.textContent?.includes('Agent G · montage')) w.__trayFlash = true; };
+      new MutationObserver(check).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
     await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    await expect(card).toHaveAttribute('data-phase', 'done');
+    await page.waitForTimeout(8_000); // past the tray's next read
+    expect(await page.evaluate(() => (window as unknown as { __trayFlash?: boolean }).__trayFlash)).toBe(false);
+    await expect(tray.getByText('Agent G · montage')).toHaveCount(0);
     expect(calls.cancel).toEqual([]);
   });
 
@@ -183,7 +201,9 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await attachAndSend(page, 'make a reel to this song');
     await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
     await page.getByTestId('agent-montage-cancel').click();
-    await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+    await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'dismissed');
+    await expect(page.getByTestId('agent-montage-start')).toHaveCount(0);
+    await expect(page.getByTestId('agent-montage-cancel')).toHaveCount(0);
     await expect(page.getByText('Edit stopped.')).toBeVisible();
     await page.waitForTimeout(500);
     expect(calls.run).toEqual([]);
@@ -201,7 +221,7 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     const regen = page.getByRole('button', { name: 'Regenerate', exact: true });
     await expect(regen).toHaveCount(0); // an open card: its own buttons are the way
     await page.getByTestId('agent-montage-cancel').click();
-    await expect(card).toHaveCount(0);
+    await expect(card).toHaveAttribute('data-phase', 'dismissed');
 
     await regen.click();
     await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });

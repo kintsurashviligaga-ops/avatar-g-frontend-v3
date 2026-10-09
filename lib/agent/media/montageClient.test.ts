@@ -43,6 +43,13 @@ describe('quote', () => {
     expect(s.calls).toEqual([{ url: '/api/agent/media/montage', body: { action: 'quote', files: ['u/a', 'u/b', 'u/s'], prompt: 'cut to the song' } }]);
   });
 
+  test('reports each settled upload, so the card counts them while they go', async () => {
+    const s = server(() => json(200, { ok: true, quote: QUOTE, request: {}, token: 'tok' }));
+    const seen: Array<[number, number]> = [];
+    await quoteAgentMontage({ fetch: s.fetch, upload: async (d) => (d === 'blob:b' ? null : 'u/x'), onUploaded: (n, total) => seen.push([n, total]) }, { prompt: 'p', files: FILES });
+    expect(seen).toEqual([[1, 3], [2, 3], [3, 3]]);
+  });
+
   test('a file that did not upload is named, and no plan is asked for', async () => {
     const s = server(() => json(200, {}));
     const r = await quoteAgentMontage({ fetch: s.fetch, upload: async (d) => (d === 'blob:b' ? null : 'u/x') }, { prompt: 'p', files: FILES });

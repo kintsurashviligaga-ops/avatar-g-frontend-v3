@@ -141,6 +141,9 @@ import { classifyFocusInput, gateMessage, isAffirmation, isConversational, merge
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
 import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
+import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
+import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
+import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
@@ -5517,15 +5520,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const montageRunsRef = useRef(new Set<string>());
   const newAgentMontageBubble = useCallback((text: string, files: Media[]): Msg => ({
     role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
-    montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? '') },
+    montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? ''), uploaded: 0, t0: Date.now() },
   }), [locale]);
   // Quote the plan into an Agent G montage bubble already in the thread (a new turn, or ↻ under a finished one).
   const quoteAgentMontageInto = useCallback(async (id: string, text: string, files: Media[]) => {
     const names = files.map((f) => f.name ?? '');
-    const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: (d, m) => uploadBigFile(d, m) }, { prompt: text, files });
+    // Each upload that settles moves the card's „2/4"; the last one hands the step to the analysis.
+    const onUploaded = (n: number) => patchMsgById(id, (m) => (m.montage?.phase === 'reading' ? { ...m, montage: { ...m.montage, uploaded: n } } : m));
+    const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: (d, m) => uploadBigFile(d, m), onUploaded }, { prompt: text, files });
     patchMsgById(id, (m) => (r.ok
       ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
-      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code } }));
+      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
     const bubble = newAgentMontageBubble(text, files);
@@ -5543,7 +5548,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const audioRunsRef = useRef(new Set<string>());
   const newAgentAudioBubble = useCallback((ask: AudioAsk): Msg => ({
     role: 'assistant', id: `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: checkingText(ask.source, locale),
-    audioJob: { phase: 'checking' },
+    audioJob: { phase: 'checking', source: ask.source, t0: Date.now() },
   }), [locale]);
   // Check the source and quote the plan into an Agent G audio bubble already in the thread (a new turn, or ↻).
   const quoteAgentAudioInto = useCallback(async (id: string, ask: AudioAsk, file?: Media) => {
@@ -5563,12 +5568,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: note })); } catch { /* old engines */ }
     }
     patchMsgById(id, (m) => (r.ok
-      ? { ...m, text: audioQuoteText(r.quote, locale), audioJob: { phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
+      ? { ...m, text: audioQuoteText(r.quote, locale), audioJob: { phase: 'quoted', source: ask.source, quote: r.quote, request: r.request, token: r.token } }
       : {
         ...m,
         text: `⚠️ ${audioErrorText(r.code, locale, 'platform' in r ? r.platform : undefined)}`,
         noRetry: true,
-        audioJob: { phase: 'failed', error: r.code, offerUpload: ask.source === 'link' && OFFER_UPLOAD.has(r.code) },
+        audioJob: { phase: 'failed', source: ask.source, error: r.code, offerUpload: ask.source === 'link' && OFFER_UPLOAD.has(r.code), t0: m.audioJob?.t0, t1: Date.now() },
       }));
   }, [locale, patchMsgById]);
   const startAgentAudio = useCallback(async (text: string, ask: AudioAsk, file?: Media) => {
@@ -7608,21 +7613,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const card = messagesRef.current.find((m) => m.id === id)?.montage;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
     montageRunsRef.current.add(id);
-    patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null } }));
+    patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
     const r = await runAgentMontage({
       fetch: (u, init) => fetch(u, init),
       sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
       now: () => Date.now(),
-      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running' && m.montage.stage !== 'stopping'
-        ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), stage } }
+      // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
+      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
+        ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
         : m)),
     }, { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId });
     if (r.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || card.quote!.totalSec, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || card.quote!.aspect), montage: { ...m.montage!, phase: 'done' } }));
+      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || card.quote!.totalSec, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || card.quote!.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';
-      patchMsgById(id, (m) => ({ ...m, text: stopped ? errorText('cancelled', locale) : `⚠️ ${errorText(r.code, locale)}`, noRetry: true, montage: { ...m.montage!, phase: stopped ? 'cancelled' : 'failed', error: r.code } }));
+      patchMsgById(id, (m) => ({ ...m, text: stopped ? errorText('cancelled', locale) : `⚠️ ${errorText(r.code, locale)}`, noRetry: true, montage: { ...m.montage!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: Date.now() } }));
     }
   }, [locale, patchMsgById]);
   const stopAgentMontage = useCallback(async (id: string) => {
@@ -7632,11 +7638,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n${errorText('cancelled', locale)}`, montage: { ...m.montage!, phase: 'dismissed' } }));
       return;
     }
-    if (card.phase !== 'running' || card.stage === 'stopping' || !card.quote) return;
-    patchMsgById(id, (m) => ({ ...m, montage: { ...m.montage!, stage: 'stopping' } }));
+    if (card.phase !== 'running' || card.stopping || !card.quote) return;
+    patchMsgById(id, (m) => ({ ...m, montage: { ...m.montage!, stopping: true } }));
     if (!(await cancelAgentMontage((u, init) => fetch(u, init), card.quote.jobId))) {
       // The stop did not reach the server: the edit goes on, so the button comes back.
-      patchMsgById(id, (m) => (m.montage?.stage === 'stopping' ? { ...m, montage: { ...m.montage, stage: null } } : m));
+      patchMsgById(id, (m) => (m.montage?.stopping ? { ...m, montage: { ...m.montage, stopping: false } } : m));
     }
   }, [locale, patchMsgById]);
 
@@ -7646,21 +7652,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const card = messagesRef.current.find((m) => m.id === id)?.audioJob;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || audioRunsRef.current.has(id)) return;
     audioRunsRef.current.add(id);
-    patchMsgById(id, (m) => ({ ...m, text: audioStageText(null, locale), audioJob: { ...m.audioJob!, phase: 'running', pct: 0, stage: null } }));
+    patchMsgById(id, (m) => ({ ...m, text: audioStageText(null, locale), audioJob: { ...m.audioJob!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
     const r = await runAgentAudio({
       fetch: (u, init) => fetch(u, init),
       sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
       now: () => Date.now(),
-      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.audioJob?.phase === 'running' && m.audioJob.stage !== 'stopping'
-        ? { ...m, audioJob: { ...m.audioJob, ...(pct !== null ? { pct } : {}), stage } }
+      // The stage is kept even while a Stop is on its way: the card marks the step the extraction stops on.
+      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.audioJob?.phase === 'running'
+        ? { ...m, audioJob: { ...m.audioJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
         : m)),
     }, { request: card.request, token: card.token, jobId: card.quote.jobId });
     if (r.ok) {
       const info = `${formatDuration(r.durationSec)} · ${formatAudioBytes(r.bytes, locale)} · MP3 ${r.bitrateKbps || card.quote.bitrateKbps} kbps`;
-      patchMsgById(id, (m) => ({ ...m, text: audioDoneText(r, locale), audioUrl: r.audioUrl, audioName: r.name, audioInfo: info, audioJob: { ...m.audioJob!, phase: 'done' } }));
+      patchMsgById(id, (m) => ({ ...m, text: audioDoneText(r, locale), audioUrl: r.audioUrl, audioName: r.name, audioInfo: info, audioJob: { ...m.audioJob!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
     } else {
       const stopped = r.code === 'cancelled';
-      patchMsgById(id, (m) => ({ ...m, text: stopped ? audioErrorText('cancelled', locale) : `⚠️ ${audioErrorText(r.code, locale)}`, noRetry: true, audioJob: { ...m.audioJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, offerUpload: false } }));
+      patchMsgById(id, (m) => ({ ...m, text: stopped ? audioErrorText('cancelled', locale) : `⚠️ ${audioErrorText(r.code, locale)}`, noRetry: true, audioJob: { ...m.audioJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, offerUpload: false, stopping: false, t1: Date.now() } }));
     }
   }, [locale, patchMsgById]);
   const stopAgentAudio = useCallback(async (id: string) => {
@@ -7670,10 +7677,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n${audioErrorText('cancelled', locale)}`, audioJob: { ...m.audioJob!, phase: 'dismissed' } }));
       return;
     }
-    if (card.phase !== 'running' || card.stage === 'stopping' || !card.quote) return;
-    patchMsgById(id, (m) => ({ ...m, audioJob: { ...m.audioJob!, stage: 'stopping' } }));
+    if (card.phase !== 'running' || card.stopping || !card.quote) return;
+    patchMsgById(id, (m) => ({ ...m, audioJob: { ...m.audioJob!, stopping: true } }));
     if (!(await cancelAgentAudio((u, init) => fetch(u, init), card.quote.jobId))) {
-      patchMsgById(id, (m) => (m.audioJob?.stage === 'stopping' ? { ...m, audioJob: { ...m.audioJob, stage: null } } : m));
+      patchMsgById(id, (m) => (m.audioJob?.stopping ? { ...m, audioJob: { ...m.audioJob, stopping: false } } : m));
     }
   }, [locale, patchMsgById]);
   // The upload offer after a refused link: the file picker opens with the request already in the composer.
@@ -7683,12 +7690,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     fileRef.current?.click();
   }, [locale, inputSourceRef]);
 
-  // ONE OWNER PER JOB (the JobTray's rule): a running Agent G card narrates its own job, so the tray leaves that job to
-  // it, and gets it back the moment the card stops narrating (the run ended, or a new thread replaced the chat) while
-  // the job may still run server-side. Derived from the cards on screen, so a claim can never outlive its card.
+  // ONE OWNER PER JOB (the JobTray's rule): an Agent G card narrates its own job, so the tray leaves that job to it —
+  // while it runs AND after it ended (lib/agent/media/taskSteps `cardOwnsJob`): the card now stays with its whole list,
+  // and handing a finished job back made the tray flash its own „ready" row for 4 s and vanish under it (the Preview run
+  // of 2026-10-09: „the card popped up and disappeared"). The tray gets the job back when the follow lost it (it may still
+  // run server-side) or a new thread replaced the chat. Derived from the cards on screen: a claim never outlives its card.
   const agentCardJobs = useMemo(() => messages
     .flatMap((m) => [m.montage, m.audioJob])
-    .flatMap((c) => (c?.phase === 'running' && c.quote?.jobId ? [c.quote.jobId] : []))
+    .flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; })
     .sort().join(','), [messages]);
   useEffect(() => {
     if (!agentCardJobs) return;
@@ -7715,7 +7724,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   : 'min-w-0 flex-1 text-app-text'
               }`}>
                 {m.medias && m.medias.length > 0 && (
-                  <div className={`mb-2 flex flex-wrap gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
+                  // The files a turn carried, as tiles: a clip is a short frame in its own shape with a play button (the
+                  // browser's grey control bar was the „ugly player" of the 2026-10-09 run), a track is the chat's audio row.
+                  <div className={`mb-2 flex flex-wrap items-end gap-2 ${m.role === 'user' ? 'justify-end' : ''}`}>
                     {m.medias.map((md, mi) => (
                       isImage(md.mimeType) ? (
                         <button key={mi} type="button" onClick={() => setLightbox(md.dataUrl)} className="block cursor-zoom-in" aria-label={t.a11yFullscreen}>
@@ -7723,10 +7734,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                         </button>
                       ) : isVideo(md.mimeType) ? (
-                        // eslint-disable-next-line jsx-a11y/media-has-caption
-                        <video key={mi} src={md.dataUrl} controls className="max-h-44 rounded-lg" />
+                        <ChatVideoPlayer key={mi} src={md.dataUrl} variant="attachment" locale={locale} {...(md.name ? { label: md.name } : {})} />
                       ) : isAudio(md.mimeType) ? (
-                        <audio key={mi} src={md.dataUrl} controls className="w-full" />
+                        <ChatAudioPlayer key={mi} src={md.dataUrl} locale={locale} {...(md.name ? { name: md.name } : {})} />
                       ) : (
                         <span key={mi} className="inline-flex items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted"><FileText size={12} /> document</span>
                       )
@@ -7827,7 +7837,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     )}
                   </div>
                 )}
-                {m.audioUrl && (
+                {m.audioUrl && !m.audioJob && (
                   <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                     {/* Polished Suno-style player (album art + play/scrub/time). */}
                     <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={m.audioName ?? t.modeMusic} engine={m.engine} note={m.audioInfo ?? musicControlsNote(m.musicControlsMode, m.regen?.kind === 'music' ? m.regen : undefined, locale)} />
@@ -7862,17 +7872,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   </div>
                 )}
-                {m.videoUrl && (
+                {m.videoUrl && !m.montage && (
                   <div className="space-y-1.5">
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    {/* #t=0.1 makes the browser paint a real frame as the poster (not a
-                        black box); preload=metadata forces that frame to load up front. */}
-                    {/* Orientation-aware: a 9:16 clip gets a portrait box (no landscape
-                        pillarbox on mobile); 16:9 fills the bubble. object-contain never distorts. */}
-                    <video src={`${m.videoUrl}#t=0.1`} poster={m.coverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(e) => { const el = e.currentTarget; const d = el.duration; if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d })); const w = el.videoWidth, h = el.videoHeight; if (w > 0 && h > 0) setVideoResultDims((p) => (p[i]?.w === w && p[i]?.h === h ? p : { ...p, [i]: { w, h } })); }} className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh] rounded-xl object-contain bg-black/90 ring-1 ring-app-border/10`} />
-                    {/* FIX 4 — result meta: real clip length read from the player. */}
+                    {/* The chat's own player (components/studio/ChatVideoPlayer): a frame as its face, one play button, a bar
+                        on hover. Orientation-aware: a 9:16 clip gets a portrait box (no landscape pillarbox on mobile); 16:9
+                        fills the bubble. object-contain never distorts. */}
+                    <ChatVideoPlayer
+                      src={m.videoUrl}
+                      locale={locale}
+                      {...(m.coverUrl ? { poster: m.coverUrl } : {})}
+                      onMeta={({ duration: d, width: w, height: h }) => {
+                        if (isFinite(d) && d > 0) setVideoResultDur((p) => (p[i] === d ? p : { ...p, [i]: d }));
+                        if (w > 0 && h > 0) setVideoResultDims((p) => (p[i]?.w === w && p[i]?.h === h ? p : { ...p, [i]: { w, h } }));
+                      }}
+                      className={`${(() => { const o = m.orientation ?? videoOrientation; return o === 'vertical' ? 'mx-auto aspect-[9/16] w-[min(70vw,300px)]' : o === 'square' ? 'mx-auto aspect-square w-[min(75vw,360px)]' : o === 'portrait' ? 'mx-auto aspect-[4/5] w-[min(72vw,340px)]' : 'aspect-video w-full'; })()} max-h-[72dvh]`}
+                    />
+                    {/* FIX 4 — result meta: real clip length read from the player, to a tenth of a second (10.6, not 11). */}
                     {videoResultDur[i] != null && videoResultDur[i]! > 0 && (
-                      <div className="text-[10.5px] font-medium text-app-muted/70">⏱ {Math.round(videoResultDur[i]!)}{locale === 'en' ? 's' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
+                      <div className="text-[10.5px] font-medium tabular-nums text-app-muted/70">{Math.round(videoResultDur[i]! * 10) / 10}{locale === 'en' ? ' s' : locale === 'ru' ? ' с' : ' წმ'}{(() => { const d = videoResultDims[i]; const label = d ? describeAspect(d.w, d.h) : null; return label ? ` · ${label}` : ''; })()}</div>
                     )}
                     <div className="flex flex-wrap items-center gap-1.5">
                       <button
@@ -8197,6 +8214,56 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </>
                   );
                 })()}
+                {/* AGENT G'S WORK, IN ITS OWN ORDER: what it says, the task card with every step (it stays after the run),
+                    then the result it made, then the reply's actions. The result used to sit ABOVE the words and the card
+                    vanished at the end — the 2026-10-09 run read as „it popped up and disappeared". */}
+                {m.role === 'assistant' && m.montage && m.id && (
+                  <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} />
+                )}
+                {m.role === 'assistant' && m.audioJob && m.id && (
+                  <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} />
+                )}
+                {m.role === 'assistant' && m.montage && m.videoUrl && (
+                  <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-montage-result">
+                    <ChatVideoPlayer
+                      src={m.videoUrl}
+                      locale={locale}
+                      label={locale === 'en' ? 'Montage' : locale === 'ru' ? 'Монтаж' : 'მონტაჟი'}
+                      // The master has its height only once its frame is known: keep the feed on it if the user was at the bottom.
+                      onMeta={() => { if (nearBottomRef.current) scrollToBottom(); }}
+                      className={`${m.orientation === 'vertical' ? 'aspect-[9/16] w-[min(70vw,300px)]' : m.orientation === 'square' ? 'aspect-square w-[min(75vw,360px)]' : 'aspect-video w-full'} max-h-[72dvh]`}
+                    />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button type="button" onClick={() => void dl(m.videoUrl!, `myavatar-montage-${Date.now()}.mp4`)} title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share(m.videoUrl!, `myavatar-montage-${Date.now()}.mp4`)} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      {/* No „save to Library": the montage job is already a Library item (the card's last step says so). */}
+                      {editButton(m.videoUrl, 'video')}
+                    </div>
+                  </div>
+                )}
+                {m.role === 'assistant' && m.audioJob && m.audioUrl && (
+                  <div className="mt-3 space-y-2" data-testid="agent-audio-result">
+                    <ChatAudioPlayer src={m.audioUrl} locale={locale} variant="result" {...(m.audioName ? { name: m.audioName } : {})} {...(m.audioInfo ? { info: m.audioInfo } : {})} />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button type="button" onClick={() => void dl(m.audioUrl!, m.audioName ?? 'myavatar-audio.mp3')} data-testid="audio-download" title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share(m.audioUrl!, m.audioName ?? 'myavatar-audio.mp3')} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      {saveLibButton(m.audioUrl, 'music', m.audioName ? m.audioName.replace(/\.mp3$/i, '') : undefined)}
+                      {editButton(m.audioUrl, 'audio')}
+                    </div>
+                  </div>
+                )}
                 {m.genKind === 'image' && m.regen && !busy && m.text.startsWith('⚠️') && (
                   <button
                     type="button"
@@ -8338,12 +8405,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 )}
                 {m.role === 'assistant' && m.agentG && (
                   <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
-                )}
-                {m.role === 'assistant' && m.montage && m.id && (
-                  <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} />
-                )}
-                {m.role === 'assistant' && m.audioJob && m.id && (
-                  <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} />
                 )}
               </div>
             </div>
@@ -9807,7 +9868,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           nearBottomRef.current = dist < 160;
           setShowJump(dist > 160);
         }}
-        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-1 ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
+        // ⚠️ THE FEED'S RIGHT EDGE. Its scrollbar used to sit right against the replies (videos and the audio row touched it:
+        // „too tight, the right side does not show well", the owner on 2026-10-09, a Mac with visible scrollbars). The feed
+        // now reaches into the column's right padding (-mr-4 pr-4): the text keeps the composer's edge and the bar sits in
+        // the gutter, thin and quiet, with its room kept (scrollbar-gutter) so nothing jumps when the thread grows past one screen.
+        className={`${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y -mr-4 pr-4 pt-1 [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(var(--app-border)/0.35)_transparent] ${centred ? 'flex flex-1 basis-0 flex-col pb-12' : 'flex-1 pb-3'} ${chatOnly ? 'space-y-6' : 'space-y-4'}`}
       >
         {videoStage}
         {musicPane}

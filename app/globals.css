@@ -4314,6 +4314,27 @@ button, a, [role="button"], [role="tab"], label, input[type="submit"] {
   .result-shimmer { animation: none; background: rgb(255 255 255 / 0.03); }
 }
 
+/* ── Agent G task card (components/studio/AgentTaskCard.tsx) — the step in progress reads alive: a soft light crosses
+   its words, as in a task panel. Plain text under reduced motion and in forced colours (a clipped gradient would vanish). */
+@keyframes agent-step-sheen {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+.agent-step-sheen {
+  background: linear-gradient(90deg, rgb(var(--app-text)) 35%, rgb(var(--app-accent)) 50%, rgb(var(--app-text)) 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-step-sheen 2.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-step-sheen { animation: none; background: none; color: rgb(var(--app-text)); }
+}
+@media (forced-colors: active) {
+  .agent-step-sheen { background: none; color: CanvasText; }
+}
+
 /* ── BottomSheet (components/studio/ui/BottomSheet.tsx) — the studio's one sheet. A short rise and a fade
    (docs/DESIGN.md §5: 200–300 ms, no bounce); nothing moves under reduced motion. */
 @keyframes sheet-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
