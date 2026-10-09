@@ -22,15 +22,18 @@ export interface AttemptOutcome {
   settled: boolean;
   url: string | null;
   error: string | null;
-  /** The job ran on HeyGen (`heygen:` id), so the next engine is SadTalker. */
+  /** The job ran on HeyGen (`heygen:` id): its failure is final, never re-run on another engine. */
   usedHeygen: boolean;
 }
 
+/**
+ * ⚠️ NO ENGINE SWITCH (the owner, 2026-10-09: no silent fallback to another outside provider). A terminal HeyGen failure
+ * used to start a SadTalker (Replicate) render of the same video; it now stops, refunded by its GET. The presenter flow
+ * lost its SadTalker leg the same day (presenterMayFallBack is gone).
+ */
 export type NextAttempt =
   /** The video landed. */
   | 'deliver'
-  /** HeyGen failed terminally → the next attempt forces SadTalker. */
-  | 'fallback-sadtalker'
   /** SadTalker hit a known transient crash → one more run. */
   | 'retry'
   /** Stop. Either a non-transient failure, or the job is STILL RENDERING (paid) and must not be doubled. */
@@ -40,16 +43,7 @@ export type NextAttempt =
 export function nextAvatarAttempt(o: AttemptOutcome): NextAttempt {
   if (o.url) return 'deliver';
   if (!o.settled) return 'stop';
-  if (o.usedHeygen) return 'fallback-sadtalker';
+  if (o.usedHeygen) return 'stop';
   if (o.error && !TRANSIENT_SADTALKER.test(o.error)) return 'stop';
   return 'retry';
-}
-
-/**
- * The presenter flow: may the SadTalker fallback run after the HeyGen leg?
- * Yes when HeyGen never started a video (Phase B refused or refunded it) or when its poll reported a terminal failure
- * (the GET refunded it). No while a started HeyGen video is still rendering — it holds its own reservation.
- */
-export function presenterMayFallBack(heygen: { videoId: string | null | undefined; settled: boolean }): boolean {
-  return !heygen.videoId || heygen.settled;
 }

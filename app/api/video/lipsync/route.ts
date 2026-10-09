@@ -287,12 +287,12 @@ export async function POST(req: NextRequest) {
 
     // kind:'film' → multi-shot video master needs the VIDEO-INPUT engine (sync/lipsync-2),
     // not the talking-photo engines. Falls back to null → caller keeps the un-synced master.
-    // forceSadTalker → skip HeyGen (the client sets this on a retry after a HeyGen job failed).
+    // `forceSadTalker` is no longer honoured: a failed HeyGen job is not re-run on SadTalker (no silent fallback).
     // orientation → HeyGen output dimension (the avatar panel's Format selector).
     const orientation = body.orientation === 'landscape' ? 'landscape' : body.orientation === 'square' ? 'square' : body.orientation === 'vertical' ? 'vertical' : undefined;
     const jobId = body.kind === 'film'
       ? await filmLipsyncCreate(videoUrl, audioUrl)
-      : await lipsyncCreate(videoUrl, audioUrl, { skipHeygen: body.forceSadTalker === true, ...(orientation ? { orientation } : {}) });
+      : await lipsyncCreate(videoUrl, audioUrl, orientation ? { orientation } : undefined);
     if (!jobId) {
       await releaseCharge(); // no job was created — nothing was rendered for the reservation
       return NextResponse.json({ jobId: null, error: 'provider_failed', code: 'provider_failed' });

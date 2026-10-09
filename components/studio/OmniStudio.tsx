@@ -96,7 +96,7 @@ import { UPLOAD_MAX_BYTES, allowedUploadMime } from '@/lib/uploads/policy';
 import { extractOverlayText } from '@/lib/video/remixCaption';
 import { creditCostFor, creditsToGel, gelToCredits } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
-import { nextAvatarAttempt, presenterMayFallBack } from '@/lib/avatar/renderAttempts';
+import { nextAvatarAttempt } from '@/lib/avatar/renderAttempts';
 import { twinCopy } from '@/components/twin/copy';
 import { RehostSourceError, fetchRehostSource, isTwinSignedUrl } from '@/components/twin/rehostSource';
 import { MY_TWIN_CARD_ID, myTwinCardItem, useMyTwin } from '@/components/twin/useMyTwin';
@@ -6351,20 +6351,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Honour the panel's Voice (Female/Male) + Format selections.
             body: JSON.stringify({ text, orientation: lipOrientation, gender: lipGender }),
           });
-          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string };
-          let sj: { success?: boolean; videoId?: string } = {};
-          // No HeyGen key → don't burn a round-trip on a submit that must 503; the SadTalker
-          // fallback below runs on the SAME cloned-voice audio. (undefined = older server → try.)
+          const syn = (await synRes.json().catch(() => ({}))) as { success?: boolean; audioUrl?: string; heygenReady?: boolean; chargeToken?: string; error?: string; code?: string };
+          let sj: { success?: boolean; videoId?: string; error?: string; code?: string } = {};
+          // ONE ENGINE: the presenter is HeyGen. Without it the server refuses Phase A before charging (no SadTalker leg).
           if (syn.success && syn.audioUrl && syn.heygenReady !== false) {
             const genRes = await fetch('/api/heygen/presenter', {
               method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
               // chargeToken = Phase A's price hold; the server releases it as it reserves this render (one presenter, one charge).
               body: JSON.stringify({ audioUrl: syn.audioUrl, orientation: lipOrientation, chargeToken: syn.chargeToken }),
             });
-            sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string };
+            sj = (await genRes.json().catch(() => ({}))) as { success?: boolean; videoId?: string; error?: string; code?: string };
           }
           let url: string | null = null;
-          let failReason: string | null = null;
+          // Say why a start was refused (not configured, no credits) instead of the generic "lip-sync failed".
+          let failReason: string | null = !syn.success && (syn.code || syn.error) ? describeGenerationFailure(syn, locale, t.lipsyncFailed)
+            : syn.success && !sj.success && (sj.code || sj.error) ? describeGenerationFailure(sj, locale, t.lipsyncFailed) : null;
           const heygenVideoId = sj.success && sj.videoId ? sj.videoId : null;
           let heygenSettled = false;
           if (heygenVideoId) {
@@ -6381,30 +6382,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // here reserved a second price for the same presenter (or 402'd a user who could afford exactly one).
             if (!url && !heygenSettled) failReason = lipStillRendering;
           }
-          // HeyGen unavailable / unpaid package / a terminal HeyGen failure (refunded by its poll) → fall back to
-          // Replicate SadTalker: the default presenter face speaks the SAME cloned-voice audio.
-          if (!url && syn.success && syn.audioUrl && presenterMayFallBack({ videoId: heygenVideoId, settled: heygenSettled })) {
-            try {
-              const fbRes = await fetch('/api/video/lipsync', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-                body: JSON.stringify({ characterRef: 'https://myavatar.ge/presenter/default-female.jpg', audioUrl: syn.audioUrl, forceSadTalker: true, orientation: lipOrientation, chargeToken: syn.chargeToken }),
-              });
-              const fb = (await fbRes.json().catch(() => ({}))) as { jobId?: string | null; error?: string | null };
-              // Say WHY the last tier refused (provider_not_configured / insufficient_credits /
-              // media_unresolved) instead of the generic "lip-sync failed".
-              if (!fb.jobId && fb.error) failReason = describeGenerationFailure(fb, locale, t.lipsyncFailed);
-              if (fb.jobId) {
-                failReason = null;
-                for (let i = 0; i < 90 && !url; i++) {
-                  if (!mine()) return;
-                  await new Promise((r) => setTimeout(r, 6000));
-                  const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(fb.jobId)}`, { credentials: 'include', signal: ac.signal });
-                  const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null; refunded?: boolean };
-                  if (pj.done) { if (pj.url) url = pj.url; else if (pj.refunded) failReason = describeGenerationFailure(pj, locale, t.lipsyncFailed); break; }
-                }
-              }
-            } catch { /* keep the HeyGen failure below */ }
-          }
+          // ⚠️ NO SADTALKER LEG (the owner, 2026-10-09: no silent fallback to another outside provider). HeyGen unavailable or a
+          // terminal HeyGen failure (refunded by its poll; Phase B's own refusals refund themselves) ends here with its reason.
           setMessages((prev) => {
             if (!mine()) return prev;
             const next = [...prev];
@@ -6465,9 +6444,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // good build. Non-transient failures bail immediately.
         let resultUrl: string | null = null;
         let resultErr: string | null = null;
-        // Avatar engine = HeyGen first; if a HeyGen job fails (create OR render), the next
-        // attempt forces the proven SadTalker engine — so the service NEVER hard-fails.
-        let forceSadTalker = false;
+        // One engine per video (lib/ai/lipsync lipsyncCreate): a failed HeyGen job is not re-run on SadTalker.
         let stillRendering = false;
         // Whether the FINAL attempt ended in a terminal failure its GET confirmed refunded — the only case the bubble may
         // say "credits refunded". Reset per attempt, so a start that failed afterwards claims nothing.
@@ -6475,8 +6452,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         for (let attempt = 0; attempt < 3 && !resultUrl; attempt++) {
           if (!mine()) return;
           lastRefunded = false;
-          const body = forceSadTalker ? JSON.stringify({ ...JSON.parse(startBody), forceSadTalker: true }) : startBody;
-          const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, credentials: 'include', signal: ac.signal });
+          const startRes = await fetch('/api/video/lipsync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: startBody, credentials: 'include', signal: ac.signal });
           const startJson = (await startRes.json().catch(() => ({}))) as { jobId?: string | null };
           if (!startJson.jobId) { resultErr = 'start failed'; continue; }
           const usedHeygen = String(startJson.jobId).startsWith('heygen:');
@@ -6489,12 +6465,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             const pj = (await pollRes.json().catch(() => ({}))) as { done?: boolean; url?: string | null; error?: string | null; refunded?: boolean };
             if (pj.done) { settled = true; resultUrl = pj.url ?? null; resultErr = pj.error ?? null; lastRefunded = pj.refunded === true; break; }
           }
-          // A failed HeyGen job → the proven SadTalker engine next; SadTalker retries only its known transient crash.
+          // A failed HeyGen job stops (no engine switch); SadTalker retries only its known transient crash.
           // ⚠️ A job still rendering when the polls ran out STOPS the chain: it is reserved, and another attempt would
           // reserve a second price for the same video (lib/avatar/renderAttempts).
           const next = nextAvatarAttempt({ settled, url: resultUrl, error: resultErr, usedHeygen });
           if (next === 'deliver') break;
-          if (next === 'fallback-sadtalker') { forceSadTalker = true; continue; }
           if (next === 'stop') { stillRendering = !settled; break; }
         }
         setMessages((prev) => {
