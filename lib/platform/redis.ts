@@ -1,4 +1,5 @@
-import { Redis } from '@upstash/redis';
+import type { Redis } from '@upstash/redis';
+import { createUpstashRedis } from '@/lib/platform/upstash';
 
 type MemoryEntry = {
   value: string;
@@ -34,7 +35,7 @@ export function getRedisClient(): Redis | null {
     return null;
   }
 
-  redisClient = new Redis({ url, token });
+  redisClient = createUpstashRedis(url, token);
   return redisClient;
 }
 

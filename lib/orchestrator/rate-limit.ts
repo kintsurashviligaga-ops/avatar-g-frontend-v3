@@ -13,7 +13,8 @@ import 'server-only';
  * is never blocked — but the moment UPSTASH_* lands, the cap is enforced.
  */
 
-import { Redis } from '@upstash/redis';
+import type { Redis } from '@upstash/redis';
+import { createUpstashRedis } from '@/lib/platform/upstash';
 
 // The per-pipeline prices live in ./produceCost (isomorphic, so a button can quote the SAME number a route charges);
 // re-exported here so every existing importer keeps working.
@@ -34,7 +35,7 @@ function redis(): Redis | null {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
-  try { return new Redis({ url, token }); } catch { return null; }
+  try { return createUpstashRedis(url, token); } catch { return null; }
 }
 
 /**

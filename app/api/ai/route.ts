@@ -1,7 +1,7 @@
 /**
  * POST /api/ai
  *
- * Unified AI pipeline endpoint — Claude 3.5 Sonnet via Anthropic API.
+ * Unified AI pipeline endpoint — Google Gemini via the configured transport.
  *
  * Supported agents (maps to credit costs):
  *   avatar  → 10 credits
@@ -31,9 +31,9 @@
  * Security:
  *   - Requires authenticated Supabase session (Bearer or cookie).
  *   - CORS restricted to same origin via compose middleware.
- *   - ANTHROPIC_API_KEY read from env only — never exposed to client.
+ *   - Google credentials remain server-side.
  *   - Input sanitised and length-bounded before forwarding.
- *   - Single retry (non-streaming) on transient 5xx from Anthropic.
+ *   - Credits reserved before generation and refunded on failure.
  *   - Rate-limited: 10 req/min per IP (RATE_LIMITS.AI).
  */
 
@@ -41,14 +41,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { compose } from '@/lib/api/compose';
 import { RATE_LIMITS } from '@/lib/api/rate-limit';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
-import { deductCreditsTransaction } from '@/lib/billing/enforce';
+import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { llmText } from '@/lib/ai/llmText';
+import { googleAiConfigured } from '@/lib/ai/google/transport';
 import { randomUUID } from 'crypto';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_MODEL   = 'claude-sonnet-4-6';
-const ANTHROPIC_VERSION = '2023-06-01';
 
 const MAX_PROMPT_LENGTH   = 4000;
 const MAX_CONTEXT_LENGTH  = 1000;
@@ -71,7 +69,7 @@ structured JSON object that specifies avatar appearance, personality traits, voi
 recommendations. Always respond in valid JSON wrapped in triple backticks.`,
 
   image: `You are an expert AI image generation prompt engineer. Transform the user's idea into a 
-detailed, optimised prompt string for a diffusion model (Stable Diffusion / SDXL / FLUX). 
+detailed, optimised prompt string for a Google Gemini image model.
 Include: subject, style, lighting, composition, quality tags. Return JSON: { "prompt": "...", "negative_prompt": "...", "suggested_model": "..." }`,
 
   video: `You are an expert AI video production assistant. Produce a detailed shot-by-shot script and 
@@ -143,69 +141,6 @@ function parseAndValidateBody(raw: unknown): { body: RequestBody } | { error: st
   };
 }
 
-// ─── Anthropic call (with 1 retry on transient 5xx) ──────────────────────────
-
-async function callAnthropic(
-  systemPrompt: string,
-  userPrompt: string,
-  signal: AbortSignal,
-  attempt = 0
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new ApiError('ANTHROPIC_API_KEY is not configured', 500);
-  }
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type':         'application/json',
-      'x-api-key':            apiKey,
-      'anthropic-version':    ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model:      ANTHROPIC_MODEL,
-      max_tokens: DEFAULT_MAX_TOKENS,
-      system:     systemPrompt,
-      messages:   [{ role: 'user', content: userPrompt }],
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    // Retry once on transient server errors
-    if (response.status >= 500 && attempt === 0) {
-      return callAnthropic(systemPrompt, userPrompt, signal, 1);
-    }
-
-    let details = '';
-    try { details = await response.text(); } catch { /* ignore */ }
-
-    if (response.status === 401) throw new ApiError('Invalid Anthropic API key', 500);
-    if (response.status === 429) throw new ApiError('AI rate limit exceeded — please wait a moment', 429);
-    throw new ApiError(`Anthropic API error (${response.status}): ${details}`, 502);
-  }
-
-  const data = await response.json() as {
-    content: Array<{ type: string; text: string }>;
-    usage?: { input_tokens: number; output_tokens: number };
-  };
-
-  const text = data.content?.find(c => c.type === 'text')?.text;
-  if (!text) throw new ApiError('Anthropic returned an empty response', 502);
-
-  return text;
-}
-
-// ─── Custom error class ───────────────────────────────────────────────────────
-
-class ApiError extends Error {
-  constructor(message: string, public readonly statusCode: number) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export const POST = compose()
@@ -215,7 +150,7 @@ export const POST = compose()
 
     // 1. Auth — requires valid session (bypassed in demo mode when Supabase is not configured)
     // ⚠️ NEVER IN PRODUCTION. A missing or 'placeholder' Supabase URL used to switch auth OFF and answer as 'demo-user'
-    // on the platform's Anthropic key — so a misconfigured production env failed OPEN into an anonymous model proxy.
+    // on the platform's Google identity — so a misconfigured production env failed OPEN into an anonymous model proxy.
     // The demo bypass is for a local `next dev` with no Supabase at all; production always requires a session.
     const supabaseConfigured =
       process.env.NODE_ENV === 'production' ||
@@ -255,58 +190,20 @@ export const POST = compose()
       ? `Context: ${body.context}\n\n${body.prompt}`
       : body.prompt;
 
-    // 5. Call Anthropic with timeout
-    const controller  = new AbortController();
-    const timeout     = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    let   result: string;
-
+    if (!googleAiConfigured()) return NextResponse.json({ error: 'Google AI is not configured' }, { status: 503 });
+    const ref = `ai-${body.agent}-${user.id}-${randomUUID()}`;
+    const debit = supabaseConfigured ? await deductCredits(user.id, creditCost, ref) : null;
+    if (debit && !debit.ok) {
+      return NextResponse.json({ error: debit.reason === 'insufficient' ? 'Insufficient credits' : 'Billing unavailable', required: creditCost }, { status: debit.reason === 'insufficient' ? 402 : 503 });
+    }
+    let result: string | null = null;
     try {
-      result = await callAnthropic(
-        AGENT_SYSTEM_PROMPTS[body.agent],
-        userPrompt,
-        controller.signal
-      );
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err instanceof ApiError) {
-        return NextResponse.json({ error: err.message }, { status: err.statusCode });
-      }
-      if (err instanceof Error && err.name === 'AbortError') {
-        return NextResponse.json({ error: 'AI request timed out' }, { status: 504 });
-      }
-      return NextResponse.json({ error: 'Internal AI pipeline error' }, { status: 500 });
+      result = await llmText({ system: AGENT_SYSTEM_PROMPTS[body.agent], user: userPrompt, maxTokens: DEFAULT_MAX_TOKENS, timeoutMs: TIMEOUT_MS });
     } finally {
-      clearTimeout(timeout);
+      if (!result && debit?.ok) await refundCredits(user.id, creditCost, `${ref}:refund`).catch(() => {}); // only a real charge is given back
     }
-
-    // 6. Deduct credits (skip in demo mode)
-    let newBalance = 1000;
-
-    if (supabaseConfigured) {
-      const idempotencyKey = `ai-${body.agent}-${user.id}-${randomUUID()}`;
-      try {
-        const deduction = await deductCreditsTransaction({
-          userId:         user.id,
-          amount:         creditCost,
-          jobId:          idempotencyKey,
-          agentId:        `ai_${body.agent}`,
-          reason:         `AI ${body.agent} generation`,
-          idempotencyKey,
-        });
-        newBalance = deduction.newBalance;
-      } catch (err) {
-        if (err instanceof Error) {
-          const msg = err.message.toLowerCase();
-          if (msg.includes('insufficient') || msg.includes('balance')) {
-            return NextResponse.json(
-              { error: 'Insufficient credits', required: creditCost },
-              { status: 402 }
-            );
-          }
-        }
-        console.error('[/api/ai] Credit deduction failed after AI call:', err);
-      }
-    }
+    if (!result) return NextResponse.json({ error: 'Google AI generation unavailable' }, { status: 502 });
+    const newBalance = debit?.balance ?? null;
 
     const executionMs = Date.now() - startMs;
 
@@ -314,10 +211,10 @@ export const POST = compose()
     return NextResponse.json({
       result,
       agent:        body.agent,
-      creditsUsed:  creditCost,
+      creditsUsed:  debit?.ok ? creditCost : 0,
       newBalance,
       executionMs,
-      model:        ANTHROPIC_MODEL,
+      model:        'gemini',
     });
   });
 
