@@ -38,14 +38,16 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           checks passed. 20261009a (function hardening) applied ~05:39Z on the owner's "გაუშვი"; advisor warnings 22 -> 2.
           PR #48 (/api/ai on Gemini, voice token for signed-in users, Upstash fast-fail, PR #43's Part 0 tooling, admin
           engine reports) merged as 7126682e on the owner's "Deploy + renders" (07:08:11Z); Production serves 7126682
-          (~07:13Z), public checks passed; 20261009b (renders private) applied 07:14Z and read back.
+          (~07:13Z), public checks passed; 20261009b (renders private) applied 07:14Z and read back. PR #49 (orbit agent
+          404 and no Pollinations cover under Google-only, provider ratchet, ka/en/ru fixes) merged as 29e7d67b on the
+          owner's "Deploy" (08:02:01Z); Production serves 29e7d67 (~08:07Z), public checks passed.
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
 LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 7126682e = Production, PR #48 merged 2026-10-09 07:08Z; on top, in
-          draft PR #49, not deployed: certification records, ba74fa21 (/api/orbit/agent 404 and music cover art off
-          Pollinations under Google-only; provider-boundary ratchet test) and 7c8dd9b3 (ka/en/ru fixes + missing-key test));
-          PRs #42, #45, #46, #47 and #48 merged
+LAST COMMIT: see `git log` on that branch (main = 29e7d67b = Production since ~08:07Z, PR #49 merged 2026-10-09 08:02Z
+          on the owner's "Deploy": ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
+          provider-boundary ratchet test; 7c8dd9b3 ka/en/ru fixes + missing-key test; certification records);
+          PRs #42, #45, #46, #47, #48 and #49 merged
 NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
           final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
