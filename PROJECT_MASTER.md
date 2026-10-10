@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; certification run)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 0)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -94,6 +94,14 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           the payer). Production read-only audit: ledger 222 rows, 0 duplicate refs, 0 negative balances; 0 live or stuck
           jobs; RLS 52 / 52; one all-zero-id PRO profile with 1,000,050 credits and 18 profiles without a sign-in account
           (cleanup = owner action 24). Preview run cut to A–D (about 6 minutes) for the owner.
+          AGENT G AUTONOMOUS EXECUTION (owner, 2026-10-10 05:49Z, PART 0–7; supplement 06:00Z: Gemini native
+          intelligence, folded into the same parts). Reports in docs/handoffs/agent-g/part-N-report.md; final report
+          docs/handoffs/AGENT_G_FINAL_E2E_CERTIFICATION.md. PART 0 DONE (part-0-report.md): baseline jest 11,391 passed
+          / 0 failed, tsc 0; Production read only: the deduct_credits same-ref race is real in the live definition
+          (EXISTS before the lock, no unique debit ref) and 20261002d is still unapplied; 29 unmatched refunds all traced,
+          none minted. Gaps A1–A7, R1–R2, M1–M4, T1–T4, V1–V7, B1–B3, C1–C6, P1, U1, S1, O1 and Gemini G0–G8, each with
+          a part or BLOCKED_OWNER. Next: PART 1 (contracts, one KA/EN/RU intent classifier, capability registry for
+          the 22 services, function declarations from the registry).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
