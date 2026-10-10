@@ -2,8 +2,8 @@
  * lib/agent/run/runSpec.ts — what a multi-step Agent G run is made of (PART 2, gap T1), checked before anything runs.
  *
  * A run is an ordered list of STEPS. Each step is one of the typed media actions that already run on the lease queue
- * (an audio extraction, a montage), and a step's input may be an earlier step's result: „take the sound out of this
- * video, then cut these clips to it" is
+ * (an audio extraction, a montage, an edit), and a step's input may be an earlier step's result: „take the sound out of
+ * this video, then cut these clips to it" is
  *
  *   [{ id: 'sound', tool: 'audio_extract', source: { file: <video> } },
  *    { id: 'clip',  tool: 'montage', files: [<clip 1>, <clip 2>, { step: 'sound' }] }]
@@ -12,12 +12,15 @@
  * order the user saw is an order it can run in. Pure and isomorphic (the chat builds specs with it).
  */
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
+import { editAskOf, type EditAsk } from '@/lib/agent/media/editWords';
 import type { CapabilityId } from '../contracts';
 
 /** At most this many steps in one run (the card must stay readable; the sweep must finish a tick quickly). */
 export const MAX_RUN_STEPS = 6;
 /** At most this many files in one montage step (lib/agent/media/montageAsk MAX_FILES). */
 export const MAX_MONTAGE_FILES = 13;
+/** At most this many edits in one edit step (one of each kind: lib/agent/media/editPlan EDIT_ORDER). */
+export const MAX_STEP_EDITS = 9;
 const MAX_REF = 2048;
 const MAX_TITLE = 120;
 const MAX_PROMPT = 2000;
@@ -30,7 +33,9 @@ export type RunStepSpec =
   | { id: string; tool: 'audio_extract'; source: { url: string } | { file: FileRef }; name?: string }
   | {
     id: string; tool: 'montage'; files: FileRef[]; prompt?: string; aspect?: '9:16' | '16:9' | '1:1'; targetSec?: number; musicFromSec?: number;
-  };
+  }
+  /** One of the user's videos (or an earlier step's), edited: the asks are resolved against the file at its quote. */
+  | { id: string; tool: 'edit'; file: FileRef; edits: EditAsk[]; name?: string };
 
 export type RunTool = RunStepSpec['tool'];
 
@@ -44,6 +49,7 @@ export interface RunSpec {
 export const TOOL_CAPABILITY: Readonly<Record<RunTool, CapabilityId>> = {
   audio_extract: 'agent.audio-extract',
   montage: 'agent.montage',
+  edit: 'media.edit',
 };
 
 export type SpecError = { ok: false; error: 'bad_spec'; message: string; step?: string };
@@ -59,6 +65,7 @@ export function refsOf(step: RunStepSpec): string[] {
   const out: string[] = [];
   const add = (r: FileRef) => { if (typeof r !== 'string') out.push(r.step); };
   if (step.tool === 'montage') step.files.forEach(add);
+  else if (step.tool === 'edit') add(step.file);
   else if ('file' in step.source) add(step.source.file);
   return out;
 }
@@ -124,6 +131,18 @@ export function validateRunSpec(x: unknown): { ok: true; spec: RunSpec } | SpecE
         ...(targetSec ? { targetSec } : {}),
         ...(musicFromSec ? { musicFromSec } : {}),
       });
+    } else if (raw.tool === 'edit') {
+      const file = fileRef(raw.file, seen);
+      if (!file) return fail('The video is not valid, or names a step that does not come before this one.', id);
+      if (!Array.isArray(raw.edits) || !raw.edits.length || raw.edits.length > MAX_STEP_EDITS) return fail(`An edit step takes 1 to ${MAX_STEP_EDITS} edits.`, id);
+      const edits: EditAsk[] = [];
+      for (const e of raw.edits as unknown[]) {
+        const ask = editAskOf(e);
+        if (!ask) return fail('An edit is not one Agent G knows.', id);
+        edits.push(ask);
+      }
+      if (raw.name !== undefined && !text(raw.name, 100)) return fail('The name is not valid.', id);
+      steps.push({ id, tool: 'edit', file, edits, ...(typeof raw.name === 'string' ? { name: raw.name.trim() } : {}) });
     } else {
       return fail('This step names a tool a run cannot use.', id);
     }

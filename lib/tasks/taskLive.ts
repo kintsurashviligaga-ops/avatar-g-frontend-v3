@@ -1,7 +1,8 @@
 /**
  * lib/tasks/taskLive.ts — the real effects behind ./taskService: generation_jobs through the service role (every query
- * scoped to the caller by hand), and the two lease kinds through their own executors and workers
- * (lib/agent/media/montageExec + montageWorker, audioExtract + audioWorker), the same calls their routes make.
+ * scoped to the caller by hand), and the lease kinds through their own executors and workers
+ * (lib/agent/media/montageExec + montageWorker, audioExtract + audioWorker, editExec + editWorker, lib/agent/run), the
+ * same calls their routes make.
  */
 import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
@@ -15,10 +16,13 @@ import { liveMontageDeps, newWorkerId } from '@/lib/agent/media/montageLive';
 import { AUDIO_KIND, audioJobStatus, audioViewOf, cancelAudioJob } from '@/lib/agent/media/audioExtract';
 import { workAudioJob } from '@/lib/agent/media/audioWorker';
 import { liveAudioDeps } from '@/lib/agent/media/audioLive';
+import { EDIT_KIND, cancelEditJob, editJobStatus, editViewOf } from '@/lib/agent/media/editExec';
+import { workEditJob } from '@/lib/agent/media/editWorker';
+import { liveEditDeps } from '@/lib/agent/media/editLive';
 import { RUN_KIND, runOf } from '@/lib/agent/run/runEngine';
 import { cancelRun, readRun, tickRun } from '@/lib/agent/run/runExec';
 import { liveRunDeps } from '@/lib/agent/run/runLive';
-import { taskFromAudio, taskFromMontage, taskFromRow, taskFromRun, type TaskRow } from './taskView';
+import { taskFromAudio, taskFromEdit, taskFromMontage, taskFromRow, taskFromRun, type TaskRow } from './taskView';
 import type { TaskDeps, TaskKind } from './taskService';
 
 // The job tray's own projection (/api/orchestrator/jobs reads the same columns in Production).
@@ -92,6 +96,23 @@ const audio: TaskKind = {
   },
 };
 
+const edit: TaskKind = {
+  async status(row, userId) {
+    const s = await editJobStatus(liveEditDeps(), { userId, jobId: row.id });
+    return 'ok' in s ? null : { task: taskFromEdit(row, EDIT_KIND, s.view), needsWorker: s.needsWorker };
+  },
+  view(row) {
+    const l = lease(row);
+    return l ? taskFromEdit(row, EDIT_KIND, editViewOf(l)) : null;
+  },
+  async cancel(userId, id) {
+    return cancelled(await cancelEditJob(liveEditDeps(), { userId, jobId: id }));
+  },
+  startWorker(id) {
+    after('agent-edit-worker', () => workEditJob(liveEditDeps(), { jobId: id, worker: newWorkerId() }));
+  },
+};
+
 /**
  * A multi-step Agent G run (lib/agent/run). Its read is also its tick while workers are open to the caller (the run moves
  * on: steps start, their jobs get workers, a stopped run's jobs stop); with workers closed it is read as it is.
@@ -152,7 +173,7 @@ export function liveTaskDeps(): TaskDeps {
       }
     },
     kindOf: (row) => execOf(row.params)?.kind ?? null,
-    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [RUN_KIND]: run },
+    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [EDIT_KIND]: edit, [RUN_KIND]: run },
     plain: taskFromRow,
   };
 }

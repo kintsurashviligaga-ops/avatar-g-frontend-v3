@@ -7,15 +7,18 @@
  */
 import { MONTAGE_KIND, type AuditEvent } from '@/lib/agent/media/montageExec';
 import { AUDIO_KIND } from '@/lib/agent/media/audioExtract';
+import { EDIT_KIND } from '@/lib/agent/media/editExec';
 import { workMontageJob } from '@/lib/agent/media/montageWorker';
 import { workAudioJob } from '@/lib/agent/media/audioWorker';
+import { workEditJob } from '@/lib/agent/media/editWorker';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { FILES, MASTER_URL, TRACK, USER, clip, fake, type Fake } from '@/lib/agent/media/testing/fakeMontageDeps';
 import { AUDIO_URL, UPLOAD, fakeAudio, type FakeAudio } from '@/lib/agent/media/testing/fakeAudioDeps';
+import { RESULT_URL as EDIT_URL, fakeEdit, type FakeEdit } from '@/lib/agent/media/testing/fakeEditDeps';
 import type { MemoryLeaseStore } from '@/lib/orchestrator/testing/memoryLeaseStore';
 import { RUN_TRANSITIONS, type RunStatus } from '../contracts';
 import { RUN_KIND, stepOf, type RunState } from './runEngine';
-import { audioAdapter, montageAdapter } from './runAdapters';
+import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import {
   approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
 } from './runExec';
@@ -35,6 +38,7 @@ interface World {
   deps: RunExecDeps;
   m: Fake;
   a: FakeAudio;
+  e: FakeEdit;
   store: MemoryLeaseStore;
   clock: { now: number };
   audits: AuditEvent[];
@@ -56,10 +60,16 @@ function world(opts: { render?: Parameters<typeof fake>[0]['render']; adapters?:
   a.deps.now = () => m.clock.now;
   let aid = 0;
   a.deps.newId = () => `aud-${(aid += 1)}`;
+  // The edit reads the montage's master by its link (the same own-file rule).
+  const e = fakeEdit({ files: { [MASTER_URL]: MASTER_URL } });
+  e.deps.store = m.store;
+  e.deps.now = () => m.clock.now;
+  let eid = 0;
+  e.deps.newId = () => `edit-${(eid += 1)}`;
   let rid = 0;
   const audits: AuditEvent[] = [];
   const workers: World['workers'] = [];
-  const base = { montage: montageAdapter(() => m.deps), audio_extract: audioAdapter(() => a.deps) };
+  const base = { montage: montageAdapter(() => m.deps), audio_extract: audioAdapter(() => a.deps), edit: editAdapter(() => e.deps) };
   const deps: RunExecDeps = {
     store: m.store,
     adapters: opts.adapters ? opts.adapters(base) : base,
@@ -69,7 +79,7 @@ function world(opts: { render?: Parameters<typeof fake>[0]['render']; adapters?:
     now: () => m.clock.now,
     newId: () => `run-${(rid += 1)}`,
   };
-  return { deps, m, a, store: m.store, clock: m.clock, audits, workers };
+  return { deps, m, a, e, store: m.store, clock: m.clock, audits, workers };
 }
 
 /** Run every worker the run asked for, once each (what runAfterResponse does after the answer). */
@@ -77,6 +87,7 @@ async function work(w: World): Promise<void> {
   for (const { kind, taskId } of w.workers.splice(0)) {
     if (kind === MONTAGE_KIND) await workMontageJob(w.m.deps, { jobId: taskId, worker: 'w-montage' });
     else if (kind === AUDIO_KIND) await workAudioJob(w.a.deps, { jobId: taskId, worker: 'w-audio' });
+    else if (kind === EDIT_KIND) await workEditJob(w.e.deps, { jobId: taskId, worker: 'w-edit' });
   }
 }
 
@@ -204,6 +215,49 @@ describe('the chain: each step is an ordinary job of its own executor, its outpu
     expect(stepRows.length).toBeGreaterThanOrEqual(6); // queued, started, delivered for each step
     for (const e of stepRows) expect([e.op, e.detail, e.runId]).toEqual([e.op, e.detail, id]);
     expect(w.audits.filter((e) => e.op === 'agent_run' && e.phase !== 'quote').every((e) => e.runId === id)).toBe(true);
+  });
+
+  test('extract → montage → edit: the montage master is trimmed, sped up and reframed as the third step (free)', async () => {
+    const w = world();
+    const spec: RunSpec = {
+      ...CHAIN,
+      steps: [
+        ...CHAIN.steps,
+        { id: 'cut', tool: 'edit', file: { step: 'clip' }, edits: [{ op: 'trim', toSec: 10 }, { op: 'speed', factor: 2 }, { op: 'aspect', to: '9:16', fit: 'crop' }] },
+      ],
+    };
+    const p = await planRun(w.deps, { userId: USER, spec });
+    if (!p.ok) throw new Error(p.error);
+    expect(p.plan.steps).toEqual([
+      { id: 'sound', tool: 'audio_extract', credits: 0 }, { id: 'clip', tool: 'montage', credits: 0 }, { id: 'cut', tool: 'edit', credits: 0 },
+    ]);
+    const id = await started(w, spec);
+    const run = await drive(w, id);
+    const [edit] = jobsOf(w, EDIT_KIND);
+    expect(edit).toMatchObject({ status: 'completed', params: { _parent: id, subtype: 'edit', via: 'agent-g' } });
+    // The edit was quoted on the montage's own result, through the caller's own-file rule.
+    expect(w.e.renders[0]!.url).toBe(MASTER_URL);
+    expect(w.e.renders[0]!.request.edits.map((x) => x.op)).toEqual(['trim', 'speed', 'aspect']);
+    expect(run).toMatchObject({
+      status: 'completed',
+      steps: [{ id: 'sound', status: 'completed' }, { id: 'clip', status: 'completed' }, { id: 'cut', status: 'completed', capability: 'media.edit', output: { url: EDIT_URL, media: 'video', durationSec: 5.02 } }],
+    });
+    expectLegal(run);
+  });
+
+  test('an edit step that takes a still delivers an image; an edit the file cannot take fails the step by its code', async () => {
+    const w = world();
+    const still: RunSpec = { steps: [...CHAIN.steps, { id: 'still', tool: 'edit', file: { step: 'clip' }, edits: [{ op: 'thumbnail', atSec: 2 }] }] };
+    w.e.deps.render = async () => ({ ok: true, bytes: Buffer.alloc(40_000, 1), input: { durationSec: 30, hasVideo: true, hasAudio: true, width: 1920, height: 1080, rotation: 0, videoCodec: 'h264', audioCodec: 'aac' }, output: { durationSec: 0.04, hasVideo: true, hasAudio: false, width: 1920, height: 1080, rotation: 0, videoCodec: 'mjpeg', audioCodec: null } });
+    const run = await drive(w, await started(w, still));
+    expect(run.steps[2]).toMatchObject({ status: 'completed', output: { url: EDIT_URL, media: 'image' } });
+    expect(run.steps[2]!.output!.durationSec).toBeUndefined();
+
+    const w2 = world();
+    const past: RunSpec = { steps: [...CHAIN.steps, { id: 'cut', tool: 'edit', file: { step: 'clip' }, edits: [{ op: 'trim', fromSec: 40 }] }] };
+    const r2 = await drive(w2, await started(w2, past));
+    expect(r2).toMatchObject({ status: 'partially_completed', steps: [{ status: 'completed' }, { status: 'completed' }, { status: 'failed', error: 'out_of_range' }] });
+    expect(jobsOf(w2, EDIT_KIND)).toHaveLength(0);
   });
 
   test('a step that fails ends the run failed when nothing was delivered, and skips what needed it', async () => {

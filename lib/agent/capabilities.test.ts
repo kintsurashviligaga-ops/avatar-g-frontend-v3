@@ -52,7 +52,7 @@ test('a capability with no route is MISSING or runs on the device; none claims P
     if (!r.routes.length) expect(r.label === 'MISSING' || r.library === 'device-only').toBe(true);
     expect(r.label).not.toBe('PROVEN');
   }
-  expect(capabilityRuns('media.edit')).toBe(false);
+  expect(capabilityRuns('media.edit')).toBe(true);
   expect(capabilityRuns('music.remix')).toBe(false);
   expect(capabilityRuns('agent.montage')).toBe(true);
 });

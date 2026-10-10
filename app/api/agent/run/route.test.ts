@@ -147,6 +147,18 @@ describe('files and the media quote', () => {
     expect(mockOpen).toHaveBeenCalledWith({ id: 'u-1' });
   });
 
+  it('the edit plan the tool signed comes back as editQuote; nothing is edited here', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'e', credits: 0 }, request: {}, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { onEditQuote?: (x: unknown) => void }) => {
+      ctx.onEditQuote?.(q);
+      return { answer: 'Here is the plan', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'make it 9:16', files: ['u-1/a.mp4'] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', editQuote: q });
+  });
+
   it('the plan the tool signed comes back as mediaQuote; nothing about it is run here', async () => {
     mockOpen.mockReturnValueOnce(true);
     const q = { ok: true, quote: { jobId: 'j' }, request: {}, token: 't' };

@@ -5,9 +5,9 @@ import 'server-only';
  * to real infrastructure:
  *   - llm      → llmText. Under AI_GOOGLE_ONLY (the default) that is Gemini ONLY (`googleOnly`); with the
  *                kill switch off it is the old multi-vendor chain (DeepSeek → Atlas → Gemini → Anthropic).
- *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), quote_montage_to_music when
- *                the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them, and quote_audio_from_link
- *                when AGENT_G_MEDIA_EXEC is open to them (both quote only, see MEDIA).
+ *   - tools    → web_search, scrape_webpage, prepare_instagram_post (⛔ prepare-only), quote_montage_to_music and
+ *                quote_media_edit when the request carries the user's files and AGENT_G_MEDIA_EXEC is open to them, and
+ *                quote_audio_from_link when AGENT_G_MEDIA_EXEC is open to them (all quote only, see MEDIA).
  *                They are the typed allowlist LIVE_TOOL_SPECS (lib/agent/tools/registry): each input is parsed by its
  *                schema before the tool runs, each tool has a per-request call limit and an effect class, and no
  *                effect lets the model start a job or spend credits.
@@ -33,6 +33,11 @@ import 'server-only';
  * goes back through `onAudioQuote` (the route's `audioQuote`) and the extraction runs only on the user's Start
  * (/api/agent/media/audio `run`: the lease queue, its worker, QC, the user's private storage). It is free.
  *
+ * `quote_media_edit` is the same contract for one of the attached videos: the model names the edits (typed, bounded),
+ * never a file path; the edits are resolved against the file (lib/agent/media/editExec.quoteEdit: the exact range kept,
+ * the frame, the length) and the signed plan goes back through `onEditQuote` (the route's `editQuote`). ffmpeg runs only
+ * on the user's Start (/api/agent/media/edit `run`). Free.
+ *
  * The coordinator's control flow is unit-tested at $0 (coordinator.test.ts); this file's wiring is tested with
  * every provider mocked (bindLiveAgent.test.ts).
  */
@@ -48,6 +53,10 @@ import { webSearch } from '@/lib/ai/webSearch';
 import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
+import type { EditQuoteResult } from '@/lib/agent/media/editExec';
+import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB } from '@/lib/agent/media/editPlan';
+import { editAskOf } from '@/lib/agent/media/editWords';
+import { MAX_SPEED, MIN_SPEED } from '@/lib/video/editFilters';
 
 export interface AgentContext {
   userId: string;
@@ -59,6 +68,8 @@ export interface AgentContext {
   onMediaQuote?: (quote: Extract<QuoteResult, { ok: true }>) => void;
   /** Receives every signed audio-extraction plan; the route hands the last one to the client's Start card. */
   onAudioQuote?: (quote: Extract<AudioQuoteResult, { ok: true }>) => void;
+  /** Receives every signed edit plan; the route hands the last one to the client's Start card. */
+  onEditQuote?: (quote: Extract<EditQuoteResult, { ok: true }>) => void;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -84,6 +95,13 @@ export const AGENT_AUDIO_NOTE =
   'tell the user to upload their own or a licensed file in the MyAvatar chat instead. The extraction starts only when ' +
   'the user presses Start on the plan in the MyAvatar chat, and it is free; never say the MP3 is already made.';
 
+/** Added when the edit tool is on: the agent plans the edit of an attached video and never claims it ran. */
+export const AGENT_EDIT_NOTE =
+  'When the user wants one of the videos they attached edited (trimmed, sped up or slowed down, reframed to 9:16, 16:9, ' +
+  '1:1 or 4:5, a colour look, fades, louder, quieter or silent, a caption, or a still frame as a thumbnail), call ' +
+  'quote_media_edit with the edits and the file number. It reads the file and returns the plan; it edits nothing. The ' +
+  'edit starts only when the user presses Start on the plan in the MyAvatar chat, and it is free; never say it is done.';
+
 /** Each quote downloads and decodes every attached file: two per request (say, a second format) is plenty. */
 export const MAX_QUOTES_PER_RUN = 2;
 /** The tool is offered only for a request with files, and only when media execution is open to this user. */
@@ -92,6 +110,10 @@ export const montageToolOn = (ctx: AgentContext): boolean => ctx.media === true 
 export const audioToolOn = (ctx: AgentContext): boolean => ctx.media === true;
 /** An audio quote reads a link's headers only (no download), but two per request is plenty. */
 export const MAX_AUDIO_QUOTES_PER_RUN = 2;
+/** The edit tool needs an attached file to edit, and media execution open to this user. */
+export const editToolOn = (ctx: AgentContext): boolean => ctx.media === true && (ctx.files?.length ?? 0) > 0;
+/** An edit quote probes one file: three per request (a second try with other numbers) is plenty. */
+export const MAX_EDIT_QUOTES_PER_RUN = 3;
 
 /** Collapse the ReAct transcript into a single llmText call. */
 async function llmAdapter(
@@ -111,6 +133,27 @@ type LiveCtx = AgentContext & { goal: string };
 
 /** Numbers a model sends as text ("30") are read as numbers; anything else is left for the schema to refuse. */
 const num = (schema: z.ZodNumber) => z.preprocess((v) => (typeof v === 'string' && v.trim() !== '' ? Number(v) : v), schema);
+
+/** A point in a video, in seconds (a 10-hour cap; the quote checks it against the file). */
+const at = () => num(z.number().min(0).max(36_000));
+/**
+ * One edit as the model may ask it (lib/agent/media/editWords EditAsk), every field bounded. One flat object (the
+ * function-declaration subset has no tagged union): `op` says which edit, and only that op's own fields may be set
+ * (editAskOf); the quote resolves the rest against the file.
+ */
+const editAsk = z.object({
+  op: z.enum(['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'thumbnail']),
+  fromSec: at().optional(), toSec: at().optional(), lastSec: at().optional(), cutEndSec: at().optional(),
+  factor: num(z.number().min(MIN_SPEED).max(MAX_SPEED)).optional(),
+  to: z.enum(ASPECTS as unknown as [string, ...string[]]).optional(),
+  fit: z.enum(['crop', 'pad']).optional(),
+  style: z.enum(GRADES as unknown as [string, ...string[]]).optional(),
+  inSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
+  outSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
+  db: num(z.number().min(MIN_VOLUME_DB).max(MAX_VOLUME_DB)).optional(),
+  text: z.string().trim().min(1).max(MAX_CAPTION_CHARS).optional(),
+  atSec: at().optional(),
+}).refine((a) => editAskOf(a) !== null, { message: 'A field was set that its op does not take.' });
 
 /**
  * The live agent's allowlist (lib/agent/tools/registry): every tool it can call, typed, with its effect. Nothing here
@@ -230,6 +273,45 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // quote_media_edit: plan only, on one of the request's own files (see MEDIA in the header). The model names the file
+  // by its number and the edits by their typed fields; the plan's token never reaches the model.
+  defineTool({
+    name: 'quote_media_edit',
+    effect: 'quote',
+    confirms: 'media_edit_run',
+    description:
+      'PLAN ONLY — edit one video the user attached. Input {file?: number (1 = the first attached file), edits: [{op, ...}]}, ops: ' +
+      "trim {fromSec?, toSec?} or {lastSec} or {cutEndSec}; speed {factor 0.25-4}; aspect {to: '9:16'|'16:9'|'1:1'|'4:5', fit?: 'crop'|'pad'}; " +
+      "grade {style: 'vintage'|'cinematic'|'neon'|'noir'|'dramatic'}; fade {inSec?, outSec?}; volume {db}; mute; caption {text}; thumbnail {atSec?} (a still JPEG). " +
+      'Returns the resolved plan (range kept, frame, length); edits nothing until the user presses Start; free.',
+    input: z.object({ file: num(z.number().int().min(1).max(13)).optional(), edits: z.array(editAsk).min(1).max(9) }),
+    offered: (ctx) => editToolOn(ctx),
+    limit: MAX_EDIT_QUOTES_PER_RUN,
+    run: async ({ file, edits }, ctx) => {
+      const ref = ctx.files?.[(file ?? 1) - 1];
+      if (!ref) return { error: 'bad_input', message: `There is no attached file ${file ?? 1}.` };
+      // Loaded on use: ffmpeg and the storage client stay off the path of every request that has no files.
+      const [{ quoteEdit }, { liveEditDeps }] = await Promise.all([
+        import('@/lib/agent/media/editExec'),
+        import('@/lib/agent/media/editLive'),
+      ]);
+      const r = await quoteEdit(liveEditDeps(), { userId: ctx.userId, file: ref, edits });
+      if (!r.ok) return { error: r.error, message: r.message };
+      ctx.onEditQuote?.(r);
+      const q = r.quote;
+      return {
+        planned: true,
+        edited: false,
+        credits: q.credits,
+        edits: q.edits,
+        output: q.plan.output,
+        lengthSec: q.plan.durationSec,
+        frame: `${q.plan.width}x${q.plan.height}`,
+        sound: q.plan.hasAudio,
+        next: 'The user presses Start on the plan; nothing starts before that.',
+      };
+    },
+  }),
 ];
 
 /** Build the real tool registry for one authenticated request. */
@@ -244,7 +326,9 @@ export async function runLiveAgent(
   opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
 ): Promise<ReActResult> {
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
-  const systemExtra = [mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', opts?.systemExtra?.trim()].filter(Boolean).join('\n\n');
+  const systemExtra = [
+    mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '', opts?.systemExtra?.trim(),
+  ].filter(Boolean).join('\n\n');
   return runReActLoop({
     llm: llmAdapter,
     tools: buildLiveToolRegistry(ctx, { goal: userGoal }),

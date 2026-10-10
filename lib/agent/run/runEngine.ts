@@ -32,7 +32,8 @@ export const TICK_LEASE_MS = 30_000;
 
 export interface StepOutput {
   url: string;
-  media: 'video' | 'audio';
+  /** An image is an edit's still (a thumbnail). */
+  media: 'video' | 'audio' | 'image';
   durationSec?: number;
   name?: string;
 }

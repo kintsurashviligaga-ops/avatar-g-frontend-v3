@@ -3,16 +3,18 @@
  * foundation, EF-7; owner, 2026-10-09 11:15Z: "one Task API for text, voice and media").
  *
  * A task is work that outlives the request that asked for it. In this app every such task is a generation_jobs row:
- * a studio render (the job tray's rows), an Agent G montage or an audio extraction (lease-queue rows,
+ * a studio render (the job tray's rows), an Agent G montage, an audio extraction or an edit (lease-queue rows,
  * lib/orchestrator/jobLease). The text chat, a Live voice call and Agent G's own loop do not keep tasks of their own:
  * they START these jobs and then follow them. So a TaskView is built from a job row, and every surface reads the same
  * view through one route (app/api/tasks): the chat cards, the voice call's stop, and anything after them.
  *
  * Pure and isomorphic (the chat imports the types). The executors' own owner views (montageExec `viewOf`,
- * audioExtract `audioViewOf`) stay the source of what a lease job means; this file only puts them in one shape.
+ * audioExtract `audioViewOf`, editExec `editViewOf`) stay the source of what a lease job means; this file only puts
+ * them in one shape.
  */
 import type { JobView } from '@/lib/agent/media/montageExec';
 import type { AudioJobView, AudioRights } from '@/lib/agent/media/audioExtract';
+import type { EditJobView } from '@/lib/agent/media/editExec';
 import type { CapabilityId } from '@/lib/agent/contracts';
 import type { ChildView, RunEvent, RunState } from '@/lib/agent/run/runEngine';
 import type { RunTool } from '@/lib/agent/run/runSpec';
@@ -30,11 +32,14 @@ export interface TaskResult {
   bitrateKbps?: number;
   aspect?: string;
   rights?: AudioRights | null;
+  /** An edit's frame (Agent G edits, lib/agent/media/editExec). */
+  width?: number;
+  height?: number;
 }
 
 export interface TaskView {
   id: string;
-  /** What runs it: a lease kind ('agent-montage', 'agent-audio-extract') or 'render' for a studio job. */
+  /** What runs it: a lease kind ('agent-montage', 'agent-audio-extract', 'agent-media-edit') or 'render' for a studio job. */
   kind: string;
   /** The row's service type (film, music, image, …). */
   service: string;
@@ -176,6 +181,24 @@ export function taskFromAudio(row: TaskRow, kind: string, v: AudioJobView): Task
       ...base, status: 'completed', stage: null, pct: 100, attempt: null, error: null, cancellable: false,
       result: v.audioUrl
         ? { url: v.audioUrl, media: 'audio', name: v.name, durationSec: v.durationSec, bytes: v.bytes, bitrateKbps: v.bitrateKbps, rights: v.rights }
+        : null,
+    };
+  }
+  if (v.status === 'failed') return { ...base, ...ended(v.error) };
+  return { ...base, ...live(v) };
+}
+
+/** An Agent G edit (a video, or a still taken from one), from the executor's own owner view. */
+export function taskFromEdit(row: TaskRow, kind: string, v: EditJobView): TaskView {
+  const base = { ...meta(row), kind };
+  if (v.status === 'completed') {
+    return {
+      ...base, status: 'completed', stage: null, pct: 100, attempt: null, error: null, cancellable: false,
+      result: v.url
+        ? {
+          url: v.url, media: v.output === 'jpg' ? 'image' : 'video', name: v.name, width: v.width, height: v.height,
+          ...(v.output === 'mp4' ? { durationSec: v.durationSec } : {}),
+        }
         : null,
     };
   }

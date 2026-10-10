@@ -120,7 +120,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           run / approve / resume / cancel + events (?after=n). Run and step audit rows carry runId, toolId and approval
           (single jobs' channel waits for PART 4). Memory: one reader (lib/memory/context.ts) for text chat,
           orchestrate, voice chat, ReAct and Live, capped (5 x 240 chars, 1,200 per block; profile 8), sanitized and
-          labelled as data; /memory lists both stores, deletes one or all, switches automatic memory off. Jest 11,708
+          labelled as data; /memory lists both stores, deletes one or all, switches automatic memory off (on by default:
+          owner's card tap "ჩართული" 2026-10-10 08:20:04Z). Jest 11,708
           passed / 0 failed, tsc 0, eslint 0. Runs BUILT_NOT_PROVEN (no live run yet); T3 studio stop still 409.
           Next: PART 3 (media execution coverage).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged

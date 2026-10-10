@@ -56,8 +56,8 @@ export const MONTAGE_KIND = 'agent-montage';
 
 export interface AuditEvent {
   userId: string;
-  /** montage: ./montageExec; audio_extract: ./audioExtract; agent_run: a multi-step run (lib/agent/run). */
-  op: 'montage' | 'audio_extract' | 'agent_run';
+  /** montage: ./montageExec; audio_extract: ./audioExtract; media_edit: ./editExec; agent_run: a multi-step run (lib/agent/run). */
+  op: 'montage' | 'audio_extract' | 'media_edit' | 'agent_run';
   phase: 'quote' | 'run' | 'cancel' | 'refund' | 'approve' | 'resume' | 'step';
   outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled' | 'retried' | 'lost';
   jobId?: string;

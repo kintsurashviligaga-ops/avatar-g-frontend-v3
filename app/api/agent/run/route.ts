@@ -15,7 +15,9 @@
  * tool and the agent writes a brief for the Studio instead (see bindLiveAgent.ts). With the flag open the
  * agent also has quote_audio_from_link ("take the MP3 out of this link"): it checks the link and its rights
  * and plans, nothing more; its signed plan comes back as `audioQuote` and the extraction runs only on the
- * user's Start (/api/agent/media/audio `run`).
+ * user's Start (/api/agent/media/audio `run`). With files and the flag open it also has quote_media_edit (trim,
+ * reframe, colour, sound, caption, a still of one attached video): plan only, back as `editQuote`, run on Start
+ * (/api/agent/media/edit `run`).
  *
  * Auth required (the userId attributes the booked LLM/search spend and scopes the per-user rate
  * limit). Publishing to social is prepare-only by construction — this route can never post on the
@@ -96,11 +98,16 @@ export async function POST(req: NextRequest) {
   const deadlineMs = Date.now() + budgetMs;
   let mediaQuote: Parameters<NonNullable<AgentContext['onMediaQuote']>>[0] | undefined;
   let audioQuote: Parameters<NonNullable<AgentContext['onAudioQuote']>>[0] | undefined;
+  let editQuote: Parameters<NonNullable<AgentContext['onEditQuote']>>[0] | undefined;
   const ctx: AgentContext = {
     userId: user.id,
     media: agentMediaOpenTo(user),
     onAudioQuote: (q) => { audioQuote = q; },
-    ...(files?.length ? { files, onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; } } : {}),
+    ...(files?.length ? {
+      files,
+      onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; },
+      onEditQuote: (q: NonNullable<typeof editQuote>) => { editQuote = q; },
+    } : {}),
   };
   // What the user told Agent G before (lib/memory/context): capped, their data, never instructions. Fail-open.
   const memory = await memoryContextOf(user.id);
@@ -112,5 +119,7 @@ export async function POST(req: NextRequest) {
   }
   const status = result.stopReason === 'llm_error' ? 502 : 200;
   // The last plan of each kind the agent made, signed, for the confirm card: nothing has run and nothing is charged yet.
-  return NextResponse.json({ ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}) }, { status });
+  return NextResponse.json({
+    ...result, ...(mediaQuote ? { mediaQuote } : {}), ...(audioQuote ? { audioQuote } : {}), ...(editQuote ? { editQuote } : {}),
+  }, { status });
 }

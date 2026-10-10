@@ -218,10 +218,13 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     liveTool: { name: 'quote_audio_from_link', confirms: 'audio_extract_run' }, flag: 'AGENT_G_MEDIA_EXEC',
   }),
   'media.edit': c({
-    id: 'media.edit', serviceId: null, does: 'An ffmpeg edit with no route yet: a new frame shape, a music offset on a finished video',
-    routes: [], engine: 'none yet (PART 3: slice 2 adapters over lib/video/surgicalOps)', pricing: { key: null, charge: 'free' },
-    approval: 'plan-start', timeoutSec: 0, retry: 'none', idempotency: 'none', cancel: 'none', qc: null, artifact: 'video',
-    library: 'none', label: 'MISSING',
+    id: 'media.edit', serviceId: null,
+    does: 'Edit one of the user\'s videos (or Agent G\'s own last result): trim, speed, frame shape, colour, fades, volume or mute, a caption, or a still as a thumbnail',
+    routes: ['/api/agent/media/edit', '/api/tasks'], engine: 'ffmpeg in a lease worker (lib/agent/media/editWorker)',
+    pricing: { key: null, charge: 'free' }, approval: 'plan-start', timeoutSec: 600, retry: 'lease-retry',
+    idempotency: 'one job per signed quote (jobId in the token)', cancel: 'task-api',
+    qc: 'the planned frame and codecs, sound exactly when planned, length within 0.5 s or 3 % of the plan', artifact: 'video', library: 'filed',
+    label: 'BUILT_NOT_PROVEN', liveTool: { name: 'quote_media_edit', confirms: 'media_edit_run' }, flag: 'AGENT_G_MEDIA_EXEC',
   }),
 };
 

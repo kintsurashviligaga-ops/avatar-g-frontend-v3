@@ -15,6 +15,7 @@ import 'server-only';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
+import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -217,14 +218,7 @@ export async function extractFrame(videoUrl: string, atSec = 0.5): Promise<strin
   }
 }
 
-const ASPECT_DIMS: Record<string, [number, number]> = {
-  '9:16': [1080, 1920],
-  '16:9': [1920, 1080],
-  '1:1': [1080, 1080],
-  // 4:5 was missing, so the composer's 4:5 option had no target to be fitted to at all. Same canvas the
-  // multi-clip filtergraph uses (ffmpeg-filtergraph.ts CANVAS.portrait), so both paths agree.
-  '4:5': [1080, 1350],
-};
+const ASPECT_DIMS: Readonly<Record<string, readonly [number, number]>> = SHARED_ASPECT_DIMS;
 
 /**
  * Pre-fit a product image (data: URL) to the target aspect so Kling i2v — whose output ratio
@@ -287,21 +281,8 @@ export async function kenBurnsClip(image: string, durationSec = 5, aspect: '9:16
   }
 }
 
-export type GradeStyle = 'vintage' | 'cinematic' | 'neon' | 'noir' | 'dramatic';
-/** Per-style color-grade ffmpeg filter chains. `cinematic` is a proper Hollywood teal &
- *  orange (cool shadows + GENTLY-warm highlights), plus noir (high-contrast B&W) and dramatic.
- *  V8-F3 PARITY: the highlight warm push is neutralized to match the master cinematic LUT
- *  (lib/orchestrator/cinematic-lut.ts). The old rh=+0.08/bh=-0.08 here was ~4x the LUT amount and
- *  RE-INTRODUCED the exact warm-highlight YELLOW tint the LUT fix removed — a defect on the remix
- *  "cinematic" path only. Kept the teal shadows (the intended half of teal-orange). Do NOT raise
- *  rh back up without also revisiting the LUT — the two must agree so the tint can't creep back. */
-const GRADE_VF: Record<GradeStyle, string> = {
-  vintage: 'curves=vintage',
-  cinematic: 'colorbalance=rs=-0.08:bs=0.08:rh=0.02:bh=-0.02,eq=contrast=1.08:saturation=1.06,vignette=PI/5',
-  neon: 'hue=s=2,eq=contrast=1.2:brightness=0.1',
-  noir: 'hue=s=0,eq=contrast=1.25:brightness=-0.02,vignette=PI/4',
-  dramatic: 'eq=contrast=1.2:saturation=0.96,vignette=PI/4',
-};
+export type { GradeStyle };
+
 
 /** Apply a cinematic color grade (vintage / cinematic / neon / noir / dramatic) — keeps the audio. */
 export async function colorGrade(videoUrl: string, style: GradeStyle): Promise<string | null> {
@@ -417,13 +398,8 @@ export async function stripBottomWatermark(
 export async function changeSpeed(videoUrl: string, factor: number): Promise<string | null> {
   if (!BIN || !videoUrl) return null;
   const f = Math.max(0.25, Math.min(4, Number(factor) || 1));
-  // atempo only accepts 0.5–2.0 per stage → decompose f into a product of in-range steps.
-  const tempoSteps: number[] = [];
-  let remaining = f;
-  while (remaining > 2.0) { tempoSteps.push(2.0); remaining /= 2.0; }
-  while (remaining < 0.5) { tempoSteps.push(0.5); remaining /= 0.5; }
-  tempoSteps.push(remaining);
-  const atempo = tempoSteps.map((s) => `atempo=${s.toFixed(4)}`).join(',');
+  // atempo only accepts 0.5–2.0 per stage → a product of in-range stages (lib/video/editFilters).
+  const atempo = atempoChain(f);
   let dir: string | null = null;
   try {
     dir = await mkdtemp(join(tmpdir(), 'remix-speed-'));

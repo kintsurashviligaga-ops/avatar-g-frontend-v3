@@ -164,6 +164,12 @@ describe('durableJobs — hydrate the tray from the caller\'s tasks (/api/tasks)
     expect(j).toMatchObject({ kind: 'music', label: 'Agent G · MP3', stage: 'Checking the result', pct: 85, cancellable: true });
   });
 
+  it('an Agent G edit takes the video icon and the edit card\'s words', () => {
+    const j = mapTaskToTrayJob(lease({ kind: 'agent-media-edit', service: 'film', stage: 'render', pct: 10 }), 'en');
+    expect(j).toMatchObject({ kind: 'video', label: 'Agent G · edit', stage: 'Editing the video', pct: 10, cancellable: true });
+    expect(mapTaskToTrayJob(lease({ kind: 'agent-media-edit', service: 'image', stage: 'upload' }), 'ka')).toMatchObject({ label: 'Agent G · რედაქტირება', stage: 'ვინახავ' });
+  });
+
   it('a lease job waiting for a worker stays a live row (it has no studio queue place) and can be stopped', () => {
     const j = mapTaskToTrayJob(lease({ status: 'queued', stage: 'queued', pct: 0 }), 'en');
     expect(j).toMatchObject({ status: 'rendering', stage: 'Queued, starting shortly', cancellable: true, position: null });

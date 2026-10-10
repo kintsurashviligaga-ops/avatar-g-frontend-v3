@@ -184,10 +184,11 @@ lease store:
 
 ## 8. Owner decisions (BLOCKED_OWNER)
 
-- automatic memory opt-in instead of opt-out (today: on by default, as before, with the new switch)
 - the paid Gemini comparison over the PART 1 corpus, and the paid file-analysis and Live model checks
 - Production `GEMINI_TRANSPORT`, `MEDIA_GOOGLE_ONLY`, `20261002d`, the lip-sync charge, the price table
 - PR #50 merge and the Production deploy
+
+Decided: automatic memory stays **on by default** (the owner tapped "ჩართული" on the decision card, 2026-10-10 08:20:04Z). Each user can still switch it off on `/memory`.
 
 ## 9. Next: PART 3
 

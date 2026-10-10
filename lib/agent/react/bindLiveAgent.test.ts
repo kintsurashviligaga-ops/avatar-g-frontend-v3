@@ -23,8 +23,11 @@ jest.mock('../media/montageLive', () => ({ liveMontageDeps: () => ({ live: true 
 const mockAudioQuote = jest.fn();
 jest.mock('../media/audioExtract', () => ({ quoteAudioExtract: (...a: unknown[]) => mockAudioQuote(...a) }));
 jest.mock('../media/audioLive', () => ({ liveAudioDeps: () => ({ liveAudio: true }) }));
+const mockEditQuote = jest.fn();
+jest.mock('../media/editExec', () => ({ quoteEdit: (...a: unknown[]) => mockEditQuote(...a) }));
+jest.mock('../media/editLive', () => ({ liveEditDeps: () => ({ liveEdit: true }) }));
 
-import { buildLiveToolRegistry, runLiveAgent, AGENT_AUDIO_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
+import { buildLiveToolRegistry, runLiveAgent, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
 
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
@@ -226,4 +229,58 @@ test('a model that still asks for orchestrate_media gets an unknown-tool observa
   expect(r.stopReason).toBe('final');
   expect(r.steps[0]?.observation).toMatchObject({ error: 'unknown tool: orchestrate_media' });
   expect(mockStartJob).not.toHaveBeenCalled();
+});
+
+describe('quote_media_edit (Agent G edit of an attached video, quote only)', () => {
+  const FILES = ['omni-uploads/u/a.mp4', 'omni-uploads/u/b.mp4'];
+  const QUOTE = {
+    ok: true,
+    quote: { jobId: 'e-1', credits: 0, name: 'b-edit.mp4', edits: [{ op: 'aspect', to: '9:16', fit: 'crop' }], plan: { sourceSec: 30, output: 'mp4', durationSec: 30, hasAudio: true, width: 1080, height: 1920, copyVideo: false }, expiresAt: 9 },
+    request: { v: 1 },
+    token: 'secret-token',
+  };
+  const on = (onEditQuote?: AgentContext['onEditQuote']) => ({ ...CTX, media: true, files: FILES, ...(onEditQuote ? { onEditQuote } : {}) });
+  const editTool = (ctx: AgentContext) => buildLiveToolRegistry(ctx).find((x) => x.name === 'quote_media_edit');
+
+  test('offered only with an attached file and media execution open', () => {
+    expect(editTool(CTX)).toBeUndefined();
+    expect(editTool({ ...CTX, media: true })).toBeUndefined();
+    expect(editTool({ ...CTX, media: false, files: FILES })).toBeUndefined();
+    expect(editTool(on())).toBeDefined();
+  });
+
+  test('the model names the file by number and the edits by typed fields; the plan goes to the card, never the token', async () => {
+    mockEditQuote.mockResolvedValueOnce(QUOTE);
+    const onEditQuote = jest.fn();
+    const out = JSON.stringify(await editTool(on(onEditQuote))!.run({ file: 2, edits: [{ op: 'aspect', to: '9:16' }] }));
+    expect(mockEditQuote).toHaveBeenCalledWith({ liveEdit: true }, { userId: CTX.userId, file: FILES[1], edits: [{ op: 'aspect', to: '9:16' }] });
+    expect(onEditQuote).toHaveBeenCalledWith(QUOTE);
+    expect(out).toContain('"planned":true');
+    expect(out).toContain('"edited":false');
+    expect(out).not.toContain('secret-token');
+    expect(out).not.toContain('omni-uploads');
+  });
+
+  test('a path, an unknown op or an out-of-range number from the model is refused before anything is read', async () => {
+    const t = editTool(on())!;
+    for (const input of [
+      { file: 'omni-uploads/other/x.mp4', edits: [{ op: 'mute' }] },
+      { edits: [{ op: 'exec', cmd: 'ls' }] },
+      { edits: [{ op: 'speed', factor: 50 }] },
+      { edits: [{ op: 'aspect', to: '4:3' }] },
+      { edits: [{ op: 'trim', toSec: 5, factor: 2 }] },
+      { edits: [] },
+      { file: 3, edits: [{ op: 'mute' }] },
+    ]) {
+      const out = JSON.stringify(await t.run(input));
+      expect(out).toMatch(/error/i);
+    }
+    expect(mockEditQuote).not.toHaveBeenCalled();
+  });
+
+  test('the system note tells the agent the edit starts only on Start', async () => {
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('make it 9:16', on());
+    expect(mockLlm.mock.calls[0]![0].system).toContain(AGENT_EDIT_NOTE);
+  });
 });

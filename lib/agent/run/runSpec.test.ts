@@ -68,3 +68,19 @@ test('the plan fingerprint is the spec: any change is a different plan, and it c
   expect(specFingerprint(a.spec)).not.toBe(specFingerprint(b.spec));
   expect(specFingerprint(a.spec)).toMatch(/^run:/);
 });
+
+test('an edit step takes one video (a file or an earlier step) and only the edits Agent G knows, typed', () => {
+  const e = (extra: Record<string, unknown>) => validateRunSpec({ steps: [{ id: 'e', tool: 'edit', file: VIDEO, edits: [{ op: 'trim', toSec: 10 }], ...extra }] });
+  expect(e({})).toEqual({ ok: true, spec: { steps: [{ id: 'e', tool: 'edit', file: VIDEO, edits: [{ op: 'trim', toSec: 10 }] }] } });
+  expect(e({ edits: [] })).toMatchObject({ ok: false, step: 'e' });
+  expect(e({ edits: Array(10).fill({ op: 'mute' }) })).toMatchObject({ ok: false });
+  expect(e({ edits: [{ op: 'shell', cmd: 'rm -rf /' }] })).toMatchObject({ ok: false });
+  expect(e({ edits: [{ op: 'trim', toSec: '10' }] })).toMatchObject({ ok: false });
+  expect(e({ edits: [{ op: 'trim', toSec: 10, filter: 'movie=/etc/passwd' }] })).toMatchObject({ ok: false });
+  expect(e({ edits: [{ op: 'caption', text: 'x'.repeat(201) }] })).toMatchObject({ ok: false });
+  expect(e({ file: { step: 'later' } })).toMatchObject({ ok: false });
+  expect(e({ name: '' })).toMatchObject({ ok: false });
+  const chain = validateRunSpec({ steps: [CHAIN.steps[0], CHAIN.steps[1], { id: 'cut', tool: 'edit', file: { step: 'clip' }, edits: [{ op: 'aspect', to: '9:16', fit: 'pad' }, { op: 'mute' }] }] });
+  expect(chain).toMatchObject({ ok: true });
+  if (chain.ok) expect(refsOf(chain.spec.steps[2]!)).toEqual(['clip']);
+});

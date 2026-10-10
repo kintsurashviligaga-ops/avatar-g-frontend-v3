@@ -72,8 +72,8 @@ const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 /** A short id for a quote: what the user's yes to it must name. */
 export const quoteIdOf = (token: string): string => createHash('sha256').update(token).digest('hex').slice(0, 16);
 
-/** A run of montages files as a film; a run of extractions only, as music (generation_jobs.service_type). */
-const serviceOf = (spec: RunSpec): ProduceKind => (spec.steps.some((s) => s.tool === 'montage') ? 'film' : 'music');
+/** A run with a montage or an edit files as a film; a run of extractions only, as music (generation_jobs.service_type). */
+const serviceOf = (spec: RunSpec): ProduceKind => (spec.steps.some((s) => s.tool === 'montage' || s.tool === 'edit') ? 'film' : 'music');
 const listTotal = (deps: RunExecDeps, spec: RunSpec): number => spec.steps.reduce((n, s) => n + deps.adapters[s.tool].listPrice, 0);
 
 /** Codes a queued quote can never recover from: the step ends with it. Anything else is tried again on the next tick. */
@@ -319,6 +319,10 @@ function resolveStep(run: RunState, spec: RunStepSpec): RunStepSpec | null {
   if (spec.tool === 'montage') {
     const files = resolvedRefs(run, spec.files);
     return files ? { ...spec, files } : null;
+  }
+  if (spec.tool === 'edit') {
+    const file = resolvedRefs(run, [spec.file]);
+    return file ? { ...spec, file: file[0]! } : null;
   }
   if ('url' in spec.source) return spec;
   const file = resolvedRefs(run, [spec.source.file]);

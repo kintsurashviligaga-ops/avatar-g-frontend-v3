@@ -10,7 +10,7 @@
  *
  * These are OBSERVED jobs (`observed: true`): the work runs server-side, so there is no
  * local runner to cancel. A studio render shows its progress read-only; an Agent G job
- * (montage, MP3 extraction) the server CAN stop carries `cancellable`, and the tray's
+ * (montage, MP3 extraction, edit) the server CAN stop carries `cancellable`, and the tray's
  * cancel goes to POST /api/tasks. Pure + deterministic (no clock/fetch here).
  */
 
@@ -19,6 +19,7 @@ import type { TaskView } from '@/lib/tasks/taskView';
 import { isLiveStatus } from '@/lib/tasks/statusModel';
 import { stageText } from '@/lib/agent/media/montageChat';
 import { audioStageText } from '@/lib/agent/media/audioChat';
+import { editStageText } from '@/lib/agent/media/editChat';
 import type { Job, JobKind } from './jobQueue';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -79,6 +80,7 @@ const clampPct = (n: unknown): number => {
 const LEASE_KIND: Record<string, { kind: JobKind; label: Record<Lang, string>; stage: (code: string, locale: Lang) => string; ownLabel?: true }> = {
   'agent-montage': { kind: 'video', label: { en: 'Agent G · montage', ru: 'Agent G · монтаж', ka: 'Agent G · მონტაჟი' }, stage: stageText },
   'agent-audio-extract': { kind: 'music', label: { en: 'Agent G · MP3', ru: 'Agent G · MP3', ka: 'Agent G · MP3' }, stage: audioStageText },
+  'agent-media-edit': { kind: 'video', label: { en: 'Agent G · edit', ru: 'Agent G · правка', ka: 'Agent G · რედაქტირება' }, stage: editStageText },
   // A run is named by what the user asked for (its plan's title) when it has one.
   'agent-run': { kind: 'video', label: { en: 'Agent G · steps', ru: 'Agent G · шаги', ka: 'Agent G · ნაბიჯები' }, stage: runStageText, ownLabel: true },
 };

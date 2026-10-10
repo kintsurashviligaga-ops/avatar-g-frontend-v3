@@ -43,6 +43,12 @@ export const CONFIRMED_ACTIONS = {
     access: 'AGENT_G_MEDIA_EXEC',
     does: 'queues the quoted audio extraction once per quote; a worker turns it into an MP3 under a lease (lib/agent/media/audioWorker)',
   },
+  media_edit_run: {
+    route: '/api/agent/media/edit',
+    action: 'run',
+    access: 'AGENT_G_MEDIA_EXEC',
+    does: 'queues the quoted edit once per quote; a worker edits the user\'s video with ffmpeg under a lease (lib/agent/media/editWorker)',
+  },
 } as const;
 export type ConfirmedAction = keyof typeof CONFIRMED_ACTIONS;
 
