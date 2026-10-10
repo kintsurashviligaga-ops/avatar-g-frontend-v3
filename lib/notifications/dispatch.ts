@@ -15,6 +15,8 @@ import { sendWhatsAppAlert } from '@/lib/notifications/channels/whatsapp';
 import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
 import type { NotifyEvent, NotifyKind } from './types';
+import { eventForKind } from './preferences';
+import { readPrefs } from './prefsStore';
 
 const BELL_TYPE: Partial<Record<NotifyKind, NotificationType>> = {
   video: 'video', film: 'video', avatar: 'video', vfx: 'video',
@@ -42,7 +44,14 @@ export async function notifyUser(ev: NotifyEvent, opts: NotifyOptions = {}): Pro
     }
 
     const outside = async () => {
-      const [push, whatsapp] = await Promise.allSettled([sendPushAlert(ev), sendWhatsAppAlert(ev)]);
+      // The person's preferences decide WhatsApp per kind of news (Settings → Connections → Notifications). Push is this
+      // browser's copy of the site's own notice, so it follows the bell. A failed read answers the defaults.
+      const { prefs } = await readPrefs(ev.userId);
+      const wantsWhatsApp = prefs.events[ev.event ?? eventForKind(ev.kind)].includes('whatsapp');
+      const [push, whatsapp] = await Promise.allSettled([
+        sendPushAlert(ev),
+        wantsWhatsApp ? sendWhatsAppAlert(ev) : Promise.resolve({ sent: false, reason: 'opted_out' as const }),
+      ]);
       console.info('[notify]', {
         kind: ev.kind,
         push: push.status === 'fulfilled' ? (push.value.sent ? 'sent' : push.value.reason) : 'failed',

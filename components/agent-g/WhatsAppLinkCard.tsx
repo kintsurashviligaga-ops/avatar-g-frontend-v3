@@ -8,8 +8,12 @@
  * Agent G with `connect CODE` already typed. The card then checks every few seconds until the webhook has bound the
  * number. It never asks for a phone number — a typed number proves nothing (see lib/agent-g/channels/whatsapp-link.ts).
  *
- * Honest states only: "opening soon" while the deployment lacks the keys or the tables, "sign in" for a guest. No
- * button is drawn that cannot work.
+ * Honest states only: "temporarily unavailable" while the deployment lacks the keys or the tables, "sign in" for a
+ * guest. No button is drawn that cannot work.
+ *
+ * `embedded` (Settings → Connections, 2026-10-10): drawn inside the WhatsApp row, so no card chrome and no header; the
+ * row carries the `#whatsapp` anchor. `onChange` tells the row to re-read its status after a link or a disconnect.
+ * Words follow the owner's four (Omnichannel A3): Connect → Connected → Disconnect, or Temporarily unavailable.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -38,8 +42,8 @@ const COPY: Record<Lang, {
 }> = {
   ka: {
     title: 'WhatsApp', sub: 'მიწერე Agent G-ს WhatsApp-ზე და მიიღე შეტყობინება, როცა შედეგი მზად იქნება.',
-    soon: 'WhatsApp-ზე Agent G მალე ჩაირთვება.', guest: 'WhatsApp-ის დასაკავშირებლად შედი ანგარიშზე.',
-    getCode: 'კოდის მიღება', open: 'WhatsApp-ის გახსნა', orSend: 'ან Agent G-ს WhatsApp-ზე გაუგზავნე:',
+    soon: 'WhatsApp-ის დაკავშირება დროებით მიუწვდომელია.', guest: 'WhatsApp-ის დასაკავშირებლად შედი ანგარიშზე.',
+    getCode: 'WhatsApp-ის დაკავშირება', open: 'WhatsApp-ის გახსნა', orSend: 'ან Agent G-ს WhatsApp-ზე გაუგზავნე:',
     validFor: 'კოდი 15 წუთი მოქმედებს.', waiting: 'ველოდები შენს შეტყობინებას…', check: 'შემოწმება',
     linkedAs: 'დაკავშირებულია', alerts: 'შეტყობინებები WhatsApp-ზე', alertsHint: 'ვიდეო, სურათი, მუსიკა და კვლევა მზადაა',
     unlink: 'გათიშვა', unlinkConfirm: 'გავთიშო?', cancel: 'გაუქმება', failed: 'ვერ მოხერხდა. სცადე თავიდან.',
@@ -47,20 +51,20 @@ const COPY: Record<Lang, {
   },
   en: {
     title: 'WhatsApp', sub: 'Chat with Agent G on WhatsApp and get a message when your result is ready.',
-    soon: 'Agent G on WhatsApp is opening soon.', guest: 'Sign in to link WhatsApp.',
-    getCode: 'Get code', open: 'Open WhatsApp', orSend: 'Or send this to Agent G on WhatsApp:',
+    soon: 'Connecting WhatsApp is temporarily unavailable.', guest: 'Sign in to connect WhatsApp.',
+    getCode: 'Connect WhatsApp', open: 'Open WhatsApp', orSend: 'Or send this to Agent G on WhatsApp:',
     validFor: 'The code is valid for 15 minutes.', waiting: 'Waiting for your message…', check: 'Check',
-    linkedAs: 'Linked', alerts: 'WhatsApp alerts', alertsHint: 'Video, image, music and research ready',
-    unlink: 'Unlink', unlinkConfirm: 'Unlink this number?', cancel: 'Cancel', failed: 'That did not work. Try again.',
+    linkedAs: 'Connected', alerts: 'WhatsApp alerts', alertsHint: 'Video, image, music and research ready',
+    unlink: 'Disconnect', unlinkConfirm: 'Disconnect this number?', cancel: 'Cancel', failed: 'That did not work. Try again.',
     copied: 'Copied', copy: 'Copy', expired: 'The code has expired — get a new one.',
   },
   ru: {
     title: 'WhatsApp', sub: 'Пиши Agent G в WhatsApp и получай сообщение, когда результат готов.',
-    soon: 'Agent G в WhatsApp скоро заработает.', guest: 'Войдите, чтобы привязать WhatsApp.',
-    getCode: 'Получить код', open: 'Открыть WhatsApp', orSend: 'Или отправь Agent G в WhatsApp:',
+    soon: 'Подключение WhatsApp временно недоступно.', guest: 'Войдите, чтобы подключить WhatsApp.',
+    getCode: 'Подключить WhatsApp', open: 'Открыть WhatsApp', orSend: 'Или отправь Agent G в WhatsApp:',
     validFor: 'Код действует 15 минут.', waiting: 'Жду твоё сообщение…', check: 'Проверить',
-    linkedAs: 'Привязан', alerts: 'Уведомления в WhatsApp', alertsHint: 'Видео, изображение, музыка и исследование готовы',
-    unlink: 'Отвязать', unlinkConfirm: 'Отвязать номер?', cancel: 'Отмена', failed: 'Не получилось. Попробуй ещё раз.',
+    linkedAs: 'Подключено', alerts: 'Уведомления в WhatsApp', alertsHint: 'Видео, изображение, музыка и исследование готовы',
+    unlink: 'Отключить', unlinkConfirm: 'Отключить этот номер?', cancel: 'Отмена', failed: 'Не получилось. Попробуй ещё раз.',
     copied: 'Скопировано', copy: 'Копировать', expired: 'Срок кода истёк — получи новый.',
   },
 };
@@ -81,7 +85,7 @@ async function readState(): Promise<LinkState | null> {
   }
 }
 
-export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
+export function WhatsAppLinkCard({ locale, embedded = false, onChange }: { locale?: string; embedded?: boolean; onChange?: () => void } = {}) {
   const pathname = usePathname();
   const lang = langOf(locale ?? pathname?.split('/')[1]);
   const t = COPY[lang];
@@ -95,12 +99,18 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
   const [copied, setCopied] = useState(false);
   const [polling, setPolling] = useState(false);
   const pollUntil = useRef(0);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const wasLinked = useRef<boolean | null>(null);
 
   const refresh = useCallback(async () => {
     const s = await readState();
     if (s) {
       setState(s);
       setLoadFailed(false);
+      const nowLinked = Boolean(s.linked);
+      if (wasLinked.current !== null && wasLinked.current !== nowLinked) onChangeRef.current?.();
+      wasLinked.current = nowLinked;
       if (s.linked) {
         setMinted(null);
         setPolling(false);
@@ -185,13 +195,14 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
 
   const expired = minted ? Date.parse(minted.expires_at) < Date.now() : false;
 
+  const Shell = embedded ? 'div' : 'section';
   return (
-    <section
-      id="whatsapp"
+    <Shell
+      id={embedded ? undefined : 'whatsapp'}
       data-testid="whatsapp-link-card"
-      className="scroll-mt-24 rounded-2xl bg-app-elevated/60 p-5 ring-1 ring-app-border/40 backdrop-blur-sm md:p-6"
+      className={embedded ? '' : 'scroll-mt-24 rounded-2xl bg-app-elevated/60 p-5 ring-1 ring-app-border/40 backdrop-blur-sm md:p-6'}
     >
-      <header className="mb-4 flex items-start gap-3">
+      {!embedded && <header className="mb-4 flex items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/25">
           <MessageCircle size={16} className="text-emerald-400" />
         </span>
@@ -199,7 +210,8 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
           <h2 className="text-base font-semibold tracking-tight md:text-lg">{t.title}</h2>
           <p className="mt-0.5 text-xs text-app-muted md:text-sm">{t.sub}</p>
         </div>
-      </header>
+      </header>}
+      {embedded && <p className="mb-3 text-[13px] leading-snug text-app-muted">{t.sub}</p>}
 
       {!state && !loadFailed && <Loader2 size={16} className="animate-spin text-app-muted" aria-hidden />}
       {!state && loadFailed && <p className="text-sm text-app-muted">{t.soon}</p>}
@@ -229,21 +241,24 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
               aria-label={t.alerts}
               disabled={busy === 'alerts'}
               onClick={() => void setAlerts(!state.linked?.alerts)}
-              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60 disabled:opacity-60 ${state.linked.alerts ? 'bg-app-accent' : 'bg-app-bg ring-1 ring-app-border/60'}`}
+              className="group flex h-11 w-14 shrink-0 items-center justify-center rounded-full focus:outline-none disabled:opacity-60"
             >
-              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${state.linked.alerts ? 'translate-x-6' : 'translate-x-1'}`} />
+              {/* The track is 28 px; the press area around it is 44 px (A4). */}
+              <span className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors group-focus-visible:ring-2 group-focus-visible:ring-app-accent/60 ${state.linked.alerts ? 'bg-app-accent' : 'bg-app-bg ring-1 ring-app-border/60'}`}>
+                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${state.linked.alerts ? 'translate-x-6' : 'translate-x-1'}`} />
+              </span>
             </button>
           </div>
           {confirmUnlink ? (
             <div className="flex items-center gap-2">
               <span className="text-sm">{t.unlinkConfirm}</span>
-              <button type="button" onClick={() => void doUnlink()} disabled={busy === 'unlink'} className="inline-flex items-center gap-1.5 rounded-full bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+              <button type="button" onClick={() => void doUnlink()} disabled={busy === 'unlink'} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-red-500/90 px-4 text-xs font-semibold text-white disabled:opacity-60">
                 {busy === 'unlink' ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}{t.unlink}
               </button>
-              <button type="button" onClick={() => setConfirmUnlink(false)} className="rounded-full px-3 py-1.5 text-xs text-app-muted hover:text-app-text">{t.cancel}</button>
+              <button type="button" onClick={() => setConfirmUnlink(false)} className="inline-flex min-h-[44px] items-center rounded-full px-4 text-xs text-app-muted hover:text-app-text">{t.cancel}</button>
             </div>
           ) : (
-            <button type="button" onClick={() => setConfirmUnlink(true)} className="inline-flex items-center gap-1.5 text-xs text-app-muted transition-colors hover:text-red-400">
+            <button type="button" onClick={() => setConfirmUnlink(true)} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-1 text-xs text-app-muted transition-colors hover:text-red-400">
               <Unlink size={12} />{t.unlink}
             </button>
           )}
@@ -259,7 +274,7 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
                 type="button"
                 onClick={() => void getCode()}
                 disabled={busy === 'code'}
-                className="inline-flex items-center gap-2 rounded-full bg-app-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-app-accent px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 {busy === 'code' && <Loader2 size={14} className="animate-spin" />}
                 {t.getCode}
@@ -272,7 +287,7 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
                   href={minted.wa_link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-emerald-500 px-5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
                 >
                   <MessageCircle size={14} />{t.open}
                 </a>
@@ -280,7 +295,7 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
               <div className="text-xs text-app-muted">{t.orSend}</div>
               <div className="flex items-center gap-2">
                 <code className="rounded-lg bg-app-bg px-3 py-2 font-mono text-base tracking-wider ring-1 ring-app-border/60" data-testid="wa-command">{minted.command}</code>
-                <button type="button" onClick={() => void copyCommand()} aria-label={t.copy} className="rounded-full p-2 text-app-muted transition-colors hover:text-app-text">
+                <button type="button" onClick={() => void copyCommand()} aria-label={t.copy} className="flex h-11 w-11 items-center justify-center rounded-full text-app-muted transition-colors hover:text-app-text">
                   {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
                 </button>
               </div>
@@ -291,7 +306,7 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
                   <button
                     type="button"
                     onClick={() => { pollUntil.current = Date.now() + POLL_FOR_MS; setPolling(true); void refresh(); }}
-                    className="font-medium text-app-text underline-offset-2 hover:underline"
+                    className="inline-flex min-h-[44px] items-center px-2 font-medium text-app-text underline-offset-2 hover:underline"
                   >
                     {t.check}
                   </button>
@@ -303,6 +318,6 @@ export function WhatsAppLinkCard({ locale }: { locale?: string } = {}) {
       )}
 
       {error && <p className="mt-3 text-xs text-red-400" role="alert">{t.failed}</p>}
-    </section>
+    </Shell>
   );
 }

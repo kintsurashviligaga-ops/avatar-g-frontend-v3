@@ -18,3 +18,10 @@ export function getTelegramChannelStatus(): AgentGChannelStatus {
       : 'Not connected',
   };
 }
+
+/**
+ * Is the Telegram account binding built? NO (2026-10-10): /connect-code mints a code but the bot never consumes it, so
+ * no Telegram chat can be tied to an account and Settings must not offer „Connect" (Omnichannel inventory, PART F).
+ * PART F builds the one-time deep-link binding and flips this with its tests.
+ */
+export const TELEGRAM_BINDING_LIVE = false;

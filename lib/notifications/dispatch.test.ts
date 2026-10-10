@@ -8,6 +8,8 @@ jest.mock('../supabase/server', () => ({ createServiceRoleClient: () => ({ clien
 jest.mock('./store', () => ({ createNotification: jest.fn(async () => true) }));
 jest.mock('./channels/push', () => ({ sendPushAlert: jest.fn(async () => ({ sent: false, reason: 'not_configured' })) }));
 jest.mock('./channels/whatsapp', () => ({ sendWhatsAppAlert: jest.fn(async () => ({ sent: true })) }));
+const mockReadPrefs = jest.fn();
+jest.mock('./prefsStore', () => ({ readPrefs: (...a: unknown[]) => mockReadPrefs(...a) }));
 const seen = new Set<string>();
 jest.mock('../platform/idempotency', () => ({
   hashIdempotencyKey: (s: string) => s,
@@ -15,6 +17,7 @@ jest.mock('../platform/idempotency', () => ({
 }));
 
 import { notifyUser } from './dispatch';
+import { DEFAULT_PREFS, normalizePrefs } from './preferences';
 import { createNotification } from './store';
 import { sendPushAlert } from './channels/push';
 import { sendWhatsAppAlert } from './channels/whatsapp';
@@ -24,6 +27,7 @@ const bell = createNotification as jest.MockedFunction<typeof createNotification
 beforeEach(() => {
   jest.clearAllMocks();
   seen.clear();
+  mockReadPrefs.mockResolvedValue({ prefs: normalizePrefs(DEFAULT_PREFS), saved: false });
   jest.spyOn(console, 'info').mockImplementation(() => undefined);
 });
 afterEach(() => jest.restoreAllMocks());
@@ -80,4 +84,36 @@ test('on Vercel the outside channels finish after the response (waitUntil), the 
   } finally {
     delete (globalThis as Record<symbol, unknown>)[key];
   }
+});
+
+describe('the person\'s preferences decide WhatsApp (Settings → Connections → Notifications)', () => {
+  test('defaults: a finished task goes to WhatsApp, low credits stays on the site', async () => {
+    await notifyUser({ userId: 'u1', kind: 'video', title: 't', body: '' });
+    expect(sendWhatsAppAlert).toHaveBeenCalledTimes(1);
+    await notifyUser({ userId: 'u1', kind: 'credits_low', title: 't', body: '' });
+    expect(sendWhatsAppAlert).toHaveBeenCalledTimes(1);
+    expect(sendPushAlert).toHaveBeenCalledTimes(2);
+    expect(bell).toHaveBeenCalledTimes(2);
+  });
+
+  test('WhatsApp switched off for finished tasks: the bell and push still carry it, WhatsApp is not called', async () => {
+    mockReadPrefs.mockResolvedValue({ prefs: normalizePrefs({ events: { task_completed: ['site'] } }), saved: true });
+    await notifyUser({ userId: 'u1', kind: 'music', title: 't', body: '' });
+    expect(bell).toHaveBeenCalledTimes(1);
+    expect(sendPushAlert).toHaveBeenCalledTimes(1);
+    expect(sendWhatsAppAlert).not.toHaveBeenCalled();
+    expect(mockReadPrefs).toHaveBeenCalledWith('u1');
+  });
+
+  test('an event can name its kind of news itself (approval needed)', async () => {
+    mockReadPrefs.mockResolvedValue({ prefs: normalizePrefs({ events: { task_completed: ['site'], approval_required: ['site', 'whatsapp'] } }), saved: true });
+    await notifyUser({ userId: 'u1', kind: 'generic', event: 'approval_required', title: 't', body: '' });
+    expect(sendWhatsAppAlert).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failing preferences read never breaks the notice', async () => {
+    mockReadPrefs.mockRejectedValue(new Error('auth down'));
+    await expect(notifyUser({ userId: 'u1', kind: 'image', title: 't', body: '' })).resolves.toBeUndefined();
+    expect(bell).toHaveBeenCalledTimes(1);
+  });
 });

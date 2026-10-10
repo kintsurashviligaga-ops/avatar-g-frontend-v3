@@ -11,8 +11,7 @@ import { creditsToGel } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
-import { WhatsAppLinkCard } from '@/components/agent-g/WhatsAppLinkCard';
-import { PushPermissionCard } from '@/components/notifications/PushPermissionCard';
+import { ConnectionsSection } from './ConnectionsSection';
 
 /**
  * Settings — top-level user preferences surface.
@@ -21,8 +20,8 @@ import { PushPermissionCard } from '@/components/notifications/PushPermissionCar
  *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as ModernShell's locale switcher)
  *   • Theme             → ThemeContext (data-theme attr + .dark class)
  *   • Profile + Usage    → /api/credits/balance (authenticated GET)
- *   • WhatsApp           → /api/agent-g/whatsapp/link (WhatsAppLinkCard: link by code, alerts, unlink)
- *   • Notifications      → Web Push for this browser (PushPermissionCard; it lived in the retired Connectors hub)
+ *   • Connections        → /api/agent-g/channels (ConnectionsSection: phone, WhatsApp, Telegram, notifications; every
+ *                          status word comes from the server; WhatsApp link by code, push for this browser, what goes where)
  *   • Delete Account    → /api/account/delete (Apple §5.1.1(v) compliant flow)
  *
  * No fakes, no mocks: every control either persists locally or hits a real endpoint. The „Rendering mode" and „Aspect
@@ -148,9 +147,8 @@ export function SettingsView({ locale }: { locale: string }) {
           <motion.div variants={fadeUp} custom={0}><LanguageSection t={t.language} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={1}><ThemeSection t={t.theme} /></motion.div>
           <motion.div variants={fadeUp} custom={2}><ProfileSection t={t.profile} /></motion.div>
-          {/* Agent G on WhatsApp — the page every WhatsApp "link your number" reply points to (#whatsapp). */}
-          <motion.div variants={fadeUp} custom={4}><WhatsAppLinkCard locale={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={4}><PushPermissionCard locale={loc} /></motion.div>
+          {/* Connections — the WhatsApp row is where every WhatsApp "link your number" reply points (#whatsapp). */}
+          <motion.div variants={fadeUp} custom={3}><ConnectionsSection locale={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
           {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
