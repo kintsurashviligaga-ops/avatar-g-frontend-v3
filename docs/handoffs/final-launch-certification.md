@@ -97,8 +97,10 @@ counts (13 / 17 / 18 / 22 / 24 / 25 / 26) and prices. Two extra shells (`/hub`, 
   Library files a file of ours once (remix / swap / product ad no longer make two rows); VFX results reach the chat;
   catalog engine notes match the code. Video keeps storyboard, director V1–V6, scene management and Music video after
   the Film Studio removal (a55f1d18). A video attached in chat plus an edit sentence no longer starts a paid remix on
-  its own: a charged op waits for Agent G's Create card with the price (BUILT_NOT_PROVEN, mocked browser test). Open: the
-  interior 3D plan is not filed to the Library.
+  its own: a charged op waits for Agent G's Create card with the price (BUILT_NOT_PROVEN, mocked browser test). The
+  interior 3D plan is filed to the Library with the render it was made for and opens on its card (a504519c,
+  BUILT_NOT_PROVEN: route tests and a mocked browser test); dubbing, presentation and interior-produce now have route
+  tests. No service has a real end-to-end run yet (Preview run sheet).
 - Still open: 5 legacy registries are imported by legacy API routes (`/api/pipeline`, `/api/agents/*`) and must be deprecated
   with them.
 

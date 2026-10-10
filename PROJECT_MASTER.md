@@ -80,7 +80,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           MEDIA_GOOGLE_ONLY switch built, default OFF (lib/providers/mediaPolicy.ts: on = image on Google's image model,
           tools with no Google engine refused before any charge; turning it on is the owner's action 9); one name per
           tool, one Library row per file, VFX results in the chat (f23c3353); PR #51's last change ported (96312b40).
-          A charged chat remix now waits for Agent G's price card. Open: the interior 3D plan not filed. Owner: lip-sync charge on films
+          A charged chat remix now waits for Agent G's price card. The interior 3D plan is filed to the Library with its render
+          (a504519c); dubbing, presentation and interior-produce have route tests. Owner: lip-sync charge on films
           and music videos, uncharged dubbing / presentation / upscale, Motion transfer keep or retire, the Preview
           run (docs/handoffs/2026-10-09-preview-run-sheet.md).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
