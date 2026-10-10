@@ -90,3 +90,13 @@ describe('what Agent G says', () => {
     expect(trackTooBigText('ka')).toContain('დაამონტაჟე მუსიკაზე');
   });
 });
+
+describe('a music start the user asked for is on the card (Agent G PART 1)', () => {
+  test('said in all three languages; the first beat a fraction in is not', () => {
+    const q = { ...Q, musicStartSec: 5.2 };
+    expect(quoteText(q, undefined, 'ka')).toContain('მუსიკა იწყება 0:05-დან.');
+    expect(quoteText(q, undefined, 'en')).toContain('The track starts at 0:05.');
+    expect(quoteText(q, undefined, 'ru')).toContain('Трек начинается с 0:05.');
+    expect(quoteText(Q, undefined, 'en')).not.toContain('The track starts');
+  });
+});

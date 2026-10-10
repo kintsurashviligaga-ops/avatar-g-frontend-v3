@@ -93,6 +93,12 @@ export function readingText(locale: string): string {
       : 'ვკითხულობ კლიპებს და მუსიკას: ხანგრძლივობას, ფორმატს და ბითს…';
 }
 
+/** 5.2 → "0:05", 95 → "1:35". */
+const clockOf = (sec: number): string => {
+  const t = Math.max(0, Math.round(sec));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+
 /** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
 export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
   const lang = pick(locale);
@@ -108,6 +114,10 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     : lang === 'ru'
       ? `План: ${q.shots} кадров из клипов (${q.clips}), ${sec(q.totalSec)} с, ${q.aspect}, звук — только ваш трек.`
       : `გეგმა: ${q.shots} კადრი ${q.clips} კლიპიდან, ${sec(q.totalSec)} წმ, ${q.aspect}, ხმად მხოლოდ შენი მუსიკა.`;
+  // A start the user asked for („მუსიკა 5 წამიდან") is said; the first beat a fraction of a second in is not news.
+  const from = q.musicStartSec >= 1
+    ? ' ' + (lang === 'en' ? `The track starts at ${clockOf(q.musicStartSec)}.` : lang === 'ru' ? `Трек начинается с ${clockOf(q.musicStartSec)}.` : `მუსიკა იწყება ${clockOf(q.musicStartSec)}-დან.`)
+    : '';
   const unused = q.unusedFiles.length
     ? ' ' + (lang === 'en'
       ? `${q.unusedFiles.map((i) => fileName(names, i, lang)).join(', ')} ${q.unusedFiles.length === 1 ? 'is' : 'are'} too short for one shot and stay out.`
@@ -119,7 +129,7 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${unused}\n${price} ${go}`;
+  return `${found}\n${plan}${from}${unused}\n${price} ${go}`;
 }
 
 const STAGE: Record<string, Record<Lang, string>> = {

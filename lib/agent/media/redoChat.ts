@@ -14,7 +14,8 @@ import { beatMontageAsk, type AgentMontagePhase, type AttachmentKind } from './m
 
 /** The reply under the ↻: only its Agent G card matters here. */
 export interface RedoReply {
-  montage?: { phase: AgentMontagePhase };
+  /** `prompt`: the words the card was planned from. A plan changed in the chat carries them merged with the change. */
+  montage?: { phase: AgentMontagePhase; prompt?: string };
   audioJob?: { phase: AgentAudioPhase };
 }
 
@@ -52,8 +53,11 @@ export function agentRedo<F extends { mimeType: string }>(
   const files = turn.medias ?? [];
   const kinds = files.map((f) => attachmentKind(f.mimeType));
   if (reply.montage) {
-    return open.montage && files.length > 0 && beatMontageAsk(turn.text, kinds)
-      ? { kind: 'montage', text: turn.text, files }
+    // A plan changed in the chat („მუსიკა 5 წამიდან დაიწყე" under the card) was quoted from the card's own words plus the
+    // change; the turn above it holds only the change. ↻ asks again with what the card was planned from.
+    const text = reply.montage.prompt?.trim() || turn.text;
+    return open.montage && files.length > 0 && beatMontageAsk(text, kinds)
+      ? { kind: 'montage', text, files }
       : { kind: 'none' };
   }
   if (!open.audio) return { kind: 'none' };

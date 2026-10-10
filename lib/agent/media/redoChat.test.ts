@@ -29,6 +29,17 @@ describe('agentRedo: ↻ under an Agent G reply asks Agent G again, never the ch
     expect(agentRedo({ montage: { phase: 'cancelled' } }, { role: 'assistant', text: MONTAGE_TEXT, medias: [clip(1), track] }, OPEN)).toEqual({ kind: 'none' });
   });
 
+  // Agent G PART 1: „მუსიკა 5 წამიდან დაიწყე" under a waiting plan re-quotes it from the card's words plus the change; the
+  // turn above the new card holds only the change. ↻ must ask with what the card was planned from, not with „5 წამიდან".
+  test('a plan changed in the chat is asked again with the card\'s own words', () => {
+    const files = [clip(1), clip(2), track];
+    const merged = `${MONTAGE_TEXT}\nმუსიკა 5 წამიდან დაიწყე`;
+    expect(agentRedo({ montage: { phase: 'cancelled', prompt: merged } }, user('მუსიკა 5 წამიდან დაიწყე', files), OPEN))
+      .toEqual({ kind: 'montage', text: merged, files });
+    expect(agentRedo({ montage: { phase: 'done', prompt: '  ' } }, user(MONTAGE_TEXT, files), OPEN))
+      .toEqual({ kind: 'montage', text: MONTAGE_TEXT, files });
+  });
+
   test('an MP3 from a link is asked again from the same link', () => {
     const text = `${LINK} ამ ვიდეოდან MP3 ამოიღე`;
     expect(agentRedo({ audioJob: { phase: 'cancelled' } }, user(text), OPEN)).toEqual({ kind: 'audio', text, ask: { source: 'link', url: LINK } });

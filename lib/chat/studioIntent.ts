@@ -128,6 +128,9 @@ const VIDEO_OBJECT = new RegExp(
   'iu',
 );
 
+/** A frame shape: „9:16", "16x9", "vertical", «вертикальн…», „ვერტიკალ…". */
+const FRAME_SHAPE = new RegExp(`${B0}(?:\\d{1,2}\\s*[:x/]\\s*\\d{1,2}|vertical|horizontal|square|portrait|landscape|вертикал${L}*|горизонтал${L}*|квадрат${L}*|ვერტიკალ${L}*|ჰორიზონტალ${L}*|კვადრატ${L}*)`, 'iu');
+
 /** Dubbing target languages the service supports, by how a user names them. */
 const LANGUAGE_WORDS: Array<{ code: string; re: RegExp }> = [
   { code: 'en', re: new RegExp(`${B0}(?:english|инглиш|английск${L}*|ინგლისურ${L}*)`, 'iu') },
@@ -147,13 +150,17 @@ function mineSlideCount(text: string): number | undefined {
   return Number.isFinite(n) && n > 0 ? Math.min(50, n) : undefined;
 }
 
-function mineDurationSec(text: string): number | undefined {
-  const sec = new RegExp(`(\\d{1,4})\\s*(?:s${B1}|sec${B1}|secs${B1}|second|seconds|წამ${L}*|сек${L}*)`, 'iu').exec(text);
+/**
+ * A length the user named, in seconds. „20-წამიანი" and "20-second" carry a hyphen between the number and the unit: the
+ * miner used to want only spaces there, so the commonest way to write a length in Georgian named none.
+ */
+export function mineDurationSec(text: string): number | undefined {
+  const sec = new RegExp(`(\\d{1,4})\\s*-?\\s*(?:s${B1}|sec${B1}|secs${B1}|second|seconds|წამ${L}*|сек${L}*)`, 'iu').exec(text);
   if (sec?.[1]) {
     const n = parseInt(sec[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(3600, n);
   }
-  const min = new RegExp(`(\\d{1,3})\\s*(?:m${B1}|min${B1}|mins${B1}|minute|minutes|წუთ${L}*|минут${L}*)`, 'iu').exec(text);
+  const min = new RegExp(`(\\d{1,3})\\s*-?\\s*(?:m${B1}|min${B1}|mins${B1}|minute|minutes|წუთ${L}*|минут${L}*)`, 'iu').exec(text);
   if (min?.[1]) {
     const n = parseInt(min[1], 10);
     if (Number.isFinite(n) && n > 0) return Math.min(3600, n * 60);
@@ -161,7 +168,8 @@ function mineDurationSec(text: string): number | undefined {
   return undefined;
 }
 
-function mineTargetLanguage(text: string): string | undefined {
+/** The language a video should be dubbed INTO, as a DubbingLanguage code, when the user named one as a destination. */
+export function mineTargetLanguage(text: string): string | undefined {
   // Only a language named as a DESTINATION ("into Russian", "to English", "რუსულად") counts — otherwise
   // "translate the Russian subtitles into English" would pick Russian, the source.
   const dest = /(?:in\s?to|into|to|in|на|რუსულ|ქართულ|ინგლისურ)\s+([^\s,.;!?]+)/i;
@@ -254,6 +262,10 @@ export function detectStudioIntent(text: string | null | undefined): StudioInten
   // put in. Dubbing is by definition an operation ON A VIDEO, so when the object named is text and no
   // video is named anywhere, this is not a dubbing request and must fall through to the voice/chat path.
   if (hit.service === 'dubbing' && TEXT_OBJECT.test(t) && !VIDEO_OBJECT.test(t)) return null;
+
+  // ⚠️ «Переведи это видео в 9:16» is a CONVERSION, not a translation: `переведи` means both. A frame shape named with no
+  // language named is never a dubbing request (it opened the dubbing studio for a video the user wanted vertical).
+  if (hit.service === 'dubbing' && FRAME_SHAPE.test(t) && !mineTargetLanguage(t)) return null;
 
   // Needs a reason to believe this is a REQUEST: an imperative lead, a deictic object ("dub THIS"), or a Georgian
   // verb-final „…გამიკეთე".

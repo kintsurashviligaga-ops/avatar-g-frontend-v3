@@ -150,7 +150,9 @@ import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
-import { agentRedo } from '@/lib/agent/media/redoChat';
+import { agentRedo, attachmentKind } from '@/lib/agent/media/redoChat';
+import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
+import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
 import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, runAgentAudio } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
@@ -5129,6 +5131,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const liveApiRef = useRef<(d: LiveActionEventDetail) => boolean>(() => false);
   const liveRunRef = useRef<() => boolean>(() => false);
   const liveChatSendRef = useRef<(text: string) => void>(() => {});
+  /**
+   * Agent G reads a typed or spoken message before any tool takes it as a prompt (lib/agent/chatTurn): stop, status,
+   * continue, a change to the plan on screen, a request missing its input, an edit with no route yet. Assigned below,
+   * after the card handlers it calls (they are declared after send). true = the message was handled here.
+   */
+  const agentTurnRef = useRef<(text: string, viaVoice: boolean) => boolean>(() => false);
   /** chat_send while another tool was open: sent once the chat is on screen (the send path reads the mode it renders with). */
   const pendingLiveChatRef = useRef<string | null>(null);
   useEffect(() => {
@@ -5572,16 +5580,38 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
     montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? ''), uploaded: 0, t0: Date.now() },
   }), [locale]);
+  // A plan changed in the chat is quoted again with the same files: each one already uploaded is not sent twice.
+  // Keyed by the bytes AND their place among equal files: two attachments with the same bytes were two uploads, and a
+  // re-quote hands each its own path again (the n-th copy of a file gets the n-th path).
+  const montageUploadsRef = useRef(new Map<string, string[]>());
+  const uploaderOnce = useCallback(() => {
+    const seenThisQuote = new Map<string, number>();
+    return async (dataUrl: string, mimeType: string): Promise<string | null> => {
+      const n = seenThisQuote.get(dataUrl) ?? 0;
+      seenThisQuote.set(dataUrl, n + 1);
+      const known = montageUploadsRef.current.get(dataUrl)?.[n];
+      if (known) return known;
+      const path = await uploadBigFile(dataUrl, mimeType);
+      if (path) {
+        const cache = montageUploadsRef.current;
+        if (!cache.has(dataUrl) && cache.size >= 24) cache.clear();
+        const paths = cache.get(dataUrl) ?? [];
+        paths[n] = path;
+        cache.set(dataUrl, paths);
+      }
+      return path;
+    };
+  }, []);
   // Quote the plan into an Agent G montage bubble already in the thread (a new turn, or ↻ under a finished one).
   const quoteAgentMontageInto = useCallback(async (id: string, text: string, files: Media[]) => {
     const names = files.map((f) => f.name ?? '');
     // Each upload that settles moves the card's „2/4"; the last one hands the step to the analysis.
     const onUploaded = (n: number) => patchMsgById(id, (m) => (m.montage?.phase === 'reading' ? { ...m, montage: { ...m.montage, uploaded: n } } : m));
-    const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: (d, m) => uploadBigFile(d, m), onUploaded }, { prompt: text, files });
+    const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: uploaderOnce(), onUploaded }, { prompt: text, files });
     patchMsgById(id, (m) => (r.ok
       ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
       : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
-  }, [locale, patchMsgById]);
+  }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
     const bubble = newAgentMontageBubble(text, files);
     // The bubble shows the clips and the track; the MODEL never gets them (`modelMedias: []`): this turn's files went to
@@ -5742,6 +5772,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const extract = mode === 'chat' && agentAudioOn && audioExtractAsk(text, kinds)?.source === 'file';
       if (!montage && !remix && !extract) { toast.error(trackTooBigText(locale)); return; }
     }
+    // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
+    // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
+    // for yet: each is answered here, in any tool, before a tool reads the words as its prompt. Everything else goes on.
+    // A card's own confirm and a panel's explicit Generate are not re-read: the user already chose.
+    if (text && !opts?.confirmed && !opts?.explicit && agentTurnRef.current(text, viaVoice)) return;
     // Agent G takes the MP3 out of a link or one attached video/audio file (see startAgentAudio): only when its route is
     // open to this user and the message asks for exactly that (lib/agent/media/audioChat.audioExtractAsk). It goes first:
     // the editor route, the generate gate and the remix below would each read "extract the audio" as their own.
@@ -7122,6 +7157,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         window.dispatchEvent(new CustomEvent('myavatar:auth-required'));
         return;
       }
+      // ⚠️ THE COMPOSER'S SEND SPENT ON ANY WORDS HERE. With a product photo (or a video) loaded, „რა ღირს?", „hello" or
+      // „stop" typed and sent became a paid product ad with the question as its hook. Words that are talk, a question,
+      // feedback or a control go to the chat (Agent G answers, nothing runs); the panel's own Generate (explicit, its
+      // price on it) still runs on whatever is in the box.
+      if (explicitFlag !== true && wordsAreForChat(input, activeTool, locale)) { void send(); return; }
       if (!canRun) { openSettings(); return; }
       trackGenerationConfirmed(serviceForTool(activeTool), surface, composerQuote ?? null);
       // The words are consumed (product: its hook; remix: the edit's text) or have no use (swap) — the box empties
@@ -7747,6 +7787,129 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     ids.forEach((jobId) => q.claimInline(jobId));
     return () => ids.forEach((jobId) => q.releaseInline(jobId));
   }, [agentCardJobs]);
+
+  // ── AGENT G READS THE MESSAGE FIRST: the studio half (the decision is lib/agent/chatTurn, pure and tested) ─────────
+  // Reassigned every render (after the card handlers it calls, declared after send), so it reads the screen as it is.
+  // The snapshot is what the user sees: Agent G's cards, the tray's jobs (a card's own job is its card's), the reply or
+  // the render in flight, the last reply, the last result. Nothing here spends: a note, a stop, or a fresh plan card.
+  agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {
+    const msgs = messagesRef.current;
+    const cards: ThreadCard[] = [];
+    const owned = new Set<string>();
+    for (const m of msgs) {
+      if (!m.id) continue;
+      if (m.montage) {
+        const c = m.montage;
+        const own = cardOwnsJob(c); if (own) owned.add(own);
+        const stage = c.phase === 'running' ? stageText(c.stage ?? null, locale) : c.phase === 'reading' ? readingText(locale) : null;
+        cards.push({ id: m.id, kind: 'montage', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping, prompt: c.prompt });
+      } else if (m.audioJob) {
+        const c = m.audioJob;
+        const own = cardOwnsJob(c); if (own) owned.add(own);
+        const stage = c.phase === 'running' ? audioStageText(c.stage ?? null, locale) : c.phase === 'checking' ? checkingText(c.source ?? 'file', locale) : null;
+        cards.push({ id: m.id, kind: 'audio', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping });
+      }
+    }
+    const q = useJobQueue.getState();
+    const local = new Set(q.jobs.map((j) => j.id));
+    const jobs: TrayJob[] = [
+      ...q.jobs.filter((j) => !owned.has(j.id))
+        .map((j) => ({ id: j.id, kind: j.kind, label: j.label, status: j.status, pct: j.pct, stage: j.stage })),
+      ...q.durableJobs.filter((j) => !owned.has(j.id) && !local.has(j.id))
+        .map((j) => ({ id: j.id, kind: j.kind, label: j.label, status: j.status, pct: j.pct, stage: j.stage, durable: true, cancellable: !!j.cancellable })),
+    ];
+    let lastA = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i]!.role === 'assistant') { lastA = i; break; }
+    const lastReply = lastA >= 0 ? msgs[lastA]! : undefined;
+    const lastCard = lastReply?.montage ?? lastReply?.audioJob;
+    const redo = lastReply && lastCard && (lastCard.phase === 'failed' || lastCard.phase === 'cancelled' || lastCard.phase === 'dismissed')
+      ? agentRedo(lastReply, msgs[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn }).kind : 'none';
+    const prevResult = [...msgs].reverse().find((m) => m.role === 'assistant' && (m.videoUrl || m.imageUrl || m.audioUrl));
+    const snapshot: ChatSnapshot = {
+      mode,
+      locale,
+      attachments: attachments.map((a) => attachmentKind(a.mimeType)),
+      cards,
+      jobs,
+      foreground: streamingIdRef.current ? 'reply' : busy || genActiveRef.current ? 'render' : null,
+      lastTruncated: msgs[msgs.length - 1]?.role === 'assistant' && !!msgs[msgs.length - 1]?.truncated,
+      lastRedoable: redo === 'montage' || redo === 'audio',
+      pendingMontageId: lastReply?.montage?.phase === 'quoted' && lastReply.id ? lastReply.id : null,
+      previous: prevResult ? { kind: prevResult.videoUrl ? 'video' : prevResult.imageUrl ? 'image' : 'audio' } : null,
+      montageOn: agentMontageOn,
+      audioOn: agentAudioOn,
+    };
+    const step = planChatTurn(text, snapshot);
+    if (step.kind === 'pass') return false;
+
+    const clearComposer = () => { setInput(''); setAttachments([]); inputSourceRef.current = 'text'; stopDictationEcho(); };
+    // The user's words and Agent G's note, in the thread and in the saved conversation. The note is the studio's own
+    // (`notice`): it never goes to the chat model as something the model said.
+    const say = (reply: string) => {
+      setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }, { role: 'assistant', text: reply, notice: true }]);
+      setGateFrom(msgs.length);
+      persistChatTurn('user', text);
+      persistChatTurn('assistant', reply);
+      if (!isDesktop) setOptionsOpen(false);
+    };
+
+    switch (step.kind) {
+      case 'say':
+        // A request missing its input keeps the words and the files in the box: add the track (photo, video), send again.
+        if (!step.keepComposer) clearComposer();
+        say(step.text);
+        return true;
+      case 'stop':
+        clearComposer(); // first: stop() hands a parked follow-up back to the box, and that must survive
+        for (const id of step.cards) {
+          const m = msgs.find((x) => x.id === id);
+          if (m?.montage) void stopAgentMontage(id);
+          else if (m?.audioJob) void stopAgentAudio(id);
+        }
+        for (const id of step.jobs) cancelQueueJob(id);
+        for (const id of step.durable) void useJobQueue.getState().cancelDurable(id);
+        if (step.foreground) stop();
+        say(step.text);
+        return true;
+      case 'continue-stream':
+        // The cut-off reply goes on from where it stopped (its text travels in the history), with the user's own words.
+        if (busy || genActiveRef.current) return false;
+        clearComposer();
+        persistChatTurn('user', text);
+        autoPlayReplyRef.current = viaVoice;
+        void streamChat([...msgs, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }]);
+        return true;
+      case 'redo':
+        // The stopped or failed card is asked again in place (↻): a fresh plan, nothing runs before Start.
+        clearComposer();
+        regenerateReply();
+        return true;
+      case 'requote': {
+        // The plan on screen takes the change: the same files, the card's words plus the change, priced again. The old
+        // card says it was replaced; the new one has its own Start.
+        const idx = msgs.findIndex((m) => m.id === step.cardId);
+        const turn = idx > 0 ? msgs[idx - 1] : undefined;
+        const files = turn?.role === 'user' ? turn.medias ?? [] : [];
+        const lang = step.intent.lang;
+        clearComposer();
+        if (!files.length || step.intent.kind !== 'act') {
+          // A reloaded thread keeps no bytes: the files have to come again.
+          say(step.intent.kind === 'act' ? askReply({ ...step.intent, missing: ['clips', 'track'] }, lang) : '');
+          return true;
+        }
+        patchMsgById(step.cardId, (m) => (m.montage?.phase === 'quoted'
+          ? { ...m, text: `${m.text}\n\n${replacedNote(lang)}`, montage: { ...m.montage, phase: 'dismissed' } }
+          : m));
+        const bubble = newAgentMontageBubble(step.prompt, files);
+        setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
+        persistChatTurn('user', text);
+        void quoteAgentMontageInto(bubble.id!, step.prompt, files);
+        return true;
+      }
+      default:
+        return false;
+    }
+  };
 
   // Agent G's note belongs to the tool it was made in: leaving the mode (or starting a new thread) retires it.
   useEffect(() => { setGateFrom(null); }, [mode]);

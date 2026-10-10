@@ -37,8 +37,9 @@ import {
   type MontageRequest,
 } from '@/lib/services/montage/montagePlan';
 import { planBeatCuts, type BeatGrid } from '@/lib/services/montage/beatPlan';
+import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
-import { MAX_FILES, aspectFromClips, aspectFromPrompt, montageBody, sortInputs } from './montageAsk';
+import { MAX_FILES, aspectFromClips, montageBody, sortInputs } from './montageAsk';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
 
 /**
@@ -141,7 +142,11 @@ export interface QuoteInput {
   prompt?: unknown;
   aspect?: unknown;
   targetSec?: unknown;
+  /** Where the music starts, in seconds into the track; read from the prompt when absent (lib/agent/params). */
+  musicFromSec?: unknown;
 }
+
+const positive = (x: unknown): number | undefined => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : undefined);
 
 /** Analyse, plan and price. Spends nothing, writes nothing but an audit event. */
 export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Promise<QuoteResult> {
@@ -190,14 +195,20 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
 
   // ── plan ───────────────────────────────────────────────────────────────────────────────────────────────────────
   const clipProbes = sorted.clips.map((i) => probes[i]!);
-  const target = typeof input.targetSec === 'number' && Number.isFinite(input.targetSec) && input.targetSec > 0
-    ? Math.min(input.targetSec, MAX_TOTAL_SEC)
-    : undefined;
+  // The user's words name the length, the music start and the frame („20 წამიანი", „მუსიკა 5 წამიდან", „9:16"): the same
+  // reader the chat uses to decide that a message changes this plan (lib/agent/params), so the card and the edit never
+  // disagree. A plan changed in the chat comes back with the change on a later line, and a later line wins.
+  const prompt = typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : '';
+  const said = prompt ? minePlanParams(prompt) : {};
+  const askedSec = positive(input.targetSec) ?? said.durationSec;
+  const target = askedSec ? Math.min(askedSec, MAX_TOTAL_SEC) : undefined;
+  const musicFromSec = positive(input.musicFromSec) ?? said.musicStartSec;
   const plan = planBeatCuts({
     clipDurationsSec: clipProbes.map((p) => p.durationSec),
     musicSec: track.probe.durationSec,
     grid: track.grid,
     ...(target ? { targetSec: target } : {}),
+    ...(musicFromSec ? { musicFromSec } : {}),
     ...LIMITS,
   });
   if (!plan.ok) return refuse(err('plan_failed', plan.error ?? 'No edit fits these files.'));
@@ -205,7 +216,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const aspect: MontageAspect =
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
       ? input.aspect
-      : aspectFromPrompt(typeof input.prompt === 'string' ? input.prompt : '') ?? aspectFromClips(clipProbes);
+      : said.aspect ?? aspectFromClips(clipProbes);
   const body = montageBody(plan, sorted.clips.map((i) => urls[i]!), urls[sorted.track]!, aspect);
   const valid = validateMontageRequest(body);
   if (!valid.ok || !valid.request) return refuse(err('plan_failed', valid.error ?? 'The plan did not validate.'));

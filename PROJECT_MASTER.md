@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 0)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 1)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -100,8 +100,18 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           / 0 failed, tsc 0; Production read only: the deduct_credits same-ref race is real in the live definition
           (EXISTS before the lock, no unique debit ref) and 20261002d is still unapplied; 29 unmatched refunds all traced,
           none minted. Gaps A1–A7, R1–R2, M1–M4, T1–T4, V1–V7, B1–B3, C1–C6, P1, U1, S1, O1 and Gemini G0–G8, each with
-          a part or BLOCKED_OWNER. Next: PART 1 (contracts, one KA/EN/RU intent classifier, capability registry for
-          the 22 services, function declarations from the registry).
+          a part or BLOCKED_OWNER.
+          PART 1 DONE (part-1-report.md): lib/agent/contracts.ts (one vocabulary; approval only from a person; one
+          RunStatus with transitions); lib/agent/intent.ts (KA/EN/RU reader over the existing detectors: control / talk
+          / question / feedback / act / unavailable / chat; the owner's 13 sentences + EN/RU in 73 tests);
+          lib/agent/capabilities.ts (25 records: 22 services + montage, MP3, media edit; none PROVEN); the chat's own
+          turn (lib/agent/chatTurn.ts + OmniStudio): stop / where are you / continue, a plan change re-quotes the same
+          files, missing files are asked for and kept, Product / Swap / Remix Run sends talk to the chat; the focus gate
+          answers „არ მომწონს" in words; montage reads music start and length. Function declarations generated from
+          the registry (lib/agent/tools/declarations.ts) + a 49-message labelled corpus (router 49/49); the paid Gemini
+          comparison is BLOCKED_OWNER. Dead-stack ratchet. Gemini capability matrix (G0) in the report §7. Edits of a
+          previous result are refused in words until PART 3. Next: PART 2 (one status model, multi-step runs on the
+          lease queue without a migration, run events, memory).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

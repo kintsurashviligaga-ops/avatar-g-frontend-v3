@@ -8,6 +8,7 @@ import {
   OUTPUT_FPS,
   estimateBeatGrid,
   onsetStrength,
+  musicStartOnBeat,
   planBeatCuts,
   type BeatGrid,
 } from './beatPlan';
@@ -187,5 +188,31 @@ describe('planBeatCuts lays the clips on the beat', () => {
     const v = validateMontageRequest(body);
     expect(v.ok).toBe(true);
     expect(Math.abs(timelineDuration(v.request!.shots) - plan.totalSec)).toBeLessThan(0.01);
+  });
+});
+
+describe('the music starts where the user asked (Agent G PART 1, „მუსიკა 5 წამიდან დაიწყე")', () => {
+  test('on the first beat at or after the asked second', () => {
+    expect(musicStartOnBeat(G120, 5)).toBeCloseTo(5.2, 6);
+    expect(musicStartOnBeat(G120, 5.2)).toBeCloseTo(5.2, 6);
+    expect(musicStartOnBeat(G120, 0)).toBe(0.2);
+    expect(musicStartOnBeat(G120, 0.1)).toBe(0.2);
+    expect(musicStartOnBeat(null, 5)).toBe(5);
+    expect(musicStartOnBeat(null, -3)).toBe(0);
+  });
+
+  test('the plan starts there, still cuts on the beat, and has less music to fill', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [20, 20, 20], musicSec: 40, grid: G120, musicFromSec: 5, ...LIMITS });
+    expect(plan.ok).toBe(true);
+    expect(plan.musicStartSec).toBe(5.2);
+    expect(plan.totalSec).toBeLessThanOrEqual(40 - 5.2);
+    // The montage body carries the start into the render.
+    const plain = planBeatCuts({ clipDurationsSec: [20, 20, 20], musicSec: 40, grid: G120, ...LIMITS });
+    expect(plain.musicStartSec).toBe(0.2);
+  });
+
+  test('a start past the end of the track is refused by name, not silently moved', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [20, 20], musicSec: 30, grid: null, musicFromSec: 45, ...LIMITS });
+    expect(plan).toMatchObject({ ok: false, error: 'the track ends before 45s' });
   });
 });

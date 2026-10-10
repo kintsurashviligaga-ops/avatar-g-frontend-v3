@@ -201,6 +201,11 @@ export interface CutInput {
   grid: BeatGrid | null;
   /** The length the user asked for; DEFAULT_TARGET_SEC when absent. */
   targetSec?: number;
+  /**
+   * Where the user asked the music to start („მუსიკა 5 წამიდან დაიწყე"), in seconds into the track. The edit starts on
+   * the first beat at or after it, so the first cut still lands on a beat; with no beat grid, exactly there.
+   */
+  musicFromSec?: number;
   maxShots: number;
   maxTotalSec: number;
   /** The shortest shot the renderer takes (montagePlan MIN_SHOT_SEC). */
@@ -221,7 +226,7 @@ export interface CutPlan {
   ok: boolean;
   error?: string;
   cuts: PlannedCut[];
-  /** Where in the track the first frame lands: the first beat (0 with no grid). */
+  /** Where in the track the first frame lands: the first beat (at or after the asked start; 0 with no grid and no start). */
   musicStartSec: number;
   totalSec: number;
   beatSynced: boolean;
@@ -242,15 +247,26 @@ function fail(error: string, grid: BeatGrid | null): CutPlan {
   };
 }
 
+/** The first beat at or after `fromSec` (the grid's first beat when `fromSec` is before it); `fromSec` itself with no grid. */
+export function musicStartOnBeat(grid: BeatGrid | null, fromSec: number): number {
+  const from = Number.isFinite(fromSec) && fromSec > 0 ? fromSec : 0;
+  if (!grid || !(grid.periodSec > 0)) return from;
+  const phase = Math.max(0, grid.phaseSec);
+  if (from <= phase) return phase;
+  return phase + Math.ceil((from - phase) / grid.periodSec - 1e-9) * grid.periodSec;
+}
+
 /** Lay the clips on the beat grid (or on even half-second cuts when there is none). */
 export function planBeatCuts(input: CutInput): CutPlan {
   const { grid } = input;
   const unit = grid && grid.periodSec > 0 ? grid.periodSec : FALLBACK_UNIT_SEC;
-  const musicStartSec = grid ? Math.max(0, grid.phaseSec) : 0;
+  const askedFrom = Number.isFinite(input.musicFromSec) && (input.musicFromSec ?? 0) > 0 ? input.musicFromSec! : 0;
+  const musicStartSec = musicStartOnBeat(grid, askedFrom);
   const durations = input.clipDurationsSec.map((d) => (Number.isFinite(d) && d > 0 ? d - TAIL_GUARD_SEC : 0));
   if (!durations.length) return fail('no clips', grid);
   const footage = durations.reduce((s, d) => s + Math.max(0, d), 0);
   const music = Number.isFinite(input.musicSec) ? input.musicSec - musicStartSec : 0;
+  if (askedFrom > 0 && !(music > 0)) return fail(`the track ends before ${r3(askedFrom)}s`, grid);
   if (!(music > 0)) return fail('the track has no length', grid);
 
   const asked = Number.isFinite(input.targetSec) && (input.targetSec ?? 0) > 0 ? input.targetSec! : DEFAULT_TARGET_SEC;

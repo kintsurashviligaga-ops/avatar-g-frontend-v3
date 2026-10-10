@@ -3,7 +3,7 @@
  *
  *   GET                                       { enabled } for THIS user; never 404, so the studio asks instead of assuming.
  *   GET ?jobId=…                              the owner's job: queued | running (stage, pct) | completed (videoUrl) | failed.
- *   POST { action: 'quote', files, prompt?, aspect?, targetSec? }   analyse + plan + price; spends nothing.
+ *   POST { action: 'quote', files, prompt?, aspect?, targetSec?, musicFromSec? }   analyse + plan + price; spends nothing.
  *   POST { action: 'run', request, token, prompt? }                 queue the quote the user confirmed, once; answers at once.
  *   POST { action: 'cancel', jobId }                                stops the owner's queued or running edit.
  *
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (action === 'quote') {
     return answer(await quoteMontage(deps, {
-      userId: user.id, files: body?.files, prompt: body?.prompt, aspect: body?.aspect, targetSec: body?.targetSec,
+      userId: user.id, files: body?.files, prompt: body?.prompt, aspect: body?.aspect, targetSec: body?.targetSec, musicFromSec: body?.musicFromSec,
     }));
   }
   if (action === 'run') {

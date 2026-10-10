@@ -206,3 +206,30 @@ describe('when an edit has a price (the path a priced service takes)', () => {
     expect(f.ledger.filter((l) => l.delta > 0)).toHaveLength(1);
   });
 });
+
+describe('the user\'s words set the length and the music start (Agent G PART 1)', () => {
+  test('„მუსიკა 5 წამიდან დაიწყე": the plan and the signed request start on the first beat after 5 s', async () => {
+    const q = await quoted(fake(), { prompt: 'ამ ვიდეოებიდან კლიპი გამიკეთე, მუსიკა 5 წამიდან დაიწყე' });
+    expect(q.quote.musicStartSec).toBe(5.2);
+    expect(q.request.musicStartSec).toBe(5.2);
+  });
+
+  test('„20 წამიანი" sets the length; an explicit number wins over the words', async () => {
+    expect((await quoted(fake(), { prompt: 'cut these to the song, 20-second reel' })).quote.totalSec).toBeLessThanOrEqual(20);
+    expect((await quoted(fake(), { prompt: 'cut these to the song, 20-second reel', targetSec: 12 })).quote.totalSec).toBeLessThanOrEqual(12);
+    expect((await quoted(fake(), { musicFromSec: 10 })).quote.musicStartSec).toBe(10.2);
+  });
+
+  test('a per-shot length is not the length of the edit', async () => {
+    expect((await quoted(fake(), { prompt: 'cut these to the music, each shot 2 seconds' })).quote.totalSec).toBe(30);
+  });
+
+  test('a plan changed in the chat (the change on a later line) takes the change, not the first words', async () => {
+    const q = await quoted(fake(), { prompt: 'cut these to the song for a reel 9:16, 20-second\nmake it 16:9\nმუსიკა 5 წამიდან დაიწყე' });
+    expect(q.quote.aspect).toBe('16:9');
+    expect(q.quote.totalSec).toBeLessThanOrEqual(20);
+    expect(q.quote.musicStartSec).toBe(5.2);
+    const back = await quoted(fake(), { prompt: 'cut these to the song 16:9\n9:16' });
+    expect(back.quote.aspect).toBe('9:16');
+  });
+});

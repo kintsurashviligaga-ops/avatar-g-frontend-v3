@@ -34,7 +34,7 @@ const QUOTE = { jobId: '11111111-2222-4333-8444-555555555555', credits: 0, total
 
 interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; remixIntent: unknown[] }
 
-async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {}): Promise<Calls> {
+async function open(page: Page, enabled: boolean, opts: { live?: boolean; /** the job stays running (never delivered) */ stay?: boolean } = {}): Promise<Calls> {
   const calls: Calls = { quote: [], run: [], reads: [], cancel: [], remixIntent: [] };
   await page.addInitScript(() => {
     try {
@@ -58,6 +58,7 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {})
     task({ status: 'running', stage: 'stitch', pct: 55, attempt: 1, cancellable: true }),
     task({ status: 'completed', pct: 100, result: { url: 'https://media.test/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } }),
   ];
+  if (opts.stay) views.pop();
   // The one task route (/api/tasks): the chat follows the job there and stops it there.
   await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
@@ -256,6 +257,85 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect.poll(() => calls.remixIntent.length, { timeout: 20_000 }).toBe(1);
     expect(calls.quote).toEqual([]);
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+  });
+});
+
+// AGENT G PART 1: the chat reads every message before a tool takes it as a prompt (lib/agent/chatTurn). Stop, „where are
+// you?", a change to the plan on screen and a request missing its track are answered here, without the chat model.
+test.describe('Agent G reads the message first', () => {
+  const chatCalls = async (page: Page): Promise<unknown[]> => {
+    const chat: unknown[] = [];
+    await page.route('**/api/chat/gemini', (r) => { chat.push(r.request().postData()); return r.fulfill({ status: 500, body: '' }); });
+    return chat;
+  };
+
+  test('a change typed under the plan re-quotes it with the same files; the old card says it was replaced', async ({ page }) => {
+    const calls = await open(page, true);
+    const chat = await chatCalls(page);
+    await attachAndSend(page, 'cut these to the music');
+    const cards = page.getByTestId('agent-montage-card');
+    await expect(cards.first()).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+
+    await say(page, 'start the music at 5 seconds');
+    await expect(cards).toHaveCount(2);
+    await expect(cards.nth(1)).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await expect(cards.nth(0)).toHaveAttribute('data-phase', 'dismissed');
+    await expect(page.getByText('Plan changed: the new one is below.')).toBeVisible();
+    expect(calls.quote).toHaveLength(2);
+    // The card's own words plus the change, and the SAME uploaded files (nothing is uploaded twice).
+    expect(calls.quote[1]).toEqual({ action: 'quote', files: calls.quote[0]!.files, prompt: 'cut these to the music\nstart the music at 5 seconds' });
+    expect(calls.run).toEqual([]);
+    expect(chat).toEqual([]);
+  });
+
+  test('„სამუშაო შეწყვიტე" while the edit runs: one cancel to the task route, and Agent G says what it stopped', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    const chat = await chatCalls(page);
+    await attachAndSend(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card).toHaveAttribute('data-phase', 'running');
+    // The answer is what the card knows when asked: wait for the task route's 55 % to reach it first.
+    await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '55', { timeout: 15_000 });
+
+    await say(page, 'how far along are you?');
+    await expect(page.getByText('Running now:')).toBeVisible();
+    await expect(page.getByText(/• the montage — .+ · 55%/)).toBeVisible({ timeout: 10_000 });
+
+    await say(page, 'სამუშაო შეწყვიტე');
+    await expect(page.getByText('⏹ გავაჩერე: მონტაჟი.')).toBeVisible();
+    await expect.poll(() => calls.cancel.length, { timeout: 10_000 }).toBe(1);
+    expect(calls.cancel[0]).toEqual({ action: 'cancel', id: QUOTE.jobId });
+    expect(chat).toEqual([]);
+  });
+
+  test('nothing running: „stop" and „where are you?" say so, and nothing is sent anywhere', async ({ page }) => {
+    const calls = await open(page, true);
+    const chat = await chatCalls(page);
+    await say(page, 'stop');
+    await expect(page.getByText('Nothing is running right now, so there is nothing to stop.')).toBeVisible();
+    await say(page, 'სადამდე მიხვედი?');
+    await expect(page.getByText(/ახლა არაფერი მუშაობს/)).toBeVisible();
+    expect(calls.cancel).toEqual([]);
+    expect(chat).toEqual([]);
+  });
+
+  test('clips with no track: Agent G asks for the track, keeps the files in the box, and plans nothing', async ({ page }) => {
+    const calls = await open(page, true);
+    const chat = await chatCalls(page);
+    await page.locator('input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]').setInputFiles([
+      { name: 'beach.webm', mimeType: 'video/webm', buffer: CLIP },
+      { name: 'city.webm', mimeType: 'video/webm', buffer: CLIP },
+    ]);
+    await expect(page.getByTitle('city.webm')).toBeVisible({ timeout: 10_000 });
+    await say(page, 'cut these to the music');
+    await expect(page.getByText(/I have the clips; the music is missing/)).toBeVisible();
+    await expect(page.getByTitle('city.webm')).toBeVisible();
+    await expect(page.getByTestId('composer-input')).toHaveValue('cut these to the music');
+    expect(calls.quote).toEqual([]);
+    expect(calls.remixIntent).toEqual([]);
+    expect(chat).toEqual([]);
   });
 });
 
