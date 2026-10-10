@@ -390,3 +390,22 @@ test('swap is locked while its model is not registered (423), even with the flag
   const res = await POST(post({ op: 'swap', preset: 'anime', video: VIDEO, references: [{ ref: mine('c.jpg'), role: 'character' }] }));
   expect(res.status).toBe(423);
 });
+
+test('MEDIA_GOOGLE_ONLY: motion (Higgsfield) is refused before the rate limit or the saga; scene (Veo) still renders', async () => {
+  process.env.MEDIA_GOOGLE_ONLY = '1';
+  try {
+    (opStatuses as jest.Mock).mockReturnValue(status({ motion: OPEN }));
+    const create = jest.fn();
+    saga(create);
+    const res = await POST(post(MOTION));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'google_only' });
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+
+    expect((await POST(post(SCENE))).status).toBe(202);
+    expect(submitScene).toHaveBeenCalledTimes(1);
+  } finally {
+    delete process.env.MEDIA_GOOGLE_ONLY;
+  }
+});

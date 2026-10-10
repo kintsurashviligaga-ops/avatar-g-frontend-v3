@@ -44,6 +44,7 @@ import { claimIdempotencyKey, hashPayload, releaseIdempotencyKey } from '@/lib/o
 import { createJob, failJob } from '@/lib/orchestrator/jobs';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { formatGel } from '@/lib/providers/pricing';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { REFERENCE_URL_TTL_SEC } from '@/lib/studio/media';
 import { getStudioRuntime } from '@/lib/studio/runtime';
 import { readJson, sagaError } from '@/lib/studio/http';
@@ -101,6 +102,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 3. Is the op open? A locked op never reaches a provider, whatever the client believed.
   if (!opStatuses()[r.op].open) return fail(423, 'locked', { op: r.op });
+  // MEDIA_GOOGLE_ONLY: motion and swap run on Higgsfield, so the switch refuses them here, before any rate or charge.
+  // `scene` is Veo and stays open.
+  if (r.op !== 'scene') {
+    const outside = refuseOutsideEngine(req);
+    if (outside) return outside;
+  }
 
   // 4. How often. Per account (an IP rotation must not defeat a cap on a cost-bearing mint).
   const limited = await checkRateLimitByKey(userId, GENJUTSU_RATE);

@@ -32,7 +32,7 @@ import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isGoogleOnly } from '@/lib/veo/policy';
-import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -597,6 +597,23 @@ export class ServiceManager {
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const provider = this.resolveVideoProvider(request);
     if (provider === 'heygen') {
+      // MEDIA_GOOGLE_ONLY: the presenter has no Google engine yet, so it is refused before HeyGen is called (the chat
+      // hold is given back on any failed answer). The branch ran before the video switch below, so it was never covered.
+      if (isMediaGoogleOnly()) {
+        const message = googleOnlyMessage(request.locale);
+        return {
+          success: false,
+          provider: 'heygen',
+          operation: 'video-avatar',
+          responseType: 'text',
+          message,
+          predictionStatus: 'failed',
+          metadata: {
+            provider: 'heygen', operation: 'video-avatar', sessionId: request.sessionId, outputType: 'text',
+            promptHash: this.hashPrompt(request.userPrompt), confidence: request.confidence, code: GOOGLE_ONLY_CODE, error: message,
+          },
+        };
+      }
       return this.runHeygenAvatarVideo(request);
     }
 

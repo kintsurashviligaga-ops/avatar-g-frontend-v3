@@ -24,6 +24,7 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 const exec = promisify(execFile);
@@ -88,6 +89,9 @@ export async function instrumentalBed(brief: string, totalSec: number, signal?: 
       return null;
     }
   }
+  // MusicGen (Replicate) is the bed only when no ElevenLabs Music key is set. Under MEDIA_GOOGLE_ONLY it is never
+  // called: no bed, which the song builder already handles as a miss.
+  if (isMediaGoogleOnly()) return null;
   try {
     const score = await generateMusic(`${instrumentalPrompt(brief, totalSec)}`, totalSec);
     return score.audioUrl ?? null;
@@ -126,8 +130,11 @@ export async function diagnoseGeorgianSong(
       out.elMusic = !!(r.audio && r.audio.length > 1024);
     } catch (e) { out.elMusic = false; out.elMusicErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
   }
-  try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
-  catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  if (isMediaGoogleOnly()) out.musicGen = 'off (MEDIA_GOOGLE_ONLY)';
+  else {
+    try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
+    catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  }
   return out;
 }
 

@@ -72,6 +72,7 @@
       "consume_free_film",
       "credit_wallet_gel",
       "deduct_credits",
+      "deduct_credits_once",
       "enqueue_music_job",
       "fail_stale_music_jobs",
       "fetch_next_render_job",

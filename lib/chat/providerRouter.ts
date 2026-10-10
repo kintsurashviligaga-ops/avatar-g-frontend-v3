@@ -32,6 +32,7 @@ import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, chargeRefusedResponse, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
@@ -266,21 +267,50 @@ function refuseAnonymousGeneration(input: OrchestratorInput, intent: IntentCateg
   };
 }
 
+/**
+ * MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off) for the chat branches whose only engines are
+ * outside ones — chat music (Udio / MusicGen), the Replicate intents (BLIP captions, generic models), the interior
+ * redesign (FLUX depth) and the 3D room (WorldLabs). With the switch on they answer the same paused-tool sentence the
+ * studio routes do, before any balance read, charge or provider call. Off → null, and the branch runs as before.
+ */
+function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCategory): ChatResponse | null {
+  if (!isMediaGoogleOnly()) return null;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: googleOnlyMessage(input.locale),
+    metadata: { provider: 'policy', code: GOOGLE_ONLY_CODE },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  // EXPLICIT FILM DISPATCH FIRST. The music-video flag and the storyboard's structural signals only ever come from the
+  // Video studio (driveFilmStudio), so they decide the route whatever the brief says. They used to sit below the
+  // interior and attachment checks, so a film brief with the word "room" or "space" in it was answered "Upload a room
+  // photo" by the 3D-interior branch, and a film with a reference image could be answered by the vision branch as text.
+  if (input.metadata?.musicVideoMode === true || hasFilmDispatchSignal(input.metadata)) {
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
+  }
+
   // PHASE 56 — Interior REDESIGN (depth-locked FLUX ControlNet) takes priority
   // over the WorldLabs 3D-world route: when a room photo is attached in the
   // Interior service and the user hasn't explicitly asked for a 3D world /
   // walkthrough, re-render the SAME room with new materials, furniture and
   // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
   if (shouldRedesignInterior(input)) {
-    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorRedesign(input);
+    return refuseAnonymousGeneration(input, 'image_generation')
+      ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? handleInteriorRedesign(input);
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
-    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorIntent(input);
+    return refuseAnonymousGeneration(input, 'image_generation')
+      ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? handleInteriorIntent(input);
   }
 
   // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
@@ -333,27 +363,12 @@ export async function orchestrate(
     }
   }
 
-  // P1-B — MUSIC-VIDEO MODE is an EXPLICIT user choice (the studio panel's flag),
-  // so honour it REGARDLESS of the message language or keywords. Without this an
-  // English brief like "30 second R&B music video with a female singer in Tbilisi"
-  // gets keyword-routed to a Udio AUDIO-only job instead of the FILM pipeline. The
-  // flag rides in metadata from driveFilmStudio (and the orchestrate dispatch), so
-  // the film/music-video pipeline activates whenever musicVideoMode === true.
-  if (input.metadata?.musicVideoMode === true) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
-  }
-
-  // EXPLICIT FILM DISPATCH — a render started from the Video Studio storyboard carries STRUCTURAL film
-  // signals (approved per-scene frames / per-scene scripts / a pinned scene count). Those only ever come from
-  // driveFilmStudio, so they are an unambiguous "this is a film render" — honour them REGARDLESS of how the
-  // user worded the brief. Without this, a perfectly normal brief like "Create a cinematic video of an ocean
-  // wave" failed the conservative isThirtySecondFilm() keyword gate below (it wants "30-second film / short
-  // film / mini-movie"), fell through to a generic SINGLE-CLIP LTX render, and silently DISCARDED the whole
-  // approved storyboard — the user watched 3 scenes get built, then got a one-shot render that failed.
-  // LIVE-VERIFIED: the dispatch reported engine 'ltx' with no film matrix for exactly this phrasing.
-  if (hasFilmDispatchSignal(input.metadata)) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
-  }
+  // P1-B — MUSIC-VIDEO MODE and EXPLICIT FILM DISPATCH are handled at the very top of orchestrate() (see there):
+  // the music-video flag is an explicit user choice, so an English brief like "30 second R&B music video with a
+  // female singer in Tbilisi" is never keyword-routed to an audio-only job; and the storyboard's structural signals
+  // (approved per-scene frames / scripts / a pinned scene count) mean a brief like "Create a cinematic video of an
+  // ocean wave", which fails the conservative isThirtySecondFilm() gate below, still reaches the film pipeline
+  // instead of a generic single-clip render that discards the approved storyboard (LIVE-VERIFIED regression).
 
   // PHASE 42 §1 — The flagship film pipeline for a FREE-TEXT chat brief. `isThirtySecondFilm` is deliberately
   // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
@@ -374,7 +389,9 @@ export async function orchestrate(
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return refuseAnonymousGeneration(input, detected.intent) ?? handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent)
+      ?? refuseOutsideEngineInChat(input, detected.intent)
+      ?? handleMusicIntent(input, detected);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
@@ -383,7 +400,9 @@ export async function orchestrate(
 
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
-    return refuseAnonymousGeneration(input, detected.intent) ?? handleReplicateIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent)
+      ?? refuseOutsideEngineInChat(input, detected.intent)
+      ?? handleReplicateIntent(input, detected);
   }
 
   return handleTextIntent(input, detected);

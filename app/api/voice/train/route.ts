@@ -7,6 +7,7 @@ import { prepareDatasetZip, startRvcTraining, pollRvcPrediction, rehostModel, rv
 import { saveTrainingJob, getLatestTraining, markTrainingDone, markTrainingFailed, DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { mustSignInToGenerate, signInToGenerateBody } from '@/lib/auth/generationGate';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 /**
  * Train (and check) a personal RVC voice model.
@@ -40,6 +41,10 @@ function localeFromHeader(acceptLanguage: string | null): 'ka' | 'en' | 'ru' {
 }
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY: RVC training runs on Replicate, so the switch refuses a new training here. The status GET
+  // below is never gated, so a training started before the switch still finishes.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
 
   // ⚠️ SIGNED-IN ONLY, AND THE LOOKUP FAILS CLOSED — checked before the body (a data: URL can be MBs) is parsed.

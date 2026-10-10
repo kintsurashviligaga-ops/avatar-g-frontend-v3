@@ -19,6 +19,7 @@ import { getStudioRuntime, signUploadedReference } from '@/lib/studio/runtime';
 import { publicJob } from '@/lib/studio/saga';
 import { mediaParams, notFound, publicPrice, readJson, sagaError, unauthorized } from '@/lib/studio/http';
 import { TERMINAL_JOB_STATUSES } from '@/lib/studio/store';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +28,10 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   if (!studioV2Enabled()) return notFound();
+  // MEDIA_GOOGLE_ONLY: every studio model runs on Higgsfield (lib/studio/runtime), so the switch refuses a new job
+  // here, before the estimate or the ledger. GET (the job list and its polls) stays open so running jobs settle.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const { user } = await authedClientFromRequest(req);
   if (!user) return unauthorized();
 

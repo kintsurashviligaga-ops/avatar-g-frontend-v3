@@ -11,6 +11,7 @@ import { textProviderFactory, type TextProviderId } from '@/lib/providers/text-f
 import { toolRegistry, type ToolId } from '@/lib/tools/registry';
 import { reportError } from '@/lib/observability/report-error';
 import { getAgent } from '@/lib/agents/registry';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -80,6 +81,11 @@ export async function POST(request: NextRequest) {
     let providerId = 'none';
 
     if (taskType === 'text-generation') {
+      // AI_GOOGLE_ONLY (lib/ai/google/policy, on by default): this factory only knows OpenRouter / OpenAI / DeepSeek,
+      // so with the switch on the request is refused instead of answered by an outside model.
+      if (isAiGoogleOnly()) {
+        return NextResponse.json({ error: 'google_only', message: 'Text runs on Google models only.' }, { status: 503 });
+      }
       // Text generation via LLM provider
       const provider = textProviderFactory.selectProvider(providerPreference);
       providerId = provider.name;

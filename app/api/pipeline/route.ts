@@ -28,6 +28,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -650,6 +651,9 @@ async function generateOpenAITtsDataUrl(text: string): Promise<string> {
 
 // ─── Main generate handler ────────────────────────────────────────────────────
 
+/** The wizard services that answer in text on Gemini; every other `generate` reaches a media engine. */
+const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
+
 async function handleGenerate(
   serviceId: ServiceId,
   finalPrompt: string,
@@ -671,8 +675,6 @@ async function handleGenerate(
   const effectivePrompt = iterative.prompt;
 
   // ── Text services (Gemini ONLY — PROJECT_MASTER R7) ────────────────────────
-  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
-
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
     const systemPrompts: Record<string, string> = {
@@ -996,6 +998,14 @@ export async function POST(req: NextRequest) {
         const { user } = await authedClientFromRequest(req);
         if (mustSignInToGenerate(user?.id)) {
           return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+        }
+        // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this wizard's media legs are Nano Banana, HeyGen, World Labs,
+        // Udio and the lip-sync cascade — all outside engines with no charge of their own — so with the switch on only
+        // the text services (Gemini) still run. Refused before the rate limit, so a refusal spends none of it. Video is
+        // VIDEO_GOOGLE_ONLY's (just below), as everywhere else.
+        if (!TEXT_SERVICES.includes(serviceId as ServiceId) && normalizeServiceId(serviceId) !== ('video' as ServiceId)) {
+          const outside = refuseOutsideEngine(req);
+          if (outside) return outside;
         }
         // Every generate spends a paid provider, and this legacy surface has no credit charge of its own: bound it
         // like the other expensive routes.

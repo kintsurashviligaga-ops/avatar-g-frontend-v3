@@ -190,3 +190,22 @@ describe('MEDIA_GOOGLE_ONLY on — no outside engine runs, whatever is configure
     expect(grok).not.toHaveBeenCalled();
   });
 });
+
+describe('MEDIA_GOOGLE_ONLY and the chat avatar (HeyGen)', () => {
+  it('is refused before HeyGen is called, in the user\'s language', async () => {
+    process.env.MEDIA_GOOGLE_ONLY = '1';
+    process.env.HEYGEN_API_KEY = 'hg-test';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));
+    try {
+      const r = await new ServiceManager().execute(req({ intent: 'avatar_generation', serviceContext: 'avatar', userPrompt: 'Hello from Tbilisi' }));
+      expect(r.success).toBe(false);
+      expect(r.provider).toBe('heygen');
+      expect(r.metadata.code).toBe('google_only');
+      expect(r.message).toMatch(/Google/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      delete process.env.HEYGEN_API_KEY;
+    }
+  });
+});
