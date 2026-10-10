@@ -8,6 +8,7 @@
  * Returns a normalized ChatResponse in both cases.
  */
 
+import { randomUUID } from 'node:crypto';
 import { detectIntent, intentToReplicateService, type DetectedIntent, type IntentCategory } from './intentDetector';
 import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
@@ -1377,31 +1378,50 @@ async function handleDeterministicIntent(
       return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
     }
 
-    const response = await serviceManager.execute({
-      sessionId: input.sessionId,
-      serviceContext: input.serviceContext,
-      intent: detected.intent,
-      userPrompt: iterative.prompt,
-      selectedOptions: input.selectedOptions,
-      imageUrl: input.imageUrl,
-      locale: input.locale,
-      confidence: detected.confidence,
-    });
-
-    // DAY-6 — a SYNCHRONOUS generation (image / photo) is charged after it delivered, via the balance-of-record
-    // deduct_credits RPC: it can never bill a thrown error or a `success:false` failure. Authed only; idempotent
-    // per-call ref; fail-open (a ledger hiccup never breaks the delivered asset); deduct_credits rejects overdraw.
-    // An ASYNC render (video / avatar) is charged at acceptance just below, and refunded on the poll path if it fails.
-    const billCost = billableCreditCost(detected.intent);
+    // ⚠️ THE PRICE IS HELD BEFORE THE PROVIDER IS CALLED (gap C6), NOT TAKEN AFTER IT DELIVERED. A synchronous image
+    // used to be charged after Google had rendered it: when that charge did not land (a ledger error, or a balance a
+    // parallel request had already spent with Redis down) the asset was withheld but the render was paid for anyway.
+    // Now the debit lands first — a refused hold renders nothing — and anything that is not delivered right here gives
+    // it back through the ledger (only what was taken). An accepted async render moves to its `poll:<id>` charge below.
+    const billCost = gateCost;
     const uid = input.userId;
-    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
-    if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
-      // ⚠️ "the asset is already delivered" was the excuse for `.catch(() => {})` — but it is not delivered until this
-      // function returns it. A charge that did not land now withholds the asset (top-up / retry reply) instead of
-      // handing it out free; `skipped` (no ledger RPC at all) still delivers, the documented degrade.
-      const debit = await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`);
+    let hold: string | null = null;
+    if (payingUser) {
+      const ref = `chat:${detected.intent}:${payingUser}:${input.sessionId}:${randomUUID()}`;
+      const debit = await deductCredits(payingUser, billCost, ref);
       if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse(detected.intent, billCost, debit.reason ?? 'error', input.locale);
+      if (debit.ok) hold = ref; // `skipped` (no ledger RPC at all) renders uncharged, the documented degrade
     }
+    const giveBack = async (why: string) => {
+      if (!hold || !payingUser) return;
+      const ref = hold;
+      hold = null;
+      const back = await refundDebitByRef(payingUser, ref, billCost).catch(() => null);
+      if (!back?.ok) reportError(new Error(`chat hold not given back (${why})`), { fn: 'handleDeterministicIntent', userId: payingUser, ref, billCost });
+    };
+
+    let response: ServiceManagerResponse;
+    try {
+      response = await serviceManager.execute({
+        sessionId: input.sessionId,
+        serviceContext: input.serviceContext,
+        intent: detected.intent,
+        userPrompt: iterative.prompt,
+        selectedOptions: input.selectedOptions,
+        imageUrl: input.imageUrl,
+        locale: input.locale,
+        confidence: detected.confidence,
+      });
+    } catch (e) {
+      await giveBack('threw');
+      throw e;
+    }
+
+    // A SYNCHRONOUS asset delivered now keeps the hold as its charge. Anything else gives the hold back: a failure, or
+    // an accepted async render, which is charged under its poll ref just below (given back FIRST, so a user whose
+    // balance covers exactly one render is never refused for holding two).
+    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
+    if (!terminalAsset) await giveBack(response.success ? 'async' : 'failed');
     // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
     // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
     // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
