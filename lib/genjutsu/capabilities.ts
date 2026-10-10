@@ -6,10 +6,12 @@
  *
  *   scene   GENJUTSU_SCENE_ENABLED (ON unless set to 0/false/off — Veo reference-to-video is the studio's own
  *           primary video engine) + a Veo transport configured (Vertex AI or the Gemini API key).
- *   motion  GENJUTSU_MOTION_ENABLED (OFF by default) + STUDIO_V2 + Higgsfield credentials + the motion model enabled
- *           in lib/providers/registry. Never run live (it needs a source video and a funded Higgsfield account).
- *   swap    GENJUTSU_SWAP_ENABLED (OFF by default) + the above + `hf/genjutsu-swap` REGISTERED. It is not — the
- *           registry only knows Genjutsu's motion-transfer — so swap stays locked until that entry is added.
+ *   motion  CLOSED, whatever the flags say (`engine_forbidden`). It runs on Higgsfield's Kling 3 Motion Control, and the
+ *   swap    owner's provider policy is Google + ElevenLabs + our own processing only: the Omnichannel + Mobile UX task
+ *           (owner, 2026-10-10 13:10Z, A1) says Kling, Replicate and Higgsfield are neither shown nor run from the API.
+ *           The flag / Higgsfield / registry checks below stay, so the reason a log reads is still the real one if the
+ *           owner ever names an allowed engine for these ops; only that decision can change
+ *           `ALLOWED_ENGINE_PROVIDERS` (lib/genjutsu/engines).
  *
  * The reason is detailed here (`flag_off` / `engine_not_configured` / `engine_missing`) for logs and tests, and
  * deliberately coarse on the wire (`open` | `soon`): an anonymous visitor does not need to learn which of our provider
@@ -21,9 +23,11 @@ import { createHiggsfieldAdapter } from '@/lib/providers/higgsfield/adapter';
 import { isModelEnabled } from '@/lib/providers/registry';
 import { studioV2Enabled } from '@/lib/studio/flags';
 import { veoTransport } from '@/lib/veo/engine';
+import { engineAllowed } from './engines';
 import type { GenjutsuOp, GenjutsuQuality } from './types';
 
-export type OpReason = 'ok' | 'flag_off' | 'engine_not_configured' | 'engine_missing';
+export type OpReason = 'ok' | 'flag_off' | 'engine_not_configured' | 'engine_missing' | 'engine_forbidden';
+
 export interface OpStatus {
   op: GenjutsuOp;
   open: boolean;
@@ -62,6 +66,7 @@ export function opStatuses(env: NodeJS.ProcessEnv = process.env, probes: Probes 
   const scene: OpStatus = !sceneFlag(env) ? status('scene', 'flag_off') : !probes.veoReady() ? status('scene', 'engine_not_configured') : status('scene', 'ok');
 
   const hf = (flag: boolean, op: 'motion' | 'swap', modelId: string): OpStatus => {
+    if (!engineAllowed(op)) return status(op, 'engine_forbidden');
     if (!flag) return status(op, 'flag_off');
     if (!probes.hfReady(env)) return status(op, 'engine_not_configured');
     if (!probes.modelEnabled(modelId, env)) return status(op, 'engine_missing');

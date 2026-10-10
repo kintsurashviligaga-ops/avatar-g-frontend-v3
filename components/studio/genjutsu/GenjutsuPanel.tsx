@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * GenjutsuPanel — the VFX module of the video tool: motion transfer, object / location / style swaps and VFX
- * transformations, with NO prompt required (one tap on a preset), a multi-reference dropzone (up to 40 photos that keep
- * the character and the product identical), a 3–30 s source video, and the price ON the Generate button.
+ * GenjutsuPanel — the VFX module of the video tool: one-tap VFX scenes (Google Veo reference-to-video), with NO prompt
+ * required (one tap on a preset), a multi-reference dropzone (photos that keep the character and the product identical),
+ * Fast / High quality, the fixed 8 s length, and the exact price ON the Generate button. Motion transfer and object swap
+ * ran on Higgsfield / Kling: not an allowed provider, so they are never offered (lib/genjutsu/engines engineAllowed).
  *
  * LAYOUT, in Higgsfield's mobile grammar (docs ref4 / ref5): the hero card (the chosen effect, a „Change" button) → the
  * presets (a snap-scrolling rail on a phone, a grid on a desktop) → the Scene · Motion · Swap segmented control → the
@@ -20,7 +21,7 @@
 import { Clapperboard, Volume2, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
-import { ENGINES, modelLabel, qualityFor } from '@/lib/genjutsu/engines';
+import { ENGINES, engineAllowed, modelLabel, qualityFor } from '@/lib/genjutsu/engines';
 import { genjutsuCredits } from '@/lib/genjutsu/pricing';
 import { getPreset } from '@/lib/genjutsu/presets';
 import { selectReferences } from '@/lib/genjutsu/selection';
@@ -133,9 +134,10 @@ export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
     motion: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.motion.open : false,
     swap: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.swap.open : false,
   };
-  // Scene is always offered; Motion and Swap only once they are open (they also have their own tools). The mode in use
-  // stays offered even if it closes under the user, so they can read why and switch back.
-  const offered = GENJUTSU_OPS.filter((o) => o === 'scene' || o === op || open[o] === true);
+  // Only an op on an allowed engine is ever offered (Google Veo: Scene). Motion and Swap run on Higgsfield, which is not
+  // an allowed provider, so even a server that answered "open" cannot put them in front of the user (engineAllowed).
+  // Among allowed ops: Scene always; another once it is open. The mode in use stays offered if it closes under the user.
+  const offered = GENJUTSU_OPS.filter((o) => engineAllowed(o) && (o === 'scene' || o === op || open[o] === true));
   const opOpen = open[op];
   const locked = opOpen === false;
   const hasCharacter = selection.used.some((u) => u.role === 'character');

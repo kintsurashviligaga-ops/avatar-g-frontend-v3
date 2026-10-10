@@ -53,7 +53,7 @@ test('one tap on a preset enables Generate with NOTHING typed — and the price 
   expect((screen.getByTestId('vfx-prompt') as HTMLTextAreaElement).value).toBe('');
   expect(generate().disabled).toBe(false);
   expect(generate().getAttribute('data-price')).toBe(String(genjutsuCredits({ op: 'scene', refsUsed: 0, quality: 'fast' })));
-  fireEvent.click(screen.getByRole('radio', { name: 'Standard' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'High quality' }));
   expect(generate().getAttribute('data-price')).toBe(String(genjutsuCredits({ op: 'scene', refsUsed: 0, quality: 'standard' })));
 });
 
@@ -82,13 +82,15 @@ test('a mode that is not open is not offered: no Motion or Swap tab, no tab bar,
   expect(document.querySelectorAll('[data-engine^="motion-"], [data-engine^="swap-"]').length).toBe(0);
 });
 
-test('once Motion and Swap open, the three tabs are offered', async () => {
+test('even a server that answers "open" for Motion and Swap cannot offer them: Higgsfield / Kling is not allowed', async () => {
   (fetchCapabilities as jest.Mock).mockResolvedValue({ scene: OPEN.scene, motion: { open: true, state: 'open' }, swap: { open: true, state: 'open' } });
   await mount();
-  expect(screen.getByTestId('vfx-modes').querySelectorAll('[role="radio"]').length).toBe(3);
-  fireEvent.click(screen.getByRole('radio', { name: /Motion/ }));
-  expect(screen.getByTestId('vfx-video-input')).toBeTruthy();
-  expect(screen.queryByTestId('vfx-locked')).toBeNull();
+  expect(screen.queryByTestId('vfx-modes')).toBeNull();
+  expect(screen.queryByRole('radio', { name: /Motion|Swap/ })).toBeNull();
+  expect(screen.queryByTestId('vfx-video-input')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Engines & prices/ }));
+  expect(document.querySelectorAll('[data-engine^="motion-"], [data-engine^="swap-"]').length).toBe(0);
+  expect(document.body.textContent).not.toMatch(/Kling|Higgsfield|Replicate|Genjutsu/);
 });
 
 test('a shut mode is shown with a plain "soon" line, its inputs are inert and its button cannot send anything', async () => {

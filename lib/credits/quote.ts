@@ -8,8 +8,9 @@
  */
 import { creditCostFor } from './pricing';
 import { STUDIO_DEFAULT_VEO_TIER, videoCredits, type VideoMode, type VideoQuality } from './videoPricing';
+import { genjutsuCredits } from '@/lib/genjutsu/pricing';
 
-export type QuoteTool = 'image' | 'video' | 'music' | 'avatar' | 'remix' | 'swap' | 'motion' | 'product' | 'model3d' | 'chat' | 'interior' | 'photoshoot';
+export type QuoteTool = 'image' | 'video' | 'music' | 'avatar' | 'remix' | 'swap' | 'motion' | 'product' | 'model3d' | 'chat' | 'interior' | 'photoshoot' | 'vfx';
 
 export interface QuoteInput {
   tool: QuoteTool;
@@ -60,6 +61,10 @@ export function quoteCredits(q: QuoteInput): number {
       return videoCredits({ seconds: productAdSeconds(q.seconds), quality: STUDIO_DEFAULT_VEO_TIER });
     case 'model3d':
       return creditCostFor('model3d');
+    // A VFX scene is one 8 s Veo clip: the SAME function the VFX button shows and /api/genjutsu/generate charges with.
+    // It used to be quoted as `remix` (the catalog's R5 gap), a number the VFX route never charges.
+    case 'vfx':
+      return genjutsuCredits({ op: 'scene', quality: q.quality === 'standard' ? 'standard' : 'fast' }) ?? 0;
     case 'chat':
     default:
       return 0;

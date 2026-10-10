@@ -95,7 +95,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'video.vfx': c({
     id: 'video.vfx', serviceId: 'video.vfx', does: 'One-tap VFX effects for a photo',
     routes: ['/api/genjutsu/generate', '/api/genjutsu/status'], engine: 'Veo scene',
-    pricing: { key: 'remix', charge: 'charged' }, approval: 'panel-button', timeoutSec: 120, retry: 'refund-on-miss',
+    pricing: { key: 'vfx', charge: 'charged' }, approval: 'panel-button', timeoutSec: 120, retry: 'refund-on-miss',
     idempotency: 'one generation per press', cancel: 'none', qc: null, artifact: 'video', library: 'filed',
     label: 'BUILT_NOT_PROVEN',
   }),

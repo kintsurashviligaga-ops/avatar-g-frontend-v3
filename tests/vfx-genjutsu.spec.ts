@@ -127,12 +127,12 @@ for (const view of [
       await shot(page, `${view.name}-02-preset-picked`);
     });
 
-    test('Quality changes the price on the button (Fast 25 → Standard 83), through the same function the server charges with', async ({ page }) => {
+    test('Quality changes the price on the button (Fast 25 → High quality 83), through the same function the server charges with', async ({ page }) => {
       await openVfx(page, view);
       await page.locator('[data-preset="portal"]').first().click();
       const gen = page.getByTestId('vfx-generate');
       await expect(gen).toHaveAttribute('data-price', '25');
-      await page.getByRole('radio', { name: 'Standard' }).click();
+      await page.getByRole('radio', { name: 'High quality' }).click();
       await expect(gen).toHaveAttribute('data-price', '83');
     });
 
@@ -170,13 +170,14 @@ for (const view of [
       await shot(page, `${view.name}-04-scene-only`);
     });
 
-    test('once Motion and Swap open, their tabs come back and switch the inputs', async ({ page }) => {
+    test('even a server answering "open" for Motion and Swap cannot offer them: Higgsfield / Kling is not an allowed engine', async ({ page }) => {
       await openVfx(page, { ...view, caps: CAPS_ALL_OPEN });
-      await expect(page.getByTestId('vfx-modes').getByRole('radio')).toHaveCount(3);
-      await page.getByRole('radio', { name: /Motion/ }).click();
-      await expect(page.getByRole('radio', { name: /Motion/ })).toHaveAttribute('aria-checked', 'true');
-      await expect(page.getByTestId('vfx-video')).toBeVisible();
-      await expect(page.getByTestId('vfx-locked')).toHaveCount(0);
+      await expect(page.getByTestId('vfx-modes')).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: /Motion|Swap/ })).toHaveCount(0);
+      await expect(page.getByTestId('vfx-video')).toHaveCount(0);
+      await page.getByTestId('vfx-engines').getByRole('button', { name: /Engines & prices/ }).click();
+      await expect(page.locator('[data-engine^="motion-"], [data-engine^="swap-"]')).toHaveCount(0);
+      await expect(page.getByTestId('vfx-panel')).not.toContainText(/Kling|Higgsfield|Replicate|Genjutsu/);
     });
 
     test('with every op shut the panel still opens, and says so — nothing is faked', async ({ page }) => {
