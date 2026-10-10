@@ -83,6 +83,23 @@ export async function sendWhatsAppText(to: string, text: string, cfg = whatsappC
   return { ...last, messageIds: ids };
 }
 
+export type WhatsAppMediaKind = 'audio' | 'video' | 'image' | 'document';
+
+/**
+ * A file by link: Meta downloads it from `link` at send time (so a short-lived signed URL is enough and nothing stays
+ * public), then caches it. Only inside the 24 h customer-service window (131047 outside it). Audio takes no caption.
+ */
+export async function sendWhatsAppMedia(
+  to: string,
+  media: { kind: WhatsAppMediaKind; link: string; caption?: string; filename?: string },
+  cfg = whatsappConfig(),
+): Promise<SendResult> {
+  if (!cfg || !/^https:\/\//i.test(media.link)) return { ok: false, status: null, errorCode: null, messageIds: [] };
+  const caption = media.kind !== 'audio' && media.caption ? { caption: media.caption.slice(0, 1024) } : {};
+  const filename = media.kind === 'document' && media.filename ? { filename: media.filename.slice(0, 240) } : {};
+  return graphPost(cfg, { recipient_type: 'individual', to, type: media.kind, [media.kind]: { link: media.link, ...caption, ...filename } });
+}
+
 /**
  * An approved message template — the only thing WhatsApp delivers outside the 24 h window. `params` fill the body's
  * {{1}}, {{2}}… in order; each is trimmed and capped (Meta refuses newlines/tabs and long runs of spaces in a param).

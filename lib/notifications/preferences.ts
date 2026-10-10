@@ -31,6 +31,22 @@ export interface CallWindow {
   to: string;
 }
 
+/**
+ * Agent G voice calls on WhatsApp (Omnichannel C, owner 2026-10-10 16:20Z: call permissions, quiet hours, spending
+ * limits). Off until the person turns them on. The minute limits are the person's own, inside the platform's ceilings
+ * (CALL_LIMITS); a call that would pass either limit ends politely, and a call is never placed outside `callWindow`.
+ */
+export interface AgentCallPrefs {
+  /** May the person call Agent G on WhatsApp (and may Agent G call back, when WhatsApp's own permission allows it)? */
+  enabled: boolean;
+  /** At most this many minutes in one call. */
+  perCallMinutes: number;
+  /** At most this many call minutes a day (the person's zone). */
+  dailyMinutes: number;
+}
+
+export const CALL_LIMITS = Object.freeze({ perCallMinutesMax: 30, dailyMinutesMax: 120, perCallMinutesDefault: 15, dailyMinutesDefault: 30 });
+
 export interface NotifyPrefs {
   v: 1;
   events: Record<NotifyEventKind, NotifyPlace[]>;
@@ -38,6 +54,7 @@ export interface NotifyPrefs {
   callWindow: CallWindow;
   /** IANA zone the call window is read in. */
   timezone: string;
+  agentCalls: AgentCallPrefs;
 }
 
 export const DEFAULT_TIMEZONE = 'Asia/Tbilisi';
@@ -53,7 +70,18 @@ export const DEFAULT_PREFS: NotifyPrefs = Object.freeze({
   },
   callWindow: { from: '10:00', to: '20:00' },
   timezone: DEFAULT_TIMEZONE,
+  agentCalls: { enabled: false, perCallMinutes: CALL_LIMITS.perCallMinutesDefault, dailyMinutes: CALL_LIMITS.dailyMinutesDefault },
 }) as NotifyPrefs;
+
+const wholeIn = (x: unknown, min: number, max: number, dflt: number): number =>
+  (typeof x === 'number' && Number.isInteger(x) && x >= min && x <= max ? x : dflt);
+
+function cleanCalls(raw: unknown): AgentCallPrefs {
+  const c = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const perCallMinutes = wholeIn(c.perCallMinutes, 1, CALL_LIMITS.perCallMinutesMax, CALL_LIMITS.perCallMinutesDefault);
+  const dailyMinutes = wholeIn(c.dailyMinutes, 1, CALL_LIMITS.dailyMinutesMax, CALL_LIMITS.dailyMinutesDefault);
+  return { enabled: c.enabled === true, perCallMinutes: Math.min(perCallMinutes, dailyMinutes), dailyMinutes };
+}
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -101,7 +129,9 @@ export function normalizePrefs(raw: unknown): NotifyPrefs {
   const to = typeof cw.to === 'string' ? cw.to : '';
   const callWindow = minutes(from) < minutes(to) ? { from, to } : { ...DEFAULT_PREFS.callWindow };
 
-  return { v: 1, events, callWindow, timezone: validZone(src.timezone) ? src.timezone : DEFAULT_TIMEZONE };
+  return {
+    v: 1, events, callWindow, timezone: validZone(src.timezone) ? src.timezone : DEFAULT_TIMEZONE, agentCalls: cleanCalls(src.agentCalls),
+  };
 }
 
 /**

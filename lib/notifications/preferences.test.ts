@@ -76,3 +76,14 @@ test('insideCallWindow reads the clock in the person\'s zone', () => {
   expect(insideCallWindow(p, new Date('2026-10-10T16:00:00Z'))).toBe(false); // 20:00
   expect(insideCallWindow({ ...p, timezone: 'Nope/Zone' }, new Date('2026-10-10T08:00:00Z'))).toBe(false);
 });
+
+test('Agent G calls are off by default, and the minute limits stay inside the platform ceilings', () => {
+  expect(normalizePrefs(undefined).agentCalls).toEqual({ enabled: false, perCallMinutes: 15, dailyMinutes: 30 });
+  expect(normalizePrefs({ agentCalls: { enabled: true, perCallMinutes: 10, dailyMinutes: 60 } }).agentCalls)
+    .toEqual({ enabled: true, perCallMinutes: 10, dailyMinutes: 60 });
+  // Past a ceiling, not whole, or not a number → the default; a per-call limit above the daily one is cut to it.
+  expect(normalizePrefs({ agentCalls: { enabled: 'yes', perCallMinutes: 999, dailyMinutes: 1.5 } }).agentCalls)
+    .toEqual({ enabled: false, perCallMinutes: 15, dailyMinutes: 30 });
+  expect(normalizePrefs({ agentCalls: { enabled: true, perCallMinutes: 25, dailyMinutes: 20 } }).agentCalls)
+    .toEqual({ enabled: true, perCallMinutes: 20, dailyMinutes: 20 });
+});

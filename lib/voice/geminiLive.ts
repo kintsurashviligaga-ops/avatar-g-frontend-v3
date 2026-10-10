@@ -214,9 +214,17 @@ export function buildVideoMessage(frameBase64: string, mimeType = 'image/jpeg'):
 export type LiveTool = 'google_search' | 'live_actions';
 
 /** One entry of setup.tools. */
+/** A function declaration in a tool block: the UI actions (lib/voice/liveTools.ts) or a caller's own short list (the
+ *  WhatsApp phone tools, lib/calls/whatsapp/phoneTools.ts). Same shape on the wire. */
+export interface LiveDeclaration {
+  readonly name: string;
+  readonly description: string;
+  readonly parameters?: LiveFunctionDeclaration['parameters'];
+}
+
 export type LiveToolBlock =
   | { googleSearch: Record<string, never> }
-  | { functionDeclarations: readonly LiveFunctionDeclaration[] };
+  | { functionDeclarations: readonly LiveDeclaration[] };
 
 export interface BuildLiveSetupOptions {
   /** Live model id, bare or `models/`-prefixed. Allowlist it first (lib/ai/google/models.ts resolveLiveModel);
@@ -236,9 +244,13 @@ export interface BuildLiveSetupOptions {
   resumptionHandle?: string | null;
   /** Enable input + output audio transcription (captions and the chat-thread transcript). */
   transcribe?: boolean;
-  /** Enable sliding-window context compression (lifts the 15-min audio / 2-min audio+video session cap). */
-  compression?: boolean;
+  /** Enable sliding-window context compression (lifts the 15-min audio / 2-min audio+video session cap).
+   *  `true` = Google's defaults (trigger at ~80 % of the window, which a normal call never reaches, so the whole
+   *  context is re-billed every turn); `{ triggerTokens, targetTokens }` = explicit limits that cap that cost. */
+  compression?: boolean | { triggerTokens: number; targetTokens: number };
   tools?: Array<LiveTool>;
+  /** A caller's own function list, sent INSTEAD of the UI actions ('live_actions' is then ignored). */
+  functionDeclarations?: readonly LiveDeclaration[];
 }
 
 /** The BidiGenerateContentSetup payload (the value under `setup`, and the shape of the mint's
@@ -255,7 +267,7 @@ export interface LiveSetup {
   inputAudioTranscription?: { languageCodes?: string[] };
   outputAudioTranscription?: Record<string, never>;
   sessionResumption?: { handle?: string };
-  contextWindowCompression?: { slidingWindow: Record<string, never> };
+  contextWindowCompression?: { triggerTokens?: number; slidingWindow: { targetTokens?: number } };
   tools?: LiveToolBlock[];
 }
 
@@ -339,13 +351,24 @@ export function buildLiveSetup(opts: BuildLiveSetupOptions): LiveSetupMessage {
   }
 
   if (opts?.compression === true) setup.contextWindowCompression = { slidingWindow: {} };
+  else if (opts?.compression && typeof opts.compression === 'object') {
+    const trigger = Math.round(Number(opts.compression.triggerTokens));
+    const target = Math.round(Number(opts.compression.targetTokens));
+    // Both bounded and target < trigger, else Google's defaults (a malformed pair must not break the handshake).
+    setup.contextWindowCompression = trigger >= 1000 && trigger <= 128_000 && target >= 500 && target < trigger
+      ? { triggerTokens: trigger, slidingWindow: { targetTokens: target } }
+      : { slidingWindow: {} };
+  }
 
-  if (Array.isArray(opts?.tools)) {
+  const own = Array.isArray(opts?.functionDeclarations) && opts.functionDeclarations.length ? opts.functionDeclarations : null;
+  if (Array.isArray(opts?.tools) || own) {
     // ⚠️ Declarations FIRST, search second — the order the actions brief locked and the route tests pin. Each block
     // is emitted once however often the caller lists it; unknown names are ignored (never forwarded to Google).
     const tools: LiveToolBlock[] = [];
-    if (opts.tools.includes('live_actions')) tools.push({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
-    if (opts.tools.includes('google_search')) tools.push({ googleSearch: {} });
+    const listed = Array.isArray(opts?.tools) ? opts.tools : [];
+    if (own) tools.push({ functionDeclarations: own });
+    else if (listed.includes('live_actions')) tools.push({ functionDeclarations: LIVE_FUNCTION_DECLARATIONS });
+    if (listed.includes('google_search')) tools.push({ googleSearch: {} });
     if (tools.length) setup.tools = tools;
   }
 
