@@ -239,8 +239,14 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Production evidence; no Preview or Production run yet), communication rows in pricing SERVICE_UNIT_ECONOMICS
           §4. A real-browser check of Connections (tests/connections.spec.ts, 6: phone/tablet/desktop, light/dark,
           KA/EN/RU) found the status word running over row names on phones; fixed. All parts A–K have code or docs;
-          D (SMS) and F (Telegram) DISABLED by the owner's 15:38Z "later". No merge, deploy, migration, env, price or
-          paid change.
+          D (SMS) and F (Telegram) DISABLED by the owner's 15:38Z "later". Preview checks (2026-10-10 18:50Z, 90c6608,
+          anonymous GETs only: this session cannot POST to the Preview, a signed-in run is the owner's): the doors
+          refuse strangers (webhook verify with a wrong token 403, delivery cron 403, tasks/preferences 401, admin
+          Meta check 404); a guest's Settings shows the four Connections rows as built. Found there: a guest got
+          "Failed to load" in English, two "could not load" cards and a Delete account button; fixed on the branch
+          (one sign-in card; SettingsView.test.tsx failed before, passes after). OMNICHANNEL_E2E_MATRIX.md P column
+          and evidence/preview-anonymous-checks-2026-10-10.txt. No merge, deploy, migration, env, price or paid
+          change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

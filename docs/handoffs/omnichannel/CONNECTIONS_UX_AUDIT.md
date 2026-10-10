@@ -1,6 +1,6 @@
 # Settings → Connections: UX audit
 
-Last updated: 2026-10-10. Branch `claude/launch-certification-wmvitt` (draft PR #50).
+Last updated: 2026-10-10 19:05Z. Branch `claude/launch-certification-wmvitt` (draft PR #50).
 
 **Production** (`6c7dff4`) does not have this section yet. Its Settings page still shows the older standalone WhatsApp
 card (`WhatsAppLinkCard`). Everything below is on the branch and its Preview.
@@ -97,6 +97,9 @@ The "site" chip is 32 px tall. It is a label, not a button.
 
 | Item | Label |
 |---|---|
+| The section for a guest on the Preview | Seen 2026-10-10 on `90c6608` at 390 px (Firecrawl's Chromium, no sign-in): four rows, the right words, the status word under the name. [Screenshot](evidence/preview-settings-guest-390-connections-2026-10-10.png) |
+| The account cards under it for a guest | Found on the Preview: a guest got "Failed to load" in English, two "could not load" cards and a Delete account button. Fixed on the branch (one sign-in card instead); [matrix §5](OMNICHANNEL_E2E_MATRIX.md) |
+| The section for a signed-in member on the Preview | BLOCKED_OWNER (a signed-in Preview run is GG's hands) |
 | The section on a real iPhone and Android phone | BUILT_NOT_PROVEN (Chromium at phone width only) |
 | WhatsApp "Connect → Connected" on Preview | BLOCKED_OWNER: needs migration `20261003c` in the shared database (GG's word) |
 | The section in Production | waits on the merge and deploy (GG's word) |

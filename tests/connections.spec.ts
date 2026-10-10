@@ -71,6 +71,10 @@ async function open(page: Page, o: { lang: Lang; theme: 'light' | 'dark'; guest?
   await page.route('**/api/agent-g/whatsapp/link', (r) => json(r, { ok: true, data: o.guest
     ? { guest: true, configured: true, available: true, linked: null }
     : { guest: false, configured: true, available: true, linked: { number: MASKED, linked_at: '2026-10-10T12:00:00Z', alerts: true } } }));
+  // The account cards below Connections: a guest gets 401 (as on the Preview), a member a balance and an invite code.
+  await page.route('**/api/credits/balance', (r) => (o.guest ? json(r, { error: 'Unauthorized' }, 401) : json(r, { balance: 80, monthlyAllowance: 100, resetAt: null })));
+  await page.route('**/api/credits/history**', (r) => (o.guest ? json(r, { error: 'Unauthorized' }, 401) : json(r, { items: [] })));
+  await page.route('**/api/referral/status', (r) => (o.guest ? json(r, { error: 'Unauthorized' }, 401) : json(r, { code: 'GG50', shareUrl: 'https://myavatar.ge/r/GG50', totalReferrals: 0, creditsEarned: 0 })));
   let prefs = structuredClone(PREFS);
   await page.route('**/api/notifications/preferences', async (r) => {
     if (r.request().method() === 'GET') return json(r, { ok: true, data: { prefs, saved: true, available: { whatsapp: !o.guest, telegram: false, sms: false, call: false } } });
@@ -223,5 +227,12 @@ test.describe('Connections when a save fails, and for a guest', () => {
     await fitsTheWindow(page);
     await nothingOverlaps(page);
     await page.getByTestId('connections-section').screenshot({ path: 'test-results/connections-phone-ka-dark-guest.png' });
+    // Below Connections a guest gets one sign-in card: no balance error, no invite error in English, no Delete button
+    // (all three were on the cert Preview for a guest, 2026-10-10).
+    await expect(page.getByTestId('settings-signin')).toBeVisible();
+    await expect(page.getByText('ანგარიშის წაშლა')).toHaveCount(0);
+    await expect(page.getByText('მონაცემები ვერ მოვიდა.')).toHaveCount(0);
+    await expect(page.locator('body')).not.toContainText('Failed to load');
+    await page.getByTestId('settings-signin').screenshot({ path: 'test-results/settings-phone-ka-dark-guest-account.png' });
   });
 });

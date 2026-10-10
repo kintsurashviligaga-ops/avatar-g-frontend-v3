@@ -36,7 +36,8 @@ interface Copy {
   pageTitle: string; pageSubtitle: string;
   language: { title: string; subtitle: string };
   theme: { title: string; dark: string; light: string; subtitle: string };
-  profile: { title: string; status: string; signedIn: string; signedOut: string };
+  profile: { title: string; status: string; signedIn: string; signedOut: string; unknown: string };
+  account: { title: string; body: string; button: string };
   usage: { title: string; subtitle: string; loading: string; failed: string; credits: string; resets: string };
   history: { title: string; subtitle: string; loading: string; empty: string; credits: string };
   danger: {
@@ -51,7 +52,8 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, ენა და ბალანსი ერთ ადგილზე.',
     language: { title: 'ენა', subtitle: 'ცვლის ინტერფეისის ენას მთელი აპლიკაციისთვის.' },
     theme: { title: 'თემა', subtitle: 'მუქი ან ღია გარეგნობა.', dark: 'მუქი', light: 'ღია' },
-    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ' },
+    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ', unknown: 'ახლა ვერ შევამოწმეთ.' },
+    account: { title: 'ანგარიში', body: 'ბალანსის, ისტორიისა და მოწვევების სანახავად შედი ანგარიშზე.', button: 'შესვლა' },
     usage: {
       title: 'ბალანსი და მოხმარება', subtitle: 'რამდენი კრედიტი გაქვს ამ პერიოდში.',
       loading: 'იტვირთება…', failed: 'მონაცემები ვერ მოვიდა.', credits: 'კრედიტი', resets: 'განახლდება',
@@ -71,7 +73,8 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'Settings', pageSubtitle: 'Account, language and balance in one place.',
     language: { title: 'Language', subtitle: 'Switches the interface language across the app.' },
     theme: { title: 'Theme', subtitle: 'Dark or light appearance.', dark: 'Dark', light: 'Light' },
-    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out' },
+    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out', unknown: 'Could not check right now.' },
+    account: { title: 'Account', body: 'Sign in to see your balance, history and invites.', button: 'Sign in' },
     usage: {
       title: 'Balance & usage', subtitle: 'Your credits for this period.',
       loading: 'Loading…', failed: 'Could not load.', credits: 'credits', resets: 'Resets',
@@ -91,7 +94,8 @@ const COPY: Record<Locale, Copy> = {
     pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, язык и баланс в одном месте.',
     language: { title: 'Язык', subtitle: 'Меняет язык интерфейса.' },
     theme: { title: 'Тема', subtitle: 'Тёмное или светлое оформление.', dark: 'Тёмная', light: 'Светлая' },
-    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт' },
+    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт', unknown: 'Сейчас не удалось проверить.' },
+    account: { title: 'Аккаунт', body: 'Войдите, чтобы увидеть баланс, историю и приглашения.', button: 'Войти' },
     usage: {
       title: 'Баланс и расход', subtitle: 'Ваши кредиты за этот период.',
       loading: 'Загрузка…', failed: 'Не удалось загрузить.', credits: 'кредитов', resets: 'Обновится',
@@ -123,6 +127,7 @@ const LANGS: { code: Locale; name: string; native: string }[] = [
 export function SettingsView({ locale }: { locale: string }) {
   const loc = (['ka', 'en', 'ru'] as const).includes(locale as Locale) ? (locale as Locale) : 'ka';
   const t = COPY[loc];
+  const account = useAccount();
 
   return (
     <div className="min-h-screen bg-app-bg text-app-text">
@@ -146,14 +151,22 @@ export function SettingsView({ locale }: { locale: string }) {
         <motion.div initial="hidden" animate="show" className="space-y-5">
           <motion.div variants={fadeUp} custom={0}><LanguageSection t={t.language} loc={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={1}><ThemeSection t={t.theme} /></motion.div>
-          <motion.div variants={fadeUp} custom={2}><ProfileSection t={t.profile} /></motion.div>
+          <motion.div variants={fadeUp} custom={2}><ProfileSection t={t.profile} account={account} /></motion.div>
           {/* Connections — the WhatsApp row is where every WhatsApp "link your number" reply points (#whatsapp). */}
           <motion.div variants={fadeUp} custom={3}><ConnectionsSection locale={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
-          {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
-          <motion.div variants={fadeUp} custom={7}><ReferralPanel isAuthenticated /></motion.div>
-          <motion.div variants={fadeUp} custom={8}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
+          {/* A guest gets one sign-in card instead of account cards that can only fail (balance, history, invites,
+              delete account). Seen on the Preview 2026-10-10: a guest got "Failed to load" and a Delete button. */}
+          {account.state === 'signedOut' ? (
+            <motion.div variants={fadeUp} custom={5}><SignInCard t={t.account} /></motion.div>
+          ) : (
+            <>
+              <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} account={account} /></motion.div>
+              {account.state !== 'loading' && <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>}
+              {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
+              {account.state === 'signedIn' && <motion.div variants={fadeUp} custom={7}><ReferralPanel isAuthenticated locale={loc} /></motion.div>}
+              {account.state === 'signedIn' && <motion.div variants={fadeUp} custom={8}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>}
+            </>
+          )}
         </motion.div>
       </div>
     </div>
@@ -265,25 +278,59 @@ function ThemeSection({ t }: { t: Copy['theme'] }) {
   );
 }
 
-// ── Profile ───────────────────────────────────────────────────────────────────
+// ── Account state (one probe for the whole page) ─────────────────────────────
 
-function ProfileSection({ t }: { t: Copy['profile'] }) {
-  // Use the credits/balance endpoint as a lightweight signed-in probe: 200 means
-  // there's an authenticated session, anything else (401 etc) means signed out.
-  // Avoids inventing a dedicated /me endpoint that doesn't exist yet.
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+interface CreditsResponse { balance: number; monthlyAllowance: number; resetAt: string | null }
+
+type Account =
+  | { state: 'loading' }
+  | { state: 'signedIn'; credits: CreditsResponse | null }
+  | { state: 'signedOut' }
+  | { state: 'failed' };
+
+/** The balance endpoint doubles as the signed-in probe: 401/403 means a guest, 200 a member, anything else unknown. */
+function useAccount(): Account {
+  const [account, setAccount] = useState<Account>({ state: 'loading' });
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const r = await fetch('/api/credits/balance', { credentials: 'include' });
-        if (!cancelled) setSignedIn(r.ok);
+        if (cancelled) return;
+        if (r.status === 401 || r.status === 403) { setAccount({ state: 'signedOut' }); return; }
+        if (!r.ok) { setAccount({ state: 'failed' }); return; }
+        const credits = (await r.json().catch(() => null)) as CreditsResponse | null;
+        if (!cancelled) setAccount({ state: 'signedIn', credits });
       } catch {
-        if (!cancelled) setSignedIn(false);
+        if (!cancelled) setAccount({ state: 'failed' });
       }
     })();
     return () => { cancelled = true; };
   }, []);
+  return account;
+}
+
+function SignInCard({ t }: { t: Copy['account'] }) {
+  return (
+    <Card>
+      <CardHeader icon={User} title={t.title} />
+      <div className="flex flex-wrap items-center justify-between gap-3" data-testid="settings-signin">
+        <p className="min-w-0 flex-1 text-sm text-app-muted">{t.body}</p>
+        <button
+          type="button"
+          onClick={() => { try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* SSR */ } }}
+          className="inline-flex min-h-[44px] items-center rounded-full bg-app-accent px-5 text-sm font-semibold text-app-bg hover:opacity-90"
+        >
+          {t.button}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+function ProfileSection({ t, account }: { t: Copy['profile']; account: Account }) {
   return (
     <Card>
       <CardHeader icon={User} title={t.title} />
@@ -291,9 +338,11 @@ function ProfileSection({ t }: { t: Copy['profile'] }) {
         <div className="min-w-0">
           <div className="text-xs uppercase tracking-wider text-app-muted">{t.status}</div>
           <div className="mt-0.5 flex items-center gap-2 text-sm font-medium md:text-base">
-            {signedIn === null ? (
+            {account.state === 'loading' ? (
               <Loader2 size={14} className="animate-spin text-app-muted" />
-            ) : signedIn ? (
+            ) : account.state === 'failed' ? (
+              <span className="text-app-muted">{t.unknown}</span>
+            ) : account.state === 'signedIn' ? (
               <>
                 <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
                 <span>{t.signedIn}</span>
@@ -313,25 +362,9 @@ function ProfileSection({ t }: { t: Copy['profile'] }) {
 
 // ── Balance & usage ───────────────────────────────────────────────────────────
 
-interface CreditsResponse { balance: number; monthlyAllowance: number; resetAt: string | null }
-
-function ApiUsageSection({ t, loc }: { t: Copy['usage']; loc: Locale }) {
-  const [data, setData] = useState<CreditsResponse | null>(null);
-  const [state, setState] = useState<'loading' | 'ok' | 'failed'>('loading');
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/credits/balance', { credentials: 'include' });
-        if (!r.ok) { if (!cancelled) setState('failed'); return; }
-        const j = (await r.json()) as CreditsResponse;
-        if (!cancelled) { setData(j); setState('ok'); }
-      } catch {
-        if (!cancelled) setState('failed');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+function ApiUsageSection({ t, loc, account }: { t: Copy['usage']; loc: Locale; account: Account }) {
+  const data = account.state === 'signedIn' ? account.credits : null;
+  const state: 'loading' | 'ok' | 'failed' = account.state === 'loading' ? 'loading' : data ? 'ok' : 'failed';
 
   const pct = useMemo(() => {
     if (!data || !data.monthlyAllowance) return 0;
@@ -466,8 +499,8 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
     setBusy(true); setErr(null);
     try {
       const r = await fetch('/api/account/delete', { method: 'POST', credentials: 'include' });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!j.success) { setErr(j.error || t.failed); setBusy(false); return; }
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean };
+      if (!j.success) { setErr(t.failed); setBusy(false); return; }
       setDone(true);
       // Brief delay so the user sees the success state, then back to the studio, signed out.
       setTimeout(() => { window.location.href = `/${loc}`; }, 1200);
