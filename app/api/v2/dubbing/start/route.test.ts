@@ -14,7 +14,8 @@ jest.mock('../../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { AI: { limit: 10 } },
+  checkRateLimitByKey: jest.fn(async () => null),
+  RATE_LIMITS: { AI: { limit: 10 }, DUBBING_USER: { maxRequests: 10, windowMs: 86_400_000, keyPrefix: 'rl:dub:user' } },
 }));
 const runDubbing = jest.fn();
 jest.mock('../../../../../lib/services/dubbing/dubbingPipeline', () => ({ runDubbing: (...a: unknown[]) => runDubbing(...a) }));
@@ -40,6 +41,7 @@ jest.mock('../../../../../lib/orchestrator/storage-adapter', () => ({
 }));
 import { NextRequest } from 'next/server';
 import { POST } from './route';
+import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
 
 const SRC = 'https://cdn.example.com/talk.mp4';
 const SIGNED = 'https://ours.supabase.co/storage/v1/object/sign/uploads/clip.mp4?token=t';
@@ -178,5 +180,31 @@ describe('POST /api/v2/dubbing/start', () => {
 
     await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', clientJobId: 'abc' });
     expect((createJob.mock.calls[2] as unknown as [{ id: string }])[0].id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  // Dubbing bills no credits yet (gap C3), so a per-account daily ceiling is what bounds one person's spend.
+  describe('per-account daily ceiling', () => {
+    it('counts a valid request against the account, before any job is filed or a provider leg runs', async () => {
+      await post({ sourceVideoUrl: SRC, targetLanguage: 'ka' });
+      expect(checkRateLimitByKey).toHaveBeenCalledWith(mockUser.id, RATE_LIMITS.DUBBING_USER);
+      const cap = (checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0];
+      expect(cap).toBeLessThan(createJob.mock.invocationCallOrder[0]);
+      expect(cap).toBeLessThan(runDubbing.mock.invocationCallOrder[0]);
+    });
+
+    it('over the ceiling the limiter answers, and nothing is filed or run', async () => {
+      (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+      const { res } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka' });
+      expect(res.status).toBe(429);
+      expect(createJob).not.toHaveBeenCalled();
+      expect(canProceed).not.toHaveBeenCalled();
+      expect(runDubbing).not.toHaveBeenCalled();
+    });
+
+    it('a request that fails validation spends none of the allowance', async () => {
+      const { res } = await post({ sourceVideoUrl: 'http://169.254.169.254/x.mp4', targetLanguage: 'ka' });
+      expect(res.status).toBe(400);
+      expect(checkRateLimitByKey).not.toHaveBeenCalled();
+    });
   });
 });

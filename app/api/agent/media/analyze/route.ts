@@ -14,7 +14,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { agentAnalyzeAccess, agentAnalyzeOpenTo } from '@/lib/agent/media/access';
 import { analyzeMedia, type AnalyzeErrorCode, type AnalyzeSource } from '@/lib/agent/media/analyzeExec';
 import { liveAnalyzeDeps } from '@/lib/agent/media/analyzeLive';
@@ -70,6 +70,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const source = sourceOf(body?.source);
   if (!source) return NextResponse.json({ ok: false, error: 'bad_input', message: 'Name one file or one YouTube link.' }, { status: 400 });
+  // A read bills the AI budget, not the user's credits (gap C3): the per-account daily ceiling bounds one person's share.
+  const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.ANALYZE_USER);
+  if (capped) return capped;
   const r = await analyzeMedia(liveAnalyzeDeps(), {
     userId: user.id,
     source,

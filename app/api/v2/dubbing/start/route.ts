@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateDubbingRequest, plannedSteps, dubbingMinutes } from '@/lib/services/dubbing/dubbingPlan';
 import { runDubbing } from '@/lib/services/dubbing/dubbingPipeline';
@@ -83,6 +83,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
   const minutes = dubbingMinutes(durationSec);
+  // Dubbing bills no credits yet (gap C3, the price is the owner's call), so the per-account daily ceiling is what
+  // bounds one person's spend; counted only for a request that passed validation.
+  const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.DUBBING_USER);
+  if (capped) return capped;
 
   // See the note in the montage route: a client-named job is what makes live progress possible, and
   // safeJobId + the created check are what keep it from touching another user's row.

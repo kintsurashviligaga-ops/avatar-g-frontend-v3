@@ -13,7 +13,8 @@ jest.mock('../../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } },
+  checkRateLimitByKey: jest.fn(async () => null),
+  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, ANALYZE_USER: { maxRequests: 100, windowMs: 86_400_000 } },
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
 jest.mock('../../../../../lib/agent/media/analyzeLive', () => ({ liveAnalyzeDeps: () => ({ live: true }) }));
@@ -23,7 +24,7 @@ jest.mock('../../../../../lib/agent/media/analyzeExec', () => ({
 
 import { NextRequest } from 'next/server';
 import { authedClientFromRequest } from '../../../../../lib/supabase/server';
-import { checkRateLimit, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
 import { analyzeMedia } from '../../../../../lib/agent/media/analyzeExec';
 import { GET, POST } from './route';
 
@@ -107,6 +108,21 @@ describe('open', () => {
     (checkRateLimit as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
     expect((await POST(req(FILE_BODY))).status).toBe(429);
     expect(analyzeMedia).not.toHaveBeenCalled();
+  });
+
+  // A read bills the AI budget, not the user's credits (gap C3): a per-account daily ceiling bounds one person's share.
+  test('a valid read is counted against the session user\'s daily ceiling; over it, nothing runs', async () => {
+    await POST(req(FILE_BODY));
+    expect(checkRateLimitByKey).toHaveBeenCalledWith('user-1', RATE_LIMITS.ANALYZE_USER);
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+    (analyzeMedia as jest.Mock).mockClear();
+    expect((await POST(req(FILE_BODY))).status).toBe(429);
+    expect(analyzeMedia).not.toHaveBeenCalled();
+  });
+
+  test('a malformed source spends none of the daily allowance', async () => {
+    await POST(req({ source: { kind: 'web', url: 'https://x.test' } }));
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
   });
 
   test('no source, or a malformed one: 400, nothing runs', async () => {

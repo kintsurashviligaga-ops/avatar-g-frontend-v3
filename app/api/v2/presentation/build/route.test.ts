@@ -14,7 +14,8 @@ jest.mock('../../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { STORYBOARD: { limit: 30 } },
+  checkRateLimitByKey: jest.fn(async () => null),
+  RATE_LIMITS: { STORYBOARD: { limit: 30 }, PRESENTATION_USER: { maxRequests: 30, windowMs: 86_400_000, keyPrefix: 'rl:deck:user' } },
 }));
 const runDeckBuild = jest.fn();
 jest.mock('../../../../../lib/services/presentation/deckPipeline', () => ({ runDeckBuild: (...a: unknown[]) => runDeckBuild(...a) }));
@@ -35,6 +36,7 @@ jest.mock('../../../../../lib/orchestrator/jobs', () => ({
 }));
 import { NextRequest } from 'next/server';
 import { POST } from './route';
+import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
 
 const png = (i: number) => `https://ours.supabase.co/storage/v1/object/sign/renders/deck/s${i}.png?token=t`;
 const COVER = 'https://ours.supabase.co/storage/v1/object/sign/renders/deck/cover.png?token=t';
@@ -155,5 +157,30 @@ describe('POST /api/v2/presentation/build', () => {
     const { json } = await post({ topic: 'Tbilisi cafés', clientJobId: mine });
     expect(json.jobId).not.toBe(mine);
     expect(completeJob).toHaveBeenCalledWith(json.jobId, expect.anything());
+  });
+
+  // A deck bills no credits yet (gap C3), so a per-account daily ceiling is what bounds one person's spend.
+  describe('per-account daily ceiling', () => {
+    it('counts a valid request against the account, before any job is filed or the build runs', async () => {
+      await post({ topic: 'Tbilisi cafés' });
+      expect(checkRateLimitByKey).toHaveBeenCalledWith(mockUser.id, RATE_LIMITS.PRESENTATION_USER);
+      const cap = (checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0];
+      expect(cap).toBeLessThan(createJob.mock.invocationCallOrder[0]);
+      expect(cap).toBeLessThan(runDeckBuild.mock.invocationCallOrder[0]);
+    });
+
+    it('over the ceiling the limiter answers, and nothing is filed or built', async () => {
+      (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+      const { res } = await post({ topic: 'Tbilisi cafés' });
+      expect(res.status).toBe(429);
+      expect(createJob).not.toHaveBeenCalled();
+      expect(runDeckBuild).not.toHaveBeenCalled();
+    });
+
+    it('a request that fails validation spends none of the allowance', async () => {
+      const { res } = await post({ topic: '' });
+      expect(res.status).toBe(400);
+      expect(checkRateLimitByKey).not.toHaveBeenCalled();
+    });
   });
 });

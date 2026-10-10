@@ -14,7 +14,9 @@ jest.mock('../../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, EXPENSIVE: { maxRequests: 5, windowMs: 60_000 } },
+  checkRateLimitByKey: jest.fn(async () => null),
+  refundRateLimitByKey: jest.fn(async () => undefined),
+  RATE_LIMITS: { READ: { maxRequests: 100, windowMs: 60_000 }, EXPENSIVE: { maxRequests: 5, windowMs: 60_000 }, MONTAGE_USER: { maxRequests: 40, windowMs: 86_400_000 } },
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
 jest.mock('../../../../../lib/agent/media/montageLive', () => ({ liveMontageDeps: () => ({ audit: mockAudit }), newWorkerId: () => 'w-1' }));
@@ -31,6 +33,7 @@ import { authedClientFromRequest } from '../../../../../lib/supabase/server';
 import { enqueueMontageJob, montageJobStatus, quoteMontage } from '../../../../../lib/agent/media/montageExec';
 import { workMontageJob } from '../../../../../lib/agent/media/montageWorker';
 import { GET, POST } from './route';
+import { checkRateLimitByKey, refundRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
 
 const ENV = { ...process.env };
 const CTX = Symbol.for('@vercel/request-context');
@@ -152,5 +155,45 @@ describe('how the user said yes (lib/agent/approval)', () => {
     expect(mockAudit).toHaveBeenCalledWith({ userId: 'user-1', op: 'montage', phase: 'run', outcome: 'refused', detail: 'approval_unclear' });
     expect((await POST(req({ action: 'run', request: {}, token: 't', approval: { channel: 'model' } }))).status).toBe(400);
     expect(enqueueMontageJob).not.toHaveBeenCalled();
+  });
+});
+
+// A montage is free (the owner's choice), so a per-account daily ceiling bounds one person's encode minutes (gap M4).
+// Only `run` spends it; a run that did not start, or a replay, gives the slot back.
+describe('per-account daily ceiling on runs', () => {
+  beforeEach(() => { process.env.AGENT_G_MEDIA_EXEC = 'on'; });
+
+  test('a quote or a cancel spends none of it', async () => {
+    await POST(req({ action: 'quote', files: ['a'] }));
+    await POST(req({ action: 'cancel', jobId: 'j' }));
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+  });
+
+  test('a run that starts is counted against the session user before the job is queued, and kept', async () => {
+    (enqueueMontageJob as jest.Mock).mockResolvedValueOnce({ ok: true, jobId: 'j9', status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false });
+    expect((await POST(req({ action: 'run', request: {}, token: 't', userId: 'someone-else' }))).status).toBe(200);
+    expect(checkRateLimitByKey).toHaveBeenCalledWith('user-1', RATE_LIMITS.MONTAGE_USER);
+    expect((checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((enqueueMontageJob as jest.Mock).mock.invocationCallOrder[0]);
+    expect(refundRateLimitByKey).not.toHaveBeenCalled();
+  });
+
+  test('over the ceiling the limiter answers; nothing is queued and no worker starts', async () => {
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+    expect((await POST(req({ action: 'run', request: {}, token: 't' }))).status).toBe(429);
+    expect(enqueueMontageJob).not.toHaveBeenCalled();
+    expect(waitUntil).not.toHaveBeenCalled();
+  });
+
+  test('a run the executor refused, or a replay, gives its slot back', async () => {
+    expect((await POST(req({ action: 'run', request: {}, token: 't' }))).status).toBe(409); // the mock's quote_expired
+    expect(refundRateLimitByKey).toHaveBeenLastCalledWith('user-1', RATE_LIMITS.MONTAGE_USER);
+    (enqueueMontageJob as jest.Mock).mockResolvedValueOnce({ ok: true, jobId: 'j9', status: 'completed', videoUrl: 'v', durationSec: 9, aspect: '9:16', replay: true });
+    await POST(req({ action: 'run', request: {}, token: 't' }));
+    expect(refundRateLimitByKey).toHaveBeenCalledTimes(2);
+  });
+
+  test('a refused approval spends none of it', async () => {
+    await POST(req({ action: 'run', request: {}, token: 't', approval: { channel: 'model' } }));
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
   });
 });

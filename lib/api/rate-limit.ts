@@ -194,7 +194,24 @@ export const RATE_LIMITS = {
   // (ElevenLabs TTS + Music, up to 3 attempts per call), sound effects and the /api/orbit voice proxy. Keyed on the
   // verified userId AFTER the sign-in gate. ⚠️ All three used to be anonymous; a georgian-song call alone is several
   // ElevenLabs requests. 60/day is a long day of music videos, far below a scripted drain.
+  // Also bounds /api/audio/isolate (ElevenLabs Voice Isolator, no credits of its own).
   AUDIO_GEN_USER: { maxRequests: 60, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:audiogen:user' } as const,
+  // Per-USER daily ceilings on the work that bills NO credits yet (Agent G PART 5, gaps C3/M4; what to charge for these
+  // is the owner's call). Keyed on the verified userId AFTER the sign-in gate and the request's own validation, so a
+  // malformed request spends nothing; the IP buckets in each route stay as the burst guard. Each number is a heavy
+  // real day for one person, far below a scripted drain:
+  //   DUBBING_USER       — /api/v2/dubbing/start: ElevenLabs dubbing of up to 10 minutes per call.
+  //   PRESENTATION_USER  — /api/v2/presentation/build: a Gemini deck plus one image per slide.
+  //   UPSCALE_USER       — /api/ai/upscale: one outside-engine upscale (refused outright under MEDIA_GOOGLE_ONLY).
+  //   MONTAGE_USER       — /api/v2/montage/render and Agent G montage `run` (free by the owner's 2026-10-09 choice):
+  //                        minutes of ffmpeg encode on a lambda each. Shared, so two doors don't double the allowance.
+  //   ANALYZE_USER       — Agent G analyze-my-file: one Gemini read of a file or a public video, booked against the AI
+  //                        budget but not the user's credits.
+  DUBBING_USER:      { maxRequests: 10,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:dub:user' } as const,
+  PRESENTATION_USER: { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:deck:user' } as const,
+  UPSCALE_USER:      { maxRequests: 30,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:upscale:user' } as const,
+  MONTAGE_USER:      { maxRequests: 40,  windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:montage:user' } as const,
+  ANALYZE_USER:      { maxRequests: 100, windowMs: 24 * 60 * 60_000, keyPrefix: 'rl:analyze:user' } as const,
   // The public support form (/api/support), per IP. Each accepted post can send an email through Resend to the support
   // inbox; with no limit at all, one script could fill the inbox and burn the sending quota. 5 per 15 minutes is more
   // than any person writes to support.

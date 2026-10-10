@@ -19,7 +19,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '@/lib/supabase/server';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { agentMediaAccess, agentMediaOpenTo } from '@/lib/agent/media/access';
 import {
   cancelMontageJob,
@@ -119,7 +119,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       await deps.audit({ userId: user.id, op: 'montage', phase: 'run', outcome: 'refused', detail: yes.error });
       return NextResponse.json(yes, { status: 400 });
     }
+    // A montage is free (owner's choice, 2026-10-09), so the per-account daily ceiling is what bounds one person's encode
+    // minutes (gap M4); shared with /api/v2/montage/render. A run that did not start, or a replay of one that already
+    // did, gives its slot back.
+    const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.MONTAGE_USER);
+    if (capped) return capped;
     const r = await enqueueMontageJob(deps, { userId: user.id, request: body?.request, token: body?.token, prompt: body?.prompt, approval: yes.approval });
+    if (!r.ok || ('replay' in r && r.replay)) await refundRateLimitByKey(user.id, RATE_LIMITS.MONTAGE_USER);
     if (r.ok && (r.status === 'queued' || r.status === 'running')) startWorker(deps, r.jobId);
     return answer(r);
   }
