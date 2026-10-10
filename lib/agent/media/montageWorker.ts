@@ -120,6 +120,8 @@ export interface SweepReport {
   gaveUp: string[];
   /** Debts paid (refunds that had not landed yet). */
   paid: string[];
+  /** Debts this sweep tried and could not pay: money still owed to a user (the sweep's alert, PART 5 O1). */
+  stillOwed: string[];
   /** Jobs waiting for a worker. */
   waiting: string[];
   /** What the one job this sweep worked on came to. */
@@ -140,7 +142,7 @@ export async function sweepMontageJobs(deps: MontageExecDeps, opts: { worker: st
     error: GAVE_UP,
     abandonedError: HOLD_ABANDONED,
   });
-  const report: SweepReport = { gaveUp: [], paid: [], waiting: r.runnable };
+  const report: SweepReport = { gaveUp: [], paid: [], stillOwed: [], waiting: r.runnable };
   for (const row of r.exhausted) {
     report.gaveUp.push(row.id);
     await deps.audit({ ...runIdOf(row), userId: row.userId, op: 'montage', phase: 'run', outcome: 'failed', jobId: row.id, attempt: row.exec?.attempt, detail: row.error ?? 'gave up' });
@@ -149,6 +151,7 @@ export async function sweepMontageJobs(deps: MontageExecDeps, opts: { worker: st
     await payDebt(deps, row);
     const after = await deps.store.read(row.id);
     if (after && !after.exec?.owe) report.paid.push(row.id);
+    else report.stillOwed.push(row.id);
   }
   if (opts.work) {
     for (const jobId of r.runnable) {

@@ -187,9 +187,13 @@ describe('crash: a worker that dies is replaced once; then the job is given up a
     expect(balance(f)).toBe(-7);
     expect(f.audits.some((a) => a.phase === 'refund' && a.outcome === 'failed')).toBe(true);
 
+    // The ledger is still down at the next sweep: the debt is reported as still owed (the sweep route alerts on it).
+    expect(await sweepMontageJobs(f.deps, { worker: 's', work: false })).toMatchObject({ paid: [], stillOwed: [id] });
+
     f.flags.refundDown = false; // the ledger is back
     const r = await sweepMontageJobs(f.deps, { worker: 's', work: false });
     expect(r.paid).toEqual([id]);
+    expect(r.stillOwed).toEqual([]);
     expect(f.store.rows.get(id)!.exec!.owe).toBeUndefined();
     expect(balance(f)).toBe(0);
     await sweepMontageJobs(f.deps, { worker: 's', work: false });
@@ -216,7 +220,7 @@ describe('crash: a worker that dies is replaced once; then the job is given up a
 
 describe('sweep', () => {
   test('inert on an empty queue', async () => {
-    expect(await sweepMontageJobs(fake().deps, { worker: 's', work: true })).toEqual({ gaveUp: [], paid: [], waiting: [] });
+    expect(await sweepMontageJobs(fake().deps, { worker: 's', work: true })).toEqual({ gaveUp: [], paid: [], stillOwed: [], waiting: [] });
   });
 
   test('renders the oldest waiting job (its tab closed before a worker started), one per sweep', async () => {

@@ -23,6 +23,8 @@ jest.mock('../../../../../lib/agent/run/runExec', () => ({ sweepRuns: (...a: unk
 const mockRunDeps = jest.fn(() => ({ runs: true }));
 jest.mock('../../../../../lib/agent/run/runLive', () => ({ liveRunDeps: () => mockRunDeps() }));
 jest.mock('../../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
+const mockMarker = jest.fn();
+jest.mock('../../../../../lib/observability/reliability', () => ({ opsMarker: (...a: unknown[]) => mockMarker(...a) }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: () => false }));
 
 import { GET } from './route';
@@ -94,4 +96,23 @@ test('with no montage and no audio job waiting, one edit is worked', async () =>
   mockEditSweep.mockResolvedValueOnce({ gaveUp: [], waiting: ['e'], worked: { jobId: 'e', result: { ran: true, outcome: 'delivered', url: 'u' } } } as never);
   expect(await (await call('Bearer s3cret')).json()).toMatchObject({ edit: { worked: { jobId: 'e' } } });
   expect(mockEditSweep).toHaveBeenCalledWith({ edit: true }, { worker: 'w-cron', work: true });
+});
+
+test('what the sweep cannot finish itself is raised as an alert line; a quiet sweep raises none (PART 5, O1)', async () => {
+  process.env.AGENT_G_MEDIA_EXEC = 'on';
+  mockSweep.mockResolvedValueOnce({ gaveUp: [], paid: [], stillOwed: [], waiting: [] });
+  mockAudioSweep.mockResolvedValueOnce({ gaveUp: [], waiting: [] });
+  await call('Bearer s3cret');
+  expect(mockMarker).not.toHaveBeenCalled();
+
+  mockSweep.mockResolvedValueOnce({ gaveUp: ['m1'], paid: [], stillOwed: ['m0'], waiting: [] });
+  mockAudioSweep.mockResolvedValueOnce({ gaveUp: [], waiting: [] });
+  await call('Bearer s3cret');
+  expect(mockMarker).toHaveBeenCalledWith('error', 'agent_g_refund_debt', { total: 1, byQueue: { montage: 1 }, ids: ['m0'] });
+  expect(mockMarker).toHaveBeenCalledWith('warn', 'agent_g_gave_up', { total: 1, byQueue: { montage: 1 }, ids: ['m1'] });
+
+  mockMarker.mockClear();
+  mockSweep.mockRejectedValueOnce(new Error('db down'));
+  expect((await call('Bearer s3cret')).status).toBe(500);
+  expect(mockMarker).toHaveBeenCalledWith('error', 'agent_g_sweep_failure', { error: 'db down' });
 });
