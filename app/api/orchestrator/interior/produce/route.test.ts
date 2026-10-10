@@ -83,7 +83,7 @@ describe('POST /api/orchestrator/interior/produce', () => {
   it('a finished plan is charged once, not refunded, and filed with its render as the Library picture', async () => {
     const { events } = await post({ imageUrls: [PHOTO], brief: 'Japandi living room', coverUrl: RENDER });
     expect(reserveProduce).toHaveBeenCalledTimes(1);
-    expect(reserveProduce).toHaveBeenCalledWith(mockUser.id, 40, expect.stringMatching(/^interior:intr_/));
+    expect(reserveProduce).toHaveBeenCalledWith(mockUser.id, 40, expect.stringMatching(/^interior:intr_/), { refuseReplay: true });
     expect(refundProduce).not.toHaveBeenCalled();
     expect(createJob).toHaveBeenCalledWith(expect.objectContaining({
       serviceType: 'interior', userId: mockUser.id,

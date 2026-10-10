@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       let succeeded = false;
       try {
         if (user) {
-          reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref);
+          reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref, { refuseReplay: true });
           if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
           // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
           // render is abandoned (tab closed) and the in-route refund below never fires. Only when charged.

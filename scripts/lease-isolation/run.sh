@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue against a REAL but throwaway
+# Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue, and the ledger's replay refusal
+# (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d), against a REAL but throwaway
 # database: a local Postgres 16 with the Production shape (./schema.sql) behind a real PostgREST (Docker), then
 # lib/agent/media/leaseIsolation.pg.test.ts. Nothing here can reach Production: the database lives in a temp dir on
 # this machine, PostgREST listens on 127.0.0.1, and the suite refuses any non-local URL.
@@ -32,5 +33,15 @@ docker run -d --name "$NAME" --network host \
   postgrest/postgrest:v12.2.3 >/dev/null
 for _ in $(seq 1 30); do curl -sf -o /dev/null "http://127.0.0.1:$REST_PORT/" && break; sleep 1; done
 
-LEASE_PG_REST_URL="http://127.0.0.1:$REST_PORT" LEASE_PG_JWT_SECRET="$SECRET" \
-  node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit
+export LEASE_PG_REST_URL="http://127.0.0.1:$REST_PORT" LEASE_PG_JWT_SECRET="$SECRET"
+node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit
+
+# The ledger's replay refusal through the real client: first on Production's functions as they are, then with
+# supabase/migrations/20261002d applied (PostgREST reloads its schema cache on the NOTIFY).
+LEDGER_PHASE=before node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.test.ts --no-watchman --ci --forceExit
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261002d_ledger_ref_race_hardening.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
+sleep 2
+LEDGER_PHASE=after node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.test.ts --no-watchman --ci --forceExit
+# …and the lease queue's crash recovery and refunds still hold on the hardened functions.
+node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit

@@ -36,7 +36,8 @@ import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidati
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { deductCreditsOnce, refundCredits } from '@/lib/orchestrator/ledger';
+import { replayRefusedBody } from '@/lib/api/billingCopy';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
 import { CHARGED_REMIX_OPS, canonicalRemixOp } from '@/lib/video/remixCharge';
@@ -271,7 +272,13 @@ export async function POST(req: NextRequest) {
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
   if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
-    const debit = await deductCredits(remixUid, chargeAmount, txnRef);
+    // deductCreditsOnce, not deductCredits: the txnRef carries the CLIENT's jobId, and a byte-identical replay of a
+    // charged request came back "charged" with no debit and rendered again for free (gap C5). A replay is refused.
+    const debit = await deductCreditsOnce(remixUid, chargeAmount, txnRef);
+    if (!debit.ok && debit.reason === 'replay') {
+      await releaseIdem();
+      return NextResponse.json({ url: null, ...replayRefusedBody(), message: 'This edit was already made.' }, { status: 409 });
+    }
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
       await releaseIdem(); // free the mutex so a top-up / ledger retry isn't locked out
       const message = debit.reason === 'insufficient'
