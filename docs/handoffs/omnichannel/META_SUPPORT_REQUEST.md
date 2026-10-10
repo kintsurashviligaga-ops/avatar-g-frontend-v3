@@ -1,0 +1,112 @@
+# Meta Support request: §4.7 (AI Providers), messaging and Calling
+
+**Status: NOT SENT. Ready for GG to submit.** Last updated 2026-10-10.
+
+- This session cannot send it. Meta Direct Support needs a signed-in Meta business account, and this cloud session has no Meta session. It must not sign in to GG's account.
+- Nothing in the repository, a log or a report claims the request was sent.
+- Until Meta answers in writing, WhatsApp AI and Calling compliance stays **awaiting reply**, never PROVEN.
+
+## GG's one action
+
+1. Sign in to https://business.facebook.com/direct-support/ with the account that owns the WhatsApp Business Account.
+   - If you have more than one business portfolio, pick the one that owns the WhatsApp number.
+2. Click **Ask a question**.
+3. Pick the closest WhatsApp Business Platform topic.
+   - No official page names a "Policy" or "AI Providers" topic (meta-verification §B).
+   - A WhatsApp Business Platform / API topic is the closest fit.
+4. Copy the subject and body below exactly, then click **Confirm**.
+5. Reply in the Master Task thread with the case or question number and the date. A phone photo of the confirmation screen is enough.
+
+If the page has no **Ask a question** button, send a photo of what it shows instead. Meta says "Not all people will have access to Direct Support". Claude will then name the next official channel.
+
+## What was re-checked before writing
+
+**Meta Terms for WhatsApp Business Platform** were re-read live on 2026-10-10 (Firecrawl, no cache), at https://www.facebook.com/legal/Meta-Terms-for-WhatsApp-Business-Platform.
+
+- **Date:** the page still shows "Last Modified: September 23, 2026".
+- **§4.7 "AI Providers":** the wording is unchanged from `research/meta-verification-2026-10-10.md` §A1:
+  - AI Providers are prohibited "when such technologies are the primary (rather than incidental or ancillary) functionality being made available for use, as determined by Meta in its sole discretion";
+  - with a carve-out for "certain countries as set forth here" (Brazil ongoing; EU/EEA and Italy, windows that ended May 12, 2026; Georgia is not listed);
+  - and "you may retain an AI Provider as your Solution Provider".
+- **§1.1:** the Platform lets businesses "send or receive messages or calls". So §4.7 covers calls too.
+- **Calling FAQ (2026-09-29):** AI voicebots on WhatsApp calls are allowed technically, "See WhatsApp Business Solution Terms for restrictions in AI use cases".
+
+What MyAvatar.ge's code does on WhatsApp after this change (commit on `claude/launch-certification-wmvitt`):
+
+- **Text** (`lib/agent-g/channels/whatsapp-text.ts` WHATSAPP_STYLE_NOTE, `handleInbound.ts`):
+  - Agent G helps only with MyAvatar.ge: the customer's account, credits, prices, orders, tasks, results and what the studio can make.
+  - It does not search the web. It declines general questions and gives support@myavatar.ge.
+  - Nothing is generated or charged from WhatsApp text. A request to make something gets a studio link where the price and Confirm button are.
+- **Calls** (`lib/calls/whatsapp/phoneTools.ts` phoneCallRule):
+  - The same scope as text.
+  - `WHATSAPP_AGENT_SCOPE=service` is the default, and is scenario A. `creative` is scenario B, where Agent G may plan an order and say its price.
+  - Paid work starts only from the Confirm button, or on a call from the caller's own spoken "yes" after the price, checked on the server.
+  - Calling is off (`WHATSAPP_CALLING_ENABLED`) and no price is approved.
+
+The letter therefore describes the product as it will run, with both scenarios in full.
+
+---
+
+## Subject
+
+Policy question: Meta Terms §4.7 (AI Providers) for a Georgia-based generative-AI business using Cloud API messaging and WhatsApp Business Calling
+
+## Body
+
+Hello,
+
+We are MyAvatar.ge, a business based in Georgia (+995). We run a paid online studio where our registered customers create AI-generated videos, images, avatars, music and other content. We use the WhatsApp Business Platform (Cloud API) directly with our own WhatsApp Business Account. We have no Business Solution Provider.
+
+Before we enable any of the uses below in production, we ask for Meta's written guidance under the Meta Terms for WhatsApp Business Platform (Last Modified September 23, 2026), §4.7 "AI Providers", and the WhatsApp Business Messaging Policy. We describe both intended uses in full. We are not asking about a narrower version only.
+
+Scenario A. Customer service and order management:
+Existing MyAvatar.ge customers link their WhatsApp number, request information about their accounts, projects, orders, prices and credits, approve specific paid orders, receive reports and completed files, and use WhatsApp Business Calling for these activities.
+
+Scenario B. Creative execution via WhatsApp:
+The same customers may instruct Agent G through WhatsApp text, voice messages or calls to create or edit AI-generated videos, images, avatars, music and other content. The actual processing takes place in MyAvatar.ge using Google AI, ElevenLabs and internal workers, with explicit quotation and approval.
+
+How both scenarios work:
+- Only existing MyAvatar.ge customers can use it, and only on their own account. A customer links their WhatsApp number to their signed-in account with a one-time code. An unlinked number receives only fixed instructions and never reaches an AI model.
+- Our assistant, Agent G, runs on our own servers. It is the same assistant as on our website.
+  - Understanding text and speech uses Google's Gemini models, through the paid API tier.
+  - Creative outputs use Google AI, ElevenLabs and our own media processing.
+- On WhatsApp, Agent G helps only with MyAvatar.ge. It does not search the web or act as a general-purpose assistant. It politely declines unrelated questions.
+- No paid work starts without an explicit price and the customer's approval. Approval is a Confirm button in the chat. On a call, it is the customer's own spoken "yes" after the price was stated, verified on our server.
+- Calls: customers call our business number.
+  - We call a customer back only with their WhatsApp call permission, outside quiet hours and within daily limits.
+  - The caller ID alone never authorizes a payment.
+- A person is always reachable at support@myavatar.ge and through our website.
+- We do not use WhatsApp Business Solution Data to train or improve AI models.
+
+Our questions. Please answer each in writing:
+1. Is Scenario A permitted for a Georgia-based business under §4.7? Is Scenario B permitted?
+2. Does Meta treat business messaging, media delivery (sending the finished files to the customer in the chat) and WhatsApp Business Calling differently for these uses?
+3. Do any limits apply to specific markets, phone-number countries (our number and most of our customers are +995) or business account types?
+4. Is a narrower customer-service-only scope (Scenario A without Scenario B) required?
+5. What conditions must we meet before enabling this in production? For example: registration as an AI Provider, a specific pricing category, a review, or a disclosure to users.
+
+This request is filed from the business portfolio that owns our WhatsApp Business Account. Please treat that account as the subject of this request.
+
+Thank you,
+MyAvatar.ge
+support@myavatar.ge
+
+---
+
+## After Meta answers
+
+Record the following here, without personal data:
+- the case or question number;
+- the date sent;
+- the date and full text of Meta's reply.
+
+What each answer means for the code:
+
+| Meta's answer | What changes |
+|---|---|
+| A and B permitted | `WHATSAPP_AGENT_SCOPE=creative` becomes possible. Production still needs GG's separate word. |
+| A only | Scope stays `service`. Creative orders stay studio links. |
+| Neither | WhatsApp AI answers and Calling stay off. Fixed texts and alerts only. |
+| Conditions (registration, pricing category, disclosure) | Each one becomes a tracked item in `WHATSAPP_CALLING_READINESS.md` before any Production step. |
+
+Compliance becomes PROVEN only with Meta's written answer on file.

@@ -2,14 +2,22 @@
  * The pricing audit's rule, held by tests: every proposed price clears the owner's 62 % floor against the op's FULL cost
  * (list price, re-renders, compute, storage, FX reserve) measured on what a credit nets after VAT and the card fee.
  */
+import { PHONE_COMPRESSION } from '@/lib/calls/whatsapp/phoneSetup';
 import {
+  CALL_BRIDGE_VM_USD_PER_MONTH,
+  CALL_CAP,
+  CALL_CAP_FALLBACK,
+  CALL_PLANNING_MINUTES_PER_MONTH,
   ECON,
   FREE_DAILY,
+  META_GE_BUSINESS_CALL_USD_PER_MIN,
+  META_GE_SERVICE_MESSAGE_USD,
   PROPOSED,
   PROPOSED_VIDEO_PER_SEC,
   UNIT_OPS,
   deckCostGel,
   floorCredits,
+  liveCallGeminiUsd,
   marginAt,
   marginOf,
   netGelPerCredit,
@@ -18,6 +26,7 @@ import {
   proposedVideoCredits,
   targetCredits,
   unitOp,
+  usdToCostGel,
   videoCostGel,
 } from './unitEconomics';
 
@@ -143,5 +152,58 @@ describe('today\'s prices against the same rule (what the audit found)', () => {
 
   test('an 8 s Fast scene sells below its cost today', () => {
     expect(marginAt(unitOp('video.clip.fast'), 25)).toBeLessThan(0);
+  });
+});
+
+describe('WhatsApp calls (docs/handoffs/omnichannel/COMMUNICATION_UNIT_ECONOMICS.md)', () => {
+  type Cap = typeof CALL_CAP | typeof CALL_CAP_FALLBACK;
+  /** One call's variable cost in USD, the way the calculator adds it up: Gemini (+5 % dropped calls), Meta, the result message, egress. */
+  const callUsd = (minutes: number, outbound: boolean, cap: Cap) =>
+    liveCallGeminiUsd(minutes, cap) * 1.05 + (outbound ? META_GE_BUSINESS_CALL_USD_PER_MIN * minutes : 0) + META_GE_SERVICE_MESSAGE_USD + (0.34 / 1000) * minutes;
+  const monthMargin = (credits: number, minutesPerMonth: number, callMinutes: number, outbound: boolean, cap: Cap) => {
+    const usd = (minutesPerMonth / callMinutes) * callUsd(callMinutes, outbound, cap) + CALL_BRIDGE_VM_USD_PER_MONTH;
+    return marginOf(credits * minutesPerMonth, usdToCostGel(usd));
+  };
+  const price = PROPOSED['agent-g.whatsapp-call.minute']!;
+
+  test('the Gemini call model gives the calculator\'s numbers (research/wa_cost.py)', () => {
+    expect(liveCallGeminiUsd(5, CALL_CAP)).toBeCloseTo(0.236, 2);
+    expect(liveCallGeminiUsd(15, CALL_CAP)).toBeCloseTo(0.958, 2);
+    expect(liveCallGeminiUsd(30, CALL_CAP)).toBeCloseTo(2.023, 2);
+    expect(liveCallGeminiUsd(30, CALL_CAP_FALLBACK)).toBeCloseTo(2.691, 2);
+    expect(liveCallGeminiUsd(30, null)).toBeCloseTo(5.97, 2);
+  });
+
+  test('the cap the price assumes is the cap the phone session sends to Google', () => {
+    expect(CALL_CAP).toEqual(PHONE_COMPRESSION);
+  });
+
+  test('without an explicit cap a 30-minute call costs Google about 3x as much (the cap is not optional)', () => {
+    expect(liveCallGeminiUsd(30, null) / liveCallGeminiUsd(30, CALL_CAP)).toBeGreaterThan(2.5);
+  });
+
+  test('not sold today: no current price, and the proposal is one number for both directions', () => {
+    expect(unitOp('agent-g.whatsapp-call.minute').currentCredits).toBeNull();
+    expect(price).toBe(12);
+  });
+
+  test.each([
+    ['today\'s 8k → 4k cap', CALL_CAP],
+    ['the 12k → 6k fallback', CALL_CAP_FALLBACK],
+  ] as const)('at 1,000 call-minutes a month, VM included, it clears the floor for every length and direction (%s)', (_label, cap) => {
+    for (const minutes of [1, 2, 5, 10, 15, 20, 30]) {
+      for (const outbound of [false, true]) expect(monthMargin(price, CALL_PLANNING_MINUTES_PER_MONTH, minutes, outbound, cap)).toBeGreaterThanOrEqual(ECON.floorMargin);
+    }
+  });
+
+  test('on today\'s cap it reaches the 65 % target at 1,000 call-minutes a month for every length and direction', () => {
+    for (const minutes of [5, 15, 30]) {
+      for (const outbound of [false, true]) expect(monthMargin(price, 1000, minutes, outbound, CALL_CAP)).toBeGreaterThanOrEqual(ECON.targetMargin);
+    }
+  });
+
+  test('at 100 call-minutes a month the VM decides: the doc\'s warning that no near price clears the floor stays true', () => {
+    expect(monthMargin(price, 100, 15, false, CALL_CAP)).toBeLessThan(ECON.floorMargin);
+    expect(monthMargin(price, 100, 15, false, CALL_CAP)).toBeGreaterThan(0);
   });
 });

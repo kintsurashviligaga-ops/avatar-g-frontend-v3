@@ -120,6 +120,60 @@ export const ELEVEN_MUSIC_USD_PER_MIN = 0.15;
 const tts = (chars: number): CostLine => ({ what: `ElevenLabs speech, ~${chars} characters`, usd: (chars / 1000) * ELEVEN_TTS_USD_PER_1K_CHARS, source: 'official' });
 const elevenMusic = (seconds: number): CostLine => ({ what: `ElevenLabs music, ${seconds} s`, usd: (seconds / 60) * ELEVEN_MUSIC_USD_PER_MIN, source: 'official' });
 
+// ── WhatsApp calls: Meta Calling → our bridge VM → Gemini Live (docs/handoffs/omnichannel/COMMUNICATION_UNIT_ECONOMICS.md)
+// The same model as docs/handoffs/omnichannel/research/wa_cost.py; unitEconomics.test.ts holds the two equal.
+export const LIVE_CALL_MODEL = {
+  /** Live audio tokens a second, in and out (Google, 2026-10-10). */
+  tokPerSec: 25,
+  audioIn: 3e-6,
+  audioOut: 12e-6,
+  /** gemini-2.5-flash-native-audio, the phone default (the Live model verified in Georgian): text in, text out. */
+  textIn: 0.5e-6,
+  textOut: 2e-6,
+  /** The bridge streams the caller's audio for the whole call (silence too), so input is billed for all of it. */
+  inShare: 1,
+  userShare: 0.5,
+  agentShare: 0.4,
+  turnSec: 20,
+  /** Instruction + phone tools + memory, re-billed every turn: ~2,600 measured, memory adds up to 1,200 (Georgian 1:1). */
+  systemTokens: 4000,
+  /** Transcription is always on (the caller's own words approve anything); Georgian text tokens ESTIMATED at 3× English. */
+  transcriptTokensPerSpeechMin: 600,
+} as const;
+
+/**
+ * Gemini's bill for one call of `minutes`: audio in and out, the context Live bills again every turn (sawtooth under the
+ * compression cap; the instruction counted outside the cap, the conservative reading), the instruction itself, and the
+ * transcription surcharge. `cap` null = Google's default, which a call never reaches (the context grows all call long).
+ */
+export function liveCallGeminiUsd(minutes: number, cap: { triggerTokens: number; targetTokens: number } | null, m = LIVE_CALL_MODEL): number {
+  const seconds = minutes * 60;
+  const base = m.inShare * seconds * m.tokPerSec * m.audioIn + m.agentShare * seconds * m.tokPerSec * m.audioOut;
+  const turns = Math.floor(seconds / m.turnSec);
+  const perTurn = (m.userShare + m.agentShare) * m.turnSec * m.tokPerSec;
+  let context = 0;
+  let rebilled = 0;
+  for (let k = 0; k < turns; k += 1) {
+    rebilled += context;
+    context += perTurn;
+    if (cap && context > cap.triggerTokens) context = cap.targetTokens;
+  }
+  const transcript = (m.userShare + m.agentShare) * minutes * m.transcriptTokensPerSpeechMin * m.textOut;
+  return base + rebilled * m.audioIn + turns * m.systemTokens * m.textIn + transcript;
+}
+
+/** lib/calls/whatsapp/phoneSetup PHONE_COMPRESSION (the code today), and the fallback a funded call may call for. */
+export const CALL_CAP = { triggerTokens: 8000, targetTokens: 4000 } as const;
+export const CALL_CAP_FALLBACK = { triggerTokens: 12000, targetTokens: 6000 } as const;
+/** Meta, Georgia: a business-initiated call minute (0–50k tier, 6 s pulses); user-initiated calls are free. */
+export const META_GE_BUSINESS_CALL_USD_PER_MIN = 0.0095;
+/** Meta, Georgia: a service message past the 1,000 free a month per number (counted on every call, the worst case). */
+export const META_GE_SERVICE_MESSAGE_USD = 0.0212;
+/** The bridge VM, europe-west3: e2-small $15.76 + static IPv4 $3.65 + 10 GB balanced disk $1.20 a month (SKU list). */
+export const CALL_BRIDGE_VM_USD_PER_MONTH = 20.61;
+/** Call-minutes a month the VM is spread over in the price (the doc shows 100 / 500 / 1,000 / 5,000). */
+export const CALL_PLANNING_MINUTES_PER_MONTH = 1000;
+
 export const UNIT_OPS: readonly UnitOp[] = [
   // ── Video ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   ...(['lite', 'fast', 'standard'] as const).map((tier): UnitOp => ({
@@ -350,6 +404,27 @@ export const UNIT_OPS: readonly UnitOp[] = [
     status: 'FREE_CAPPED',
     currentCredits: 0,
   },
+  {
+    // One price for both directions, per started minute: the worst minute of the code's setup (a 30-minute call, Agent G
+    // calling back, the result message spread over a 5-minute call) with the bridge VM spread over the planning volume.
+    // Not sold: no call starts until the owner approves this price (lib/calls/whatsapp/liveDeps APPROVED_…_PER_MINUTE).
+    id: 'agent-g.whatsapp-call.minute',
+    service: 'agent-g',
+    unit: 'one started minute of a WhatsApp call with Agent G (either direction)',
+    provider: 'Google + Meta + bridge VM',
+    model: 'gemini-2.5-flash-native-audio (Live)',
+    lines: [
+      { what: 'Gemini Live, a minute of a 30-min call (context re-billed under the 8k → 4k cap, transcription on)', usd: liveCallGeminiUsd(30, CALL_CAP) / 30, source: 'estimated' },
+      { what: 'Meta business-initiated call minute to Georgia (a user\'s own call is free)', usd: META_GE_BUSINESS_CALL_USD_PER_MIN, source: 'official' },
+      { what: 'the result message after the call, spread over a 5-min call', usd: META_GE_SERVICE_MESSAGE_USD / 5, source: 'official' },
+      { what: `call bridge VM, $${CALL_BRIDGE_VM_USD_PER_MONTH} a month over ${CALL_PLANNING_MINUTES_PER_MONTH} call-minutes`, usd: CALL_BRIDGE_VM_USD_PER_MONTH / CALL_PLANNING_MINUTES_PER_MONTH, source: 'estimated' },
+      { what: 'bridge egress (Opus to Meta, PCM to Google)', usd: 0.34 / 1000, source: 'estimated' },
+    ],
+    // Minutes Google bills that the caller does not pay for (a call that drops before it is answered on both sides).
+    retryShare: 0.05,
+    status: 'ESTIMATED',
+    currentCredits: null,
+  },
 ];
 
 export function opCostUsd(op: UnitOp): number {
@@ -415,6 +490,11 @@ export const PROPOSED: Readonly<Record<string, number>> = {
   'agent-g.analyze': 8,
   /** Past the free daily minutes (FREE_DAILY below). */
   'agent-g.live.minute': 8,
+  /**
+   * A WhatsApp call with Agent G, per started minute, either direction; no free minutes. Clears 62 % all-in (VM included)
+   * from ~405 call-minutes a month on today's setup and from ~750 on the 12k → 6k fallback (COMMUNICATION_UNIT_ECONOMICS).
+   */
+  'agent-g.whatsapp-call.minute': 12,
 };
 
 /** Free, inside these daily caps (per signed-in account; guests keep the existing per-IP caps). */

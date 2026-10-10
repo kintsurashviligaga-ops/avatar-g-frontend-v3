@@ -10,6 +10,10 @@
   - [`research/whatsapp-calling-research.md`](research/whatsapp-calling-research.md): Meta Calling, the AI Providers clause, Gemini Live, ElevenLabs, bridges, cost model.
   - [`research/phone-feasibility-research.md`](research/phone-feasibility-research.md): Twilio, ElevenLabs telephony, Georgian SIP and SMS, Telegram.
 - **Labels:** CONFIRMED (stated on the vendor's or regulator's own page), UNCONFIRMED (inferred, secondary, or not found), plus the project labels (PROVEN / BUILT_NOT_PROVEN / BLOCKED_OWNER …).
+- **Update, 2026-10-10 evening:** the owner approved A as the architecture (16:20Z), not paid infrastructure, Production changes or paid calls. Three newer documents supersede parts of this one:
+  - [`COMMUNICATION_UNIT_ECONOMICS.md`](COMMUNICATION_UNIT_ECONOMICS.md) re-verifies the costs and replaces §5 (the proposed price is now **12 credits a minute**, one price for both directions);
+  - [`META_SUPPORT_REQUEST.md`](META_SUPPORT_REQUEST.md) replaces Appendix A with a letter that describes both scenarios in full;
+  - [`WHATSAPP_CALLING_READINESS.md`](WHATSAPP_CALLING_READINESS.md) gives what is built, the real statuses and the Production verdict (NO-GO).
 
 ---
 
@@ -50,7 +54,7 @@ The order matters: nothing after step 1 is worth money until Meta has answered.
 
 | # | Step | Why | Cost |
 |---|---|---|---|
-| 1 | **Ask Meta in writing**, through Meta Business Support from the portfolio that owns the WhatsApp Business Account (Business Help Center → Contact support → WhatsApp Business Platform → Policy). The ready-to-send text is in Appendix A. | Meta's §4.7 is decided "in its sole discretion". A written answer is the only proof that the channel will not be cut off. | free |
+| 1 | **Ask Meta in writing**, through Meta Business Support from the portfolio that owns the WhatsApp Business Account (Business Help Center → Contact support → WhatsApp Business Platform → Policy). The ready-to-send text is in [`META_SUPPORT_REQUEST.md`](META_SUPPORT_REQUEST.md). | Meta's §4.7 is decided "in its sole discretion". A written answer is the only proof that the channel will not be cut off. | free |
 | 2 | **Read three values in WhatsApp Manager** and paste them here: the business number's country code, its **messaging limit**, and the **business verification** status. | Calling needs a messaging limit of **at least 2,000** (new portfolios start at 250). Business verification is the fastest way up. | free |
 | 3 | When the time comes, a word for **one small Google Compute Engine VM** for the bridge: an e2-small in Frankfurt or Warsaw plus a static IP. The $300 Google credit may cover it (UNCONFIRMED). | Paid infrastructure. Cloud Run cannot take the call's UDP media; Vercel cannot hold a 15-minute media stream. | about **$19.4 a month** |
 | 4 | A word for **real test calls** on the business number: 5, 15 and 30 minutes, in Georgian. | They measure Georgian quality, latency and real Gemini token use (§5). A user-initiated WhatsApp call is free from Meta; the Gemini side is a few cents a call. | under $5 in total (estimate) |
@@ -229,6 +233,8 @@ WhatsApp user ──call──▶ Meta Calling API ──`calls` webhook (signed
 
 ## 5. Cost
 
+> **Superseded** by [`COMMUNICATION_UNIT_ECONOMICS.md`](COMMUNICATION_UNIT_ECONOMICS.md), which re-verified every input (transcription, the measured instruction size, continuous input streaming, the VM at low volume) and proposes 12 credits a minute. The figures below are the first estimate and are kept for the record.
+
 ### 5.1 Assumptions
 
 - **Speaking time:** the user 50 %, Agent G 40 %.
@@ -357,6 +363,8 @@ Nothing becomes PROVEN before a real call on the real number.
 ---
 
 ## Appendix A: the question to send to Meta (ready to paste)
+
+> **Superseded** by [`META_SUPPORT_REQUEST.md`](META_SUPPORT_REQUEST.md). The owner asked for both scenarios (customer service and creative execution) to be described in full. Send that letter, not this one.
 
 > Subject: WhatsApp Business Platform: does Meta Terms §4.7 (AI Providers) apply to our use case?
 >

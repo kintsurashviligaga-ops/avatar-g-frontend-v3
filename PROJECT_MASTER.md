@@ -204,6 +204,22 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           photo / 3D not sold. BLOCKED_OWNER: the approval, then the deploy. Balances untouched; nothing in Production
           changed.
           Next: the Omnichannel + Mobile UX task (owner 13:10Z).
+          OMNICHANNEL (owner 13:10Z / 15:38Z / 16:20Z), in progress. Done: A (fe982ab1, 8caca956: VFX Veo only,
+          decorative settings and "Soon" cloud rows removed, plain copy), B/H (fce64706: Settings → Connections with
+          server-decided statuses, notification preferences). Voice: feasibility (8e5add24) chose A, Meta WhatsApp
+          Calling → our bridge → the existing Gemini Live → Agent G; the owner approved A as the architecture at 16:20Z,
+          not paid infrastructure, Production changes or paid calls. Built, off by default (WHATSAPP_CALLING_ENABLED, no
+          approved price): call webhook, lifecycle, gates, signed ticket, bridge API, phone Live session, spoken-yes
+          consent, delivery (a25106c0); read-only admin Meta check (bbf5d7b6); bridge core and service with WebRTC + Opus
+          (0cf414e4, 55521e48; local loopback PROVEN locally only); the bridge route now refuses a request without a
+          ticket our app signed (fixes the red api-lockdown check). WhatsApp text answers narrowed to MyAvatar.ge, no web
+          search. All BUILT_NOT_PROVEN until a funded call. Costs re-verified in
+          docs/handoffs/omnichannel/COMMUNICATION_UNIT_ECONOMICS.md: proposed 12 credits a minute in the SSoT (not sold,
+          margin ≥ 62 % from ~405 min a month on the 8k/4k cap). Meta letter (both scenarios, five questions)
+          META_SUPPORT_REQUEST.md: NOT SENT, needs the owner's Meta account; compliance awaiting reply. Meta account
+          facts not readable from the cloud session (no Meta access, Vercel env 403): MISSING. Verdict
+          WHATSAPP_CALLING_READINESS.md: Production NO-GO. Remaining: C (telephony adapter), E/F/G/D (channels on the run
+          engine, delivery outbox, the call-back trigger), I/J/K. No merge, deploy, migration, env, price or paid change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
