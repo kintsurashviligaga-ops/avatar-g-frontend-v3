@@ -20,6 +20,8 @@ import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { googleTransportBlocker } from '@/lib/ai/google/transport';
 import { reportReliability } from '@/lib/observability/reliability';
 import { chatBudgetAllows, bookChatUsage } from '@/lib/services/billing/chatBudget';
+import { callUsageOf, type LlmCallUsage } from '@/lib/ai/usageMetrics';
+import type { GeminiResponse } from '@/lib/gemini/client';
 
 export interface LlmTextOpts {
   user: string;
@@ -44,9 +46,14 @@ export interface LlmTextOpts {
   json?: boolean;
   /** Gemini leg only: ground the answer in Google Search (news, prices, scores, weather). Ignored with `json`. */
   googleSearch?: boolean;
+  /**
+   * Told what the call used (tokens incl. cache hits and thinking, latency, estimated cost) when it answered — the
+   * Agent G run meter (lib/ai/usageMetrics) sums these per task. Never called for a miss. A throwing listener is ignored.
+   */
+  onUsage?: (u: LlmCallUsage) => void;
 }
 
-async function viaGemini(o: LlmTextOpts): Promise<string | null> {
+async function viaGemini(o: LlmTextOpts): Promise<GeminiResponse | null> {
   // resolveGeminiKey() also honours GOOGLE_GENERATIVE_AI_API_KEY and the GEMINI_API_KEYS pool — the bare
   // GEMINI_API_KEY check here used to skip Gemini on a deployment that only set the pool. On the Vertex transport
   // (GEMINI_TRANSPORT=vertex) the key is not needed: generateWithGemini goes through lib/ai/google/transport.
@@ -60,7 +67,7 @@ async function viaGemini(o: LlmTextOpts): Promise<string | null> {
       ...(o.json ? { responseMimeType: 'application/json' as const } : {}),
       ...(o.googleSearch && !o.json ? { googleSearch: true } : {}),
     });
-    return r.text && r.text.trim() ? r.text : null;
+    return r.text && r.text.trim() ? r : null;
   } catch { return null; }
 }
 
@@ -77,9 +84,18 @@ export async function llmText(o: LlmTextOpts): Promise<string | null> {
     return null;
   }
 
-  const t = await viaGemini(o);
-  if (t) {
-    void bookChatUsage(inputForEstimate, t.length, 'gemini');
+  const r = await viaGemini(o);
+  if (r) {
+    const t = r.text;
+    // Booked from what Gemini reported (prompt, output, thinking, cache hits) under the model that served — characters
+    // stand in only for a count it left out (chatBudget.resolveTokens). It used to book characters at the flat rate.
+    void bookChatUsage({
+      model: r.model, inputTokens: r.tokensIn, outputTokens: r.tokensOut, totalTokens: r.tokensTotal,
+      cachedInputTokens: r.tokensCached, inputChars: inputForEstimate.length, chars: t.length,
+    });
+    if (o.onUsage) {
+      try { o.onUsage(callUsageOf(r, { input: inputForEstimate.length, output: t.length })); } catch { /* a meter never breaks the call */ }
+    }
     reportReliability({ surface: 'llm.text', providerServed: 'gemini', fallbackDepth: 0, degraded: false });
     return t;
   }

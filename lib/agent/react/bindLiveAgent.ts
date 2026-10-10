@@ -47,6 +47,8 @@ import 'server-only';
  * every provider mocked (bindLiveAgent.test.ts).
  */
 import { llmText } from '@/lib/ai/llmText';
+import { newRunMeter, type AgentRunMetrics } from '@/lib/ai/usageMetrics';
+import { structuredLog } from '@/lib/logger';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 import { runReActLoop, type AgentTool, type ReActResult } from './coordinator';
 import { z } from 'zod';
@@ -134,17 +136,36 @@ export const analyzeToolOn = (ctx: AgentContext): boolean => ctx.analyze === tru
 /** Each analysis is a paid model call over a whole file: two per request. */
 export const MAX_ANALYSES_PER_RUN = 2;
 
-/** Collapse the ReAct transcript into a single llmText call. */
-async function llmAdapter(
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-): Promise<string | null> {
-  const system = messages.find((m) => m.role === 'system')?.content;
-  const convo = messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => (m.role === 'assistant' ? `Assistant: ${m.content}` : m.content))
-    .join('\n\n');
-  // Read per call (not at module load) so the kill switch applies without a redeploy of this module.
-  return llmText({ system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: isAiGoogleOnly() });
+type RunMeter = ReturnType<typeof newRunMeter>;
+
+/**
+ * Collapse the ReAct transcript into a single llmText call. The system prompt and the transcript so far are the same
+ * prefix on every step of a run, which is what Gemini's implicit context cache keys on; the meter records the hits.
+ */
+function llmAdapterFor(meter: RunMeter) {
+  return async (messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string | null> => {
+    const system = messages.find((m) => m.role === 'system')?.content;
+    const convo = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => (m.role === 'assistant' ? `Assistant: ${m.content}` : m.content))
+      .join('\n\n');
+    // Read per call (not at module load) so the kill switch applies without a redeploy of this module.
+    return llmText({
+      system, user: convo, maxTokens: 900, temperature: 0.4, timeoutMs: 40_000, googleOnly: isAiGoogleOnly(),
+      onUsage: (u) => meter.addLlm(u),
+    });
+  };
+}
+
+/** Each tool call timed into the run's meter (search, page reads and quotes are most of a run's wall clock). */
+function timed(tools: AgentTool[], meter: RunMeter): AgentTool[] {
+  return tools.map((t) => ({
+    ...t,
+    run: async (input: unknown) => {
+      const started = Date.now();
+      try { return await t.run(input); } finally { meter.addTool(Date.now() - started); }
+    },
+  }));
 }
 
 /** The goal rides along so the montage quote reads the user's words (aspect, length) from it. */
@@ -384,23 +405,41 @@ export function buildLiveToolRegistry(ctx: AgentContext, opts?: { goal?: string 
   return bindTools(LIVE_TOOL_SPECS, { ...ctx, goal: opts?.goal ?? '' });
 }
 
-/** Run the autonomous agent against a user goal with live infrastructure. */
+/** A run's result plus what it used (server-side: the route does not send it to the browser). */
+export interface LiveAgentResult extends ReActResult {
+  metrics: AgentRunMetrics;
+}
+
+/**
+ * Run the autonomous agent against a user goal with live infrastructure. Every run logs `agent_run_metrics` (tokens,
+ * context-cache hits, model and tool time, estimated provider cost; no user id, no text) — the per-task baseline of
+ * Agent G PART 5 (G3/G7), queryable in the deployment's logs.
+ */
 export async function runLiveAgent(
   userGoal: string,
   ctx: AgentContext,
   opts?: { maxSteps?: number; systemExtra?: string; deadlineMs?: number },
-): Promise<ReActResult> {
+): Promise<LiveAgentResult> {
+  const meter = newRunMeter();
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
   const systemExtra = [
     mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
     analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
-  return runReActLoop({
-    llm: llmAdapter,
-    tools: buildLiveToolRegistry(ctx, { goal: userGoal }),
+  const result = await runReActLoop({
+    llm: llmAdapterFor(meter),
+    tools: timed(buildLiveToolRegistry(ctx, { goal: userGoal }), meter),
     userGoal,
     maxSteps: opts?.maxSteps,
     systemExtra,
     deadlineMs: opts?.deadlineMs,
   });
+  const metrics = meter.finish();
+  try {
+    structuredLog('info', 'agent_run_metrics', {
+      stopReason: result.stopReason, steps: result.steps.length,
+      tools: result.steps.filter((st) => st.tool).map((st) => st.tool), ...metrics,
+    });
+  } catch { /* a log line never breaks a run */ }
+  return { ...result, metrics };
 }

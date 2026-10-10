@@ -84,3 +84,28 @@ describe('googleSearch: the answer may be grounded in Google Search', () => {
     expect((body.generationConfig as Record<string, unknown>).responseMimeType).toBe('application/json');
   });
 });
+
+describe('generateWithGemini — what the call used (Agent G PART 5, G3/G7)', () => {
+  const reply = (usageMetadata: unknown) => {
+    global.fetch = jest.fn(async () => ({
+      ok: true, status: 200, text: async () => '',
+      json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }], usageMetadata }),
+    })) as unknown as typeof fetch;
+  };
+
+  it('reads cache hits, thinking and the total beside prompt and output, and times the call', async () => {
+    reply({ promptTokenCount: 1500, candidatesTokenCount: 40, cachedContentTokenCount: 1024, thoughtsTokenCount: 12, totalTokenCount: 1552 });
+    const out = await generateWithGemini({ prompt: 'hi', tier: 'flash' });
+    expect(out).toMatchObject({ tokensIn: 1500, tokensOut: 40, tokensCached: 1024, tokensThinking: 12, tokensTotal: 1552 });
+    expect(typeof out.latencyMs).toBe('number');
+    expect(out.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('leaves out a count Gemini did not report, or reported as garbage', async () => {
+    reply({ promptTokenCount: 10, candidatesTokenCount: 2, cachedContentTokenCount: 'lots', thoughtsTokenCount: -1 });
+    const out = await generateWithGemini({ prompt: 'hi', tier: 'flash' });
+    expect(out).not.toHaveProperty('tokensCached');
+    expect(out).not.toHaveProperty('tokensThinking');
+    expect(out).not.toHaveProperty('tokensTotal');
+  });
+});

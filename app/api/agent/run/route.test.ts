@@ -66,6 +66,12 @@ it('still rate-limits per user under the agent namespace', async () => {
   expect(mockRun).not.toHaveBeenCalled();
 });
 
+it('what the run used (tokens, estimated provider cost) stays on the server', async () => {
+  mockRun.mockResolvedValueOnce({ answer: 'done', steps: [{ final: 'done' }], stopReason: 'final', metrics: { llmCalls: 1, costUsd: 0.0004 } });
+  const res = await call({ goal: 'research' });
+  expect(await res.json()).toEqual({ answer: 'done', steps: [{ final: 'done' }], stopReason: 'final' });
+});
+
 it('no budgetMs → the 100 s deadline it always had', async () => {
   const res = await call({ goal: 'research' });
   expect(res.status).toBe(200);

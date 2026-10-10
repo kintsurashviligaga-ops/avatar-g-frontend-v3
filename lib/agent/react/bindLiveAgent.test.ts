@@ -29,6 +29,8 @@ jest.mock('../media/editLive', () => ({ liveEditDeps: () => ({ liveEdit: true })
 const mockAnalyze = jest.fn();
 jest.mock('../media/analyzeExec', () => ({ analyzeMedia: (...a: unknown[]) => mockAnalyze(...a) }));
 jest.mock('../media/analyzeLive', () => ({ liveAnalyzeDeps: () => ({ liveAnalyze: true }) }));
+const mockLog = jest.fn();
+jest.mock('../../logger', () => ({ structuredLog: (...a: unknown[]) => mockLog(...a) }));
 
 import { buildLiveToolRegistry, runLiveAgent, AGENT_ANALYZE_NOTE, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, MAX_ANALYSES_PER_RUN, type AgentContext } from './bindLiveAgent';
 
@@ -355,5 +357,44 @@ describe('analyze_media (Agent G reads one file with Gemini; it starts nothing)'
     mockLlm.mockResolvedValueOnce('{"final":"ok"}');
     await runLiveAgent('what happens in this video?', { ...CTX, files: FILES });
     expect(mockLlm.mock.calls[1]![0].system).not.toContain(AGENT_ANALYZE_NOTE);
+  });
+});
+
+describe('what a run used (Agent G PART 5, G3/G7)', () => {
+  const usage = (over: Record<string, unknown> = {}) => ({
+    model: 'gemini-2.5-flash', tokensIn: 1000, tokensOut: 60, tokensCached: 0, tokensThinking: 0, latencyMs: 300, costUsd: 0.0005, ...over,
+  });
+
+  test('sums every model call and times every tool call; logs it without the user or their words; the route gets it server-side', async () => {
+    mockLlm
+      .mockImplementationOnce(async (o: { onUsage?: (u: unknown) => void }) => {
+        o.onUsage?.(usage());
+        return '{"thought":"read","action":{"tool":"scrape_webpage","input":{"url":"https://example.ge/"}}}';
+      })
+      .mockImplementationOnce(async (o: { onUsage?: (u: unknown) => void }) => {
+        o.onUsage?.(usage({ tokensIn: 1400, tokensCached: 1024, latencyMs: 200, costUsd: 0.0003 }));
+        return '{"final":"done"}';
+      });
+    const r = await runLiveAgent('summarise example.ge', CTX);
+    expect(r.stopReason).toBe('final');
+    expect(r.metrics).toMatchObject({
+      llmCalls: 2, tokensIn: 2400, tokensOut: 120, tokensCached: 1024, cacheHitRatio: 0.427, llmMs: 500, toolCalls: 1,
+      costUsd: 0.0008, models: ['gemini-2.5-flash'],
+    });
+    const logged = mockLog.mock.calls.filter((c) => c[1] === 'agent_run_metrics');
+    expect(logged).toHaveLength(1);
+    expect(logged[0]![0]).toBe('info');
+    expect(logged[0]![2]).toMatchObject({ stopReason: 'final', steps: 2, tools: ['scrape_webpage'], llmCalls: 2, tokensCached: 1024 });
+    const line = JSON.stringify(logged[0]![2]);
+    expect(line).not.toContain(CTX.userId);
+    expect(line).not.toContain('summarise');
+  });
+
+  test('a run whose model never answers still reports (zero calls), and a failing log does not fail the run', async () => {
+    mockLlm.mockResolvedValueOnce(null);
+    mockLog.mockImplementationOnce(() => { throw new Error('stdout closed'); });
+    const r = await runLiveAgent('hello', CTX);
+    expect(r.stopReason).toBe('llm_error');
+    expect(r.metrics).toMatchObject({ llmCalls: 0, tokensIn: 0, costUsd: 0 });
   });
 });

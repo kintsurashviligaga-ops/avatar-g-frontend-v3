@@ -112,7 +112,8 @@ export async function POST(req: NextRequest) {
   };
   // What the user told Agent G before (lib/memory/context): capped, their data, never instructions. Fail-open.
   const memory = await memoryContextOf(user.id);
-  const result = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}) });
+  // What the run used (tokens, cache hits, estimated provider cost) is logged by runLiveAgent and stays on the server.
+  const { metrics: _metrics, ...result } = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}) });
   if (result.stopReason === 'llm_error') {
     // `source` labels the report only (a voice call's failures are told apart); it changes nothing about the run.
     const source = body.source === 'live' ? { source: 'live', budgetMs } : {};
