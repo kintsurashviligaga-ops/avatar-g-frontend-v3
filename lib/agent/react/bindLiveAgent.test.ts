@@ -26,8 +26,11 @@ jest.mock('../media/audioLive', () => ({ liveAudioDeps: () => ({ liveAudio: true
 const mockEditQuote = jest.fn();
 jest.mock('../media/editExec', () => ({ quoteEdit: (...a: unknown[]) => mockEditQuote(...a) }));
 jest.mock('../media/editLive', () => ({ liveEditDeps: () => ({ liveEdit: true }) }));
+const mockAnalyze = jest.fn();
+jest.mock('../media/analyzeExec', () => ({ analyzeMedia: (...a: unknown[]) => mockAnalyze(...a) }));
+jest.mock('../media/analyzeLive', () => ({ liveAnalyzeDeps: () => ({ liveAnalyze: true }) }));
 
-import { buildLiveToolRegistry, runLiveAgent, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, type AgentContext } from './bindLiveAgent';
+import { buildLiveToolRegistry, runLiveAgent, AGENT_ANALYZE_NOTE, AGENT_AUDIO_NOTE, AGENT_EDIT_NOTE, AGENT_MEDIA_NOTE, AGENT_MONTAGE_NOTE, MAX_ANALYSES_PER_RUN, type AgentContext } from './bindLiveAgent';
 
 const CTX = { userId: '11111111-2222-4333-8444-555555555555' };
 const ENV = { ...process.env };
@@ -282,5 +285,75 @@ describe('quote_media_edit (Agent G edit of an attached video, quote only)', () 
     mockLlm.mockResolvedValueOnce('{"final":"ok"}');
     await runLiveAgent('make it 9:16', on());
     expect(mockLlm.mock.calls[0]![0].system).toContain(AGENT_EDIT_NOTE);
+  });
+});
+
+describe('analyze_media (Agent G reads one file with Gemini; it starts nothing)', () => {
+  const FILES = ['omni-uploads/u/a.mp4', 'omni-uploads/u/talk.mp3'];
+  const ANALYSIS = {
+    summary: 'A talk about the sea.', language: 'en', scenes: [], moments: [{ atSec: 12, why: 'laugh' }],
+    transcript: [{ startSec: 1, speaker: 'A', text: 'Hello' }], speakers: [{ id: 'A', description: 'a man' }], objects: ['sea'], answer: null, dropped: 0,
+  };
+  const OK = { ok: true, analysis: ANALYSIS, source: { kind: 'file', type: 'audio', durationSec: 42 }, model: 'gemini-3.8-flash', usage: { inputTokens: 1, outputTokens: 2 } };
+  const on = (over: Partial<AgentContext> = {}) => ({ ...CTX, analyze: true, files: FILES, ...over });
+  const analyzeTool = (ctx: AgentContext, goal?: string) => buildLiveToolRegistry(ctx, goal ? { goal } : undefined).find((x) => x.name === 'analyze_media');
+
+  test('offered only when file analysis is open to this user (its own flag, not media execution)', () => {
+    expect(analyzeTool(CTX)).toBeUndefined();
+    expect(analyzeTool({ ...CTX, media: true, files: FILES })).toBeUndefined();
+    expect(analyzeTool(on())).toBeDefined();
+    expect(analyzeTool({ ...CTX, analyze: true })).toBeDefined(); // a YouTube link needs no attached file
+  });
+
+  test('the model names the file by number; the answer is the analysis, never the file\'s path', async () => {
+    mockAnalyze.mockResolvedValueOnce(OK);
+    const out = await analyzeTool(on(), 'რას ამბობს ამ ჩანაწერში?')!.run({ file: 2, focus: 'transcript' });
+    expect(mockAnalyze).toHaveBeenCalledWith({ liveAnalyze: true }, { userId: CTX.userId, source: { kind: 'file', ref: FILES[1] }, focus: 'transcript', lang: 'ka' });
+    expect(out).toEqual({ ...ANALYSIS, lengthSec: 42, type: 'audio' });
+    expect(JSON.stringify(out)).not.toContain('omni-uploads');
+  });
+
+  test('a public YouTube video goes as a link; the words\' language follows the user\'s goal', async () => {
+    mockAnalyze.mockResolvedValueOnce(OK);
+    await analyzeTool(on(), 'Что происходит в этом видео?')!.run({ youtube: 'https://youtu.be/dQw4w9WgXcQ', focus: 'question', question: 'Who sings?' });
+    expect(mockAnalyze).toHaveBeenCalledWith({ liveAnalyze: true }, { userId: CTX.userId, source: { kind: 'youtube', url: 'https://youtu.be/dQw4w9WgXcQ' }, focus: 'question', question: 'Who sings?', lang: 'ru' });
+  });
+
+  test('both a file and a link, a path, a missing file or a bad focus is refused before anything is read', async () => {
+    const t = analyzeTool(on())!;
+    for (const input of [
+      { file: 1, youtube: 'https://youtu.be/dQw4w9WgXcQ' },
+      { file: 'omni-uploads/other/x.mp4' },
+      { file: 3 },
+      { file: 0 },
+      { focus: 'execute' },
+      { youtube: 'not a url' },
+      { question: 'x'.repeat(501) },
+    ]) {
+      expect(JSON.stringify(await t.run(input))).toMatch(/error/i);
+    }
+    expect(mockAnalyze).not.toHaveBeenCalled();
+    // With no files at all, „the first file" is not there either.
+    expect(JSON.stringify(await analyzeTool({ ...CTX, analyze: true })!.run({}))).toMatch(/no attached file 1/);
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
+  test('a refusal comes back as an observation with its code; the run is bounded', async () => {
+    mockAnalyze.mockResolvedValue({ ok: false, error: 'reference_refused', message: 'The model could not open the file by its link.' });
+    const t = analyzeTool(on())!;
+    expect(await t.run({ file: 1 })).toEqual({ error: 'reference_refused', message: 'The model could not open the file by its link.' });
+    for (let i = 1; i < MAX_ANALYSES_PER_RUN; i++) await t.run({ file: 1 });
+    expect(await t.run({ file: 1 })).toMatchObject({ error: 'call_limit' });
+    expect(mockAnalyze).toHaveBeenCalledTimes(MAX_ANALYSES_PER_RUN);
+    mockAnalyze.mockReset();
+  });
+
+  test('the system note is there only when the tool is', async () => {
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('what happens in this video?', on());
+    expect(mockLlm.mock.calls[0]![0].system).toContain(AGENT_ANALYZE_NOTE);
+    mockLlm.mockResolvedValueOnce('{"final":"ok"}');
+    await runLiveAgent('what happens in this video?', { ...CTX, files: FILES });
+    expect(mockLlm.mock.calls[1]![0].system).not.toContain(AGENT_ANALYZE_NOTE);
   });
 });

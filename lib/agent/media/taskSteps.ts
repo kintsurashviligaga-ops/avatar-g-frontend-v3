@@ -1,5 +1,5 @@
 /**
- * lib/agent/media/taskSteps.ts — Agent G's montage and MP3 cards as a list of steps, the way a task panel shows work:
+ * lib/agent/media/taskSteps.ts — Agent G's montage, MP3 and edit cards as a list of steps, the way a task panel shows work:
  * every step from the upload to the saved result stays on the card, ✓ when done, a spinner on the one in progress, an
  * empty circle on what is still ahead. Pure, no network, safe in the browser; components/studio/AgentTaskCard draws it.
  *
@@ -13,6 +13,7 @@ import type { AgentAudioState } from './audioChat';
 import { formatBytes } from './audioChat';
 import type { AgentMontageState } from './montageChat';
 import { priceLabel } from './montageChat';
+import { editsLine, outputLine, type AgentEditState } from './editChat';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -88,6 +89,13 @@ const T = {
   yourFile: { ka: 'შენი ფაილი', en: 'your file', ru: 'ваш файл' },
   own: { ka: 'შენი ატვირთულია', en: 'yours', ru: 'ваш файл' },
   unverified: { ka: 'შეუმოწმებელი: დაწყება ნიშნავს, რომ ფაილი შენია ან ლიცენზია გაქვს', en: 'unverified: Start means the file is yours or licensed to you', ru: 'не проверены: «Начать» означает, что файл ваш или у вас есть лицензия' },
+  // Edit steps.
+  agentEdit: { ka: 'ვიდეოს რედაქტირება', en: 'Video edit', ru: 'Правка видео' },
+  agentStill: { ka: 'კადრი ვიდეოდან', en: 'A still from the video', ru: 'Кадр из видео' },
+  readVideo: { ka: 'ვიდეოს ატვირთვა და წაკითხვა', en: 'Upload and read the video', ru: 'Загрузка и чтение видео' },
+  openResult: { ka: 'ჩემი ბოლო შედეგის გახსნა', en: 'Open my last result', ru: 'Открыть мой последний результат' },
+  editRender: { ka: 'ვიდეოს დამუშავება', en: 'Edit the video', ru: 'Обработка видео' },
+  stillRender: { ka: 'კადრის ამოღება', en: 'Take the still', ru: 'Снять кадр' },
 } as const;
 
 const say = (k: keyof typeof T, lang: Lang) => T[k][lang];
@@ -258,6 +266,64 @@ export function audioTask(s: AgentAudioState, locale: string): TaskCardModel {
 
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say('agentAudio', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+}
+
+// ── The edit ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+export const EDIT_STEPS = ['source', 'plan', 'render', 'qc', 'save'] as const;
+/** The job's stage → the step it belongs to (lib/agent/media/editWorker's stages). */
+const EDIT_STAGE_AT: Record<string, number> = { queued: 2, starting: 2, retrying: 2, render: 2, qc: 3, upload: 4, completed: 4 };
+
+export function editTask(s: AgentEditState, locale: string): TaskCardModel {
+  const lang = pick(locale);
+  const q = s.quote;
+  const still = q?.plan.output === 'jpg';
+  const ranAt = s.stage ? (EDIT_STAGE_AT[s.stage] ?? 2) : 2;
+
+  let at: number;
+  let mode: 'active' | 'waiting' | 'done' | End;
+  let status: TaskStatus;
+  let statusText: string;
+  switch (s.phase) {
+    case 'reading':
+      at = 0; mode = 'active'; status = 'working'; statusText = say('working', lang); break;
+    case 'quoted':
+      at = 1; mode = 'waiting'; status = 'waiting'; statusText = say('waiting', lang); break;
+    case 'running':
+      at = ranAt; mode = 'active'; status = 'working'; statusText = say(s.stopping ? 'stopping' : 'working', lang); break;
+    case 'done':
+      at = EDIT_STEPS.length; mode = 'done'; status = 'done'; statusText = say('done', lang); break;
+    case 'cancelled':
+      at = ranAt; mode = 'stopped'; status = 'stopped'; statusText = say('stopped', lang); break;
+    case 'dismissed':
+      at = 1; mode = 'stopped'; status = 'stopped'; statusText = say('dismissed', lang); break;
+    case 'failed':
+    default:
+      // No plan: the file would not upload or read, or the edit does not fit it.
+      at = q ? ranAt : 0; mode = 'failed'; status = 'failed'; statusText = say('failed', lang); break;
+  }
+  const states = lay(EDIT_STEPS, at, mode);
+  const free = lang === 'en' ? 'free' : lang === 'ru' ? 'бесплатно' : 'უფასო';
+  const planDetail = q ? `${editsLine(q.edits, locale)} · ${outputLine(q.plan, locale)} · ${q.credits > 0 ? `✦ ${q.credits}` : free}` : undefined;
+
+  const steps: TaskStep[] = EDIT_STEPS.map((key, i) => {
+    const state = states[i]!;
+    const label = key === 'source' ? say(s.source === 'previous' ? 'openResult' : 'readVideo', lang)
+      : key === 'render' ? say(still ? 'stillRender' : 'editRender', lang)
+        : say(key, lang);
+    const step: TaskStep = { key, label, state };
+    if (key === 'plan') {
+      if (planDetail && state !== 'pending' && state !== 'skipped') step.detail = planDetail;
+      if (state === 'waiting') step.note = say('waitStart', lang);
+      if (state === 'stopped') step.note = say('dismissed', lang);
+    }
+    if (state === 'active' && s.stopping) step.note = say('stopping', lang);
+    if (key === 'save' && state === 'done') step.detail = say('savedLib', lang);
+    return step;
+  });
+
+  const clock = clockOf(s.phase, s.t0, s.t1);
+  return finish(say(still ? 'agentStill' : 'agentEdit', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
 
 /** The clock runs while Agent G works (reading the files, the run) and stops where the run ended; none on a plan. */

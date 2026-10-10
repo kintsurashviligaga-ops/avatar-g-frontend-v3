@@ -33,7 +33,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/supabase/server';
 import { runLiveAgent, type AgentContext } from '@/lib/agent/react/bindLiveAgent';
-import { agentMediaOpenTo } from '@/lib/agent/media/access';
+import { agentAnalyzeOpenTo, agentMediaOpenTo } from '@/lib/agent/media/access';
 import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
   const ctx: AgentContext = {
     userId: user.id,
     media: agentMediaOpenTo(user),
+    analyze: agentAnalyzeOpenTo(user),
     onAudioQuote: (q) => { audioQuote = q; },
     ...(files?.length ? {
       files,

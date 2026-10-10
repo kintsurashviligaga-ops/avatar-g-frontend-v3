@@ -49,7 +49,7 @@ const L = (lang: Lang, ka: string, en: string, ru: string): string => (lang === 
 
 /** Something running or waiting, as the chat knows it. */
 export interface WorkItem {
-  what: 'montage' | 'audio' | 'image' | 'music' | 'video' | 'avatar' | 'reply' | 'other';
+  what: 'montage' | 'audio' | 'edit' | 'image' | 'music' | 'video' | 'avatar' | 'reply' | 'other';
   /** waiting = a plan card on screen, waiting for the user's Start. */
   status: 'waiting' | 'queued' | 'running';
   /** The tray's own label (already in the UI language), when there is one. */
@@ -62,6 +62,7 @@ export interface WorkItem {
 const WHAT: Record<WorkItem['what'], { ka: string; en: string; ru: string }> = {
   montage: { ka: 'მონტაჟი', en: 'the montage', ru: 'монтаж' },
   audio: { ka: 'MP3-ის ამოღება', en: 'the MP3 extraction', ru: 'извлечение MP3' },
+  edit: { ka: 'ვიდეოს რედაქტირება', en: 'the video edit', ru: 'правка видео' },
   image: { ka: 'სურათი', en: 'an image', ru: 'изображение' },
   music: { ka: 'მუსიკა', en: 'a track', ru: 'трек' },
   video: { ka: 'ვიდეო', en: 'a video', ru: 'видео' },

@@ -11,17 +11,23 @@
  *   redo             the last Agent G card stopped or failed: ask Agent G again with the same turn (↻), a fresh plan
  *   requote          the montage plan on screen takes the change („9:16", „20 seconds", „music from 5 s") and is
  *                    priced again; nothing runs before Start
+ *   remontage        the montage Agent G just DELIVERED takes the change the same way (the music from 5 s): a new plan
+ *                    from the same files and words, nothing runs before Start
+ *   edit             Agent G edits one attached video, or its own last video, itself (lib/agent/media/editExec): the
+ *                    edits read from the words (./media/editWords), planned on a card, run on Start
  */
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
+import { mineEdits, type EditAsk } from './media/editWords';
+import { editErrorText } from './media/editChat';
 import {
-  askReply, continueReply, interceptAct, mergeMontagePrompt, statusReply, stopReply, unsupportedReply, type WorkItem,
+  askReply, continueReply, interceptAct, mergeMontagePrompt, statusReply, stopReply, unsupportedReply, type ActIntent, type WorkItem,
 } from './intentReply';
 
-/** One Agent G card in the thread (montage or MP3), in thread order. */
+/** One Agent G card in the thread (montage, MP3 or edit), in thread order. */
 export interface ThreadCard {
   id: string;
-  kind: 'montage' | 'audio';
+  kind: 'montage' | 'audio' | 'edit';
   phase: string;
   /** The step in words, already in the UI language (the card's own stage line). */
   stage?: string | null;
@@ -66,6 +72,9 @@ export interface ChatSnapshot {
   /** Agent G's media routes are open to this user (AGENT_G_MEDIA_EXEC). */
   montageOn: boolean;
   audioOn: boolean;
+  editOn?: boolean;
+  /** The last result is a montage Agent G delivered in this thread: its card, and the words it was planned from. */
+  previousMontage?: { id: string; prompt?: string } | null;
 }
 
 export type ChatStep =
@@ -87,7 +96,10 @@ export type ChatStep =
   }
   | { kind: 'continue-stream'; intent: AgentIntent }
   | { kind: 'redo'; intent: AgentIntent }
-  | { kind: 'requote'; cardId: string; prompt: string; intent: AgentIntent };
+  | { kind: 'requote'; cardId: string; prompt: string; intent: AgentIntent }
+  | { kind: 'remontage'; cardId: string; prompt: string; intent: AgentIntent }
+  /** source: the one video attached to this message, or the last video Agent G made in this thread. */
+  | { kind: 'edit'; source: 'file' | 'previous'; edits: EditAsk[]; intent: AgentIntent };
 
 const LIVE_CARD: ReadonlySet<string> = new Set(['reading', 'checking', 'running']);
 const LIVE_JOB: ReadonlySet<string> = new Set(['queued', 'rendering']);
@@ -97,7 +109,7 @@ const JOB_WHAT: Record<string, WorkItem['what']> = {
 };
 
 const cardItem = (c: ThreadCard): WorkItem => ({
-  what: c.kind === 'montage' ? 'montage' : 'audio',
+  what: c.kind,
   status: c.phase === 'quoted' ? 'waiting' : 'running',
   ...(c.stage ? { stage: c.stage } : {}),
   ...(typeof c.pct === 'number' ? { pct: c.pct } : {}),
@@ -118,6 +130,33 @@ export function workOf(s: ChatSnapshot): WorkItem[] {
   const cards = s.cards.filter((c) => LIVE_CARD.has(c.phase) || c.phase === 'quoted').map(cardItem);
   const jobs = s.jobs.filter((j) => LIVE_JOB.has(j.status)).map(jobItem);
   return [...cards, ...jobs, ...(s.foreground ? [foregroundItem(s.foreground)] : [])];
+}
+
+/**
+ * An edit Agent G makes itself, when its route is open: a frame-shape change (media.edit) of the one video attached, or
+ * an edit of its own last video (media.edit, or a remix op aimed at the previous result). On an attached video every
+ * other edit stays the remix's, as before. Null: not this, the old flow answers.
+ */
+function editStep(text: string, intent: ActIntent, s: ChatSnapshot): ChatStep | null {
+  if (s.mode !== 'chat' || !s.editOn) return null;
+  const kinds = s.attachments ?? [];
+  const cap = intent.capability;
+  const onPrevious = intent.target === 'previous' && !kinds.length;
+  // Subtitles are the speech written out (the remix's job), and a music start is the montage's (remontage).
+  if (intent.params.editOp === 'captions' || intent.params.editOp === 'music_offset') return null;
+  if (!(cap === 'media.edit' || (onPrevious && cap === 'video.remix'))) return null;
+  const locale = intent.lang;
+  if (intent.missing.includes('previous') || (onPrevious && s.previous?.kind !== 'video')) {
+    return { kind: 'say', text: editErrorText('no_previous', locale), keepComposer: true, intent };
+  }
+  if (intent.missing.includes('video')) return { kind: 'say', text: askReply(intent, locale), keepComposer: true, intent };
+  const source = onPrevious ? 'previous' : intent.target === 'attachment' && kinds.length === 1 && kinds[0] === 'video' ? 'file' : null;
+  if (!source) return { kind: 'say', text: editErrorText('bad_input', locale), keepComposer: true, intent };
+  const mined = mineEdits(text);
+  if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
+  if (mined.missing.includes('caption_text')) return { kind: 'say', text: editErrorText('caption_text', locale), keepComposer: true, intent };
+  if (!mined.edits.length) return null;
+  return { kind: 'edit', source, edits: mined.edits, intent };
 }
 
 /** One message, read against the screen: the step the studio takes. */
@@ -159,6 +198,13 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
   }
 
   if (intent.kind === 'act') {
+    // „The music from 5 s" on the montage Agent G just delivered: the same files planned again with the change.
+    if (s.mode === 'chat' && s.montageOn && s.previousMontage && intent.capability === 'media.edit'
+      && intent.params.editOp === 'music_offset' && intent.target === 'previous') {
+      return { kind: 'remontage', cardId: s.previousMontage.id, prompt: mergeMontagePrompt(s.previousMontage.prompt, text), intent };
+    }
+    const edit = editStep(text, intent, s);
+    if (edit) return edit;
     const how = interceptAct(intent, { mode: s.mode, montageOn: s.montageOn, audioOn: s.audioOn });
     if (how === 'requote' && s.pendingMontageId) {
       const card = s.cards.find((c) => c.id === s.pendingMontageId);

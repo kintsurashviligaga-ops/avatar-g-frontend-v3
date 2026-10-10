@@ -32,6 +32,7 @@ import { resolveService } from '@/lib/catalog/services';
 import { beatMontageAsk } from '@/lib/agent/media/montageChat';
 import { audioExtractAsk, wantsAudioFile } from '@/lib/agent/media/audioChat';
 import { withoutLinks } from '@/lib/agent/media/audioSource';
+import { mineEdits } from '@/lib/agent/media/editWords';
 import { hasPlanParams, mineParams } from './params';
 import type {
   ActTarget, AgentIntent, AttachmentKind, CapabilityId, ControlOp, EditOp, IntentParams, Lang, MissingInput,
@@ -301,6 +302,13 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   if (!kinds.length && prev === 'video' && PREVIOUS_REF.test(text) && isVideoEditRequest(text)) {
     const op = REMIX_OPS.find((r) => r.re.test(text))?.op;
     return act('video.remix', 'previous', op ? { ...params, editOp: op } : params);
+  }
+  // „წინა ვიდეო შავ-თეთრი გახადე", "mute the last video", „make the last video 2× faster": an edit the edit's own words
+  // (media/editWords) can read, of the last video, and nothing new asked for. Before the generate lanes, which would
+  // otherwise make a new video from „make the last video …".
+  if (!kinds.length && prev === 'video' && PREVIOUS_REF.test(text) && !NEW_THING.test(text)) {
+    const mined = mineEdits(text);
+    if (mined.edits.length || mined.unsupported.length) return act('media.edit', 'previous', params);
   }
 
   // 11) The other studio services (presentation, 3D, avatar, the editor).

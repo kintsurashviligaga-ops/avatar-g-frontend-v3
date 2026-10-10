@@ -34,6 +34,7 @@ const TOOL_OF_OP: Readonly<Record<AuditEvent['op'], string>> = {
   montage: 'agent.montage',
   audio_extract: 'agent.audio-extract',
   media_edit: 'media.edit',
+  media_analyze: 'media.analyze',
   agent_run: 'agent.run',
 };
 

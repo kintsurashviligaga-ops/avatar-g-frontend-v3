@@ -159,6 +159,71 @@ describe('the other sentences', () => {
   });
 });
 
+describe('Agent G edits a video itself (its edit route open)', () => {
+  const on = (over: Partial<ChatSnapshot> = {}): ChatSnapshot => snap({ editOn: true, ...over });
+  const lastVideo = { previous: { kind: 'video' as const } };
+
+  test('„ვიდეო 9:16-ზე გადაიყვანე" with one video attached plans the edit of that file', () => {
+    expect(planChatTurn('ვიდეო 9:16-ზე გადაიყვანე.', on({ attachments: ['video'] }))).toMatchObject({
+      kind: 'edit', source: 'file', edits: [{ op: 'aspect', to: '9:16', fit: 'crop' }],
+    });
+  });
+
+  test('its own last video: the frame, the colours, a trim, the sound — planned, never made new', () => {
+    expect(planChatTurn('წინა ვიდეო 9:16-ზე გადაიყვანე.', on(lastVideo))).toMatchObject({ kind: 'edit', source: 'previous' });
+    expect(planChatTurn('წინა შედეგს ფერები შეუცვალე.', on(lastVideo))).toMatchObject({ kind: 'edit', source: 'previous', edits: [{ op: 'grade', style: 'cinematic' }] });
+    expect(planChatTurn('წინა ვიდეო შავ-თეთრი გახადე.', on(lastVideo))).toMatchObject({ kind: 'edit', edits: [{ op: 'grade', style: 'noir' }] });
+    expect(planChatTurn('Trim the previous video to the first 5 seconds.', on(lastVideo))).toMatchObject({ kind: 'edit', edits: [{ op: 'trim', toSec: 5 }] });
+    expect(planChatTurn('Make the last video black and white.', on(lastVideo))).toMatchObject({ kind: 'edit', source: 'previous' });
+    expect(planChatTurn('Mute the previous video.', on(lastVideo))).toMatchObject({ kind: 'edit', edits: [{ op: 'mute' }] });
+  });
+
+  test('what it cannot do it says, and asks for what is missing', () => {
+    const middle = planChatTurn('Delete from 5 to 10 seconds of the previous video.', on(lastVideo));
+    expect(middle).toMatchObject({ kind: 'say' });
+    if (middle.kind === 'say') expect(middle.text).toMatch(/cannot cut a stretch out of the middle/);
+    const caption = planChatTurn('Add text on the previous video.', on(lastVideo));
+    expect(caption).toMatchObject({ kind: 'say', keepComposer: true });
+    if (caption.kind === 'say') expect(caption.text).toMatch(/caption/i);
+    const none = planChatTurn('წინა ვიდეო შავ-თეთრი გახადე.', on());
+    expect(none.kind).not.toBe('edit');
+    // A picture is not a video: the edit takes videos only, the old plain answer stands.
+    const picture = planChatTurn('წინა შედეგს ფერები შეუცვალე.', on({ previous: { kind: 'image' } }));
+    if (picture.kind !== 'say') throw new Error(picture.kind);
+    expect(picture.text).toMatch(/ახალს არ შევქმნი/);
+  });
+
+  test('subtitles stay the remix\'s; edits of an attached video other than its frame stay the remix\'s', () => {
+    expect(planChatTurn('სუბტიტრები დაამატე.', on({ attachments: ['video'] })).kind).toBe('pass');
+    expect(planChatTurn('Make this video 2x faster.', on({ attachments: ['video'] })).kind).toBe('pass');
+  });
+
+  test('two videos attached: it asks which, nothing is planned', () => {
+    expect(planChatTurn('ვიდეო 9:16-ზე გადაიყვანე.', on({ attachments: ['video', 'video'] }))).toMatchObject({ kind: 'say', keepComposer: true });
+  });
+
+  test('„მუსიკა 5 წამიდან დაიწყე" on the montage Agent G just delivered plans it again from its own words and the change', () => {
+    const step = planChatTurn('მუსიკა 5 წამიდან დაიწყე.', on({ ...lastVideo, previousMontage: { id: 'm-done', prompt: 'ამ სამი ვიდეოდან კლიპი გამიკეთე' } }));
+    expect(step).toMatchObject({ kind: 'remontage', cardId: 'm-done', prompt: 'ამ სამი ვიდეოდან კლიპი გამიკეთე\nმუსიკა 5 წამიდან დაიწყე.' });
+    const closed = planChatTurn('მუსიკა 5 წამიდან დაიწყე.', on({ ...lastVideo, montageOn: false, previousMontage: { id: 'm-done' } }));
+    expect(closed.kind).toBe('say');
+  });
+
+  test('with the edit route closed the old answers stand: nothing is planned', () => {
+    const step = planChatTurn('წინა ვიდეო 9:16-ზე გადაიყვანე.', snap(lastVideo));
+    if (step.kind !== 'say') throw new Error(step.kind);
+    expect(step.text).toMatch(/ჯერ არ შემიძლია/);
+    expect(planChatTurn('Mute the previous video.', snap(lastVideo)).kind).toBe('say');
+  });
+
+  test('a running edit card is work: stop drops it, status lists it', () => {
+    const card: ThreadCard = { id: 'e-1', kind: 'edit', phase: 'running', stage: 'Editing the video', pct: 30 };
+    const stop = planChatTurn('stop', on({ cards: [card] }));
+    expect(stop).toMatchObject({ kind: 'stop', cards: ['e-1'] });
+    if (stop.kind === 'stop') expect(stop.text).toBe('⏹ Stopped: the video edit.');
+  });
+});
+
 describe('wordsAreForChat: a spend-at-once tool never runs on talk', () => {
   test.each([
     ['რა ღირს?', true], ['გამარჯობა', true], ['არ მომწონს', true], ['stop', true], ['how far along?', true],

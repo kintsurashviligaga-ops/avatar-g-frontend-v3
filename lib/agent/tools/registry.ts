@@ -7,6 +7,9 @@
  *              read     looks up public facts (a search, a web page). No user data, no state, no money.
  *              prepare  assembles something for the USER to act on (a post draft). It never publishes.
  *              quote    analyses the user's own files and prices a job. It spends nothing and starts nothing.
+ *              inspect  reads one of the user's OWN files (attached to this request) or a public video link with a
+ *                       model and says what is in it. No job, no credits, nothing stored or changed; its answer is a
+ *                       description, never an authorisation (lib/agent/media/analyzeExec).
  *            There is NO effect that lets a model start a job, spend credits or change the user's data. Those run only
  *            on the user's own Confirm, through a route that holds the session and the signed quote: the confirmed
  *            actions below. defineTool refuses any other effect, so an "execute" tool cannot be registered by mistake.
@@ -23,8 +26,8 @@
 import { z } from 'zod';
 import type { AgentTool } from '@/lib/agent/react/coordinator';
 
-export type ToolEffect = 'read' | 'prepare' | 'quote';
-const EFFECTS: readonly string[] = ['read', 'prepare', 'quote'];
+export type ToolEffect = 'read' | 'prepare' | 'quote' | 'inspect';
+const EFFECTS: readonly string[] = ['read', 'prepare', 'quote', 'inspect'];
 
 /**
  * What the user's Confirm runs, and where. The model never calls these: a quote tool returns a plan, the user sees it

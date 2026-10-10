@@ -82,6 +82,17 @@ describe('the thirteen sentences (ka)', () => {
     expect(act(run('წინა შედეგს ფერები შეუცვალე.'))).toMatchObject({ capability: 'media.edit', missing: ['previous'] });
   });
 
+  test('9b an edit the edit\'s own words read, of the last video, is an edit of it; never a new video', () => {
+    const last = { previous: { kind: 'video' as const } };
+    expect(act(run('წინა ვიდეო შავ-თეთრი გახადე.', last))).toMatchObject({ capability: 'media.edit', target: 'previous' });
+    expect(act(run('Make the last video black and white.', last))).toMatchObject({ capability: 'media.edit', target: 'previous' });
+    expect(act(run('Mute the previous video.', last))).toMatchObject({ capability: 'media.edit', target: 'previous' });
+    expect(act(run('Delete from 5 to 10 seconds of the previous video.', last))).toMatchObject({ capability: 'media.edit', target: 'previous' });
+    // Something new asked for, or no last video: not an edit of it.
+    expect(run('Make a new video like the last video, black and white.', last)).not.toMatchObject({ capability: 'media.edit' });
+    expect(run('Mute the previous video.')).not.toMatchObject({ capability: 'media.edit', target: 'previous' });
+  });
+
   test('10 „იგივე პერსონაჟით შემდეგი სცენა გააკეთე." — the next scene with the last result\'s character', () => {
     expect(act(run('იგივე პერსონაჟით შემდეგი სცენა გააკეთე.', { previous: { kind: 'video' } }))).toMatchObject({
       capability: 'video.generate', target: 'previous', params: { sameCharacter: true }, missing: [],

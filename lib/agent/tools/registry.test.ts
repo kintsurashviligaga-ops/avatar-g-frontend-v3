@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { LIVE_TOOL_SPECS } from '../react/bindLiveAgent';
 import { CONFIRMED_ACTIONS, allowlistOf, bindTools, defineTool, type ToolEffect } from './registry';
 
-test('the live allowlist, exactly: three that read or prepare, three that quote and lead to a user-confirmed run', () => {
+test('the live allowlist, exactly: three that read or prepare, one that inspects a file, three that quote and lead to a user-confirmed run', () => {
   // Changing this list is a review decision: a new tool lands here with its effect, or not at all.
   expect(allowlistOf(LIVE_TOOL_SPECS)).toEqual({
     web_search: 'read',
@@ -22,7 +22,9 @@ test('the live allowlist, exactly: three that read or prepare, three that quote 
     quote_montage_to_music: 'quote',
     quote_audio_from_link: 'quote',
     quote_media_edit: 'quote',
+    analyze_media: 'inspect',
   });
+  expect(LIVE_TOOL_SPECS.find((s) => s.name === 'analyze_media')?.confirms).toBeUndefined();
   expect(LIVE_TOOL_SPECS.filter((s) => s.effect === 'quote').map((s) => s.confirms)).toEqual(['montage_run', 'audio_extract_run', 'media_edit_run']);
   expect(CONFIRMED_ACTIONS.montage_run).toMatchObject({ route: '/api/agent/media/montage', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });
   expect(CONFIRMED_ACTIONS.audio_extract_run).toMatchObject({ route: '/api/agent/media/audio', action: 'run', access: 'AGENT_G_MEDIA_EXEC' });

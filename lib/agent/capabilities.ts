@@ -1,6 +1,6 @@
 /**
  * lib/agent/capabilities.ts — one typed record per thing Agent G can be asked to do: the 22 catalog services
- * (lib/catalog/services) and the three Agent G media operations that are not catalog cards. Pure data, safe on the client.
+ * (lib/catalog/services) and the Agent G media operations that are not catalog cards. Pure data, safe on the client.
  *
  * WHAT A RECORD SAYS, AND WHERE EACH FIELD COMES FROM (nothing here is aspirational; a test pins it to the code):
  *   routes      the API routes that run it today (each file exists: capabilities.test.ts).
@@ -225,6 +225,15 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
     idempotency: 'one job per signed quote (jobId in the token)', cancel: 'task-api',
     qc: 'the planned frame and codecs, sound exactly when planned, length within 0.5 s or 3 % of the plan', artifact: 'video', library: 'filed',
     label: 'BUILT_NOT_PROVEN', liveTool: { name: 'quote_media_edit', confirms: 'media_edit_run' }, flag: 'AGENT_G_MEDIA_EXEC',
+  }),
+  'media.analyze': c({
+    id: 'media.analyze', serviceId: null,
+    does: 'Read one of the user\'s files (video, sound, PDF, picture) or a public YouTube video and say what is in it: scenes, moments, what is said, an answer to a question. It cuts nothing: ffmpeg still decides every cut',
+    routes: ['/api/agent/media/analyze'], engine: 'Gemini, the file by reference, through the one transport (lib/agent/media/analyzeExec)',
+    pricing: { key: 'chat', charge: 'free' }, approval: 'none', timeoutSec: 300, retry: 'none',
+    idempotency: 'read-only: a second ask reads again and writes nothing', cancel: 'client-abort',
+    qc: 'every time inside the file\'s probed length, lists bounded (analyzeSpec parseAnalysis)', artifact: 'text',
+    library: 'chat-history', label: 'BUILT_NOT_PROVEN', flag: 'AGENT_G_FILE_ANALYSIS',
   }),
 };
 

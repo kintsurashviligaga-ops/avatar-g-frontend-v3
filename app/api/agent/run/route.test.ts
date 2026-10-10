@@ -14,7 +14,11 @@ jest.mock('../../../../lib/orchestrator/rate-limit', () => ({
     new Response(JSON.stringify({ error: 'rate_limited', retryAfter: r.retryAfterSec ?? 60 }), { status: 429 }),
 }));
 const mockOpen = jest.fn(() => false);
-jest.mock('../../../../lib/agent/media/access', () => ({ agentMediaOpenTo: (...a: unknown[]) => (mockOpen as (...x: unknown[]) => boolean)(...a) }));
+const mockAnalyzeOpen = jest.fn(() => false);
+jest.mock('../../../../lib/agent/media/access', () => ({
+  agentMediaOpenTo: (...a: unknown[]) => (mockOpen as (...x: unknown[]) => boolean)(...a),
+  agentAnalyzeOpenTo: (...a: unknown[]) => (mockAnalyzeOpen as (...x: unknown[]) => boolean)(...a),
+}));
 const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
 
@@ -29,7 +33,7 @@ const call = (body: unknown) => POST(new NextRequest('https://myavatar.ge/api/ag
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
 }));
 /** The agent's context for a request with no files, media execution closed (the default here). */
-const BASE_CTX = { userId: 'u-1', media: false, onAudioQuote: expect.any(Function) };
+const BASE_CTX = { userId: 'u-1', media: false, analyze: false, onAudioQuote: expect.any(Function) };
 /** The opts runLiveAgent got on its last call. */
 const runOpts = () => mockRun.mock.calls[mockRun.mock.calls.length - 1]![2] as { maxSteps?: number; deadlineMs: number };
 
@@ -123,9 +127,16 @@ describe('files and the media quote', () => {
 
   it('no files: no montage files or montage quote, but whether media execution is open (the audio plan needs no file)', async () => {
     await call({ goal: 'research' });
-    expect(ctxOf()).toEqual({ userId: 'u-1', media: false, onAudioQuote: expect.any(Function) });
+    expect(ctxOf()).toEqual({ userId: 'u-1', media: false, analyze: false, onAudioQuote: expect.any(Function) });
     expect(ctxOf().onMediaQuote).toBeUndefined();
     expect(mockOpen).toHaveBeenCalledWith({ id: 'u-1' });
+  });
+
+  it('whether file analysis is open to this user goes to the agent too (its own flag, AGENT_G_FILE_ANALYSIS)', async () => {
+    mockAnalyzeOpen.mockReturnValueOnce(true);
+    await call({ goal: 'what is in this video?', files: ['u-1/a.mp4'] });
+    expect(ctxOf()).toMatchObject({ userId: 'u-1', files: ['u-1/a.mp4'], media: false, analyze: true });
+    expect(mockAnalyzeOpen).toHaveBeenCalledWith({ id: 'u-1' });
   });
 
   it('the audio plan the tool signed comes back as audioQuote; nothing is fetched or run here', async () => {

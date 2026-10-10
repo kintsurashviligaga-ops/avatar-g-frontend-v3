@@ -1,12 +1,18 @@
 import type { AudioQuote } from './audioExtract';
 import type { MontageQuote } from './montageExec';
-import { audioTask, cardOwnsJob, clockText, countText, montageTask, type StepState } from './taskSteps';
+import type { EditQuote } from './editExec';
+import { audioTask, cardOwnsJob, clockText, countText, editTask, montageTask, type StepState } from './taskSteps';
 
 const NAMES = ['clip-1.mp4', 'clip-2.mp4', 'clip-3.mp4', 'track.mp3'];
 const MQ: MontageQuote = { jobId: 'job-m', credits: 0, totalSec: 10.57, shots: 6, clips: 3, aspect: '16:9', beatSynced: true, bpm: 119.2, musicStartSec: 0, unusedFiles: [], expiresAt: 1 };
 const AQ: AudioQuote = {
   jobId: 'job-a', credits: 0, source: 'link', host: 'upload.wikimedia.org', name: 'flower.mp3', bytes: 4_509_000, contentType: 'video/mp4',
   rights: { status: 'licensed', license: 'CC BY-SA 4.0', author: 'MDN' }, bitrateKbps: 192, maxSec: 3600, expiresAt: 1,
+};
+const EQ: EditQuote = {
+  jobId: 'job-e', credits: 0, name: 'trip-edit.mp4', expiresAt: 1,
+  edits: [{ op: 'trim', fromSec: 5, toSec: 12 }, { op: 'aspect', to: '9:16', fit: 'crop' }],
+  plan: { sourceSec: 30, output: 'mp4', durationSec: 7, hasAudio: true, width: 1080, height: 1920, copyVideo: false },
 };
 const states = (m: { steps: Array<{ state: StepState }> }) => m.steps.map((s) => s.state).join(' ');
 
@@ -92,6 +98,38 @@ describe('the MP3 card: source, rights, plan, extraction, check, save', () => {
     expect(states(audioTask({ phase: 'done', quote: AQ, stage: 'completed' }, 'en'))).toBe('done done done done done done');
     expect(states(audioTask({ phase: 'cancelled', quote: AQ, stage: 'extract' }, 'en'))).toBe('done done done stopped skipped skipped');
     expect(states(audioTask({ phase: 'failed', source: 'link', error: 'platform' }, 'en'))).toBe('failed skipped skipped skipped skipped skipped');
+  });
+});
+
+describe('the edit card: the video, the plan, the edit, the check, the save', () => {
+  test('the plan says exactly what it keeps and makes, before Start', () => {
+    expect(states(editTask({ phase: 'reading', source: 'file', t0: 9 }, 'en'))).toBe('active pending pending pending pending');
+    expect(editTask({ phase: 'reading', source: 'previous' }, 'en').steps[0]!.label).toBe('Open my last result');
+    const m = editTask({ phase: 'quoted', source: 'file', quote: EQ }, 'en');
+    expect(m.title).toBe('Video edit');
+    expect(states(m)).toBe('done waiting pending pending pending');
+    expect(m.steps[1]!.detail).toBe('keeps 0:05–0:12 · frame 9:16, cropped to fill · MP4 · 0:07 · 1080×1920 · free');
+    expect(m.steps[1]!.note).toBe('Waiting for Start');
+    const ka = editTask({ phase: 'quoted', source: 'file', quote: EQ }, 'ka');
+    expect(ka.steps[1]!.detail).toBe('ვტოვებ 0:05–0:12 · კადრი 9:16, კიდეების ჩამოჭრით · MP4 · 0:07 · 1080×1920 · უფასო');
+  });
+
+  test('a still is named as one', () => {
+    const still: EditQuote = { ...EQ, edits: [{ op: 'thumbnail', atSec: 3 }], plan: { ...EQ.plan, output: 'jpg', durationSec: 0, hasAudio: false } };
+    const m = editTask({ phase: 'running', source: 'previous', quote: still, stage: 'render' }, 'en');
+    expect(m.title).toBe('A still from the video');
+    expect(m.steps[2]!.label).toBe('Take the still');
+    expect(m.steps[1]!.detail).toBe('a still from 0:03 · JPEG · 1080×1920 · free');
+  });
+
+  test('the run, the end and the refusals', () => {
+    expect(states(editTask({ phase: 'running', quote: EQ, stage: 'qc', pct: 80 }, 'en'))).toBe('done done done active pending');
+    expect(editTask({ phase: 'running', quote: EQ, stage: 'render', pct: 10 }, 'en').pct).toBe(10);
+    expect(states(editTask({ phase: 'done', quote: EQ, stage: 'completed' }, 'en'))).toBe('done done done done done');
+    expect(editTask({ phase: 'done', quote: EQ }, 'en').steps[4]!.detail).toBe('Also saved to your Library');
+    expect(states(editTask({ phase: 'cancelled', quote: EQ, stage: 'render' }, 'en'))).toBe('done done stopped skipped skipped');
+    expect(states(editTask({ phase: 'dismissed', quote: EQ }, 'en'))).toBe('done stopped skipped skipped skipped');
+    expect(states(editTask({ phase: 'failed', source: 'file', error: 'out_of_range' }, 'en'))).toBe('failed skipped skipped skipped skipped');
   });
 });
 

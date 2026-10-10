@@ -16,7 +16,7 @@ import { Sparkle, Square, X } from 'lucide-react';
 import { priceLabel, type AgentMontageState } from '@/lib/agent/media/montageChat';
 import { montageTask } from '@/lib/agent/media/taskSteps';
 import { AgentTaskCard } from './AgentTaskCard';
-import { primaryBtn, quietBtn } from './agentCardButtons';
+import { primaryBtn, quietBtn, useStopArmed } from './agentCardButtons';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { start: string; cancel: string; stop: string }> = {
@@ -36,6 +36,7 @@ export function AgentMontageCard({
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
+  const stopArmed = useStopArmed(state.phase === 'running' ? state.t0 : undefined);
   const q = state.quote;
   const model = montageTask(state, locale);
 
@@ -56,7 +57,7 @@ export function AgentMontageCard({
     );
   } else if (state.phase === 'running' && !state.stopping) {
     buttons = (
-      <button type="button" onClick={onCancel} data-testid="agent-montage-stop" className={quietBtn}>
+      <button type="button" onClick={onCancel} disabled={!stopArmed} data-testid="agent-montage-stop" className={quietBtn}>
         <Square size={12} aria-hidden="true" /> {t.stop}
       </button>
     );

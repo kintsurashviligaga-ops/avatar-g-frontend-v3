@@ -24,3 +24,21 @@ export function agentMediaOpenTo(user: User | null, env: NodeJS.ProcessEnv = pro
   const access = agentMediaAccess(env);
   return access === 'all' || (access === 'admin' && isAdminUser(user));
 }
+
+/**
+ * Who may have Agent G read a whole file with Gemini (AGENT_G_FILE_ANALYSIS; lib/agent/media/analyzeExec). Each analysis
+ * is a paid model call, so unlike AGENT_G_MEDIA_EXEC it is OFF everywhere until set, a Preview included: `admin` opens
+ * it to admins, `1` / `true` / `on` to every signed-in user. The owner's word on the spend comes first (PART 3, G1).
+ */
+export function agentAnalyzeAccess(env: NodeJS.ProcessEnv = process.env): AgentMediaAccess {
+  const raw = (env.AGENT_G_FILE_ANALYSIS ?? '').trim().toLowerCase();
+  if (raw === 'admin') return 'admin';
+  if (raw === '1' || raw === 'true' || raw === 'on') return 'all';
+  return 'off';
+}
+
+export function agentAnalyzeOpenTo(user: User | null, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!user) return false;
+  const access = agentAnalyzeAccess(env);
+  return access === 'all' || (access === 'admin' && isAdminUser(user));
+}

@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 2)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 3)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -104,7 +104,7 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           PART 1 DONE (part-1-report.md): lib/agent/contracts.ts (one vocabulary; approval only from a person; one
           RunStatus with transitions); lib/agent/intent.ts (KA/EN/RU reader over the existing detectors: control / talk
           / question / feedback / act / unavailable / chat; the owner's 13 sentences + EN/RU in 73 tests);
-          lib/agent/capabilities.ts (25 records: 22 services + montage, MP3, media edit; none PROVEN); the chat's own
+          lib/agent/capabilities.ts (26 records since PART 3: 22 services + montage, MP3, media edit, media analyze; none PROVEN); the chat's own
           turn (lib/agent/chatTurn.ts + OmniStudio): stop / where are you / continue, a plan change re-quotes the same
           files, missing files are asked for and kept, Product / Swap / Remix Run sends talk to the chat; the focus gate
           answers „არ მომწონს" in words; montage reads music start and length. Function declarations generated from
@@ -123,7 +123,18 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           labelled as data; /memory lists both stores, deletes one or all, switches automatic memory off (on by default:
           owner's card tap "ჩართული" 2026-10-10 08:20:04Z). Jest 11,708
           passed / 0 failed, tsc 0, eslint 0. Runs BUILT_NOT_PROVEN (no live run yet); T3 studio stop still 409.
-          Next: PART 3 (media execution coverage).
+          PART 3 DONE (part-3-report.md; 60d1cfdd + the report's commit): one free, queued FFmpeg edit of the user's
+          video (trim, speed, frame shape, colour look, fades, volume/mute, a caption, a still) with quote → Start →
+          QC → Library, also a run step and a quote-only agent tool (media.edit); the chat's edit card
+          (AgentEditCard) for an attached video or Agent G's own last result by its link; „music from 5 s" on a
+          delivered montage re-plans it; Stop is disarmed 0.7 s after Start in all three cards (a double tap stopped
+          the job). „Analyze my file" (G1, media.analyze): Gemini reads the user's own file or a public YouTube video
+          by reference (fileData.fileUri, no bytes, no fallback; a refused link is reference_refused), typed answer
+          checked against the ffprobe length; route /api/agent/media/analyze + agent tool analyze_media (effect
+          inspect), behind AGENT_G_FILE_ANALYSIS, OFF everywhere incl. Preview; live run BLOCKED_OWNER (spend +
+          switch). Jest 11,914 passed / 0 failed, tsc 0, eslint 0 errors; Playwright Agent G cards 24 / 24. Edit and
+          analysis BUILT_NOT_PROVEN; split / join / mix as edits and „next scene, same character" MISSING.
+          Next: PART 4 (Live Voice parity).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

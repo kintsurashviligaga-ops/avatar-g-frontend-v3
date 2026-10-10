@@ -56,9 +56,10 @@ export const MONTAGE_KIND = 'agent-montage';
 
 export interface AuditEvent {
   userId: string;
-  /** montage: ./montageExec; audio_extract: ./audioExtract; media_edit: ./editExec; agent_run: a multi-step run (lib/agent/run). */
-  op: 'montage' | 'audio_extract' | 'media_edit' | 'agent_run';
-  phase: 'quote' | 'run' | 'cancel' | 'refund' | 'approve' | 'resume' | 'step';
+  /** montage: ./montageExec; audio_extract: ./audioExtract; media_edit: ./editExec; media_analyze: ./analyzeExec;
+   *  agent_run: a multi-step run (lib/agent/run). */
+  op: 'montage' | 'audio_extract' | 'media_edit' | 'media_analyze' | 'agent_run';
+  phase: 'quote' | 'run' | 'cancel' | 'refund' | 'approve' | 'resume' | 'step' | 'analyze';
   outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled' | 'retried' | 'lost';
   jobId?: string;
   /** The multi-step run this belongs to: the run itself, or the run a step's job was started by. */

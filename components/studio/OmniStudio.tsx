@@ -150,6 +150,10 @@ import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
+import { AgentEditCard } from '@/components/studio/AgentEditCard';
+import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
+import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, runAgentEdit } from '@/lib/agent/media/editClient';
+import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind } from '@/lib/agent/media/redoChat';
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
@@ -1030,7 +1034,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1996,6 +2000,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [agentMontageOn, setAgentMontageOn] = useState(false);
   // Agent G's "take the MP3 out of this" (lib/agent/media/audioExtract): open to this user only when its route says so.
   const [agentAudioOn, setAgentAudioOn] = useState(false);
+  // Agent G's own edit of a video (lib/agent/media/editExec): open to this user only when its route says so.
+  const [agentEditOn, setAgentEditOn] = useState(false);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -3172,6 +3178,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (guest) { setAgentAudioOn(false); return; }
     let live = true;
     void audioEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentAudioOn(on); });
+    return () => { live = false; };
+  }, [guest]);
+  useEffect(() => {
+    if (guest) { setAgentEditOn(false); return; }
+    let live = true;
+    void editEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentEditOn(on); });
     return () => { live = false; };
   }, [guest]);
   // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
@@ -5664,6 +5676,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     await quoteAgentAudioInto(bubble.id!, ask, file);
   }, [newAgentAudioBubble, persistChatTurn, quoteAgentAudioInto]);
 
+  // AGENT G — ITS OWN EDIT of one video (lib/agent/media/editExec): the one video attached, or the last video it made in
+  // this thread (its link; the server checks it is this user's). The edits are read from the words (lib/agent/chatTurn),
+  // planned on a card (free), and run on Start by a worker (ffmpeg); the result lands under the card and in the Library.
+  // A change to Agent G's last result used to be answered „I cannot yet: download it and attach it again".
+  const editRunsRef = useRef(new Set<string>());
+  const newAgentEditBubble = useCallback((source: 'file' | 'previous'): Msg => ({
+    role: 'assistant', id: `age-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: editReadingText(source, locale),
+    editJob: { phase: 'reading', source, t0: Date.now() },
+  }), [locale]);
+  const quoteAgentEditInto = useCallback(async (id: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
+    const f = (u: string, init?: RequestInit) => fetch(u, init);
+    const r = from.file
+      ? await quoteEditFile({ fetch: f, upload: (d, m) => uploadBigFile(d, m) }, { dataUrl: from.file.dataUrl, mimeType: from.file.mimeType, ...(from.file.name ? { name: from.file.name } : {}) }, edits)
+      : from.url
+        ? await quoteEditResult(f, from.url, edits)
+        : ({ ok: false, code: 'no_previous' } as const);
+    patchMsgById(id, (m) => (r.ok
+      ? { ...m, text: editQuoteText(r.quote, locale, source), editJob: { phase: 'quoted', source, quote: r.quote, request: r.request, token: r.token, t0: m.editJob?.t0 } }
+      : { ...m, text: `⚠️ ${editErrorText(r.code, locale, 'detail' in r ? r.detail : undefined)}`, noRetry: true, editJob: { phase: 'failed', source, error: r.code, t0: m.editJob?.t0, t1: Date.now() } }));
+  }, [locale, patchMsgById]);
+  const startAgentEdit = useCallback(async (text: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
+    const bubble = newAgentEditBubble(source);
+    // The file went to the edit; the MODEL never gets it inline (`modelMedias: []`), as with the montage and the MP3.
+    setMessages((prev) => [...prev, { role: 'user', text, ...(from.file ? { medias: [from.file], modelMedias: [] } : {}) }, bubble]);
+    persistChatTurn('user', text);
+    await quoteAgentEditInto(bubble.id!, source, edits, from);
+  }, [newAgentEditBubble, persistChatTurn, quoteAgentEditInto]);
+
   // ↻ under the last reply. Under an Agent G card that has finished (lib/agent/media/redoChat) it asks Agent G again with the
   // same turn, in place of the old bubble: a fresh plan card, nothing runs before Start. It used to re-stream a chat answer
   // there, and the chat model, handed the clips and the words, answered with advice instead of the card.
@@ -7764,6 +7804,45 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       patchMsgById(id, (m) => (m.audioJob?.stopping ? { ...m, audioJob: { ...m.audioJob, stopping: false } } : m));
     }
   }, [locale, patchMsgById]);
+  // Agent G's edit card: Start queues the signed plan once, the job's stage and percent are its progress, the result lands
+  // under the card (a video, or a still as a picture). Cancel drops a plan; Stop cancels the job (its worker kills ffmpeg).
+  const confirmAgentEdit = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.editJob;
+    if (!card || card.phase !== 'quoted' || !card.quote || !card.token || editRunsRef.current.has(id)) return;
+    editRunsRef.current.add(id);
+    patchMsgById(id, (m) => ({ ...m, text: editStageText(null, locale), editJob: { ...m.editJob!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
+    const r = await runAgentEdit({
+      fetch: (u, init) => fetch(u, init),
+      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+      now: () => Date.now(),
+      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.editJob?.phase === 'running'
+        ? { ...m, editJob: { ...m.editJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
+        : m)),
+    }, { request: card.request, token: card.token, jobId: card.quote.jobId });
+    if (r.ok) {
+      const media = r.output === 'jpg'
+        ? { imageUrl: r.url }
+        : { videoUrl: r.url, orientation: r.height > r.width ? 'vertical' as const : r.height === r.width && r.width > 0 ? 'square' as const : 'landscape' as const };
+      patchMsgById(id, (m) => ({ ...m, text: editDoneText(r, locale), ...media, editName: r.name, editJob: { ...m.editJob!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
+      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
+    } else {
+      const stopped = r.code === 'cancelled';
+      patchMsgById(id, (m) => ({ ...m, text: stopped ? editErrorText('cancelled', locale) : `⚠️ ${editErrorText(r.code, locale)}`, noRetry: true, editJob: { ...m.editJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: Date.now() } }));
+    }
+  }, [locale, patchMsgById]);
+  const stopAgentEdit = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.editJob;
+    if (!card) return;
+    if (card.phase === 'quoted') {
+      patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n${editErrorText('cancelled', locale)}`, editJob: { ...m.editJob!, phase: 'dismissed' } }));
+      return;
+    }
+    if (card.phase !== 'running' || card.stopping || !card.quote) return;
+    patchMsgById(id, (m) => ({ ...m, editJob: { ...m.editJob!, stopping: true } }));
+    if (!(await cancelAgentEdit((u, init) => fetch(u, init), card.quote.jobId))) {
+      patchMsgById(id, (m) => (m.editJob?.stopping ? { ...m, editJob: { ...m.editJob, stopping: false } } : m));
+    }
+  }, [locale, patchMsgById]);
   // The upload offer after a refused link: the file picker opens with the request already in the composer.
   const offerAudioUpload = useCallback(() => {
     setInput(uploadPrefill(locale));
@@ -7777,7 +7856,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // of 2026-10-09: „the card popped up and disappeared"). The tray gets the job back when the follow lost it (it may still
   // run server-side) or a new thread replaced the chat. Derived from the cards on screen: a claim never outlives its card.
   const agentCardJobs = useMemo(() => messages
-    .flatMap((m) => [m.montage, m.audioJob])
+    .flatMap((m) => [m.montage, m.audioJob, m.editJob])
     .flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; })
     .sort().join(','), [messages]);
   useEffect(() => {
@@ -7808,6 +7887,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const own = cardOwnsJob(c); if (own) owned.add(own);
         const stage = c.phase === 'running' ? audioStageText(c.stage ?? null, locale) : c.phase === 'checking' ? checkingText(c.source ?? 'file', locale) : null;
         cards.push({ id: m.id, kind: 'audio', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping });
+      } else if (m.editJob) {
+        const c = m.editJob;
+        const own = cardOwnsJob(c); if (own) owned.add(own);
+        const stage = c.phase === 'running' ? editStageText(c.stage ?? null, locale) : c.phase === 'reading' ? editReadingText(c.source ?? 'file', locale) : null;
+        cards.push({ id: m.id, kind: 'edit', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping });
       }
     }
     const q = useJobQueue.getState();
@@ -7838,6 +7922,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       previous: prevResult ? { kind: prevResult.videoUrl ? 'video' : prevResult.imageUrl ? 'image' : 'audio' } : null,
       montageOn: agentMontageOn,
       audioOn: agentAudioOn,
+      editOn: agentEditOn,
+      previousMontage: prevResult?.id && prevResult.montage?.phase === 'done' ? { id: prevResult.id, prompt: prevResult.montage.prompt } : null,
     };
     const step = planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
@@ -7865,6 +7951,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const m = msgs.find((x) => x.id === id);
           if (m?.montage) void stopAgentMontage(id);
           else if (m?.audioJob) void stopAgentAudio(id);
+          else if (m?.editJob) void stopAgentEdit(id);
         }
         for (const id of step.jobs) cancelQueueJob(id);
         for (const id of step.durable) void useJobQueue.getState().cancelDurable(id);
@@ -7904,6 +7991,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
         persistChatTurn('user', text);
         void quoteAgentMontageInto(bubble.id!, step.prompt, files);
+        return true;
+      }
+      case 'remontage': {
+        // The montage Agent G delivered, planned again with the change („the music from 5 s"): the same files and its own
+        // words plus the change. The delivered video stays; the new plan has its own Start.
+        const idx = msgs.findIndex((m) => m.id === step.cardId);
+        const turn = idx > 0 ? msgs[idx - 1] : undefined;
+        const files = turn?.role === 'user' ? turn.medias ?? [] : [];
+        clearComposer();
+        if (!files.length || step.intent.kind !== 'act') {
+          // A reloaded thread keeps no bytes: the clips and the track have to come again.
+          say(step.intent.kind === 'act' ? askReply({ ...step.intent, missing: ['clips', 'track'] }, step.intent.lang) : '');
+          return true;
+        }
+        const bubble = newAgentMontageBubble(step.prompt, files);
+        setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
+        persistChatTurn('user', text);
+        void quoteAgentMontageInto(bubble.id!, step.prompt, files);
+        return true;
+      }
+      case 'edit': {
+        // Agent G edits the one video attached, or its own last video: a plan card (free), nothing runs before Start.
+        const file = step.source === 'file' ? attachments.find((a) => attachmentKind(a.mimeType) === 'video') : undefined;
+        const url = step.source === 'previous' ? prevResult?.videoUrl : undefined;
+        if (!file && !url) return false;
+        clearComposer();
+        if (!isDesktop) setOptionsOpen(false);
+        void startAgentEdit(text, step.source, step.edits, file ? { file } : { url });
         return true;
       }
       default:
@@ -7947,7 +8062,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ))}
                   </div>
                 )}
-                {m.imageUrl && (
+                {m.imageUrl && !m.editJob && (
                   <div className="space-y-1.5">
                     {/* THE IMAGE IN ITS OWN SHAPE. It was `w-full object-contain` — a 4:5 portrait sat in a wide dark
                         frame with bars down both sides, and two "send to video" buttons (a 🎬 badge AND a 🎬 pill)
@@ -8076,7 +8191,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   </div>
                 )}
-                {m.videoUrl && !m.montage && (
+                {m.videoUrl && !m.montage && !m.editJob && (
                   <div className="space-y-1.5">
                     {/* The chat's own player (components/studio/ChatVideoPlayer): a frame as its face, one play button, a bar
                         on hover. Orientation-aware: a 9:16 clip gets a portrait box (no landscape pillarbox on mobile); 16:9
@@ -8425,6 +8540,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.montage && m.id && (
                   <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} />
                 )}
+                {m.role === 'assistant' && m.editJob && m.id && (
+                  <AgentEditCard state={m.editJob} locale={locale} onStart={() => void confirmAgentEdit(m.id!)} onCancel={() => void stopAgentEdit(m.id!)} />
+                )}
                 {m.role === 'assistant' && m.audioJob && m.id && (
                   <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} />
                 )}
@@ -8449,6 +8567,37 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       </button>
                       {/* No „save to Library": the montage job is already a Library item (the card's last step says so). */}
                       {editButton(m.videoUrl, 'video')}
+                    </div>
+                  </div>
+                )}
+                {m.role === 'assistant' && m.editJob && (m.videoUrl || m.imageUrl) && (
+                  <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-edit-result">
+                    {m.videoUrl ? (
+                      <ChatVideoPlayer
+                        src={m.videoUrl}
+                        locale={locale}
+                        {...(m.editName ? { label: m.editName } : {})}
+                        onMeta={() => { if (nearBottomRef.current) scrollToBottom(); }}
+                        className={`${m.orientation === 'vertical' ? 'aspect-[9/16] w-[min(70vw,300px)]' : m.orientation === 'square' ? 'aspect-square w-[min(75vw,360px)]' : 'aspect-video w-full'} max-h-[72dvh]`}
+                      />
+                    ) : (
+                      <button type="button" onClick={() => setLightbox(m.imageUrl!)} className="block w-fit max-w-full cursor-zoom-in" aria-label={locale === 'en' ? 'Open' : locale === 'ru' ? 'Открыть' : 'გახსნა'}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={m.imageUrl} alt={m.editName ?? ''} loading="lazy" decoding="async" onLoad={() => { if (nearBottomRef.current) scrollToBottom(); }}
+                          className="block h-auto max-h-[min(70vh,520px)] w-auto max-w-full rounded-2xl ring-1 ring-app-border/10" />
+                      </button>
+                    )}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button type="button" onClick={() => void dl((m.videoUrl ?? m.imageUrl)!, m.editName ?? (m.videoUrl ? `myavatar-edit-${Date.now()}.mp4` : `myavatar-still-${Date.now()}.jpg`))} data-testid="edit-download" title={t.imgDownload} aria-label={t.imgDownload}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                        <Download size={16} />
+                      </button>
+                      <button type="button" onClick={() => void share((m.videoUrl ?? m.imageUrl)!, m.editName ?? 'myavatar-edit')} title={t.share} aria-label={t.share}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                        <Share2 size={16} />
+                      </button>
+                      {/* No „save to Library": the edit job is already a Library item (the card's last step says so). */}
+                      {editButton((m.videoUrl ?? m.imageUrl)!, m.videoUrl ? 'video' : 'image')}
                     </div>
                   </div>
                 )}
@@ -8617,7 +8766,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

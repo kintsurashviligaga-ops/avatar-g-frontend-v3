@@ -33,6 +33,11 @@ import 'server-only';
  * goes back through `onAudioQuote` (the route's `audioQuote`) and the extraction runs only on the user's Start
  * (/api/agent/media/audio `run`: the lease queue, its worker, QC, the user's private storage). It is free.
  *
+ * `analyze_media` (effect `inspect`) reads one attached file, or a public YouTube video, whole, with Gemini by reference
+ * (lib/agent/media/analyzeExec) and returns what is in it: scenes, moments, the words spoken, the things on screen. It
+ * changes nothing and charges the user nothing; it is offered only when AGENT_G_FILE_ANALYSIS opens it to this user
+ * (each call is a paid model call). Its times are a reading: cuts are still planned and checked by FFmpeg.
+ *
  * `quote_media_edit` is the same contract for one of the attached videos: the model names the edits (typed, bounded),
  * never a file path; the edits are resolved against the file (lib/agent/media/editExec.quoteEdit: the exact range kept,
  * the frame, the length) and the signed plan goes back through `onEditQuote` (the route's `editQuote`). ffmpeg runs only
@@ -70,6 +75,8 @@ export interface AgentContext {
   onAudioQuote?: (quote: Extract<AudioQuoteResult, { ok: true }>) => void;
   /** Receives every signed edit plan; the route hands the last one to the client's Start card. */
   onEditQuote?: (quote: Extract<EditQuoteResult, { ok: true }>) => void;
+  /** Agent G's whole-file analysis is open to this user (AGENT_G_FILE_ANALYSIS, decided from the session by the route). */
+  analyze?: boolean;
 }
 
 /** Appended to the system prompt when the agent has no media tool: it cannot render, so it must not promise a render. */
@@ -102,6 +109,14 @@ export const AGENT_EDIT_NOTE =
   'quote_media_edit with the edits and the file number. It reads the file and returns the plan; it edits nothing. The ' +
   'edit starts only when the user presses Start on the plan in the MyAvatar chat, and it is free; never say it is done.';
 
+/** Added when the analysis tool is on: what it is for, and that its times are a reading, not a cut. */
+export const AGENT_ANALYZE_NOTE =
+  'To know what is in a video, a sound file, a PDF or a picture the user attached (what happens, the scenes, the best ' +
+  'moments, what is said and by whom), or in a public YouTube video they linked, call analyze_media. It reads the whole ' +
+  'file and returns a description with times in seconds; it changes nothing and costs the user nothing. Its times are ' +
+  'a reading: any cut is planned by quote_media_edit or the montage, which check them against the file. A YouTube link ' +
+  'is analysed only: never offer to download it or take its sound.';
+
 /** Each quote downloads and decodes every attached file: two per request (say, a second format) is plenty. */
 export const MAX_QUOTES_PER_RUN = 2;
 /** The tool is offered only for a request with files, and only when media execution is open to this user. */
@@ -114,6 +129,10 @@ export const MAX_AUDIO_QUOTES_PER_RUN = 2;
 export const editToolOn = (ctx: AgentContext): boolean => ctx.media === true && (ctx.files?.length ?? 0) > 0;
 /** An edit quote probes one file: three per request (a second try with other numbers) is plenty. */
 export const MAX_EDIT_QUOTES_PER_RUN = 3;
+/** The analysis tool reads an attached file or a YouTube link, when its flag is open to this user. */
+export const analyzeToolOn = (ctx: AgentContext): boolean => ctx.analyze === true;
+/** Each analysis is a paid model call over a whole file: two per request. */
+export const MAX_ANALYSES_PER_RUN = 2;
 
 /** Collapse the ReAct transcript into a single llmText call. */
 async function llmAdapter(
@@ -312,7 +331,53 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       };
     },
   }),
+  // analyze_media: describe one attached file (or a public YouTube video) with Gemini, by reference. The model names the
+  // file by its number, never a path; the answer is a description and starts nothing.
+  defineTool({
+    name: 'analyze_media',
+    effect: 'inspect',
+    description:
+      "READ ONLY — what is in one file the user attached, or in a public YouTube video. Input {file?: number (1 = the first attached file), youtube?: url, focus?: 'overview'|'scenes'|'moments'|'transcript'|'question', question?}. " +
+      'Returns {summary, scenes[{startSec,endSec,description}], moments[{atSec,why}], transcript[{startSec,speaker,text}], speakers, objects, answer}. Changes nothing; free for the user.',
+    input: z.object({
+      file: num(z.number().int().min(1).max(13)).optional(),
+      youtube: z.string().trim().url().max(300).optional(),
+      focus: z.enum(['overview', 'scenes', 'moments', 'transcript', 'question']).optional(),
+      question: z.string().trim().min(1).max(500).optional(),
+    }),
+    offered: (ctx) => analyzeToolOn(ctx),
+    limit: MAX_ANALYSES_PER_RUN,
+    run: async ({ file, youtube, focus, question }, ctx) => {
+      if (youtube && file) return { error: 'bad_input', message: 'Name one file or one YouTube link, not both.' };
+      let source: { kind: 'file'; ref: string } | { kind: 'youtube'; url: string };
+      if (youtube) source = { kind: 'youtube', url: youtube };
+      else {
+        const ref = ctx.files?.[(file ?? 1) - 1];
+        if (!ref) return { error: 'bad_input', message: `There is no attached file ${file ?? 1}.` };
+        source = { kind: 'file', ref };
+      }
+      // Loaded on use: ffprobe and the model transport stay off the path of every request that does not analyse.
+      const [{ analyzeMedia }, { liveAnalyzeDeps }] = await Promise.all([
+        import('@/lib/agent/media/analyzeExec'),
+        import('@/lib/agent/media/analyzeLive'),
+      ]);
+      const r = await analyzeMedia(liveAnalyzeDeps(), {
+        userId: ctx.userId, source, ...(focus ? { focus } : {}), ...(question ? { question } : {}), lang: langOfGoal(ctx.goal),
+      });
+      if (!r.ok) return { error: r.error, message: r.message };
+      return { ...r.analysis, lengthSec: r.source.durationSec, type: r.source.type };
+    },
+  }),
 ];
+
+/** The user's language for the analysis' words, from the script of their goal (ka · ru · en). */
+function langOfGoal(goal: string): 'ka' | 'en' | 'ru' {
+  const ka = (goal.match(/[ა-ჿ]/g) ?? []).length;
+  const ru = (goal.match(/[Ѐ-ӿ]/g) ?? []).length;
+  const en = (goal.match(/[A-Za-z]/g) ?? []).length;
+  if (ka >= ru && ka >= en && ka > 0) return 'ka';
+  return ru > en ? 'ru' : 'en';
+}
 
 /** Build the real tool registry for one authenticated request. */
 export function buildLiveToolRegistry(ctx: AgentContext, opts?: { goal?: string }): AgentTool[] {
@@ -327,7 +392,8 @@ export async function runLiveAgent(
 ): Promise<ReActResult> {
   const mediaNote = montageToolOn(ctx) ? AGENT_MONTAGE_NOTE : AGENT_MEDIA_NOTE;
   const systemExtra = [
-    mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '', opts?.systemExtra?.trim(),
+    mediaNote, audioToolOn(ctx) ? AGENT_AUDIO_NOTE : '', editToolOn(ctx) ? AGENT_EDIT_NOTE : '',
+    analyzeToolOn(ctx) ? AGENT_ANALYZE_NOTE : '', opts?.systemExtra?.trim(),
   ].filter(Boolean).join('\n\n');
   return runReActLoop({
     llm: llmAdapter,

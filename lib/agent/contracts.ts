@@ -64,7 +64,9 @@ export type CapabilityId =
   /** Take the sound out of a file or a direct link as an MP3 (lib/agent/media/audioExtract). */
   | 'agent.audio-extract'
   /** An ffmpeg edit with no route yet (a new frame shape, a music offset on a finished video): PART 3. */
-  | 'media.edit';
+  | 'media.edit'
+  /** Read one of the user's files (or a public YouTube video) with Gemini and say what is in it; nothing is cut (PART 3, G1). */
+  | 'media.analyze';
 
 /** An edit of something that already exists. */
 export type EditOp =

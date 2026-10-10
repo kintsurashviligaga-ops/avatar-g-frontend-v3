@@ -20,7 +20,15 @@ describe('the live registry as declarations', () => {
       expect(d.name in CONFIRMED_ACTIONS).toBe(false);
       expect(d.description.length).toBeGreaterThan(20);
     }
-    for (const s of LIVE_TOOL_SPECS) expect(['read', 'prepare', 'quote']).toContain(s.effect);
+    for (const s of LIVE_TOOL_SPECS) expect(['read', 'inspect', 'prepare', 'quote']).toContain(s.effect);
+  });
+
+  test('analyze_media: a file by its number or a link, a focus enum, all optional; no path field', () => {
+    const p = decls.find((d) => d.name === 'analyze_media')!.parameters!;
+    expect(Object.keys(p.properties!)).toEqual(['file', 'youtube', 'focus', 'question']);
+    expect(p.properties!.file).toMatchObject({ type: 'INTEGER', minimum: 1, maximum: 13 });
+    expect(p.properties!.focus).toEqual({ type: 'STRING', enum: ['overview', 'scenes', 'moments', 'transcript', 'question'] });
+    expect(p.required).toBeUndefined();
   });
 
   test('web_search: one required string, bounded in words', () => {

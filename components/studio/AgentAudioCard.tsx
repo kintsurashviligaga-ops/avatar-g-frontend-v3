@@ -18,7 +18,7 @@ import { Sparkle, Square, Upload, X } from 'lucide-react';
 import { uploadOfferLabel, type AgentAudioState } from '@/lib/agent/media/audioChat';
 import { audioTask } from '@/lib/agent/media/taskSteps';
 import { AgentTaskCard } from './AgentTaskCard';
-import { primaryBtn, quietBtn } from './agentCardButtons';
+import { primaryBtn, quietBtn, useStopArmed } from './agentCardButtons';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { start: string; cancel: string; stop: string; free: string }> = {
@@ -40,6 +40,7 @@ export function AgentAudioCard({
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
+  const stopArmed = useStopArmed(state.phase === 'running' ? state.t0 : undefined);
   const q = state.quote;
   const model = audioTask(state, locale);
 
@@ -59,7 +60,7 @@ export function AgentAudioCard({
     );
   } else if (state.phase === 'running' && !state.stopping) {
     buttons = (
-      <button type="button" onClick={onCancel} data-testid="agent-audio-stop" className={quietBtn}>
+      <button type="button" onClick={onCancel} disabled={!stopArmed} data-testid="agent-audio-stop" className={quietBtn}>
         <Square size={12} aria-hidden="true" /> {t.stop}
       </button>
     );
