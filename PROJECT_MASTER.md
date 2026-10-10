@@ -73,6 +73,16 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Beta" and the Connectors · Plugins · Skills hub retired; Music video has its own sidebar row and a switch at
           the top of the Video panel; clearer tool names; VFX offers only open modes. BUILT_NOT_PROVEN on PR #50;
           service-by-service table and owner items in docs/handoffs/2026-10-09-service-audit.md.
+          Service audit finalization (owner, 21:29Z; BUILT_NOT_PROVEN on PR #50): all 22 catalog services traced UI →
+          Agent G → API → provider → credits → result → Library (service-audit §6, gaps with status); Video keeps
+          storyboard, director V1–V6, scenes and Music video (a55f1d18); no outside engine falls back to another any
+          more (avatar, image, remix, Georgian song: one engine per job, a miss refunds or moves only to Google);
+          MEDIA_GOOGLE_ONLY switch built, default OFF (lib/providers/mediaPolicy.ts: on = image on Google's image model,
+          tools with no Google engine refused before any charge; turning it on is the owner's action 9); one name per
+          tool, one Library row per file, VFX results in the chat (f23c3353); PR #51's last change ported (96312b40).
+          A charged chat remix now waits for Agent G's price card. Open: the interior 3D plan not filed. Owner: lip-sync charge on films
+          and music videos, uncharged dubbing / presentation / upscale, Motion transfer keep or retire, the Preview
+          run (docs/handoffs/2026-10-09-preview-run-sheet.md).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
@@ -976,6 +986,8 @@ and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
        policy on the table and /api/analytics/track refuses the `audit.` prefix.
 ◐ AG-8 PARTIAL. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
        there), real clips + a track, then the job id, ffprobe of the master and a screenshot recorded.
+       What is left (recovery and retry with a lost worker, the Task API owner check): the run sheet
+       docs/handoffs/2026-10-09-preview-run-sheet.md, steps C, E, F.
        Preview admin run 2026-10-09 (owner): job 2bb56123 quoted 16:48:25Z (4 files, 10.566 s plan), queued,
        started, stopped by the owner at 58 % 16:49:02Z (status failed „cancelled by the user", 0 credits);
        job cf55ed33 quoted 16:56:42Z, queued 16:57:00Z, started 16:57:01Z, delivered 16:58:24Z: master 10.57 s
@@ -1063,6 +1075,8 @@ F-AU. URL-TO-AUDIO / MEDIA EXTRACTION (owner, 2026-10-09 12:34Z, Master Task; ha
 ◐ AU-7 BUILT_NOT_PROVEN. Reuses the montage shape, generation_jobs queue, sweep, quote token, audit stream; the job
        follower moved to lib/agent/media/jobFollow.ts for both. Registry: audio_extract_run. No new provider.
 □ AU-8 MISSING. Preview run with an admin session (same as AG-8): job id, the MP3 and a screenshot.
+       Exact steps (A–G: MP3, blocked platform, Task API owner check, Stop, lost-worker recovery, retries run out,
+       refund): docs/handoffs/2026-10-09-preview-run-sheet.md.
        Local proof 2026-10-09 13:01Z: real internet fetch of MDN shared-assets flower.mp4 (published for reuse) + real
        ffmpeg + the real queue code (storage and DB local) → MP3 5.09 s, 122,941 B, 192 kb/s 44.1 kHz stereo, QC passed;
        YouTube refused before any request. Playwright tests/agent-g-audio.spec.ts 5/5 (routes mocked, real MP3); jest

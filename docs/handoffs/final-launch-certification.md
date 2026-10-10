@@ -89,6 +89,16 @@ counts (13 / 17 / 18 / 22 / 24 / 25 / 26) and prices. Two extra shells (`/hub`, 
   transfer, Video editing); „Soon" rows left the sidebar search; VFX offers only its open modes. Service-by-service
   table and owner items: `docs/handoffs/2026-10-09-service-audit.md`. Tests: `tests/simplified-studio.spec.ts`,
   `tests/vfx-genjutsu.spec.ts`, `nav.test.ts`, `VideoCreatePanel.test.tsx`, `serviceSearch.wiring.test.ts`.
+- Service audit finalization (owner, 2026-10-09 21:29Z): **BUILT_NOT_PROVEN** on PR #50. All 22 catalog services traced
+  UI → Agent G → API → provider → credits → result → Library, with every gap and its status
+  (`docs/handoffs/2026-10-09-service-audit.md` §6): 9 BLOCKED_OWNER (a non-allowed engine runs by default), 9
+  BUILT_NOT_PROVEN, 2 PARTIAL (dubbing and presentation charge nothing), 2 MISSING (audio remix, terminal); none PROVEN
+  end to end. Fixed: one name per tool everywhere (TOOL_META, KA/EN/RU, pinned by `serviceCatalogue.test.ts`); the
+  Library files a file of ours once (remix / swap / product ad no longer make two rows); VFX results reach the chat;
+  catalog engine notes match the code. Video keeps storyboard, director V1–V6, scene management and Music video after
+  the Film Studio removal (a55f1d18). A video attached in chat plus an edit sentence no longer starts a paid remix on
+  its own: a charged op waits for Agent G's Create card with the price (BUILT_NOT_PROVEN, mocked browser test). Open: the
+  interior 3D plan is not filed to the Library.
 - Still open: 5 legacy registries are imported by legacy API routes (`/api/pipeline`, `/api/agents/*`) and must be deprecated
   with them.
 
@@ -218,6 +228,17 @@ them) is Gemini only; `/api/pipeline` text tools and Terminal are Gemini only; m
 bed and the product-ad music have no MusicGen leg; TTS and film voice-over have no Azure / Google leg behind ElevenLabs.
 Every removed leg, put back, fails the new tests. Admin health now reports scene planning as live only on the Gemini key.
 
+**One engine per job, and a switch for the rest (2026-10-09 evening, BUILT_NOT_PROVEN on PR #50).** No outside engine
+falls back to another outside engine any more: avatar (HeyGen or SadTalker, never one after the other, 0a01031e), chat
+images (one outside engine, a miss moves only to Google's image model, 15ae21e2), remix (a roop or image-edit miss refunds,
+97f949f2), Georgian song (no MusicGen behind ElevenLabs Music, 35a010ab); motion transfer no longer claims a reference
+video it never sends (12300b06). `MEDIA_GOOGLE_ONLY` (`lib/providers/mediaPolicy.ts`, **default OFF**): when the owner
+sets it, Image / Photographer / Interior render on Google's image model and every tool with no Google / ElevenLabs engine
+(avatar, film lip-sync, swap, motion, remix edits, 3D, music extras, photo and audio editors, upscale, raw Replicate
+routes) answers 503 `google_only` in the user's language **before any charge or provider call**; status routes stay open
+so started jobs finish. 23 entries, each pinned by `mediaPolicy.test.ts`. Turning it on is an env var plus a redeploy
+(owner action 9); unsetting it is the rollback.
+
 **Claude removed from chat (Part 2 step 1, BUILT_NOT_PROVEN).** `lib/chat/providerRouter` no longer sends "specialist"
 turns (code, maths, blueprints) to Claude before Gemini and no longer answers from Claude when Gemini fails; a Gemini
 miss is the explicit "Chat is temporarily unavailable" reply tagged `gemini`. Agent G's personality reply (web and
@@ -282,7 +303,9 @@ until `GEMINI_TRANSPORT=vertex` is set there (owner).
 
 The studio's button price equals the route's deduction for image, music, avatar, remix, model3d, video, swap, motion,
 product ad and the Genjutsu panel (R5, re-checked in step 18; BUILT_NOT_PROVEN, unit-tested pairing). Montage, dubbing and
-presentation charge nothing. **Open:** ≥10 pricing sources. PROVEN live 2026-10-09 (`/ka/pricing`): Basic $19.99 ≈ 54 ₾ / 230 credits, Pro $39.99 ≈
+presentation charge nothing; so does Upscale (a paid Replicate call). A dialogue film or a music video charges 20 avatar
+credits per lip-sync pass on top of the film price shown on the button, although the music-video ×1.4 already claims to
+cover that leg (`videoPricing.ts`): a likely double charge, left for the owner (service audit §6 gap 1). **Open:** ≥10 pricing sources. PROVEN live 2026-10-09 (`/ka/pricing`): Basic $19.99 ≈ 54 ₾ / 230 credits, Pro $39.99 ≈
 108 ₾ / 525, Business $79.99 ≈ 216 ₾ / 1,200 (`lib/billing/tiers.ts`), while the studio's top-up packs are 9 / 29 / 89 ₾ for
 90 / 290 / 890 credits (`lib/credits/pricing.ts`, 10 credits per lari): a subscriber gets ≈ 4.3–5.6 credits per lari, a pack
 buyer 10. `lib/billing/pricingConfig.ts` holds further numbers. Choosing the canonical table is an owner pricing decision (no
@@ -450,7 +473,7 @@ Only the owner can do or decide these. Rows marked done say who did them.
 | 6 | **Done before the deploy:** confirm `deduct_credits` and `SUPABASE_SERVICE_ROLE_KEY` exist in Production (otherwise every paid render is now refused, not given away). **Checked by Claude 2026-10-09 00:2xZ (read-only):** `deduct_credits(p_user_id uuid, p_amount integer, p_ref text)` and `refund_credits` exist with the arguments the code sends; the columns the branch's new queries use exist; the service-role key is inferred present (the server writes `credit_ledger`, which has no user write policy; last `commit` row 2026-10-06), not read (Vercel connector 403) | N |
 | 7 | Choose the canonical pricing table (`/pricing` 25/75/149 GEL vs studio 9/29/89 GEL) | M |
 | 8 | Decide the browser-control infrastructure (none exists) | H, BROWSER CONTROL |
-| 9 | Approve the provider migration plan (Part 2): strip Replicate, Udio, Kling/Higgsfield, HeyGen paths and their Production keys | L, PROVIDER BOUNDARY |
+| 9 | Approve the provider migration plan (Part 2): strip Replicate, Udio, Kling/Higgsfield, HeyGen paths and their Production keys. The code is ready on PR #50: set `MEDIA_GOOGLE_ONLY=1` (then redeploy) and every media tool runs on Google / ElevenLabs or refuses before charging; unset it to roll back | L, PROVIDER BOUNDARY |
 | 10 | Imagen 4 quota / availability on Vertex for this project (404 today) | L |
 | 11 | Separate Preview and Production Supabase projects, or add the Preview redirect pattern to Supabase Auth | O, E2E on Preview |
 | 12 | Set the Sentry DSN; share Vercel Speed Insights | W, X |
@@ -461,7 +484,9 @@ Only the owner can do or decide these. Rows marked done say who did them.
 | 17 | ~~Supabase Dashboard → Authentication → Attack Protection: turn on leaked-password protection~~ **Done 2026-10-09 14:55Z** (advisor: 0 errors, 1 accepted warning). ~~Confirm "Confirm email" is on~~ **PROVEN ON 2026-10-09** (O) | O, P |
 | 18 | Supabase → Authentication → URL Configuration → Add URL `https://avatar-g-frontend-v3-git-ef1fad-kintsurashviligaga-ops-projects.vercel.app/**` (additive; Site URL stays `https://myavatar.ge`), so Google sign-in works on the cert Preview | O, Preview E2E |
 | 19 | Optional: turn GitHub sign-in off (0 users; the sign-in screen shows its button while it is on) | O |
-| 20 | Agent G Preview run as admin on the cert-branch Preview (the flag defaults to admins there): one montage (clips + a track, AG-8) and one URL-to-Audio (a direct media link + "extract the MP3", AU-8); Claude records the job ids, the outputs and screenshots | D |
+| 20 | Agent G Preview run as admin on the cert-branch Preview (the flag defaults to admins there). Montage Stop and delivery are PROVEN (16:49Z, 16:58Z); left: URL-to-Audio (AU-8), the Task API owner check, an audio Stop, lost-worker recovery and retries running out. Exact steps: `docs/handoffs/2026-10-09-preview-run-sheet.md`; steps E and F need the owner's word to lapse a lease on the owner's own test row | D |
+| 22 | Price decisions from the service audit: the 20-credit lip-sync charge inside dialogue films and music videos (keep, fold into the film price, or drop); a price for dubbing, presentation and upscale; the VFX button's price key (R5) | M |
+| 23 | Motion transfer: keep it (Kling image-to-video on Replicate, refused under `MEDIA_GOOGLE_ONLY`) or retire it (Veo image-to-video in Video does the same) | C, L |
 | 21 | ~~Merge word for the auth fixes~~ AUTH-3 and AUTH-4 reached Production through PR #52 (`6c7dff4`, the owner's "ჰოტფიქსი ახლა" 15:47:19Z); AUTH-3 PROVEN live 16:02Z, AUTH-4 PROVEN live 16:09:05Z (the owner's KA sign-up). PR #51's remaining change (`/api/avatar/generate` identity + guard test) is ported onto PR #50 and main is merged into it, so PR #50 carries every auth fix; PR #51 itself stays a draft (it can be closed once PR #50 merges). Left: the merge word for PR #50 | O, P |
 
 ### §55 launch blockers still open after the 2026-10-09 deploy
@@ -472,7 +497,7 @@ Any one of these means NO LAUNCH. Owner, dependency, evidence and Definition of 
 | §55 blocker | Where it stands |
 |---|---|
 | Auth blocking normal flow | **No longer blocking (2026-10-09 16:09Z)**: email sign-up by code PROVEN live in Production 16:09:05Z (the AUTH-4 fix, PR #52 `6c7dff4`; the owner's KA sign-up). The rest is not blocking either: Supabase Auth VERIFIED and Admin Security PROVEN (PR #51 report `55e1a84`): email code log-in (14:17Z) and password reset (14:26Z) PROVEN live in Production (O; AUTH-1 deployed, AUTH-2 Resend domain VERIFIED); admin sign-in (14:12Z) and the signed-in non-admin refusal (14:50Z) PROVEN live; leaked-password protection ON 14:55Z. AUTH-3 PROVEN live in Production ~16:02Z. Open: only the optional cert-alias Redirect URL (not blocking). Google sign-up also works in Production |
-| Wrong provider / silent fallback | Silent fallbacks removed for image, text, music and voice (deployed 2026-10-09, not checked live). Forbidden providers are still the primary engine for avatar, swap / motion / product ad, 3D, interior, several music modes, and NanoBanana is a reseller (L) |
+| Wrong provider / silent fallback | Silent fallbacks removed for image, text, music and voice (deployed 2026-10-09, not checked live); on PR #50 also for avatar, chat images, remix and the Georgian song, plus the `MEDIA_GOOGLE_ONLY` switch (off; owner action 9). Forbidden providers are still the primary engine for avatar, swap / motion / product ad, 3D, interior, several music modes, and NanoBanana is a reseller (L) |
 | Browser nonfunctional | No browser control exists (H) |
 | RLS failure | Storage: **fixed in Production 2026-10-08 21:27Z** (`20261008d`; the open `USING (true)` read is now limited to the `music` bucket, PROVEN by policy read and an anon check, P). Tables: none open, the 9 tables do not exist there; `20261008a` applied (O); row isolation PROVEN on Production as anon and as two signed-in users, and no money function is callable from the browser (Q, 22:20Z) |
 | Broken V1–V6 | Director built, wired into the studio behind `VIDEO_DIRECTOR_RUNS` (`admin` on Preview, off in Production), unit-proven; its table is applied (2026-10-08). One live Veo clip is INFERENCE VERIFIED on Vertex (PR #43's smoke button, not the director); no director run has been tried live yet (J) |

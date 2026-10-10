@@ -39,6 +39,7 @@ import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
 import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
+import { CHARGED_REMIX_OPS, canonicalRemixOp } from '@/lib/video/remixCharge';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { isGoogleOnly } from '@/lib/veo/policy';
@@ -124,13 +125,10 @@ export async function POST(req: NextRequest) {
   if (rl) return rl;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  // Accept both the panel's op names AND the chat-intent (Claude) op names.
-  const OP_ALIASES: Record<string, string> = {
-    add_music: 'music', face_swap: 'character', character_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
-  };
+  // Accept both the panel's op names AND the chat-intent (Claude) op names (lib/video/remixCharge, shared with the chat).
   // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
   const rawOp = String(body.op || body.operation || '').trim();
-  const op = OP_ALIASES[rawOp] ?? rawOp;
+  const op = canonicalRemixOp(rawOp);
   const p = (body.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {};
   // Flatten common params so per-op reads can fall back to params.* transparently.
   if (body.grade === undefined && (p.style ?? p.grade) !== undefined) body.grade = p.style ?? p.grade;
@@ -157,8 +155,9 @@ export async function POST(req: NextRequest) {
   // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize/watermark) are untouched.
   // productad ALSO debits now (audit: it reached paid Kling with zero server-side charge) — see
   // the once-per-ad gate below; it keeps its opt-in ad-budget guard (checkAdBudget) on top.
-  const PAID_REMIX_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
-  const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
+  // One list with the chat, which asks before a charged op (lib/video/remixCharge).
+  const PAID_REMIX_OPS = CHARGED_REMIX_OPS;
+  const CREDIT_CHARGED_OPS = CHARGED_REMIX_OPS;
   const { user: remixUser } = await authedClientFromRequest(req);
   const remixUid = remixUser?.id ?? null;
   // Transaction context for compensation logging (the client's tray jobId when present).

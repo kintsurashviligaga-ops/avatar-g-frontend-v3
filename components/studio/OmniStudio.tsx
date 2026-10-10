@@ -20,6 +20,7 @@ import { STUDIO_EMPTY } from '@/lib/copy/studioEmpty';
 import { PROGRESS_TARGET, fmtClock, easedPct } from '@/components/studio/ui/GenerationProgress';
 import { ResultCard } from '@/components/studio/ui/ResultCard';
 import { describeRemixDelivery } from '@/lib/video/remixDelivery';
+import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remixCharge';
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
@@ -1025,7 +1026,9 @@ interface FilmSnap {
   videoTemplateId?: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+/** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
+interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -5652,6 +5655,50 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       : quoteAgentAudioInto(bubble.id!, redo.ask, redo.file));
   }, [busy, messages, agentMontageOn, agentAudioOn, regenerateChat, newAgentMontageBubble, newAgentAudioBubble, quoteAgentMontageInto, quoteAgentAudioInto]);
 
+  // ── THE CHAT-ATTACHED VIDEO REMIX, its run half (the classify-and-ask half is in send) ─────────────────────────────
+  // One bubble (`bubbleId`) carries the whole edit: the running note, then the edited video or what went wrong. A charged op
+  // reaches this only through Agent G's Create on the price it showed (confirmChatRemix); a free ffmpeg op runs at once.
+  const remixAsksRef = useRef(new Map<string, ChatRemixJob>());
+  const runChatRemix = useCallback(async (job: ChatRemixJob, bubbleId: string, signal: AbortSignal, mine: () => boolean) => {
+    const patch = (next: Msg) => { if (mine()) patchMsgById(bubbleId, () => ({ ...next, id: bubbleId })); };
+    try {
+      const videoUrl = await uploadBigFile(job.videoAtt.dataUrl, job.videoAtt.mimeType || 'video/mp4');
+      if (!videoUrl) throw new Error('upload failed');
+      const audioUrl = job.audioAtt ? await uploadBigFile(job.audioAtt.dataUrl, job.audioAtt.mimeType || 'audio/mpeg') : null;
+      if (job.audioAtt && !audioUrl) throw new Error('upload failed');
+      const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal, body: JSON.stringify({ op: job.op, videoUrl, text: job.caption ?? job.text, ...(audioUrl ? { audioUrl } : {}), ...job.params }) });
+      const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean; method?: string; aspectApplied?: boolean };
+      // A silent engine downgrade is stated instead of being passed off as a clean result — a Ken-Burns pan over one still
+      // is not the restyled video that was asked for.
+      patch(j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` });
+      if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
+    } catch {
+      patch({ role: 'assistant', text: `⚠️ ${t.remixFailed}` });
+    }
+  }, [patchMsgById, locale, t.remixFailed, notifyCredit, autoSaveToLibrary]);
+  // Create on Agent G's price: the edit runs in the same bubble, once (the card is spent before the request leaves).
+  const confirmChatRemix = useCallback(async (bubbleId: string) => {
+    const job = remixAsksRef.current.get(bubbleId);
+    if (!job || busy || genActiveRef.current) return;
+    remixAsksRef.current.delete(bubbleId);
+    const myGen = ++genIdRef.current;
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const mine = () => genIdRef.current === myGen;
+    patchMsgById(bubbleId, () => ({ role: 'assistant', id: bubbleId, text: t.remixRunning, remixOpKind: job.op }));
+    setBusy(true);
+    try { await runChatRemix(job, bubbleId, ac.signal, mine); } finally { if (mine()) setBusy(false); }
+  }, [busy, patchMsgById, runChatRemix, t.remixRunning]);
+  // Edit: nothing runs; the words and the files go back to the composer, as they were sent.
+  const editChatRemix = useCallback((bubbleId: string) => {
+    const job = remixAsksRef.current.get(bubbleId);
+    if (!job) return;
+    remixAsksRef.current.delete(bubbleId);
+    patchMsgById(bubbleId, (m) => ({ ...m, remixAsk: m.remixAsk ? { ...m.remixAsk, done: true } : undefined }));
+    setInput(job.text);
+    setAttachments(job.attachments);
+  }, [patchMsgById]);
+
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
@@ -6154,15 +6201,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // surfaces a clean retry notice and keeps the original.
     if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
       const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      const sent = attachments;
+      // One bubble carries the edit from „running" to its result (or Agent G's price question): patched by id, never „the
+      // last message", so a reply that lands meanwhile is never overwritten.
+      const bubbleId = `remix-${myGen}-${Date.now().toString(36)}`;
+      const patch = (next: Msg) => { if (mine()) patchMsgById(bubbleId, () => ({ ...next, id: bubbleId })); };
       // remixOpKind drives the Remix Studio staged-timer panel; starts generic, then
       // gets patched to the classified op once the intent call resolves (~1s).
-      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', text: t.remixRunning, remixOpKind: 'remix' }]);
+      setMessages((prev) => [...prev, { role: 'user', text, medias: attachments }, { role: 'assistant', id: bubbleId, text: t.remixRunning, remixOpKind: 'remix' }]);
       setInput(''); setAttachments([]); setBusy(true);
       try {
         const intentRes = await fetch('/api/video/remix-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ message: text }) });
         const intent = (await intentRes.json().catch(() => ({}))) as { op?: string; params?: Record<string, unknown> };
         // Patch the pending bubble so the panel shows the op-specific stages + ETA.
-        if (mine() && intent.op) setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant' && !last.videoUrl) next[next.length - 1] = { ...last, remixOpKind: intent.op }; return next; });
+        if (mine() && intent.op) patchMsgById(bubbleId, (m) => (m.videoUrl ? m : { ...m, remixOpKind: intent.op }));
         const op = intent.op || 'color_grade';
 
         // ── 🎵 MUSIC / REDUB NEED A TRACK, AND THE CHAT PATH NEVER LOOKED FOR ONE. ───────────────────
@@ -6175,13 +6227,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const audioAtt = attachments.find((a) => isAudio(a.mimeType));
         const needsTrack = op === 'add_music' || op === 'music';
         if (needsTrack && !audioAtt) {
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev]; const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: t.remixNeedTrack };
-            return next;
-          });
-          setBusy(false);
+          patch({ role: 'assistant', text: t.remixNeedTrack });
           return;
         }
 
@@ -6192,34 +6238,26 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const isCaptionOp = op === 'add_text_overlay' || op === 'add_subtitles';
         const caption = isCaptionOp ? extractOverlayText(text) : null;
         if (isCaptionOp && !caption) {
-          setMessages((prev) => {
-            if (!mine()) return prev;
-            const next = [...prev]; const last = next[next.length - 1];
-            if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: t.remixNeedCaption };
-            return next;
-          });
-          setBusy(false);
+          patch({ role: 'assistant', text: t.remixNeedCaption });
           return;
         }
 
-        const videoUrl = await uploadBigFile(videoAtt.dataUrl, videoAtt.mimeType || 'video/mp4');
-        if (!videoUrl) throw new Error('upload failed');
-        const audioUrl = audioAtt ? await uploadBigFile(audioAtt.dataUrl, audioAtt.mimeType || 'audio/mpeg') : null;
-        if (audioAtt && !audioUrl) throw new Error('upload failed');
-        const res = await fetch('/api/video/remix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal, body: JSON.stringify({ op, videoUrl, text: caption ?? text, ...(audioUrl ? { audioUrl } : {}), ...(intent.params || {}) }) });
-        const j = (await res.json().catch(() => ({}))) as { url?: string | null; error?: string; charged?: boolean; method?: string; aspectApplied?: boolean };
-        setMessages((prev) => {
-          if (!mine()) return prev;
-          const next = [...prev]; const last = next[next.length - 1];
-          // A silent engine downgrade is stated instead of being passed off as a clean result — a
-          // Ken-Burns pan over one still is not the restyled video that was asked for.
-          if (last && last.role === 'assistant') next[next.length - 1] = j.url ? { role: 'assistant', text: describeRemixDelivery(j, locale).join('\n'), videoUrl: j.url } : { role: 'assistant', text: `⚠️ ${refundNoticeOr(j, locale, describeOpFailure(j, t.remixFailed))}` };
-          return next;
-        });
-        if (mine() && j.url) { if (j.charged) notifyCredit('remix'); autoSaveToLibrary(j.url, 'film'); }
+        const job: ChatRemixJob = { op, params: intent.params || {}, text, caption, videoAtt, audioAtt: audioAtt ?? null, attachments: sent };
+        // ── A CHARGED EDIT WAITS FOR AGENT G'S CREATE. ───────────────────────────────────────────────
+        // Every other paid chat order stops at Agent G's card with its price; this one used to classify the sentence and
+        // spend 15 credits on whatever op came back. A charged op (lib/video/remixCharge — the route's own list) now shows
+        // the edit and its price first; nothing is uploaded or charged until Create. The free ffmpeg ops run at once.
+        if (isChargedRemixOp(op)) {
+          if (!mine()) return;
+          const credits = remixOpCredits();
+          remixAsksRef.current.set(bubbleId, job);
+          patch({ role: 'assistant', text: remixAskText(op, credits, locale), remixAsk: { credits } });
+          trackQuoteShown(serviceForTool('remix'), credits, 'agent-card');
+          return;
+        }
+        await runChatRemix(job, bubbleId, ac.signal, mine);
       } catch {
-        if (!mine()) return;
-        setMessages((prev) => { const next = [...prev]; const last = next[next.length - 1]; if (last && last.role === 'assistant') next[next.length - 1] = { role: 'assistant', text: `⚠️ ${t.remixFailed}` }; return next; });
+        patch({ role: 'assistant', text: `⚠️ ${t.remixFailed}` });
       } finally {
         if (mine()) setBusy(false);
       }
@@ -6538,7 +6576,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, patchMsgById, runChatRemix]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -8410,10 +8448,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.agentG && (
                   <AgentGCard card={m.agentG} locale={locale} stale={m.agentG.madeIn === 'chat' ? mode !== 'chat' : (mode === 'lipsync' ? 'avatar' : mode) !== m.agentG.target} onConfirm={() => confirmGate(i)} onEdit={() => editGate(i)} />
                 )}
+                {m.role === 'assistant' && m.remixAsk && m.id && (
+                  <AgentGCard card={{ kind: 'confirm', target: 'video', madeIn: 'chat', prompt: '', credits: m.remixAsk.credits, done: m.remixAsk.done }} locale={locale} stale={mode !== 'chat'} onConfirm={() => { void confirmChatRemix(m.id!); }} onEdit={() => editChatRemix(m.id!)} />
+                )}
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to
