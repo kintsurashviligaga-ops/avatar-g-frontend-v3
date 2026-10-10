@@ -1,5 +1,8 @@
 -- =====================================================================================================================
--- 20261002d — close the same-ref RACE in deduct_credits / refund_credits. PREPARED, NOT APPLIED (needs the owner's word).
+-- 20261002d — close the same-ref RACE in deduct_credits / refund_credits. APPLIED to Production 2026-10-10 11:05Z on the
+-- owner's word (decision card, 11:03Z). Verified after: index valid; the three bodies hash to the same md5s as this file
+-- applied over scripts/lease-isolation/schema.sql (deduct b3359006…, refund d6808dfd…, once f64d747a…); anon /
+-- authenticated cannot execute them; ledger unchanged (222 rows, balance sum 1,003,393, 0 negative); Advisor unchanged.
 --
 -- No price or behaviour change for any single request. Prerequisites re-verified READ-ONLY on Production 2026-10-10:
 -- 0 (user, ref) groups with more than one debit (and 0 with more than one credit); all 125 debits carry a ref and are

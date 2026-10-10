@@ -56,6 +56,8 @@ const RPCS = [
   ['refund_credits', { p_user_id: ZERO, p_amount: 0, p_ref: 'exposure-probe' }],
   ['credit_wallet_gel', { p_user_id: ZERO, p_amount: 0, p_ref: 'exposure-probe' }],
   ['deduct_credits', { p_user_id: ZERO, p_amount: 0, p_ref: 'exposure-probe' }],
+  // 20261002d. No profile row for ZERO, so even an executable probe raises before its first write.
+  ['deduct_credits_once', { p_user_id: ZERO, p_amount: 0, p_ref: 'exposure-probe' }],
   ['consume_free_film', { p_user_id: ZERO }],
   ['consume_free_avatar_chat', { p_user_id: ZERO }],
   ['restore_free_film', { p_user_id: ZERO }],
