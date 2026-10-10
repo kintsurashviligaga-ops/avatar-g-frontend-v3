@@ -215,9 +215,13 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           ticket our app signed (fixes the red api-lockdown check). WhatsApp text answers narrowed to MyAvatar.ge, no web
           search. All BUILT_NOT_PROVEN until a funded call. Costs re-verified in
           docs/handoffs/omnichannel/COMMUNICATION_UNIT_ECONOMICS.md: proposed 12 credits a minute in the SSoT (not sold,
-          margin ≥ 62 % from ~405 min a month on the 8k/4k cap). Meta letter (both scenarios, five questions)
-          META_SUPPORT_REQUEST.md: NOT SENT, needs the owner's Meta account; compliance awaiting reply. Meta account
-          facts not readable from the cloud session (no Meta access, Vercel env 403): MISSING. Verdict
+          margin ≥ 62 % from ~405 min a month on the 8k/4k cap). Meta §4.7 request (both scenarios, five questions)
+          META_SUPPORT_REQUEST.md: SENT — TRANSFERRED TO EMAIL SUPPORT — AWAITING WRITTEN POLICY RESPONSE (sent by
+          the owner 2026-10-10 from the MyAvatar.ge business portfolio, case #28590089197308927). Two automated "Meta AI
+          Agent" replies said A and B are permitted with conditions; by the owner's rule (18:44Z) they are not official
+          consent. Compliance, creative scope (WHATSAPP_AGENT_SCOPE=creative) and Calling in Production:
+          BLOCKED_EXTERNAL; creative execution and Calling stay off in Production. Meta account facts not readable
+          from the cloud session (no Meta access, Vercel env 403): MISSING. Verdict
           WHATSAPP_CALLING_READINESS.md: Production NO-GO. C: seven old call routes stored or answered calls nobody placed
           (mock / Twilio / Telegram skeletons, Vapi demo rows, a Vapi assistant on an Anthropic model); one gate
           (lib/calls/availability.ts phoneCallsReady, false) now answers 503 phone_calls_unavailable with no row and no

@@ -1,23 +1,43 @@
 # Meta Support request: §4.7 (AI Providers), messaging and Calling
 
-**Status: NOT SENT. Ready for GG to submit.** Last updated 2026-10-10.
+**Status: SENT — TRANSFERRED TO EMAIL SUPPORT — AWAITING WRITTEN POLICY RESPONSE.** Last updated 2026-10-10 18:55Z.
 
-- This session cannot send it. Meta Direct Support needs a signed-in Meta business account, and this cloud session has no Meta session. It must not sign in to GG's account.
-- Nothing in the repository, a log or a report claims the request was sent.
-- Until Meta answers in writing, WhatsApp AI and Calling compliance stays **awaiting reply**, never PROVEN.
+Until Meta's support team answers in writing, WhatsApp AI and Calling compliance stays **BLOCKED_EXTERNAL**, never
+PROVEN. WhatsApp AI creative execution (scenario B) and Calling stay off in Production (owner, 2026-10-10 18:44Z).
 
-## GG's one action
+## Where the request stands
 
-1. Sign in to https://business.facebook.com/direct-support/ with the account that owns the WhatsApp Business Account.
-   - If you have more than one business portfolio, pick the one that owns the WhatsApp number.
-2. Click **Ask a question**.
-3. Pick the closest WhatsApp Business Platform topic.
-   - No official page names a "Policy" or "AI Providers" topic (meta-verification §B).
-   - A WhatsApp Business Platform / API topic is the closest fit.
-4. Copy the subject and body below exactly, then click **Confirm**.
-5. Reply in the Master Task thread with the case or question number and the date. A phone photo of the confirmation screen is enough.
+| Item | Value | Source |
+|---|---|---|
+| Sent | 2026-10-10, by GG, from the MyAvatar.ge business portfolio through Meta Business Support | GG, Master Task 18:44:57Z |
+| Case | #28590089197308927, "Policy clarification for Generative AI business (MyAvatar.ge) under WA…" | the subject of Meta's case emails, 18:43Z |
+| Meta's confirmation | "Your case has been switched to email support. The support team will follow up with you over email." | GG, 18:44:57Z |
+| Wording sent | Not on file here. Its subject differs from the draft below. Meta's restatement shows both scenarios (A customer service, B creative execution) and five questions. | Meta's case email, 18:43:52Z |
+| Official written answer | **none yet** | |
 
-If the page has no **Ask a question** button, send a photo of what it shows instead. Meta says "Not all people will have access to Direct Support". Claude will then name the next official channel.
+**Automated preliminary replies (not counted).** Before the case moved to email, two replies arrived on it (18:43:38Z
+and 18:43:52Z). The first is signed "Meta AI Agent"; the second stops mid-sentence at question 5.
+- They say scenario A is permitted, and scenario B is permitted with conditions:
+  - only authenticated, linked customers;
+  - Agent G limited to MyAvatar.ge;
+  - a price and the customer's confirmation before paid work;
+  - no training on WhatsApp Business Solution Data;
+  - human support available;
+  - opt-in before message templates;
+  - clear disclosure of the business name and intent.
+- They do not address §4.7's test: AI is prohibited where it is "the primary (rather than incidental or ancillary)
+  functionality … as determined by Meta in its sole discretion".
+- The owner's rule (18:44Z): an AI assistant's preliminary answer is **not** official consent. Nothing in the code,
+  the docs or a status changes because of it.
+
+## What waits on Meta's answer (BLOCKED_EXTERNAL)
+
+- WhatsApp creative scope (`WHATSAPP_AGENT_SCOPE=creative`, scenario B): stays off.
+- Compliance for Agent G answers on WhatsApp text (scenario A) in Production.
+- Compliance for WhatsApp Calling, before any Production step in `WHATSAPP_CALLING_READINESS.md` §5.
+
+Work that does **not** wait on Meta continues: code, mocked and local tests, free Preview checks, docs. The owner
+steps (the migration, the price, the bridge VM, a funded call, merge and deploy) stay BLOCKED_OWNER as before.
 
 ## What was re-checked before writing
 
@@ -47,11 +67,13 @@ The letter therefore describes the product as it will run, with both scenarios i
 
 ---
 
-## Subject
+## The draft (as prepared before sending)
+
+### Subject
 
 Policy question: Meta Terms §4.7 (AI Providers) for a Georgia-based generative-AI business using Cloud API messaging and WhatsApp Business Calling
 
-## Body
+### Body
 
 Hello,
 
@@ -95,10 +117,8 @@ support@myavatar.ge
 
 ## After Meta answers
 
-Record the following here, without personal data:
-- the case or question number;
-- the date sent;
-- the date and full text of Meta's reply.
+Record here, without personal data: the date and full text of the support team's written reply on case
+#28590089197308927.
 
 What each answer means for the code:
 

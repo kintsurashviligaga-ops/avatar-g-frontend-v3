@@ -72,7 +72,7 @@ Every switch is off in Production. Turning any of them on there is GG's separate
 | `phoneCallsReady()` | `lib/calls/availability.ts` | `false` (code) | `false` | Every old phone-call start answers `phone_calls_unavailable` (503) and stores no row. It turns true only with a real provider and a recorded real call. |
 | `WHATSAPP_CALLING_ENABLED` | `lib/calls/whatsapp/gates.ts` | unset (off) | unset (off) | The bridge route answers 404; no call is answered or placed. |
 | `APPROVED_CALL_CREDITS_PER_MINUTE` | `lib/calls/whatsapp/liveDeps.ts` | `null` | `null` | No call starts without an approved price. |
-| `WHATSAPP_AGENT_SCOPE` | `lib/calls/whatsapp/phoneTools.ts` | unset (support scope) | unset | `creative` lets a call plan orders; held until Meta answers on §4.7. |
+| `WHATSAPP_AGENT_SCOPE` | `lib/calls/whatsapp/phoneTools.ts` | unset (support scope) | unset | `creative` lets a call plan orders; BLOCKED_EXTERNAL until Meta answers on §4.7 in writing. |
 | `DELIVERY_OUTBOX` | `lib/notifications/outboxLive.ts` | not in Production code; unset means off | unset means on | The outbox and its cron. Off: jobs notify exactly as before. |
 | `TELEGRAM_BINDING_LIVE` | `lib/agent-g/channels/telegram.ts` | `false` | `false` | Telegram shows "Temporarily unavailable". |
 | `WHATSAPP_ALERT_TEMPLATE` | `lib/notifications/channels/whatsapp.ts` | unset | unset | Notices outside the 24 h window are skipped. |
@@ -84,7 +84,8 @@ number can link there, whatever the switches say.
 ## 5. Status per channel
 
 Labels: PROVEN (real evidence on the named environment), BUILT_NOT_PROVEN (code and tests, no real run), PARTIAL,
-MISSING, DISABLED (built and switched off on purpose), BLOCKED_OWNER.
+MISSING, DISABLED (built and switched off on purpose), BLOCKED_OWNER, BLOCKED_EXTERNAL (waits on a third party's
+answer: Meta's written policy reply on case #28590089197308927, sent 2026-10-10).
 
 | Channel | Production today | On the branch | Label | What it waits on |
 |---|---|---|---|---|
@@ -93,7 +94,7 @@ MISSING, DISABLED (built and switched off on purpose), BLOCKED_OWNER.
 | Browser push | code on main; no subscriptions table in Production | the outbox sends it | BUILT_NOT_PROVEN | migration 20261003c and a Preview run |
 | WhatsApp text | webhook configured; no number can link | answers, studio link, MyAvatar.ge scope | BUILT_NOT_PROVEN | migration 20261003c (GG) |
 | WhatsApp notices | none | outbox, 24 h window, template | BUILT_NOT_PROVEN | the migration, an approved template (GG) |
-| WhatsApp calls | off | built, mocked; bridge media proven locally | DISABLED, BUILT_NOT_PROVEN | Meta's written answer, the VM, the price, a funded call (GG) |
+| WhatsApp calls | off | built, mocked; bridge media proven locally | DISABLED, BUILT_NOT_PROVEN | Meta's written answer (BLOCKED_EXTERNAL); the VM, the price, a funded call (GG) |
 | Telegram | unavailable | code kept | DISABLED | owner: later (15:38Z) |
 | SMS | none | code kept; the delivery engine records SMS as failed, not sent | DISABLED | owner: later; a Georgian aggregator |
 | Phone number calls (B) | unavailable, no fake calls | `phoneCallsReady() = false` | DISABLED | owner: later |

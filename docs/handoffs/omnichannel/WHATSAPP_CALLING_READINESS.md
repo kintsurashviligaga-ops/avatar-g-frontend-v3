@@ -1,6 +1,6 @@
 # WhatsApp Calling (option A): readiness
 
-Last updated: 2026-10-10. Branch `claude/launch-certification-wmvitt` (draft PR #50).
+Last updated: 2026-10-10 18:55Z. Branch `claude/launch-certification-wmvitt` (draft PR #50).
 
 **The path:** Meta WhatsApp Business Calling → our media bridge → the existing Gemini Live → Agent G.
 
@@ -47,7 +47,7 @@ Notes on three rows:
 |---|---|---|
 | Charging a finished call | MISSING by design | The hook exists (`callService` charges an ended call once, at the price it opened with). The charger is wired only after GG approves the price. |
 | "Call me when it's ready" (Agent G calls back) | PARTIAL | Built: the outbound gates, Meta's call-permission read and the place-call request, and the delivery outbox that tells a finished task's owner (Omnichannel G, `lib/notifications/outbox.ts`). Missing: a `call` sender on that outbox; today a person who chose a call gets `skipped: not_configured` there. |
-| Creative scope on WhatsApp (scenario B) | DISABLED | `WHATSAPP_AGENT_SCOPE=creative` exists. It stays off until Meta answers in writing. |
+| Creative scope on WhatsApp (scenario B) | DISABLED, BLOCKED_EXTERNAL | `WHATSAPP_AGENT_SCOPE=creative` exists. It stays off until Meta's support team answers case #28590089197308927 in writing. |
 | WhatsApp voice notes and incoming files to Agent G | MISSING | Text only today. A voice note gets "for now I read text here". |
 | Interop with Meta's real SDP and media servers | BUILT_NOT_PROVEN | Needs a real call. |
 | Real Gemini Live on the phone setup, Georgian speech, barge-in and latency on a real network | BUILT_NOT_PROVEN | Needs a funded call. |
@@ -98,15 +98,21 @@ The admin endpoint below reads the facts with documented Graph GETs only. It nev
 ## 4. Policy
 
 - **Meta Terms §4.7 "AI Providers"** was re-read live on 2026-10-10. The wording is unchanged and Georgia is not in the carve-out.
-- **The written request to Meta** is ready in [`META_SUPPORT_REQUEST.md`](META_SUPPORT_REQUEST.md). It describes scenarios A and B in full and asks the five questions.
-- **Status: NOT SENT.** Sending needs GG's signed-in Meta account.
-- Compliance stays **awaiting reply** until Meta answers in writing.
+- **The written request to Meta:** [`META_SUPPORT_REQUEST.md`](META_SUPPORT_REQUEST.md), scenarios A and B in full, five questions.
+- **Status: SENT — TRANSFERRED TO EMAIL SUPPORT — AWAITING WRITTEN POLICY RESPONSE.**
+  - Sent by GG on 2026-10-10 from the MyAvatar.ge business portfolio; case #28590089197308927.
+  - Meta: "Your case has been switched to email support. The support team will follow up with you over email."
+- Two automated replies signed "Meta AI Agent" arrived first and said A and B are permitted with conditions. By the
+  owner's rule (18:44Z) they are **not** official consent and change nothing here.
+- Compliance stays **BLOCKED_EXTERNAL** until the support team answers in writing. Calling and creative execution stay
+  off in Production.
 
 ## 5. Before Production
 
 Each step needs GG's separate word unless marked "code".
 
-1. **Meta's written answer** on §4.7, for A and for B. Scope follows the answer (`META_SUPPORT_REQUEST.md` "After Meta answers").
+1. **Meta's written answer** on §4.7, for A and for B (case #28590089197308927). **BLOCKED_EXTERNAL**: the request is
+   sent and waits on Meta's email support. Scope follows the answer (`META_SUPPORT_REQUEST.md` "After Meta answers").
 2. **Meta facts all green** in the admin check:
    - messaging limit ≥ 2,000;
    - payment method on the Messaging account;
