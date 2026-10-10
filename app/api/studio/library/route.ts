@@ -25,6 +25,7 @@ import {
   verifyFileableUrl,
 } from '@/lib/orchestrator/storage-adapter';
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
+import { normalizeRoomGeometry, normalizeStyleGuide, type RoomGeometry, type StyleGuide } from '@/lib/orchestrator/interior';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,6 +41,16 @@ export interface LibraryItem {
   /** '16:9' default; 'vertical' (9:16) films get a portrait card. */
   orientation: 'landscape' | 'vertical';
   createdAt: string;
+  /** An interior 3D plan (the Interior designer's „3D plan"): `url` is the render it was made for, this is the plan. */
+  plan?: { geometry: RoomGeometry; style: StyleGuide };
+}
+
+/** The plan an interior row holds, normalised like the studio's own reader (the viewer builds meshes from these numbers). */
+function pickPlan(row: GenerationJobRow): LibraryItem['plan'] | undefined {
+  if (row.service_type !== 'interior') return undefined;
+  const r = row.result as Record<string, unknown> | null;
+  if (!r || !r.geometry || typeof r.geometry !== 'object') return undefined;
+  return { geometry: normalizeRoomGeometry(r.geometry), style: normalizeStyleGuide(r.style ?? {}) };
 }
 
 /**
@@ -72,7 +83,11 @@ export async function GET(req: NextRequest) {
   // offset enables infinite-scroll pagination from the client — capped only
   // implicitly by what's in the user's library; out-of-range returns [].
   const offset = Math.max(0, Number(req.nextUrl.searchParams.get('offset') ?? 0) || 0);
-  const kind = req.nextUrl.searchParams.get('kind'); // optional service_type filter
+  // Optional service_type filter: one kind, or a comma list of them (the Library's Video tab is film + avatar). Unknown
+  // kinds are dropped; a filter with none left matches nothing rather than everything.
+  const kindParam = req.nextUrl.searchParams.get('kind');
+  const kinds = kindParam === null ? null : kindParam.split(',').map((k) => k.trim()).filter((k): k is ProduceKind => (VALID_KINDS as string[]).includes(k));
+  if (kinds && kinds.length === 0) return NextResponse.json({ items: [] });
 
   try {
     let query = client
@@ -83,7 +98,7 @@ export async function GET(req: NextRequest) {
       .neq('service_type', 'voice') // trained voice models aren't playable Library media
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
-    if (kind) query = query.eq('service_type', kind);
+    if (kinds) query = kinds.length === 1 ? query.eq('service_type', kinds[0]) : query.in('service_type', kinds);
 
     const { data, error } = await query;
     if (error || !Array.isArray(data)) return NextResponse.json({ items: [] });
@@ -98,6 +113,7 @@ export async function GET(req: NextRequest) {
       if (!url) continue; // a completed row with no media is not a Library item
       const params = (row.params ?? {}) as Record<string, unknown>;
       if (mayResign(row)) resignable.add(rows.length);
+      const plan = pickPlan(row);
       rows.push({
         id: row.id,
         kind: row.service_type,
@@ -105,6 +121,7 @@ export async function GET(req: NextRequest) {
         prompt: typeof params.prompt === 'string' && params.prompt ? params.prompt : null,
         orientation: params.orientation === 'vertical' ? 'vertical' : 'landscape',
         createdAt: row.created_at,
+        ...(plan ? { plan } : {}),
       });
     }
 
