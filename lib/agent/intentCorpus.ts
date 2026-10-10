@@ -58,6 +58,21 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'на каком ты этапе?', expect: { kind: 'control', op: 'status' }, source: 'coverage' },
   { text: 'продолжи с предыдущего шага', expect: { kind: 'control', op: 'continue' }, source: 'coverage' },
   { text: 'добавь субтитры', attachments: ['video'], expect: { kind: 'act', capability: 'video.remix' }, source: 'coverage' },
+  // The rest of the 13 in English and Russian (PART 7: every sentence in all three languages).
+  { text: 'convert the video to 9:16', attachments: ['video'], expect: { kind: 'act', capability: 'media.edit' }, source: 'coverage' },
+  { text: 'переведи видео в 9:16', attachments: ['video'], expect: { kind: 'act', capability: 'media.edit' }, source: 'coverage' },
+  { text: 'make a 20-second ad', expect: { kind: 'act', capability: 'video.product-ad', missing: ['photo'] }, source: 'coverage' },
+  { text: 'make a 20-second ad', attachments: ['image'], expect: { kind: 'act', capability: 'video.product-ad' }, source: 'coverage' },
+  { text: 'сделай 20-секундную рекламу', attachments: ['image'], expect: { kind: 'act', capability: 'video.product-ad' }, source: 'coverage' },
+  { text: 'animate this photo', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'оживи это фото', attachments: ['image'], expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'add subtitles', attachments: ['video'], expect: { kind: 'act', capability: 'video.remix' }, source: 'coverage' },
+  { text: 'озвучь это видео на английском', attachments: ['video'], expect: { kind: 'act', capability: 'voice.dubbing' }, source: 'coverage' },
+  { text: 'change the colours of the previous result', previous: { kind: 'video' }, expect: { kind: 'act', capability: 'video.remix' }, source: 'coverage' },
+  { text: 'измени цвета предыдущего результата', previous: { kind: 'video' }, expect: { kind: 'act', capability: 'video.remix' }, source: 'coverage' },
+  { text: 'make the next scene with the same character', previous: { kind: 'video' }, expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'сделай следующую сцену с тем же персонажем', previous: { kind: 'video' }, expect: { kind: 'act', capability: 'video.generate' }, source: 'coverage' },
+  { text: 'начни музыку с 5 секунды', pending: { capability: 'agent.montage' }, expect: { kind: 'act', capability: 'agent.montage' }, source: 'coverage' },
 
   // ── Words that must never spend (production reports) ──────────────────────────────────────────────────────────
   { text: 'აქ ხარ?', mode: 'image', expect: { kind: 'talk' }, source: 'report' },
@@ -69,6 +84,9 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'არ მომწონს', mode: 'image', expect: { kind: 'feedback' }, source: 'coverage' },
   { text: "I don't like it", expect: { kind: 'feedback' }, source: 'coverage' },
   { text: 'не нравится', expect: { kind: 'feedback' }, source: 'coverage' },
+  { text: 'привет', mode: 'video', expect: { kind: 'talk' }, source: 'coverage' },
+  { text: 'hello', mode: 'image', expect: { kind: 'talk' }, source: 'coverage' },
+  { text: 'спасибо', mode: 'music', expect: { kind: 'talk' }, source: 'coverage' },
 
   // ── Requests the existing doors already take ──────────────────────────────────────────────────────────────────
   { text: 'დამიხატე კატა', expect: { kind: 'act', capability: 'image.generate' }, source: 'coverage' },
@@ -83,8 +101,12 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'ეს ფოტო გააცოცხლე.', expect: { kind: 'act', capability: 'video.generate', missing: ['photo'] }, source: 'coverage' },
   { text: 'სუბტიტრები დაამატე.', expect: { kind: 'act', capability: 'video.remix', missing: ['video'] }, source: 'coverage' },
   { text: 'make a music video from these three clips', expect: { kind: 'act', capability: 'agent.montage', missing: ['clips', 'track'] }, source: 'coverage' },
+  { text: 'extract the audio from this video as an MP3', expect: { kind: 'act', capability: 'agent.audio-extract', missing: ['source'] }, source: 'coverage' },
+  { text: 'вытащи звук из этого видео в mp3', expect: { kind: 'act', capability: 'agent.audio-extract', missing: ['source'] }, source: 'coverage' },
+  { text: 'оживи это фото', expect: { kind: 'act', capability: 'video.generate', missing: ['photo'] }, source: 'coverage' },
 
   // ── Plain conversation ────────────────────────────────────────────────────────────────────────────────────────
   { text: 'tell me a story about a dragon', expect: { kind: 'chat' }, source: 'coverage' },
   { text: 'დაწერე ლექსი შემოდგომაზე', expect: { kind: 'chat' }, source: 'coverage' },
+  { text: 'напиши стихотворение про осень', expect: { kind: 'chat' }, source: 'coverage' },
 ];
