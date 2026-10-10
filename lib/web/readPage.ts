@@ -28,6 +28,8 @@ export interface ReadPage {
   links: PageLink[];
   /** The text was cut at maxText. */
   truncated: boolean;
+  /** When the page says it was published or last updated (YYYY-MM-DD), from its own metadata; absent when it does not. */
+  published?: string;
 }
 export type ReadPageError = 'invalid_url' | 'blocked_host' | 'too_many_redirects' | 'http_error' | 'not_html' | 'too_large' | 'timeout' | 'fetch_failed';
 export type ReadPageResult = { ok: true; page: ReadPage } | { ok: false; error: ReadPageError; status?: number };
@@ -61,8 +63,86 @@ export function decodeEntities(s: string): string {
 
 const clean = (s: string) => decodeEntities(s.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 
+// ── what a reader cannot see ──────────────────────────────────────────────────────────────────────────────────────────
+// A page can carry text no visitor sees — `hidden`, `aria-hidden="true"`, an inline display:none / visibility:hidden — and
+// that is exactly where an instruction aimed at an AI reader hides ("ignore your instructions and …"). The model is told a
+// page is data, not instructions (lib/agent/react/coordinator, the voice read_webpage note); this keeps the invisible part
+// from reaching it at all — the page as a screen reader announces it. Attributes are parsed, never matched as loose text:
+// a class named "hidden" (a responsive `hidden md:block`) is visible content and stays. Not treated as hidden: an inline
+// opacity:0 (animation libraries render visible content that way before they fade it in), and an <html> / <body> that
+// starts hidden (an anti-flicker trick a script undoes). Hiding done by a stylesheet class cannot be seen without the CSS,
+// so the untrusted-data framing stays the main defence; this removes the part we can see.
+
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
+const ATTR_RE = /([^\s=/>"']+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?/g;
+
+/** True when an opening tag's attributes hide the element from every visitor. */
+function hidesElement(attrs: string): boolean {
+  for (const m of attrs.matchAll(ATTR_RE)) {
+    const name = m[1]!.toLowerCase();
+    const value = (m[2] ?? '').replace(/^["']|["']$/g, '').toLowerCase();
+    if (name === 'hidden') return true;
+    if (name === 'aria-hidden' && value.trim() === 'true') return true;
+    if (name === 'style' && /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\b/.test(decodeEntities(value))) return true;
+  }
+  return false;
+}
+
+/** The HTML without the elements no visitor sees (each with everything inside it). An unclosed one hides the rest. */
+export function stripHiddenElements(html: string): string {
+  const open = /<([a-z][a-z0-9-]*)\b([^>]*)>/gi;
+  let out = '';
+  let from = 0;
+  // Found once: an unclosed hidden element hides up to here (the body's own close stays, so the page keeps its shape).
+  const bodyClose = html.search(/<\/body\s*>/i);
+  for (let m = open.exec(html); m; m = open.exec(html)) {
+    const attrs = m[2] ?? '';
+    const tag = m[1]!.toLowerCase();
+    if (tag === 'html' || tag === 'body' || !hidesElement(attrs.replace(/\/\s*$/, ''))) continue;
+    out += html.slice(from, m.index);
+    let end = open.lastIndex;
+    if (!VOID_TAGS.has(tag) && !/\/\s*$/.test(attrs)) {
+      // Walk to this element's own closing tag, counting nested elements of the same name.
+      const walker = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
+      walker.lastIndex = end;
+      let depth = 1;
+      end = bodyClose >= end ? bodyClose : html.length;
+      for (let w = walker.exec(html); w; w = walker.exec(html)) {
+        if (w[1]) depth -= 1;
+        else if (!/\/\s*>$/.test(w[0])) depth += 1;
+        if (depth === 0) { end = walker.lastIndex; break; }
+      }
+    }
+    out += ' ';
+    from = end;
+    open.lastIndex = end;
+  }
+  return out + html.slice(from);
+}
+
+/**
+ * The page's own publication / update date (YYYY-MM-DD): its article / Open Graph / schema.org meta, else its first
+ * <time datetime>, else its JSON-LD. A date the page writes as YYYY-MM-DD is taken as written (no time-zone shift).
+ */
+export function publishedOf(html: string): string | undefined {
+  const keys = ['article:published_time', 'article:modified_time', 'og:updated_time', 'datePublished', 'dateModified', 'date', 'dc.date', 'pubdate'];
+  const raw = keys.map((k) => metaContent(html, k.replace(/\./g, '\\.'))).find(Boolean)
+    || /<time\b[^>]*\bdatetime=["']([^"']+)["']/i.exec(html)?.[1]
+    || /"datePublished"\s*:\s*"([^"]+)"/.exec(html)?.[1]
+    || /"dateModified"\s*:\s*"([^"]+)"/.exec(html)?.[1];
+  if (!raw) return undefined;
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw.trim());
+  const t = ymd ? Date.UTC(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])) : Date.parse(raw.trim());
+  if (!Number.isFinite(t)) return undefined;
+  const d = new Date(t);
+  // 2024-02-31 rolls over in Date.UTC; a date the calendar does not have is not a date.
+  if (ymd && d.getUTCDate() !== Number(ymd[3])) return undefined;
+  const year = d.getUTCFullYear();
+  return year >= 1990 && year <= 2100 ? d.toISOString().slice(0, 10) : undefined;
+}
+
 function metaContent(html: string, key: string): string {
-  const re = new RegExp(`<meta[^>]+(?:name|property)=["']${key}["'][^>]*>`, 'i');
+  const re = new RegExp(`<meta[^>]+(?:name|property|itemprop)=["']${key}["'][^>]*>`, 'i');
   const tag = re.exec(html)?.[0];
   const content = tag ? /content=["']([^"']*)["']/i.exec(tag)?.[1] : '';
   return content ? clean(content) : '';
@@ -71,7 +151,9 @@ function metaContent(html: string, key: string): string {
 /** HTML → its title, description, readable text (the <main>/<article> when there is one) and its http(s) links. */
 export function extractPage(html: string, baseUrl: string, maxText: number, maxLinks: number): Omit<ReadPage, 'url'> {
   const noise = /<(script|style|noscript|svg|template|iframe|canvas|object)\b[^>]*>[\s\S]*?<\/\1>/gi;
-  const stripped = html.replace(/<!--[\s\S]*?-->/g, ' ').replace(noise, ' ');
+  // JSON-LD dates live in a <script>, so the date is read before the scripts go.
+  const published = publishedOf(html.replace(/<!--[\s\S]*?-->/g, ' '));
+  const stripped = stripHiddenElements(html.replace(/<!--[\s\S]*?-->/g, ' ').replace(noise, ' '));
   const title = clean(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(stripped)?.[1] ?? '') || metaContent(stripped, 'og:title');
   const description = metaContent(stripped, 'description') || metaContent(stripped, 'og:description');
   const body = /<body\b[^>]*>([\s\S]*)<\/body>/i.exec(stripped)?.[1] ?? stripped;
@@ -104,7 +186,7 @@ export function extractPage(html: string, baseUrl: string, maxText: number, maxL
     seen.add(href);
     links.push({ text: label, url: href });
   }
-  return { title: title.slice(0, 200), description: description.slice(0, 400), text, links, truncated };
+  return { title: title.slice(0, 200), description: description.slice(0, 400), text, links, truncated, ...(published ? { published } : {}) };
 }
 
 function charsetOf(contentType: string, head: string): string {

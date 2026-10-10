@@ -197,7 +197,7 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
   defineTool({
     name: 'scrape_webpage',
     effect: 'read',
-    description: 'Fetch one URL and return its readable text. Input {url}. JS-heavy/anti-bot sites may fail — prefer web_search for those.',
+    description: 'Fetch one URL and return its readable text, plus `published` (YYYY-MM-DD) when the page states its date. Input {url}. JS-heavy/anti-bot sites may fail — prefer web_search for those.',
     input: scrapeWebpageInput,
     limit: 8,
     run: async (input) => scrapeWebpage(input),

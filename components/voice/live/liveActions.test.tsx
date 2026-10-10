@@ -591,14 +591,14 @@ describe('the hands: click · type_text · download · use_result · montage · 
       .toMatchObject({ ok: false, error: 'studio_unavailable' });
   });
 
-  test('read_webpage answers after the page is read: the text, the links, and a link on screen', async () => {
-    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }] } };
+  test('read_webpage answers after the page is read: the text, the links, the page\'s date, and a link on screen', async () => {
+    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }], published: '2026-10-01' } };
     const h = handsEnv({ page });
     const out = executeLiveToolCall(call('w', 'read_webpage', { url: 'example.ge' }), h.env);
     expect(h.reads).toEqual(['https://example.ge/']);
     expect(out.card?.action).toEqual({ type: 'open_url', url: 'https://example.ge/', title: 'example.ge' });
     const done = await out.pending!;
-    expect(done).toMatchObject({ id: 'w', name: 'read_webpage', response: { ok: true, title: 'Example', text: 'Hello', links: ['More — https://example.ge/more'] } });
+    expect(done).toMatchObject({ id: 'w', name: 'read_webpage', response: { ok: true, title: 'Example', text: 'Hello', published: '2026-10-01', links: ['More — https://example.ge/more'] } });
 
     const bad = await executeLiveToolCall(call('w2', 'read_webpage', { url: 'https://down.example.com' }), handsEnv({ page: { ok: false, error: 'http_error', status: 503 } }).env).pending!;
     expect(bad.response).toMatchObject({ ok: false, error: 'http_error', message: expect.stringMatching(/HTTP 503/) });
