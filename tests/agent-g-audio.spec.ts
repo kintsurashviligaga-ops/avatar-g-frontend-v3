@@ -263,7 +263,7 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     expect(cancels).toHaveLength(1);
   });
 
-  test('Live Voice: extract_audio plans on the same card, the call hears the plan, and start runs it', async ({ page }) => {
+  test('Live Voice: extract_audio plans on the same card, the call hears the plan by number, and only the user\'s own yes runs it', async ({ page }) => {
     const calls = await open(page, true);
     // A call is on (GeminiLiveConversation sets this): the studio announces results and plans as [App] notes.
     await page.evaluate(() => {
@@ -272,32 +272,75 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
       (window as unknown as { __notes: unknown[] }).__notes = notes;
       window.addEventListener('myavatar:live-result', (e) => notes.push((e as CustomEvent).detail));
     });
-    const fire = (detail: Record<string, unknown>) => page.evaluate((d) => {
-      const e = new CustomEvent('myavatar:live-action', { detail: d, cancelable: true });
+    const fire = (detail: Record<string, unknown>, event = 'myavatar:live-action') => page.evaluate(([d, name]) => {
+      const e = new CustomEvent(name as string, { detail: d, cancelable: true });
       const took = !window.dispatchEvent(e);
       return { took, reply: (d as { reply?: Record<string, unknown> }).reply ?? null };
-    }, detail);
-    const notes = () => page.evaluate(() => (window as unknown as { __notes: Array<{ kind: string; what?: string }> }).__notes);
+    }, [detail, event] as const);
+    const notes = () => page.evaluate(() => (window as unknown as { __notes: Array<{ kind: string; what?: string; planId?: string; planKind?: string }> }).__notes);
 
     // The studio asks the route whether this is open to the user once, on mount; until then the call is told so.
     await expect.poll(async () => (await fire({ type: 'extract_audio', action: 'stop' })).reply?.error, { timeout: 15_000 }).toBe('nothing_running');
-    // start before any plan: refused, nothing runs
-    expect(await fire({ type: 'extract_audio', action: 'start' })).toMatchObject({ took: true, reply: { ok: false, error: 'no_plan' } });
+    expect(await fire({ type: 'agent_task', action: 'status' })).toMatchObject({ took: true, reply: { ok: true, plans: [] } });
 
     const planned = await fire({ type: 'extract_audio', action: 'plan', url: LINK });
     expect(planned).toMatchObject({ took: true, reply: { ok: true } });
     expect(String(planned.reply?.message)).toMatch(/checking media\.example\.com/);
     await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
     expect(calls.quote).toEqual([{ action: 'quote', url: LINK }]);
+    // The plan reaches the call with the card's id, so the call can number it (agent_task start by plan number).
     await expect.poll(async () => (await notes()).find((n) => n.kind === 'plan')?.what ?? '', { timeout: 10_000 })
       .toMatch(/media\.example\.com as "flower\.mp3".*MP3 192 kbps, free; rights unverified: starting confirms/);
+    const plan = (await notes()).find((n) => n.kind === 'plan')!;
+    expect(plan).toMatchObject({ planKind: 'audio', planId: expect.stringMatching(/^aga-/) });
+    expect((await notes()).filter((n) => n.kind === 'plan')).toHaveLength(1);
+    const status = await fire({ type: 'agent_task', action: 'status' });
+    expect(status.reply).toMatchObject({ ok: true, plans: [{ id: plan.planId, kind: 'audio', phase: 'quoted', credits: 0 }] });
+
+    // Nothing here presses Start for the model: extract_audio start is refused, agent_task start only checks the card.
+    expect(await fire({ type: 'extract_audio', action: 'start' })).toMatchObject({ took: true, reply: { ok: false, error: 'use_agent_task' } });
+    expect(await fire({ type: 'agent_task', action: 'start', plan: 1, planId: plan.planId, planKind: 'audio' }))
+      .toMatchObject({ took: true, reply: { ok: true, priceCredits: 0 } });
+    expect(await fire({ type: 'agent_task', action: 'start', plan: 2, planId: 'aga-gone', planKind: 'audio' }))
+      .toMatchObject({ took: true, reply: { ok: false, error: 'gone' } });
     expect(calls.run).toEqual([]);
 
-    const started = await fire({ type: 'extract_audio', action: 'start' });
-    expect(started).toMatchObject({ took: true, reply: { ok: true } });
+    // The countdown's run: without the user's own words nothing is taken; with them, that card runs with the yes on it.
+    const target = { kind: 'agent', planId: plan.planId, planKind: 'audio' };
+    expect(await fire({ target }, 'myavatar:live-run')).toMatchObject({ took: false });
+    expect(await fire({ target, approval: { channel: 'voice-transcript', said: '' } }, 'myavatar:live-run')).toMatchObject({ took: false });
+    expect(calls.run).toEqual([]);
+    const ran = await fire({ target, approval: { channel: 'voice-transcript', said: 'yes, start it' } }, 'myavatar:live-run');
+    expect(ran).toMatchObject({ took: true, reply: { ok: true } });
     await expect(page.locator('audio[src^="https://media.test/renders/audio/extract-flower.mp3"]')).toBeAttached({ timeout: 25_000 });
     expect(calls.run).toHaveLength(1);
+    expect(calls.run[0]).toMatchObject({ action: 'run', token: 'signed-token', approval: { channel: 'voice-transcript', said: 'yes, start it' } });
+    // Started once: a second run of the same plan is refused (the card is no longer waiting for a yes).
+    expect(await fire({ target, approval: { channel: 'voice-transcript', said: 'yes' } }, 'myavatar:live-run'))
+      .toMatchObject({ took: true, reply: { ok: false } });
+    expect(calls.run).toHaveLength(1);
     await expect.poll(async () => (await notes()).find((n) => n.kind === 'audio')?.what, { timeout: 10_000 }).toBe('flower.mp3');
+  });
+
+  test('Live Voice: Agent G\'s answer from a call lands in the chat with its sources, and its MP3 plan as a card', async ({ page }) => {
+    const calls = await open(page, true);
+    await page.evaluate(([quote]) => {
+      window.dispatchEvent(new CustomEvent('myavatar:live-agent-answer', {
+        detail: {
+          task: 'take the sound of this link', answer: 'I checked the link: it is a direct video file.',
+          sources: [{ title: 'Example media', url: 'https://media.example.com/videos/' }, { title: 'bad', url: 'javascript:alert(1)' }],
+          audioQuote: { ok: true, quote, request: { source: 'signed plan' }, token: 'signed-token' },
+        },
+      }));
+    }, [linkQuote] as const);
+    await expect(page.getByText('I checked the link: it is a direct video file.')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('agent-audio-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 15_000 });
+    // A plan from a call is the same card: nothing runs before Start (or the user's own voice yes).
+    expect(calls.run).toEqual([]);
+    await page.getByTestId('agent-audio-start').click();
+    await expect.poll(() => calls.run.length, { timeout: 15_000 }).toBe(1);
+    expect(calls.run[0]).toMatchObject({ action: 'run', token: 'signed-token' });
+    expect(calls.run[0]).not.toHaveProperty('approval');
   });
 
   test('closed to this user: the chat keeps its old flow and never asks for a plan', async ({ page }) => {

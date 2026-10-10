@@ -75,7 +75,8 @@ import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
-import { LIVE_ACTION_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveResultNote, type LiveResultRef, type LiveStudioReply } from '@/lib/voice/liveTools';
+import { agentAudioPlanOf, liveFingerprint, livePlanOf, livePlansOf, quotedPlanNote } from '@/lib/voice/livePlans';
+import { LIVE_ACTION_EVENT, LIVE_AGENT_ANSWER_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type LiveResultNote, type LiveResultRef, type LiveRunDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
 import { SourcesChips } from '@/components/chat/SourcesChips';
 import type { ChatSource, ChatStreamSnapshot, ChatStreamStore } from '@/components/chat/chatStreamStore';
@@ -147,6 +148,7 @@ import { AgentMontageCard } from '@/components/studio/AgentMontageCard';
 import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
+import type { RunApproval } from '@/lib/agent/approval';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
@@ -5139,9 +5141,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // preventDefault() is the RECEIPT the call waits for before telling the model "done"; `detail.reply` carries what only
   // the studio knows (the price, the settings it really applied, the screen state) back into the same answer.
   // ⚠️ It never renders by itself: dispatchServiceBlock's image/music branch renders at once and must not be reused. A
-  // confirmed start_generation only marks the run; the call's countdown sends LIVE_RUN_EVENT, and THAT runs it.
+  // confirmed start_generation (or agent_task start) only marks the run; the call's countdown sends LIVE_RUN_EVENT with
+  // the user's own words that said yes, and THAT runs it — only what was told (its fingerprint, or that very card).
   const liveApiRef = useRef<(d: LiveActionEventDetail) => boolean>(() => false);
-  const liveRunRef = useRef<() => boolean>(() => false);
+  const liveRunRef = useRef<(d: LiveRunDetail) => boolean>(() => false);
   const liveChatSendRef = useRef<(text: string) => void>(() => {});
   /**
    * Agent G reads a typed or spoken message before any tool takes it as a prompt (lib/agent/chatTurn): stop, status,
@@ -5160,8 +5163,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (took) e.preventDefault();
     };
     const onRun = (e: Event) => {
+      const d = (e as CustomEvent<LiveRunDetail>).detail;
+      if (!d || typeof d !== 'object') return;
       let took = false;
-      try { took = liveRunRef.current(); } catch { took = false; }
+      try { took = liveRunRef.current(d); } catch { took = false; }
       if (took) e.preventDefault();
     };
     window.addEventListener(LIVE_ACTION_EVENT, onAction);
@@ -5194,6 +5199,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         : { kind: 'failed', what: (m.text ?? '').replace(/^⚠️\s*/, '').replace(/\*\*/g, '').slice(0, 200) };
       try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: note })); } catch { /* old engines */ }
     });
+  }, [messages]);
+  // LIVE ← AGENT G'S PLANS: a montage, MP3 or edit card that reaches 'quoted' while a call is on is told to the call with
+  // its id (lib/voice/livePlans quotedPlanNote): the call numbers it, the model says it and asks, and agent_task start
+  // runs it only on the user's own yes. Keyed by the card and its signed plan (a plan quoted again is a new plan); a plan
+  // quoted with no call on is not told later — a call reads it with agent_task status.
+  const plansToldRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const quoted = messages.map((m) => quotedPlanNote(m)).filter((q): q is NonNullable<typeof q> => !!q);
+    if (!plansToldRef.current) { plansToldRef.current = new Set(quoted.map((q) => q.key)); return; }
+    const told = plansToldRef.current;
+    const onCall = typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1';
+    for (const q of quoted) {
+      if (told.has(q.key)) continue;
+      told.add(q.key);
+      if (onCall) { try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: q.note })); } catch { /* old engines */ } }
+    }
   }, [messages]);
   useEffect(() => {
     if (activeTool !== 'chat' || !pendingLiveChatRef.current) return;
@@ -5650,15 +5671,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       : file
         ? await quoteAudioFile({ fetch: f, upload: (d, m) => uploadBigFile(d, m) }, { dataUrl: file.dataUrl, mimeType: file.mimeType, ...(file.name ? { name: file.name } : {}) })
         : ({ ok: false, code: 'bad_input' } as const);
-    if (r.ok && typeof document !== 'undefined' && document.documentElement.dataset.liveCall === '1') {
-      // A Live call hears the plan (GeminiLiveConversation's [App] note): it says it and waits for the user's yes.
-      const q = r.quote;
-      const rights = q.rights.status === 'licensed' ? `licensed${q.rights.license ? ` (${q.rights.license})` : ''}`
-        : q.rights.status === 'own' ? 'the user\'s own upload' : 'unverified: starting confirms the file is the user\'s or licensed to them';
-      const what = `the sound of ${q.source === 'file' ? 'the user\'s file' : q.host} as "${q.name}"${q.bytes ? `, source ${formatAudioBytes(q.bytes, 'en')}` : ''}, MP3 ${q.bitrateKbps} kbps, free; rights ${rights}`;
-      const note: LiveResultNote = { kind: 'plan', what };
-      try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: note })); } catch { /* old engines */ }
-    }
+    // A Live call hears the plan once the card is 'quoted' (the plan-note effect above): it says it and waits for a yes.
     patchMsgById(id, (m) => (r.ok
       ? { ...m, text: audioQuoteText(r.quote, locale), audioJob: { phase: 'quoted', source: ask.source, quote: r.quote, request: r.request, token: r.token } }
       : {
@@ -5703,6 +5716,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', text);
     await quoteAgentEditInto(bubble.id!, source, edits, from);
   }, [newAgentEditBubble, persistChatTurn, quoteAgentEditInto]);
+
+  // LIVE → THE THREAD, Agent G's research by voice (ask_agent_g; Agent G PART 4, V6 and V4): the written answer and its
+  // sources land here as Agent G's reply (the call only says it briefly), and an MP3 plan the run made becomes its card,
+  // quoted, exactly as a typed request's: its Start, or the user's own voice yes (agent_task start), runs it. It fires
+  // after the call has ended too: the answer belongs to the chat. Sources are links only (http/https), never actions.
+  useEffect(() => {
+    const onAnswer = (e: Event) => {
+      const d = (e as CustomEvent<LiveAgentAnswerDetail>).detail;
+      if (!d || typeof d !== 'object') return;
+      const answer = typeof d.answer === 'string' ? d.answer.trim().slice(0, 8000) : '';
+      const sources: ChatSource[] = (Array.isArray(d.sources) ? d.sources : [])
+        .filter((x) => x && typeof x.url === 'string' && /^https?:\/\//i.test(x.url)).slice(0, 8)
+        .map((x) => ({ url: x.url, ...(typeof x.title === 'string' && x.title.trim() ? { title: x.title.trim().slice(0, 120) } : {}) }));
+      const plan = agentAudioPlanOf(d.audioQuote);
+      const head = locale === 'en' ? 'Agent G (from the voice call):' : locale === 'ru' ? 'Agent G (из голосового звонка):' : 'Agent G (ხმოვანი ზარიდან):';
+      const add: Msg[] = [];
+      if (answer) add.push({ role: 'assistant', text: `**${head}**\n\n${answer}`, ...(sources.length ? { sources } : {}) });
+      if (plan) {
+        add.push({
+          role: 'assistant', id: `aga-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: audioQuoteText(plan.quote, locale),
+          audioJob: { phase: 'quoted', source: plan.quote.source, quote: plan.quote, request: plan.request, token: plan.token, t0: Date.now() },
+        });
+      }
+      if (!add.length) return;
+      setMessages((prev) => [...prev, ...add]);
+      // Saved with its sources as links, so the history keeps them (the chips are this session's).
+      if (answer) {
+        const links = sources.map((x) => `- [${(x.title ?? x.url).replace(/[[\]()]/g, '')}](${x.url})`).join('\n');
+        persistChatTurn('assistant', `**${head}**\n\n${answer}${links ? `\n\n${links}` : ''}`);
+      }
+    };
+    window.addEventListener(LIVE_AGENT_ANSWER_EVENT, onAnswer);
+    return () => window.removeEventListener(LIVE_AGENT_ANSWER_EVENT, onAnswer);
+  }, [locale, persistChatTurn]);
 
   // ↻ under the last reply. Under an Agent G card that has finished (lib/agent/media/redoChat) it asks Agent G again with the
   // same turn, in place of the old bubble: a fresh plan card, nothing runs before Start. It used to re-stream a chat answer
@@ -7233,6 +7280,30 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (tool === 'avatar') return quoteCredits({ tool: 'avatar' }) || undefined;
     return undefined;
   };
+  /**
+   * What a voice start would run (lib/voice/livePlans liveFingerprint): the tool, the prompt and the price. The call
+   * keeps the one it told the price for, and the run carries it back: a prompt or price changed since is not started.
+   * `prompt`/`over` are passed where React state has not caught up yet (prepare_generation, update_settings).
+   */
+  const liveFp = (tool: ToolId, prompt: string = input, over: { musicSec?: number } = {}): string | undefined =>
+    (LIVE_GEN_TOOLS.includes(tool) ? liveFingerprint(tool, prompt, livePrice(tool, over)) : undefined);
+  /** Generations running in the tray, and the server's durable ones it follows (a card's own job is its card's). */
+  const liveTasks = (): Array<Record<string, unknown>> => {
+    const owned = new Set(messagesRef.current.flatMap((m) => [m.montage, m.audioJob, m.editJob]).flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }));
+    const q = useJobQueue.getState();
+    const live = (j: { status: string }) => j.status === 'rendering' || j.status === 'queued';
+    const local = new Set(q.jobs.map((j) => j.id));
+    return [...q.jobs, ...q.durableJobs.filter((j) => !local.has(j.id))]
+      .filter((j) => live(j) && !owned.has(j.id)).slice(0, 6)
+      .map((j) => ({ label: j.label, status: j.status, ...(typeof j.pct === 'number' ? { percent: Math.round(j.pct) } : {}) }));
+  };
+  /** Stop one Agent G card (a plan is dropped, a running job is stopped): the card's own Cancel / Stop. */
+  const stopAgentCard = (m: Msg) => {
+    if (!m.id) return;
+    if (m.montage) void stopAgentMontage(m.id);
+    else if (m.audioJob) void stopAgentAudio(m.id);
+    else if (m.editJob) void stopAgentEdit(m.id);
+  };
   /** Apply a call's settings to `tool`'s real controls; returns what was applied (snapped to what the panel offers). */
   const applyLiveSettings = (tool: ToolId, a: { aspectRatio?: string; durationSec?: number; style?: string; instrumental?: boolean }): { applied: Record<string, unknown>; musicSec?: number } => {
     const applied: Record<string, unknown> = {};
@@ -7283,8 +7354,6 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             : undefined;
     const lastReply = [...messages].reverse().find((m) => m.role === 'assistant' && m.text?.trim() && !m.text.startsWith('⚠️') && !m.text.startsWith('⏹'));
     const lastMedia = [...messages].reverse().find((m) => m.role === 'assistant' && (m.imageUrl || m.videoUrl || m.audioUrl));
-    const jobs = useJobQueue.getState().jobs.filter((j) => j.status === 'rendering' || j.status === 'queued')
-      .slice(0, 4).map((j) => ({ label: j.label, status: j.status, ...(typeof j.pct === 'number' ? { percent: Math.round(j.pct) } : {}) }));
     const price = livePrice(activeTool);
     return {
       tool: activeTool,
@@ -7296,7 +7365,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       busy: busy || genActiveRef.current,
       ...(lastReply ? { lastChatReply: lastReply.text.slice(0, 900) } : {}),
       ...(lastMedia ? { lastResult: lastMedia.videoUrl ? 'a video' : lastMedia.imageUrl ? 'an image' : 'audio' } : {}),
-      runningGenerations: jobs,
+      // The tray's renders and the server's durable jobs it follows (Agent G's cards are listed apart: agentPlans).
+      runningGenerations: liveTasks().slice(0, 4),
       results: liveResults().slice(0, 8).map((r) => ({ n: r.n, kind: r.kind === 'audio' ? 'music' : r.kind, ...(r.what ? { what: r.what } : {}) })),
       messagesInThisChat: messages.length,
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
@@ -7307,9 +7377,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const reply = (r: LiveStudioReply) => { d.reply = r; };
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
     switch (d.type) {
-      case 'get_screen_state':
-        reply({ ok: true, state: liveScreenState() });
+      case 'get_screen_state': {
+        const fingerprint = liveFp(activeTool);
+        const plans = livePlansOf(messagesRef.current);
+        reply({ ok: true, state: liveScreenState(), ...(fingerprint ? { fingerprint } : {}), ...(plans.length ? { plans } : {}) });
         return true;
+      }
       case 'prepare_generation': {
         // A deck or a 3D model: the studio panel opens with the topic / description filled in (its own Create runs it).
         if (d.tool === 'presentation' || d.tool === 'model3d') {
@@ -7322,7 +7395,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         setInput(d.prompt.slice(0, 2000));
         const { applied, musicSec } = applyLiveSettings(d.tool, d);
         const price = livePrice(d.tool, { musicSec });
-        reply({ ok: true, tool: d.tool, applied, ...(price ? { priceCredits: price } : {}) });
+        const fingerprint = liveFp(d.tool, d.prompt.slice(0, 2000), { musicSec });
+        reply({ ok: true, tool: d.tool, applied, ...(price ? { priceCredits: price } : {}), ...(fingerprint ? { fingerprint } : {}) });
         if (d.reveal === true) setTimeout(() => taRef.current?.focus(), 0);
         return true;
       }
@@ -7341,7 +7415,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           return true;
         }
         const price = livePrice(activeTool, { musicSec });
-        reply({ ok: true, tool: activeTool, applied, ...(price ? { priceCredits: price } : {}) });
+        const fingerprint = liveFp(activeTool, input, { musicSec });
+        reply({ ok: true, tool: activeTool, applied, ...(price ? { priceCredits: price } : {}), ...(fingerprint ? { fingerprint } : {}) });
         return true;
       }
       case 'start_generation': {
@@ -7351,7 +7426,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (!input.trim()) { reply({ ok: false, error: 'no_prompt', message: 'The studio has no prompt yet; prepare one first.' }); return true; }
         if (busy || genActiveRef.current) { reply({ ok: false, error: 'busy', message: 'Something is already being generated. Wait for it, or stop it first.' }); return true; }
         const price = livePrice(activeTool);
-        reply({ ok: true, tool: activeTool, ...(price ? { priceCredits: price } : {}) });
+        const fingerprint = liveFp(activeTool);
+        reply({ ok: true, tool: activeTool, ...(price ? { priceCredits: price } : {}), ...(fingerprint ? { fingerprint } : {}) });
         return true;
       }
       case 'chat_send': {
@@ -7369,10 +7445,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const done: string[] = [];
         if ((d.what === 'reply' || d.what === 'all') && (busy || genActiveRef.current)) { stop(); done.push('stopped the answer in progress'); }
         if (d.what === 'generation' || d.what === 'all') {
+          // T4: what the tray's own buttons stop — its local renders, the server's durable jobs it follows (POST /api/tasks
+          // cancel) — and Agent G's running cards (each card stops its own job; their plans waiting for a yes stay).
           const q = useJobQueue.getState();
+          const cards = messagesRef.current.filter((m) => m.id && (m.montage?.phase === 'running' || m.audioJob?.phase === 'running' || m.editJob?.phase === 'running'));
+          const owned = new Set(cards.flatMap((m) => [m.montage, m.audioJob, m.editJob]).flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }));
           const live = q.jobs.filter((j) => j.status === 'rendering' || j.status === 'queued');
+          const local = new Set(q.jobs.map((j) => j.id));
+          const durable = q.durableJobs.filter((j) => j.cancellable && !local.has(j.id) && !owned.has(j.id) && (j.status === 'rendering' || j.status === 'queued'));
           for (const j of live) q.cancel(j.id);
-          if (live.length) done.push(`cancelled ${live.length} generation${live.length === 1 ? '' : 's'}`);
+          for (const j of durable) void q.cancelDurable(j.id);
+          for (const m of cards) stopAgentCard(m);
+          const n = live.length + durable.length + cards.length;
+          if (n) done.push(`cancelled ${n} generation${n === 1 ? '' : 's'}`);
         }
         reply({ ok: true, message: done.length ? `Done: ${done.join(' and ')}.` : 'Nothing was running, so nothing was stopped.' });
         return true;
@@ -7470,11 +7555,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (!agentAudioOn) { reply({ ok: false, error: 'not_available', message: 'Taking the sound out of a video is not open on this account yet. Tell the user plainly.' }); return true; }
         const newest = (phase: AgentAudioState['phase']) => [...messagesRef.current].reverse().find((m) => m.id && m.audioJob?.phase === phase);
         if (d.action === 'start') {
-          const m = newest('quoted');
-          if (!m?.id) { reply({ ok: false, error: 'no_plan', message: 'No Agent G audio plan is waiting on screen. Use extract_audio with action "plan" first.' }); return true; }
-          void confirmAgentAudio(m.id);
-          const from = m.audioJob?.quote?.host ?? 'the user\'s file';
-          reply({ ok: true, message: `Started, free: Agent G is taking the sound out of ${from}. Its progress is on the card; the MP3 appears in the chat with a player, Download and Save to Library, and you get an [App] note when it is ready.` });
+          // A voice start is agent_task start (the call routes it there): it runs only after the user's own yes, with
+          // that yes on the run. Nothing here presses Start for the model.
+          reply({ ok: false, error: 'use_agent_task', message: 'Start an Agent G plan with agent_task action "start" and its plan number, after the user\'s clear yes.' });
           return true;
         }
         if (d.action === 'stop') {
@@ -7506,15 +7589,71 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         });
         return true;
       }
+      case 'agent_task': {
+        // Agent G's cards in this chat (montage, MP3, edit) by the call's plan number (V7: status; M3: a voice start of
+        // any of them). start only checks the card can start: the call's countdown runs it (liveRunRef) on the user's yes.
+        if (d.action === 'status') {
+          reply({ ok: true, plans: livePlansOf(messagesRef.current), state: { tasks: liveTasks() } });
+          return true;
+        }
+        const m = d.planId ? messagesRef.current.find((x) => x.id === d.planId) : undefined;
+        const plan = m ? livePlanOf(m) : null;
+        if (d.planId && (!m || !plan || plan.kind !== d.planKind)) {
+          reply({ ok: false, error: 'gone', message: 'That plan is no longer in this chat. Call agent_task with action "status".' });
+          return true;
+        }
+        if (d.action === 'start') {
+          if (signedOut) { reply({ ok: false, error: 'signed_out', message: 'The user is not signed in; Agent G needs an account for this. Ask them to sign in.' }); return true; }
+          if (!plan) { reply({ ok: false, error: 'no_plan', message: 'Name the plan to start (its number).' }); return true; }
+          if (plan.phase !== 'quoted') { reply({ ok: false, error: 'not_quoted', message: `That plan is ${plan.phase}, so it cannot be started. Call agent_task with action "status".` }); return true; }
+          reply({ ok: true, priceCredits: plan.credits ?? 0 });
+          return true;
+        }
+        // stop: one plan (a plan is dropped, a running one stopped), or every running Agent G card.
+        if (m && plan) {
+          if (plan.phase !== 'quoted' && plan.phase !== 'running') { reply({ ok: false, error: 'not_running', message: `That plan is ${plan.phase}; there is nothing to stop.` }); return true; }
+          stopAgentCard(m);
+          reply({ ok: true, message: plan.phase === 'quoted' ? 'Dropped that plan; nothing was started.' : 'Stopping it; the card says when it has stopped. Nothing is charged (it is free).' });
+          return true;
+        }
+        const running = messagesRef.current.filter((x) => x.id && (x.montage?.phase === 'running' || x.audioJob?.phase === 'running' || x.editJob?.phase === 'running'));
+        if (!running.length) { reply({ ok: false, error: 'nothing_running', message: 'Nothing of Agent G\'s is running, so nothing was stopped.' }); return true; }
+        for (const x of running) stopAgentCard(x);
+        reply({ ok: true, message: `Stopping ${running.length} Agent G task${running.length === 1 ? '' : 's'}; each card says when it has stopped.` });
+        return true;
+      }
       default:
         // show_code (the canvas answers), end_call / call_view / set_chat_model (the call itself) — not the studio's.
         return false;
     }
   };
-  liveRunRef.current = (): boolean => {
-    // The countdown ran out: run what is on screen through the studio's own path (balance checks; a video's storyboard).
-    if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim() || busy || genActiveRef.current) return false;
+  liveRunRef.current = (detail: LiveRunDetail): boolean => {
+    // The countdown ran out and the user's own words were a yes (components/voice/live/liveActions). No words, no run.
+    const said = detail.approval?.channel === 'voice-transcript' && typeof detail.approval.said === 'string' ? detail.approval.said.trim() : '';
+    const target = detail.target;
+    if (!said || !target || typeof target !== 'object') return false;
+    const refuse = (error: string, message: string): boolean => { detail.reply = { ok: false, error, message }; return true; };
+    if (target.kind === 'agent') {
+      // That very card, with the yes on its run (the server judges the words again and records them: lib/agent/approval).
+      const m = messagesRef.current.find((x) => x.id === target.planId);
+      const plan = m ? livePlanOf(m) : null;
+      if (!plan || plan.kind !== target.planKind) return refuse('gone', 'That plan is no longer in this chat, so nothing was started.');
+      if (plan.phase !== 'quoted') return refuse('not_quoted', `That plan is ${plan.phase} now, so it was not started again.`);
+      const approval: RunApproval = { channel: 'voice-transcript', said };
+      if (plan.kind === 'montage') void confirmAgentMontage(plan.id, approval);
+      else if (plan.kind === 'audio') void confirmAgentAudio(plan.id, approval);
+      else void confirmAgentEdit(plan.id, approval);
+      detail.reply = { ok: true };
+      return true;
+    }
+    // The studio's prepared render, through its own path (balance checks; a video's storyboard) — only what was told.
+    if (!LIVE_GEN_TOOLS.includes(activeTool) || !input.trim()) return refuse('nothing_prepared', 'Nothing is prepared in the studio any more, so nothing was started.');
+    if (busy || genActiveRef.current) return refuse('busy', 'Something else is being generated now, so nothing was started.');
+    if (target.tool !== activeTool || (target.fingerprint && target.fingerprint !== liveFp(activeTool))) {
+      return refuse('changed', 'What is on screen changed after the price was told (the studio, the prompt or the price), so nothing was started.');
+    }
     runTool(true, 'voice');
+    detail.reply = { ok: true };
     return true;
   };
 
@@ -7730,7 +7869,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Agent G's montage card: Start queues the signed plan (once — the card leaves 'quoted' before the request goes), the
   // job's stage and percent are its progress, and the master lands in this bubble. Cancel drops a plan; Stop cancels the
   // job: its worker kills the running render and anything charged is paid back (the follow then reads „cancelled").
-  const confirmAgentMontage = useCallback(async (id: string) => {
+  const confirmAgentMontage = useCallback(async (id: string, approval?: RunApproval) => {
     const card = messagesRef.current.find((m) => m.id === id)?.montage;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
     montageRunsRef.current.add(id);
@@ -7743,7 +7882,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onProgress: (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
         ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
         : m)),
-    }, { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId });
+    }, { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
     if (r.ok) {
       patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || card.quote!.totalSec, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || card.quote!.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
@@ -7769,7 +7908,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
   // Agent G's audio card: Start queues the signed plan once, the job's stage and percent are its progress, and the MP3
   // lands in this bubble's player under its own name. Cancel drops a plan; Stop cancels the job (its worker kills ffmpeg).
-  const confirmAgentAudio = useCallback(async (id: string) => {
+  const confirmAgentAudio = useCallback(async (id: string, approval?: RunApproval) => {
     const card = messagesRef.current.find((m) => m.id === id)?.audioJob;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || audioRunsRef.current.has(id)) return;
     audioRunsRef.current.add(id);
@@ -7782,7 +7921,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onProgress: (pct, stage) => patchMsgById(id, (m) => (m.audioJob?.phase === 'running'
         ? { ...m, audioJob: { ...m.audioJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
         : m)),
-    }, { request: card.request, token: card.token, jobId: card.quote.jobId });
+    }, { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
     if (r.ok) {
       const info = `${formatDuration(r.durationSec)} · ${formatAudioBytes(r.bytes, locale)} · MP3 ${r.bitrateKbps || card.quote.bitrateKbps} kbps`;
       patchMsgById(id, (m) => ({ ...m, text: audioDoneText(r, locale), audioUrl: r.audioUrl, audioName: r.name, audioInfo: info, audioJob: { ...m.audioJob!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
@@ -7806,7 +7945,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [locale, patchMsgById]);
   // Agent G's edit card: Start queues the signed plan once, the job's stage and percent are its progress, the result lands
   // under the card (a video, or a still as a picture). Cancel drops a plan; Stop cancels the job (its worker kills ffmpeg).
-  const confirmAgentEdit = useCallback(async (id: string) => {
+  const confirmAgentEdit = useCallback(async (id: string, approval?: RunApproval) => {
     const card = messagesRef.current.find((m) => m.id === id)?.editJob;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || editRunsRef.current.has(id)) return;
     editRunsRef.current.add(id);
@@ -7818,7 +7957,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       onProgress: (pct, stage) => patchMsgById(id, (m) => (m.editJob?.phase === 'running'
         ? { ...m, editJob: { ...m.editJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
         : m)),
-    }, { request: card.request, token: card.token, jobId: card.quote.jobId });
+    }, { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
     if (r.ok) {
       const media = r.output === 'jpg'
         ? { imageUrl: r.url }

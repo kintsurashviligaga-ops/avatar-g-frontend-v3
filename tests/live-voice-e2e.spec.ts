@@ -195,11 +195,15 @@ test.describe('voice mode, end to end', () => {
     await page.route('**/api/nanobanana/image', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: FOX }) }));
     const spend = await openLiveCall(page, baseURL, live);
 
-    // 1 — prepare, the user says yes, the countdown runs out: exactly one paid request leaves the browser.
+    // 1 — prepare, the user says yes, the countdown runs out: the yes is recorded, then exactly one paid request leaves.
+    const approvals: Array<Record<string, unknown>> = [];
+    await page.route('**/api/agent/approvals', (r) => { approvals.push(r.request().postDataJSON() as Record<string, unknown>); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
     expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' })).toMatchObject({ ok: true });
     await expect.poll(() => toolOnScreen(live)).toBe('image');
+    live.hear('კი, დაიწყე');
     expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
     await expect.poll(() => spend, { timeout: 15_000 }).toEqual(['/api/nanobanana/image']);
+    expect(approvals).toEqual([expect.objectContaining({ channel: 'voice-transcript', said: 'კი, დაიწყე', tool: 'image' })]);
 
     // 2 — nobody asked, yet the agent hears it: the app's note says the image is ready, so a plan of steps goes on.
     await expect.poll(() => live.notes().some((n) => /new image is ready/.test(n)), { timeout: 15_000 }).toBe(true);
@@ -216,6 +220,33 @@ test.describe('voice mode, end to end', () => {
     // A video result cannot be asked for yet, and the agent is told so instead of guessing.
     expect(await live.call('use_result', { result: 'video', to: 'montage' })).toMatchObject({ ok: false, error: 'no_result' });
     expect(spend).toEqual(['/api/nanobanana/image']);
+  });
+
+  test('the yes is the user\'s, never the model\'s: without the user\'s own words the countdown starts nothing and the agent is told; a "no" refuses at once', async ({ page, baseURL }) => {
+    const live = new FakeLive();
+    const approvals: unknown[] = [];
+    await page.route('**/api/agent/approvals', (r) => { approvals.push(r.request().postDataJSON()); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
+    const spend = await openLiveCall(page, baseURL, live);
+    expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში' })).toMatchObject({ ok: true });
+    await expect.poll(() => toolOnScreen(live)).toBe('image');
+
+    // The model calls start with "confirmed: yes", but the user only asked the price: an unclear answer still counts
+    // down (the transcript can lag behind the call), and at its end nothing runs, nothing is recorded, the agent hears so.
+    live.hear('რა ღირს?');
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    const banner = page.getByTestId('live-run-banner');
+    await expect(banner).toHaveAttribute('data-state', 'not_heard', { timeout: 10_000 });
+    await expect.poll(() => live.notes().some((n) => /Nothing was started/.test(n)), { timeout: 10_000 }).toBe(true);
+    await page.waitForTimeout(500);
+    expect(spend).toEqual([]);
+    expect(approvals).toEqual([]);
+
+    // The user says no: the start is refused at once, no countdown.
+    live.hear('არა, მოიცადე');
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: false, error: 'user_said_no' });
+    await page.waitForTimeout(3_500);
+    expect(spend).toEqual([]);
+    expect(approvals).toEqual([]);
   });
 
   test('a function the app does not have is refused honestly, and the call keeps going', async ({ page, baseURL }) => {

@@ -7,7 +7,7 @@
  */
 import { act, renderHook } from '@testing-library/react';
 
-import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
+import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
 import { createVoiceLedger } from '@/lib/voice/voiceLedger';
 
 import {
@@ -825,6 +825,63 @@ describe('ask_agent_g', () => {
     expect(out.pending).toBeUndefined();
     expect(out.response.response).toMatchObject({ ok: false, error: 'invalid_args', field: 'task' });
     expect(asked).toEqual([]);
+  });
+
+  // ── Agent G PART 4 (V6, V4): the answer and its sources stay in the chat; a plan the run made becomes its card ──
+  const PLAN = { quote: { jobId: 'j1', source: 'link', host: 'commons.wikimedia.org', name: 'talk.mp3', credits: 0, bitrateKbps: 192, rights: { status: 'licensed' } }, request: { url: 'x' }, token: 't1' };
+
+  test('fetchAgentRun keeps the signed plan the run made (audioQuote), and only an object one', async () => {
+    const withPlan = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, audioQuote: PLAN }).fetchImpl });
+    expect(withPlan).toEqual({ ok: true, answer: RUN.answer, stopReason: 'final', steps: RUN.steps, audioQuote: PLAN });
+    const junk = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, audioQuote: 'nope' }).fetchImpl });
+    expect(junk).not.toHaveProperty('audioQuote');
+  });
+
+  test('V6: the written answer and the pages it stood on go to the chat; the model only says it briefly', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    const h = agentEnv({ ok: true, ...RUN });
+    h.env.postAgentAnswer = (d) => { posted.push(d); };
+    const out = executeLiveToolCall(call('g3', 'ask_agent_g', { task: 'Find the cheapest flights' }), h.env);
+    const done = await out.pending!;
+    expect(posted).toEqual([{
+      task: 'Find the cheapest flights',
+      answer: RUN.answer,
+      sources: [
+        { title: 'skyscanner.net', url: 'https://www.skyscanner.net/routes/tbs/par' },
+        { title: 'kayak.com', url: 'https://www.kayak.com/flight-routes/TBS-PAR' },
+        { title: 'Wizz Air', url: 'https://wizzair.com/en-gb' },
+      ],
+    }]);
+    expect(done.response).not.toHaveProperty('plan');
+  });
+
+  test('V4: a plan the run made goes to the chat as its card, and the model hears it waits for a yes (agent_task start)', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    const h = agentEnv({ ok: true, answer: 'Here is the plan.', stopReason: 'final', steps: [], audioQuote: PLAN });
+    h.env.postAgentAnswer = (d) => { posted.push(d); };
+    const done = await executeLiveToolCall(call('g4', 'ask_agent_g', { task: 'MP3 of this link' }), h.env).pending!;
+    expect(posted).toEqual([{ task: 'MP3 of this link', answer: 'Here is the plan.', sources: [], audioQuote: PLAN }]);
+    expect(done.response).toMatchObject({ ok: true, plan: expect.stringMatching(/MP3 plan.*\[App\] note.*clear yes \(agent_task start\)/) });
+    // A plan with no written answer is still posted (the card), and still told.
+    const bare = agentEnv({ ok: true, answer: null, stopReason: 'max_steps', steps: [], audioQuote: PLAN });
+    const seen: LiveAgentAnswerDetail[] = [];
+    bare.env.postAgentAnswer = (d) => { seen.push(d); };
+    const r = await executeLiveToolCall(call('g5', 'ask_agent_g', { task: 'x' }), bare.env).pending!;
+    expect(seen).toEqual([{ task: 'x', answer: null, sources: [], audioQuote: PLAN }]);
+    expect(r.response).toMatchObject({ ok: false, error: 'no_answer', plan: expect.any(String) });
+  });
+
+  test('nothing is posted for a failed run or a run with neither an answer nor a plan; a throwing post never breaks the answer', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    for (const r of [{ ok: false, error: 'timeout' }, { ok: true, answer: null, stopReason: 'max_steps', steps: [] }] as AgentRunAnswer[]) {
+      const h = agentEnv(r);
+      h.env.postAgentAnswer = (d) => { posted.push(d); };
+      await executeLiveToolCall(call('g6', 'ask_agent_g', { task: 'x' }), h.env).pending;
+    }
+    expect(posted).toEqual([]);
+    const h = agentEnv({ ok: true, ...RUN });
+    h.env.postAgentAnswer = () => { throw new Error('boom'); };
+    expect((await executeLiveToolCall(call('g7', 'ask_agent_g', { task: 'x' }), h.env).pending!).response).toMatchObject({ ok: true, answer: RUN.answer });
   });
 
   test('in a batch, the session gets every answer once Agent G is back', async () => {

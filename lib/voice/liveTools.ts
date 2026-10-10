@@ -761,6 +761,22 @@ export interface LiveRunDetail {
 /** Fired by the call on start (`active: true`) and end — the studio keeps a call's turns in one thread meanwhile. */
 export const LIVE_CALL_EVENT = 'myavatar:live-call';
 
+/**
+ * Fired by the call when an ask_agent_g run came back (components/voice/live/liveActions): the studio puts Agent G's
+ * written answer and its sources in the chat, and a plan the run made (an MP3 from a link) as its card. It fires even
+ * when the call has ended meanwhile: the answer belongs to the chat, not to the call.
+ */
+export const LIVE_AGENT_ANSWER_EVENT = 'myavatar:live-agent-answer';
+export interface LiveAgentAnswerDetail {
+  /** What the call asked Agent G (the model's words for the user's question). */
+  task: string;
+  /** Agent G's written answer (null: it stopped before writing one). */
+  answer: string | null;
+  sources: Array<{ title: string; url: string }>;
+  /** The signed MP3 plan the run made (/api/agent/run `audioQuote`), unchecked: the studio validates it. */
+  audioQuote?: unknown;
+}
+
 /** The `myavatar:open-artifact` detail (the canvas contract — nothing more, nothing less). */
 export interface OpenArtifactDetail { title: string; language: LiveCodeLanguage; code: string }
 
