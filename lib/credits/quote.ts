@@ -34,7 +34,7 @@ export const PRODUCT_AD_LENGTHS = [8, 24, 48] as const;
 export function productAdSeconds(sec?: number | null): number {
   const n = Number(sec);
   if (!Number.isFinite(n) || n <= 0) return PRODUCT_AD_LENGTHS[0];
-  return PRODUCT_AD_LENGTHS.find((len) => n <= len) ?? PRODUCT_AD_LENGTHS[PRODUCT_AD_LENGTHS.length - 1];
+  return PRODUCT_AD_LENGTHS.find((len) => n <= len) ?? Math.max(...PRODUCT_AD_LENGTHS);
 }
 
 /** Credits one press costs; 0 for a free action (chat). */
