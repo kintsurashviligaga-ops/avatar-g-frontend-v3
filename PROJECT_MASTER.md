@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 1)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 2)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -110,8 +110,19 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           answers „არ მომწონს" in words; montage reads music start and length. Function declarations generated from
           the registry (lib/agent/tools/declarations.ts) + a 49-message labelled corpus (router 49/49); the paid Gemini
           comparison is BLOCKED_OWNER. Dead-stack ratchet. Gemini capability matrix (G0) in the report §7. Edits of a
-          previous result are refused in words until PART 3. Next: PART 2 (one status model, multi-step runs on the
-          lease queue without a migration, run events, memory).
+          previous result are refused in words until PART 3.
+          PART 2 DONE (part-2-report.md, 438cc918): one status model (lib/tasks/statusModel.ts: queued /
+          awaiting_approval / running / completed / partially_completed / failed / cancelled); multi-step runs
+          (lib/agent/run/*): one generation_jobs row of kind agent-run, steps are ordinary montage / MP3 jobs with
+          params._parent, no migration; dependencies, 2 steps at a time, CAS writes + 30 s tick lease, a step above its
+          plan's price waits for the user's yes to that quote id, stop reaches every step job, resume reuses delivered
+          steps, partially_completed; ticks on the owner's read, after the request and in the sweep. Task API plan /
+          run / approve / resume / cancel + events (?after=n). Run and step audit rows carry runId, toolId and approval
+          (single jobs' channel waits for PART 4). Memory: one reader (lib/memory/context.ts) for text chat,
+          orchestrate, voice chat, ReAct and Live, capped (5 x 240 chars, 1,200 per block; profile 8), sanitized and
+          labelled as data; /memory lists both stores, deletes one or all, switches automatic memory off. Jest 11,708
+          passed / 0 failed, tsc 0, eslint 0. Runs BUILT_NOT_PROVEN (no live run yet); T3 studio stop still 409.
+          Next: PART 3 (media execution coverage).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
