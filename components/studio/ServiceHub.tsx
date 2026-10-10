@@ -61,24 +61,25 @@ export function ServiceHub({ locale = 'ka', isAuthenticated = false }: { locale?
   }, []);
 
   useEffect(() => {
-    let first = true;
     const read = () => {
       const h = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
       const retired = RETIRED_HASH_TOOL[h];
       if (retired) {
-        // An old link: drop the hash and open the studio on the tool that does that job. On first load the studio is
-        // not mounted yet, so the tool rides `?tool=` (OmniStudio reads it on mount and removes it); later, the
-        // mounted studio is switched in place.
+        // An old link: drop the hash and open the studio on the tool that does that job. A mounted studio is switched
+        // in place (it answers `omni:set-tool` by cancelling it). ⚠️ That can be the FIRST load too: on a production
+        // build the studio's chunk is often ready at hydration, the studio mounts with this shell, and its effects run
+        // before this one, so it has already read (and missed) `?tool=`. Only while nobody heard does the tool wait in
+        // the address, where the studio reads it once when it mounts (the same hand-off as ChatChrome's askStudio).
         const url = new URL(window.location.href);
         url.hash = '';
-        if (first && retired !== 'chat') url.searchParams.set('tool', retired);
+        const ev = new CustomEvent('omni:set-tool', { detail: retired, cancelable: true });
+        window.dispatchEvent(ev);
+        if (!ev.defaultPrevented && retired !== 'chat') url.searchParams.set('tool', retired);
         window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
         setService('omni');
-        if (!first) window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: retired }));
       } else {
         setService(h === 'agent' ? 'agent' : 'omni');
       }
-      first = false;
       // A restart's tool is one-shot: coming back to the studio from another surface opens it fresh (on the chat).
       setRestartTool(undefined);
     };

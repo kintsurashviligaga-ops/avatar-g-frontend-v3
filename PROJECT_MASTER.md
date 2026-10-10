@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; certification run)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -84,6 +84,16 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           (a504519c); dubbing, presentation and interior-produce have route tests. Owner: lip-sync charge on films
           and music videos, uncharged dubbing / presentation / upscale, Motion transfer keep or retire, the Preview
           run (docs/handoffs/2026-10-09-preview-run-sheet.md).
+          CERTIFICATION RUN 2026-10-10 (owner, 04:59Z; certification §Z, service audit §7; nothing merged, deployed,
+          migrated or paid; Production data only read): tsc 0, lint 0 errors, build OK, 98 jest suites / 1616 tests on
+          the named paths; Playwright all 31 specs on a production build 259 passed, 7 failed (5 test hosts outside CSP
+          connect-src, 1 dev-only expectation, 1 real bug: #film / #lipsync could land on the chat, fixed in ServiceHub and
+          passing on the rebuilt production build). E / F / G of the lease queue PROVEN IN ISOLATION on a local Postgres +
+          PostgREST with Production's ledger functions (EF-3, EF-4); not run on the shared database. Unauthenticated probe
+          of all 458 API routes; one finding fixed: a film's master link went to anyone holding its status id (now only
+          the payer). Production read-only audit: ledger 222 rows, 0 duplicate refs, 0 negative balances; 0 live or stuck
+          jobs; RLS 52 / 52; one all-zero-id PRO profile with 1,000,050 credits and 18 profiles without a sign-in account
+          (cleanup = owner action 24). Preview run cut to A–D (about 6 minutes) for the owner.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
@@ -1027,10 +1037,17 @@ F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
        it landed); a failure that owes a refund records the debt in the same write (outbox), payDebt clears it;
        reconciliation = sweep + status read; drain-renders leaves leased rows alone; /api/orchestrator/jobs refuses
        client writes on a leased row.
-◐ EF-3 BUILT_NOT_PROVEN. Lease 90 s, heartbeat 15 s, one retry after a lapsed lease, render/QC failure final at once;
-       cancel SIGKILLs the running ffmpeg (AbortSignal through ffmpegExec; real-ffmpeg test checks the PID is gone).
+◐ EF-3 PROVEN IN ISOLATION (2026-10-10), not on Vercel. Lease 90 s, heartbeat 15 s, one retry after a lapsed lease,
+       render/QC failure final at once; cancel SIGKILLs the running ffmpeg (AbortSignal through ffmpegExec; real-ffmpeg
+       test checks the PID is gone). Against a real Postgres 16 + PostgREST with Production's table shapes and function
+       bodies (scripts/lease-isolation/run.sh → lib/agent/media/leaseIsolation.pg.test.ts, 7/7, zero writes to the
+       shared database, per the owner's 04:59Z rule): a dead worker's job is taken over as attempt 2 and delivered, the
+       late worker's writes are fenced off ("lost"); two deaths → failed; eight concurrent claims → exactly one wins.
 ◐ EF-4 PARTIAL. Idempotent insert per quote, billing hold → charge → release, refund bounded by the ledger
-       (netDebitedForRef), audit rows. deduct_credits' same-ref race needs migration C (owner).
+       (netDebitedForRef), audit rows. deduct_credits' same-ref race needs migration C (owner). 2026-10-10, in
+       isolation with the real deduct_credits / refund_credits: a failed job pays back exactly its debit once; a debt
+       left when the refund call failed is paid by the next sweep once; Stop pays back once; an abandoned billing hold
+       is failed after HOLD_MS and paid back; a second sweep never pays twice. Balance ends where it began each time.
 ◐ EF-5 PARTIAL. Typed allowlist lib/agent/tools/registry.ts (effects read/prepare/quote only; a quote names the confirmed
        action the user's press runs); the live agent's 4 tools are typed specs. More Studio operations = slice 2.
 □ EF-6 BLOCKED_OWNER. Sandbox contract lib/agent/sandbox/policy.ts (python/node, capped limits, network denied, no
@@ -1051,8 +1068,10 @@ F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
        service role with no owner check before). Handoff §7 step 4.
 ◐ EF-8 BUILT_NOT_PROVEN. The master plays in the same bubble with Download; Library via the completed row
        (Playwright 4/4, routes mocked).
-◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; the
-       authorized run on a Preview needs an admin session (handoff §7 step 1).
+◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; E (crash →
+       attempt 2), F (retries run out) and G (refund) PROVEN against an isolated real database (EF-3, EF-4, 2026-10-10).
+       Still open: the A–D run on the Preview with an admin session (run sheet, short Georgian version at its top);
+       E/F on the shared database only on the owner's own "E/F გაუშვი".
 F-AU. URL-TO-AUDIO / MEDIA EXTRACTION (owner, 2026-10-09 12:34Z, Master Task; handoff
   docs/handoffs/2026-10-09-agent-g-url-to-audio.md). A video or audio link (or one upload) + "ამ ვიდეოდან MP3 ამოიღე" →
   plan card → Start → MP3 in the same chat bubble. On PR #50 (f566264e, 780b3426) behind AGENT_G_MEDIA_EXEC; nothing

@@ -182,3 +182,110 @@ switch; turning it on is the owner's action 9.
 | 12 | The interior 3D plan is never filed to the Library | **fixed** (a504519c): the plan is filed with the render it was made for as its picture (the caller's own object or a public CDN file, checked); `/library` shows it on the Image tab with a „3D plan" badge and opens it on the card; the Video tab now also lists avatar videos; room photos that point inside the network are dropped before Gemini sees them |
 | 13 | No service has a real end-to-end test; dubbing, presentation and interior-produce routes have no route tests | **partly fixed**: route tests for interior-produce (8: charge once, refund on a miss, filing, cover owner check, SSRF), dubbing (16: sign-in, own-upload signing, another account's upload refused, SSRF, 5-minute cap, budget gate, failure filing, job-id reuse) and presentation (12: the whole deck filed, cover fallback, degraded-deck warnings, limits, budget gate); a mocked browser test for render → 3D plan → Library (`tests/interior-plan.spec.ts`). Still open: a real end-to-end run on Preview (the run sheet, item 3, covers Agent G montage, URL-to-Audio and the Task API) |
 | 14 | VFX button quotes `remix` while the route prices with `lib/genjutsu/pricing` (R5) | **owner decision** (pricing table) |
+
+## 7. Certification run, 2026-10-10 (the owner's 04:59Z ask)
+
+The owner checked PR #50 at `27ea1ad9` (CI green) and asked for every safe API, E2E, security and regression test, the
+A–G Preview run made as short as possible, E/F kept off the shared database, and the 22 services, provider boundary,
+Agent G, Live Voice, credits and Library checked, each with evidence. Nothing here touched Production data, merged,
+deployed, migrated or paid for anything.
+
+### What ran
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | 0 errors |
+| `next lint` | 0 errors, 33 warnings (all older than this run) |
+| `next build` (CI's dummy Supabase env) | OK, twice (before and after the `#film` fix) |
+| jest, the 98 suites on the paths this ask names (provider boundary, ledger, lease, Agent G media / tools / sandbox, Task API, Library, security, Live Voice, credits, billing, video status, dubbing, presentation) | 98 passed, 2 skipped (the opt-in database suites); 1616 tests passed, 9 skipped |
+| Playwright, all 31 committed specs, on a **production build** (`next start`, CSP on) | 259 passed, 7 failed, 7 skipped |
+| The same 7 on `next dev` (how CI's preview-e2e runs) | 7 / 7 passed |
+| Lease queue E / F / G on a real Postgres 16 + PostgREST 12.2.3 with Production's ledger functions (`scripts/lease-isolation/run.sh`) | 7 / 7 passed (below) |
+
+**The 7 production-build failures, one by one.**
+- Five download tests (`agent-g-audio` :121, `agent-g-montage` :282 / :291 / :315, `live-voice-e2e` :189) fetch their fake
+  result from `media.test` or `e2e-media.example`. A production build sends the CSP header (`next.config.js:275`, off under
+  `next dev`), and those hosts are not in `connect-src`; real results are signed links on our storage, `*.supabase.co`, which
+  is (`lib/security/csp.js` `connect-src`). A local-only probe on the production build fetched
+  `https://<x>.supabase.co/storage/v1/object/sign/renders/a.mp4` (200) and was refused `https://media.test/a.mp4`. Test-host
+  only; no product change.
+- `swarm-pipelines` :28 expects the dev bypass; on a production build the 401 it got is the right answer.
+- `simplified-studio` :27: `/en/dashboard#film` opened the chat instead of Video. **A real bug, fixed in this run**: on a
+  production build the studio's chunk is often ready at hydration, so the studio mounts with the shell and reads (and misses)
+  `?tool=` before ServiceHub writes it. ServiceHub now asks the studio first (`omni:set-tool`, cancelable) and leaves `?tool=`
+  in the address only when nobody answered (`components/studio/ServiceHub.tsx`; `ServiceHub.test.tsx`, 5 tests, 2 of them
+  fail on the old code). The spec passes on the rebuilt production build.
+
+### E, F and G without the shared database
+
+The lease queue ran against an isolated database built from Production's own shapes (`scripts/lease-isolation/schema.sql`:
+`profiles`, `generation_jobs`, `credit_ledger` with their checks and unique indexes, and `deduct_credits`, `refund_credits`,
+`update_credits_balance` copied verbatim, read with SELECT only). The real store and the real billing code ran
+(`lib/agent/media/leaseIsolation.pg.test.ts`, opt-in, skipped in CI):
+
+| Case | Result |
+|---|---|
+| E: the worker dies mid-render | after the lease lapses the sweep runs attempt 2 and delivers; the late worker is told `lost`; one debit (-7) |
+| F: the job dies twice | given up and refunded once (+7); a second sweep pays nothing; a late claim answers `final` |
+| G: a refund that did not land | the next sweep pays the debt once |
+| Owner Stop | another account's Stop answers `not_found`; the owner's Stop reaches the worker on its heartbeat and refunds once |
+| A charge whose request died | after HOLD_MS the hold is failed and paid back |
+| Eight workers race for one job | exactly one wins |
+| URL-to-Audio E / F | a dead extraction is retried and delivered; two deaths are given up; no ledger row (the extraction is free) |
+
+So E, F and G no longer need the shared database. They still can run there, on the owner's word only
+(`docs/handoffs/2026-10-09-preview-run-sheet.md`).
+
+### Production history per service (read only, `generation_jobs`, 2026-10-10 ~05:10Z)
+
+Completed rows show a path produced a result on an earlier build; they are not proof of the code on PR #50.
+
+| # | Service | Rows in Production (completed / failed, last success) | Automated coverage | Label |
+|---|---|---|---|---|
+| 1 | video.generate | `film`: 63 / 19, 10-04 | director, storyboard and assemble suites; `model-picker`, `landing` | BUILT_NOT_PROVEN |
+| 2 | video.music-video | inside `film` | `simplified-studio` (sidebar row, switch) | BUILT_NOT_PROVEN |
+| 3 | video.product-ad | `film/product`: 1 / 0, 09-30 | remix route suites | BUILT_NOT_PROVEN |
+| 4 | video.character-swap | no row of its own | remix route suites; `MEDIA_GOOGLE_ONLY` refusal | BLOCKED_OWNER |
+| 5 | video.motion | none | motion route suites; refusal | BLOCKED_OWNER |
+| 6 | video.vfx | `film/vfx`: 0 / 2, never (both charges, 25 and 83, refunded in full) | genjutsu suites; `vfx-genjutsu` | BUILT_NOT_PROVEN |
+| 7 | video.remix | `film/edit-video`: 15 / 0, 09-29 | remix suites; `chat-attachments` (price card) | BLOCKED_OWNER |
+| 8 | video.editing | `film/montage`: 1 / 2, 10-09 (the Agent G Preview run) | `montage`, `agent-g-montage`; isolation E / F / G | PARTIAL: Agent G stop and MP4 PROVEN in the database |
+| 9 | image.generate | `image`: 125 / 16, 10-06 | image suites; `ui-image`, `preview-e2e` | BLOCKED_OWNER |
+| 10 | image.photoshoot | inside `image` | `service-sessions`, `panels-fit` | BLOCKED_OWNER |
+| 11 | image.interior | inside `image` (renders); the plan is not a job | interior-produce suite; `interior-plan` | BLOCKED_OWNER |
+| 12 | image.culling | none (on the device) | culling suites | BUILT_NOT_PROVEN |
+| 13 | avatar.talking | none in `generation_jobs` | presenter / lipsync suites; refusal | BLOCKED_OWNER |
+| 14 | music.generate | `music`: 107 / 4, 10-06 | music suites; `ui-music` | BLOCKED_OWNER |
+| 15 | music.remix | none | none | MISSING |
+| 16 | voice.dubbing | `film/dubbing`: 3 / 3, 08-01 (last failure 10-03) | dubbing route (16 tests) | PARTIAL |
+| 17 | text.write | chat, not a job | `chat-streaming`, `preview-e2e` | BUILT_NOT_PROVEN |
+| 18 | design.presentation | none | presentation route (12 tests) | PARTIAL |
+| 19 | design.model3d | `image/model3d`: 1 / 3, 10-06 | model3d suites | BLOCKED_OWNER |
+| 20 | code.assistant | chat | chat suites | BUILT_NOT_PROVEN |
+| 21 | code.terminal | none | none | MISSING |
+| 22 | research.web-search | chat | `chat-research` | BUILT_NOT_PROVEN |
+
+Totals: 9 BLOCKED_OWNER, 8 BUILT_NOT_PROVEN, 3 PARTIAL, 2 MISSING; the one change since §6 is video.editing (BUILT_NOT_PROVEN →
+PARTIAL). (`voice`: 4 / 2, last success 07-25, is the voice lab, outside the 22.) Live jobs 0, stuck jobs 0, completed rows without a
+result link 0.
+
+### The five areas the ask names
+
+| Area | Evidence this run | Label |
+|---|---|---|
+| Provider boundary | `__tests__/provider-boundary.test.ts`, `lib/providers/mediaPolicy.test.ts` pass; no outside → outside fallback (§6 gap 3). The unauthenticated probe still reaches `/api/video/lipsync` (names the SadTalker model) and `/api/heygen/*` (answer "not configured" here) | BLOCKED_OWNER (action 9) |
+| Agent G | slice 1 and the execution foundation suites pass; E / F / G PROVEN in isolation; Stop and MP4 PROVEN in the database 2026-10-09; Task API owner check unit-proven, live check is step D of the Preview run | PARTIAL |
+| Live Voice | `lib/voice`, `app/api/voice/live`, `components/voice/live` suites pass; `live-voice-e2e` and `live-actions` pass on `next dev` with Google's socket mocked. No real-device call yet (action 13) | BUILT_NOT_PROVEN |
+| Credits | Production ledger read only: 222 rows, 0 duplicate refs, 0 negative balances, both failed VFX charges refunded in full; 6 balances differ from their ledger sum, all on profiles with no sign-in account (5 × +100 starter credits from July, before the ledger; one all-zero-id PRO row with 1,000,050 credits, no jobs, not read by any code). Charge once / refund once / debt once PROVEN in isolation on Production's own ledger functions | ledger PROVEN (read only); new paths BUILT_NOT_PROVEN |
+| Library | Library route and component suites pass; one row per file (§6 gap 7); the 3D plan filed (gap 12). Live check is step A's „Save to Library" | BUILT_NOT_PROVEN |
+
+### Found and fixed in this run
+
+1. **A finished film's master link went to anyone holding its status id** (`GET /api/video/status/<id>`), together with the
+   payer's account id and two billing flags. Now only the account that paid gets the (fresh, 7-day) link; everyone else
+   sees the phase with `masterUrl: null`, and `payerUid`, `billingConsumed`, `freeFilmWaived` never leave the server
+   (`app/api/video/status/[tokenId]/route.ts`; `route.test.ts`, 6 tests, 4 fail on the old route).
+2. `#film` / `#lipsync` on a production build (above).
+
+Left as they are (low, noted in the certification §P): `/api/business/*` answer 500 "UNAUTHENTICATED" instead of 401 (no
+data leaves); `/api/app/status` says which provider keys are configured (names only, no values).
