@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleBridgeRequest, BRIDGE_BODY_MAX_BYTES } from '@/lib/calls/whatsapp/bridgeApi';
 import { callingEnabled, liveCallDeps, livePhoneToolDeps } from '@/lib/calls/whatsapp/liveDeps';
 import { liveCallSessionDeps, mintCallSession } from '@/lib/calls/whatsapp/liveSession';
-import { ticketFromRequest } from '@/lib/calls/whatsapp/ticket';
+import { bridgeSecret, ticketFromRequest, verifyTicket } from '@/lib/calls/whatsapp/ticket';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,11 @@ export const maxDuration = 30;
 
 export async function POST(request: NextRequest, { params }: { params: { op: string } }) {
   if (!callingEnabled()) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // The door: only a ticket our app signed for one call gets past here (the full check, with the call's own record, is
+  // authorizeBridge inside handleBridgeRequest). Nothing is read, minted or spent before it.
+  const ticket = ticketFromRequest(request);
+  const door = verifyTicket(ticket, bridgeSecret(), Date.now());
+  if (!door.ok) return NextResponse.json({ error: door.error }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
   const raw = await request.text().catch(() => '');
   if (Buffer.byteLength(raw, 'utf8') > BRIDGE_BODY_MAX_BYTES) return NextResponse.json({ error: 'payload_too_large' }, { status: 413 });
   let body: unknown = {};
@@ -31,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: { op: str
         session: (ticket, handle) => mintCallSession(liveCallSessionDeps(), ticket, handle),
       },
       params.op,
-      ticketFromRequest(request),
+      ticket,
       body,
     );
     return NextResponse.json(r.body, { status: r.status, headers: { 'Cache-Control': 'no-store' } });
