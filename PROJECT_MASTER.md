@@ -46,12 +46,13 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md; PR #50 merged c0297491 and live in Production from 19:55Z, every new flag off)
-LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md; PR #50 merged c0297491 and live in Production from 19:55Z, every new flag off; PR #53 docs merged bc26fc66, Production serves bc26fc6 from 20:28Z; FINAL STATUS below)
+LAST COMMIT: see `git log` on that branch (main = bc26fc66 = Production since 2026-10-10 20:28Z, PR #53 docs; before it
+          c0297491, PR #50 merged 19:51:05Z; 6c7dff46, PR #52 auth hotfix, Production 2026-10-09 16:01Z; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
           provider-boundary ratchet test; 7c8dd9b3 ka/en/ru fixes + missing-key test; certification records);
-          PRs #42, #45, #46, #47, #48, #49 and #52 merged
+          PRs #42, #45, #46, #47, #48, #49, #50, #52 and #53 merged
 NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Agent G autonomous media & file
           execution (owner, 2026-10-09 09:32Z, critical), Section F: slice 1 (clips + music → MP4 in the chat) is
           BUILT_NOT_PROVEN on PR #50, behind AGENT_G_MEDIA_EXEC (off in Production); AG-8 needs a Preview run by an
@@ -268,6 +269,30 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           silent on the DB, prices unchanged. Read-only SQL before/after equal (balances 1,003,393, ledger 222 / 2,873,
           0 duplicate refs, jobs 373 / 0 live, RLS 52/52); Supabase logs 0 × 5xx, only the known 404s. No bug, no
           hotfix, no rollback. Vercel runtime logs: connector 403 (BLOCKED). Record: verdict §14.
+          FINAL STATUS 2026-10-10 20:31Z (owner's word 20:23:59Z: merge PR #53 if CI green and docs only, check the
+          deploy, record the status here; no flag, price, secret or DB change): PR #53 (3 Markdown files) merged
+          20:24:53Z as bc26fc66; main E2E + CI green; Production serves bc26fc6 (build 20:27:55Z). Post-deploy (T6,
+          anonymous, GET): health bc26fc6, /ka 200, prices unchanged, Agent G montage/audio/edit/analyze
+          {"enabled":false}, Task API 401, admin 401, run-migration 404, deliveries cron 403. Read-only SQL 20:25Z and
+          20:29Z equal to the PR #50 baseline; logs 0 × 5xx (4xx all pre-existing: schema-drift 404s, and the job
+          tray's position_in_queue read answering 400 before its coded retry; verdict §14 corrected to name them).
+          ON in Production: site KA/EN/RU and phone layout, services page, library (PROVEN T6); sign-up, code log-in,
+          password reset, Google (PROVEN T6 2026-10-09, auth code unchanged); admin and Task API guards (PROVEN T6);
+          credits ledger with deduct_credits_once (PROVEN T3, T6 read only); Agent G text chat, research, code
+          assistant, Live Voice for signed-in users, the 22 studio services (BUILT_NOT_PROVEN at this head: 0 / 22
+          PROVEN); outside engines (Replicate, HeyGen keys answer ok on /api/health/public) because MEDIA_GOOGLE_ONLY
+          is off, so the Google + ElevenLabs rule is FAILED in Production until the owner turns it on.
+          OFF: AGENT_G_MEDIA_EXEC (montage, link → MP3, edit, multi-step runs), AGENT_G_FILE_ANALYSIS, DELIVERY_OUTBOX,
+          WHATSAPP_CALLING_ENABLED, WhatsApp creative scope (Meta case pending), music.remix; code.terminal MISSING;
+          product-ad length price held at 25. Flag values are read from route answers (the Vercel connector is 403).
+          NOT WORKING: payments (no payment ever completed, BOG checkout fails at start); ElevenLabs: /api/health/public
+          voice "down" (key check fails; also down in the 2026-09 audit; cause not visible from outside).
+          NEEDS E2E: Preview A–D as admin (owner); a signed-in Production smoke on bc26fc6 (owner; Claude does not sign
+          in to Production); ElevenLabs voice, dubbing, narration; each paid path at this head (T5, owner's word per
+          test); the 9 outside-engine services after MEDIA_GOOGLE_ONLY; BOG payment end to end; Live Voice on a real
+          phone and iPhone Safari; Agent G in Production after its flag; analyze-my-file; channels and Calling after
+          Meta's written answer. Report: /mnt/project-files/reports/2026-10-10-final-status.md.
+          Verdict unchanged: full opening NO-GO; Production ready NO.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

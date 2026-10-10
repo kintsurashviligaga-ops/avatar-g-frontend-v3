@@ -289,9 +289,12 @@ Credit and data integrity, **T6 Production, read-only SQL** (non-destructive):
 | `generation_jobs` rows / live / last update | 373 / 0 / 2026-10-09 16:58:24Z | same | same |
 | public tables with RLS on | 52 / 52 | 52 / 52 | 52 / 52 |
 
-Logs (Supabase edge logs, 19:55:32–20:05Z): **0 responses ≥ 500**. The only 4xx are 404s on `research_jobs`,
-`service_jobs` and `research_context_files`, the same calls seen all day before the merge (tables missing in Production,
-`docs/handoffs/2026-10-08-production-schema-drift.md`). The page checks above wrote the normal anonymous page-view rows
+Logs (Supabase edge logs, 19:55:32–20:05Z): **0 responses ≥ 500**. The 4xx are 404s on `research_jobs`,
+`service_jobs`, `research_context_files` and `credits` (tables missing in Production,
+`docs/handoffs/2026-10-08-production-schema-drift.md`), and 400s on `GET generation_jobs` from a `node` client: the job
+tray's first read asks for `position_in_queue`, a column missing in Production, and `app/api/orchestrator/jobs/route.ts`
+retries without it. All of them ran all day before the merge at the same rate (correction, 20:30Z: the first version of
+this paragraph named only the first three 404s). The page checks above wrote the normal anonymous page-view rows
 (`analytics_events`, `active_visitors`) that any visit writes. One observation outside this repo: a `node` client calls
 `rpc/claim_render_job` (about 22 a minute most of the day, with dips at 19:10–19:20Z and from 19:51Z). Nothing in this
 repository calls that function, so the deploy did not change it; who runs that worker is not known here.
@@ -301,3 +304,19 @@ Bugs found after the deploy: **none**. Hotfixes: none. Rollback: not needed (pla
 Pre-existing, not changed by this merge: the first-party event log (`lib/analytics/track.ts` → `/api/analytics/track`)
 sends without reading the cookie choice; it sets no cookie, but whether it should wait for the banner is a P2 for
 review.
+
+### PR #53 (this record) merged on the owner's word
+
+GG, Master Task, 2026-10-10 20:23:59Z: merge PR #53 if the final CI is green and the change is documentation only, check
+the Vercel deploy, record the final status in `PROJECT_MASTER.md`; no flag, price, secret or database change.
+
+| Step | Result |
+|---|---|
+| PR #53 | 3 Markdown files (`PROJECT_MASTER.md`, this file, `final-launch-certification.md`); `verify`, `preview-e2e`, Vercel Preview success on `be318d3a` (`verify` passed on its one re-run after a Google Fonts fetch error in `next build`) |
+| Merge | normal GitHub merge at **20:24:53Z**, merge commit **`bc26fc66`** |
+| `main` CI on `bc26fc66` | `E2E - Preview Contract` success (20:27:46Z), `CI` success (20:30:31Z) |
+| Production deploy | **PROVEN (T6):** `/api/version` answers `bc26fc6`, build 20:27:55Z, `env: production`; `/api/health` 200 `healthy`, commit `bc26fc6` |
+| Post-deploy (T6, anonymous, GET) | `/ka` 200; `/ka/pricing` unchanged; Agent G `montage`, `audio`, `edit`, `analyze` → `{"enabled":false}`; `/api/tasks` 401; `/api/admin/stats` 401; `/api/admin/run-migration` 404; `/api/cron/deliveries` 403 |
+| Data (T6, read-only SQL) | 20:25:54Z and 20:29:39Z equal to the table above (42 / 24, 0 negative, 1,003,393, ledger 222 / 2,873, 0 duplicate refs, jobs 373 / 0 live, RLS 52 / 52) |
+| Logs (20:24–20:31Z) | 0 × 5xx; the 4xx are the pre-existing ones named above |
+| Provider probe | `/api/health/public`: chat, image, video, music, avatar `ok`, **voice `down`** (the ElevenLabs key check fails; it was down in the 2026-09 audit too, so not caused by these merges; cause not visible from outside) |
