@@ -171,7 +171,7 @@ export function uploadPrefill(locale: string): string {
   return lang === 'en' ? 'Extract the MP3 from this file' : lang === 'ru' ? 'Извлеки MP3 из этого файла' : 'ამ ფაილიდან MP3 ამოიღე';
 }
 
-export type AudioChatCode = AudioErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited';
+export type AudioChatCode = AudioErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'approval_unclear';
 
 const UPLOAD: Record<Lang, string> = {
   ka: ' თუ ვიდეო შენია ან მისი გამოყენების ლიცენზია გაქვს, ატვირთე ფაილი აქ და MP3-ს მაშინვე ამოვიღებ.',
@@ -183,6 +183,7 @@ const UPLOAD: Record<Lang, string> = {
 export const OFFER_UPLOAD: ReadonlySet<string> = new Set(['platform', 'stream', 'not_media', 'unavailable', 'blocked_host', 'invalid_url', 'refused']);
 
 const ERR: Record<AudioChatCode, Record<Lang, string>> = {
+  approval_unclear: { ka: 'შენი „კი“ ვერ გავიგე, ამიტომ არაფერი დამიწყია. თქვი „კი, დაიწყე“ ან დააჭირე Start-ს.', en: 'I did not hear a clear yes from you, so nothing was started. Say "yes, start" or tap Start.', ru: 'Я не услышал от вас чёткого «да», поэтому ничего не запущено. Скажите «да, начинай» или нажмите Start.' },
   bad_input: { ka: 'წყარო ვერ მივიღე. გამომიგზავნე ერთი ბმული ან ერთი ფაილი.', en: 'I did not get a source. Send one link or one file.', ru: 'Источник не получен. Пришлите одну ссылку или один файл.' },
   invalid_url: { ka: 'ეს ბმული ვერ წავიკითხე.', en: 'I could not read this link.', ru: 'Не удалось прочитать ссылку.' },
   platform: { ka: '{p}-ის წესები მისი ვიდეოს ან აუდიოს გადმოწერას საკუთარი პლეერის გარეშე არ უშვებს, ამიტომ ამ ბმულიდან ფაილს არ ავიღებ.', en: '{p} does not allow its videos or audio to be downloaded outside its own player, so I will not take the file from this link.', ru: 'Правила {p} не разрешают скачивать видео и аудио вне его плеера, поэтому я не буду брать файл по этой ссылке.' },

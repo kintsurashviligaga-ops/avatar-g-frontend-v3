@@ -7,7 +7,8 @@
  *                                             durationSec, bytes) | failed.
  *   POST { action: 'quote', url }             a link: the source rule (no video platform, no stream), the live check, the
  *        { action: 'quote', file, name? }     rights; or one of the caller's uploads. Plans and prices (free); spends nothing.
- *   POST { action: 'run', request, token }    queue the quote the user confirmed, once; answers at once.
+ *   POST { action: 'run', request, token, approval? }    queue the quote the user confirmed, once; answers at once.
+ *     `approval` (lib/agent/approval): absent = the card's Start tap; a Live call's voice yes is judged again here.
  *   POST { action: 'cancel', jobId }          stops the owner's queued or running extraction.
  *
  * ⚠️ CLOSED UNLESS AGENT_G_MEDIA_EXEC OPENS IT (lib/agent/media/access): a closed POST (or job read) answers 404 before
@@ -34,6 +35,7 @@ import { workAudioJob } from '@/lib/agent/media/audioWorker';
 import { liveAudioDeps } from '@/lib/agent/media/audioLive';
 import { newWorkerId } from '@/lib/agent/media/montageLive';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
+import { parseRunApproval } from '@/lib/agent/approval';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -116,7 +118,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return answer(await quoteAudioExtract(deps, { userId: user.id, url: body?.url, file: body?.file, name: body?.name }));
   }
   if (action === 'run') {
-    const r = await enqueueAudioJob(deps, { userId: user.id, request: body?.request, token: body?.token });
+    // How the user said yes (lib/agent/approval): a voice yes is judged again here; words that are not one start nothing.
+    const yes = parseRunApproval(body?.approval);
+    if (!yes.ok) {
+      await deps.audit({ userId: user.id, op: 'audio_extract', phase: 'run', outcome: 'refused', detail: yes.error });
+      return NextResponse.json(yes, { status: 400 });
+    }
+    const r = await enqueueAudioJob(deps, { userId: user.id, request: body?.request, token: body?.token, approval: yes.approval });
     if (r.ok && (r.status === 'queued' || r.status === 'running')) startWorker(deps, r.jobId);
     return answer(r);
   }

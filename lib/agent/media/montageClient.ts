@@ -9,6 +9,7 @@
  * worker that died costs nothing: the edit goes on server-side and lands in the Library either way.
  */
 import type { MontageQuote } from './montageExec';
+import type { RunApproval } from '@/lib/agent/approval';
 import { codeOf, type ChatErrorCode } from './montageChat';
 import type { TaskView } from '@/lib/tasks/taskView';
 import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
@@ -88,11 +89,11 @@ const done = (t: TaskView): ClientRun | null => {
  */
 export function runAgentMontage(
   deps: RunDeps,
-  input: { request: unknown; token: string; prompt?: string; jobId: string },
+  input: { request: unknown; token: string; prompt?: string; jobId: string; approval?: RunApproval },
 ): Promise<ClientRun> {
   return sendAndFollow<ClientRun>(deps, {
     route: ROUTE,
-    runBody: { action: 'run', request: input.request, token: input.token, prompt: input.prompt },
+    runBody: { action: 'run', request: input.request, token: input.token, prompt: input.prompt, ...(input.approval ? { approval: input.approval } : {}) },
     jobId: input.jobId,
     done,
     refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),

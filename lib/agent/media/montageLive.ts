@@ -36,6 +36,7 @@ const TOOL_OF_OP: Readonly<Record<AuditEvent['op'], string>> = {
   media_edit: 'media.edit',
   media_analyze: 'media.analyze',
   agent_run: 'agent.run',
+  studio_run: 'studio.generate',
 };
 
 /** One audit row (shared with ./audioLive and lib/agent/run). Never throws; a lost row is reported. */

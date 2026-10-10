@@ -7,7 +7,8 @@
  *                                              name, durationSec, width, height, edits) | failed.
  *   POST { action: 'quote', file, edits, name? } one of the caller's own files (an upload, a Library item, a result of
  *                                              ours) and the edits as asked; resolved against the file, planned, free.
- *   POST { action: 'run', request, token }     queue the quote the user confirmed, once; answers at once.
+ *   POST { action: 'run', request, token, approval? }     queue the quote the user confirmed, once; answers at once.
+ *     `approval` (lib/agent/approval): absent = the card's Start tap; a Live call's voice yes is judged again here.
  *   POST { action: 'cancel', jobId }           stops the owner's queued or running edit.
  *
  * ⚠️ CLOSED UNLESS AGENT_G_MEDIA_EXEC OPENS IT (lib/agent/media/access): a closed POST (or job read) answers 404 before
@@ -33,6 +34,7 @@ import { workEditJob } from '@/lib/agent/media/editWorker';
 import { liveEditDeps } from '@/lib/agent/media/editLive';
 import { newWorkerId } from '@/lib/agent/media/montageLive';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
+import { parseRunApproval } from '@/lib/agent/approval';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -114,7 +116,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return answer(await quoteEdit(deps, { userId: user.id, file: body?.file, edits: body?.edits, name: body?.name }));
   }
   if (action === 'run') {
-    const r = await enqueueEditJob(deps, { userId: user.id, request: body?.request, token: body?.token });
+    // How the user said yes (lib/agent/approval): a voice yes is judged again here; words that are not one start nothing.
+    const yes = parseRunApproval(body?.approval);
+    if (!yes.ok) {
+      await deps.audit({ userId: user.id, op: 'media_edit', phase: 'run', outcome: 'refused', detail: yes.error });
+      return NextResponse.json(yes, { status: 400 });
+    }
+    const r = await enqueueEditJob(deps, { userId: user.id, request: body?.request, token: body?.token, approval: yes.approval });
     if (r.ok && (r.status === 'queued' || r.status === 'running')) startWorker(deps, r.jobId);
     return answer(r);
   }

@@ -7,6 +7,8 @@
  */
 jest.mock('server-only', () => ({}));
 
+const mockAudit = jest.fn(async () => {});
+
 let mockUser: { id: string; email?: string } | null = null;
 jest.mock('../../../../../lib/supabase/server', () => ({
   authedClientFromRequest: jest.fn(async () => ({ user: mockUser })),
@@ -17,7 +19,7 @@ jest.mock('../../../../../lib/api/rate-limit', () => ({
 }));
 jest.mock('../../../../../lib/admin/guard', () => ({ isAdminUser: (u: { email?: string } | null) => u?.email === 'admin@example.com' }));
 jest.mock('../../../../../lib/agent/media/montageLive', () => ({ newWorkerId: () => 'w-1' }));
-jest.mock('../../../../../lib/agent/media/editLive', () => ({ liveEditDeps: () => ({}) }));
+jest.mock('../../../../../lib/agent/media/editLive', () => ({ liveEditDeps: () => ({ audit: mockAudit }) }));
 jest.mock('../../../../../lib/agent/media/editExec', () => ({
   quoteEdit: jest.fn(async (_d: unknown, input: { userId: string }) => ({ ok: true, quote: { jobId: 'j1' }, request: {}, token: 't', who: input.userId })),
   enqueueEditJob: jest.fn(async () => ({ ok: false, error: 'quote_expired', message: 'expired' })),
@@ -122,5 +124,29 @@ describe('the edit runs in a worker after the answer, never in the request', () 
     (editJobStatus as jest.Mock).mockResolvedValueOnce({ view: { ok: true, jobId: 'j9', status: 'queued', stage: 'queued', pct: 0, attempt: 0 }, needsWorker: true });
     await GET(req(undefined, '?jobId=j9'));
     expect(waitUntil).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('how the user said yes (lib/agent/approval)', () => {
+  beforeEach(() => { process.env.AGENT_G_MEDIA_EXEC = 'on'; });
+
+  test('no approval is the card\'s Start tap', async () => {
+    await POST(req({ action: 'run', request: {}, token: 't' }));
+    expect((enqueueEditJob as jest.Mock).mock.calls[0][1]).toMatchObject({ userId: 'user-1', approval: { channel: 'tap' } });
+  });
+
+  test('a voice yes reaches the executor with the user\'s words', async () => {
+    await POST(req({ action: 'run', request: {}, token: 't', approval: { channel: 'voice-transcript', said: 'კი, დაიწყე' } }));
+    expect((enqueueEditJob as jest.Mock).mock.calls[0][1].approval).toEqual({ channel: 'voice-transcript', said: 'კი, დაიწყე' });
+  });
+
+  test('words that are not a clear yes start nothing, and the refusal is audited', async () => {
+    const res = await POST(req({ action: 'run', request: {}, token: 't', approval: { channel: 'voice-transcript', said: 'wait' } }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, error: 'approval_unclear' });
+    expect(enqueueEditJob).not.toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledWith({ userId: 'user-1', op: 'media_edit', phase: 'run', outcome: 'refused', detail: 'approval_unclear' });
+    expect((await POST(req({ action: 'run', request: {}, token: 't', approval: { channel: 'model' } }))).status).toBe(400);
+    expect(enqueueEditJob).not.toHaveBeenCalled();
   });
 });

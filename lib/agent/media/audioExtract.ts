@@ -27,6 +27,7 @@ import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { cancel, claimable, enqueue, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import { classifySource, mp3NameFor } from './audioSource';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 import type { AuditEvent, FileRef } from './montageExec';
 
 /** generation_jobs rows of Agent G's audio extractions carry this queue kind in params._exec. */
@@ -294,11 +295,14 @@ export interface AudioRunInput {
   token: unknown;
   /** The multi-step run (lib/agent/run) this job is a step of: kept on the row (`_parent`) and in its audit. Server-set only. */
   parent?: string;
+  /** How the user said yes (lib/agent/approval, parsed by the route): kept on the row (`_approval`) and in the audit. Absent = the Start tap. */
+  approval?: RunApproval;
 }
 
 /** Queue a quote the user confirmed, never twice. Answers at once; the extraction is the worker's. */
 export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput): Promise<AudioRunResult> {
   const { userId } = input;
+  const approval = input.approval ?? TAP;
   const request = validateAudioRequest(input.request);
   if (!request) return err('invalid_request', 'The plan is not valid.');
   const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
@@ -322,6 +326,7 @@ export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput)
       rights: request.rights.status,
       _job: { request },
       ...(input.parent ? { _parent: input.parent } : {}),
+      ...approvalParams(approval),
     },
   });
   if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
@@ -334,8 +339,8 @@ export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput)
     return { ...(await withFreshUrl(deps, view)), replay: true };
   }
   await deps.audit({
-    userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, files: 1, credits: AUDIO_PRICE_CREDITS, detail: `queued; rights ${request.rights.status}`,
-    ...(input.parent ? { runId: input.parent } : {}),
+    userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, files: 1, credits: AUDIO_PRICE_CREDITS, approval: approval.channel,
+    detail: withNote(`queued; rights ${request.rights.status}`, approval), ...(input.parent ? { runId: input.parent } : {}),
   });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }

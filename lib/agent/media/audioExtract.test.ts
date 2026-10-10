@@ -112,6 +112,14 @@ describe('run: only the quoted plan, queued once', () => {
     expect(row.params).toMatchObject({ subtype: 'audio-extract', via: 'agent-g', source: 'link', rights: 'unverified', _job: { request: q.request } });
   });
 
+  test('a voice yes is kept on the row and in the audit with its words', async () => {
+    const f = fakeAudio();
+    const q = await quoted(f);
+    await enqueueAudioJob(f.deps, { userId: USER, request: q.request, token: q.token, approval: { channel: 'voice-transcript', said: 'да, давай' } });
+    expect(f.store.rows.get('job-1')!.params._approval).toEqual({ channel: 'voice-transcript', said: 'да, давай' });
+    expect(f.audits.at(-1)).toMatchObject({ phase: 'run', outcome: 'ok', approval: 'voice-transcript', detail: expect.stringContaining('approved by voice "да, давай"') });
+  });
+
   test('pressing Start again reports the same job and queues nothing new; a finished one comes back re-signed', async () => {
     const f = fakeAudio();
     const q = await quoted(f);

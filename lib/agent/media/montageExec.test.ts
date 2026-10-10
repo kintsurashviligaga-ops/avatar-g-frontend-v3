@@ -81,6 +81,19 @@ describe('run: queue the confirmed quote, once', () => {
     expect(f.audits.map((a) => `${a.phase}:${a.outcome}:${a.detail ?? ''}`)).toEqual(['quote:ok:', 'run:ok:queued']);
   });
 
+  test('how the user said yes is kept on the row and in the audit: a tap by default, a voice yes with its words', async () => {
+    const f = fake();
+    const q = await quoted(f);
+    await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token, approval: { channel: 'voice-transcript', said: 'კი, დაიწყე' } });
+    expect(f.store.rows.get(q.quote.jobId)!.params._approval).toEqual({ channel: 'voice-transcript', said: 'კი, დაიწყე' });
+    expect(f.audits.at(-1)).toMatchObject({ phase: 'run', outcome: 'ok', approval: 'voice-transcript', detail: 'queued; approved by voice "კი, დაიწყე"' });
+    const g = fake();
+    const r = await quoted(g);
+    await enqueueMontageJob(g.deps, { userId: USER, request: r.request, token: r.token });
+    expect(g.store.rows.get(r.quote.jobId)!.params._approval).toEqual({ channel: 'tap' });
+    expect(g.audits.at(-1)).toMatchObject({ approval: 'tap', detail: 'queued' });
+  });
+
   test('the same quote run again (double tap, retry) reports the first job and never queues twice', async () => {
     const f = fake();
     const q = await quoted(f);

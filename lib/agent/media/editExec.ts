@@ -25,6 +25,7 @@ import {
   type EditPlan, type EditPlanError, type EditRequest, type MediaEdit,
 } from './editPlan';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 import type { AuditEvent, FileRef } from './montageExec';
 
 export { EDIT_KIND, EDIT_PRICE_CREDITS };
@@ -166,11 +167,14 @@ export interface EditRunInput {
   token: unknown;
   /** The multi-step run (lib/agent/run) this job is a step of: kept on the row (`_parent`) and in its audit. Server-set only. */
   parent?: string;
+  /** How the user said yes (lib/agent/approval, parsed by the route): kept on the row (`_approval`) and in the audit. Absent = the Start tap. */
+  approval?: RunApproval;
 }
 
 /** Queue a quote the user confirmed, never twice. Answers at once; the edit is the worker's. */
 export async function enqueueEditJob(deps: EditExecDeps, input: EditRunInput): Promise<EditRunResult> {
   const { userId } = input;
+  const approval = input.approval ?? TAP;
   const request = validateEditRequest(input.request);
   if (!request) return err('invalid_request', 'The plan is not valid.');
   const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
@@ -192,6 +196,7 @@ export async function enqueueEditJob(deps: EditExecDeps, input: EditRunInput): P
       prompt: request.edits.map((e) => e.op).join(' + '),
       _job: { request },
       ...(input.parent ? { _parent: input.parent } : {}),
+      ...approvalParams(approval),
     },
   });
   if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
@@ -204,8 +209,8 @@ export async function enqueueEditJob(deps: EditExecDeps, input: EditRunInput): P
     return { ...(await withFreshUrl(deps, view)), replay: true };
   }
   await deps.audit({
-    userId, op: 'media_edit', phase: 'run', outcome: 'ok', jobId, files: 1, credits: EDIT_PRICE_CREDITS,
-    detail: `queued: ${request.edits.map((e) => e.op).join('+')}`, ...(input.parent ? { runId: input.parent } : {}),
+    userId, op: 'media_edit', phase: 'run', outcome: 'ok', jobId, files: 1, credits: EDIT_PRICE_CREDITS, approval: approval.channel,
+    detail: withNote(`queued: ${request.edits.map((e) => e.op).join('+')}`, approval), ...(input.parent ? { runId: input.parent } : {}),
   });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }

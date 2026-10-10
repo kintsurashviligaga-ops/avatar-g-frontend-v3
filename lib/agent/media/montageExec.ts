@@ -41,6 +41,7 @@ import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import { MAX_FILES, aspectFromClips, montageBody, sortInputs } from './montageAsk';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 
 /**
  * What an Agent G montage costs, in credits. The owner chose FREE on 2026-10-09 (decision card in the Master Task
@@ -57,8 +58,9 @@ export const MONTAGE_KIND = 'agent-montage';
 export interface AuditEvent {
   userId: string;
   /** montage: ./montageExec; audio_extract: ./audioExtract; media_edit: ./editExec; media_analyze: ./analyzeExec;
-   *  agent_run: a multi-step run (lib/agent/run). */
-  op: 'montage' | 'audio_extract' | 'media_edit' | 'media_analyze' | 'agent_run';
+   *  agent_run: a multi-step run (lib/agent/run); studio_run: a studio generation a Live call started on the user's
+   *  spoken yes (app/api/agent/approvals). */
+  op: 'montage' | 'audio_extract' | 'media_edit' | 'media_analyze' | 'agent_run' | 'studio_run';
   phase: 'quote' | 'run' | 'cancel' | 'refund' | 'approve' | 'resume' | 'step' | 'analyze';
   outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled' | 'retried' | 'lost';
   jobId?: string;
@@ -261,6 +263,8 @@ export interface RunInput {
   prompt?: unknown;
   /** The multi-step run (lib/agent/run) this job is a step of: kept on the row (`_parent`) and in its audit. Server-set only. */
   parent?: string;
+  /** How the user said yes (lib/agent/approval, parsed by the route): kept on the row (`_approval`) and in the audit. Absent = the Start tap. */
+  approval?: RunApproval;
 }
 
 export const CANCELLED = 'cancelled by the user';
@@ -323,6 +327,7 @@ export async function payDebt(deps: MontageExecDeps, row: LeaseRow): Promise<voi
  */
 export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput): Promise<RunResult> {
   const { userId } = input;
+  const approval = input.approval ?? TAP;
   const valid = validateMontageRequest(input.request);
   if (!valid.ok || !valid.request) return err('invalid_request', valid.error ?? 'The edit is not valid.');
   const request = valid.request;
@@ -357,6 +362,7 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
       _job: { request },
       ...(credits > 0 ? { _reserve: { ref, credits } } : {}),
       ...(input.parent ? { _parent: input.parent } : {}),
+      ...approvalParams(approval),
     },
   });
   if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
@@ -386,8 +392,8 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
     }
   }
   await deps.audit({
-    userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec, detail: 'queued',
-    ...(input.parent ? { runId: input.parent } : {}),
+    userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec,
+    approval: approval.channel, detail: withNote('queued', approval), ...(input.parent ? { runId: input.parent } : {}),
   });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }

@@ -70,6 +70,16 @@ describe('run', () => {
     result: { url: 'https://s/a.mp3?token=t', media: 'audio', name: 'Concert.mp3', durationSec: 189.5, bytes: 4_546_000, bitrateKbps: 192, rights: { status: 'own' } },
   });
 
+  test('a voice yes travels with the run request; a tap sends none', async () => {
+    const s = server((c) => (c.body ? json(200, QUEUED) : json(200, DONE)));
+    await runAgentAudio({ fetch: s.fetch, ...clock(), onProgress: () => {} }, {
+      request: { v: 1 }, token: 'tok', jobId: 'job-1', approval: { channel: 'voice-transcript', said: 'კი' },
+    });
+    expect(s.calls.filter((c) => c.body)).toEqual([{
+      url: '/api/agent/media/audio', body: { action: 'run', request: { v: 1 }, token: 'tok', approval: { channel: 'voice-transcript', said: 'კი' } },
+    }]);
+  });
+
   test('queues once, follows with progress, and returns the MP3 with its name, length and size', async () => {
     const views = [running(10, 'extract'), running(80, 'qc'), DONE];
     const s = server((c) => (c.body ? json(200, QUEUED) : json(200, views.shift())));

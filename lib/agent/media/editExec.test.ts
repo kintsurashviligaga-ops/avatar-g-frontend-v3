@@ -122,6 +122,17 @@ describe('run: only the quoted plan, once', () => {
     expect(f.store.rows.size).toBe(0);
   });
 
+  test('a voice yes is kept on the row and in the audit with its words; a tap is the default', async () => {
+    const f = fakeEdit();
+    const q = await quoted(f);
+    await enqueueEditJob(f.deps, { userId: USER, request: q.request, token: q.token, approval: { channel: 'voice-transcript', said: 'yes please' } });
+    expect(f.store.rows.get('job-1')!.params._approval).toEqual({ channel: 'voice-transcript', said: 'yes please' });
+    expect(f.audits.at(-1)).toMatchObject({ approval: 'voice-transcript', detail: 'queued: trim+speed+aspect; approved by voice "yes please"' });
+    const g = fakeEdit();
+    await queued(g);
+    expect(g.audits.at(-1)).toMatchObject({ approval: 'tap', detail: 'queued: trim+speed+aspect' });
+  });
+
   test('a run step keeps its parent run on the row and in the audit', async () => {
     const f = fakeEdit();
     const q = await quoted(f);

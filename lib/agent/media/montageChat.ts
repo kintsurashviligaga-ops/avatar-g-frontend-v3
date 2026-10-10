@@ -164,9 +164,10 @@ export function doneText(durationSec: number, locale: string): string {
       : `მზადაა: ${sec(durationSec)} წმ, შენს მუსიკაზე დამონტაჟებული. ბიბლიოთეკაშიც შევინახე.`;
 }
 
-export type ChatErrorCode = MontageErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited';
+export type ChatErrorCode = MontageErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'approval_unclear';
 
 const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
+  approval_unclear: { ka: 'შენი „კი“ ვერ გავიგე, ამიტომ არაფერი დამიწყია. თქვი „კი, დაიწყე“ ან დააჭირე Start-ს.', en: 'I did not hear a clear yes from you, so nothing was started. Say "yes, start" or tap Start.', ru: 'Я не услышал от вас чёткого «да», поэтому ничего не запущено. Скажите «да, начинай» или нажмите Start.' },
   bad_input: { ka: 'ფაილები ვერ მივიღე. მიამაგრე კლიპები და ერთი მუსიკა თავიდან.', en: 'The files did not come through. Attach the clips and one track again.', ru: 'Файлы не дошли. Прикрепите клипы и один трек снова.' },
   too_many_files: { ka: `ერთ მონტაჟში მაქსიმუმ ${MAX_CLIPS} კლიპი და ერთი მუსიკაა.`, en: `One edit takes up to ${MAX_CLIPS} clips and one track.`, ru: `В один монтаж — до ${MAX_CLIPS} клипов и один трек.` },
   media_not_yours: { ka: '{f} შენი ატვირთული არ არის, ამიტომ მას ვერ გამოვიყენებ.', en: '{f} is not one of your uploads, so I cannot use it.', ru: '{f} — не ваш файл, его нельзя использовать.' },

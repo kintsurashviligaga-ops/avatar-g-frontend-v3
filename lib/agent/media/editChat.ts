@@ -157,11 +157,13 @@ export function editDoneText(r: { output: 'mp4' | 'jpg'; name: string; durationS
       : `მზადაა: ${q(lang, r.name)}, ${facts}. ნახე აქვე, ჩამოტვირთე ან იპოვე ბიბლიოთეკაში.`;
 }
 
-export type EditChatCode = EditErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'no_previous' | 'caption_text' | 'cut_middle';
+export type EditChatCode = EditErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'no_previous' | 'caption_text'
+  | 'cut_middle' | 'approval_unclear';
 
 const AGAIN: Record<Lang, string> = { ka: ' მითხარი თავიდან, რა შევცვალო.', en: ' Tell me again what to change.', ru: ' Скажите ещё раз, что изменить.' };
 
 const ERR: Record<EditChatCode, Record<Lang, string>> = {
+  approval_unclear: { ka: 'შენი „კი“ ვერ გავიგე, ამიტომ არაფერი დამიწყია. თქვი „კი, დაიწყე“ ან დააჭირე Start-ს.', en: 'I did not hear a clear yes from you, so nothing was started. Say "yes, start" or tap Start.', ru: 'Я не услышал от вас чёткого «да», поэтому ничего не запущено. Скажите «да, начинай» или нажмите Start.' },
   bad_input: { ka: 'ვიდეო ვერ მივიღე. მიამაგრე ერთი შენი ვიდეო.', en: 'I did not get a video. Attach one of your videos.', ru: 'Видео не получено. Прикрепите одно ваше видео.' },
   bad_edits: { ka: 'ეს ცვლილება ვერ გავიგე.', en: 'I could not read this edit.', ru: 'Не удалось понять правку.' },
   nothing_to_do: { ka: 'ვერ გავიგე, რა შევცვალო: მაგალითად „დატოვე 5-დან 12 წამამდე", „გახადე 9:16" ან „ხმა გათიშე".', en: 'I could not tell what to change: for example "keep 5 to 12 seconds", "make it 9:16" or "mute it".', ru: 'Не понял, что изменить: например «оставь с 5 по 12 секунду», «сделай 9:16» или «убери звук».' },

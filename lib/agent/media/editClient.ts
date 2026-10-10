@@ -7,6 +7,7 @@ import type { EditQuote } from './editExec';
 import type { EditAsk } from './editWords';
 import { editCodeOf, type EditChatCode } from './editChat';
 import type { TaskView } from '@/lib/tasks/taskView';
+import type { RunApproval } from '@/lib/agent/approval';
 import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
 
 const ROUTE = '/api/agent/media/edit';
@@ -70,10 +71,13 @@ const done = (t: TaskView): EditClientRun | null => {
 };
 
 /** Queue the plan the user confirmed, then follow the job to its end. Never starts a second job for the same plan. */
-export function runAgentEdit(deps: FollowDeps, input: { request: unknown; token: string; jobId: string }): Promise<EditClientRun> {
+export function runAgentEdit(
+  deps: FollowDeps,
+  input: { request: unknown; token: string; jobId: string; approval?: RunApproval },
+): Promise<EditClientRun> {
   return sendAndFollow<EditClientRun>(deps, {
     route: ROUTE,
-    runBody: { action: 'run', request: input.request, token: input.token },
+    runBody: { action: 'run', request: input.request, token: input.token, ...(input.approval ? { approval: input.approval } : {}) },
     jobId: input.jobId,
     done,
     refused: (status, body) => ({ ok: false, code: editCodeOf(status, body) }),

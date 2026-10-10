@@ -6,6 +6,7 @@
 import type { AudioQuote, AudioRights } from './audioExtract';
 import { audioCodeOf, type AudioChatCode } from './audioChat';
 import type { TaskView } from '@/lib/tasks/taskView';
+import type { RunApproval } from '@/lib/agent/approval';
 import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
 
 const ROUTE = '/api/agent/media/audio';
@@ -68,10 +69,13 @@ const done = (t: TaskView): AudioClientRun | null => {
 };
 
 /** Queue the plan the user confirmed, then follow the job to its end. Never starts a second job for the same plan. */
-export function runAgentAudio(deps: FollowDeps, input: { request: unknown; token: string; jobId: string }): Promise<AudioClientRun> {
+export function runAgentAudio(
+  deps: FollowDeps,
+  input: { request: unknown; token: string; jobId: string; approval?: RunApproval },
+): Promise<AudioClientRun> {
   return sendAndFollow<AudioClientRun>(deps, {
     route: ROUTE,
-    runBody: { action: 'run', request: input.request, token: input.token },
+    runBody: { action: 'run', request: input.request, token: input.token, ...(input.approval ? { approval: input.approval } : {}) },
     jobId: input.jobId,
     done,
     refused: (status, body) => ({ ok: false, code: audioCodeOf(status, body) }),
