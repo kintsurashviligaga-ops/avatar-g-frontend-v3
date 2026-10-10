@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 6)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 7 and the final certification)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -177,6 +177,33 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           eslint 0 errors. No merge, deploy, migration, env, flag, price or paid change.
           Next: PART 7 checks that need no approval, then the pricing audit (owner 12:42Z / 12:44Z), then the
           Omnichannel + Mobile UX task (owner 13:10Z).
+          PART 7 DONE (part-7-report.md; 0ac386f2, 1e8bcc07, 78fe3ab4, 448b0a22, 3f3fa34d, 7c1a061a, cc4484f3 + the
+          docs commit). Final certification
+          docs/handoffs/AGENT_G_FINAL_E2E_CERTIFICATION.md (20 sections): verdict NO-GO for Production. Open: no real
+          Preview run since PART 1 (the owner's admin session), 9 services on a forbidden engine until MEDIA_GOOGLE_ONLY,
+          money (no payment ever completed, video sold below cost, price model waiting for approval), alerts reach no
+          person, no real device. PROVEN IN ISOLATION (real Postgres + PostgREST + FFmpeg, lib/agent/run/
+          runIsolation.pg.test.ts, 6 / 6): one message with three steps (I), a dead worker and a restart (E), Stop kills
+          the encoder and pays back once (F), a priced step's own yes and eight racing ticks give one job and one charge
+          (G1), resume reuses the delivered step (G2), another user refused (H). Intent corpus 48 → 69 (KA / EN / RU),
+          69 / 69. 25 probes of every Agent G route on a production build, anonymous and forged token: none answered
+          200. Production read only 13:52Z: ledger clean, 20261002d hashes intact. Found and fixed: a failed card said
+          its reason twice; seven download specs could not pass on a production build (mock host outside the CSP; now
+          the storage domain); the Agent G video queue rendered Standard at the Fast price; a product ad was charged one
+          clip at every length (both found by the pricing audit, fixed on the branch, not in Production). Jest 12,398
+          passed / 0 failed, tsc 0, next lint 0 errors. Playwright, all 33 committed specs: production build 283 passed /
+          0 failed on the final code (a first run failed 2 phone setup steps once; cause not found, D17); next dev 276 /
+          7 failed, all 7 dev-only. No merge, deploy, migration, env, flag, price or paid change.
+          PRICING AUDIT DONE (owner 12:42Z / 12:44Z): docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md, engine
+          lib/credits/unitEconomics.ts + tests (every proposed price ≥ the 65 % target; packs, free caps, sign-up grant
+          stress-tested). Found: every Veo video sells below cost in Production (8 s Fast film 25 credits for 3.63 ₾,
+          −77 %); image, music 60 / 90 / 180 s and Deep Research under the 62 % floor; free dubbing / decks / chat can
+          cost ~28 / 47 / 47 ₾ a day per account. One model for one approval (§6): 0.10 ₾ credit, packs 10 / 20 / 50 ₾,
+          no plans at launch, video 25 + per second Lite 9 / Fast 14 / Standard 44, image 8, music 5 / 18 / 25 / 50,
+          dubbing 10 a minute, deck 4 + 5 a slide, Pro chat 5, Deep Research 330, lip-sync / swap / motion / talking
+          photo / 3D not sold. BLOCKED_OWNER: the approval, then the deploy. Balances untouched; nothing in Production
+          changed.
+          Next: the Omnichannel + Mobile UX task (owner 13:10Z).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
