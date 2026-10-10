@@ -146,8 +146,8 @@ describe('an Agent G multi-step run (PART 2): one task with its steps and its ev
       kind: 'agent-run', status: 'running', stage: '2/2:clip', pct: 70, result: null, error: null, cancellable: true, label: 'Clips to the concert sound',
     });
     expect(t.steps).toEqual([
-      { id: 'sound', tool: 'audio_extract', capability: 'agent.audio-extract', status: 'completed', taskId: 'aud-1', stage: null, pct: 100, result: { url: AUDIO, media: 'audio', name: 'concert.mp3', durationSec: 189.5 }, error: null, reused: false, approval: null },
-      { id: 'clip', tool: 'montage', capability: 'agent.montage', status: 'queued', taskId: 'job-1', stage: 'stitch', pct: 40, result: null, error: null, reused: false, approval: null },
+      { id: 'sound', tool: 'audio_extract', capability: 'agent.audio-extract', status: 'completed', taskId: 'aud-1', stage: null, pct: 100, result: { url: AUDIO, media: 'audio', name: 'concert.mp3', durationSec: 189.5 }, error: null, reused: false, approval: null, credits: null },
+      { id: 'clip', tool: 'montage', capability: 'agent.montage', status: 'queued', taskId: 'job-1', stage: 'stitch', pct: 40, result: null, error: null, reused: false, approval: null, credits: null },
     ]);
     expect(t.events!.map((e) => e.type)).toEqual(['run.created', 'step.queued', 'step.running', 'step.completed', 'step.queued']);
     // `after`: only what the reader has not seen yet.
@@ -164,7 +164,7 @@ describe('an Agent G multi-step run (PART 2): one task with its steps and its ev
     run.status = 'awaiting_approval';
     const t = taskFromRun(runRow(), run);
     expect(t).toMatchObject({ status: 'awaiting_approval', stage: 'awaiting_approval', cancellable: true });
-    expect(t.steps![0]).toMatchObject({ status: 'awaiting_approval', approval: { credits: 5, quoteId: 'q-1', expiresAt: T0 + 60_000 } });
+    expect(t.steps![0]).toMatchObject({ status: 'awaiting_approval', approval: { credits: 5, quoteId: 'q-1', expiresAt: T0 + 60_000 }, credits: 5 });
   });
 
   test('ended: completed gives the last result; partially completed keeps what was delivered; cancelled and failed say so', () => {

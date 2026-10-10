@@ -83,6 +83,8 @@ export interface TaskStepView {
   reused: boolean;
   /** The step waits for the user's yes to this price (POST /api/tasks { action: 'approve', id, step, quoteId }). */
   approval: { credits: number; quoteId: string; expiresAt: number } | null;
+  /** What the step's job is priced at, once quoted (held while it runs, spent when delivered); null before its quote. */
+  credits?: number | null;
 }
 
 /** A job row as the route reads it (generation_jobs, the columns in lib/orchestrator/jobs JOB_COLUMNS). */
@@ -232,6 +234,7 @@ export function taskFromRun(row: TaskRow, run: RunState, children: Readonly<Reco
       error: s.error ?? null,
       reused: !!s.reused,
       approval: s.status === 'awaiting_approval' && s.quote ? { credits: s.quote.credits, quoteId: s.quote.quoteId, expiresAt: s.quote.expiresAt } : null,
+      credits: s.quote ? s.quote.credits : null,
     };
   });
   const status = runTaskStatus(run);
