@@ -161,7 +161,7 @@ import type { RunEvent } from '@/lib/agent/run/runEngine';
 import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
 import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, runAgentEdit } from '@/lib/agent/media/editClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
-import { agentRedo, attachmentKind } from '@/lib/agent/media/redoChat';
+import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
@@ -5733,9 +5733,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // planned on a card (free), and run on Start by a worker (ffmpeg); the result lands under the card and in the Library.
   // A change to Agent G's last result used to be answered „I cannot yet: download it and attach it again".
   const editRunsRef = useRef(new Set<string>());
-  const newAgentEditBubble = useCallback((source: 'file' | 'previous'): Msg => ({
+  const newAgentEditBubble = useCallback((source: 'file' | 'previous', ask?: { edits: EditAsk[]; url?: string }): Msg => ({
     role: 'assistant', id: `age-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: editReadingText(source, locale),
-    editJob: { phase: 'reading', source, t0: Date.now() },
+    editJob: { phase: 'reading', source, ...(ask ? { ask } : {}), t0: Date.now() },
   }), [locale]);
   const quoteAgentEditInto = useCallback(async (id: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
     const f = (u: string, init?: RequestInit) => fetch(u, init);
@@ -5745,11 +5745,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? await quoteEditResult(f, from.url, edits)
         : ({ ok: false, code: 'no_previous' } as const);
     patchMsgById(id, (m) => (r.ok
-      ? { ...m, text: editQuoteText(r.quote, locale, source), editJob: { phase: 'quoted', source, quote: r.quote, request: r.request, token: r.token, t0: m.editJob?.t0 } }
-      : { ...m, text: `⚠️ ${editErrorText(r.code, locale, 'detail' in r ? r.detail : undefined)}`, noRetry: true, editJob: { phase: 'failed', source, error: r.code, t0: m.editJob?.t0, t1: Date.now() } }));
+      ? { ...m, text: editQuoteText(r.quote, locale, source), editJob: { phase: 'quoted', source, quote: r.quote, request: r.request, token: r.token, ask: m.editJob?.ask, t0: m.editJob?.t0 } }
+      : { ...m, text: `⚠️ ${editErrorText(r.code, locale, 'detail' in r ? r.detail : undefined)}`, noRetry: true, editJob: { phase: 'failed', source, error: r.code, ask: m.editJob?.ask, t0: m.editJob?.t0, t1: Date.now() } }));
   }, [locale, patchMsgById]);
   const startAgentEdit = useCallback(async (text: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
-    const bubble = newAgentEditBubble(source);
+    const bubble = newAgentEditBubble(source, { edits, ...(from.url ? { url: from.url } : {}) });
     // The file went to the edit; the MODEL never gets it inline (`modelMedias: []`), as with the montage and the MP3.
     setMessages((prev) => [...prev, { role: 'user', text, ...(from.file ? { medias: [from.file], modelMedias: [] } : {}) }, bubble]);
     persistChatTurn('user', text);
@@ -5793,6 +5793,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // ↻ under the last reply. Under an Agent G card that has finished (lib/agent/media/redoChat) it asks Agent G again with the
   // same turn, in place of the old bubble: a fresh plan card, nothing runs before Start. It used to re-stream a chat answer
   // there, and the chat model, handed the clips and the words, answered with advice instead of the card.
+  // Ask an Agent G card again in place (↻ under the last reply, or the card's own Retry): a fresh plan card with the same
+  // files and words, quoted again; the old card's place in the thread is the new one's.
+  const redoAgentCardAs = useCallback((id: string, redo: AgentRedo<Media>) => {
+    if (redo.kind === 'chat' || redo.kind === 'none') return;
+    const bubble = redo.kind === 'montage' ? newAgentMontageBubble(redo.text, redo.files)
+      : redo.kind === 'audio' ? newAgentAudioBubble(redo.ask)
+        : newAgentEditBubble(redo.source, { edits: redo.edits, ...(redo.url ? { url: redo.url } : {}) });
+    setMessages((prev) => prev.map((m) => (m.id === id ? bubble : m)));
+    void (redo.kind === 'montage' ? quoteAgentMontageInto(bubble.id!, redo.text, redo.files)
+      : redo.kind === 'audio' ? quoteAgentAudioInto(bubble.id!, redo.ask, redo.file)
+        : quoteAgentEditInto(bubble.id!, redo.source, redo.edits, redo.file ? { file: redo.file } : { url: redo.url }));
+  }, [newAgentMontageBubble, newAgentAudioBubble, newAgentEditBubble, quoteAgentMontageInto, quoteAgentAudioInto, quoteAgentEditInto]);
   const regenerateReply = useCallback(() => {
     if (busy) return;
     let lastA = -1;
@@ -5801,15 +5813,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     if (lastA < 0) return;
     const old = messages[lastA]!;
-    const redo = agentRedo(old, messages[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn });
+    const redo = agentRedo(old, messages[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn });
     if (redo.kind === 'chat') { regenerateChat(); return; }
-    if (redo.kind === 'none' || !old.id) return;
-    const bubble = redo.kind === 'montage' ? newAgentMontageBubble(redo.text, redo.files) : newAgentAudioBubble(redo.ask);
-    setMessages((prev) => prev.map((m) => (m.id === old.id ? bubble : m)));
-    void (redo.kind === 'montage'
-      ? quoteAgentMontageInto(bubble.id!, redo.text, redo.files)
-      : quoteAgentAudioInto(bubble.id!, redo.ask, redo.file));
-  }, [busy, messages, agentMontageOn, agentAudioOn, regenerateChat, newAgentMontageBubble, newAgentAudioBubble, quoteAgentMontageInto, quoteAgentAudioInto]);
+    if (old.id) redoAgentCardAs(old.id, redo);
+  }, [busy, messages, agentMontageOn, agentAudioOn, agentEditOn, regenerateChat, redoAgentCardAs]);
+  // A card's own Retry (failed or stopped): asked again in place with what it was asked; nothing runs before Start.
+  const retryAgentCard = useCallback((id: string) => {
+    const msgs = messagesRef.current;
+    const idx = msgs.findIndex((m) => m.id === id);
+    if (idx < 0) return;
+    redoAgentCardAs(id, cardRetry(msgs[idx]!, msgs[idx - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }));
+  }, [agentMontageOn, agentAudioOn, agentEditOn, redoAgentCardAs]);
+  const retryOpen = useCallback((m: Msg, turn: Msg | undefined) => !busy && cardRetry(m, turn, { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }).kind !== 'none',
+    [busy, agentMontageOn, agentAudioOn, agentEditOn]);
 
   // ── THE CHAT-ATTACHED VIDEO REMIX, its run half (the classify-and-ask half is in send) ─────────────────────────────
   // One bubble (`bubbleId`) carries the whole edit: the running note, then the edited video or what went wrong. A charged op
@@ -8216,9 +8232,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     let lastA = -1;
     for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i]!.role === 'assistant') { lastA = i; break; }
     const lastReply = lastA >= 0 ? msgs[lastA]! : undefined;
-    const lastCard = lastReply?.montage ?? lastReply?.audioJob;
+    const lastCard = lastReply?.montage ?? lastReply?.audioJob ?? lastReply?.editJob;
     const redo = lastReply && lastCard && (lastCard.phase === 'failed' || lastCard.phase === 'cancelled' || lastCard.phase === 'dismissed')
-      ? agentRedo(lastReply, msgs[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn }).kind : 'none';
+      ? agentRedo(lastReply, msgs[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }).kind : 'none';
     const prevResult = [...msgs].reverse().find((m) => m.role === 'assistant' && (m.videoUrl || m.imageUrl || m.audioUrl));
     const snapshot: ChatSnapshot = {
       mode,
@@ -8228,7 +8244,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       jobs,
       foreground: streamingIdRef.current ? 'reply' : busy || genActiveRef.current ? 'render' : null,
       lastTruncated: msgs[msgs.length - 1]?.role === 'assistant' && !!msgs[msgs.length - 1]?.truncated,
-      lastRedoable: redo === 'montage' || redo === 'audio',
+      lastRedoable: redo === 'montage' || redo === 'audio' || redo === 'edit',
       pendingMontageId: lastReply?.montage?.phase === 'quoted' && lastReply.id ? lastReply.id : null,
       previous: prevResult ? { kind: prevResult.videoUrl ? 'video' : prevResult.imageUrl ? 'image' : 'audio' } : null,
       montageOn: agentMontageOn,
@@ -8868,13 +8884,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     then the result it made, then the reply's actions. The result used to sit ABOVE the words and the card
                     vanished at the end — the 2026-10-09 run read as „it popped up and disappeared". */}
                 {m.role === 'assistant' && m.montage && m.id && (
-                  <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} />
+                  <AgentMontageCard state={m.montage} locale={locale} onStart={() => void confirmAgentMontage(m.id!)} onCancel={() => void stopAgentMontage(m.id!)} {...(retryOpen(m, messages[i - 1]) ? { onRetry: () => retryAgentCard(m.id!) } : {})} />
                 )}
                 {m.role === 'assistant' && m.editJob && m.id && (
-                  <AgentEditCard state={m.editJob} locale={locale} onStart={() => void confirmAgentEdit(m.id!)} onCancel={() => void stopAgentEdit(m.id!)} />
+                  <AgentEditCard state={m.editJob} locale={locale} onStart={() => void confirmAgentEdit(m.id!)} onCancel={() => void stopAgentEdit(m.id!)} {...(retryOpen(m, messages[i - 1]) ? { onRetry: () => retryAgentCard(m.id!) } : {})} />
                 )}
                 {m.role === 'assistant' && m.audioJob && m.id && (
-                  <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} />
+                  <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} {...(retryOpen(m, messages[i - 1]) ? { onRetry: () => retryAgentCard(m.id!) } : {})} />
                 )}
                 {m.role === 'assistant' && m.runJob && m.id && (
                   <AgentRunCard state={m.runJob} locale={locale} onStart={() => void confirmAgentRun(m.id!)} onCancel={() => void stopAgentRun(m.id!)}
@@ -9060,7 +9076,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         className={`${act} ${ratedIdx[i] === 'down' ? 'text-app-accent' : ''}`}>
                         <ThumbsDown size={18} aria-hidden="true" />
                       </button>
-                      {isLast && !busy && agentRedo(m, messages[i - 1], { montage: agentMontageOn, audio: agentAudioOn }).kind !== 'none' && (
+                      {isLast && !busy && agentRedo(m, messages[i - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn }).kind !== 'none' && (
                         <button type="button" onClick={() => regenerateReply()} aria-label={t.regenerate} title={t.regenerate} className={act}>
                           <RotateCcw size={18} aria-hidden="true" />
                         </button>
@@ -9144,7 +9160,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

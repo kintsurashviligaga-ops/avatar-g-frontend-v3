@@ -15,9 +15,10 @@
  */
 import { Sparkle, Square, X } from 'lucide-react';
 import type { AgentEditState } from '@/lib/agent/media/editChat';
-import { editTask } from '@/lib/agent/media/taskSteps';
+import { jobCreditsText, editTask } from '@/lib/agent/media/taskSteps';
 import { AgentTaskCard } from './AgentTaskCard';
 import { primaryBtn, quietBtn, useStopArmed } from './agentCardButtons';
+import { CreditsLine, RetryButton } from './agentCardExtras';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { start: string; cancel: string; stop: string; free: string }> = {
@@ -27,13 +28,15 @@ const L: Record<Lang, { start: string; cancel: string; stop: string; free: strin
 };
 
 export function AgentEditCard({
-  state, locale, onStart, onCancel,
+  state, locale, onStart, onCancel, onRetry,
 }: {
   state: AgentEditState;
   locale: string;
   onStart: () => void;
   /** Cancel a plan (nothing happens), or Stop a running edit (its worker kills ffmpeg). */
   onCancel: () => void;
+  /** Ask again with the same files and words (a card that was stopped, or failed while it ran). Absent: no Retry. */
+  onRetry?: () => void;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
@@ -63,8 +66,13 @@ export function AgentEditCard({
     );
   }
 
+  if (!buttons && onRetry && (state.phase === 'failed' || state.phase === 'cancelled')) {
+    buttons = <RetryButton onRetry={onRetry} locale={locale} testId="agent-edit-retry" />;
+  }
+  const footer = <CreditsLine text={jobCreditsText(state.phase, q?.credits, locale)} testId="agent-edit-credits" />;
+
   return (
-    <AgentTaskCard model={model} locale={locale} testId="agent-edit-card" phase={state.phase}>
+    <AgentTaskCard model={model} locale={locale} testId="agent-edit-card" phase={state.phase} footer={footer}>
       {buttons}
     </AgentTaskCard>
   );

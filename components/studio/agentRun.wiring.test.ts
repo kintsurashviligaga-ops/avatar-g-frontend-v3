@@ -73,3 +73,14 @@ describe('the run card in the studio', () => {
     expect(between('if (attachments.some((a) => a.uploadOnly)) {', 'toast.error(trackTooBigText(locale)); return; }')).toContain('!!runChainAsk(text, kinds)');
   });
 });
+
+describe('Retry on the one-job cards', () => {
+  test('each card gets Retry only when the studio can ask it again, and ↻ and Retry share one path', () => {
+    for (const card of ['<AgentMontageCard', '<AgentEditCard', '<AgentAudioCard']) {
+      const at = src.indexOf(card);
+      expect(src.slice(at, src.indexOf('/>', at))).toContain('retryOpen(m, messages[i - 1]) ? { onRetry: () => retryAgentCard(m.id!) } : {}');
+    }
+    expect(between('const regenerateReply = useCallback(', 'const retryAgentCard = useCallback(')).toContain('redoAgentCardAs(old.id, redo)');
+    expect(between('const retryAgentCard = useCallback(', 'const retryOpen = useCallback(')).toContain('redoAgentCardAs(id, cardRetry(');
+  });
+});

@@ -10,10 +10,10 @@
  * got, and every step before that stage is done even when a poll skipped it (a 3-second read can miss a short stage).
  */
 import type { AgentAudioState } from './audioChat';
-import { formatBytes } from './audioChat';
+import { audioErrorText, formatBytes } from './audioChat';
 import type { AgentMontageState } from './montageChat';
-import { priceLabel } from './montageChat';
-import { editsLine, outputLine, type AgentEditState } from './editChat';
+import { errorText as montageErrorText, priceLabel } from './montageChat';
+import { editErrorText, editsLine, outputLine, type AgentEditState } from './editChat';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -193,6 +193,7 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
     return step;
   });
 
+  whyFailed(steps, s.error ? montageErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
@@ -264,6 +265,7 @@ export function audioTask(s: AgentAudioState, locale: string): TaskCardModel {
     return step;
   });
 
+  whyFailed(steps, s.error ? audioErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say('agentAudio', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
@@ -322,8 +324,37 @@ export function editTask(s: AgentEditState, locale: string): TaskCardModel {
     return step;
   });
 
+  whyFailed(steps, s.error ? editErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say(still ? 'agentStill' : 'agentEdit', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+}
+
+/** The step the work broke on says why, in the words of the card's own error (a caution line under it). */
+function whyFailed(steps: TaskStep[], why: string | undefined): void {
+  const broke = steps.find((x) => x.state === 'failed');
+  if (!broke || !why) return;
+  broke.detail = why;
+  broke.warn = true;
+}
+
+const CREDITS = {
+  free: { ka: 'უფასოა, არაფერი ჩამოიჭრება', en: 'Free, nothing is charged', ru: 'Бесплатно, ничего не списывается' },
+  held: { ka: 'დაკავებულია ✦ {n}, ჩამოიჭრება მხოლოდ შედეგზე', en: '✦ {n} held, charged only for the result', ru: 'В резерве ✦ {n}, списывается только за результат' },
+  spent: { ka: 'დაიხარჯა ✦ {n}', en: '✦ {n} spent', ru: 'Потрачено ✦ {n}' },
+  back: { ka: 'არაფერი დაიხარჯა: ✦ {n} დაგიბრუნდა', en: 'Nothing spent: ✦ {n} paid back', ru: 'Ничего не потрачено: ✦ {n} возвращено' },
+} as const;
+
+/**
+ * The credits line under a one-job card (montage, MP3, edit): held while it runs, spent when it delivers, paid back when
+ * it does not. None before a plan exists, on a plan waiting for Start (its price is on Start), or on a dropped plan.
+ */
+export function jobCreditsText(phase: string, credits: number | undefined, locale: string): string | null {
+  if (typeof credits !== 'number' || phase === 'quoted' || phase === 'dismissed' || phase === 'reading' || phase === 'checking') return null;
+  const lang = pick(locale);
+  const n = Math.max(0, Math.round(credits));
+  if (n === 0) return CREDITS.free[lang];
+  const k = phase === 'running' ? 'held' : phase === 'done' ? 'spent' : 'back';
+  return CREDITS[k][lang].replace('{n}', String(n));
 }
 
 /** The clock runs while Agent G works (reading the files, the run) and stops where the run ended; none on a plan. */

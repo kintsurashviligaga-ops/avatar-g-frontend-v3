@@ -1,7 +1,7 @@
 import type { AudioQuote } from './audioExtract';
 import type { MontageQuote } from './montageExec';
 import type { EditQuote } from './editExec';
-import { audioTask, cardOwnsJob, clockText, countText, editTask, montageTask, type StepState } from './taskSteps';
+import { audioTask, cardOwnsJob, clockText, countText, editTask, jobCreditsText, montageTask, type StepState } from './taskSteps';
 
 const NAMES = ['clip-1.mp4', 'clip-2.mp4', 'clip-3.mp4', 'track.mp3'];
 const MQ: MontageQuote = { jobId: 'job-m', credits: 0, totalSec: 10.57, shots: 6, clips: 3, aspect: '16:9', beatSynced: true, bpm: 119.2, musicStartSec: 0, unusedFiles: [], expiresAt: 1 };
@@ -149,4 +149,32 @@ test('the card keeps its job from the tray while it runs and after the server en
   expect(cardOwnsJob({ phase: 'quoted', quote })).toBeNull();
   expect(cardOwnsJob({ phase: 'running' })).toBeNull();
   expect(cardOwnsJob(undefined)).toBeNull();
+});
+
+describe('each card says why it broke, and what it spent', () => {
+  test('the step the work broke on carries the reason as a caution', () => {
+    const m = montageTask({ phase: 'failed', names: NAMES, quote: MQ, stage: 'stitch', error: 'render_failed', t0: 1, t1: 2 }, 'en');
+    const broke = m.steps.find((x) => x.state === 'failed')!;
+    expect(broke.key).toBe('stitch');
+    expect(broke.warn).toBe(true);
+    expect(broke.detail && broke.detail.length).toBeGreaterThan(5);
+    const a = audioTask({ phase: 'failed', source: 'link', error: 'platform_blocked', t0: 1, t1: 2 }, 'ka');
+    expect(a.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'source', warn: true });
+    const e = editTask({ phase: 'failed', source: 'file', quote: EQ, stage: 'render', error: 'render_failed', t0: 1, t1: 2 }, 'ru');
+    expect(e.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'render', warn: true });
+    // A stop is not a failure: no reason line.
+    const stopped = montageTask({ phase: 'cancelled', names: NAMES, quote: MQ, stage: 'stitch', error: 'cancelled', t0: 1, t1: 2 }, 'en');
+    expect(stopped.steps.some((x) => x.warn)).toBe(false);
+  });
+
+  test('the credits line: held while it runs, spent when delivered, paid back when not; none before or on a plan', () => {
+    expect(jobCreditsText('running', 4, 'en')).toBe('✦ 4 held, charged only for the result');
+    expect(jobCreditsText('done', 4, 'en')).toBe('✦ 4 spent');
+    expect(jobCreditsText('failed', 4, 'en')).toBe('Nothing spent: ✦ 4 paid back');
+    expect(jobCreditsText('cancelled', 4, 'ru')).toBe('Ничего не потрачено: ✦ 4 возвращено');
+    expect(jobCreditsText('done', 0, 'ka')).toBe('უფასოა, არაფერი ჩამოიჭრება');
+    expect(jobCreditsText('quoted', 4, 'en')).toBeNull();
+    expect(jobCreditsText('dismissed', 4, 'en')).toBeNull();
+    expect(jobCreditsText('failed', undefined, 'en')).toBeNull();
+  });
 });

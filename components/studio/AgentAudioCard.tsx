@@ -16,9 +16,10 @@
  */
 import { Sparkle, Square, Upload, X } from 'lucide-react';
 import { uploadOfferLabel, type AgentAudioState } from '@/lib/agent/media/audioChat';
-import { audioTask } from '@/lib/agent/media/taskSteps';
+import { jobCreditsText, audioTask } from '@/lib/agent/media/taskSteps';
 import { AgentTaskCard } from './AgentTaskCard';
 import { primaryBtn, quietBtn, useStopArmed } from './agentCardButtons';
+import { CreditsLine, RetryButton } from './agentCardExtras';
 
 type Lang = 'ka' | 'en' | 'ru';
 const L: Record<Lang, { start: string; cancel: string; stop: string; free: string }> = {
@@ -28,7 +29,7 @@ const L: Record<Lang, { start: string; cancel: string; stop: string; free: strin
 };
 
 export function AgentAudioCard({
-  state, locale, onStart, onCancel, onUpload,
+  state, locale, onStart, onCancel, onUpload, onRetry,
 }: {
   state: AgentAudioState;
   locale: string;
@@ -37,6 +38,8 @@ export function AgentAudioCard({
   onCancel: () => void;
   /** The upload offer after a refusal: opens the file picker with the request ready in the composer. */
   onUpload: () => void;
+  /** Ask again with the same files and words (a card that was stopped, or failed while it ran). Absent: no Retry. */
+  onRetry?: () => void;
 }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = L[lang];
@@ -72,8 +75,13 @@ export function AgentAudioCard({
     );
   }
 
+  if (!buttons && onRetry && (state.phase === 'failed' || state.phase === 'cancelled')) {
+    buttons = <RetryButton onRetry={onRetry} locale={locale} testId="agent-audio-retry" />;
+  }
+  const footer = <CreditsLine text={jobCreditsText(state.phase, q?.credits, locale)} testId="agent-audio-credits" />;
+
   return (
-    <AgentTaskCard model={model} locale={locale} testId="agent-audio-card" phase={state.phase}>
+    <AgentTaskCard model={model} locale={locale} testId="agent-audio-card" phase={state.phase} footer={footer}>
       {buttons}
     </AgentTaskCard>
   );

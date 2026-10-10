@@ -7,6 +7,7 @@
 import { formatDuration } from './audioChat';
 import type { EditErrorCode, EditQuote } from './editExec';
 import type { MediaEdit } from './editPlan';
+import type { EditAsk } from './editWords';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -31,6 +32,8 @@ export interface AgentEditState {
   token?: string;
   /** The user's attached file, or the result Agent G made last in this thread. */
   source?: 'file' | 'previous';
+  /** What was asked: the edits, and the link of Agent G's own result when that is the video. Retry asks again with it. */
+  ask?: { edits: EditAsk[]; url?: string };
   pct?: number;
   /** The job's last stage: kept through a stop or a failure, so the card marks the step it ended on. */
   stage?: string | null;

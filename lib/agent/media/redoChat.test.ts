@@ -1,4 +1,4 @@
-import { agentRedo, attachmentKind } from './redoChat';
+import { agentRedo, attachmentKind, cardRetry } from './redoChat';
 
 const clip = (n: number) => ({ mimeType: 'video/mp4', dataUrl: `blob:clip-${n}`, name: `clip-${n}.mp4` });
 const track = { mimeType: 'audio/mpeg', dataUrl: 'blob:track', name: 'track-120bpm.mp3' };
@@ -57,6 +57,42 @@ describe('agentRedo: ↻ under an Agent G reply asks Agent G again, never the ch
     expect(agentRedo({ audioJob: { phase: 'running' } }, user(text), OPEN)).toEqual({ kind: 'none' });
     expect(agentRedo({ audioJob: { phase: 'failed' } }, user('ამ ფაილიდან MP3 ამოიღე'), OPEN)).toEqual({ kind: 'none' });
     expect(agentRedo({ audioJob: { phase: 'failed' } }, user(text), { montage: true, audio: false })).toEqual({ kind: 'none' });
+  });
+});
+
+describe('the edit card is asked again with its own edits, never handed to the chat model', () => {
+  const OPEN_E = { montage: true, audio: true, edit: true };
+  const noir = [{ op: 'grade' as const, style: 'noir' as const }];
+  test('an edit of an attached video: the same edits of the same file', () => {
+    const file = clip(1);
+    expect(agentRedo({ editJob: { phase: 'failed', source: 'file', ask: { edits: noir } } }, user('make it black and white', [file]), OPEN_E))
+      .toEqual({ kind: 'edit', source: 'file', edits: noir, file });
+  });
+  test('an edit of Agent G\'s own last video: the same edits of the same link', () => {
+    expect(agentRedo({ editJob: { phase: 'cancelled', source: 'previous', ask: { edits: noir, url: 'https://x/m.mp4' } } }, user('make it black and white'), OPEN_E))
+      .toEqual({ kind: 'edit', source: 'previous', edits: noir, url: 'https://x/m.mp4' });
+  });
+  test('none without the edits, the file, the link, or with the route closed; none while open', () => {
+    expect(agentRedo({ editJob: { phase: 'failed', source: 'file' } }, user('x', [clip(1)]), OPEN_E)).toEqual({ kind: 'none' });
+    expect(agentRedo({ editJob: { phase: 'failed', source: 'file', ask: { edits: noir } } }, user('x'), OPEN_E)).toEqual({ kind: 'none' });
+    expect(agentRedo({ editJob: { phase: 'failed', source: 'previous', ask: { edits: noir } } }, user('x'), OPEN_E)).toEqual({ kind: 'none' });
+    expect(agentRedo({ editJob: { phase: 'failed', source: 'file', ask: { edits: noir } } }, user('x', [clip(1)]), OPEN)).toEqual({ kind: 'none' });
+    expect(agentRedo({ editJob: { phase: 'running', source: 'file', ask: { edits: noir } } }, user('x', [clip(1)]), OPEN_E)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('cardRetry: the card\'s own Retry', () => {
+  const files = [clip(1), clip(2), track];
+  test('a stopped card, or one that failed while it ran (it had a plan), is asked again', () => {
+    expect(cardRetry({ montage: { phase: 'cancelled' } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'montage', text: MONTAGE_TEXT, files });
+    expect(cardRetry({ montage: { phase: 'failed', quote: { jobId: 'j' } } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'montage', text: MONTAGE_TEXT, files });
+  });
+  test('refused before a plan, finished, dropped, still open, or not an Agent G card: no Retry', () => {
+    expect(cardRetry({ montage: { phase: 'failed' } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'none' });
+    expect(cardRetry({ montage: { phase: 'done', quote: {} } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'none' });
+    expect(cardRetry({ montage: { phase: 'dismissed', quote: {} } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'none' });
+    expect(cardRetry({ montage: { phase: 'running', quote: {} } }, user(MONTAGE_TEXT, files), OPEN)).toEqual({ kind: 'none' });
+    expect(cardRetry({}, user('hello'), OPEN)).toEqual({ kind: 'none' });
   });
 });
 

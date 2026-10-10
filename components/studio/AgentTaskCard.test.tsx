@@ -74,3 +74,19 @@ test('the audio row draws the real loudness: each slice its loudest sample, the 
   const peaks = peaksOf(data, 4);
   [0.2, 1, 0.12, 0.5].forEach((v, i) => expect(peaks[i]).toBeCloseTo(v, 5));
 });
+
+test('a card stopped or failed while it ran offers Retry when the studio can ask again; the credits line says what it cost', () => {
+  const retry = jest.fn();
+  const { unmount } = render(<AgentMontageCard state={{ phase: 'failed', names: NAMES, quote: MQ, stage: 'stitch', error: 'render_failed', t0: 1, t1: 2 }} locale="en" onStart={noop} onCancel={noop} onRetry={retry} />);
+  fireEvent.click(screen.getByTestId('agent-montage-retry'));
+  expect(retry).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('agent-montage-credits').textContent).toBe('Free, nothing is charged');
+  unmount();
+  // No Retry offered (the studio could not ask again): none drawn; a plan still shows its own buttons, no credits line.
+  const { unmount: u2 } = render(<AgentAudioCard state={{ phase: 'cancelled', source: 'file', quote: AQ, t0: 1, t1: 2 }} locale="en" onStart={noop} onCancel={noop} onUpload={noop} />);
+  expect(screen.queryByTestId('agent-audio-retry')).toBeNull();
+  u2();
+  render(<AgentMontageCard state={{ phase: 'quoted', names: NAMES, quote: MQ }} locale="en" onStart={noop} onCancel={noop} onRetry={retry} />);
+  expect(screen.queryByTestId('agent-montage-retry')).toBeNull();
+  expect(screen.queryByTestId('agent-montage-credits')).toBeNull();
+});
