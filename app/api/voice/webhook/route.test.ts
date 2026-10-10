@@ -49,11 +49,20 @@ describe.each(ROUTES)('%s', (path, POST, writer) => {
     expect(writer).not.toHaveBeenCalled();
   });
 
-  test('a valid signature is processed', async () => {
+  test('a valid signature passes the signature check', async () => {
     process.env.VAPI_WEBHOOK_SECRET = 'whsec';
     const res = await POST(req(path, { 'x-vapi-signature': buildVapiWebhookSignature(BODY, 'whsec') }));
-    expect(res.status).toBe(200);
     await settle();
+    if (path === '/api/voice/inbound') {
+      // Past the signature, inbound hands out the assistant that answers a phone call. No call path is ready
+      // (lib/calls/availability.ts, 2026-10-10), so it answers 503 and writes no `ringing` row
+      // (__tests__/phone-calls-unavailable.test.ts).
+      expect(res.status).toBe(503);
+      expect((await res.json()).error).toBe('phone_calls_unavailable');
+      expect(writer).not.toHaveBeenCalled();
+      return;
+    }
+    expect(res.status).toBe(200);
     expect(writer).toHaveBeenCalledTimes(1);
   });
 });

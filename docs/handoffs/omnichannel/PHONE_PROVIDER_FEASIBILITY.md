@@ -324,6 +324,27 @@ The owner moved GSM, SMS and Telegram after WhatsApp. The findings, for the reco
   - A Georgian-script SMS holds 70 characters.
 - **Telegram bots cannot place or take calls** (`phone.requestCall`: "Only users can use this method"). Telegram stays text, voice notes and files; it will never be presented as calling.
 
+### 7.1 The old call routes no longer report calls nobody placed (2026-10-10, Omnichannel C)
+
+Seven routes used to answer as if a call had been placed:
+- `/api/agent-g/calls/start` stored an `active` (mock) or `queued` (Twilio / Telegram skeleton) call for any signed-in user.
+- The task call-back stored an `ended`, `delivered: true` call after every Agent G task. This was `/api/agent-g/calls/callback` and `queueAgentGCallback`, called by `/api/agent-g/execute`.
+- `/api/voice/outgoing` answered a made-up call SID for any number, and logged the number.
+- `/api/voice/outbound`, `/api/voice/notify` and `/api/voice/web-token` stored `demo` rows when Vapi was missing.
+  - With Vapi configured, they rang, or minted a browser assistant, through `lib/agent-g-voice-config.ts`.
+  - That assistant runs on an **Anthropic** model, outside the Google + ElevenLabs policy, and is a second agent brain beside Gemini Live.
+- `/api/voice/inbound` handed Vapi that assistant for inbound calls and stored a `ringing` row.
+
+Now there is one gate, `phoneCallsReady()` in `lib/calls/availability.ts`, which is false.
+- **The call starts:** each route answers 503 `phone_calls_unavailable` after its own door check (session, worker token or Vapi signature). The call-back answers `queued: false`. No row is written and no provider or Vapi is called.
+- **`/api/voice/web-token`:** refused under `AI_GOOGLE_ONLY` (on by default).
+- **The provider:** `getCallsProvider()` returns only the unavailable provider, which throws on a start and acknowledges no webhook. The Twilio and Telegram classes stay for the later work.
+- **Call preferences:** `/api/agent-g/calls` stores the phone number in E.164 or refuses it. It no longer takes `voice_connected` from the client, and it never shows a phone as connected.
+
+No screen called these routes. Tests: `__tests__/phone-calls-unavailable.test.ts`, `lib/calls/providers/index.test.ts`, `app/api/agent-g/calls/route.test.ts`.
+
+**Not changed:** `/api/webhooks/phone` (Twilio-signed speech → Gemini through `channelBridge` → `<Say>`) and `/api/voice/incoming` (a fixed "service starts soon" TwiML). Both run only if a Twilio number points at them, and neither stores a call.
+
 ## 8. Build plan
 
 ### 8.1 Now, on the branch, mocked

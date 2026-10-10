@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildAgentGVapiAssistantConfig } from '@/lib/agent-g-voice-config';
 import { structuredLog } from '@/lib/logger';
 import { normalizePhoneNumber } from '@/lib/voice/phone';
+import { phoneCallsReady, phoneCallsUnavailableBody } from '@/lib/calls/availability';
 import { upsertVoiceCallByVapiId } from '@/lib/voice/repository';
 import { verifyVapiWebhookSignature } from '@/lib/voice/webhook-signature';
 
@@ -29,6 +30,11 @@ export async function POST(request: NextRequest) {
     if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
       return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
     }
+
+    // Vapi asks here which assistant answers an inbound call; the answer was an Anthropic-model assistant (outside the
+    // Google + ElevenLabs policy, a second agent brain) and a `ringing` row. No call path is ready: nothing is stored
+    // and no assistant is handed out, so Vapi does not answer the call.
+    if (!phoneCallsReady()) return NextResponse.json(phoneCallsUnavailableBody(), { status: 503 });
 
     let payload: Record<string, unknown>;
     try {

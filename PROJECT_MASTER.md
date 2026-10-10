@@ -218,7 +218,11 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           margin ≥ 62 % from ~405 min a month on the 8k/4k cap). Meta letter (both scenarios, five questions)
           META_SUPPORT_REQUEST.md: NOT SENT, needs the owner's Meta account; compliance awaiting reply. Meta account
           facts not readable from the cloud session (no Meta access, Vercel env 403): MISSING. Verdict
-          WHATSAPP_CALLING_READINESS.md: Production NO-GO. Remaining: C (telephony adapter), E/F/G/D (channels on the run
+          WHATSAPP_CALLING_READINESS.md: Production NO-GO. C: seven old call routes stored or answered calls nobody placed
+          (mock / Twilio / Telegram skeletons, Vapi demo rows, a Vapi assistant on an Anthropic model); one gate
+          (lib/calls/availability.ts phoneCallsReady, false) now answers 503 phone_calls_unavailable with no row and no
+          provider call, the web token is refused under AI_GOOGLE_ONLY, numbers are stored as E.164 and the client can no
+          longer mark a phone connected (PHONE_PROVIDER_FEASIBILITY.md §7.1). Remaining: E/F/G/D (channels on the run
           engine, delivery outbox, the call-back trigger), I/J/K. No merge, deploy, migration, env, price or paid change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
