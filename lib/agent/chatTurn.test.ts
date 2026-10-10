@@ -265,6 +265,35 @@ describe('two steps in one message: one run card (runs open)', () => {
   });
 });
 
+describe('a question about the file: Agent G reads the whole file (analysis open)', () => {
+  const open = (over: Partial<ChatSnapshot> = {}) => snap({ analyzeOn: true, ...over });
+
+  test.each([
+    ['რა ხდება ამ ვიდეოში?', 'question'],
+    ['What is said in this video? Give me a transcript', 'transcript'],
+    ['Какие сцены в этом видео?', 'scenes'],
+  ])('one attached video and a question: the analysis card (%s)', (text, focus) => {
+    expect(planChatTurn(text, open({ attachments: ['video'] }))).toMatchObject({ kind: 'analyze', ask: { source: 'file', focus } });
+    // Analysis closed: the question goes on to the chat model with the frames, as before.
+    expect(planChatTurn(text, snap({ attachments: ['video'] })).kind).toBe('pass');
+  });
+
+  test('a YouTube link with a question is read, never downloaded; the link\'s own „?v=" is not a question', () => {
+    expect(planChatTurn('what happens in https://youtu.be/abc12345678 ?', open())).toMatchObject({
+      kind: 'analyze', ask: { source: 'youtube', url: expect.stringContaining('abc12345678') },
+    });
+    expect(planChatTurn('https://www.youtube.com/watch?v=abc12345678', open()).kind).toBe('pass');
+  });
+
+  test('edits, the MP3 ask, a request to make something and a focus tool are not questions for it', () => {
+    expect(planChatTurn('ამ ვიდეოდან MP3 ამოიღე', open({ attachments: ['video'] })).kind).not.toBe('analyze');
+    expect(planChatTurn('make a song about this video', open({ attachments: ['video'] })).kind).not.toBe('analyze');
+    expect(planChatTurn('what is in this video?', open({ mode: 'video', attachments: ['video'] })).kind).not.toBe('analyze');
+    expect(planChatTurn('what is in these?', open({ attachments: ['video', 'video'] })).kind).not.toBe('analyze');
+    expect(planChatTurn('what is in this picture?', open({ attachments: ['image'] })).kind).not.toBe('analyze');
+  });
+});
+
 describe('wordsAreForChat: a spend-at-once tool never runs on talk', () => {
   test.each([
     ['რა ღირს?', true], ['გამარჯობა', true], ['არ მომწონს', true], ['stop', true], ['how far along?', true],

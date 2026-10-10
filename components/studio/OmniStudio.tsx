@@ -154,12 +154,15 @@ import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage 
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
 import { AgentRunCard } from '@/components/studio/AgentRunCard';
+import { AgentAnalyzeCard } from '@/components/studio/AgentAnalyzeCard';
 import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runPlanText, runReadingText, type RunChain } from '@/lib/agent/run/runChat';
 import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
 import type { RunEvent } from '@/lib/agent/run/runEngine';
 import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
 import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, runAgentEdit } from '@/lib/agent/media/editClient';
+import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, analyzeRetryable, type AgentAnalyzeState, type AnalyzeAsk } from '@/lib/agent/media/analyzeChat';
+import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agent/media/redoChat';
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
@@ -1051,7 +1054,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -2036,6 +2039,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [agentAudioOn, setAgentAudioOn] = useState(false);
   // Agent G's own edit of a video (lib/agent/media/editExec): open to this user only when its route says so.
   const [agentEditOn, setAgentEditOn] = useState(false);
+  // Agent G's whole-file analysis (lib/agent/media/analyzeExec): open only where AGENT_G_FILE_ANALYSIS opens its route.
+  const [agentAnalyzeOn, setAgentAnalyzeOn] = useState(false);
   // Composer mode: 'chat' → multimodal answer; 'image' → NanoBanana image;
   // 'music' → Udio track; 'video' → the 30-second film pipeline. Every generative
   // service lives in this ONE chatbox — the prompt becomes a brand-new asset
@@ -3218,6 +3223,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (guest) { setAgentEditOn(false); return; }
     let live = true;
     void editEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentEditOn(on); });
+    return () => { live = false; };
+  }, [guest]);
+  useEffect(() => {
+    if (guest) { setAgentAnalyzeOn(false); return; }
+    let live = true;
+    void analyzeEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentAnalyzeOn(on); });
     return () => { live = false; };
   }, [guest]);
   // The video create screen's server facts — which lengths are open today, the first-video slot, the balance. Read only
@@ -5756,6 +5767,58 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     await quoteAgentEditInto(bubble.id!, source, edits, from);
   }, [newAgentEditBubble, persistChatTurn, quoteAgentEditInto]);
 
+  // AGENT G — „WHAT IS IN MY VIDEO?" (lib/agent/media/analyzeChat, PART 6). Where AGENT_G_FILE_ANALYSIS opens it, a
+  // question about the one attached video or audio file, or about one public YouTube link, is answered by Gemini reading
+  // the WHOLE file by reference (/api/agent/media/analyze), not a few frames: the answer in the bubble, and on its card the
+  // scenes, the best moments, who speaks and the transcript. Nothing is charged to the user (the route's daily ceiling
+  // bounds it); a YouTube link is only read, never downloaded. Everywhere else the question goes to the chat as before.
+  const analyzeRun = useCallback(async (id: string, ask: AnalyzeAsk, question: string, from: { ref?: string; file?: Media }) => {
+    let ref = from.ref;
+    if (ask.source === 'file' && !ref) {
+      ref = from.file ? (await uploadBigFile(from.file.dataUrl, from.file.mimeType)) ?? undefined : undefined;
+      if (!ref) {
+        patchMsgById(id, (m) => ({ ...m, text: `⚠️ ${analyzeErrorText('upload_failed', locale)}`, analyzeJob: { ...m.analyzeJob!, phase: 'failed', error: 'upload_failed', t1: Date.now() } }));
+        return;
+      }
+      const path = ref;
+      patchMsgById(id, (m) => ({ ...m, analyzeJob: { ...m.analyzeJob!, uploaded: true, ref: path } }));
+    }
+    const source = ask.source === 'file' ? { kind: 'file' as const, ref: ref! } : { kind: 'youtube' as const, url: ask.url };
+    const r = await runAnalyze((u, init) => fetch(u, init), { source, focus: ask.focus, question, lang: locale });
+    if (r.ok) {
+      const answer = analyzeAnswerText(r.answer.analysis);
+      patchMsgById(id, (m) => ({ ...m, text: answer, analyzeJob: { ...m.analyzeJob!, phase: 'done', answer: r.answer, error: undefined, t1: Date.now() } }));
+      persistChatTurn('assistant', answer);
+      return;
+    }
+    patchMsgById(id, (m) => ({
+      ...m, text: `⚠️ ${analyzeErrorText(r.code, locale)}`, ...(analyzeRetryable(r.code) ? {} : { noRetry: true }),
+      analyzeJob: { ...m.analyzeJob!, phase: 'failed', error: r.code, t1: Date.now() },
+    }));
+  }, [locale, patchMsgById, persistChatTurn]);
+  const startAgentAnalyze = useCallback(async (text: string, ask: AnalyzeAsk, file?: Media) => {
+    const id = `agz-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const name = ask.source === 'file' ? file?.name : 'YouTube';
+    // The file went to the analysis; the chat MODEL never gets it inline with the next turns (`modelMedias: []`).
+    setMessages((prev) => [...prev, { role: 'user', text, ...(file ? { medias: [file], modelMedias: [] } : {}) }, {
+      role: 'assistant', id, text: analyzeReadingText(ask.source, locale),
+      analyzeJob: { phase: 'reading', source: ask.source, ask, question: text, ...(name ? { name } : {}), t0: Date.now() },
+    }]);
+    persistChatTurn('user', text);
+    await analyzeRun(id, ask, text, file ? { file } : {});
+  }, [locale, persistChatTurn, analyzeRun]);
+  // ↻ and Retry ask the same question of the same file again (its uploaded path when there is one).
+  const analyzeAgain = useCallback((id: string) => {
+    const msgs = messagesRef.current;
+    const idx = msgs.findIndex((x) => x.id === id);
+    const s = msgs[idx]?.analyzeJob;
+    if (!s?.ask || s.phase === 'reading') return;
+    const file = msgs[idx - 1]?.medias?.[0];
+    const { ask, question = '', ref } = s;
+    patchMsgById(id, (m) => ({ ...m, text: analyzeReadingText(ask.source, locale), noRetry: undefined, analyzeJob: { ...m.analyzeJob!, phase: 'reading', answer: undefined, error: undefined, t0: Date.now(), t1: undefined } }));
+    void analyzeRun(id, ask, question, { ...(ref ? { ref } : {}), ...(file ? { file } : {}) });
+  }, [locale, patchMsgById, analyzeRun]);
+
   // LIVE → THE THREAD, Agent G's research by voice (ask_agent_g; Agent G PART 4, V6 and V4): the written answer and its
   // sources land here as Agent G's reply (the call only says it briefly), and an MP3 plan the run made becomes its card,
   // quoted, exactly as a typed request's: its Start, or the user's own voice yes (agent_task start), runs it. It fires
@@ -5813,10 +5876,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     }
     if (lastA < 0) return;
     const old = messages[lastA]!;
+    // An analysis is asked again of the same file: the chat model never had the file to answer from.
+    if (old.analyzeJob && old.id) { analyzeAgain(old.id); return; }
     const redo = agentRedo(old, messages[lastA - 1], { montage: agentMontageOn, audio: agentAudioOn, edit: agentEditOn });
     if (redo.kind === 'chat') { regenerateChat(); return; }
     if (old.id) redoAgentCardAs(old.id, redo);
-  }, [busy, messages, agentMontageOn, agentAudioOn, agentEditOn, regenerateChat, redoAgentCardAs]);
+  }, [busy, messages, agentMontageOn, agentAudioOn, agentEditOn, regenerateChat, redoAgentCardAs, analyzeAgain]);
   // A card's own Retry (failed or stopped): asked again in place with what it was asked; nothing runs before Start.
   const retryAgentCard = useCallback((id: string) => {
     const msgs = messagesRef.current;
@@ -5913,7 +5978,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
       const extract = mode === 'chat' && agentAudioOn && audioExtractAsk(text, kinds)?.source === 'file';
       const run = mode === 'chat' && agentMontageOn && !!runChainAsk(text, kinds);
-      if (!montage && !remix && !extract && !run) { toast.error(trackTooBigText(locale)); return; }
+      // A long recording is what the whole-file analysis is for: it goes up and Gemini reads it by reference.
+      const analyze = mode === 'chat' && agentAnalyzeOn && analyzeAsk(text, kinds)?.source === 'file';
+      if (!montage && !remix && !extract && !run && !analyze) { toast.error(trackTooBigText(locale)); return; }
     }
     // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
@@ -6754,7 +6821,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, patchMsgById, runChatRemix]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -8253,6 +8320,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       previousMontage: prevResult?.id && prevResult.montage?.phase === 'done' ? { id: prevResult.id, prompt: prevResult.montage.prompt } : null,
       runOn: agentMontageOn,
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
+      analyzeOn: agentAnalyzeOn,
     };
     const step = planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
@@ -8367,6 +8435,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         persistChatTurn('user', text);
         void retryAgentRun(step.cardId);
         return true;
+      case 'analyze': {
+        // „What is in my video?": Gemini reads the whole file (or the YouTube link, analysis only) and answers on a card.
+        const file = step.ask.source === 'file' ? attachments[0] : undefined;
+        if (step.ask.source === 'file' && !file) return false;
+        clearComposer();
+        if (!isDesktop) setOptionsOpen(false);
+        void startAgentAnalyze(text, step.ask, file);
+        return true;
+      }
       default:
         return false;
     }
@@ -8896,6 +8973,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   <AgentRunCard state={m.runJob} locale={locale} onStart={() => void confirmAgentRun(m.id!)} onCancel={() => void stopAgentRun(m.id!)}
                     onApprove={(step, quoteId) => void approveAgentRun(m.id!, step, quoteId)} onRetry={() => void retryAgentRun(m.id!)} />
                 )}
+                {m.role === 'assistant' && m.analyzeJob && <AgentAnalyzeCard state={m.analyzeJob} locale={locale} />}
                 {m.role === 'assistant' && m.montage && m.videoUrl && (
                   <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-montage-result">
                     <ChatVideoPlayer
@@ -9131,7 +9209,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && i === messages.length - 1 && !busy && m.text.startsWith('⚠️') && !m.genKind && !m.retryVideo && !m.noRetry && (
                   <button
                     type="button"
-                    onClick={() => regenerateChat()}
+                    onClick={() => (m.analyzeJob && m.id ? analyzeAgain(m.id) : regenerateChat())}
                     className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-3 py-1.5 text-[12px] font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90"
                   >
                     <RotateCcw size={13} /> {t.regenerate}
@@ -9160,7 +9238,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun, retryOpen, retryAgentCard, analyzeAgain]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

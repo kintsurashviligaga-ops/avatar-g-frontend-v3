@@ -84,3 +84,35 @@ describe('Retry on the one-job cards', () => {
     expect(between('const retryAgentCard = useCallback(', 'const retryOpen = useCallback(')).toContain('redoAgentCardAs(id, cardRetry(');
   });
 });
+
+describe('„what is in my video?" on Agent G\'s analysis card (behind AGENT_G_FILE_ANALYSIS)', () => {
+  const turn = between('agentTurnRef.current = (text: string, viaVoice: boolean): boolean => {', '// Agent G\'s note belongs to the tool it was made in');
+
+  test('the chat turn hears it only where the route opens it; the one attached file goes with it', () => {
+    expect(src).toContain('void analyzeEnabled((u, init) => fetch(u, init)).then((on) => { if (live) setAgentAnalyzeOn(on); });');
+    expect(turn).toContain('analyzeOn: agentAnalyzeOn');
+    const c = turn.slice(turn.indexOf("case 'analyze': {"), turn.indexOf('default:', turn.indexOf("case 'analyze': {")));
+    expect(c).toContain("step.ask.source === 'file' ? attachments[0] : undefined");
+    expect(c).toContain('startAgentAnalyze(text, step.ask, file)');
+  });
+
+  test('the file goes up first, then Gemini reads it by its path; the model never gets it inline afterwards', () => {
+    const start = between('const startAgentAnalyze = useCallback(', 'const analyzeAgain = useCallback(');
+    expect(start).toContain('medias: [file], modelMedias: []');
+    const run = between('const analyzeRun = useCallback(', 'const startAgentAnalyze = useCallback(');
+    expect(run).toContain('uploadBigFile(from.file.dataUrl, from.file.mimeType)');
+    expect(run).toContain("{ kind: 'file' as const, ref: ref! }");
+    expect(run).toContain("persistChatTurn('assistant', answer)");
+    expect(run).toContain('analyzeRetryable(r.code) ? {} : { noRetry: true }');
+  });
+
+  test('↻ and the ⚠️ retry ask the same file again, never the chat model without it', () => {
+    expect(between('const regenerateReply = useCallback(', 'const retryAgentCard = useCallback(')).toContain('if (old.analyzeJob && old.id) { analyzeAgain(old.id); return; }');
+    expect(src).toContain('onClick={() => (m.analyzeJob && m.id ? analyzeAgain(m.id) : regenerateChat())}');
+  });
+
+  test('a long recording may travel as an upload-only file for it; the card is drawn under the answer', () => {
+    expect(between('if (attachments.some((a) => a.uploadOnly)) {', 'toast.error(trackTooBigText(locale)); return; }')).toContain("analyzeAsk(text, kinds)?.source === 'file'");
+    expect(src).toContain('{m.role === \'assistant\' && m.analyzeJob && <AgentAnalyzeCard state={m.analyzeJob} locale={locale} />}');
+  });
+});

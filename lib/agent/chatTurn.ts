@@ -18,12 +18,15 @@
  *   run              two steps chained (./run/runChat): the sound of one video or link with the other clips cut to it,
  *                    or a montage and the edits a montage does not do itself; planned on one card, run on Start
  *   resume           „continue" after a run that ended without every result: a new run that keeps what was delivered
+ *   analyze          a question about the one attached video or audio file, or about one public YouTube link: Agent G
+ *                    reads the whole file with Gemini (./media/analyzeChat) and answers on a card; nothing is charged
  */
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
 import { mineEdits, type EditAsk } from './media/editWords';
 import { editErrorText } from './media/editChat';
 import { runChainAsk, type RunChain } from './run/runChat';
+import { analyzeAsk, type AnalyzeAsk } from './media/analyzeChat';
 import {
   askReply, continueReply, interceptAct, mergeMontagePrompt, statusReply, stopReply, unsupportedReply, type ActIntent, type WorkItem,
 } from './intentReply';
@@ -83,6 +86,8 @@ export interface ChatSnapshot {
   runOn?: boolean;
   /** The last reply is a run card that ended without every result: „continue" carries it on. */
   resumableRunId?: string | null;
+  /** Agent G's whole-file analysis is open to this user (AGENT_G_FILE_ANALYSIS, the route's GET). */
+  analyzeOn?: boolean;
 }
 
 export type ChatStep =
@@ -111,7 +116,9 @@ export type ChatStep =
   /** Two steps chained, planned on one card (nothing runs before Start). */
   | { kind: 'run'; chain: RunChain; intent: AgentIntent }
   /** Carry the run card on (a new run that reuses what was delivered). */
-  | { kind: 'resume'; cardId: string; intent: AgentIntent };
+  | { kind: 'resume'; cardId: string; intent: AgentIntent }
+  /** A question about the attached file or a YouTube link, answered by the whole-file analysis on its own card. */
+  | { kind: 'analyze'; ask: AnalyzeAsk; intent: AgentIntent };
 
 const LIVE_CARD: ReadonlySet<string> = new Set(['reading', 'checking', 'running']);
 const LIVE_JOB: ReadonlySet<string> = new Set(['queued', 'rendering']);
@@ -234,6 +241,13 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
     }
     if (how === 'ask') return { kind: 'say', text: askReply(intent, locale), keepComposer: true, intent };
     if (how === 'unsupported') return { kind: 'say', text: unsupportedReply(intent, locale), intent };
+  }
+
+  // „What is said in my video?" where the analysis is open: Gemini reads the whole file, not a few frames. A request to
+  // make something (a song about the clip) is not a question about it; edits and the MP3 ask never reach here.
+  if (s.mode === 'chat' && s.analyzeOn && intent.kind !== 'act') {
+    const ask = analyzeAsk(text, s.attachments ?? []);
+    if (ask) return { kind: 'analyze', ask, intent };
   }
 
   return { kind: 'pass', intent };
