@@ -57,7 +57,7 @@ Evidence tiers, as GG named them:
 |---|---|---|
 | Whole repo: tsc 0, lint 0 errors | T1 | `d41c7562`: tsc exit 0; `next lint` 0 errors, 33 warnings (unchanged) |
 | Full Jest, no regression | T1/T2 | `d41c7562`: 841 suites (836 passed, 5 opt-in skipped), **12,668 passed, 30 skipped, 0 failed** (baseline 12,599) |
-| Every committed Playwright spec on a production build | T2 | `1058e7bd`: 35 specs, **289 passed, 7 skipped, 0 failed, 0 flaky**; final head: see §9 |
+| Every committed Playwright spec on a production build | T2 | final code head `d41c7562`: 35 specs, **289 passed, 7 skipped, 0 failed** (5.7 min); the same on `1058e7bd` (0 flaky) |
 | Production build | T2 | `next build` exit 0 with CI's dummy env |
 | Crash → recovery → retry, one debit (E2E-06) | T3 | `leaseIsolation.pg.test.ts` 7/7, run twice (before and after the ledger migration) |
 | Refund exactly once (E2E-07) | T3 | `leaseIsolation` G cases + `ledgerOnce.pg.test.ts` 7 passed, 1 skipped, before and after `20261002d` |

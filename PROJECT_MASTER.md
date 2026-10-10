@@ -252,8 +252,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md (13 sections + the merge record). Gates on code head d41c7562:
           tsc 0; lint 0 errors (33 warnings); jest 841 suites, 12,668 passed, 30 skipped, 0 failed; isolation run
           (real Postgres 16 + PostgREST + FFmpeg) lease 7/7 ×2, ledgerOnce 7+1 skipped before and after 20261002d,
-          runIsolation 6/6, outbox 4/4; Playwright, all 35 committed specs on a production build (1058e7bd: 289 passed,
-          0 failed); 465 routes probed signed out; secret scan clean; Production read only 19:11Z (ledger 222 rows,
+          runIsolation 6/6, outbox 4/4; Playwright, all 35 committed specs on a production build (d41c7562: 289 passed,
+          7 skipped, 0 failed); 465 routes probed signed out; secret scan clean; Production read only 19:11Z (ledger 222 rows,
           0 duplicate refs, 0 negative balances, RLS 52/52). Reviews of the full diff: no P0. Fixed (d41c7562, tests):
           film replay failed the original row, cron secret compare not constant time, analyze_media tool skipped the
           daily ceiling, outbox isolation test read another suite's rows. The product-ad length price (25 / 75 / 150)
