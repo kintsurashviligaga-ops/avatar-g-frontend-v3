@@ -28,5 +28,12 @@ GET /ka/settings at 390 px (Firecrawl Chromium), screenshots:
     English (invite card) and a red "ანგარიშის წაშლა" button. Fixed on the branch after 6480f4d3: a guest gets one
     sign-in card instead (SettingsView.test.tsx, tests/connections.spec.ts guest test).
 
+After the fix, 2026-10-10 19:05Z, same method:
+  /api/version -> {"sha":"4cb13be","shaFull":"4cb13be1e1ca294096e4035a4936223e6363f4de","buildTime":"2026-10-10T19:03:51.363Z"}
+  GET /ka/settings at 390 px: preview-settings-guest-390-after-fix-2026-10-10.png
+    Profile "შესული არ ხართ"; Connections as before; one "ანგარიში" card "ბალანსის, ისტორიისა და მოწვევების
+    სანახავად შედი ანგარიშზე." with a "შესვლა" button. No Delete button, no "Failed to load", no "could not load".
+  GET /en/settings: "Signed out"; "Sign in to see your balance, history and invites." with "Sign in"; no Delete.
+
 Not checked here (needs a POST or a signed-in person): webhook POST signature, replay, bridge door, the outbox
 delivering a finished run, Connections for a member, WhatsApp link.

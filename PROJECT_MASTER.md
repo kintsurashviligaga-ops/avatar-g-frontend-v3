@@ -244,7 +244,8 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           refuse strangers (webhook verify with a wrong token 403, delivery cron 403, tasks/preferences 401, admin
           Meta check 404); a guest's Settings shows the four Connections rows as built. Found there: a guest got
           "Failed to load" in English, two "could not load" cards and a Delete account button; fixed on the branch
-          (one sign-in card; SettingsView.test.tsx failed before, passes after). OMNICHANNEL_E2E_MATRIX.md P column
+          (one sign-in card; SettingsView.test.tsx failed before, passes after), seen on the Preview at 4cb13be
+          (19:05Z, KA and EN). OMNICHANNEL_E2E_MATRIX.md P column
           and evidence/preview-anonymous-checks-2026-10-10.txt. No merge, deploy, migration, env, price or paid
           change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged

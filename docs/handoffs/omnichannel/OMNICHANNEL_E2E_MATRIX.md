@@ -1,6 +1,6 @@
 # Omnichannel: scenarios and evidence
 
-Last updated: 2026-10-10 19:05Z. Branch `claude/launch-certification-wmvitt` (draft PR #50, head after this commit).
+Last updated: 2026-10-10 19:10Z. Branch `claude/launch-certification-wmvitt` (draft PR #50, head after this commit).
 
 Evidence is kept apart by where it ran, as the owner asked (13:10Z: "Test Evidence-ში არ აურიო mocked, simulated,
 Preview და Production შედეგები"):
@@ -70,7 +70,9 @@ The guest check above found one defect outside Connections, on the same Settings
 [Screenshot](evidence/preview-settings-guest-390-account-cards-before-fix-2026-10-10.png). Fixed on the branch: a
 guest now gets one sign-in card in place of those four cards, and no server error text reaches the page.
 `components/settings/SettingsView.test.tsx` (5) failed before the fix and passes after; the guest test in
-`tests/connections.spec.ts` checks it in Chromium. It reaches the Preview with the next deploy of the branch.
+`tests/connections.spec.ts` checks it in Chromium. Seen on the Preview at `4cb13be` (19:05Z): `/ka/settings` and
+`/en/settings` show one "ანგარიში" / "Sign in to see your balance, history and invites." card, no Delete button and
+no "Failed to load" ([screenshot](evidence/preview-settings-guest-390-after-fix-2026-10-10.png)).
 
 ## 6. What the next levels need
 
