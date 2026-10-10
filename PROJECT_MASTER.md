@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 4)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 5)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -146,6 +146,24 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Google socket); V2 PARTIAL (the studio render routes do not yet require the record: PART 5). Jest 12,079
           passed / 0 failed, tsc 0, eslint 0 errors; Playwright 58 passed. Real-device Live call BLOCKED_OWNER.
           Next: PART 5 (security and billing hardening).
+          PART 5 DONE (part-5-report.md; df670cca, 2e6aedab, f17ebd90, af2c1496, a705e8db, 27bb4c03, 49352d04,
+          6fd158e4, 058409e0, ded93632, 7c0e1c69 + the report's commit): C1 the deduct_credits same-ref double debit
+          proven on Postgres and closed by 20261002d (deduct_credits_once), APPLIED to Production 11:05Z on the owner's
+          "დიახ, ახლა" (11:03Z) and read back (EF-4 race closed); C5 a replayed charge ref is refused (409) before
+          anything renders; C6 the chat image holds its price before Google; C2 the lip-sync charge is shown beside the
+          film price (keep / fold / drop: BLOCKED_OWNER); C3 + M4 per-account daily ceilings on the work that bills no
+          credits (dubbing 10 shared with isolation, presentation 30, upscale 30, montage 40 shared by the editor and
+          Agent G, analyze 100; their prices BLOCKED_OWNER); C4 the assistant quotes what is charged and sold, a ratchet
+          keeps the dead price tables dead (which pack list: BLOCKED_OWNER); P1 15 server paths that reached an outside
+          engine now ask their Google-only switch first (MEDIA_GOOGLE_ONLY in Production: BLOCKED_OWNER); V2 documented,
+          not enforced (report §3); B3 SSRF verified; G6 page reads drop hidden text and carry the page's date, with a
+          hidden-instruction regression test through the real ReAct loop; S1 Vapi get_job_status reads only the
+          caller's job; G3 / G7 each run's tokens, cache hits, time and estimated cost logged as agent_run_metrics
+          (baseline needs real runs: PART 7); O1 the sweep raises agent_g_refund_debt / gave_up / queue_backlog /
+          sweep_failure (routing to a person, owner action 12: BLOCKED_OWNER); B1 / B2 browser and code sandbox: decision
+          brief docs/handoffs/agent-g/browser-sandbox-decision.md (BLOCKED_OWNER, paid host). Jest 12,229 passed / 0
+          failed, tsc 0, eslint 0 errors. One Production change (20261002d); no merge, deploy, env or paid change.
+          Next: PART 6 (one-window UX).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
