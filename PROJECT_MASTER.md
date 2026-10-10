@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 5)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 6)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -164,6 +164,19 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           brief docs/handoffs/agent-g/browser-sandbox-decision.md (BLOCKED_OWNER, paid host). Jest 12,229 passed / 0
           failed, tsc 0, eslint 0 errors. One Production change (20261002d); no merge, deploy, env or paid change.
           Next: PART 6 (one-window UX).
+          PART 6 DONE (part-6-report.md; c51959fc, 7050d91b, 863ed698, 73c7acfe, d926cc62 + the report's commit): two
+          steps from one message are one run card (plan priced, nothing before Start, the step's own yes with its price,
+          Stop, Retry at the price of what is left, „continue" resumes it; behind AGENT_G_MEDIA_EXEC); every montage /
+          MP3 / edit card shows credits held, spent or paid back, the reason a step failed, and Retry where asking again
+          can succeed; „what is in my video?" → the whole-file analysis card (scenes, moments, speakers, transcript;
+          YouTube analysis only) behind AGENT_G_FILE_ANALYSIS (off everywhere); one owner per job (tray, Live status and
+          Live stop skip a card's jobs); finished cards stay. Browser: tests/agent-g-run.spec.ts, 7 passed (Chromium,
+          server mocked; 390 / 820 / 1280 px, light / dark, KA / EN / RU); fixed a phone header squeeze and ↻ under a run
+          card. Real iPhone Safari and real Preview runs: BUILT_NOT_PROVEN (PART 7). Gaps: Live cannot start a run; a
+          reload does not redraw a card; an analysis cannot be stopped mid-read. Jest 12,348 passed / 0 failed, tsc 0,
+          eslint 0 errors. No merge, deploy, migration, env, flag, price or paid change.
+          Next: PART 7 checks that need no approval, then the pricing audit (owner 12:42Z / 12:44Z), then the
+          Omnichannel + Mobile UX task (owner 13:10Z).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
