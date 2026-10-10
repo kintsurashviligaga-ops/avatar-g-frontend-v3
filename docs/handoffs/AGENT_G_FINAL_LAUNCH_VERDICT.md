@@ -26,7 +26,7 @@ Evidence tiers, as GG named them:
 
 | Item | Value |
 |---|---|
-| PR | #50, `claude/launch-certification-wmvitt` → `main` (draft until the gates pass) |
+| PR | #50, `claude/launch-certification-wmvitt` → `main`: **merged 2026-10-10 19:51:05Z, merge commit `c0297491`, live in Production from 19:55Z** (§14) |
 | Base | `main` = `6c7dff46` = Production since 2026-10-09 16:01Z (PR #52, auth hotfix) |
 | Code head gated | `d41c7562` (this document and the records ride on the commit after it) |
 | Size | 108 commits ahead of `main` (with this record), 0 behind; 665+ files, about +56,400 / −10,200 lines; `git merge-tree` clean |
@@ -235,8 +235,8 @@ creative execution and WhatsApp Calling stay **off** in Production, and every Me
 ## 13. Final GO / NO-GO
 
 ```
-MERGE PR #50 + PRODUCTION DEPLOY, EVERY NEW FLAG OFF:   GO only if every release gate passes and CI is green
-                                                        (GG's pre-approval of 19:07:45Z); outcome in §14
+MERGE PR #50 + PRODUCTION DEPLOY, EVERY NEW FLAG OFF:   GO, DONE: every gate passed, merged c0297491, Production
+                                                        serves c029749, post-deploy checks green (§14)
 FULL OPENING TO USERS (Agent G public, all services):   NO-GO
   why: 0 of 22 services PROVEN end to end at this head; Agent G not proven on a real session at this head;
        provider boundary FAILED in Production until MEDIA_GOOGLE_ONLY; video sold below cost; payments never completed;
@@ -246,4 +246,58 @@ PRODUCTION READY:                                       NO
 
 ## 14. Merge, deploy and post-deploy record
 
-Filled in as it happens; see the Master Task thread for the final report.
+Done by Claude under GG's pre-approval of 2026-10-10 19:07:45Z, after every gate in §3 passed and CI was green on the
+PR head. No flag, price, secret, provider route, payment setting or database row was changed by hand.
+
+| Step | Result |
+|---|---|
+| Gates on the PR head `ea55baf4` | GitHub `verify` and `preview-e2e` success, Vercel Preview success, 0 behind `main`; local gates in §3 |
+| Merge | normal GitHub merge (no squash, no force push) at **19:51:05Z**, merge commit **`c0297491`** |
+| `main` CI on `c0297491` | `CI` success (19:56:50Z), `E2E - Preview Contract` success (19:53:57Z) |
+| Production deploy | **PROVEN (T6):** https://myavatar.ge/api/version answers `c029749`, `shaFull` `c02974910bf4…`, build 19:55:32Z, `env: production`; pages load assets from deployment `dpl_HaMDYuHKZochJqq8eYyPuMuuGYPr` |
+| Vercel deployment record and runtime logs | **BLOCKED:** the Vercel connector answers 403 for this team (as before); Supabase logs and the public checks below stand in |
+
+Post-deploy checks, **T6 Production, anonymous, GET only** (Firecrawl, 19:57–20:01Z). A signed-in Production check is
+not done: Claude does not sign in to Production auth (project rule), so the signed-in parts are GG's (§12 item 1 covers
+the same paths on the Preview).
+
+| Check | Result |
+|---|---|
+| Health | `/api/health` 200 `healthy`, commit `c029749` |
+| Pages, KA / EN / RU | `/ka` 200, `/en/dashboard` 200 (one-window chat "How can I help?"), `/ru/settings` 200 (guest view: "not signed in", WhatsApp/Telegram/phone shown as off or sign-in) |
+| Phone layout | `/ka/dashboard` at 360 × 800: header, sign-in button, chat composer, cookie banner, black and blue design intact |
+| Services navigation | `/ka/services` 200: Agent G card + 11 video, 5 image, 3 avatar, 2 music, 1 voice, 1 text, 2 design, 1 code entries, each opening the studio |
+| Library | `/ka/library` 200 (empty for a guest) |
+| Retired surface | `/ka/studio` redirects to `/ka` (no 404) |
+| Login / registration surface | the sign-in button and `/ka/admin` sign-in form render; no auth request was sent (no test accounts in Production) |
+| Task API | `/api/tasks` 401 `unauthenticated` |
+| Agent G flags | `/api/agent/media/montage`, `/audio`, `/edit`, `/analyze` → `{"enabled":false}` (**DISABLED** in Production, as intended) |
+| Calling and approvals | `/api/calls/bridge/ticket` and `/api/agent/approvals` 405 on GET (POST only); `/api/admin/whatsapp/meta-check` 404; `/api/notifications/preferences` 401 |
+| Admin security | `/api/admin/stats` 401; `/api/admin/run-migration` 404 (switched off) |
+| New crons | `/api/agent/media/sweep` 403, `/api/cron/deliveries` 403 without `CRON_SECRET`; neither read nor wrote `generation_jobs` after the deploy |
+| Prices | `/ka/pricing`: Basic $19.99 / 230 credits, Pro $39.99 / 525, Business $79.99 / 1,200, Free 50: the same as the 2026-10-09 live check; the product ad stays 25 credits (`PRODUCT_AD_PRICING = 'production'`) |
+
+Credit and data integrity, **T6 Production, read-only SQL** (non-destructive):
+
+| | Before merge 19:50:34Z | After deploy 19:58:00Z | 20:01:06Z |
+|---|---|---|---|
+| profiles / auth users | 42 / 24 | 42 / 24 | 42 / 24 |
+| negative balances | 0 | 0 | 0 |
+| sum of `profiles.credits_balance` | 1,003,393 | 1,003,393 | 1,003,393 |
+| `credit_ledger` rows / sum / last | 222 / 2,873 / 2026-10-09 16:09:05Z | same | same |
+| duplicate debit refs | 0 | 0 | 0 |
+| `generation_jobs` rows / live / last update | 373 / 0 / 2026-10-09 16:58:24Z | same | same |
+| public tables with RLS on | 52 / 52 | 52 / 52 | 52 / 52 |
+
+Logs (Supabase edge logs, 19:55:32–20:05Z): **0 responses ≥ 500**. The only 4xx are 404s on `research_jobs`,
+`service_jobs` and `research_context_files`, the same calls seen all day before the merge (tables missing in Production,
+`docs/handoffs/2026-10-08-production-schema-drift.md`). The page checks above wrote the normal anonymous page-view rows
+(`analytics_events`, `active_visitors`) that any visit writes. One observation outside this repo: a `node` client calls
+`rpc/claim_render_job` (about 22 a minute most of the day, with dips at 19:10–19:20Z and from 19:51Z). Nothing in this
+repository calls that function, so the deploy did not change it; who runs that worker is not known here.
+
+Bugs found after the deploy: **none**. Hotfixes: none. Rollback: not needed (plan in §11).
+
+Pre-existing, not changed by this merge: the first-party event log (`lib/analytics/track.ts` → `/api/analytics/track`)
+sends without reading the cookie choice; it sets no cookie, but whether it should wait for the banner is a P2 for
+review.
