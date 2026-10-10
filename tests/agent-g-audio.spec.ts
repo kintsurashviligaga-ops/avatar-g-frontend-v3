@@ -23,7 +23,7 @@ const CLIP = readFileSync(join(__dirname, 'fixtures/clip.webm'));
 
 const LINK = 'https://media.example.com/videos/flower.mp4';
 const JOB = '22222222-3333-4444-8555-666666666666';
-const AUDIO_URL = 'https://media.test/renders/audio/extract-flower.mp3?token=signed';
+const AUDIO_URL = 'https://e2e-media.supabase.co/renders/audio/extract-flower.mp3?token=signed';
 const linkQuote = { jobId: JOB, credits: 0, source: 'link', host: 'media.example.com', name: 'flower.mp3', bytes: 1_100_000, contentType: 'video/mp4', rights: { status: 'unverified' }, bitrateKbps: 192, maxSec: 3600, expiresAt: Date.now() + 1_800_000 };
 const fileQuote = { ...linkQuote, jobId: '33333333-3333-4444-8555-666666666666', source: 'file', host: null, name: 'beach.mp3', rights: { status: 'own' } };
 
@@ -43,7 +43,8 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {})
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/chat/gemini', (r) => { calls.chat.push(r.request().postData() ?? ''); return r.fulfill({ status: 500, body: '' }); });
-  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'audio/mpeg', body: RESULT_MP3 }));
+  // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'audio/mpeg', body: RESULT_MP3 }));
   await page.route('**/api/studio/library', async (r: Route) => {
     if (r.request().method() !== 'POST') { await r.fulfill({ status: 200, contentType: 'application/json', body: '{"items":[]}' }); return; }
     calls.library.push(r.request().postDataJSON() as Record<string, unknown>);
@@ -143,7 +144,7 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     await expect(card.locator('li[aria-current="step"]')).toHaveAttribute('data-step', /^(extract|qc)$/, { timeout: 10_000 });
     await expect(card.locator('li[data-step="source"]')).toHaveAttribute('data-state', 'done');
 
-    const player = page.locator('audio[src^="https://media.test/renders/audio/extract-flower.mp3"]');
+    const player = page.locator('audio[src^="https://e2e-media.supabase.co/renders/audio/extract-flower.mp3"]');
     await expect(player).toBeAttached({ timeout: 25_000 });
     await expect(page.getByText('Ready: “flower.mp3”, 0:05 · 120 KB. Play it here, download it, or save it to your Library.')).toBeVisible();
     await expect(page.getByText('0:05 · 120 KB · MP3 192 kbps')).toBeVisible(); // the player's own line
@@ -338,7 +339,7 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     expect(calls.run).toEqual([]);
     const ran = await fire({ target, approval: { channel: 'voice-transcript', said: 'yes, start it' } }, 'myavatar:live-run');
     expect(ran).toMatchObject({ took: true, reply: { ok: true } });
-    await expect(page.locator('audio[src^="https://media.test/renders/audio/extract-flower.mp3"]')).toBeAttached({ timeout: 25_000 });
+    await expect(page.locator('audio[src^="https://e2e-media.supabase.co/renders/audio/extract-flower.mp3"]')).toBeAttached({ timeout: 25_000 });
     expect(calls.run).toHaveLength(1);
     expect(calls.run[0]).toMatchObject({ action: 'run', token: 'signed-token', approval: { channel: 'voice-transcript', said: 'yes, start it' } });
     // Started once: a second run of the same plan is refused (the card is no longer waiting for a yes).

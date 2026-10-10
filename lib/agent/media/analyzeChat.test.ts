@@ -94,16 +94,17 @@ describe('the bubble and the card', () => {
     expect(m.status).toBe('done');
   });
 
-  test('a YouTube link says it was only read; a failure names its reason on the step that failed (ka)', () => {
+  test('a YouTube link says it was only read; a failure marks the step that failed and leaves the reason to the bubble (ka)', () => {
     const yt = analyzeCard({ phase: 'done', source: 'youtube', name: 'YouTube', answer: { analysis: ANALYSIS, type: 'video', durationSec: null } }, 'en');
     expect(yt.steps[0]!.label).toBe('Check the link');
     expect(yt.note).toBe('Analysis only: nothing was downloaded · Free for you (within a daily limit)');
     const up = analyzeCard({ phase: 'failed', source: 'file', error: 'upload_failed' }, 'ka');
     expect(up.steps.map((x) => x.state)).toEqual(['failed', 'skipped', 'skipped']);
-    expect(up.steps[0]!.detail).toBe(analyzeErrorText('upload_failed', 'ka'));
+    expect(up.steps[0]!.detail).toBeUndefined();
     const long = analyzeCard({ phase: 'failed', source: 'file', uploaded: true, error: 'too_long' }, 'ru');
     expect(long.steps.map((x) => x.state)).toEqual(['done', 'failed', 'skipped']);
-    expect(long.steps[1]!.detail).toBe('Файл слишком длинный (до 30 минут).');
+    expect(long.steps[1]!.detail).toBeUndefined();
+    expect(analyzeErrorText('too_long', 'ru')).toBe('Файл слишком длинный (до 30 минут).');
   });
 
   test('error texts fall back to „did not finish"; only a failure that asking again can mend is retried', () => {

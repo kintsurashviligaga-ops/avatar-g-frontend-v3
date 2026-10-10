@@ -10,10 +10,10 @@
  * got, and every step before that stage is done even when a poll skipped it (a 3-second read can miss a short stage).
  */
 import type { AgentAudioState } from './audioChat';
-import { audioErrorText, formatBytes } from './audioChat';
+import { formatBytes } from './audioChat';
 import type { AgentMontageState } from './montageChat';
-import { errorText as montageErrorText, priceLabel } from './montageChat';
-import { editErrorText, editsLine, outputLine, type AgentEditState } from './editChat';
+import { priceLabel } from './montageChat';
+import { editsLine, outputLine, type AgentEditState } from './editChat';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -193,7 +193,6 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
     return step;
   });
 
-  whyFailed(steps, s.error ? montageErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
@@ -265,7 +264,6 @@ export function audioTask(s: AgentAudioState, locale: string): TaskCardModel {
     return step;
   });
 
-  whyFailed(steps, s.error ? audioErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say('agentAudio', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
@@ -324,18 +322,16 @@ export function editTask(s: AgentEditState, locale: string): TaskCardModel {
     return step;
   });
 
-  whyFailed(steps, s.error ? editErrorText(s.error, locale) : undefined);
   const clock = clockOf(s.phase, s.t0, s.t1);
   return finish(say(still ? 'agentStill' : 'agentEdit', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
 }
 
-/** The step the work broke on says why, in the words of the card's own error (a caution line under it). */
-function whyFailed(steps: TaskStep[], why: string | undefined): void {
-  const broke = steps.find((x) => x.state === 'failed');
-  if (!broke || !why) return;
-  broke.detail = why;
-  broke.warn = true;
-}
+/*
+ * Why a failed step carries no reason line: the bubble above the card already says why, in the same words
+ * (OmniStudio writes „⚠️ <the card's error>" into it on every failure), and the bubble is what a reload keeps; the card
+ * is not stored. The card marks the step the work broke on (✕) and says nothing twice. A run's card is different: its
+ * bubble speaks for the whole run, so each step there keeps its own reason (lib/agent/run/runCard).
+ */
 
 const CREDITS = {
   free: { ka: 'უფასოა, არაფერი ჩამოიჭრება', en: 'Free, nothing is charged', ru: 'Бесплатно, ничего не списывается' },

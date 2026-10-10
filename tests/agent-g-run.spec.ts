@@ -20,8 +20,8 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 
 const CLIP = readFileSync(join(__dirname, 'fixtures/clip.webm'));
 const RUN = '77777777-3333-4444-8555-666666666666';
-const VIDEO_URL = 'https://media.test/renders/run-cut.mp4?token=signed';
-const AUDIO_URL = 'https://media.test/renders/run-sound.mp3?token=signed';
+const VIDEO_URL = 'https://e2e-media.supabase.co/renders/run-cut.mp4?token=signed';
+const AUDIO_URL = 'https://e2e-media.supabase.co/renders/run-sound.mp3?token=signed';
 const PLAN = { runId: RUN, credits: 6, expiresAt: Date.now() + 1_800_000, steps: [{ id: 'sound', tool: 'audio_extract', credits: 0 }, { id: 'cut', tool: 'montage', credits: 6 }] };
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -73,7 +73,8 @@ async function open(page: Page, o: { lang?: Lang; theme?: 'light' | 'dark'; anal
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/chat/gemini', (r) => { calls.chat.push(r.request().postData() ?? ''); return r.fulfill({ status: 500, body: '' }); });
-  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP }));
+  // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP }));
   await page.route('**/api/studio/library', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"items":[]}' }));
   for (const door of ['montage', 'audio', 'edit']) {
     await page.route(new RegExp(`/api/agent/media/${door}(\\?.*)?$`), (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ enabled: true }) }));

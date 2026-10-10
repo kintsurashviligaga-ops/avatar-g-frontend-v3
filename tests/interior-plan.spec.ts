@@ -11,7 +11,7 @@ import { expect, test, type Page } from '@playwright/test';
  * paid route is fulfilled by the test: the charge, refund and filing are covered by the route's jest suite
  * (app/api/orchestrator/interior/produce/route.test.ts).
  */
-const RENDER = 'https://media.test/room-render.png';
+const RENDER = 'https://e2e-media.supabase.co/room-render.png';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const GEOMETRY = { roomType: 'living room', floor: { widthM: 5, depthM: 4 }, wallHeightM: 2.7, walls: [{ lengthM: 5 }, { lengthM: 4 }, { lengthM: 5 }, { lengthM: 4 }], openings: [{ type: 'window', wall: 0, widthM: 1.2, heightM: 1.4, offsetM: 1 }], confidence: 0.8 };
 const STYLE = { styleName: 'Japandi', palette: ['#e8e2d6', '#cfc4b0', '#7c6a56'], materials: ['oak'], lighting: 'warm' };
@@ -34,7 +34,8 @@ test('a 3D plan is made for a render and filed to the Library with it', async ({
       localStorage.setItem('myavatar:tour-seen', '1');
     } catch { /* private mode */ }
   });
-  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
   await page.route('**/api/nanobanana/image', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: RENDER }) }));
   await page.route('**/api/orchestrator/jobs', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
   const planBodies: Array<Record<string, unknown>> = [];

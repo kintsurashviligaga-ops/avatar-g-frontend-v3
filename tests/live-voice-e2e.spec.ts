@@ -188,10 +188,11 @@ test.describe('voice mode, end to end', () => {
 
   test('a chain by voice: the confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
     const live = new FakeLive();
-    const FOX = 'https://e2e-media.example/fox.png';
+    // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+    const FOX = 'https://e2e-media.supabase.co/fox.png';
     // A 1×1 PNG stands in for the provider's file; the image engine is the only paid call and it is answered here.
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    await page.context().route('https://e2e-media.example/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png }));
+    await page.context().route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png }));
     await page.route('**/api/nanobanana/image', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, url: FOX }) }));
     const spend = await openLiveCall(page, baseURL, live);
 

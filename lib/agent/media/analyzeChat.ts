@@ -171,7 +171,7 @@ export function analyzeCard(s: AgentAnalyzeState, locale: string): AnalyzeCardMo
     const label = key === 'source' ? say(s.source === 'file' ? 'upload' : 'link', lang) : say(key, lang);
     const step: TaskStep = { key, label, state };
     if (key === 'source' && s.name && state === 'done') step.detail = s.name;
-    if (state === 'failed') { step.detail = analyzeErrorText(s.error, locale); step.warn = true; }
+    // A failed step is marked, not explained: the bubble above says why (taskSteps, „Why a failed step carries no reason line").
     if (key === 'read' && state === 'done' && s.answer) {
       const len = s.answer.durationSec ? ` · ${atText(s.answer.durationSec)}` : '';
       step.detail = `${s.answer.type}${len}`;

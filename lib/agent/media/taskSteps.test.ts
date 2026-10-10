@@ -152,16 +152,20 @@ test('the card keeps its job from the tray while it runs and after the server en
 });
 
 describe('each card says why it broke, and what it spent', () => {
-  test('the step the work broke on carries the reason as a caution', () => {
+  test('the step the work broke on is marked; its reason is said once, by the bubble above the card', () => {
+    // The chat writes „⚠️ <the error>" into the bubble on every failure and keeps it after a reload; a second copy on
+    // the card read as the same refusal twice (PART 7, a YouTube link on a production build).
     const m = montageTask({ phase: 'failed', names: NAMES, quote: MQ, stage: 'stitch', error: 'render_failed', t0: 1, t1: 2 }, 'en');
     const broke = m.steps.find((x) => x.state === 'failed')!;
     expect(broke.key).toBe('stitch');
-    expect(broke.warn).toBe(true);
-    expect(broke.detail && broke.detail.length).toBeGreaterThan(5);
-    const a = audioTask({ phase: 'failed', source: 'link', error: 'platform_blocked', t0: 1, t1: 2 }, 'ka');
-    expect(a.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'source', warn: true });
+    expect(broke.detail).toBeUndefined();
+    expect(m.steps.some((x) => x.warn)).toBe(false);
+    const a = audioTask({ phase: 'failed', source: 'link', error: 'platform', t0: 1, t1: 2 }, 'ka');
+    expect(a.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'source' });
+    expect(a.steps.find((x) => x.state === 'failed')!.detail).toBeUndefined();
     const e = editTask({ phase: 'failed', source: 'file', quote: EQ, stage: 'render', error: 'render_failed', t0: 1, t1: 2 }, 'ru');
-    expect(e.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'render', warn: true });
+    expect(e.steps.find((x) => x.state === 'failed')).toMatchObject({ key: 'render' });
+    expect(e.steps.find((x) => x.state === 'failed')!.detail).toBeUndefined();
     // A stop is not a failure: no reason line.
     const stopped = montageTask({ phase: 'cancelled', names: NAMES, quote: MQ, stage: 'stitch', error: 'cancelled', t0: 1, t1: 2 }, 'en');
     expect(stopped.steps.some((x) => x.warn)).toBe(false);

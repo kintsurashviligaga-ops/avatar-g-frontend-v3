@@ -39,8 +39,8 @@ test('done: scenes as chips, moments, speakers, the folded transcript and the no
   expect(screen.getByTestId('agent-analyze-note').textContent).toBe('Free for you (within a daily limit)');
 });
 
-test('failed (ka): the reason on the step, no details', () => {
+test('failed (ka): the step is marked, the reason is the bubble\'s alone, no details', () => {
   render(<AgentAnalyzeCard state={{ phase: 'failed', source: 'youtube', name: 'YouTube', error: 'rate_limited' }} locale="ka" />);
-  expect(screen.getByTestId('agent-analyze-card').textContent).toContain('დღეს ბევრი ანალიზი გააკეთე');
+  expect(screen.getByTestId('agent-analyze-card').textContent).not.toContain('დღეს ბევრი ანალიზი გააკეთე');
   expect(screen.queryByTestId('agent-analyze-details')).toBeNull();
 });

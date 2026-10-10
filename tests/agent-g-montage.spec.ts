@@ -56,7 +56,7 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean; /** th
   const task = (t: Record<string, unknown>) => ({ id: QUOTE.jobId, kind: 'agent-montage', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null, ...t });
   const views = [
     task({ status: 'running', stage: 'stitch', pct: 55, attempt: 1, cancellable: true }),
-    task({ status: 'completed', pct: 100, result: { url: 'https://media.test/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } }),
+    task({ status: 'completed', pct: 100, result: { url: 'https://e2e-media.supabase.co/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' } }),
   ];
   if (opts.stay) views.pop();
   // The one task route (/api/tasks): the chat follows the job there and stops it there.
@@ -146,7 +146,7 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     // Every step stays on the card; the job's stage is the one in progress (the mock reads stitch at 55 %, then done).
     await expect(card.locator('li[data-step="stitch"]')).toHaveAttribute('data-state', 'active', { timeout: 10_000 });
     await expect(card.locator('li[data-step="upload"]')).toHaveAttribute('data-state', 'done');
-    await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
     await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Download', exact: true }).first()).toBeVisible(); // playable, and downloadable
     // The card stays after the run (the owner's „it popped up and vanished"): every step ticked, nothing left to press.
@@ -189,7 +189,7 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
       const check = () => { if (document.querySelector('[data-testid="job-tray"]')?.textContent?.includes('Agent G · montage')) w.__trayFlash = true; };
       new MutationObserver(check).observe(document.body, { subtree: true, childList: true, characterData: true });
     });
-    await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
     await expect(card).toHaveAttribute('data-phase', 'done');
     await page.waitForTimeout(8_000); // past the tray's next read
     expect(await page.evaluate(() => (window as unknown as { __trayFlash?: boolean }).__trayFlash)).toBe(false);
@@ -345,11 +345,12 @@ test.describe('Agent G reads the message first', () => {
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
 
 async function finishMontage(page: Page): Promise<void> {
-  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'video/mp4', body: CLIP }));
+  // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'video/mp4', body: CLIP }));
   await attachAndSend(page, 'cut these to the music');
   await expect(page.getByTestId('agent-montage-card')).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
   await page.getByTestId('agent-montage-start').click();
-  await expect(page.locator('video[src^="https://media.test/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+  await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
 }
 
 test.describe('saving the master to the device', () => {

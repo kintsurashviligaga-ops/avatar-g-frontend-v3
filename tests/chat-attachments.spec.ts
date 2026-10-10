@@ -124,7 +124,7 @@ test.describe('the chat reads what it is given', () => {
     await page.route(/\/storage\/v1\/object\/upload\/sign\//, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
     await page.route('**/api/video/remix', async (route) => {
       calls.remix.push(route.request().postDataJSON());
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ url: 'https://media.test/swapped.mp4', charged: true, method: 'roop' }) });
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ url: 'https://e2e-media.supabase.co/swapped.mp4', charged: true, method: 'roop' }) });
     });
     return calls;
   }
@@ -146,7 +146,7 @@ test.describe('the chat reads what it is given', () => {
     await expect.poll(() => calls.remix.length, { timeout: 15_000 }).toBe(1);
     expect(calls.remix[0]).toMatchObject({ op: 'face_swap', videoUrl: 'omni-uploads/u/clip-1' });
     await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);   // the card is spent: a second tap cannot run it again
-    await expect(page.locator('video[src^="https://media.test/swapped.mp4"]')).toBeAttached({ timeout: 15_000 });
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/swapped.mp4"]')).toBeAttached({ timeout: 15_000 });
   });
 
   test('Edit on the price card runs nothing and puts the words and the clip back in the composer', async ({ page }) => {

@@ -18,7 +18,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 const CLIP = readFileSync(join(__dirname, 'fixtures/clip.webm'));
 const JOB = '44444444-3333-4444-8555-666666666666';
 const JOB2 = '55555555-3333-4444-8555-666666666666';
-const EDIT_URL = 'https://media.test/renders/edits/beach-edit.mp4?token=signed';
+const EDIT_URL = 'https://e2e-media.supabase.co/renders/edits/beach-edit.mp4?token=signed';
 const plan = { sourceSec: 5, output: 'mp4', durationSec: 5, hasAudio: true, width: 1080, height: 1920, copyVideo: false };
 const fileQuote = { jobId: JOB, credits: 0, name: 'beach-edit.mp4', expiresAt: Date.now() + 1_800_000, edits: [{ op: 'aspect', to: '9:16', fit: 'crop' }], plan };
 const prevQuote = { ...fileQuote, jobId: JOB2, name: 'beach-edit-edit.mp4', edits: [{ op: 'grade', style: 'noir' }] };
@@ -39,7 +39,8 @@ async function open(page: Page, enabled: boolean): Promise<Calls> {
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/chat/gemini', (r) => { calls.chat.push(r.request().postData() ?? ''); return r.fulfill({ status: 500, body: '' }); });
-  await page.route('https://media.test/**', (r) => r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP }));
+  // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
+  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP }));
   await page.route('**/api/studio/library', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"items":[]}' }));
   // The task as a worker moves it (lib/tasks/taskView TaskView): editing, checking, then delivered.
   const task = (t: Record<string, unknown>) => ({ id: JOB, kind: 'agent-media-edit', service: 'film', stage: null, pct: null, attempt: null, result: null, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null, ...t });
