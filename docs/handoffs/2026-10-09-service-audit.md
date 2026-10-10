@@ -216,6 +216,12 @@ deployed, migrated or paid for anything.
   in the address only when nobody answered (`components/studio/ServiceHub.tsx`; `ServiceHub.test.tsx`, 5 tests, 2 of them
   fail on the old code). The spec passes on the rebuilt production build.
 
+All 31 again on the rebuilt production build (with the fix): 259 passed, 7 failed, 7 skipped. `simplified-studio` passed; the
+failures were the same five test hosts and the dev-only expectation, plus `landing` :368 (phone) once: Escape did not close
+the settings sheet within 5 s while the machine was loaded (the run took 12.1 min against 6.9). It passed 10 / 10 alone
+(phone and desktop, 5 repeats each) and it does not touch the changed code. CI on `6355ce63`: `verify` (tsc, full jest,
+build) and `preview-e2e` green.
+
 ### E, F and G without the shared database
 
 The lease queue ran against an isolated database built from Production's own shapes (`scripts/lease-isolation/schema.sql`:
