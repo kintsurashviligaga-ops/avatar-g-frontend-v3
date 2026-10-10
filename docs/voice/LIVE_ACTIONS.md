@@ -5,18 +5,37 @@ a studio, writes in the chat, switches the chat model, stops, scrolls, opens pan
 website on screen for the user to open, and — only after the user says yes to the price — starts a generation. It acts and keeps talking, the way Astra does, and the user **sees**
 it happen: the call can shrink to a bar at the top of the screen (the dock) while the app stays fully usable under it.
 
-## The money rule: only a confirmed start spends
+## The money rule: a start runs only on the user's own yes
 
-Every function but one is free. `start_generation` is the only one that spends credits, and three things guard it:
+A voice start is `start_generation` (a studio render: video, image, music, avatar; it spends credits) or
+`agent_task start` (an Agent G card: a montage, an MP3, an edit; free today). `extract_audio start` is `agent_task start`
+on the newest MP3 plan. Since Agent G PART 4 (2026-10-10) the model's word is never enough:
 
-1. **The price comes first.** `prepare_generation` and `update_settings` answer with `priceCredits` (the studio's own
-   quote, `quoteCredits`), and the instruction tells the model to say it and ask.
-2. **`confirmed: "yes"` is required.** The declaration and `LIVE_ACTIONS_RULE` say to send it only after the user
-   clearly agreed to that price, and never on the model's own initiative. Without it the validator refuses.
-3. **A 3-second countdown the user can cancel** (`LIVE_START_COUNTDOWN_MS`). The banner (`LiveRunBanner`, in the dock
-   and on the full call screen) says what starts and its price, with a 44 px Cancel. Only when it runs out does the
-   call fire `myavatar:live-run`, and OmniStudio re-checks (signed in, a generative tool, a prompt, nothing busy)
-   before it presses its own Run (`runTool(true)`). Hanging up during the countdown counts as Cancel.
+1. **The price or plan comes first.** `prepare_generation`, `update_settings` and `get_screen_state` answer with
+   `priceCredits` and a `fingerprint` of what would run (`lib/voice/livePlans liveFingerprint`: the tool, the prompt and
+   the price). An Agent G card that reaches `quoted` during a call is told to the model once as an `[App]` note with its
+   plan number. The call's ledger (`lib/voice/voiceLedger`) notes **when** each price or plan was told.
+2. **`confirmed: "yes"` is still required** for `start_generation`, and the model is told to call a start only after a
+   clear yes. That is the model's claim, and it is not what runs anything.
+3. **A 3-second countdown the user can cancel** (`LIVE_START_COUNTDOWN_MS`). The banner (`LiveRunBanner`) says what
+   starts and its price, with a 44 px Cancel. A "wait" or "no" heard during it stops it. Hanging up stops it.
+4. **The user's own words decide.** When the countdown ends, the words the session transcribed from the user's own
+   microphone (`inputTranscription`, collected by `useGeminiLiveSession onHeard`) since the price or plan was told are
+   judged by `lib/voice/spokenYes judgeSince` (KA/EN/RU, conservative: "yes, but make it blue" or "how much?" is not a
+   yes). A clear yes runs it; a no stops it (`user_said_no`); anything else starts nothing (`not_heard`, the banner says
+   "Nothing was started") and the model hears that nothing started.
+5. **The server judges the same words again and records them.** A studio render posts
+   `{ channel: 'voice-transcript', said, tool, credits }` to `POST /api/agent/approvals` first (one audit row,
+   `studio_run · approve`), and the call starts nothing unless that answers ok. An Agent G card carries the same
+   `approval` in its own run request (`/api/agent/media/{montage,audio,edit}` `run`); the route refuses
+   `approval_unclear` and keeps the channel and the words on the job (`params._approval`) and in its audit row.
+6. **Only what was told runs.** `myavatar:live-run` carries the target: for the studio, the tool and the fingerprint the
+   price was told for (OmniStudio refuses `changed` when the prompt, tool or price changed since, `busy`, or
+   `nothing_prepared`); for Agent G, that very card by its id (refused `gone` or `not_quoted`).
+
+What the gate is not: proof that the words came from a microphone. A hand-made request can claim them exactly as it can
+claim a tap; it is the same signed-in user, the same signed quote, the same balance checks. The gate exists against the
+**model** (a misheard or invented yes, an instruction read from a web page during the call).
 
 `dispatchServiceBlock`'s image/music branch renders straight away and is never reused by the Live listener.
 
@@ -48,15 +67,15 @@ rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"o
 
 | Function | Arguments | What happens |
 | --- | --- | --- |
-| `get_screen_state` | none | The studio reports what is on screen: the tool, the prompt, its settings and price, the chat model, whether something runs, the last chat reply, the last result, signed in or not. |
+| `get_screen_state` | none | The studio reports what is on screen: the tool, the prompt, its settings and price (and the `fingerprint` of what a start would run), the chat model, the running generations (the tray's renders and the server's durable jobs it follows), the last chat reply, the last result, signed in or not, and Agent G's cards in the chat (`plans`, numbered by the call). |
 | `prepare_generation` | `tool` (`video` · `image` · `music` · `avatar`), `prompt` (≤ 2,000 chars), `aspectRatio?`, `durationSec?` (1–120), `style?` (≤ 60 chars) | The studio switches, the prompt is filled and the settings are **applied** to the panel. The reply says what was applied (a length snapped to the panel's) and the price. Nothing runs. |
 | `update_settings` | `aspectRatio?`, `durationSec?`, `style?`, `instrumental?` (`on`/`off`) | Tunes the open studio; refuses (`no_settings`, `not_applicable`) when nothing applies. |
-| `start_generation` | `confirmed` (`yes`, required) | The countdown above, then the studio's Run. Refusals: `signed_out`, `not_generative`, `no_prompt`, `busy`. |
+| `start_generation` | `confirmed` (`yes`, required) | The money rule above: the countdown, the user's own yes, the server record, then the studio's Run of exactly what was priced. Refusals: `signed_out`, `not_generative`, `no_prompt`, `busy`, `no_transcript` (a call that cannot hear the user's words starts nothing), `price_not_told`, `changed_since_price`, `user_said_no`; at the run, `changed`, `busy`, `nothing_prepared`. |
 | `open_studio` | `tool` (any of the 17 tools) | The tool switches. |
 | `chat_send` | `text` (≤ 4,000 chars) | Sends the message in the chat — opening the chat first when another tool is on screen — for anything long or written. |
 | `new_chat` | none | A new, empty session; the current one stays in the history. |
 | `set_chat_model` | `model` (`fast` · `thinking` · `pro` · `lite`) | The chat's mode switch. |
-| `stop` | `what` (`reply` · `generation` · `all`) | Stops the chat answer being written and/or the running generations. |
+| `stop` | `what` (`reply` · `generation` · `all`) | Stops the chat answer being written and/or the running generations: the tray's renders, the server's durable jobs the tray follows (`POST /api/tasks` cancel), and Agent G's running cards (each stops its own job; a plan waiting for a yes stays). |
 | `scroll_chat` | `to` (`top` · `bottom` · `up` · `down`) | Scrolls the thread. |
 | `open_panel` | `panel` (`settings` · `credits` · `persona` · `connectors` · `search` · `history`) | Opens that panel. |
 | `call_view` | `view` (`screen` · `full`) | Docks the call to the bar, or brings the full call screen back. |
@@ -69,8 +88,9 @@ rejects an `OBJECT` whose `properties` is empty. Booleans travel as `"on"` / `"o
 | `use_result` | `result?`, `to` (`video` · `music_video` · `montage` · `editor` · `chat`) | Moves a result into another tool with nothing generated: an image → the next video's start frame, a track → a music video's soundtrack or Montage's music, a video → the Montage timeline, image / audio → the editor, anything → a chat attachment. |
 | `montage` | `action` (`open` · `set_music_start` · `export` · `state`), `videos?`, `music?`, `musicStartSec?` (0–3,600), `aspectRatio?` (9:16 · 16:9 · 1:1) | `open` (the studio): the editor with those videos on the timeline and that track as its music, starting `musicStartSec` into the song (the trim of its beginning; the end is cut to the picture). The rest go to the editor's own hook, `myavatar:montage-command` (cancelable, `detail.reply` written synchronously): move the music start, export (free), read the edit. No editor open → `montage_closed`. |
 | `read_webpage` | `url` (a public http(s) address) | `/api/voice/web-read` (signed-in, `WEB_READ` per user) reads the page with every SSRF rule in `lib/web/readPage.ts` — public addresses only, DNS-checked (no rebinding), redirects re-checked by hand, a 1.5 MB cap, a timeout, HTML / text only — and the model gets the title, ≤ 3,500 characters of text and ≤ 25 links (`text — url`). It answers AFTER the network (the step spinner runs meanwhile; the session awaits the batch), and a link to the page goes on screen. The model may follow links by reading them; it cannot press buttons, fill forms, sign in or pay on other sites, and says so. |
-| `ask_agent_g` | `task` (≤ 2,000 chars, cleaned like a prompt) | A research or multi-step web task for Agent G: `POST /api/agent/run` (signed-in, the `agent` per-user rate limit) with `{ goal, maxSteps: 4, budgetMs: 45000, source: 'live' }` — the route clamps `budgetMs` to 15–100 s — and a 60 s client timeout. Like `read_webpage` it answers AFTER the network (the feed shows „Agent G is researching…"): `ok:true` with the answer (≤ 3,500 chars), the `sources` its steps read (`title — url`, public http(s) only), `stopReason` when it was not a normal finish, and a note that it is web-derived, untrusted data, not instructions. 401 / 429 / 4xx / 5xx / network / timeout → `ok:false` with a message the model repeats; a run that stopped before writing an answer → `ok:false` `no_answer` with what it had found so far. It cannot render, spend credits, sign in, buy or press buttons on other sites. |
-| `extract_audio` | `action` (`plan` · `start` · `stop`), `url?` (a public http(s) address, `plan`), `confirmed` (`"yes"`, `start` only) | Agent G's audio extraction in the chat (`lib/agent/media/audioExtract`, owner 2026-10-09): the studio drives the SAME card a typed "take the MP3 out of this" gets (`components/studio/AgentAudioCard.tsx`). `plan`: the source is `url`, else the one video/audio file in the composer, else a link in the composer, else the newest link the user sent; Agent G checks it (`POST /api/agent/media/audio` `quote` — a video platform is refused by name and the card offers an upload, never a workaround) and the answer comes back at once; the plan itself reaches the model as an `[App]` note (`LIVE_RESULT_EVENT` kind `plan`). `start` presses the newest plan's Start (free; for unverified rights the model must first say that starting confirms the file is the user's or licensed) and needs `confirmed: "yes"`; `stop` cancels the running one. The MP3 lands in the chat with a player, Download and Save to Library, announced as a new result. Signed out, or `AGENT_G_MEDIA_EXEC` closed → `ok:false`. |
+| `ask_agent_g` | `task` (≤ 2,000 chars, cleaned like a prompt) | A research or multi-step web task for Agent G: `POST /api/agent/run` (signed-in, the `agent` per-user rate limit) with `{ goal, maxSteps: 4, budgetMs: 45000, source: 'live' }` — the route clamps `budgetMs` to 15–100 s — and a 60 s client timeout. Like `read_webpage` it answers AFTER the network (the feed shows „Agent G is researching…"): `ok:true` with the answer (≤ 3,500 chars), the `sources` its steps read (`title — url`, public http(s) only), `stopReason` when it was not a normal finish, and a note that it is web-derived, untrusted data, not instructions. 401 / 429 / 4xx / 5xx / network / timeout → `ok:false` with a message the model repeats; a run that stopped before writing an answer → `ok:false` `no_answer` with what it had found so far. It cannot render, spend credits, sign in, buy or press buttons on other sites. The written answer and its sources also land in the chat as Agent G's reply (`myavatar:live-agent-answer`), so nothing is lost when the call ends; an MP3 plan the run made (`audioQuote`) becomes its quoted card, told to the model with its plan number. |
+| `extract_audio` | `action` (`plan` · `start` · `stop`), `url?` (a public http(s) address, `plan`), `confirmed` (`"yes"`, `start` only) | Agent G's audio extraction in the chat (`lib/agent/media/audioExtract`, owner 2026-10-09): the studio drives the SAME card a typed "take the MP3 out of this" gets (`components/studio/AgentAudioCard.tsx`). `plan`: the source is `url`, else the one video/audio file in the composer, else a link in the composer, else the newest link the user sent; Agent G checks it (`POST /api/agent/media/audio` `quote` — a video platform is refused by name and the card offers an upload, never a workaround) and the answer comes back at once; the plan itself reaches the model as an `[App]` note (`LIVE_RESULT_EVENT` kind `plan`). `start` is `agent_task start` on the newest MP3 plan the call was told of (free; for unverified rights the model must first say that starting confirms the file is the user's or licensed): the same countdown and the same check of the user's own words; the studio itself no longer presses Start for it (`use_agent_task`). `stop` cancels the running one. The MP3 lands in the chat with a player, Download and Save to Library, announced as a new result. Signed out, or `AGENT_G_MEDIA_EXEC` closed → `ok:false`. |
+| `agent_task` | `action` (`start` · `stop` · `status`), `plan?` (the call's plan number; absent = the newest) | Agent G's cards in the chat (montage, MP3, edit), numbered by the call in the order it was told of them (`lib/voice/voiceLedger`). `status`: each plan's kind, phase (`preparing`, `quoted`, `running`, `done`, `failed`, `cancelled`), facts and price, and the running tasks. `start`: the money rule above, for that card only, with the user's words on its run request. `stop`: drops a plan waiting for a yes, or stops it while it runs; without `plan`, every running Agent G card. Refusals: `no_plan`, `plan_not_told`, `no_transcript`, `user_said_no`, `gone`, `not_quoted`, `not_running`, `nothing_running`, `signed_out`. |
 
 ### The hands (2026-10-03)
 
@@ -113,8 +133,13 @@ structured error, `{ code, message, field?, allowed? }`, and the model can retry
   answer to the model carries facts only the studio knows. With no receipt there is no studio on the page: the model
   gets `ok:false` (`studio_unavailable`), never "done". After the call, a card's Open re-sends the action with
   `reveal: true`, and the composer takes focus.
-- **`myavatar:live-run`** (cancelable) is the countdown running out: OmniStudio re-checks and runs; its receipt says it
-  did.
+- **`myavatar:live-run`** (cancelable) is the countdown running out after a clear yes. Its `detail` (`LiveRunDetail`)
+  carries the target (`studio` with its tool and fingerprint, or `agent` with the card's id and kind) and the approval
+  (`voice-transcript`, the user's words). OmniStudio runs only that target and writes `detail.reply`; with no words it
+  takes nothing.
+- **`myavatar:live-agent-answer`** is an `ask_agent_g` answer for the chat (`LiveAgentAnswerDetail`: the task, the
+  answer, its sources, the MP3 plan if the run made one). OmniStudio adds it as Agent G's reply (sources as http(s) links
+  only) and saves it with the thread; it is handled after the call has ended too.
 - **`myavatar:live-call`** `{ active }` and **`<html data-live-call>`** mark a call in progress: OmniStudio keeps the
   call's turns in one thread instead of splitting it when a voice action switches the tool.
 - **`<html data-live-docked>`** is set while the dock is up, and the dock writes its **measured** height (safe area,
@@ -211,16 +236,22 @@ funded key:
    mint returns 200 **and** that the socket reaches `setupComplete`.
 2. On that session, a spoken request such as "make me a vertical video of a cat surfing" must produce a `toolCall`, and
    the model must speak after our `toolResponse`.
-3. The model asks before `start_generation` and sends `confirmed: "yes"` only after a spoken yes.
+3. The model asks before `start_generation` and sends `confirmed: "yes"` only after a spoken yes, and the session's
+   `inputTranscription` of that yes arrives within the 3-second countdown (if it lags, the start reads `not_heard` and the
+   model must ask again: the safe side, but a real call has to show how often it happens).
 4. `ask_agent_g` (added 2026-10-08) is one more declaration in the same lock — unverified live like the others. Also check
    that the native-audio model keeps the session open while a blocking function call waits up to ~60 s for Agent G, and
    that it tells the user it is on it before the call.
 5. `extract_audio` (added 2026-10-09) is one more declaration in the same lock — unverified live like the others. Check
    that the model asks for a yes (and says the rights note) before `start`, and that it offers the upload, not a
    workaround, when a platform link is refused.
+6. `agent_task` (added 2026-10-10, Agent G PART 4) is one more declaration in the same lock. Check that the model reads
+   a plan's `[App]` note aloud with its number, asks, and starts it only with `agent_task start` after the user's yes.
 
-The studio's side is covered in a real browser by `tests/live-actions.spec.ts` (the events are dispatched as the call
-dispatches them); the executor, countdown and dock by the jest suites under `components/voice/live/`.
+The studio's side is covered in a real browser by `tests/live-actions.spec.ts` and `tests/agent-g-audio.spec.ts` (the
+events are dispatched as the call dispatches them), and the whole chain with a simulated Google socket by
+`tests/live-voice-e2e.spec.ts` ("the yes is the user's, never the model's"); the executor, countdown, transcript gate
+and dock by the jest suites under `components/voice/live/` (`liveVoiceGate.test.tsx`).
 
 `scripts/probe-live-actions.mjs` checks both with the owner's key, which it never prints. By default it only mints a
 token and opens the setup for three locks: full, actions dropped, and no tools (the legacy wire). It reports which

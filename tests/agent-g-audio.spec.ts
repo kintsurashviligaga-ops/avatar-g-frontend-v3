@@ -233,6 +233,32 @@ test.describe('Agent G takes the MP3 out of a link in the chat', () => {
     expect(cancels).toHaveLength(1);
   });
 
+  test('Live Voice: stop {generation} stops the server job the tray follows through the task route, once (T4)', async ({ page }) => {
+    await open(page, true);
+    const cancels: unknown[] = [];
+    const running = { id: JOB, kind: 'agent-audio-extract', service: 'music', status: 'running', stage: 'extract', pct: 30, attempt: 1, result: null, error: null, cancellable: true, label: null, position: null, createdAt: null, updatedAt: null };
+    await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
+      if (r.request().method() === 'POST') {
+        cancels.push(r.request().postDataJSON());
+        await r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"task":null}' });
+        return;
+      }
+      await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tasks: cancels.length ? [] : [running] }) });
+    });
+    await page.reload();
+    await expect(page.getByTestId('job-tray').getByText('Agent G · MP3')).toBeVisible({ timeout: 45_000 });
+    const stop = () => page.evaluate(() => {
+      const d: { type: string; what: string; reply?: { ok?: boolean; message?: string } } = { type: 'stop', what: 'generation' };
+      const took = !window.dispatchEvent(new CustomEvent('myavatar:live-action', { detail: d, cancelable: true }));
+      return { took, reply: d.reply ?? null };
+    });
+    // The call sees it as a running task, then stops it: the same cancel the tray's own button sends.
+    expect(await stop()).toMatchObject({ took: true, reply: { ok: true, message: 'Done: cancelled 1 generation.' } });
+    await expect.poll(() => cancels).toEqual([{ action: 'cancel', id: JOB }]);
+    await page.waitForTimeout(500);
+    expect(cancels).toHaveLength(1);
+  });
+
   test('Stop while it runs: one cancel to the task route, and the follow ends it as stopped', async ({ page }) => {
     await open(page, true);
     // This test's own task route (registered last, so it wins): running until the cancel lands, then cancelled.
