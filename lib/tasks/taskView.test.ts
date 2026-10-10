@@ -3,7 +3,8 @@
  * One shape for every task (EF-7): a studio render from its row's columns, an Agent G montage and an audio extraction
  * from their executors' own owner views. A raw error text never leaves the server; only a code does.
  */
-import { LABEL_MAX, isFinal, parseTaskId, taskFromAudio, taskFromMontage, taskFromRow, type TaskRow } from './taskView';
+import { newRun, moveStep, stepOf, type RunState } from '@/lib/agent/run/runEngine';
+import { LABEL_MAX, isFinal, parseTaskId, taskFromAudio, taskFromMontage, taskFromRow, taskFromRun, type TaskRow } from './taskView';
 
 const row = (r: Partial<TaskRow> = {}): TaskRow => ({
   id: 'prod_1700000000000_ab12',
@@ -107,4 +108,88 @@ describe('an Agent G audio extraction (its executor view)', () => {
 
 test('final: completed, failed, cancelled', () => {
   expect(['queued', 'running', 'completed', 'failed', 'cancelled'].map((status) => isFinal({ status } as never))).toEqual([false, false, true, true, true]);
+});
+
+describe('an Agent G multi-step run (PART 2): one task with its steps and its events', () => {
+  const T0 = 1_000_000;
+  const spec = {
+    title: 'Clips to the concert sound',
+    steps: [
+      { id: 'sound', tool: 'audio_extract' as const, source: { file: 'omni-uploads/user-1/v.mp4' } },
+      { id: 'clip', tool: 'montage' as const, files: ['omni-uploads/user-1/a.mp4', 'omni-uploads/user-1/b.mp4', { step: 'sound' }] },
+    ],
+  };
+  const approval = { quoteFingerprint: 'run:x', channel: 'tap' as const, evidence: 'plan', at: new Date(T0).toISOString(), userId: 'user-1' };
+  const runRow = (r: Partial<TaskRow> = {}) => row({ id: '0b9f2c1e-4c2a-4f7e-9a51-1d2c3b4a5f60', status: 'processing', params: { _exec: { kind: 'agent-run' } }, ...r });
+  const AUDIO = 'https://x.supabase.co/storage/v1/object/sign/renders/audio/a.mp3?token=t';
+  const VIDEO = 'https://x.supabase.co/storage/v1/object/sign/renders/montage/m.mp4?token=t';
+
+  /** sound delivered, clip running at 40%. */
+  function midway(): RunState {
+    const run = newRun(spec, approval, () => 0, T0);
+    run.status = 'running';
+    const sound = stepOf(run, 'sound')!;
+    sound.taskId = 'aud-1';
+    moveStep(run, sound, 'queued', T0, 'step.queued');
+    moveStep(run, sound, 'running', T0, 'step.running');
+    sound.output = { url: AUDIO, media: 'audio', durationSec: 189.5, name: 'concert.mp3' };
+    moveStep(run, sound, 'completed', T0, 'step.completed', 'audio');
+    const clip = stepOf(run, 'clip')!;
+    clip.taskId = 'job-1';
+    moveStep(run, clip, 'queued', T0, 'step.queued');
+    return run;
+  }
+
+  test('live: which step of how many, the share done, every step with its own job, stage and result; the run can be stopped', () => {
+    const t = taskFromRun(runRow(), midway(), { clip: { state: 'live', running: true, stage: 'stitch', pct: 40 } });
+    expect(t).toMatchObject({
+      kind: 'agent-run', status: 'running', stage: '2/2:clip', pct: 70, result: null, error: null, cancellable: true, label: 'Clips to the concert sound',
+    });
+    expect(t.steps).toEqual([
+      { id: 'sound', tool: 'audio_extract', capability: 'agent.audio-extract', status: 'completed', taskId: 'aud-1', stage: null, pct: 100, result: { url: AUDIO, media: 'audio', name: 'concert.mp3', durationSec: 189.5 }, error: null, reused: false, approval: null },
+      { id: 'clip', tool: 'montage', capability: 'agent.montage', status: 'queued', taskId: 'job-1', stage: 'stitch', pct: 40, result: null, error: null, reused: false, approval: null },
+    ]);
+    expect(t.events!.map((e) => e.type)).toEqual(['run.created', 'step.queued', 'step.running', 'step.completed', 'step.queued']);
+    // `after`: only what the reader has not seen yet.
+    expect(taskFromRun(runRow(), midway(), {}, { after: 3 }).events!.map((e) => e.seq)).toEqual([4, 5]);
+    // A stop already asked for: no second stop button.
+    expect(taskFromRun(runRow(), { ...midway(), cancelRequested: true }).cancellable).toBe(false);
+  });
+
+  test('waiting for a yes: the step carries the price and the quote id the yes must name', () => {
+    const run = newRun(spec, approval, () => 0, T0);
+    const sound = stepOf(run, 'sound')!;
+    sound.quote = { taskId: 'aud-1', credits: 5, request: {}, token: 'tok', expiresAt: T0 + 60_000, quoteId: 'q-1' };
+    moveStep(run, sound, 'awaiting_approval', T0, 'step.awaiting_approval');
+    run.status = 'awaiting_approval';
+    const t = taskFromRun(runRow(), run);
+    expect(t).toMatchObject({ status: 'awaiting_approval', stage: 'awaiting_approval', cancellable: true });
+    expect(t.steps![0]).toMatchObject({ status: 'awaiting_approval', approval: { credits: 5, quoteId: 'q-1', expiresAt: T0 + 60_000 } });
+  });
+
+  test('ended: completed gives the last result; partially completed keeps what was delivered; cancelled and failed say so', () => {
+    const done = midway();
+    const clip = stepOf(done, 'clip')!;
+    clip.output = { url: VIDEO, media: 'video', durationSec: 30 };
+    moveStep(done, clip, 'running', T0, 'step.running');
+    moveStep(done, clip, 'completed', T0, 'step.completed');
+    done.status = 'completed';
+    expect(taskFromRun(runRow({ status: 'completed' }), done)).toMatchObject({ status: 'completed', stage: null, pct: 100, result: { url: VIDEO, media: 'video' }, error: null, cancellable: false });
+
+    const part = midway();
+    const c2 = stepOf(part, 'clip')!;
+    c2.error = 'render_failed';
+    moveStep(part, c2, 'failed', T0, 'step.failed');
+    part.status = 'partially_completed';
+    part.error = 'render_failed';
+    expect(taskFromRun(runRow({ status: 'completed' }), part)).toMatchObject({ status: 'partially_completed', pct: null, result: { url: AUDIO, media: 'audio' }, error: 'render_failed' });
+
+    expect(taskFromRun(runRow({ status: 'failed' }), { ...midway(), status: 'cancelled', error: 'cancelled' })).toMatchObject({ status: 'cancelled', error: 'cancelled', result: null, cancellable: false });
+    expect(isFinal({ status: 'partially_completed' })).toBe(true);
+  });
+
+  test('a step job names its run (`_parent`), so the tray can show the run alone', () => {
+    expect(taskFromMontage(row({ id: 'job-1', params: { _parent: 'run-1' } }), 'agent-montage', { ok: true, jobId: 'job-1', status: 'running', stage: 'stitch', pct: 40, attempt: 1 }).parentId).toBe('run-1');
+    expect(taskFromRow(row()).parentId).toBeUndefined();
+  });
 });

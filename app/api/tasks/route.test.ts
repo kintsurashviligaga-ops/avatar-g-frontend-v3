@@ -49,6 +49,32 @@ jest.mock('../../../lib/tasks/taskLive', () => {
   };
 });
 
+const mockRun = {
+  planRun: jest.fn(async (_d: unknown, i: { userId: string; spec: unknown }) =>
+    (i.spec ? { ok: true, plan: { runId: 'run-1', credits: 0, expiresAt: 1, steps: [] }, spec: i.spec, token: 'tok' } : { ok: false, error: 'bad_spec', message: 'x' })),
+  startRun: jest.fn(async () => ({ ok: true, runId: 'run-1', replay: false })),
+  approveStep: jest.fn(async () => ({ ok: true })),
+  resumeRun: jest.fn(async () => ({ ok: true, runId: 'run-2', replay: false })),
+  tickRun: jest.fn(async () => null),
+};
+jest.mock('../../../lib/agent/run/runExec', () => ({
+  planRun: (...a: unknown[]) => (mockRun.planRun as jest.Mock)(...a),
+  startRun: (...a: unknown[]) => (mockRun.startRun as jest.Mock)(...a),
+  approveStep: (...a: unknown[]) => (mockRun.approveStep as jest.Mock)(...a),
+  resumeRun: (...a: unknown[]) => (mockRun.resumeRun as jest.Mock)(...a),
+  tickRun: (...a: unknown[]) => (mockRun.tickRun as jest.Mock)(...a),
+}));
+jest.mock('../../../lib/agent/run/runLive', () => ({ liveRunDeps: () => ({ live: true }) }));
+const mockAfter: string[] = [];
+jest.mock('../../../lib/platform/afterResponse', () => ({
+  runAfterResponse: jest.fn((task: () => Promise<unknown>, label: string) => { mockAfter.push(label); void task(); return true; }),
+}));
+const mockRate = { ok: true as boolean };
+jest.mock('../../../lib/orchestrator/rate-limit', () => ({
+  checkProduceRate: jest.fn(async () => (mockRate.ok ? { ok: true } : { ok: false, reason: 'rate_minute', retryAfterSec: 60 })),
+  rateLimitedResponse: () => new Response(JSON.stringify({ error: 'rate_limited' }), { status: 429 }),
+}));
+
 import { NextRequest, NextResponse } from 'next/server';
 import { authedClientFromRequest } from '../../../lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '../../../lib/api/rate-limit';
@@ -71,6 +97,8 @@ beforeEach(() => {
   mockUser = { id: 'user-1', email: 'admin@example.com' };
   mockReads.length = 0;
   mockRows.length = 0;
+  mockAfter.length = 0;
+  mockRate.ok = true;
   mockRows.push(
     row('prod_1_a', { status: 'completed', signed_url: 'https://s/v.mp4' }),
     row('job-m', { params: { _exec: { kind: 'agent-montage' } } }),
@@ -158,4 +186,81 @@ test('its own rate-limit bucket, keyed by the user: the tray, the panels and the
   (checkRateLimit as jest.Mock).mockResolvedValueOnce(NextResponse.json({ error: 'rate_limited' }, { status: 429 }));
   expect((await post({ action: 'cancel', id: 'job-m' })).status).toBe(429);
   expect(mockKind.cancel).toHaveBeenCalledTimes(1);
+});
+
+describe('multi-step runs (PART 2): plan, run, approve, resume', () => {
+  const SPEC = { steps: [{ id: 'sound', tool: 'audio_extract', source: { file: 'omni-uploads/user-1/v.mp4' } }] };
+
+  test('closed (Production default) or not an admin under `admin`: 403 not_enabled, nothing is planned or started', async () => {
+    for (const body of [{ action: 'plan', spec: SPEC }, { action: 'run', spec: SPEC, token: 't' }, { action: 'approve', id: 'job-m', step: 's', quoteId: 'q' }, { action: 'resume', id: 'job-m' }]) {
+      const r = await post(body);
+      expect([body.action, r.status, (await r.json()).error]).toEqual([body.action, 403, 'not_enabled']);
+    }
+    process.env.AGENT_G_MEDIA_EXEC = 'admin';
+    mockUser = { id: 'user-1', email: 'someone@example.com' };
+    expect((await post({ action: 'plan', spec: SPEC })).status).toBe(403);
+    for (const f of Object.values(mockRun)) expect(f).not.toHaveBeenCalled();
+  });
+
+  test("plan and run: the session's user id, never the body's; the tap's answer is the run id and the run moves on after it", async () => {
+    process.env.AGENT_G_MEDIA_EXEC = 'admin';
+    const plan = await post({ action: 'plan', spec: SPEC, userId: 'user-2' });
+    expect(plan.status).toBe(200);
+    expect(await plan.json()).toMatchObject({ ok: true, plan: { runId: 'run-1' }, token: 'tok' });
+    expect(mockRun.planRun).toHaveBeenCalledWith({ live: true }, { userId: 'user-1', spec: SPEC });
+    expect((await post({ action: 'plan' })).status).toBe(400); // bad_spec
+
+    const run = await post({ action: 'run', spec: SPEC, token: 'tok', userId: 'user-2' });
+    expect(run.status).toBe(200);
+    expect(await run.json()).toEqual({ ok: true, jobId: 'run-1', status: 'queued', replay: false });
+    expect(mockRun.startRun).toHaveBeenCalledWith({ live: true }, { userId: 'user-1', spec: SPEC, token: 'tok' });
+    expect(mockAfter).toEqual(['agent-run-tick']);
+    expect(mockRun.tickRun).toHaveBeenCalledWith({ live: true }, { id: 'run-1', startWorkers: true });
+  });
+
+  test('run errors keep their meaning: an expired or changed plan 409, an unrecordable run 503; the produce cap applies', async () => {
+    process.env.AGENT_G_MEDIA_EXEC = '1';
+    mockRun.startRun.mockResolvedValueOnce({ ok: false, error: 'quote_expired', message: 'x' } as never);
+    expect((await post({ action: 'run', spec: SPEC, token: 'old' })).status).toBe(409);
+    mockRun.startRun.mockResolvedValueOnce({ ok: false, error: 'jobs_unavailable', message: 'x' } as never);
+    expect((await post({ action: 'run', spec: SPEC, token: 'tok' })).status).toBe(503);
+    expect(mockAfter).toEqual([]);
+    mockRate.ok = false;
+    expect((await post({ action: 'run', spec: SPEC, token: 'tok' })).status).toBe(429);
+    expect((await post({ action: 'resume', id: 'job-m' })).status).toBe(429);
+    expect(mockRun.startRun).toHaveBeenCalledTimes(2);
+    expect(mockRun.resumeRun).not.toHaveBeenCalled();
+  });
+
+  test("approve: the user's yes to one step's quote; the answer is the task as it now stands; a stale quote 409", async () => {
+    process.env.AGENT_G_MEDIA_EXEC = '1';
+    const ok = await post({ action: 'approve', id: 'job-m', step: 'sound', quoteId: 'q1' });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ ok: true, task: { id: 'job-m' } });
+    expect(mockRun.approveStep).toHaveBeenCalledWith({ live: true }, { userId: 'user-1', id: 'job-m', step: 'sound', quoteId: 'q1', startWorkers: true });
+    mockRun.approveStep.mockResolvedValueOnce({ ok: false, error: 'quote_changed', message: 'x', step: 'sound' } as never);
+    expect((await post({ action: 'approve', id: 'job-m', step: 'sound', quoteId: 'old' })).status).toBe(409);
+    mockRun.approveStep.mockResolvedValueOnce({ ok: false, error: 'not_found', message: 'x' } as never);
+    expect((await post({ action: 'approve', id: 'job-x', step: 'sound', quoteId: 'q1' })).status).toBe(404);
+    expect((await post({ action: 'approve', id: '../x', step: 'sound', quoteId: 'q1' })).status).toBe(404);
+  });
+
+  test('resume: a new run id, moved on after the answer; a live run 409 not_final', async () => {
+    process.env.AGENT_G_MEDIA_EXEC = '1';
+    const ok = await post({ action: 'resume', id: 'job-m' });
+    expect(await ok.json()).toEqual({ ok: true, jobId: 'run-2', status: 'queued', replay: false });
+    expect(mockRun.resumeRun).toHaveBeenCalledWith({ live: true }, { userId: 'user-1', id: 'job-m' });
+    expect(mockAfter).toEqual(['agent-run-tick']);
+    mockRun.resumeRun.mockResolvedValueOnce({ ok: false, error: 'not_final', message: 'x' } as never);
+    expect((await post({ action: 'resume', id: 'job-m' })).status).toBe(409);
+  });
+
+  test('a read can ask only for the events after the ones it has (`after=n`); anything else is ignored', async () => {
+    await get('?id=job-m&after=7');
+    expect(mockKind.status).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'job-m' }), 'user-1', { workersOpen: false, after: 7 });
+    for (const bad of ['-1', 'abc', '1.5']) {
+      await get(`?id=job-m&after=${bad}`);
+      expect(mockKind.status).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'job-m' }), 'user-1', { workersOpen: false });
+    }
+  });
 });

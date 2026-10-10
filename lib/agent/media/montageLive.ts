@@ -29,10 +29,18 @@ export const AUDIT_EVENT = 'audit.agent_g.media';
  *  the track) before every render. */
 const SOURCE_TTL_SEC = 3600;
 
-/** One audit row (shared with ./audioLive). Never throws; a lost row is reported. */
+/** The capability each audited operation is (lib/agent/capabilities), so every row names its tool. */
+const TOOL_OF_OP: Readonly<Record<AuditEvent['op'], string>> = {
+  montage: 'agent.montage',
+  audio_extract: 'agent.audio-extract',
+  agent_run: 'agent.run',
+};
+
+/** One audit row (shared with ./audioLive and lib/agent/run). Never throws; a lost row is reported. */
 export async function audit(ev: AuditEvent): Promise<void> {
   try {
-    const { userId, ...props } = ev;
+    const { userId, ...rest } = ev;
+    const props = { ...rest, toolId: rest.toolId ?? TOOL_OF_OP[rest.op] };
     const { error } = await createServiceRoleClient().from('analytics_events').insert({ user_id: userId, event_name: AUDIT_EVENT, props });
     if (error) throw new Error(error.message);
   } catch (e) {

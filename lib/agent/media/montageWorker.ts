@@ -17,7 +17,7 @@
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { validateMontageRequest, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
-import { MONTAGE_KIND, payDebt, reserveOf, type MontageExecDeps } from './montageExec';
+import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
 import { qcMaster } from './montageAsk';
 
 export type WorkResult =
@@ -33,13 +33,14 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
   if (!c.ok) return { ran: false, reason: c.reason };
   const row = c.row;
   const userId = row.userId;
+  const run = runIdOf(row);
   const attempt = row.exec?.attempt ?? 1;
   const owe = reserveOf(row) !== null;
   const credits = reserveOf(row)?.credits ?? 0;
 
   const end = async (error: string, detail: string): Promise<WorkResult> => {
     if (await fail(deps.store, jobId, worker, error, owe)) {
-      await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'failed', jobId, credits, attempt, detail });
+      await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'failed', jobId, credits, attempt, detail });
       const failed = await deps.store.read(jobId);
       if (failed) await payDebt(deps, failed);
       return { ran: true, outcome: 'failed', error };
@@ -53,11 +54,11 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
       // The owner cancelled, or the sweep gave the job up: the row is final and may owe a refund. Pay it if nobody did.
       const final = await deps.store.read(jobId);
       if (final) await payDebt(deps, final);
-      await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'cancelled', jobId, attempt, detail: final?.error ?? 'stopped' });
+      await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'cancelled', jobId, attempt, detail: final?.error ?? 'stopped' });
       return { ran: true, outcome: 'stopped' };
     }
     // Another worker holds the row now, or delivered it (this one stalled past its lease). It owns the job.
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'lost', jobId, attempt, detail: 'lease taken over' });
+    await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'lost', jobId, attempt, detail: 'lease taken over' });
     return { ran: true, outcome: 'lost' };
   };
 
@@ -66,7 +67,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
   if (!valid.ok || !valid.request) return end(`invalid_request: ${valid.error ?? 'the stored plan is not valid'}`.slice(0, 300), 'invalid stored plan');
   const request = valid.request;
   const totalSec = timelineDuration(request.shots);
-  await deps.audit({ userId, op: 'montage', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, credits, attempt, detail: 'started' });
+  await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, credits, attempt, detail: 'started' });
 
   // ── the heartbeat: renews the lease, and is how this worker hears it must stop ───────────────────────────────────
   const ctl = new AbortController();
@@ -107,7 +108,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
       result: { videoUrl, subtype: 'montage', via: 'agent-g', durationSec: qc.durationSec, aspect: request.aspect },
     });
     if (!delivered) return halted(await afterLoss());
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, credits, attempt, durationSec: qc.durationSec, detail: 'delivered' });
+    await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, credits, attempt, durationSec: qc.durationSec, detail: 'delivered' });
     return { ran: true, outcome: 'delivered', videoUrl };
   } finally {
     stopBeating();
@@ -142,7 +143,7 @@ export async function sweepMontageJobs(deps: MontageExecDeps, opts: { worker: st
   const report: SweepReport = { gaveUp: [], paid: [], waiting: r.runnable };
   for (const row of r.exhausted) {
     report.gaveUp.push(row.id);
-    await deps.audit({ userId: row.userId, op: 'montage', phase: 'run', outcome: 'failed', jobId: row.id, attempt: row.exec?.attempt, detail: row.error ?? 'gave up' });
+    await deps.audit({ ...runIdOf(row), userId: row.userId, op: 'montage', phase: 'run', outcome: 'failed', jobId: row.id, attempt: row.exec?.attempt, detail: row.error ?? 'gave up' });
   }
   for (const row of await deps.store.listOwed(MONTAGE_KIND, 25)) {
     await payDebt(deps, row);

@@ -56,11 +56,17 @@ export const MONTAGE_KIND = 'agent-montage';
 
 export interface AuditEvent {
   userId: string;
-  /** montage: ./montageExec; audio_extract: ./audioExtract. */
-  op: 'montage' | 'audio_extract';
-  phase: 'quote' | 'run' | 'cancel' | 'refund';
+  /** montage: ./montageExec; audio_extract: ./audioExtract; agent_run: a multi-step run (lib/agent/run). */
+  op: 'montage' | 'audio_extract' | 'agent_run';
+  phase: 'quote' | 'run' | 'cancel' | 'refund' | 'approve' | 'resume' | 'step';
   outcome: 'ok' | 'refused' | 'failed' | 'replayed' | 'cancelled' | 'retried' | 'lost';
   jobId?: string;
+  /** The multi-step run this belongs to: the run itself, or the run a step's job was started by. */
+  runId?: string;
+  /** The capability that ran (lib/agent/capabilities id); filled from `op` by the live audit when absent. */
+  toolId?: string;
+  /** How the user said yes to what this started (lib/agent/contracts AgentApproval channel). */
+  approval?: 'tap' | 'panel-button' | 'voice-transcript';
   files?: number;
   credits?: number;
   durationSec?: number;
@@ -252,6 +258,8 @@ export interface RunInput {
   token: unknown;
   /** The user's own words, kept on the job for the Library card. */
   prompt?: unknown;
+  /** The multi-step run (lib/agent/run) this job is a step of: kept on the row (`_parent`) and in its audit. Server-set only. */
+  parent?: string;
 }
 
 export const CANCELLED = 'cancelled by the user';
@@ -281,6 +289,12 @@ export function viewOf(row: LeaseRow): JobView {
     ok: true, jobId: row.id, status: row.status === 'pending' ? 'queued' : 'running',
     stage: row.stage, pct: row.pct, attempt: row.exec?.attempt ?? 0,
   };
+}
+
+/** The run a job is a step of (`params._parent`, written by the server when a run queues it), for its audit rows. */
+export function runIdOf(row: Pick<LeaseRow, 'params'>): { runId: string } | Record<string, never> {
+  const p = row.params._parent;
+  return typeof p === 'string' && p ? { runId: p } : {};
 }
 
 /** The charge a row claims, if any. A claim, not a fact: the refund pays back only what the ledger shows. */
@@ -341,6 +355,7 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
       ...(prompt ? { prompt } : {}),
       _job: { request },
       ...(credits > 0 ? { _reserve: { ref, credits } } : {}),
+      ...(input.parent ? { _parent: input.parent } : {}),
     },
   });
   if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
@@ -348,7 +363,7 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
     const row = await deps.store.read(jobId);
     if (!row || row.userId !== userId) return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
     const view = viewOf(row);
-    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'replayed', jobId, detail: view.status });
+    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'replayed', jobId, detail: view.status, ...(input.parent ? { runId: input.parent } : {}) });
     if (view.status === 'failed') return err('already_failed', 'This edit already ran and did not finish. Ask again for a fresh quote.', { jobId });
     return { ...view, replay: true };
   }
@@ -369,7 +384,10 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
       return err('jobs_unavailable', 'The job could not be started; anything charged is paid back by the sweep.', { jobId });
     }
   }
-  await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec, detail: 'queued' });
+  await deps.audit({
+    userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec, detail: 'queued',
+    ...(input.parent ? { runId: input.parent } : {}),
+  });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }
 

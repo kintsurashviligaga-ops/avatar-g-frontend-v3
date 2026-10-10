@@ -21,6 +21,9 @@
  * limit). Publishing to social is prepare-only by construction — this route can never post on the
  * user's behalf.
  *
+ * The user's memory (lib/memory/context: their profile facts and newest saved facts, capped) is added to the system
+ * prompt, as in every chat surface.
+ *
  * Optional `budgetMs` sets the loop's wall-clock deadline, clamped to [15 s, 100 s] (default 100 s): a
  * Live voice call's ask_agent_g (components/voice/live/liveActions.ts) asks ~45 s and ~4 steps so the
  * call never waits two minutes. Optional `source: 'live'` only labels the run's error report.
@@ -32,6 +35,7 @@ import { agentMediaOpenTo } from '@/lib/agent/media/access';
 import { MAX_FILES } from '@/lib/agent/media/montageAsk';
 import { checkProduceRate, rateLimitedResponse } from '@/lib/orchestrator/rate-limit';
 import { reportError } from '@/lib/observability/report-error';
+import { memoryContextOf } from '@/lib/memory/context';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -98,7 +102,9 @@ export async function POST(req: NextRequest) {
     onAudioQuote: (q) => { audioQuote = q; },
     ...(files?.length ? { files, onMediaQuote: (q: NonNullable<typeof mediaQuote>) => { mediaQuote = q; } } : {}),
   };
-  const result = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs });
+  // What the user told Agent G before (lib/memory/context): capped, their data, never instructions. Fail-open.
+  const memory = await memoryContextOf(user.id);
+  const result = await runLiveAgent(goal, ctx, { maxSteps, deadlineMs, ...(memory ? { systemExtra: memory } : {}) });
   if (result.stopReason === 'llm_error') {
     // `source` labels the report only (a voice call's failures are told apart); it changes nothing about the run.
     const source = body.source === 'live' ? { source: 'live', budgetMs } : {};

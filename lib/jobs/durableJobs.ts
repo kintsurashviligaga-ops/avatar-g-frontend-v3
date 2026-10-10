@@ -16,6 +16,7 @@
 
 import type { ProduceKind } from '@/lib/orchestrator/rate-limit';
 import type { TaskView } from '@/lib/tasks/taskView';
+import { isLiveStatus } from '@/lib/tasks/statusModel';
 import { stageText } from '@/lib/agent/media/montageChat';
 import { audioStageText } from '@/lib/agent/media/audioChat';
 import type { Job, JobKind } from './jobQueue';
@@ -75,10 +76,20 @@ const clampPct = (n: unknown): number => {
  * Agent G's lease kinds (lib/tasks TaskView.kind): what the tray calls them, which icon they take, and their stage
  * codes in words (the same words their chat card shows).
  */
-const LEASE_KIND: Record<string, { kind: JobKind; label: Record<Lang, string>; stage: (code: string, locale: Lang) => string }> = {
+const LEASE_KIND: Record<string, { kind: JobKind; label: Record<Lang, string>; stage: (code: string, locale: Lang) => string; ownLabel?: true }> = {
   'agent-montage': { kind: 'video', label: { en: 'Agent G · montage', ru: 'Agent G · монтаж', ka: 'Agent G · მონტაჟი' }, stage: stageText },
   'agent-audio-extract': { kind: 'music', label: { en: 'Agent G · MP3', ru: 'Agent G · MP3', ka: 'Agent G · MP3' }, stage: audioStageText },
+  // A run is named by what the user asked for (its plan's title) when it has one.
+  'agent-run': { kind: 'video', label: { en: 'Agent G · steps', ru: 'Agent G · шаги', ka: 'Agent G · ნაბიჯები' }, stage: runStageText, ownLabel: true },
 };
+
+/** A run's stage („2/3:clip", or „awaiting_approval") in words: which step of how many, or that it waits for the user. */
+function runStageText(code: string, locale: Lang): string {
+  if (code === 'awaiting_approval') return { en: 'Waiting for your yes', ru: 'Жду вашего решения', ka: 'ველოდები შენს დასტურს' }[locale];
+  const m = /^(\d+)\/(\d+)/.exec(code);
+  if (!m) return code;
+  return { en: `Step ${m[1]} of ${m[2]}`, ru: `Шаг ${m[1]} из ${m[2]}`, ka: `ნაბიჯი ${m[1]} / ${m[2]}` }[locale];
+}
 
 /** The tray's row label is short; a task's own words are cut to this. */
 const TRAY_LABEL_MAX = 42;
@@ -92,16 +103,18 @@ const TRAY_LABEL_MAX = 42;
 export function mapTaskToTrayJob(task: TaskView, locale: Lang = 'ka'): Job {
   const lease = LEASE_KIND[task.kind];
   const kind = lease?.kind ?? KIND_BY_SERVICE[task.service as ProduceKind] ?? 'video';
+  // The tray's own five words (lib/jobs/jobQueue) for the canonical statuses (lib/tasks/statusModel): a run that delivered
+  // part of its results is done (its card says which); one waiting for the user's yes is waiting, not rendering.
   const status: Job['status'] =
-    task.status === 'completed' ? 'done'
+    task.status === 'completed' || task.status === 'partially_completed' ? 'done'
     : task.status === 'failed' ? 'failed'
     : task.status === 'cancelled' ? 'canceled'
-    : (task.status === 'queued' && task.position != null) ? 'queued'
+    : (task.status === 'queued' && task.position != null) || task.status === 'awaiting_approval' ? 'queued'
     : 'rendering';
   const live = status === 'queued' || status === 'rendering';
   const pct = status === 'done' ? 100 : status === 'queued' ? 0 : clampPct(task.pct);
   const own = (task.label ?? '').trim();
-  const label = lease ? (lease.label[locale] ?? lease.label.en)
+  const label = lease && !(lease.ownLabel && own) ? (lease.label[locale] ?? lease.label.en)
     : own ? own.slice(0, TRAY_LABEL_MAX)
     : (KIND_LABEL[kind]?.[locale] ?? KIND_LABEL[kind]?.en ?? 'Render');
   const createdAt = (task.createdAt && Date.parse(task.createdAt)) || 0;
@@ -112,8 +125,9 @@ export function mapTaskToTrayJob(task: TaskView, locale: Lang = 'ka'): Job {
     label,
     status,
     pct,
-    // A queued job shows its position, not a stage line; a lease job's stage is a code, shown in words.
-    stage: status === 'queued' ? null : task.stage && lease ? lease.stage(task.stage, locale) : task.stage,
+    // A queued job shows its position, not a stage line (a run waiting for a yes says so); a lease job's stage is a
+    // code, shown in words.
+    stage: status === 'queued' && task.status !== 'awaiting_approval' ? null : task.stage && lease ? lease.stage(task.stage, locale) : task.stage,
     position: status === 'queued' ? task.position : null,
     error: task.error,
     result: task.result,
@@ -141,14 +155,17 @@ function taskFreshnessMs(t: TaskView): number {
 }
 
 /**
- * Map the server's active tasks to observed tray jobs, keeping ONLY still-live ones (queued|running) that are NOT
- * stale phantoms. A finished task drops out on the next poll; an orphaned one older than STALE_ACTIVE_MS is dropped
- * too (so a dead job never spins forever). Restores the QUEUE LAYOUT across a reload: rendering jobs first
+ * Map the server's active tasks to observed tray jobs, keeping ONLY still-live ones (queued, waiting for a yes,
+ * running) that are NOT stale phantoms, and not the steps of a multi-step run (the run's own row stands for them). A
+ * finished task drops out on the next poll; an orphaned one older than STALE_ACTIVE_MS is dropped too (so a dead job
+ * never spins forever). Restores the QUEUE LAYOUT across a reload: rendering jobs first
  * (oldest-first), then the waiting jobs ordered by their persisted queue position. `nowMs` is injected for tests.
  */
 export function mapActiveTasks(tasks: readonly TaskView[], locale: Lang = 'ka', nowMs: number = Date.now()): Job[] {
   const jobs = tasks
-    .filter((t) => t.status === 'queued' || t.status === 'running')
+    .filter((t) => isLiveStatus(t.status))
+    // A step of a multi-step run is shown by its run (one row per thing the user asked for).
+    .filter((t) => !t.parentId)
     // Drop orphaned phantoms. A task with NO parseable timestamp (freshness 0) is kept — never punish missing metadata.
     .filter((t) => { const f = taskFreshnessMs(t); return f === 0 || nowMs - f < STALE_ACTIVE_MS; })
     .map((t) => mapTaskToTrayJob(t, locale));

@@ -13,8 +13,12 @@
  */
 import type { JobView } from '@/lib/agent/media/montageExec';
 import type { AudioJobView, AudioRights } from '@/lib/agent/media/audioExtract';
+import type { CapabilityId } from '@/lib/agent/contracts';
+import type { ChildView, RunEvent, RunState } from '@/lib/agent/run/runEngine';
+import type { RunTool } from '@/lib/agent/run/runSpec';
+import { isFinalStatus, normalizeStatus, type TaskStatus } from './statusModel';
 
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type { TaskStatus } from './statusModel';
 export type TaskMedia = 'video' | 'audio' | 'image' | 'file';
 
 export interface TaskResult {
@@ -50,6 +54,30 @@ export interface TaskView {
   position: number | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /** The multi-step run this job is a step of (its card shows it; the tray shows the run instead). */
+  parentId?: string;
+  /** A multi-step run's steps, in order (kind 'agent-run' only). */
+  steps?: TaskStepView[];
+  /** A multi-step run's events, oldest first, each numbered (G8): what its card narrates. `GET ?id=…&after=n` sends only newer ones. */
+  events?: RunEvent[];
+}
+
+/** One step of a multi-step run, as its card shows it. */
+export interface TaskStepView {
+  id: string;
+  tool: RunTool;
+  capability: CapabilityId;
+  status: TaskStatus;
+  /** The step's own job (a Task API id of its own), once quoted. */
+  taskId: string | null;
+  stage: string | null;
+  pct: number | null;
+  result: TaskResult | null;
+  error: string | null;
+  /** Delivered by the run this one resumed: reused, not run again. */
+  reused: boolean;
+  /** The step waits for the user's yes to this price (POST /api/tasks { action: 'approve', id, step, quoteId }). */
+  approval: { credits: number; quoteId: string; expiresAt: number } | null;
 }
 
 /** A job row as the route reads it (generation_jobs, the columns in lib/orchestrator/jobs JOB_COLUMNS). */
@@ -77,7 +105,13 @@ export function parseTaskId(x: unknown): string | null {
 }
 
 const MEDIA: Record<string, TaskMedia> = { film: 'video', avatar: 'video', interior: 'image', image: 'image', music: 'audio', voice: 'audio' };
-const meta = (row: TaskRow) => ({ id: row.id, service: row.service_type, label: null, position: null, createdAt: row.created_at, updatedAt: row.updated_at });
+const parentOf = (row: TaskRow): { parentId: string } | Record<string, never> => {
+  const p = row.params?._parent;
+  return typeof p === 'string' && p ? { parentId: p } : {};
+};
+const meta = (row: TaskRow) => ({
+  id: row.id, service: row.service_type, label: null, position: null, createdAt: row.created_at, updatedAt: row.updated_at, ...parentOf(row),
+});
 const str = (x: unknown): string | null => (typeof x === 'string' && x ? x : null);
 
 /** Longest label a task carries (the tray cuts it shorter). */
@@ -90,22 +124,23 @@ function labelOf(params: Record<string, unknown> | null): string | null {
   return typeof raw === 'string' ? raw.trim().slice(0, LABEL_MAX) : null;
 }
 
-/** A studio render (no lease): the row's own columns. */
+/** A studio render (no lease): the row's own columns, its status word read through the one status model. */
 export function taskFromRow(row: TaskRow): TaskView {
   const r = row.result ?? {};
   const base = { ...meta(row), kind: 'render', attempt: null, cancellable: false, label: labelOf(row.params) };
-  if (row.status === 'completed') {
+  // A word no store is known to use is still a live row (as before the status model): never reported as finished.
+  const status = normalizeStatus(row.status, row.error) ?? 'running';
+  if (status === 'completed' || status === 'partially_completed') {
     const url = str(row.signed_url) ?? str(r.url) ?? str(r.videoUrl) ?? str(r.audioUrl) ?? str(r.imageUrl);
     return {
       ...base, status: 'completed', stage: null, pct: 100, error: null,
       result: url ? { url, media: MEDIA[row.service_type] ?? 'file' } : null,
     };
   }
-  if (row.status === 'failed') {
-    const cancelled = /^cancel/i.test(row.error ?? '');
-    return { ...base, status: cancelled ? 'cancelled' : 'failed', stage: null, pct: null, result: null, error: cancelled ? 'cancelled' : 'failed' };
+  if (status === 'failed' || status === 'cancelled') {
+    return { ...base, status, stage: null, pct: null, result: null, error: status };
   }
-  const waiting = row.status === 'pending';
+  const waiting = status === 'queued';
   const place = typeof row.position_in_queue === 'number' && row.position_in_queue > 0 ? Math.floor(row.position_in_queue) : null;
   return {
     ...base, status: waiting ? 'queued' : 'running', position: waiting ? place : null,
@@ -149,4 +184,51 @@ export function taskFromAudio(row: TaskRow, kind: string, v: AudioJobView): Task
 }
 
 /** Is the task over (nothing more will change)? */
-export const isFinal = (t: Pick<TaskView, 'status'>): boolean => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled';
+export const isFinal = (t: Pick<TaskView, 'status'>): boolean => isFinalStatus(t.status);
+
+/** A run's own status word in the canonical set (planned → queued, blocked → waiting on a person). */
+const runTaskStatus = (run: Pick<RunState, 'status'>): TaskStatus => normalizeStatus(run.status) ?? 'running';
+
+/**
+ * An Agent G multi-step run (lib/agent/run), from its state and, when they were read, its steps' jobs. The run's result
+ * is the last result it delivered (a montage after the extraction it was cut to); every step's own result is on the step.
+ */
+export function taskFromRun(row: TaskRow, run: RunState, children: Readonly<Record<string, ChildView>> = {}, opts: { after?: number } = {}): TaskView {
+  const steps: TaskStepView[] = run.steps.map((s) => {
+    const c = children[s.id];
+    const live = c?.state === 'live' && (s.status === 'queued' || s.status === 'running') ? c : null;
+    return {
+      id: s.id,
+      tool: s.tool,
+      capability: s.capability,
+      status: normalizeStatus(s.status) ?? 'running',
+      taskId: s.taskId ?? null,
+      stage: live ? live.stage : null,
+      pct: s.status === 'completed' ? 100 : live ? live.pct : null,
+      result: s.output ? { url: s.output.url, media: s.output.media, ...(s.output.name ? { name: s.output.name } : {}), ...(s.output.durationSec ? { durationSec: s.output.durationSec } : {}) } : null,
+      error: s.error ?? null,
+      reused: !!s.reused,
+      approval: s.status === 'awaiting_approval' && s.quote ? { credits: s.quote.credits, quoteId: s.quote.quoteId, expiresAt: s.quote.expiresAt } : null,
+    };
+  });
+  const status = runTaskStatus(run);
+  const final = isFinalStatus(status);
+  const done = steps.filter((s) => s.status === 'completed').length;
+  const share = steps.reduce((n, s) => n + (s.status === 'completed' ? 1 : (s.pct ?? 0) / 100), 0);
+  const last = [...steps].reverse().find((s) => s.result)?.result ?? null;
+  const active = steps.find((s) => s.status === 'running' || s.status === 'queued');
+  return {
+    ...meta(row),
+    kind: 'agent-run',
+    status,
+    stage: final ? null : status === 'awaiting_approval' ? 'awaiting_approval' : `${Math.min(done + 1, steps.length)}/${steps.length}${active ? `:${active.id}` : ''}`,
+    pct: status === 'completed' ? 100 : final ? null : Math.round((share / steps.length) * 100),
+    attempt: null,
+    result: status === 'completed' || status === 'partially_completed' ? last : null,
+    error: final && status !== 'completed' ? (status === 'cancelled' ? 'cancelled' : run.error ?? 'failed') : null,
+    cancellable: !final && !run.cancelRequested,
+    label: run.spec.title ? run.spec.title.slice(0, LABEL_MAX) : null,
+    steps,
+    events: opts.after !== undefined ? run.events.filter((e) => e.seq > opts.after!) : run.events,
+  };
+}

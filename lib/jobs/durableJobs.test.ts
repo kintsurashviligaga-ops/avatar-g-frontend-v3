@@ -212,4 +212,18 @@ describe('durableJobs — hydrate the tray from the caller\'s tasks (/api/tasks)
     expect(fromRow(row({ service_type: serviceTypeForKind('image') })).kind).toBe('image');
     expect(fromRow(row({ service_type: serviceTypeForKind('product') })).kind).toBe('video');
   });
+
+  it('a multi-step run: one tray row in words (step n of m, or waiting for a yes); its steps stay out of the tray', () => {
+    const run = lease({ id: 'run-1', kind: 'agent-run', status: 'running', stage: '2/3:clip', pct: 50, label: 'Clips to the concert sound' });
+    expect(mapTaskToTrayJob(run, 'en')).toMatchObject({ label: 'Clips to the concert sound', status: 'rendering', stage: 'Step 2 of 3', pct: 50, cancellable: true });
+    expect(mapTaskToTrayJob(run, 'ka').stage).toBe('ნაბიჯი 2 / 3');
+    const waiting = lease({ id: 'run-1', kind: 'agent-run', status: 'awaiting_approval', stage: 'awaiting_approval', pct: 0 });
+    expect(mapTaskToTrayJob(waiting, 'en')).toMatchObject({ status: 'queued', stage: 'Waiting for your yes' });
+    expect(mapTaskToTrayJob(lease({ kind: 'agent-run', status: 'partially_completed', pct: null })).status).toBe('done');
+    const now = Date.parse('2026-07-04T00:05:00.000Z');
+    const step = lease({ id: 'job-1', parentId: 'run-1', createdAt: '2026-07-04T00:00:00.000Z' });
+    expect(mapActiveTasks([{ ...run, createdAt: '2026-07-04T00:00:00.000Z' }, step, { ...waiting, id: 'run-2', createdAt: '2026-07-04T00:00:00.000Z' }], 'en', now).map((j) => j.id))
+      .toEqual(['run-1', 'run-2']);
+  });
 });
+

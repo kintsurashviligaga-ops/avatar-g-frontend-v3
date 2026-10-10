@@ -15,7 +15,10 @@ import { liveMontageDeps, newWorkerId } from '@/lib/agent/media/montageLive';
 import { AUDIO_KIND, audioJobStatus, audioViewOf, cancelAudioJob } from '@/lib/agent/media/audioExtract';
 import { workAudioJob } from '@/lib/agent/media/audioWorker';
 import { liveAudioDeps } from '@/lib/agent/media/audioLive';
-import { taskFromAudio, taskFromMontage, taskFromRow, type TaskRow } from './taskView';
+import { RUN_KIND, runOf } from '@/lib/agent/run/runEngine';
+import { cancelRun, readRun, tickRun } from '@/lib/agent/run/runExec';
+import { liveRunDeps } from '@/lib/agent/run/runLive';
+import { taskFromAudio, taskFromMontage, taskFromRow, taskFromRun, type TaskRow } from './taskView';
 import type { TaskDeps, TaskKind } from './taskService';
 
 // The job tray's own projection (/api/orchestrator/jobs reads the same columns in Production).
@@ -89,6 +92,30 @@ const audio: TaskKind = {
   },
 };
 
+/**
+ * A multi-step Agent G run (lib/agent/run). Its read is also its tick while workers are open to the caller (the run moves
+ * on: steps start, their jobs get workers, a stopped run's jobs stop); with workers closed it is read as it is.
+ */
+const run: TaskKind = {
+  async status(row, userId, opts) {
+    const deps = liveRunDeps();
+    const r = opts.workersOpen ? await tickRun(deps, { id: row.id, startWorkers: true }) : await readRun(deps, row.id);
+    if (!r || r.row.userId !== userId) return null;
+    const fresh = { ...row, updated_at: new Date().toISOString() };
+    return { task: taskFromRun(fresh, r.run, r.children, opts.after !== undefined ? { after: opts.after } : {}), needsWorker: false };
+  },
+  view(row) {
+    const state = runOf(row.params);
+    return state ? taskFromRun(row, state) : null;
+  },
+  async cancel(userId, id) {
+    const r = await cancelRun(liveRunDeps(), { userId, id });
+    return r.ok ? 'ok' : r.error === 'not_running' ? 'not_running' : 'not_found';
+  },
+  // A run has no worker of its own: its read and the sweep tick it, and its steps' jobs have theirs.
+  startWorker() {},
+};
+
 export function liveTaskDeps(): TaskDeps {
   const sb = () => {
     try { return createServiceRoleClient(); } catch { return null; }
@@ -125,7 +152,7 @@ export function liveTaskDeps(): TaskDeps {
       }
     },
     kindOf: (row) => execOf(row.params)?.kind ?? null,
-    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio },
+    kinds: { [MONTAGE_KIND]: montage, [AUDIO_KIND]: audio, [RUN_KIND]: run },
     plain: taskFromRow,
   };
 }

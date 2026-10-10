@@ -18,6 +18,9 @@ jest.mock('../../../../lib/agent/media/access', () => ({ agentMediaOpenTo: (...a
 const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
 
+const mockMemory = jest.fn(async (_userId: string): Promise<string | null> => null);
+jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string) => mockMemory(u) }));
+
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 
@@ -162,3 +165,13 @@ describe('files and the media quote', () => {
     expect(mockRun).not.toHaveBeenCalled();
   });
 });
+
+it("gives the agent the session user's memory (PART 2, G4), and nothing when there is none", async () => {
+  mockMemory.mockResolvedValueOnce('KNOWN FACTS ABOUT THIS USER:\n- I run a coffee shop');
+  await call({ goal: 'plan my week', userId: 'someone-else' });
+  expect(mockMemory).toHaveBeenCalledWith('u-1');
+  expect(runOpts()).toMatchObject({ systemExtra: 'KNOWN FACTS ABOUT THIS USER:\n- I run a coffee shop' });
+  await call({ goal: 'plan my week' });
+  expect(runOpts()).not.toHaveProperty('systemExtra');
+});
+

@@ -162,13 +162,15 @@ export const TERMINAL_RUN_STATUSES: ReadonlySet<RunStatus> = new Set(['completed
 
 /**
  * Where a run may go from each status. `blocked` is waiting on something only the owner or the user can change (a missing
- * input, a flag, an approval outside the run); it returns to planning or ends.
+ * input, a flag, an approval outside the run); it returns to planning or ends. A multi-step run (lib/agent/run) waits
+ * for the user again when a later step's price, known only once its inputs exist, is more than the run was approved
+ * for: queued or running → awaiting_approval, and back to queued on the user's yes.
  */
 export const RUN_TRANSITIONS: Readonly<Record<RunStatus, readonly RunStatus[]>> = {
   planned: ['awaiting_approval', 'queued', 'blocked', 'cancelled'],
   awaiting_approval: ['queued', 'cancelled', 'blocked'],
-  queued: ['running', 'cancelled', 'failed'],
-  running: ['completed', 'failed', 'cancelled', 'partially_completed', 'queued'],
+  queued: ['running', 'cancelled', 'failed', 'awaiting_approval'],
+  running: ['completed', 'failed', 'cancelled', 'partially_completed', 'queued', 'awaiting_approval'],
   blocked: ['planned', 'cancelled', 'failed'],
   completed: [],
   failed: [],
@@ -180,7 +182,25 @@ export function canTransition(from: RunStatus, to: RunStatus): boolean {
   return RUN_TRANSITIONS[from].includes(to);
 }
 
-/** A Task API row's status as a run status (the Task API has no planning or approval states: its rows already run). */
+/** The legal way from one run status to another (each hop in RUN_TRANSITIONS), shortest first; null when there is none. */
+export function transitionPath(from: RunStatus, to: RunStatus): RunStatus[] | null {
+  if (from === to) return [];
+  const seen = new Set<RunStatus>([from]);
+  let frontier: RunStatus[][] = [[from]];
+  while (frontier.length) {
+    const next: RunStatus[][] = [];
+    for (const path of frontier) {
+      for (const s of RUN_TRANSITIONS[path[path.length - 1]!]) {
+        if (s === to) return [...path.slice(1), s];
+        if (!seen.has(s)) { seen.add(s); next.push([...path, s]); }
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/** A Task API row's status as a run status (a task's statuses are a subset of a run's). */
 export function runStatusOfTask(status: TaskStatus): RunStatus {
   return status;
 }

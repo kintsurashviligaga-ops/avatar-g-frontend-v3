@@ -52,7 +52,7 @@ describe('read', () => {
     const { deps, k } = harness([row('r', { status: 'completed', signed_url: 'https://s/v.mp4' }), row('m', { params: lease('agent-montage') })]);
     expect(await readTask(deps, { userId: 'user-1', id: 'r', workersOpen: true })).toMatchObject({ kind: 'render', status: 'completed', result: { url: 'https://s/v.mp4' } });
     expect(await readTask(deps, { userId: 'user-1', id: 'm', workersOpen: true })).toMatchObject({ id: 'm', kind: 'agent-montage', status: 'running' });
-    expect(k.status).toHaveBeenCalledWith(expect.objectContaining({ id: 'm' }), 'user-1');
+    expect(k.status).toHaveBeenCalledWith(expect.objectContaining({ id: 'm' }), 'user-1', { workersOpen: true });
   });
 
   test('a lease job no worker holds gets one only while workers are open to the caller', async () => {

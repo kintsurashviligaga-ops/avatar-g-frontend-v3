@@ -53,6 +53,7 @@ import { NextRequest } from 'next/server';
 import { reportError } from '@/lib/observability/report-error';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { embed } from '@/lib/memory/embed';
+import { savedFactsBlock } from '@/lib/memory/context';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
 import { checkRateLimit, checkRateLimitByKey, chatProUserLimit, refundRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isReplyLocale, resolveReplyLocale } from '@/lib/chat/replyLocale';
@@ -394,16 +395,9 @@ async function buildMemoryPreamble(supabase: AnyAuthedClient, userId: string, us
       return null;
     }
     const rows = (data ?? []) as Array<{ id: string; fact: string; similarity: number }>;
-    if (!rows.length) return null;
-    const bullets = rows.map((r) => `- ${String(r.fact ?? '').replace(/\s+/g, ' ').trim()}`).join('\n');
-    // Facts the user explicitly stored in earlier sessions: trusted personal context — use them naturally,
-    // don't disclaim "I don't have access to personal information".
-    return [
-      'KNOWN FACTS ABOUT THIS USER (from their personal memory store —',
-      'they told you these themselves in earlier sessions; use them naturally',
-      "and don't disclaim that you don't know personal info):",
-      bullets,
-    ].join('\n');
+    // Facts the user explicitly stored in earlier sessions, most relevant first: capped and one line each, the same
+    // block every surface gives (lib/memory/context).
+    return savedFactsBlock(rows.map((r) => r.fact));
   } catch (err) {
     reportError(err, { route: '/api/chat/gemini', stage: 'memory-build', userId });
     return null;

@@ -13,10 +13,19 @@
  */
 import { isFinal, type TaskRow, type TaskView } from './taskView';
 
+/** How a read was asked for: whether work may start on it, and (a run) the last event the caller already has. */
+export interface ReadOpts {
+  workersOpen: boolean;
+  after?: number;
+}
+
 /** One lease kind, as the task API sees it. */
 export interface TaskKind {
-  /** The owner's view through the executor, and whether the job needs a worker now. Null = not theirs / not this kind. */
-  status(row: TaskRow, userId: string): Promise<{ task: TaskView; needsWorker: boolean } | null>;
+  /**
+   * The owner's view through the executor, and whether the job needs a worker now. Null = not theirs / not this kind.
+   * A multi-step run is also MOVED by this read (lib/agent/run tickRun), but only while `workersOpen`.
+   */
+  status(row: TaskRow, userId: string, opts: ReadOpts): Promise<{ task: TaskView; needsWorker: boolean } | null>;
   /** The view for a list: no recovery, no re-signing. */
   view(row: TaskRow): TaskView | null;
   cancel(userId: string, id: string): Promise<'ok' | 'not_running' | 'not_found'>;
@@ -38,13 +47,13 @@ export interface TaskDeps {
 export const MAX_LIST = 20;
 
 /** One task of the caller's, or null. A lease job with no live worker gets one when `workersOpen`. */
-export async function readTask(deps: TaskDeps, input: { userId: string; id: string; workersOpen: boolean }): Promise<TaskView | null> {
+export async function readTask(deps: TaskDeps, input: { userId: string; id: string; workersOpen: boolean; after?: number }): Promise<TaskView | null> {
   const row = await deps.readRow(input.userId, input.id);
   if (!row) return null;
   const kind = deps.kindOf(row);
   const k = kind ? deps.kinds[kind] : undefined;
   if (!k) return deps.plain(row);
-  const s = await k.status(row, input.userId);
+  const s = await k.status(row, input.userId, { workersOpen: input.workersOpen, ...(input.after !== undefined ? { after: input.after } : {}) });
   if (!s) return null;
   if (s.needsWorker && input.workersOpen) k.startWorker(row.id);
   return s.task;

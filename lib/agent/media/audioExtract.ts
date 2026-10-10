@@ -292,6 +292,8 @@ export interface AudioRunInput {
   userId: string;
   request: unknown;
   token: unknown;
+  /** The multi-step run (lib/agent/run) this job is a step of: kept on the row (`_parent`) and in its audit. Server-set only. */
+  parent?: string;
 }
 
 /** Queue a quote the user confirmed, never twice. Answers at once; the extraction is the worker's. */
@@ -319,6 +321,7 @@ export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput)
       source: request.source.kind,
       rights: request.rights.status,
       _job: { request },
+      ...(input.parent ? { _parent: input.parent } : {}),
     },
   });
   if (put === 'error') return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
@@ -326,11 +329,14 @@ export async function enqueueAudioJob(deps: AudioExecDeps, input: AudioRunInput)
     const row = await deps.store.read(jobId);
     if (!row || row.userId !== userId || row.exec?.kind !== AUDIO_KIND) return err('jobs_unavailable', 'The job could not be recorded, so it was not started.');
     const view = audioViewOf(row);
-    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'replayed', jobId, detail: view.status });
+    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'replayed', jobId, detail: view.status, ...(input.parent ? { runId: input.parent } : {}) });
     if (view.status === 'failed') return err('already_failed', 'This already ran and did not finish. Ask again for a fresh plan.', { jobId });
     return { ...(await withFreshUrl(deps, view)), replay: true };
   }
-  await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, files: 1, credits: AUDIO_PRICE_CREDITS, detail: `queued; rights ${request.rights.status}` });
+  await deps.audit({
+    userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, files: 1, credits: AUDIO_PRICE_CREDITS, detail: `queued; rights ${request.rights.status}`,
+    ...(input.parent ? { runId: input.parent } : {}),
+  });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };
 }
 

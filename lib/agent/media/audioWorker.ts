@@ -15,6 +15,7 @@
  */
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat } from '@/lib/orchestrator/jobLease';
 import { AUDIO_KIND, qcMp3, validateAudioRequest, type AudioExecDeps } from './audioExtract';
+import { runIdOf } from './montageExec';
 import { classifySource } from './audioSource';
 
 export type AudioWorkResult =
@@ -30,18 +31,19 @@ export async function workAudioJob(deps: AudioExecDeps, input: { jobId: string; 
   if (!c.ok) return { ran: false, reason: c.reason };
   const row = c.row;
   const userId = row.userId;
+  const run = runIdOf(row);
   const attempt = row.exec?.attempt ?? 1;
 
   const afterLoss = async (): Promise<Beat> => ((await deps.store.read(jobId))?.status === 'failed' ? 'stopped' : 'lost');
   const halted = async (beat: Beat): Promise<AudioWorkResult> => {
     const stopped = beat === 'stopped';
-    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: stopped ? 'cancelled' : 'lost', jobId, attempt, detail: stopped ? 'stopped' : 'lease taken over' });
+    await deps.audit({ ...run, userId, op: 'audio_extract', phase: 'run', outcome: stopped ? 'cancelled' : 'lost', jobId, attempt, detail: stopped ? 'stopped' : 'lease taken over' });
     return { ran: true, outcome: stopped ? 'stopped' : 'lost' };
   };
   const end = async (error: string): Promise<AudioWorkResult> => {
     const e = error.slice(0, 300);
     if (await fail(deps.store, jobId, worker, e, false)) {
-      await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'failed', jobId, attempt, detail: e.slice(0, 200) });
+      await deps.audit({ ...run, userId, op: 'audio_extract', phase: 'run', outcome: 'failed', jobId, attempt, detail: e.slice(0, 200) });
       return { ran: true, outcome: 'failed', error: e };
     }
     return halted(await afterLoss());
@@ -49,7 +51,7 @@ export async function workAudioJob(deps: AudioExecDeps, input: { jobId: string; 
 
   const request = validateAudioRequest((row.params._job as { request?: unknown } | undefined)?.request);
   if (!request) return end('invalid_request: the stored plan is not valid');
-  await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, attempt, detail: 'started' });
+  await deps.audit({ ...run, userId, op: 'audio_extract', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, attempt, detail: 'started' });
 
   // ── the source, checked again as it is now ─────────────────────────────────────────────────────────────────────
   let url: string;
@@ -119,7 +121,7 @@ export async function workAudioJob(deps: AudioExecDeps, input: { jobId: string; 
       },
     });
     if (!delivered) return halted(await afterLoss());
-    await deps.audit({ userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, attempt, durationSec: qc.durationSec, detail: `delivered ${out.mp3.byteLength} bytes` });
+    await deps.audit({ ...run, userId, op: 'audio_extract', phase: 'run', outcome: 'ok', jobId, attempt, durationSec: qc.durationSec, detail: `delivered ${out.mp3.byteLength} bytes` });
     return { ran: true, outcome: 'delivered', audioUrl };
   } finally {
     stopBeating();
@@ -140,7 +142,7 @@ export async function sweepAudioJobs(deps: AudioExecDeps, opts: { worker: string
   const report: AudioSweepReport = { gaveUp: [], waiting: r.runnable };
   for (const row of r.exhausted) {
     report.gaveUp.push(row.id);
-    await deps.audit({ userId: row.userId, op: 'audio_extract', phase: 'run', outcome: 'failed', jobId: row.id, attempt: row.exec?.attempt, detail: row.error ?? 'gave up' });
+    await deps.audit({ ...runIdOf(row), userId: row.userId, op: 'audio_extract', phase: 'run', outcome: 'failed', jobId: row.id, attempt: row.exec?.attempt, detail: row.error ?? 'gave up' });
   }
   if (opts.work) {
     for (const jobId of r.runnable) {
