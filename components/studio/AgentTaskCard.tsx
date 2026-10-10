@@ -52,13 +52,15 @@ function Clock({ clock }: { clock: NonNullable<TaskCardModel['clock']> }) {
 }
 
 export function AgentTaskCard({
-  model, locale, testId, phase, children,
+  model, locale, testId, phase, footer, children,
 }: {
   model: TaskCardModel;
   locale: string;
   /** The card's test id (agent-montage-card, agent-audio-card) and its phase, read by the end-to-end specs. */
   testId: string;
   phase: string;
+  /** Lines under the steps, folded away with them (a run's credits and its events). */
+  footer?: ReactNode;
   /** The card's buttons for this phase (Start · Cancel, Stop, Upload). */
   children?: ReactNode;
 }) {
@@ -139,6 +141,7 @@ export function AgentTaskCard({
             );
           })}
         </ol>
+        {footer ? <div className="px-4 pb-2">{footer}</div> : null}
       </div>
       {/* The buttons stay when the list is folded: Stop must never hide behind a fold. */}
       {children ? <div className="flex flex-wrap items-center gap-2 px-4 pb-4 pt-1">{children}</div> : null}

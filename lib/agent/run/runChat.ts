@@ -90,7 +90,7 @@ function sourceIndex(t: string, videos: number): number | null {
  * Is this message, with these attachments (their kinds, in order), a request for a chained run? Which chain? Null for
  * anything a one-step card (or the chat) already serves.
  */
-export function runChainAsk(text: string, kinds: AttachmentKind[]): RunChain | null {
+export function runChainAsk(text: string, kinds: readonly AttachmentKind[]): RunChain | null {
   const raw = (text || '').trim();
   if (!raw || isVideoQuestion(raw)) return null;
   const links = findLinks(raw);
@@ -116,7 +116,7 @@ export function runChainAsk(text: string, kinds: AttachmentKind[]): RunChain | n
   }
 
   // ── the montage, then an edit of it ──
-  if (links.length === 0 && beatMontageAsk(t, kinds)) {
+  if (links.length === 0 && beatMontageAsk(t, [...kinds])) {
     const edits = mineEdits(t).edits.filter((e) => AFTER_MONTAGE.has(e.op) && !(e.op === 'fade' && TRANSITION.test(t)));
     if (edits.length) return { kind: 'cut-edit', edits };
   }

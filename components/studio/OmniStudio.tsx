@@ -153,6 +153,11 @@ import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingT
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
+import { AgentRunCard } from '@/components/studio/AgentRunCard';
+import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runPlanText, runReadingText, type RunChain } from '@/lib/agent/run/runChat';
+import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
+import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
+import type { RunEvent } from '@/lib/agent/run/runEngine';
 import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
 import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, runAgentEdit } from '@/lib/agent/media/editClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
@@ -1046,7 +1051,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1090,6 +1095,14 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
 export function imgTargetFor(quality: string): number {
   return quality === 'standard' ? 55 : quality === 'high' ? 75 : 215;
 }
+
+/** The jobs an Agent G card narrates itself (its run's own and each run step's): the tray leaves them to the card. */
+function cardJobsOf(m: Msg): string[] {
+  return [...[m.montage, m.audioJob, m.editJob].flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }), ...runCardJobs(m.runJob)];
+}
+/** An Agent G card whose work is running now (Stop has something to stop). */
+const cardRunning = (m: Msg): boolean =>
+  m.montage?.phase === 'running' || m.audioJob?.phase === 'running' || m.editJob?.phase === 'running' || m.runJob?.phase === 'running';
 
 // Up to this many files/images (or one video) can ride along with a single message.
 const MAX_ATTACHMENTS = 5;
@@ -5883,7 +5896,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const montage = mode === 'chat' && agentMontageOn && beatMontageAsk(text, kinds);
       const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
       const extract = mode === 'chat' && agentAudioOn && audioExtractAsk(text, kinds)?.source === 'file';
-      if (!montage && !remix && !extract) { toast.error(trackTooBigText(locale)); return; }
+      const run = mode === 'chat' && agentMontageOn && !!runChainAsk(text, kinds);
+      if (!montage && !remix && !extract && !run) { toast.error(trackTooBigText(locale)); return; }
     }
     // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
@@ -7315,7 +7329,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     (LIVE_GEN_TOOLS.includes(tool) ? liveFingerprint(tool, prompt, livePrice(tool, over)) : undefined);
   /** Generations running in the tray, and the server's durable ones it follows (a card's own job is its card's). */
   const liveTasks = (): Array<Record<string, unknown>> => {
-    const owned = new Set(messagesRef.current.flatMap((m) => [m.montage, m.audioJob, m.editJob]).flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }));
+    const owned = new Set(messagesRef.current.flatMap(cardJobsOf));
     const q = useJobQueue.getState();
     const live = (j: { status: string }) => j.status === 'rendering' || j.status === 'queued';
     const local = new Set(q.jobs.map((j) => j.id));
@@ -7329,6 +7343,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (m.montage) void stopAgentMontage(m.id);
     else if (m.audioJob) void stopAgentAudio(m.id);
     else if (m.editJob) void stopAgentEdit(m.id);
+    else if (m.runJob) void stopAgentRun(m.id);
   };
   /** Apply a call's settings to `tool`'s real controls; returns what was applied (snapped to what the panel offers). */
   const applyLiveSettings = (tool: ToolId, a: { aspectRatio?: string; durationSec?: number; style?: string; instrumental?: boolean }): { applied: Record<string, unknown>; musicSec?: number } => {
@@ -7474,8 +7489,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // T4: what the tray's own buttons stop — its local renders, the server's durable jobs it follows (POST /api/tasks
           // cancel) — and Agent G's running cards (each card stops its own job; their plans waiting for a yes stay).
           const q = useJobQueue.getState();
-          const cards = messagesRef.current.filter((m) => m.id && (m.montage?.phase === 'running' || m.audioJob?.phase === 'running' || m.editJob?.phase === 'running'));
-          const owned = new Set(cards.flatMap((m) => [m.montage, m.audioJob, m.editJob]).flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }));
+          const cards = messagesRef.current.filter((m) => m.id && cardRunning(m));
+          const owned = new Set(cards.flatMap(cardJobsOf));
           const live = q.jobs.filter((j) => j.status === 'rendering' || j.status === 'queued');
           const local = new Set(q.jobs.map((j) => j.id));
           const durable = q.durableJobs.filter((j) => j.cancellable && !local.has(j.id) && !owned.has(j.id) && (j.status === 'rendering' || j.status === 'queued'));
@@ -7642,7 +7657,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           reply({ ok: true, message: plan.phase === 'quoted' ? 'Dropped that plan; nothing was started.' : 'Stopping it; the card says when it has stopped. Nothing is charged (it is free).' });
           return true;
         }
-        const running = messagesRef.current.filter((x) => x.id && (x.montage?.phase === 'running' || x.audioJob?.phase === 'running' || x.editJob?.phase === 'running'));
+        const running = messagesRef.current.filter((x) => x.id && cardRunning(x));
         if (!running.length) { reply({ ok: false, error: 'nothing_running', message: 'Nothing of Agent G\'s is running, so nothing was stopped.' }); return true; }
         for (const x of running) stopAgentCard(x);
         reply({ ok: true, message: `Stopping ${running.length} Agent G task${running.length === 1 ? '' : 's'}; each card says when it has stopped.` });
@@ -8008,6 +8023,133 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       patchMsgById(id, (m) => (m.editJob?.stopping ? { ...m, editJob: { ...m.editJob, stopping: false } } : m));
     }
   }, [locale, patchMsgById]);
+  // AGENT G — TWO STEPS FROM ONE MESSAGE (lib/agent/run, PART 6): „take the sound of the first video and cut the others
+  // to it", „cut these to the music, black and white". One card: the files upload, the steps are planned and signed with
+  // their price (nothing runs before Start), then the run is followed through the one task route — each step's job, its
+  // stage, what it holds and spent, the step that waits for the user's yes, and the run's own events. A run that ended
+  // without every result is carried on by Retry (or „continue"): a NEW run that keeps every delivered step.
+  const runsRef = useRef(new Set<string>());
+  // The run each card follows: Retry moves the card to its new run, and the old follow ends quietly on its next tick.
+  const runFollowRef = useRef(new Map<string, string>());
+  const newAgentRunBubble = useCallback((chain: RunChain, files: Media[]): Msg => ({
+    role: 'assistant', id: `agr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: runReadingText(locale),
+    runJob: { phase: 'reading', chain, names: files.map((f) => f.name ?? ''), uploaded: 0, total: files.length, t0: Date.now() },
+  }), [locale]);
+  const startAgentRun = useCallback(async (text: string, chain: RunChain, files: Media[]) => {
+    const bubble = newAgentRunBubble(chain, files);
+    const id = bubble.id!;
+    // As with the montage: the files went to the run, never inline to the chat model with the next turns.
+    setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
+    persistChatTurn('user', text);
+    const names = files.map((f) => f.name ?? '');
+    const up = await uploadAll({
+      upload: uploaderOnce(),
+      onUploaded: (n) => patchMsgById(id, (m) => (m.runJob?.phase === 'reading' ? { ...m, runJob: { ...m.runJob, uploaded: n } } : m)),
+    }, files.map((f) => ({ dataUrl: f.dataUrl, mimeType: f.mimeType })));
+    if (!up.ok) {
+      patchMsgById(id, (m) => ({ ...m, text: `⚠️ ${runErrorText(up.code, locale, up.files, names)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: up.code, files: up.files, t1: Date.now() } }));
+      return;
+    }
+    const r = await planRunClient((u, init) => fetch(u, init), chainSpec(chain, text, up.paths));
+    patchMsgById(id, (m) => (r.ok
+      ? { ...m, text: runPlanText(chain, { names, credits: r.plan.credits, editsText: chainEditsText(chain, locale) }, locale), runJob: { ...m.runJob!, phase: 'planned', plan: r.plan, spec: r.spec, token: r.token } }
+      : { ...m, text: `⚠️ ${runErrorText(r.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: r.code, t1: Date.now() } }));
+  }, [locale, newAgentRunBubble, patchMsgById, persistChatTurn, uploaderOnce]);
+  // Follow one run to its end on this card. Each read is the run as the server has it; the card draws nothing itself.
+  const followAgentRun = useCallback(async (id: string, runId: string, events?: RunEvent[]) => {
+    runFollowRef.current.set(id, runId);
+    const mine = (m: Msg) => m.runJob?.runId === runId;
+    const end = await followRun({
+      fetch: (u, init) => fetch(u, init),
+      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+      now: () => Date.now(),
+      stopped: () => runFollowRef.current.get(id) !== runId,
+      onTask: (task, evs) => patchMsgById(id, (m) => (mine(m) && m.runJob ? { ...m, runJob: { ...m.runJob, task, events: evs } } : m)),
+    }, runId, events ? { events } : {});
+    if (!end.ok && end.code === 'stopped') return;
+    if (runFollowRef.current.get(id) === runId) runFollowRef.current.delete(id);
+    if (!end.ok) {
+      // Signed out, or the follow lost it (it may still run server-side; the tray takes it back): say so, keep the list.
+      patchMsgById(id, (m) => (mine(m) ? { ...m, text: `⚠️ ${runErrorText(end.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: end.code, stopping: false, approving: undefined, t1: Date.now() } } : m));
+      return;
+    }
+    const { task } = end;
+    const steps = task.steps ?? [];
+    const delivered = steps.filter((x) => x.status === 'completed' && x.result?.url);
+    const video = [...delivered].reverse().find((x) => x.result!.media === 'video')?.result;
+    const audio = delivered.find((x) => x.tool === 'audio_extract' && x.result!.media === 'audio')?.result;
+    const broke = steps.find((x) => x.status === 'failed');
+    const text = task.status === 'completed' ? runDoneText(locale)
+      : task.status === 'partially_completed' ? runPartialText(locale)
+        : task.status === 'cancelled' ? errorText('cancelled', locale)
+          : `⚠️ ${broke ? stepErrorText(broke.tool, broke.error, locale) : stepErrorText('montage', task.error, locale)}`;
+    patchMsgById(id, (m) => (mine(m) ? {
+      ...m,
+      text,
+      noRetry: true,
+      ...(video ? { videoUrl: video.url, orientation: orientationOf(video.aspect) } : {}),
+      ...(audio ? { audioUrl: audio.url, ...(audio.name ? { audioName: audio.name } : {}), audioInfo: [audio.durationSec ? formatDuration(audio.durationSec) : '', audio.bytes ? formatAudioBytes(audio.bytes, locale) : '', audio.bitrateKbps ? `MP3 ${audio.bitrateKbps} kbps` : 'MP3'].filter(Boolean).join(' · ') } : {}),
+      runJob: { ...m.runJob!, phase: 'ended', task, events: end.events, stopping: false, approving: undefined, resuming: false, t1: Date.now() },
+    } : m));
+    if (delivered.length) {
+      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
+    }
+  }, [locale, patchMsgById]);
+  // Start: the signed plan becomes the run (once — a double tap lands before the card re-renders; a resend replays).
+  const confirmAgentRun = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.runJob;
+    if (!card || card.phase !== 'planned' || !card.spec || !card.token || runsRef.current.has(id)) return;
+    runsRef.current.add(id);
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, phase: 'running', t0: Date.now(), t1: undefined } }));
+    const r = await startRunClient({ fetch: (u, init) => fetch(u, init), sleep: (ms) => new Promise((res) => setTimeout(res, ms)) }, { spec: card.spec, token: card.token });
+    if (!r.ok) {
+      patchMsgById(id, (m) => ({ ...m, text: `⚠️ ${runErrorText(r.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: r.code, t1: Date.now() } }));
+      return;
+    }
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, runId: r.runId } }));
+    await followAgentRun(id, r.runId);
+  }, [followAgentRun, locale, patchMsgById]);
+  // Cancel drops a plan; Stop cancels the run: nothing new starts, each step's job stops and is paid back, results stay.
+  const stopAgentRun = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.runJob;
+    if (!card) return;
+    if (card.phase === 'planned') {
+      patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n${errorText('cancelled', locale)}`, runJob: { ...m.runJob!, phase: 'dismissed' } }));
+      return;
+    }
+    if (card.phase !== 'running' || card.stopping || !card.runId) return;
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, stopping: true } }));
+    if (!(await cancelRun((u, init) => fetch(u, init), card.runId))) {
+      // The stop did not reach the server: the run goes on, so the button comes back.
+      patchMsgById(id, (m) => (m.runJob?.stopping ? { ...m, runJob: { ...m.runJob, stopping: false } } : m));
+    }
+  }, [locale, patchMsgById]);
+  // The user's yes to one step's own price, bound to the quote the card shows. The follow reads the run on from there.
+  const approveAgentRun = useCallback(async (id: string, step: string, quoteId: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.runJob;
+    if (!card || card.phase !== 'running' || !card.runId || card.approving) return;
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, approving: step } }));
+    const r = await approveRunStep((u, init) => fetch(u, init), { runId: card.runId, step, quoteId });
+    patchMsgById(id, (m) => {
+      if (!m.runJob || m.runJob.runId !== card.runId) return m;
+      const runJob = { ...m.runJob, approving: undefined, ...(r.ok && r.task ? { task: r.task } : {}) };
+      return r.ok ? { ...m, runJob } : { ...m, text: `${m.text}\n\n⚠️ ${runErrorText(r.code, locale)}`, runJob };
+    });
+  }, [locale, patchMsgById]);
+  // Retry (or „continue"): the ended run is carried on as a new run on the same card; what it delivered is kept.
+  const retryAgentRun = useCallback(async (id: string) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.runJob;
+    if (!card || !canRetry(card) || card.resuming || !card.runId) return;
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, resuming: true } }));
+    const r = await resumeRunClient((u, init) => fetch(u, init), card.runId);
+    if (!r.ok) {
+      patchMsgById(id, (m) => ({ ...m, text: `${m.text}\n\n⚠️ ${runErrorText(r.code, locale)}`, runJob: { ...m.runJob!, resuming: false } }));
+      return;
+    }
+    patchMsgById(id, (m) => ({ ...m, runJob: { ...m.runJob!, phase: 'running', runId: r.runId, resuming: false, stopping: false, events: [], t0: Date.now(), t1: undefined } }));
+    await followAgentRun(id, r.runId);
+  }, [followAgentRun, locale, patchMsgById]);
+
   // The upload offer after a refused link: the file picker opens with the request already in the composer.
   const offerAudioUpload = useCallback(() => {
     setInput(uploadPrefill(locale));
@@ -8020,10 +8162,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // and handing a finished job back made the tray flash its own „ready" row for 4 s and vanish under it (the Preview run
   // of 2026-10-09: „the card popped up and disappeared"). The tray gets the job back when the follow lost it (it may still
   // run server-side) or a new thread replaced the chat. Derived from the cards on screen: a claim never outlives its card.
-  const agentCardJobs = useMemo(() => messages
-    .flatMap((m) => [m.montage, m.audioJob, m.editJob])
-    .flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; })
-    .sort().join(','), [messages]);
+  const agentCardJobs = useMemo(() => messages.flatMap(cardJobsOf).sort().join(','), [messages]);
   useEffect(() => {
     if (!agentCardJobs) return;
     const ids = agentCardJobs.split(',');
@@ -8057,6 +8196,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         const own = cardOwnsJob(c); if (own) owned.add(own);
         const stage = c.phase === 'running' ? editStageText(c.stage ?? null, locale) : c.phase === 'reading' ? editReadingText(c.source ?? 'file', locale) : null;
         cards.push({ id: m.id, kind: 'edit', phase: c.phase, stage, pct: c.pct ?? null, stopping: !!c.stopping });
+      } else if (m.runJob) {
+        const c = m.runJob;
+        for (const own of runCardJobs(c)) owned.add(own);
+        // A plan waiting for Start reads as 'quoted' (the montage's word), so „go on" and „stop" treat it the same way.
+        const live = c.phase === 'running' || c.phase === 'reading' ? runTask(c, locale).steps.find((x) => x.state === 'active' || x.state === 'waiting') : undefined;
+        const stage = live ? (live.detail ? `${live.label}: ${live.detail}` : live.label) : null;
+        cards.push({ id: m.id, kind: 'run', phase: runCardPhase(c), stage, pct: c.task?.pct ?? null, stopping: !!c.stopping });
       }
     }
     const q = useJobQueue.getState();
@@ -8089,6 +8235,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       audioOn: agentAudioOn,
       editOn: agentEditOn,
       previousMontage: prevResult?.id && prevResult.montage?.phase === 'done' ? { id: prevResult.id, prompt: prevResult.montage.prompt } : null,
+      runOn: agentMontageOn,
+      resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
     };
     const step = planChatTurn(text, snapshot);
     if (step.kind === 'pass') return false;
@@ -8117,6 +8265,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (m?.montage) void stopAgentMontage(id);
           else if (m?.audioJob) void stopAgentAudio(id);
           else if (m?.editJob) void stopAgentEdit(id);
+          else if (m?.runJob) void stopAgentRun(id);
         }
         for (const id of step.jobs) cancelQueueJob(id);
         for (const id of step.durable) void useJobQueue.getState().cancelDurable(id);
@@ -8186,6 +8335,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         void startAgentEdit(text, step.source, step.edits, file ? { file } : { url });
         return true;
       }
+      case 'run': {
+        // Two steps from one message: the files upload and the steps are planned on one card; nothing runs before Start.
+        const files = [...attachments];
+        if (!files.length) return false;
+        clearComposer();
+        if (!isDesktop) setOptionsOpen(false);
+        void startAgentRun(text, step.chain, files);
+        return true;
+      }
+      case 'resume':
+        // „continue" after a run that ended part-way: the same card carries on, keeping what was delivered.
+        clearComposer();
+        setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }]);
+        persistChatTurn('user', text);
+        void retryAgentRun(step.cardId);
+        return true;
       default:
         return false;
     }
@@ -8321,7 +8486,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     )}
                   </div>
                 )}
-                {m.audioUrl && !m.audioJob && (
+                {m.audioUrl && !m.audioJob && !m.runJob && (
                   <div className="w-[min(82vw,360px)] overflow-hidden rounded-2xl bg-app-elevated/50 p-3">
                     {/* Polished Suno-style player (album art + play/scrub/time). */}
                     <TrackPlayer url={m.audioUrl} coverUrl={m.coverUrl} label={m.audioName ?? t.modeMusic} engine={m.engine} note={m.audioInfo ?? musicControlsNote(m.musicControlsMode, m.regen?.kind === 'music' ? m.regen : undefined, locale)} />
@@ -8356,7 +8521,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     </div>
                   </div>
                 )}
-                {m.videoUrl && !m.montage && !m.editJob && (
+                {m.videoUrl && !m.montage && !m.editJob && !m.runJob && (
                   <div className="space-y-1.5">
                     {/* The chat's own player (components/studio/ChatVideoPlayer): a frame as its face, one play button, a bar
                         on hover. Orientation-aware: a 9:16 clip gets a portrait box (no landscape pillarbox on mobile); 16:9
@@ -8711,6 +8876,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 {m.role === 'assistant' && m.audioJob && m.id && (
                   <AgentAudioCard state={m.audioJob} locale={locale} onStart={() => void confirmAgentAudio(m.id!)} onCancel={() => void stopAgentAudio(m.id!)} onUpload={offerAudioUpload} />
                 )}
+                {m.role === 'assistant' && m.runJob && m.id && (
+                  <AgentRunCard state={m.runJob} locale={locale} onStart={() => void confirmAgentRun(m.id!)} onCancel={() => void stopAgentRun(m.id!)}
+                    onApprove={(step, quoteId) => void approveAgentRun(m.id!, step, quoteId)} onRetry={() => void retryAgentRun(m.id!)} />
+                )}
                 {m.role === 'assistant' && m.montage && m.videoUrl && (
                   <div className="mt-3 w-full max-w-[36rem] space-y-2" data-testid="agent-montage-result">
                     <ChatVideoPlayer
@@ -8781,6 +8950,50 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {saveLibButton(m.audioUrl, 'music', m.audioName ? m.audioName.replace(/\.mp3$/i, '') : undefined)}
                       {editButton(m.audioUrl, 'audio')}
                     </div>
+                  </div>
+                )}
+                {/* A run's results: the last video it made (the montage, or its edit) and the MP3 it took out, each with
+                    Download / Share. Both are already Library items (each step's job), so a partial run keeps what it made. */}
+                {m.role === 'assistant' && m.runJob && (m.videoUrl || m.audioUrl) && (
+                  <div className="mt-3 w-full max-w-[36rem] space-y-3" data-testid="agent-run-result">
+                    {m.videoUrl && (
+                      <div className="space-y-2">
+                        <ChatVideoPlayer
+                          src={m.videoUrl}
+                          locale={locale}
+                          label={toolName('montage', locale)}
+                          onMeta={() => { if (nearBottomRef.current) scrollToBottom(); }}
+                          className={`${m.orientation === 'vertical' ? 'aspect-[9/16] w-[min(70vw,300px)]' : m.orientation === 'square' ? 'aspect-square w-[min(75vw,360px)]' : 'aspect-video w-full'} max-h-[72dvh]`}
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button type="button" onClick={() => void dl(m.videoUrl!, `myavatar-run-${Date.now()}.mp4`)} data-testid="run-video-download" title={t.imgDownload} aria-label={t.imgDownload}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                            <Download size={16} />
+                          </button>
+                          <button type="button" onClick={() => void share(m.videoUrl!, `myavatar-run-${Date.now()}.mp4`)} title={t.share} aria-label={t.share}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                            <Share2 size={16} />
+                          </button>
+                          {editButton(m.videoUrl, 'video')}
+                        </div>
+                      </div>
+                    )}
+                    {m.audioUrl && (
+                      <div className="space-y-2">
+                        <ChatAudioPlayer src={m.audioUrl} locale={locale} variant="result" {...(m.audioName ? { name: m.audioName } : {})} {...(m.audioInfo ? { info: m.audioInfo } : {})} />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button type="button" onClick={() => void dl(m.audioUrl!, m.audioName ?? 'myavatar-audio.mp3')} data-testid="run-audio-download" title={t.imgDownload} aria-label={t.imgDownload}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-accent text-app-bg shadow-sm transition hover:opacity-90 active:scale-90 sm:h-9 sm:w-9">
+                            <Download size={16} />
+                          </button>
+                          <button type="button" onClick={() => void share(m.audioUrl!, m.audioName ?? 'myavatar-audio.mp3')} title={t.share} aria-label={t.share}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-elevated text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-90 sm:h-9 sm:w-9">
+                            <Share2 size={16} />
+                          </button>
+                          {editButton(m.audioUrl, 'audio')}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {m.genKind === 'image' && m.regen && !busy && m.text.startsWith('⚠️') && (
@@ -8931,7 +9144,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               </div>
             </div>
           ))
-  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit]);
+  ), [busy, streamingId, chat.store, streamTransform, pinStream, cancelEdit, continueChat, copiedIdx, copyMsg, shareReply, createStoryboard, dispatchServiceBlock, editButton, editText, editingIdx, elapsed, imgAspect, imgQuality, imgStyle, messages, mode, rateMsg, ratedIdx, regenerate, regenerateChat, regenerateReply, agentMontageOn, agentAudioOn, remixBusyIdx, remixDrafts, remixFilm, remixPreviewIdx, runImageBatch, runImageJob, saveEdit, saveLibButton, share, speakMsg, speakPhase, speakingIdx, startEdit, startImageEdit, stop, storyboard, t, upscale, upscaling, videoDuration, videoMode, videoResultDims, videoResultDur, setEditText, setLightbox, setRemixDrafts, setRemixPreviewIdx, setVideoResultDims, setVideoResultDur, lastVideoReqRef, locale, confirmGate, editGate, confirmChatRemix, editChatRemix, confirmAgentMontage, stopAgentMontage, confirmAgentAudio, stopAgentAudio, offerAudioUpload, confirmAgentEdit, stopAgentEdit, confirmAgentRun, stopAgentRun, approveAgentRun, retryAgentRun]);
   // ⚠️ `pending` WAS IN THIS ARRAY AND IS NOT IN SCOPE HERE. I derived the list mechanically by matching
   // `const <name> =` at two-space indentation, and that pattern also matches declarations inside the
   // OTHER components in this file — `const pending = sb.pending ?? []` at line 1441 belongs to

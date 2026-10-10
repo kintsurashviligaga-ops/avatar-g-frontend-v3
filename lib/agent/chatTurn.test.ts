@@ -224,6 +224,47 @@ describe('Agent G edits a video itself (its edit route open)', () => {
   });
 });
 
+describe('two steps in one message: one run card (runs open)', () => {
+  const runs = (over: Partial<ChatSnapshot> = {}) => snap({ runOn: true, editOn: true, ...over });
+
+  test.each([
+    ['პირველი ვიდეოს ხმა აიღე და დანარჩენი კლიპები ამ ხმაზე დაამონტაჟე'],
+    ['Use the audio from the first video and cut the other clips to it'],
+    ['Возьми звук из первого видео и смонтируй остальные клипы под него'],
+  ])('the sound of one video, the other clips cut to it: a run, not „the track is missing" (%s)', (text) => {
+    expect(planChatTurn(text, runs({ attachments: ['video', 'video', 'video'] }))).toMatchObject({
+      kind: 'run', chain: { kind: 'sound-cut', source: { index: 0 }, clips: [1, 2] },
+    });
+    // Runs closed: the old answer stands (the montage asks for its track).
+    expect(planChatTurn(text, snap({ attachments: ['video', 'video', 'video'] }))).toMatchObject({ kind: 'say', keepComposer: true });
+  });
+
+  test('a montage with edits it does not do itself: a run; without them, the montage card as before', () => {
+    expect(planChatTurn('cut these to the music, black and white', runs({ attachments: ['video', 'video', 'audio'] })))
+      .toMatchObject({ kind: 'run', chain: { kind: 'cut-edit', edits: [{ op: 'grade', style: 'noir' }] } });
+    expect(planChatTurn('cut these to the music', runs({ attachments: ['video', 'video', 'audio'] })).kind).toBe('pass');
+  });
+
+  test('a focus tool never starts a run', () => {
+    expect(planChatTurn('Use the audio from the first video and cut the other clips to it', runs({ mode: 'video', attachments: ['video', 'video'] })).kind).not.toBe('run');
+  });
+
+  test('„continue" after a run that ended part-way carries it on; a plan or work on screen comes first', () => {
+    expect(planChatTurn('გააგრძელე', runs({ resumableRunId: 'r-1', lastRedoable: true }))).toMatchObject({ kind: 'resume', cardId: 'r-1' });
+    expect(planChatTurn('continue', runs({ resumableRunId: 'r-1', cards: [{ id: 'r-2', kind: 'run', phase: 'running' }] })).kind).toBe('say');
+    expect(planChatTurn('continue', snap({ resumableRunId: 'r-1' })).kind).not.toBe('resume');
+  });
+
+  test('a run card is work: status names it, stop stops it', () => {
+    const card: ThreadCard = { id: 'r-1', kind: 'run', phase: 'running', stage: 'Joining the shots', pct: 60 };
+    const stop = planChatTurn('stop', runs({ cards: [card] }));
+    expect(stop).toMatchObject({ kind: 'stop', cards: ['r-1'] });
+    if (stop.kind === 'stop') expect(stop.text).toBe('⏹ Stopped: the multi-step task.');
+    expect(planChatTurn('გააჩერე', runs({ cards: [card] }))).toMatchObject({ kind: 'stop', text: '⏹ გავაჩერე: მრავალნაბიჯიანი დავალება.' });
+    expect(workOf(runs({ cards: [card] }))).toEqual([{ what: 'run', status: 'running', stage: 'Joining the shots', pct: 60 }]);
+  });
+});
+
 describe('wordsAreForChat: a spend-at-once tool never runs on talk', () => {
   test.each([
     ['რა ღირს?', true], ['გამარჯობა', true], ['არ მომწონს', true], ['stop', true], ['how far along?', true],

@@ -15,19 +15,23 @@
  *                    from the same files and words, nothing runs before Start
  *   edit             Agent G edits one attached video, or its own last video, itself (lib/agent/media/editExec): the
  *                    edits read from the words (./media/editWords), planned on a card, run on Start
+ *   run              two steps chained (./run/runChat): the sound of one video or link with the other clips cut to it,
+ *                    or a montage and the edits a montage does not do itself; planned on one card, run on Start
+ *   resume           „continue" after a run that ended without every result: a new run that keeps what was delivered
  */
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
 import { mineEdits, type EditAsk } from './media/editWords';
 import { editErrorText } from './media/editChat';
+import { runChainAsk, type RunChain } from './run/runChat';
 import {
   askReply, continueReply, interceptAct, mergeMontagePrompt, statusReply, stopReply, unsupportedReply, type ActIntent, type WorkItem,
 } from './intentReply';
 
-/** One Agent G card in the thread (montage, MP3 or edit), in thread order. */
+/** One Agent G card in the thread (montage, MP3, edit or a multi-step run), in thread order. */
 export interface ThreadCard {
   id: string;
-  kind: 'montage' | 'audio' | 'edit';
+  kind: 'montage' | 'audio' | 'edit' | 'run';
   phase: string;
   /** The step in words, already in the UI language (the card's own stage line). */
   stage?: string | null;
@@ -75,6 +79,10 @@ export interface ChatSnapshot {
   editOn?: boolean;
   /** The last result is a montage Agent G delivered in this thread: its card, and the words it was planned from. */
   previousMontage?: { id: string; prompt?: string } | null;
+  /** Multi-step runs are open to this user (the same AGENT_G_MEDIA_EXEC door as the montage). */
+  runOn?: boolean;
+  /** The last reply is a run card that ended without every result: „continue" carries it on. */
+  resumableRunId?: string | null;
 }
 
 export type ChatStep =
@@ -99,7 +107,11 @@ export type ChatStep =
   | { kind: 'requote'; cardId: string; prompt: string; intent: AgentIntent }
   | { kind: 'remontage'; cardId: string; prompt: string; intent: AgentIntent }
   /** source: the one video attached to this message, or the last video Agent G made in this thread. */
-  | { kind: 'edit'; source: 'file' | 'previous'; edits: EditAsk[]; intent: AgentIntent };
+  | { kind: 'edit'; source: 'file' | 'previous'; edits: EditAsk[]; intent: AgentIntent }
+  /** Two steps chained, planned on one card (nothing runs before Start). */
+  | { kind: 'run'; chain: RunChain; intent: AgentIntent }
+  /** Carry the run card on (a new run that reuses what was delivered). */
+  | { kind: 'resume'; cardId: string; intent: AgentIntent };
 
 const LIVE_CARD: ReadonlySet<string> = new Set(['reading', 'checking', 'running']);
 const LIVE_JOB: ReadonlySet<string> = new Set(['queued', 'rendering']);
@@ -192,9 +204,19 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
     if (s.lastTruncated) return { kind: 'continue-stream', intent };
     if (s.cards.some((c) => c.phase === 'quoted')) return { kind: 'say', text: continueReply('plan-waiting', locale), intent };
     if (workOf(s).length) return { kind: 'say', text: continueReply('running', locale), intent };
+    // A run that stopped part-way goes on from where it ended: what it delivered is kept, not made again.
+    if (s.resumableRunId && s.runOn) return { kind: 'resume', cardId: s.resumableRunId, intent };
     if (s.lastRedoable) return { kind: 'redo', intent };
     // In the chat „continue" after a finished answer is the conversation's own (a story, a list): the model has it.
     return s.mode === 'chat' ? { kind: 'pass', intent } : { kind: 'say', text: continueReply('nothing', locale), intent };
+  }
+
+  // Two steps in one message („the sound of the first video, the other clips cut to it"; „cut to the music, black and
+  // white"): one run card. Before the one-step readings, which would answer the first with „the track is missing" and cut
+  // the second without its edits.
+  if (s.mode === 'chat' && s.runOn) {
+    const chain = runChainAsk(text, s.attachments ?? []);
+    if (chain) return { kind: 'run', chain, intent };
   }
 
   if (intent.kind === 'act') {

@@ -356,3 +356,20 @@ export function runTask(s: AgentRunState, locale: string): RunCardModel {
     credits: credits ? creditsText(credits, locale) : null, log, approval,
   };
 }
+
+/** Follows that ended without the server's answer: the run may still be going, and the job tray is how the user sees it. */
+const LOST: ReadonlySet<string> = new Set(['network', 'not_found', 'unauthenticated', 'rate_limited']);
+
+/**
+ * The jobs this card narrates (the run, and its steps' own jobs), so the job tray leaves them to it: while it runs and
+ * after it ended in an answer the server gave. Not when the follow lost the run (it may still go on; the tray shows it).
+ */
+export function runCardJobs(s: AgentRunState | undefined): string[] {
+  if (!s?.runId) return [];
+  const owns = s.phase === 'running' || s.phase === 'ended' || (s.phase === 'failed' && !!s.error && !LOST.has(s.error));
+  if (!owns) return [];
+  return [s.runId, ...(s.task?.steps ?? []).flatMap((x) => (x.taskId ? [x.taskId] : []))];
+}
+
+/** The card's phase as the chat's turn reader (lib/agent/chatTurn) knows a card: a plan waiting for Start is „quoted". */
+export const runCardPhase = (s: AgentRunState): string => (s.phase === 'planned' ? 'quoted' : s.phase);
