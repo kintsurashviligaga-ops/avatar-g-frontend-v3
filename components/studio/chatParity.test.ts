@@ -143,7 +143,9 @@ describe('the chat can USE what it is given', () => {
 
 describe('the price is on the button that spends', () => {
   it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
-    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(\{ tool: activeTool \}\)/);
+    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(/);
+    // a product ad is quoted at the length it renders (8 / 24 / 48 s), as the remix route charges it — never one clip's price
+    expect(omni).toContain("quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool })");
     expect(omni).toContain('data-price={composerQuote ?? undefined}');
     // the accessible name says the price too, from the same function the route charges with
     expect(omni).toContain('${runLabel} — ${creditsLabel(composerQuote, locale)}');
