@@ -8,6 +8,7 @@ import { structuredLog } from '@/lib/logger';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { hasMinimumVoiceCredits } from '@/lib/voice/credits';
 import { normalizePhoneNumber } from '@/lib/voice/phone';
+import { PHONE_CALLS_UNAVAILABLE, phoneCallsReady } from '@/lib/calls/availability';
 import { upsertVoiceCallByVapiId } from '@/lib/voice/repository';
 import { createVapiCall, getVapiPhoneNumberId, isVapiServerConfigured } from '@/lib/vapi';
 
@@ -42,6 +43,12 @@ export async function POST(request: NextRequest) {
     const internalToken = request.headers.get('x-internal-worker-token');
     if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
+    // ⚠️ Without Vapi this stored a `notify_…` call as `initiated` and answered `queued: true`; with Vapi it rang on an
+    // Anthropic assistant (see /api/voice/outbound). No call path is ready (lib/calls/availability.ts).
+    if (!phoneCallsReady()) {
+      return NextResponse.json({ queued: false, reason: PHONE_CALLS_UNAVAILABLE }, { status: 503 });
     }
 
     const payload = requestSchema.safeParse(await request.json());

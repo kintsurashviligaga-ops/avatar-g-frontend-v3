@@ -46,12 +46,12 @@ export async function processAdRenderJob(
   return runJobWithLifecycle(
     work,
     {
-      markProcessing: (stage, pct) => updateJobStage(jobId, stage, pct),
-      markCompleted: (r) => {
+      markProcessing: async (stage, pct) => { await updateJobStage(jobId, stage, pct); },
+      markCompleted: async (r) => {
         const res = (r ?? {}) as AdRenderResult;
-        return completeJob(jobId, { signedUrl: res.url ?? null, result: res.result ?? { url: res.url } });
+        await completeJob(jobId, { signedUrl: res.url ?? null, result: res.result ?? { url: res.url } });
       },
-      markFailed: (error) => failJob(jobId, error),
+      markFailed: async (error) => { await failJob(jobId, error); },
     },
     {
       maxAttempts: opts?.maxAttempts ?? 3,

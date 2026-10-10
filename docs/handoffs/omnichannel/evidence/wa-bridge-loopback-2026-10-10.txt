@@ -1,0 +1,23 @@
+# WhatsApp call bridge: local WebRTC + Opus loopback
+# Run: 2026-10-10T17:15 UTC, cd services/wa-call-bridge && npm run loopback (Node v22.22.0, 4 vCPU Xeon 2.1 GHz cloud sandbox)
+# Scope: two real werift peers on this host (one plays WhatsApp, one is the bridge), real Opus (libopus wasm), the
+# bridge resamplers. NOT Meta, NOT Gemini, NOT a real network: one_way_ms is in-process and says nothing about real latency.
+
+{
+  "connected": true,
+  "connect_ms": 286,
+  "caller_frames_received": 100,
+  "caller_hz_at_48k": 440,
+  "caller_hz_after_16k_path": 440,
+  "caller_level_ratio": 1.004,
+  "agent_frames_heard_on_phone": 100,
+  "agent_hz_on_phone": 1000,
+  "agent_level_ratio": 1.02,
+  "one_way_ms_p50": 1,
+  "whole_run_cpu_ms_per_audio_second": 178,
+  "steady_cpu_ms_per_audio_second_both_peers": 113,
+  "media_cpu_ms_per_call_second": 15.8,
+  "calls_per_vcpu_at_60pct": 25,
+  "wall_s": 5.5
+}
+LOOPBACK PASS

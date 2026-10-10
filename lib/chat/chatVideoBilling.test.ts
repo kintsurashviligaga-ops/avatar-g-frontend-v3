@@ -8,7 +8,9 @@
  *     charges under, so the two can never both land;
  *   · a terminal failure on the poll path pays it back through the ledger (refundDebitByRef — only what was taken);
  *   · check → submit → charge is serialised per user (a Redis lock), so parallel requests cannot all pass a
- *     balance that only covers one.
+ *     balance that only covers one;
+ *   · the price is HELD before Google is asked (gap C6): a refused hold renders nothing, a synchronous asset keeps the
+ *     hold as its charge, anything else gives it back (an accepted async job then pays under its poll ref).
  */
 jest.mock('server-only', () => ({}));
 
@@ -68,6 +70,10 @@ function input(over: Partial<OrchestratorInput> = {}): OrchestratorInput {
 let fetchSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks keeps queued *Once values: a test whose render is now refused before the provider is asked would
+  // leave its execute answer for the next test.
+  sm.execute.mockReset();
+  sm.poll.mockReset();
   delete process.env.FILM_ALLOW_ANONYMOUS;
   (claimIdempotencyKey as jest.Mock).mockResolvedValue(true);
   (hasSufficientBalance as jest.Mock).mockResolvedValue(true);
@@ -81,11 +87,23 @@ beforeEach(() => {
 afterEach(() => fetchSpy.mockRestore());
 
 describe('chat video billing', () => {
-  it('charges the dispatcher when Google accepts the job — under the poll ref, once', async () => {
+  it('holds the price before Google is asked, then moves it to the poll ref once the job is accepted', async () => {
+    const cost = billableCreditCost('video_generation');
     const res = await orchestrate(input());
     expect(res.predictionId).toBe(TASK);
-    expect(deductCredits).toHaveBeenCalledTimes(1);
-    expect(deductCredits).toHaveBeenCalledWith('user-7', billableCreditCost('video_generation'), `poll:${TASK}`);
+    expect(deductCredits).toHaveBeenCalledTimes(2);
+    const holdRef = (deductCredits as jest.Mock).mock.calls[0][2] as string;
+    expect(holdRef).toMatch(/^chat:video_generation:user-7:s1:[0-9a-f-]{36}$/);
+    expect(deductCredits).toHaveBeenNthCalledWith(1, 'user-7', cost, holdRef);
+    expect(deductCredits).toHaveBeenNthCalledWith(2, 'user-7', cost, `poll:${TASK}`);
+    // the hold is given back BEFORE the poll-ref charge, so one render's balance is enough
+    expect(refundDebitByRef).toHaveBeenCalledWith('user-7', holdRef, cost);
+    const holdOrder = (deductCredits as jest.Mock).mock.invocationCallOrder[0]!;
+    const execOrder = sm.execute.mock.invocationCallOrder[0]!;
+    const backOrder = (refundDebitByRef as jest.Mock).mock.invocationCallOrder[0]!;
+    const pollChargeOrder = (deductCredits as jest.Mock).mock.invocationCallOrder[1]!;
+    expect(holdOrder).toBeLessThan(execOrder);
+    expect(backOrder).toBeLessThan(pollChargeOrder);
   });
 
   it('checks the balance and charges INSIDE the per-user dispatch lock, and always releases it', async () => {
@@ -157,8 +175,21 @@ describe('an asset is handed over only once its charge LANDED (it used to be `.c
   it.each([
     ['insufficient', 'insufficientCredits'],
     ['error', 'billingUnavailable'],
-  ])('a %s acceptance charge withholds the task handle (no predictionId to poll into a free clip)', async (reason, flag) => {
+  ])('a %s hold renders nothing: Google is never asked (C6)', async (reason, flag) => {
     (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: false, reason });
+    const res = await orchestrate(input());
+    expect(res.success).toBe(false);
+    expect(sm.execute).not.toHaveBeenCalled();
+    expect(refundDebitByRef).not.toHaveBeenCalled();
+    expect(res.metadata[flag]).toBe(true);
+    expect(releaseIdempotencyKey).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['insufficient', 'insufficientCredits'],
+    ['error', 'billingUnavailable'],
+  ])('a %s acceptance charge withholds the task handle (no predictionId to poll into a free clip)', async (reason, flag) => {
+    (deductCredits as jest.Mock).mockResolvedValueOnce({ ok: true, balance: 100 }).mockResolvedValueOnce({ ok: false, reason });
     const res = await orchestrate(input());
     expect(res.success).toBe(false);
     expect(res.predictionId).toBeUndefined();
@@ -192,5 +223,35 @@ describe('an asset is handed over only once its charge LANDED (it used to be `.c
     expect(res.success).toBe(false);
     expect(JSON.stringify(res)).not.toContain('img.png');
     expect(res.metadata.billingUnavailable).toBe(true);
+    expect(sm.execute).not.toHaveBeenCalled(); // C6: the charge is refused BEFORE the paid render, not after it
+  });
+
+  it('a synchronous image delivered now keeps its hold as the charge: one debit, nothing given back', async () => {
+    sm.execute.mockResolvedValueOnce({
+      success: true, provider: 'nanobanana', operation: 'image', responseType: 'image', message: 'done',
+      assetUrl: 'https://x.supabase.co/img.png', assetType: 'image', predictionStatus: 'succeeded',
+      metadata: { provider: 'nanobanana', operation: 'image', sessionId: 's1', promptHash: 'h' },
+    });
+    const res = await orchestrate(input({ message: 'generate an image of a red fox in the snow' }));
+    expect(res.assetUrl).toBe('https://x.supabase.co/img.png');
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+    expect((deductCredits as jest.Mock).mock.calls[0][2]).toMatch(/^chat:image_generation:user-7:s1:/);
+    expect(refundDebitByRef).not.toHaveBeenCalled();
+  });
+
+  it('a render that fails or throws gives the hold back through the ledger', async () => {
+    sm.execute.mockResolvedValueOnce({
+      success: false, provider: 'nanobanana', operation: 'image', responseType: 'text', message: 'engine refused',
+      metadata: { provider: 'nanobanana', operation: 'image', sessionId: 's1', promptHash: 'h' },
+    });
+    await orchestrate(input({ message: 'generate an image of a red fox in the snow' }));
+    const holdRef = (deductCredits as jest.Mock).mock.calls[0][2] as string;
+    expect(refundDebitByRef).toHaveBeenCalledWith('user-7', holdRef, billableCreditCost('image_generation'));
+
+    jest.clearAllMocks();
+    sm.execute.mockRejectedValueOnce(new Error('socket hang up'));
+    await expect(orchestrate(input({ message: 'generate an image of a red fox in the snow' }))).rejects.toThrow('socket hang up');
+    expect(refundDebitByRef).toHaveBeenCalledTimes(1);
+    expect(releaseIdempotencyKey).toHaveBeenCalled();
   });
 });

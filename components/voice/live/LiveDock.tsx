@@ -59,6 +59,8 @@ interface DockStrings {
   started: string;
   cancelled: string;
   failed: string;
+  /** The countdown ended without a clear yes in the user's own words: nothing started. */
+  notHeard: string;
   /** The link chip (open_url). */
   link: string;
   open: string;
@@ -83,6 +85,7 @@ export const LIVE_DOCK_STRINGS: Record<Locale, DockStrings> = {
     started: 'გენერაცია დაიწყო',
     cancelled: 'გაუქმდა — არაფერი დაიხარჯა',
     failed: 'ვერ დაიწყო — დეტალები ეკრანზეა',
+    notHeard: 'არ დაიწყო — შენი „კი“ ვერ გავიგე',
     link: 'ბმული',
     open: 'გახსნა',
     openLinkLabel: (host) => `გახსნა ახალ ჩანართში: ${host}`,
@@ -103,6 +106,7 @@ export const LIVE_DOCK_STRINGS: Record<Locale, DockStrings> = {
     started: 'Generation started',
     cancelled: 'Cancelled — nothing was spent',
     failed: 'Could not start — see the screen',
+    notHeard: 'Not started — I did not hear your yes',
     link: 'Link',
     open: 'Open',
     openLinkLabel: (host) => `Open ${host} in a new tab`,
@@ -123,6 +127,7 @@ export const LIVE_DOCK_STRINGS: Record<Locale, DockStrings> = {
     started: 'Генерация запущена',
     cancelled: 'Отменено — ничего не списано',
     failed: 'Не запустилось — подробности на экране',
+    notHeard: 'Не запущено — я не услышал ваше «да»',
     link: 'Ссылка',
     open: 'Открыть',
     openLinkLabel: (host) => `Открыть ${host} в новой вкладке`,
@@ -138,7 +143,7 @@ const BTN =
   + 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent/60';
 const GLASS = 'bg-white/[0.07] text-app-text hover:bg-white/[0.14]';
 
-/** The countdown banner for a confirmed start_generation — shared by the dock and the full call screen. */
+/** The countdown banner for a voice start (a render or an Agent G plan) — shared by the dock and the full call screen. */
 export function LiveRunBanner({ run, locale = 'ka', onCancel, className = '' }: {
   run: LivePendingRun; locale?: Locale; onCancel: () => void; className?: string;
 }) {
@@ -152,7 +157,7 @@ export function LiveRunBanner({ run, locale = 'ka', onCancel, className = '' }: 
   const left = Math.max(0, run.runsAt - now);
   const secs = Math.ceil(left / 1000);
   const text = run.state === 'counting' ? t.runIn(secs)
-    : run.state === 'started' ? t.started : run.state === 'cancelled' ? t.cancelled : t.failed;
+    : run.state === 'started' ? t.started : run.state === 'cancelled' ? t.cancelled : run.state === 'not_heard' ? t.notHeard : t.failed;
   const quiet = locale === 'ka' ? 'text-[16px] leading-[1.5]' : 'text-[15px] leading-6';
   // What is left of the countdown, as a bar that drains to the moment it runs (stepped every 200 ms; the width eases
   // between steps, and simply steps under reduced motion).
@@ -165,7 +170,7 @@ export function LiveRunBanner({ run, locale = 'ka', onCancel, className = '' }: 
       aria-live="assertive"
       className={`relative flex items-center gap-3 overflow-hidden rounded-2xl bg-app-surface/95 py-2 pl-4 pr-2 text-app-text shadow-lg ring-1 ring-white/10 backdrop-blur-md ${className}`}
     >
-      {run.state !== 'counting' && <LiveStepMark state={run.state === 'started' ? 'done' : run.state === 'cancelled' ? 'cancelled' : 'failed'} />}
+      {run.state !== 'counting' && <LiveStepMark state={run.state === 'started' ? 'done' : run.state === 'cancelled' || run.state === 'not_heard' ? 'cancelled' : 'failed'} />}
       <span className={`min-w-0 flex-1 line-clamp-2 font-semibold ${quiet}`}>
         {text}
         {run.state === 'counting' && typeof run.priceCredits === 'number' && run.priceCredits > 0 && (

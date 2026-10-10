@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * GenjutsuPanel — the VFX module of the video tool: motion transfer, object / location / style swaps and VFX
- * transformations, with NO prompt required (one tap on a preset), a multi-reference dropzone (up to 40 photos that keep
- * the character and the product identical), a 3–30 s source video, and the price ON the Generate button.
+ * GenjutsuPanel — the VFX module of the video tool: one-tap VFX scenes (Google Veo reference-to-video), with NO prompt
+ * required (one tap on a preset), a multi-reference dropzone (photos that keep the character and the product identical),
+ * Fast / High quality, the fixed 8 s length, and the exact price ON the Generate button. Motion transfer and object swap
+ * ran on Higgsfield / Kling: not an allowed provider, so they are never offered (lib/genjutsu/engines engineAllowed).
  *
  * LAYOUT, in Higgsfield's mobile grammar (docs ref4 / ref5): the hero card (the chosen effect, a „Change" button) → the
  * presets (a snap-scrolling rail on a phone, a grid on a desktop) → the Scene · Motion · Swap segmented control → the
@@ -20,12 +21,12 @@
 import { Clapperboard, Volume2, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { creditsUpdated } from '@/lib/billing/creditsUpdated';
-import { ENGINES, modelLabel, qualityFor } from '@/lib/genjutsu/engines';
+import { ENGINES, engineAllowed, modelLabel, qualityFor } from '@/lib/genjutsu/engines';
 import { genjutsuCredits } from '@/lib/genjutsu/pricing';
 import { getPreset } from '@/lib/genjutsu/presets';
 import { selectReferences } from '@/lib/genjutsu/selection';
 import { USER_PROMPT_MAX_CHARS } from '@/lib/genjutsu/limits';
-import { toLang, type GenjutsuAspect, type GenjutsuOp, type GenjutsuQuality } from '@/lib/genjutsu/types';
+import { GENJUTSU_OPS, toLang, type GenjutsuAspect, type GenjutsuOp, type GenjutsuQuality } from '@/lib/genjutsu/types';
 import { GenerateButton } from '@/components/studio/ui/GenerateButton';
 import { LiveStatus, generationAnnouncement } from '@/components/studio/ui/LiveStatus';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
@@ -58,9 +59,11 @@ type CapsState = { status: 'loading' } | { status: 'ready'; ops: Capabilities } 
 
 export interface GenjutsuPanelProps {
   locale: string;
+  /** A finished render, once per video: the studio posts it to the chat like every other tool's result. */
+  onDelivered?: (videoUrl: string, aspect: string) => void;
 }
 
-export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
+export function GenjutsuPanel({ locale, onDelivered }: GenjutsuPanelProps) {
   const c = copyFor(locale);
   const lang = toLang(locale);
 
@@ -98,6 +101,13 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
 
   const refreshBalance = useCallback(() => { void fetchBalanceCredits().then(setBalance); }, []);
   const { job, begin, reset } = useGenjutsuJob(locale, () => { creditsUpdated(); refreshBalance(); });
+  // The result used to stay in this panel only: switching tools or reloading lost it from view (the Library had it).
+  const deliveredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (job.phase !== 'ready' || !onDelivered || deliveredRef.current === job.videoUrl) return;
+    deliveredRef.current = job.videoUrl;
+    onDelivered(job.videoUrl, job.aspect);
+  }, [job, onDelivered]);
 
   useEffect(() => {
     let live = true;
@@ -124,6 +134,10 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
     motion: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.motion.open : false,
     swap: caps.status === 'loading' ? null : caps.status === 'ready' ? caps.ops.swap.open : false,
   };
+  // Only an op on an allowed engine is ever offered (Google Veo: Scene). Motion and Swap run on Higgsfield, which is not
+  // an allowed provider, so even a server that answered "open" cannot put them in front of the user (engineAllowed).
+  // Among allowed ops: Scene always; another once it is open. The mode in use stays offered if it closes under the user.
+  const offered = GENJUTSU_OPS.filter((o) => engineAllowed(o) && (o === 'scene' || o === op || open[o] === true));
   const opOpen = open[op];
   const locked = opOpen === false;
   const hasCharacter = selection.used.some((u) => u.role === 'character');
@@ -326,10 +340,12 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
       <HeroCard locale={locale} preset={preset} onChange={heroChange} />
       <PresetCarousel locale={locale} activeId={presetId} onPick={(id) => { setPresetId(id); setNotice(null); }} />
 
-      <div className="space-y-2">
-        <ModeTabs locale={locale} value={op} onChange={changeOp} open={open} />
-        <p data-testid="vfx-mode-hint" className="px-1 text-[11.5px] leading-snug text-app-muted">{c.modeHint[op]}</p>
-      </div>
+      {offered.length > 1 && (
+        <div className="space-y-2">
+          <ModeTabs locale={locale} value={op} onChange={changeOp} open={open} ops={offered} />
+          <p data-testid="vfx-mode-hint" className="px-1 text-[11.5px] leading-snug text-app-muted">{c.modeHint[op]}</p>
+        </div>
+      )}
 
       {locked && (
         <div data-testid="vfx-locked" role="status" className="space-y-1 rounded-2xl bg-app-elevated/50 p-3 ring-1 ring-app-border/15">
@@ -408,6 +424,7 @@ export function GenjutsuPanel({ locale }: GenjutsuPanelProps) {
         op={op}
         quality={q}
         open={open}
+        ops={offered}
         onSelect={(nextOp, nextQ) => { changeOp(nextOp); setQuality(nextQ); }}
       />
 

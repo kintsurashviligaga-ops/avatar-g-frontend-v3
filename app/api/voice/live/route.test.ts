@@ -55,6 +55,10 @@ jest.mock('../../../../lib/voice/liveThreadStore', () => ({
   liveThreadDeps: () => ({ getTurns: (...a: unknown[]) => mockGetTurns(...a) }),
 }));
 
+// The user's memory (lib/memory/context): lazily imported by the route — mocked, read for the SESSION user.
+const mockMemory = jest.fn(async (_userId: string): Promise<string | null> => null);
+jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string) => mockMemory(u) }));
+
 import { NextRequest, NextResponse } from 'next/server';
 import { POST } from './route';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '../../../../lib/api/rate-limit';
@@ -578,3 +582,19 @@ describe('the same conversation (chatSessionId)', () => {
     expect(lockedText()).not.toContain('EARLIER IN THIS CONVERSATION');
   });
 });
+
+describe('memory (PART 2, G4)', () => {
+  test("the session user's memory is locked into the instruction, before the call rule; none or an unreadable one changes nothing", async () => {
+    mockMemory.mockResolvedValueOnce('USER PROFILE (persistent memory): name: Gaga.');
+    expect((await POST(post({ userId: 'someone-else' }))).status).toBe(200);
+    expect(mockMemory).toHaveBeenCalledWith('user-1');
+    const text = lockedText();
+    expect(text).toContain('name: Gaga');
+    expect(text.indexOf('name: Gaga')).toBeLessThan(text.indexOf('LIVE VOICE CALL: everything you say'));
+
+    mockMemory.mockRejectedValueOnce(new Error('down'));
+    expect((await POST(post({}))).status).toBe(200);
+    expect(lockedText(1)).not.toContain('USER PROFILE');
+  });
+});
+

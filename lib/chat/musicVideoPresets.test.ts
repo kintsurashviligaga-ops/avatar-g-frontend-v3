@@ -8,6 +8,7 @@ import {
   MV_CAMERA_MOVES,
   MV_SHOTS,
   MV_LIGHTING,
+  mvLabel,
 } from './musicVideoPresets';
 
 describe('music-video presets', () => {
@@ -73,5 +74,25 @@ describe('music-video presets', () => {
   test('never emits doubled periods', () => {
     const p = composeMusicVideoPrompt({ userPrompt: 'A scene.', genreId: 'pop', cameraId: 'pan' });
     expect(p).not.toMatch(/\.\s*\./);
+  });
+
+  test('no uploaded character: the identity anchor is left out', () => {
+    const p = composeMusicVideoPrompt({ userPrompt: 'My song', genreId: 'pop', cameraId: null, lightingId: 'moody', hasCharacter: false });
+    expect(p).toContain('My song');
+    expect(p).toContain('pop music video');
+    expect(p).toContain('low-key moody lighting');
+    expect(p).not.toContain('uploaded character');
+  });
+
+  test('every preset has a name in Georgian, English and Russian', () => {
+    for (const item of [...MV_GENRES, ...MV_SHOTS, ...MV_CAMERA_MOVES, ...MV_LIGHTING]) {
+      expect(item.labelKa.trim()).not.toBe('');
+      expect(item.labelEn.trim()).not.toBe('');
+      expect(item.labelRu.trim()).not.toBe('');
+    }
+    const blues = findGenre('blues')!;
+    expect(mvLabel(blues, 'ka')).toBe('ბლუზი');
+    expect(mvLabel(blues, 'en')).toBe('Blues');
+    expect(mvLabel(blues, 'ru')).toBe('Блюз');
   });
 });

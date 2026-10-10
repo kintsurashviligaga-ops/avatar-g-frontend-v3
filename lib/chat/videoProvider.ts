@@ -137,17 +137,19 @@ export function selectVideoPrimaryProvider(env: NodeJS.ProcessEnv = process.env)
 /**
  * Localized, user-facing error shown when the pipeline halts for a missing
  * video provider. Georgian is the canonical copy (the platform is Georgian
- * first); en/ru mirror it. Never leaks env-var names to the end user.
+ * first); en/ru mirror it. Never leaks env-var names to the end user, and since
+ * 2026-10-10 (Omnichannel A3) no technical words either: the person reads
+ * „temporarily unavailable", the configuration gap stays in the logs.
  */
 export function videoProviderUnavailableMessage(locale: string): string {
   const loc = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   if (loc === 'en') {
-    return 'System error: the video provider is unavailable. Please configure the API variables.';
+    return 'Video creation is temporarily unavailable. Please try again a little later.';
   }
   if (loc === 'ru') {
-    return 'Системная ошибка: видео-провайдер недоступен. Пожалуйста, заполните переменные API.';
+    return 'Создание видео временно недоступно. Попробуйте чуть позже.';
   }
-  return 'სისტემური ხარვეზი: ვიდეო პროვაიდერი მიუწვდომელია. გთხოვთ, შეავსოთ API ცვლადები.';
+  return 'ვიდეოს შექმნა დროებით მიუწვდომელია. სცადე ცოტა ხანში.';
 }
 
 /**
@@ -163,10 +165,10 @@ export function videoProviderUnavailableMessage(locale: string): string {
 export function videoProviderConnectionFailedMessage(locale: string): string {
   const loc = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   if (loc === 'en') {
-    return "Couldn't connect to the video provider. Your balance is protected.";
+    return "Couldn't reach the video service. Your balance is protected.";
   }
   if (loc === 'ru') {
-    return 'Не удалось подключиться к видео-провайдеру. Баланс сохранён.';
+    return 'Не удалось связаться с видеосервисом. Баланс сохранён.';
   }
-  return 'ვიდეო პროვაიდერთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.';
+  return 'ვიდეოს სერვისთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.';
 }

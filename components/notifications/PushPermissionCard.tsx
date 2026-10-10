@@ -1,7 +1,6 @@
 'use client';
 /**
- * PushPermissionCard — turn Web Push on or off for THIS browser, and send yourself a test. The Connectors / Plugins hub
- * imports it by this exact name and path.
+ * PushPermissionCard — turn Web Push on or off for THIS browser, and send yourself a test. Drawn on the Settings page.
  *
  * It only ever shows what is true here: "not supported in this browser", "on iPhone, add the app to the Home Screen
  * first" (iOS offers push only to installed web apps), "blocked — change it in the browser settings", "not available on

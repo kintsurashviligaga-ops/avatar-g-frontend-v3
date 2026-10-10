@@ -9,6 +9,8 @@ import { ALL_TOOLS, TOOL_META } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { getService } from '@/lib/catalog/services';
 import { CREDIT_COSTS, CREDIT_PACKAGES, CREDIT_VALUE_GEL, creditCostFor, creditsToGel } from '@/lib/credits/pricing';
+import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
+import { videoCredits } from '@/lib/credits/videoPricing';
 
 const LOCALES: PlatformPromptLocale[] = ['ka', 'en', 'ru'];
 const NOW = new Date('2026-09-30T08:00:00Z'); // 12:00 in Tbilisi (UTC+4)
@@ -53,7 +55,9 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
       expect({ action, present: p.includes(cr(credits)) }).toEqual({ action, present: true });
     }
     expect(p).toContain(`1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾`);
-    for (const pkg of CREDIT_PACKAGES) expect(p).toContain(`${pkg.gel} ₾ = ${pkg.credits} cr`);
+    // The packs the Credits window sells (gap C4), not CREDIT_PACKAGES — nothing sells those.
+    for (const g of BOG_TOPUP_PACKS_GEL) expect(p).toContain(`${g} ₾ = ${topupCredits(g)} cr`);
+    for (const pkg of CREDIT_PACKAGES) expect(p).not.toContain(`${pkg.gel} ₾ = ${pkg.credits} cr`);
     if (CREDIT_COSTS.chat_message === 0) expect(p).toContain('chat is free');
   });
 
@@ -81,7 +85,18 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     jest.dontMock('../credits/pricing');
   });
 
-  it('states the duration bands creditCostFor actually charges (what every route bills through)', () => {
+  it('quotes a film at what the film is charged (videoCredits), not the clip table (gap C4)', () => {
+    const p = build('en');
+    // A 24-second Fast film is 75 credits; the clip table's 25 "under 60 s" must not be read as the film's price.
+    const v = (s: number) => videoCredits({ seconds: s, quality: 'fast', mode: 'documentary' });
+    expect(p).toContain(`film: Fast 8 s ${v(8)}, 24 s ${v(24)}, 48 s ${v(48)} cr`);
+    expect(videoCredits({ seconds: 24, quality: 'fast', mode: 'documentary' })).toBeGreaterThan(CREDIT_COSTS.video_30s);
+    expect(p).toContain('Lite −40%, Max +230%, music video +40%');
+    expect(p).toContain(`film lip-sync +${creditCostFor('avatar')} cr`);
+    expect(p).toContain('chat clip/product ad: video');
+  });
+
+  it('states the duration bands creditCostFor actually charges (what the clip and product-ad routes bill through)', () => {
     const p = build('en');
     const C = CREDIT_COSTS;
     expect(p).toContain(`video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more`);

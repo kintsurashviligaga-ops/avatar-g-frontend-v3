@@ -7,7 +7,8 @@
  *                           (fixed text, at most once per 10 min) — an unknown number never reaches a model
  *   linked                → control words (help / stop / alerts on / unlink), then
  *                           an order to MAKE something → a studio link with the request typed in (nothing renders here)
- *                           anything else → Agent G answers in words, with this number's recent conversation as context
+ *                           anything else → Agent G answers in words, with this number's recent conversation as context,
+ *                           about MyAvatar.ge only (WHATSAPP_STYLE_NOTE) and without web search
  *
  * ⚠️ NOTHING ON THIS DOOR SPENDS A CREDIT. The old version planned non-chat messages into the task orchestrator, which
  * fanned out to paid generation routes with no confirmation, and fell into it even for a "hello" whenever the chat
@@ -153,6 +154,8 @@ export async function handleInbound(input: HandleInboundInput): Promise<HandleIn
     locale: lang,
     history,
     systemNote: WHATSAPP_STYLE_NOTE,
+    // A service channel, not a general assistant (Meta Terms §4.7 until Meta answers in writing): no web search.
+    googleSearch: false,
   });
   if (!ai.answered) return { replyMessages: [copy.unavailable], outcome: 'talk', userId };
   const reply = toWhatsAppText(ai.reply);

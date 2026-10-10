@@ -68,6 +68,7 @@ import { requestMicRelease } from '@/lib/voice/micBus';
 import { bytesToBase64, decodePlaybackChunk, floatTo16BitPCM } from '@/lib/voice/pcm';
 import { DEFAULT_VAD_CONFIG, bargeConfig, createVadState, stepVad, type VadState } from '@/lib/voice/vad';
 import { liveVoicePersona } from '@/lib/voice/voicePrompt';
+import type { LiveHeardEvent } from '@/lib/voice/voiceLedger';
 import { liveActivityReducer, type LiveActivityItem } from './liveActivity';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -237,6 +238,12 @@ export interface UseGeminiLiveSessionOptions {
   actions?: boolean;
   /** The server cancelled these call ids (the user barged in): drop whatever UI they produced. */
   onToolCallCancellation?: (ids: string[]) => void;
+  /**
+   * The user's own words as the call hears them (the input transcription, and text typed into the call): `{ text }` is
+   * the open exchange's words so far, `{ end: true }` closes it. A voice start runs only on these words
+   * (components/voice/live/liveActions, lib/voice/voiceLedger) — never on the model's word that it heard a yes.
+   */
+  onHeard?: (e: LiveHeardEvent) => void;
   deps?: Partial<LiveSessionDeps>;
 }
 
@@ -637,6 +644,10 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     setCaptions(list);
   }, []);
 
+  const emitHeard = useCallback((e: LiveHeardEvent) => {
+    try { optsRef.current.onHeard?.(e); } catch { /* a host bug must never kill the call */ }
+  }, []);
+
   const emitTurn = useCallback((turn: LiveTurn) => {
     const sink = optsRef.current.onTurn;
     try { if (sink) sink(turn); else dispatchLiveTranscript(turn); } catch { /* a host bug must never kill the call */ }
@@ -646,6 +657,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   const flushTurn = useCallback((interrupted: boolean) => {
     const u = normalizeCaption(pendingUserRef.current);
     const m = normalizeCaption(pendingModelRef.current);
+    if (pendingUserRef.current) emitHeard({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
     if (!u && !m) return;
@@ -662,7 +674,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     }
     if (finals.length > MAX_FINAL_CAPTIONS) finals.splice(0, finals.length - MAX_FINAL_CAPTIONS);
     publishCaptions();
-  }, [emitTurn, publishCaptions]);
+  }, [emitHeard, emitTurn, publishCaptions]);
 
   // ── Playback ──
   const isPlaying = useCallback(() => activeSourcesRef.current.size > 0, []);
@@ -1002,7 +1014,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
         enqueueAudio(ev.data, ev.mimeType);
         return;
       case 'inputTranscript':
-        if (ev.text) { pendingUserRef.current += ev.text; publishCaptions(); }
+        if (ev.text) { pendingUserRef.current += ev.text; publishCaptions(); emitHeard({ text: pendingUserRef.current }); }
         return;
       case 'outputTranscript':
         if (dropModelAudioRef.current) return; // the words of audio we dropped were never heard
@@ -1060,7 +1072,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       default:
         return; // setupComplete arrives via onSetupComplete; 'error' frames are followed by a close
     }
-  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
+  }, [afterTurnBoundary, answerToolCall, clearThinkingTimer, emitHeard, enqueueAudio, flushPlayback, flushTurn, isPlaying, publishCaptions, setStatusSafe]);
 
   const onSessionClosed = useCallback(() => {
     clearHandshakeTimer();
@@ -1395,6 +1407,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     handleRef.current = null;
     resumesRef.current = 0;
     phaseRef.current = 'initial';
+    if (pendingUserRef.current) emitHeard({ end: true });
     pendingUserRef.current = '';
     pendingModelRef.current = '';
     finalCaptionsRef.current = [];
@@ -1510,7 +1523,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     ];
     stepRef.current = 0;
     openSession(planRef.current[0]!.handle);
-  }, [attachMic, deps, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
+  }, [attachMic, deps, emitHeard, fail, mint, openCapture, openSession, setStatusSafe, teardown, watchAudio]);
 
   const stop = useCallback(() => {
     flushTurn(true);
@@ -1570,7 +1583,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     sessionRef.current.sendText(t);
     pendingUserRef.current = pendingUserRef.current ? `${pendingUserRef.current} ${t}` : t;
     publishCaptions();
-  }, [publishCaptions]);
+    emitHeard({ text: pendingUserRef.current });
+  }, [emitHeard, publishCaptions]);
 
   const sendNote = useCallback((text: string): boolean => {
     const t = typeof text === 'string' ? text.trim() : '';

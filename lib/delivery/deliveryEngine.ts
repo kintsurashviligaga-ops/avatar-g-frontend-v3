@@ -2,12 +2,18 @@
  * Delivery Engine
  * ─────────────────────────────────────────────────────────────────────────────
  * Dispatches executive task outputs to the user via email, SMS, or dashboard.
- * Production: hook into SendGrid / Twilio for real delivery.
+ *
+ * ⚠️ Email and SMS used to be recorded as `sent` ("mock: … delivery simulated") though nothing was sent. No sender is
+ * wired here, so they are recorded as `failed` with the reason, and only the dashboard (the data is already stored)
+ * counts as delivered. Nothing calls this today; Agent G's channel delivery is docs/handoffs/omnichannel.
  */
 
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { structuredLog } from '@/lib/logger';
 import type { DeliveryRecord, ExecutiveOutputs } from '@/types/billing';
+
+/** Why an email or SMS delivery is recorded as failed: no sender is wired, so nothing left. */
+export const NOT_WIRED = 'not_configured: no sender is wired for this channel; nothing was sent';
 
 export interface DeliveryRequest {
   userId: string;
@@ -30,31 +36,8 @@ export async function deliverOutputs(
     try {
       switch (channel) {
         case 'email':
-          // TODO(prod): SendGrid / Resend integration
-          structuredLog('info', 'delivery.email.mock', {
-            userId: req.userId,
-            taskId: req.taskId,
-          });
-          records.push({
-            channel: 'email',
-            status: 'sent',
-            sentAt: new Date().toISOString(),
-            detail: 'mock: email delivery simulated',
-          });
-          break;
-
         case 'sms':
-          // TODO(prod): Twilio SMS integration
-          structuredLog('info', 'delivery.sms.mock', {
-            userId: req.userId,
-            taskId: req.taskId,
-          });
-          records.push({
-            channel: 'sms',
-            status: 'sent',
-            sentAt: new Date().toISOString(),
-            detail: 'mock: sms delivery simulated',
-          });
+          records.push({ channel, status: 'failed', detail: NOT_WIRED });
           break;
 
         case 'dashboard':

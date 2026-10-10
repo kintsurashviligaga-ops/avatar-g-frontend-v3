@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateMontageRequest, montageUnits, timelineDuration, MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import { runMontage } from '@/lib/services/montage/montagePipeline';
@@ -101,6 +101,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 413 },
     );
   }
+  // A montage bills no credits (gap M4): the per-IP burst guard above does not stop one account on many IPs, so the
+  // per-account daily ceiling (shared with Agent G's montage) bounds the encode minutes one person can take.
+  const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.MONTAGE_USER);
+  if (capped) return capped;
 
   // The browser may name the job so it can poll `current_stage` WHILE this synchronous render runs;
   // otherwise it only learns the id once everything is finished. safeJobId enforces the UUID shape, and

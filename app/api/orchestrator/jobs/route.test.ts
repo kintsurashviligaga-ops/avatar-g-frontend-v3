@@ -50,10 +50,10 @@ describe('POST /api/orchestrator/jobs — a progress note, never a billing recor
     ]));
   });
 
-  it.each(['update', 'complete', 'fail'])("'%s' never touches a row the server billed (it carries _reserve)", async (op) => {
+  it.each(['update', 'complete', 'fail'])("'%s' never touches a row the server billed (_reserve) or a worker holds (_exec)", async (op) => {
     await post({ op, id: 'job-1' });
     const c = calls.find((x) => x.op === 'update')!;
-    expect(c.filters).toEqual(expect.arrayContaining([['is', 'params->_reserve', null]]));
+    expect(c.filters).toEqual(expect.arrayContaining([['is', 'params->_reserve', null], ['is', 'params->_exec', null]]));
   });
 
   it('never writes through the user session client (the RLS owner write policies are gone)', async () => {

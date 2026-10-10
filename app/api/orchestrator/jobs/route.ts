@@ -124,10 +124,11 @@ export async function POST(req: NextRequest) {
       const { error } = await ownLive().update({ position_in_queue: pos }).eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'update') {
-      // Never resurrects a finished row, never touches one the server billed (it carries `_reserve`).
+      // Never resurrects a finished row, never touches one the server billed (it carries `_reserve`) or one a server
+      // worker holds (`_exec`, lib/orchestrator/jobLease: its state moves only by the lease's own fenced writes).
       const { error } = await ownLive()
         .update({ status: 'processing', current_stage: typeof body.stage === 'string' ? body.stage.slice(0, 120) : null, pct: clampPct(body.pct) })
-        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null).is('params->_exec', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'complete') {
       const url = typeof body.url === 'string' ? body.url.slice(0, 2000) : null;
@@ -138,12 +139,12 @@ export async function POST(req: NextRequest) {
       if (url && !(await mayFileUrl(url, user.id))) return NextResponse.json({ ok: false, error: 'url_not_verified' });
       const { error } = await ownLive()
         .update({ status: 'completed', pct: 100, signed_url: url })
-        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null).is('params->_exec', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else if (body.op === 'fail') {
       const { error } = await ownLive()
         .update({ status: 'failed', error: typeof body.error === 'string' ? body.error.slice(0, 500) : 'failed' })
-        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null);
+        .eq('id', id).eq('user_id', user.id).in('status', ['pending', 'processing']).is('params->_reserve', null).is('params->_exec', null);
       if (error) return NextResponse.json({ ok: false, error: error.message });
     } else {
       return NextResponse.json({ ok: false, error: 'unknown op' }, { status: 400 });

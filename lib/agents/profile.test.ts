@@ -250,7 +250,7 @@ describe('Live setup', () => {
   it('the default profile reproduces today\'s Live instruction exactly', () => {
     for (const locale of ['ka', 'en', 'ru'] as const) {
       const s = toGeminiLiveSetup(resolveAgentProfile({}), { locale, platformSystem: PLATFORM_LIVE });
-      // GeminiLiveConversation today: `${persona}\n\n${platformKnowledge(loc)}\nToday's date is ${today}.`
+      // The live session: `${persona}\n\n${platformSystem}` (buildPlatformPrompt).
       expect(s.systemInstruction).toBe(`${liveVoicePersona(locale)}\n\n${PLATFORM_LIVE}`);
       expect(s.voiceName).toBe('Aoede');
       expect(s.temperature).toBe(PLATFORM_CHAT_DEFAULTS.temperature);

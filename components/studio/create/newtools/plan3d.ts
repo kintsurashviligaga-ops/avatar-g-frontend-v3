@@ -1,7 +1,8 @@
 /**
  * „3D plan" — the Interior designer's secondary action: the EXISTING /api/orchestrator/interior/produce pipeline (Gemini
- * reads the room's geometry from the photo, Claude writes its style guide), streamed as SSE, ending in
+ * reads the room's geometry from the photo and writes its style guide), streamed as SSE, ending in
  * `{ stage:'completed', geometry, style }` for the inline Three.js RoomViewer (components/chat/RoomViewer.tsx).
+ * `coverUrl` is the render the plan is for: the route files the finished plan to the Library with it as the picture.
  *
  * The route RESERVES PRODUCE_COST.interior before it runs and refunds it when the run does not complete (lib/orchestrator/
  * produceBilling) — this client only reads the stream. A guest is turned away by the route (401), and a short balance is
@@ -37,6 +38,7 @@ export function takeEvents(buffer: string): { events: unknown[]; rest: string } 
 export async function runPlan3d(args: {
   imageUrls: string[];
   brief: string;
+  coverUrl?: string;
   signal?: AbortSignal;
   onProgress?: (pct: number, stage?: string) => void;
   fetchImpl?: typeof fetch;
@@ -47,7 +49,7 @@ export async function runPlan3d(args: {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     signal: args.signal,
-    body: JSON.stringify({ imageUrls: args.imageUrls.slice(0, 3), brief: args.brief.slice(0, 600) }),
+    body: JSON.stringify({ imageUrls: args.imageUrls.slice(0, 3), brief: args.brief.slice(0, 600), ...(args.coverUrl ? { coverUrl: args.coverUrl } : {}) }),
   });
   if (res.status === 401) throw new PlanError('unauthorized');
   if (res.status === 429) throw new PlanError('rate_limited');

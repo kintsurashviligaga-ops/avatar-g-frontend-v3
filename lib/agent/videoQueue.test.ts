@@ -36,7 +36,7 @@ jest.mock('../orchestrator/ledger', () => ({
   deductCredits: (...a: unknown[]) => deductCredits(...a),
   refundCredits: (...a: unknown[]) => refundCredits(...a),
 }));
-jest.mock('../credits/pricing', () => ({ creditCostFor: () => 25 }));
+jest.mock('../credits/videoPricing', () => ({ STUDIO_DEFAULT_VEO_TIER: 'fast', videoCredits: () => 25 }));
 jest.mock('../veo/engine', () => ({
   veoTransport: () => veoTransport(),
   createVeoClip: (...a: unknown[]) => createVeoClip(...a),
@@ -308,7 +308,8 @@ describe('a clip that is accepted', () => {
     expect(guardedCall).toHaveBeenCalledTimes(1);
     const opts = guardOpts();
     expect(opts).toEqual(expect.objectContaining({ service: 'video', units: 8, userId: UID }));
-    expect(opts.model).toMatch(/^veo-/);
+    // The tier the 25-credit price is anchored on, never the engine's Standard default ($0.40/s).
+    expect(opts.model).toMatch(/^veo-3\.1-fast-/);
     expect(opts.unitCostUsd).toBeGreaterThan(0);
     // A clip that was accepted keeps the estimate.
     expect(opts.actualCost(accepted())).toBeUndefined();

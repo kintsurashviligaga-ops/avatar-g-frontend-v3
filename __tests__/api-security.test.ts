@@ -198,9 +198,12 @@ describe('voice/telephony hardening (regression guards)', () => {
     expect(/searchParams\.get\(\s*['"]userId['"]/.test(src)).toBe(false);
   });
 
-  it('the inbound Vapi webhook verifies the provider signature when a secret is configured', () => {
-    const src = read('app/api/voice/inbound/route.ts');
-    expect(/verifyVapiWebhookSignature\s*\(/.test(src)).toBe(true);
+  it('both Vapi webhooks verify the provider signature and fail CLOSED when VAPI_WEBHOOK_SECRET is unset', () => {
+    for (const f of ['app/api/voice/inbound/route.ts', 'app/api/voice/webhook/route.ts']) {
+      const src = read(f);
+      expect(/verifyVapiWebhookSignature\s*\(/.test(src)).toBe(true);
+      expect(/if\s*\(\s*!secret\s*\)\s*\{\s*return NextResponse\.json\([^)]*status:\s*503/.test(src)).toBe(true);
+    }
   });
 
   it('the phone webhook fails CLOSED when TWILIO_AUTH_TOKEN is unset (no open LLM drain)', () => {

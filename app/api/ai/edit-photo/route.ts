@@ -9,6 +9,7 @@
  * warning. A bad/absent slug fails cleanly (createPrediction throws) → the credit is refunded, not lost. So the
  * feature is safe to ship before the operator has pinned/verified their exact checkpoints.
  */
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 // Provider bodies must never reach the client — see lib/api/providerError.
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -120,6 +121,10 @@ async function saveCreation(userId: string, url: string, action: PhotoAction): P
 }
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
   const body = (await req.json().catch(() => null)) as { action?: string; actions?: unknown; mediaUrl?: string; prompt?: string } | null;
   const prompt = typeof body?.prompt === 'string' ? body.prompt : '';

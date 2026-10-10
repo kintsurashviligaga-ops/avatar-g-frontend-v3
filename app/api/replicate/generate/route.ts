@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { guardGeneration, type GenKind } from '@/lib/api/generationGuard';
 import { providerErrorBody } from '@/lib/api/providerError';
@@ -48,6 +49,10 @@ const SERVICE_GEN_KIND: Record<string, GenKind> = {
 };
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   // Set once a create-path reservation lands; the catch refunds it if the create then throws.
   let reservation: { userId: string; ref: string } | null = null;
   try {

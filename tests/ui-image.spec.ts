@@ -37,10 +37,8 @@ async function seed(page: Page): Promise<void> {
 }
 
 /**
- * Opens the studio and chooses the Image tool the way the sidebar does (`omni:set-tool`).
- * ⚠️ NOT `?tool=image`: under `next dev`'s StrictMode the mount effects run twice and the second run of "close the settings in
- * the chat" clobbers the sheet the deep link just opened (the same for product / swap / remix). A production build runs
- * them once; choosing the tool after mount is what every real user does and is not affected.
+ * Opens the studio and chooses the Image tool the way the sidebar does (`omni:set-tool`), after mount, as every real
+ * user does. (A `?tool=image` link works too since 2026-10-09: `next dev`'s StrictMode re-run no longer closes its sheet.)
  */
 async function openImage(page: Page, locale = 'en'): Promise<void> {
   await page.goto(`/${locale}/dashboard`, { waitUntil: 'load' });

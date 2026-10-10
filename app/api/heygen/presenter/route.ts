@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
@@ -89,6 +90,10 @@ async function reservePresenter(userId: string | null, kind: 'presenter' | 'pres
 }
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   // Two POSTs per generation (synthesize + submit), so use the AI tier (10/min)
   // rather than EXPENSIVE (5/min) which a couple of generations would exhaust.
   const rl = await checkRateLimit(req, RATE_LIMITS.AI);
@@ -101,9 +106,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ code: 'auth_required', ...signInToGenerateBody() }, { status: 401 });
   }
   const userId = user?.id ?? null;
-  // The HeyGen key gates PHASE B ONLY. Phase A is pure ElevenLabs TTS and is the INPUT to the
-  // SadTalker fallback tier — gating it here killed the very fallback that exists to cover a
-  // missing HeyGen key, leaving presenter mode with ZERO working tiers. Gate moved to Phase B.
+  // ONE ENGINE: the presenter is HeyGen. Phase A used to run without a key because its audio fed a SadTalker (Replicate)
+  // fallback; that fallback is gone (the owner, 2026-10-09: no silent fallback to another outside provider), so without
+  // a key Phase A refuses BEFORE the hold — nothing is charged for a voice no render can use.
   const apiKey = process.env.HEYGEN_API_KEY?.trim();
 
   const body = (await req.json().catch(() => ({}))) as { text?: string; audioUrl?: string; faceUrl?: string; orientation?: 'landscape' | 'vertical' | 'square'; gender?: 'female' | 'male'; chargeToken?: unknown };
@@ -114,9 +119,10 @@ export async function POST(req: NextRequest) {
   if (!body.audioUrl) {
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     if (!text) return NextResponse.json({ success: false, error: 'text is required' }, { status: 400 });
-    // HOLD the price before the TTS. The hold token handed back lets the NEXT phase (HeyGen submit, or the
-    // SadTalker fallback on /api/video/lipsync) release it as it reserves its own render — so one presenter costs
-    // one avatar price, and a TTS whose render is never started stays paid for.
+    if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured', code: 'heygen_not_configured' }, { status: 503 });
+    // HOLD the price before the TTS. The hold token handed back lets the NEXT phase (the HeyGen submit) release it as it
+    // reserves its own render — so one presenter costs one avatar price, and a TTS whose render is never started stays
+    // paid for.
     const hold = await reservePresenter(userId, 'presenter-tts');
     if (!hold.ok) return hold.res;
     // Honour the caller's Female/Male choice via the cloned-voice map; falls back to
@@ -130,15 +136,13 @@ export async function POST(req: NextRequest) {
     // The hold is bound to THIS audio (lib/billing/avatarCharge holdReleasableFor): only a render of exactly this
     // file, on the presenter face, may release it — never one the caller can make fail on purpose.
     const chargeToken = userId && hold.ref ? signAvatarCharge({ k: 'presenter-hold', u: userId, r: hold.ref, j: null, a: audioFingerprint(audioUrl) }) : null;
-    // heygenReady tells the client whether Phase B is even worth attempting; when false it
-    // goes straight to the SadTalker tier with this same audioUrl.
+    // heygenReady is always true here now (Phase A refuses without a key); kept for clients that still read it.
     return NextResponse.json({ success: true, phase: 'synthesized', audioUrl, heygenReady: !!apiKey, voiceProvider: 'elevenlabs:cloned-ka', ...(chargeToken ? { chargeToken } : {}) });
   }
 
   // ── PHASE B — drive the default presenter face with the hosted audio via HeyGen's
   // talking_photo path (upload + submit, both internally timeout-bounded → fast).
-  // THIS is where the HeyGen key is actually required. A 503 here is non-fatal: the client
-  // still has the Phase A audio and falls through to the Replicate SadTalker presenter.
+  // A Phase B without a key (a key removed between the phases) refuses here; nothing was reserved for it yet.
   if (!apiKey) return NextResponse.json({ success: false, error: 'HeyGen not configured', code: 'heygen_not_configured' }, { status: 503 });
   const audioUrl = body.audioUrl;
   const faceUrl = body.faceUrl && /^https?:\/\//.test(body.faceUrl) ? body.faceUrl : DEFAULT_FACE_URL;

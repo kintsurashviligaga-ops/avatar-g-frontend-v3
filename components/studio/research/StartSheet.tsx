@@ -100,7 +100,7 @@ export function StartSheet({ locale, authed }: { locale: string; authed: boolean
           <div data-testid="research-docs">
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <p className="text-[12.5px] font-medium text-app-text">{c.docsLabel}</p>
-              <button type="button" onClick={researchActions.openConnectors} className="inline-flex min-h-[44px] items-center rounded-full px-3 text-[12.5px] font-medium text-app-accent hover:bg-app-elevated">{files && files.length > 0 ? c.docsManage : c.docsAdd}</button>
+              <button type="button" onClick={researchActions.openConnectors} data-testid="research-docs-open" className="inline-flex min-h-[44px] items-center rounded-full px-3 text-[12.5px] font-medium text-app-accent hover:bg-app-elevated">{files && files.length > 0 ? c.docsManage : c.docsAdd}</button>
             </div>
             {files && files.length > 0 ? (
               <ul className="flex flex-wrap gap-2" aria-label={c.docsLabel}>

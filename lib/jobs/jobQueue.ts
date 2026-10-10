@@ -57,6 +57,12 @@ export interface Job {
    * cancel control (there's nothing local to abort). The engine never sets this.
    */
   observed?: boolean;
+  /**
+   * Observed jobs only: the server can stop this one (POST /api/tasks { action: 'cancel' }), so the tray offers
+   * a cancel control for it after all. Today that is Agent G's lease jobs (montage, audio extraction) while they
+   * are live; a studio render has no server-side stop. The engine never sets this.
+   */
+  cancellable?: boolean;
 }
 
 /** Progress the runner reports back as it works. */

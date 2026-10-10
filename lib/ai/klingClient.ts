@@ -10,7 +10,8 @@
  *     aspect_ratio, negative_prompt (NO cfg_scale / reference_images).
  *   kwaivgi/kling-v1.6-pro    ✅ — adds cfg_scale, end_image, reference_images.
  *   kling-v2-master / v2.0-pro → 404 (don't exist on Replicate).
- *   TRUE video2video motion transfer → NONE exist → V2V falls back to I2V.
+ *   TRUE video2video motion transfer → NONE exist, so there is no V2V entry point here (a reference video
+ *   used to be accepted and silently ignored — removed 2026-10-09).
  *
  * Env: REPLICATE_API_TOKEN (required), KLING_MODEL (override the default model).
  */
@@ -56,12 +57,6 @@ export interface KlingI2VInput {
   onProgress?: (msg: string) => void;
 }
 
-export interface KlingV2VInput extends KlingI2VInput {
-  /** Motion reference video. NOTE: Replicate Kling has no true V2V, so this is
-   *  currently informational — generation falls back to motion-prompt I2V. */
-  videoUrl: string;
-}
-
 /** Image → Video. Returns a hosted MP4 URL; throws on failure (caller decides). */
 export async function klingImageToVideo(p: KlingI2VInput): Promise<string> {
   if (!klingConfigured()) throw new Error('REPLICATE_API_TOKEN not configured');
@@ -85,35 +80,19 @@ export async function klingImageToVideo(p: KlingI2VInput): Promise<string> {
   return url;
 }
 
-/**
- * Video → Video (Motion Control). Replicate Kling has NO true motion-transfer model,
- * so this honestly degrades to motion-prompt I2V (animate the character image with a
- * movement-rich prompt). The reference video is accepted for API symmetry but not used.
- */
-export async function klingVideoToVideo(p: KlingV2VInput): Promise<string> {
-  p.onProgress?.('[kling] no native V2V on Replicate → motion-prompt I2V');
-  return klingImageToVideo({
-    ...p,
-    prompt: `${p.prompt}, dynamic fluid movement, identity preserved, photorealistic`,
-  });
-}
-
 const REPLICATE_API = 'https://api.replicate.com/v1';
 
 /**
- * Submit an I2V (or V2V→I2V) Kling job WITHOUT waiting — returns the Replicate
+ * Submit an I2V Kling job WITHOUT waiting — returns the Replicate
  * prediction id. The async /api/motion-control route uses this so the HTTP request
  * returns in ~2s; Kling itself takes 3-7 min, and a blocking wait (replicate.run /
- * klingImageToVideo) 504s on Vercel. Poll progress with klingPoll(id). A reference
- * video degrades to motion-prompt I2V (Replicate has no true V2V Kling).
+ * klingImageToVideo) 504s on Vercel. Poll progress with klingPoll(id).
  */
-export async function klingSubmit(p: KlingI2VInput & { videoUrl?: string }): Promise<string> {
+export async function klingSubmit(p: KlingI2VInput): Promise<string> {
   if (!klingConfigured()) throw new Error('REPLICATE_API_TOKEN not configured');
   const model = (p.modelName || KLING_MODELS.BEST);
   const isV16 = /v1[.\-]6/.test(model);
-  const prompt = p.videoUrl?.trim()
-    ? `${p.prompt}, dynamic fluid movement, identity preserved, photorealistic`
-    : p.prompt;
+  const prompt = p.prompt;
   const input: Record<string, unknown> = {
     start_image: p.imageUrl,
     prompt,

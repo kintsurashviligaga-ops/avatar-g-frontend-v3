@@ -85,3 +85,16 @@ test('with the reaper ON, a stale `_settle` row is neither failed nor refunded b
   expect(refundDebitByRef).toHaveBeenCalledWith('user-1', 'image:img_1:fp', 2);
   expect(j).toMatchObject({ enabled: true, drained: 1 });
 });
+
+test('with the reaper ON, a queued job with a lease is left to its own sweep (it retries or refunds it itself)', async () => {
+  process.env.RENDER_DRAINER_ENABLED = '1';
+  const _exec = { kind: 'agent-montage', v: 3, attempt: 1, maxAttempts: 2, owner: 'w-1', leaseUntil: 0 };
+  reapRows = [
+    { id: 'montage-1', status: 'processing', updated_at: STALE, user_id: 'user-1', params: { _exec, _reserve: { ref: 'agent-montage:montage-1', credits: 5 } } },
+    { id: 'img_1', status: 'processing', updated_at: STALE, user_id: 'user-1', params: { _reserve: { ref: 'image:img_1:fp', credits: 2 } } },
+  ];
+  await GET(tick());
+  expect(failJob).toHaveBeenCalledTimes(1);
+  expect(failJob).toHaveBeenCalledWith('img_1', expect.any(String));
+  expect(refundDebitByRef).toHaveBeenCalledTimes(1);
+});

@@ -118,6 +118,7 @@ describe('isVideoEditRequest — an edit, or a question about the video', () => 
     'add subtitles', 'make it vintage', 'trim the first 10 seconds', 'speed it up 2x', 'cinematic color grade',
     'add background music (attach an audio file too)', 'add a text overlay: ', 'remove the background', 'stabilize it',
     'სუბტიტრები დაამატე: ', 'ფერი შეცვალე — კინემატოგრაფიული', 'მუსიკა დაამატე', 'ტექსტი დაამატე: ', 'მოჭერი პირველი 10 წამი', 'სიჩქარე გაზარდე 2x',
+    'ფონი მოაშორე', 'მოაშორე ფონი', 'ფონი ამოიღე', 'შეცვალე პერსონაჟი ამ ვიდეოში',
     'добавь субтитры: ', 'кинематографичный цвет', 'добавь музыку', 'добавь текст: ', 'обрежь первые 10 секунд', 'ускорь в 2 раза',
   ])('an edit: %s', (t) => { expect(isVideoEditRequest(t)).toBe(true); });
 

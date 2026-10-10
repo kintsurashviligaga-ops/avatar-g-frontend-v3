@@ -131,7 +131,7 @@ describe('chat text path — Gemini only', () => {
   it('without a Gemini key the turn says the core is not configured, even with an Anthropic key', async () => {
     const res = await orchestrate(input({ message: 'compute the integral of x^2 dx' }));
     expect(res.success).toBe(false);
-    expect(res.message).toBe('Chat is temporarily unavailable (cognitive core not configured).');
+    expect(res.message).toBe('Chat is temporarily unavailable. Please try again a little later.');
     expect(res.metadata).toMatchObject({ provider: 'gemini', error: 'GEMINI_API_KEY not configured' });
     expect(generateWithGemini).not.toHaveBeenCalled();
     expect(Anthropic).not.toHaveBeenCalled();

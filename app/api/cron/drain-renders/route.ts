@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { failJob } from '@/lib/orchestrator/jobs';
+import { isLeaseOwned } from '@/lib/orchestrator/jobLease';
 import { refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { selectReapable, reapReserve, drainerEnabled, RENDER_STALE_THRESHOLD_MS, type DrainJobRow } from '@/lib/pipeline/renderDrainer';
 import { reportError } from '@/lib/observability/report-error';
@@ -81,7 +82,9 @@ async function handle(req: NextRequest) {
     // Double-guard: the SQL filter AND the pure invariant must both agree a row is abandoned.
     // ⚠️ A `_settle` row belongs to leg 1. Failing it here on age alone would end a job whose provider may still be
     // working — and the settle leg only reads LIVE rows, so its refund (or delivery) could then never happen.
-    const reapable = selectReapable((data ?? []) as DrainJobRow[], Date.now()).filter((j) => !isSettleOwned(j));
+    // A queued job with a lease (lib/orchestrator/jobLease) has its own keeper: its sweep retries it or fails and
+    // refunds it, so the age-based reap here must not race it.
+    const reapable = selectReapable((data ?? []) as DrainJobRow[], Date.now()).filter((j) => !isSettleOwned(j) && !isLeaseOwned(j));
     for (const j of reapable) {
       // Refund the up-front reservation FIRST — while the row is still `processing`. If failJob landed
       // first and the refund then failed, the next tick could no longer re-reap (status → failed) and the

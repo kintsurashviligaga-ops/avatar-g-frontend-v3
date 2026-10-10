@@ -118,6 +118,15 @@ const nextConfig = {
       // Montage: conform pass per source + the N-input stitch + the music mux, all ffmpeg-static. Captions
       // rasterise through @resvg (drawtext is unavailable on Vercel — no libfreetype), so both binaries ride.
       '/api/v2/montage/render': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // Agent G's montage (lib/agent/media): probes every file and decodes the track with ffmpeg, then runs the same
+      // montage lane as above.
+      '/api/agent/media/montage': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // …and its per-minute sweep, which renders a job whose worker never started or died (lib/agent/media/montageWorker).
+      '/api/agent/media/sweep': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // …and its audio extraction: ffmpeg takes the sound out of a video as an MP3 (lib/agent/media/audioLive).
+      '/api/agent/media/audio': ['./node_modules/ffmpeg-static/**'],
+      // …and the one task route (lib/tasks): reading a lease job that no worker holds starts one there, montage or audio.
+      '/api/tasks': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
       // Presentation: every slide is rasterised SVG→PNG through @resvg. No ffmpeg. Without this entry the
       // deck builds and then renders nothing — Vercel's container has no system fonts, so resvg is the
       // only thing that draws text at all (verified: Georgian renders 12.5k ink pixels with the bundled
@@ -358,13 +367,20 @@ const nextConfig = {
       // and charged for an image. Master Task §19 / §27: one primary workspace, no fake numbers — they land in the studio.
       ['hub', '/:locale/dashboard'], ['hub/:path*', '/:locale/dashboard'],
       ['workspace', '/:locale/dashboard'], ['workspace/:path*', '/:locale/dashboard'],
+      // Three more pages nothing linked to, each over tables Production does not have (schema drift triage, retired on
+      // the owner's word 2026-10-09; docs/handoffs/2026-10-08-production-schema-drift.md): the Pipeline builder (another
+      // shell beside the studio; Save and Run answered 500 on the missing `credits` / `workflow_definitions`), the seller
+      // invoice list (`invoices`, `shops`; its create and detail links were 404s) and the admin disputes view
+      // (`disputes`, `orders`).
+      ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
+      ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
+      ['admin/disputes', '/:locale/admin'],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
-    // /{lang}/studio is the new studio only where STUDIO_V2 is on (lib/studio/flags). Elsewhere it goes home with a
-    // real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale] loading.tsx starts the response
-    // first), which a crawler reads as a 200 page.
-    if (!/^(1|true|on)$/i.test(String(process.env.STUDIO_V2 ?? '').trim())) {
-      legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
-    }
+    // /{lang}/studio — the „Studio Beta" second studio — is RETIRED everywhere, whatever STUDIO_V2 says (the owner,
+    // 2026-10-09 18:25Z: „too confusing"; it was a second set of Video / Image / Avatar / Music tabs beside the studio's own
+    // tools). It goes home with a real HTTP 307 — the page's own redirect() alone arrives in-stream (the [locale]
+    // loading.tsx starts the response first), which a crawler reads as a 200 page.
+    legacyRedirects.push({ source: `${L}/studio`, destination: home, permanent: false });
     // THERE IS NO SIGN-IN PAGE (deleted 2026-10-01 at the owner's request): /login, /signup and the /auth alias open
     // the studio's own sign-in sheet (lib/routing/signIn.ts). The request's query rides along (Next merges it into the
     // destination's), so ?redirect= / ?error= / ?plan= / ?ref= still work. /auth/callback is NOT matched (exact sources).

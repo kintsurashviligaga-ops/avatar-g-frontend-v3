@@ -15,7 +15,7 @@ test('lists what the catalog search finds, in the UI language, and opens the ser
   const { container } = render(<ServiceSearchResults services={services} lang="ka" onOpen={onOpen} rowClassName={ROW} />);
   expect(container.textContent).toContain('სერვისები');
   expect(container.textContent).toContain('მუსიკის შექმნა');
-  expect(container.textContent).toContain('მუსიკალური ვიდეო');
+  expect(container.textContent).toContain('მუსიკალური კლიპი');
   fireEvent.click(container.querySelector('[data-service="video.music-video"]') as HTMLElement);
   expect(onOpen).toHaveBeenCalledTimes(1);
   expect(onOpen.mock.calls[0][0].id).toBe('video.music-video');

@@ -17,6 +17,8 @@ import {
   freeSlotApplies,
   insertPromptToken,
   isLengthLocked,
+  lipsyncAddOnCredits,
+  lipsyncAddOnNote,
   lastOpenStopIndex,
   musicVideoIntroSec,
   openDuration,
@@ -84,6 +86,28 @@ describe('the price is the quote, for every length, tier and mode', () => {
 
   test('the hero titles', () => {
     expect(VIDEO_TIER_TITLE).toEqual({ lite: 'VEO 3.1 LITE', fast: 'VEO 3.1 FAST', standard: 'VEO 3.1' });
+  });
+});
+
+describe('the lip-sync pass: its own charge, beside the film\'s (gap C2)', () => {
+  test('it is the avatar price — what /api/video/lipsync reserves (creditCostFor(\'avatar\')) — and never part of videoQuote', () => {
+    const lip = lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false });
+    expect(lip).toBe(quoteCredits({ tool: 'avatar' }));
+    expect(lip).toBe(20);
+    expect(videoQuote({ seconds: 24, tier: 'fast', mode: 'musicvideo' })).toBe(videoCredits({ seconds: 24, quality: 'fast', mode: 'musicvideo' }));
+  });
+
+  test('the same condition as the studio\'s wantsLipsync: a music video when its switch is on, a documentary when it has dialogue', () => {
+    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: true, hasDialogue: false })).toBe(20);
+    expect(lipsyncAddOnCredits({ mode: 'musicvideo', lipsyncOn: false, hasDialogue: true })).toBe(0);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: true, hasDialogue: false })).toBe(0);
+    expect(lipsyncAddOnCredits({ mode: 'documentary', lipsyncOn: false, hasDialogue: true })).toBe(20);
+  });
+
+  test('the line says when it is taken and that a failed pass gives it back, in all three languages', () => {
+    expect(lipsyncAddOnNote(20, 'en')).toBe('+20 credits for lip-sync — taken only if it runs, returned if it fails');
+    expect(lipsyncAddOnNote(20, 'ka')).toBe('+20 კრედიტი ლიპსინკისთვის — ჩამოიჭრება მხოლოდ თუ შესრულდება, ჩავარდნისას ბრუნდება');
+    expect(lipsyncAddOnNote(20, 'ru')).toBe('+20 кредитов за липсинк — списываются, только если он запустится; при сбое возвращаются');
   });
 });
 

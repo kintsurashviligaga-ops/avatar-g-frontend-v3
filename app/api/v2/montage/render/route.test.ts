@@ -11,7 +11,8 @@ jest.mock('server-only', () => ({}));
 let mockUser: { id: string } | null = { id: 'user-1' };
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
-  RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000, keyPrefix: 'rl:exp' } },
+  checkRateLimitByKey: jest.fn(async () => null),
+  RATE_LIMITS: { EXPENSIVE: { maxRequests: 5, windowMs: 60_000, keyPrefix: 'rl:exp' }, MONTAGE_USER: { maxRequests: 40, windowMs: 86_400_000, keyPrefix: 'rl:montage:user' } },
 }));
 jest.mock('../../../../../lib/supabase/server', () => ({
   createSupabaseServerClient: jest.fn(() => ({ auth: { getUser: jest.fn(async () => ({ data: { user: mockUser } })) } })),
@@ -46,6 +47,8 @@ import { POST } from './route';
 import { runMontage } from '../../../../../lib/services/montage/montagePipeline';
 // eslint-disable-next-line import/first
 import { createJob } from '../../../../../lib/orchestrator/jobs';
+// eslint-disable-next-line import/first
+import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
 
 const post = (body: unknown) =>
   POST(new Request('https://myavatar.ge/api/v2/montage/render', {
@@ -151,5 +154,29 @@ describe('owner check (lib/security/callerMedia)', () => {
   it('an external clip URL is not ours to judge: it still meets only the public-address check', async () => {
     const res = await post(edit({ shots: shot('https://cdn.example.com/clip.mp4') }));
     expect(res.status).toBe(200);
+  });
+});
+
+// A montage bills no credits (gap M4): the per-IP burst guard does not stop one account on many IPs, so a per-account
+// daily ceiling (shared with Agent G's montage) bounds the encode minutes one person can take.
+describe('per-account daily ceiling', () => {
+  it('counts a valid edit against the account, before any job is filed or ffmpeg runs', async () => {
+    expect((await post(edit())).status).toBe(200);
+    expect(checkRateLimitByKey).toHaveBeenCalledWith('user-1', RATE_LIMITS.MONTAGE_USER);
+    const cap = (checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0];
+    expect(cap).toBeLessThan((createJob as jest.Mock).mock.invocationCallOrder[0]);
+    expect(cap).toBeLessThan((runMontage as jest.Mock).mock.invocationCallOrder[0]);
+  });
+
+  it('over the ceiling the limiter answers, and nothing is filed or rendered', async () => {
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+    expect((await post(edit())).status).toBe(429);
+    expect(createJob).not.toHaveBeenCalled();
+    expect(runMontage).not.toHaveBeenCalled();
+  });
+
+  it('an edit that fails validation spends none of the allowance', async () => {
+    expect((await post(edit({ musicStartSec: -1 }))).status).toBe(400);
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
   });
 });

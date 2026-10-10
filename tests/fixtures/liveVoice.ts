@@ -83,6 +83,15 @@ export class FakeLive {
   say(text: string): void {
     this.ws?.send(JSON.stringify({ serverContent: { outputTranscription: { text } } }));
   }
+
+  /**
+   * The user speaking: Google's input transcription of their words, then the end of that exchange. A voice start runs
+   * only on these words (components/voice/live/liveActions: the yes is the user's, never the model's function call).
+   */
+  hear(text: string): void {
+    this.ws?.send(JSON.stringify({ serverContent: { inputTranscription: { text } } }));
+    this.ws?.send(JSON.stringify({ serverContent: { turnComplete: true } }));
+  }
 }
 
 async function signIn(page: Page, baseURL: string | undefined): Promise<void> {

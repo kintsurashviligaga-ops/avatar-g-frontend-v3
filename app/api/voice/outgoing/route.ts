@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { structuredLog } from '@/lib/logger';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getTelephonyProvider } from '@/lib/voice/telephonyProvider';
+import { phoneCallsReady, phoneCallsUnavailableBody } from '@/lib/calls/availability';
 import type { OutboundCallRequest } from '@/types/billing';
 
 /**
@@ -37,6 +38,10 @@ export async function POST(request: NextRequest) {
     if (authErr || !user) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
+
+    // ⚠️ The only telephony provider is a mock that answered `queued` with a made-up call SID for any number (and logged
+    // the number). No adapter places a call yet (lib/calls/availability.ts): 503, nothing placed or logged.
+    if (!phoneCallsReady()) return NextResponse.json(phoneCallsUnavailableBody(), { status: 503 });
 
     /* ── Place the call ──────────────────────────────────────────────── */
     const callReq: OutboundCallRequest = {

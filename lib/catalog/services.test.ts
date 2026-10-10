@@ -7,7 +7,7 @@ import { ALL_TOOLS } from '@/lib/studio/tools';
 import { quoteCredits, type QuoteTool } from '@/lib/credits/quote';
 
 // Every key quoteCredits() prices. Kept as a list (not derived) so a new QuoteTool forces this file to be read.
-const QUOTE_TOOLS: QuoteTool[] = ['image', 'video', 'music', 'avatar', 'remix', 'swap', 'motion', 'product', 'model3d', 'chat', 'interior', 'photoshoot'];
+const QUOTE_TOOLS: QuoteTool[] = ['image', 'video', 'music', 'avatar', 'remix', 'swap', 'motion', 'product', 'model3d', 'chat', 'interior', 'photoshoot', 'vfx'];
 
 describe('service catalog — shape', () => {
   it('has unique ids, unique orders and known categories', () => {

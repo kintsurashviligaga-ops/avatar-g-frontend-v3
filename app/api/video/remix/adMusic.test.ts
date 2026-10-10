@@ -50,7 +50,7 @@ jest.mock('../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../lib/chat/filmComposite', () => ({ isAdminUser: jest.fn(async () => false) }));
 jest.mock('../../../../lib/orchestrator/ledger', () => ({
-  deductCredits: jest.fn(async () => ({ ok: true })),
+  deductCreditsOnce: jest.fn(async () => ({ ok: true })),
   refundCredits: jest.fn(async () => ({ ok: true })),
 }));
 jest.mock('../../../../lib/orchestrator/idempotency', () => ({
@@ -67,7 +67,7 @@ import { POST } from './route';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '../../../../lib/elevenlabs/music';
 import { generateMusic } from '../../../../lib/ai/replicate';
 import { muxAudioOntoVideo } from '../../../../lib/video/remixOps';
-import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
+import { deductCreditsOnce, refundCredits } from '../../../../lib/orchestrator/ledger';
 
 const post = (body: unknown) =>
   new NextRequest('https://myavatar.ge/api/video/remix', {
@@ -105,7 +105,7 @@ test('an ElevenLabs Music FAILURE ships the clip without music, says so — and 
   expect(generateMusic).not.toHaveBeenCalled();
   expect(muxAudioOntoVideo).not.toHaveBeenCalled();
   // The ad itself was delivered, so its charge stands — exactly as before when no bed could be made.
-  expect(deductCredits).toHaveBeenCalledTimes(1);
+  expect(deductCreditsOnce).toHaveBeenCalledTimes(1);
   expect(refundCredits).not.toHaveBeenCalled();
 });
 
@@ -115,4 +115,14 @@ test('no ElevenLabs key: the same — no music, no MusicGen', async () => {
   expect(json).toMatchObject({ url: 'https://storage.example/veo-ad.mp4', music: false });
   expect(composeElevenLabsMusic).not.toHaveBeenCalled();
   expect(generateMusic).not.toHaveBeenCalled();
+});
+
+test('a replayed charge (same jobId and body, already charged) is refused with 409 before anything renders (C5)', async () => {
+  (deductCreditsOnce as jest.Mock).mockResolvedValueOnce({ ok: false, reason: 'replay', balance: 75 });
+  const res = await POST(post(AD));
+  expect(res.status).toBe(409);
+  expect(await res.json()).toMatchObject({ url: null, success: false, code: 'duplicate_request' });
+  expect(composeElevenLabsMusic).not.toHaveBeenCalled();
+  expect(muxAudioOntoVideo).not.toHaveBeenCalled();
+  expect(refundCredits).not.toHaveBeenCalled();
 });

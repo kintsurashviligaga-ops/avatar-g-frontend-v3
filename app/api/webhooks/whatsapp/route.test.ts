@@ -17,11 +17,15 @@ jest.mock('../../../../lib/agent-g/channels/whatsapp-processor', () => ({
   parseWhatsAppMessageSummary: jest.fn(() => [{ id: 'wamid.1', from: '995500000000', text: 'hi' }]),
   processWhatsAppPayload: jest.fn(async () => undefined),
 }));
+jest.mock('../../../../lib/calls/whatsapp/liveDeps', () => ({ liveCallDeps: jest.fn(() => ({ fake: true })) }));
+jest.mock('../../../../lib/calls/whatsapp/callService', () => ({ handleCallEvents: jest.fn(async () => [{ callId: 'wacid.R', outcome: 'refused' }]) }));
 
 import crypto from 'node:crypto';
 import { GET, POST } from './route';
 import { enqueueQueueItem } from '../../../../lib/platform/queues';
 import { parseWhatsAppMessageSummary, processWhatsAppPayload } from '../../../../lib/agent-g/channels/whatsapp-processor';
+import { handleCallEvents } from '../../../../lib/calls/whatsapp/callService';
+import { connectPayload } from '../../../../lib/calls/whatsapp/testFixtures';
 
 const BODY = JSON.stringify({ object: 'whatsapp_business_account', entry: [] });
 const sign = (secret: string, body: string) => `sha256=${crypto.createHmac('sha256', secret).update(body).digest('hex')}`;
@@ -152,4 +156,35 @@ describe('GET — Meta\'s "Verify and save" handshake', () => {
   });
 
 
+});
+
+describe('WhatsApp Calling (`calls` field, MOCKED Meta payloads): its own path, never the message pipeline', () => {
+  const CALL_BODY = JSON.stringify(connectPayload({ callId: 'wacid.ROUTE1', atSec: 1_760_000_000 }));
+  const postCall = (headers: Record<string, string>) =>
+    new Request('https://myavatar.ge/api/webhooks/whatsapp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.1.0.${Math.floor(Math.random() * 200)}`, ...headers },
+      body: CALL_BODY,
+    });
+  beforeEach(() => {
+    process.env.WHATSAPP_APP_SECRET = 'app-secret-123';
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+
+  test('a signed connect goes to the call service, not to the message answerer or the queue', async () => {
+    (parseWhatsAppMessageSummary as jest.Mock).mockReturnValueOnce([]);
+    const res = await POST(postCall({ 'x-hub-signature-256': sign('app-secret-123', CALL_BODY) }));
+    expect(res.status).toBe(200);
+    expect(handleCallEvents).toHaveBeenCalledTimes(1);
+    const [, events] = (handleCallEvents as jest.Mock).mock.calls[0];
+    expect(events).toEqual([expect.objectContaining({ kind: 'connect', callId: 'wacid.ROUTE1' })]);
+    expect(processWhatsAppPayload).not.toHaveBeenCalled();
+    expect(enqueueQueueItem).not.toHaveBeenCalled();
+  });
+
+  test('an unsigned or wrongly signed calls payload is refused before anything runs', async () => {
+    expect((await POST(postCall({}))).status).toBe(403);
+    expect((await POST(postCall({ 'x-hub-signature-256': sign('nope', CALL_BODY) }))).status).toBe(403);
+    expect(handleCallEvents).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
+import { generateGeminiImage, geminiFrameModel } from '@/lib/ai/geminiImage';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { NanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
@@ -305,12 +307,33 @@ export async function POST(req: NextRequest) {
     // then FLUX 1.1 Pro (Replicate): two providers the owner's policy forbids, rendering under the model the user
     // picked and billed as if it were that model. One request, one provider: every miss is the explicit
     // 502 provider_unavailable below, with the reserved credit returned through refundReserve.
-    const nbTripped = await isProviderTripped('nanobanana').catch(() => false);
+    //
+    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy) swaps the ONE engine, never adds a second: with the switch on the
+    // image comes from Google's own image model (lib/ai/geminiImage, the model NanoBanana resells) at its default size,
+    // the user's photo passed as a reference that must load. Same price, same refund-on-miss path below.
+    const googleOnly = isMediaGoogleOnly();
+    const nbTripped = googleOnly ? false : await isProviderTripped('nanobanana').catch(() => false);
     let providerUrl: string | null = null;
     let providerText: string | undefined;
     let credits: number | undefined;
-    const model = `NanoBananaAI ${endpoint.toUpperCase()}`;
-    if (!nbTripped) {
+    let alreadyHosted = false;
+    const model = googleOnly ? `Google ${geminiFrameModel()}` : `NanoBananaAI ${endpoint.toUpperCase()}`;
+    if (googleOnly) {
+      const img = await generateGeminiImage({
+        prompt: finalPrompt,
+        referenceImages: referenceImageUrl ? [referenceImageUrl] : [],
+        requireReferences: true,
+        aspectRatio: body.aspectRatio ?? '1:1',
+      }).catch(() => null);
+      if (img) {
+        const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
+        providerUrl = await uploadAndSign('uploads', `omni/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`, img.base64, img.mimeType, 604800).catch(() => null);
+        alreadyHosted = !!providerUrl;
+        if (!providerUrl) providerText = 'google image: storage upload failed';
+      } else {
+        providerText = 'google image: no image';
+      }
+    } else if (!nbTripped) {
       try {
         // Give 2K/4K a long-enough result-poll window (≈250s) so they complete rather
         // than timing out; 1K finishes far sooner and exits the poll early.
@@ -345,7 +368,7 @@ export async function POST(req: NextRequest) {
       // ⚠️ THE MESSAGE USED TO SAY "your credit was returned" WHENEVER A CREDIT HAD BEEN RESERVED — before the refund
       // ran and whatever it answered. It now says so only when refund_credits confirmed it (and `refunded` says the same).
       const refunded = await refundReserve(); // paid for nothing → give the reserved credit back
-      console.error('[nanobanana/image] NanoBanana missed (no fallback engine, R7):', (providerText ?? 'no image URL').slice(0, 300));
+      console.error(`[nanobanana/image] ${googleOnly ? 'Google image' : 'NanoBanana'} missed (no fallback engine, R7):`, (providerText ?? 'no image URL').slice(0, 300));
       return NextResponse.json({
         success: false,
         code:    'provider_unavailable',
@@ -369,7 +392,7 @@ export async function POST(req: NextRequest) {
     // (The base64 upload branch and its `host_failed` 502 served only the removed Grok leg, which could answer bytes
     // instead of a URL. NanoBanana always answers a URL, so a failed copy keeps that URL and there is always an asset.)
     let hostedUrl = providerUrl;
-    try {
+    if (!alreadyHosted) try {
       // Time-box the copy: a slow provider CDN must NOT hang the function until the
       // Vercel maxDuration limit (that surfaced as an intermittent platform 500).
       const ac = new AbortController();

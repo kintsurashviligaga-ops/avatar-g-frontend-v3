@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
 import { isAdmin } from '@/lib/auth/adminGuard';
+import { isGoogleOnly } from '@/lib/veo/policy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 min timeout for video gen
@@ -22,6 +23,11 @@ export const maxDuration = 300; // 5 min timeout for video gen
 export async function POST(req: NextRequest) {
   if (!(await isAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+  // VIDEO_GOOGLE_ONLY (lib/veo/policy, default ON): video renders on Veo only. This admin tool renders on Replicate
+  // MiniMax, so it runs only where the owner has turned the video switch off.
+  if (isGoogleOnly()) {
+    return NextResponse.json({ error: 'google_only', message: 'Video renders on Veo only while VIDEO_GOOGLE_ONLY is on.' }, { status: 503 });
   }
 
   const token = process.env.REPLICATE_API_TOKEN;

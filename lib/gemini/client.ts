@@ -58,6 +58,14 @@ export interface GeminiResponse {
   tier: GeminiModelTier;
   tokensIn?: number;
   tokensOut?: number;
+  /** Prompt tokens served from Gemini's context cache (implicit or explicit) — a subset of tokensIn, billed lower. */
+  tokensCached?: number;
+  /** Thinking tokens — NOT in tokensOut (the REST candidatesTokenCount excludes them), billed as output. */
+  tokensThinking?: number;
+  /** The provider's total, when it reports one. */
+  tokensTotal?: number;
+  /** Wall-clock time of the call (request sent → reply parsed), for the latency baseline. */
+  latencyMs?: number;
   finishReason?: string;
 }
 
@@ -164,6 +172,7 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
   // Grounding and a forced JSON response cannot be combined in one request.
   if (req.googleSearch && !req.responseMimeType) body.tools = [{ googleSearch: {} }];
 
+  const startedAt = Date.now();
   const res = await googleModelFetch(modelName, 'generateContent', {
     method: 'POST',
     body: JSON.stringify(body),
@@ -188,6 +197,8 @@ export async function generateWithGemini(req: GeminiRequest): Promise<GeminiResp
     tier,
     tokensIn: data.usageMetadata?.promptTokenCount,
     tokensOut: data.usageMetadata?.candidatesTokenCount,
+    ...usageExtras(data.usageMetadata),
+    latencyMs: Date.now() - startedAt,
     finishReason: candidate?.finishReason,
   };
 }
@@ -235,6 +246,8 @@ export async function* streamWithGemini(
   let fullText = '';
   let tokensIn: number | undefined;
   let tokensOut: number | undefined;
+  let extras: ReturnType<typeof usageExtras> = {};
+  const startedAt = Date.now();
 
   while (true) {
     const { done, value } = await reader.read();
@@ -260,6 +273,7 @@ export async function* streamWithGemini(
         if (parsed.usageMetadata) {
           tokensIn = parsed.usageMetadata.promptTokenCount;
           tokensOut = parsed.usageMetadata.candidatesTokenCount;
+          extras = usageExtras(parsed.usageMetadata);
         }
       } catch {
         // Ignore parse errors on partial chunks
@@ -267,7 +281,7 @@ export async function* streamWithGemini(
     }
   }
 
-  return { text: fullText, model: modelName, tier, tokensIn, tokensOut };
+  return { text: fullText, model: modelName, tier, tokensIn, tokensOut, ...extras, latencyMs: Date.now() - startedAt };
 }
 
 // ─── Convenience wrapper for image analysis ───────────────────────────────────
@@ -298,8 +312,26 @@ interface GeminiAPIResponse {
     };
     finishReason?: string;
   }>;
-  usageMetadata?: {
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
+  usageMetadata?: GeminiUsageMetadata;
+}
+
+interface GeminiUsageMetadata {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  cachedContentTokenCount?: number;
+  thoughtsTokenCount?: number;
+  totalTokenCount?: number;
+}
+
+/** The cache / thinking / total counts, each only when Gemini reported it as a non-negative number. */
+function usageExtras(u: GeminiUsageMetadata | undefined): Pick<GeminiResponse, 'tokensCached' | 'tokensThinking' | 'tokensTotal'> {
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined);
+  const cached = n(u?.cachedContentTokenCount);
+  const thinking = n(u?.thoughtsTokenCount);
+  const total = n(u?.totalTokenCount);
+  return {
+    ...(cached !== undefined ? { tokensCached: cached } : {}),
+    ...(thinking !== undefined ? { tokensThinking: thinking } : {}),
+    ...(total !== undefined ? { tokensTotal: total } : {}),
   };
 }

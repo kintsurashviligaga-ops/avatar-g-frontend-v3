@@ -3,7 +3,7 @@
 /**
  * ConnectorsSheet — the research door to the user's documents: the Connectors body (ConnectorsBody — Local files works; Google
  * Drive, OneDrive, Notion and Dropbox are „Soon" with no connect button) in a sheet, opened from Deep Research (the „+" row,
- * the start sheet's „Manage", the list). The hub's Connectors tab (components/studio/hub) draws the same body.
+ * the start sheet's „Manage", the list).
  */
 import { BottomSheet } from '@/components/studio/ui/BottomSheet';
 import { ConnectorsBody } from './ConnectorsBody';

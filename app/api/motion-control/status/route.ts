@@ -26,6 +26,7 @@ import { creditCostFor } from '@/lib/credits/pricing';
 import { motionChargeForPolledId } from '@/lib/services/motion/chargeToken';
 import { classifyProviderError } from '@/lib/api/providerError';
 import { generateMusic } from '@/lib/ai/replicate';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { reportError } from '@/lib/observability/report-error';
 
@@ -140,9 +141,11 @@ export async function GET(req: Request) {
   }
 
   // Optional instrumental background music, muxed onto the silent clip (mode 'replace').
-  // Bounded by the route's remaining time budget; fail-open → silent clip.
+  // Bounded by the route's remaining time budget; fail-open → silent clip. The status poll itself is never gated (a
+  // job started before MEDIA_GOOGLE_ONLY must still settle), but its MusicGen extra is: with the switch on the clip
+  // comes back silent, as it does on any music miss.
   let music = false;
-  if (searchParams.get('music') === '1') {
+  if (searchParams.get('music') === '1' && !isMediaGoogleOnly()) {
     const mood = MOOD_PROMPTS[String(searchParams.get('mood'))] ? String(searchParams.get('mood')) : 'energetic';
     const duration = Number(searchParams.get('duration')) === 10 ? 10 : 5;
     const remainingMs = 300_000 - (Date.now() - t0) - 25_000; // keep 25s response headroom

@@ -28,6 +28,7 @@ import { PERSONA_VOICES } from '@/lib/services/personas/personas';
 import { chatBudgetAllows } from '@/lib/services/billing/chatBudget';
 import { buildVoiceReplyPrompt, trimForSpeech, voiceFallbackReply, normalizeVoiceLocale, detectSpokenLocale, type VoiceLocale, type VoiceTurn } from '@/lib/voice/voicePrompt';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
+import { joinMemory, newestSavedFacts, savedFactsBlock } from '@/lib/memory/context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -149,8 +150,9 @@ export async function POST(req: NextRequest) {
     // The memory read and the budget check are independent round-trips: run them TOGETHER (a voice turn waits on
     // every millisecond before the model starts). The budget estimate leaves out the memory preamble — a few dozen
     // tokens, and the guard fails open anyway.
-    const [facts, budgetOk] = await Promise.all([
+    const [facts, saved, budgetOk] = await Promise.all([
       getUserProfileFacts(supabase, user.id).catch(() => null),
+      newestSavedFacts(supabase, user.id),
       chatBudgetAllows(`${effectiveSystem} ${prompt}`),
     ]);
 
@@ -158,7 +160,7 @@ export async function POST(req: NextRequest) {
     // ONE companion: the name/bio the user set in text chat carries into the voice call. Fail-open. Kept short
     // so it doesn't bloat the low-latency voice payload.
     try {
-      const preamble = facts ? buildProfilePreamble(facts) : '';
+      const preamble = joinMemory(facts ? buildProfilePreamble(facts) : null, savedFactsBlock(saved));
       if (preamble) effectiveSystem = `${preamble}\n\n${effectiveSystem}`;
       const fresh = extractProfileFacts(text);
       if (fresh.length) void saveUserProfileFacts(supabase, user.id, fresh);

@@ -4,7 +4,8 @@
  * A framework-free Thought→Action→Observation loop. The LLM is INJECTED (`llm`), so the whole
  * control flow is unit-testable at $0 with a scripted mock — no live provider needed. The
  * production binding (./bindLiveAgent) wires `llm` to the proven-live llmText chain and `tools`
- * to the real tool registry (scrape_webpage / web_search / prepare_instagram_post / orchestrate_media).
+ * to the real tool registry (scrape_webpage / web_search / prepare_instagram_post, and the quote-only
+ * quote_montage_to_music when the request carries the user's files and media execution is open to them).
  *
  * Protocol: each turn the model returns ONE JSON object, either
  *   {"thought": "...", "action": {"tool": "web_search", "input": {...}}}

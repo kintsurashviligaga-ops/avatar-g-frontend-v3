@@ -30,6 +30,7 @@ import { muteAf, clampWindows, DEFAULT_DUCK_DB, type MixWindow } from '@/lib/pip
 import { resolveDialogueCastPlan, buildDialoguePremixFilter, DIALOGUE_DUCK_DB } from './dialogueCastPlan';
 import { parseScript, scriptMixWindows } from '@/lib/pipeline/script/scriptSchema';
 import { getFeatureFlag } from '@/lib/server/feature-flags';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { lipsyncNode, passthroughLipsyncProvider, replicateLipsyncProvider, heygenLipsyncProvider, cascadeLipsyncProvider, type LipsyncProvider } from '@/lib/pipeline/lipsync/lipsyncNode';
 
 const exec = promisify(execFile);
@@ -241,7 +242,9 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // else the default (false). Timeout-bounded + fail-open to the env/default on any DB issue, so this
     // matches the prior process.env reads for the canonical '1'/unset values and never hangs the render.
     const AUDIO_MIX_ON = await getFeatureFlag('FILM_AUDIO_MIX_ENABLED', false);
-    const LIPSYNC_ON = await getFeatureFlag('FILM_LIPSYNC_ENABLED', false); // Phase 18: cascade WIRED, but OPT-IN (see the flag note)
+    // Phase 18: cascade WIRED, but OPT-IN (see the flag note). Its legs are HeyGen and Replicate, so MEDIA_GOOGLE_ONLY
+    // (lib/providers/mediaPolicy) holds it off whatever the flag says: the master is kept as rendered.
+    const LIPSYNC_ON = (await getFeatureFlag('FILM_LIPSYNC_ENABLED', false)) && !isMediaGoogleOnly();
     // FILM_AUDIO_MIX_ENABLED — the 4-field mixer compiler resolves the ducking depth (−12 dB by default)
     // and the hard-mute window: the depth is threaded through the PROVEN filtergraph below, and the
     // hard-mute is applied as a small fail-open post-pass (never a rewrite of the master graph).

@@ -34,7 +34,7 @@ const QUESTION = new RegExp([
 const EDIT = new RegExp([
   'სუბტიტრ|subtitle|captions?\\b|субтитр',
   'მუსიკ|music|музык|soundtrack|background\\s*track|ბიტ\\b|\\bbeat\\b',
-  'ფონ(ი|ის)?\\s*(მოშორ|ამოღ|წაშ|გაქრ)|remove\\s*(the\\s*)?background|rembg|remove\\s*bg|убер\\S*\\s*фон|удал\\S*\\s*фон',
+  'ფონ(ი|ის)?\\s*(მოა?შორ|ამოი?ღ|წაშ|გააქრ|გაქრ)|(მოაშორე|ამოიღე|წაშალე|გააქრე)\\s+ფონ|remove\\s*(the\\s*)?background|rembg|remove\\s*bg|убер\\S*\\s*фон|удал\\S*\\s*фон',
   'პერსონაჟ|face\\s*swap|swap\\s*(the\\s*)?(face|character)|character\\s*swap|замен\\S*\\s*(лиц|персонаж)',
   'ფერი?\\s*(შეც|გაუმჯობეს|გააკეთ)|color\\s*(grade|correct)|colour\\s*(grade|correct)|\\bgrade\\b|vintage|cinematic|neon|ვინტაჟ|ნეონ|цвет|грейд|винтаж|ретро',
   'სტაბილ|stabili[sz]|стабилиз|გაასწორე\\s+ვიბრაც|shaky|gimbal|jitter',

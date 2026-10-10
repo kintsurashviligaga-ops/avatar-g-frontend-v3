@@ -38,6 +38,7 @@ import { SCENE_MAX_OBJECTS, dispatchSceneAction, isSceneGlbUrl, sceneIdForUrl } 
 import { useSceneStore } from './scene/sceneStore';
 import { GlbViewerSkeleton } from './glbFrame';
 import { LiveStatus, generationAnnouncement } from './ui/LiveStatus';
+import { peekTask } from '@/lib/agent/media/jobFollow';
 
 /**
  * Server-side caps, surfaced in the UI.
@@ -85,7 +86,7 @@ const COPY = {
   en: {
     close: 'Close', run: 'Create', working: 'Working…', failed: 'Failed', downloadDeck: '⬇ Download slides (ZIP)', deckTheme: 'Look', themeDark: 'Dark', themeLight: 'Light', advanced: 'Advanced', exclude: 'Leave out', excludeHint: 'e.g. text, people, background clutter…', excludeSet: 'set', sourceLang: 'Original language', autoDetect: 'Auto-detect',
     keepOpen: 'This takes a few minutes — keep the page open.',
-    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D Model',
+    dubbing: 'Dubbing', presentation: 'Presentation', model3d: '3D model',
     duration: 'Duration', sourceVideo: 'Video URL', targetLang: 'Target language', keepBg: 'Background audio', subs: 'Subtitles',
     topic: 'Topic', slides: 'Slides', deckLang: 'Language', withImages: 'With images',
     fromText: 'From text', fromImage: 'From photo', describe: 'Description', photoUrl: 'Photo URL',
@@ -403,13 +404,11 @@ export function ServiceParamsPanel({
       while (!stop.done && !cancelled.current) {
         await new Promise((r) => setTimeout(r, 2500));
         if (stop.done || cancelled.current) return;
-        const res = await fetch('/api/orchestrator/jobs?status=active&limit=20').catch(() => null);
-        const j = (await res?.json().catch(() => null)) as { jobs?: Array<Record<string, unknown>> } | null;
-        const row = j?.jobs?.find((x) => x.id === jobId);
-        if (!row) continue;
-        const label = String(row.current_stage ?? '');
-        const pct = Number(row.pct ?? 0);
-        if (label) setStage({ label, pct: Number.isFinite(pct) ? pct : 0 });
+        // The one task route (lib/tasks): this job's own stage and percent, read by its id.
+        const task = await peekTask((u, init) => fetch(u, init), jobId);
+        if (!task || task === 'gone' || stop.done || cancelled.current) continue;
+        const pct = Number(task.pct ?? 0);
+        if (task.stage) setStage({ label: task.stage, pct: Number.isFinite(pct) ? pct : 0 });
       }
     })();
   }, []);

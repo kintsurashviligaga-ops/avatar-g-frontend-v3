@@ -126,3 +126,22 @@ test('another account’s bare upload path → 403 before any charge or render; 
   expect(klingSubmit).not.toHaveBeenCalled();
   expect((await POST(post({ ...BODY, characterImageUrl: 'omni-uploads/user-1/face.jpg' }))).status).toBe(200);
 });
+
+test('a reference video is never claimed: the run is image-to-video and the reply and job row say so', async () => {
+  // Replicate's Kling has no video-to-video model; a `referenceVideoUrl` used to make the reply say 'v2v' while the same
+  // image-to-video ran and the video was never read.
+  const res = await POST(post({ ...BODY, referenceVideoUrl: 'https://x.supabase.co/moves.mp4' }));
+  expect(((await res.json()) as { method: string }).method).toBe('i2v');
+  expect((klingSubmit as jest.Mock).mock.calls[0][0]).not.toHaveProperty('videoUrl');
+  expect((createJob as jest.Mock).mock.calls[0][0].params.method).toBe('i2v');
+});
+
+test('MEDIA_GOOGLE_ONLY on → 503 google_only before any charge or Kling submit', async () => {
+  process.env.MEDIA_GOOGLE_ONLY = '1';
+  const res = await POST(post());
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ success: false, code: 'google_only', jobId: null });
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(klingSubmit).not.toHaveBeenCalled();
+  expect(createJob).not.toHaveBeenCalled();
+});

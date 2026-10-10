@@ -12,7 +12,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Film, ImageIcon, Inbox, Music2, Star, Download, Trash2, Loader2, ChevronLeft, ChevronRight, Move3d } from 'lucide-react';
+import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
+import { SHOOT_COPY } from '@/components/studio/create/newtools/copy';
+import { PlanView } from '@/components/studio/create/newtools/PlanView';
 
 type Lang = 'ka' | 'en' | 'ru';
 type Tab = 'video' | 'image' | 'music' | 'favorites';
@@ -50,21 +53,23 @@ interface LibraryItem {
   prompt: string | null;
   orientation: 'landscape' | 'vertical';
   createdAt: string;
+  /** An interior 3D plan: `url` is the render it was made for (GET /api/studio/library). */
+  plan?: { geometry: RoomGeometry; style: StyleGuide };
 }
 
 const PAGE_SIZE = 12;
 const FAV_KEY = 'myavatar:favorites';
 
-// Which service_type(s) each tab shows. The API filters by a single `kind`, so for
-// multi-kind tabs (video = film+avatar) we fetch the primary kind; favorites pulls
-// across all kinds and filters by the local set.
-const TAB_KIND: Record<Exclude<Tab, 'favorites'>, string> = { video: 'film', image: 'image', music: 'music' };
+// Which service_type(s) each tab shows (the API takes a comma list): avatar videos sit with the films, the Interior
+// designer's 3D plans (filed with their render) with the pictures. Favorites pull across all kinds and filter locally.
+const TAB_KIND: Record<Exclude<Tab, 'favorites'>, string> = { video: 'film,avatar', image: 'image,interior', music: 'music' };
 const VIDEO_KINDS = new Set(['film', 'avatar']);
 const IMAGE_KINDS = new Set(['image', 'interior']);
 
 const COPY: Record<Lang, {
   title: string; tabs: Record<Tab, string>; empty: string; download: string; del: string;
   play: string; confirmDel: string; prev: string; next: string; page: string; search: string;
+  plan: string; openPlan: string; closePlan: string;
 }> = {
   ka: {
     title: 'ბიბლიოთეკა',
@@ -72,6 +77,7 @@ const COPY: Record<Lang, {
     empty: 'ჯერ არაფერი შექმენით',
     download: 'ჩამოტვირთვა', del: 'წაშლა', play: 'დაკვრა',
     confirmDel: 'წავშალო ეს ფაილი სამუდამოდ?', prev: 'წინა', next: 'შემდეგი', page: 'გვერდი', search: 'ძიება…',
+    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა',
   },
   en: {
     title: 'Library',
@@ -79,6 +85,7 @@ const COPY: Record<Lang, {
     empty: 'Nothing created yet',
     download: 'Download', del: 'Delete', play: 'Play',
     confirmDel: 'Delete this file permanently?', prev: 'Prev', next: 'Next', page: 'Page', search: 'Search…',
+    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan',
   },
   ru: {
     title: 'Библиотека',
@@ -86,6 +93,7 @@ const COPY: Record<Lang, {
     empty: 'Пока ничего не создано',
     download: 'Скачать', del: 'Удалить', play: 'Воспроизвести',
     confirmDel: 'Удалить этот файл навсегда?', prev: 'Назад', next: 'Далее', page: 'Стр.', search: 'Поиск…',
+    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план',
   },
 };
 
@@ -115,6 +123,7 @@ export default function LibraryGallery({ locale }: { locale: string }) {
   const [loading, setLoading] = useState(true);
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [openPlan, setOpenPlan] = useState<string | null>(null);
 
   // Load favorites from localStorage once.
   useEffect(() => {
@@ -234,13 +243,18 @@ export default function LibraryGallery({ locale }: { locale: string }) {
               const isImage = IMAGE_KINDS.has(it.kind);
               const isMusic = it.kind === 'music';
               return (
-                <div key={it.id} className="group flex flex-col overflow-hidden rounded-2xl border border-app-border/15 bg-app-elevated/40">
+                <div key={it.id} className={`group flex flex-col overflow-hidden rounded-2xl border border-app-border/15 bg-app-elevated/40 ${openPlan === it.id ? 'col-span-full' : ''}`}>
                   <div className={`relative w-full overflow-hidden bg-app-bg/60 ${it.orientation === 'vertical' ? 'aspect-[9/16]' : isMusic ? 'aspect-square' : 'aspect-video'}`}>
                     {/* #t=0.1 makes the browser seek to 0.1s and paint THAT frame as the
                         poster — without it many browsers show a black thumbnail until play. */}
                     {isVideo && <video src={`${it.url}#t=0.1`} controls playsInline preload="metadata" className="h-full w-full object-cover" />}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {isImage && <img src={it.url} alt={it.prompt ?? 'image'} className="h-full w-full object-cover" loading="lazy" />}
+                    {it.plan && (
+                      <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white backdrop-blur">
+                        <Move3d size={12} aria-hidden="true" /> {t.plan}
+                      </span>
+                    )}
                     {isMusic && (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3">
                         <Music2 size={28} className="text-app-accent" />
@@ -253,6 +267,16 @@ export default function LibraryGallery({ locale }: { locale: string }) {
                       <Star size={15} fill={favs.has(it.id) ? 'currentColor' : 'none'} />
                     </button>
                   </div>
+                  {it.plan && openPlan === it.id && (
+                    <div className="p-2 pb-0"><PlanView geometry={it.plan.geometry} style={it.plan.style} copy={SHOOT_COPY[lang]} /></div>
+                  )}
+                  {it.plan && (
+                    <button type="button" onClick={() => setOpenPlan((cur) => (cur === it.id ? null : it.id))} aria-expanded={openPlan === it.id}
+                      data-testid="library-plan-toggle"
+                      className="mx-2 mt-2 inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-xl border border-app-accent/30 bg-app-accent/10 px-3 text-[12.5px] font-semibold text-app-text transition hover:border-app-accent/60">
+                      <Move3d size={14} aria-hidden="true" /> {openPlan === it.id ? t.closePlan : t.openPlan}
+                    </button>
+                  )}
                   <div className="flex items-center justify-between gap-1 p-2">
                     <span className="truncate text-[10.5px] text-app-muted">{fmtDate(it.createdAt, lang)}</span>
                     <div className="flex shrink-0 items-center gap-0.5">

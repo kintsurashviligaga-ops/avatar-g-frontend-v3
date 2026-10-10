@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertTriangle, Check, Clock, Loader2, X } from 'lucide-react';
+import { LoadingLoop } from './LoadingLoop';
 
 /**
  * THE loading card. One shape for every service that makes the user wait.
@@ -229,19 +230,27 @@ export function GenerationProgress({
         </div>
       )}
       <div className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-1">
-            <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
-            <span className="text-[17px] font-semibold text-app-muted">%</span>
+        <div className="flex min-w-0 items-end gap-3">
+          {/* The loading loop (./LoadingLoop) while the job waits or runs; the tray's compact rows stay still. */}
+          {!compact && (running || state === 'queued') && (
+            <div aria-hidden="true" className="relative h-[76px] w-[43px] shrink-0 overflow-hidden rounded-xl bg-black ring-1 ring-app-border/15">
+              <LoadingLoop />
+            </div>
+          )}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1">
+              <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
+              <span className="text-[17px] font-semibold text-app-muted">%</span>
+            </div>
+            <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
+              {running ? <Loader2 size={13} className="shrink-0 animate-spin" />
+                : state === 'queued' ? <Clock size={13} className="shrink-0" />
+                : state === 'done' ? <Check size={13} className="shrink-0" />
+                : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" />
+                : <X size={13} className="shrink-0" />}
+              <span className="truncate">{headline}</span>
+            </span>
           </div>
-          <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
-            {running ? <Loader2 size={13} className="shrink-0 animate-spin" />
-              : state === 'queued' ? <Clock size={13} className="shrink-0" />
-              : state === 'done' ? <Check size={13} className="shrink-0" />
-              : state === 'failed' ? <AlertTriangle size={13} className="shrink-0" />
-              : <X size={13} className="shrink-0" />}
-            <span className="truncate">{headline}</span>
-          </span>
         </div>
         <div className="flex shrink-0 items-end gap-2">
           {running && (

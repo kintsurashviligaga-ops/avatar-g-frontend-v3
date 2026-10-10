@@ -1,3 +1,4 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { providerErrorBody } from '@/lib/api/providerError';
 import { randomUUID } from 'node:crypto';
@@ -49,6 +50,10 @@ const WEEK_SEC = 604_800;
  * prediction the provider failed (lib/services/model3d/chargeToken.ts).
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const limited = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
   if (limited) return limited;
 

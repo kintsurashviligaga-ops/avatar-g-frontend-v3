@@ -16,10 +16,14 @@
  *
  * Pictures go through templateThumb (lib/studio/templateThumbs): a shipped file is next/image with its real blur and a
  * content-versioned URL; no file → the palette tile, in the SAME 3:4 box, so nothing shifts when the art arrives.
+ *
+ * ⚠️ THE ROW SAYS THERE IS MORE. A card cut by the column's edge read as the panel spilling out of its frame (the owner,
+ * 2026-10-09 18:28Z). The side that has more cards fades out and carries an arrow that pages the row; a side with nothing
+ * left has neither.
  */
 import Image from 'next/image';
-import { useRef } from 'react';
-import { Check, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, type LucideIcon } from 'lucide-react';
 import { templateThumb } from '@/lib/studio/templateThumbs';
 
 export interface CarouselItem {
@@ -44,7 +48,7 @@ function withAlpha(hex: string, alpha: number): string {
   return m ? `rgba(${parseInt(m[1]!, 16)}, ${parseInt(m[2]!, 16)}, ${parseInt(m[3]!, 16)}, ${alpha})` : 'transparent';
 }
 
-export function TemplateCarousel({ label, items, activeId, onPick, Icon, addsLine, emptyLine, testId }: {
+export function TemplateCarousel({ label, items, activeId, onPick, Icon, addsLine, emptyLine, testId, scrollLabels }: {
   label: string;
   items: readonly CarouselItem[];
   activeId: string | null;
@@ -55,8 +59,33 @@ export function TemplateCarousel({ label, items, activeId, onPick, Icon, addsLin
   addsLine: string | null;
   emptyLine: string;
   testId: string;
+  /** The arrows' names. */
+  scrollLabels: { prev: string; next: string };
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [more, setMore] = useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const syncMore = useCallback(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const left = el.scrollLeft > 4;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setMore((m) => (m.left === left && m.right === right ? m : { left, right }));
+  }, []);
+  useEffect(() => {
+    syncMore();
+    const el = rowRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(syncMore);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncMore, items.length]);
+  const page = (dir: 1 | -1) => {
+    const el = rowRef.current;
+    if (el) el.scrollBy({ left: dir * Math.max(120, el.clientWidth - 48), behavior: 'smooth' });
+  };
+  const fade = `linear-gradient(to right, ${more.left ? 'transparent 0, #000 28px' : '#000 0'}, ${more.right ? '#000 calc(100% - 36px), transparent 100%' : '#000 100%'})`;
+  const arrow = 'absolute top-[calc(50%-4px)] z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white ring-1 ring-white/20 backdrop-blur-sm transition-colors hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-app-accent';
   const checkedAt = items.findIndex((i) => i.id === activeId);
   const tabAt = checkedAt >= 0 ? checkedAt : 0;
   const move = (from: number, dir: 1 | -1) => {
@@ -67,8 +96,10 @@ export function TemplateCarousel({ label, items, activeId, onPick, Icon, addsLin
   return (
     <section data-testid={testId} className="min-w-0">
       <p aria-hidden="true" className="mb-2 text-[12.5px] font-semibold text-app-text">{label}</p>
-      <div role="radiogroup" aria-label={label}
-        className="-mx-1 flex snap-x snap-proximity gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="relative">
+      <div ref={rowRef} role="radiogroup" aria-label={label} onScroll={syncMore} data-more-left={more.left || undefined} data-more-right={more.right || undefined}
+        className="-mx-1 flex snap-x snap-proximity gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ maskImage: fade, WebkitMaskImage: fade }}>
         {items.map((t, i) => {
           const on = t.id === activeId;
           const pic = templateThumb(t.thumb);
@@ -104,6 +135,19 @@ export function TemplateCarousel({ label, items, activeId, onPick, Icon, addsLin
             </button>
           );
         })}
+      </div>
+      {more.left && (
+        <button type="button" tabIndex={-1} onClick={() => page(-1)} aria-label={scrollLabels.prev} title={scrollLabels.prev}
+          data-testid={`${testId}-prev`} className={`${arrow} left-0`}>
+          <ChevronLeft size={18} aria-hidden="true" />
+        </button>
+      )}
+      {more.right && (
+        <button type="button" tabIndex={-1} onClick={() => page(1)} aria-label={scrollLabels.next} title={scrollLabels.next}
+          data-testid={`${testId}-next`} className={`${arrow} right-0`}>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      )}
       </div>
       <p data-testid={`${testId}-adds`} aria-live="polite" className="text-[12.5px] leading-snug text-app-muted">
         {addsLine ?? emptyLine}

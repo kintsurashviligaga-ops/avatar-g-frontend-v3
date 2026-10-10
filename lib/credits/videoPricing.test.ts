@@ -1,7 +1,8 @@
 import { CREDIT_COSTS } from './pricing';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { MUSIC_VIDEO_MULT, VIDEO_CREDITS_PER_SEC, filmSecondsFromClips, perSceneCredits, videoCredits } from './videoPricing';
-import { quoteCredits, creditsLabel, PRODUCT_AD_SECONDS } from './quote';
+import { quoteCredits, creditsLabel, productAdCredits, productAdSeconds, PRODUCT_AD_PRICING } from './quote';
+import { genjutsuCredits } from '../genjutsu/pricing';
 
 describe('video price by the second', () => {
   test('anchored on the owner’s number: one 8 s clip on Fast is 25 credits — the unit the plan pools are built on', () => {
@@ -73,11 +74,29 @@ describe('quote — the number on the button', () => {
     expect(quoteCredits({ tool: 'chat' })).toBe(0);
   });
 
-  test('video goes through videoCredits; the product ad keeps its flat one-clip price', () => {
+  test('video goes through videoCredits; a product ad keeps today\'s Production price until the owner approves the length rule', () => {
     expect(quoteCredits({ tool: 'video', seconds: 48 })).toBe(150);
     expect(quoteCredits({ tool: 'video', seconds: 24, mode: 'musicvideo' })).toBe(105);
-    expect(PRODUCT_AD_SECONDS).toBe(6);
+    // Production today: 25 credits at every offered length, on the button and in the route alike.
+    expect(PRODUCT_AD_PRICING).toBe('production');
+    expect([8, 24, 48].map((seconds) => quoteCredits({ tool: 'product', seconds }))).toEqual([25, 25, 25]);
+    // The audit's rule (D2): 8 / 24 / 48 s render 1 / 3 / 6 Veo Fast clips and would cost what a film of that length costs.
+    expect([8, 24, 48].map((seconds) => productAdCredits(seconds, 'length'))).toEqual(
+      [8, 24, 48].map((seconds) => quoteCredits({ tool: 'video', seconds })),
+    );
     expect(quoteCredits({ tool: 'product' })).toBe(CREDIT_COSTS.video_30s);
+    // A length between the offered ones pays for the next one up; nonsense pays for one clip.
+    expect([undefined, 0, -5, Number.NaN, 6, 8, 9, 24, 25, 60, 999].map((s) => productAdSeconds(s))).toEqual(
+      [8, 8, 8, 8, 8, 8, 24, 24, 48, 48, 48],
+    );
+  });
+
+  test('a VFX scene is quoted with the price its route charges (one 8 s Veo clip), never as a remix', () => {
+    expect(quoteCredits({ tool: 'vfx' })).toBe(genjutsuCredits({ op: 'scene', quality: 'fast' }));
+    expect(quoteCredits({ tool: 'vfx', quality: 'standard' })).toBe(genjutsuCredits({ op: 'scene', quality: 'standard' }));
+    expect([quoteCredits({ tool: 'vfx' }), quoteCredits({ tool: 'vfx', quality: 'standard' })]).toEqual([25, 83]);
+    // A tier the scene does not offer (Lite takes no references) prices as Fast, its default — never cheaper.
+    expect(quoteCredits({ tool: 'vfx', quality: 'lite' })).toBe(25);
   });
 
   test('the credits word: English plural, Georgian invariant, Russian 1 / 2-4 / 5+ with the 11-14 exception', () => {

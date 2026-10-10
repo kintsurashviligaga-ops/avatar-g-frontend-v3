@@ -433,6 +433,25 @@ test('transcripts become captions (pending → final) and reach onTurn user-firs
   unmount();
 });
 
+test('onHeard: the user\'s own words as they stream (spoken and typed), and each exchange closing — never the model\'s', async () => {
+  const h = harness();
+  const heard: unknown[] = [];
+  const { result, ws, unmount } = await connected({ deps: h.deps, onHeard: (e) => heard.push(e) });
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' yes,' } } }));
+  act(() => ws.receive({ serverContent: { inputTranscription: { text: ' go ahead' } } }));
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Starting it now.' } } }));
+  act(() => ws.receive({ serverContent: { turnComplete: true } }));
+  expect(heard).toEqual([{ text: ' yes,' }, { text: ' yes, go ahead' }, { end: true }]);
+  // A model-only exchange closes nothing of the user's.
+  act(() => ws.receive({ serverContent: { outputTranscription: { text: 'Done.' }, turnComplete: true } }));
+  expect(heard).toHaveLength(3);
+  // Text typed into the call is the user's too.
+  act(() => result.current.sendText('ok'));
+  act(() => ws.receive({ serverContent: { interrupted: true } }));
+  expect(heard.slice(3)).toEqual([{ text: 'ok' }, { end: true }]);
+  unmount();
+});
+
 test('without an onTurn prop, closed turns are dispatched as the window transcript event', async () => {
   const h = harness();
   const seen: LiveTurn[] = [];

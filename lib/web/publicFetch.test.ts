@@ -75,6 +75,33 @@ describe('fetchPublic — the walk', () => {
     const ok = await fetchPublicBytes('https://example.com/f.jpg', { fetchImpl: img, lookupImpl: PUBLIC, maxBytes: 100, accept: /^image\// });
     expect(ok.ok && ok.bytes.length).toBe(50);
   });
+
+  test("the caller's own rule holds on every hop: a redirect onto a refused address stops there, unfetched", async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (u: string) => {
+      seen.push(u);
+      return new Response(null, { status: 302, headers: { location: 'https://www.youtube.com/watch?v=x' } });
+    }) as unknown as typeof fetch;
+    const allowUrl = (u: string) => !/youtube\.com/.test(new URL(u).hostname);
+    expect(await fetchPublic('https://short.example/abc', { fetchImpl, lookupImpl: PUBLIC, allowUrl })).toEqual({
+      ok: false, error: 'refused_url', url: 'https://www.youtube.com/watch?v=x',
+    });
+    expect(seen).toEqual(['https://short.example/abc']);
+    const never = jest.fn() as unknown as typeof fetch;
+    expect(await fetchPublic('https://youtube.com/a', { fetchImpl: never, lookupImpl: PUBLIC, allowUrl })).toMatchObject({ ok: false, error: 'refused_url' });
+    expect(never).not.toHaveBeenCalled();
+  });
+
+  test('HEAD asks for the headers only; the default is GET', async () => {
+    const methods: Array<string | undefined> = [];
+    const fetchImpl = (async (_u: string, init: RequestInit) => {
+      methods.push(init.method);
+      return new Response(null, { status: 200, headers: { 'content-type': 'video/mp4' } });
+    }) as unknown as typeof fetch;
+    await fetchPublic('https://example.com/a.mp4', { fetchImpl, lookupImpl: PUBLIC, method: 'HEAD' });
+    await fetchPublic('https://example.com/a.mp4', { fetchImpl, lookupImpl: PUBLIC });
+    expect(methods).toEqual(['HEAD', undefined]);
+  });
 });
 
 describe('pinnedFetch — the connection goes through the guarded lookup', () => {

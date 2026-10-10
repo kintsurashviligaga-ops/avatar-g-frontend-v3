@@ -24,6 +24,7 @@ import { textToHostedSpeech } from '@/lib/chat/filmVoiceover';
 import { KA_VOICE_MALE, KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey } from '@/lib/elevenlabs/music';
 import { generateMusic } from '@/lib/ai/replicate';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 
 const exec = promisify(execFile);
@@ -68,21 +69,29 @@ function instrumentalPrompt(brief: string, totalSec: number): string {
   );
 }
 
-/** Resolve the funk instrumental bed → hosted URL (EL Music instrumental, MusicGen fallback). */
-async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSignal): Promise<string | null> {
+/**
+ * Resolve the funk instrumental bed → hosted URL. ONE ENGINE: ElevenLabs Music when its key is present, MusicGen
+ * (Replicate) only on a deployment without one.
+ * ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). An ElevenLabs miss used to
+ * fall through to MusicGen, an outside engine nobody chose; it is now a miss (null — the caller reports it).
+ */
+export async function instrumentalBed(brief: string, totalSec: number, signal?: AbortSignal): Promise<string | null> {
   if (hasElevenLabsMusicKey()) {
     try {
       const { audio, contentType } = await composeElevenLabsMusic({
         prompt: instrumentalPrompt(brief, totalSec), lengthMs: totalSec * 1000, instrumental: true, signal,
       });
       const path = `films/kabed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
-      const url = await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800);
-      if (url) return url;
+      return await uploadAndSign('uploads', path, audio.toString('base64'), contentType, 604_800);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[ka-song] EL instrumental failed → MusicGen:', err instanceof Error ? err.message : err);
+      console.warn('[ka-song] EL instrumental failed (no other engine is tried):', err instanceof Error ? err.message : err);
+      return null;
     }
   }
+  // MusicGen (Replicate) is the bed only when no ElevenLabs Music key is set. Under MEDIA_GOOGLE_ONLY it is never
+  // called: no bed, which the song builder already handles as a miss.
+  if (isMediaGoogleOnly()) return null;
   try {
     const score = await generateMusic(`${instrumentalPrompt(brief, totalSec)}`, totalSec);
     return score.audioUrl ?? null;
@@ -121,8 +130,11 @@ export async function diagnoseGeorgianSong(
       out.elMusic = !!(r.audio && r.audio.length > 1024);
     } catch (e) { out.elMusic = false; out.elMusicErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
   }
-  try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
-  catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  if (isMediaGoogleOnly()) out.musicGen = 'off (MEDIA_GOOGLE_ONLY)';
+  else {
+    try { const s = await generateMusic(instrumentalPrompt(brief, totalSec), totalSec); out.musicGen = !!s.audioUrl; }
+    catch (e) { out.musicGen = false; out.musicGenErr = (e instanceof Error ? e.message : String(e)).slice(0, 250); }
+  }
   return out;
 }
 

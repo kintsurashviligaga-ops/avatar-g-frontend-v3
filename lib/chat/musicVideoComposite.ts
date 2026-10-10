@@ -41,6 +41,7 @@ import { ServiceManager } from './ServiceManager';
 import { encodeCompositeRef } from './compositeTaskRef';
 import { hasVideoProvider } from './videoProvider';
 import { hasUdioApiKey } from './mediaKeys';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { videoCredits } from '@/lib/credits/videoPricing';
 import { insufficientCreditsResponse, chargeRefusedResponse } from './chatBilling';
@@ -210,8 +211,9 @@ export async function handleMusicVideoComposite(input: OrchestratorInput): Promi
   const opts = input.selectedOptions || {};
   const baseStyle = opts.style?.toLowerCase() || 'hip-hop';
 
-  // Music leg — Udio.
-  const musicPromise: Promise<string | null> = hasUdioApiKey()
+  // Music leg — Udio. Under MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy) Udio is never called: the composite runs
+  // without its music leg, exactly as it does when no Udio key is configured.
+  const musicPromise: Promise<string | null> = hasUdioApiKey() && !isMediaGoogleOnly()
     ? withTrace(
         {
           userId: input.userId || null,

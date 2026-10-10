@@ -10,9 +10,10 @@ import sharp from 'sharp';
  * can be reached without a provider key, and no test presses a Generate that would spend — the money path is covered
  * by the route tests (app/api/genjutsu/*). What is pinned here is what only a browser can show:
  *   · the tool is reachable by its deep link (`?tool=vfx`) and its panel mounts in the settings column / sheet;
- *   · the ELEMENT ORDER (hero → presets → modes → references → prompt → engines → Generate) and the price ON the button;
+ *   · the ELEMENT ORDER (hero → presets → references → prompt → engines → Generate) and the price ON the button;
  *   · a preset tap enables Generate with nothing typed; the dropzone counts and says "Using N of M" before any payment;
- *   · a locked mode is inert and says "soon"; nothing scrolls sideways at 375 px; every control is ≥ 44 px.
+ *   · a mode that is not open is not offered (no tab, no engine row); a shut Scene is inert and says "soon";
+ *     nothing scrolls sideways at 375 px; every control is ≥ 44 px.
  *
  * Optional: VFX_SHOTS_DIR=<dir> saves screenshots of the key states there (never committed).
  */
@@ -20,6 +21,7 @@ import sharp from 'sharp';
 const SHOTS = process.env.VFX_SHOTS_DIR;
 
 const CAPS_SCENE_OPEN = { ops: { scene: { open: true, state: 'open' }, motion: { open: false, state: 'soon' }, swap: { open: false, state: 'soon' } } };
+const CAPS_ALL_OPEN = { ops: { scene: { open: true, state: 'open' }, motion: { open: true, state: 'open' }, swap: { open: true, state: 'open' } } };
 const CAPS_ALL_SOON = { ops: { scene: { open: false, state: 'soon' }, motion: { open: false, state: 'soon' }, swap: { open: false, state: 'soon' } } };
 
 async function openVfx(page: Page, o: { lang?: 'ka' | 'en' | 'ru'; width: number; height: number; caps?: unknown }) {
@@ -84,7 +86,8 @@ for (const view of [
       await openVfx(page, view);
       await expect(page.getByTestId('vfx-hero')).toBeVisible();
       await expect(page.getByTestId('vfx-presets')).toBeVisible();
-      await expect(page.getByTestId('vfx-modes')).toBeVisible();
+      // Only Scene is open, so there is nothing to switch between: no tab bar.
+      await expect(page.getByTestId('vfx-modes')).toHaveCount(0);
       await expect(page.getByTestId('vfx-refs')).toBeVisible();
       await expect(page.getByTestId('vfx-generate')).toBeVisible();
       // The settings surface that carries it: a sheet on a phone, the right column on a desktop.
@@ -92,10 +95,10 @@ for (const view of [
       await shot(page, `${view.name}-01-initial`);
     });
 
-    test('the elements come in Higgsfield order: hero, presets, modes, references, detail, engines, Generate', async ({ page }) => {
+    test('the elements come in Higgsfield order: hero, presets, references, detail, engines, Generate', async ({ page }) => {
       await openVfx(page, view);
       // DOM order, not coordinates: the panel scrolls inside its own column and the Generate pill is sticky.
-      const ids = ['vfx-hero', 'vfx-presets', 'vfx-modes', 'vfx-refs', 'vfx-prompt', 'vfx-engines', 'vfx-generate'];
+      const ids = ['vfx-hero', 'vfx-presets', 'vfx-refs', 'vfx-prompt', 'vfx-engines', 'vfx-generate'];
       const inOrder = await page.evaluate((list) => {
         const els = list.map((id) => document.querySelector(`[data-testid="${id}"]`) as HTMLElement);
         return els.every((el, i) => i === 0 || !!(els[i - 1]!.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
@@ -124,12 +127,12 @@ for (const view of [
       await shot(page, `${view.name}-02-preset-picked`);
     });
 
-    test('Quality changes the price on the button (Fast 25 → Standard 83), through the same function the server charges with', async ({ page }) => {
+    test('Quality changes the price on the button (Fast 25 → High quality 83), through the same function the server charges with', async ({ page }) => {
       await openVfx(page, view);
       await page.locator('[data-preset="portal"]').first().click();
       const gen = page.getByTestId('vfx-generate');
       await expect(gen).toHaveAttribute('data-price', '25');
-      await page.getByRole('radio', { name: 'Standard' }).click();
+      await page.getByRole('radio', { name: 'High quality' }).click();
       await expect(gen).toHaveAttribute('data-price', '83');
     });
 
@@ -156,18 +159,25 @@ for (const view of [
       await shot(page, `${view.name}-03-references`);
     });
 
-    test('a locked mode is shown inert with a plain "soon" line, its button is off, and nothing is charged', async ({ page }) => {
+    test('a mode that is not open is not offered: no Motion or Swap tab, no engine row for them', async ({ page }) => {
       await openVfx(page, view);
-      await page.locator('[data-preset="ice"]').first().click();
-      await page.getByRole('radio', { name: /Motion/ }).click();
-      await expect(page.getByTestId('vfx-locked')).toContainText('Soon');
-      const gen = page.getByTestId('vfx-generate');
-      await expect(gen).toBeDisabled();
-      await expect(gen).not.toHaveAttribute('data-price', /.+/);
-      // The inputs are visible (the user sees what the mode will ask for) but inert.
-      await expect(page.getByTestId('vfx-video')).toBeVisible();
-      expect(await page.getByTestId('vfx-video-input').evaluate((el) => (el as HTMLInputElement).disabled)).toBe(true);
-      await shot(page, `${view.name}-04-locked-motion`);
+      // Motion and Swap are shut: they have their own tools (Motion transfer, Character swap), so no locked tab repeats them.
+      await expect(page.getByRole('radio', { name: /Motion|Swap/ })).toHaveCount(0);
+      await page.getByTestId('vfx-engines').getByRole('button', { name: /Engines & prices/ }).click();
+      await expect(page.locator('[data-engine^="scene-"]')).toHaveCount(2);
+      await expect(page.locator('[data-engine^="motion-"], [data-engine^="swap-"]')).toHaveCount(0);
+      await expect(page.getByTestId('vfx-engines')).not.toContainText('Soon');
+      await shot(page, `${view.name}-04-scene-only`);
+    });
+
+    test('even a server answering "open" for Motion and Swap cannot offer them: Higgsfield / Kling is not an allowed engine', async ({ page }) => {
+      await openVfx(page, { ...view, caps: CAPS_ALL_OPEN });
+      await expect(page.getByTestId('vfx-modes')).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: /Motion|Swap/ })).toHaveCount(0);
+      await expect(page.getByTestId('vfx-video')).toHaveCount(0);
+      await page.getByTestId('vfx-engines').getByRole('button', { name: /Engines & prices/ }).click();
+      await expect(page.locator('[data-engine^="motion-"], [data-engine^="swap-"]')).toHaveCount(0);
+      await expect(page.getByTestId('vfx-panel')).not.toContainText(/Kling|Higgsfield|Replicate|Genjutsu/);
     });
 
     test('with every op shut the panel still opens, and says so — nothing is faked', async ({ page }) => {

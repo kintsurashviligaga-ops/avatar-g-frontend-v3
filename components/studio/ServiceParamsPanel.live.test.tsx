@@ -58,9 +58,9 @@ it('says nothing before a run, "started" while the mesh is still being built, th
   await pressRun();
   // The reference image is on screen, the mesh is not: still "started".
   await waitFor(() => expect(releaseStatus).not.toBeNull());
-  expect(live()).toBe('3D Model — started');
+  expect(live()).toBe('3D model — started');
   await act(async () => { releaseStatus!(); });
-  await waitFor(() => expect(live()).toBe('3D Model — ready'));
+  await waitFor(() => expect(live()).toBe('3D model — ready'));
 });
 
 it('says "failed", with the reason when there is one, in the page language', async () => {
@@ -72,7 +72,7 @@ it('says "failed", with the reason when there is one, in the page language', asy
 it('a bare failure does not repeat itself ("failed: Failed")', async () => {
   (globalThis as { fetch: unknown }).fetch = jest.fn(async () => { throw new Error('offline'); });
   await run();
-  await waitFor(() => expect(live()).toBe('3D Model — failed'));
+  await waitFor(() => expect(live()).toBe('3D model — failed'));
 });
 
 it("while the 3D viewer's chunk loads, a placeholder in the viewer's OWN box holds its place (no jump)", () => {

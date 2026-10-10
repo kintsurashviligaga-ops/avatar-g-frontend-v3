@@ -28,7 +28,7 @@ describe('studio tools', () => {
     expect(PRIMARY_TOOLS).not.toContain('vfx');
     expect(MORE_TOOLS.indexOf('vfx')).toBe(MORE_TOOLS.indexOf('swap') + 1); // next to product ad and character swap, the other video tabs
     expect(isToolId('vfx')).toBe(true);
-    expect(toolName('vfx', 'en')).toBe('VFX');
+    expect(toolName('vfx', 'en')).toBe('VFX effects');
     for (const l of ['ka', 'en', 'ru'] as const) expect(toolSub('vfx', l)).not.toMatch(/motion transfer|მოძრაობის გადატანა|перенос движения/i);
   });
 

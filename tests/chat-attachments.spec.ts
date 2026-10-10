@@ -112,6 +112,58 @@ test.describe('the chat reads what it is given', () => {
     expect(bodies).toEqual([]);
   });
 
+  // A CHARGED edit (here: a face swap, 15 credits) waits for Agent G's Create with the price on it — every other paid chat
+  // order already did. Nothing is uploaded or charged before the tap; Edit hands the words and the clip back.
+  async function mockRemix(page: Page, op: string): Promise<{ intent: unknown[]; remix: Array<Record<string, unknown>>; uploads: number[] }> {
+    const calls = { intent: [] as unknown[], remix: [] as Array<Record<string, unknown>>, uploads: [] as number[] };
+    await page.route('**/api/video/remix-intent', async (route) => {
+      calls.intent.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ op, params: {} }) });
+    });
+    await page.route('**/api/upload/sign', (route) => { calls.uploads.push(1); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/clip-${calls.uploads.length}`, token: 't' }) }); });
+    await page.route(/\/storage\/v1\/object\/upload\/sign\//, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
+    await page.route('**/api/video/remix', async (route) => {
+      calls.remix.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ url: 'https://e2e-media.supabase.co/swapped.mp4', charged: true, method: 'roop' }) });
+    });
+    return calls;
+  }
+
+  test('a CHARGED edit waits for Agent G\'s Create with the price on it; nothing uploads or runs before the tap', async ({ page }) => {
+    await mockChat(page);
+    const calls = await mockRemix(page, 'face_swap');
+    await openChat(page);
+    await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
+    await expect(page.getByTitle('clip.webm')).toBeVisible();
+    await send(page, 'შეცვალე პერსონაჟი ამ ვიდეოში');
+    const create = page.getByTestId('agent-g-confirm');
+    await expect(create).toBeVisible({ timeout: 15_000 });
+    await expect(create).toHaveAttribute('data-price', '15');
+    await expect(page.getByText('ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს. დავიწყო?')).toBeVisible();
+    expect(calls.uploads).toEqual([]);
+    expect(calls.remix).toEqual([]);
+    await create.click();
+    await expect.poll(() => calls.remix.length, { timeout: 15_000 }).toBe(1);
+    expect(calls.remix[0]).toMatchObject({ op: 'face_swap', videoUrl: 'omni-uploads/u/clip-1' });
+    await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);   // the card is spent: a second tap cannot run it again
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/swapped.mp4"]')).toBeAttached({ timeout: 15_000 });
+  });
+
+  test('Edit on the price card runs nothing and puts the words and the clip back in the composer', async ({ page }) => {
+    await mockChat(page);
+    const calls = await mockRemix(page, 'background_remove');
+    await openChat(page);
+    await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
+    await send(page, 'ფონი მოაშორე');
+    await expect(page.getByTestId('agent-g-edit')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('agent-g-edit').click();
+    await expect(page.getByTestId('composer-input')).toHaveValue('ფონი მოაშორე');
+    await expect(page.getByTitle('clip.webm')).toBeVisible();
+    await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);
+    expect(calls.uploads).toEqual([]);
+    expect(calls.remix).toEqual([]);
+  });
+
   test('a Word file is read as text: it travels as text/plain under its own name', async ({ page }) => {
     const bodies = await mockChat(page);
     await page.route('**/api/utils/extract-text', (route) =>

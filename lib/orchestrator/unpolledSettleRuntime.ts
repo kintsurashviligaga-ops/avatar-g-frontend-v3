@@ -138,7 +138,7 @@ export function createSettleDeps(): SettleDeps | null {
       if (r.ok) return 'refunded';
       return r.reason === 'skipped' ? 'nothing' : 'error';
     },
-    fail: (id, reason) => failJob(id, reason),
+    fail: async (id, reason) => { await failJob(id, reason); },
     now: () => Date.now(),
   };
 }

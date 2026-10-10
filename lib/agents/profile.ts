@@ -306,9 +306,8 @@ export function liveVoiceFor(voice: LiveVoice, locale: 'ka' | 'en' | 'ru'): Live
  *
  * systemInstruction = the locale's live voice persona (lib/voice/voicePrompt.ts), then `platformSystem`
  * (platform knowledge + today's date — the caller builds it), then — only when a persona is active — its
- * block and LIVE_SPOKEN_RULE. For the default profile this is exactly the string GeminiLiveConversation
- * builds today (`${liveVoicePersona(loc)}\n\n${platformKnowledge(loc)}\nToday's date is …`) when the caller
- * passes that same platform text.
+ * block and LIVE_SPOKEN_RULE. The live session passes lib/chat/platformPrompt's buildPlatformPrompt as `platformSystem`
+ * (components/voice/live/useGeminiLiveSession.ts).
  *
  * `temperature` is the profile's. NOTE: the Live session sends no temperature today (model default), so
  * putting this into generationConfig is a behaviour change the Live integrator should make deliberately.

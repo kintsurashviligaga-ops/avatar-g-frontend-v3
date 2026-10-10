@@ -1,0 +1,23 @@
+{
+  "name": "wa-call-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WhatsApp Calling media bridge: WebRTC (Opus) <-> Gemini Live (PCM). Holds no API key; every call runs on a ticket from the app.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/main.cjs --tsconfig=tsconfig.json --external:opusscript --external:werift",
+    "start": "node dist/main.cjs",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "build:loopback": "esbuild scripts/loopback.ts --bundle --platform=node --format=cjs --target=node22 --outfile=dist/loopback.cjs --tsconfig=tsconfig.json --external:opusscript --external:werift",
+    "loopback": "npm run build:loopback && node dist/loopback.cjs"
+  },
+  "dependencies": {
+    "opusscript": "0.1.1",
+    "werift": "0.24.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

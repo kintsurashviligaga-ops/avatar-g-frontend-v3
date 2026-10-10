@@ -38,6 +38,13 @@ describe('toolGroups — the studio menus come from the catalog', () => {
     expect(groupOfTool('chat')?.id).toBe('agent-g');
   });
 
+  it('gives „Music video" a row of its own under Video (a mode found only inside the panel was not found), and nothing else', () => {
+    const video = groups.find((g) => g.id === 'video');
+    expect(video?.tools[0]).toBe('video');
+    expect(video?.modeServices).toEqual(['video.music-video']);
+    expect(groups.filter((g) => g.id !== 'video').flatMap((g) => g.modeServices)).toEqual([]);
+  });
+
   it('labels every group in ka, en and ru', () => {
     for (const g of groups) for (const t of [g.label.ka, g.label.en, g.label.ru]) expect(t.trim()).not.toBe('');
     for (const t of Object.values(NAV_GROUP_LABEL)) expect(t.ka && t.en && t.ru).toBeTruthy();

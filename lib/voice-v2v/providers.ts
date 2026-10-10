@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 
 import type { RealtimeVoiceLanguage } from '@/types/voice';
 import { KA_VOICE_FEMALE } from '@/lib/audio/georgian-voice';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export type SttProviderName = 'openai-whisper-3-turbo' | 'deepgram-nova-2';
 export type TtsProviderName = 'elevenlabs-multilingual-v2' | 'cartesia-sonic';
@@ -203,6 +204,9 @@ export async function transcribeRealtimePcmChunk(params: {
   hint?: string;
   mimeType?: string;
 }): Promise<SttResult> {
+  // AI_GOOGLE_ONLY (lib/ai/google/policy, on by default): both engines here are outside ones (OpenAI, Deepgram), so with
+  // the switch on this refuses rather than send the audio to either. /api/voice/transcribe runs Gemini instead.
+  if (isAiGoogleOnly()) throw new Error('google_only: realtime STT has no Google engine on this path');
   const preferred = sttProviderPreference();
 
   if (preferred === 'deepgram') {
@@ -432,6 +436,10 @@ export async function synthesizeSpeechChunk(input: {
   if (!text) {
     throw new Error('empty_tts_text');
   }
+
+  // AI_GOOGLE_ONLY: ElevenLabs is the one allowed voice engine, so with the switch on a miss is an ElevenLabs failure,
+  // never a silent Cartesia answer.
+  if (isAiGoogleOnly()) return synthesizeWithElevenLabs(text, input.language);
 
   const preferred = ttsProviderPreference();
 

@@ -27,7 +27,10 @@
 import { TOOL_META, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';
-import { CREDIT_COSTS, CREDIT_PACKAGES, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
+import { CREDIT_COSTS, CREDIT_VALUE_GEL, creditsToGel } from '@/lib/credits/pricing';
+import { quoteCredits } from '@/lib/credits/quote';
+import { BOG_TOPUP_PACKS_GEL, topupCredits } from '@/lib/billing/bogCatalog';
+import { MUSIC_VIDEO_SURCHARGE_PCT, tierPriceEffect, videoQuote } from '@/lib/video/createPanel';
 
 export type PlatformPromptLocale = 'ka' | 'en' | 'ru';
 
@@ -85,6 +88,8 @@ function tbilisiNow(now: Date): string {
 
 const gel = (credits: number): string => creditsToGel(credits).toFixed(2);
 const cr = (credits: number): string => `${credits} cr (${gel(credits)} ₾)`;
+/** The film lengths the price line gives as examples (the Video tool's presets). */
+const FILM_EXAMPLE_SECONDS = [8, 24, 48] as const;
 
 /** The tools under the side menu's own categories (lib/catalog/nav), so the model names the place a person will look. */
 function toolLines(loc: PlatformPromptLocale): string {
@@ -112,17 +117,30 @@ function notYetLine(loc: PlatformPromptLocale): string {
 
 /**
  * ⚠️ THE DURATION BANDS ARE creditCostFor's, NOT THE KEY NAMES'. `video_30s` / `music_60s` read like "the price of a
- * 30-second video", but every route charges through creditCostFor, which bills anything under 60 s at video_30s
- * (the studio's 8/24/48 s videos included) and 60 s or more at video_60s. Quoting "25 cr for 30 s" left a 48-second
- * video to the model's guesswork. The test pins these bands to creditCostFor, so moving a threshold there fails CI.
+ * 30-second video", but the routes that charge through creditCostFor bill anything under 60 s at video_30s and 60 s or
+ * more at video_60s. Quoting "25 cr for 30 s" left a 48-second video to the model's guesswork. The test pins these bands
+ * to creditCostFor, so moving a threshold there fails CI.
+ *
+ * ⚠️ A FILM IS NOT ON THAT TABLE. A Veo film (the studio's Video tool, a film or music video from the chat) is charged
+ * videoCredits — length × quality × mode, the number on its Generate button — so a 24-second Fast film is 75 credits, not
+ * the table's 25. The table's video line is only for what still bills through it (a single chat clip, a product ad).
+ * The film examples, the tier effects and the lip-sync pass (its own /api/video/lipsync charge) come from the same
+ * functions the routes charge with (agent PART 5, gap C4).
+ *
+ * ⚠️ THE TOP-UPS ARE WHAT THE CREDITS WINDOW SELLS (lib/billing/bogCatalog BOG_TOPUP_PACKS_GEL, booked at
+ * topupCredits), not CREDIT_PACKAGES — a pack list nothing sells, whose amounts disagree with it. Which list is the
+ * product's is the owner's call (owner action 7); until then the assistant quotes the one a user can actually buy.
  */
 function priceBlock(topUp: string): string {
   const C = CREDIT_COSTS;
   const chat = C.chat_message > 0 ? `chat ${cr(C.chat_message)} per message` : 'chat is free';
-  const packs = CREDIT_PACKAGES.map((p) => `${p.gel} ₾ = ${p.credits} cr`).join(', ');
+  const packs = BOG_TOPUP_PACKS_GEL.map((g) => `${g} ₾ = ${topupCredits(g)} cr`).join(', ');
+  const fast = FILM_EXAMPLE_SECONDS.map((sec) => `${sec} s ${videoQuote({ seconds: sec, tier: 'fast', mode: 'documentary' })}`).join(', ');
+  const pct = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
   return [
     `PRICES (cr = credits; 1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾; ${chat}): image ${cr(C.image_generate)} each;`,
-    `video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more; music ${cr(C.music_30s)} under 60 s,`,
+    `film: Fast ${fast} cr; Lite ${pct(tierPriceEffect('lite').deltaPct)}, Max ${pct(tierPriceEffect('standard').deltaPct)}, music video ${pct(MUSIC_VIDEO_SURCHARGE_PCT)};`,
+    `film lip-sync +${quoteCredits({ tool: 'avatar' })} cr; chat clip/product ad: video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more; music ${cr(C.music_30s)} under 60 s,`,
     `${cr(C.music_60s)} for 60–89 s, ${cr(C.music_90s)} for 90 s or more; talking avatar ${cr(C.avatar_30s)}; remix ${cr(C.remix_video)}; 3D model ${cr(C.model3d)}.`,
     `Top-ups ("${topUp}"): ${packs}. Quote prices only in credits and lari and only these numbers; for anything not listed, do not guess.`,
   ].join(' ');

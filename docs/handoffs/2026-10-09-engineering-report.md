@@ -16,7 +16,7 @@
 | Production commit | `66d7163` | `https://myavatar.ge/api/health` 05:52:57Z: `"commit":"66d7163"` |
 | GitHub CI `main`-ზე | მწვანე: CI run 398 და „E2E - Preview Contract“ 1070, ორივე `66d7163f`-ზე | GitHub Actions |
 | Supabase Production migrations | 14 ჩანაწერი; ბოლო `20261009a_function_hardening` (05:39:14Z) | `list_migrations`, project `zwksnayknzggdcenqqxy` |
-| Security Advisor | 0 error, 2 warning (`vector` `public`-ში; leaked-password protection), 23 info | 2026-10-09 05:39Z-ის შემდეგ |
+| Security Advisor | 0 error, 1 warning (`vector` `public`-ში, მიღებული); leaked-password protection ჩართულია 14:55Z-დან | 2026-10-09 14:56Z (Supabase Auth ნაკადის ხელახალი გაშვება; 05:39Z-ზე იყო 0 / 2 / 23 info) |
 | Production ცხრილები | 52 `public` ცხრილი, RLS ჩართულია 52-ზე | `pg_tables`, 06:0xZ |
 | Storage buckets | `uploads` private 50 MB; `renders`, `avatars`, `music` public; `studio`, `twins`, `fonts` private | `storage.buckets` |
 | გადახდები | 4 BOG შეკვეთა, 4-ვე `init_failed` (ბოლო 2026-10-06); დასრულებული გადახდა არც ერთი | `bog_orders` |
@@ -93,8 +93,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | # | სფერო | სტატუსი | პასუხისმგებელი | §55 blocker? |
 |---|---|---|---|---|
-| 1 | Auth / Resend | **FAILED** Production-ში | GG (Resend დომენი) | კი |
-| 2 | Supabase Auth პარამეტრები | BLOCKED_OWNER | GG | არა (security) |
+| 1 | Auth / Resend | **RESOLVED** Resend-ისთვის (2026-10-09): Resend VERIFIED 14:10Z; Production-ში კოდით შესვლა 14:17Z და პაროლის აღდგენა 14:26Z PROVEN live. **AUTH-4:** კოდით რეგისტრაცია Production-ში ყველასთვის FAILED იყო 16:01Z-მდე (GoTrue კოდს აუქმებს, როცა takeover-ის დაცვა პაროლს ცვლის); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU) და **PROVEN live Production-ში 16:09:05Z** (PR #52, `6c7dff4`; GG-ის რეგისტრაცია KA) | — | არა (2026-10-09 16:09Z-დან) |
+| 2 | Supabase Auth პარამეტრები | **VERIFIED** (2026-10-09): leaked-password ON 14:55Z, Confirm email ON, Advisor 0 error / 1 მიღებული warning; AUTH-3 Production-შია PR #52-ით (`6c7dff4`) და PROVEN live ~16:02Z; AUTH-4 PROVEN live 16:09:05Z; Supabase Auth-ის ყველა E2E რიგი Production-ში PROVEN | GG (სურვილისამებრ cert-alias Redirect URL) | არა |
 | 3 | Vertex migration | Preview-ზე PROVEN, Production-ში არა | GG (IAM + env), Claude (შემოწმება) | არა პირდაპირ (provider boundary-ს ნაწილი) |
 | 4 | Provider boundary | **FAILED** | GG (action 9), შემდეგ Claude | კი |
 | 5 | Video Director V1–V6 | BUILT_NOT_PROVEN | GG (Preview-ზე ერთი გაშვება), Claude | კი |
@@ -106,21 +106,24 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 11 | Supabase schema drift | **FAILED** (124 / 160) | Claude (ტრიაჟი) + GG (თითო ფუნქციაზე) | არა პირდაპირ |
 | 12 | Security | PARTIAL | GG (2 თანხმობა), Claude | P0 დახურულია |
 | 13 | Library | BUILT_NOT_PROVEN, RLS PROVEN | Claude + GG (live ტესტი) | არა |
-| 14 | Admin | deployed; ნაწილი PROVEN | Claude + GG | P1 დახურულია |
+| 14 | Admin | deployed; Admin Security **PROVEN** live (admin შესვლა 14:12Z, non-admin უარი 14:50Z, ანონიმური უარი); `admin_emails` 0 ჩანაწერი, admin მხოლოდ 2 ჩაშენებული მისამართია | Claude + GG | P1 დახურულია |
 | 15 | KA / EN / RU | key parity PROVEN | Claude | არა |
 | 16 | Mobile | BUILT_NOT_PROVEN | GG (მოწყობილობები) | არა |
 | 17 | E2E | ლოკალური; Preview-ზე ავტორიზებული E2E არ არის | Claude + GG (Supabase გაყოფა) | არა |
+| 19 | Agent G: ავტონომიური media და ფაილების შესრულება (GG, 2026-10-09 09:32Z, კრიტიკული) | **BUILT_NOT_PROVEN** (slice 1 + execution foundation, PR #50, flag-ის უკან; Preview E2E აკლია; sandbox BLOCKED_OWNER, Task API BUILT_NOT_PROVEN `/api/tasks`) | Claude (slice 1); GG (sandbox-ის ინფრასტრუქტურა, deploy) | კი (Agent G ორკესტრატორია) |
 | 18 | GCP Billing → Credits ფოტო | BLOCKED_OWNER | GG (2026-10-09 16:00Z-ის შემდეგ) | არა |
 
 ### 4.1 Auth / Resend (AUTH-2)
-- **სტატუსი:** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** RESOLVED. GG-მ DKIM ჩასვა, Supabase Auth ნაკადმა 4 ჩანაწერი დაამატა Vercel DNS-ში (მხოლოდ დამატება; rollback id-ები PR #51-ის ანგარიშის §6-შია), GG-მ Verify დააჭირა: Resend VERIFIED 14:10Z. Production-ში PROVEN live: კოდით შესვლა (KA) 14:17Z, პაროლის აღდგენა (EN) 14:26Z, non-admin უარი 14:50Z. კოდით რეგისტრაცია Production-ში FAILED (AUTH-4); fix `776c7ff` PROVEN PR #51-ის Preview-ზე 15:27:39Z (GG, RU; auth log: generate_link → PUT /admin/users → generate_link → /verify 200 user_signedup). PR #51-ზე ასევე `6aa0770` (mailto: მისამართი; GoTrue-ს უარი → 400 invalid_email) და `adc28d7` (სახელი ≠ ახალი პაროლი), BUILT_NOT_PROVEN live. **განახლება 16:05Z:** GG-მა 15:47:19Z აირჩია „ჰოტფიქსი ახლა“; ოთხივე auth fix PR #52-ით (`6c7dff4`) Production-შია 16:01Z-დან (§12). AUTH-3 PROVEN live ~16:02Z; AUTH-4 PROVEN live 16:09:05Z (GG-მა myavatar.ge/ka-ზე ახალი მისამართით დარეგისტრირდა; auth log: generate_link → PUT /admin/users → generate_link → /verify 200 user_signedup + login; SQL: დადასტურებული, 1 სესია, მომხმარებლები 23 → 24). mailto: და სახელის დაცვის უარის შემთხვევა live არ შემოწმებულა. ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (თავდაპირველი):** FAILED Production-ში. ელფოსტის კოდით შესვლა, რეგისტრაცია და პაროლის აღდგენა არ მუშაობს. AUTH-1 (კოდის სიგრძე) Production-შია 2026-10-09-დან; ფოსტას Resend აჩერებს.
 - **პასუხისმგებელი:** GG.
 - **დამოკიდებულება:** `myavatar.ge`-ის DNS-ზე წვდომა; Resend ანგარიში, რომლის გასაღებიც `RESEND_API_KEY`-შია.
 - **მტკიცებულება:** Vercel log 2026-10-08 13:57:04Z `resend 403 "The myavatar.ge domain is not verified"`; Supabase `generate_link` 200 იმავე მოთხოვნაზე.
 - **DoD:** resend.com/domains-ში `myavatar.ge` = Verified → Production-ში ერთი ახალი რეგისტრაცია კოდით შედის → პაროლის აღდგენის წერილი მოდის → Vercel log-ში 403 აღარ ჩანს.
 
 ### 4.2 Supabase Auth პარამეტრები
-- **სტატუსი:** BLOCKED_OWNER.
+- **სტატუსი (განახლება 2026-10-09 14:58Z):** VERIFIED. GG-მ leaked-password protection ჩართო 14:55Z (Pro, upgrade არ დასჭირდა); Advisor 14:56Z: 0 error, 1 warning (`vector`, მიღებული); „Confirm email“ ON (`mailer_autoconfirm=false`); Captcha გამორთულია. ქვემოთ თავდაპირველი ჩანაწერია.
+- **სტატუსი (თავდაპირველი):** BLOCKED_OWNER.
 - **პასუხისმგებელი:** GG (Supabase Dashboard → Authentication).
 - **რა:** (ა) leaked-password protection ჩართვა (Security Advisor-ის ერთ-ერთი 2 დარჩენილი warning); (ბ) დადასტურება, რომ „Confirm email“ ჩართულია — PR #45-ის admin წესი დადასტურებულ ელფოსტას ეყრდნობა.
 - **DoD:** Advisor-ში leaked-password warning აღარ არის; Auth settings-ის სქრინი „Confirm email: on“.
@@ -138,7 +141,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **დამოკიდებულება:** action 9; Google-ის ჩამნაცვლებელი თითო სერვისზე (image → `gemini-3.1-flash-image`; music → Lyria; avatar / 3D / swap-ს Google-ის ჩამნაცვლებელი არ აქვს → „მალე“).
 - **კოდში დარჩენილი ჩუმი fallback:** avatar-ის lip-sync HeyGen-ის ჩავარდნისას SadTalker-ზე (Replicate) გადადის (`lib/ai/lipsync.ts:318-350`) — R7-ის დარღვევა; action 9-თან ერთად უნდა მოიხსნას.
 - **Production-შია (PR #48, `7126682`):** `/api/ai` აღარ იძახებს Anthropic-ს (`claude-sonnet-4-6`) — ახლა Gemini-ა, `76e8c525`.
-- **ამ branch-ზე, Production-ში არა (`ba74fa21`):** `/api/orbit/agent` Google-only-ში (ნაგულისხმევი) 404-ს აბრუნებს. აქამდე ნებისმიერ შესულ მომხმარებელს OpenRouter / OpenAI-ის პასუხს აძლევდა (`chatEngine.executeStream`), კრედიტის ჩამოჭრის გარეშე, თუმცა მას არცერთი ეკრანი არ იძახებს. Music-ის cover art Google-only-ში აღარ მიდის Pollinations.ai-ზე (გარე უფასო სერვისი, რომელსაც ყოველი ფასიანი brief-ის ინგლისური თარგმანი ეგზავნებოდა); track ახლა cover-ის გარეშე მოდის (`coverUrl` არ არის, როგორც cover-ის ნებისმიერი ჩავარდნისას). Google-ის cover GG-ის image ძრავის გადაწყვეტილებაა (action 9). ორივე ბრუნდება მხოლოდ `AI_GOOGLE_ONLY=0`-ით.
+- **Production-შია 2026-10-09 08:07Z-დან (`ba74fa21`, PR #49 → `29e7d67`):** `/api/orbit/agent` Google-only-ში (ნაგულისხმევი) 404-ს აბრუნებს. აქამდე ნებისმიერ შესულ მომხმარებელს OpenRouter / OpenAI-ის პასუხს აძლევდა (`chatEngine.executeStream`), კრედიტის ჩამოჭრის გარეშე, თუმცა მას არცერთი ეკრანი არ იძახებს. Music-ის cover art Google-only-ში აღარ მიდის Pollinations.ai-ზე (გარე უფასო სერვისი, რომელსაც ყოველი ფასიანი brief-ის ინგლისური თარგმანი ეგზავნებოდა); track ახლა cover-ის გარეშე მოდის (`coverUrl` არ არის, როგორც cover-ის ნებისმიერი ჩავარდნისას). Google-ის cover GG-ის image ძრავის გადაწყვეტილებაა (action 9). ორივე ბრუნდება მხოლოდ `AI_GOOGLE_ONLY=0`-ით.
 - **Regression guard (`ba74fa21`):** `__tests__/provider-boundary.test.ts` კითხულობს `app/`, `lib/`, `components/`, `workers/`, `services/`, `hooks/`, `store/`, `types/`, `middleware.ts`-ის runtime კოდს (კომენტარებს არა): აკრძალული vendor-ის host string / template literal-ში ან SDK-ის value import. დღევანდელი მდგომარეობა გაყინულია `__tests__/provider-boundary.allowlist.json`-ში: 22 vendor, 60 ფაილი, 94 ჩანაწერი. ახალი ფაილი აკრძალულ vendor-თან → ტესტი ვარდება; ფაილი, რომელიც vendor-ს აღარ იძახებს, სიიდან უნდა წაიშალოს (სია მხოლოდ მცირდება). შემოწმდა: ახალ ფაილში `api.replicate.com` → ვარდება.
 - **მტკიცებულება:** სერტიფიკაცია §L; PR #44-ის აუდიტი (3.2).
 - **DoD:** სტატიკური ტესტი, რომელიც ვარდება, თუ `app/`, `lib/`, `workers/`, `services/` რომელიმე აკრძალულ host-ს იძახებს (ratchet არის, allowlist-ი ცარიელი უნდა გახდეს); Production-დან ამოღებულია Replicate / Udio / Higgsfield / HeyGen გასაღებები; Google-ის ძრავის გარეშე დარჩენილი სერვისები კატალოგში „მალე“-ა.
@@ -185,7 +188,10 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **პასუხისმგებელი:** Claude (ტრიაჟი: ფუნქცია ცოცხალია თუ მკვდარი, მკვდრის ამოღება ან გამორთვა), GG (ყოველი ახალი ცხრილი = ბაზის ცვლილება).
 - **დამოკიდებულება:** Preview და Production ერთ Supabase-ს იყენებს (owner action 11), ამიტომ მიგრაციის Preview-ზე ცდა Production-ს ეხება.
 - **მტკიცებულება:** `docs/handoffs/2026-10-08-production-schema-drift.md`.
-- **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს.
+- **Regression guard (2026-10-09, ნაწილი 9):** `__tests__/schema-drift.test.ts` + `__tests__/schema-drift.snapshot.json`. Snapshot წაკითხულია Production-იდან 08:25Z-ზე (read-only): 52 ცხრილი, 39 ფუნქცია (pgvector-ის გარეშე), იგივე 52, რაც 2026-10-08-ზე. ტესტი კითხულობს runtime კოდის `.from()` / `.rpc()` სახელებს (literal ან იმავე ფაილის `const`; `.storage.from()` bucket-ია და გამოტოვებულია). დღეს კოდი 166 ცხრილს და 27 ფუნქციას იძახებს; Production-ში არ არის **125 ცხრილი და 11 ფუნქცია**, ისინი გაყინულია `missing`-ში (სია მხოლოდ მცირდება); 5 ფაილი სახელს run time-ში აწყობს (`dynamic`). ახალი სახელი, რომელიც Production-ში არ არის → ტესტი ვარდება. შემოწმდა: `missing`-იდან ცხრილის და ფუნქციის ამოღება, `missing`-ში კოდისთვის უცნობი სახელის ჩამატება, `dynamic`-იდან ფაილის ამოღება → 4 ტესტი ვარდება.
+- **ახლად ნაპოვნი (ტრიაჟისთვის, არაფერი შეცვლილა):** 2026-10-08-ის სიას `const`-ით დასახელებული 3 ცხრილი აკლდა: `research_jobs`, `research_context_files` (Research / Connectors; `lib/research/capabilities.ts` ჯერ ამოწმებს ცხრილს და „მალე“-ს აჩვენებს, ანუ შეგნებულად დახურულია), `user_plugin_settings` (`lib/plugins/settings.ts`). `app/api/invoices/generate` იძახებს `.from('auth.users')`-ს, რაც PostgREST-ში ვერასოდეს იმუშავებს (მკვდარი გზა: `orders` ცხრილიც არ არის, ეკრანი არ იძახებს). 11 ფუნქცია არ არის, მათ შორის `deduct_credits_transaction`, `ensure_user_billing_rows`, `reset_user_credits_if_due` (`lib/billing/enforce.ts`, Stripe webhook), `claim_next_job` (`workers/shared/queue.ts`), `match_rag_documents`.
+- **ტრიაჟი (2026-10-09, ნაწილი 11):** ყველა ცოცხალი გზა ხელით წაკითხულია; შედეგი და GG-ის 5 გადაწყვეტილება (1-ლი მიღებულია: ობოლი გვერდები გაუქმდა) `docs/handoffs/2026-10-08-production-schema-drift.md`-ის ბოლო ნაწილშია. მოკლედ: `debit_wallet_gel` მკვდარია (ჩამოჭრას არც ერთი ცოცხალი გზა არ ითხოვს; ფილმი და მუსიკალური ვიდეო თანხას წინასწარ ჭრის), ანუ შემოსავლის დანაკარგი არ არის; RAG მკვდარია; Research და Plugins შეგნებულად დახურულია; სამი ობოლი გვერდი (`/services/workflow`, `/account/invoices`, `/admin/disputes`) მისამართით გახსნისას არ მუშაობს. გასწორდა: Vapi-ს ორი webhook საიდუმლოს გარეშე ხელმოწერას არ ამოწმებდა (`7cc1a781`).
+- **DoD:** კოდის ყოველი `.from()` სახელი Production-ში არსებობს, ან ის გზა წაშლილია / გამორთულია; ~~სტატიკური ტესტი Production-ის სქემის snapshot-ით ახალ drift-ს არ უშვებს~~ (ნაწილი 9).
 
 ### 4.12 Security
 - **სტატუსი:** PARTIAL. დახურულია: STORAGE-1 (P0), ფუნქციების 17 warning, request-ით დასახელებული მედიის ხელმოწერა, share გვერდის `javascript:` ბმული, ElevenLabs voice id, avatars `owner_id` გაჟონვა, `jobs`-ის ორი გზა. ღიაა:
@@ -224,7 +230,7 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **DoD:** iPhone და Android-ზე: სტუდიო, შესვლა, Live voice, checkout — ჩავარდნის გარეშე.
 
 ### 4.17 E2E
-- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09, ეს branch (`76e8c525`+), ლოკალურად: სრული გაშვება Supabase env-ის გარეშე — 220 passed, 21 failed, 10 skipped; 21-ის ხელახლა გაშვება CI-ის dummy Supabase ცვლადებით — 19 passed; დარჩენილი 2 ცალკე, ორჯერ: `live-voice-e2e.spec.ts:30` ორჯერვე გავიდა (დატვირთვა იყო), `landing.spec.ts:380` („when the image lands…“) 5-დან 4-ჯერ ვარდება (phone და desktop). მიზეზი: `/brand/v1/card-image.jpg`-ის მოთხოვნა იგზავნება, პასუხი არ მოდის, სურათი 0×0 რჩება. ეს branch ამ ეკრანს და static ფაილებს არ ეხება; ტესტი CI-ში არ გადის. 2026-10-09 გამოკვლევა: service worker არ არის (`sw.js` მხოლოდ production-ში რეგისტრირდება, Playwright `next dev`-ს უშვებს); Supabase-ის dummy host სწრაფად ვარდება. 15 წამზე სურათის მოთხოვნასთან ერთად 28–36 `/api/*` მოთხოვნა ელოდება `next dev`-ის route-ების პირველ კომპილაციას. დასკვნა: ეს მოთხოვნები Chrome-ის 6 კავშირს ერთ host-ზე ავსებს და სურათი რიგში რჩება. **PROVEN, რომ dev სერვერის ეფექტია:** იგივე ტესტი `7c8dd9b3`-ის production build-ზე (`next build` + `next start`, CI-ის dummy Supabase env) 10 / 10 გავიდა (phone + desktop, `--repeat-each=5`); `next dev`-ზე (`76e8c525`+, landing-ს და static ფაილებს მას შემდეგ არაფერი შეხებია) 5-დან 4 ვარდებოდა. Production-ის სურათის ჩვენებას არ ეხება. ამავე გაშვებამ სხვა რამ აჩვენა: production build-ზე მთელი `landing.spec.ts`-დან (54) 4–5 ტესტი ვარდება, რომლებიც `next dev`-ზე გადის, ორი მიზეზით: (1) phone-ზე `?tool=video` ბმული Video-ს Create ფურცელს ხსნის (`OmniStudio.tsx:2994`, დიზაინით: Video-ს prompt ფურცელშია), და ფურცლის ფონი header-ის „შესვლა“-ს და „+“-ს ფარავს (3 ტესტი, 60 წმ timeout); (2) production build `/api/analytics/track`-ზე POST-ს აგზავნის, ტესტი კი ცარიელ Enter-ზე არცერთ POST-ს არ ელის. რატომ არ ხსნის dev სერვერი იმავე ფურცელს, არ გამოკვლეულა. ტესტები არ შეცვლილა. მნიშვნელობა: CI-ის E2E `next dev`-ზე გადის, ამიტომ Production-ის phone ქცევას ბოლომდე არ ასახავს — NOT PROVEN, Claude. ჯამი: 241 არა-skipped ტესტიდან 240 გადის. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
+- **სტატუსი:** PARTIAL. CI-ში მხოლოდ `tests/preview-e2e.spec.ts` გადის (mock-ებით, „E2E - Preview Contract“, მწვანე `66d7163f`-ზე). სრული ლოკალური Playwright (27 spec, 251 ტესტი) ბოლოს 2026-10-08-ზე: 239 passed, 10 skipped, 2 ჩავარდა დატვირთვით და ცალკე გაშვებისას გადის. 2026-10-09, ეს branch (`76e8c525`+), ლოკალურად: სრული გაშვება Supabase env-ის გარეშე — 220 passed, 21 failed, 10 skipped; 21-ის ხელახლა გაშვება CI-ის dummy Supabase ცვლადებით — 19 passed; დარჩენილი 2 ცალკე, ორჯერ: `live-voice-e2e.spec.ts:30` ორჯერვე გავიდა (დატვირთვა იყო), `landing.spec.ts:380` („when the image lands…“) 5-დან 4-ჯერ ვარდება (phone და desktop). მიზეზი: `/brand/v1/card-image.jpg`-ის მოთხოვნა იგზავნება, პასუხი არ მოდის, სურათი 0×0 რჩება. ეს branch ამ ეკრანს და static ფაილებს არ ეხება; ტესტი CI-ში არ გადის. 2026-10-09 გამოკვლევა: service worker არ არის (`sw.js` მხოლოდ production-ში რეგისტრირდება, Playwright `next dev`-ს უშვებს); Supabase-ის dummy host სწრაფად ვარდება. 15 წამზე სურათის მოთხოვნასთან ერთად 28–36 `/api/*` მოთხოვნა ელოდება `next dev`-ის route-ების პირველ კომპილაციას. დასკვნა: ეს მოთხოვნები Chrome-ის 6 კავშირს ერთ host-ზე ავსებს და სურათი რიგში რჩება. **PROVEN, რომ dev სერვერის ეფექტია:** იგივე ტესტი `7c8dd9b3`-ის production build-ზე (`next build` + `next start`, CI-ის dummy Supabase env) 10 / 10 გავიდა (phone + desktop, `--repeat-each=5`); `next dev`-ზე (`76e8c525`+, landing-ს და static ფაილებს მას შემდეგ არაფერი შეხებია) 5-დან 4 ვარდებოდა. Production-ის სურათის ჩვენებას არ ეხება. ამავე გაშვებამ სხვა რამ აჩვენა: production build-ზე მთელი `landing.spec.ts`-დან (54) 4–5 ტესტი ვარდება, რომლებიც `next dev`-ზე გადის, ორი მიზეზით: (1) phone-ზე `?tool=video` ბმული Video-ს Create ფურცელს ხსნის (`OmniStudio.tsx:2994`, დიზაინით: Video-ს prompt ფურცელშია), და ფურცლის ფონი header-ის „შესვლა“-ს და „+“-ს ფარავს (3 ტესტი, 60 წმ timeout); (2) production build `/api/analytics/track`-ზე POST-ს აგზავნის, ტესტი კი ცარიელ Enter-ზე არცერთ POST-ს არ ელის. ~~რატომ არ ხსნის dev სერვერი იმავე ფურცელს, არ გამოკვლეულა~~ → **PROVEN (ნაწილი 10):** React-ის StrictMode (მხოლოდ dev-ში) mount-ის effect-ებს ორჯერ უშვებს, და „ჩატში ფურცელი დაიმალოს“ effect-ის მეორე გაშვება (პირველი render-ის `chatOnly = true`-ით) deep link-ის ახლად გახსნილ ფურცელს ხურავდა. ანუ CI-ის E2E phone-ზე ხედავდა ეკრანს, რომელსაც Production არ აჩვენებს. ეს effect ახლა მხოლოდ ჩატში შესვლისას ხურავს (Production-ის ქცევა არ იცვლება), ტესტები phone-ის რეალურ ქცევას ამოწმებს, analytics-ის log ფონურ მოთხოვნად ითვლება. ჯამი: 241 არა-skipped ტესტიდან 240 გადის. Preview-სა და Production-ზე ავტორიზებული E2E (შესული მომხმარებლით) არ არსებობს.
 - **პასუხისმგებელი:** Claude; GG — Preview-სა და Production-ის Supabase-ის გაყოფა (owner action 11) და სატესტო ანგარიში.
 - **DoD:** CI-ში E2E Preview-ზე, სატესტო ანგარიშით, ცალკე Supabase-ზე: შესვლა, ერთი უფასო მოქმედება, Library, გასვლა.
 
@@ -233,17 +239,48 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 - **პასუხისმგებელი:** GG, 2026-10-09 16:00Z-ის შემდეგ.
 - **DoD:** Billing → Reports (project `gen-lang-client-0671348730`, SKU-ით) და Billing → Credits-ის ფოტო; მოსალოდნელია Subtotal ≈ $0 და კრედიტი ≈ $299.49 (სულ ≈ $0.51 დაიხარჯა, გამოთვლილი).
 
+### 4.19 Agent G: ავტონომიური media და ფაილების შესრულება
+- **Execution foundation (GG, 2026-10-09 11:15Z, 9 პუნქტი):** PR #50-ზე აშენდა, flag-ის უკან, migration-ის გარეშე: მონტაჟი აღარ მუშაობს მოთხოვნის შიგნით (`run` რიგში აყენებს, worker lease-ით ასრულებს, heartbeat 15 წმ, ერთი retry, per-minute sweep); დასრულებული job-ი აღარ იხსნება; „შეჩერება“ ffmpeg-ს რეალურად კლავს; refund-ის ვალი იმავე ჩანაწერში იწერება და sweep ფარავს; tool-ების typed allowlist (მოდელს job-ის დაწყება ან ხარჯვა არ შეუძლია); sandbox-ის კონტრაქტი (runner-ი ჯერ უარს ამბობს). სტატუსები EF-1 … EF-9, phase 2-ის გადაწყვეტილებები (migration, sandbox host, worker host) და migration-ის DRAFT (არ არის გამოყენებული): `docs/handoffs/2026-10-09-agent-g-execution-foundation.md`. AG-4-ის PARTIAL ამით დახურულია (BUILT_NOT_PROVEN).
+- **სტატუსი (2026-10-09, slice 1):** BUILT_NOT_PROVEN. აშენებულია PR #50-ზე, `AGENT_G_MEDIA_EXEC` flag-ის უკან (Production-ში გამორთულია; Preview-ზე მხოლოდ ადმინისთვის). AG-1 … AG-7 დაწერილი და ტესტირებულია, AG-4-ის ერთი ნაწილი PARTIAL-ია, AG-8 (Preview E2E) აკლია. დეტალები: `PROJECT_MASTER.md` Section F.
+- **რა გაკეთდა:**
+  - beat-ის ამოცნობა (`lib/services/montage/beatPlan.ts`, `beatAnalysis.ts`): ტემპი და პირველი beat ffmpeg-ის PCM-იდან; ჭრა მთელ beat-ებზე, 30 fps-ის ბადეზე.
+  - `lib/agent/media/montageExec.ts`: `quote` (ანალიზი, გეგმა, ფასი; არაფერს ხარჯავს, HMAC ხელმოწერა 30 წუთით), `run` (ერთი job თითო quote-ზე, არსებული `runMontage`, ffprobe QC, refund, audit), `cancel`.
+  - `/api/agent/media/montage` (GET enabled, POST quote / run / cancel), `/api/analytics/track` აღარ იღებს `audit.` event-ებს.
+  - `bindLiveAgent.ts`: „media tool არ არის“ შეზღუდვა მოხსნილია. ახალი tool `quote_montage_to_music` მხოლოდ quote-ს ამზადებს მოთხოვნის ფაილებიდან; შესრულება მხოლოდ მომხმარებლის დადასტურებით. `/api/agent/run` იღებს `files`-ს და აბრუნებს `mediaQuote`-ს.
+  - ჩატი (`OmniStudio` + `AgentMontageCard`): კლიპები + ერთი მუსიკა + „დაამონტაჟე მუსიკაზე“ → ყველა ფაილი იტვირთება → გეგმის ბარათი (კადრები, სიგრძე, BPM, ფორმატი, „უფასო“) → „დაწყება“ → პროგრესი და „შეჩერება“ → MP4 იმავე ჩატში (player, Download) და Library-ში. ჩუმი remix-ის გზა ამ შემთხვევაში აღარ ირთვება. 4 მბ-ზე დიდი მუსიკა მხოლოდ მონტაჟისთვის მიიღება (იტვირთება, inline არ იგზავნება).
+  - ფასი: უფასო (GG, 09:43Z); ფასების ცხრილი არ შეცვლილა.
+- **მტკიცებულება (ლოკალური):** jest სრული 10938 გავიდა; ახალი ტესტები (beat planner 17, probe 3, executor და agent media 35, route 4, agent run და bindLiveAgent 44, chat და client 32); რეალურ ffmpeg-ზე: 120 BPM ტრეკი → 119.96 BPM, პირველი beat 0.238 წმ (სინამდვილეში 0.25), master H.264/AAC 9.53 წმ 9.5 წმ-იან გეგმაზე; ბრაუზერის ტესტი (route-ები mock) 4/4, მეზობელი ჩატის / gate / montage ტესტები 24/24.
+- **რა აკლია:** AG-8: Preview-ზე ადმინის სესიით რეალური კლიპები + მუსიკა, job id, ffprobe და screenshot. AG-4: Vercel-ის ფუნქცია თუ შუაში მოკვდა, job რიგი `processing`-ში რჩება, სანამ drain-renders-ის reap leg არ მოხსნის (ის მხოლოდ `RENDER_DRAINER_ENABLED`-ით მუშაობს). ჩატში მაქსიმუმ 4 კლიპი + 1 მუსიკაა (composer-ის 5 ფაილი); route 12 კლიპს იღებს.
+- **ძველი მდგომარეობა (slice 1-მდე):** Agent G-ს (`lib/agent/react/bindLiveAgent.ts`) media tool შეგნებულად არ ჰქონდა: ძველი `orchestrate_media` მხოლოდ `generation_jobs`-ში წერდა რიგს, რომელსაც არავინ ასრულებდა, და კრედიტს არ იჭერდა.
+- **პასუხისმგებელი:** Claude (slice 1 და შემდეგ სხვა სერვისები); GG: კოდის sandbox-ის ინფრასტრუქტურა (ახალი, შესაძლოა ფასიანი), Preview-ზე E2E-ის დადასტურება, deploy.
+- **დამოკიდებულება:** არსებული Studio lane-ები, `lib/video/ffmpegExec.ts`, Credit Ledger (reserve / refund), job-ის ცხრილები, Library. Production-ში `service_jobs` არ არის (4.11), ამიტომ slice 1 Production-ში არსებულ job ცხრილს უნდა დაეყრდნოს.
+- **მტკიცებულება:** `PROJECT_MASTER.md` Section F (GG-ის 6 პუნქტი, წესები, DoD AG-1 … AG-8).
+- **არსებული მდგომარეობა (2026-10-09, კოდის წაკითხვით):**
+  - Studio-ს ჩატი მარშრუტს კლიენტში ირჩევს (`components/studio/OmniStudio.tsx` `send()`); `/api/chat/gemini` მხოლოდ ტექსტს აბრუნებს. ReAct აგენტს (`/api/agent/run`) მხოლოდ Live voice-ის `ask_agent_g` და AgentTerminal იძახებს.
+  - Montage lane (`/api/v2/montage/render`, `lib/services/montage/*`) უკვე აკეთებს N კლიპი + მუსიკა → ერთი MP4-ს (`ffmpeg-static` Vercel-ზე, 600 წმ-მდე, `renders` bucket, `generation_jobs`-ის რიგი = Library). კრედიტს არ ჭრის (Montage Studio-ში export უფასოა).
+  - **ჩუმი გადახვევა დღეს:** ჩატში რამდენიმე ვიდეო + ტრეკი + „მუსიკაზე დაამონტაჟე“ remix-ზე მიდის: იღებს მხოლოდ პირველ ვიდეოს, ჭრის 15 კრედიტს, დანარჩენ კლიპებს ჩუმად აგდებს.
+  - beat-ის ამოცნობა კოდში არ არის. Composer: მაქსიმუმ 5 მიმაგრება; აუდიო ~4 MB inline ლიმიტში ითვლება, ამიტომ 3 MB-ზე დიდი მუსიკა უარყოფილია.
+- **Slice 1-ის გეგმა (ახალი pipeline-ის გარეშე):**
+  1. `lib/services/montage/beatPlan.ts` (ახალი, სუფთა ფუნქციები): ffmpeg-ით მუსიკის PCM → ენერგიის onset-ები და ტემპი → თითო კლიპის `startSec` / `endSec` beat-ებზე, მუსიკის სიგრძით (300 წმ-მდე), `musicOnly: true`.
+  2. ერთი სერვერის მოქმედება, ორი ფაზით: `quote` (ანალიზი, გეგმა, ფასი; არაფერს ხარჯავს) და `run` (მხოლოდ დადასტურების შემდეგ; idempotency key; ფასიანის შემთხვევაში ledger reserve + `recordJobReservation` + refund შეცდომისას; `generation_jobs`-ში პროგრესი; ffprobe QC; audit log). ის არსებულ `runMontage`-ს იძახებს.
+  3. `bindLiveAgent.ts`: ReAct აგენტს ემატება tool, რომელიც მხოლოდ quote-ს ამზადებს; შესრულება მხოლოდ მომხმარებლის დადასტურებით (ასე იხსნება „media tool არ არის“ შეზღუდვა ხარჯის რისკის გარეშე).
+  4. OmniStudio: ≥2 ვიდეო + 1 აუდიო + მონტაჟის განზრახვა → ყველა ფაილი `uploadBigFile`-ით → quote ბარათი ჩატში → დადასტურება → MP4 იმავე ჩატში (player, Download), Library-ში. ჩუმი remix-ის გზა ამ შემთხვევაში აღარ ირთვება.
+  5. ყველაფერი `AGENT_G_MEDIA_EXEC` flag-ის უკან (default off), რომ PR #50-ის merge-მა ნახევრად აშენებული არაფერი ჩართოს.
+  6. ტესტები: beat planner, quote არ ხარჯავს, იგივე key ორჯერ არ ჭრის, შეცდომა აბრუნებს, სხვისი ფაილი უარყოფილია; შემდეგ E2E Preview-ზე.
+- **GG-ის გადაწყვეტილება:** Agent G-ის მონტაჟის ფასი (დღეს Montage Studio-ში უფასოა; ფასის დამატება ფასების ცხრილის ცვლილებაა). კოდის (Python) sandbox ახალი ინფრასტრუქტურაა: slice 1-ში არ შედის, ცალკე გადაწყვეტილებაა.
+- **DoD (slice 1, „ჩემი კლიპები ამ მუსიკაზე დაამონტაჟე“):** Agent G-ის tool არსებულ lane-ს იძახებს; მხოლოდ მომხმარებლის საკუთარი ფაილები; ფასი ჩატში ჩანს და დადასტურებამდე არაფერი იჭრება; job-ს აქვს პროგრესი, cancel, retry ორმაგი ჩამოჭრის გარეშე, recovery, refund; ffprobe QC; MP4 იმავე ჩატში ირთვება, ჩამოიტვირთება და Library-შია; audit log; E2E Preview-ზე ჩაწერილი მტკიცებულებით.
+
 ## 5. შეჯამება: DONE / PROVEN / NOT PROVEN / BLOCKED / NEXT ACTION
 
 **DONE (კოდი Production-შია):** AUTH-1; ერთიანი admin წესი და `run-migration` 404; request-ით დასახელებული მედიის მფლობელის შემოწმება; share ბმულები მხოლოდ https; ჩუმი fallback-ების მოხსნა (image, text, music, voice); ServiceCatalog და `/hub` → სტუდიო; voice id-ის შემოწმება; avatars `user_id`-ზე; `jobs`-ის ორი გზა დახურული; uploads 50 MB / მხოლოდ მედია; STORAGE-1; ფუნქციების hardening.
 
-**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** ~~PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b`; PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`)~~ — Production-შია PR #48-ით (`7126682`, ნაწილი 7). ახალი (`ba74fa21`): `/api/orbit/agent` 404 Google-only-ში; music cover art აღარ მიდის Pollinations-ზე; აკრძალული vendor-ების ratchet ტესტი; ka / en / ru: billing key, კამერის 43 რუსული სახელი, „мин.“.
+**DONE branch-ზე, Production-ში არა (deploy GG-ის თანხმობას ელის):** ~~PR #43-ის დარჩენილი Part 0 სამუშაო (`0d239f26`); `20261009b`; PR #44-დან Redis fast-fail, `/api/ai` → Gemini, ხმის hardening (`76e8c525`); Admin Pipeline ბარათი (`d387508e`)~~ — Production-შია PR #48-ით (`7126682`, ნაწილი 7). ახალი (`ba74fa21`, Production-შია `29e7d67`-ით 08:07Z-დან): `/api/orbit/agent` 404 Google-only-ში; music cover art აღარ მიდის Pollinations-ზე; აკრძალული vendor-ების ratchet ტესტი; ka / en / ru: billing key, კამერის 43 რუსული სახელი, „мин.“.
 
-**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch). `7c8dd9b3`-ზე: jest **702 / 702 suite, 10,817 passed, 3 skipped**; `tsc` 0; eslint სუფთა შეცვლილ ფაილებზე; `next build` წარმატებით; `[i18n-parity] OK`.
+**PROVEN:** Production `66d7163`; CI მწვანე; 14 მიგრაცია; Advisor 0 error / 2 warning (14:56Z-დან 0 / 1, leaked-password ჩართულია); Auth live (2026-10-09): კოდით შესვლა, პაროლის აღდგენა, admin შესვლა, non-admin უარი; 52 / 52 ცხრილი RLS-ით; anon storage-ში მხოლოდ `music`-ს ხედავს; deploy-ის შემდეგი public შემოწმებები; Vertex AUTH + INFERENCE Preview-ზე (Gemini, Veo); key parity; jest 698 / 698 suite (branch); ლოკალური Playwright 240 / 241 (branch). `7c8dd9b3`-ზე: jest **702 / 702 suite, 10,817 passed, 3 skipped**; `tsc` 0; eslint სუფთა შეცვლილ ფაილებზე; `next build` წარმატებით; `[i18n-parity] OK`.
 
-**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; admin წესი ცოცხლად; mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; ~~`landing.spec.ts:380`~~ (dev სერვერის ეფექტი, PROVEN 4.17); production build-ზე phone-ის 3 landing ტესტი და analytics POST (4.17).
+**NOT PROVEN:** Live voice ცოცხალ ზარზე; director run; Library ცოცხლად; ~~admin წესი ცოცხლად~~ (PROVEN 14:12Z / 14:50Z); mobile მოწყობილობებზე; search / scrape ცოცხლად; analytics events; Production-ის Vertex; ~~`landing.spec.ts:380`~~ (dev სერვერის ეფექტი, PROVEN 4.17); ~~production build-ზე phone-ის 3 landing ტესტი და analytics POST~~ (მიზეზი PROVEN, გასწორდა, ნაწილი 10).
 
-**BLOCKED (GG):** Resend დომენი; leaked-password + „Confirm email“; BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
+**BLOCKED (GG):** ~~Resend დომენი; leaked-password + „Confirm email“~~ (შესრულდა 2026-10-09; დარჩა RU კოდით რეგისტრაციის E2E); BOG credentials; Stripe Live events; კანონიკური ფასები; action 9; Browser Control-ის ინფრასტრუქტურა; Production Vertex (IAM + env); ~~`20261009b`-ის თანხმობა~~ (გაშვებულია 07:14Z); Supabase-ის გაყოფა; რეალური მოწყობილობები; Billing ფოტო; `HAWK_API_KEY`.
 
 ## 6. გამოსწორების რიგი
 
@@ -251,8 +288,8 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 
 | რიგი | ვინ | რა | რას ხსნის |
 |---|---|---|---|
-| 1 | GG | Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
-| 2 | GG | Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება | Advisor warning; admin წესის საფუძველი |
+| 1 | ~~GG~~ | ~~Resend-ში `myavatar.ge`-ის დადასტურება (DNS TXT / MX → Verify)~~ **შესრულდა 14:10Z** (შესვლა და აღდგენა PROVEN live) | შესვლა, რეგისტრაცია, აღდგენა; ყველა ცოცხალი ტესტი, რომელსაც შესული მომხმარებელი სჭირდება |
+| 2 | ~~GG~~ | ~~Supabase Auth: leaked-password protection ჩართვა, „Confirm email“-ის დადასტურება~~ **შესრულდა** (Confirm email ON; leaked-password ON 14:55Z) | Advisor warning; admin წესის საფუძველი |
 | 3 | ~~GG → Claude~~ | ~~`20261009b`-ზე „კი“ → გაშვება და შემოწმება~~ **შესრულდა 07:14Z** | `renders` public gap |
 | 4 | GG → Claude | BOG live credentials (≈ 2026-10-10) → უფასო 10 ₾ შემოწმება → ერთი რეალური გადახდა | billing blocker |
 | 5 | GG → Claude | კანონიკური ფასების ცხრილი → ერთი SSoT კოდში + ტესტი | pricing blocker |
@@ -261,10 +298,11 @@ PR #44 ხელუხლებელია (Astra-ს Vertex WIP `503829dc` + C
 | 8 | GG → Claude | Preview-ზე ერთი director run → ledger-ის შემოწმება → Production flag-ის გადაწყვეტა | V1–V6 blocker |
 | 9 | GG | რეალური ტელეფონით Live voice ზარი | Live voice blocker, mobile |
 | 10 | GG | Browser Control: ინფრასტრუქტურა თუ launch-იდან ამოღება | browser blocker |
-| 11 | Claude | schema drift-ის ტრიაჟი → თითო ფუნქციაზე GG-ის გადაწყვეტილება | drift |
-| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); drift-ის სტატიკური ტესტი | admin, i18n, regression guard |
+| 11 | Claude → GG | ~~schema drift-ის ტრიაჟი~~ (ნაწილი 11); ~~ობოლი გვერდები~~ (GG, 09:32Z); რჩება GG-ის 4 გადაწყვეტილება (drift doc-ის ბოლოს) | drift |
+| 12 | Claude | ~~Admin Pipeline ბარათი~~ (`d387508e`); ~~`landing.spec.ts:380`-ის მიზეზი~~ (4.17); ~~providers health-ის და Lyria-ს ძველი ტექსტი~~ (`505066c4`); ~~ka/en/ru სტატიკური აუდიტი~~ (`ba74fa21`, 4.15; სქრინები რჩება); ~~აკრძალული host-ების ტესტი~~ (`ba74fa21`, ratchet, 4.4); ~~drift-ის სტატიკური ტესტი~~ (ნაწილი 9, 4.11) | admin, i18n, regression guard |
 | 13 | GG → Claude | Supabase-ის გაყოფა (action 11) → ავტორიზებული E2E CI-ში | E2E |
 | 14 | GG | Billing → Credits ფოტო 16:00Z-ის შემდეგ | Part 0 დახურვა |
+| 15 | Claude → GG | **Agent G-ის media შესრულება (GG, 09:32Z, კრიტიკული):** slice 1 (კლიპები + მუსიკა → MP4 ჩატში) აშენებულია PR #50-ზე (BUILT_NOT_PROVEN); შემდეგი: Preview E2E ადმინის სესიით (AG-8), მერე სხვა სერვისები (4.19, PROJECT_MASTER Section F) | Agent G ორკესტრატორად |
 
 Claude-ის დამოუკიდებელი შემდეგი სამუშაოები (Production / Billing / ბაზის ცვლილების გარეშე): 12-ე რიგი; PR #44-ის #3-ის photoshoot / interior ნაწილი; Vertex Production-ის ზუსტი ბრძანებების მომზადება GG-სთვის. PR #44-ის #2, #4, #5 უკვე ამ branch-ზეა.
 
@@ -283,7 +321,7 @@ GG-მა 07:08:11Z ბარათზე აირჩია „Deploy + renders
 Rollback: Vercel Instant Rollback `66d7163`-ის deployment-ზე (GG) ან PR #48-ის merge-ის revert `main`-ზე; `renders`-ისთვის `UPDATE storage.buckets SET public = true WHERE id = 'renders';`.
 BUILT_NOT_PROVEN live: signed ბმულები private `renders`-ზე (Supabase-ის დიზაინით მუშაობს, შემოწმებისთვის ბმული არ შექმნილა); შესული მომხმარებლის `/api/ai` და ხმის token. **Verdict: Production Ready — არა.**
 
-## 8. დამატება: Claude-ის რიგი 12 (2026-10-09 07:35–07:55Z, branch-ზე, Production-ში არა)
+## 8. დამატება: Claude-ის რიგი 12 (2026-10-09 07:35–07:55Z; Production-შია 08:07Z-დან, `29e7d67`)
 
 | Commit | რა | მტკიცებულება |
 |---|---|---|
@@ -291,5 +329,46 @@ BUILT_NOT_PROVEN live: signed ბმულები private `renders`-ზე (Su
 | `7c8dd9b3` | ka / en / ru: `billing.history.loading` (სამივე ენაზე key-ს წერდა); ვიდეოს კამერის 43 ვარიანტი რუსულად; საფულის „мин.“; ტესტი, რომელიც კოდის ყოველ literal `t(key)`-ს ამოწმებს | `lib/i18n/messagesParity.test.ts` (ძველ messages-ზე ვარდება); `lib/veo/cinematography.test.ts` |
 | — | `landing.spec.ts:380` — dev სერვერის ეფექტი, PROVEN (4.17) | production build-ზე 10 / 10 |
 
-Production-ში მოსახვედრად ეს ორი commit `main`-ში merge-ს და deploy-ს საჭიროებს — GG-ის ცალკე თანხმობით. Production-ში ცვლილება: `/api/orbit/agent` 404; music track cover-ის გარეშე (Google-ის cover — action 9). DB, env, ფასი, ფასიანი გამოძახება არ იცვლება. **Verdict: Production Ready — არა.**
+**Deploy:** GG-მა 08:02:01Z ბარათზე აირჩია „Deploy“. PR #49 → `main`, merge commit `29e7d67b`; main-ის CI 411 და E2E 1083 მწვანე; Production `29e7d67` 08:07:48Z-ზე (`/api/health`). საჯარო შემოწმება: `/ka` 200, `run-migration` 404, `/ru/login` → `/ru/dashboard` 200. `/api/orbit/agent`-ის 404 და cover-ის არარსებობა live — BUILT_NOT_PROVEN (POST აქედან ვერ იგზავნება; unit ტესტები ფარავს). Rollback: Vercel Instant Rollback `7126682`-ის deployment-ზე (GG) ან merge-ის revert. DB, env, ფასი, ფასიანი გამოძახება არ შეცვლილა. **Verdict: Production Ready — არა.**
 
+## 9. დამატება: schema drift-ის სტატიკური ტესტი (2026-10-09 08:15–08:35Z; მხოლოდ branch-ზე)
+
+| Commit | რა | მტკიცებულება |
+|---|---|---|
+| ამ ნაწილის commit (PR #50) | `__tests__/schema-drift.test.ts`: კოდი ვერ დაამატებს `.from()` / `.rpc()` სახელს, რომელიც Production-ში არ არის. Snapshot: 52 ცხრილი, 39 ფუნქცია; ცნობილი ხარვეზები: 125 ცხრილი, 11 ფუნქცია, 5 dynamic ფაილი (4.11) | ტესტი 7 / 7; snapshot-ის 4 მუტაცია → 4 ტესტი ვარდება; `tsc` 0; eslint სუფთა |
+
+Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. რიგი 11-ის ტრიაჟი (რომელი ფუნქცია მოვაშოროთ / გამოვრთოთ, რომელს სჭირდება ცხრილი) რჩება; ყოველი ახალი ცხრილი GG-ის თანხმობით.
+
+## 10. დამატება: dev და Production phone-ზე ერთნაირად (2026-10-09 08:30–08:55Z; მხოლოდ branch-ზე)
+
+| რა | მტკიცებულება |
+|---|---|
+| `components/studio/OmniStudio.tsx`: „ჩატში შესვლისას ფურცელი დაიმალოს“ effect ახლა მხოლოდ ჩატში **შესვლისას** ხურავს, mount-ზე არა. Production-ში mount-ზე ეს დახურვა ისედაც არაფერს აკეთებდა (ფურცელი დახურულია), ამიტომ Production-ის ქცევა არ იცვლება; იცვლება მხოლოდ `next dev`, რომელიც ახლა Production-ს ემთხვევა: phone-ზე `?tool=video` Video-ს Create ფურცელს ხსნის | ცვლილების შემდეგ, ტესტების შეცვლამდე, `next dev`-ზე ზუსტად ის 3 phone ტესტი ჩავარდა, რაც production build-ზე, ანუ მიზეზი დადასტურდა |
+| `tests/landing.spec.ts`: `openDashboard` phone-ზე ამოწმებს, რომ ფურცელი გაიხსნა, მერე Escape-ით ხურავს; ცარიელი Enter-ის ტესტი `/api/analytics/track`-ს ფონურ მოთხოვნად თვლის (ჯობი არ არის). ძველი კომენტარები StrictMode-ის შემოვლაზე (`ui-image.spec.ts`, OmniStudio) განახლდა | `next dev`, ყველა 27 spec: 240 passed, 10 skipped, 1 failed (`landing.spec.ts:389`, სურათის ჩამოსვლა, dev სერვერის ცნობილი ეფექტი, 4.17); production build: `landing` + `ui-image` + `vfx-genjutsu` 88 / 88; jest 703 / 703 suite; `next build` წარმატებით |
+
+Production, DB, env, ფასი არ შეცვლილა. merge და deploy GG-ის სიტყვას ელის.
+
+## 11. დამატება: schema drift-ის ტრიაჟი (2026-10-09 09:10–09:50Z; მხოლოდ branch-ზე)
+
+| რა | მტკიცებულება |
+|---|---|
+| ყოველი route-ის და გვერდის import-ის გზა მიყვანილია დაკარგულ ცხრილამდე / ფუნქციამდე, მერე თითო ხელით წაკითხული. 11 ფუნქციიდან არც ერთი ცოცხალ გზაზე არ ტყდება: `debit_wallet_gel` მკვდარია (`deduct: true` არავინ გადასცემს; `filmComposite.ts:1084`), `match_rag_documents` მკვდარია (`useRag: true`-ს კლიენტი არ აგზავნის), დანარჩენი მკვდარ ან გამორთულ გზებზეა | drift doc, „Triage update (2026-10-09)“ |
+| `7cc1a781`: `/api/voice/webhook` და `/api/voice/inbound` `VAPI_WEBHOOK_SECRET`-ის გარეშე ხელმოწერას არ ამოწმებდა: ნებისმიერს შეეძლო `voice_calls`-ში ჩანაწერის შექმნა ნებისმიერი `user_id`-ით. ახლა 503. Production-ის `voice_calls` ცარიელია (0 ჩანაწერი, select), ანუ ცოცხალი Vapi არ იყენებდა | ახალი ტესტი 6 / 6, ძველ კოდზე 2 ვარდება; `voice.spec.ts` dev სერვერზე 4 passed; jest 704 / 704 suite; `tsc` 0; eslint სუფთა |
+| GG-ის გადაწყვეტილებები: ~~1 ობოლი გვერდების გაუქმება~~ (GG-მა 09:32Z ბარათზე აირჩია „გაუქმება“: სამივე მისამართი redirect-ს აკეთებს, გვერდის ფაილები წაშლილია, `lib/routing/shellRedirects.test.ts`), 2 Deep Research-ის მიგრაცია, 3 Plugins-ის მიგრაცია, 4 Stripe-ის ცხრილები (Stripe Live-თან ერთად), 5 WhatsApp / push ცხრილები | drift doc, „Decisions for the owner“ |
+
+Production, DB, env, ფასი არ შეცვლილა; Supabase-ზე მხოლოდ `select` გაეშვა. merge და deploy GG-ის სიტყვას ელის.
+
+## 12. დამატება: auth ჰოტფიქსი Production-ში (PR #52, 2026-10-09 15:47–16:15Z)
+
+GG-მა 15:47:19Z Supabase Auth-ის ნაკადში ბარათზე აირჩია „ჰოტფიქსი ახლა“. ნაკადმა `main`-იდან გახსნა PR #52 მხოლოდ ოთხი auth commit-ით (იგივე ფაილები, რაც PR #51-ზე): AUTH-3, AUTH-4, mailto: მისამართი, სახელი ≠ პაროლი.
+
+| ნაბიჯი | მტკიცებულება |
+|---|---|
+| CI | verify და preview-e2e მწვანე `ef694b0`-ზე; ლოკალურად jest 702/702, Playwright auth 8/8 |
+| Merge | `main` = `6c7dff46` (15:56:50Z, `git log origin/main`) |
+| Deploy | `dpl_Ghoo53ZCY76BVF2iZsM984SmhQ6p` Ready 16:01Z; `/api/health` 6c7dff4, `/ka` და `/ru` 200 (Supabase Auth-ის ნაკადის შემოწმება; აქედან proxy myavatar.ge-ს ვერ აღწევს). migration და env ცვლილება არ ყოფილა |
+| AUTH-3 live | **PROVEN** ~16:02Z: უცნობ მისამართზე lookup none, `signin` send 404 `no_account`; auth log-ში `generate_link` არ არის, 0 ახალი მომხმარებელი |
+| AUTH-4 live | **PROVEN** 16:09:05Z: GG დარეგისტრირდა myavatar.ge/ka-ზე ახალი მისამართით; auth log `/admin/generate_link` 16:08:52Z → `PUT /admin/users` 16:08:53Z → `/admin/generate_link` 16:08:54Z → `/verify` 200 `user_signedup` + login 16:09:05Z; SQL (წაკითხვა): ელფოსტა დადასტურებული, 1 სესია, მომხმარებლები 23 → 24; GG-ის ფოტოზე შესული dashboard და 50 კრედიტი. Supabase Auth-ის ანგარიში §8/§9, `7eba867` |
+| Rollback | Vercel Instant Rollback `29e7d67`-ის deployment-ზე ან `6c7dff4`-ის revert |
+
+PR #50-ის (ეს branch) და `main`-ის ცვლილებებს საერთო ფაილი არ აქვთ (`29e7d67`-დან), ამიტომ PR #50 → `main` კონფლიქტის გარეშე რჩება; `main` ამ branch-ში არ შერწყმულა. PR #51-ის `/api/avatar/generate`-ის ცვლილება PR #52-ში არ შედიოდა და Production-ში არ არის.

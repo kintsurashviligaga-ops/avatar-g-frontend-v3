@@ -54,7 +54,7 @@ export function InteriorCreatePanel(p: InteriorPanelProps) {
       <ChipScroller label={copy.roomType} testId="interior-room"
         options={ROOM_TYPES.map((r) => ({ value: r.id, label: r.label[lang] }))}
         value={p.form.room} onChange={(v) => { if (v) p.onPatch({ room: v }); }} />
-      <TemplateCarousel label={c.carousel} testId="interior-styles" Icon={Armchair}
+      <TemplateCarousel label={c.carousel} testId="interior-styles" scrollLabels={{ prev: copy.prev, next: copy.next }} Icon={Armchair}
         items={INTERIOR_TEMPLATES.map((t) => ({
           id: t.id, label: t.label[tl], hint: t.hint[tl], adds: interiorAddsLine(t, tl), thumb: t.thumb, palette: t.palette,
         }))}

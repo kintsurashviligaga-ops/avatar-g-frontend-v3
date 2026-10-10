@@ -52,8 +52,7 @@ test.fixme('voice API routes return expected status codes', async ({ request }) 
   });
   expect(webToken.status()).toBe(401);
 
-  // inbound is a Vapi-origin webhook; with no VAPI_WEBHOOK_SECRET configured (test env) signature
-  // verification is skipped and the callback is accepted.
+  // inbound is a Vapi-origin webhook; with no VAPI_WEBHOOK_SECRET configured (test env) it refuses (fail closed).
   const inbound = await request.post('/api/voice/inbound', {
     data: {
       call: {
@@ -61,7 +60,7 @@ test.fixme('voice API routes return expected status codes', async ({ request }) 
       },
     },
   });
-  expect(inbound.status()).toBe(200);
+  expect(inbound.status()).toBe(503);
 });
 
 test('webhook signature verification helper works', async () => {
@@ -82,47 +81,17 @@ test('credit deduction logic is correct', async () => {
   expect(calculateVoiceCredits(61)).toBe(3);
 });
 
-test('the Vapi status webhook accepts the call lifecycle events', async ({ request }) => {
-  const userId = `voice-user-${Date.now()}`;
-  const callId = `voice-call-${Date.now()}`;
-
+test('the Vapi webhooks refuse unsigned call events when no secret is configured', async ({ request }) => {
+  // With VAPI_WEBHOOK_SECRET unset (the test env) both callbacks used to skip the signature check and accept anyone's
+  // event, writing voice_calls rows for any user id. They fail closed now (2026-10-09). The signed lifecycle is pinned in
+  // app/api/voice/webhook/route.test.ts.
   const started = await request.post('/api/voice/webhook', {
-    data: {
-      type: 'call.started',
-      call: {
-        id: callId,
-        type: 'webCall',
-        metadata: { userId },
-      },
-    },
+    data: { type: 'call.started', call: { id: `voice-call-${Date.now()}`, type: 'webCall', metadata: { userId: 'someone' } } },
   });
+  expect(started.status()).toBe(503);
 
-  expect(started.status()).toBe(200);
-
-  const transcript = await request.post('/api/voice/webhook', {
-    data: {
-      type: 'transcript.completed',
-      call: { id: callId },
-      transcript: 'hello from webhook transcript',
-    },
-  });
-
-  expect(transcript.status()).toBe(200);
-
-  const ended = await request.post('/api/voice/webhook', {
-    data: {
-      type: 'call.ended',
-      call: {
-        id: callId,
-        durationSeconds: 61,
-      },
-      analysis: {
-        summary: 'test summary',
-      },
-    },
-  });
-
-  expect(ended.status()).toBe(200);
+  const inbound = await request.post('/api/voice/inbound', { data: { call: { id: `inbound_${Date.now()}` } } });
+  expect(inbound.status()).toBe(503);
 });
 
 test('call history rejects unauthenticated reads (IDOR closed)', async ({ request }) => {

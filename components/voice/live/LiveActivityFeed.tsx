@@ -18,7 +18,7 @@
  * how it ended — so the dock can show a spinner, then a check.
  */
 import {
-  AlertCircle, ArrowUpDown, Bot, Check, Clapperboard, Code2, Cpu, Eye, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
+  AlertCircle, ArrowUpDown, Bot, Check, Clapperboard, Code2, Cpu, Eye, FileAudio, Globe, Loader2, MessageSquare, Monitor, PanelRight, PhoneOff, Play,
   MessageSquarePlus, Search, SlidersHorizontal, Sparkles, Square, Wand2, X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -70,6 +70,7 @@ const S: Record<Locale, Strings> = {
       call_view: { running: 'ხედს ვცვლი', done: 'ხედი შეიცვალა' },
       open_url: { running: 'ბმულს ვამზადებ', done: 'ბმული ეკრანზეა — შეეხე' },
       ask_agent_g: { running: 'აგენტი G იკვლევს', done: 'აგენტი G-ის პასუხი მზადაა' },
+      extract_audio: { running: 'აგენტი G აუდიოს ამზადებს', done: 'აგენტი G-ის გეგმა ჩატშია' },
     },
     tool: { running: 'ვასრულებ', done: 'შესრულდა' },
     failed: 'ვერ შესრულდა',
@@ -98,6 +99,7 @@ const S: Record<Locale, Strings> = {
       call_view: { running: 'Changing the view', done: 'View changed' },
       open_url: { running: 'Getting the link ready', done: 'Link on screen — tap it' },
       ask_agent_g: { running: 'Agent G is researching', done: 'Agent G answered' },
+      extract_audio: { running: 'Agent G is on the audio', done: 'Agent G’s audio is in the chat' },
     },
     tool: { running: 'Working', done: 'Done' },
     failed: 'Didn’t work',
@@ -126,6 +128,7 @@ const S: Record<Locale, Strings> = {
       call_view: { running: 'Меняю вид', done: 'Вид изменён' },
       open_url: { running: 'Готовлю ссылку', done: 'Ссылка на экране — нажмите' },
       ask_agent_g: { running: 'Агент G изучает вопрос', done: 'Агент G ответил' },
+      extract_audio: { running: 'Агент G готовит аудио', done: 'Аудио Агента G в чате' },
     },
     tool: { running: 'Выполняю', done: 'Готово' },
     failed: 'Не получилось',
@@ -152,6 +155,7 @@ const TOOL_ICON: Record<string, ReactNode> = {
   call_view: <Monitor size={16} aria-hidden />,
   open_url: <Globe size={16} aria-hidden />,
   ask_agent_g: <Bot size={16} aria-hidden />,
+  extract_audio: <FileAudio size={16} aria-hidden />,
 };
 
 /**

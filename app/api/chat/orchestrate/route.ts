@@ -27,6 +27,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { anonymousGenerationAllowed, isAnonymousUser } from '@/lib/auth/generationGate';
 import { spendGuestTurn, guestRefusalMessage } from '@/lib/chat/guestAllowance';
 import { getUserProfileFacts, buildProfilePreamble, extractProfileFacts, saveUserProfileFacts } from '@/lib/chat/userMemory';
+import { joinMemory, newestSavedFacts, savedFactsBlock } from '@/lib/memory/context';
 import { detectIntent } from '@/lib/chat/intentDetector';
 import { retrieveContext } from '@/lib/rag/retrieve';
 // The film pipeline renders up to MAX_SEGMENTS scenes (60s = 12 × 5s). Cap the
@@ -284,8 +285,8 @@ export async function POST(req: NextRequest) {
     if (detectedIntent.intent === 'text_chat' && userId !== 'anonymous') {
       try {
         const { supabase: memClient } = await authedClientFromRequest(req);
-        const facts = await getUserProfileFacts(memClient, userId);
-        const preamble = buildProfilePreamble(facts);
+        const [facts, saved] = await Promise.all([getUserProfileFacts(memClient, userId), newestSavedFacts(memClient, userId)]);
+        const preamble = joinMemory(buildProfilePreamble(facts), savedFactsBlock(saved));
         if (preamble) effectiveInstructions = [preamble, effectiveInstructions].filter(Boolean).join('\n\n');
         const fresh = extractProfileFacts(rawMessage);
         if (fresh.length) void saveUserProfileFacts(memClient, userId, fresh);

@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Download, Share2, Check, Loader2, FolderPlus } from 'lucide-react';
 import { ICON_BTN } from './tokens';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 /**
  * The actions under a finished result. One set, for every service.
@@ -50,20 +51,8 @@ function extFor(url: string, kind: string): string {
  * a button that appears to do nothing.
  */
 export async function downloadFile(url: string, filename: string): Promise<void> {
-  try {
-    const res = await fetch(url, { cache: 'no-store' });
-    const blob = await res.blob();
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = href;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(href), 4000);
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
+  // lib/media/saveMedia: blob download, and on an iPhone a picture or a clip goes to Photos via the share sheet.
+  await saveMedia(url, filename);
 }
 
 export function ResultActions({
@@ -85,19 +74,7 @@ export function ResultActions({
   const download = useCallback(async () => {
     setBusy('dl');
     try {
-      const res = await fetch(url, { cache: 'no-store' });
-      const blob = await res.blob();
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = `myavatar-${kind}-${Date.now()}.${extFor(url, kind)}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(href), 4000);
-    } catch {
-      // CORS-blocked or offline — opening the file is still better than doing nothing silently.
-      window.open(url, '_blank', 'noopener,noreferrer');
+      await saveMedia(url, `myavatar-${kind}-${Date.now()}`, { fallbackExt: extFor(url, kind) });
     } finally {
       setBusy(null);
     }

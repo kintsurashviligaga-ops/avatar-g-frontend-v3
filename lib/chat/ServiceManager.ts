@@ -7,7 +7,9 @@ import { z } from 'zod';
 import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { withRetry } from '@/lib/utils/withRetry';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
-import { generateGrokImage, hasXaiApiKey } from '@/lib/ai/xaiImage';
+import { generateGeminiImage } from '@/lib/ai/geminiImage';
+import { googleTransportBlocker } from '@/lib/ai/google/transport';
+import { resolveGeminiKey } from '@/lib/orchestrator/gemini-guard';
 import { createPrediction, pollPrediction } from '@/lib/replicate/client';
 import { resolveModel } from '@/lib/replicate/models';
 import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
@@ -30,6 +32,7 @@ import { nativeCameraControl } from '@/lib/veo/cinematography';
 import { costPerSecondUsd, resolutionFor, resolveModel as resolveVeoModel } from '@/lib/veo/capabilities';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isGoogleOnly } from '@/lib/veo/policy';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import type { CameraMove, OutputFormat, VeoFailureReason, VeoMedia, VeoTier, VeoTransport, VeoVideo } from '@/lib/veo/types';
 import { stripBottomWatermark } from '@/lib/video/remixOps';
 import { createSignedAssetUrl, removeStorageObjects, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
@@ -404,36 +407,113 @@ export class ServiceManager {
     const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
     const request: ServiceManagerRequest = { ...rawRequest, userPrompt: await promptToEnglish(rawRequest.userPrompt, 'image') };
 
-    // IMAGEN 4 — the Master Task's specified image engine (§1.6.2), tried FIRST. On any miss (no key, no
-    // access, quota, timeout) it returns null and the proven FLUX → NanoBanana cascade below runs
-    // byte-identical, so adding a primary engine cannot break image generation.
-    const imagen = await this.tryImagenImage(request);
-    if (imagen) return imagen;
-
-    const provider = this.resolveImageProvider(request.selectedOptions);
-    if (provider === 'replicate') {
-      // P90 — FLUX 1.1 Pro primary, NanoBanana fail-open: a FLUX outage/quota still yields a real
-      // preview (resilience preserved, just inverted from the old NanoBanana→FLUX order).
-      // NOTE: createPrediction is `Prefer: respond-async`, so the NORMAL success return carries a
-      // `predictionId` (client polls it) and NO `assetUrl` — accept that in-flight prediction as
-      // success; only fail open to NanoBanana on a throw / !success / a synchronously-failed status.
-      try {
-        const res = await this.runReplicateImage(request);
-        if (res.success && (res.assetUrl || res.predictionId) && res.predictionStatus !== 'failed') return res;
-      } catch { /* fall through to NanoBanana */ }
-      return this.runNanoBananaImage(request);
+    // ⚠️ NO SILENT FALLBACK TO ANOTHER OUTSIDE PROVIDER (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ
+    // დაუშვა"). The cascade was Imagen → FLUX → NanoBanana → FLUX → Grok: a miss of one outside engine started a render on
+    // another one nobody chose. A job now runs ONE outside engine at most, and a miss may move only to Google's own image
+    // model (lib/ai/geminiImage — the model the NanoBanana reseller sold, called directly):
+    //   · Imagen (opt-in, GEMINI_IMAGEN_ENABLED) → Gemini image → an honest failure;
+    //   · otherwise the configured engine (FLUX, or NanoBanana when picked / IMAGE_PRIMARY_PROVIDER=nanobanana)
+    //     → Gemini image → that engine's honest failure.
+    //
+    // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off): no outside engine runs at all, whatever was
+    // configured or picked: Imagen (prompt-only, when enabled) → Gemini image → an honest failure.
+    if (isMediaGoogleOnly()) {
+      if (hasGeminiImagenProvider() && !request.imageUrl) {
+        const imagen = await this.tryImagenImage(request);
+        if (imagen) return imagen;
+      }
+      return (await this.tryGeminiImage(request, 'google-only')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
+    }
+    if (this.imagenApplies(request)) {
+      const imagen = await this.tryImagenImage(request);
+      if (imagen) return imagen;
+      return (await this.tryGeminiImage(request, 'imagen')) ?? this.imageFailure(request, 'nanobanana', 'Image generation failed. Please try again.');
     }
 
-    return this.runNanoBananaImage(request);
+    const provider = this.resolveImageProvider(request.selectedOptions);
+    let primary: ServiceManagerResponse;
+    try {
+      // createPrediction is `Prefer: respond-async`, so FLUX's NORMAL success carries a `predictionId` (the client polls
+      // it) and no `assetUrl`: an in-flight prediction counts as landed.
+      primary = provider === 'replicate' ? await this.runReplicateImage(request) : await this.runNanoBananaImage(request);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[image] ${provider} threw:`, err instanceof Error ? err.message : err);
+      primary = this.imageFailure(request, provider, 'Image generation failed. Please try again.');
+    }
+    if (primary.success && (primary.assetUrl || primary.predictionId) && primary.predictionStatus !== 'failed') return primary;
+    return (await this.tryGeminiImage(request, provider)) ?? primary;
+  }
+
+  /** A failed image leg in the shape every caller already reports ("this leg didn't run"). */
+  private imageFailure(request: ServiceManagerRequest, provider: 'nanobanana' | 'replicate', message: string): ServiceManagerResponse {
+    return {
+      success: false,
+      provider,
+      operation: 'text-to-image',
+      responseType: 'text',
+      message,
+      predictionStatus: 'failed',
+      metadata: {
+        provider,
+        operation: 'text-to-image',
+        sessionId: request.sessionId,
+        outputType: 'text',
+        promptHash: this.hashPrompt(request.userPrompt),
+        confidence: request.confidence,
+        error: message,
+      },
+    };
   }
 
   /**
-   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
-   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
-   * Returns null on ANY miss so `runTextToImage` falls through to FLUX → NanoBanana. NEVER throws.
+   * GOOGLE'S IMAGE MODEL, called directly — the only engine an image miss may move to. A source photo goes in as a
+   * reference and MUST load (requireReferences), so an edit is never quietly answered with an unrelated new image.
+   * Returns null on any miss (no Google transport, refusal, storage miss). NEVER throws.
    */
-  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
-    if (!hasGeminiImagenProvider()) return null;
+  private async tryGeminiImage(request: ServiceManagerRequest, after: string): Promise<ServiceManagerResponse | null> {
+    if (googleTransportBlocker(resolveGeminiKey())) return null;
+    const aspect = this.normalizeAspectRatio(this.getOption(request.selectedOptions || {}, ['aspect', 'aspectRatio', 'ratio', 'img-size'])) || undefined;
+    try {
+      const img = await generateGeminiImage({
+        prompt: request.userPrompt,
+        referenceImages: request.imageUrl ? [request.imageUrl] : [],
+        requireReferences: true,
+        ...(aspect ? { aspectRatio: aspect } : {}),
+      });
+      if (!img) return null;
+      const ext = img.mimeType.includes('png') ? 'png' : img.mimeType.includes('webp') ? 'webp' : 'jpg';
+      const url = await uploadAndSign('renders', `gemini-image/${request.sessionId}/${Date.now()}.${ext}`, img.base64, img.mimeType, 604_800).catch(() => null);
+      if (!url) return null;
+      return {
+        success: true,
+        provider: 'nanobanana', // the surface provider union has no 'gemini' member; the real engine is in metadata
+        operation: 'text-to-image',
+        responseType: 'image',
+        message: 'Image generation completed successfully.',
+        assetUrl: url,
+        assetType: 'image',
+        predictionStatus: 'succeeded',
+        metadata: {
+          provider: 'nanobanana' as const,
+          imageProvider: 'gemini-image',
+          model: img.model,
+          imageFallback: `${after}->gemini-image`,
+          operation: 'text-to-image',
+          outputType: 'image',
+          sessionId: request.sessionId,
+          promptHash: this.hashPrompt(request.userPrompt),
+          confidence: request.confidence,
+        },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Imagen runs only for a prompt-only request with no outside engine named (see the EDIT GUARD below). */
+  private imagenApplies(request: ServiceManagerRequest): boolean {
+    if (!hasGeminiImagenProvider()) return false;
     // ⚠️ EDIT GUARD — the reason an attached photo used to be thrown away.
     //
     // Imagen's :predict surface is PROMPT-ONLY; there is nowhere to put a source image. Imagen runs FIRST
@@ -443,13 +523,21 @@ export class ServiceManager {
     // had been dropped. The sibling surface (/api/nanobanana/image) skips its own prompt-only legs for
     // exactly this reason; this leg is the one that never got the guard.
     //
-    // A reference request now falls through to the NanoBanana leg, which does accept one.
-    if (request.imageUrl) return null;
-    const opts = request.selectedOptions || {};
+    // A reference request goes to the configured engine, which accepts one.
+    if (request.imageUrl) return false;
     // An explicit engine pick opts OUT of Imagen, mirroring the Kling/Hailuo opt-out on the video side.
-    const picked = (this.getOption(opts, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
-    if (picked === 'nanobanana' || picked === 'replicate' || picked === 'flux') return null;
+    const picked = (this.getOption(request.selectedOptions || {}, ['imageModel', 'image_model', 'provider']) || '').toLowerCase();
+    return !(picked === 'nanobanana' || picked === 'replicate' || picked === 'flux');
+  }
 
+  /**
+   * IMAGEN 4 (§1.6.2 / §3.2.2). Imagen returns base64 bytes inline — no operation to poll — so the image is
+   * hosted here and the caller receives a normal signed https URL, identical in shape to the other engines.
+   * Returns null on ANY miss so `runTextToImage` moves on to Gemini image (Google). NEVER throws. Callers check
+   * imagenApplies first.
+   */
+  private async tryImagenImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
+    const opts = request.selectedOptions || {};
     const count = Number(this.getOption(opts, ['numberOfImages', 'imageCount', 'n'])) || 1;
     const negativePrompt = this.getOption(opts, ['negativePrompt', 'negative_prompt', 'negative']) || undefined;
     const aspect = this.normalizeAspectRatio(this.getOption(opts, ['aspect', 'aspectRatio', 'ratio'])) || undefined;
@@ -472,7 +560,7 @@ export class ServiceManager {
         }),
       );
       const urls = hosted.filter((u): u is string => typeof u === 'string' && !!u);
-      // Generated but undeliverable (storage miss) → fall through rather than return a broken success.
+      // Generated but undeliverable (storage miss) → a miss rather than a broken success.
       if (!urls.length) return null;
 
       const model = geminiImagenModel();
@@ -501,7 +589,7 @@ export class ServiceManager {
       };
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[imagen] threw → falling through to FLUX/NanoBanana:', err instanceof Error ? err.message : err);
+      console.warn('[imagen] threw → trying Gemini image:', err instanceof Error ? err.message : err);
       return null;
     }
   }
@@ -509,6 +597,23 @@ export class ServiceManager {
   private async runVideoAvatar(request: ServiceManagerRequest): Promise<ServiceManagerResponse> {
     const provider = this.resolveVideoProvider(request);
     if (provider === 'heygen') {
+      // MEDIA_GOOGLE_ONLY: the presenter has no Google engine yet, so it is refused before HeyGen is called (the chat
+      // hold is given back on any failed answer). The branch ran before the video switch below, so it was never covered.
+      if (isMediaGoogleOnly()) {
+        const message = googleOnlyMessage(request.locale);
+        return {
+          success: false,
+          provider: 'heygen',
+          operation: 'video-avatar',
+          responseType: 'text',
+          message,
+          predictionStatus: 'failed',
+          metadata: {
+            provider: 'heygen', operation: 'video-avatar', sessionId: request.sessionId, outputType: 'text',
+            promptHash: this.hashPrompt(request.userPrompt), confidence: request.confidence, code: GOOGLE_ONLY_CODE, error: message,
+          },
+        };
+      }
       return this.runHeygenAvatarVideo(request);
     }
 
@@ -1423,53 +1528,12 @@ export class ServiceManager {
       };
     }
 
-    // PHASE 56 (root-cause) — a no-URL result that carries a provider error
-    // (402 insufficient credits, quota, auth) means NanoBanana produced NOTHING.
-    // The default image provider being out of credits must NOT become a dead end:
-    // transparently fail over to the funded Replicate (FLUX) image path so the
-    // user still receives a real image to preview. The fallback returns either an
-    // immediate asset URL or a predictionId the client already knows how to poll.
-    // Only when that fallback ALSO fails do we surface the honest provider error
-    // (a clear, actionable message) instead of a silent empty preview.
+    // PHASE 56 (root-cause) — a no-URL result that carries a provider error (402 insufficient credits, quota, auth)
+    // means NanoBanana produced NOTHING: report it as a failed leg with the provider's own message. It used to fail
+    // over to FLUX and then Grok here; runTextToImage now decides what a miss may move to (Google's image model only —
+    // the owner, 2026-10-09: no silent fallback to another outside provider).
     const providerError = detectNanoProviderError(result);
     if (providerError) {
-      try {
-        const fallback = await this.runReplicateImage(request);
-        if (fallback.success) {
-          return {
-            ...fallback,
-            metadata: {
-              ...fallback.metadata,
-              imageFallback: 'nanobanana->replicate',
-              primaryProvider: 'nanobanana',
-              primaryProviderError: providerError,
-            },
-          };
-        }
-      } catch {
-        // Replicate also unavailable — try the Grok tier before the honest error.
-      }
-
-      // Tier 3 — Grok Imagine (xAI). Funded last-resort image leg so a credits
-      // outage on BOTH NanoBanana and Replicate still yields a real preview.
-      try {
-        const grok = await this.runGrokImage(request);
-        if (grok && grok.success) {
-          return {
-            ...grok,
-            metadata: {
-              ...grok.metadata,
-              imageFallback: 'nanobanana->replicate->grok',
-              primaryProvider: 'nanobanana',
-              primaryProviderError: providerError,
-            },
-          };
-        }
-      } catch {
-        // Grok also unavailable — fall through to the honest NanoBanana error
-        // below, which is the most actionable signal for the operator.
-      }
-
       return {
         success: false,
         provider: 'nanobanana',
@@ -1509,39 +1573,6 @@ export class ServiceManager {
         promptHash,
         confidence: request.confidence,
         raw: result.raw,
-      },
-    };
-  }
-
-  /**
-   * Grok Imagine (xAI) — the THIRD image tier. Reached only when NanoBanana AND
-   * the Replicate FLUX failover have both failed. Reads XAI_API_KEY (operator-set
-   * in env); returns null when unconfigured so the caller treats it as "leg
-   * unavailable", or throws a diagnosable status on a real provider error.
-   */
-  private async runGrokImage(request: ServiceManagerRequest): Promise<ServiceManagerResponse | null> {
-    if (!hasXaiApiKey()) return null;
-    const promptHash = this.hashPrompt(request.userPrompt);
-    const img = await generateGrokImage(request.userPrompt);
-    const url = img?.url ?? (img?.b64 ? `data:image/png;base64,${img.b64}` : null);
-    if (!url) return null;
-    return {
-      success: true,
-      provider: 'xai',
-      operation: 'text-to-image',
-      responseType: 'image',
-      message: img?.revisedPrompt || 'Image generation completed successfully.',
-      assetUrl: url,
-      assetType: 'image',
-      predictionStatus: 'succeeded',
-      metadata: {
-        provider: 'xai',
-        model: img?.model || 'grok-2-image',
-        operation: 'text-to-image',
-        outputType: 'image',
-        sessionId: request.sessionId,
-        promptHash,
-        confidence: request.confidence,
       },
     };
   }
@@ -1630,7 +1661,7 @@ export class ServiceManager {
       provider: 'replicate',
       operation: 'text-to-image',
       responseType: 'image',
-      message: 'Image generation started. Waiting for provider status.',
+      message: 'Image generation started.',
       predictionId: taskRef,
       predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
       metadata: {
@@ -1733,7 +1764,7 @@ export class ServiceManager {
       provider: 'replicate',
       operation: 'video-avatar',
       responseType: 'video',
-      message: 'Video generation started. Waiting for provider status.',
+      message: 'Video generation started.',
       predictionId: taskRef,
       predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
       metadata: {
@@ -2741,7 +2772,7 @@ export class ServiceManager {
     if (preferred === 'nanobanana') return 'nanobanana';
     // P90 — the BASE image now defaults to FLUX 1.1 Pro (Replicate) for elite photoreal quality; the prior
     // NanoBanana default was a cost choice. Ops can revert per-deploy with IMAGE_PRIMARY_PROVIDER=nanobanana
-    // (no code push). runTextToImage keeps NanoBanana as the fail-open, so a FLUX outage still yields a preview.
+    // (no code push). A FLUX miss moves only to Google's image model (runTextToImage), never to NanoBanana.
     return (process.env.IMAGE_PRIMARY_PROVIDER || '').trim().toLowerCase() === 'nanobanana' ? 'nanobanana' : 'replicate';
   }
 

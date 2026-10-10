@@ -1,14 +1,16 @@
 'use client';
 /**
- * MotionControlPanel — character photo (+ optional reference video) + a motion prompt
- * → Kling animation via /api/motion-control. Reference video requests V2V (currently
- * degrades to motion-prompt I2V — Replicate has no true V2V Kling). Rendered as a tab
- * inside OmniStudio's Lip-sync mode.
+ * MotionControlPanel — character photo + a motion prompt → Kling animation via /api/motion-control.
+ *
+ * ⚠️ NO REFERENCE-VIDEO SLOT. It used to offer an optional "motion" video and label the run "V2V", but the file never
+ * left the browser (a blob: URL the server cannot read) and Replicate's Kling has no video-to-video model: every run was
+ * photo + description, while the panel said it copied the video's motion. The slot is gone until a real engine exists.
  */
 import { useRef, useState } from 'react';
-import { Upload, Video, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
+import { Upload, Sparkles, Loader2, X, CheckCircle, AlertCircle, Music2, Mic } from 'lucide-react';
 import { AppToggle } from '@/components/ui/AppToggle';
 import { describeGenerationFailure } from './ui/serviceError';
+import { saveMedia } from '@/lib/media/saveMedia';
 
 type Lang = 'ka' | 'en' | 'ru';
 const T: Record<Lang, Record<string, string>> = {
@@ -68,7 +70,6 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
   const t = T[lang];
   const [charImage, setCharImage] = useState<string | null>(null);
-  const [refVideo, setRefVideo] = useState<string | null>(null);
   const [motionPrompt, setMotionPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -84,7 +85,6 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
   const [qualityMode, setQualityMode] = useState<'fast' | 'quality'>('fast');
   const [stage, setStage] = useState<string | null>(null); // sub-status during the multi-step run
   const imgRef = useRef<HTMLInputElement>(null);
-  const vidRef = useRef<HTMLInputElement>(null);
 
   const toDataUrl = (f: File): Promise<string> =>
     new Promise((res, rej) => { const r = new FileReader(); r.onload = (e) => res(e.target!.result as string); r.onerror = rej; r.readAsDataURL(f); });
@@ -150,7 +150,6 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({
           characterImageUrl: charImage,
-          referenceVideoUrl: refVideo || undefined,
           motionPrompt: motionPrompt.trim(),
           duration: 5,
           aspectRatio,
@@ -217,7 +216,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="mx-auto w-1/2">
         {/* Character photo */}
         <div className="space-y-1">
           <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.char} *</span>
@@ -238,26 +237,6 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           </button>
           <input ref={imgRef} type="file" accept="image/*" className="hidden"
             onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCharImage(await toDataUrl(f)); }} />
-        </div>
-        {/* Reference video */}
-        <div className="space-y-1">
-          <span className="text-[11px] uppercase tracking-wider text-app-muted">{t.motion}</span>
-          <button type="button" onClick={() => vidRef.current?.click()}
-            className={`relative aspect-[3/4] w-full overflow-hidden rounded-2xl border-2 border-dashed transition ${refVideo ? 'border-app-accent/40 bg-app-accent/5' : 'border-app-border/30 bg-app-bg/40 hover:border-app-accent/30'}`}>
-            {refVideo ? (
-              <>
-                <video src={refVideo} className="h-full w-full object-cover" muted playsInline loop autoPlay />
-                <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setRefVideo(null); }}
-                  className="absolute right-1.5 top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-500"><X size={10} /></span>
-              </>
-            ) : (
-              <span className="flex h-full flex-col items-center justify-center gap-1.5 text-app-muted">
-                <Video size={16} /><span className="text-[11px]">{t.upload}</span><span className="text-[10px] opacity-70">{t.optional}</span>
-              </span>
-            )}
-          </button>
-          <input ref={vidRef} type="file" accept="video/*" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) setRefVideo(URL.createObjectURL(f)); }} />
         </div>
       </div>
 
@@ -364,7 +343,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
           <div className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-app-accent" />
             <span className="text-xs text-app-accent">
-              {stage === 'lipsync' ? 'Lip-sync · HeyGen/SadTalker' : `Kling ${refVideo ? 'V2V→I2V' : 'I2V'} · Replicate`} · ~2–4 min
+              {stage === 'lipsync' ? 'Lip-sync · HeyGen' : 'Kling · Replicate'} · ~2–4 min
             </span>
           </div>
           {/* Step list reflects exactly what this run will do. */}
@@ -377,7 +356,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
             ) : null}
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-app-elevated"><div className="h-full w-3/4 animate-pulse rounded-full bg-app-accent" /></div>
-          <p className="text-[10.5px] text-app-muted">{aspectRatio} · {refVideo ? 'V2V' : 'I2V'}{enableLipsync && lipsyncText.trim() ? ' + lip-sync' : enableMusic ? ' + music' : ''}</p>
+          <p className="text-[10.5px] text-app-muted">{aspectRatio}{enableLipsync && lipsyncText.trim() ? ' + lip-sync' : enableMusic ? ' + music' : ''}</p>
         </div>
       )}
 
@@ -389,7 +368,7 @@ export function MotionControlPanel({ locale = 'ka', onVideoGenerated }: { locale
         <div className="space-y-2">
           <div className="flex items-center gap-2"><CheckCircle size={13} className="text-green-400" /><span className="text-xs text-green-400">{t.done} ✅</span></div>
           <video src={result} controls playsInline className="w-full rounded-2xl" />
-          <a href={result} download="motion-control.mp4" className="flex w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 py-2.5 text-sm text-app-text hover:bg-app-elevated/40">⬇️ {t.dl}</a>
+          <button type="button" onClick={() => void saveMedia(result, 'motion-control.mp4')} className="flex w-full items-center justify-center gap-2 rounded-xl border border-app-border/20 py-2.5 text-sm text-app-text hover:bg-app-elevated/40">⬇️ {t.dl}</button>
         </div>
       )}
     </div>

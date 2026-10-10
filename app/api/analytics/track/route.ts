@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { event?: unknown; props?: unknown };
     const event = typeof body.event === 'string' ? body.event.trim().slice(0, 80) : '';
     if (!event) return NextResponse.json({ ok: false }, { status: 400 });
+    // `audit.*` rows are the server's own record of what Agent G executed (lib/agent/media/montageLive); a client
+    // writing one could forge that record.
+    if (/^audit\./i.test(event)) return NextResponse.json({ ok: false }, { status: 400 });
     let props: unknown = body.props && typeof body.props === 'object' ? body.props : {};
     try {
       if (Buffer.byteLength(JSON.stringify(props), 'utf8') > MAX_PROPS_BYTES) props = { truncated: true };

@@ -134,3 +134,48 @@ describe('an explicit pick — that engine alone, the same rule', () => {
     await expectExplicitFailure({ ...BED, engine: 'udio' }, null);
   });
 });
+
+describe('"sing in my voice" — a missed conversion is said, not hidden', () => {
+  test('the trained voice failed → the composed song ships with `voiceApplied: false`', async () => {
+    const { getUserVoiceModel } = jest.requireMock('../../../../lib/audio/voiceModel') as { getUserVoiceModel: jest.Mock };
+    const { convertSongWithRvc } = jest.requireMock('../../../../lib/audio/rvc') as { convertSongWithRvc: jest.Mock };
+    getUserVoiceModel.mockResolvedValueOnce({ modelUrl: 'https://x.supabase.co/voice.zip' });
+    convertSongWithRvc.mockRejectedValueOnce(new Error('rvc timeout'));
+    const json = await (await POST(post({ ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }))).json();
+    expect(json).toMatchObject({ success: true, voiceApplied: false });
+    expect(json.engine).not.toMatch(/your voice/i);
+  });
+
+  test('the trained voice converted → no `voiceApplied` flag', async () => {
+    const { getUserVoiceModel } = jest.requireMock('../../../../lib/audio/voiceModel') as { getUserVoiceModel: jest.Mock };
+    const { convertSongWithRvc } = jest.requireMock('../../../../lib/audio/rvc') as { convertSongWithRvc: jest.Mock };
+    getUserVoiceModel.mockResolvedValueOnce({ modelUrl: 'https://x.supabase.co/voice.zip' });
+    convertSongWithRvc.mockResolvedValueOnce('https://replicate.delivery/rvc.mp3');
+    const json = await (await POST(post({ ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }))).json();
+    expect(json).toMatchObject({ success: true, engine: 'Your Voice (RVC)' });
+    expect(json).not.toHaveProperty('voiceApplied');
+  });
+});
+
+describe('MEDIA_GOOGLE_ONLY on — outside engines refuse before the reserve, Lyria still composes', () => {
+  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
+
+  test.each([
+    ['an Udio pick', { ...BED, engine: 'udio' }],
+    ['a MusicGen pick', { ...BED, engine: 'musicgen' }],
+    ['sing in my voice (RVC)', { ...BED, instrumental: false, lyrics: 'la la la', useMyVoice: true }],
+  ])('%s → 503 google_only, nothing charged, no engine run', async (_label, body) => {
+    const res = await POST(post(body));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, code: 'google_only' });
+    expect(deductCredits).not.toHaveBeenCalled();
+    for (const engine of [generateLyriaTrack, generateUdioTrack, composeElevenLabsMusic, generateMusic] as jest.Mock[]) {
+      expect(engine).not.toHaveBeenCalled();
+    }
+  });
+
+  test('Auto still runs Lyria', async () => {
+    const json = await (await POST(post(BED))).json();
+    expect(json).toMatchObject({ success: true, engine: 'Lyria' });
+  });
+});

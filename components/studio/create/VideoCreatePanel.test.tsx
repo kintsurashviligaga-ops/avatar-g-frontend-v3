@@ -57,10 +57,10 @@ function setup(over: Partial<VideoCreatePanelProps> = {}, gen: Partial<VideoCrea
 const gen = () => screen.getByTestId('video-generate') as HTMLButtonElement;
 const price = () => gen().getAttribute('data-price');
 
-describe('element order — header → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
+describe('element order — header → film|music switch → hero → references → prompt → model → tiles → quality → disclosures → Generate (ref4)', () => {
   test('the DOM order is the reference’s', () => {
     setup();
-    const ids = ['video-tool-switch', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
+    const ids = ['video-tool-switch', 'video-mode-choice', 'video-hero', 'video-references', 'video-prompt', 'video-tiles', 'video-quality',
       'video-disclosure-story', 'video-disclosure-voice', 'video-disclosure-advanced', 'video-generate-bar'];
     const els = ids.map((id) => screen.getByTestId(id));
     for (let i = 1; i < els.length; i++) {
@@ -82,6 +82,29 @@ describe('element order — header → hero → references → prompt → model 
     fireEvent.click(screen.getByTestId('video-close'));
     expect(calls.onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('video-hero-title').textContent).toBe('VEO 3.1 FAST');
+  });
+
+  test('film or music video is a visible switch at the top of the panel (the owner could not find music video): one tap picks it', () => {
+    const { calls, rerender } = setup();
+    const choice = screen.getByTestId('video-mode-choice');
+    expect(choice.getAttribute('role')).toBe('radiogroup');
+    expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('video-mode-musicvideo').textContent).toContain('Music video');
+    fireEvent.click(screen.getByTestId('video-mode-musicvideo'));
+    expect(calls.onMode).toHaveBeenCalledWith('musicvideo');
+    rerender({ mode: 'musicvideo' });
+    expect(screen.getByTestId('video-mode-musicvideo').getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('video-mode-documentary').getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('the clip look (genre + light) sits under the switch only while Music video is picked', () => {
+    const look = <div data-testid="mv-look-slot">look</div>;
+    const { rerender } = setup({ musicLook: look });
+    expect(screen.queryByTestId('mv-look-slot')).toBeNull();
+    rerender({ mode: 'musicvideo', musicLook: look });
+    const slot = screen.getByTestId('mv-look-slot');
+    expect(screen.getByTestId('video-mode-choice').compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(screen.getByTestId('video-hero')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test('the hero title follows the Veo tier', () => {
@@ -196,6 +219,29 @@ describe('free · insufficient · empty', () => {
     expect(gen().disabled).toBe(true);
     expect(gen().getAttribute('aria-busy')).toBe('true');
     expect(gen().textContent).toContain('Rendering…');
+  });
+});
+
+describe('the lip-sync pass is named beside the price, never folded into it (gap C2)', () => {
+  test('a film that runs one says its own charge under Generate; the button keeps the film\'s number', () => {
+    setup({ mode: 'musicvideo' }, { lipsyncCredits: 20 });
+    const note = screen.getByTestId('video-lipsync-addon');
+    expect(note.getAttribute('data-credits')).toBe('20');
+    expect(note.textContent).toBe('+20 credits for lip-sync — taken only if it runs, returned if it fails');
+    expect(Number(price())).toBe(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' }));
+  });
+
+  test('a free first film still names it: the free slot pays for the film, not for the lip-sync', () => {
+    setup({ seconds: 8 }, { freeFilmsRemaining: 1, lipsyncCredits: 20 });
+    expect(price()).toBe('free');
+    expect(screen.getByTestId('video-lipsync-addon').textContent).toContain('+20 credits');
+  });
+
+  test('no pass, no line', () => {
+    setup({}, { lipsyncCredits: 0 });
+    expect(screen.queryByTestId('video-lipsync-addon')).toBeNull();
+    setup();
+    expect(screen.queryByTestId('video-lipsync-addon')).toBeNull();
   });
 });
 
@@ -329,9 +375,8 @@ describe('format and model pickers', () => {
       expect(sheet.textContent).not.toContain(`✦ ${quoteCredits({ tool: 'video', seconds: 24, quality: t })}`);
     }
     expect(sheet.textContent).not.toMatch(/credit/i);
-    // The mode switch rides at the top and does not close the sheet.
-    fireEvent.click(within(sheet).getByTestId('video-mode-musicvideo'));
-    expect(calls.onMode).toHaveBeenCalledWith('musicvideo');
+    // The film / music-video switch is on the panel, not in the model sheet.
+    expect(within(sheet).queryByTestId('video-mode-choice')).toBeNull();
     // A model is one tap: it sets the tier (the tier IS the model on the film route) and closes.
     fireEvent.click(radios.find((r) => r.getAttribute('data-model') === 'google/veo-3.1')!);
     expect(calls.dispatch).toHaveBeenCalledWith({ type: 'tier', tier: 'standard' });

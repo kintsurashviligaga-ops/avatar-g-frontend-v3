@@ -10,7 +10,7 @@
  * every 8 s), so every value it produces is a length the server accepts. Lengths that need the long-form pipeline stay
  * beyond the slider's end, shown locked, unless the server says that pipeline is open (lib/video/createPanel).
  */
-import { Check, Lock, Sparkle } from 'lucide-react';
+import { Check, Film, Lock, Music2, Sparkle } from 'lucide-react';
 import { creditsLabel } from '@/lib/credits/quote';
 import type { VideoMode, VideoQuality } from '@/lib/credits/videoPricing';
 import {
@@ -255,31 +255,31 @@ export function VideoModelList({ locale, tier, mode, seconds, onTier, variant }:
 }
 
 /**
- * Documentary or music video — what the film IS, independent of the model it renders on. Shown at the top of the model
- * sheet (where it always was), above the models.
+ * Film or music video — what the film IS, independent of the model it renders on. ⚠️ VISIBLE AT THE TOP OF THE PANEL:
+ * it used to sit inside the model sheet's header and inside the closed „Story & style" disclosure, and the owner could
+ * not find music-video making in the Video service at all (2026-10-09 18:25Z). One switch, one place, always on screen.
  */
 export function VideoModeChoice({ locale, mode, onMode }: { locale: string; mode: VideoMode; onMode: (m: VideoMode) => void }) {
-  const modes: { id: VideoMode; name: string; sub: string }[] = [
-    { id: 'documentary', name: modeName('documentary', locale), sub: vc(VIDEO_COPY.modeDocumentarySub, locale) },
-    { id: 'musicvideo', name: modeName('musicvideo', locale), sub: vc(VIDEO_COPY.modeMusicVideoSub, locale) },
+  const modes: { id: VideoMode; name: string; sub: string; Icon: typeof Film }[] = [
+    { id: 'documentary', name: modeName('documentary', locale), sub: vc(VIDEO_COPY.modeDocumentarySub, locale), Icon: Film },
+    { id: 'musicvideo', name: modeName('musicvideo', locale), sub: vc(VIDEO_COPY.modeMusicVideoSub, locale), Icon: Music2 },
   ];
   return (
-    <div data-testid="video-mode-choice">
-      <p className="px-1 pb-2 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.modeLabel, locale)}</p>
-      <div role="radiogroup" aria-label={vc(VIDEO_COPY.modeLabel, locale)} className="grid grid-cols-2 gap-2">
-        {modes.map((m) => {
-          const on = m.id === mode;
-          return (
-            <button key={m.id} type="button" role="radio" aria-checked={on} onClick={() => onMode(m.id)} data-testid={`video-mode-${m.id}`}
-              className={cx('flex min-h-[64px] min-w-0 flex-col items-start justify-center gap-0.5 rounded-2xl border px-3 py-2 text-left transition-colors',
-                on ? 'border-app-accent/60 bg-app-accent/10' : 'border-app-border/15 bg-app-elevated hover:bg-app-elevated/70')}>
-              <span className={cx('text-[14.5px] font-semibold', on ? 'text-app-accent' : 'text-app-text')}>{m.name}</span>
-              <span className="text-[11.5px] leading-tight text-app-muted">{m.sub}</span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="px-1 pb-0.5 pt-4 text-[13px] font-medium text-app-muted">{vc(VIDEO_COPY.modelsLabel, locale)}</p>
+    <div data-testid="video-mode-choice" role="radiogroup" aria-label={vc(VIDEO_COPY.modeLabel, locale)}
+      className="grid grid-cols-2 gap-1 rounded-2xl bg-app-elevated/70 p-1 ring-1 ring-app-border/10">
+      {modes.map((m) => {
+        const on = m.id === mode;
+        return (
+          <button key={m.id} type="button" role="radio" aria-checked={on} onClick={() => onMode(m.id)} data-testid={`video-mode-${m.id}`}
+            className={cx('flex min-h-[52px] min-w-0 flex-col items-start justify-center gap-0.5 rounded-xl px-2.5 py-1.5 text-left transition-colors',
+              on ? 'bg-app-surface shadow-sm ring-1 ring-app-accent/40' : 'hover:bg-app-surface/50')}>
+            <span className={cx('inline-flex min-w-0 max-w-full items-center gap-1.5 text-[13.5px] font-semibold leading-tight', on ? 'text-app-accent' : 'text-app-text')}>
+              <m.Icon size={15} className="shrink-0" aria-hidden="true" /><span className="min-w-0 break-normal">{m.name}</span>
+            </span>
+            <span className="text-[11px] leading-tight text-app-muted">{m.sub}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

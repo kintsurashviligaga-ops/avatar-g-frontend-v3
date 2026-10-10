@@ -10,7 +10,11 @@
  * ⚠️ It used to `fetch(url, { redirect: 'follow' })` after a string check of the FIRST address only: a public page
  * that 302-redirected to 169.254.169.254 or 127.0.0.1 was read, and its text went back in the agent's step trace.
  *
- * `htmlToReadableText` stays as the pure extractor for callers that already hold the HTML.
+ * The text is what a visitor sees: elements the page hides (`hidden`, aria-hidden, an inline display:none) are dropped
+ * before the model reads it (lib/web/readPage stripHiddenElements), and the coordinator frames it as untrusted data.
+ *
+ * `htmlToReadableText` stays as the pure extractor for callers that already hold the HTML (none in the app today; it
+ * does not drop hidden elements, so a new caller that feeds a model should use readWebPage instead).
  */
 import { z } from 'zod';
 import { readWebPage, type ReadPageOptions } from '@/lib/web/readPage';
@@ -27,6 +31,8 @@ export interface ScrapeResult {
   title?: string;
   text?: string;
   chars?: number;
+  /** The page's own publication / update date (YYYY-MM-DD) when its metadata states one — so the agent can weigh how fresh a source is. */
+  published?: string;
   error?: string;
 }
 
@@ -80,7 +86,7 @@ export async function scrapeWebpage(input: ScrapeWebpageInput, io: Pick<ReadPage
     if (!r.ok) return { ok: false, url, error: r.error === 'http_error' ? `HTTP ${r.status ?? 'error'}` : SCRAPE_ERROR[r.error] ?? r.error };
     const text = r.page.text.slice(0, maxChars);
     if (!text) return { ok: false, url: r.page.url, error: 'no readable text' };
-    return { ok: true, url: r.page.url, ...(r.page.title ? { title: r.page.title } : {}), text, chars: text.length };
+    return { ok: true, url: r.page.url, ...(r.page.title ? { title: r.page.title } : {}), text, chars: text.length, ...(r.page.published ? { published: r.page.published } : {}) };
   } catch (err) {
     return { ok: false, url, error: err instanceof Error ? err.message : String(err) };
   }

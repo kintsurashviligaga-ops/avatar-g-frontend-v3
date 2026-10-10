@@ -16,6 +16,7 @@
  *
  * Request: { op, videoUrl, ... per-op params }   Response: { url, error? }
  */
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
@@ -35,9 +36,12 @@ import { validateAdImageMeta, base64ByteLength } from '@/lib/ads/adInputValidati
 import { checkAdBudget } from '@/lib/ads/adBudgetGuard';
 import { authedClientFromRequest, createServiceRoleClient } from '@/lib/supabase/server';
 import { isAdminUser } from '@/lib/chat/filmComposite';
-import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
+import { deductCreditsOnce, refundCredits } from '@/lib/orchestrator/ledger';
+import { replayRefusedBody } from '@/lib/api/billingCopy';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
-import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
+import { CREDIT_COSTS } from '@/lib/credits/pricing';
+import { quoteCredits } from '@/lib/credits/quote';
+import { CHARGED_REMIX_OPS, canonicalRemixOp } from '@/lib/video/remixCharge';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
 import { isGoogleOnly } from '@/lib/veo/policy';
@@ -66,6 +70,8 @@ async function resolveMedia(v: unknown, userId: string | null): Promise<string |
 
 const ok = (url: string | null, extra: Record<string, unknown> = {}) => NextResponse.json({ url, ...extra });
 const fail = (error: string) => NextResponse.json({ url: null, error });
+/** The remix ops with no Google / ElevenLabs engine (MEDIA_GOOGLE_ONLY refuses them). */
+const OUTSIDE_ENGINE_OPS = new Set(['restyle', 'character', 'background_remove', 'redub']);
 
 // Lip-sync (Wav2Lip) create + bounded poll — the redub op's engine.
 async function runLipsync(videoUrl: string, audioUrl: string): Promise<string | null> {
@@ -121,13 +127,10 @@ export async function POST(req: NextRequest) {
   if (rl) return rl;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  // Accept both the panel's op names AND the chat-intent (Claude) op names.
-  const OP_ALIASES: Record<string, string> = {
-    add_music: 'music', face_swap: 'character', character_swap: 'character', add_text_overlay: 'captions', add_subtitles: 'captions',
-  };
+  // Accept both the panel's op names AND the chat-intent (Claude) op names (lib/video/remixCharge, shared with the chat).
   // Accept both shapes: { op, grade, text, … } (the client) AND { operation, params:{…} }.
   const rawOp = String(body.op || body.operation || '').trim();
-  const op = OP_ALIASES[rawOp] ?? rawOp;
+  const op = canonicalRemixOp(rawOp);
   const p = (body.params && typeof body.params === 'object') ? body.params as Record<string, unknown> : {};
   // Flatten common params so per-op reads can fall back to params.* transparently.
   if (body.grade === undefined && (p.style ?? p.grade) !== undefined) body.grade = p.style ?? p.grade;
@@ -140,14 +143,23 @@ export async function POST(req: NextRequest) {
   if (body.characterRef === undefined && p.characterRef !== undefined) body.characterRef = p.characterRef;
   if (body.factor === undefined && p.factor !== undefined) body.factor = p.factor;
 
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): these four ops reach outside engines (NanoBanana + Kling, roop, sync
+  // lip-sync), so the switch refuses them here, before the charge. The ffmpeg ops, ElevenLabs voiceover / music and the
+  // Veo product ad still run. Off (the default) → no-op.
+  if (OUTSIDE_ENGINE_OPS.has(op)) {
+    const outside = refuseOutsideEngine(req);
+    if (outside) return outside;
+  }
+
   // AUTH + CREDIT GATE (audit HIGH): remix reached paid providers with NO auth or credit
   // check — an anonymous free bypass. Paid ops now REQUIRE a signed-in user; the standard
   // paid edits debit CREDIT_COSTS.remix_video up front (matching the client's on-submit credit
   // toast). Free local ffmpeg ops (trim/captions/color_grade/speed/stabilize/watermark) are untouched.
   // productad ALSO debits now (audit: it reached paid Kling with zero server-side charge) — see
   // the once-per-ad gate below; it keeps its opt-in ad-budget guard (checkAdBudget) on top.
-  const PAID_REMIX_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
-  const CREDIT_CHARGED_OPS = new Set(['voiceover', 'music', 'redub', 'restyle', 'character', 'background_remove', 'productad']);
+  // One list with the chat, which asks before a charged op (lib/video/remixCharge).
+  const PAID_REMIX_OPS = CHARGED_REMIX_OPS;
+  const CREDIT_CHARGED_OPS = CHARGED_REMIX_OPS;
   const { user: remixUser } = await authedClientFromRequest(req);
   const remixUid = remixUser?.id ?? null;
   // Transaction context for compensation logging (the client's tray jobId when present).
@@ -232,19 +244,18 @@ export async function POST(req: NextRequest) {
     if (jobId && remixUid) await claimIdempotencyKey(remixUid, productAdSecondariesKey(jobId), 3600).catch(() => true);
   }
   // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
-  // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
-  // (25 cr ≤30s / 45 cr 60s) — the same price the client's toast shows — NOT the
+  // A product ad is billed ONCE, here on its primary clip, at the film price for its
+  // length (lib/credits/quote: 8 / 24 / 48 s) — the same price the button shows — NOT the
   // remix_video rate. The downstream /api/video/assemble (overlay + voiceover pass)
   // then WAIVES its own charge via a billingToken, so an ad costs one video credit,
   // not remix + assemble. Every other remix op keeps the flat remix_video price.
   const productAdPrimary = op === 'productad' && !productAdSecondaryClip;
-  const productAdDurationSec = Math.max(1, Math.floor(Number(body.productDurationSec)) || 30);
   const chargeAmount = productAdPrimary
-    ? creditCostFor('video', { seconds: productAdDurationSec })
+    ? quoteCredits({ tool: 'product', seconds: Number(body.productDurationSec) })
     : CREDIT_COSTS.remix_video;
   // ⚠️ TWO COMPOUNDING HOLES LIVED HERE, AND THEY PAID OUT TOGETHER.
   //
-  // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` selects video_30s=25 vs video_60s=45 —
+  // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` picks the ad's length, and so its price —
   //     while the ref keyed only on op+jobId. So an attacker charged once at 25 with jobId=X, then
   //     replayed jobId=X with productDurationSec=60 and a missing photo to trip an early refund, and was
   //     paid back 45. Net positive credits per cycle, repeatable.
@@ -261,7 +272,13 @@ export async function POST(req: NextRequest) {
   // REFUND it.) Admins + productad secondary clips are never charged here.
   let charged = false;
   if (CREDIT_CHARGED_OPS.has(op) && !productAdSecondaryClip && remixUid && !(await isAdminUser(remixUid))) {
-    const debit = await deductCredits(remixUid, chargeAmount, txnRef);
+    // deductCreditsOnce, not deductCredits: the txnRef carries the CLIENT's jobId, and a byte-identical replay of a
+    // charged request came back "charged" with no debit and rendered again for free (gap C5). A replay is refused.
+    const debit = await deductCreditsOnce(remixUid, chargeAmount, txnRef);
+    if (!debit.ok && debit.reason === 'replay') {
+      await releaseIdem();
+      return NextResponse.json({ url: null, ...replayRefusedBody(), message: 'This edit was already made.' }, { status: 409 });
+    }
     if (!debit.ok && (debit.reason === 'insufficient' || debit.reason === 'error')) {
       await releaseIdem(); // free the mutex so a top-up / ledger retry isn't locked out
       const message = debit.reason === 'insufficient'
@@ -618,13 +635,14 @@ export async function POST(req: NextRequest) {
         if (!frame) return failRefund('ვიდეოდან კადრის წაკითხვა ვერ მოხერხდა.', 'frame-read');
         // TASK 1 — character swap with an UPLOADED PHOTO.
         const swapPhoto = op === 'character' ? await resolveMedia(body.characterRef, remixUid) : null;
-        // PRIMARY (closer-to-source): roop video face-swap — the SAME video with the face
-        // replaced throughout, motion preserved. Tried first when a swap photo is present;
-        // on any miss we fall through to the keyframe-regenerate path below (a fresh ~5s clip
-        // seeded by one frame — Kling is i2v-only, so that path can't preserve motion).
+        // A swap photo → roop video face-swap: the SAME video with the face replaced throughout, motion preserved.
+        // ⚠️ NO SILENT SWITCH (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). A roop miss used to
+        // fall through to the keyframe path below: two other outside engines (NanoBanana, then Kling) making a different
+        // product — a fresh ~5s clip from one frame, the original motion gone — for the same 15 credits. It now refunds.
         if (op === 'character' && swapPhoto) {
           const swapped = await roopFaceSwapVideo(videoUrl, swapPhoto);
           if (swapped) return await finishOk(swapped, { method: 'faceswap' });
+          return failRefund('სახის შეცვლა ვერ მოხერხდა.', 'faceswap-miss');
         }
         // ⚠️ TRANSLATED HERE AND NOWHERE ELSE IN THIS ROUTE, AND THE SCOPE IS THE WHOLE POINT.
         // On these three ops `text` is a DESCRIPTION of what to generate — the replacement
@@ -656,7 +674,11 @@ export async function POST(req: NextRequest) {
           referenceImageDataUrl: frame,
           aspectRatio: aspect,
         }).catch(() => null);
-        const startImage = styled?.url || frame;
+        // ⚠️ A MISSED EDIT IS A FAILURE, NOT THE ORIGINAL FRAME RE-ANIMATED. The start image used to fall back to the frame, sending the
+        // UNCHANGED frame on to Kling, so a restyle / background swap / character change that never happened came back as
+        // a "reanimated" clip of the original, charged in full and labelled as done.
+        if (!styled?.url) return failRefund(op === 'character' ? 'პერსონაჟის შეცვლა ვერ მოხერხდა.' : op === 'background_remove' ? 'ფონის შეცვლა ვერ მოხერხდა.' : 'რესტაილი ვერ მოხერხდა.', 'edit-miss');
+        const startImage = styled.url;
         // Same brief, same English-only engine (Kling). Reuses editText so the translation costs
         // one call, not two; the English defaults are unchanged when the user typed nothing.
         const motionPrompt = op === 'restyle' ? (editText || 'cinematic motion') : (editText || 'natural character motion');
@@ -682,13 +704,12 @@ export async function POST(req: NextRequest) {
         const method = animated ? 'reanimated' : 'stillPan';
         // Kling v2.1 (the locked default) infers the output ratio from the START IMAGE and IGNORES
         // aspect_ratio (remixOps only sets it for v1.6). So a requested aspect that differs from the
-        // source frame is silently dropped — worst on the raw-frame fallback (NanoBanana miss →
-        // startImage = the source-aspect frame). Post-fit to the requested aspect, mirroring the
+        // source frame is silently dropped. Post-fit to the requested aspect, mirroring the
         // Motion Control path. Fail-open: keep the raw clip if the fit itself misses.
         const fitted = await fitAspect(url, aspect).catch(() => null);
         // Fail-open keeps the clip — correct — but the requested aspect was then silently dropped and
         // the card went on displaying it as though it had been honoured. Report what shipped.
-        return await finishOk(fitted || url, { still: styled?.url ?? null, method, aspectApplied: Boolean(fitted) });
+        return await finishOk(fitted || url, { still: styled.url, method, aspectApplied: Boolean(fitted) });
       }
 
       default:

@@ -151,8 +151,16 @@ export async function POST(req: NextRequest) {
           if (free !== null && free >= 0) {
             useFreeSlot = true;
           } else {
-            reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref);
-            if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
+            reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref, { refuseReplay: true });
+            if (!reservation.proceed) {
+              const refusal = { stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance };
+              // A replayed Idempotency-Key names the ORIGINAL film's row (pipelineId comes from the key), which may
+              // still be rendering: tell this stream only, never fail that row.
+              if (reservation.reason === 'replay') {
+                try { controller.enqueue(encoder.encode(`data: ${JSON.stringify({ pipelineId, ...refusal })}\n\n`)); } catch { /* closed */ }
+              } else emit(refusal);
+              return;
+            }
             // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
             // render is abandoned (tab closed) and the in-route refund never fires. Credit path only — a
             // consumed free film carries no debit, so it is NEVER stamped (the drainer would else mint credits).

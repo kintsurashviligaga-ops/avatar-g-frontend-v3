@@ -20,9 +20,10 @@ test.describe('myavatar.ge production smoke', () => {
     await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
   });
 
-  test('film studio mounts a composer for a guest', async ({ page }) => {
+  // /studio (the „Studio Beta" second studio) is retired: it goes home, to the one studio, whose composer a guest reaches.
+  test('/studio goes to the studio and mounts a composer for a guest', async ({ page }) => {
     await page.goto('/ka/studio', { waitUntil: 'domcontentloaded' });
-    // The composer textarea is the heart of the studio; a guest can reach it.
+    await expect(page).toHaveURL(/\/ka\/dashboard/);
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
   });
@@ -67,32 +68,21 @@ test.describe('myavatar.ge production smoke', () => {
     await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
   });
 
-  test('Service Hub renders the three product cards', async ({ page }) => {
+  // The „Choose a service" grid (#hub) and the old Film Studio (#film) are retired (2026-10-09): an old link opens the
+  // studio itself, on the tool that does that job — never the card grid again.
+  test('an old #hub / #film link opens the studio, not the retired pages', async ({ page }) => {
     await page.goto('/ka/dashboard#hub', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByText('კინო სტუდია')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('ჭკვიანი ასისტენტი')).toBeVisible();
-    await expect(page.getByText('ლიფსინქ სტუდია')).toBeVisible();
-    await expect(page.getByText(ERROR_FALLBACK)).toHaveCount(0);
-  });
-
-  test('Hub → Card A launches the film studio in-window (composer appears)', async ({ page }) => {
-    await page.goto('/ka/dashboard#hub', { waitUntil: 'domcontentloaded' });
-    await page.getByText('კინო სტუდია').click();
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
-    expect(page.url()).toContain('#film'); // stayed in-window, hash-routed
+    await expect(page.getByText('აირჩიე სერვისი')).toHaveCount(0);
+    await page.goto('/ka/dashboard#film', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('html')).toHaveAttribute('data-tool', 'video', { timeout: 20_000 });
+    expect(page.url()).not.toContain('#film');
   });
 
   test('upload route (Card B/C) is auth-gated', async ({ request }) => {
     const res = await request.post('/api/upload', { data: { dataUrl: 'data:text/plain;base64,aGk=' } });
     expect(res.status()).toBe(401);
-  });
-
-  test('Card A: launching the studio shows the document/script strip', async ({ page }) => {
-    await page.goto('/ka/dashboard#hub', { waitUntil: 'domcontentloaded' });
-    await page.getByText('კინო სტუდია').click();
-    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
-    // The reference document strip (Priority 1) is present in default film mode.
-    await expect(page.getByText('სცენარი / storyboard')).toBeVisible({ timeout: 10_000 });
   });
 
   // Script enrichment spends the platform's Gemini key, so a guest is refused (401 + authRequired) before any
@@ -120,23 +110,20 @@ test.describe('myavatar.ge production smoke', () => {
     expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
   });
 
-  // Mobile / Apple-HIG: the hub + Card A studio must fit every standard iPhone
+  // Mobile / Apple-HIG: the studio (the chat and the Video tool) must fit every standard iPhone
   // viewport with NO horizontal overflow (no clipped/unreachable zones).
   for (const vp of [
     { name: 'iPhone SE', width: 375, height: 667 },
     { name: 'iPhone 15 Pro Max', width: 430, height: 932 },
   ]) {
-    test(`mobile: hub + studio fit ${vp.name} with no horizontal scroll`, async ({ page }) => {
+    test(`mobile: the studio fits ${vp.name} with no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      await page.goto('/ka/dashboard#hub', { waitUntil: 'domcontentloaded' });
-      await expect(page.getByText('კინო სტუდია')).toBeVisible({ timeout: 15_000 });
-      const hubOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(hubOverflow, 'hub horizontal overflow (px)').toBeLessThanOrEqual(1);
-
-      await page.getByText('კინო სტუდია').click();
-      await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
-      const studioOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(studioOverflow, 'studio horizontal overflow (px)').toBeLessThanOrEqual(1);
+      for (const path of ['/ka/dashboard', '/ka/dashboard?tool=video']) {
+        await page.goto(path, { waitUntil: 'domcontentloaded' });
+        await expect(page.locator('textarea').first()).toBeVisible({ timeout: 20_000 });
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(overflow, `${path} horizontal overflow (px)`).toBeLessThanOrEqual(1);
+      }
     });
   }
 });

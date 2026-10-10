@@ -1,14 +1,15 @@
 /** @jest-environment node */
 /**
  * Which VFX ops are OPEN. The rule under test: a flag alone never opens an op — the engine behind it must be configured
- * and, for the Higgsfield ops, the model must really exist in the registry. And the honest default: the Veo scene is on
- * (the studio's own primary engine), motion and swap are off.
+ * and the Veo scene is on (the studio's own primary engine). Motion and swap run on Higgsfield, which is not an allowed
+ * provider, so they are closed by a constant no flag can lift.
  */
 jest.mock('server-only', () => ({}));
 jest.mock('../veo/engine', () => ({ veoTransport: jest.fn(() => null) }));
 jest.mock('../providers/higgsfield/adapter', () => ({ createHiggsfieldAdapter: jest.fn(() => null) }));
 
 import { isModelEnabled } from '../providers/registry';
+import { ALLOWED_ENGINE_PROVIDERS, engineAllowed } from './engines';
 import { DEFAULT_PROBES, SWAP_MODEL_ID, motionModelId, opStatuses, publicOpStatuses, type Probes } from './capabilities';
 
 const probes = (over: Partial<Probes> = {}): Probes => ({ veoReady: () => true, hfReady: () => true, modelEnabled: () => true, ...over });
@@ -24,25 +25,21 @@ test('scene stays locked when no Veo transport is configured — the flag is not
   expect(opStatuses(env(), probes({ veoReady: () => false })).scene).toEqual({ op: 'scene', open: false, reason: 'engine_not_configured' });
 });
 
-test('motion and swap are OFF by default; a flag opens them only when Higgsfield and the model are really there', () => {
+test('motion and swap are CLOSED whatever the flags say: Higgsfield / Kling is not an allowed provider (owner, A1)', () => {
+  expect(ALLOWED_ENGINE_PROVIDERS).toEqual(['veo']);
+  expect([engineAllowed('scene'), engineAllowed('motion'), engineAllowed('swap')]).toEqual([true, false, false]);
   const s = opStatuses(env(), probes());
-  expect(s.motion).toEqual({ op: 'motion', open: false, reason: 'flag_off' });
-  expect(s.swap).toEqual({ op: 'swap', open: false, reason: 'flag_off' });
+  expect(s.motion).toEqual({ op: 'motion', open: false, reason: 'engine_forbidden' });
+  expect(s.swap).toEqual({ op: 'swap', open: false, reason: 'engine_forbidden' });
 
-  const on = env({ GENJUTSU_MOTION_ENABLED: 'true', GENJUTSU_SWAP_ENABLED: '1' });
-  expect(opStatuses(on, probes()).motion.open).toBe(true);
-  expect(opStatuses(on, probes({ hfReady: () => false })).motion.reason).toBe('engine_not_configured');
-  expect(opStatuses(on, probes({ modelEnabled: () => false })).motion.reason).toBe('engine_missing');
-});
-
-test('swap stays locked TODAY even with its flag on: the registry has no object-swap model (this test is the reminder to flip it)', () => {
-  const real = probes({ modelEnabled: (id, e) => isModelEnabled(id, e) });
-  const on = env({ GENJUTSU_SWAP_ENABLED: '1', GENJUTSU_MOTION_ENABLED: '1' });
+  // Every flag on, Higgsfield configured, the model registered: still closed — no environment variable reopens them.
+  const on = env({ GENJUTSU_MOTION_ENABLED: 'true', GENJUTSU_SWAP_ENABLED: '1', STUDIO_V2: '1' });
+  for (const p of [probes(), probes({ modelEnabled: (id, e) => isModelEnabled(id, e) })]) {
+    expect(opStatuses(on, p).motion).toEqual({ op: 'motion', open: false, reason: 'engine_forbidden' });
+    expect(opStatuses(on, p).swap).toEqual({ op: 'swap', open: false, reason: 'engine_forbidden' });
+  }
+  // …and the swap model is still not in the registry, so lifting the gate alone would not open swap either.
   expect(isModelEnabled(SWAP_MODEL_ID, on)).toBe(false);
-  expect(opStatuses(on, real).swap).toEqual({ op: 'swap', open: false, reason: 'engine_missing' });
-  // …while motion's default model IS registered, so only the flag and Higgsfield stand between it and "open".
-  expect(isModelEnabled('hf/kling-3-motion-std', on)).toBe(true);
-  expect(opStatuses(on, real).motion.open).toBe(true);
 });
 
 test('the wire view is coarse: open | soon — never which provider key is missing', () => {

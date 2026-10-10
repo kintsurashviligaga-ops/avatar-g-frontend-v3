@@ -1,9 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getCallsProvider } from '@/lib/calls/providers';
+import { phoneCallsReady, phoneCallsUnavailableBody } from '@/lib/calls/availability';
 import { inferAssistantMode } from '@/lib/agent-g/voice/mode-router';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest) {
 
     const user = await getAuthenticatedUser(request);
     if (!user) return apiError(new Error('Unauthorized'), 401, 'Login required');
+
+    // ⚠️ This stored an `active` (mock) or `queued` (Twilio / Telegram skeleton) call for every request, though nothing
+    // rang. No adapter places a call yet, so it answers 503 and stores nothing (lib/calls/availability.ts).
+    if (!phoneCallsReady()) return NextResponse.json(phoneCallsUnavailableBody(), { status: 503 });
 
     const supabase = createServiceRoleClient();
 

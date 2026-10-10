@@ -1,4 +1,4 @@
-import { ALL_RESEARCH_COPY, elapsedMinutes, jobFailureText, jobLabel, researchCopy, researchLang, SOON_CONNECTOR_NAMES, type ResearchCopy } from './copy';
+import { ALL_RESEARCH_COPY, elapsedMinutes, jobFailureText, jobLabel, researchCopy, researchLang, type ResearchCopy } from './copy';
 import { job, NOW } from './testing';
 
 const langs = ['ka', 'en', 'ru'] as const;
@@ -60,11 +60,10 @@ describe('the copy table', () => {
     expect(researchCopy('ru').cardSearches(21)).toBe('21 поиск');
   });
 
-  test('locale fallback is Georgian; the four soon-connectors are brand names', () => {
+  test('locale fallback is Georgian', () => {
     expect(researchLang(undefined)).toBe('ka');
     expect(researchLang('de')).toBe('ka');
     expect(researchLang('en')).toBe('en');
-    expect([...SOON_CONNECTOR_NAMES]).toEqual(['Google Drive', 'OneDrive', 'Notion', 'Dropbox']);
   });
 });
 

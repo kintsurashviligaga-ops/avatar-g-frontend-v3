@@ -331,7 +331,7 @@ export function VideoModelRow({ locale, tier, mode, onOpen, name }: {
 function VideoTile({ label, value, icon, onClick, testId }: { label: string; value: string; icon: ReactNode; onClick: () => void; testId: string }) {
   return (
     <button type="button" onClick={onClick} aria-haspopup="dialog" aria-label={`${label}: ${value}`} data-testid={testId}
-      className="flex min-h-[56px] min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-app-border/10 bg-app-elevated px-1 text-[15px] font-medium tabular-nums text-app-text transition-colors hover:bg-app-elevated/70 active:scale-[0.98] min-[400px]:gap-2 min-[400px]:px-2 min-[400px]:text-[16px]">
+      className="flex min-h-[56px] min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-app-border/10 bg-app-elevated px-1 text-[15px] font-medium tabular-nums text-app-text transition-colors hover:bg-app-elevated/70 active:scale-[0.98] min-[400px]:gap-2 min-[400px]:px-2 min-[400px]:text-[16px] lg:gap-1 lg:px-1 lg:text-[14px] xl:gap-1.5 xl:text-[15px]">
       <span aria-hidden="true" className="shrink-0 text-app-text/85">{icon}</span>
       <span className="min-w-0 truncate">{value}</span>
     </button>

@@ -150,6 +150,15 @@ describe('signed in', () => {
     expect(heygenCalls()).toHaveLength(0);
   });
 
+  it('no HeyGen key → Phase A refuses before any hold or TTS (no SadTalker leg to feed any more)', async () => {
+    delete process.env.HEYGEN_API_KEY;
+    const res = await POST(post({ text: 'გამარჯობა' }).req);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ success: false, code: 'heygen_not_configured' });
+    expect(deductMock).not.toHaveBeenCalled();
+    expect(ttsMock).not.toHaveBeenCalled();
+  });
+
   it('one presenter = one charge: A holds, B releases the hold and reserves, the poll never deducts', async () => {
     const a = await POST(post({ text: 'გამარჯობა', gender: 'female' }).req);
     const syn = (await a.json()) as { success: boolean; audioUrl: string; chargeToken: string };

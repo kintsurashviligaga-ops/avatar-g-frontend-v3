@@ -28,6 +28,7 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { isAiGoogleOnly } from '@/lib/ai/google/policy';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // HeyGen avatar polling can take up to 150s; LTX video up to 90s
@@ -270,18 +271,15 @@ async function generateAvatar(
 
   const photoFile = mediaFiles.find(f => f.type === 'image');
 
-  // ── USER PHOTO → talk THAT face via the HeyGen→SadTalker cascade (lipsyncCreate).
-  // HeyGen caps photo-avatars at 3 with NO working API delete, so a brand-new user face
-  // can't always get a HeyGen talking_photo slot — lipsyncCreate tries HeyGen first
-  // (best quality when a slot is free) and falls through to SadTalker on Replicate (no
-  // cap), which animates the user's actual photo. Either way the user's face talks.
+  // ── USER PHOTO → talk THAT face via lipsyncCreate: HeyGen when configured, otherwise SadTalker on Replicate. One
+  // engine per job (2026-10-09): a HeyGen miss (e.g. its 3-photo-avatar cap) is a miss, not a SadTalker re-run.
   if (photoFile) {
     const raw = (photoFile.dataUrl.includes(',') ? photoFile.dataUrl.split(',')[1] : photoFile.dataUrl) ?? '';
     const faceUrl = await uploadAndSign('uploads', `avatar-face/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`, raw, photoFile.mimeType || 'image/jpeg', 3600);
     if (!faceUrl) return { outputKind: 'video', error: 'photo upload failed' };
     const jobId = await lipsyncCreate(faceUrl, audioUrl);
     if (!jobId) return { outputKind: 'video', error: 'lip-sync provider unavailable' };
-    // Poll to completion (HeyGen or SadTalker), bounded by the route budget (~240s).
+    // Poll to completion, bounded by the route budget (~240s).
     const deadline = Date.now() + 240_000;
     let out: string | null = null;
     while (Date.now() < deadline) {
@@ -653,6 +651,9 @@ async function generateOpenAITtsDataUrl(text: string): Promise<string> {
 
 // ─── Main generate handler ────────────────────────────────────────────────────
 
+/** The wizard services that answer in text on Gemini; every other `generate` reaches a media engine. */
+const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
+
 async function handleGenerate(
   serviceId: ServiceId,
   finalPrompt: string,
@@ -674,8 +675,6 @@ async function handleGenerate(
   const effectivePrompt = iterative.prompt;
 
   // ── Text services (Gemini ONLY — PROJECT_MASTER R7) ────────────────────────
-  const TEXT_SERVICES: ServiceId[] = ['game', 'prompt-builder', 'terminal', 'content-writer', 'podcast', 'character', 'event', 'tourism'];
-
   if (TEXT_SERVICES.includes(serviceId)) {
     const outputKind = serviceId === 'terminal' ? 'code' : 'text';
     const systemPrompts: Record<string, string> = {
@@ -999,6 +998,14 @@ export async function POST(req: NextRequest) {
         const { user } = await authedClientFromRequest(req);
         if (mustSignInToGenerate(user?.id)) {
           return NextResponse.json(signInToGenerateBody(locale), { status: 401 });
+        }
+        // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this wizard's media legs are Nano Banana, HeyGen, World Labs,
+        // Udio and the lip-sync cascade — all outside engines with no charge of their own — so with the switch on only
+        // the text services (Gemini) still run. Refused before the rate limit, so a refusal spends none of it. Video is
+        // VIDEO_GOOGLE_ONLY's (just below), as everywhere else.
+        if (!TEXT_SERVICES.includes(serviceId as ServiceId) && normalizeServiceId(serviceId) !== ('video' as ServiceId)) {
+          const outside = refuseOutsideEngine(req);
+          if (outside) return outside;
         }
         // Every generate spends a paid provider, and this legacy surface has no credit charge of its own: bound it
         // like the other expensive routes.

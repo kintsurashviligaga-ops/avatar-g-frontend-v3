@@ -244,7 +244,10 @@ async function createJobFromToolCall(call: VoiceCallRecord, args: Record<string,
 
 async function getJobStatusForToolCall(call: VoiceCallRecord, args: Record<string, unknown>) {
   const jobId = String(args.job_id || '').trim();
-  if (!jobId) {
+  // Only the caller's own job (Agent G PART 5, gap S1). The service role reads past RLS, and the job id is whatever the
+  // call's model said, so without the owner filter one caller could read the status of anyone's job by its id. A call
+  // that belongs to nobody reads nothing, as create_job and get_user_credits already do.
+  if (!jobId || !call.user_id) {
     return null;
   }
 
@@ -253,6 +256,7 @@ async function getJobStatusForToolCall(call: VoiceCallRecord, args: Record<strin
     .from('service_jobs')
     .select('id,status,service_slug,progress,created_at,updated_at')
     .eq('id', jobId)
+    .eq('user_id', call.user_id)
     .maybeSingle();
 
   const metadata = asObject(call.metadata);

@@ -5,6 +5,9 @@
  * Sets status to 'failed' with a cancellation reason.
  * Running serverless invocations cannot be killed, but once they finish
  * they'll see status='failed' and won't update results.
+ *
+ * Owner-only: a session is required and both the read and the update carry the caller's user id, so anyone else's task
+ * is the same 404 as none (the service role bypasses RLS, so the filter here is the only check).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
@@ -25,14 +28,17 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid taskId' }, { status: 400 });
   }
 
-  const supabase = createServiceRoleClient();
-  await getAuthenticatedUser(request);
+  const user = await getAuthenticatedUser(request);
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Fetch the task first
+  const supabase = createServiceRoleClient();
+
+  // Fetch the caller's task first
   const { data: task } = await supabase
     .from('agent_g_tasks')
     .select('id, status, user_id')
     .eq('id', taskId)
+    .eq('user_id', user.id)
     .maybeSingle();
 
   if (!task) {
@@ -56,7 +62,8 @@ export async function POST(
       results: { summaryKa: 'დავალება გაუქმდა მომხმარებლის მიერ.', cancelled: true },
       updated_at: new Date().toISOString(),
     })
-    .eq('id', taskId);
+    .eq('id', taskId)
+    .eq('user_id', user.id);
 
   // Mark all queued subtasks as failed
   await supabase

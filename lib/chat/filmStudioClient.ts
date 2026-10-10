@@ -925,7 +925,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     if (!matrix.readyToStitch && !canSalvagePartialCut(matrix)) {
       return fail(
         renderStalled
-          ? 'The render stalled — no scenes finished in time. This usually means the video provider rejected the jobs (out of quota / invalid key) or the wallet has no funds. Please check billing and try again.'
+          ? 'The render stalled: no scene finished in time. Please try again a little later.'
           : renderFailed
             ? 'One or more scenes failed to render, so the film could not be assembled.'
             : 'The render timed out before enough scenes were ready to assemble a film.',

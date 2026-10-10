@@ -1,31 +1,15 @@
-import type { Metadata } from 'next';
-import { ChatChrome } from '@/components/studio/ChatChrome';
 import { redirect } from 'next/navigation';
-import { StudioV2 } from '@/components/studio/v2/StudioV2';
-import { studioV2Enabled } from '@/lib/studio/flags';
 
 /**
- * /[locale]/studio — the new studio (brief §6) where STUDIO_V2 is on (Preview first, then Production); everywhere
- * else it goes home (the chat, /{lang}) — the legacy agent hub it used to show was deleted with the old shell
- * (docs/DESIGN.md §13). Decided per request on the server: the flag decides whether the
- * studio EXISTS, not merely whether a button shows (lib/studio/flags.ts).
+ * /[locale]/studio — RETIRED (the owner, 2026-10-09 18:25Z: the „Studio Beta" page was „too confusing"). It was a second
+ * studio (Video / Image / Avatar / Music tabs) beside the studio's own tools. next.config.js sends it home with a real 307
+ * before this page runs; this redirect is the same rule for anything that reaches the page anyway.
  */
 export const dynamic = 'force-dynamic';
 
 type Props = { params: Promise<{ locale: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { locale } = await params;
-  // The [locale] layout's template appends " · MyAvatar" — the page gives only its own name.
-  return { title: locale === 'en' ? 'Studio' : locale === 'ru' ? 'Студия' : 'სტუდია' };
-}
-
 export default async function StudioPage({ params }: Props) {
   const { locale } = await params;
-  if (!studioV2Enabled()) redirect(`/${locale}`);
-  return (
-    <ChatChrome locale={locale}>
-      <StudioV2 locale={locale} />
-    </ChatChrome>
-  );
+  redirect(`/${locale}`);
 }

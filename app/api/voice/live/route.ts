@@ -214,6 +214,9 @@ export async function POST(request: NextRequest) {
       const { liveThreadDeps } = await import('@/lib/voice/liveThreadStore');
       threadBlock = await loadLiveThreadBlock(userId, body.chatSessionId, liveThreadDeps());
     }
+    // What the user told Agent G before (lib/memory/context: profile facts and newest saved facts, capped, their data and
+    // never instructions), as in every chat surface. Imported lazily like the stores above; any miss → no block.
+    const memoryBlock = (await import('@/lib/memory/context').then((m) => m.memoryContextOf(userId)).catch(() => null)) ?? '';
     // `tools: false` = the browser's degraded legacy retry: no tools of any kind (see the header).
     const toolsAllowed = body.tools !== false;
     // Google Search in Live: default ON, like the text chat (GEMINI_LIVE_GOOGLE_SEARCH=0 is the kill switch). The
@@ -228,7 +231,7 @@ export async function POST(request: NextRequest) {
     const liveFor = (withActions: boolean) => toGeminiLiveSetup(
       { ...profile, voice },
       // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;

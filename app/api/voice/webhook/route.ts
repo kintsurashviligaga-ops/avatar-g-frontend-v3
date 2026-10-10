@@ -21,12 +21,14 @@ export async function POST(request: NextRequest) {
   const secret = String(process.env.VAPI_WEBHOOK_SECRET || '').trim();
   const signatureHeader = getSignatureHeader(request);
 
-  if (secret) {
-    const valid = verifyVapiWebhookSignature(rawBody, signatureHeader, secret);
-
-    if (!valid) {
-      return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
-    }
+  // ⚠️ FAIL CLOSED: with VAPI_WEBHOOK_SECRET unset this used to skip the check, so anyone could POST a call event and
+  // write voice_calls rows (any user_id, phone number, transcript) through the service role. Vapi is outside the provider
+  // allowlist and Production's voice_calls was empty when checked (2026-10-09), so nothing live used the unsigned path.
+  if (!secret) {
+    return NextResponse.json({ error: 'not_configured' }, { status: 503 });
+  }
+  if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
+    return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
   }
 
   let eventPayload: Record<string, unknown>;
