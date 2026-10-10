@@ -1568,7 +1568,7 @@ async function handleTextIntent(
     success: false,
     intent: detected.intent,
     responseType: 'text',
-    message: 'Chat is temporarily unavailable (cognitive core not configured).',
+    message: 'Chat is temporarily unavailable. Please try again a little later.',
     metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
   };
 }

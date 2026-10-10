@@ -225,16 +225,16 @@ describe('ConnectorsSheet', () => {
     limits: FILES.limits,
   };
 
-  test('Local files works (list + add); the other four are "Soon" and have nothing to press', async () => {
+  test('Local files works (list + add); cloud services without a connect flow are not shown at all', async () => {
     network((url) => (url.includes('/api/connectors/files') ? { body: FILES } : url.includes('/api/connectors') ? { body: states } : undefined));
     render(<ConnectorsSheet locale="en" authed />);
     expect(await screen.findByTestId('connector-files')).toBeTruthy();
     expect(screen.getByTestId('connector-local').textContent).toContain('Local files');
     expect(screen.getByTestId('connector-files').textContent).toContain('notes.pdf');
     expect(screen.getByTestId('connector-add').hasAttribute('disabled')).toBe(false);
-    const soon = screen.getAllByTestId('connector-soon');
-    expect(soon.map((s) => s.textContent)).toEqual(['Google DriveSoon', 'OneDriveSoon', 'NotionSoon', 'DropboxSoon']);
-    for (const row of soon) expect(row.querySelectorAll('button, a, [role="button"]')).toHaveLength(0);
+    expect(screen.queryAllByTestId('connector-soon')).toHaveLength(0);
+    const body = screen.getByTestId('connectors-body').textContent ?? '';
+    for (const name of ['Google Drive', 'OneDrive', 'Notion', 'Dropbox']) expect(body).not.toContain(name);
   });
 
   test('a text file is read in the browser and its TEXT is what is posted', async () => {
@@ -274,7 +274,7 @@ describe('ConnectorsSheet', () => {
     expect(calls.some((c) => c.method === 'POST' && c.url.includes('/api/connectors/files'))).toBe(false);
   });
 
-  test('storage not switched on: said plainly, the four Soon rows still show', async () => {
+  test('storage not switched on: said plainly, and nothing else is offered', async () => {
     network((url) => {
       if (url.includes('/api/connectors/files')) return { status: 503, body: { error: 'unavailable' } };
       if (url.includes('/api/connectors')) return { body: { ...states, connectors: [{ id: 'local_files', label: 'Local files', status: 'unavailable' }, ...states.connectors.slice(1)] } };
@@ -282,26 +282,26 @@ describe('ConnectorsSheet', () => {
     });
     render(<ConnectorsSheet locale="en" authed />);
     expect((await screen.findByTestId('connector-local-unavailable')).textContent).toContain('not switched on');
-    expect(screen.getAllByTestId('connector-soon')).toHaveLength(4);
+    expect(screen.queryAllByTestId('connector-soon')).toHaveLength(0);
     expect(screen.queryByTestId('connector-add')).toBeNull();
   });
 
-  test('a guest is asked to sign in; the Soon rows are still shown', async () => {
+  test('a guest is asked to sign in', async () => {
     network((url) => (url.includes('/api/connectors') ? { body: states } : undefined));
     render(<ConnectorsSheet locale="en" authed={false} />);
     expect(await screen.findByText('Sign in to add files.')).toBeTruthy();
     expect(screen.queryByTestId('connector-add')).toBeNull();
-    expect(screen.getAllByTestId('connector-soon')).toHaveLength(4);
+    expect(screen.queryAllByTestId('connector-soon')).toHaveLength(0);
   });
 
   test.each([
     ['ka', 'ლოკალური ფაილები', 'მალე'],
     ['ru', 'Локальные файлы', 'Скоро'],
-  ] as const)('%s copy', async (locale, local, soon) => {
+  ] as const)('%s copy (and no „soon" tag anywhere)', async (locale, local, soon) => {
     network((url) => (url.includes('/api/connectors/files') ? { body: FILES } : url.includes('/api/connectors') ? { body: states } : undefined));
     render(<ConnectorsSheet locale={locale} authed />);
     await screen.findByTestId('connector-files');
     expect(screen.getByTestId('connector-local').textContent).toContain(local);
-    expect(screen.getAllByTestId('connector-soon')[0]!.textContent).toContain(soon);
+    expect(screen.getByTestId('connectors-body').textContent).not.toContain(soon);
   });
 });

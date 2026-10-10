@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Settings, Zap, Sparkles, Monitor, Smartphone, Square, RectangleHorizontal,
-  Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check, History,
+  Settings, Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check, History,
   type LucideIcon,
 } from 'lucide-react';
 import { creditsToGel } from '@/lib/credits/pricing';
@@ -18,9 +17,7 @@ import { PushPermissionCard } from '@/components/notifications/PushPermissionCar
 /**
  * Settings — top-level user preferences surface.
  *
- * Six sections wired to the REAL systems already in the app:
- *   • Rendering mode    → localStorage (consumed by future render-quality gating)
- *   • Aspect ratio       → localStorage (consumed by film/video composers)
+ * Sections wired to the REAL systems already in the app:
  *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as ModernShell's locale switcher)
  *   • Theme             → ThemeContext (data-theme attr + .dark class)
  *   • Profile + Usage    → /api/credits/balance (authenticated GET)
@@ -28,7 +25,9 @@ import { PushPermissionCard } from '@/components/notifications/PushPermissionCar
  *   • Notifications      → Web Push for this browser (PushPermissionCard; it lived in the retired Connectors hub)
  *   • Delete Account    → /api/account/delete (Apple §5.1.1(v) compliant flow)
  *
- * No fakes, no mocks: every control either persists locally or hits a real endpoint.
+ * No fakes, no mocks: every control either persists locally or hits a real endpoint. The „Rendering mode" and „Aspect
+ * ratio" toggles were removed 2026-10-10 (Omnichannel A2): they wrote localStorage keys nothing read, so they changed
+ * nothing. Quality and format are chosen where they take effect, in each service panel.
  * Animations use Framer Motion with `transform`-only properties (hardware-accelerated,
  * no layout reflow).
  */
@@ -36,8 +35,6 @@ import { PushPermissionCard } from '@/components/notifications/PushPermissionCar
 type Locale = 'ka' | 'en' | 'ru';
 interface Copy {
   pageTitle: string; pageSubtitle: string;
-  renderMode: { title: string; fast: string; fastDesc: string; ultra: string; ultraDesc: string };
-  aspect: { title: string; subtitle: string };
   language: { title: string; subtitle: string };
   theme: { title: string; dark: string; light: string; subtitle: string };
   profile: { title: string; status: string; signedIn: string; signedOut: string };
@@ -52,18 +49,12 @@ interface Copy {
 
 const COPY: Record<Locale, Copy> = {
   ka: {
-    pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, რენდერი და ენა — ერთ ადგილზე.',
-    renderMode: {
-      title: 'რენდერის რეჟიმი',
-      fast: 'სწრაფი / სტანდარტული', fastDesc: 'სწრაფი შედეგი — სტანდარტული ხარისხი.',
-      ultra: 'ულტრა-კინემატოგრაფიული', ultraDesc: 'მაქსიმალური ვიზუალური ხარისხი — ცოტათი მეტი ხანი.',
-    },
-    aspect: { title: 'რენდერის შეფარდება', subtitle: 'სტანდარტული ფორმატი ახალი ვიდეოებისთვის.' },
+    pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, ენა და ბალანსი ერთ ადგილზე.',
     language: { title: 'ენა', subtitle: 'ცვლის ინტერფეისის ენას მთელი აპლიკაციისთვის.' },
     theme: { title: 'თემა', subtitle: 'მუქი ან ღია გარეგნობა.', dark: 'მუქი', light: 'ღია' },
     profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ' },
     usage: {
-      title: 'API მოხმარება და ბალანსი', subtitle: 'მიმდინარე პერიოდის სტატისტიკა.',
+      title: 'ბალანსი და მოხმარება', subtitle: 'რამდენი კრედიტი გაქვს ამ პერიოდში.',
       loading: 'იტვირთება…', failed: 'მონაცემები ვერ მოვიდა.', credits: 'კრედიტი', resets: 'განახლდება',
     },
     history: { title: 'ისტორია', subtitle: 'ბოლო 10 ტრანზაქცია.', loading: 'იტვირთება…', empty: 'ჯერ არ არის ტრანზაქცია.', credits: 'კრედიტი' },
@@ -78,18 +69,12 @@ const COPY: Record<Locale, Copy> = {
     },
   },
   en: {
-    pageTitle: 'Settings', pageSubtitle: 'Account, rendering and language — all in one place.',
-    renderMode: {
-      title: 'Rendering Mode',
-      fast: 'Fast / Standard', fastDesc: 'Quicker results at standard quality.',
-      ultra: 'Ultra-Cinematic', ultraDesc: 'Highest visual fidelity — slightly longer renders.',
-    },
-    aspect: { title: 'Render Aspect Ratio', subtitle: 'Default format for new videos.' },
+    pageTitle: 'Settings', pageSubtitle: 'Account, language and balance in one place.',
     language: { title: 'Language', subtitle: 'Switches the interface language across the app.' },
     theme: { title: 'Theme', subtitle: 'Dark or light appearance.', dark: 'Dark', light: 'Light' },
     profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out' },
     usage: {
-      title: 'API Usage & Balance', subtitle: 'Current period statistics.',
+      title: 'Balance & usage', subtitle: 'Your credits for this period.',
       loading: 'Loading…', failed: 'Could not load.', credits: 'credits', resets: 'Resets',
     },
     history: { title: 'History', subtitle: 'Your last 10 transactions.', loading: 'Loading…', empty: 'No transactions yet.', credits: 'credits' },
@@ -104,18 +89,12 @@ const COPY: Record<Locale, Copy> = {
     },
   },
   ru: {
-    pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, рендер и язык — в одном месте.',
-    renderMode: {
-      title: 'Режим рендеринга',
-      fast: 'Быстрый / Стандарт', fastDesc: 'Быстрее, стандартное качество.',
-      ultra: 'Ультра-кинематографичный', ultraDesc: 'Максимальное качество — рендер чуть дольше.',
-    },
-    aspect: { title: 'Соотношение сторон', subtitle: 'Формат по умолчанию для новых видео.' },
+    pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, язык и баланс в одном месте.',
     language: { title: 'Язык', subtitle: 'Меняет язык интерфейса.' },
     theme: { title: 'Тема', subtitle: 'Тёмное или светлое оформление.', dark: 'Тёмная', light: 'Светлая' },
     profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт' },
     usage: {
-      title: 'Использование и баланс', subtitle: 'Статистика за текущий период.',
+      title: 'Баланс и расход', subtitle: 'Ваши кредиты за этот период.',
       loading: 'Загрузка…', failed: 'Не удалось загрузить.', credits: 'кредитов', resets: 'Обновится',
     },
     history: { title: 'История', subtitle: 'Последние 10 транзакций.', loading: 'Загрузка…', empty: 'Пока нет транзакций.', credits: 'кред.' },
@@ -136,24 +115,11 @@ const fadeUp = {
   show: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.35, ease: 'easeOut' } }),
 };
 
-const ASPECTS = [
-  { id: '16:9' as const, label: '16:9', sublabel: { ka: 'ფართო (YouTube)', en: 'Widescreen (YouTube)', ru: 'Широкоэкранный (YouTube)' }, Icon: Monitor },
-  { id: '9:16' as const, label: '9:16', sublabel: { ka: 'ვერტიკალური (Reels/TikTok)', en: 'Vertical (Reels/TikTok)', ru: 'Вертикальный (Reels/TikTok)' }, Icon: Smartphone },
-  { id: '1:1' as const,  label: '1:1',  sublabel: { ka: 'კვადრატი (Instagram)', en: 'Square (Instagram)', ru: 'Квадрат (Instagram)' }, Icon: Square },
-  { id: '4:3' as const,  label: '4:3',  sublabel: { ka: 'სტანდარტული', en: 'Standard', ru: 'Стандартный' }, Icon: RectangleHorizontal },
-];
-
 const LANGS: { code: Locale; name: string; native: string }[] = [
   { code: 'ka', name: 'Georgian', native: 'ქართული' },
   { code: 'en', name: 'English',  native: 'English' },
   { code: 'ru', name: 'Russian',  native: 'Русский' },
 ];
-
-type RenderMode = 'fast' | 'ultra';
-type Aspect = '16:9' | '9:16' | '1:1' | '4:3';
-
-const LS_RENDER_MODE = 'myavatar.settings.renderMode';
-const LS_ASPECT = 'myavatar.settings.aspect';
 
 export function SettingsView({ locale }: { locale: string }) {
   const loc = (['ka', 'en', 'ru'] as const).includes(locale as Locale) ? (locale as Locale) : 'ka';
@@ -179,11 +145,9 @@ export function SettingsView({ locale }: { locale: string }) {
         </motion.header>
 
         <motion.div initial="hidden" animate="show" className="space-y-5">
-          <motion.div variants={fadeUp} custom={0}><RenderingModeSection t={t.renderMode} /></motion.div>
-          <motion.div variants={fadeUp} custom={1}><AspectRatioSection t={t.aspect} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={2}><LanguageSection t={t.language} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={3}><ThemeSection t={t.theme} /></motion.div>
-          <motion.div variants={fadeUp} custom={4}><ProfileSection t={t.profile} /></motion.div>
+          <motion.div variants={fadeUp} custom={0}><LanguageSection t={t.language} loc={loc} /></motion.div>
+          <motion.div variants={fadeUp} custom={1}><ThemeSection t={t.theme} /></motion.div>
+          <motion.div variants={fadeUp} custom={2}><ProfileSection t={t.profile} /></motion.div>
           {/* Agent G on WhatsApp — the page every WhatsApp "link your number" reply points to (#whatsapp). */}
           <motion.div variants={fadeUp} custom={4}><WhatsAppLinkCard locale={loc} /></motion.div>
           <motion.div variants={fadeUp} custom={4}><PushPermissionCard locale={loc} /></motion.div>
@@ -241,75 +205,7 @@ function ToggleSwitch({ checked, onChange, ariaLabel }: { checked: boolean; onCh
   );
 }
 
-// ── 1. Rendering Mode ─────────────────────────────────────────────────────────
-
-function RenderingModeSection({ t }: { t: Copy['renderMode'] }) {
-  const [mode, setMode] = useState<RenderMode>('fast');
-  useEffect(() => {
-    const v = (typeof window !== 'undefined' ? localStorage.getItem(LS_RENDER_MODE) : null) as RenderMode | null;
-    if (v === 'fast' || v === 'ultra') setMode(v);
-  }, []);
-  const set = useCallback((m: RenderMode) => { setMode(m); try { localStorage.setItem(LS_RENDER_MODE, m); } catch {} }, []);
-  const ultra = mode === 'ultra';
-  return (
-    <Card>
-      <CardHeader icon={ultra ? Sparkles : Zap} title={t.title} />
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-medium md:text-base">{ultra ? t.ultra : t.fast}</div>
-          <p className="mt-1 text-xs text-app-muted md:text-sm">{ultra ? t.ultraDesc : t.fastDesc}</p>
-        </div>
-        <ToggleSwitch checked={ultra} onChange={(v) => set(v ? 'ultra' : 'fast')} ariaLabel={t.title} />
-      </div>
-    </Card>
-  );
-}
-
-// ── 2. Aspect Ratio Presets ───────────────────────────────────────────────────
-
-function AspectRatioSection({ t, loc }: { t: Copy['aspect']; loc: Locale }) {
-  const [aspect, setAspect] = useState<Aspect>('16:9');
-  useEffect(() => {
-    const v = (typeof window !== 'undefined' ? localStorage.getItem(LS_ASPECT) : null) as Aspect | null;
-    if (v && ASPECTS.some((a) => a.id === v)) setAspect(v);
-  }, []);
-  const set = useCallback((a: Aspect) => { setAspect(a); try { localStorage.setItem(LS_ASPECT, a); } catch {} }, []);
-  return (
-    <Card>
-      <CardHeader icon={RectangleHorizontal} title={t.title} subtitle={t.subtitle} />
-      <div className="grid grid-cols-2 gap-3">
-        {ASPECTS.map((opt) => {
-          const active = aspect === opt.id;
-          const Icon = opt.Icon;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => set(opt.id)}
-              aria-pressed={active}
-              className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
-                active
-                  ? 'border-app-accent/60 bg-app-accent/10 text-app-text'
-                  : 'border-app-border/40 bg-app-bg/40 text-app-text hover:border-app-border-hover hover:bg-app-bg/60'
-              }`}
-            >
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-app-accent/20 text-app-accent' : 'bg-app-elevated text-app-muted'}`}>
-                <Icon size={16} />
-              </span>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">{opt.label}</div>
-                <div className="truncate text-[11px] text-app-muted md:text-xs">{opt.sublabel[loc]}</div>
-              </div>
-              {active && <Check size={14} className="ml-auto text-app-accent" />}
-            </button>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-// ── 3. Language ───────────────────────────────────────────────────────────────
+// ── Language ──────────────────────────────────────────────────────────────────
 
 function LanguageSection({ t, loc }: { t: Copy['language']; loc: Locale }) {
   const router = useRouter();
@@ -353,7 +249,7 @@ function LanguageSection({ t, loc }: { t: Copy['language']; loc: Locale }) {
   );
 }
 
-// ── 4. Theme ──────────────────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────────
 
 function ThemeSection({ t }: { t: Copy['theme'] }) {
   const { theme, toggleTheme } = useTheme();
@@ -371,7 +267,7 @@ function ThemeSection({ t }: { t: Copy['theme'] }) {
   );
 }
 
-// ── 5. Profile ────────────────────────────────────────────────────────────────
+// ── Profile ───────────────────────────────────────────────────────────────────
 
 function ProfileSection({ t }: { t: Copy['profile'] }) {
   // Use the credits/balance endpoint as a lightweight signed-in probe: 200 means
@@ -417,7 +313,7 @@ function ProfileSection({ t }: { t: Copy['profile'] }) {
   );
 }
 
-// ── 6. API Usage & Balance ────────────────────────────────────────────────────
+// ── Balance & usage ───────────────────────────────────────────────────────────
 
 interface CreditsResponse { balance: number; monthlyAllowance: number; resetAt: string | null }
 
@@ -483,7 +379,7 @@ function ApiUsageSection({ t, loc }: { t: Copy['usage']; loc: Locale }) {
   );
 }
 
-// ── 7. Credit history (last 10 transactions) ──────────────────────────────────
+// ── Credit history (last 10 transactions) ──────────────────────────────────
 
 interface HistoryItem { action: string; creditsDelta: number; createdAt: string }
 const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: string }> = {
@@ -560,7 +456,7 @@ function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
   );
 }
 
-// ── 8. Danger Zone (Delete Account) ───────────────────────────────────────────
+// ── Danger Zone (Delete Account) ───────────────────────────────────────────
 
 function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
   const [open, setOpen] = useState(false);

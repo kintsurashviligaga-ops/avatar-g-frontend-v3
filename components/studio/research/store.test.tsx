@@ -157,18 +157,16 @@ describe('the „+" sheet rows (useResearchToolExtras)', () => {
     expect(result.current).toEqual([]);
   });
 
-  test('available → Deep Research then Connectors; Deep Research opens the start sheet seeded from the composer', async () => {
+  test('available → Deep Research only (My documents opens from research itself); it opens the start sheet seeded from the composer', async () => {
     mockCaps(AVAILABLE);
     let text = 'seed from the box';
     const { result } = renderHook(() => useResearchToolExtras('en', () => text));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    expect(result.current.map((r) => r.id)).toEqual(['research', 'connectors']);
-    expect(result.current.map((r) => r.title)).toEqual(['Deep Research', 'My documents']);
+    expect(result.current.map((r) => r.id)).toEqual(['research']);
+    expect(result.current.map((r) => r.title)).toEqual(['Deep Research']);
     text = 'seed from the box, edited';
     act(() => result.current[0]!.onPick());
     expect(getResearchState().start).toEqual({ prompt: 'seed from the box, edited' });
-    act(() => result.current[1]!.onPick());
-    expect(getResearchState().connectors).toBe(true);
   });
 
   test('a guest who picks Deep Research is sent to sign-in, and no sheet opens', async () => {
@@ -183,7 +181,7 @@ describe('the „+" sheet rows (useResearchToolExtras)', () => {
     expect(heard).toHaveBeenCalledTimes(1);
     expect(getResearchState().start).toBeNull();
     expect(result.current[0]!.title).toBe('Deep Research');
-    expect(result.current[1]!.title).toBe('ჩემი დოკუმენტები');
+    expect(result.current).toHaveLength(1);
   });
 });
 

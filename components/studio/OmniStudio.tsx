@@ -3722,7 +3722,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           // its remote queue for 90s+ with no forward tick. Surface an honest note (the
           // render keeps going — no re-submit, no double-charge) instead of a silent stall.
           const status = p.slow
-            ? `${baseStatus} · ⏳ ${locale === 'en' ? 'provider is slow, still working…' : locale === 'ru' ? 'провайдер медленный, продолжаем…' : 'პროვაიდერი ნელია, ვაგრძელებთ…'}`
+            ? `${baseStatus} · ⏳ ${locale === 'en' ? 'taking longer than usual, still working…' : locale === 'ru' ? 'дольше обычного, продолжаем…' : 'ჩვეულებრივზე დიდხანს გრძელდება, ვაგრძელებთ…'}`
             : baseStatus;
           // Fold the live matrix into the 9-agent roster + activity log so the
           // Director's Console renders real per-agent state and a streaming feed

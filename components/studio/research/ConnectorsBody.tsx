@@ -6,16 +6,17 @@
  *
  *   Local files   WORKS: pick a PDF / DOCX / TXT / MD → the text is extracted (txt/md in the browser, PDF and DOCX by
  *                 /api/utils/extract-text) → /api/connectors/files stores the TEXT only → a research run can attach it.
- *   Google Drive · OneDrive · Notion · Dropbox   „Soon". They are prepared on the server and NOT connectable — there is no
- *                 OAuth flow, no token store — so they are drawn as plain rows with a „Soon" tag and NO connect button.
- *                 A button that did nothing would be a lie; this body never makes one.
+ *   Google Drive · OneDrive · Notion · Dropbox   NOT drawn. The server still lists them as „soon" (lib/connectors/registry.ts)
+ *                 but there is no OAuth flow and no token store, so they cannot connect. The „Soon" rows were removed
+ *                 2026-10-10 (Omnichannel A2: a cloud integration without real access is not shown). They come back
+ *                 only with a working connect flow.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Cloud, FileText, HardDrive, Loader2, Plus, Trash2 } from 'lucide-react';
+import { FileText, HardDrive, Loader2, Plus, Trash2 } from 'lucide-react';
 import type { ConnectorFile, ConnectorState } from '@/lib/connectors/types';
 import { RESEARCH_FILES_MAX } from '@/lib/research/context';
 import { addFile, extractFileText, fetchConnectors, fetchFiles, removeFile, TEXT_FILE_RE, type ConnectorLimits } from './api';
-import { researchCopy, researchLang, SOON_CONNECTOR_NAMES } from './copy';
+import { researchCopy, researchLang } from './copy';
 
 /** The route's JSON body must stay under Vercel's ~4.5 MB: a binary document is sent as base64 (×1.37). */
 const MAX_BINARY_BYTES = 3 * 1024 * 1024;
@@ -25,7 +26,6 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
   // Heading ids are per instance, so two copies in one page never share an id.
   const uid = useId();
   const localH = `${uid}-local-h`;
-  const soonH = `${uid}-soon-h`;
   const lang = researchLang(locale);
   const [states, setStates] = useState<ConnectorState[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -77,8 +77,6 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
     if (ok) setFiles((cur) => (cur ?? []).filter((x) => x.id !== f.id));
     else setMessage(c.connUploadFailed);
   };
-
-  const row = 'flex min-h-[48px] items-center gap-3.5 rounded-2xl px-3';
 
   return (
     <div className="space-y-4 px-2 pb-2 pt-1" data-testid="connectors-body">
@@ -142,20 +140,6 @@ export function ConnectorsBody({ locale, authed }: { locale: string; authed: boo
         ) : null}
 
         {message && <p role="alert" className="mt-2 text-[12.5px] leading-snug text-app-text">{message}</p>}
-      </section>
-
-      {/* The four that are not wired: named, tagged „Soon", and NOT clickable. */}
-      <section aria-labelledby={soonH}>
-        <h3 id={soonH} className="px-1 pb-1 text-[12px] font-medium text-app-muted">{c.connSoonNote}</h3>
-        <ul className="space-y-0.5">
-          {SOON_CONNECTOR_NAMES.map((name) => (
-            <li key={name} data-testid="connector-soon" className={`${row} text-app-muted`}>
-              <Cloud size={20} className="shrink-0 opacity-70" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-[15px] font-medium text-app-text/80">{name}</span>
-              <span className="shrink-0 rounded-full bg-app-elevated px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider text-app-muted">{c.connSoon}</span>
-            </li>
-          ))}
-        </ul>
       </section>
     </div>
   );

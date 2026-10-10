@@ -1661,7 +1661,7 @@ export class ServiceManager {
       provider: 'replicate',
       operation: 'text-to-image',
       responseType: 'image',
-      message: 'Image generation started. Waiting for provider status.',
+      message: 'Image generation started.',
       predictionId: taskRef,
       predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
       metadata: {
@@ -1764,7 +1764,7 @@ export class ServiceManager {
       provider: 'replicate',
       operation: 'video-avatar',
       responseType: 'video',
-      message: 'Video generation started. Waiting for provider status.',
+      message: 'Video generation started.',
       predictionId: taskRef,
       predictionStatus: prediction.status === 'failed' ? 'failed' : 'processing',
       metadata: {

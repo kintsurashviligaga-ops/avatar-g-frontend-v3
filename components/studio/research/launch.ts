@@ -4,13 +4,13 @@
  * launch.ts — the doors INTO Deep Research from the rest of the app, each a few lines so the hot files (OmniStudio, ChatChrome,
  * ToolSheet) stay almost untouched:
  *
- *   useResearchToolExtras(locale, getPrompt)  the „+" sheet's two rows („Deep Research", „Connectors") — an EMPTY list until
+ *   useResearchToolExtras(locale, getPrompt)  the „+" sheet's Deep Research row — an EMPTY list until
  *                                             /api/research/capabilities says `available: true`, so a deployment without the
  *                                             feature (or with the migration unapplied) shows nothing and never errors
  *   openResearchFromComposer(prompt)          a guest is sent to sign-in; a signed-in user gets the start-confirmation sheet
  */
 import { useEffect, useMemo, useRef } from 'react';
-import { FileSearch, Plug } from 'lucide-react';
+import { FileSearch } from 'lucide-react';
 import type { ToolEntry } from '@/components/studio/ui/ToolSheet';
 import { researchCopy } from './copy';
 import { researchActions, useResearchAvailable } from './store';
@@ -37,9 +37,10 @@ export function useResearchToolExtras(locale: string, getPrompt: () => string): 
   return useMemo(() => {
     if (!available) return [];
     const c = researchCopy(locale);
+    // „My documents" is not a row here: it exists for research only, so it opens from the research start sheet and the
+    // research list (Omnichannel A2, 2026-10-10). Files for the chat are the composer's attachment and the Library.
     return [
       { id: 'research', Icon: FileSearch, title: c.toolTitle, sub: c.toolSub, onPick: () => openResearchFromComposer(latest.current()) },
-      { id: 'connectors', Icon: Plug, title: c.connectorsTitle, sub: c.connectorsSub, onPick: researchActions.openConnectors },
     ];
   }, [available, locale]);
 }
