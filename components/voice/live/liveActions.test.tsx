@@ -8,6 +8,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
+import { createVoiceLedger } from '@/lib/voice/voiceLedger';
 
 import {
   LIVE_ACTIONS_PER_CALL_MAX,
@@ -179,6 +180,8 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
   /** A studio that takes every event and answers with `reply` (as OmniStudio fills detail.reply inside dispatchEvent). */
   function replyingEnv(reply: Record<string, unknown> | ((d: LiveActionEventDetail) => Record<string, unknown> | undefined), receipt = true) {
     const actions: LiveActionEventDetail[] = [];
+    let t = 1000;
+    const voice = createVoiceLedger(() => t);
     const env: LiveActionEnv = {
       dispatchAction: (d) => {
         actions.push(d);
@@ -189,8 +192,9 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
       openArtifact: () => true,
       setChatModel: jest.fn(),
       runGeneration: jest.fn(() => true),
+      voice,
     };
-    return { env, actions };
+    return { env, actions, voice, tick: (ms = 100) => { t += ms; } };
   }
 
   test('prepare_generation reports the settings the studio APPLIED and its price', () => {
@@ -210,11 +214,12 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
   });
 
   test('start_generation accepted → a countdown run (never a run on the call itself), with the price', () => {
-    const { env } = replyingEnv({ ok: true, tool: 'image', priceCredits: 2 });
+    const { env, voice } = replyingEnv({ ok: true, tool: 'image', priceCredits: 2 });
+    voice.quoteStudio(undefined, true); // the price was told at t=1000
     const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), env);
-    expect(out.run).toEqual({ tool: 'image', priceCredits: 2 });
+    expect(out.run).toEqual({ tool: 'image', priceCredits: 2, target: { kind: 'studio', tool: 'image' }, since: 1000 });
     expect(env.runGeneration).not.toHaveBeenCalled();
-    expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel/);
+    expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel or says wait/);
   });
 
   test('get_screen_state answers with the studio\'s state; set_chat_model uses the global store; call_view asks the host', () => {
@@ -333,32 +338,47 @@ describe('useLiveActions', () => {
     expect(result.current.endRequested).toBe(true);
   });
 
-  test('a confirmed start counts down, then runs — unless the user cancels; a cancelled call-id stops it too', () => {
+  test('a confirmed start counts down, then runs on the user\'s yes — unless the user cancels; a cancelled call-id stops it too', async () => {
     jest.useFakeTimers();
     try {
       const runGeneration = jest.fn(() => true);
+      const recordApproval = jest.fn(async () => ({ ok: true as const }));
+      const notify = jest.fn();
       const env: LiveActionEnv = {
-        dispatchAction: (d) => { if (d.type === 'start_generation') d.reply = { ok: true, tool: 'image', priceCredits: 2 }; return true; },
+        dispatchAction: (d) => {
+          if (d.type === 'start_generation' || d.type === 'prepare_generation') d.reply = { ok: true, tool: 'image', priceCredits: 2 };
+          return true;
+        },
         openArtifact: () => true,
         runGeneration,
+        recordApproval,
+        notify,
       };
       const { result } = renderHook(() => useLiveActions(env));
+      const sayYes = () => act(() => { result.current.onHeard({ text: ' yes, go ahead' }); result.current.onHeard({ end: true }); });
+      act(() => { result.current.onToolCall([call('p1', 'prepare_generation', { tool: 'image', prompt: 'a red fox' })]); });
+      act(() => { jest.advanceTimersByTime(500); });
+      sayYes();
       act(() => { result.current.onToolCall([call('s1', 'start_generation', { confirmed: 'yes' })]); });
       expect(result.current.pendingRun).toMatchObject({ id: 's1', tool: 'image', priceCredits: 2, state: 'counting' });
       act(() => { jest.advanceTimersByTime(2900); });
       expect(runGeneration).not.toHaveBeenCalled();
-      act(() => { jest.advanceTimersByTime(200); });
+      await act(async () => { jest.advanceTimersByTime(200); });
+      expect(recordApproval).toHaveBeenCalledWith({ tool: 'image', said: 'yes, go ahead', credits: 2 });
       expect(runGeneration).toHaveBeenCalledTimes(1);
+      expect(runGeneration).toHaveBeenCalledWith({ target: { kind: 'studio', tool: 'image' }, approval: { channel: 'voice-transcript', said: 'yes, go ahead' } });
       expect(result.current.pendingRun?.state).toBe('started');
+      expect(notify).not.toHaveBeenCalled();
 
       act(() => { result.current.onToolCall([call('s2', 'start_generation', { confirmed: 'yes' })]); });
       act(() => { result.current.cancelRun(); });
-      act(() => { jest.advanceTimersByTime(5000); });
+      await act(async () => { jest.advanceTimersByTime(5000); });
       expect(runGeneration).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenLastCalledWith({ kind: 'not_started', reason: 'cancelled' });
 
       act(() => { result.current.onToolCall([call('s3', 'start_generation', { confirmed: 'yes' })]); });
       act(() => { result.current.onToolCallCancellation(['s3']); });
-      act(() => { jest.advanceTimersByTime(5000); });
+      await act(async () => { jest.advanceTimersByTime(5000); });
       expect(runGeneration).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
@@ -555,9 +575,14 @@ describe('the hands: click · type_text · download · use_result · montage · 
     expect(out).toMatchObject({ response: { response: { ok: true, summary: 'Agent G is checking media.example.com now.' } }, screen: true });
     expect(out.pending).toBeUndefined(); // nothing waits on the network: the plan follows as an [App] note
 
-    const none = handsEnv({ reply: { ok: false, error: 'no_plan', message: 'No Agent G audio plan is waiting on screen.' } });
-    expect(executeLiveToolCall(call('x2', 'extract_audio', { action: 'start', confirmed: 'yes' }), none.env).response.response)
-      .toEqual({ ok: false, error: 'no_plan', message: 'No Agent G audio plan is waiting on screen.' });
+    // start is agent_task start on the newest MP3 plan the call heard of: none here, so the studio is never asked.
+    const none = handsEnv({ reply: { ok: true } });
+    expect(executeLiveToolCall(call('x2', 'extract_audio', { action: 'start', confirmed: 'yes' }), { ...none.env, voice: createVoiceLedger() }).response.response)
+      .toMatchObject({ ok: false, error: 'no_plan' });
+    expect(none.actions).toEqual([]);
+    // No transcript on this host → no start at all.
+    expect(executeLiveToolCall(call('x2b', 'extract_audio', { action: 'start', confirmed: 'yes' }), none.env).response.response)
+      .toMatchObject({ ok: false, error: 'no_transcript' });
     // start without the user's yes never reaches the studio
     const unconfirmed = handsEnv();
     expect(executeLiveToolCall(call('x3', 'extract_audio', { action: 'start' }), unconfirmed.env).response.response).toMatchObject({ ok: false, field: 'confirmed' });

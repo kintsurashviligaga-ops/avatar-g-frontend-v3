@@ -53,7 +53,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
     expect(LIVE_ACTION_NAMES).toEqual([
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
-      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio',
+      'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -516,7 +516,7 @@ describe('ask_agent_g', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'ask_agent_g')!;
 
   it('is declared after the older ones (they keep their order) with one required STRING `task`', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('ask_agent_g');
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 3]!.name).toBe('ask_agent_g');
     const p = decl().parameters!;
     expect(p.type).toBe('OBJECT');
     expect(Object.keys(p.properties!)).toEqual(['task']);
@@ -576,8 +576,8 @@ describe('ask_agent_g', () => {
 describe('extract_audio', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'extract_audio')!;
 
-  it('is declared LAST with a required action (plan · start · stop), an optional url and the start confirmation', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('extract_audio');
+  it('is declared after ask_agent_g with a required action (plan · start · stop), an optional url and the start confirmation', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('extract_audio');
     const p = decl().parameters!;
     expect(Object.keys(p.properties!)).toEqual(['action', 'url', 'confirmed']);
     expect(p.properties!.action!.enum).toEqual(['plan', 'start', 'stop']);
@@ -619,3 +619,45 @@ describe('extract_audio', () => {
 function isObjArgs(v: unknown): boolean {
   return !!v && typeof v === 'object' && !Array.isArray(v);
 }
+
+// ── 2026-10-10: agent_task — Agent G's plans started, stopped and read by voice (Master Task PART 4) ──────────────────
+describe('agent_task', () => {
+  const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'agent_task')!;
+
+  it('is declared LAST with a required action (start · stop · status) and an optional INTEGER plan', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('agent_task');
+    const p = decl().parameters!;
+    expect(Object.keys(p.properties!)).toEqual(['action', 'plan']);
+    expect(p.properties!.action!.enum).toEqual(['start', 'stop', 'status']);
+    expect(p.properties!.plan!.type).toBe('INTEGER');
+    expect(p.required).toEqual(['action']);
+  });
+
+  it('tells the model the yes is the user\'s own words, checked by the app, never its own word', () => {
+    const d = decl().description;
+    expect(d).toMatch(/only after you told the\s+user what it does/);
+    expect(d).toMatch(/the app checks what it heard, not your\s+word/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/the app checks its transcript of the user, never your word/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/If an \[App\] note says\s+nothing was started, ask the user again plainly; never say it started/);
+    const start = LIVE_FUNCTION_DECLARATIONS.find((x) => x.name === 'start_generation')!.description;
+    expect(start).toMatch(/runs only if the user's own words after the price were a clear yes/);
+  });
+
+  it('start / stop take a plan number (a numeric string too); status ignores one; absent = the newest', () => {
+    expect(ok('agent_task', { action: 'start' })).toEqual({ type: 'agent_task', action: 'start' });
+    expect(ok('agent_task', { action: 'start', plan: 2 })).toEqual({ type: 'agent_task', action: 'start', plan: 2 });
+    expect(ok('agent_task', { action: 'stop', plan: ' 3 ' })).toEqual({ type: 'agent_task', action: 'stop', plan: 3 });
+    expect(ok('agent_task', { action: 'status', plan: 9 })).toEqual({ type: 'agent_task', action: 'status' });
+    expect(ok('agent_task', { action: 'start', plan: null })).toEqual({ type: 'agent_task', action: 'start' });
+  });
+
+  it('refuses anything else, and never lets the model name the card itself', () => {
+    expect(err('agent_task', {}).field).toBe('action');
+    expect(err('agent_task', { action: 'run' }).allowed).toEqual(['start', 'stop', 'status']);
+    for (const plan of [0, -1, 1.5, 100, 'two', '1e2', true]) expect(err('agent_task', { action: 'start', plan }).field).toBe('plan');
+    expect(err('agent_task', 'start').code).toBe('invalid_args');
+    // planId / planKind are set by the browser executor from its own ledger, never taken from the model's args.
+    expect(ok('agent_task', { action: 'start', plan: 1, planId: 'someone-elses-card', planKind: 'montage' }))
+      .toEqual({ type: 'agent_task', action: 'start', plan: 1 });
+  });
+});
