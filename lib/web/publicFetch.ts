@@ -190,8 +190,11 @@ export function pinnedFetch(lookup = createGuardedLookup()): typeof fetch {
 
 // ── the redirect walk ───────────────────────────────────────────────────────────────────────────────────────────────
 
-export type PublicFetchError = 'invalid_url' | 'blocked_host' | 'too_many_redirects' | 'http_error' | 'timeout' | 'fetch_failed';
-export type PublicFetchResult = { ok: true; res: Response; url: string } | { ok: false; error: PublicFetchError; status?: number };
+export type PublicFetchError = 'invalid_url' | 'blocked_host' | 'refused_url' | 'too_many_redirects' | 'http_error' | 'timeout' | 'fetch_failed';
+export type PublicFetchResult =
+  | { ok: true; res: Response; url: string }
+  /** `url`: the hop a caller's `allowUrl` refused (refused_url only). */
+  | { ok: false; error: PublicFetchError; status?: number; url?: string };
 
 export interface PublicFetchOptions {
   /** Default: pinnedFetch() — the connection-time DNS guard. Tests inject a fake. */
@@ -202,10 +205,17 @@ export interface PublicFetchOptions {
   headers?: Record<string, string>;
   /** The caller's own cancel (a route deadline); combined with the timeout. */
   signal?: AbortSignal;
+  /**
+   * The caller's own rule for every hop, the first address included (say, "not a video platform"): a hop it refuses
+   * ends the walk with `refused_url` and that hop's address, so a redirect cannot carry a request somewhere it may not go.
+   */
+  allowUrl?: (url: string) => boolean;
+  /** HEAD reads the answer's headers only (an availability check). Default GET. */
+  method?: 'GET' | 'HEAD';
 }
 
 /** Media a pipeline downloads (a clip, a track, a still) — or a storage host that names no type. */
-export const MEDIA_TYPES = /^(?:$|video\/|audio\/|image\/|application\/(?:octet-stream|mp4)$|binary\/octet-stream$)/;
+export const MEDIA_TYPES = /^(?:$|video\/|audio\/|image\/|application\/(?:octet-stream|mp4|ogg|x-matroska)$|binary\/octet-stream$)/;
 
 const isBlockedError = (e: unknown): boolean => {
   const x = e as { code?: string; cause?: { code?: string } } | null;
@@ -231,10 +241,12 @@ export async function fetchPublic(rawUrl: string, opts: PublicFetchOptions = {})
     const checked = validateLiveUrl(url);
     if (!checked.ok) return { ok: false, error: 'blocked_host' };
     if (!(await hostIsPublic(new URL(checked.url).hostname, lookupFn))) return { ok: false, error: 'blocked_host' };
+    if (opts.allowUrl && !opts.allowUrl(checked.url)) return { ok: false, error: 'refused_url', url: checked.url };
 
     let res: Response;
     try {
       res = await doFetch(checked.url, {
+        ...(opts.method === 'HEAD' ? { method: 'HEAD' } : {}),
         redirect: 'manual',
         cache: 'no-store',
         credentials: 'omit',

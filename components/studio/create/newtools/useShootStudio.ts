@@ -355,7 +355,7 @@ export function useShootStudio(deps: ShootDeps) {
     const wire = run.wire as { template?: string; room?: RoomId };
     const style = interiorTemplate(wire.template ?? null)?.label.en;
     const brief = [style ? `${style} style` : '', wire.room && wire.room !== 'auto' ? roomOption(wire.room)?.label.en : '', run.brief].filter(Boolean).join(', ');
-    void runPlan3d({ imageUrls: [src], brief, onProgress: (pct, stage) => setPlan({ status: 'running', pct, ...(stage ? { stage } : {}) }) })
+    void runPlan3d({ imageUrls: [src], brief, ...(tile.url ? { coverUrl: tile.url } : {}), onProgress: (pct, stage) => setPlan({ status: 'running', pct, ...(stage ? { stage } : {}) }) })
       .then((r) => { setPlan({ status: 'ready', geometry: r.geometry, style: r.style }); fire('myavatar:credits-updated'); void useCreditsBalance.getState().get(true); })
       .catch((e: unknown) => {
         if (e instanceof PlanError && e.code === 'unauthorized') fire('myavatar:auth-required');

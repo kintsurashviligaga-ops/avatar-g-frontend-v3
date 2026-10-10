@@ -54,7 +54,7 @@ export function PhotoshootCreatePanel(p: PhotoshootPanelProps) {
       <PanelHeader Icon={Camera} title={toolName('photoshoot', p.locale)} copy={copy} onSwitch={p.onSwitchTool} onClose={p.onClose} testId="photoshoot" />
       <UploadCard photos={p.form.photos} max={SHOOT_MAX_PHOTOS} title={c.uploadTitle} limit={c.uploadLimit} note={p.form.photos.length ? c.uploadNoteWithPhoto : c.uploadNote}
         notice={p.notice} copy={copy} onFiles={p.onAddPhotos} onRemove={p.onRemovePhoto} testId="photoshoot" />
-      <TemplateCarousel label={c.carousel} testId="photoshoot-presets" Icon={Camera}
+      <TemplateCarousel label={c.carousel} testId="photoshoot-presets" scrollLabels={{ prev: copy.prev, next: copy.next }} Icon={Camera}
         items={PHOTOSHOOT_TEMPLATES.map((t) => ({
           id: t.id, label: t.label[tl], hint: t.hint[tl], adds: photoshootAddsLine(t, tl), thumb: t.thumb, palette: t.palette, meta: t.aspect,
         }))}

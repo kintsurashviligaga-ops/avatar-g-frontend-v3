@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
           if (free !== null && free >= 0) {
             useFreeSlot = true;
           } else {
-            reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref);
+            reservation = await reserveProduce(user.id, PRODUCE_COST.film, ref, { refuseReplay: true });
             if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
             // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
             // render is abandoned (tab closed) and the in-route refund never fires. Credit path only — a

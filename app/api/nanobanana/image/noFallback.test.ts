@@ -20,6 +20,7 @@ jest.mock('../../../../lib/nanobanana/client', () => ({ generateNanoBananaImage:
 jest.mock('../../../../lib/ai/xaiImage', () => ({
   generateGrokImage: jest.fn(async () => ({ url: 'https://grok.example/out.png', b64: null, model: 'grok-2-image' })),
 }));
+jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(), geminiFrameModel: jest.fn(() => 'gemini-3.1-flash-image') }));
 jest.mock('../../../../lib/ai/fluxImage', () => ({ generateFluxProImage: jest.fn(async () => 'https://flux.example/out.png') }));
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/orchestrator/storage-adapter', () => ({ uploadAndSign: jest.fn() }));
@@ -43,6 +44,8 @@ import { POST } from './route';
 import { generateNanoBananaImage } from '../../../../lib/nanobanana/client';
 import { generateGrokImage } from '../../../../lib/ai/xaiImage';
 import { generateFluxProImage } from '../../../../lib/ai/fluxImage';
+import { generateGeminiImage } from '../../../../lib/ai/geminiImage';
+import { uploadAndSign } from '../../../../lib/orchestrator/storage-adapter';
 import { isProviderTripped, recordProviderResult, releaseIdempotencyKey } from '../../../../lib/orchestrator/idempotency';
 import { deductCredits, refundCredits } from '../../../../lib/orchestrator/ledger';
 import { creditCostFor } from '../../../../lib/credits/pricing';
@@ -66,7 +69,10 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete process.env.MEDIA_GOOGLE_ONLY;
+});
 
 /** The one failure exit: 502 provider_unavailable, the reserved credit returned, nothing re-hosted, no other engine. */
 async function expectExplicitRefundedMiss(res: Response) {
@@ -111,4 +117,32 @@ test('a NanoBanana success is delivered under NanoBanana\'s own name — no othe
   expect(refundCredits).not.toHaveBeenCalled();
   expect(generateGrokImage).not.toHaveBeenCalled();
   expect(generateFluxProImage).not.toHaveBeenCalled();
+});
+
+describe('MEDIA_GOOGLE_ONLY on — the one engine is Google image, never NanoBanana', () => {
+  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; });
+
+  test('Google image answers → hosted once, named as Google, NanoBanana never called', async () => {
+    (generateGeminiImage as jest.Mock).mockResolvedValue({ base64: 'aW1n', mimeType: 'image/png', model: 'gemini-3.1-flash-image' });
+    (uploadAndSign as jest.Mock).mockResolvedValue('https://x.supabase.co/storage/v1/object/sign/uploads/omni/a.png?token=t');
+    const res = await POST(post(BODY));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ success: true, url: expect.stringContaining('supabase.co'), model: 'Google gemini-3.1-flash-image' });
+    expect(generateNanoBananaImage).not.toHaveBeenCalled();
+    expect(isProviderTripped).not.toHaveBeenCalledWith('nanobanana');
+    expect(fetchSpy).not.toHaveBeenCalled(); // already in our storage: no second copy
+    expect(refundCredits).not.toHaveBeenCalled();
+  });
+
+  test('a photo edit passes the photo as a reference that must load', async () => {
+    (generateGeminiImage as jest.Mock).mockResolvedValue(null);
+    await POST(post({ ...BODY, referenceImageUrl: 'data:image/png;base64,AAAA' }));
+    expect(generateGeminiImage).toHaveBeenCalledWith(expect.objectContaining({ requireReferences: true }));
+  });
+
+  test('a Google miss is the same explicit, refunded 502, with no other engine', async () => {
+    (generateGeminiImage as jest.Mock).mockResolvedValue(null);
+    await expectExplicitRefundedMiss(await POST(post(BODY)));
+    expect(generateNanoBananaImage).not.toHaveBeenCalled();
+  });
 });

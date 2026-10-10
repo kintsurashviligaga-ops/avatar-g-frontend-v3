@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { apiError, apiSuccess } from '@/lib/api/response';
 import { transcribeRealtimePcmChunk } from '@/lib/voice-v2v/providers';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest) {
   if (!process.env.WORKER_INTERNAL_TOKEN || internalToken !== process.env.WORKER_INTERNAL_TOKEN) {
     return apiError(new Error('unauthorized'), 401, 'Unauthorized');
   }
+  // AI_GOOGLE_ONLY (on by default): this STT runs on OpenAI / Deepgram only, so it is refused before the body is read.
+  if (isAiGoogleOnly()) return apiError(new Error('google_only'), 503, 'Speech-to-text runs on Google models only.');
   try {
     const contentType = request.headers.get('content-type') || '';
 

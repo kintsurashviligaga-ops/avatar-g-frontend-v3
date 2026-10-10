@@ -6,6 +6,8 @@ import { OpenRouterProvider } from '@/lib/providers/openrouter';
 import { DeepSeekProvider } from '@/lib/providers/deepseek';
 import { recordMeteringEvent } from '@/lib/monetization/metering';
 import { logJobExecution } from '@/lib/observability/runtime';
+import { isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -436,7 +438,10 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
   const shouldAutoProcess = _request.nextUrl.searchParams.get('autoProcess') !== '0';
   if (shouldAutoProcess && (data.status === 'queued' || data.status === 'processing')) {
-    if (data.service_slug === 'image-creator') {
+    // Neither processor has a Google engine: image-creator renders on Stability, text-intelligence answers on
+    // OpenRouter / OpenAI / DeepSeek. Under the Google-only switches (MEDIA_GOOGLE_ONLY, opt-in; AI_GOOGLE_ONLY, on by
+    // default) the job is returned as it stands and never handed to them.
+    if (data.service_slug === 'image-creator' && !isMediaGoogleOnly()) {
       const job = await processImageCreatorJob({
         supabase,
         userId: user.id,
@@ -445,7 +450,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ job });
     }
 
-    if (data.service_slug === 'text-intelligence') {
+    if (data.service_slug === 'text-intelligence' && !isAiGoogleOnly()) {
       const job = await processTextIntelligenceJob({
         supabase,
         userId: user.id,

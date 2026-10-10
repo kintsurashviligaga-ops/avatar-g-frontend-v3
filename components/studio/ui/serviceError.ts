@@ -25,7 +25,9 @@ type Known =
   | 'generation_failed' | 'invalid_input' | 'provider_unavailable' | 'billing_unavailable' | 'cannot_cancel'
   // A credit-priced generation that failed AFTER its charge was refunded — said only when the route reports
   // `refunded: true` (see describeGenerationFailure).
-  | 'generation_refunded';
+  | 'generation_refunded'
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): a tool with no Google / ElevenLabs engine yet refuses before any charge.
+  | 'google_only';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -47,6 +49,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'ბალანსის შემოწმება ვერ მოხერხდა. სცადე ცოტა ხანში — ზედმეტი თანხა არ ჩამოგეჭრება.',
     cannot_cancel: 'გენერაცია უკვე დაწყებულია და ვეღარ გაუქმდება. შედეგი მალე გამოჩნდება.',
     generation_refunded: 'გენერაცია ვერ შესრულდა — კრედიტები დაგიბრუნდათ.',
+    google_only: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
   },
   en: {
     insufficient_credits: 'Not enough credits. Top up your balance and try again.',
@@ -67,6 +70,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'We could not check your balance. Try again shortly — you will not be overcharged.',
     cannot_cancel: 'The generation has already started and can no longer be canceled. The result will appear soon.',
     generation_refunded: 'Generation failed — your credits were refunded.',
+    google_only: 'This tool is paused while it moves to Google’s engines. You were not charged.',
   },
   ru: {
     insufficient_credits: 'Недостаточно кредитов. Пополните баланс и попробуйте снова.',
@@ -87,6 +91,7 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'Не удалось проверить баланс. Попробуйте чуть позже — лишнего не спишем.',
     cannot_cancel: 'Генерация уже началась и не может быть отменена. Результат скоро появится.',
     generation_refunded: 'Не удалось сгенерировать — кредиты возвращены.',
+    google_only: 'Этот инструмент временно приостановлен на время перехода на движки Google. Списания не было.',
   },
 };
 
@@ -106,6 +111,7 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   // The avatar / presenter / film-remix routes name the same outage `ledger_unavailable`.
   [/^ledger_unavailable$/, 'billing_unavailable'],
   [/^cannot_cancel$/, 'cannot_cancel'],
+  [/^google_only$/, 'google_only'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a

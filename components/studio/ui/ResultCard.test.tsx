@@ -33,7 +33,7 @@ describe('ResultCard', () => {
     const tile = container.querySelector('[data-testid="result-card"] > div') as HTMLElement;
     expect(tile.style.aspectRatio).toBe('9 / 16');
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('12');
-    expect(container.querySelector('.result-shimmer')).not.toBeNull(); // a plate, not a spinner
+    expect(container.querySelector('[data-testid="loading-loop-poster"]')).not.toBeNull(); // the loading loop, not a spinner
     const cancel = screen.getByRole('button', { name: 'გაუქმება' });
     expect(cancel.className).toContain('h-11');
     expect(cancel.className).toContain('w-11');

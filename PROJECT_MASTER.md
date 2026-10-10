@@ -38,16 +38,221 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           checks passed. 20261009a (function hardening) applied ~05:39Z on the owner's "გაუშვი"; advisor warnings 22 -> 2.
           PR #48 (/api/ai on Gemini, voice token for signed-in users, Upstash fast-fail, PR #43's Part 0 tooling, admin
           engine reports) merged as 7126682e on the owner's "Deploy + renders" (07:08:11Z); Production serves 7126682
-          (~07:13Z), public checks passed; 20261009b (renders private) applied 07:14Z and read back.
+          (~07:13Z), public checks passed; 20261009b (renders private) applied 07:14Z and read back. PR #49 (orbit agent
+          404 and no Pollinations cover under Google-only, provider ratchet, ka/en/ru fixes) merged as 29e7d67b on the
+          owner's "Deploy" (08:02:01Z); Production serves 29e7d67 (~08:07Z), public checks passed. PR #52 (auth hotfix:
+          AUTH-3, AUTH-4, mailto paste, name guard; the same four commits as PR #51's auth fixes) merged as 6c7dff46 on
+          the owner's "ჰოტფიქსი ახლა" (15:47:19Z) after green CI; Production serves 6c7dff4 (deployment Ready 16:01Z,
+          /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-09 (Claude, branch claude/launch-certification-wmvitt)
-LAST COMMIT: see `git log` on that branch (main = 7126682e = Production, PR #48 merged 2026-10-09 07:08Z; on top, in
-          draft PR #49, not deployed: certification records, ba74fa21 (/api/orbit/agent 404 and music cover art off
-          Pollinations under Google-only; provider-boundary ratchet test) and 7c8dd9b3 (ka/en/ru fixes + missing-key test));
-          PRs #42, #45, #46, #47 and #48 merged
-NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Owner actions in
-          final-launch-certification.md §Y (Resend domain, Stripe Live refund/dispute events,
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 7 and the final certification)
+LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
+          29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
+          ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
+          provider-boundary ratchet test; 7c8dd9b3 ka/en/ru fixes + missing-key test; certification records);
+          PRs #42, #45, #46, #47, #48, #49 and #52 merged
+NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6. Agent G autonomous media & file
+          execution (owner, 2026-10-09 09:32Z, critical), Section F: slice 1 (clips + music → MP4 in the chat) is
+          BUILT_NOT_PROVEN on PR #50, behind AGENT_G_MEDIA_EXEC (off in Production); AG-8 needs a Preview run by an
+          admin. Execution foundation (owner, 11:15Z; Section F-EF): durable lease queue, real cancel, refund outbox,
+          typed tool allowlist and sandbox contract built on PR #50; phase-2 decisions (migration, sandbox host,
+          worker host) in docs/handoffs/2026-10-09-agent-g-execution-foundation.md §5. URL-to-Audio (owner, 12:34Z;
+          Section F-AU): link or upload → MP3 in the chat, text + Live Voice, platforms refused with an upload offer,
+          BUILT_NOT_PROVEN on PR #50 (local real-internet + real-ffmpeg E2E passed); AU-8 = the same admin Preview run as
+          AG-8. One Task API (EF-7, /api/tasks) BUILT_NOT_PROVEN on PR #50: the chat's job cards, the job tray, the
+          service panels and the montage export read (and stop) jobs only through it; the tray stops Agent G jobs and
+          never draws a job a chat card already shows. Loading cards (owner, 14:30Z): the owner's clip loops on the chat's loading tile and
+          the progress card (components/studio/ui/LoadingLoop.tsx; poster only under reduced motion / Save-Data), PR #50.
+          Agent G's chat cards as task panels (owner, 17:02Z, after the Preview run): one card per job from the moment
+          the message is sent to the end and after it (upload → analysis → plan → … → saved, ✓ / spinner / circle, a
+          clock), never replaced line by line and never vanishing; the tray no longer flashes a finished job; own
+          video and audio players (waveform) in place of the browser's; the feed's scrollbar out of the column.
+          components/studio/AgentTaskCard.tsx, lib/agent/media/taskSteps.ts, ChatVideoPlayer, ChatAudioPlayer; PR #50.
+          Service simplification (owner, 18:25Z): the old hub, Music Video director, Lip-Sync studio, /studio „Studio
+          Beta" and the Connectors · Plugins · Skills hub retired; Music video has its own sidebar row and a switch at
+          the top of the Video panel; clearer tool names; VFX offers only open modes. BUILT_NOT_PROVEN on PR #50;
+          service-by-service table and owner items in docs/handoffs/2026-10-09-service-audit.md.
+          Service audit finalization (owner, 21:29Z; BUILT_NOT_PROVEN on PR #50): all 22 catalog services traced UI →
+          Agent G → API → provider → credits → result → Library (service-audit §6, gaps with status); Video keeps
+          storyboard, director V1–V6, scenes and Music video (a55f1d18); no outside engine falls back to another any
+          more (avatar, image, remix, Georgian song: one engine per job, a miss refunds or moves only to Google);
+          MEDIA_GOOGLE_ONLY switch built, default OFF (lib/providers/mediaPolicy.ts: on = image on Google's image model,
+          tools with no Google engine refused before any charge; turning it on is the owner's action 9); one name per
+          tool, one Library row per file, VFX results in the chat (f23c3353); PR #51's last change ported (96312b40).
+          A charged chat remix now waits for Agent G's price card. The interior 3D plan is filed to the Library with its render
+          (a504519c); dubbing, presentation and interior-produce have route tests. Owner: lip-sync charge on films
+          and music videos, uncharged dubbing / presentation / upscale, Motion transfer keep or retire, the Preview
+          run (docs/handoffs/2026-10-09-preview-run-sheet.md).
+          CERTIFICATION RUN 2026-10-10 (owner, 04:59Z; certification §Z, service audit §7; nothing merged, deployed,
+          migrated or paid; Production data only read): tsc 0, lint 0 errors, build OK, 98 jest suites / 1616 tests on
+          the named paths; Playwright all 31 specs on a production build 259 passed, 7 failed (5 test hosts outside CSP
+          connect-src, 1 dev-only expectation, 1 real bug: #film / #lipsync could land on the chat, fixed in ServiceHub and
+          passing on the rebuilt production build). E / F / G of the lease queue PROVEN IN ISOLATION on a local Postgres +
+          PostgREST with Production's ledger functions (EF-3, EF-4); not run on the shared database. Unauthenticated probe
+          of all 458 API routes; one finding fixed: a film's master link went to anyone holding its status id (now only
+          the payer). Production read-only audit: ledger 222 rows, 0 duplicate refs, 0 negative balances; 0 live or stuck
+          jobs; RLS 52 / 52; one all-zero-id PRO profile with 1,000,050 credits and 18 profiles without a sign-in account
+          (cleanup = owner action 24). Preview run cut to A–D (about 6 minutes) for the owner.
+          AGENT G AUTONOMOUS EXECUTION (owner, 2026-10-10 05:49Z, PART 0–7; supplement 06:00Z: Gemini native
+          intelligence, folded into the same parts). Reports in docs/handoffs/agent-g/part-N-report.md; final report
+          docs/handoffs/AGENT_G_FINAL_E2E_CERTIFICATION.md. PART 0 DONE (part-0-report.md): baseline jest 11,391 passed
+          / 0 failed, tsc 0; Production read only: the deduct_credits same-ref race is real in the live definition
+          (EXISTS before the lock, no unique debit ref) and 20261002d is still unapplied; 29 unmatched refunds all traced,
+          none minted. Gaps A1–A7, R1–R2, M1–M4, T1–T4, V1–V7, B1–B3, C1–C6, P1, U1, S1, O1 and Gemini G0–G8, each with
+          a part or BLOCKED_OWNER.
+          PART 1 DONE (part-1-report.md): lib/agent/contracts.ts (one vocabulary; approval only from a person; one
+          RunStatus with transitions); lib/agent/intent.ts (KA/EN/RU reader over the existing detectors: control / talk
+          / question / feedback / act / unavailable / chat; the owner's 13 sentences + EN/RU in 73 tests);
+          lib/agent/capabilities.ts (26 records since PART 3: 22 services + montage, MP3, media edit, media analyze; none PROVEN); the chat's own
+          turn (lib/agent/chatTurn.ts + OmniStudio): stop / where are you / continue, a plan change re-quotes the same
+          files, missing files are asked for and kept, Product / Swap / Remix Run sends talk to the chat; the focus gate
+          answers „არ მომწონს" in words; montage reads music start and length. Function declarations generated from
+          the registry (lib/agent/tools/declarations.ts) + a 49-message labelled corpus (router 49/49); the paid Gemini
+          comparison is BLOCKED_OWNER. Dead-stack ratchet. Gemini capability matrix (G0) in the report §7. Edits of a
+          previous result are refused in words until PART 3.
+          PART 2 DONE (part-2-report.md, 438cc918): one status model (lib/tasks/statusModel.ts: queued /
+          awaiting_approval / running / completed / partially_completed / failed / cancelled); multi-step runs
+          (lib/agent/run/*): one generation_jobs row of kind agent-run, steps are ordinary montage / MP3 jobs with
+          params._parent, no migration; dependencies, 2 steps at a time, CAS writes + 30 s tick lease, a step above its
+          plan's price waits for the user's yes to that quote id, stop reaches every step job, resume reuses delivered
+          steps, partially_completed; ticks on the owner's read, after the request and in the sweep. Task API plan /
+          run / approve / resume / cancel + events (?after=n). Run and step audit rows carry runId, toolId and approval
+          (single jobs' channel waits for PART 4). Memory: one reader (lib/memory/context.ts) for text chat,
+          orchestrate, voice chat, ReAct and Live, capped (5 x 240 chars, 1,200 per block; profile 8), sanitized and
+          labelled as data; /memory lists both stores, deletes one or all, switches automatic memory off (on by default:
+          owner's card tap "ჩართული" 2026-10-10 08:20:04Z). Jest 11,708
+          passed / 0 failed, tsc 0, eslint 0. Runs BUILT_NOT_PROVEN (no live run yet); T3 studio stop still 409.
+          PART 3 DONE (part-3-report.md; 60d1cfdd + the report's commit): one free, queued FFmpeg edit of the user's
+          video (trim, speed, frame shape, colour look, fades, volume/mute, a caption, a still) with quote → Start →
+          QC → Library, also a run step and a quote-only agent tool (media.edit); the chat's edit card
+          (AgentEditCard) for an attached video or Agent G's own last result by its link; „music from 5 s" on a
+          delivered montage re-plans it; Stop is disarmed 0.7 s after Start in all three cards (a double tap stopped
+          the job). „Analyze my file" (G1, media.analyze): Gemini reads the user's own file or a public YouTube video
+          by reference (fileData.fileUri, no bytes, no fallback; a refused link is reference_refused), typed answer
+          checked against the ffprobe length; route /api/agent/media/analyze + agent tool analyze_media (effect
+          inspect), behind AGENT_G_FILE_ANALYSIS, OFF everywhere incl. Preview; live run BLOCKED_OWNER (spend +
+          switch). Jest 11,914 passed / 0 failed, tsc 0, eslint 0 errors; Playwright Agent G cards 24 / 24. Edit and
+          analysis BUILT_NOT_PROVEN; split / join / mix as edits and „next scene, same character" MISSING.
+          PART 4 DONE (part-4-report.md; be0f9dcf, 86bc9286, 94792785 + the report's commit): a voice start runs only
+          on the user's OWN words (the session's transcript of the mic) said after the price or plan, judged by
+          lib/voice/spokenYes (KA/EN/RU, strict) when the 3-second countdown ends; the model's confirmed:"yes" is never
+          enough. The server judges the words again: Agent G runs carry approval {voice-transcript, said} (refused
+          approval_unclear; kept on the job and its audit row), a studio render records it first at POST
+          /api/agent/approvals (fail closed). Only what was told runs (fingerprint of tool + prompt + price; that very
+          card by id). agent_task start / stop / status for the montage, MP3 and edit cards by plan number; voice
+          stop also cancels the tray's durable jobs (POST /api/tasks) and running cards; ask_agent_g answers, sources
+          and its MP3 plan land in the chat. V1, V3–V7, T4, M3 BUILT + TESTED (jest + browser with a simulated
+          Google socket); V2 PARTIAL (the studio render routes do not yet require the record: PART 5). Jest 12,079
+          passed / 0 failed, tsc 0, eslint 0 errors; Playwright 58 passed. Real-device Live call BLOCKED_OWNER.
+          Next: PART 5 (security and billing hardening).
+          PART 5 DONE (part-5-report.md; df670cca, 2e6aedab, f17ebd90, af2c1496, a705e8db, 27bb4c03, 49352d04,
+          6fd158e4, 058409e0, ded93632, 7c0e1c69 + the report's commit): C1 the deduct_credits same-ref double debit
+          proven on Postgres and closed by 20261002d (deduct_credits_once), APPLIED to Production 11:05Z on the owner's
+          "დიახ, ახლა" (11:03Z) and read back (EF-4 race closed); C5 a replayed charge ref is refused (409) before
+          anything renders; C6 the chat image holds its price before Google; C2 the lip-sync charge is shown beside the
+          film price (keep / fold / drop: BLOCKED_OWNER); C3 + M4 per-account daily ceilings on the work that bills no
+          credits (dubbing 10 shared with isolation, presentation 30, upscale 30, montage 40 shared by the editor and
+          Agent G, analyze 100; their prices BLOCKED_OWNER); C4 the assistant quotes what is charged and sold, a ratchet
+          keeps the dead price tables dead (which pack list: BLOCKED_OWNER); P1 15 server paths that reached an outside
+          engine now ask their Google-only switch first (MEDIA_GOOGLE_ONLY in Production: BLOCKED_OWNER); V2 documented,
+          not enforced (report §3); B3 SSRF verified; G6 page reads drop hidden text and carry the page's date, with a
+          hidden-instruction regression test through the real ReAct loop; S1 Vapi get_job_status reads only the
+          caller's job; G3 / G7 each run's tokens, cache hits, time and estimated cost logged as agent_run_metrics
+          (baseline needs real runs: PART 7); O1 the sweep raises agent_g_refund_debt / gave_up / queue_backlog /
+          sweep_failure (routing to a person, owner action 12: BLOCKED_OWNER); B1 / B2 browser and code sandbox: decision
+          brief docs/handoffs/agent-g/browser-sandbox-decision.md (BLOCKED_OWNER, paid host). Jest 12,229 passed / 0
+          failed, tsc 0, eslint 0 errors. One Production change (20261002d); no merge, deploy, env or paid change.
+          Next: PART 6 (one-window UX).
+          PART 6 DONE (part-6-report.md; c51959fc, 7050d91b, 863ed698, 73c7acfe, d926cc62 + the report's commit): two
+          steps from one message are one run card (plan priced, nothing before Start, the step's own yes with its price,
+          Stop, Retry at the price of what is left, „continue" resumes it; behind AGENT_G_MEDIA_EXEC); every montage /
+          MP3 / edit card shows credits held, spent or paid back, the reason a step failed, and Retry where asking again
+          can succeed; „what is in my video?" → the whole-file analysis card (scenes, moments, speakers, transcript;
+          YouTube analysis only) behind AGENT_G_FILE_ANALYSIS (off everywhere); one owner per job (tray, Live status and
+          Live stop skip a card's jobs); finished cards stay. Browser: tests/agent-g-run.spec.ts, 7 passed (Chromium,
+          server mocked; 390 / 820 / 1280 px, light / dark, KA / EN / RU); fixed a phone header squeeze and ↻ under a run
+          card. Real iPhone Safari and real Preview runs: BUILT_NOT_PROVEN (PART 7). Gaps: Live cannot start a run; a
+          reload does not redraw a card; an analysis cannot be stopped mid-read. Jest 12,348 passed / 0 failed, tsc 0,
+          eslint 0 errors. No merge, deploy, migration, env, flag, price or paid change.
+          Next: PART 7 checks that need no approval, then the pricing audit (owner 12:42Z / 12:44Z), then the
+          Omnichannel + Mobile UX task (owner 13:10Z).
+          PART 7 DONE (part-7-report.md; 0ac386f2, 1e8bcc07, 78fe3ab4, 448b0a22, 3f3fa34d, 7c1a061a, cc4484f3 + the
+          docs commit). Final certification
+          docs/handoffs/AGENT_G_FINAL_E2E_CERTIFICATION.md (20 sections): verdict NO-GO for Production. Open: no real
+          Preview run since PART 1 (the owner's admin session), 9 services on a forbidden engine until MEDIA_GOOGLE_ONLY,
+          money (no payment ever completed, video sold below cost, price model waiting for approval), alerts reach no
+          person, no real device. PROVEN IN ISOLATION (real Postgres + PostgREST + FFmpeg, lib/agent/run/
+          runIsolation.pg.test.ts, 6 / 6): one message with three steps (I), a dead worker and a restart (E), Stop kills
+          the encoder and pays back once (F), a priced step's own yes and eight racing ticks give one job and one charge
+          (G1), resume reuses the delivered step (G2), another user refused (H). Intent corpus 48 → 69 (KA / EN / RU),
+          69 / 69. 25 probes of every Agent G route on a production build, anonymous and forged token: none answered
+          200. Production read only 13:52Z: ledger clean, 20261002d hashes intact. Found and fixed: a failed card said
+          its reason twice; seven download specs could not pass on a production build (mock host outside the CSP; now
+          the storage domain); the Agent G video queue rendered Standard at the Fast price; a product ad was charged one
+          clip at every length (both found by the pricing audit, fixed on the branch, not in Production). Jest 12,398
+          passed / 0 failed, tsc 0, next lint 0 errors. Playwright, all 33 committed specs: production build 283 passed /
+          0 failed on the final code (a first run failed 2 phone setup steps once; cause not found, D17); next dev 276 /
+          7 failed, all 7 dev-only. No merge, deploy, migration, env, flag, price or paid change.
+          PRICING AUDIT DONE (owner 12:42Z / 12:44Z): docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md, engine
+          lib/credits/unitEconomics.ts + tests (every proposed price ≥ the 65 % target; packs, free caps, sign-up grant
+          stress-tested). Found: every Veo video sells below cost in Production (8 s Fast film 25 credits for 3.63 ₾,
+          −77 %); image, music 60 / 90 / 180 s and Deep Research under the 62 % floor; free dubbing / decks / chat can
+          cost ~28 / 47 / 47 ₾ a day per account. One model for one approval (§6): 0.10 ₾ credit, packs 10 / 20 / 50 ₾,
+          no plans at launch, video 25 + per second Lite 9 / Fast 14 / Standard 44, image 8, music 5 / 18 / 25 / 50,
+          dubbing 10 a minute, deck 4 + 5 a slide, Pro chat 5, Deep Research 330, lip-sync / swap / motion / talking
+          photo / 3D not sold. BLOCKED_OWNER: the approval, then the deploy. Balances untouched; nothing in Production
+          changed.
+          Next: the Omnichannel + Mobile UX task (owner 13:10Z).
+          OMNICHANNEL (owner 13:10Z / 15:38Z / 16:20Z), in progress. Done: A (fe982ab1, 8caca956: VFX Veo only,
+          decorative settings and "Soon" cloud rows removed, plain copy), B/H (fce64706: Settings → Connections with
+          server-decided statuses, notification preferences). Voice: feasibility (8e5add24) chose A, Meta WhatsApp
+          Calling → our bridge → the existing Gemini Live → Agent G; the owner approved A as the architecture at 16:20Z,
+          not paid infrastructure, Production changes or paid calls. Built, off by default (WHATSAPP_CALLING_ENABLED, no
+          approved price): call webhook, lifecycle, gates, signed ticket, bridge API, phone Live session, spoken-yes
+          consent, delivery (a25106c0); read-only admin Meta check (bbf5d7b6); bridge core and service with WebRTC + Opus
+          (0cf414e4, 55521e48; local loopback PROVEN locally only); the bridge route now refuses a request without a
+          ticket our app signed (fixes the red api-lockdown check). WhatsApp text answers narrowed to MyAvatar.ge, no web
+          search. All BUILT_NOT_PROVEN until a funded call. Costs re-verified in
+          docs/handoffs/omnichannel/COMMUNICATION_UNIT_ECONOMICS.md: proposed 12 credits a minute in the SSoT (not sold,
+          margin ≥ 62 % from ~405 min a month on the 8k/4k cap). Meta §4.7 request (both scenarios, five questions)
+          META_SUPPORT_REQUEST.md: SENT — TRANSFERRED TO EMAIL SUPPORT — AWAITING WRITTEN POLICY RESPONSE (sent by
+          the owner 2026-10-10 from the MyAvatar.ge business portfolio, case #28590089197308927). Two automated "Meta AI
+          Agent" replies said A and B are permitted with conditions; by the owner's rule (18:44Z) they are not official
+          consent. Compliance, creative scope (WHATSAPP_AGENT_SCOPE=creative) and Calling in Production:
+          BLOCKED_EXTERNAL; creative execution and Calling stay off in Production. Meta account facts not readable
+          from the cloud session (no Meta access, Vercel env 403): MISSING. Verdict
+          WHATSAPP_CALLING_READINESS.md: Production NO-GO. C: seven old call routes stored or answered calls nobody placed
+          (mock / Twilio / Telegram skeletons, Vapi demo rows, a Vapi assistant on an Anthropic model); one gate
+          (lib/calls/availability.ts phoneCallsReady, false) now answers 503 phone_calls_unavailable with no row and no
+          provider call, the web token is refused under AI_GOOGLE_ONLY, numbers are stored as E.164 and the client can no
+          longer mark a phone connected (PHONE_PROVIDER_FEASIBILITY.md §7.1). G: one delivery outbox
+          (lib/notifications/outbox.ts, record in generation_jobs.params._tell, no new table): an Agent G run, a queued
+          montage/edit/extraction or a charged render that ends tells its owner once per outlet on the places they chose
+          (bell + push, WhatsApp with its 24 h window / template), passing failures retried 3× with backoff, a crash
+          mid-send never re-sent, the job never touched; Telegram, SMS and calls are recorded as not_configured (owner
+          15:38Z: later). Kicked when a run or job ends, net under it /api/cron/deliveries each minute. Off unless
+          DELIVERY_OUTBOX is set (on by default only on a Preview). 33 mocked tests + 4 on a real local
+          Postgres/PostgREST: BUILT_NOT_PROVEN. Delivery engine records unsent email/SMS as failed (e69b6d0b).
+          I/J/K: docs/handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md (one brain, doors, switches, status per
+          channel), CONNECTIONS_UX_AUDIT.md, OMNICHANNEL_E2E_MATRIX.md (each scenario by mocked / local / Preview /
+          Production evidence; no Preview or Production run yet), communication rows in pricing SERVICE_UNIT_ECONOMICS
+          §4. A real-browser check of Connections (tests/connections.spec.ts, 6: phone/tablet/desktop, light/dark,
+          KA/EN/RU) found the status word running over row names on phones; fixed. All parts A–K have code or docs;
+          D (SMS) and F (Telegram) DISABLED by the owner's 15:38Z "later". Preview checks (2026-10-10 18:50Z, 90c6608,
+          anonymous GETs only: this session cannot POST to the Preview, a signed-in run is the owner's): the doors
+          refuse strangers (webhook verify with a wrong token 403, delivery cron 403, tasks/preferences 401, admin
+          Meta check 404); a guest's Settings shows the four Connections rows as built. Found there: a guest got
+          "Failed to load" in English, two "could not load" cards and a Delete account button; fixed on the branch
+          (one sign-in card; SettingsView.test.tsx failed before, passes after). OMNICHANNEL_E2E_MATRIX.md P column
+          and evidence/preview-anonymous-checks-2026-10-10.txt. No merge, deploy, migration, env, price or paid
+          change.
+          Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
+          automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
+          this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
+          AUTH-3 PROVEN live 16:02Z, email sign-up by code (AUTH-4) PROVEN live 16:09:05Z (the owner's KA sign-up);
+          every Supabase Auth E2E row is PROVEN on Production. Owner actions in
+          final-launch-certification.md §Y (Stripe Live refund/dispute events,
           BOG credentials / merchant activation (every Production BOG checkout failed at start),
           pricing table, browser infra, provider migration plan). Engineering: Part 2 in the order of part-1-report §16
           (Claude R7 slice ✓ → A2 transport ✓ → wrappers ✓ (embed, TTS, STT, orchestrator key pool; research pinned to
@@ -126,16 +331,66 @@ PHASE CHECKLIST:
 □ Part 4: Production Polish + Final Report
 □ Part 5: Post-Build Browser Verification + One-Window Refinement
 BLOCKERS:
-· AUTH-1 (launch blocker, Production auth FAILED): email OTP sign-in, sign-up and password reset fail on Production and
-  Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
+· AUTH-1 (RESOLVED in Production 2026-10-09; was a launch blocker): email OTP sign-in, sign-up and password reset failed
+  on Production and Preview since at least 2026-10-03 (Vercel log "no email_otp in generateLink response"). Suspected cause
   lib/auth/otpEmail.ts:50 accepts exactly 6 digits while Supabase returns a longer code. Fix owned by the GCP Part 0
   thread (PR #43, commit 87122ff); since 13:55 UTC also on the cert branch (0421377a), so launch-certification Previews
-  carry it. Deployed to Production 2026-10-09 (9f1bff6, owner-approved); sign-in still fails there until AUTH-2.
-· AUTH-2 (launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
+  carry it. Deployed to Production 2026-10-09 (9f1bff6, owner-approved); with AUTH-2 resolved, code log-in and reset
+  are PROVEN live there (below).
+· AUTH-2 (RESOLVED 2026-10-09 14:10Z; was a launch blocker, found 2026-10-08 14:04 UTC): with the AUTH-1 fix the code is generated and accepted (Supabase
   /admin/generate_link 200, 13:57:06), then Resend refuses the mail: "resend 403 The myavatar.ge domain is not verified"
   (Vercel log 13:57:04, cert-branch Preview e1dfffc2). MAIL_FROM is unset (sender info@myavatar.ge); one RESEND_API_KEY
   serves Production and Preview. Owner action: verify myavatar.ge at resend.com/domains (DNS TXT/MX, then Verify).
   Email sign-in, sign-up, password reset and /api/mail/send stay FAILED everywhere until then.
+  2026-10-09 (Supabase Auth thread, report docs/handoffs/2026-10-09-supabase-auth-security.md, on this branch too since 2026-10-09, copy in
+  /mnt/project-files/reports/): root cause PROVEN: myavatar.ge (DNS at Vercel) has no MX, SPF, DKIM or DMARC record
+  (vercel dns ls + dig); Resend shows the domain "Not Started". Production RESEND_API_KEY is set (a probe reached Resend).
+  Code generation PROVEN (14x /admin/generate_link 200, last 2026-10-08 14:42Z). Fix 2026-10-09: the owner pasted the
+  DKIM value; the Supabase Auth thread added four records with vercel dns add, additive only, website records untouched
+  (rollback: vercel dns rm rec_560f9c29eee79e60d2305798 resend._domainkey TXT, rec_99755b55743aeb80f54a6442 send MX,
+  rec_9628cf1d4c29ed6a04f0f6fe send TXT SPF, rec_fc9703e01c73e8c20e2e52fa _dmarc TXT p=none); propagation PROVEN at
+  once (ns1.vercel-dns.com, 1.1.1.1, 8.8.8.8); owner pressed Verify: Resend domain VERIFIED (photo 14:10Z, DKIM/MX/SPF
+  each Verified). Live on Production (owner's hands, Vercel + auth logs): email code log-in (KA) PROVEN 14:17Z (send 200,
+  Resend accepted, generate_link 200, 8-digit code in the inbox, /verify 200 login 14:17:43Z); password reset (EN)
+  PROVEN 14:26Z (myavatar.ge@gmail.com, a non-admin: recovery code → /verify 200 → PUT /user 200 → login with the new
+  password 14:26:51Z). Signed-in non-admin refused PROVEN live 14:50Z (myavatar.ge@gmail.com signed in 14:49:59Z, /en/admin showed "Admin access restricted", server log "[admin] access denied" for that address 14:50:00Z). Sign-up
+  by code: see AUTH-4 (PROVEN on Production 16:09:05Z). Resend "Auto configure" is not used.
+· AUTH-3 (found and fixed 2026-10-09, PR #51 5216aa7; in Production via PR #52 6c7dff4; PROVEN live ~16:02Z: an
+  unknown address gets lookup none, then signin send 404 no_account, no generate_link in the auth log, 0 users
+  created): a sign-in code request for an
+  address with no account created an unconfirmed user (GoTrue turns an admin magiclink for an unknown address into a
+  sign-up; proven live 12:48Z). Now 'signin' asks public.auth_account_status first and answers 404 no_account. The one
+  probe account (example.com, no mail sent) was deleted ~12:55Z after the owner's card tap (1 auth.users + 1 profiles
+  row; users back to 22).
+· AUTH-4 (found 2026-10-09; email sign-up by code FAILED on Production for everyone until the 16:01Z hotfix; PROVEN
+  fixed live 16:09:05Z): GoTrue voids a pending code when
+  the sign-up takeover guard rotates the password, so every sign-up code mailed was already dead. Fix 776c7ff on PR #51
+  PROVEN on the PR #51 Preview 15:27:39Z (the owner signed up, RU; auth log generate_link → PUT /admin/users →
+  generate_link → /verify 200 user_signedup). In Production since 16:01Z via PR #52 (6c7dff4, on the owner's
+  "ჰოტფიქსი ახლა" 15:47:19Z); PROVEN live on Production 16:09:05Z: the owner signed up (KA) on https://myavatar.ge/ka with a never-used address; auth log /admin/generate_link 16:08:52Z → PUT /admin/users 16:08:53Z → /admin/generate_link 16:08:54Z → /verify 200 user_signedup + login 16:09:05Z; read back (SQL): email confirmed, 1 session, users 23 → 24; the owner's photo shows the signed-in dashboard with the 50-credit balance.
+  Follow-ups (also in PR #52), BUILT_NOT_PROVEN live: 6aa0770 (a mailto: address pasted from a link is read as the address; an
+  address GoTrue refuses answers 400 invalid_email, not "could not send"); adc28d7 (the sign-up profile step refuses a
+  name equal to the new password, KA/EN/RU; Playwright auth-sheet 8/8). Report §8/§9 (d73a5d6; hotfix in §9,
+  771eac5; live sign-up in §8/§9, 7eba867), copy in /mnt/project-files/reports/. Email auth now: OTP log-in, password
+  reset, sign-up, Resend and AUTH-3 all PROVEN on Production.
+· Supabase Auth / security, 2026-10-09 (PR #51 report): Confirm email PROVEN ON (mailer_autoconfirm=false); Google OAuth
+  PROVEN working (8 Google identities, /authorize → /callback 302); GitHub provider on with 0 users (owner may turn it
+  off); Site URL PROVEN https://myavatar.ge; Redirect URLs PARTIAL (the cert alias git-ef1fad/** is missing, owner adds
+  it); leaked-password protection ON since 14:55Z (the owner, Pro plan, no upgrade; Security Advisor re-run 14:56Z:
+  0 errors, 1 warning = the accepted vector-in-public; Confirm email still ON, providers email/google/github, Captcha
+  off); table RLS PROVEN
+  52/52 (anon and a signed-in stranger see 0 rows); 31 SECURITY DEFINER functions, none callable by anon/authenticated,
+  all with a fixed search_path; storage PROVEN (public read only on music, renders private); admin: anonymous probes on
+  myavatar.ge PROVEN refused (401/403/404, forged cookie 403), admin sign-in + panel PROVEN live 14:12Z (owner's admin
+  account, admin API 200 in the logs), signed-in non-admin refused PROVEN live 14:50Z, so admin security PROVEN (the
+  APIs share the one isAdmin() rule, unit-tested); 14:45:17Z the owner removed the one panel-granted admin
+  (DELETE /api/admin/admins 200): public.admin_emails has 0 rows, the only admins are the 2 built-in addresses, no
+  app_metadata role grants admin; email OTP log-in and reset PROVEN live (AUTH-2 above); Supabase Auth VERIFIED
+  (PR #51 report 55e1a84; every Supabase Auth E2E row PROVEN live on Production by 16:09Z 2026-10-09; still open: only
+  the optional cert-alias Redirect URL);
+  /api/avatar/generate uses auth.getUser() instead of getSession() + guard test lib/security/serverAuthBoundary.test.ts
+  (not in the PR #52 hotfix; ported from PR #51 40992a8d onto this branch 2026-10-09, BUILT_NOT_PROVEN until deploy).
+  PR #51: jest 718/718 suites, tsc/eslint clean, build 207/207.
 · STOP-1: cleared 15:49 UTC (T1 INFERENCE VERIFIED). Production env not yet: GCP_*/VEO_TRANSPORT/GEMINI_TRANSPORT in
   Production is a separate owner decision (env + deploy).
 · Part 0 item 7 (BLOCKED_OWNER): owner sends a photo of Billing → Reports (project gen-lang-client-0671348730, group by SKU)
@@ -161,7 +416,8 @@ BLOCKERS:
   session + own key; run-migration 404 PROVEN live, the guard BUILT_NOT_PROVEN live. The Pipeline card was stale in
   Production; fixed (d387508e, real engines: Veo, Gemini frames, NanoBanana reseller, ElevenLabs,
   Lyria) and deployed with PR #48 (7126682, 2026-10-09 ~07:13Z); /api/health/providers and the Lyria miss report fixed
-  the same way (505066c4), same deploy. Owner to confirm Supabase 'Confirm email' is ON and turn on leaked-password protection.
+  the same way (505066c4), same deploy. 'Confirm email' PROVEN ON 2026-10-09 (Supabase Auth thread); leaked-password
+  protection ON since 14:55Z 2026-10-09 (the owner's toggle).
 · renders bucket (P2): FIXED 2026-10-09 07:14Z: 20261009b applied on the owner's "Deploy + renders" (07:08:11Z);
   storage.buckets reads public = false (494 objects), the public object URL answers 400 (certification §A).
 · Pricing (§55 blocker): live /pricing tiers (lib/billing/tiers.ts) and the studio's top-up packs (lib/credits/pricing.ts)
@@ -829,6 +1085,175 @@ Post-build, verify:
 □ Approval dialogs inline
 □ Browser actions inline
 □ No page reloads for mode switches
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION F — AGENT G: AUTONOMOUS MEDIA & FILE EXECUTION (owner, 2026-10-09 09:32Z; CRITICAL, NEXT STAGE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Owner's order (Master Task thread): the next engineering stage after PR #50 / schema drift; it must not stop the
+current work. Agent G is a real autonomous executor, not only a planner or a prompt generator.
+F1. EXECUTION TOOLS
+· Agent G calls the EXISTING FFmpeg (lib/video/ffmpegExec.ts), media processing, Library and job systems.
+· Python or any other code runs ONLY in an isolated sandbox with strict permissions and resource limits.
+F2. AUTONOMOUS WORKFLOW
+· task → receive files → analyse → plan → Quote / Confirm when it costs → background run → QC → final result.
+F3. ONE WINDOW
+· The processed video / audio / image / document appears in the same chat: playable preview, Download, saved
+  to the Library.
+F4. DURABLE BACKGROUND JOBS
+· Progress, cancel, retry, recovery, idempotency, cost control, refund on failure (Credit Ledger).
+F5. SAFETY
+· No free shell commands on the Production server. Only allowed operations, only on the caller's own files,
+  isolation, audit log.
+F6. E2E
+· Upload several clips, ask Agent G to cut them to music; prove the final MP4 is created, plays in the chat and
+  downloads.
+RULES
+· No duplicate pipeline: reuse lib/video/ffmpegExec.ts, the Studio lanes, the Credit Ledger, Workers, the Library.
+· First remove the media-execution limitation described in lib/agent/react/bindLiveAgent.ts (no media tool on
+  purpose: the old orchestrate_media left permanently pending jobs and reserved no credit; a media tool needs a
+  real worker and the ledger reserve / refund saga first).
+· One complete end-to-end vertical slice first (F6: clips + music → MP4 in chat), then the other services.
+· No Production deploy and no new paid infrastructure without the owner's consent (a code sandbox host is new
+  infrastructure: owner decision).
+DEFINITION OF DONE (slice 1, "cut my clips to this music")
+Labels 2026-10-09: nothing here is PROVEN until AG-8 runs on a Preview. BUILT_NOT_PROVEN = written, unit-tested,
+and run locally on the real bundled ffmpeg; not yet run on a Vercel deployment.
+◐ AG-1 BUILT_NOT_PROVEN. bindLiveAgent.ts has quote_montage_to_music (the limitation note is replaced): it
+       analyses, plans and prices from the files attached to THAT request and renders nothing; the signed quote
+       goes to the client (/api/agent/run `mediaQuote`) and the run happens only on the user's confirm through
+       /api/agent/media/montage `run`, which calls the existing runMontage (no new pipeline). On only when
+       AGENT_G_MEDIA_EXEC is open to the user and the request has files. Tests: bindLiveAgent.test.ts,
+       app/api/agent/run/route.test.ts (44 in all), every provider mocked.
+◐ AG-2 BUILT_NOT_PROVEN. Every file goes through resolveCallerMedia and must be our storage and the caller's
+       own (an outside link is refused). Limits: 12 clips + 1 track, 50 MB per upload (existing sign route),
+       30 shots, 120 s master, 1.5–8 s per shot, 330 s of track analysed, 90 s per probe, 600 s per run. ffmpeg
+       arguments come from validateMontageRequest and the montage lane's own builders, never from model or user
+       text. The quote is HMAC-signed over the exact plan, the user, the price and a 30-minute expiry.
+◐ AG-3 BUILT_NOT_PROVEN. The quote spends nothing (tested: no job row, no reserve, no render). The chat shows
+       the plan as a card (shots, length, BPM, format, price, unused clips named) and starts nothing before Start.
+       Price: free (owner's choice 2026-10-09 09:43Z, "უფასო"; pricing table unchanged); the priced path
+       (reserve under ref agent-montage:<job>, refund on failure) is built and tested for a later price.
+◐ AG-4 BUILT_NOT_PROVEN (superseded by EF-1…EF-3 below, 2026-10-09 ~13Z). One generation_jobs row per quote
+       (the quote's job id is the idempotency key: a second run replays the job, never renders twice). `run` only
+       queues; a worker renders under a lease with a 15 s heartbeat; a worker that dies is retried once, then the
+       sweep fails the row and pays the refund it owes; Stop kills the running ffmpeg. The chat follows the job
+       (GET ?jobId=) for up to 25 minutes. No longer depends on RENDER_DRAINER_ENABLED.
+◐ AG-5 BUILT_NOT_PROVEN. The master is probed before delivery: picture and sound, H.264 + AAC, length within
+       max(1 s, 3 %) of the plan, and the track actually mixed; a failure is not shown, fails the job and refunds.
+◐ AG-6 BUILT_NOT_PROVEN. The master plays in the same chat bubble (player, Download, Share, Save, Edit) and is a
+       Library item through its completed generation_jobs row. Browser test tests/agent-g-montage.spec.ts (routes
+       mocked) 6/6. The card is a task panel (components/studio/AgentTaskCard.tsx): every step from the upload to
+       the saved master stays on it, and it stays after the run with the result under it (owner, 17:02Z). In the chat: up to 4 clips + 1 track (the composer's 5-file tray), 20 MB per file; a song over
+       the chat's ~4 MB inline cap is admitted for the montage only (it is uploaded, never sent inline). The montage
+       turn's files never go back to the chat model with later turns (the browser test fails without that).
+◐ AG-7 BUILT_NOT_PROVEN. analytics_events row `audit.agent_g.media` per quote, start, delivery, refusal and
+       cancel (user, job, file count, credits, length, outcome), written with the service role; users have no
+       policy on the table and /api/analytics/track refuses the `audit.` prefix.
+◐ AG-8 PARTIAL. Needs a Preview run: an admin signed in on the cert-branch Preview (the flag defaults to admin
+       there), real clips + a track, then the job id, ffprobe of the master and a screenshot recorded.
+       What is left (recovery and retry with a lost worker, the Task API owner check): the run sheet
+       docs/handoffs/2026-10-09-preview-run-sheet.md, steps C, E, F.
+       Preview admin run 2026-10-09 (owner): job 2bb56123 quoted 16:48:25Z (4 files, 10.566 s plan), queued,
+       started, stopped by the owner at 58 % 16:49:02Z (status failed „cancelled by the user", 0 credits);
+       job cf55ed33 quoted 16:56:42Z, queued 16:57:00Z, started 16:57:01Z, delivered 16:58:24Z: master 10.57 s
+       16:9 in the private renders bucket, 0 credits (generation_jobs + audit.agent_g.media rows, read 18:19Z).
+       The worker's own probe passed before delivery; an outside ffprobe was not possible from the sandbox (proxy
+       403 on storage) and the owner had no screenshot of the end, which is one of the two bugs found and fixed
+       on PR #50: at the end the card popped up in the job tray and vanished (the card let go of its job and the
+       tray's last list still read „running"; fixed with the task-panel card); ↻ under the stopped card asked
+       the chat model (1656bd54). MP3 (AU-8) still to run.
+       Local proof so far (real ffmpeg 7.0.2, network and storage faked): 3 clips (one portrait) + a 120 BPM
+       track → plan 119.96 BPM, first beat 0.238 s (true 0.25), 5 shots, 9.5 s; master H.264/AAC 9.53 s
+       (lib/agent/media/montageExec.ffmpeg.test.ts).
+STATUS: BUILT_NOT_PROVEN (2026-10-09, branch claude/launch-certification-wmvitt / PR #50). Off in Production
+       (AGENT_G_MEDIA_EXEC unset = off; admin-only on a Preview). Design: docs/handoffs/2026-10-09-engineering-
+       report.md §4.19.
+WHAT CHANGES FOR THE USER (once the flag is on for them)
+· Clips + one track + words like "cut these to the music" / „დაამონტაჟე მუსიკაზე" / «смонтируй под музыку» no
+  longer go to the remix (first clip only, 15 credits, the rest dropped): Agent G uploads every file, reads the
+  beat, shows the plan, and edits on Start. One clip + "add music" still goes to the remix (the whole clip under a
+  song); a trim stays a trim; a question about the video stays a question. With the flag off nothing changes.
+FILES
+· lib/services/montage/beatPlan.ts (+ beatAnalysis.ts), lib/video/probeBanner.ts, lib/agent/media/* (access,
+  quoteToken, montageAsk, montageExec, montageLive, montageChat, montageClient), app/api/agent/media/montage,
+  components/studio/AgentMontageCard.tsx, OmniStudio send() branch, lib/agent/react/bindLiveAgent.ts,
+  app/api/agent/run (optional `files`), montagePipeline `shouldContinue`.
+NEXT (after AG-8): the same quote → confirm → job → QC → result shape for the other ffmpeg operations (trim,
+  captions, aspect, audio mix) — slice 2; a code sandbox needs a host (owner decision, new infrastructure).
+F-EF. EXECUTION FOUNDATION (owner, 2026-10-09 11:15Z, Master Task; handoff
+  docs/handoffs/2026-10-09-agent-g-execution-foundation.md, with the phase-2 decisions and a migration DRAFT that is
+  NOT applied). All on PR #50 behind AGENT_G_MEDIA_EXEC; nothing deployed, migrated or switched on.
+◐ EF-1 BUILT_NOT_PROVEN. Durable queue on generation_jobs, no migration: lease state in params._exec, every change a
+       compare-and-set on its version (lib/orchestrator/jobLease.ts); `run` answers `queued`, a worker renders
+       (lib/agent/media/montageWorker.ts); workers start after the answer, on the owner's status read, and from the
+       per-minute sweep (/api/agent/media/sweep, Production only, inert while the flag is off).
+◐ EF-2 BUILT_NOT_PROVEN. completed/failed are terminal (lib/orchestrator/jobs.ts guards every write and reports whether
+       it landed); a failure that owes a refund records the debt in the same write (outbox), payDebt clears it;
+       reconciliation = sweep + status read; drain-renders leaves leased rows alone; /api/orchestrator/jobs refuses
+       client writes on a leased row.
+◐ EF-3 PROVEN IN ISOLATION (2026-10-10), not on Vercel. Lease 90 s, heartbeat 15 s, one retry after a lapsed lease,
+       render/QC failure final at once; cancel SIGKILLs the running ffmpeg (AbortSignal through ffmpegExec; real-ffmpeg
+       test checks the PID is gone). Against a real Postgres 16 + PostgREST with Production's table shapes and function
+       bodies (scripts/lease-isolation/run.sh → lib/agent/media/leaseIsolation.pg.test.ts, 7/7, zero writes to the
+       shared database, per the owner's 04:59Z rule): a dead worker's job is taken over as attempt 2 and delivered, the
+       late worker's writes are fenced off ("lost"); two deaths → failed; eight concurrent claims → exactly one wins.
+◐ EF-4 PARTIAL. Idempotent insert per quote, billing hold → charge → release, refund bounded by the ledger
+       (netDebitedForRef), audit rows. deduct_credits' same-ref race needs migration C (owner). 2026-10-10, in
+       isolation with the real deduct_credits / refund_credits: a failed job pays back exactly its debit once; a debt
+       left when the refund call failed is paid by the next sweep once; Stop pays back once; an abandoned billing hold
+       is failed after HOLD_MS and paid back; a second sweep never pays twice. Balance ends where it began each time.
+◐ EF-5 PARTIAL. Typed allowlist lib/agent/tools/registry.ts (effects read/prepare/quote only; a quote names the confirmed
+       action the user's press runs); the live agent's 4 tools are typed specs. More Studio operations = slice 2.
+□ EF-6 BLOCKED_OWNER. Sandbox contract lib/agent/sandbox/policy.ts (python/node, capped limits, network denied, no
+       secrets) and a runner that refuses everything; a real runner needs an isolated paid host (decision B).
+◐ EF-7 BUILT_NOT_PROVEN. One Task API (app/api/tasks, lib/tasks): GET ?id= / list and POST cancel, one TaskView
+       (queued | running | completed | failed | cancelled, stage, pct, attempt, result, cancellable) for every
+       generation_jobs row of the caller: a studio render from its columns, a montage or audio extraction through its
+       executor (that read is also the job's recovery, only while the flag is open to the caller). The chat's montage
+       and MP3 cards, and Live Voice's Stop, follow and stop jobs only through it. Since 2026-10-09 (after the owner's
+       15:02Z "Yes continue") every screen reads it: the job tray (its list, now with the owner's label and the queue
+       place), the service panels' and the montage export's progress, and a reload's batch tiles (one read per id).
+       The tray offers Stop on an Agent G job (POST /api/tasks, once) and leaves any job a chat card narrates to that
+       card, so one job is never drawn twice; a studio render stays read-only there (no server-side stop). Own
+       rate-limit bucket (TASKS, 120/min per user) instead of the shared read budget. Text turns and voice sessions
+       keep no tasks of their own (they start these jobs). Not moved: the tray's WRITES (create / progress / settle /
+       queue place) stay on /api/orchestrator/jobs, whose GET remains for the MCP server app. The older
+       /api/tasks/<uuid> routes (agent_g_tasks) now require a session and the owner's id (they read through the
+       service role with no owner check before). Handoff §7 step 4.
+◐ EF-8 BUILT_NOT_PROVEN. The master plays in the same bubble with Download; Library via the completed row
+       (Playwright 4/4, routes mocked).
+◐ EF-9 PARTIAL. Crash/retry/cancel/refund/sweep tests and a local real-ffmpeg run through the queue pass; E (crash →
+       attempt 2), F (retries run out) and G (refund) PROVEN against an isolated real database (EF-3, EF-4, 2026-10-10).
+       Still open: the A–D run on the Preview with an admin session (run sheet, short Georgian version at its top);
+       E/F on the shared database only on the owner's own "E/F გაუშვი".
+F-AU. URL-TO-AUDIO / MEDIA EXTRACTION (owner, 2026-10-09 12:34Z, Master Task; handoff
+  docs/handoffs/2026-10-09-agent-g-url-to-audio.md). A video or audio link (or one upload) + "ამ ვიდეოდან MP3 ამოიღე" →
+  plan card → Start → MP3 in the same chat bubble. On PR #50 (f566264e, 780b3426) behind AGENT_G_MEDIA_EXEC; nothing
+  deployed, migrated or switched on; free (no model or provider is called, FFmpeg only).
+◐ AU-1 BUILT_NOT_PROVEN. Link + rights check: 32 platforms refused by every page and CDN host, streams (HLS/DASH) refused,
+       before any request (lib/agent/media/audioSource.ts); the link must open on a public host and serve a video/audio
+       file (lib/web/publicFetch). Rights: licensed (Wikimedia Commons API, HTTP Link rel=license), own (the caller's
+       upload), else unverified and the card says Start only for the user's own or licensed file.
+◐ AU-2 BUILT_NOT_PROVEN. Only direct media files on public hosts; the source rule re-checked on every redirect hop; a
+       leased worker (audioWorker.ts) runs ffmpeg-static: MP3 192 kbps CBR, stereo, 44.1 kHz, 200 MB / 60 min caps.
+◐ AU-3 BUILT_NOT_PROVEN. Same bubble: player with the file name, "0:05 · 120 KB · MP3 192 kbps", Download, Save to
+       Library. MP3 in the private renders bucket (audio/extract-<job>.mp3), 7-day signed link.
+◐ AU-4 BUILT_NOT_PROVEN. One generation_jobs row per signed quote (idempotent Start), the F-EF lease queue (90 s lease,
+       15 s heartbeat, one retry), Stop kills ffmpeg, status read + per-minute sweep recover orphans, qcMp3 before
+       delivery, audit.agent_g.media op audio_extract.
+◐ AU-5 BUILT_NOT_PROVEN. Platform / stream / page / unreachable link → refusal naming the platform + "Upload a file"
+       (file picker, request pre-typed, "rights: yours" plan). No yt-dlp, no extractor, no workaround of any kind.
+◐ AU-6 BUILT_NOT_PROVEN. Text: the chat's own branch and the ReAct tool quote_audio_from_link (plans only, returns
+       audioQuote). Live Voice: extract_audio plan / start (only with confirmed "yes") / stop, same card, the plan read
+       back as an [App] note. Not tried on a real Gemini Live call.
+◐ AU-7 BUILT_NOT_PROVEN. Reuses the montage shape, generation_jobs queue, sweep, quote token, audit stream; the job
+       follower moved to lib/agent/media/jobFollow.ts for both. Registry: audio_extract_run. No new provider.
+□ AU-8 MISSING. Preview run with an admin session (same as AG-8): job id, the MP3 and a screenshot.
+       Exact steps (A–G: MP3, blocked platform, Task API owner check, Stop, lost-worker recovery, retries run out,
+       refund): docs/handoffs/2026-10-09-preview-run-sheet.md.
+       Local proof 2026-10-09 13:01Z: real internet fetch of MDN shared-assets flower.mp4 (published for reuse) + real
+       ffmpeg + the real queue code (storage and DB local) → MP3 5.09 s, 122,941 B, 192 kb/s 44.1 kHz stereo, QC passed;
+       YouTube refused before any request. Playwright tests/agent-g-audio.spec.ts 5/5 (routes mocked, real MP3); jest
+       725 suites / 11,188 passed; tsc clean; build 207 pages.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PART 0 — PHASE 0 (OWNER ACTION REQUIRED)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

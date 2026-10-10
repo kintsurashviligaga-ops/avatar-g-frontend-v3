@@ -22,6 +22,7 @@ import { renderConcat, type ConcatEntry, type Transition, type TextOverlay } fro
 import { fitAspect, kenBurnsClip, muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { uploadBufferAndSign, reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { updateJobStage } from '@/lib/orchestrator/jobs';
+import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
 import { reportError } from '@/lib/observability/report-error';
 import {
   ASPECT_DIMS,
@@ -53,9 +54,26 @@ export type MontageOutcome =
   | { ok: true; result: MontageResult }
   | { ok: false; step: MontageStep; error: string };
 
-async function stage(jobId: string | null, step: MontageStep): Promise<void> {
-  if (!jobId) return;
-  await updateJobStage(jobId, step, PCT[step]).catch(() => {});
+export interface MontageRunOptions {
+  jobId?: string | null;
+  /**
+   * Asked before each leg; false stops the render there (Agent G's cancel, lib/agent/media/montageExec). A check that
+   * throws counts as "go on": a flaky read must not kill a good render.
+   */
+  shouldContinue?: () => Promise<boolean>;
+  /** Aborting stops the leg that is running now: its ffmpeg is killed (lib/video/ffmpegExec withFfmpegSignal). */
+  signal?: AbortSignal;
+  /** Reports each leg instead of writing the job row directly (a queued job writes only while it holds its lease). */
+  onStage?: (step: MontageStep, pct: number) => Promise<unknown>;
+}
+
+async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> {
+  if (opts.onStage) {
+    await opts.onStage(step, PCT[step]).catch(() => {});
+    return;
+  }
+  if (!opts.jobId) return;
+  await updateJobStage(opts.jobId, step, PCT[step]).catch(() => {});
 }
 
 /** surgicalOps speaks 'none'; the studio speaks 'cut'. Map once, here. */
@@ -63,17 +81,22 @@ function toTransition(t: 'crossfade' | 'fade' | undefined): Transition {
   return t ?? 'none';
 }
 
-export async function runMontage(
-  req: MontageRequest,
-  opts: { jobId?: string | null } = {},
-): Promise<MontageOutcome> {
-  const jobId = opts.jobId ?? null;
+export async function runMontage(req: MontageRequest, opts: MontageRunOptions = {}): Promise<MontageOutcome> {
+  const out = await withFfmpegSignal(opts.signal, () => renderLegs(req, opts));
+  // A leg whose ffmpeg was killed reports its own failure ("could not be conformed"); the reason is the abort.
+  return !out.ok && opts.signal?.aborted ? { ok: false, step: out.step, error: 'cancelled' } : out;
+}
+
+async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise<MontageOutcome> {
   const stepsRun: MontageStep[] = [];
   const { w, h } = ASPECT_DIMS[req.aspect];
+  const halted = async (): Promise<boolean> =>
+    opts.signal?.aborted === true || (opts.shouldContinue ? !(await opts.shouldContinue().catch(() => true)) : false);
 
   try {
     // ── LEG 1 · resolve ────────────────────────────────────────────────────────────────────────────
-    await stage(jobId, 'resolve');
+    if (await halted()) return { ok: false, step: 'resolve', error: 'cancelled' };
+    await stage(opts, 'resolve');
     const resolved: string[] = [];
     for (const shot of req.shots) {
       // Signed Supabase URLs expire; a montage assembled from library clips is exactly the case where
@@ -81,10 +104,13 @@ export async function runMontage(
       const url = (await reSignIfInternal(shot.url, WEEK_SEC).catch(() => shot.url)) || shot.url;
       resolved.push(url);
     }
+    // The track too: a queued job can start (or be retried) after the link it was quoted with expired.
+    const musicUrl = req.musicUrl ? (await reSignIfInternal(req.musicUrl, WEEK_SEC).catch(() => req.musicUrl)) || req.musicUrl : req.musicUrl;
     stepsRun.push('resolve');
 
     // ── LEG 2 · bridge stills ──────────────────────────────────────────────────────────────────────
-    await stage(jobId, 'bridge');
+    if (await halted()) return { ok: false, step: 'bridge', error: 'cancelled' };
+    await stage(opts, 'bridge');
     let bridged = 0;
     for (let i = 0; i < req.shots.length; i += 1) {
       const shot = req.shots[i];
@@ -99,7 +125,8 @@ export async function runMontage(
 
     // ── LEG 3 · normalize ──────────────────────────────────────────────────────────────────────────
     // Ken Burns clips are already produced at the target aspect, so only real video needs this pass.
-    await stage(jobId, 'normalize');
+    if (await halted()) return { ok: false, step: 'normalize', error: 'cancelled' };
+    await stage(opts, 'normalize');
     for (let i = 0; i < req.shots.length; i += 1) {
       const shot = req.shots[i];
       const src = resolved[i];
@@ -111,7 +138,8 @@ export async function runMontage(
     stepsRun.push('normalize');
 
     // ── LEG 4 · stitch ─────────────────────────────────────────────────────────────────────────────
-    await stage(jobId, 'stitch');
+    if (await halted()) return { ok: false, step: 'stitch', error: 'cancelled' };
+    await stage(opts, 'stitch');
     const totalSec = timelineDuration(req.shots);
     const plan = buildConcatPlan(req.shots, { musicOnly: req.musicOnly, aspect: req.aspect });
     const seq: ConcatEntry[] = plan.map((p) => ({
@@ -146,8 +174,9 @@ export async function runMontage(
 
     // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
     let videoUrl = master;
-    if (req.musicUrl) {
-      await stage(jobId, 'music');
+    if (musicUrl) {
+      if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
+      await stage(opts, 'music');
       // 'under' keeps the clips' own audio and ducks the bed beneath it. 'replace' would DELETE it —
       // the same trap that silently removed Veo's native dialogue in the film pipeline.
       // Music only takes 'bed', not 'replace': replace ends at the SHORTER stream, so a 30 s song under a
@@ -156,7 +185,7 @@ export async function runMontage(
       // in whichever branch runs, so the picture's length still decides the end.
       const mixed = await muxAudioOntoVideo(
         master,
-        req.musicUrl,
+        musicUrl,
         req.musicOnly ? 'bed' : 'under',
         Math.abs(req.musicDuckDb),
         req.musicStartSec ?? 0,

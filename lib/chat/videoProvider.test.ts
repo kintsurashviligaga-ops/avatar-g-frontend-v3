@@ -96,26 +96,32 @@ describe('selectVideoPrimaryProvider', () => {
 });
 
 describe('videoProviderUnavailableMessage', () => {
-  test('Georgian is the canonical copy and matches the product spec verbatim', () => {
-    expect(videoProviderUnavailableMessage('ka')).toBe(
-      'სისტემური ხარვეზი: ვიდეო პროვაიდერი მიუწვდომელია. გთხოვთ, შეავსოთ API ცვლადები.',
-    );
+  // The owner's plain-copy rule (2026-10-10, Omnichannel A3): „temporarily unavailable", never provider/API/config words.
+  test('Georgian is the canonical copy: plain „temporarily unavailable"', () => {
+    expect(videoProviderUnavailableMessage('ka')).toBe('ვიდეოს შექმნა დროებით მიუწვდომელია. სცადე ცოტა ხანში.');
   });
 
   test('falls back to Georgian for an unknown locale', () => {
-    expect(videoProviderUnavailableMessage('zz')).toContain('სისტემური ხარვეზი');
+    expect(videoProviderUnavailableMessage('zz')).toContain('დროებით მიუწვდომელია');
   });
 
   test('localizes en + ru', () => {
-    expect(videoProviderUnavailableMessage('en')).toMatch(/video provider is unavailable/i);
-    expect(videoProviderUnavailableMessage('ru')).toMatch(/видео-провайдер недоступен/i);
+    expect(videoProviderUnavailableMessage('en')).toMatch(/temporarily unavailable/i);
+    expect(videoProviderUnavailableMessage('ru')).toMatch(/временно недоступно/i);
+  });
+
+  test('no technical words in any language', () => {
+    for (const loc of ['ka', 'en', 'ru']) {
+      const text = videoProviderUnavailableMessage(loc) + ' ' + videoProviderConnectionFailedMessage(loc);
+      expect(text).not.toMatch(/API|provider|провайдер|პროვაიდერ|ცვლად|переменн|config/i);
+    }
   });
 });
 
 describe('videoProviderConnectionFailedMessage', () => {
-  test('Georgian is the canonical runtime-failure copy and matches the spec verbatim', () => {
+  test('Georgian is the canonical runtime-failure copy and keeps the balance promise', () => {
     expect(videoProviderConnectionFailedMessage('ka')).toBe(
-      'ვიდეო პროვაიდერთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.',
+      'ვიდეოს სერვისთან კავშირი ვერ დამყარდა. ბალანსი დაცულია.',
     );
   });
 

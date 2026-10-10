@@ -6,12 +6,16 @@
  * a generation flow: it answers `{ sent: false, reason }` and the caller moves on.
  */
 
+import type { NotifyEventKind } from './preferences';
+
 export type NotifyKind =
   | 'video' | 'music' | 'image' | 'avatar' | 'film' | 'vfx' | 'research' | 'credits_low' | 'payment' | 'generic';
 
 export interface NotifyEvent {
   userId: string;
   kind: NotifyKind;
+  /** Which kind of news this is for the person's preferences (lib/notifications/preferences.ts); default from `kind`. */
+  event?: NotifyEventKind;
   /** Short headline, already in the user's language. */
   title: string;
   /** One or two lines. No secrets, no provider names, no prompts — it lands on a lock screen. */

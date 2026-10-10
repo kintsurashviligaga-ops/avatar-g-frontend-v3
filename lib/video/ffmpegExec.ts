@@ -12,7 +12,13 @@
  *
  * Same call shape as `promisify(execFile)`, so a module swaps its `exec` for this one. Inputs that are local paths or
  * lavfi sources pass through untouched. A refused or failed download rejects before ffmpeg runs.
+ *
+ * CANCEL. `withFfmpegSignal(signal, work)` stops every ffmpeg this module runs inside `work` when `signal` aborts: the
+ * running child is killed (SIGKILL, see runUntil), a download in flight is dropped,
+ * and a call that starts after the abort rejects without spawning anything. The signal travels with the async context
+ * (AsyncLocalStorage), so the ops between a job and ffmpeg (lib/video/remixOps, surgicalOps) need no new parameter.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFile, type ExecFileOptions } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -39,7 +45,46 @@ function localName(url: string, n: number): string {
   return `in${n}.${ext}`;
 }
 
-export type FfmpegIo = Pick<PublicFetchOptions, 'fetchImpl' | 'lookupImpl'>;
+/** `allowUrl`: the caller's own rule for every download hop (lib/web/publicFetch), on top of the public-host rule. */
+export type FfmpegIo = Pick<PublicFetchOptions, 'fetchImpl' | 'lookupImpl' | 'allowUrl'>;
+
+const ambient = new AsyncLocalStorage<AbortSignal>();
+
+/** Run `work` so that every ffmpeg started inside it stops when `signal` aborts. */
+export function withFfmpegSignal<T>(signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+  return signal ? ambient.run(signal, work) : work();
+}
+
+/** The cancel signal of the current async context, if a caller set one. */
+export function currentFfmpegSignal(): AbortSignal | undefined {
+  return ambient.getStore();
+}
+
+function abortError(): Error {
+  const e = new Error('ffmpeg cancelled');
+  e.name = 'AbortError';
+  return e;
+}
+
+/**
+ * execFile, killed with SIGKILL on abort. Not execFile's own `signal` option: that sends SIGTERM (its `killSignal` is
+ * only for the timeout), and ffmpeg treats SIGTERM as "finish up": it flushes the encoder and writes the trailer, which
+ * on a long encode keeps the CPU busy for seconds after the job was cancelled. A cancelled render's output is thrown
+ * away, so there is nothing to finish.
+ */
+function runUntil(bin: string, argv: string[], options: ExecFileOptions, signal: AbortSignal | undefined): Promise<{ stdout: string; stderr: string }> {
+  if (!signal) return run(bin, argv, options) as Promise<{ stdout: string; stderr: string }>;
+  return new Promise((resolve, reject) => {
+    const onAbort = () => { child.kill('SIGKILL'); };
+    const child = execFile(bin, argv, options, (error, stdout, stderr) => {
+      signal.removeEventListener('abort', onAbort);
+      if (signal.aborted) return reject(abortError());
+      if (error) return reject(Object.assign(error, { stdout: String(stdout), stderr: String(stderr) }));
+      resolve({ stdout: String(stdout), stderr: String(stderr) });
+    });
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 export async function ffmpegExec(
   bin: string,
@@ -47,8 +92,12 @@ export async function ffmpegExec(
   options: ExecFileOptions = {},
   io: FfmpegIo = {},
 ): Promise<{ stdout: string; stderr: string }> {
+  const { signal: own, ...rest } = options;
+  const signal = own ?? ambient.getStore();
+  options = rest;
+  if (signal?.aborted) throw abortError();
   const remote = [...new Set(args.filter((a, i) => i > 0 && args[i - 1] === '-i' && /^https?:\/\//i.test(a)))];
-  if (remote.length === 0) return run(bin, [...args], options) as Promise<{ stdout: string; stderr: string }>;
+  if (remote.length === 0) return runUntil(bin, [...args], options, signal);
 
   const dir = await mkdtemp(join(tmpdir(), 'ffin-'));
   try {
@@ -57,10 +106,12 @@ export async function ffmpegExec(
       const path = join(dir, localName(url, n));
       const got = await fetchPublicToFile(url, path, {
         ...io,
+        ...(signal ? { signal } : {}),
         maxBytes: MAX_INPUT_BYTES,
         accept: MEDIA_TYPES,
         timeoutMs: Math.min(Number(options.timeout) || DOWNLOAD_TIMEOUT_MS, DOWNLOAD_TIMEOUT_MS),
       });
+      if (signal?.aborted) throw abortError();
       if (!got.ok) throw new Error(`ffmpeg input refused (${got.error})`);
       local.set(url, path);
     }
@@ -74,7 +125,7 @@ export async function ffmpegExec(
         argv.push(args[i]!);
       }
     }
-    return (await run(bin, argv, options)) as { stdout: string; stderr: string };
+    return await runUntil(bin, argv, options, signal);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }

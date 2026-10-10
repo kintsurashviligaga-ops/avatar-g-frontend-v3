@@ -92,6 +92,50 @@ export async function deductCredits(userId: string, amount: number, ref: string)
   }
 }
 
+/** A charge that tells its own debit from a replay: `replay` = this ref was already charged, so do NOT render. */
+export type OnceResult = Omit<LedgerResult, 'reason'> & { reason?: LedgerReason | 'replay' };
+
+/**
+ * Debit `amount` under `ref` and say whether THIS call took it.
+ *   ok:true                   → charged now: render.
+ *   ok:false reason:'replay'  → the ref was charged before (a replayed request, or a concurrent twin that won):
+ *                               refuse, render nothing. No money moved.
+ *   other ok:false reasons    → exactly as deductCredits.
+ *
+ * ⚠️ WHY NOT deductCredits. deduct_credits answers a replayed ref with SUCCESS and no debit (a retry must never pay
+ * twice), so a route that renders on that success hands the replay a free render — gap C5. deduct_credits_once
+ * (20261002d) decides under the balance row lock and returns `charged`, so there is no window between "was it
+ * charged?" and "charge it". Until that migration is applied the RPC is missing and this falls back to the ledger
+ * read every replay-checking route used before (debitExistsForRef, then deduct_credits): sequential replays are
+ * refused, two byte-identical requests in the same instant can still both render (the routes' in-flight mutex and
+ * produce rate limit bound that).
+ */
+export async function deductCreditsOnce(userId: string, amount: number, ref: string): Promise<OnceResult> {
+  const sb = client();
+  if (!sb) return { ok: false, reason: 'skipped' };
+  const call = () => sb.rpc('deduct_credits_once', { p_user_id: userId, p_amount: amount, p_ref: ref });
+  try {
+    let { data, error } = await call();
+    if (error && isMissingProfileError((error as { details?: string }).details, error.message) && (await ensureProfileRow(userId))) {
+      ({ data, error } = await call());
+    }
+    if (error) {
+      const reason = classifyLedgerError(error.message);
+      if (reason !== 'skipped') return { ok: false, reason };
+      // deduct_credits_once is not provisioned yet (20261002d unapplied): the read-then-charge fallback.
+      if ((await debitExistsForRef(userId, ref)) === true) return { ok: false, reason: 'replay' };
+      return deductCredits(userId, amount, ref);
+    }
+    const out = (data ?? {}) as { balance?: unknown; charged?: unknown };
+    const balance = typeof out.balance === 'number' ? out.balance : undefined;
+    if (out.charged === true) return { ok: true, balance };
+    if (out.charged === false) return { ok: false, reason: 'replay', balance };
+    return { ok: false, reason: 'error' }; // an answer we cannot read is not a charge we can render on
+  } catch (e) {
+    return { ok: false, reason: classifyLedgerError(e instanceof Error ? e.message : '') };
+  }
+}
+
 /**
  * Best-effort PRE-render balance check. Returns false ONLY when we can positively
  * confirm the user's balance is below `cost`. Fail-OPEN (returns true) on any read

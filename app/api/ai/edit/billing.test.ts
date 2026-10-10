@@ -33,6 +33,7 @@ import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { createPrediction } from '../../../../lib/replicate/client';
+import { guardGeneration } from '../../../../lib/api/generationGuard';
 
 const ENV = { ...process.env };
 const post = () => POST(new NextRequest('https://myavatar.ge/api/ai/edit', {
@@ -62,4 +63,14 @@ test('a ledger without the RPC (skipped) still proceeds uncharged — the docume
   (deductCredits as jest.Mock).mockResolvedValue({ ok: false, reason: 'skipped' });
   await post();
   expect(createPrediction).toHaveBeenCalledTimes(1);
+});
+
+test('MEDIA_GOOGLE_ONLY: the Replicate inpaint is refused before the guard, the ledger or the model', async () => {
+  process.env.MEDIA_GOOGLE_ONLY = '1';
+  const res = await post();
+  expect(res.status).toBe(503);
+  expect(await res.json()).toMatchObject({ code: 'google_only' });
+  expect(guardGeneration).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
+  expect(createPrediction).not.toHaveBeenCalled();
 });

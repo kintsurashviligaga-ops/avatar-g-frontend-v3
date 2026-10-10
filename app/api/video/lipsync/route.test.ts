@@ -332,3 +332,30 @@ describe('the unpolled-job backstop — a durable settle row, and an honest poll
     expect(failJob).not.toHaveBeenCalled();
   });
 });
+
+describe('MEDIA_GOOGLE_ONLY on', () => {
+  beforeEach(() => { process.env.MEDIA_GOOGLE_ONLY = '1'; mockUser = { id: 'user-42' }; });
+  afterEach(() => { delete process.env.MEDIA_GOOGLE_ONLY; });
+
+  test('a start → 503 google_only before any voice, charge or render', async () => {
+    const res = await POST(post(BODY));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'google_only', jobId: null });
+    expect(deductMock).not.toHaveBeenCalled();
+    expect(ttsMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  test('the HeyGen health probe answers not-ok, so a film skips its lip-sync stage at once', async () => {
+    const { heygenHealthCheck } = jest.requireMock('../../../../lib/ai/lipsync') as { heygenHealthCheck: jest.Mock };
+    const res = await GET(new NextRequest('https://myavatar.ge/api/video/lipsync?health=heygen'));
+    expect(await res.json()).toEqual({ ok: false, reason: 'google_only' });
+    expect(heygenHealthCheck).not.toHaveBeenCalled();
+  });
+
+  test('a poll of a job started before the switch still settles', async () => {
+    fetchJobMock.mockResolvedValue({ status: 'processing' } as never);
+    const res = await GET(poll('heygen:vid-1'));
+    expect(res.status).toBe(200);
+  });
+});

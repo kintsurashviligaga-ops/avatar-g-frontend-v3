@@ -20,9 +20,11 @@ let mockUser: { id: string } | null = null;
 let mockRows: Row[] = [];
 const mockSignCalls: Array<{ bucket: string; paths: string[]; ttl: number }> = [];
 
+const mockFilters: Array<[string, ...unknown[]]> = [];
 function mockQuery() {
   const chain: Record<string, unknown> = {};
-  for (const m of ['select', 'eq', 'neq', 'order', 'range']) chain[m] = () => chain;
+  for (const m of ['select', 'order', 'range', 'like', 'limit']) chain[m] = () => chain;
+  for (const m of ['eq', 'neq', 'in']) chain[m] = (...a: unknown[]) => { mockFilters.push([m, ...a]); return chain; };
   chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: mockRows, error: null });
   return chain;
 }
@@ -61,6 +63,7 @@ beforeEach(() => {
   mockUser = { id: USER };
   mockRows = [];
   mockSignCalls.length = 0;
+  mockFilters.length = 0;
   mockRecord.mockClear();
   fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 206 }));
 });
@@ -131,6 +134,47 @@ describe('GET — re-signing is limited to what is provably ours', () => {
     process.env.SUPABASE_URL = OWN;
     mockRows = [row('a', signed('renders', 'x.mp4'))];
     expect(urlOf(await getItems(), 'a')).toContain('token=FRESH');
+  });
+});
+
+describe('GET — the Interior designer’s 3D plan', () => {
+  test('a filed plan lists with its render as the picture and the plan itself, normalised', async () => {
+    const geometry = { roomType: 'bedroom', floor: { widthM: 900, depthM: 4 }, wallHeightM: 2.6, walls: [], openings: [], confidence: 0.7 };
+    mockRows = [
+      row('plan', signed('renders', 'room.png'), {
+        service_type: 'interior', params: { prompt: 'Japandi bedroom', source: 'interior-plan' },
+        result: { stage: 'completed', url: signed('renders', 'room.png'), geometry, style: { styleName: 'Japandi', palette: ['#eeeeee', 'red'] } },
+      }),
+      // A plan filed before it had a picture stays out: the Library shows only what it can draw.
+      row('bare', '', { service_type: 'interior', signed_url: null, result: { stage: 'completed', geometry } }),
+      row('pic', signed('renders', 'p.png'), { service_type: 'image', result: { geometry } }),
+    ];
+    const items = (await getItems()) as Array<{ id: string; url: string; kind: string; prompt: string | null; plan?: { geometry: { floor: { widthM: number } }; style: { styleName: string; palette: string[] } } }>;
+    expect(items.map((i) => i.id)).toEqual(['plan', 'pic']);
+    const plan = items[0];
+    expect(plan).toMatchObject({ kind: 'interior', prompt: 'Japandi bedroom', url: expect.stringContaining('token=FRESH') });
+    expect(plan.plan?.geometry.floor.widthM).toBe(40); // clamped like the studio's own reader
+    expect(plan.plan?.style).toMatchObject({ styleName: 'Japandi', palette: ['#eeeeee'] });
+    expect(items[1].plan).toBeUndefined(); // only an interior row carries a plan
+  });
+});
+
+describe('GET — the kind filter', () => {
+  const serviceFilters = () => mockFilters.filter(([m, col]) => col === 'service_type' && m !== 'neq');
+  test('one kind filters with eq, a comma list with in (the Image tab is image + interior)', async () => {
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=image'));
+    expect(serviceFilters()).toEqual([['eq', 'service_type', 'image']]);
+    mockFilters.length = 0;
+    await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=image,interior'));
+    expect(serviceFilters()).toEqual([['in', 'service_type', ['image', 'interior']]]);
+  });
+
+  test('unknown kinds are dropped; a filter with none left answers nothing instead of everything', async () => {
+    mockRows = [row('a', 'https://cdn.example.com/a.mp4')];
+    await GET(new NextRequest("https://myavatar.ge/api/studio/library?kind=film,x'or'1"));
+    expect(serviceFilters()).toEqual([['eq', 'service_type', 'film']]);
+    const res = await GET(new NextRequest('https://myavatar.ge/api/studio/library?kind=bogus'));
+    expect(((await res.json()) as { items: unknown[] }).items).toEqual([]);
   });
 });
 
@@ -215,5 +259,22 @@ describe('POST — signed-in only, and only URLs the caller can already read', (
     expect(res.status).toBe(200);
     expect(saved()).toEqual([expect.objectContaining({ storageVerified: false })]);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST — one file, one Library row', () => {
+  test('a storage object the caller already has (the remix route filed it) is answered as saved, with no second row', async () => {
+    const url = signed('renders', 'remix/1700-out.mp4');
+    mockRows = [row('vremix:restyle:job-1', `${OWN}/storage/v1/object/sign/renders/remix/1700-out.mp4?token=SERVER`)];
+    const res = await POST(post({ url, kind: 'film' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, already: true });
+    expect(mockRecord).not.toHaveBeenCalled();
+  });
+
+  test('a new object is filed as before', async () => {
+    const res = await POST(post({ url: signed('renders', 'remix/new.mp4'), kind: 'film' }));
+    expect(res.status).toBe(200);
+    expect(mockRecord).toHaveBeenCalledTimes(1);
   });
 });

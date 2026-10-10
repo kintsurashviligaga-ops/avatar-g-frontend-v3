@@ -227,13 +227,13 @@ test.describe('Deep Research · the capability gate', () => {
     await expect(researchNodes(page)).toHaveCount(0);
   });
 
-  test('capability on → the „+" sheet offers Deep Research and Connectors, chat tool only', async ({ page }) => {
+  test('capability on → the „+" sheet offers Deep Research only (My documents opens from research itself)', async ({ page }) => {
     await mockApi(page);
     await openChat(page);
     await pinSignedIn(page);
     await openPlus(page);
     await expect(page.getByTestId('tool-extra-research')).toBeVisible();
-    await expect(page.getByTestId('tool-extra-connectors')).toBeVisible();
+    await expect(page.getByTestId('tool-extra-connectors')).toHaveCount(0);
     await expect(page.getByTestId('tool-extra-research')).toContainText('Deep Research');
   });
 });
@@ -386,12 +386,13 @@ test.describe('Deep Research · the finished report', () => {
 });
 
 test.describe('Deep Research · Connectors', () => {
-  test('Local files works; Google Drive, OneDrive, Notion and Dropbox are „Soon" with no connect button', async ({ page }) => {
+  test('My documents opens from the research start sheet; Local files works; no cloud service without a connect flow is shown', async ({ page }) => {
     const m = await mockApi(page, { files: [{ id: 'bbbbbbbb-1111-4222-8333-444444444444', name: 'market-notes.pdf', mimeType: 'application/pdf', chars: 5200, bytes: 90000, truncated: false, createdAt: new Date().toISOString() }] });
     await openChat(page);
     await pinSignedIn(page);
     await openPlus(page);
-    await page.getByTestId('tool-extra-connectors').click();
+    await page.getByTestId('tool-extra-research').click();
+    await page.getByTestId('research-docs-open').click();
 
     const sheet = page.getByTestId('research-connectors-sheet');
     await expect(sheet).toBeVisible();
@@ -400,14 +401,9 @@ test.describe('Deep Research · Connectors', () => {
     await expect(page.getByTestId('connector-files')).toContainText('market-notes.pdf');
     await expect(page.getByTestId('connector-add')).toBeEnabled();
 
-    const soon = page.getByTestId('connector-soon');
-    await expect(soon).toHaveCount(4);
-    await expect(soon).toContainText(['Google Drive', 'OneDrive', 'Notion', 'Dropbox']);
-    for (const row of await soon.all()) {
-      await expect(row).toContainText('Soon');
-      // honest: nothing to press on a connector that cannot connect
-      await expect(row.locator('button, a, [role="button"]')).toHaveCount(0);
-    }
+    // A cloud integration with no real connect flow is not shown at all (Omnichannel A2).
+    await expect(page.getByTestId('connector-soon')).toHaveCount(0);
+    for (const name of ['Google Drive', 'OneDrive', 'Notion', 'Dropbox']) await expect(sheet).not.toContainText(name);
 
     // Upload a text file: its text goes to /api/connectors/files, and it joins the list.
     await page.getByTestId('connector-file-input').setInputFiles({ name: 'brief.txt', mimeType: 'text/plain', buffer: Buffer.from('The brief says: compare the three markets.') });
@@ -460,11 +456,12 @@ test.describe('Deep Research · at 375 px', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('research-start-sheet')).toBeHidden();
 
-    // The Connectors.
+    // My documents, opened from the start sheet.
     await openPlus(page);
-    await page.getByTestId('tool-extra-connectors').click();
+    await page.getByTestId('tool-extra-research').click();
+    await page.getByTestId('research-docs-open').click();
     await expect(page.getByTestId('research-connectors-sheet')).toBeVisible();
-    await expect(page.getByTestId('connector-soon')).toHaveCount(4);
+    await expect(page.getByTestId('connector-soon')).toHaveCount(0);
     await noHorizontalScroll(page);
   });
 });
@@ -513,10 +510,11 @@ for (const vp of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop',
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('research-viewer')).toBeHidden();
 
-      // 4 — Connectors.
+      // 4 — My documents (from the start sheet).
       await openPlus(page);
-      await page.getByTestId('tool-extra-connectors').click();
-      await expect(page.getByTestId('connector-soon')).toHaveCount(4);
+      await page.getByTestId('tool-extra-research').click();
+      await page.getByTestId('research-docs-open').click();
+      await expect(page.getByTestId('research-connectors-sheet')).toBeVisible();
       await shot(page, `${vp.name}-8-connectors`);
     });
   });

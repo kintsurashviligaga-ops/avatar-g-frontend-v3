@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // Provider bodies must never reach the client — see lib/api/providerError.
 import { providerErrorBody } from '@/lib/api/providerError';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
 import { ledgerUnavailableBody } from '@/lib/api/billingCopy';
@@ -286,6 +287,10 @@ export async function POST(req: NextRequest) {
 
   // ── GENERATIVE inpaint — object removal via a masked-inpaint model. Auth + balance gate + metered. ──
   // Honest labelling: this SYNTHESISES pixels inside the mask; it is not a deterministic "surgical" op.
+  // MEDIA_GOOGLE_ONLY: the inpaint model is a Replicate one, so the switch refuses it here, before any charge. The
+  // ffmpeg ops above never reach an outside engine and stay open.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   const guard = await guardGeneration(req, 'image');
   if (!guard.ok) return guard.response;
 

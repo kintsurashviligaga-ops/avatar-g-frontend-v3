@@ -138,3 +138,21 @@ describe('avatar — the words are the script the presenter speaks', () => {
     expect(kind('Welcome everyone to the show', 'avatar', { explicit: true })).toBe('go');
   });
 });
+
+describe('feedback — „I don\'t like it" is answered, never rendered', () => {
+  test.each(['არ მომწონს', 'ეს სურათი საერთოდ არ მომწონს', 'ცუდად გამოვიდა', "I don't like it", 'not what i wanted', 'мне не нравится', 'это не то'])(
+    '“%s” is talk in every focus tool',
+    (t) => {
+      for (const mode of ['image', 'video', 'music', 'avatar'] as GateMode[]) {
+        expect(classifyFocusInput({ text: t, mode })).toEqual({ kind: 'chat', reason: 'feedback' });
+      }
+      expect(isConversational(t)).toBe(true);
+    },
+  );
+  test.each(['არ მომწონს, ფერები გაათბე', "I don't like the sky, make it orange", 'bad bunny concert poster', 'hate speech awareness banner with bold type'])(
+    '“%s” names what to make or change: still a prompt',
+    (t) => {
+      expect(classifyFocusInput({ text: t, mode: 'image' }).kind).not.toBe('chat');
+    },
+  );
+});

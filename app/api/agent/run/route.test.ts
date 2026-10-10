@@ -13,8 +13,17 @@ jest.mock('../../../../lib/orchestrator/rate-limit', () => ({
   rateLimitedResponse: (r: { retryAfterSec?: number }) =>
     new Response(JSON.stringify({ error: 'rate_limited', retryAfter: r.retryAfterSec ?? 60 }), { status: 429 }),
 }));
+const mockOpen = jest.fn(() => false);
+const mockAnalyzeOpen = jest.fn(() => false);
+jest.mock('../../../../lib/agent/media/access', () => ({
+  agentMediaOpenTo: (...a: unknown[]) => (mockOpen as (...x: unknown[]) => boolean)(...a),
+  agentAnalyzeOpenTo: (...a: unknown[]) => (mockAnalyzeOpen as (...x: unknown[]) => boolean)(...a),
+}));
 const mockReport = jest.fn();
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => mockReport(...a) }));
+
+const mockMemory = jest.fn(async (_userId: string): Promise<string | null> => null);
+jest.mock('../../../../lib/memory/context', () => ({ memoryContextOf: (u: string) => mockMemory(u) }));
 
 import { NextRequest } from 'next/server';
 import { POST } from './route';
@@ -23,6 +32,8 @@ const NOW = 1_800_000_000_000;
 const call = (body: unknown) => POST(new NextRequest('https://myavatar.ge/api/agent/run', {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
 }));
+/** The agent's context for a request with no files, media execution closed (the default here). */
+const BASE_CTX = { userId: 'u-1', media: false, analyze: false, onAudioQuote: expect.any(Function) };
 /** The opts runLiveAgent got on its last call. */
 const runOpts = () => mockRun.mock.calls[mockRun.mock.calls.length - 1]![2] as { maxSteps?: number; deadlineMs: number };
 
@@ -55,11 +66,17 @@ it('still rate-limits per user under the agent namespace', async () => {
   expect(mockRun).not.toHaveBeenCalled();
 });
 
+it('what the run used (tokens, estimated provider cost) stays on the server', async () => {
+  mockRun.mockResolvedValueOnce({ answer: 'done', steps: [{ final: 'done' }], stopReason: 'final', metrics: { llmCalls: 1, costUsd: 0.0004 } });
+  const res = await call({ goal: 'research' });
+  expect(await res.json()).toEqual({ answer: 'done', steps: [{ final: 'done' }], stopReason: 'final' });
+});
+
 it('no budgetMs → the 100 s deadline it always had', async () => {
   const res = await call({ goal: 'research' });
   expect(res.status).toBe(200);
   expect(await res.json()).toEqual({ answer: 'done', steps: [{ final: 'done' }], stopReason: 'final' });
-  expect(mockRun).toHaveBeenCalledWith('research', { userId: 'u-1' }, { maxSteps: undefined, deadlineMs: NOW + 100_000 });
+  expect(mockRun).toHaveBeenCalledWith('research', BASE_CTX, { maxSteps: undefined, deadlineMs: NOW + 100_000 });
 });
 
 it.each([
@@ -82,10 +99,10 @@ it.each([
 it('a Live call (budgetMs 45 s, maxSteps 4, source live) runs the same agent, only shorter', async () => {
   const res = await call({ goal: '  Compare three flights  ', budgetMs: 45_000, maxSteps: 4, source: 'live' });
   expect(res.status).toBe(200);
-  expect(mockRun).toHaveBeenCalledWith('Compare three flights', { userId: 'u-1' }, { maxSteps: 4, deadlineMs: NOW + 45_000 });
+  expect(mockRun).toHaveBeenCalledWith('Compare three flights', BASE_CTX, { maxSteps: 4, deadlineMs: NOW + 45_000 });
   // `source` changes nothing about the run: same arguments with or without it.
   await call({ goal: 'Compare three flights', budgetMs: 45_000, maxSteps: 4 });
-  expect(mockRun.mock.calls[1]).toEqual(mockRun.mock.calls[0]);
+  expect(mockRun.mock.calls[1]).toEqual(['Compare three flights', BASE_CTX, { maxSteps: 4, deadlineMs: NOW + 45_000 }]);
   expect(mockReport).not.toHaveBeenCalled();
 });
 
@@ -109,3 +126,81 @@ it('the goal rules are unchanged: required, at most 2,000 characters', async () 
   expect((await call({ goal: 'x'.repeat(2001), budgetMs: 45_000 })).status).toBe(413);
   expect(mockRun).not.toHaveBeenCalled();
 });
+
+// ── Agent G media execution: the request's files, and the signed quote for the confirm card ──────────────────────────
+describe('files and the media quote', () => {
+  const ctxOf = () => mockRun.mock.calls[mockRun.mock.calls.length - 1]![1] as { userId: string; files?: string[]; media?: boolean; onMediaQuote?: (q: unknown) => void; onAudioQuote?: (q: unknown) => void };
+
+  it('no files: no montage files or montage quote, but whether media execution is open (the audio plan needs no file)', async () => {
+    await call({ goal: 'research' });
+    expect(ctxOf()).toEqual({ userId: 'u-1', media: false, analyze: false, onAudioQuote: expect.any(Function) });
+    expect(ctxOf().onMediaQuote).toBeUndefined();
+    expect(mockOpen).toHaveBeenCalledWith({ id: 'u-1' });
+  });
+
+  it('whether file analysis is open to this user goes to the agent too (its own flag, AGENT_G_FILE_ANALYSIS)', async () => {
+    mockAnalyzeOpen.mockReturnValueOnce(true);
+    await call({ goal: 'what is in this video?', files: ['u-1/a.mp4'] });
+    expect(ctxOf()).toMatchObject({ userId: 'u-1', files: ['u-1/a.mp4'], media: false, analyze: true });
+    expect(mockAnalyzeOpen).toHaveBeenCalledWith({ id: 'u-1' });
+  });
+
+  it('the audio plan the tool signed comes back as audioQuote; nothing is fetched or run here', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'a', credits: 0 }, request: {}, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { onAudioQuote?: (x: unknown) => void }) => {
+      ctx.onAudioQuote?.(q);
+      return { answer: 'Here is the plan', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'take the mp3 out of https://media.example.com/a.mp4' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', audioQuote: q });
+  });
+
+  it('files go to the agent with whether media execution is open to this user', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    await call({ goal: 'cut these to the song', files: [' u-1/a.mp4 ', 'u-1/song.mp3'] });
+    expect(ctxOf()).toMatchObject({ userId: 'u-1', files: ['u-1/a.mp4', 'u-1/song.mp3'], media: true });
+    expect(mockOpen).toHaveBeenCalledWith({ id: 'u-1' });
+  });
+
+  it('the edit plan the tool signed comes back as editQuote; nothing is edited here', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'e', credits: 0 }, request: {}, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { onEditQuote?: (x: unknown) => void }) => {
+      ctx.onEditQuote?.(q);
+      return { answer: 'Here is the plan', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'make it 9:16', files: ['u-1/a.mp4'] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', editQuote: q });
+  });
+
+  it('the plan the tool signed comes back as mediaQuote; nothing about it is run here', async () => {
+    mockOpen.mockReturnValueOnce(true);
+    const q = { ok: true, quote: { jobId: 'j' }, request: {}, token: 't' };
+    mockRun.mockImplementationOnce(async (_g: string, ctx: { onMediaQuote?: (x: unknown) => void }) => {
+      ctx.onMediaQuote?.(q);
+      return { answer: 'Here is the plan', steps: [], stopReason: 'final' };
+    });
+    const res = await call({ goal: 'cut', files: ['u-1/a.mp4', 'u-1/s.mp3'] });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', mediaQuote: q });
+  });
+
+  it.each([[['x'].concat(Array(13).fill('y'))], ['u-1/a.mp4'], [[1, 2]], [['']]])('rejects files=%j', async (files) => {
+    const res = await call({ goal: 'cut', files });
+    expect(res.status).toBe(400);
+    expect(mockRun).not.toHaveBeenCalled();
+  });
+});
+
+it("gives the agent the session user's memory (PART 2, G4), and nothing when there is none", async () => {
+  mockMemory.mockResolvedValueOnce('KNOWN FACTS ABOUT THIS USER:\n- I run a coffee shop');
+  await call({ goal: 'plan my week', userId: 'someone-else' });
+  expect(mockMemory).toHaveBeenCalledWith('u-1');
+  expect(runOpts()).toMatchObject({ systemExtra: 'KNOWN FACTS ABOUT THIS USER:\n- I run a coffee shop' });
+  await call({ goal: 'plan my week' });
+  expect(runOpts()).not.toHaveProperty('systemExtra');
+});
+

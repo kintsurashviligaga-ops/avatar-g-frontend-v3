@@ -9,6 +9,7 @@ import { structuredLog } from '@/lib/logger';
 import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
 import { MINIMUM_CREDITS_TO_START_CALL, hasMinimumVoiceCredits } from '@/lib/voice/credits';
 import { isValidGeorgianMobile, normalizePhoneNumber } from '@/lib/voice/phone';
+import { phoneCallsReady, phoneCallsUnavailableBody } from '@/lib/calls/availability';
 import { upsertVoiceCallByVapiId } from '@/lib/voice/repository';
 import { createVapiCall, getVapiPhoneNumberId, isVapiServerConfigured } from '@/lib/vapi';
 
@@ -70,6 +71,11 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
     }
+
+    // ⚠️ Without Vapi this stored a `demo_…` call as `initiated` and promised a ring in 5 s; with Vapi it rang through an
+    // assistant on an Anthropic model (lib/agent-g-voice-config.ts), outside the Google + ElevenLabs policy and a second
+    // agent brain beside Gemini Live. No call path is ready (lib/calls/availability.ts): 503, nothing stored or placed.
+    if (!phoneCallsReady()) return NextResponse.json(phoneCallsUnavailableBody(), { status: 503 });
 
     const payload = requestSchema.safeParse(await request.json());
     if (!payload.success) {

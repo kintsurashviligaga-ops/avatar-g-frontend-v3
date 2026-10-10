@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * useSignedIn — who is signed in, for a host ChatChrome mounts (Deep Research, the Connectors · Plugins · Skills hub).
+ * useSignedIn — who is signed in, for a host ChatChrome mounts (Deep Research).
  *
  * ChatChrome passes its own state AND publishes the same facts on <html data-authed data-uid> (the studio's publish-once
  * flags). Either is enough: a host mounted before ChatChrome's effect has run still learns the account as soon as the flags

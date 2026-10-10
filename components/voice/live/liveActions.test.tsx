@@ -7,7 +7,8 @@
  */
 import { act, renderHook } from '@testing-library/react';
 
-import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
+import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
+import { createVoiceLedger } from '@/lib/voice/voiceLedger';
 
 import {
   LIVE_ACTIONS_PER_CALL_MAX,
@@ -179,6 +180,8 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
   /** A studio that takes every event and answers with `reply` (as OmniStudio fills detail.reply inside dispatchEvent). */
   function replyingEnv(reply: Record<string, unknown> | ((d: LiveActionEventDetail) => Record<string, unknown> | undefined), receipt = true) {
     const actions: LiveActionEventDetail[] = [];
+    let t = 1000;
+    const voice = createVoiceLedger(() => t);
     const env: LiveActionEnv = {
       dispatchAction: (d) => {
         actions.push(d);
@@ -189,8 +192,9 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
       openArtifact: () => true,
       setChatModel: jest.fn(),
       runGeneration: jest.fn(() => true),
+      voice,
     };
-    return { env, actions };
+    return { env, actions, voice, tick: (ms = 100) => { t += ms; } };
   }
 
   test('prepare_generation reports the settings the studio APPLIED and its price', () => {
@@ -210,11 +214,12 @@ describe('executeLiveToolCall — the studio\'s reply', () => {
   });
 
   test('start_generation accepted → a countdown run (never a run on the call itself), with the price', () => {
-    const { env } = replyingEnv({ ok: true, tool: 'image', priceCredits: 2 });
+    const { env, voice } = replyingEnv({ ok: true, tool: 'image', priceCredits: 2 });
+    voice.quoteStudio(undefined, true); // the price was told at t=1000
     const out = executeLiveToolCall(call('s', 'start_generation', { confirmed: 'yes' }), env);
-    expect(out.run).toEqual({ tool: 'image', priceCredits: 2 });
+    expect(out.run).toEqual({ tool: 'image', priceCredits: 2, target: { kind: 'studio', tool: 'image' }, since: 1000 });
     expect(env.runGeneration).not.toHaveBeenCalled();
-    expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel/);
+    expect(String(out.response.response.summary)).toMatch(/starts in 3 seconds unless the user taps Cancel or says wait/);
   });
 
   test('get_screen_state answers with the studio\'s state; set_chat_model uses the global store; call_view asks the host', () => {
@@ -333,32 +338,47 @@ describe('useLiveActions', () => {
     expect(result.current.endRequested).toBe(true);
   });
 
-  test('a confirmed start counts down, then runs — unless the user cancels; a cancelled call-id stops it too', () => {
+  test('a confirmed start counts down, then runs on the user\'s yes — unless the user cancels; a cancelled call-id stops it too', async () => {
     jest.useFakeTimers();
     try {
       const runGeneration = jest.fn(() => true);
+      const recordApproval = jest.fn(async () => ({ ok: true as const }));
+      const notify = jest.fn();
       const env: LiveActionEnv = {
-        dispatchAction: (d) => { if (d.type === 'start_generation') d.reply = { ok: true, tool: 'image', priceCredits: 2 }; return true; },
+        dispatchAction: (d) => {
+          if (d.type === 'start_generation' || d.type === 'prepare_generation') d.reply = { ok: true, tool: 'image', priceCredits: 2 };
+          return true;
+        },
         openArtifact: () => true,
         runGeneration,
+        recordApproval,
+        notify,
       };
       const { result } = renderHook(() => useLiveActions(env));
+      const sayYes = () => act(() => { result.current.onHeard({ text: ' yes, go ahead' }); result.current.onHeard({ end: true }); });
+      act(() => { result.current.onToolCall([call('p1', 'prepare_generation', { tool: 'image', prompt: 'a red fox' })]); });
+      act(() => { jest.advanceTimersByTime(500); });
+      sayYes();
       act(() => { result.current.onToolCall([call('s1', 'start_generation', { confirmed: 'yes' })]); });
       expect(result.current.pendingRun).toMatchObject({ id: 's1', tool: 'image', priceCredits: 2, state: 'counting' });
       act(() => { jest.advanceTimersByTime(2900); });
       expect(runGeneration).not.toHaveBeenCalled();
-      act(() => { jest.advanceTimersByTime(200); });
+      await act(async () => { jest.advanceTimersByTime(200); });
+      expect(recordApproval).toHaveBeenCalledWith({ tool: 'image', said: 'yes, go ahead', credits: 2 });
       expect(runGeneration).toHaveBeenCalledTimes(1);
+      expect(runGeneration).toHaveBeenCalledWith({ target: { kind: 'studio', tool: 'image' }, approval: { channel: 'voice-transcript', said: 'yes, go ahead' } });
       expect(result.current.pendingRun?.state).toBe('started');
+      expect(notify).not.toHaveBeenCalled();
 
       act(() => { result.current.onToolCall([call('s2', 'start_generation', { confirmed: 'yes' })]); });
       act(() => { result.current.cancelRun(); });
-      act(() => { jest.advanceTimersByTime(5000); });
+      await act(async () => { jest.advanceTimersByTime(5000); });
       expect(runGeneration).toHaveBeenCalledTimes(1);
+      expect(notify).toHaveBeenLastCalledWith({ kind: 'not_started', reason: 'cancelled' });
 
       act(() => { result.current.onToolCall([call('s3', 'start_generation', { confirmed: 'yes' })]); });
       act(() => { result.current.onToolCallCancellation(['s3']); });
-      act(() => { jest.advanceTimersByTime(5000); });
+      await act(async () => { jest.advanceTimersByTime(5000); });
       expect(runGeneration).toHaveBeenCalledTimes(1);
     } finally {
       jest.useRealTimers();
@@ -548,14 +568,37 @@ describe('the hands: click · type_text · download · use_result · montage · 
       .toMatchObject({ ok: false, error: 'montage_closed' });
   });
 
-  test('read_webpage answers after the page is read: the text, the links, and a link on screen', async () => {
-    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }] } };
+  test('extract_audio goes to the studio (the chat\'s Agent G card); its words go back, and no studio says so', () => {
+    const ok = handsEnv({ reply: { ok: true, message: 'Agent G is checking media.example.com now.' } });
+    const out = executeLiveToolCall(call('x1', 'extract_audio', { action: 'plan', url: 'https://media.example.com/a.mp4' }), ok.env);
+    expect(ok.actions[0]).toMatchObject({ type: 'extract_audio', action: 'plan', url: 'https://media.example.com/a.mp4' });
+    expect(out).toMatchObject({ response: { response: { ok: true, summary: 'Agent G is checking media.example.com now.' } }, screen: true });
+    expect(out.pending).toBeUndefined(); // nothing waits on the network: the plan follows as an [App] note
+
+    // start is agent_task start on the newest MP3 plan the call heard of: none here, so the studio is never asked.
+    const none = handsEnv({ reply: { ok: true } });
+    expect(executeLiveToolCall(call('x2', 'extract_audio', { action: 'start', confirmed: 'yes' }), { ...none.env, voice: createVoiceLedger() }).response.response)
+      .toMatchObject({ ok: false, error: 'no_plan' });
+    expect(none.actions).toEqual([]);
+    // No transcript on this host → no start at all.
+    expect(executeLiveToolCall(call('x2b', 'extract_audio', { action: 'start', confirmed: 'yes' }), none.env).response.response)
+      .toMatchObject({ ok: false, error: 'no_transcript' });
+    // start without the user's yes never reaches the studio
+    const unconfirmed = handsEnv();
+    expect(executeLiveToolCall(call('x3', 'extract_audio', { action: 'start' }), unconfirmed.env).response.response).toMatchObject({ ok: false, field: 'confirmed' });
+    expect(unconfirmed.actions).toEqual([]);
+    expect(executeLiveToolCall(call('x4', 'extract_audio', { action: 'stop' }), handsEnv({ studio: false }).env).response.response)
+      .toMatchObject({ ok: false, error: 'studio_unavailable' });
+  });
+
+  test('read_webpage answers after the page is read: the text, the links, the page\'s date, and a link on screen', async () => {
+    const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }], published: '2026-10-01' } };
     const h = handsEnv({ page });
     const out = executeLiveToolCall(call('w', 'read_webpage', { url: 'example.ge' }), h.env);
     expect(h.reads).toEqual(['https://example.ge/']);
     expect(out.card?.action).toEqual({ type: 'open_url', url: 'https://example.ge/', title: 'example.ge' });
     const done = await out.pending!;
-    expect(done).toMatchObject({ id: 'w', name: 'read_webpage', response: { ok: true, title: 'Example', text: 'Hello', links: ['More — https://example.ge/more'] } });
+    expect(done).toMatchObject({ id: 'w', name: 'read_webpage', response: { ok: true, title: 'Example', text: 'Hello', published: '2026-10-01', links: ['More — https://example.ge/more'] } });
 
     const bad = await executeLiveToolCall(call('w2', 'read_webpage', { url: 'https://down.example.com' }), handsEnv({ page: { ok: false, error: 'http_error', status: 503 } }).env).pending!;
     expect(bad.response).toMatchObject({ ok: false, error: 'http_error', message: expect.stringMatching(/HTTP 503/) });
@@ -782,6 +825,63 @@ describe('ask_agent_g', () => {
     expect(out.pending).toBeUndefined();
     expect(out.response.response).toMatchObject({ ok: false, error: 'invalid_args', field: 'task' });
     expect(asked).toEqual([]);
+  });
+
+  // ── Agent G PART 4 (V6, V4): the answer and its sources stay in the chat; a plan the run made becomes its card ──
+  const PLAN = { quote: { jobId: 'j1', source: 'link', host: 'commons.wikimedia.org', name: 'talk.mp3', credits: 0, bitrateKbps: 192, rights: { status: 'licensed' } }, request: { url: 'x' }, token: 't1' };
+
+  test('fetchAgentRun keeps the signed plan the run made (audioQuote), and only an object one', async () => {
+    const withPlan = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, audioQuote: PLAN }).fetchImpl });
+    expect(withPlan).toEqual({ ok: true, answer: RUN.answer, stopReason: 'final', steps: RUN.steps, audioQuote: PLAN });
+    const junk = await fetchAgentRun('x', { fetchImpl: fakeFetch(200, { ...RUN, audioQuote: 'nope' }).fetchImpl });
+    expect(junk).not.toHaveProperty('audioQuote');
+  });
+
+  test('V6: the written answer and the pages it stood on go to the chat; the model only says it briefly', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    const h = agentEnv({ ok: true, ...RUN });
+    h.env.postAgentAnswer = (d) => { posted.push(d); };
+    const out = executeLiveToolCall(call('g3', 'ask_agent_g', { task: 'Find the cheapest flights' }), h.env);
+    const done = await out.pending!;
+    expect(posted).toEqual([{
+      task: 'Find the cheapest flights',
+      answer: RUN.answer,
+      sources: [
+        { title: 'skyscanner.net', url: 'https://www.skyscanner.net/routes/tbs/par' },
+        { title: 'kayak.com', url: 'https://www.kayak.com/flight-routes/TBS-PAR' },
+        { title: 'Wizz Air', url: 'https://wizzair.com/en-gb' },
+      ],
+    }]);
+    expect(done.response).not.toHaveProperty('plan');
+  });
+
+  test('V4: a plan the run made goes to the chat as its card, and the model hears it waits for a yes (agent_task start)', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    const h = agentEnv({ ok: true, answer: 'Here is the plan.', stopReason: 'final', steps: [], audioQuote: PLAN });
+    h.env.postAgentAnswer = (d) => { posted.push(d); };
+    const done = await executeLiveToolCall(call('g4', 'ask_agent_g', { task: 'MP3 of this link' }), h.env).pending!;
+    expect(posted).toEqual([{ task: 'MP3 of this link', answer: 'Here is the plan.', sources: [], audioQuote: PLAN }]);
+    expect(done.response).toMatchObject({ ok: true, plan: expect.stringMatching(/MP3 plan.*\[App\] note.*clear yes \(agent_task start\)/) });
+    // A plan with no written answer is still posted (the card), and still told.
+    const bare = agentEnv({ ok: true, answer: null, stopReason: 'max_steps', steps: [], audioQuote: PLAN });
+    const seen: LiveAgentAnswerDetail[] = [];
+    bare.env.postAgentAnswer = (d) => { seen.push(d); };
+    const r = await executeLiveToolCall(call('g5', 'ask_agent_g', { task: 'x' }), bare.env).pending!;
+    expect(seen).toEqual([{ task: 'x', answer: null, sources: [], audioQuote: PLAN }]);
+    expect(r.response).toMatchObject({ ok: false, error: 'no_answer', plan: expect.any(String) });
+  });
+
+  test('nothing is posted for a failed run or a run with neither an answer nor a plan; a throwing post never breaks the answer', async () => {
+    const posted: LiveAgentAnswerDetail[] = [];
+    for (const r of [{ ok: false, error: 'timeout' }, { ok: true, answer: null, stopReason: 'max_steps', steps: [] }] as AgentRunAnswer[]) {
+      const h = agentEnv(r);
+      h.env.postAgentAnswer = (d) => { posted.push(d); };
+      await executeLiveToolCall(call('g6', 'ask_agent_g', { task: 'x' }), h.env).pending;
+    }
+    expect(posted).toEqual([]);
+    const h = agentEnv({ ok: true, ...RUN });
+    h.env.postAgentAnswer = () => { throw new Error('boom'); };
+    expect((await executeLiveToolCall(call('g7', 'ask_agent_g', { task: 'x' }), h.env).pending!).response).toMatchObject({ ok: true, answer: RUN.answer });
   });
 
   test('in a batch, the session gets every answer once Agent G is back', async () => {

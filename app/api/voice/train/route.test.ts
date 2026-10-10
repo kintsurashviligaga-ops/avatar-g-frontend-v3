@@ -169,3 +169,17 @@ test('GET keeps the demo fallback for a guest (a free status poll)', async () =>
   expect(latestMock).toHaveBeenCalledWith('demo-voice-user');
   expect(trainMock).not.toHaveBeenCalled();
 });
+
+test('MEDIA_GOOGLE_ONLY: a new training is refused before the session, the limit or Replicate; the status GET stays open', async () => {
+  process.env.MEDIA_GOOGLE_ONLY = '1';
+  try {
+    mockUser = { id: USER_ID };
+    const res = await POST(post({ voiceReference: VOICE }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'google_only' });
+    expect(rateMock).not.toHaveBeenCalled();
+    expectNothingStarted();
+  } finally {
+    delete process.env.MEDIA_GOOGLE_ONLY;
+  }
+});

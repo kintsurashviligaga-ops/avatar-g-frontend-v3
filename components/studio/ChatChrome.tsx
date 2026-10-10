@@ -15,11 +15,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ViewportDebugOverlay } from '@/components/studio/ViewportDebugOverlay';
+import { SaveReadyPrompt } from '@/components/studio/ui/SaveReadyPrompt';
 import { InstallAppButton } from '@/components/ui/InstallAppButton';
 import { useViewportClamp } from '@/lib/ui/useViewportClamp';
 import { useRouter, usePathname } from 'next/navigation';
 import {
-  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Clapperboard, PenSquare, Search, Wallet,
+  Menu, X, LogIn, LogOut, Shield, FileText, LifeBuoy, Loader2, Trash2, User, Settings, FolderOpen, Moon, Sun, ChevronDown, ChevronLeft, ChevronRight, Check, Camera, PanelLeftClose, PanelLeft, ScanFace, Sparkles, Music2, PenSquare, Search, Wallet,
 } from 'lucide-react';
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
@@ -69,7 +70,7 @@ import AuthModal from '@/components/chat/AuthModal';
 import WelcomeOnboarding from '@/components/onboarding/WelcomeOnboarding';
 import { track } from '@/lib/analytics/track';
 import { trackCategoryViewed } from '@/lib/analytics/serviceEvents';
-import { searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
+import { getService, searchServices, serviceHref, type ServiceCategory, type ServiceDefinition } from '@/lib/catalog/services';
 import { ServiceSearchResults } from '@/components/studio/ServiceSearchResults';
 import { formatCreditBalance } from '@/lib/billing/gel';
 import { StudioSheet } from '@/components/studio/StudioSheet';
@@ -87,7 +88,7 @@ import { disposePrimed, takePrimed } from '@/lib/voice/livePrime';
 import { readSignInDeepLink, SIGN_IN_PARAMS } from '@/lib/routing/signIn';
 import { EmptyState, SkeletonList, focusComposer } from '@/components/studio/ui/EmptyState';
 import { ResearchHost, ResearchSidebarRow } from '@/components/studio/research';
-import { HubHost, HubRailButton, HubSidebarRow, useHiddenTools, visibleToolIds } from '@/components/studio/hub';
+import { dedupeConversations } from '@/lib/chat/conversationSync';
 
 type Lang = 'ka' | 'en' | 'ru';
 
@@ -679,8 +680,10 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       const raw = JSON.parse(window.localStorage.getItem(OMNI_CONVERSATIONS_KEY) ?? '[]') as unknown;
       if (!Array.isArray(raw)) return;
       setConversations(
-        raw
-          .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string')
+        // One row per conversation (lib/chat/conversationSync): two rows under one id also gave React two children with one
+        // key, and a list re-ordered by a click then kept stale copies on screen.
+        dedupeConversations(raw
+          .filter((c): c is { id: string; title?: string; updatedAt?: number } => !!c && typeof (c as { id?: unknown }).id === 'string'))
           .map((c) => ({ id: c.id, title: (c.title || 'New chat').trim() || 'New chat', updatedAt: c.updatedAt ?? 0 }))
           .sort((a, b) => b.updatedAt - a.updatedAt)
           // Every chat the studio keeps (OmniStudio's CONV_MAX, 40). At 20 the search could not find chats 21–40 that
@@ -750,14 +753,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     window.addEventListener('myavatar:open-new-chat', on);
     return () => window.removeEventListener('myavatar:open-new-chat', on);
   }, [handleNewChat]);
-  // The tools the user switched off in the hub's Plugins tab leave the sidebar and the rail (never the one they are on).
-  // ⚠️ Menus only — selectTool, ?tool= and the studio still open a hidden tool (lib/plugins/catalog.ts).
-  const hiddenTools = useHiddenTools();
-  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK, each category
-  // holding only its tools that are still switched on — a category with none left is not drawn.
-  const navGroups = useMemo(() => toolGroups()
-    .map((g) => ({ ...g, tools: visibleToolIds(g.tools, hiddenTools, activeTool) }))
-    .filter((g) => g.tools.length > 0), [hiddenTools, activeTool]);
+  // The menu is the service catalog's categories (lib/catalog/nav.ts): Agent G first, then CREATE and WORK. Every tool is
+  // always listed: the „Plugins" switches that hid tools from it were retired 2026-10-09 (the owner: „confusing").
+  const navGroups = useMemo(() => toolGroups().filter((g) => g.tools.length > 0), []);
   const navCategories = useMemo(() => navGroups.filter((g) => g.id !== 'agent-g'), [navGroups]);
   // A category row opens its first tool; its chevron shows the rest. The category holding the active tool opens itself.
   const [openCats, setOpenCats] = useState<ReadonlySet<string>>(() => new Set());
@@ -794,36 +792,52 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // Picking a service from the sidebar: in the studio it switches the tool in place; anywhere else it opens the
   // studio on that tool (`?tool=`, read once by OmniStudio).
   const onStudioHome = isStudioPath(pathname) && !onBack;
+  // In the studio a pick is an `omni:set-tool` event, which the studio answers by cancelling it. While the studio's code is
+  // still loading nobody listens, and a fast first tap on a row did nothing. Then the pick waits in the address (`?tool=`,
+  // `&mode=`), which the studio reads once when it mounts — the same deep link a page outside the studio uses.
+  const askStudio = useCallback((detail: unknown, href: string) => {
+    const ev = new CustomEvent('omni:set-tool', { detail, cancelable: true });
+    window.dispatchEvent(ev);
+    if (ev.defaultPrevented) return;
+    const want = new URL(href, window.location.href);
+    const here = new URL(window.location.href);
+    want.searchParams.forEach((v, k) => here.searchParams.set(k, v));
+    window.history.replaceState(window.history.state, '', `${here.pathname}${here.search}`);
+  }, []);
   const selectTool = useCallback((id: ToolId) => {
     setSidebarOpen(false);
-    if (onStudioHome) { window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: id })); return; }
+    if (onStudioHome) { askStudio(id, `/${locale}/dashboard?tool=${id}`); return; }
     const url = `/${locale}/dashboard?tool=${id}`;
     // ⚠️ On the dashboard's own #lipsync / #agent surfaces a client push is a no-op: Next keys the page without the
     // query and pushState fires no hashchange, so ServiceHub stayed where it was. A document load lands on the studio.
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
-  }, [onStudioHome, router, locale, pathname]);
+  }, [onStudioHome, router, locale, pathname, askStudio]);
   // A service found by the search opens like a menu row, but as the SERVICE: its tool, its mode („Music video" is the
   // Video tool in music-video mode) and its own analytics id. Outside the studio its catalog link carries the same.
-  const openService = useCallback((s: ServiceDefinition) => {
+  const openService = useCallback((s: ServiceDefinition, surface: 'search' | 'sidebar' = 'search') => {
     if (!s.tool) return;
     setSidebarOpen(false);
     setConvQuery('');
+    const url = serviceHref(s.id, locale);
     if (onStudioHome) {
-      window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: { tool: s.tool, service: s.id, surface: 'search' } }));
+      askStudio({ tool: s.tool, service: s.id, surface }, url ?? `/${locale}/dashboard?tool=${s.tool}`);
       return;
     }
-    const url = serviceHref(s.id, locale);
     if (!url) return;
     if (isStudioPath(pathname)) window.location.assign(url);
     else router.push(url);
-  }, [onStudioHome, router, locale, pathname]);
+  }, [onStudioHome, router, locale, pathname, askStudio]);
   const handleSelectConversation = useCallback((id: string) => {
     // On the dashboard OmniStudio is mounted and resumes in place via the event. On a
     // secondary surface (e.g. /library) nothing listens → persist the choice as the
     // active conversation and navigate; OmniStudio restores it from localStorage on mount.
     if (isStudioPath(pathname)) {
-      window.dispatchEvent(new CustomEvent('myavatar:resume-conversation', { detail: { id } }));
+      // The studio answers by cancelling the event. While its code is still loading nobody does, and the pick was lost: the
+      // chat stayed empty. Then it waits in the one-shot handoff the studio reads when it mounts.
+      const ev = new CustomEvent('myavatar:resume-conversation', { detail: { id }, cancelable: true });
+      window.dispatchEvent(ev);
+      if (!ev.defaultPrevented) { try { window.localStorage.setItem(OMNI_RESUME_KEY, id); } catch { /* ignore */ } }
     } else {
       // One-shot handoff: OmniStudio consumes this on mount. Writing OMNI_CURRENT_ID_KEY instead would
       // make the chat sticky across every later refresh, which is the behaviour we just removed.
@@ -1011,8 +1025,9 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     return q ? conversations.filter((c) => (c.title || '').toLowerCase().includes(q)) : conversations;
   }, [conversations, convQuery]);
   // §51 — the same box finds SERVICES, by the words a person would type in any UI language (the catalog's aliases, the
-  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed.
-  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery) : []), [convQuery]);
+  // ones Agent G reads), listed above the chats. „მუს" finds Music before the whole word is typed. Only what a person can
+  // open: a „Soon" row for something that does not exist yet was one more thing to read (the owner, 2026-10-09 18:25Z).
+  const serviceHits = useMemo(() => (convQuery.trim() ? searchServices(convQuery).filter((s) => s.status !== 'coming-soon') : []), [convQuery]);
 
   const convGroups = useMemo(() => {
     const start = new Date(); start.setHours(0, 0, 0, 0);
@@ -1049,11 +1064,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   // (visible on ALL viewports — the header is always sticky) whenever an explicit onBack
   // is given OR we're on a non-dashboard surface, defaulting the action to the chat home.
   const onLibrary = (pathname ?? '').includes('/library');
-  // The studio row exists per DEPLOYMENT (STUDIO_V2, published on <html> by the root layout), never per route.
-  const [studioV2, setStudioV2] = useState(false);
-  useEffect(() => { setStudioV2(document.documentElement.dataset.studioV2 === '1'); }, []);
-  const tStudio = lang === 'en' ? 'Studio' : lang === 'ru' ? 'Студия' : 'სტუდია';
-  const tBeta = lang === 'en' ? 'Beta' : lang === 'ru' ? 'Бета' : 'ბეტა';
   const showBack = Boolean(onBack) || onLibrary;
   const goBack = onBack ?? (() => router.push(`/${locale}/dashboard`));
   // Secondary surfaces opened ON TOP of the studio (e.g. /library) get a CLOSE (X)
@@ -1069,6 +1079,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
   return (
     <>
     <ViewportDebugOverlay />
+    <SaveReadyPrompt locale={locale} />
     <div className="ag-fixed-shell fixed inset-0 z-[2] flex bg-app-bg text-app-text antialiased" style={{
       // ⚠️ WAS `calc(100dvh - keyboardOffset)`, WHICH DOUBLE-SUBTRACTS ON ANDROID. Chrome's `dvh` is the
       // DYNAMIC viewport and already shrinks when the keyboard opens, so subtracting the offset removed
@@ -1170,7 +1181,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
             <FolderOpen className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tLibrary}
           </button>
           <ResearchSidebarRow locale={lang} authed={authed} className={sideRow} onPicked={() => setSidebarOpen(false)} />
-          <HubSidebarRow locale={lang} className={sideRow} onPicked={() => setSidebarOpen(false)} />
           <button type="button" onClick={() => { setSidebarOpen(false); setPersonaOpen(true); }} className={sideRow}>
             <Sparkles className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {t.persona}
             {activePersonaName
@@ -1181,7 +1191,7 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         </div>
 
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet and the Plugins tab read the
+          {/* The services, by catalog category (lib/catalog/nav.ts — the composer's „+" sheet reads the
               same groups, so a tool can never be reachable from one door and missing from the other). In the studio a row
               switches the tool in place; anywhere else it opens the studio on it. */}
           {(['create', 'work'] as const).map((grp) => {
@@ -1215,6 +1225,19 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
                             </button>
                           )}
                         </div>
+                        {/* A mode of the lead tool with a row of its own (lib/catalog/nav.ts modeServices): „Music video" under
+                            Video, always shown, because a mode reachable only from inside the panel was not found. */}
+                        {g.modeServices.map((sid) => {
+                          const s = getService(sid);
+                          if (!s) return null;
+                          return (
+                            <button key={sid} type="button" onClick={() => openService(s, 'sidebar')} data-testid={`sidebar-service-${sid}`}
+                              className={`${sideRow} pl-7`}>
+                              <Music2 className="h-4 w-4 text-app-muted" aria-hidden="true" />
+                              <span className="min-w-0 truncate">{s.label[lang]}</span>
+                            </button>
+                          );
+                        })}
                         {open && rest.map((id) => {
                           const { Icon: SubIcon } = TOOL_META[id];
                           const subOn = onStudioHome && activeTool === id;
@@ -1290,12 +1313,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
         {/* Who you are and what you have — the balance, language and account live HERE now, not in a header row
             that had five controls fighting the wordmark for 390 px. */}
         <div className="space-y-1 border-t border-app-border/10 px-2 pt-2" style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}>
-          {studioV2 && (
-            <button type="button" onClick={() => { setSidebarOpen(false); router.push(`/${locale}/studio`); }} className={sideRow}>
-              <Clapperboard className="h-[17px] w-[17px] text-app-muted" aria-hidden="true" /> {tStudio}
-              <span className="ml-auto rounded-full bg-app-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-app-accent">{tBeta}</span>
-            </button>
-          )}
           {authed ? (
             // The balance and the way to raise it are one control — the SAME CreditsModal from everywhere.
             <button type="button" onClick={() => { setSidebarOpen(false); setCreditsOpen(true); }} data-iap-external
@@ -1375,7 +1392,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
           })}
           <span className="flex-1" aria-hidden="true" />
           <button type="button" onClick={() => router.push(`/${locale}/library`)} aria-label={tLibrary} title={tLibrary} className={railBtn}><FolderOpen className="h-[18px] w-[18px]" aria-hidden="true" /></button>
-          <HubRailButton locale={lang} className={railBtn} />
           <button type="button" onClick={() => setMenuOpen(true)} aria-label={t.settings} title={t.settings} className={railBtn}><Settings className="h-[18px] w-[18px]" aria-hidden="true" /></button>
         </nav>
       )}
@@ -1634,10 +1650,6 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
       {/* Deep Research: the watcher, toasts, start sheet, report viewer, Connectors and the report's Live call
           (components/studio/research). Renders nothing until the server says the feature exists here. */}
       <ResearchHost locale={lang} authed={authed} userId={userId} />
-
-      {/* Connectors · Plugins · Skills (components/studio/hub): the user's switched-off tools (read on sign-in, so the menus
-          above hide them) and the hub sheet, opened from the sidebar row, the rail or `myavatar:hub-open`. */}
-      <HubHost locale={lang} authed={authed} userId={userId} />
 
       {/* DAY-5 real-time voice overlay. The launcher moved INTO the composer (OmniStudio's
           Gemini-style live-voice chip, right of the dictation mic), which dispatches

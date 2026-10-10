@@ -24,6 +24,8 @@ export interface GeminiReplyOptions {
   systemNote?: string;
   /** The reply language; default: the latest message's script (lib/chat/replyLocale), as the product chat does. */
   locale?: ReplyLocale;
+  /** false = no Google Search grounding for this door (WhatsApp: a service channel, not a general assistant). */
+  googleSearch?: boolean;
 }
 
 /**
@@ -35,7 +37,8 @@ export async function geminiReply(
   signal?: AbortSignal,
   opts: GeminiReplyOptions = {},
 ): Promise<{ text: string; model: string } | null> {
-  const profile = resolveAgentProfile({});
+  const resolved = resolveAgentProfile({});
+  const profile = opts.googleSearch === false ? { ...resolved, googleSearch: false } : resolved;
   const locale = opts.locale ?? detectReplyLocale(messages);
   const platform = buildPlatformPrompt({ locale, googleSearch: profile.googleSearch });
   const system = opts.systemNote ? `${platform}\n\n${opts.systemNote}` : platform;

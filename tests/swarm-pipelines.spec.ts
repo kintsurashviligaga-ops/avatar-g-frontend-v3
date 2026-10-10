@@ -12,7 +12,9 @@ import { test, expect } from '@playwright/test';
  *     dev-bypass works AND that the bypass is dev-only (prod still 401s).
  *
  * The prod/dev distinction is derived from the resolved `baseURL` so it stays
- * consistent with playwright.config.ts (PLAYWRIGHT_BASE_URL) — no extra env var.
+ * consistent with playwright.config.ts (PLAYWRIGHT_BASE_URL). A production build
+ * served on localhost (`next start`, the certification runs) has no dev bypass
+ * either: PLAYWRIGHT_PRODUCTION_BUILD=1 says so, and the 401 is expected there too.
  */
 const PRODUCE_ROUTES = ['produce', 'avatar/produce', 'interior/produce', 'image/produce', 'music/produce', 'voice/produce'];
 
@@ -26,7 +28,7 @@ test.describe('swarm recon', () => {
   });
 
   test('produce routes are auth-gated (prod 401) / dev-bypassed (dev 4xx, not 401)', async ({ request, baseURL }) => {
-    const prod = !isLocal(baseURL);
+    const prod = !isLocal(baseURL) || process.env.PLAYWRIGHT_PRODUCTION_BUILD === '1';
     for (const r of PRODUCE_ROUTES) {
       const res = await request.post(`${baseURL}/api/orchestrator/${r}`, { data: {} });
       if (prod) {
@@ -44,9 +46,18 @@ test.describe('swarm recon', () => {
     // with auth_required (the sign-in sheet), before any model, budget or cap is touched. With guest chat switched off
     // (CHAT_GUEST_ENABLED=0) the route answers 401 instead. Either way: no model call, nothing spent.
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
-    const res = await request.post('/api/chat/gemini', {
+    const ask = () => request.post('/api/chat/gemini', {
       data: { messages: [{ role: 'user', content: [{ type: 'text', text: 'what is this?' }, { type: 'image', image: png }] }], protocol: 2 },
     });
+    let res = await ask();
+    // The route's first guard is a per-IP burst limit shared by every read route (100 a minute). A whole suite run on one
+    // machine is one IP, and the other specs' pages can spend it; wait out that window once and ask again.
+    if (res.status() === 429) {
+      test.setTimeout(150_000);
+      const wait = Number(res.headers()['retry-after']) || 60;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(wait, 1), 65) * 1000));
+      res = await ask();
+    }
     if (res.status() === 401) {
       expect(((await res.json()) as { authRequired?: boolean }).authRequired).toBe(true);
       return;

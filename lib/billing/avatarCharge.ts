@@ -27,7 +27,7 @@ export type AvatarChargeKind =
   | 'lipsync'
   /** GET /api/heygen/presenter — a reserved HeyGen presenter job. */
   | 'presenter'
-  /** Presenter Phase A (TTS) hold: lets the NEXT phase (HeyGen submit, or the SadTalker fallback) release it —
+  /** Presenter Phase A (TTS) hold: lets the NEXT phase (the HeyGen submit; a legacy client's /api/video/lipsync call) release it —
    *  only toward a render of its own audio on the presenter face (holdReleasableFor). */
   | 'presenter-hold';
 

@@ -115,6 +115,7 @@ describe('a linked number', () => {
       text: 'are you there?',
       locale: 'en',
       systemNote: WHATSAPP_STYLE_NOTE,
+      googleSearch: false, // a service channel: no web search on WhatsApp
       history: [{ role: 'user', content: 'earlier' }, { role: 'assistant', content: 'reply' }],
     }));
     expect(out).toEqual({ replyMessages: ['*Yes*, I am here.'], outcome: 'talk', userId: LINK.userId });

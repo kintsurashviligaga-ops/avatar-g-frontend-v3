@@ -46,6 +46,20 @@ export const SWAP_REFERENCE_CAP = 5;
 
 export type EngineProvider = 'veo' | 'higgsfield';
 
+/**
+ * The providers an op may run on: Google only (Veo). The owner's provider policy is Google + ElevenLabs + our own
+ * processing, and the Omnichannel + Mobile UX task (owner, 2026-10-10 13:10Z, A1) says Kling, Replicate and Higgsfield
+ * are neither shown to the user nor run from the API. So motion and swap (Higgsfield) are closed by this list — a
+ * constant, not a flag, so no environment variable can reopen them. The panel offers only allowed ops, and the
+ * capabilities answer (server) closes the rest with `engine_forbidden`.
+ */
+export const ALLOWED_ENGINE_PROVIDERS: readonly EngineProvider[] = ['veo'];
+
+/** Whether the engine behind an op is an allowed provider. */
+export function engineAllowed(op: GenjutsuOp): boolean {
+  return ALLOWED_ENGINE_PROVIDERS.includes(ENGINES[op].provider);
+}
+
 export interface EngineSpec {
   op: GenjutsuOp;
   provider: EngineProvider;

@@ -117,7 +117,7 @@ const GATE_SIGNALS: RegExp[] = [
   /auth\.getUser\s*\(/,
   /\b(mustSignInToGenerate|mustSignInToChat|requireAuthForGeneration)\s*\(/,
   /\b(isAdmin|requireAdmin|isAdminUser|assertAdminAccess|hasValidAdminKey|effectiveAdminAllowlist|adminKeyHeaderMatches|opsCallerAllowed|isCronAuthorized|secretMatches)\s*\(/,
-  /\b(constructEvent|verifyWebhookSignature|verifyBogCallbackSignature|verifyVapiWebhookSignature|verifyTwilioRequest|verifyJobSignature|verifyHandoffToken|consumeHandoffToken|verifyRealtimeSessionToken|verifyMetaSignature)\s*\(/,
+  /\b(constructEvent|verifyWebhookSignature|verifyBogCallbackSignature|verifyVapiWebhookSignature|verifyTwilioRequest|verifyJobSignature|verifyHandoffToken|consumeHandoffToken|verifyRealtimeSessionToken|verifyMetaSignature|verifyTicket)\s*\(/,
   /timingSafeEqual\s*\(/,
   /x-internal-worker-token|x-admin-key|process\.env\.(CRON_SECRET|ADMIN_KEY|ADMIN_API_TOKEN|MIGRATION_RUN_KEY|OBSERVABILITY_DASHBOARD_TOKEN|TELEGRAM_SETUP_SECRET|WORKER_INTERNAL_TOKEN)\b/,
 ];

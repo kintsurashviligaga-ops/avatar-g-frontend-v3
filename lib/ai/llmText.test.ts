@@ -69,12 +69,45 @@ const ROUTING: Array<[string, Partial<LlmTextOpts>]> = [
   ['googleOnly: false (the old kill switch)', { googleOnly: false }],
 ];
 
+describe('what a call used (Agent G PART 5, G3/G7)', () => {
+  const REPORTED = { text: 'gemini text', model: 'gemini-2.5-flash', tokensIn: 1200, tokensOut: 80, tokensCached: 1024, tokensThinking: 0, tokensTotal: 1280, latencyMs: 420 };
+
+  test('Gemini\'s own counts are booked, cache hits included, under the serving model', async () => {
+    mockGemini.mockResolvedValue(REPORTED);
+    await llmText({ user: 'hello', system: 'sys' });
+    expect(mockBook).toHaveBeenCalledWith({
+      model: 'gemini-2.5-flash', inputTokens: 1200, outputTokens: 80, totalTokens: 1280, cachedInputTokens: 1024,
+      inputChars: 'sys hello'.length, chars: 'gemini text'.length,
+    });
+  });
+
+  test('onUsage hears each answered call: tokens, cache hits, latency and an estimated cost', async () => {
+    mockGemini.mockResolvedValue(REPORTED);
+    const onUsage = jest.fn();
+    await llmText({ user: 'hello', system: 'sys', onUsage });
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.calls[0][0]).toMatchObject({ model: 'gemini-2.5-flash', tokensIn: 1200, tokensOut: 80, tokensCached: 1024, latencyMs: 420 });
+    expect(onUsage.mock.calls[0][0].costUsd).toBeGreaterThan(0);
+  });
+
+  test('a miss is not a call that used anything, and a throwing listener does not lose the answer', async () => {
+    const onUsage = jest.fn(() => { throw new Error('meter broke'); });
+    mockGemini.mockResolvedValue({ text: '', model: 'gemini-2.5-flash' });
+    expect(await llmText({ user: 'x', onUsage })).toBeNull();
+    expect(onUsage).not.toHaveBeenCalled();
+    mockGemini.mockResolvedValue(REPORTED);
+    expect(await llmText({ user: 'x', onUsage })).toBe('gemini text');
+    expect(onUsage).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Gemini answers', () => {
   test.each(ROUTING)('%s → Gemini\'s text, booked and reported as gemini', async (_label, flags) => {
     expect(await llmText({ user: 'hello', system: 'sys', ...flags })).toBe('gemini text');
     expect(mockGemini).toHaveBeenCalledTimes(1);
     expect(mockGemini.mock.calls[0][0]).toMatchObject({ prompt: 'hello', systemPrompt: 'sys', tier: 'flash', maxTokens: 2000, temperature: 0.6, thinkingBudget: 0 });
-    expect(mockBook).toHaveBeenCalledWith('sys hello', 'gemini text'.length, 'gemini');
+    // Booked under the model that served, with the characters standing in for the counts this mock did not report.
+    expect(mockBook).toHaveBeenCalledWith({ model: 'gemini-2.5-flash', inputChars: 'sys hello'.length, chars: 'gemini text'.length });
     expect(mockReliability).toHaveBeenCalledWith({ surface: 'llm.text', providerServed: 'gemini', fallbackDepth: 0, degraded: false });
     expectNoOtherVendor();
   });

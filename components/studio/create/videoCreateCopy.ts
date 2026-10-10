@@ -16,10 +16,10 @@ export const VIDEO_COPY = {
   create: T('შექმნა', 'Create', 'Создать'),
   extend: T('გახანგრძლივება', 'Extend', 'Продлить'),
 
-  modeDocumentary: T('დოკუმენტური', 'Documentary', 'Документальный'),
+  modeDocumentary: T('ფილმი', 'Film', 'Фильм'),
   modeMusicVideo: T('მუსიკალური კლიპი', 'Music video', 'Клип'),
-  modeDocumentarySub: T('ნაწერიანი ფილმი', 'A narrated film', 'Фильм с диктором'),
-  modeMusicVideoSub: T('მუსიკალური კლიპი სიმღერით', 'A sung music clip', 'Клип с песней'),
+  modeDocumentarySub: T('დიქტორით', 'With a narrator', 'С диктором'),
+  modeMusicVideoSub: T('სიმღერით', 'Cut to a song', 'Под песню'),
 
   // references
   refsTitle: T('დაამატე რეფერენსები', 'Add references', 'Добавьте референсы'),
@@ -98,7 +98,6 @@ export const VIDEO_COPY = {
 
   // model picker (components/studio/ui/ModelPicker — no prices: the price is on Generate)
   modelTitle: T('მოდელი', 'Model', 'Модель'),
-  modelsLabel: T('მოდელები', 'Models', 'Модели'),
   modeLabel: T('რეჟიმი', 'Mode', 'Режим'),
   engineLabel: T('ძრავა და ფასი', 'Engine & price', 'Движок и цена'),
   liteBlurb: T('ყველაზე დაბალი ფასი', 'Lowest price', 'Самая низкая цена'),

@@ -97,7 +97,8 @@ const svc = (d: Omit<ServiceDefinition, 'modes' | 'shortcuts' | 'authRequired' |
 export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── VIDEO ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
-    id: 'video.generate', category: 'video', order: 10, tool: 'video', pricingKey: 'video', status: 'live', boundary: 'google',
+    id: 'video.generate', category: 'video', order: 10, tool: 'video', pricingKey: 'video', status: 'live',
+    boundary: 'violation', boundaryNote: 'Veo + Gemini + ElevenLabs; a film with dialogue adds a HeyGen talking head (/api/video/lipsync, one engine, no fallback) when HeyGen is configured; MEDIA_GOOGLE_ONLY skips that pass',
     label: l('ვიდეოს გენერაცია', 'Generate video', 'Создать видео'),
     description: l('იდეიდან სცენარი, კადრები და მზა ფილმი', 'From an idea to a storyboard and a finished film', 'От идеи к раскадровке и готовому фильму'),
     modes: [
@@ -108,16 +109,19 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
     aliases: ['video', 'ვიდეო', 'видео', 'film', 'ფილმი', 'фильм', 'reel', 'რილი', 'text to video', 'storyboard', 'სთორიბორდი', 'раскадровка'],
   }),
   svc({
-    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live', boundary: 'google',
-    label: l('მუსიკალური ვიდეო', 'Music video', 'Музыкальный клип'),
+    id: 'video.music-video', category: 'video', order: 11, tool: 'video', pricingKey: 'video', status: 'live',
+    boundary: 'violation', boundaryNote: 'as video.generate, plus HeyGen singer close-ups (lip-sync on by default) when HeyGen is configured; MEDIA_GOOGLE_ONLY skips that pass',
+    label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'),
     description: l('სიმღერიდან ვიდეოკლიპი', 'A clip for your song', 'Клип для вашей песни'),
-    modes: [{ id: 'musicvideo', label: l('მუსიკალური ვიდეო', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
+    modes: [{ id: 'musicvideo', label: l('მუსიკალური კლიპი', 'Music video', 'Музыкальный клип'), query: { mode: 'musicvideo' } }],
     shortcuts: ['music'],
-    aliases: ['music video', 'მუსიკალური ვიდეო', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
+    // A row of its own under Video in the sidebar (lib/catalog/nav.ts modeServices): the mode was not findable otherwise.
+    visibleInSidebar: true,
+    aliases: ['music video', 'მუსიკალური ვიდეო', 'მუსიკალური კლიპი', 'კლიპი', 'ვიდეოკლიპი', 'клип', 'музыкальный клип', 'музыкальное видео'],
   }),
   svc({
     id: 'video.product-ad', category: 'video', order: 12, tool: 'product', pricingKey: 'product', status: 'live',
-    boundary: 'violation', boundaryNote: 'Veo first, then Kling via Replicate, then a Ken Burns still (/api/video/remix productad); §A removes the Kling leg',
+    boundary: 'google', boundaryNote: 'Veo, then a Ken Burns still (/api/video/remix productad); the Kling leg runs only with VIDEO_GOOGLE_ONLY=0',
     label: l('პროდუქტის რეკლამა', 'Product ad', 'Реклама продукта'),
     description: l('პროდუქტის ფოტოდან სარეკლამო რილი', 'An ad reel from a product photo', 'Рекламный ролик из фото продукта'),
     shortcuts: ['image-photo'],
@@ -125,7 +129,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'video.character-swap', category: 'video', order: 13, tool: 'swap', pricingKey: 'swap', status: 'live',
-    boundary: 'violation', boundaryNote: 'roop via Replicate (/api/video/remix `character`, quotes and charges remix 15); the Genjutsu panel\'s swap is Kling via Higgsfield (/api/genjutsu)',
+    boundary: 'violation', boundaryNote: 'roop via Replicate (/api/video/remix `character`, quotes and charges remix 15); a miss refunds, no engine switch; MEDIA_GOOGLE_ONLY refuses it. The VFX panel\'s swap (Kling via Higgsfield) is off behind its flags',
     label: l('პერსონაჟის შეცვლა', 'Character swap', 'Замена персонажа'),
     description: l('ვიდეოში სხვა სახე ან პერსონაჟი', 'Put another face or character in a video', 'Другое лицо или персонаж в видео'),
     shortcuts: ['avatar'],
@@ -133,25 +137,27 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'video.motion', category: 'video', order: 14, tool: 'motion', pricingKey: 'motion', status: 'live',
-    boundary: 'violation', boundaryNote: 'Kling via Higgsfield / Replicate (/api/motion-control)',
+    boundary: 'violation', boundaryNote: 'Kling image-to-video via Replicate (/api/motion-control); MEDIA_GOOGLE_ONLY refuses it',
     label: l('მოძრაობის გადატანა', 'Motion transfer', 'Перенос движения'),
-    description: l('ფოტო იმოძრავებს ვიდეოს მიხედვით', 'A photo moves like a reference video', 'Фото двигается по образцу'),
+    // ⚠️ Says what runs: a photo + a written motion (Kling image-to-video). It used to promise "like a reference video",
+    // but no engine here reads one (Replicate's Kling has no video-to-video) and the panel's video slot never left the
+    // browser; the slot is gone (2026-10-09). Whether to keep this next to Veo image→video is the owner's call.
+    description: l('ფოტო იმოძრავებს შენი აღწერით', 'A photo moves the way you describe', 'Фото двигается по вашему описанию'),
     shortcuts: ['avatar'],
-    // Not „animate this photo": that is image→video, which the chat sends to Veo (§A). Motion transfer needs a
-    // reference video, so only its own name routes here.
+    // Not „animate this photo": that is image→video, which the chat sends to Veo (§A). Only its own name routes here.
     aliases: ['motion transfer', 'motion control', 'copy the motion', 'მოძრაობის გადატანა', 'перенос движения'],
   }),
   svc({
-    id: 'video.vfx', category: 'video', order: 15, tool: 'vfx', pricingKey: 'remix', status: 'live', boundary: 'google',
-    boundaryNote: 'Veo scene; button quotes `remix`, route prices with lib/genjutsu/pricing.ts (R5 gap)',
+    id: 'video.vfx', category: 'video', order: 15, tool: 'vfx', pricingKey: 'vfx', status: 'live', boundary: 'google',
+    boundaryNote: 'Veo scene only (motion / swap ran on Higgsfield: closed by lib/genjutsu/engines); priced by lib/genjutsu/pricing.ts through quote `vfx`',
     label: l('VFX ეფექტები', 'VFX effects', 'VFX-эффекты'),
     description: l('ერთი შეხებით VFX ეფექტები ფოტოსთვის', 'One-tap VFX effects for your photos', 'VFX-эффекты в одно касание'),
     aliases: ['vfx', 'visual effects', 'special effects', 'ვიზუალური ეფექტ', 'სპეცეფექტ', 'спецэффект', 'визуальные эффекты'],
   }),
   svc({
     id: 'video.remix', category: 'video', order: 16, tool: 'remix', pricingKey: 'remix', status: 'live',
-    boundary: 'violation', boundaryNote: 'restyle/character ops can reach Kling / Replicate Wav2Lip / NanoBanana',
-    label: l('ვიდეო რემიქსი', 'Video remix', 'Видео-ремикс'),
+    boundary: 'violation', boundaryNote: 'restyle / background: NanoBanana + Kling; character: roop; redub: Replicate sync/lipsync-2; a miss refunds; MEDIA_GOOGLE_ONLY refuses those four ops',
+    label: l('ვიდეოს რემიქსი', 'Video remix', 'Ремикс видео'),
     description: l('შეცვალე არსებული ვიდეო: სტილი, სუბტიტრები, ხმა', 'Change a video you have: style, captions, voice', 'Измените своё видео: стиль, субтитры, голос'),
     aliases: ['video remix', 'remix this video', 'remix my video', 'remix the video', 'restyle', 'add captions', 'add subtitles', 'ვიდეოს რემიქსი', 'ვიდეო რემიქსი', 'ვიდეო დამირემიქსე', 'ვიდეოს სუბტიტრ', 'ремикс видео', 'субтитры к видео'],
   }),
@@ -164,7 +170,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── IMAGE & PHOTO ─────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'image.generate', category: 'image-photo', order: 20, tool: 'image', pricingKey: 'image', status: 'live',
-    boundary: 'violation', boundaryNote: 'NanoBananaAI (third party) → Grok → FLUX (/api/nanobanana/image); Imagen/Gemini image is the §A target',
+    boundary: 'violation', boundaryNote: 'NanoBananaAI only (/api/nanobanana/image); chat images: FLUX, a miss moves only to Google image; Upscale and Edit: Replicate; MEDIA_GOOGLE_ONLY moves image to Google image',
     label: l('სურათის შექმნა', 'Generate image', 'Создать изображение'),
     description: l('შექმენი და დაარედაქტირე სურათები', 'Create and edit images', 'Создавайте и редактируйте изображения'),
     visibleInSidebar: true,
@@ -172,15 +178,15 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'image.photoshoot', category: 'image-photo', order: 21, tool: 'photoshoot', pricingKey: 'photoshoot', status: 'live',
-    boundary: 'violation', boundaryNote: 'same cascade as image.generate',
+    boundary: 'violation', boundaryNote: 'NanoBananaAI (/api/nanobanana/image), as image.generate; MEDIA_GOOGLE_ONLY moves it to Google image',
     label: l('ფოტოგრაფი', 'Photographer', 'Фотограф'),
     description: l('სტუდიური ფოტოსესია შენი ფოტოებიდან', 'A studio photoshoot from your photos', 'Студийная фотосессия из ваших фото'),
     aliases: ['photoshoot', 'photo shoot', 'photographer', 'ფოტოსესია', 'ფოტოგრაფი', 'фотосессия', 'фотограф'],
   }),
   svc({
     id: 'image.interior', category: 'image-photo', order: 22, tool: 'interior', pricingKey: 'interior', status: 'live',
-    boundary: 'violation', boundaryNote: 'NanoBanana cascade; /api/orchestrator/interior/produce uses Claude for style',
-    label: l('ინტერიერის დიზაინი', 'Interior design', 'Дизайн интерьера'),
+    boundary: 'violation', boundaryNote: 'NanoBananaAI renders (as image.generate); the 3D plan is Gemini (/api/orchestrator/interior/produce); MEDIA_GOOGLE_ONLY moves the renders to Google image',
+    label: l('ინტერიერის დიზაინერი', 'Interior designer', 'Дизайнер интерьеров'),
     description: l('გადააპროექტე ოთახი ფოტოდან', 'Redesign a room from a photo', 'Новый дизайн комнаты по фото'),
     aliases: ['interior', 'interior design', 'room design', 'redesign my room', 'redesign my living room', 'redesign my bedroom', 'redesign my kitchen', 'ინტერიერი', 'ოთახის დიზაინი', 'интерьер', 'дизайн комнаты'],
   }),
@@ -194,7 +200,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── AVATAR ────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'avatar.talking', category: 'avatar', order: 30, tool: 'avatar', pricingKey: 'avatar', status: 'live',
-    boundary: 'violation', boundaryNote: 'HeyGen talking photo; Replicate SadTalker/Wav2Lip fallback (ElevenLabs voice is allowed)',
+    boundary: 'violation', boundaryNote: 'HeyGen talking photo, or Replicate SadTalker when HeyGen is off; one engine per job, no fallback (ElevenLabs voice is allowed)',
     label: l('მოლაპარაკე ავატარი', 'Talking avatar', 'Говорящий аватар'),
     description: l('ფოტო ალაპარაკდება შენი ტექსტით ან ხმით', 'A photo speaks your script or voice', 'Фото говорит вашим текстом или голосом'),
     visibleInSidebar: true,
@@ -203,7 +209,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   // ── MUSIC ─────────────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
     id: 'music.generate', category: 'music', order: 40, tool: 'music', pricingKey: 'music', status: 'live',
-    boundary: 'violation', boundaryNote: 'Lyria → ElevenLabs Music → Udio cascade (/api/ai/music); Udio is removed by §A',
+    boundary: 'violation', boundaryNote: 'Auto = Lyria only (/api/ai/music); Udio / MusicGen when picked; cover, sampled voice and trained voice run on Replicate; MEDIA_GOOGLE_ONLY refuses those',
     label: l('მუსიკის შექმნა', 'Generate music', 'Создать музыку'),
     description: l('ტრეკი, სიმღერა ან საუნდტრეკი', 'A track, a song or a soundtrack', 'Трек, песня или саундтрек'),
     modes: [
@@ -223,8 +229,8 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   // ── VOICE & AUDIO ─────────────────────────────────────────────────────────────────────────────────────────────────
   svc({
-    id: 'voice.dubbing', category: 'voice-audio', order: 50, tool: 'dubbing', pricingKey: null, status: 'live', boundary: 'google',
-    boundaryNote: 'ElevenLabs Scribe + Gemini translation + TTS; route charges nothing yet (dubbing/start/route.ts)',
+    id: 'voice.dubbing', category: 'voice-audio', order: 50, tool: 'dubbing', pricingKey: null, status: 'live', boundary: 'violation',
+    boundaryNote: 'ElevenLabs Scribe + Gemini translation + TTS; the background split is Replicate Demucs (on by default; MEDIA_GOOGLE_ONLY keeps the original bed); route charges nothing yet (dubbing/start/route.ts)',
     label: l('დუბლაჟი', 'Dubbing', 'Дубляж'),
     description: l('ვიდეო სხვა ენაზე, შენი ხმით', 'Your video in another language', 'Ваше видео на другом языке'),
     shortcuts: ['video'],
@@ -256,7 +262,7 @@ export const SERVICE_CATALOG: readonly ServiceDefinition[] = [
   }),
   svc({
     id: 'design.model3d', category: 'design', order: 71, tool: 'model3d', pricingKey: 'model3d', status: 'beta',
-    boundary: 'violation', boundaryNote: 'Replicate TRELLIS (/api/v2/model3d)',
+    boundary: 'violation', boundaryNote: 'Replicate TRELLIS (/api/v2/model3d); MEDIA_GOOGLE_ONLY refuses it',
     label: l('3D მოდელი', '3D model', '3D-модель'),
     description: l('3D მოდელი ტექსტიდან ან ფოტოდან', 'A 3D model from text or a photo', '3D-модель из текста или фото'),
     aliases: ['3d', '3d model', '3დ', '3D მოდელი', '3d модель'],

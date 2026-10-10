@@ -15,6 +15,7 @@ export interface MusicVideoGenre {
   id: string;
   labelKa: string;
   labelEn: string;
+  labelRu: string;
   /** Director language appended to the prompt for this genre's look + mood. */
   promptEn: string;
 }
@@ -23,6 +24,7 @@ export interface CameraMove {
   id: string;
   labelKa: string;
   labelEn: string;
+  labelRu: string;
   promptEn: string;
 }
 
@@ -31,6 +33,7 @@ export const MV_GENRES: MusicVideoGenre[] = [
     id: 'blues',
     labelKa: 'ბლუზი',
     labelEn: 'Blues',
+    labelRu: 'Блюз',
     promptEn:
       'a soulful blues music video — warm, moody low-key lighting, smoky intimate bar ambiance, rich shadows and amber highlights, emotional and timeless',
   },
@@ -38,6 +41,7 @@ export const MV_GENRES: MusicVideoGenre[] = [
     id: 'hiphop',
     labelKa: 'ჰიპ-ჰოპ',
     labelEn: 'Hip-Hop',
+    labelRu: 'Хип-хоп',
     promptEn:
       'a high-energy hip-hop music video — bold urban streetwear, dynamic neon night-city backdrops, confident swagger, punchy rhythm-cut editing',
   },
@@ -45,6 +49,7 @@ export const MV_GENRES: MusicVideoGenre[] = [
     id: 'pop',
     labelKa: 'პოპი',
     labelEn: 'Pop',
+    labelRu: 'Поп',
     promptEn:
       'a vibrant pop music video — bright saturated colors, glossy polished production, energetic upbeat motion, clean modern sets',
   },
@@ -52,19 +57,20 @@ export const MV_GENRES: MusicVideoGenre[] = [
     id: 'cinematic',
     labelKa: 'კინემატოგრაფიული',
     labelEn: 'Cinematic',
+    labelRu: 'Кинематограф',
     promptEn:
       'an epic cinematic music video — anamorphic widescreen, dramatic volumetric lighting, teal-and-orange grade, sweeping emotional scale',
   },
 ];
 
 export const MV_CAMERA_MOVES: CameraMove[] = [
-  { id: 'pan', labelKa: 'პანორამა', labelEn: 'Pan', promptEn: 'smooth horizontal panning camera moves across the scene' },
-  { id: 'zoom', labelKa: 'ზუმი', labelEn: 'Zoom', promptEn: 'a slow dramatic push-in zoom toward the performer' },
-  { id: 'orbit', labelKa: 'ორბიტა', labelEn: 'Orbit', promptEn: 'a sweeping 360° orbit circling the performer' },
-  { id: 'drone360', labelKa: '360° დრონი', labelEn: '360° Drone', promptEn: 'a full 360° aerial drone shot circling high around the subject, panoramic reveal' },
-  { id: 'craneup', labelKa: 'კრეინი ↑', labelEn: 'Crane Up', promptEn: 'a dramatic vertical crane move rising up and away from the subject' },
-  { id: 'cranedown', labelKa: 'კრეინი ↓', labelEn: 'Crane Down', promptEn: 'a cinematic crane move descending down toward the subject' },
-  { id: 'whippan', labelKa: 'Whip Pan', labelEn: 'Whip Pan', promptEn: 'fast whip-pan transitions snapping on the beat for kinetic energy' },
+  { id: 'pan', labelKa: 'პანორამა', labelEn: 'Pan', labelRu: 'Панорама', promptEn: 'smooth horizontal panning camera moves across the scene' },
+  { id: 'zoom', labelKa: 'ზუმი', labelEn: 'Zoom', labelRu: 'Зум', promptEn: 'a slow dramatic push-in zoom toward the performer' },
+  { id: 'orbit', labelKa: 'ორბიტა', labelEn: 'Orbit', labelRu: 'Орбита', promptEn: 'a sweeping 360° orbit circling the performer' },
+  { id: 'drone360', labelKa: '360° დრონი', labelEn: '360° Drone', labelRu: '360° дрон', promptEn: 'a full 360° aerial drone shot circling high around the subject, panoramic reveal' },
+  { id: 'craneup', labelKa: 'კრეინი ↑', labelEn: 'Crane Up', labelRu: 'Кран ↑', promptEn: 'a dramatic vertical crane move rising up and away from the subject' },
+  { id: 'cranedown', labelKa: 'კრეინი ↓', labelEn: 'Crane Down', labelRu: 'Кран ↓', promptEn: 'a cinematic crane move descending down toward the subject' },
+  { id: 'whippan', labelKa: 'Whip Pan', labelEn: 'Whip Pan', labelRu: 'Резкая панорама', promptEn: 'fast whip-pan transitions snapping on the beat for kinetic energy' },
 ];
 
 /** Framing / shot size (image_3.png "Select style…"). Drives the Cinematographer. */
@@ -72,13 +78,14 @@ export interface ShotType {
   id: string;
   labelKa: string;
   labelEn: string;
+  labelRu: string;
   promptEn: string;
 }
 
 export const MV_SHOTS: ShotType[] = [
-  { id: 'wide', labelKa: 'ფართო', labelEn: 'Wide', promptEn: 'wide establishing shots that frame the performer in the full environment' },
-  { id: 'medium', labelKa: 'საშუალო', labelEn: 'Medium', promptEn: 'balanced medium shots framing the performer from the waist up' },
-  { id: 'closeup', labelKa: 'ახლო', labelEn: 'Close-up', promptEn: 'intimate close-up shots on the performer’s face and expression' },
+  { id: 'wide', labelKa: 'ფართო', labelEn: 'Wide', labelRu: 'Общий', promptEn: 'wide establishing shots that frame the performer in the full environment' },
+  { id: 'medium', labelKa: 'საშუალო', labelEn: 'Medium', labelRu: 'Средний', promptEn: 'balanced medium shots framing the performer from the waist up' },
+  { id: 'closeup', labelKa: 'ახლო', labelEn: 'Close-up', labelRu: 'Крупный', promptEn: 'intimate close-up shots on the performer’s face and expression' },
 ];
 
 /** Lighting source + mood (image_5.png selector). */
@@ -86,14 +93,15 @@ export interface LightingMood {
   id: string;
   labelKa: string;
   labelEn: string;
+  labelRu: string;
   promptEn: string;
 }
 
 export const MV_LIGHTING: LightingMood[] = [
-  { id: 'golden', labelKa: 'ოქროს საათი', labelEn: 'Golden Hour', promptEn: 'warm golden-hour sunlight, soft long shadows, amber glow' },
-  { id: 'cinematic', labelKa: 'კინო', labelEn: 'Cinematic', promptEn: 'dramatic cinematic key lighting with deep contrast and rim light' },
-  { id: 'moody', labelKa: 'მუდი', labelEn: 'Moody', promptEn: 'low-key moody lighting, rich shadows, a single motivated source' },
-  { id: 'melancholic', labelKa: 'მელანქოლია', labelEn: 'Melancholic', promptEn: 'soft, desaturated melancholic light, cool muted tones, gentle haze' },
+  { id: 'golden', labelKa: 'ოქროს საათი', labelEn: 'Golden Hour', labelRu: 'Золотой час', promptEn: 'warm golden-hour sunlight, soft long shadows, amber glow' },
+  { id: 'cinematic', labelKa: 'კინო', labelEn: 'Cinematic', labelRu: 'Кино', promptEn: 'dramatic cinematic key lighting with deep contrast and rim light' },
+  { id: 'moody', labelKa: 'მუდი', labelEn: 'Moody', labelRu: 'Мрачный', promptEn: 'low-key moody lighting, rich shadows, a single motivated source' },
+  { id: 'melancholic', labelKa: 'მელანქოლია', labelEn: 'Melancholic', labelRu: 'Меланхолия', promptEn: 'soft, desaturated melancholic light, cool muted tones, gentle haze' },
 ];
 
 export function findGenre(id: string | null | undefined): MusicVideoGenre | undefined {
@@ -123,6 +131,8 @@ export function composeMusicVideoPrompt(input: {
   cameraId: string | null;
   shotId?: string | null;
   lightingId?: string | null;
+  /** False when no character photo was uploaded: the "uploaded character" anchor would then describe nobody. */
+  hasCharacter?: boolean;
 }): string {
   const parts: string[] = [];
   const base = input.userPrompt.trim();
@@ -138,9 +148,11 @@ export function composeMusicVideoPrompt(input: {
   if (shot) parts.push(shot.promptEn);
   if (cam) parts.push(cam.promptEn);
   if (light) parts.push(light.promptEn);
-  parts.push(
-    'Feature the uploaded character as the star performer; keep their face and identity consistent and recognizable across every shot, synced to the music',
-  );
+  if (input.hasCharacter !== false) {
+    parts.push(
+      'Feature the uploaded character as the star performer; keep their face and identity consistent and recognizable across every shot, synced to the music',
+    );
+  }
 
   return parts
     .map((p) => p.trim())
@@ -148,4 +160,9 @@ export function composeMusicVideoPrompt(input: {
     .join('. ')
     .replace(/\.\s*\./g, '.')
     .trim();
+}
+
+/** A preset's name in the studio's language (ka is the default, like the rest of the studio). */
+export function mvLabel(item: { labelKa: string; labelEn: string; labelRu: string }, locale: string): string {
+  return locale === 'en' ? item.labelEn : locale === 'ru' ? item.labelRu : item.labelKa;
 }

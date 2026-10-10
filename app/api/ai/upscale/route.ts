@@ -1,11 +1,11 @@
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { upscaleImage } from '@/lib/ai/replicate';
 import { uploadAndSign } from '@/lib/orchestrator/storage-adapter';
 import { authedClientFromRequest } from '@/lib/supabase/server';
 import { recordCompletedAsset } from '@/lib/orchestrator/jobs';
-import { DEMO_VOICE_USER_ID } from '@/lib/audio/voiceModel';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -17,21 +17,27 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): this entry reaches an outside engine, so the switch refuses it here,
+  // before any charge. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   // ⚠️ THIS ROUTE HAD NO AUTH GATE AT ALL. It ran a paid upscale for anyone who could reach the URL and
   // then attributed the result to DEMO_VOICE_USER_ID when no session existed — so guest spend was not
   // merely unbilled, it was filed under a placeholder account where nothing would ever reconcile it.
-  {
-    const { user } = await authedClientFromRequest(req);
-    const gate = requireAuthForGeneration(user?.id ?? null);
-    if (gate.response) return gate.response;
-  }
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // anon-reachable: rate cap is the only abuse gate
+  const { user } = await authedClientFromRequest(req);
+  const gate = requireAuthForGeneration(user?.id ?? null);
+  if (gate.response) return gate.response;
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl; // per-IP burst guard
   const body = (await req.json().catch(() => ({}))) as { imageUrl?: unknown; scale?: unknown };
   const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
   const scale: 2 | 4 = body.scale === 4 ? 4 : 2;
   if (!/^https?:\/\//i.test(imageUrl)) {
     return NextResponse.json({ success: false, error: 'imageUrl is required' }, { status: 400 });
   }
+  // An upscale bills no credits (gap C3): the per-account daily ceiling bounds one person's spend (the gate above
+  // guarantees a signed-in user).
+  const capped = await checkRateLimitByKey(String(gate.userId), RATE_LIMITS.UPSCALE_USER);
+  if (capped) return capped;
 
   try {
     const out = await upscaleImage(imageUrl, scale);
@@ -57,8 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      const { user } = await authedClientFromRequest(req);
-      await recordCompletedAsset({ id: randomUUID(), userId: user?.id ?? DEMO_VOICE_USER_ID, serviceType: 'image', url: hosted, prompt: 'upscaled' });
+      await recordCompletedAsset({ id: randomUUID(), userId: String(gate.userId), serviceType: 'image', url: hosted, prompt: 'upscaled' });
     } catch {
       /* fail-open */
     }

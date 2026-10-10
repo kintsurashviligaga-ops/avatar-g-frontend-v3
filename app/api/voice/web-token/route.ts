@@ -7,6 +7,7 @@ import { createServiceRoleClient, requireUser } from '@/lib/supabase/server';
 import { MINIMUM_CREDITS_TO_START_CALL, hasMinimumVoiceCredits } from '@/lib/voice/credits';
 import { insertVoiceCall } from '@/lib/voice/repository';
 import { createVapiAssistant, isVapiServerConfigured } from '@/lib/vapi';
+import { isAiGoogleOnly } from '@/lib/ai/google/policy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +40,16 @@ export async function POST(request: NextRequest) {
       userId = (await requireUser()).id;
     } catch {
       return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+    }
+
+    // AI_GOOGLE_ONLY (on by default): the Vapi browser assistant runs on an Anthropic model (lib/agent-g-voice-config.ts)
+    // and was handed to the browser whole, system prompt included, with a `demo` row when Vapi was not configured. No
+    // screen calls this route; voice in the studio is Gemini Live. Refused before any balance read, row or mint.
+    if (isAiGoogleOnly()) {
+      return NextResponse.json(
+        { error: 'voice_provider_not_allowed', message: 'Voice runs on Live Voice in the studio.' },
+        { status: 503 },
+      );
     }
 
     const creditsBalance = await getCreditsBalance(userId);

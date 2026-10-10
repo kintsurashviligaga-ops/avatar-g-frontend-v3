@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { detectStudioIntent } from './studioIntent';
+import { detectStudioIntent, mineDurationSec, mineTargetLanguage } from './studioIntent';
 
 describe('the four services that had no sentence path at all', () => {
   it.each([
@@ -116,5 +116,23 @@ describe('bounds and junk', () => {
     for (const s of ['hello', 'thanks!', 'who won the world cup', 'გამარჯობა', 'write me a poem']) {
       expect(detectStudioIntent(s)).toBeNull();
     }
+  });
+});
+
+describe('Agent G PART 1: lengths with a hyphen, and a frame shape is not a translation', () => {
+  test('„20-წამიანი", "20-second", „30-секундный" name a length', () => {
+    expect(mineDurationSec('გააკეთე 20-წამიანი რეკლამა')).toBe(20);
+    expect(mineDurationSec('a 20-second montage')).toBe(20);
+    expect(mineDurationSec('30-секундный ролик')).toBe(30);
+    expect(mineDurationSec('2-minute reel')).toBe(120);
+  });
+  test('«Переведи это видео в 9:16» is a conversion; with a language it is still dubbing', () => {
+    expect(detectStudioIntent('Переведи это видео в 9:16')).toBeNull();
+    expect(detectStudioIntent('ეს ვიდეო ვერტიკალურად გადათარგმნე')).toBeNull();
+    expect(detectStudioIntent('Переведи это видео на английский')).toMatchObject({ service: 'dubbing', params: { targetLanguage: 'en' } });
+  });
+  test('mineTargetLanguage reads the destination only', () => {
+    expect(mineTargetLanguage('ეს ვიდეო რუსულად გაახმოვანე')).toBe('ru');
+    expect(mineTargetLanguage('dub it into English')).toBe('en');
   });
 });

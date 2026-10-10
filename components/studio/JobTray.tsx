@@ -5,11 +5,12 @@
  * ===========================================
  *
  * Renders the capped-parallel queue: up to 3 jobs show a real-time bar ("Rendering
- * 45%") and any overflow shows its live position ("In Queue: #1"). Each job has its
- * own cancel control (per-job AbortController in the engine). Terminal jobs linger
+ * 45%") and any overflow shows its live position ("In Queue: #1"). Each local job has its
+ * own cancel control (per-job AbortController in the engine); a server-side job the server can
+ * stop (an Agent G montage or MP3 extraction) cancels through POST /api/tasks. Terminal jobs linger
  * briefly so the user sees the ✓/✕, then can be cleared.
  *
- * Purely presentational over `useJobQueue` — no fetch, no business logic here.
+ * Presentational over `useJobQueue` — the store does the fetching, there is no business logic here.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -90,6 +91,8 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
   // Seconds this JOB has been running — not the shared component clock the inline card used to use.
   const startedAt = job.startedAt ?? job.createdAt ?? Date.now();
   const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  // A local job stops in this tab; an observed one only when the server can stop it (an Agent G job).
+  const stoppable = !job.observed || job.cancellable === true;
 
   return (
     <GenerationProgress
@@ -103,7 +106,7 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
       {...(job.stage ? { status: job.stage } : {})}
       {...(job.position ? { queuePosition: job.position } : {})}
       {...(job.error ? { error: job.error } : {})}
-      {...((job.status === 'rendering' || job.status === 'queued') && !job.observed
+      {...((job.status === 'rendering' || job.status === 'queued') && stoppable
         ? { onCancel: () => onCancel(job.id) }
         : {})}
     />
@@ -114,7 +117,8 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   const localJobs = useJobQueue((s) => s.jobs);
   const durableJobs = useJobQueue((s) => s.durableJobs);
   const inlineJobIds = useJobQueue((s) => s.inlineJobIds);
-  const cancel = useJobQueue((s) => s.cancel);
+  const cancelLocal = useJobQueue((s) => s.cancel);
+  const cancelDurable = useJobQueue((s) => s.cancelDurable);
   const clearFinished = useJobQueue((s) => s.clearFinished);
   const t = tr(locale);
 
@@ -153,6 +157,9 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   useEffect(() => () => { for (const tmr of timersRef.current.values()) clearTimeout(tmr); timersRef.current.clear(); }, []);
 
   const visible = jobs.filter((j) => !dismissed.has(j.id));
+  const observedIds = new Set(durableJobs.map((j) => j.id));
+  // The row's cancel: the engine's AbortController for a local job, POST /api/tasks for an observed one.
+  const cancel = (id: string) => { if (observedIds.has(id)) void cancelDurable(id); else cancelLocal(id); };
   // ⚠️ THE COUNT WAS THE WRONG LEVER. This used to hide the tray whenever ≤1 render was active, on the
   // theory that the single-generation case is covered inline. It bought silence for exactly one job and
   // then failed in both directions: a SECOND render made the tray reappear listing jobs that ALREADY had
@@ -168,6 +175,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
+      data-testid="job-tray"
       className="pointer-events-auto fixed z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
       // ⚠️ ABOVE THE COMPOSER, NOT ON IT. This used to be `bottom-3`, which is precisely where the
       // composer sits — so an active render covered "Describe…" and the Options row and made the input

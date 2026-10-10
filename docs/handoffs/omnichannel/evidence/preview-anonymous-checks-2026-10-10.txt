@@ -1,0 +1,32 @@
+Preview anonymous checks, 2026-10-10 18:50–18:53Z
+Deployment: cert-branch Preview https://avatar-g-frontend-v3-git-ef1fad-kintsurashviligaga-ops-projects.vercel.app
+Commit served: /api/version -> {"sha":"90c6608","shaFull":"90c6608d3dbbcf12fcb50304ab8ab6a0a5ad0296","buildTime":"2026-10-10T18:36:13.208Z"}
+How: real HTTPS GET from outside (Firecrawl scrape, no cache, no cookies, no sign-in). This session's own network cannot
+reach *.vercel.app or myavatar.ge, and the Vercel connector answers 403, so only GET requests could be made. Nothing was
+written: every request below is a read or is refused before any work.
+
+GET /api/agent-g/channels
+  200 {"status":"success","data":{"guest":true,"connections":[{"id":"phone","state":"unavailable"},
+       {"id":"whatsapp","state":"unavailable"},{"id":"telegram","state":"unavailable"},{"id":"notifications","state":"signin"}]}}
+  WhatsApp is "unavailable" because the link tables (migration 20261003c) are not in the shared database.
+
+GET /api/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=probe-wrong-token&hub.challenge=4242
+  403 "Forbidden" (the challenge is not echoed)
+
+GET /api/cron/deliveries            (no cron secret)   403 {"error":"Forbidden"}
+GET /api/admin/whatsapp/meta-check  (anonymous)        404 {"error":"Not found"}
+GET /api/notifications/preferences  (anonymous)        401 {"status":"error","error":"Login required","code":"UNAUTHORIZED"}
+GET /api/tasks                      (anonymous)        401 {"ok":false,"error":"unauthenticated"}
+GET /api/calls/bridge/answer                            405 (POST only; a POST could not be sent from here)
+
+GET /ka/settings at 390 px (Firecrawl Chromium), screenshots:
+  preview-settings-guest-390-connections-2026-10-10.png
+    Connections: four rows; phone, WhatsApp, Telegram "დროებით მიუწვდომელია"; Notifications "შედი ანგარიშზე";
+    the status word sits under the row name (the phone layout fix from 90c6608 is live).
+  preview-settings-guest-390-account-cards-before-fix-2026-10-10.png
+    Found: a guest saw "მონაცემები ვერ მოვიდა." (balance), "ჯერ არ არის ტრანზაქცია." (history), "Failed to load" in
+    English (invite card) and a red "ანგარიშის წაშლა" button. Fixed on the branch after 6480f4d3: a guest gets one
+    sign-in card instead (SettingsView.test.tsx, tests/connections.spec.ts guest test).
+
+Not checked here (needs a POST or a signed-in person): webhook POST signature, replay, bridge door, the outbox
+delivering a finished run, Connections for a member, WhatsApp link.

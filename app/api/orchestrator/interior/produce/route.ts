@@ -10,6 +10,16 @@
  * { stage:'completed', geometry, style, walkthrough } or { stage:'failed', error }.
  * Authenticated. Fail-open at each hop (Gemini → deterministic geometry,
  * Gemini → deterministic style) so the viewer always has something to mount.
+ *
+ * THE PLAN IS FILED TO THE LIBRARY. The completed job row always held the plan (result: geometry, style, walkthrough),
+ * but the Library lists a row only with a picture to show, and this one had none: a paid plan was gone once its tab
+ * closed. The Interior designer now sends `coverUrl`, the render the plan was asked for, and the completed row carries it
+ * as its picture. The cover is the caller's own: one of our objects only when callerMayRead allows it (lib/security/
+ * callerMedia), since the Library re-signs a row's storage URL with the service role; another host only when it is a
+ * public address. Anything else files the plan without a picture, as before. The cover is never fetched here.
+ *
+ * Room photos are `data:image/…` from the panel, or a public http(s) address. Anything else (an internal host, another
+ * scheme) is dropped before Gemini's download sees it.
  */
 import { NextRequest } from 'next/server';
 import { llmText } from '@/lib/ai/llmText';
@@ -21,6 +31,9 @@ import { authedClientFromRequest } from '@/lib/supabase/server';
 import { checkProduceRate, rateLimitedResponse, PRODUCE_COST } from '@/lib/orchestrator/rate-limit';
 import { reserveProduce, refundProduce, idemRef, reservationErrorCode, type Reservation } from '@/lib/orchestrator/produceBilling';
 import { createJob, recordJobEvent, recordJobReservation } from '@/lib/orchestrator/jobs';
+import { describeSupabaseObjectUrl, ownStorageHosts } from '@/lib/orchestrator/storage-adapter';
+import { callerMayRead } from '@/lib/security/callerMedia';
+import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import {
   normalizeIntake, intakeHasMedia, normalizeRoomGeometry, normalizeStyleGuide,
   buildGeometrySystemPrompt, buildStyleSystemPrompt, buildStyleUserPrompt,
@@ -70,6 +83,22 @@ async function analyzeGeometry(imageUrls: string[], brief: string): Promise<Room
   return null;
 }
 
+/** A room photo Gemini may be handed: the panel's inline picture, or a public address (never an internal host). */
+function readablePhoto(url: string): boolean {
+  return /^data:image\/[a-z0-9.+-]+;base64,/i.test(url) || isPublicHttpUrl(url);
+}
+
+/** The plan's Library picture: the caller's own render, or a public address. Null files the plan without one. */
+async function planCover(value: unknown, userId: string): Promise<string | null> {
+  if (typeof value !== 'string') return null;
+  const url = value.trim();
+  if (!/^https:\/\//i.test(url) || url.length > 4096) return null;
+  const ref = describeSupabaseObjectUrl(url);
+  if (!ref || !ownStorageHosts().has(ref.host)) return isPublicHttpUrl(url) ? url : null;
+  if (ref.access === 'public') return url;
+  return (await callerMayRead(url, ref, userId).catch(() => false)) ? url : null;
+}
+
 /** Agent K — the style guide from Gemini (lib/ai/llmText: Gemini only, no second provider); null → the caller's default. */
 async function designStyle(geometry: RoomGeometry, brief: string) {
   const text = await llmText({ user: buildStyleUserPrompt(geometry, brief), system: buildStyleSystemPrompt(), maxTokens: 1200, json: true, timeoutMs: 30_000 });
@@ -86,12 +115,14 @@ export async function POST(req: NextRequest) {
   let intake;
   let rawBody: unknown = null;
   try { rawBody = await req.json(); intake = normalizeIntake(rawBody); } catch { return new Response(JSON.stringify({ error: 'invalid body' }), { status: 400 }); }
+  intake = { ...intake, imageUrls: intake.imageUrls.filter(readablePhoto), videoUrl: intake.videoUrl && isPublicHttpUrl(intake.videoUrl) ? intake.videoUrl : null };
   if (!intakeHasMedia(intake)) return new Response(JSON.stringify({ error: 'at least 1 photo or a video is required' }), { status: 400 });
 
   // Durable job row (#5).
   const pipelineId = `intr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const jobId = user ? pipelineId : null;
-  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'interior', params: { brief: intake.brief, photos: intake.imageUrls.length, hasVideo: Boolean(intake.videoUrl) } });
+  if (user) await createJob({ id: pipelineId, userId: user.id, serviceType: 'interior', params: { prompt: intake.brief || null, source: 'interior-plan', brief: intake.brief, photos: intake.imageUrls.length, hasVideo: Boolean(intake.videoUrl) } });
+  const cover = user ? planCover((rawBody as { coverUrl?: unknown } | null)?.coverUrl, user.id).catch(() => null) : Promise.resolve(null);
 
   const enc = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -102,7 +133,7 @@ export async function POST(req: NextRequest) {
       let succeeded = false;
       try {
         if (user) {
-          reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref);
+          reservation = await reserveProduce(user.id, PRODUCE_COST.interior, ref, { refuseReplay: true });
           if (!reservation.proceed) { emit({ stage: 'failed', error: reservationErrorCode(reservation), reason: reservation.reason, balance: reservation.balance }); return; }
           // Stamp the reserve onto the durable row so the cron drainer can refund it idempotently if this
           // render is abandoned (tab closed) and the in-route refund below never fires. Only when charged.
@@ -124,7 +155,9 @@ export async function POST(req: NextRequest) {
         emit({ stage: 'mounting', pct: 90, ticker: '[Agent L: Mounting 3D WebGL Three.js Container…]' });
         const walkthrough = buildWalkthroughPrompts(geometry, style);
 
-        emit({ stage: 'completed', pct: 100, geometry, style, walkthrough, degradedGeometry: degradedGeo });
+        // `url` is the Library picture: recordJobEvent files it as the completed row's signed_url.
+        const url = await cover;
+        emit({ stage: 'completed', pct: 100, geometry, style, walkthrough, degradedGeometry: degradedGeo, ...(url ? { url } : {}) });
         succeeded = true;
       } catch (e) {
         emit({ stage: 'failed', error: e instanceof Error ? e.message.slice(0, 200) : 'interior pipeline failed' });

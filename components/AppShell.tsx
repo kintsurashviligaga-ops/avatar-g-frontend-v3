@@ -30,7 +30,7 @@ function skipToMain(e: React.MouseEvent<HTMLAnchorElement>) {
   target.focus();
 }
 
-export function AppShell({ children, studioV2 = false }: { children: React.ReactNode; /** STUDIO_V2 on this deployment (root layout). */ studioV2?: boolean }) {
+export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const skipLang = (/^\/(ka|en|ru)(?=\/|$)/.exec(pathname ?? '')?.[1] ?? 'ka') as keyof typeof SKIP_LABEL;
   // Embedded mode: when a page is opened inside the studio's in-window slide-over
@@ -167,10 +167,6 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
   // the single, obvious way out (the old marketing bars used to collide with the last paragraph).
   const isLegalDoc = !!pathname && /\/(terms|privacy|refund|refund-policy|cookies|licenses)\/?$/.test(pathname);
 
-  // /{locale}/studio is the new studio — wrapped in the ChatChrome shell like /library — where STUDIO_V2 is on
-  // (elsewhere the route sends you home).
-  const isStudioV2 = studioV2 && !!pathname && /^(\/(ka|en|ru))?\/studio\/?$/.test(pathname);
-
   // The marketing landing (/{lang}/landing) paints its own opaque, cinematic page — the animated environment behind
   // it would cost frames nobody sees (docs/DESIGN.md: low motion).
   const isMarketingLanding = !!pathname && /^\/(ka|en|ru)\/landing\/?$/.test(pathname);
@@ -181,7 +177,7 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
       style={{ color: 'var(--color-text)', isolation: 'isolate' }}
     >
       {/* Page-aware 4D AI environment — adapts mood per route */}
-      <PageEnvironment reduced={isImmersiveWorkspace || isStudioV2 || isAdmin || isMarketingLanding} />
+      <PageEnvironment reduced={isImmersiveWorkspace || isAdmin || isMarketingLanding} />
       {/* Skip to main content — the FIRST focusable element of every page (nothing focusable may render above it).
           In the page's language; ink on the accent (6.2:1 — white on it was 3.4:1); 44 px; clear of the notch. */}
       <a
@@ -196,7 +192,7 @@ export function AppShell({ children, studioV2 = false }: { children: React.React
         id="main-content"
         className="relative flex-1 w-full focus:outline-none"
         style={
-          isImmersiveWorkspace || isStudioV2
+          isImmersiveWorkspace
             ? { zIndex: 2, height: 'var(--app-screen-height)', minHeight: 'var(--app-screen-height)', overflow: 'hidden' }
             // Everything else (landing, auth, legal, admin, the share page, not-found) owns its own header and scrolls
             // normally — nothing is reserved for bars that no longer exist.

@@ -14,8 +14,7 @@
  * disabled (with its reason) for a run that began from nothing; and the 3D plan's caption says what it is (the room's layout,
  * not the redesign).
  */
-import dynamic from 'next/dynamic';
-import { Component, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Clapperboard, Loader2, Move3d, RefreshCw, SlidersHorizontal, Sparkle, Trash2, X } from 'lucide-react';
 import { ResultCard, type ResultState } from '@/components/studio/ui/ResultCard';
 import { ResultActions } from '@/components/studio/ui/ResultActions';
@@ -25,12 +24,7 @@ import { shootTargetSec, type ShootAspect } from '@/lib/studio/shootQuote';
 import type { ShootKind } from '@/lib/studio/shootWire';
 import { SHOOT_COPY, shootLang, type ShootCopy } from './copy';
 import { runBusy, type PlanState, type ShootRun, type ShootTile } from './shootRuns';
-
-// Three.js / R3F is client-only and heavy: it loads when a plan is first shown.
-const RoomViewer = dynamic(() => import('@/components/chat/RoomViewer'), {
-  ssr: false,
-  loading: () => <div className="h-[320px] w-full rounded-2xl bg-app-elevated/40" aria-hidden="true" />,
-});
+import { PlanView } from './PlanView';
 
 export interface ShootPaneProps {
   tool: ShootKind;
@@ -66,18 +60,6 @@ const ACTION_BTN =
 
 // ─── The 3D plan under a tile ─────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * ⚠️ A DEVICE WITHOUT WEBGL MUST NOT TAKE THE STUDIO DOWN. three.js throws „Error creating WebGL context" when the browser has no
- * GPU context to give (older phones, some embedded browsers, a headless test) and React unmounts the nearest page up the tree.
- * The viewer is optional garnish on a plan that is already computed, so a failure here shows the layout in numbers instead.
- */
-class ViewerBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch() { /* the fallback below is the whole handling */ }
-  render() { return this.state.failed ? this.props.fallback : this.props.children; }
-}
-
 function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
   if (plan.status === 'running') {
     return (
@@ -90,26 +72,7 @@ function PlanCard({ plan, copy }: { plan: PlanState; copy: ShootCopy }) {
     );
   }
   if (plan.status === 'error') return <p role="alert" data-testid="plan-error" className={`${NOTE_BASE} ${NOTE_TONE.error}`}>{plan.error}</p>;
-  return (
-    <figure data-testid="plan-ready" className="space-y-2">
-      <ViewerBoundary fallback={(
-        <p data-testid="plan-fallback" className={`${NOTE_BASE} ${NOTE_TONE.info}`}>
-          {copy.plan3dNoWebgl} {copy.planFacts(
-            plan.geometry.floor.widthM, plan.geometry.floor.depthM, plan.geometry.wallHeightM,
-            plan.geometry.openings.filter((o) => o.type === 'window').length, plan.geometry.openings.filter((o) => o.type === 'door').length,
-          )}
-        </p>
-      )}>
-        <RoomViewer geometry={plan.geometry} style={plan.style} />
-      </ViewerBoundary>
-      <figcaption className="flex flex-wrap items-center gap-2 text-[12.5px] leading-snug text-app-muted">
-        <span className="flex gap-1" aria-hidden="true">
-          {plan.style.palette.slice(0, 5).map((c) => <span key={c} className="h-3.5 w-3.5 rounded-full ring-1 ring-white/20" style={{ backgroundColor: c }} />)}
-        </span>
-        <span>{plan.style.styleName} — {copy.plan3dCaption}</span>
-      </figcaption>
-    </figure>
-  );
+  return <PlanView geometry={plan.geometry} style={plan.style} copy={copy} />;
 }
 
 // ─── One tile ────────────────────────────────────────────────────────────────────────────────────────────────────

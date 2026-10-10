@@ -2,9 +2,11 @@
 jest.mock('server-only', () => ({}));
 
 const mockDeduct = jest.fn();
+const mockDeductOnce = jest.fn();
 const mockRefund = jest.fn();
 jest.mock('./ledger', () => ({
   deductCredits: (...a: unknown[]) => mockDeduct(...a),
+  deductCreditsOnce: (...a: unknown[]) => mockDeductOnce(...a),
   refundCredits: (...a: unknown[]) => mockRefund(...a),
 }));
 
@@ -16,6 +18,7 @@ import { reserveProduce, refundProduce, produceRef, reservationErrorCode, unbill
 beforeEach(() => {
   mockReportError.mockReset();
   mockDeduct.mockReset();
+  mockDeductOnce.mockReset();
   mockRefund.mockReset().mockResolvedValue({ ok: true });
 });
 
@@ -122,5 +125,29 @@ describe('refundProduce', () => {
 describe('produceRef', () => {
   it('composes kind:key', () => {
     expect(produceRef('image', 'p1')).toBe('image:p1');
+  });
+});
+
+describe('reserveProduce with refuseReplay (a ref the client can repeat, gap C5)', () => {
+  it('charges through deductCreditsOnce, never deductCredits', async () => {
+    mockDeductOnce.mockResolvedValue({ ok: true, balance: 90 });
+    expect(await reserveProduce('u', 10, 'image:k:fp', { refuseReplay: true })).toEqual({ proceed: true, charged: true, reason: 'ok', balance: 90 });
+    expect(mockDeductOnce).toHaveBeenCalledWith('u', 10, 'image:k:fp');
+    expect(mockDeduct).not.toHaveBeenCalled();
+  });
+
+  it('a ref charged before → replay: not proceeded, not charged (so nothing is refunded either)', async () => {
+    mockDeductOnce.mockResolvedValue({ ok: false, reason: 'replay', balance: 90 });
+    const r = await reserveProduce('u', 10, 'image:k:fp', { refuseReplay: true });
+    expect(r).toEqual({ proceed: false, charged: false, reason: 'replay', balance: 90 });
+    expect(reservationErrorCode(r)).toBe('duplicate_request');
+    await refundProduce('u', 10, 'image:k:fp', r.charged);
+    expect(mockRefund).not.toHaveBeenCalled();
+  });
+
+  it('without the option a worker re-reserving its own ref still gets the idempotent success', async () => {
+    mockDeduct.mockResolvedValue({ ok: true, balance: 90 });
+    expect((await reserveProduce('u', 10, 'montage:q1')).proceed).toBe(true);
+    expect(mockDeductOnce).not.toHaveBeenCalled();
   });
 });

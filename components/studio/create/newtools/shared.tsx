@@ -69,7 +69,9 @@ export function ShootFooter({ copy, locale, form, tiles, credits, insufficient, 
 }) {
   return (
     <footer data-testid={`${testId}-footer`}
-      className="sticky bottom-0 z-10 -mx-1 space-y-3 border-t border-app-border/10 bg-app-surface px-1 pt-3 lg:bg-app-bg"
+      // ⚠️ `sticky bottom-0` sticks INSIDE the scroller's bottom padding, so the camera chips scrolling past showed under
+      // Generate. The shadow is a solid skirt of the surface's own colour that fills that strip (as VideoGenerateBar does).
+      className="sticky bottom-0 z-10 -mx-1 space-y-3 border-t border-app-border/10 bg-app-surface px-1 pt-3 shadow-[0_16px_0_0_rgb(var(--app-surface))] lg:bg-app-bg lg:shadow-[0_16px_0_0_rgb(var(--app-bg))]"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
       <ShootChips aspect={form.aspect} quality={form.quality} count={form.count} photos={form.photos} copy={copy} locale={locale}
         onAspect={onAspect} onQuality={onQuality} onCount={onCount} testId={testId} />

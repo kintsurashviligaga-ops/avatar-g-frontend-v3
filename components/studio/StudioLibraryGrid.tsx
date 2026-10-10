@@ -23,9 +23,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { describeServiceError } from './ui/serviceError';
+import { saveMedia } from '@/lib/media/saveMedia';
+import type { RoomGeometry, StyleGuide } from '@/lib/orchestrator/interior';
+import { SHOOT_COPY, shootLang } from './create/newtools/copy';
+import { PlanView } from './create/newtools/PlanView';
 import {
   Download, Share2, Copy, Check, Film, ImageIcon, Music2, Play, Loader2,
-  Inbox, RefreshCw, Trash2, AlertTriangle, Boxes,
+  Inbox, RefreshCw, Trash2, AlertTriangle, Boxes, Move3d,
 } from 'lucide-react';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -37,6 +41,8 @@ interface LibraryItem {
   prompt: string | null;
   orientation: 'landscape' | 'vertical';
   createdAt: string;
+  /** An interior 3D plan: `url` is the render it was made for (GET /api/studio/library). */
+  plan?: { geometry: RoomGeometry; style: StyleGuide };
 }
 
 type FilterKey = 'all' | 'videos' | 'soundtracks' | 'avatars-images';
@@ -49,6 +55,7 @@ const COPY: Record<Lang, {
   deleteAsset: string; deleteConfirmTitle: string; deleteConfirmBody: string;
   cancel: string; confirm: string; deleting: string; deleteFailed: string;
   loadingMore: string; newBadge: string;
+  plan: string; openPlan: string; closePlan: string;
   tabs: Record<FilterKey, string>;
 }> = {
   ka: {
@@ -67,6 +74,7 @@ const COPY: Record<Lang, {
     cancel: 'გაუქმება', confirm: 'წავშალო',
     deleting: 'იშლება…', deleteFailed: 'წაშლა ვერ შესრულდა.',
     loadingMore: 'მეტი იტვირთება…', newBadge: 'ახალი',
+    plan: '3D გეგმა', openPlan: '3D გეგმის ნახვა', closePlan: 'გეგმის დახურვა',
     tabs: { all: 'ყველაფერი', videos: 'ვიდეო', soundtracks: 'საუნდტრეკი', 'avatars-images': 'ავატარი · სურათი' },
   },
   en: {
@@ -85,6 +93,7 @@ const COPY: Record<Lang, {
     cancel: 'Cancel', confirm: 'Delete',
     deleting: 'Deleting…', deleteFailed: 'Could not delete.',
     loadingMore: 'Loading more…', newBadge: 'New',
+    plan: '3D plan', openPlan: 'View 3D plan', closePlan: 'Close plan',
     tabs: { all: 'All Assets', videos: 'Videos', soundtracks: 'Soundtracks', 'avatars-images': 'Avatars / Images' },
   },
   ru: {
@@ -103,6 +112,7 @@ const COPY: Record<Lang, {
     cancel: 'Отмена', confirm: 'Удалить',
     deleting: 'Удаление…', deleteFailed: 'Не удалось удалить.',
     loadingMore: 'Загружаем ещё…', newBadge: 'Новое',
+    plan: '3D-план', openPlan: 'Открыть 3D-план', closePlan: 'Закрыть план',
     tabs: { all: 'Все', videos: 'Видео', soundtracks: 'Саундтреки', 'avatars-images': 'Аватары · Картинки' },
   },
 };
@@ -122,7 +132,8 @@ function kindIcon(kind: string) {
   return <Film className="h-3 w-3" />;
 }
 
-const isVideo = (kind: string) => kind === 'film' || kind === 'avatar' || kind === 'interior';
+// 'interior' is the Interior designer's 3D plan, filed with the render it was made for: a picture, like the other Library screens.
+const isVideo = (kind: string) => kind === 'film' || kind === 'avatar';
 const isAudio = (kind: string) => kind === 'music' || kind === 'voice';
 /**
  * A 3D mesh, detected from the FILE rather than from `service_type`.
@@ -139,9 +150,9 @@ const is3d = (url: string) => /\.glb(\?|#|$)/i.test(url || '');
 /** Maps server `service_type` strings to the user-facing filter tabs. */
 function filterMatches(kind: string, f: FilterKey): boolean {
   if (f === 'all') return true;
-  if (f === 'videos') return kind === 'film' || kind === 'interior';
+  if (f === 'videos') return kind === 'film';
   if (f === 'soundtracks') return kind === 'music' || kind === 'voice';
-  if (f === 'avatars-images') return kind === 'image' || kind === 'avatar';
+  if (f === 'avatars-images') return kind === 'image' || kind === 'avatar' || kind === 'interior';
   return true;
 }
 
@@ -171,6 +182,7 @@ const LibraryCard = memo(function LibraryCard({
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [showPlan, setShowPlan] = useState(false);
 
   const flash = useCallback((which: 'prompt' | 'link') => {
     setCopied(which);
@@ -184,26 +196,15 @@ const LibraryCard = memo(function LibraryCard({
     else { v.pause(); setPlaying(false); }
   }, []);
 
-  // Download via blob so a cross-origin signed URL actually saves (an <a download>
-  // is ignored cross-origin). Fallback: open the URL in a new tab.
+  // lib/media/saveMedia: a blob download (an <a download> is ignored cross-origin), on an iPhone the share
+  // sheet for pictures and clips so they reach Photos. Fallback: open the URL in a new tab.
   const handleDownload = useCallback(async () => {
     setDownloading(true);
     try {
-      const res = await fetch(item.url, { cache: 'no-store' });
-      const blob = await res.blob();
       // .glb first: the mesh rides under service_type 'image', so extension-by-kind alone renamed a
       // model to .png and made the downloaded file unopenable.
       const ext = is3d(item.url) ? 'glb' : isVideo(item.kind) ? 'mp4' : isAudio(item.kind) ? 'mp3' : 'png';
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href;
-      a.download = `myavatar-${item.kind}-${item.id.slice(0, 8)}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(href), 4000);
-    } catch {
-      window.open(item.url, '_blank', 'noopener,noreferrer');
+      await saveMedia(item.url, `myavatar-${item.kind}-${item.id.slice(0, 8)}`, { fallbackExt: ext });
     } finally {
       setDownloading(false);
     }
@@ -323,7 +324,7 @@ const LibraryCard = memo(function LibraryCard({
 
         {/* Kind badge */}
         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ring-1 ring-app-border/10">
-          {is3d(item.url) ? <Boxes className="h-3 w-3" /> : kindIcon(item.kind)} {is3d(item.url) ? '3d' : item.kind}
+          {item.plan ? <Move3d className="h-3 w-3" /> : is3d(item.url) ? <Boxes className="h-3 w-3" /> : kindIcon(item.kind)} {item.plan ? t.plan : is3d(item.url) ? '3d' : item.kind}
         </span>
 
         {/* HOVER QUICK-ACTIONS — top-right floating cluster, revealed on hover.
@@ -366,7 +367,20 @@ const LibraryCard = memo(function LibraryCard({
         <p className={`line-clamp-2 text-[12px] leading-snug ${item.prompt ? 'text-app-text' : 'italic text-app-muted/70'}`}>
           {item.prompt ?? t.noPrompt}
         </p>
+        {item.plan && showPlan && <PlanView geometry={item.plan.geometry} style={item.plan.style} copy={SHOOT_COPY[shootLang(locale)]} />}
         <div className="mt-auto flex items-center gap-1.5">
+          {item.plan && (
+            <button
+              type="button"
+              onClick={() => setShowPlan((v) => !v)}
+              aria-expanded={showPlan}
+              data-testid="library-plan-toggle"
+              className="inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-[#338FE8]/30 bg-[#338FE8]/10 text-[11px] font-medium text-app-text transition-colors hover:border-[#338FE8]/60 hover:text-white"
+            >
+              <Move3d className="h-3.5 w-3.5" />
+              <span>{showPlan ? t.closePlan : t.openPlan}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleCopyPrompt}

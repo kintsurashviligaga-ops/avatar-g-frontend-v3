@@ -6,8 +6,9 @@
  * and Agent G nowhere to be seen. Only plain chat had a guard (isGenerativeCommand). Now every send in a focus mode passes
  * through classifyFocusInput() first, and the answer is one of four:
  *
- *   chat     the user is TALKING (greeting, "are you there?", how are you, thanks, who are you, any question).
- *            Agent G answers in words — NOTHING is generated, NOTHING is charged.
+ *   chat     the user is TALKING (greeting, "are you there?", how are you, thanks, who are you, any question, or
+ *            „I don't like it" with nothing to change named). Agent G answers in words — NOTHING is generated, NOTHING
+ *            is charged.
  *   clarify  it looks like a prompt but is too thin to render well ("cat"). Agent G asks 2–3 short questions and offers
  *            "create it as it is" — the user is never stuck.
  *   confirm  a real prompt. Agent G shows what it understood and the price, and generates only when the user says yes.
@@ -25,7 +26,7 @@ import { isGenerativeCommand } from '@/lib/chat/intentDetector';
 /** The tools Agent G stands in front of. `avatar` is the studio's 'lipsync' mode: there the words are the SCRIPT the
  *  presenter speaks, so "აქ ხარ?" would have been rendered as a paid talking-head video saying "are you here?". */
 export type GateMode = 'image' | 'video' | 'music' | 'avatar';
-export type GateReason = 'empty' | 'greeting' | 'presence' | 'smalltalk' | 'thanks' | 'meta' | 'question';
+export type GateReason = 'empty' | 'greeting' | 'presence' | 'smalltalk' | 'thanks' | 'meta' | 'question' | 'feedback';
 export type GateVerdict =
   | { kind: 'chat'; reason: GateReason }
   | { kind: 'clarify' }
@@ -118,6 +119,41 @@ const META = [
   'как это работает', 'что это',
 ] as const;
 
+/**
+ * „I don't like it" — a verdict on the last result with no instruction in it. It used to be a PROMPT: in Image mode
+ * „არ მომწონს" is two words, too thin to render, so it got the clarify card asking which style the new picture should be in;
+ * a longer complaint („ეს სურათი საერთოდ არ მომწონს") got the price card for a picture OF the complaint. Agent G asks what
+ * to change instead. A complaint that names the change („არ მომწონს, ფერები გაათბე") is an instruction and stays a prompt.
+ */
+const FEEDBACK = [
+  "i don't like", 'i dont like', 'i do not like', "don't like", 'dont like', 'i hate', 'hate', 'not good', 'no good',
+  'not great', 'not what i wanted', 'not what i asked for', 'not what i asked', "that's wrong", 'thats wrong', "it's wrong",
+  'wrong', 'bad', "it's bad", 'its bad', 'looks bad', 'it looks bad', 'terrible', 'awful', 'ugly', 'worse', "it's worse",
+  'meh', "doesn't look good", 'does not look good',
+  'არ მომწონს', 'არ მომეწონა', 'სულ არ მომწონს', 'ცუდია', 'ცუდი', 'ცუდად გამოვიდა', 'ცუდად გამოგივიდა', 'არ არის კარგი',
+  'არაა კარგი', 'საშინელია', 'მახინჯია', 'უარესია', 'არ არის ის', 'არაა ის', 'ის არაა', 'არ ვარ კმაყოფილი',
+  'არ გამოვიდა', 'ვერ გამოვიდა', 'არ გამოგივიდა',
+  'не нравится', 'мне не нравится', 'не понравилось', 'мне не понравилось', 'плохо', 'ужасно', 'некрасиво', 'не то',
+  'не так', 'хуже', 'не очень', 'отстой',
+] as const;
+
+/** Words that only point at the last result („ეს", "this one", „результат") — never an instruction. */
+const FEEDBACK_FILLER = new Set([
+  'it', 'this', 'that', 'the', 'result', 'one', 'at', 'all', 'very', 'really', 'so', 'much', 'too', 'image', 'picture',
+  'photo', 'video', 'song', 'track', 'clip', 'version', 'look', 'looks', 'is', 'just',
+  'ეს', 'ის', 'შედეგი', 'შედეგს', 'საერთოდ', 'ძალიან', 'სულ', 'სურათი', 'ფოტო', 'ვიდეო', 'სიმღერა', 'ტრეკი', 'კლიპი',
+  'ვერსია', 'ასე', 'მთლად', 'ეგ', 'ესეც',
+  'это', 'этот', 'эта', 'эту', 'результат', 'совсем', 'вообще', 'очень', 'картинка', 'фото', 'видео', 'песня', 'трек',
+  'клип', 'вариант', 'мне', 'так', 'всё', 'все',
+]);
+
+function isFeedback(toks: string[]): boolean {
+  let i = 0;
+  while (i < toks.length && i < 4 && FEEDBACK_FILLER.has(toks[i]!)) i += 1;
+  const rest = startsWithAny(toks.slice(i), FEEDBACK);
+  return rest !== null && rest.every((t) => FEEDBACK_FILLER.has(t) || ADDRESS.has(t));
+}
+
 /** A question opens with one of these. (`what a` / `what an` open an exclamation — handled below.) */
 const QUESTION_OPENERS = new Set([
   'what', 'why', 'how', 'who', 'whom', 'whose', 'where', 'when', 'which', 'is', 'are', 'am', 'was', 'were', 'do', 'does',
@@ -169,7 +205,11 @@ const ADDRESS = new Set([
 
 const restIsAddress = (rest: string[]): boolean => rest.every((t) => ADDRESS.has(t));
 
-function conversationReason(raw: string): GateReason | null {
+/**
+ * Why a message is TALK to Agent G (a greeting, a presence check, smalltalk, thanks, a question about Agent G, „I don't like
+ * it"), or null when it is not talk. Exported for lib/agent/intent, which must not keep a second list of the same words.
+ */
+export function talkReason(raw: string): GateReason | null {
   const toks = words(raw);
   if (!toks.length) return 'empty';
 
@@ -178,7 +218,7 @@ function conversationReason(raw: string): GateReason | null {
   const afterGreeting = startsWithAny(toks, GREETINGS);
   if (afterGreeting) {
     if (restIsAddress(afterGreeting)) return 'greeting';
-    return conversationReason(afterGreeting.join(' '));
+    return talkReason(afterGreeting.join(' '));
   }
 
   for (const [reason, list] of [['presence', PRESENCE], ['smalltalk', SMALLTALK], ['thanks', THANKS_ACK]] as const) {
@@ -188,10 +228,12 @@ function conversationReason(raw: string): GateReason | null {
   // "who are you", "what can you do", "how does this work" are questions about Agent G itself; a few trailing words are fine.
   const meta = startsWithAny(toks, META);
   if (meta && meta.length <= 4) return 'meta';
+  if (isFeedback(toks)) return 'feedback';
   return null;
 }
 
-function looksLikeQuestion(raw: string): boolean {
+/** Does the message read as a question (a question mark at the end, or an interrogative first word)? */
+export function looksLikeQuestion(raw: string): boolean {
   const trimmed = raw.trim();
   if (/[?？؟]\s*$/u.test(trimmed)) return true;
   const toks = words(raw);
@@ -207,7 +249,7 @@ export function classifyFocusInput(input: GateInput): GateVerdict {
   if (!words(raw).length) return { kind: 'chat', reason: 'empty' };
 
   // 1) Talking to Agent G — greeting, "are you there?", how are you, thanks, who are you.
-  const talk = conversationReason(raw);
+  const talk = talkReason(raw);
   if (talk) return { kind: 'chat', reason: talk };
 
   // 2) A question that is not an order to make something ("can you draw a fox?" IS an order: isGenerativeCommand sees it).

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateDeckRequest, deckUnits } from '@/lib/services/presentation/deckPlan';
 import { runDeckBuild } from '@/lib/services/presentation/deckPipeline';
@@ -32,6 +32,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });
   }
   const request = parsed.request;
+  // A deck bills no credits yet (gap C3): the per-account daily ceiling bounds one person's Gemini and image spend.
+  const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.PRESENTATION_USER);
+  if (capped) return capped;
 
   // No SSRF surface here: every input is text, and the only URLs fetched are ones this server generated.
   // See the note in the montage route.

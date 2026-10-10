@@ -9,6 +9,7 @@
  * Outputs are RE-HOSTED into our storage (Replicate URLs expire) and written to the user's library.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
@@ -107,6 +108,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── GENERATIVE: Demucs source separation — reserve-before-render + refund. ──────────────────────────────
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Demucs is an outside engine, so the switch refuses the separation ops
+  // here, before the charge; the free ffmpeg `process` op above still runs. Off (the default) → no-op.
+  const outside = refuseOutsideEngine(req);
+  if (outside) return outside;
   if (!process.env.REPLICATE_API_TOKEN) {
     return NextResponse.json({ url: null, error: 'audio_studio_unconfigured', message: 'Audio Studio needs REPLICATE_API_TOKEN.' }, { status: 503 });
   }

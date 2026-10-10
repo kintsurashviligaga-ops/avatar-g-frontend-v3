@@ -313,19 +313,17 @@ export async function heygenSelfTest(faceUrl: string, audioUrl: string): Promise
  * client then polls /api/video/lipsync?id=… in SHORT requests — a single ~150s
  * synchronous fetch gets dropped on mobile networks (the "lip-sync doesn't do it" bug).
  *
- * PRIMARY: HeyGen talking-photo (reliable). FALLBACK: Replicate SadTalker.
+ * ONE ENGINE PER JOB: HeyGen talking-photo when its key is present and LIPSYNC_HEYGEN is on, otherwise Replicate SadTalker.
  */
-export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { skipHeygen?: boolean; orientation?: 'vertical' | 'landscape' | 'square' }): Promise<string | null> {
+export async function lipsyncCreate(videoUrl: string, audioUrl: string, opts?: { orientation?: 'vertical' | 'landscape' | 'square' }): Promise<string | null> {
   if (!videoUrl || !audioUrl) return null;
-  // Prefer HeyGen (the "Avatar" engine) by DEFAULT whenever a key is present — a
-  // reliable, professional talking-photo render driven by OUR ElevenLabs (cloned
-  // Georgian) audio. Set LIPSYNC_HEYGEN=0 to force the SadTalker fallback. Fail-open:
-  // if the HeyGen create path misses, we fall straight through to SadTalker.
-  // `skipHeygen` lets the client force SadTalker on a retry after a HeyGen job failed,
-  // so the Avatar service is bulletproof: HeyGen quality when it works, SadTalker always.
-  if (!opts?.skipHeygen && heygenKey() && (await getFeatureFlag('LIPSYNC_HEYGEN', true))) {
-    const heygenId = await heygenLipsyncCreate(videoUrl, audioUrl, opts?.orientation);
-    if (heygenId) return heygenId;
+  // HeyGen (the "Avatar" engine) is used whenever a key is present, driven by OUR ElevenLabs (cloned Georgian) audio;
+  // LIPSYNC_HEYGEN=0 makes SadTalker the engine instead.
+  // ⚠️ NO SILENT FALLBACK (the owner, 2026-10-09: "აკრძალული პროვაიდერის ჩუმი fallback არ დაუშვა"). A HeyGen miss used to
+  // fall straight through to SadTalker here, and the client forced SadTalker after a failed HeyGen render: a second
+  // outside provider the user never chose. A miss is now a miss: null → the route refunds the reservation.
+  if (heygenKey() && (await getFeatureFlag('LIPSYNC_HEYGEN', true))) {
+    return heygenLipsyncCreate(videoUrl, audioUrl, opts?.orientation);
   }
   const key = token();
   if (!key) return null;

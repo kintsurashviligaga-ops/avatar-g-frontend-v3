@@ -14,7 +14,7 @@
  * documented dev bypass — `next dev` (NODE_ENV==='development') — and the test runner keep rendering uncharged.
  */
 import 'server-only';
-import { deductCredits, refundCredits, type LedgerReason } from './ledger';
+import { deductCredits, deductCreditsOnce, refundCredits, type LedgerReason } from './ledger';
 import { reportError } from '@/lib/observability/report-error';
 
 export interface Reservation {
@@ -22,7 +22,7 @@ export interface Reservation {
   proceed: boolean;
   /** true → credits were actually debited → refund on render failure. false → skipped/free (nothing to refund). */
   charged: boolean;
-  reason: 'ok' | LedgerReason | 'billing_unavailable';
+  reason: 'ok' | LedgerReason | 'billing_unavailable' | 'replay';
   balance?: number;
 }
 
@@ -34,7 +34,10 @@ export function unbilledRenderAllowed(env: NodeJS.ProcessEnv = process.env): boo
 }
 
 /** The machine code a route reports for a refused reservation: only a real shortfall is "insufficient credits". */
-export function reservationErrorCode(r: Pick<Reservation, 'reason'>): 'insufficient_credits' | 'billing_unavailable' {
+export function reservationErrorCode(
+  r: Pick<Reservation, 'reason'>,
+): 'insufficient_credits' | 'billing_unavailable' | 'duplicate_request' {
+  if (r.reason === 'replay') return 'duplicate_request';
   return r.reason === 'insufficient' ? 'insufficient_credits' : 'billing_unavailable';
 }
 
@@ -43,13 +46,23 @@ export function reservationErrorCode(r: Pick<Reservation, 'reason'>): 'insuffici
  * debit happened (so the caller knows to refund on failure).
  *   ok           → proceed, charged.
  *   insufficient → do NOT proceed (fail-fast: no compute for a user who can't pay).
+ *   replay       → do NOT proceed (only with `refuseReplay`): this ref was charged before; nothing charged now.
  *   error        → do NOT proceed (a genuine DB failure — safer to abort than to render for free).
  *   skipped      → production: do NOT proceed (`billing_unavailable`, alerted);
  *                  `next dev` / tests: proceed, NOT charged (the dev bypass).
  */
-export async function reserveProduce(userId: string, amount: number, ref: string): Promise<Reservation> {
-  const r = await deductCredits(userId, amount, ref);
+export async function reserveProduce(
+  userId: string,
+  amount: number,
+  ref: string,
+  opts: { refuseReplay?: boolean } = {},
+): Promise<Reservation> {
+  // `refuseReplay` — for a ref the CLIENT can repeat (idemRef over body.idempotencyKey, a client jobId): a ref that was
+  // already charged is refused, not "reserved" for free (gap C5). Off for queue workers whose own retry re-reserves
+  // the same ref on purpose and must get the idempotent success back (lib/agent/media/montageLive).
+  const r = opts.refuseReplay ? await deductCreditsOnce(userId, amount, ref) : await deductCredits(userId, amount, ref);
   if (r.ok) return { proceed: true, charged: true, reason: 'ok', balance: r.balance };
+  if (r.reason === 'replay') return { proceed: false, charged: false, reason: 'replay', balance: r.balance };
   if (r.reason === 'skipped') {
     if (unbilledRenderAllowed()) return { proceed: true, charged: false, reason: 'skipped' };
     reportError(new Error('billing unavailable: the credit ledger could not charge a paid render — refused'), {

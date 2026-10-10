@@ -100,7 +100,8 @@ describe('the chat takes everything a person can bring', () => {
   it('its „+" has ONE attach button: the chat\'s picker takes every kind (photos, video, audio, documents) at once', () => {
     expect(omni).toMatch(/activeTool === 'chat' \? \{ onAttach: \(\) => fileRef\.current\?\.click\(\) \}/);
     // that one input accepts images, audio, video, PDFs and text/code — several at once — and goes through the one intake
-    expect(omni).toMatch(/<input ref=\{fileRef\} type="file" multiple accept="image\/\*,audio\/\*,video\/\*,application\/pdf,text\/\*/);
+    // (audio as AUDIO_ACCEPT, which names .mp3/.m4a: an iPhone's picker ignores a bare audio/* and hid the owner's tracks)
+    expect(omni).toMatch(/<input ref=\{fileRef\} type="file" multiple accept=\{`image\/\*,\$\{AUDIO_ACCEPT\},video\/\*,application\/pdf,text\/\*/);
     // the video input still exists for the attachment e2e tests (and goes through the same intake)
     expect(omni).toMatch(/<input ref=\{videoPickRef\} type="file" multiple accept="video\/\*"/);
   });
@@ -136,13 +137,15 @@ describe('the chat can USE what it is given', () => {
   });
 
   it('the Files picker offers documents, data and source text — not only the five formats it used to list', () => {
-    expect(omni).toMatch(/accept="image\/\*,audio\/\*,video\/\*,application\/pdf,text\/\*,\.txt,\.md,\.pdf,\.docx,\.doc,\.rtf,\.csv,\.tsv,\.json/);
+    expect(omni).toMatch(/accept=\{`image\/\*,\$\{AUDIO_ACCEPT\},video\/\*,application\/pdf,text\/\*,\.txt,\.md,\.pdf,\.docx,\.doc,\.rtf,\.csv,\.tsv,\.json/);
   });
 });
 
 describe('the price is on the button that spends', () => {
   it('the composer\'s run button prints the quote for the tools without a Generate button of their own', () => {
-    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(\{ tool: activeTool \}\)/);
+    expect(omni).toMatch(/const composerQuote = activeTool === 'avatar' \|\| activeTool === 'product' \|\| activeTool === 'swap' \|\| activeTool === 'remix'\s*\? quoteCredits\(/);
+    // a product ad is quoted at the length it renders (8 / 24 / 48 s), as the remix route charges it — never one clip's price
+    expect(omni).toContain("quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool })");
     expect(omni).toContain('data-price={composerQuote ?? undefined}');
     // the accessible name says the price too, from the same function the route charges with
     expect(omni).toContain('${runLabel} — ${creditsLabel(composerQuote, locale)}');

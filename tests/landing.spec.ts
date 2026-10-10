@@ -177,6 +177,15 @@ async function openDashboard(page: Page, path = '/ka/dashboard?tool=video') {
   await page.goto(path);
   // The composer is what every path has: the video tool's Create screen replaces the greeting on a desktop.
   await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 30_000 });
+  // On a phone a link to a tool whose input lives in its Create screen opens that screen as a sheet over the composer
+  // (OmniStudio applyTool). A production build does; `next dev` hid it until StrictMode stopped closing it (2026-10-09).
+  // Hold that here, then put the sheet away so each test starts at the composer.
+  if ((page.viewportSize()?.width ?? 1280) < 1024 && /[?&]tool=(video|product|swap|remix|motion|image|vfx)\b/.test(path)) {
+    const sheet = page.getByTestId('options-sheet');
+    await expect(sheet).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+  }
 }
 
 /**
@@ -290,8 +299,9 @@ for (const vp of VIEWPORTS) {
       await openDashboard(page);
       const posts: string[] = [];
       // Background traffic is not a send: the presence heartbeat POSTs on its own schedule (it made this flaky on
-      // production), and client error logging may too. Anything else POSTed to /api/ would be a job.
-      const BACKGROUND = /^\/api\/(presence|log-error)\b/;
+      // production), and client error logging and the analytics log (lib/analytics/track) may too. Anything else POSTed
+      // to /api/ would be a job.
+      const BACKGROUND = /^\/api\/(presence|log-error|analytics\/track)\b/;
       page.on('request', (r) => {
         const path = new URL(r.url()).pathname;
         if (r.method() === 'POST' && path.startsWith('/api/') && !BACKGROUND.test(path)) posts.push(r.url());
@@ -342,8 +352,7 @@ for (const vp of VIEWPORTS) {
     // The guest gate is lifted in this browser only — it is the sign-in wall, not what is under test.
     async function startImageJob(page: Page) {
       await page.evaluate(() => { document.documentElement.dataset.authed = '1'; });
-      // The tool is chosen the way the sidebar does (`omni:set-tool`) — under `next dev`'s StrictMode a deep link's sheet is
-      // clobbered by a mount effect; a production build and every real user choose the tool after mount.
+      // The tool is chosen the way the sidebar does (`omni:set-tool`), after mount, as every real user does.
       await page.evaluate(() => window.dispatchEvent(new CustomEvent('omni:set-tool', { detail: 'image' })));
       const panel = page.getByTestId('image-create-panel');
       await expect(panel).toBeVisible();
@@ -365,6 +374,11 @@ for (const vp of VIEWPORTS) {
       await expect(card.getByText(/^სურათი · 9:16 · \d+%$/)).toBeVisible();
       expect(await card.locator('div').first().evaluate((el) => (el as HTMLElement).style.aspectRatio)).toBe('9 / 16');
       await expect(card.getByRole('progressbar')).toBeAttached();
+      // The loading loop (components/studio/ui/LoadingLoop) fills the tile and actually plays, muted and inline.
+      // (This Chromium build has no H.264, so it plays the VP9 source; Chrome and Safari can take either.)
+      const loop = card.getByTestId('loading-loop');
+      await expect.poll(() => loop.evaluate((v) => { const el = v as HTMLVideoElement; return !el.paused && el.muted && el.currentTime > 0 && /\/media\/loading\/avatar-forming\.(webm|mp4)$/.test(el.currentSrc); }), { timeout: 15_000 }).toBe(true);
+      await page.screenshot({ path: `test-results/loading-loop-${vp.name}.png` });
       const cancel = card.getByRole('button', { name: 'გაუქმება' });
       const box = (await cancel.boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);

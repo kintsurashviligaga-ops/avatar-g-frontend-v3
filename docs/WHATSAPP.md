@@ -6,8 +6,11 @@
    **Open WhatsApp** button that opens the chat with Agent G with `connect CODE` already typed.
 2. Sending it links the number to the account ("✅ Number linked").
 3. From then on:
-   - any question or talk → Agent G answers in words (the same Gemini chain and Agent G prompt as the website, with
-     the last 24 h of this conversation as context);
+   - a question or talk → Agent G answers in words (the same Gemini chain and Agent G prompt as the website, with
+     the last 24 h of this conversation as context), **about MyAvatar.ge only and without web search**: the account,
+     credits, prices, orders, tasks and results. It politely declines general questions and points to myavatar.ge and
+     support@myavatar.ge (Meta Terms §4.7, AI Providers, until Meta answers in writing:
+     `docs/handoffs/omnichannel/META_SUPPORT_REQUEST.md`);
    - "make me a picture/video/song of …" → a studio link with the request already typed in. **Nothing is generated or
      charged from WhatsApp**: the studio's confirm card and the price on the Create button decide;
    - `help`, `stop` (alerts off), `alerts on`, `unlink`;
@@ -84,7 +87,12 @@ development, the recipient must be on the API Setup page's recipients list.
 | The model | `lib/ai/channelBridge.ts` → `lib/ai/google/reply.ts` |
 | Card + API | `components/agent-g/WhatsAppLinkCard.tsx`, `app/api/agent-g/whatsapp/link/route.ts` |
 | Alerts | `lib/notifications/channels/whatsapp.ts`, `lib/notifications/dispatch.ts` |
+| "Your task is done / needs you" for runs, queued jobs and charged renders: once per outlet, retried, recorded on the job (`params._tell`); off unless `DELIVERY_OUTBOX` is set (on by default on a Preview) | `lib/notifications/outbox.ts`, `lib/notifications/outboxLive.ts`, `app/api/cron/deliveries/route.ts` |
 | Queue drain (Vercel Cron, GET) | `app/api/app/worker/tick/route.ts` |
 
 ⚠️ A number is linked only by a message **from** that number. No route accepts a phone number from a browser
 (`POST /api/agent-g/channels` refuses WhatsApp/Telegram rows), so nobody can attach someone else's number to their account.
+
+How WhatsApp fits with the other channels, and what is proven where:
+[`handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md`](handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md),
+[`handoffs/omnichannel/OMNICHANNEL_E2E_MATRIX.md`](handoffs/omnichannel/OMNICHANNEL_E2E_MATRIX.md).

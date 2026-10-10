@@ -8,6 +8,7 @@
  * Returns a normalized ChatResponse in both cases.
  */
 
+import { randomUUID } from 'node:crypto';
 import { detectIntent, intentToReplicateService, type DetectedIntent, type IntentCategory } from './intentDetector';
 import { validateInput, buildModelInput, type GenerateInput } from '@/lib/replicate/schemas';
 import { resolveModel } from '@/lib/replicate/models';
@@ -31,6 +32,7 @@ import { isCompositeRef, decodeCompositeRef } from './compositeTaskRef';
 import { deductCredits, hasSufficientBalance, refundDebitByRef } from '@/lib/orchestrator/ledger';
 import { billableCreditCost, chargeRefusedResponse, insufficientCreditsResponse } from './chatBilling';
 import { mustSignInToGenerate, signInToGenerateMessage } from '@/lib/auth/generationGate';
+import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/providers/mediaPolicy';
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
@@ -265,21 +267,50 @@ function refuseAnonymousGeneration(input: OrchestratorInput, intent: IntentCateg
   };
 }
 
+/**
+ * MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy, opt-in, default off) for the chat branches whose only engines are
+ * outside ones — chat music (Udio / MusicGen), the Replicate intents (BLIP captions, generic models), the interior
+ * redesign (FLUX depth) and the 3D room (WorldLabs). With the switch on they answer the same paused-tool sentence the
+ * studio routes do, before any balance read, charge or provider call. Off → null, and the branch runs as before.
+ */
+function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCategory): ChatResponse | null {
+  if (!isMediaGoogleOnly()) return null;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: googleOnlyMessage(input.locale),
+    metadata: { provider: 'policy', code: GOOGLE_ONLY_CODE },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
 ): Promise<ChatResponse> {
+  // EXPLICIT FILM DISPATCH FIRST. The music-video flag and the storyboard's structural signals only ever come from the
+  // Video studio (driveFilmStudio), so they decide the route whatever the brief says. They used to sit below the
+  // interior and attachment checks, so a film brief with the word "room" or "space" in it was answered "Upload a room
+  // photo" by the 3D-interior branch, and a film with a reference image could be answered by the vision branch as text.
+  if (input.metadata?.musicVideoMode === true || hasFilmDispatchSignal(input.metadata)) {
+    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
+  }
+
   // PHASE 56 — Interior REDESIGN (depth-locked FLUX ControlNet) takes priority
   // over the WorldLabs 3D-world route: when a room photo is attached in the
   // Interior service and the user hasn't explicitly asked for a 3D world /
   // walkthrough, re-render the SAME room with new materials, furniture and
   // lighting. Explicit 3D/world asks still fall through to WorldLabs below.
   if (shouldRedesignInterior(input)) {
-    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorRedesign(input);
+    return refuseAnonymousGeneration(input, 'image_generation')
+      ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? handleInteriorRedesign(input);
   }
 
   if (shouldRouteInteriorToWorldLabs(input)) {
-    return refuseAnonymousGeneration(input, 'image_generation') ?? handleInteriorIntent(input);
+    return refuseAnonymousGeneration(input, 'image_generation')
+      ?? refuseOutsideEngineInChat(input, 'image_generation')
+      ?? handleInteriorIntent(input);
   }
 
   // PHASE 56 — Gemini multimodal VISION, unleashed across EVERY conversational
@@ -332,27 +363,12 @@ export async function orchestrate(
     }
   }
 
-  // P1-B — MUSIC-VIDEO MODE is an EXPLICIT user choice (the studio panel's flag),
-  // so honour it REGARDLESS of the message language or keywords. Without this an
-  // English brief like "30 second R&B music video with a female singer in Tbilisi"
-  // gets keyword-routed to a Udio AUDIO-only job instead of the FILM pipeline. The
-  // flag rides in metadata from driveFilmStudio (and the orchestrate dispatch), so
-  // the film/music-video pipeline activates whenever musicVideoMode === true.
-  if (input.metadata?.musicVideoMode === true) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
-  }
-
-  // EXPLICIT FILM DISPATCH — a render started from the Video Studio storyboard carries STRUCTURAL film
-  // signals (approved per-scene frames / per-scene scripts / a pinned scene count). Those only ever come from
-  // driveFilmStudio, so they are an unambiguous "this is a film render" — honour them REGARDLESS of how the
-  // user worded the brief. Without this, a perfectly normal brief like "Create a cinematic video of an ocean
-  // wave" failed the conservative isThirtySecondFilm() keyword gate below (it wants "30-second film / short
-  // film / mini-movie"), fell through to a generic SINGLE-CLIP LTX render, and silently DISCARDED the whole
-  // approved storyboard — the user watched 3 scenes get built, then got a one-shot render that failed.
-  // LIVE-VERIFIED: the dispatch reported engine 'ltx' with no film matrix for exactly this phrasing.
-  if (hasFilmDispatchSignal(input.metadata)) {
-    return refuseAnonymousGeneration(input, 'video_generation') ?? handleFilmComposite(input);
-  }
+  // P1-B — MUSIC-VIDEO MODE and EXPLICIT FILM DISPATCH are handled at the very top of orchestrate() (see there):
+  // the music-video flag is an explicit user choice, so an English brief like "30 second R&B music video with a
+  // female singer in Tbilisi" is never keyword-routed to an audio-only job; and the storyboard's structural signals
+  // (approved per-scene frames / scripts / a pinned scene count) mean a brief like "Create a cinematic video of an
+  // ocean wave", which fails the conservative isThirtySecondFilm() gate below, still reaches the film pipeline
+  // instead of a generic single-clip render that discards the approved storyboard (LIVE-VERIFIED regression).
 
   // PHASE 42 §1 — The flagship film pipeline for a FREE-TEXT chat brief. `isThirtySecondFilm` is deliberately
   // conservative (explicit "30-second film / short film / mini-movie" phrasing), so a plain "music video"
@@ -373,7 +389,9 @@ export async function orchestrate(
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return refuseAnonymousGeneration(input, detected.intent) ?? handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent)
+      ?? refuseOutsideEngineInChat(input, detected.intent)
+      ?? handleMusicIntent(input, detected);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
@@ -382,7 +400,9 @@ export async function orchestrate(
 
   // 2. Route to the right provider
   if (detected.provider === 'replicate') {
-    return refuseAnonymousGeneration(input, detected.intent) ?? handleReplicateIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent)
+      ?? refuseOutsideEngineInChat(input, detected.intent)
+      ?? handleReplicateIntent(input, detected);
   }
 
   return handleTextIntent(input, detected);
@@ -1377,31 +1397,50 @@ async function handleDeterministicIntent(
       return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
     }
 
-    const response = await serviceManager.execute({
-      sessionId: input.sessionId,
-      serviceContext: input.serviceContext,
-      intent: detected.intent,
-      userPrompt: iterative.prompt,
-      selectedOptions: input.selectedOptions,
-      imageUrl: input.imageUrl,
-      locale: input.locale,
-      confidence: detected.confidence,
-    });
-
-    // DAY-6 — a SYNCHRONOUS generation (image / photo) is charged after it delivered, via the balance-of-record
-    // deduct_credits RPC: it can never bill a thrown error or a `success:false` failure. Authed only; idempotent
-    // per-call ref; fail-open (a ledger hiccup never breaks the delivered asset); deduct_credits rejects overdraw.
-    // An ASYNC render (video / avatar) is charged at acceptance just below, and refunded on the poll path if it fails.
-    const billCost = billableCreditCost(detected.intent);
+    // ⚠️ THE PRICE IS HELD BEFORE THE PROVIDER IS CALLED (gap C6), NOT TAKEN AFTER IT DELIVERED. A synchronous image
+    // used to be charged after Google had rendered it: when that charge did not land (a ledger error, or a balance a
+    // parallel request had already spent with Redis down) the asset was withheld but the render was paid for anyway.
+    // Now the debit lands first — a refused hold renders nothing — and anything that is not delivered right here gives
+    // it back through the ledger (only what was taken). An accepted async render moves to its `poll:<id>` charge below.
+    const billCost = gateCost;
     const uid = input.userId;
-    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
-    if (uid && uid !== 'anonymous' && billCost > 0 && terminalAsset) {
-      // ⚠️ "the asset is already delivered" was the excuse for `.catch(() => {})` — but it is not delivered until this
-      // function returns it. A charge that did not land now withholds the asset (top-up / retry reply) instead of
-      // handing it out free; `skipped` (no ledger RPC at all) still delivers, the documented degrade.
-      const debit = await deductCredits(uid, billCost, `chat:${detected.intent}:${uid}:${input.sessionId}:${Date.now()}`);
+    let hold: string | null = null;
+    if (payingUser) {
+      const ref = `chat:${detected.intent}:${payingUser}:${input.sessionId}:${randomUUID()}`;
+      const debit = await deductCredits(payingUser, billCost, ref);
       if (!debit.ok && debit.reason !== 'skipped') return chargeRefusedResponse(detected.intent, billCost, debit.reason ?? 'error', input.locale);
+      if (debit.ok) hold = ref; // `skipped` (no ledger RPC at all) renders uncharged, the documented degrade
     }
+    const giveBack = async (why: string) => {
+      if (!hold || !payingUser) return;
+      const ref = hold;
+      hold = null;
+      const back = await refundDebitByRef(payingUser, ref, billCost).catch(() => null);
+      if (!back?.ok) reportError(new Error(`chat hold not given back (${why})`), { fn: 'handleDeterministicIntent', userId: payingUser, ref, billCost });
+    };
+
+    let response: ServiceManagerResponse;
+    try {
+      response = await serviceManager.execute({
+        sessionId: input.sessionId,
+        serviceContext: input.serviceContext,
+        intent: detected.intent,
+        userPrompt: iterative.prompt,
+        selectedOptions: input.selectedOptions,
+        imageUrl: input.imageUrl,
+        locale: input.locale,
+        confidence: detected.confidence,
+      });
+    } catch (e) {
+      await giveBack('threw');
+      throw e;
+    }
+
+    // A SYNCHRONOUS asset delivered now keeps the hold as its charge. Anything else gives the hold back: a failure, or
+    // an accepted async render, which is charged under its poll ref just below (given back FIRST, so a user whose
+    // balance covers exactly one render is never refused for holding two).
+    const terminalAsset = response.success && response.predictionStatus !== 'processing' && !!response.assetUrl;
+    if (!terminalAsset) await giveBack(response.success ? 'async' : 'failed');
     // ⚠️ AN ACCEPTED ASYNC RENDER IS CHARGED NOW, NOT WHEN SOMEONE POLLS. The price used to be taken on the poll path,
     // by whichever session polled — so a render nobody polled with a session (a client that polls anonymously, or not at
     // all and reads the clip some other way) was a free Veo clip. The ref is the SAME `poll:<predictionId>` the poll
@@ -1529,7 +1568,7 @@ async function handleTextIntent(
     success: false,
     intent: detected.intent,
     responseType: 'text',
-    message: 'Chat is temporarily unavailable (cognitive core not configured).',
+    message: 'Chat is temporarily unavailable. Please try again a little later.',
     metadata: { provider: 'gemini', error: 'GEMINI_API_KEY not configured' },
   };
 }

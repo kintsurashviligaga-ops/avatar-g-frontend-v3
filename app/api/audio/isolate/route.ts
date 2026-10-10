@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
-import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
+import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { isOwnSupabaseUrl } from '@/lib/security/allowlistedAudioFetch';
 import { isolateVocal } from '@/lib/elevenlabs/audioIsolation';
 
@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
   // WS2 — paid ElevenLabs Voice Isolator + a server-side fetch of the caller-supplied `audioUrl` (SSRF).
   // Was fully unauthenticated. The sole caller (OmniStudio) sends its session cookie, so require a user;
   // and only isolate audio WE host (own Supabase) so this can't be turned into an arbitrary-URL fetcher.
-  try { await requireAuthenticatedUser(req); } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
+  let userId: string;
+  try { userId = (await requireAuthenticatedUser(req)).id; } catch { return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }); }
   const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE); if (rl) return rl;
 
   let body: { audioUrl?: unknown };
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
   // SSRF guard: a non-own-Supabase URL yields null (the caller then falls back to the full song mix,
   // exactly as it does on any isolation miss) — never a fetch of an attacker-chosen host.
   if (!isOwnSupabaseUrl(audioUrl)) return NextResponse.json({ vocalUrl: null });
+  // The isolator bills no credits (gap C3): one per-account daily ceiling with the other paid audio helpers. Over it,
+  // the caller gets the 429 (OmniStudio then uses the full mix, as on any miss).
+  const capped = await checkRateLimitByKey(userId, RATE_LIMITS.AUDIO_GEN_USER);
+  if (capped) return capped;
   const vocalUrl = await isolateVocal(audioUrl, req.signal).catch(() => null);
   return NextResponse.json({ vocalUrl });
 }

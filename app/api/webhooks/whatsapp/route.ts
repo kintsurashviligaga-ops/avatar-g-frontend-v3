@@ -4,6 +4,9 @@ import { enqueueQueueItem } from '@/lib/platform/queues';
 import { runAfterResponse } from '@/lib/platform/afterResponse';
 import { hashIdempotencyKey, markIdempotentDuplicate } from '@/lib/platform/idempotency';
 import { recordRouteMetric } from '@/lib/platform/request-metrics';
+import { hasCallsField, parseCallEvents } from '@/lib/calls/whatsapp/events';
+import { handleCallEvents } from '@/lib/calls/whatsapp/callService';
+import { liveCallDeps } from '@/lib/calls/whatsapp/liveDeps';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -229,7 +232,32 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
+
+  // WhatsApp Calling (`calls` field): handled on their own path with a per-event dedupe (lib/calls/whatsapp), never by
+  // the message pipeline's idempotency key below — a calls payload has no message ids, and two different calls would
+  // share its raw-body fallback. A call must be answered within Meta's 30–60 s, so it is handled right after the 200,
+  // or inline when the platform has no after-response hook. While WHATSAPP_CALLING_ENABLED is off every call is
+  // declined at once (no ringing into silence).
+  let callEvents = 0;
+  if (hasCallsField(payload)) {
+    const events = parseCallEvents(payload);
+    callEvents = events.length;
+    if (events.length) {
+      const work = async () => {
+        const out = await handleCallEvents(liveCallDeps(url.origin), events);
+        console.warn('[WhatsApp.Calls] handled', { request_id: requestId, outcomes: out.map((o) => o.outcome) });
+      };
+      if (!runAfterResponse(work, 'WhatsApp.Calls')) await work().catch(() => undefined);
+    }
+  }
+
   const messages = parseWhatsAppMessageSummary(payload);
+  if (callEvents > 0 && messages.length === 0) {
+    const response = Response.json({ ok: true, request_id: requestId }, { status: 200 });
+    response.headers.set('x-request-id', requestId);
+    recordRouteMetric({ request_id: requestId, route: '/api/webhooks/whatsapp', method: 'POST', status: 200, duration_ms: Date.now() - startedAt, at: Date.now() });
+    return response;
+  }
   const messageFingerprint = messages
     .map((message) => message.id)
     .filter(Boolean)

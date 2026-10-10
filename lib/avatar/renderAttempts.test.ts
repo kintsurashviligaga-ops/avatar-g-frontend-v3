@@ -6,7 +6,7 @@
  * video — and a user who could afford exactly one got a 402 on the fallback while the first, unpolled job finished
  * unseen. Only a terminal verdict (refunded server-side) may move on to the next engine.
  */
-import { nextAvatarAttempt, presenterMayFallBack } from './renderAttempts';
+import { nextAvatarAttempt } from './renderAttempts';
 
 const base = { settled: true, url: null, error: null, usedHeygen: false };
 
@@ -22,8 +22,9 @@ describe('nextAvatarAttempt', () => {
     expect(nextAvatarAttempt({ ...base, settled: false, usedHeygen })).toBe('stop');
   });
 
-  it('a terminal HeyGen failure → the SadTalker fallback', () => {
-    expect(nextAvatarAttempt({ ...base, usedHeygen: true, error: 'render failed' })).toBe('fallback-sadtalker');
+  it('a terminal HeyGen failure stops: no silent SadTalker (Replicate) render of the same video', () => {
+    expect(nextAvatarAttempt({ ...base, usedHeygen: true, error: 'render failed' })).toBe('stop');
+    expect(nextAvatarAttempt({ ...base, usedHeygen: true, error: "module 'PIL.Image' has no attribute 'ANTIALIAS'" })).toBe('stop');
   });
 
   it("SadTalker's known transient crash → retry; anything else → stop", () => {
@@ -33,20 +34,5 @@ describe('nextAvatarAttempt', () => {
 
   it('a terminal SadTalker verdict with no reason keeps the old retry', () => {
     expect(nextAvatarAttempt(base)).toBe('retry');
-  });
-});
-
-describe('presenterMayFallBack', () => {
-  it('falls back when HeyGen never started a video', () => {
-    expect(presenterMayFallBack({ videoId: null, settled: false })).toBe(true);
-    expect(presenterMayFallBack({ videoId: undefined, settled: false })).toBe(true);
-  });
-
-  it('falls back after a terminal HeyGen failure', () => {
-    expect(presenterMayFallBack({ videoId: 'vid-1~av1.x.y', settled: true })).toBe(true);
-  });
-
-  it('does NOT fall back while the started HeyGen video is still rendering', () => {
-    expect(presenterMayFallBack({ videoId: 'vid-1~av1.x.y', settled: false })).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getCallsProvider } from '@/lib/calls/providers';
+import { PHONE_CALLS_UNAVAILABLE, phoneCallsReady } from '@/lib/calls/availability';
 import { isInQuietHours } from '@/lib/agent-g/voice/quiet-hours';
 import { buildCallbackScript } from '@/lib/agent-g/voice/callback-script';
 
@@ -14,6 +15,11 @@ type DispatchInput = {
 };
 
 export async function queueAgentGCallback(input: DispatchInput): Promise<{ queued: boolean; reason?: string; callId?: string; provider?: string }> {
+  // ⚠️ After every Agent G task (/api/agent-g/execute) this stored an outbound call the mock provider called `ended`,
+  // `delivered: true`, and answered `queued: true`: nobody was called. No adapter places a call yet, so nothing is
+  // read or stored. WhatsApp's "call me when it's ready" comes with the delivery outbox (lib/calls/whatsapp).
+  if (!phoneCallsReady()) return { queued: false, reason: PHONE_CALLS_UNAVAILABLE };
+
   const supabase = createServiceRoleClient();
 
   const prefsRes = await supabase

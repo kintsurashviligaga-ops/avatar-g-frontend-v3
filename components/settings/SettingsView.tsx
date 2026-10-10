@@ -4,29 +4,29 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Settings, Zap, Sparkles, Monitor, Smartphone, Square, RectangleHorizontal,
-  Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check, History,
+  Settings, Globe, Sun, Moon, User, BarChart3, AlertTriangle, X, Loader2, Check, History,
   type LucideIcon,
 } from 'lucide-react';
 import { creditsToGel } from '@/lib/credits/pricing';
 import { formatWalletBalance } from '@/lib/billing/gel';
 import { useTheme } from '@/lib/theme/ThemeContext';
 import ReferralPanel from '@/components/dashboard/ReferralPanel';
-import { WhatsAppLinkCard } from '@/components/agent-g/WhatsAppLinkCard';
+import { ConnectionsSection } from './ConnectionsSection';
 
 /**
  * Settings — top-level user preferences surface.
  *
- * Six sections wired to the REAL systems already in the app:
- *   • Rendering mode    → localStorage (consumed by future render-quality gating)
- *   • Aspect ratio       → localStorage (consumed by film/video composers)
+ * Sections wired to the REAL systems already in the app:
  *   • Language          → NEXT_LOCALE cookie + router.push (same pattern as ModernShell's locale switcher)
  *   • Theme             → ThemeContext (data-theme attr + .dark class)
  *   • Profile + Usage    → /api/credits/balance (authenticated GET)
- *   • WhatsApp           → /api/agent-g/whatsapp/link (WhatsAppLinkCard: link by code, alerts, unlink)
+ *   • Connections        → /api/agent-g/channels (ConnectionsSection: phone, WhatsApp, Telegram, notifications; every
+ *                          status word comes from the server; WhatsApp link by code, push for this browser, what goes where)
  *   • Delete Account    → /api/account/delete (Apple §5.1.1(v) compliant flow)
  *
- * No fakes, no mocks: every control either persists locally or hits a real endpoint.
+ * No fakes, no mocks: every control either persists locally or hits a real endpoint. The „Rendering mode" and „Aspect
+ * ratio" toggles were removed 2026-10-10 (Omnichannel A2): they wrote localStorage keys nothing read, so they changed
+ * nothing. Quality and format are chosen where they take effect, in each service panel.
  * Animations use Framer Motion with `transform`-only properties (hardware-accelerated,
  * no layout reflow).
  */
@@ -34,11 +34,10 @@ import { WhatsAppLinkCard } from '@/components/agent-g/WhatsAppLinkCard';
 type Locale = 'ka' | 'en' | 'ru';
 interface Copy {
   pageTitle: string; pageSubtitle: string;
-  renderMode: { title: string; fast: string; fastDesc: string; ultra: string; ultraDesc: string };
-  aspect: { title: string; subtitle: string };
   language: { title: string; subtitle: string };
   theme: { title: string; dark: string; light: string; subtitle: string };
-  profile: { title: string; status: string; signedIn: string; signedOut: string };
+  profile: { title: string; status: string; signedIn: string; signedOut: string; unknown: string };
+  account: { title: string; body: string; button: string };
   usage: { title: string; subtitle: string; loading: string; failed: string; credits: string; resets: string };
   history: { title: string; subtitle: string; loading: string; empty: string; credits: string };
   danger: {
@@ -50,18 +49,13 @@ interface Copy {
 
 const COPY: Record<Locale, Copy> = {
   ka: {
-    pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, რენდერი და ენა — ერთ ადგილზე.',
-    renderMode: {
-      title: 'რენდერის რეჟიმი',
-      fast: 'სწრაფი / სტანდარტული', fastDesc: 'სწრაფი შედეგი — სტანდარტული ხარისხი.',
-      ultra: 'ულტრა-კინემატოგრაფიული', ultraDesc: 'მაქსიმალური ვიზუალური ხარისხი — ცოტათი მეტი ხანი.',
-    },
-    aspect: { title: 'რენდერის შეფარდება', subtitle: 'სტანდარტული ფორმატი ახალი ვიდეოებისთვის.' },
+    pageTitle: 'პარამეტრები', pageSubtitle: 'ანგარიში, ენა და ბალანსი ერთ ადგილზე.',
     language: { title: 'ენა', subtitle: 'ცვლის ინტერფეისის ენას მთელი აპლიკაციისთვის.' },
     theme: { title: 'თემა', subtitle: 'მუქი ან ღია გარეგნობა.', dark: 'მუქი', light: 'ღია' },
-    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ' },
+    profile: { title: 'პროფილი', status: 'სტატუსი', signedIn: 'შესული ხართ', signedOut: 'შესული არ ხართ', unknown: 'ახლა ვერ შევამოწმეთ.' },
+    account: { title: 'ანგარიში', body: 'ბალანსის, ისტორიისა და მოწვევების სანახავად შედი ანგარიშზე.', button: 'შესვლა' },
     usage: {
-      title: 'API მოხმარება და ბალანსი', subtitle: 'მიმდინარე პერიოდის სტატისტიკა.',
+      title: 'ბალანსი და მოხმარება', subtitle: 'რამდენი კრედიტი გაქვს ამ პერიოდში.',
       loading: 'იტვირთება…', failed: 'მონაცემები ვერ მოვიდა.', credits: 'კრედიტი', resets: 'განახლდება',
     },
     history: { title: 'ისტორია', subtitle: 'ბოლო 10 ტრანზაქცია.', loading: 'იტვირთება…', empty: 'ჯერ არ არის ტრანზაქცია.', credits: 'კრედიტი' },
@@ -76,18 +70,13 @@ const COPY: Record<Locale, Copy> = {
     },
   },
   en: {
-    pageTitle: 'Settings', pageSubtitle: 'Account, rendering and language — all in one place.',
-    renderMode: {
-      title: 'Rendering Mode',
-      fast: 'Fast / Standard', fastDesc: 'Quicker results at standard quality.',
-      ultra: 'Ultra-Cinematic', ultraDesc: 'Highest visual fidelity — slightly longer renders.',
-    },
-    aspect: { title: 'Render Aspect Ratio', subtitle: 'Default format for new videos.' },
+    pageTitle: 'Settings', pageSubtitle: 'Account, language and balance in one place.',
     language: { title: 'Language', subtitle: 'Switches the interface language across the app.' },
     theme: { title: 'Theme', subtitle: 'Dark or light appearance.', dark: 'Dark', light: 'Light' },
-    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out' },
+    profile: { title: 'Profile', status: 'Status', signedIn: 'Signed in', signedOut: 'Signed out', unknown: 'Could not check right now.' },
+    account: { title: 'Account', body: 'Sign in to see your balance, history and invites.', button: 'Sign in' },
     usage: {
-      title: 'API Usage & Balance', subtitle: 'Current period statistics.',
+      title: 'Balance & usage', subtitle: 'Your credits for this period.',
       loading: 'Loading…', failed: 'Could not load.', credits: 'credits', resets: 'Resets',
     },
     history: { title: 'History', subtitle: 'Your last 10 transactions.', loading: 'Loading…', empty: 'No transactions yet.', credits: 'credits' },
@@ -102,18 +91,13 @@ const COPY: Record<Locale, Copy> = {
     },
   },
   ru: {
-    pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, рендер и язык — в одном месте.',
-    renderMode: {
-      title: 'Режим рендеринга',
-      fast: 'Быстрый / Стандарт', fastDesc: 'Быстрее, стандартное качество.',
-      ultra: 'Ультра-кинематографичный', ultraDesc: 'Максимальное качество — рендер чуть дольше.',
-    },
-    aspect: { title: 'Соотношение сторон', subtitle: 'Формат по умолчанию для новых видео.' },
+    pageTitle: 'Настройки', pageSubtitle: 'Аккаунт, язык и баланс в одном месте.',
     language: { title: 'Язык', subtitle: 'Меняет язык интерфейса.' },
     theme: { title: 'Тема', subtitle: 'Тёмное или светлое оформление.', dark: 'Тёмная', light: 'Светлая' },
-    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт' },
+    profile: { title: 'Профиль', status: 'Статус', signedIn: 'Вы вошли', signedOut: 'Не вошли в аккаунт', unknown: 'Сейчас не удалось проверить.' },
+    account: { title: 'Аккаунт', body: 'Войдите, чтобы увидеть баланс, историю и приглашения.', button: 'Войти' },
     usage: {
-      title: 'Использование и баланс', subtitle: 'Статистика за текущий период.',
+      title: 'Баланс и расход', subtitle: 'Ваши кредиты за этот период.',
       loading: 'Загрузка…', failed: 'Не удалось загрузить.', credits: 'кредитов', resets: 'Обновится',
     },
     history: { title: 'История', subtitle: 'Последние 10 транзакций.', loading: 'Загрузка…', empty: 'Пока нет транзакций.', credits: 'кред.' },
@@ -134,28 +118,16 @@ const fadeUp = {
   show: (i: number) => ({ opacity: 1, y: 0, transition: { delay: i * 0.05, duration: 0.35, ease: 'easeOut' } }),
 };
 
-const ASPECTS = [
-  { id: '16:9' as const, label: '16:9', sublabel: { ka: 'ფართო (YouTube)', en: 'Widescreen (YouTube)', ru: 'Широкоэкранный (YouTube)' }, Icon: Monitor },
-  { id: '9:16' as const, label: '9:16', sublabel: { ka: 'ვერტიკალური (Reels/TikTok)', en: 'Vertical (Reels/TikTok)', ru: 'Вертикальный (Reels/TikTok)' }, Icon: Smartphone },
-  { id: '1:1' as const,  label: '1:1',  sublabel: { ka: 'კვადრატი (Instagram)', en: 'Square (Instagram)', ru: 'Квадрат (Instagram)' }, Icon: Square },
-  { id: '4:3' as const,  label: '4:3',  sublabel: { ka: 'სტანდარტული', en: 'Standard', ru: 'Стандартный' }, Icon: RectangleHorizontal },
-];
-
 const LANGS: { code: Locale; name: string; native: string }[] = [
   { code: 'ka', name: 'Georgian', native: 'ქართული' },
   { code: 'en', name: 'English',  native: 'English' },
   { code: 'ru', name: 'Russian',  native: 'Русский' },
 ];
 
-type RenderMode = 'fast' | 'ultra';
-type Aspect = '16:9' | '9:16' | '1:1' | '4:3';
-
-const LS_RENDER_MODE = 'myavatar.settings.renderMode';
-const LS_ASPECT = 'myavatar.settings.aspect';
-
 export function SettingsView({ locale }: { locale: string }) {
   const loc = (['ka', 'en', 'ru'] as const).includes(locale as Locale) ? (locale as Locale) : 'ka';
   const t = COPY[loc];
+  const account = useAccount();
 
   return (
     <div className="min-h-screen bg-app-bg text-app-text">
@@ -177,18 +149,24 @@ export function SettingsView({ locale }: { locale: string }) {
         </motion.header>
 
         <motion.div initial="hidden" animate="show" className="space-y-5">
-          <motion.div variants={fadeUp} custom={0}><RenderingModeSection t={t.renderMode} /></motion.div>
-          <motion.div variants={fadeUp} custom={1}><AspectRatioSection t={t.aspect} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={2}><LanguageSection t={t.language} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={3}><ThemeSection t={t.theme} /></motion.div>
-          <motion.div variants={fadeUp} custom={4}><ProfileSection t={t.profile} /></motion.div>
-          {/* Agent G on WhatsApp — the page every WhatsApp "link your number" reply points to (#whatsapp). */}
-          <motion.div variants={fadeUp} custom={4}><WhatsAppLinkCard locale={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} /></motion.div>
-          <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>
-          {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
-          <motion.div variants={fadeUp} custom={7}><ReferralPanel isAuthenticated /></motion.div>
-          <motion.div variants={fadeUp} custom={8}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>
+          <motion.div variants={fadeUp} custom={0}><LanguageSection t={t.language} loc={loc} /></motion.div>
+          <motion.div variants={fadeUp} custom={1}><ThemeSection t={t.theme} /></motion.div>
+          <motion.div variants={fadeUp} custom={2}><ProfileSection t={t.profile} account={account} /></motion.div>
+          {/* Connections — the WhatsApp row is where every WhatsApp "link your number" reply points (#whatsapp). */}
+          <motion.div variants={fadeUp} custom={3}><ConnectionsSection locale={loc} /></motion.div>
+          {/* A guest gets one sign-in card instead of account cards that can only fail (balance, history, invites,
+              delete account). Seen on the Preview 2026-10-10: a guest got "Failed to load" and a Delete button. */}
+          {account.state === 'signedOut' ? (
+            <motion.div variants={fadeUp} custom={5}><SignInCard t={t.account} /></motion.div>
+          ) : (
+            <>
+              <motion.div variants={fadeUp} custom={5}><ApiUsageSection t={t.usage} loc={loc} account={account} /></motion.div>
+              {account.state !== 'loading' && <motion.div variants={fadeUp} custom={6}><CreditHistorySection t={t.history} loc={loc} /></motion.div>}
+              {/* PHASE 4 Task 3 — Invite friends (reuses the existing self-contained ReferralPanel). */}
+              {account.state === 'signedIn' && <motion.div variants={fadeUp} custom={7}><ReferralPanel isAuthenticated locale={loc} /></motion.div>}
+              {account.state === 'signedIn' && <motion.div variants={fadeUp} custom={8}><DangerZoneSection t={t.danger} loc={loc} /></motion.div>}
+            </>
+          )}
         </motion.div>
       </div>
     </div>
@@ -238,75 +216,7 @@ function ToggleSwitch({ checked, onChange, ariaLabel }: { checked: boolean; onCh
   );
 }
 
-// ── 1. Rendering Mode ─────────────────────────────────────────────────────────
-
-function RenderingModeSection({ t }: { t: Copy['renderMode'] }) {
-  const [mode, setMode] = useState<RenderMode>('fast');
-  useEffect(() => {
-    const v = (typeof window !== 'undefined' ? localStorage.getItem(LS_RENDER_MODE) : null) as RenderMode | null;
-    if (v === 'fast' || v === 'ultra') setMode(v);
-  }, []);
-  const set = useCallback((m: RenderMode) => { setMode(m); try { localStorage.setItem(LS_RENDER_MODE, m); } catch {} }, []);
-  const ultra = mode === 'ultra';
-  return (
-    <Card>
-      <CardHeader icon={ultra ? Sparkles : Zap} title={t.title} />
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-medium md:text-base">{ultra ? t.ultra : t.fast}</div>
-          <p className="mt-1 text-xs text-app-muted md:text-sm">{ultra ? t.ultraDesc : t.fastDesc}</p>
-        </div>
-        <ToggleSwitch checked={ultra} onChange={(v) => set(v ? 'ultra' : 'fast')} ariaLabel={t.title} />
-      </div>
-    </Card>
-  );
-}
-
-// ── 2. Aspect Ratio Presets ───────────────────────────────────────────────────
-
-function AspectRatioSection({ t, loc }: { t: Copy['aspect']; loc: Locale }) {
-  const [aspect, setAspect] = useState<Aspect>('16:9');
-  useEffect(() => {
-    const v = (typeof window !== 'undefined' ? localStorage.getItem(LS_ASPECT) : null) as Aspect | null;
-    if (v && ASPECTS.some((a) => a.id === v)) setAspect(v);
-  }, []);
-  const set = useCallback((a: Aspect) => { setAspect(a); try { localStorage.setItem(LS_ASPECT, a); } catch {} }, []);
-  return (
-    <Card>
-      <CardHeader icon={RectangleHorizontal} title={t.title} subtitle={t.subtitle} />
-      <div className="grid grid-cols-2 gap-3">
-        {ASPECTS.map((opt) => {
-          const active = aspect === opt.id;
-          const Icon = opt.Icon;
-          return (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => set(opt.id)}
-              aria-pressed={active}
-              className={`group flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
-                active
-                  ? 'border-app-accent/60 bg-app-accent/10 text-app-text'
-                  : 'border-app-border/40 bg-app-bg/40 text-app-text hover:border-app-border-hover hover:bg-app-bg/60'
-              }`}
-            >
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-app-accent/20 text-app-accent' : 'bg-app-elevated text-app-muted'}`}>
-                <Icon size={16} />
-              </span>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">{opt.label}</div>
-                <div className="truncate text-[11px] text-app-muted md:text-xs">{opt.sublabel[loc]}</div>
-              </div>
-              {active && <Check size={14} className="ml-auto text-app-accent" />}
-            </button>
-          );
-        })}
-      </div>
-    </Card>
-  );
-}
-
-// ── 3. Language ───────────────────────────────────────────────────────────────
+// ── Language ──────────────────────────────────────────────────────────────────
 
 function LanguageSection({ t, loc }: { t: Copy['language']; loc: Locale }) {
   const router = useRouter();
@@ -350,7 +260,7 @@ function LanguageSection({ t, loc }: { t: Copy['language']; loc: Locale }) {
   );
 }
 
-// ── 4. Theme ──────────────────────────────────────────────────────────────────
+// ── Theme ─────────────────────────────────────────────────────────────────────
 
 function ThemeSection({ t }: { t: Copy['theme'] }) {
   const { theme, toggleTheme } = useTheme();
@@ -368,25 +278,59 @@ function ThemeSection({ t }: { t: Copy['theme'] }) {
   );
 }
 
-// ── 5. Profile ────────────────────────────────────────────────────────────────
+// ── Account state (one probe for the whole page) ─────────────────────────────
 
-function ProfileSection({ t }: { t: Copy['profile'] }) {
-  // Use the credits/balance endpoint as a lightweight signed-in probe: 200 means
-  // there's an authenticated session, anything else (401 etc) means signed out.
-  // Avoids inventing a dedicated /me endpoint that doesn't exist yet.
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+interface CreditsResponse { balance: number; monthlyAllowance: number; resetAt: string | null }
+
+type Account =
+  | { state: 'loading' }
+  | { state: 'signedIn'; credits: CreditsResponse | null }
+  | { state: 'signedOut' }
+  | { state: 'failed' };
+
+/** The balance endpoint doubles as the signed-in probe: 401/403 means a guest, 200 a member, anything else unknown. */
+function useAccount(): Account {
+  const [account, setAccount] = useState<Account>({ state: 'loading' });
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const r = await fetch('/api/credits/balance', { credentials: 'include' });
-        if (!cancelled) setSignedIn(r.ok);
+        if (cancelled) return;
+        if (r.status === 401 || r.status === 403) { setAccount({ state: 'signedOut' }); return; }
+        if (!r.ok) { setAccount({ state: 'failed' }); return; }
+        const credits = (await r.json().catch(() => null)) as CreditsResponse | null;
+        if (!cancelled) setAccount({ state: 'signedIn', credits });
       } catch {
-        if (!cancelled) setSignedIn(false);
+        if (!cancelled) setAccount({ state: 'failed' });
       }
     })();
     return () => { cancelled = true; };
   }, []);
+  return account;
+}
+
+function SignInCard({ t }: { t: Copy['account'] }) {
+  return (
+    <Card>
+      <CardHeader icon={User} title={t.title} />
+      <div className="flex flex-wrap items-center justify-between gap-3" data-testid="settings-signin">
+        <p className="min-w-0 flex-1 text-sm text-app-muted">{t.body}</p>
+        <button
+          type="button"
+          onClick={() => { try { window.dispatchEvent(new CustomEvent('myavatar:auth-required')); } catch { /* SSR */ } }}
+          className="inline-flex min-h-[44px] items-center rounded-full bg-app-accent px-5 text-sm font-semibold text-app-bg hover:opacity-90"
+        >
+          {t.button}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+function ProfileSection({ t, account }: { t: Copy['profile']; account: Account }) {
   return (
     <Card>
       <CardHeader icon={User} title={t.title} />
@@ -394,9 +338,11 @@ function ProfileSection({ t }: { t: Copy['profile'] }) {
         <div className="min-w-0">
           <div className="text-xs uppercase tracking-wider text-app-muted">{t.status}</div>
           <div className="mt-0.5 flex items-center gap-2 text-sm font-medium md:text-base">
-            {signedIn === null ? (
+            {account.state === 'loading' ? (
               <Loader2 size={14} className="animate-spin text-app-muted" />
-            ) : signedIn ? (
+            ) : account.state === 'failed' ? (
+              <span className="text-app-muted">{t.unknown}</span>
+            ) : account.state === 'signedIn' ? (
               <>
                 <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
                 <span>{t.signedIn}</span>
@@ -414,27 +360,11 @@ function ProfileSection({ t }: { t: Copy['profile'] }) {
   );
 }
 
-// ── 6. API Usage & Balance ────────────────────────────────────────────────────
+// ── Balance & usage ───────────────────────────────────────────────────────────
 
-interface CreditsResponse { balance: number; monthlyAllowance: number; resetAt: string | null }
-
-function ApiUsageSection({ t, loc }: { t: Copy['usage']; loc: Locale }) {
-  const [data, setData] = useState<CreditsResponse | null>(null);
-  const [state, setState] = useState<'loading' | 'ok' | 'failed'>('loading');
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await fetch('/api/credits/balance', { credentials: 'include' });
-        if (!r.ok) { if (!cancelled) setState('failed'); return; }
-        const j = (await r.json()) as CreditsResponse;
-        if (!cancelled) { setData(j); setState('ok'); }
-      } catch {
-        if (!cancelled) setState('failed');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+function ApiUsageSection({ t, loc, account }: { t: Copy['usage']; loc: Locale; account: Account }) {
+  const data = account.state === 'signedIn' ? account.credits : null;
+  const state: 'loading' | 'ok' | 'failed' = account.state === 'loading' ? 'loading' : data ? 'ok' : 'failed';
 
   const pct = useMemo(() => {
     if (!data || !data.monthlyAllowance) return 0;
@@ -480,7 +410,7 @@ function ApiUsageSection({ t, loc }: { t: Copy['usage']; loc: Locale }) {
   );
 }
 
-// ── 7. Credit history (last 10 transactions) ──────────────────────────────────
+// ── Credit history (last 10 transactions) ──────────────────────────────────
 
 interface HistoryItem { action: string; creditsDelta: number; createdAt: string }
 const ACTION_LABEL: Record<string, { emoji: string; ka: string; en: string; ru: string }> = {
@@ -557,7 +487,7 @@ function CreditHistorySection({ t, loc }: { t: Copy['history']; loc: Locale }) {
   );
 }
 
-// ── 8. Danger Zone (Delete Account) ───────────────────────────────────────────
+// ── Danger Zone (Delete Account) ───────────────────────────────────────────
 
 function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
   const [open, setOpen] = useState(false);
@@ -569,8 +499,8 @@ function DangerZoneSection({ t, loc }: { t: Copy['danger']; loc: Locale }) {
     setBusy(true); setErr(null);
     try {
       const r = await fetch('/api/account/delete', { method: 'POST', credentials: 'include' });
-      const j = (await r.json().catch(() => ({}))) as { success?: boolean; error?: string };
-      if (!j.success) { setErr(j.error || t.failed); setBusy(false); return; }
+      const j = (await r.json().catch(() => ({}))) as { success?: boolean };
+      if (!j.success) { setErr(t.failed); setBusy(false); return; }
       setDone(true);
       // Brief delay so the user sees the success state, then back to the studio, signed out.
       setTimeout(() => { window.location.href = `/${loc}`; }, 1200);

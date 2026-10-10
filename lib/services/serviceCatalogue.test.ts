@@ -9,6 +9,7 @@ import {
   type ServiceId,
 } from './serviceCatalogue';
 import { SERVICE_TYPES } from '@/lib/services/billing/costModel';
+import { TOOL_META, isToolId } from '@/lib/studio/tools';
 
 describe('the ten official services', () => {
   it('is exactly ten, with unique ids', () => {
@@ -74,5 +75,14 @@ describe('lookup + routing', () => {
     expect(serviceName(getService('dubbing')!, 'en')).toBe('Dubbing');
     expect(serviceName(getService('dubbing')!, 'ru')).toBe('Дубляж');
     expect(serviceName(getService('dubbing')!, 'ka')).toBe('დუბლაჟი');
+  });
+});
+
+describe('one name per tool', () => {
+  it('names each studio tool exactly as the sidebar does (lib/studio/tools TOOL_META), in all three languages', () => {
+    for (const s of SERVICE_CATALOGUE) {
+      if (!isToolId(s.id)) continue;
+      expect([s.id, s.name]).toEqual([s.id, TOOL_META[s.id].name]);
+    }
   });
 });

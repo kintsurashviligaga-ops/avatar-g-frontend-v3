@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
 import { requireAuthForGeneration } from '@/lib/api/requireAuthForGeneration';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
@@ -353,6 +354,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'prompt is required' }, { status: 400 });
   }
 
+  // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): Lyria (Google) and ElevenLabs Music compose; everything else here is an
+  // outside engine — an explicit Udio / MusicGen pick, a cover (MusicGen-melody), a sampled voice (MiniMax) or a trained
+  // voice (RVC) — so the switch refuses those requests here, before the reserve. Off (the default) → no-op.
+  if (audioReference || voiceReference || useMyVoice || preferredEngine === 'udio' || preferredEngine === 'musicgen') {
+    const outside = refuseOutsideEngine(req);
+    if (outside) return outside;
+  }
+
   // Fold the tempo selection into the brief as a feel/BPM hint (empty for 'medium').
   const tempoHint = tempo === 'slow' ? 'Slow tempo, around 70 BPM. ' : tempo === 'fast' ? 'Fast, upbeat tempo, around 140 BPM. ' : '';
   let capped = (tempoHint + prompt).slice(0, 1000);
@@ -538,6 +547,8 @@ export async function POST(req: NextRequest) {
     // How the controls reached the engine that composed the track — set on the composed paths only (a cover or a
     // cloned voice keeps its own source and takes no controls).
     let controlsReport: MusicControlsReport | null = null;
+    // False only when the user's trained voice was asked for and its conversion missed (the AI vocal shipped instead).
+    let voiceApplied = true;
 
     // COVER vs compose: with an uploaded reference track, REPLICATE MusicGen-melody
     // re-imagines it in the requested style (conditioned on the track's melody);
@@ -552,7 +563,8 @@ export async function POST(req: NextRequest) {
     if (trainedModel) {
       // FAITHFUL "sing in my voice": ElevenLabs Music composes a song WITH vocals, then
       // realistic-voice-cloning (RVC) swaps those vocals for the user's TRAINED model.
-      // Fail-open: if the convert misses, return the composed song so the user still gets a track.
+      // Fail-open: if the convert misses, return the composed song so the user still gets a track — and SAY so
+      // (`voiceApplied: false`): it used to arrive as if it were sung in their voice.
       const composed = await composeTrackUrl(
         buildMusicBrief({ prompt: cappedEn, style, templateDescriptor: template?.descriptor, lyrics, instrumental: false, directives }),
         style, false, durationSec, controls, preferredEngine,
@@ -564,6 +576,7 @@ export async function POST(req: NextRequest) {
       } catch {
         providerAudioUrl = composed.url;
         engine = composed.engine;
+        voiceApplied = false;
       }
     } else if (voiceReference) {
       // "Create a song in MY voice" — resolve the user's uploaded voice sample to an
@@ -700,6 +713,7 @@ export async function POST(req: NextRequest) {
       success: true,
       url: hostedUrl,
       engine,
+      ...(voiceApplied ? {} : { voiceApplied: false }),
       // Stated so the result card can show the REAL length rather than the requested one, and say when
       // the difference was refunded instead of leaving the user to notice the short track themselves.
       ...(deliveredSec > 0 ? { durationSec: Math.round(deliveredSec) } : {}),

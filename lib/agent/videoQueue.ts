@@ -2,9 +2,9 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
-import { creditCostFor } from '@/lib/credits/pricing';
+import { STUDIO_DEFAULT_VEO_TIER, videoCredits } from '@/lib/credits/videoPricing';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
-import { costPerSecondUsd, DEFAULT_TIER, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
+import { costPerSecondUsd, resolutionFor, resolveModel } from '@/lib/veo/capabilities';
 import { createVeoClip, pollVeoClip, veoTransport, type CreateVeoClipResult } from '@/lib/veo/engine';
 import { hostGcsVideo } from '@/lib/veo/deliver';
 import { downloadGeminiVideo } from '@/lib/veo/geminiTransport';
@@ -235,7 +235,8 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   // ⚠️ CHARGE HERE, NOT AT ENQUEUE, AND UNDER THIS ITEM'S OWN REF. `agentq:<item id>` is unique per row
   // and the column is UNIQUE, so a retried drain re-uses the same ref and deduct_credits — which is
   // idempotent on it — refuses to charge again.
-  const cost = creditCostFor('video', { seconds: VIDEO_SECONDS });
+  // The studio's own quote for one clip on the tier it renders on (below), so a price change reaches this route too.
+  const cost = videoCredits({ seconds: VIDEO_SECONDS, quality: STUDIO_DEFAULT_VEO_TIER });
   const ref = `agentq:${item.id}`;
   const debit = await deductCredits(userId, cost, ref);
   if (!debit.ok) {
@@ -251,8 +252,9 @@ export async function drainOnce(svc: Svc, userId: string): Promise<{ action: str
   // Veo reads English — the same reason every other lane translates. The brief is a DESCRIPTION, so
   // there is nothing here that must survive verbatim.
   const promptEn = await promptToEnglish(item.prompt, 'video');
-  // The default tier is what the legacy client rendered (veo-3.1-generate-preview, GEMINI_VEO_MODEL honoured).
-  const model = resolveModel(transport, DEFAULT_TIER);
+  // ⚠️ The tier the clip's price is anchored on (Fast). The engine's own default is Standard ($0.40/s), and this route
+  // used to render on it: a 25-credit clip cost $3.20 to make (pricing audit, 2026-10-10).
+  const model = resolveModel(transport, STUDIO_DEFAULT_VEO_TIER);
   let created: CreateVeoClipResult | null;
   try {
     created = await guardedCall(

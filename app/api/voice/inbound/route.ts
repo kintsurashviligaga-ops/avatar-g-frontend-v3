@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildAgentGVapiAssistantConfig } from '@/lib/agent-g-voice-config';
 import { structuredLog } from '@/lib/logger';
 import { normalizePhoneNumber } from '@/lib/voice/phone';
+import { phoneCallsReady, phoneCallsUnavailableBody } from '@/lib/calls/availability';
 import { upsertVoiceCallByVapiId } from '@/lib/voice/repository';
 import { verifyVapiWebhookSignature } from '@/lib/voice/webhook-signature';
 
@@ -15,19 +16,25 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
 
-    // Verify the Vapi webhook signature when a secret is configured (parity with /api/voice/webhook).
     // Inbound is a Vapi-origin callback with no user session, so the HMAC is what proves the payload is
     // genuinely from Vapi rather than a spoofed request seeding voice_calls rows.
+    // ⚠️ FAIL CLOSED (as /api/voice/webhook): with VAPI_WEBHOOK_SECRET unset this used to skip the check entirely.
     const secret = String(process.env.VAPI_WEBHOOK_SECRET || '').trim();
-    if (secret) {
-      const signatureHeader =
-        request.headers.get('x-vapi-signature') ||
-        request.headers.get('x-vapi-signature-256') ||
-        request.headers.get('x-signature');
-      if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
-        return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
-      }
+    if (!secret) {
+      return NextResponse.json({ error: 'not_configured' }, { status: 503 });
     }
+    const signatureHeader =
+      request.headers.get('x-vapi-signature') ||
+      request.headers.get('x-vapi-signature-256') ||
+      request.headers.get('x-signature');
+    if (!verifyVapiWebhookSignature(rawBody, signatureHeader, secret)) {
+      return NextResponse.json({ error: 'invalid_signature' }, { status: 401 });
+    }
+
+    // Vapi asks here which assistant answers an inbound call; the answer was an Anthropic-model assistant (outside the
+    // Google + ElevenLabs policy, a second agent brain) and a `ringing` row. No call path is ready: nothing is stored
+    // and no assistant is handed out, so Vapi does not answer the call.
+    if (!phoneCallsReady()) return NextResponse.json(phoneCallsUnavailableBody(), { status: 503 });
 
     let payload: Record<string, unknown>;
     try {

@@ -30,7 +30,7 @@ import { Volume2 } from 'lucide-react';
 
 import { isEnabledByDefault } from '@/lib/env/flag';
 import { GEMINI_LIVE_VOICES } from '@/lib/voice/geminiLive';
-import { LIVE_CALL_EVENT, LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
+import { LIVE_CALL_EVENT, LIVE_PLAN_KINDS, LIVE_RESULT_EVENT, type LivePlanKind, type LiveResultNote } from '@/lib/voice/liveTools';
 import { normalizeVoiceLocale } from '@/lib/voice/voicePrompt';
 
 import LiveModeOverlay, { LiveControl } from './live/LiveModeOverlay';
@@ -93,6 +93,34 @@ interface Props {
 
 const genderOfVoice = (voice: string): Gender => (voice === 'Charon' || voice === 'Puck' ? 'male' : 'female');
 
+const PLAN_WORD: Record<LivePlanKind, string> = { audio: 'MP3', montage: 'montage', edit: 'video edit' };
+
+/** The [App] note for an Agent G plan card: its number, its facts, and how it may start (only after the user's yes). */
+export function planNote(n: number, kind: LivePlanKind, what: string): string {
+  const which = n ? `plan ${n} (${PLAN_WORD[kind]})` : `${PLAN_WORD[kind]} plan`;
+  return `[App] Agent G's ${which} is in the chat${what ? `: ${what}` : ''}. Tell the user in one or two sentences what it `
+    + 'does and ask whether to start it; after a clear yes call agent_task with action "start"'
+    + `${n ? ` and plan ${n}` : ''}. The app starts it only on the user's own yes.`;
+}
+
+/** The [App] note when a voice start ran out its countdown and started nothing. */
+export function notStartedNote(reason: LiveResultNote['reason'], what: string): string {
+  switch (reason) {
+    case 'said_no':
+      return `[App] Nothing was started: the user said${what ? ` "${what}"` : ' no or wait'}. Ask what they want instead.`;
+    case 'cancelled':
+      return '[App] Nothing was started: the user cancelled it on screen. Ask what they want instead.';
+    case 'not_recorded':
+      return `[App] Nothing was started: the app could not record the user's yes${what ? ` (${what})` : ''}. Tell the user and `
+        + 'offer to try again.';
+    case 'refused':
+      return `[App] Nothing was started${what ? `: ${what}` : ''}. Tell the user plainly.`;
+    default:
+      return '[App] Nothing was started: the countdown ended without a clear yes in the user\'s own words after the price or '
+        + 'plan. Do not say it started. Ask the user plainly whether to start; start again only after they say yes.';
+  }
+}
+
 export default function GeminiLiveConversation({
   userId,
   locale = 'ka',
@@ -140,6 +168,8 @@ export default function GeminiLiveConversation({
     actions: true,
     onToolCall: liveActions.onToolCall,
     onToolCallCancellation: liveActions.onToolCallCancellation,
+    // The user's own words: a voice start runs only on these (liveActions, lib/voice/voiceLedger).
+    onHeard: liveActions.onHeard,
   });
   const { start, stop, sendVideoFrame, status, interrupt } = session;
 
@@ -171,31 +201,40 @@ export default function GeminiLiveConversation({
   // [App] NOTES: the studio announces each new result (or a failure) while the call is on (LIVE_RESULT_EVENT); the model
   // hears it, so a plan of several steps goes on by itself — „make music, then the video, then put them together"
   // (owner, 2026-10-03). Held while the agent is speaking or thinking (text arriving then would cut it off) and sent
-  // the moment it listens again.
-  const notesRef = useRef<string[]>([]);
+  // the moment it listens again. An Agent G plan gets its number here (the model starts it by that number), and only
+  // the moment its note is SENT does a yes start to count for it: a yes before the model knew of the plan is not its yes.
+  const notesRef = useRef<Array<{ text: string; planId?: string }>>([]);
   const statusRef = useRef(status);
   statusRef.current = status;
   const sendNote = session.sendNote;
+  const { registerPlan, planTold } = liveActions;
   const flushNotes = useCallback(() => {
     if (!notesRef.current.length || statusRef.current !== 'listening') return;
-    const text = notesRef.current.join(' ');
-    if (sendNote(text)) notesRef.current = [];
-  }, [sendNote]);
+    const batch = notesRef.current;
+    if (!sendNote(batch.map((n) => n.text).join(' '))) return;
+    notesRef.current = [];
+    for (const n of batch) if (n.planId) planTold(n.planId);
+  }, [planTold, sendNote]);
   useEffect(() => {
     const onResult = (e: Event) => {
       const n = (e as CustomEvent<LiveResultNote>).detail;
       if (!n || typeof n !== 'object') return;
-      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, 160) : '';
-      const note = n.kind === 'failed'
+      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, n.kind === 'plan' ? 240 : 160) : '';
+      const planKind: LivePlanKind | null = n.kind === 'plan'
+        ? ((LIVE_PLAN_KINDS as readonly string[]).includes(n.planKind ?? '') ? n.planKind as LivePlanKind : 'audio') : null;
+      const planNo = planKind && typeof n.planId === 'string' && n.planId ? registerPlan(n.planId, planKind, what) : 0;
+      const note = n.kind === 'plan' ? planNote(planNo, planKind ?? 'audio', what)
+        : n.kind === 'not_started' ? notStartedNote(n.reason, what)
+        : n.kind === 'failed'
         ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
         : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
           + 'If the user asked for more steps, continue with the next one now; otherwise tell them in one short sentence.';
-      notesRef.current = [...notesRef.current, note].slice(-4);
+      notesRef.current = [...notesRef.current, { text: note, ...(planNo ? { planId: n.planId } : {}) }].slice(-4);
       flushNotes();
     };
     window.addEventListener(LIVE_RESULT_EVENT, onResult);
     return () => window.removeEventListener(LIVE_RESULT_EVENT, onResult);
-  }, [flushNotes]);
+  }, [flushNotes, registerPlan]);
   useEffect(() => { flushNotes(); }, [status, flushNotes]);
 
   // Generations still rendering: the full-screen call covers the job tray, so the call shows them itself.

@@ -1,16 +1,17 @@
 'use client';
 
 /**
- * ModeTabs — the two-or-three-way segmented control under the hero (Higgsfield's „References | Extend Video"): Scene ·
- * Motion · Swap. A real radio group (one Tab stop, arrows move the choice), 44 px tall.
+ * ModeTabs — the segmented control under the hero (Higgsfield's „References | Extend Video"): Scene · Motion · Swap,
+ * but only the modes the panel OFFERS (`ops`). A real radio group (one Tab stop, arrows move the choice), 44 px tall.
  *
- * A LOCKED mode is still selectable on purpose: the user opens it to see what it will do, and the panel then says —
- * plainly, on that screen — that it is not open yet and that nothing is charged. The lock glyph on the segment says so
- * before the tap. `open[op] === null` means the capabilities answer has not arrived yet (no lock shown, no promise made).
+ * A mode that is not open is not offered (the owner, 2026-10-09: „remove everything superfluous"): Motion and Swap
+ * also have their own tools (Motion transfer, Character swap), so two locked „soon" tabs here only repeated them. The
+ * panel renders no tab bar at all while Scene is the only mode. A mode that closes WHILE it is picked (a 423 from the
+ * quote) stays in `ops` so the user can read why and switch back; its lock glyph says so.
  */
 import { Clapperboard, Lock, PersonStanding, Repeat, type LucideIcon } from 'lucide-react';
 import { useRef } from 'react';
-import { GENJUTSU_OPS, type GenjutsuOp } from '@/lib/genjutsu/types';
+import type { GenjutsuOp } from '@/lib/genjutsu/types';
 import { copyFor } from './copy';
 
 const ICON: Record<GenjutsuOp, LucideIcon> = { scene: Clapperboard, motion: PersonStanding, swap: Repeat };
@@ -20,24 +21,28 @@ export interface ModeTabsProps {
   value: GenjutsuOp;
   onChange: (op: GenjutsuOp) => void;
   open: Record<GenjutsuOp, boolean | null>;
+  /** The modes offered, in GENJUTSU_OPS order. */
+  ops: readonly GenjutsuOp[];
 }
 
-export function ModeTabs({ locale, value, onChange, open }: ModeTabsProps) {
+const COLS: Record<number, string> = { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3' };
+
+export function ModeTabs({ locale, value, onChange, open, ops }: ModeTabsProps) {
   const c = copyFor(locale);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const checked = GENJUTSU_OPS.indexOf(value);
+  const checked = ops.indexOf(value);
   const go = (i: number) => {
-    const op = GENJUTSU_OPS[(i + GENJUTSU_OPS.length) % GENJUTSU_OPS.length]!;
+    const op = ops[(i + ops.length) % ops.length]!;
     onChange(op);
-    refs.current[GENJUTSU_OPS.indexOf(op)]?.focus();
+    refs.current[ops.indexOf(op)]?.focus();
   };
   const onKeyDown = (e: React.KeyboardEvent, i: number) => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); go(i - 1); }
   };
   return (
-    <div role="radiogroup" aria-label={c.heroEyebrow} data-testid="vfx-modes" className="grid grid-cols-3 gap-1 rounded-2xl bg-app-elevated/60 p-1 ring-1 ring-app-border/10">
-      {GENJUTSU_OPS.map((op, i) => {
+    <div role="radiogroup" aria-label={c.heroEyebrow} data-testid="vfx-modes" className={`grid ${COLS[ops.length] ?? 'grid-cols-3'} gap-1 rounded-2xl bg-app-elevated/60 p-1 ring-1 ring-app-border/10`}>
+      {ops.map((op, i) => {
         const on = i === checked;
         const Icon = ICON[op];
         const locked = open[op] === false;

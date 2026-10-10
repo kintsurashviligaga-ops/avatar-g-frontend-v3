@@ -26,5 +26,5 @@ export default async function MemoryPage({ params }: Props) {
     redirect(signInPath(locale, { redirect: `/${locale}/memory` }));
   }
 
-  return <MemoryPanel />;
+  return <MemoryPanel locale={locale} />;
 }
