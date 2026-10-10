@@ -78,7 +78,10 @@ suite('delivery outbox on a real Postgres + PostgREST (local, isolated)', () => 
 
   beforeEach(async () => {
     errors.length = 0;
-    await db.from('generation_jobs').delete().eq('user_id', A);
+    // The due list reads the whole table, and run.sh runs the other suites on this same throwaway database first
+    // (runIsolation leaves finished, untold runs of its users A and B): start from an empty table, not just ours.
+    const { error } = await db.from('generation_jobs').delete().not('id', 'is', null);
+    if (error) throw new Error(error.message);
   });
 
   it('1. a finished queued job is told once on each outlet; a second pass sends nothing', async () => {

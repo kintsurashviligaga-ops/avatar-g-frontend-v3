@@ -22,14 +22,32 @@ export interface QuoteInput {
   mode?: VideoMode;
 }
 
-/**
- * The lengths the Product Ad tool offers: one 8 s Veo clip, or three / six of them on the film's 8 s grid.
- *
- * ⚠️ THE AD WAS PRICED AS ONE CLIP AT EVERY LENGTH. Button and route both charged 25 credits, while a 48 s ad renders six
- * Veo Fast clips ($5.76 at $0.12/s, ≈ 15.5 ₾) for 2.50 ₾ (pricing audit, 2026-10-10). An ad now costs what a film of the
- * same length costs, on the tier it renders on.
- */
+/** The lengths the Product Ad tool offers: one 8 s Veo clip, or three / six of them on the film's 8 s grid. */
 export const PRODUCT_AD_LENGTHS = [8, 24, 48] as const;
+
+/**
+ * Which price a product ad charges.
+ *
+ * - `production`: what myavatar.ge charges today, the video price for the length (creditCostFor: 25 credits up to 59 s),
+ *   so 25 at 8, 24 and 48 s.
+ * - `length`: the pricing audit's rule (D2, docs/handoffs/pricing/SERVICE_UNIT_ECONOMICS.md): an ad costs what a film
+ *   of its length costs on the tier it renders on (25 / 75 / 150), since a 48 s ad renders six Veo Fast clips
+ *   ($5.76 at $0.12/s, ≈ 15.5 ₾) for 2.50 ₾.
+ *
+ * ⚠️ STAYS `production` UNTIL THE OWNER APPROVES THE PRICE MODEL. A Production price changes only on the owner's word
+ * (2026-10-10), and this rule is part of the one price model waiting on it. The button, the chat notices, the remix
+ * route's charge and the secondary-clip gate all read this one switch.
+ */
+export type ProductAdPricing = 'production' | 'length';
+export const PRODUCT_AD_PRICING: ProductAdPricing = 'production';
+
+/** Credits a product ad of `sec` seconds costs under `rule`. */
+export function productAdCredits(sec: number | null | undefined, rule: ProductAdPricing = PRODUCT_AD_PRICING): number {
+  const seconds = productAdSeconds(sec);
+  return rule === 'length'
+    ? videoCredits({ seconds, quality: STUDIO_DEFAULT_VEO_TIER })
+    : creditCostFor('video', { seconds });
+}
 
 /** A requested ad length rounded UP to the next offered one (8 s when absent), so a request never pays for less than it renders. */
 export function productAdSeconds(sec?: number | null): number {
@@ -58,7 +76,7 @@ export function quoteCredits(q: QuoteInput): number {
     case 'motion':
       return creditCostFor('remix');
     case 'product':
-      return videoCredits({ seconds: productAdSeconds(q.seconds), quality: STUDIO_DEFAULT_VEO_TIER });
+      return productAdCredits(q.seconds);
     case 'model3d':
       return creditCostFor('model3d');
     // A VFX scene is one 8 s Veo clip: the SAME function the VFX button shows and /api/genjutsu/generate charges with.

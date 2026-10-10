@@ -1,4 +1,5 @@
 import 'server-only';
+import { secretMatches } from '@/lib/security/secretMatch';
 
 /**
  * Is this request an authorised scheduled invocation?
@@ -22,7 +23,9 @@ import 'server-only';
 export function isCronAuthorized(req: Request): boolean {
   const secret = (process.env.CRON_SECRET || '').trim();
   if (!secret) return false; // unset → refuse, never fall open
-  const auth = req.headers.get('authorization');
-  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; x-cron-token supports manual runs.
-  return auth === `Bearer ${secret}` || req.headers.get('x-cron-token') === secret;
+  const auth = req.headers.get('authorization') ?? '';
+  const bearer = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null;
+  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`; x-cron-token supports manual runs. Both compared in
+  // constant time (lib/security/secretMatch), like the webhook secrets.
+  return secretMatches(bearer, secret) || secretMatches(req.headers.get('x-cron-token'), secret);
 }

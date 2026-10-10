@@ -123,7 +123,7 @@ Labels:
 | # | Finding | Effect | Label |
 |---|---|---|---|
 | D1 | Every Veo video is sold below its cost. An 8 s Fast film is 25 credits (2.50 ₾) and costs 3.63 ₾; a 48 s Standard film 495 credits against 60.71 ₾ | −77 % (8 s Fast) to −49 % (48 s Standard) per film; every video sold loses money | IN_MODEL |
-| D2 | A product ad was charged one clip's price at every length. The button quoted 6 s; the route charged 25 or 45 credits from the client's own duration; a 48 s ad renders 6 Fast clips | a 48 s ad: 25 credits for 18.79 ₾ of cost (−815 %) | FIXED_ON_BRANCH (`quote.ts` `productAdSeconds`, `productAdCharge.ts`, remix route, studio button; tests) |
+| D2 | A product ad was charged one clip's price at every length. The button quoted 6 s; the route charged 25 or 45 credits from the client's own duration; a 48 s ad renders 6 Fast clips | a 48 s ad: 25 credits for 18.79 ₾ of cost (−815 %) | BUILT, HELD for the owner's price approval: one switch `PRODUCT_AD_PRICING` in `quote.ts` (`productAdCredits`), read by the studio button, the chat notices, the remix route and the scene gate. It stays `production` (25 at every length, today's price) so merging PR #50 changes no price; `length` charges 25 / 75 / 150 |
 | D3 | The Agent G video queue charged the Fast price but rendered on the Standard model (`resolveModel(transport, DEFAULT_TIER)`) | each queued clip: 25 credits for $3.20 of Veo | FIXED_ON_BRANCH (`videoQueue.ts` renders `STUDIO_DEFAULT_VEO_TIER`; test pins `veo-3.1-fast-`) |
 | D4 | Image: 2 credits for a 1K Nano Banana 2 image that lists at $0.067. The cost model books $0.03 | −30 % | IN_MODEL (8 credits); booking fix in §8 |
 | D5 | A full song (up to 3 min of ElevenLabs music, $0.45) is billed at the 90 s price, 12 credits | −43 % | IN_MODEL (50) |
@@ -158,7 +158,7 @@ Videos are composed per length and tier; §5 has their full table. The video row
 |---|---|---|---|---|---|---|---|---|
 | video.generate (film, documentary, chat video) | 8 s video, Fast | Google → `veo-3.1-fast-generate` + ElevenLabs speech + `gemini-3.8-flash` storyboard + ElevenLabs music bed + FFmpeg | Veo $0.12 / s 1080p with sound ($0.96 a scene); speech $0.08 / 1k chars; music $0.15 / min | 3.63 ₾ | 25 (−77 %) | **137** (13.70 ₾) | 68 % | PROVEN (Fast, Standard) / ESTIMATED (Lite) |
 | video.music-video | 8 s, Fast, with its song | as above + ElevenLabs music or Lyria for the song | + song $0.15 / min | 4.10 ₾ | 35 (−42 %) | **157** (15.70 ₾) | 68 % | ESTIMATED |
-| video.product-ad | 8 / 24 / 48 s, Fast | as video.generate | as above | 3.63 / 9.70 / 18.79 ₾ | 25 at every length | **137 / 361 / 697** | 68 / 67 / 67 % | PROVEN; length fix FIXED_ON_BRANCH |
+| video.product-ad | 8 / 24 / 48 s, Fast | as video.generate | as above | 3.63 / 9.70 / 18.79 ₾ | 25 at every length | **137 / 361 / 697** | 68 / 67 / 67 % | PROVEN; length rule built, held at today's price until the owner approves (D2) |
 | video.character-swap | one swap | none allowed (Replicate `roop`) | — | — | 15 | **not sold** | — | BLOCKED |
 | video.motion | one transfer | none allowed (Kling v2.1) | — | — | 15 | **not sold** | — | BLOCKED |
 | video.vfx | one 8 s effect scene, Fast | Google → Veo 3.1 (genjutsu) | as video | 3.63 ₾ | 25 Fast / 83 Standard | **137** Fast / 377 Standard | 68 / 66 % | PROVEN |
@@ -358,7 +358,7 @@ The goal: **quote = confirmation = ledger = charge**, from one table, on the ser
    - A product ad settles per scene like the film: a scene that does not render is paid back (D15).
 3. **The server computes every charge.** Already true for the studio tools, VFX (409 `price_changed`) and Agent G's
    signed quotes. Still to do:
-   - the product ad's client-sent duration (D2, fixed on the branch);
+   - the product ad's length price (D2: built behind `PRODUCT_AD_PRICING`, held at today's price until approved);
    - the VFX catalog key (D11): `pricingKey: 'video'`;
    - the assemble fallback that prices without a tier.
 4. **New charges where work is free today.** Each uses the existing reserve → render → settle / refund path

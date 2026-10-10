@@ -19,7 +19,7 @@
  * the route supplies the ledger read, the admin check and the Redis claim.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { PRODUCT_AD_LENGTHS, quoteCredits } from '@/lib/credits/quote';
+import { PRODUCT_AD_LENGTHS, PRODUCT_AD_PRICING, productAdCredits, type ProductAdPricing } from '@/lib/credits/quote';
 import { sceneCountForDuration } from '@/lib/video/sceneGrid';
 
 /** A 60s ad on the 5s grid is 12 clips: the primary (0) plus secondaries 1..11. */
@@ -37,14 +37,16 @@ export function productAdSecondariesKey(jobId: string): string {
   return `productad-secondaries:${jobId}`;
 }
 /**
- * The highest clip index the PAID length covers. The ad price is the film price for its length (lib/credits/quote): the
- * longest offered length the net debit pays for, in 8 s clips, minus the primary. A one-clip ad has no secondaries.
- * ⚠️ This used to let any paid ad (25 credits) run six clips, so the 48 s ad's five extra Veo clips rode on a one-clip
- * price (pricing audit, 2026-10-10).
+ * The highest clip index the PAID length covers: the longest offered length the net debit pays for
+ * (lib/credits/quote productAdCredits), in 8 s clips, minus the primary.
+ *
+ * Under today's Production price every length costs 25 credits, so any paid ad covers six clips, as on main. Under the
+ * audit's length rule (PRODUCT_AD_PRICING = 'length') an 8 s price covers the primary only, 24 s three clips, 48 s six,
+ * so the 48 s ad's five extra Veo clips can no longer ride on a one-clip price.
  */
-export function maxSecondarySceneIndexFor(netPaid: number): number {
+export function maxSecondarySceneIndexFor(netPaid: number, rule: ProductAdPricing = PRODUCT_AD_PRICING): number {
   for (const len of [...PRODUCT_AD_LENGTHS].reverse()) {
-    if (netPaid >= quoteCredits({ tool: 'product', seconds: len })) {
+    if (netPaid >= productAdCredits(len, rule)) {
       return Math.min(PRODUCT_AD_MAX_SCENE_INDEX, sceneCountForDuration(len) - 1);
     }
   }

@@ -1,7 +1,7 @@
 import { CREDIT_COSTS } from './pricing';
 import { VIDEO_DURATION_STOPS } from '@/lib/video/duration';
 import { MUSIC_VIDEO_MULT, VIDEO_CREDITS_PER_SEC, filmSecondsFromClips, perSceneCredits, videoCredits } from './videoPricing';
-import { quoteCredits, creditsLabel, productAdSeconds } from './quote';
+import { quoteCredits, creditsLabel, productAdCredits, productAdSeconds, PRODUCT_AD_PRICING } from './quote';
 import { genjutsuCredits } from '../genjutsu/pricing';
 
 describe('video price by the second', () => {
@@ -74,11 +74,14 @@ describe('quote — the number on the button', () => {
     expect(quoteCredits({ tool: 'chat' })).toBe(0);
   });
 
-  test('video goes through videoCredits; a product ad costs what a film of its length costs', () => {
+  test('video goes through videoCredits; a product ad keeps today\'s Production price until the owner approves the length rule', () => {
     expect(quoteCredits({ tool: 'video', seconds: 48 })).toBe(150);
     expect(quoteCredits({ tool: 'video', seconds: 24, mode: 'musicvideo' })).toBe(105);
-    // 8 / 24 / 48 s render 1 / 3 / 6 Veo Fast clips; the price follows (it was 25 at every length).
-    expect([8, 24, 48].map((seconds) => quoteCredits({ tool: 'product', seconds }))).toEqual(
+    // Production today: 25 credits at every offered length, on the button and in the route alike.
+    expect(PRODUCT_AD_PRICING).toBe('production');
+    expect([8, 24, 48].map((seconds) => quoteCredits({ tool: 'product', seconds }))).toEqual([25, 25, 25]);
+    // The audit's rule (D2): 8 / 24 / 48 s render 1 / 3 / 6 Veo Fast clips and would cost what a film of that length costs.
+    expect([8, 24, 48].map((seconds) => productAdCredits(seconds, 'length'))).toEqual(
       [8, 24, 48].map((seconds) => quoteCredits({ tool: 'video', seconds })),
     );
     expect(quoteCredits({ tool: 'product' })).toBe(CREDIT_COSTS.video_30s);

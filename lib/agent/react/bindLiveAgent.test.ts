@@ -29,6 +29,11 @@ jest.mock('../media/editLive', () => ({ liveEditDeps: () => ({ liveEdit: true })
 const mockAnalyze = jest.fn();
 jest.mock('../media/analyzeExec', () => ({ analyzeMedia: (...a: unknown[]) => mockAnalyze(...a) }));
 jest.mock('../media/analyzeLive', () => ({ liveAnalyzeDeps: () => ({ liveAnalyze: true }) }));
+const mockDailyCap = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
+jest.mock('../../api/rate-limit', () => ({
+  checkRateLimitByKey: (...a: unknown[]) => mockDailyCap(...a),
+  RATE_LIMITS: { ANALYZE_USER: { maxRequests: 100, windowMs: 86_400_000, keyPrefix: 'rl:analyze:user' } },
+}));
 const mockLog = jest.fn();
 jest.mock('../../logger', () => ({ structuredLog: (...a: unknown[]) => mockLog(...a) }));
 
@@ -348,6 +353,16 @@ describe('analyze_media (Agent G reads one file with Gemini; it starts nothing)'
     expect(await t.run({ file: 1 })).toMatchObject({ error: 'call_limit' });
     expect(mockAnalyze).toHaveBeenCalledTimes(MAX_ANALYSES_PER_RUN);
     mockAnalyze.mockReset();
+  });
+
+  test('the per-account daily ceiling of the analyze route bounds the tool too: refused before anything is read', async () => {
+    mockAnalyze.mockResolvedValueOnce(OK);
+    await analyzeTool(on())!.run({ file: 1 });
+    expect(mockDailyCap).toHaveBeenCalledWith(CTX.userId, expect.objectContaining({ keyPrefix: 'rl:analyze:user' }));
+    mockAnalyze.mockClear();
+    mockDailyCap.mockResolvedValueOnce(new Response('{}', { status: 429 }));
+    expect(await analyzeTool(on())!.run({ file: 1 })).toMatchObject({ error: 'daily_limit' });
+    expect(mockAnalyze).not.toHaveBeenCalled();
   });
 
   test('the system note is there only when the tool is', async () => {

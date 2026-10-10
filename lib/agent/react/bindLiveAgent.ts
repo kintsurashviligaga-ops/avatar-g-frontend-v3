@@ -378,10 +378,16 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
         source = { kind: 'file', ref };
       }
       // Loaded on use: ffprobe and the model transport stay off the path of every request that does not analyse.
-      const [{ analyzeMedia }, { liveAnalyzeDeps }] = await Promise.all([
+      const [{ analyzeMedia }, { liveAnalyzeDeps }, { checkRateLimitByKey, RATE_LIMITS }] = await Promise.all([
         import('@/lib/agent/media/analyzeExec'),
         import('@/lib/agent/media/analyzeLive'),
+        import('@/lib/api/rate-limit'),
       ]);
+      // The same per-account daily ceiling as POST /api/agent/media/analyze: a read is booked against the AI budget, not
+      // the user's credits, so two per run must not become unbounded across runs.
+      if (await checkRateLimitByKey(ctx.userId, RATE_LIMITS.ANALYZE_USER)) {
+        return { error: 'daily_limit', message: 'The daily limit for file analysis is reached; try again tomorrow.' };
+      }
       const r = await analyzeMedia(liveAnalyzeDeps(), {
         userId: ctx.userId, source, ...(focus ? { focus } : {}), ...(question ? { question } : {}), lang: langOfGoal(ctx.goal),
       });
