@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
+import { quoteCredits } from '@/lib/credits/quote';
 import {
   PRODUCT_AD_MAX_SCENE_INDEX,
   PRODUCT_AD_SCENE_WINDOW_SEC,
@@ -38,10 +39,14 @@ const PRIMARY_REF = remixTxnRef('productad', JOB, 25, bodyFingerprint(primaryBod
 const debit = (ref: string, amount = 25): LedgerRow => ({ delta: -amount, metadata: { ref } });
 const credit = (ref: string, amount = 25): LedgerRow => ({ delta: amount, metadata: { ref } });
 
+/** What a 24 s ad's primary nets in the ledger: its three clips cover the sceneIndex 2 the gate tests ask for. */
+const PAID_24 = quoteCredits({ tool: 'product', seconds: 24 });
+const PAID_48 = quoteCredits({ tool: 'product', seconds: 48 });
+
 /** Fake deps with a fake clock: sleep advances time, so the bounded wait runs instantly. */
 function deps(over: Partial<SecondaryClipDeps> & { reads?: Array<number | null> } = {}) {
   let t = 0;
-  const reads = over.reads ?? [25];
+  const reads = over.reads ?? [PAID_24];
   let i = 0;
   const calls = { reads: 0, claims: [] as Array<{ uid: string; key: string; ttl: number }> };
   const d: SecondaryClipDeps = {
@@ -124,7 +129,7 @@ describe('gateProductAdSecondaryClip', () => {
   const input = { userId: USER, jobId: JOB, sceneIndex: 2 };
 
   it('allows a secondary whose primary debit is in the ledger, and claims its scene for the hour', async () => {
-    const { d, calls } = deps({ reads: [25] });
+    const { d, calls } = deps({ reads: [PAID_24] });
     await expect(gateProductAdSecondaryClip(input, d)).resolves.toEqual({ ok: true, sceneIndex: 2, admin: false });
     expect(calls.claims).toEqual([{ uid: USER, key: productAdSceneKey(JOB, 2), ttl: PRODUCT_AD_SCENE_WINDOW_SEC }]);
   });
@@ -162,12 +167,12 @@ describe('gateProductAdSecondaryClip', () => {
   });
 
   it('waits for a primary fired concurrently — clip 1 may reach the server before clip 0 is charged', async () => {
-    const { d } = deps({ reads: [0, 0, 25, 25] });
+    const { d } = deps({ reads: [0, 0, PAID_24, PAID_24] });
     await expect(gateProductAdSecondaryClip(input, d)).resolves.toMatchObject({ ok: true, sceneIndex: 2 });
   });
 
   it('refuses when the primary is refunded during the settle window (charge-then-refund, fired concurrently)', async () => {
-    const { d, calls } = deps({ reads: [25, 0] });
+    const { d, calls } = deps({ reads: [PAID_24, 0] });
     await expect(gateProductAdSecondaryClip(input, d)).resolves.toMatchObject({ ok: false, status: 402, reason: 'unpaid' });
     expect(calls.claims).toHaveLength(0);
   });
@@ -263,18 +268,30 @@ describe('a paid primary is recent and covers only the length it paid for', () =
     expect(primaryNetDebit([{ ...debit(PRIMARY_REF), created_at: 'not a date' }], JOB, NOW)).toBe(0);
   });
 
-  it('a 25-credit ad covers clips up to index 5; a 45-credit ad the full twelve', () => {
-    expect(maxSecondarySceneIndexFor(25)).toBe(5);
-    expect(maxSecondarySceneIndexFor(45)).toBe(PRODUCT_AD_MAX_SCENE_INDEX);
+  it('the paid length decides how many clips ride on the primary', () => {
+    // The paid length decides the clips: 8 s → the primary only, 24 s → 3 clips, 48 s → 6 (one 8 s Veo clip each).
+    const paid = (seconds: number) => quoteCredits({ tool: 'product', seconds });
+    expect(maxSecondarySceneIndexFor(paid(8))).toBe(0);
+    expect(maxSecondarySceneIndexFor(paid(24) - 1)).toBe(0);
+    expect(maxSecondarySceneIndexFor(paid(24))).toBe(2);
+    expect(maxSecondarySceneIndexFor(paid(48) - 1)).toBe(2);
+    expect(maxSecondarySceneIndexFor(paid(48))).toBe(5);
+    expect(maxSecondarySceneIndexFor(0)).toBe(0);
+    expect(maxSecondarySceneIndexFor(1e6)).toBeLessThanOrEqual(PRODUCT_AD_MAX_SCENE_INDEX);
   });
 
   it('the gate refuses a clip beyond the paid length — and does not burn its scene', async () => {
-    const { d, calls } = deps({ reads: [25, 25] });
-    const verdict = await gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 7 }, d);
+    // A one-clip (8 s) price carries no secondary at all.
+    const one = deps({ reads: [quoteCredits({ tool: 'product', seconds: 8 })] });
+    await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 1 }, one.d)).resolves.toMatchObject({ ok: false, status: 402, reason: 'unpaid' });
+    expect(one.calls.claims).toHaveLength(0);
+    // A 24 s price covers clips 1–2, not 3; a 48 s price covers 5, never 6.
+    const { d, calls } = deps({ reads: [PAID_24, PAID_24] });
+    const verdict = await gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 3 }, d);
     expect(verdict).toMatchObject({ ok: false, status: 402, reason: 'unpaid' });
     expect(calls.claims).toHaveLength(0);
-    const { d: d45 } = deps({ reads: [45, 45] });
-    await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 7 }, d45)).resolves.toMatchObject({ ok: true, sceneIndex: 7 });
+    await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 5 }, deps({ reads: [PAID_48] }).d)).resolves.toMatchObject({ ok: true, sceneIndex: 5 });
+    await expect(gateProductAdSecondaryClip({ userId: USER, jobId: JOB, sceneIndex: 6 }, deps({ reads: [PAID_48] }).d)).resolves.toMatchObject({ ok: false, status: 402 });
   });
 
   it('the secondaries marker is per job', () => {

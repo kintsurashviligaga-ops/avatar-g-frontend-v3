@@ -4229,9 +4229,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (enrich) {
           setStage(locale === 'en' ? 'Voiceover + branding…' : locale === 'ru' ? 'Озвучка + брендинг…' : 'გახმოვანება + ბრენდინგი…');
           const finalUrl = await assemble([{ url: res.url, durationSec: 6 }]);
-          if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+          if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration, credits: quoteCredits({ tool: 'product', seconds: duration }), service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
         }
-        landVideo(res.url); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(res.url, 'film');
+        landVideo(res.url); notifyCredit('video', { seconds: duration, credits: quoteCredits({ tool: 'product', seconds: duration }), service: 'video.product-ad' }); autoSaveToLibrary(res.url, 'film');
         return res.url;
       }
       const n = sceneCountForDuration(duration); // 8→1 · 24→3 · 48→6, the same 8s grid the server renders
@@ -4266,7 +4266,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         clearInterval(watchdog);
       }
       if (clips.length < 2) {
-        if (clips[0]) { landVideo(clips[0].url); notifyCredit('video', { seconds: 6, service: 'video.product-ad' }); autoSaveToLibrary(clips[0].url, 'film'); return clips[0].url; }
+        if (clips[0]) { landVideo(clips[0].url); notifyCredit('video', { seconds: duration, credits: quoteCredits({ tool: 'product', seconds: duration }), service: 'video.product-ad' }); autoSaveToLibrary(clips[0].url, 'film'); return clips[0].url; }
         throw new Error(locale === 'en' ? 'Generation failed. Please try again.' : locale === 'ru' ? 'Не удалось сгенерировать. Попробуйте снова.' : 'გენერაცია ვერ მოხდა. სცადეთ თავიდან.');
       }
       setStage(enrich
@@ -4278,7 +4278,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // bed is sized against the real film rather than an assumed one.
       const finalUrl = await assemble(clips.map((c) => ({ url: c.url, durationSec: c.clipSec })));
       // Assembled master carries the ElevenLabs music bed (+ VO/overlays).
-      if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration, service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
+      if (finalUrl) { landVideo(finalUrl); notifyCredit('video', { seconds: duration, credits: quoteCredits({ tool: 'product', seconds: duration }), service: 'video.product-ad' }); autoSaveToLibrary(finalUrl, 'film'); return finalUrl; }
       if (clips[0]) { landVideo(clips[0].url); return clips[0].url; } // fail-open: show the first clip
       throw new Error(locale === 'en' ? 'Generation failed.' : locale === 'ru' ? 'Ошибка генерации.' : 'გენერაცია ვერ მოხდა.');
     } catch (e) {
@@ -7792,7 +7792,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // product ad, the character swap and the remix (the Create screens of video / image / music / interior / photographer /
   // VFX print theirs on the panel's button). One quote function for both (lib/credits/quote = what the route charges).
   const composerQuote = activeTool === 'avatar' || activeTool === 'product' || activeTool === 'swap' || activeTool === 'remix'
-    ? quoteCredits({ tool: activeTool }) || null
+    ? quoteCredits(activeTool === 'product' ? { tool: 'product', seconds: productDuration } : { tool: activeTool }) || null
     : null;
   const runAria = composerQuote ? `${runLabel} — ${creditsLabel(composerQuote, locale)}` : runLabel;
   const composerPlaceholder = recording ? t.recording

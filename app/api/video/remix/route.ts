@@ -39,7 +39,8 @@ import { isAdminUser } from '@/lib/chat/filmComposite';
 import { deductCreditsOnce, refundCredits } from '@/lib/orchestrator/ledger';
 import { replayRefusedBody } from '@/lib/api/billingCopy';
 import { claimIdempotencyKey, releaseIdempotencyKey, hashPayload } from '@/lib/orchestrator/idempotency';
-import { CREDIT_COSTS, creditCostFor } from '@/lib/credits/pricing';
+import { CREDIT_COSTS } from '@/lib/credits/pricing';
+import { quoteCredits } from '@/lib/credits/quote';
 import { CHARGED_REMIX_OPS, canonicalRemixOp } from '@/lib/video/remixCharge';
 import { recordFilmMaster } from '@/lib/chat/filmStatusStore';
 import { recordCompletedFilm } from '@/lib/orchestrator/jobs';
@@ -243,19 +244,18 @@ export async function POST(req: NextRequest) {
     if (jobId && remixUid) await claimIdempotencyKey(remixUid, productAdSecondariesKey(jobId), 3600).catch(() => true);
   }
   // ── PRODUCT-AD SINGLE-CHARGE ─────────────────────────────────────────────────
-  // A product ad is billed ONCE, here on its primary clip, at the FULL video tier
-  // (25 cr ≤30s / 45 cr 60s) — the same price the client's toast shows — NOT the
+  // A product ad is billed ONCE, here on its primary clip, at the film price for its
+  // length (lib/credits/quote: 8 / 24 / 48 s) — the same price the button shows — NOT the
   // remix_video rate. The downstream /api/video/assemble (overlay + voiceover pass)
   // then WAIVES its own charge via a billingToken, so an ad costs one video credit,
   // not remix + assemble. Every other remix op keeps the flat remix_video price.
   const productAdPrimary = op === 'productad' && !productAdSecondaryClip;
-  const productAdDurationSec = Math.max(1, Math.floor(Number(body.productDurationSec)) || 30);
   const chargeAmount = productAdPrimary
-    ? creditCostFor('video', { seconds: productAdDurationSec })
+    ? quoteCredits({ tool: 'product', seconds: Number(body.productDurationSec) })
     : CREDIT_COSTS.remix_video;
   // ⚠️ TWO COMPOUNDING HOLES LIVED HERE, AND THEY PAID OUT TOGETHER.
   //
-  // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` selects video_30s=25 vs video_60s=45 —
+  // (a) `chargeAmount` is CLIENT-STEERED — `productDurationSec` picks the ad's length, and so its price —
   //     while the ref keyed only on op+jobId. So an attacker charged once at 25 with jobId=X, then
   //     replayed jobId=X with productDurationSec=60 and a missing photo to trip an early refund, and was
   //     paid back 45. Net positive credits per cycle, repeatable.
