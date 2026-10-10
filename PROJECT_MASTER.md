@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md; PR #50 merged c0297491 and live in Production from 19:55Z, every new flag off)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -261,6 +261,13 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Verdict: merge + deploy with every new flag off is GO under the owner's 19:07:45Z pre-approval once CI is
           green; full opening to users NO-GO (0 / 22 services proven end to end at this head, no authenticated Preview
           run, MEDIA_GOOGLE_ONLY off, video below cost, no completed payment, Meta answer pending).
+          MERGED AND LIVE: PR #50 merged by a normal merge 19:51:05Z (c0297491, gates and CI green on ea55baf4);
+          main CI + E2E green; Production serves c029749 (build 19:55:32Z, dpl_HaMDYuHKZochJqq8eYyPuMuuGYPr).
+          Post-deploy (T6, anonymous, GET only): health, KA/EN/RU pages, phone layout, services, library, /studio
+          redirect, Task API 401, Agent G routes {"enabled":false}, admin 401, run-migration 404, new crons 403 and
+          silent on the DB, prices unchanged. Read-only SQL before/after equal (balances 1,003,393, ledger 222 / 2,873,
+          0 duplicate refs, jobs 373 / 0 live, RLS 52/52); Supabase logs 0 × 5xx, only the known 404s. No bug, no
+          hotfix, no rollback. Vercel runtime logs: connector 403 (BLOCKED). Record: verdict §14.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
