@@ -46,7 +46,7 @@ Notes on three rows:
 | Part | Label | Why |
 |---|---|---|
 | Charging a finished call | MISSING by design | The hook exists (`callService` charges an ended call once, at the price it opened with). The charger is wired only after GG approves the price. |
-| "Call me when it's ready" (Agent G calls back) | PARTIAL | Built: the outbound gates, Meta's call-permission read and the place-call request. Missing: the trigger that schedules the call-back after a task, which comes with the run engine's delivery outbox (Omnichannel G). |
+| "Call me when it's ready" (Agent G calls back) | PARTIAL | Built: the outbound gates, Meta's call-permission read and the place-call request, and the delivery outbox that tells a finished task's owner (Omnichannel G, `lib/notifications/outbox.ts`). Missing: a `call` sender on that outbox; today a person who chose a call gets `skipped: not_configured` there. |
 | Creative scope on WhatsApp (scenario B) | DISABLED | `WHATSAPP_AGENT_SCOPE=creative` exists. It stays off until Meta answers in writing. |
 | WhatsApp voice notes and incoming files to Agent G | MISSING | Text only today. A voice note gets "for now I read text here". |
 | Interop with Meta's real SDP and media servers | BUILT_NOT_PROVEN | Needs a real call. |

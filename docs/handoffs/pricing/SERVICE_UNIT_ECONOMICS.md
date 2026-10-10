@@ -200,6 +200,24 @@ Videos are composed per length and tier; §5 has their full table. The video row
   - ElevenLabs Creatify Aurora publishes no dollar price.
 - Character swap, motion and 3D: no Google or ElevenLabs product does them.
 
+### Communication: WhatsApp calls, messages and notices (Omnichannel I, 2026-10-10)
+
+The full working is in [`../omnichannel/COMMUNICATION_UNIT_ECONOMICS.md`](../omnichannel/COMMUNICATION_UNIT_ECONOMICS.md)
+(calculator `research/wa_cost.py`, tests in `lib/credits/unitEconomics.test.ts` "WhatsApp calls"). Same rule as §1:
+65 % target, 62 % floor, VAT and card fee netted out. In short:
+
+| Op | Cost to us | Proposed price | Status |
+|---|---|---|---|
+| `agent-g.whatsapp-call.minute` (Meta Calling → our bridge → Gemini Live) | Gemini Live audio, 8k → 4k context cap: $0.236 a 5-min call, $0.958 15 min, $2.023 30 min; plus the bridge VM, $20.61 a month whatever the volume (one e2-small, 4 calls at once) | **12 credits a minute** (1.20 ₾), no free minutes; ≥ 62 % all-in from ~405 min a month, ≥ 65 % from ~510 | PROPOSED in the SSoT, not sold; calls are off (no VM, no approved price, Meta's §4.7 answer pending) |
+| WhatsApp reply inside the 24 h window (text or a file) | free for the first 1,000 a month per number, then $0.0212 to Georgia | no separate price (the AI part is `chat.message`) | built; no number can link in Production yet (its link tables, migration 20261003c, are not applied) |
+| "Your task is ready" notice outside the window (a Utility template) | $0.0212 each, charged by Meta only when it accepts the message | no separate price | sent at most once per finished job, and only with WHATSAPP_ALERT_TEMPLATE set (unset today: such notices are skipped, the bell and push still carry them) |
+| Telegram, SMS, phone call notices | not built: Telegram binding not live, SMS needs a Georgian aggregator, no phone call path | none | not offered (owner 15:38Z: later) |
+
+No unlimited free calls exist: a call cannot start without an approved per-minute price
+(`APPROVED_CALL_CREDITS_PER_MINUTE = null` in `lib/calls/whatsapp/liveDeps.ts`). The delivery outbox
+(`lib/notifications/outbox.ts`) never sends one notice twice, so a retried WhatsApp notice is not a second charge: a
+retry happens only after Meta answered with a failure.
+
 ## 5. Video, priced by length and tier
 
 One formula for film, documentary, product ad, VFX and a video made in chat:

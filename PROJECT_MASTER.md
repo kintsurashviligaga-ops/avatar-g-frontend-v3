@@ -230,7 +230,13 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           15:38Z: later). Kicked when a run or job ends, net under it /api/cron/deliveries each minute. Off unless
           DELIVERY_OUTBOX is set (on by default only on a Preview). 33 mocked tests + 4 on a real local
           Postgres/PostgREST: BUILT_NOT_PROVEN. Delivery engine records unsent email/SMS as failed (e69b6d0b).
-          Remaining: I/J/K docs. No merge, deploy, migration, env, price or paid change.
+          I/J/K: docs/handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md (one brain, doors, switches, status per
+          channel), CONNECTIONS_UX_AUDIT.md, OMNICHANNEL_E2E_MATRIX.md (each scenario by mocked / local / Preview /
+          Production evidence; no Preview or Production run yet), communication rows in pricing SERVICE_UNIT_ECONOMICS
+          §4. A real-browser check of Connections (tests/connections.spec.ts, 6: phone/tablet/desktop, light/dark,
+          KA/EN/RU) found the status word running over row names on phones; fixed. All parts A–K have code or docs;
+          D (SMS) and F (Telegram) DISABLED by the owner's 15:38Z "later". No merge, deploy, migration, env, price or
+          paid change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

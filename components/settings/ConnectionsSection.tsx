@@ -126,14 +126,17 @@ export function ConnectionsSection({ locale }: { locale: string }) {
                   className="flex min-h-[56px] w-full items-center gap-3 py-2 text-left"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-app-bg/50 text-app-muted" aria-hidden="true"><Icon size={17} /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[14.5px] font-medium text-app-text">{t.rows[c.id]}</span>
-                    {c.detail && <span className="block text-[12px] tabular-nums text-app-muted">{c.detail}</span>}
+                  {/* On a phone the status word sits under the name, so neither is squeezed under the other. */}
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                    <span className="min-w-0 break-words">
+                      <span className="block text-[14.5px] font-medium text-app-text" data-testid={`conn-label-${c.id}`}>{t.rows[c.id]}</span>
+                      {c.detail && <span className="block text-[12px] tabular-nums text-app-muted">{c.detail}</span>}
+                    </span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-medium ${PILL[c.state]}`} data-testid={`conn-state-${c.id}`}>{t.state[c.state]}</span>
                   </span>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-medium ${PILL[c.state]}`} data-testid={`conn-state-${c.id}`}>{t.state[c.state]}</span>
                   <ChevronDown size={16} className={`shrink-0 text-app-muted transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
                 </button>
-                {isOpen && <div id={panelId} className="pb-4 pl-12 pr-1" data-testid={`conn-panel-${c.id}`}>{panel(c)}</div>}
+                {isOpen && <div id={panelId} className="pb-4 pr-1 sm:pl-12" data-testid={`conn-panel-${c.id}`}>{panel(c)}</div>}
               </li>
             );
           })}

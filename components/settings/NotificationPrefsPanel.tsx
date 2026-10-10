@@ -89,8 +89,9 @@ export function NotificationPrefsPanel({ lang, whatsappState }: { lang: ConnLang
           const on = data.prefs.events[event].includes('whatsapp');
           return (
             <li key={event} className="flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5" data-testid={`notify-row-${event}`}>
-              <span className="min-w-0 flex-1 text-[13.5px] text-app-text">{t.events[event]}</span>
-              <span className="flex items-center gap-1.5">
+              {/* The name keeps room for its words; when the row is too narrow, the chips move to the next line. */}
+              <span className="min-w-[9rem] flex-1 break-words text-[13.5px] text-app-text">{t.events[event]}</span>
+              <span className="ml-auto flex items-center gap-1.5">
                 <span className="inline-flex min-h-[32px] items-center gap-1 rounded-full bg-app-bg/50 px-2.5 text-[12px] text-app-muted" aria-label={t.siteAlways}>
                   <Check size={12} aria-hidden="true" />{t.site}
                 </span>

@@ -92,3 +92,7 @@ development, the recipient must be on the API Setup page's recipients list.
 
 ⚠️ A number is linked only by a message **from** that number. No route accepts a phone number from a browser
 (`POST /api/agent-g/channels` refuses WhatsApp/Telegram rows), so nobody can attach someone else's number to their account.
+
+How WhatsApp fits with the other channels, and what is proven where:
+[`handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md`](handoffs/omnichannel/AGENT_G_OMNICHANNEL_ARCHITECTURE.md),
+[`handoffs/omnichannel/OMNICHANNEL_E2E_MATRIX.md`](handoffs/omnichannel/OMNICHANNEL_E2E_MATRIX.md).
