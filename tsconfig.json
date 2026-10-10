@@ -45,6 +45,7 @@
     ".next/**",
     ".claude/**",
     "apps/**",
+    "services/wa-call-bridge/**",
     "__tests__/**",
     "e2e/**",
     "playwright.config.ts",
