@@ -16,6 +16,8 @@ const L: Record<Lang, { scenes: string; moments: string; speakers: string; trans
 };
 
 const head = 'text-[11px] font-semibold uppercase tracking-wide text-app-muted';
+// The size sits on each line: the reply's prose styles size a bare <li> like body text.
+const line = 'text-[12.5px] leading-snug text-app-text';
 
 export function AgentAnalyzeCard({ state, locale }: { state: AgentAnalyzeState; locale: string }) {
   const lang: Lang = locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka';
@@ -43,14 +45,14 @@ export function AgentAnalyzeCard({ state, locale }: { state: AgentAnalyzeState; 
         <section aria-label={t.moments}>
           <p className={head}>{t.moments}</p>
           <ol className="mt-1 space-y-0.5 text-[12.5px] text-app-text" data-testid="agent-analyze-moments">
-            {m.moments.map((x, i) => <li key={i}><span className="tabular-nums text-app-muted">{x.at}</span> · {x.text}</li>)}
+            {m.moments.map((x, i) => <li key={i} className={line}><span className="tabular-nums text-app-muted">{x.at}</span> · {x.text}</li>)}
           </ol>
         </section>
       ) : null}
       {m.speakers.length ? (
         <section aria-label={t.speakers}>
           <p className={head}>{t.speakers}</p>
-          <ul className="mt-1 space-y-0.5 text-[12.5px] text-app-text">{m.speakers.map((x, i) => <li key={i}>{x}</li>)}</ul>
+          <ul className="mt-1 space-y-0.5 text-[12.5px] text-app-text">{m.speakers.map((x, i) => <li key={i} className={line}>{x}</li>)}</ul>
         </section>
       ) : null}
       {m.objects.length ? <p className="text-[12px] text-app-muted"><span className="font-semibold">{t.objects}:</span> {m.objects.join(' · ')}</p> : null}
@@ -61,7 +63,7 @@ export function AgentAnalyzeCard({ state, locale }: { state: AgentAnalyzeState; 
           </summary>
           <ol className="mt-1 max-h-64 space-y-1 overflow-y-auto pr-1">
             {m.transcript.map((x, i) => (
-              <li key={i}><span className="tabular-nums text-app-muted">{x.at}</span>{x.who ? <span className="font-medium"> {x.who}:</span> : null} {x.text}</li>
+              <li key={i} className={line}><span className="tabular-nums text-app-muted">{x.at}</span>{x.who ? <span className="font-medium"> {x.who}:</span> : null} {x.text}</li>
             ))}
           </ol>
         </details>

@@ -21,6 +21,10 @@ export interface RedoReply {
   audioJob?: { phase: AgentAudioPhase; quote?: unknown };
   /** `ask`: the edits it was planned with, and the video it edits when that is Agent G's own last result. */
   editJob?: { phase: AgentEditPhase; source?: 'file' | 'previous'; ask?: { edits: EditAsk[]; url?: string }; quote?: unknown };
+  /** A multi-step run: its own Retry and „continue" carry it on, never ↻ (that would ask the chat model without its files). */
+  runJob?: { phase: string };
+  /** A whole-file analysis: ↻ asks the same file again (the studio's analyzeAgain), not while it is still reading. */
+  analyzeJob?: { phase: string };
 }
 
 /** The user turn the reply answered, with the files it carried (in memory: their bytes are never persisted). */
@@ -52,6 +56,8 @@ export function agentRedo<F extends { mimeType: string }>(
   turn: RedoTurn<F> | undefined,
   open: { montage: boolean; audio: boolean; edit?: boolean },
 ): AgentRedo<F> {
+  if (reply.runJob) return { kind: 'none' };
+  if (reply.analyzeJob) return reply.analyzeJob.phase === 'reading' ? { kind: 'none' } : { kind: 'chat' };
   const card = reply.montage ?? reply.audioJob ?? reply.editJob;
   if (!card) return { kind: 'chat' };
   if (!SETTLED.has(card.phase) || !turn || turn.role !== 'user') return { kind: 'none' };

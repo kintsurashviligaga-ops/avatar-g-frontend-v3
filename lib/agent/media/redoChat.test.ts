@@ -99,3 +99,13 @@ describe('cardRetry: the card\'s own Retry', () => {
 test('attachmentKind reads the MIME family', () => {
   expect(['video/mp4', 'audio/mpeg', 'image/png', 'application/pdf'].map(attachmentKind)).toEqual(['video', 'audio', 'image', 'other']);
 });
+
+describe('↻ under a run card or an analysis', () => {
+  test('a run is carried on by its own Retry and „continue", never by ↻; an analysis is asked again once it has ended', () => {
+    const turn = { role: 'user', text: 'Use the audio from the first video and cut the other clips to it', medias: [{ mimeType: 'video/mp4' }] };
+    expect(agentRedo({ runJob: { phase: 'ended' } }, turn, { montage: true, audio: true, edit: true })).toEqual({ kind: 'none' });
+    expect(agentRedo({ runJob: { phase: 'running' } }, turn, { montage: true, audio: true })).toEqual({ kind: 'none' });
+    expect(agentRedo({ analyzeJob: { phase: 'reading' } }, turn, { montage: true, audio: true })).toEqual({ kind: 'none' });
+    expect(agentRedo({ analyzeJob: { phase: 'done' } }, turn, { montage: true, audio: true })).toEqual({ kind: 'chat' });
+  });
+});

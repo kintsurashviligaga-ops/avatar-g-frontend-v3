@@ -89,16 +89,17 @@ export function AgentTaskCard({
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-app-accent/15 text-app-accent">
           <Sparkles size={14} aria-hidden="true" />
         </span>
-        <span className="min-w-0 flex-1">
+        {/* On a phone a long status („ველოდები შენს დასტურს") shrinks before the step count does. */}
+        <span className="min-w-[5.5rem] flex-1">
           <span className="block truncate text-[14px] font-semibold leading-tight text-app-text">{model.countText}</span>
           <span className="mt-0.5 block truncate text-[12px] leading-tight text-app-muted">
             Agent G · {model.title}
             {folded && active ? <> · <span className="text-app-text/80">{active.label}</span></> : null}
           </span>
         </span>
-        <span className={`flex shrink-0 items-center gap-1.5 text-[12px] font-medium ${tone}`} aria-live="polite">
-          <span>{model.statusText}</span>
-          {model.clock ? <><span aria-hidden="true">·</span><Clock clock={model.clock} /></> : null}
+        <span className={`flex min-w-0 max-w-[58%] items-center gap-1.5 text-[12px] font-medium ${tone}`} aria-live="polite" title={model.statusText}>
+          <span className="truncate">{model.statusText}</span>
+          {model.clock ? <><span aria-hidden="true" className="shrink-0">·</span><span className="shrink-0"><Clock clock={model.clock} /></span></> : null}
         </span>
         <ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-app-muted transition-transform duration-200 ${folded ? '' : 'rotate-180'}`} />
       </button>
