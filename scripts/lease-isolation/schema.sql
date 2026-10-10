@@ -123,9 +123,15 @@ BEGIN
 END;
 $function$;
 
+-- The spend ledger the billing guard reads before a paid provider call (lib/services/billing/BillingGuard): only the
+-- columns it reads, as in Production (read 2026-10-10). Empty here, so the guard sees no spend.
+create table public.agent_evolution_traces (
+  id uuid primary key default gen_random_uuid(), cost_wholesale_gel numeric not null default 0,
+  created_at timestamptz not null default now());
+
 grant all on all tables in schema public to service_role;
 grant execute on all functions in schema public to service_role;
 revoke execute on function public.deduct_credits(uuid, integer, text), public.refund_credits(uuid, integer, text) from public, anon, authenticated;
 
--- The two test accounts the suite uses (lib/agent/media/leaseIsolation.pg.test.ts).
+-- The two test accounts the suites use (lib/agent/media/leaseIsolation.pg.test.ts, lib/agent/run/runIsolation.pg.test.ts).
 insert into auth.users (id) values ('0e000000-0000-4000-8000-00000000000a'), ('0e000000-0000-4000-8000-00000000000b');

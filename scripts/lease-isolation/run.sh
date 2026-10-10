@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue, and the ledger's replay refusal
-# (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d), against a REAL but throwaway
-# database: a local Postgres 16 with the Production shape (./schema.sql) behind a real PostgREST (Docker), then
-# lib/agent/media/leaseIsolation.pg.test.ts. Nothing here can reach Production: the database lives in a temp dir on
-# this machine, PostgREST listens on 127.0.0.1, and the suite refuses any non-local URL.
+# Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue, the ledger's replay refusal
+# (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d) and multi-step runs on real ffmpeg
+# (lib/agent/run/runIsolation.pg.test.ts), against a REAL but throwaway database: a local Postgres 16 with the
+# Production shape (./schema.sql) behind a real PostgREST (Docker). Nothing here can reach Production: the database
+# lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
 #   needs: Postgres 16 server binaries (PG_BIN, default /usr/lib/postgresql/16/bin), Docker, node_modules.
 #   usage: scripts/lease-isolation/run.sh
@@ -45,3 +45,5 @@ sleep 2
 LEDGER_PHASE=after node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.test.ts --no-watchman --ci --forceExit
 # …and the lease queue's crash recovery and refunds still hold on the hardened functions.
 node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit
+# Multi-step runs end to end on the same database, every step on the real bundled ffmpeg (PART 7: I, E, F, G, H).
+node node_modules/.bin/jest lib/agent/run/runIsolation.pg.test.ts --no-watchman --ci --forceExit
