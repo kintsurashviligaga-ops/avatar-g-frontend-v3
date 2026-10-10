@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Crash recovery (E), retry exhaustion (F) and refunds (G) of Agent G's lease queue, the ledger's replay refusal
 # (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d) and multi-step runs on real ffmpeg
-# (lib/agent/run/runIsolation.pg.test.ts), against a REAL but throwaway database: a local Postgres 16 with the
+# (lib/agent/run/runIsolation.pg.test.ts) and the delivery outbox's store (lib/notifications/outboxIsolation.pg.test.ts), against a REAL but throwaway database: a local Postgres 16 with the
 # Production shape (./schema.sql) behind a real PostgREST (Docker). Nothing here can reach Production: the database
 # lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
@@ -47,3 +47,5 @@ LEDGER_PHASE=after node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.te
 node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit
 # Multi-step runs end to end on the same database, every step on the real bundled ffmpeg (PART 7: I, E, F, G, H).
 node node_modules/.bin/jest lib/agent/run/runIsolation.pg.test.ts --no-watchman --ci --forceExit
+# The delivery outbox's live store: its JSON-path compare-and-set and due list on the same database (Omnichannel G).
+node node_modules/.bin/jest lib/notifications/outboxIsolation.pg.test.ts --no-watchman --ci --forceExit

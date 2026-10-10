@@ -23,6 +23,11 @@ const BELL_TYPE: Partial<Record<NotifyKind, NotificationType>> = {
   music: 'music', image: 'image', research: 'research', credits_low: 'credits_low', payment: 'payment',
 };
 
+/** The bell's row type for a kind of news; null when that kind has no bell entry. */
+export function bellTypeOf(kind: NotifyKind): NotificationType | null {
+  return BELL_TYPE[kind] ?? null;
+}
+
 export interface NotifyOptions {
   /** Skip the bell when the caller has already filed it (or the event has no bell type). */
   bell?: boolean;

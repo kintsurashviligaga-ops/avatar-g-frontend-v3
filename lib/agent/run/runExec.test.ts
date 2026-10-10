@@ -23,6 +23,10 @@ import {
   approveStep, cancelRun, planRun, readRun, resumeIdOf, resumeRun, startRun, sweepRuns, tickRun, type RunExecDeps, type StepAdapter,
 } from './runExec';
 import type { RunSpec } from './runSpec';
+import { sweepDeliveries, type OutboxDeps, type Outlet } from '@/lib/notifications/outbox';
+import { outboxOverLease } from '@/lib/notifications/testing/memoryOutboxStore';
+import { DEFAULT_PREFS, normalizePrefs } from '@/lib/notifications/preferences';
+import type { NotifyEvent } from '@/lib/notifications/types';
 
 const CLIPS = [FILES[0]!, FILES[1]!];
 /** The Master Task chain: the sound out of one video, the clips cut to it. */
@@ -587,5 +591,67 @@ describe('the sweep and the read', () => {
     const [audio] = jobsOf(w, AUDIO_KIND);
     expect(await readRun(w.deps, audio!.id)).toBeNull();
     expect(await readRun(w.deps, 'nope')).toBeNull();
+  });
+});
+
+describe('telling the owner when a run ends (lib/notifications/outbox, Omnichannel G)', () => {
+  /** The outbox over the same rows as the run, every outlet recorded instead of sent. */
+  function outbox(w: World) {
+    const sent: Array<{ outlet: Outlet; ev: NotifyEvent }> = [];
+    const rec = (outlet: Outlet) => async (ev: NotifyEvent) => { sent.push({ outlet, ev }); return { sent: true }; };
+    let n = 0;
+    const deps: OutboxDeps = {
+      store: outboxOverLease(w.store, () => w.clock.now, (id) => (w.store.rows.get(id)?.exec?.kind === AUDIO_KIND ? 'music' : 'film')),
+      prefs: async () => normalizePrefs(DEFAULT_PREFS),
+      send: { bell: rec('bell'), push: rec('push'), whatsapp: rec('whatsapp') },
+      firstNotice: async () => true,
+      now: () => w.clock.now,
+      newId: () => `t${(n += 1)}`,
+    };
+    return { deps, sent };
+  }
+
+  test('a run that ends is handed to the outbox once; its owner hears about the run, never about each step', async () => {
+    const w = world();
+    const ended: string[] = [];
+    w.deps.finished = (id) => { ended.push(id); };
+    const id = await started(w);
+    const run = await drive(w, id);
+    expect(run.status).toBe('completed');
+    await tick(w, id);
+    expect(ended).toEqual([id]);
+
+    const o = outbox(w);
+    expect((await sweepDeliveries(o.deps)).outcomes).toEqual({ delivered: 1 });
+    expect(o.sent.map((s) => s.outlet)).toEqual(['bell', 'push', 'whatsapp']);
+    expect(new Set(o.sent.map((s) => s.ev.title))).toEqual(new Set(['✅ Agent G-მ დავალება შეასრულა']));
+    // The record moved the run row's version; the run still reads as ended and a late tick changes nothing.
+    await tick(w, id);
+    expect(runAt(w, id).status).toBe('completed');
+    expect((await sweepDeliveries(o.deps)).seen).toBe(0);
+    expect(o.sent).toHaveLength(3);
+  });
+
+  test('a run the owner stops is handed over too, and the outbox tells nothing: the person did it', async () => {
+    const w = world();
+    const ended: string[] = [];
+    w.deps.finished = (id) => { ended.push(id); };
+    const id = await started(w);
+    await tick(w, id);
+    expect(await cancelRun(w.deps, { userId: USER, id })).toEqual({ ok: true });
+    await work(w);
+    await tick(w, id);
+    expect(runAt(w, id).status).toBe('cancelled');
+    expect(ended).toEqual([id]);
+    const o = outbox(w);
+    await sweepDeliveries(o.deps);
+    expect(o.sent).toEqual([]);
+  });
+
+  test('a hook that throws never changes how the run ends', async () => {
+    const w = world();
+    w.deps.finished = () => { throw new Error('boom'); };
+    const id = await started(w);
+    expect((await drive(w, id)).status).toBe('completed');
   });
 });

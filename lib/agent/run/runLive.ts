@@ -18,6 +18,7 @@ import { liveAudioDeps } from '@/lib/agent/media/audioLive';
 import { EDIT_KIND } from '@/lib/agent/media/editExec';
 import { workEditJob } from '@/lib/agent/media/editWorker';
 import { liveEditDeps } from '@/lib/agent/media/editLive';
+import { kickDelivery } from '@/lib/notifications/outboxLive';
 import { audioAdapter, editAdapter, montageAdapter } from './runAdapters';
 import type { RunExecDeps } from './runExec';
 
@@ -43,5 +44,6 @@ export function liveRunDeps(): RunExecDeps {
     key: quoteKey,
     now: () => Date.now(),
     newId: () => randomUUID(),
+    finished: kickDelivery,
   };
 }

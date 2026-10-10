@@ -58,6 +58,8 @@ export interface RunExecDeps {
   key(): string;
   now(): number;
   newId(): string;
+  /** The run just ended (completed, partly, failed or stopped): tell its owner (lib/notifications/outbox). Never throws. */
+  finished?(runId: string): void;
 }
 
 export type RunErrorCode =
@@ -207,7 +209,11 @@ async function writeRun(deps: RunExecDeps, row: LeaseRow, next: RunState): Promi
   if (!row.exec) return false;
   const exec = { ...row.exec, v: row.exec.v + 1 };
   const params = { ...row.params, _exec: exec, _run: next };
-  return deps.store.cas(row.id, { v: row.exec.v, from: [row.status] }, { ...rowWriteOf(row, next), params });
+  const ok = await deps.store.cas(row.id, { v: row.exec.v, from: [row.status] }, { ...rowWriteOf(row, next), params });
+  if (ok && isTerminalRun(next) && !isTerminalRun(runOf(row.params) ?? next)) {
+    try { deps.finished?.(row.id); } catch { /* a notice never changes how a run ends */ }
+  }
+  return ok;
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

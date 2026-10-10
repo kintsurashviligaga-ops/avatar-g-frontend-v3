@@ -25,6 +25,7 @@ import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import { notifyUser } from '@/lib/notifications/dispatch';
+import { kickDelivery } from '@/lib/notifications/outboxLive';
 import type { NotifyKind } from '@/lib/notifications/types';
 import type { ProduceKind } from './rate-limit';
 
@@ -225,13 +226,16 @@ export async function completeJob(
   id: string,
   out: { signedUrl: string | null; result: Record<string, unknown> },
 ): Promise<boolean> {
-  return transition(id, {
+  const moved = await transition(id, {
     status: 'completed',
     current_stage: 'completed',
     pct: 100,
     signed_url: out.signedUrl,
     result: out.result,
   }, 'completeJob');
+  // Tell the owner (lib/notifications/outbox: only a charged render, once; off while DELIVERY_OUTBOX is off).
+  if (moved) kickDelivery(id);
+  return moved;
 }
 
 /**
@@ -285,7 +289,9 @@ export async function jobSnapshot(id: string): Promise<{ userId: string; status:
 
 /** Mark a live job failed with a short reason. False when it was already final (a delivered job never turns failed). */
 export async function failJob(id: string, error: string): Promise<boolean> {
-  return transition(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) }, 'failJob');
+  const moved = await transition(id, { status: 'failed', current_stage: 'failed', error: error.slice(0, 300) }, 'failJob');
+  if (moved) kickDelivery(id);
+  return moved;
 }
 
 /**

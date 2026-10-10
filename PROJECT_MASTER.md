@@ -222,8 +222,15 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           (mock / Twilio / Telegram skeletons, Vapi demo rows, a Vapi assistant on an Anthropic model); one gate
           (lib/calls/availability.ts phoneCallsReady, false) now answers 503 phone_calls_unavailable with no row and no
           provider call, the web token is refused under AI_GOOGLE_ONLY, numbers are stored as E.164 and the client can no
-          longer mark a phone connected (PHONE_PROVIDER_FEASIBILITY.md §7.1). Remaining: E/F/G/D (channels on the run
-          engine, delivery outbox, the call-back trigger), I/J/K. No merge, deploy, migration, env, price or paid change.
+          longer mark a phone connected (PHONE_PROVIDER_FEASIBILITY.md §7.1). G: one delivery outbox
+          (lib/notifications/outbox.ts, record in generation_jobs.params._tell, no new table): an Agent G run, a queued
+          montage/edit/extraction or a charged render that ends tells its owner once per outlet on the places they chose
+          (bell + push, WhatsApp with its 24 h window / template), passing failures retried 3× with backoff, a crash
+          mid-send never re-sent, the job never touched; Telegram, SMS and calls are recorded as not_configured (owner
+          15:38Z: later). Kicked when a run or job ends, net under it /api/cron/deliveries each minute. Off unless
+          DELIVERY_OUTBOX is set (on by default only on a Preview). 33 mocked tests + 4 on a real local
+          Postgres/PostgREST: BUILT_NOT_PROVEN. Delivery engine records unsent email/SMS as failed (e69b6d0b).
+          Remaining: I/J/K docs. No merge, deploy, migration, env, price or paid change.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

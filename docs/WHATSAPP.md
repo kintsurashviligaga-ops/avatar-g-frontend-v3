@@ -87,6 +87,7 @@ development, the recipient must be on the API Setup page's recipients list.
 | The model | `lib/ai/channelBridge.ts` → `lib/ai/google/reply.ts` |
 | Card + API | `components/agent-g/WhatsAppLinkCard.tsx`, `app/api/agent-g/whatsapp/link/route.ts` |
 | Alerts | `lib/notifications/channels/whatsapp.ts`, `lib/notifications/dispatch.ts` |
+| "Your task is done / needs you" for runs, queued jobs and charged renders: once per outlet, retried, recorded on the job (`params._tell`); off unless `DELIVERY_OUTBOX` is set (on by default on a Preview) | `lib/notifications/outbox.ts`, `lib/notifications/outboxLive.ts`, `app/api/cron/deliveries/route.ts` |
 | Queue drain (Vercel Cron, GET) | `app/api/app/worker/tick/route.ts` |
 
 ⚠️ A number is linked only by a message **from** that number. No route accepts a phone number from a browser
