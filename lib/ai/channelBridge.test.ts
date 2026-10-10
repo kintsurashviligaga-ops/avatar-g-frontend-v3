@@ -36,6 +36,11 @@ test('Google-only (the default): Gemini answers with the history, the style note
   expect(out).toMatchObject({ reply: 'გამარჯობა!', model: 'gemini-x', answered: true });
 });
 
+test('a door can switch Google Search off (WhatsApp); the option reaches the Gemini reply', async () => {
+  await generateChannelReply({ channel: 'whatsapp', userId: UID, externalId: '1', text: 'hi', locale: 'en', systemNote: 'WA', googleSearch: false });
+  expect(gemini.mock.calls[0][3]).toEqual({ systemNote: 'WA', locale: 'en', googleSearch: false });
+});
+
 test('a Telegram chat id is not an account — booked unattributed', async () => {
   await generateChannelReply({ channel: 'telegram', userId: '123456789', externalId: '123456789', text: 'hi' });
   expect(gemini.mock.calls[0][1]).toBeNull();

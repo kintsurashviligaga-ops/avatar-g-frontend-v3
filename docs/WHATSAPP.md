@@ -6,8 +6,11 @@
    **Open WhatsApp** button that opens the chat with Agent G with `connect CODE` already typed.
 2. Sending it links the number to the account ("✅ Number linked").
 3. From then on:
-   - any question or talk → Agent G answers in words (the same Gemini chain and Agent G prompt as the website, with
-     the last 24 h of this conversation as context);
+   - a question or talk → Agent G answers in words (the same Gemini chain and Agent G prompt as the website, with
+     the last 24 h of this conversation as context), **about MyAvatar.ge only and without web search**: the account,
+     credits, prices, orders, tasks and results. It politely declines general questions and points to myavatar.ge and
+     support@myavatar.ge (Meta Terms §4.7, AI Providers, until Meta answers in writing:
+     `docs/handoffs/omnichannel/META_SUPPORT_REQUEST.md`);
    - "make me a picture/video/song of …" → a studio link with the request already typed in. **Nothing is generated or
      charged from WhatsApp**: the studio's confirm card and the price on the Create button decide;
    - `help`, `stop` (alerts off), `alerts on`, `unlink`;

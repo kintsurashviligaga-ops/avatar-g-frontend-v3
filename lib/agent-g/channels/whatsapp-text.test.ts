@@ -5,6 +5,8 @@
  */
 import {
   WA_COPY,
+  WHATSAPP_STYLE_NOTE,
+  WHATSAPP_SUPPORT_EMAIL,
   chunkForWhatsApp,
   linkPage,
   maskNumber,
@@ -123,4 +125,15 @@ test('every language has every line', () => {
     expect(WA_COPY[lang].notLinked('https://p')).toMatch(/connect/);
     expect(WA_COPY[lang].studio('image', 'https://s')).toContain('https://s');
   }
+});
+
+describe('WHATSAPP_STYLE_NOTE: a service channel, not a general assistant (Meta Terms §4.7 until Meta answers)', () => {
+  test('keeps Agent G to MyAvatar.ge, says it cannot search the web, and names a person to reach', () => {
+    expect(WHATSAPP_STYLE_NOTE).toMatch(/only with MyAvatar\.ge/);
+    expect(WHATSAPP_STYLE_NOTE).toMatch(/not a general-purpose assistant/);
+    expect(WHATSAPP_STYLE_NOTE).toMatch(/cannot search the web/);
+    expect(WHATSAPP_STYLE_NOTE).toContain(WHATSAPP_SUPPORT_EMAIL);
+    // …and still never claims media from this chat.
+    expect(WHATSAPP_STYLE_NOTE).toMatch(/cannot generate, attach or send/);
+  });
 });

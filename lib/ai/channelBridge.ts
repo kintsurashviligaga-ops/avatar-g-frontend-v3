@@ -28,6 +28,8 @@ export interface ChannelAIRequest {
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   /** This channel's style rules, appended to the Agent G prompt (e.g. WhatsApp formatting). */
   systemNote?: string;
+  /** false = answer without Google Search (WhatsApp). Default: the product profile's setting. */
+  googleSearch?: boolean;
 }
 
 export interface ChannelAIResponse {
@@ -80,7 +82,7 @@ export async function generateChannelReply(req: ChannelAIRequest): Promise<Chann
         messages,
         UUID_RE.test(req.userId) ? req.userId : null, // a Telegram/phone id is not an account — book it unattributed
         AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-        { systemNote: req.systemNote, locale: req.locale },
+        { systemNote: req.systemNote, locale: req.locale, ...(req.googleSearch === false ? { googleSearch: false } : {}) },
       );
       if (!g) return fallback('fallback');
       return {

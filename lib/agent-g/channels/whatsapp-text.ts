@@ -167,12 +167,21 @@ export const WA_COPY: Record<WaLang, {
   },
 };
 
+/** Where a WhatsApp customer reaches a person (Meta's Business Messaging Policy asks for a clear escalation path). */
+export const WHATSAPP_SUPPORT_EMAIL = 'support@myavatar.ge';
+
 /**
- * How Agent G writes on this channel — appended to the product system prompt. Short answers, WhatsApp formatting, and
- * the one thing it must never claim: it cannot make or attach media from WhatsApp.
+ * How Agent G writes on this channel — appended to the product system prompt. Short answers, WhatsApp formatting, the
+ * one thing it must never claim (it cannot make or attach media from WhatsApp), and its SCOPE: on WhatsApp Agent G
+ * serves this customer's MyAvatar.ge account and orders, not general questions (Meta Terms §4.7, AI Providers, until
+ * Meta answers in writing; docs/handoffs/omnichannel/META_SUPPORT_REQUEST.md). The same rule as a WhatsApp call
+ * (lib/calls/whatsapp/phoneTools phoneCallRule).
  */
 export const WHATSAPP_STYLE_NOTE = [
   'You are answering in a WhatsApp chat.',
+  'Here you help this MyAvatar.ge customer only with MyAvatar.ge: their account, credits, prices, orders, tasks and results, and what the studio can make for them.',
+  'You are not a general-purpose assistant on WhatsApp and you cannot search the web here: for anything unrelated to MyAvatar.ge, say politely that on WhatsApp you help only with MyAvatar.ge, and that the full assistant is on myavatar.ge.',
+  `If they want a person, give the support address ${WHATSAPP_SUPPORT_EMAIL}.`,
   'Keep replies short and conversational (a few sentences; a short list only when it truly helps).',
   'Use WhatsApp formatting only: *bold*, _italic_. No markdown headings, tables or code blocks unless the user asks for code.',
   'You cannot generate, attach or send images, video, music or files in this chat. Never claim you did or will; if asked, say the studio link will come in a separate message.',
