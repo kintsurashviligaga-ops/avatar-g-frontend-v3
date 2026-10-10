@@ -9,7 +9,7 @@
  * videoCredits, by the second); the server charges the film through videoCredits with the same three inputs (seconds ×
  * Veo tier × mode), so the number on the button is the number taken. A request body NEVER carries a price.
  */
-import { quoteCredits } from '@/lib/credits/quote';
+import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { MUSIC_VIDEO_MULT, VIDEO_QUALITY_MULT, type VideoMode, type VideoQuality } from '@/lib/credits/videoPricing';
 import { TRIAL } from '@/lib/billing/tiers';
 import { resolutionFor } from '@/lib/veo/capabilities';
@@ -54,6 +54,36 @@ export interface VideoQuoteArgs {
 /** The credits ONE press of Generate costs — the Generate button's number. */
 export function videoQuote({ seconds, tier, mode }: VideoQuoteArgs): number {
   return quoteCredits({ tool: 'video', seconds, quality: tier, mode });
+}
+
+export interface LipsyncAddOnArgs {
+  mode: VideoMode;
+  /** The music video's Lip-sync switch (OmniStudio `videoLipsync`). */
+  lipsyncOn: boolean;
+  /** A documentary film has typed dialogue (OmniStudio `videoSpeech`) — the talking-head pass speaks it. */
+  hasDialogue: boolean;
+}
+
+/**
+ * The lip-sync pass a film runs after it assembles, in credits — 0 when this film would not run one.
+ *
+ * It is NOT part of the film's price: OmniStudio starts it as its own /api/video/lipsync job (the singer for a music
+ * video with Lip-sync on, the talking head for a documentary with dialogue), and that route reserves the avatar price
+ * (`quoteCredits({tool:'avatar'})` = creditCostFor('avatar'), what it deducts) when the job starts and refunds it when the
+ * render fails. A free first film still pays this. So the quote shows it NEXT TO the Generate number, never inside it.
+ * Same condition as OmniStudio's `wantsLipsync`.
+ */
+export function lipsyncAddOnCredits({ mode, lipsyncOn, hasDialogue }: LipsyncAddOnArgs): number {
+  const runs = mode === 'musicvideo' ? lipsyncOn : hasDialogue;
+  return runs ? quoteCredits({ tool: 'avatar' }) : 0;
+}
+
+/** The line under Generate that names the lip-sync charge: when it is taken, and that a failed pass gives it back. */
+export function lipsyncAddOnNote(credits: number, locale: string): string {
+  const n = creditsLabel(credits, locale);
+  if (locale === 'en') return `+${n} for lip-sync — taken only if it runs, returned if it fails`;
+  if (locale === 'ru') return `+${n} за липсинк — списываются, только если он запустится; при сбое возвращаются`;
+  return `+${n} ლიპსინკისთვის — ჩამოიჭრება მხოლოდ თუ შესრულდება, ჩავარდნისას ბრუნდება`;
 }
 
 export interface VideoPriceRow {

@@ -66,7 +66,7 @@ describe('the two secondary actions carry their OWN prices, each from the consta
   test('3D plan = PRODUCE_COST.interior, which /api/orchestrator/interior/produce reserves before it runs', () => {
     expect(PLAN_3D_CREDITS).toBe(PRODUCE_COST.interior);
     const route = read('app', 'api', 'orchestrator', 'interior', 'produce', 'route.ts');
-    expect(route).toContain('reserveProduce(user.id, PRODUCE_COST.interior, ref)');
+    expect(route).toContain('reserveProduce(user.id, PRODUCE_COST.interior, ref, { refuseReplay: true })');
     expect(route).toContain('refundProduce(user.id, PRODUCE_COST.interior, ref, reservation.charged)');
   });
 

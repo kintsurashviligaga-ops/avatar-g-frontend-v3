@@ -235,7 +235,7 @@ describe('the route wiring', () => {
 
   it('gates a secondary before the debit block and frees the mutex on refusal', () => {
     const gateAt = route.indexOf('await gateProductAdSecondaryClip(');
-    const debitAt = route.indexOf('await deductCredits(remixUid, chargeAmount, txnRef)');
+    const debitAt = route.indexOf('await deductCreditsOnce(remixUid, chargeAmount, txnRef)');
     expect(gateAt).toBeGreaterThan(-1);
     expect(gateAt).toBeLessThan(debitAt);
     expect(route.slice(gateAt, gateAt + 1400)).toMatch(/if \(!gate\.ok\) \{\s*await releaseIdem\(\);/);

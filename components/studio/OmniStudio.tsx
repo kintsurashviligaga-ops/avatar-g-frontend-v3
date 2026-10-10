@@ -63,7 +63,7 @@ import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/type
 import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
-import { freeSlotApplies, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
+import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds, snapVideoSeconds } from '@/lib/video/duration';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
@@ -551,48 +551,72 @@ const ASPECT_ORIENT: Record<string, 'landscape' | 'vertical' | 'square' | 'portr
 // master shipped with un-synced lips and the card just said "skipped" with no reason — that
 // was the real "lips don't track the vocal" symptom. These short localized lines surface WHY
 // on the Director's Console Lip-Sync card so a skip is never mysterious.
-type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'short_result' | 'no_clips' | 'composite_failed' | 'not_requested';
-function lipsyncSkipReason(reason: LipSkipReason, locale: string): string {
+type LipSkipReason = 'no_song' | 'no_face' | 'heygen_unavailable' | 'no_credits' | 'short_result' | 'no_clips' | 'composite_failed' | 'not_requested';
+/** `saved` — the lip-sync job itself delivered (and was charged): /api/video/lipsync filed that clip in the Library, so the
+ *  line says where the paid clip went when the montage around it could not use it. */
+function lipsyncSkipReason(reason: LipSkipReason, locale: string, opts: { saved?: boolean } = {}): string {
   const M: Record<LipSkipReason, { en: string; ru: string; ka: string }> = {
     no_song: { en: 'Skipped — no song track to sync to', ru: 'Пропущено — нет песни для синхронизации', ka: 'გამოტოვდა — სასინქრონო აუდიო ფაილი მიუწვდომელია' },
     no_face: { en: 'Skipped — no clear face in frame (add a photo for lip-sync)', ru: 'Пропущено — в кадре нет чёткого лица (добавьте фото)', ka: 'გამოტოვდა — სუფთა სახე კადრში ვერ მოიძებნა (დაამატე ფოტო)' },
     heygen_unavailable: { en: 'Skipped — lip-sync engine unavailable (key/credit)', ru: 'Пропущено — движок липсинка недоступен (ключ/кредит)', ka: 'გამოტოვდა — ლიპსინკის ძრავა მიუწვდომელია (გასაღები/კრედიტი)' },
+    // The lip-sync is its own charge (lib/video/createPanel.lipsyncAddOnCredits) — a short balance is the user's to fix, not the engine.
+    no_credits: { en: 'Skipped — not enough credits for lip-sync (nothing was charged)', ru: 'Пропущено — не хватает кредитов на липсинк (ничего не списано)', ka: 'გამოტოვდა — ლიპსინკისთვის კრედიტი არ კმარა (არაფერი ჩამოჭრილა)' },
     short_result: { en: 'Skipped — sync clip too short', ru: 'Пропущено — клип слишком короткий', ka: 'გამოტოვდა — სასინქრონო კლიპი ძალიან მოკლეა' },
     no_clips: { en: 'Skipped — no rendered clips to composite', ru: 'Пропущено — нет клипов для монтажа', ka: 'გამოტოვდა — მონტაჟისთვის კლიპები არ არის' },
     composite_failed: { en: 'Skipped — composite failed', ru: 'Пропущено — сбой монтажа', ka: 'გამოტოვდა — მონტაჟი ვერ შესრულდა' },
     not_requested: { en: 'Not requested for this render', ru: 'Не запрошен для этого рендера', ka: 'ამ რენდერისთვის არ იყო მოთხოვნილი' },
   };
   const m = M[reason];
-  return locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
+  const line = locale === 'ru' ? m.ru : locale === 'ka' ? m.ka : m.en;
+  if (!opts.saved) return line;
+  return `${line} · ${locale === 'ru' ? 'клип с липсинком сохранён в Библиотеке' : locale === 'ka' ? 'ლიპსინკის კლიპი ბიბლიოთეკაშია' : 'the lip-synced clip is in your Library'}`;
+}
+
+/**
+ * One /api/video/lipsync job, start to end: the clip's URL, or null on any miss (fail-open). The route reserves the
+ * avatar price when it hands out a job id and refunds it when the render fails, so the header balance is re-read at
+ * both ends; a 402 comes back as `noCredits` (nothing was charged) so the card names the balance, not the engine.
+ */
+type LipsyncOutcome = { url: string | null; noCredits?: boolean };
+async function runLipsyncJob(body: Record<string, unknown>, signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
+  const balanceMoved = () => { try { window.dispatchEvent(new Event('myavatar:credits-updated')); } catch { /* ignore */ } };
+  let jobId: string | null = null;
+  try {
+    const r = await fetch('/api/video/lipsync', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'include', signal,
+    });
+    const j = (await r.json().catch(() => ({}))) as { jobId?: string | null; code?: string };
+    if (r.status === 402 || j.code === 'insufficient_credits') return { url: null, noCredits: true };
+    jobId = j.jobId ?? null;
+  } catch { return { url: null }; }
+  if (!jobId) return { url: null };
+  balanceMoved();
+  try {
+    for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
+      await new Promise((res) => setTimeout(res, 6000));
+      try {
+        const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
+        const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
+        if (pj.done) return { url: pj.url ?? null };
+      } catch { /* transient poll error — keep polling */ }
+    }
+    return { url: null };
+  } finally {
+    balanceMoved(); // a failed render was refunded by the poll that saw it
+  }
 }
 
 // MUSIC-VIDEO lip-sync — generate a clean HeyGen SINGER PERFORMANCE: a close-up storyboard
 // face lip-synced to the song's vocal (the talking-photo path, which tries HeyGen first).
 // This replaces the old whole-master relip (sync/lipsync-2 warped the montage's wide/aerial
-// shots). Fail-open: returns null on any miss so the caller just omits the companion clip.
-async function heygenSingerPerformance(faceUrl: string, audioUrl: string, orientation: 'landscape' | 'vertical', signal: AbortSignal, mine: () => boolean): Promise<string | null> {
-  let jobId: string | null = null;
-  try {
-    const r = await fetch('/api/video/lipsync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the
-      // vocal. `characterRef` (the CLEAN portrait) is the preferred face — HeyGen needs a
-      // front-facing portrait, not a stylized scene frame.
-      body: JSON.stringify({ videoUrl: faceUrl, characterRef: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
-      credentials: 'include', signal,
-    });
-    jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
-  } catch { return null; }
-  if (!jobId) return null;
-  for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
-    await new Promise((res) => setTimeout(res, 6000));
-    try {
-      const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-      const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-      if (pj.done) return pj.url ?? null;
-    } catch { /* transient poll error — keep polling */ }
-  }
-  return null;
+// shots). Fail-open: a miss returns url null so the caller just omits the companion clip.
+function heygenSingerPerformance(faceUrl: string, audioUrl: string, orientation: 'landscape' | 'vertical', signal: AbortSignal, mine: () => boolean): Promise<LipsyncOutcome> {
+  // No `kind:'film'` → the talking-photo engine (HeyGen first) animates the face to the
+  // vocal. `characterRef` (the CLEAN portrait) is the preferred face — HeyGen needs a
+  // front-facing portrait, not a stylized scene frame.
+  return runLipsyncJob({ videoUrl: faceUrl, characterRef: faceUrl, audioUrl, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
 }
 
 // Stage 2b — COMPOSITE the HeyGen close-ups INTO the cinematic montage. Face-forward beats
@@ -668,35 +692,17 @@ async function compositeMusicVideo(
 // dialogue text in the narrator gender — the route's `text`+`gender` path does the TTS
 // internally, so the returned clip already carries the narration in its audio track.
 // Fail-open: any miss → null.
-async function heygenSpeakingHead(
+function heygenSpeakingHead(
   portrait: string,
   dialogue: string,
   gender: 'male' | 'female',
   orientation: 'landscape' | 'vertical',
   signal: AbortSignal,
   mine: () => boolean,
-): Promise<string | null> {
-  let jobId: string | null = null;
-  try {
-    const r = await fetch('/api/video/lipsync', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      // No `kind:'film'` → talking-photo (HeyGen first) animates the portrait. `text`+`gender`
-      // → the route synthesizes the narrator voice (ElevenLabs) and keys the mouth to it.
-      body: JSON.stringify({ characterRef: portrait, videoUrl: portrait, text: dialogue, gender, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }),
-      credentials: 'include', signal,
-    });
-    jobId = ((await r.json().catch(() => ({}))) as { jobId?: string | null }).jobId ?? null;
-  } catch { return null; }
-  if (!jobId) return null;
-  for (let i = 0; i < 80 && mine(); i += 1) { // ~8 min of quick polls (HeyGen render window)
-    await new Promise((res) => setTimeout(res, 6000));
-    try {
-      const pr = await fetch(`/api/video/lipsync?id=${encodeURIComponent(jobId)}`, { credentials: 'include', signal });
-      const pj = (await pr.json().catch(() => ({}))) as { done?: boolean; url?: string | null };
-      if (pj.done) return pj.url ?? null;
-    } catch { /* transient poll error — keep polling */ }
-  }
-  return null;
+): Promise<LipsyncOutcome> {
+  // No `kind:'film'` → talking-photo (HeyGen first) animates the portrait. `text`+`gender`
+  // → the route synthesizes the narrator voice (ElevenLabs) and keys the mouth to it.
+  return runLipsyncJob({ characterRef: portrait, videoUrl: portrait, text: dialogue, gender, orientation: orientation === 'vertical' ? 'vertical' : 'landscape' }, signal, mine);
 }
 
 // DOCUMENTARY composite — narrate the film in the character's OWN voice + face. Mirrors
@@ -707,6 +713,8 @@ async function heygenSpeakingHead(
 // no close-up exists. The talking-head clip carries the narration, so we re-assemble with that
 // clip itself as the master audio bed (ffmpeg maps its audio stream) → the documentary is
 // narrated in the synced voice. Fail-open: any miss → null and the caller keeps the base master.
+/** compositeDocumentary's answer when the lip-sync was refused for the balance (never a URL: those are https). */
+const NO_LIPSYNC_CREDITS = 'no_credits' as const;
 async function compositeDocumentary(
   portrait: string,
   matrix: FilmStudioMatrix,
@@ -718,10 +726,12 @@ async function compositeDocumentary(
   signal: AbortSignal,
   mine: () => boolean,
   filmTokenId: string | null,
-): Promise<string | null> {
+): Promise<string | null | typeof NO_LIPSYNC_CREDITS> {
   try {
     // 1+2+3. ElevenLabs TTS of the dialogue + lip-sync the CLEAN portrait to it (talking-photo).
-    const talkingHead = await heygenSpeakingHead(portrait, dialogue, gender, orientation, signal, mine);
+    const head = await heygenSpeakingHead(portrait, dialogue, gender, orientation, signal, mine);
+    if (head.noCredits) return NO_LIPSYNC_CREDITS;
+    const talkingHead = head.url;
     if (!talkingHead || !mine()) return null;
 
     // 4+5. Choose the scene that hosts the talking head: a CLOSE-UP beat, else scene 3, else
@@ -1779,7 +1789,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
 
 // Full-screen review surface: the six planned scenes + a frame each. The user
 // approves (→ render the film anchored to these frames), regenerates, or cancels.
-function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
+function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncCredits, regenningOrdinal, onGenerate, onRegenerate, onRegenScene, onEditScene, onView, onCancel, onDelete, onMove, onReorder, onAddScene }: {
   sb: StoryboardState;
   t: (typeof COPY)[Lang];
   locale: Lang;
@@ -1788,6 +1798,9 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, regennin
   price?: number;
   /** The first-video slot pays for it (one short clip while a slot is left). */
   free?: boolean;
+  /** The lip-sync pass after the film, in credits (lib/video/createPanel.lipsyncAddOnCredits) — its own charge, never
+   *  in `price`, and not covered by the free slot. 0/absent → none runs. */
+  lipsyncCredits?: number;
   /** The scene ordinal currently re-rolling its frame (null = none). */
   regenningOrdinal: number | null;
   onGenerate: () => void;
@@ -1915,6 +1928,12 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, regennin
             {loaded < total && <span className="text-app-muted">· {total - loaded} {t.sbAutoFill}</span>}
             <span className="text-app-muted/70">· ⏱ {t.sbRenderNote}</span>
           </div>
+        )}
+        {/* Above the buttons, not under them: the bar's bottom padding is the phone's safe area. */}
+        {(lipsyncCredits ?? 0) > 0 && (
+          <p data-testid="storyboard-lipsync-addon" data-credits={lipsyncCredits} className="px-4 pb-2 pt-1 text-center text-[11px] leading-snug text-app-muted">
+            {lipsyncAddOnNote(lipsyncCredits ?? 0, _locale)}
+          </p>
         )}
         <div className="flex items-center gap-2 border-t border-app-border/10 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <button type="button" onClick={onRegenerate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-app-elevated px-4 py-2.5 text-[13px] font-medium text-app-text transition-all duration-200 hover:bg-app-border/10 active:scale-95 disabled:opacity-50">
@@ -3194,6 +3213,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const videoCaps = useVideoCapabilities(activeTool === 'video').effective;
   const videoBalanceCredits = useCreditsAvailable(!guest && activeTool === 'video');
   const videoFreeFilms = useFreeFilmsRemaining(!guest && activeTool === 'video');
+  // The lip-sync pass renderFilm runs after the film assembles (same condition as its `wantsLipsync`) is its own
+  // /api/video/lipsync charge, taken when it starts and returned when it fails — named under both Generate buttons.
+  const filmLipsyncCredits = lipsyncAddOnCredits({ mode: videoMode, lipsyncOn: videoLipsync, hasDialogue: videoSpeech.trim().length > 0 });
   // The persona in use — named on the chat composer's chip (Gemini shows the chosen Gem there). Same store as the
   // sidebar row and the switcher's persona row; ✕ on the chip returns to the default assistant.
   const activePersona = useActivePersona(locale);
@@ -3828,18 +3850,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (!face) {
             patchLipsyncCard('skipped', lipsyncSkipReason('no_face', locale));
           } else {
-            const perf = await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine);
-            if (!perf) {
+            const sung = await heygenSingerPerformance(face, vocalForSync, 'vertical', signal, mine);
+            const perf = sung.url;
+            if (sung.noCredits) {
+              patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale));
+            } else if (!perf) {
               // HeyGen returned nothing (no provider key / credit block / timeout / down).
               patchLipsyncCard('skipped', lipsyncSkipReason('heygen_unavailable', locale));
             } else if (!(await videoDurationAtLeast(perf, 8))) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('short_result', locale));
+              patchLipsyncCard('skipped', lipsyncSkipReason('short_result', locale, { saved: true }));
             } else if (!res.matrix || !mine()) {
-              patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale));
+              patchLipsyncCard('skipped', lipsyncSkipReason('no_clips', locale, { saved: true }));
             } else {
               const composited = await compositeMusicVideo(perf, res.matrix, storyboardScenes, songUrl, 'vertical', videoTransition, signal, mine, res.filmTokenId ?? null);
               if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
-              else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
+              else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale, { saved: true })); }
             }
           }
         } else if (isMusicVideo && wantsLipsync && !res.musicUrl) {
@@ -3872,7 +3897,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               mine,
               res.filmTokenId ?? null,
             );
-            if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
+            if (composited === NO_LIPSYNC_CREDITS) { patchLipsyncCard('skipped', lipsyncSkipReason('no_credits', locale)); }
+            else if (composited) { graphicsInput = composited; setResultVideo(composited); patchLipsyncCard('completed'); }
             else { patchLipsyncCard('skipped', lipsyncSkipReason('composite_failed', locale)); }
           }
         } else {
@@ -9345,6 +9371,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 balanceCredits: videoBalanceCredits,
                 freeFilmsRemaining: videoFreeFilms,
                 onTopUp: () => window.dispatchEvent(new CustomEvent('myavatar:open-credits')),
+                lipsyncCredits: filmLipsyncCredits,
               }}
               caps={videoCaps}
               storySummary={styleLabel(videoStyle, locale)}
@@ -9699,7 +9726,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className={`flex w-full items-center justify-between gap-3 rounded-xl border p-3.5 text-left shadow-[0_2px_12px_rgba(0,0,0,0.12)] transition active:scale-[0.99] ${videoLipsync ? 'border-app-accent/50 bg-app-accent/10' : 'border-app-border/20 bg-app-bg/40'}`}>
                   <span className="min-w-0">
                     <span className="flex items-center gap-1.5 text-[12.5px] font-semibold text-app-text">{locale === 'en' ? "Sync singer's lips to the vocal" : locale === 'ru' ? 'Синхрон губ певицы с вокалом' : 'მომღერლის ტუჩები ვოკალთან'}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{locale === 'en' ? 'A lip-sync pass after the film assembles (adds time).' : locale === 'ru' ? 'Липсинк после сборки фильма (дольше).' : 'ლიპსინკი ფილმის აწყობის შემდეგ (დრო ემატება).'}</span>
+                    <span className="mt-0.5 block text-[10.5px] leading-tight text-app-muted">{(() => { const n = creditsLabel(quoteCredits({ tool: 'avatar' }), locale); return locale === 'en' ? `A lip-sync pass after the film assembles: more time, +${n} (returned if it fails).` : locale === 'ru' ? `Липсинк после сборки фильма: дольше, +${n} (при сбое возвращаются).` : `ლიპსინკი ფილმის აწყობის შემდეგ: მეტი დრო, +${n} (ჩავარდნისას ბრუნდება).`; })()}</span>
                   </span>
                   {/* Inline-styled visual track (the card button handles the click). */}
                   <span style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, width: 44, height: 24, borderRadius: 9999, backgroundColor: videoLipsync ? '#06b6d4' : '#475569', transition: 'background-color 200ms ease' }}>
@@ -11100,6 +11127,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           busy={busy}
           price={videoQuote({ seconds: storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC), tier: veoPlan.tier, mode: videoMode })}
           free={freeSlotApplies(videoFreeFilms, storyboard.scenes.length * (storyboard.clipSec ?? FILM_CLIP_SEC))}
+          // A director run renders exactly the board, no lip-sync pass after it (see onGenerate below).
+          lipsyncCredits={directorRunsOn ? 0 : filmLipsyncCredits}
           regenningOrdinal={regenningOrdinal}
           onRegenScene={(ordinal, baseImage) => void regenScene(ordinal, baseImage)}
           onEditScene={editScene}

@@ -222,6 +222,29 @@ describe('free · insufficient · empty', () => {
   });
 });
 
+describe('the lip-sync pass is named beside the price, never folded into it (gap C2)', () => {
+  test('a film that runs one says its own charge under Generate; the button keeps the film\'s number', () => {
+    setup({ mode: 'musicvideo' }, { lipsyncCredits: 20 });
+    const note = screen.getByTestId('video-lipsync-addon');
+    expect(note.getAttribute('data-credits')).toBe('20');
+    expect(note.textContent).toBe('+20 credits for lip-sync — taken only if it runs, returned if it fails');
+    expect(Number(price())).toBe(quoteCredits({ tool: 'video', seconds: 24, quality: 'fast', mode: 'musicvideo' }));
+  });
+
+  test('a free first film still names it: the free slot pays for the film, not for the lip-sync', () => {
+    setup({ seconds: 8 }, { freeFilmsRemaining: 1, lipsyncCredits: 20 });
+    expect(price()).toBe('free');
+    expect(screen.getByTestId('video-lipsync-addon').textContent).toContain('+20 credits');
+  });
+
+  test('no pass, no line', () => {
+    setup({}, { lipsyncCredits: 0 });
+    expect(screen.queryByTestId('video-lipsync-addon')).toBeNull();
+    setup();
+    expect(screen.queryByTestId('video-lipsync-addon')).toBeNull();
+  });
+});
+
 describe('the length picker: the grid, the lock, the live price', () => {
   const open = () => { fireEvent.click(screen.getByTestId('video-tile-length')); return screen.getByTestId('video-duration-sheet'); };
 

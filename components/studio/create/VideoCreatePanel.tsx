@@ -35,7 +35,7 @@ import { catalogueEntry, catalogueLang, tierForVideoModel, videoModelForTier, ty
 import { pickerRows, useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
 import { HiggsfieldGenerate } from './HiggsfieldGenerate';
-import { videoQuote, freeSlotApplies, insertPromptToken, openDuration, videoResolution, type VideoCapabilities } from '@/lib/video/createPanel';
+import { videoQuote, freeSlotApplies, lipsyncAddOnNote, insertPromptToken, openDuration, videoResolution, type VideoCapabilities } from '@/lib/video/createPanel';
 import { planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import type { VideoMode } from '@/lib/credits/videoPricing';
 import type { OutputFormat } from '@/lib/veo/types';
@@ -74,6 +74,9 @@ export interface VideoCreateGenerate {
   freeFilmsRemaining: number | null;
   /** Open the shell's top-up. */
   onTopUp: () => void;
+  /** The lip-sync pass this film would run, in credits (lib/video/createPanel.lipsyncAddOnCredits): its own charge,
+   *  named under Generate beside the film's number. 0 or absent → this film runs none. */
+  lipsyncCredits?: number;
 }
 
 export interface VideoCreatePanelProps {
@@ -216,6 +219,11 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
             ) : (
               <GenerateButton service="video.generate" label={vc(VIDEO_COPY.generate, locale)} credits={credits} free={free} insufficient={insufficient}
                 loading={generate.busy} loadingLabel={vc(VIDEO_COPY.rendering, locale)} locale={locale} onClick={onGenerate} testId="video-generate" />
+            )}
+            {!hf && (generate.lipsyncCredits ?? 0) > 0 && (
+              <p data-testid="video-lipsync-addon" data-credits={generate.lipsyncCredits} className="mt-1.5 text-center text-[11px] leading-snug text-app-muted">
+                {lipsyncAddOnNote(generate.lipsyncCredits ?? 0, locale)}
+              </p>
             )}
           </VideoGenerateBar>
         </div>
