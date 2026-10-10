@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G Autonomous Execution, PART 7 and the final certification)
+LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md)
 LAST COMMIT: see `git log` on that branch (main = 6c7dff46 = Production since 16:01Z, PR #52 auth hotfix; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
           ba74fa21 /api/orbit/agent 404 and music cover art off Pollinations under Google-only,
@@ -248,6 +248,19 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           (19:05Z, KA and EN). OMNICHANNEL_E2E_MATRIX.md P column
           and evidence/preview-anonymous-checks-2026-10-10.txt. No merge, deploy, migration, env, price or paid
           change.
+          PART 10 + PART 11 (owner 19:07:45Z): E2E certification by tier and the verdict,
+          docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md (13 sections + the merge record). Gates on code head d41c7562:
+          tsc 0; lint 0 errors (33 warnings); jest 841 suites, 12,668 passed, 30 skipped, 0 failed; isolation run
+          (real Postgres 16 + PostgREST + FFmpeg) lease 7/7 ×2, ledgerOnce 7+1 skipped before and after 20261002d,
+          runIsolation 6/6, outbox 4/4; Playwright, all 35 committed specs on a production build (1058e7bd: 289 passed,
+          0 failed); 465 routes probed signed out; secret scan clean; Production read only 19:11Z (ledger 222 rows,
+          0 duplicate refs, 0 negative balances, RLS 52/52). Reviews of the full diff: no P0. Fixed (d41c7562, tests):
+          film replay failed the original row, cron secret compare not constant time, analyze_media tool skipped the
+          daily ceiling, outbox isolation test read another suite's rows. The product-ad length price (25 / 75 / 150)
+          is held at Production's 25 behind PRODUCT_AD_PRICING = 'production', so the merge changes no price.
+          Verdict: merge + deploy with every new flag off is GO under the owner's 19:07:45Z pre-approval once CI is
+          green; full opening to users NO-GO (0 / 22 services proven end to end at this head, no authenticated Preview
+          run, MEDIA_GOOGLE_ONLY off, video below cost, no completed payment, Meta answer pending).
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
