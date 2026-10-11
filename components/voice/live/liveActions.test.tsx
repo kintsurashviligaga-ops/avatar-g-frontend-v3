@@ -5,7 +5,7 @@
  * canvas_unavailable); nothing here can start a render; cards are newest-first, capped at 3,
  * and a toolCallCancellation drops them; a looping model is cut off.
  */
-import { liveAttachedRefs, setLiveAttachedRefs } from '@/lib/voice/liveAttached';
+import { LIVE_AGENT_FILES_MAX, liveAttachedRefs, setLiveAttachedRefs } from '@/lib/voice/liveAttached';
 import { act, renderHook } from '@testing-library/react';
 
 import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
@@ -684,11 +684,12 @@ describe('ask_agent_g', () => {
     return { out, done: out.pending ? await out.pending : undefined, asked: h.asked };
   };
 
-  test('the user\'s attached files go with the ask (their stored paths, at most 13) — never an empty list', async () => {
+  test('the user\'s attached files go with the ask (their stored paths, at most 14: 12 clips, a track, a narration) — never an empty list', async () => {
     const { fetchImpl, calls } = fakeFetch(200, RUN);
-    const files = Array.from({ length: 15 }, (_, i) => `omni-uploads/u1/${i}-clip.mp4`);
+    const files = Array.from({ length: 16 }, (_, i) => `omni-uploads/u1/${i}-clip.mp4`);
     await fetchAgentRun('cut these together', { fetchImpl, files });
-    expect(JSON.parse(String(calls[0]!.init.body)).files).toEqual(files.slice(0, 13));
+    expect(LIVE_AGENT_FILES_MAX).toBe(14);
+    expect(JSON.parse(String(calls[0]!.init.body)).files).toEqual(files.slice(0, LIVE_AGENT_FILES_MAX));
     await fetchAgentRun('cut these together', { fetchImpl, files: [] });
     expect(JSON.parse(String(calls[1]!.init.body))).not.toHaveProperty('files');
   });
