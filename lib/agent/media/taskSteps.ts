@@ -161,6 +161,13 @@ export function montageInputs(s: Pick<AgentMontageState, 'quote' | 'names'>, loc
   return { text: audio ? `${videos} + ${audio}` : videos, files };
 }
 
+/** " · music from 0:58": where in the song the montage starts, in whole seconds as the chat says it. */
+function musicFrom(sec: number, lang: Lang): string {
+  const t = Math.max(0, Math.round(sec));
+  const at = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  return lang === 'en' ? ` · music from ${at}` : lang === 'ru' ? ` · музыка с ${at}` : ` · მუსიკა ${at}-დან`;
+}
+
 export function montageTask(s: AgentMontageState, locale: string): TaskCardModel {
   const lang = pick(locale);
   const q = s.quote;
@@ -195,7 +202,10 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
   const filesDetail = total > 0
     ? (lang === 'en' ? `${clips} clip${clips === 1 ? '' : 's'} · 1 track` : lang === 'ru' ? `клипов: ${clips} · трек: 1` : `${clips} კლიპი · 1 მუსიკა`)
     : undefined;
-  const beatDetail = q ? (q.beatSynced && q.bpm ? `${Math.round(q.bpm)} BPM · ${say('onBeat', lang)}` : say('noBeat', lang)) : undefined;
+  // Where the song comes in, when it is not its top: the owner typed „0.58" (2026-10-11) and the card never said that the
+  // plan had read 0.58 s. Named here, a wrong start is seen before Start.
+  const from = q && q.musicStartSec >= 1 ? musicFrom(q.musicStartSec, lang) : '';
+  const beatDetail = q ? (q.beatSynced && q.bpm ? `${Math.round(q.bpm)} BPM · ${say('onBeat', lang)}` : say('noBeat', lang)) + from : undefined;
   const planDetail = q
     ? (lang === 'en' ? `${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
       : lang === 'ru' ? `${q.shots} кадров из клипов (${q.clips}) · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`

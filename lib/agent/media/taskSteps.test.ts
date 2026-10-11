@@ -42,6 +42,15 @@ describe('the montage card is every step, from the upload to the saved result', 
     expect(m).toMatchObject({ status: 'waiting', countText: '2/9 ნაბიჯი', clock: null, inputs: { text: '3 ვიდეო + 1 MP3' } });
   });
 
+  test('a song that does not start at its top says where it comes in, before Start', () => {
+    const at58 = { ...MQ, musicStartSec: 58.2 };
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: at58 }, 'ka').steps[1]!.detail).toBe('119 BPM · ყოველი ჭრა ბითზე · მუსიკა 0:58-დან');
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: at58 }, 'en').steps[1]!.detail).toContain(' · music from 0:58');
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: { ...at58, musicStartSec: 90, beatSynced: false } }, 'ru').steps[1]!.detail).toContain(' · музыка с 1:30');
+    // Under a second is the song's top, said as nothing.
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: { ...MQ, musicStartSec: 0.4 } }, 'ka').steps[1]!.detail).toBe('119 BPM · ყოველი ჭრა ბითზე');
+  });
+
   test('a run marks every step before its stage done, even one a poll skipped', () => {
     const m = montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: 'stitch', pct: 71.6, t0: 5000 }, 'en');
     expect(states(m)).toBe('done done done done done active pending pending pending');

@@ -21,18 +21,29 @@ const MUSIC = /მუსიკ|სიმღერ|ტრეკ|ბიტ|music|s
 /** „0:05" → 5, „1:30" → 90. */
 const clock = (m: string, s: string): number => parseInt(m, 10) * 60 + parseInt(s, 10);
 
+/**
+ * A number of seconds as typed. ⚠️ „0.58" WITH TWO DIGITS AFTER THE POINT (00–59) IS A CLOCK, 0:58: a phone keyboard
+ * has no colon on its number row, so a time in a song is typed „0.58" or „1,30" (the owner, 2026-10-11: „სიმღერა
+ * ზუსტად 0.58 წამიდან დაადე" meant 0:58 and got the song from 0:01). Nobody starts a song 0.58 s in. One digit after
+ * the point („1.5 წამიდან") and a fraction past 59 („2.75") stay seconds.
+ */
+const seconds = (raw: string): number => {
+  const mmss = /^(\d{1,2})[.,]([0-5]\d)$/.exec(raw);
+  return mmss ? clock(mmss[1]!, mmss[2]!) : parseFloat(raw.replace(',', '.'));
+};
+
 const NUM = '(\\d{1,4}(?:[.,]\\d{1,2})?)';
 const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => number }> = [
-  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „5 წმ-დან"
-  { re: new RegExp(`(?:მე-?)?${NUM}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => parseFloat(m[1]!.replace(',', '.')) },
-  // „0:05-დან"
-  { re: new RegExp(`(\\d{1,2}):(\\d{2})\\s*-?\\s*დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
+  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „5 წმ-დან", „0.58 წამიდან" (0:58)
+  { re: new RegExp(`(?:მე-?)?${NUM}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  // „0:05-დან", „0.58-დან", „1,30-დან"
+  { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)\\s*-?\\s*დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second"
   { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
-  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?${NUM}(?:st|nd|rd|th)?\\s*-?\\s*(?:s|sec|secs|second|seconds)${B1}`, 'iu'), read: (m) => parseFloat(m[1]!.replace(',', '.')) },
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?${NUM}(?:st|nd|rd|th)?\\s*-?\\s*(?:s|sec|secs|second|seconds)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
   // „с 5 секунды", „с 5-й секунды", „с 0:05"
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
-  { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+${NUM}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:секунд\\p{L}*|сек\\p{L}*)`, 'iu'), read: (m) => parseFloat(m[1]!.replace(',', '.')) },
+  { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+${NUM}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:секунд\\p{L}*|сек\\p{L}*)`, 'iu'), read: (m) => seconds(m[1]!) },
 ];
 
 /** The longest track offset anyone needs (an hour) — a pasted number is never a three-day seek. */
