@@ -9,6 +9,13 @@
  * leaks drifting over it, or film grain: ./overlayFx) is its own pass between the first and the layers. The filters are the remix's own
  * (lib/video/editFilters), so the same words make the same picture on both doors.
  *
+ * EFFECTS (GG 2026-10-11 17:38Z: „ქაფქათს და სხვა ფუნქციებს რაც აკლია"): CapCut's everyday tools, ffmpeg only and free:
+ * the picture's own light and colour (brightness, contrast, saturation, warmth, sharpness, a vignette: `adjust`), a mirror
+ * or an upside-down flip, a quarter turn, a slow zoom in or out, a camera shake or a glitch (`motion`), a steadied shaky
+ * clip (`stabilize`), a new frame filled with the picture's own blur instead of bars (aspect `fit: 'blur'`), the noise
+ * taken out of the sound (`denoise`) and the sound evened out to one loudness (`loudness`). Playing backwards is not here:
+ * ffmpeg's reverse holds every frame of the clip in memory at once, more than one worker has.
+ *
  * ERASE (GG 2026-10-11 17:38Z: „ვიდეოში ტექსტი … წაშლა, ამოღება, მოშორება"): a logo, a watermark, a text or burned-in
  * subtitles that stay in ONE place of the source picture are filled in from the pixels around that place (ffmpeg delogo),
  * over the whole result or a stretch of it, on a video or a picture. Something that moves (a person, a car, a text that
@@ -25,7 +32,7 @@
 import type { BannerProbe } from '@/lib/video/probeBanner';
 import { MAX_CAPTION_CHARS } from '@/lib/video/remixCaption';
 import {
-  ASPECT_DIMS, GRADE_VF, MAX_SPEED, MIN_SPEED, aspectVf, atempoChain, setptsFor, type FrameAspect, type GradeStyle,
+  ASPECT_DIMS, GRADE_VF, MAX_SPEED, MIN_SPEED, aspectVf, atempoChain, setptsFor, type FrameAspect, type FrameFit, type GradeStyle,
 } from '@/lib/video/editFilters';
 import {
   ANCHORS, resolveLayers, resolveTrack, type Anchor, type CaptionDelivery, type CaptionTrack, type Layer, type LayersAsk,
@@ -46,8 +53,22 @@ export { MAX_CAPTION_CHARS };
 export type MediaEdit =
   | { op: 'trim'; fromSec: number; toSec: number }
   | { op: 'speed'; factor: number }
-  | { op: 'aspect'; to: FrameAspect; fit: 'crop' | 'pad' }
+  | { op: 'aspect'; to: FrameAspect; fit: FrameFit }
   | { op: 'grade'; style: GradeStyle }
+  /** The picture's own light and colour, each a step from −100 to 100 (sharpen and vignette 0 to 100); 0 is left out. */
+  | ({ op: 'adjust' } & Adjust)
+  /** A mirror (left to right) or upside down. */
+  | { op: 'flip'; axis: FlipAxis }
+  /** A quarter turn clockwise (90), a half turn (180) or a quarter turn the other way (270). */
+  | { op: 'rotate'; deg: 90 | 180 | 270 }
+  /** Movement over the whole result: a slow zoom in or out, a camera shake, a glitch (any of them together). */
+  | { op: 'motion'; zoom?: ZoomWay; shake?: true; glitch?: true }
+  /** A shaky clip steadied (ffmpeg deshake). */
+  | { op: 'stabilize' }
+  /** Hiss, hum and steady background noise taken out of the sound. */
+  | { op: 'denoise' }
+  /** The sound evened out to one loudness (-14 LUFS, the level social apps play at). */
+  | { op: 'loudness' }
   | { op: 'fade'; inSec: number; outSec: number }
   | { op: 'volume'; db: number }
   | { op: 'mute' }
@@ -65,11 +86,16 @@ export type MediaEdit =
 export type EditName = MediaEdit['op'];
 
 /** The one order edits are applied in (and stored in): time first, then the frame, then its look, then the sound. */
-export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'layers', 'captions', 'thumbnail'];
+export const EDIT_ORDER: readonly EditName[] = [
+  'trim', 'speed', 'erase', 'stabilize', 'rotate', 'flip', 'aspect', 'motion', 'adjust', 'grade', 'fade',
+  'volume', 'denoise', 'loudness', 'mute', 'overlay', 'caption', 'layers', 'captions', 'thumbnail',
+];
 /** What a thumbnail (one still) can be combined with. */
-const STILL_EDITS: ReadonlySet<EditName> = new Set(['erase', 'aspect', 'grade', 'caption', 'layers', 'thumbnail']);
+const STILL_EDITS: ReadonlySet<EditName> = new Set(['erase', 'rotate', 'flip', 'aspect', 'adjust', 'grade', 'caption', 'layers', 'thumbnail']);
 /** What a picture (a still SOURCE: a poster, a banner, a photo) can be given. */
-const PICTURE_EDITS: ReadonlySet<EditName> = new Set(['erase', 'aspect', 'grade', 'caption', 'layers']);
+const PICTURE_EDITS: ReadonlySet<EditName> = new Set(['erase', 'rotate', 'flip', 'aspect', 'adjust', 'grade', 'caption', 'layers']);
+/** Edits of the sound alone: with nothing else, an H.264 picture is copied as it is. */
+const SOUND_EDITS: ReadonlySet<EditName> = new Set(['volume', 'mute', 'denoise', 'loudness']);
 /** Edits drawn in the second (composition) pass, over the first pass's output. */
 export const COMPOSED_EDITS: ReadonlySet<EditName> = new Set(['caption', 'layers', 'captions']);
 /** A single picture as ffmpeg reads one: an image codec and no length to speak of. */
@@ -83,6 +109,21 @@ export const OVERLAY_LOOKS: readonly OverlayLook[] = ['light-leak', 'grain'];
 /** An overlay is one more full-frame pass: it is for a result up to this long (one worker's time). */
 export const MAX_OVERLAY_SEC = 120;
 export const GRADES: readonly GradeStyle[] = ['vintage', 'cinematic', 'neon', 'noir', 'dramatic'];
+export const FITS: readonly FrameFit[] = ['crop', 'pad', 'blur'];
+
+/** The picture's own light and colour, in the order they are stored and drawn. */
+export const ADJUST_KEYS = ['brightness', 'contrast', 'saturation', 'warmth', 'sharpen', 'vignette'] as const;
+export type AdjustKey = (typeof ADJUST_KEYS)[number];
+export type Adjust = Partial<Record<AdjustKey, number>>;
+/** These go both ways (−100 darker / flatter / greyer / cooler … 100); sharpen and vignette only add (0–100). */
+export const SIGNED_ADJUST: ReadonlySet<AdjustKey> = new Set(['brightness', 'contrast', 'saturation', 'warmth']);
+export const MAX_ADJUST = 100;
+export type FlipAxis = 'horizontal' | 'vertical';
+export type ZoomWay = 'in' | 'out';
+/** A zoom redraws every frame from a picture twice the size: it is for a result up to this long (one worker's time). */
+export const MAX_MOTION_SEC = 120;
+/** Steadying looks at every frame against the last (about twice as slow as the clip plays at 1080p). */
+export const MAX_STABILIZE_SEC = 60;
 
 /**
  * A place of the source picture to fill in, in fractions of the frame as shown (0–1, from its top left); `at` names the
@@ -242,10 +283,50 @@ export function resolveEdits(
       }
       case 'aspect': {
         const to = a!.to, fit = a!.fit ?? 'crop';
-        if (!(ASPECTS as readonly unknown[]).includes(to) || (fit !== 'crop' && fit !== 'pad')) return fail('bad_edits', 'The frame is 9:16, 16:9, 1:1 or 4:5.');
-        edits.push({ op: 'aspect', to: to as FrameAspect, fit });
+        if (!(ASPECTS as readonly unknown[]).includes(to) || !(FITS as readonly unknown[]).includes(fit)) return fail('bad_edits', 'The frame is 9:16, 16:9, 1:1 or 4:5.');
+        edits.push({ op: 'aspect', to: to as FrameAspect, fit: fit as FrameFit });
         break;
       }
+      case 'adjust': {
+        const out: Adjust = {};
+        for (const k of ADJUST_KEYS) {
+          const v = a![k];
+          if (v === undefined) continue;
+          const r = isNum(v) ? Math.round(v) : NaN;
+          if (!(r >= (SIGNED_ADJUST.has(k) ? -MAX_ADJUST : 0) && r <= MAX_ADJUST)) return fail('bad_edits', 'Light and colour change by -100 to 100 (sharpness and vignette 0 to 100).');
+          if (r !== 0) out[k] = r;
+        }
+        if (!Object.keys(out).length) return fail('nothing_to_do', 'That leaves the light and colour as they are.');
+        edits.push({ op: 'adjust', ...out });
+        break;
+      }
+      case 'flip': {
+        const axis = a!.axis ?? 'horizontal';
+        if (axis !== 'horizontal' && axis !== 'vertical') return fail('bad_edits', 'A flip is a mirror (left to right) or upside down.');
+        edits.push({ op: 'flip', axis });
+        break;
+      }
+      case 'rotate': {
+        const raw = isNum(a!.deg) ? Math.round(a!.deg) : NaN;
+        const deg = ((raw % 360) + 360) % 360;
+        if (!Number.isFinite(raw) || deg % 90 !== 0) return fail('bad_edits', 'A turn is a quarter turn: 90°, 180° or 270°.');
+        if (deg === 0) return fail('nothing_to_do', 'A whole turn leaves the picture as it is.');
+        edits.push({ op: 'rotate', deg: deg as 90 | 180 | 270 });
+        break;
+      }
+      case 'motion': {
+        const { zoom, shake, glitch } = a as { zoom?: unknown; shake?: unknown; glitch?: unknown };
+        const what = 'The movement is a zoom in or out, a shake, a glitch, or some of them together.';
+        if ((zoom !== undefined && zoom !== 'in' && zoom !== 'out') || [shake, glitch].some((v) => v !== undefined && typeof v !== 'boolean')) return fail('bad_edits', what);
+        if (!zoom && !shake && !glitch) return fail('bad_edits', what);
+        edits.push({ op: 'motion', ...(zoom ? { zoom: zoom as ZoomWay } : {}), ...(shake ? { shake: true as const } : {}), ...(glitch ? { glitch: true as const } : {}) });
+        break;
+      }
+      case 'stabilize':
+      case 'denoise':
+      case 'loudness':
+        edits.push({ op: op as 'stabilize' | 'denoise' | 'loudness' });
+        break;
       case 'grade': {
         if (!(GRADES as readonly unknown[]).includes(a!.style)) return fail('bad_edits', 'That colour look is not one Agent G has.');
         edits.push({ op: 'grade', style: a!.style as GradeStyle });
@@ -303,7 +384,9 @@ export function resolveEdits(
   if (seen.has('thumbnail') && [...seen].some((n) => !STILL_EDITS.has(n))) return fail('conflict', 'A thumbnail is one picture: it takes a frame shape, a colour look and a caption, nothing about time or sound.');
   if (seen.has('captions') && seen.has('thumbnail')) return fail('conflict', 'Captions are for a video, not a still.');
   if (seen.has('mute') && seen.has('volume')) return fail('conflict', 'Silent and louder at once?');
-  if ((seen.has('mute') || seen.has('volume')) && !src.hasAudio) return fail('conflict', 'This video has no sound.');
+  if (seen.has('mute') && (seen.has('denoise') || seen.has('loudness'))) return fail('conflict', 'Silent and a cleaner sound at once?');
+  if (seen.has('loudness') && seen.has('volume')) return fail('conflict', 'Evening the sound out sets its level itself: ask for one of them.');
+  if (['mute', 'volume', 'denoise', 'loudness'].some((k) => seen.has(k as EditName)) && !src.hasAudio) return fail('conflict', 'This video has no sound.');
   edits.sort((x, y) => EDIT_ORDER.indexOf(x.op) - EDIT_ORDER.indexOf(y.op));
 
   // ── the result ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -316,6 +399,8 @@ export function resolveEdits(
   if (!still && outSec < MIN_EDIT_OUTPUT_SEC) return fail('too_short', 'The result would be shorter than half a second.');
   if (fade && fade.inSec + fade.outSec > outSec) return fail('conflict', 'The fades are longer than the video.');
   if (get('overlay') && outSec > MAX_OVERLAY_SEC) return fail('too_long', `An overlay is for a video up to ${MAX_OVERLAY_SEC} s; this one would be ${Math.round(outSec)} s. Trim it first.`);
+  if (get('motion') && outSec > MAX_MOTION_SEC) return fail('too_long', `A zoom, a shake or a glitch is for a video up to ${MAX_MOTION_SEC} s; this one would be ${Math.round(outSec)} s. Trim it first.`);
+  if (get('stabilize') && outSec > MAX_STABILIZE_SEC) return fail('too_long', `Steadying is for a video up to ${MAX_STABILIZE_SEC} s; this one would be ${Math.round(outSec)} s. Trim it first.`);
 
   // ── erased places, layers and captions, on the result's own timeline ─────────────────────────────────────────────
   if (eraseAsk) {
@@ -345,9 +430,12 @@ export function resolveEdits(
   edits.sort((x, y) => EDIT_ORDER.indexOf(x.op) - EDIT_ORDER.indexOf(y.op));
 
   const shown = displayDims(src);
-  const copyVideo = !still && edits.every((e) => e.op === 'volume' || e.op === 'mute') && src.videoCodec === 'h264';
+  const copyVideo = !still && edits.every((e) => SOUND_EDITS.has(e.op)) && src.videoCodec === 'h264';
+  // A quarter turn swaps the sides (before a new frame shape, which sets its own).
+  const rotate = get('rotate');
+  const turned = rotate && rotate.deg !== 180 ? { width: shown.height, height: shown.width } : shown;
   // A picture keeps its own size (a JPEG needs no even sides); a video's sides are made even for H.264.
-  const [w, h] = aspect ? ASPECT_DIMS[aspect.to] : copyVideo || picture ? [shown.width, shown.height] : [even(shown.width), even(shown.height)];
+  const [w, h] = aspect ? ASPECT_DIMS[aspect.to] : copyVideo || picture ? [turned.width, turned.height] : [even(turned.width), even(turned.height)];
   return {
     ok: true,
     edits,
@@ -456,16 +544,89 @@ export function validateEditRequest(x: unknown): EditRequest | null {
 
 const edit = <K extends EditName>(edits: readonly MediaEdit[], k: K) => edits.find((e) => e.op === k) as Extract<MediaEdit, { op: K }> | undefined;
 
+/** A shaky clip steadied: ffmpeg's one-pass deshake (its default search, the frame's edges filled from the last frame). */
+export const STABILIZE_VF = 'deshake';
+/**
+ * Hum and rumble under 80 Hz cut, then the steady hiss taken down by 12 dB (afftdn's own reduction), the sound itself
+ * kept. Measured on the bundled ffmpeg 7.0.2 (./effects.ffmpeg.test.ts): white noise at -45, -35 and -28 dBFS comes out
+ * 12 dB lower and a tone over it within 0.7 dB. No `tn=1`: noise tracking on that build took nothing out at all.
+ */
+export const DENOISE_AF = 'highpass=f=80,afftdn=nf=-25';
+/** One pass of EBU R128 loudness to -14 LUFS, peaks under -1.5 dBTP; loudnorm works at 192 kHz, so it is set back to 48. */
+export const LOUDNESS_AF = 'loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000';
+
+export function rotateVf(deg: 90 | 180 | 270): string {
+  return deg === 90 ? 'transpose=clock' : deg === 270 ? 'transpose=cclock' : 'hflip,vflip';
+}
+
+/** How far a zoom goes over the whole result (15 %: CapCut's slow push, never a jump). */
+export const ZOOM_SPAN = 0.15;
+
+/**
+ * Movement over the frame as it is at that point (`width` × `height`, the result's frame), for `sec` seconds, in this
+ * order when several are asked:
+ *   zoom   one frame of output per frame at 30 fps, drawn from the picture at twice its size (no stair-steps), the
+ *          centre held, `ZOOM_SPAN` in (or out) from the first frame to the last;
+ *   shake  the picture 12 % larger, its window moving on two sines of different speeds (a hand, not a metronome);
+ *   glitch every 1.6 s, a 0.2 s burst: the red and blue split sideways and the picture breaks into noise.
+ */
+export function motionVf(m: { zoom?: ZoomWay; shake?: boolean; glitch?: boolean }, width: number, height: number, sec: number): string[] {
+  const W = Math.round(width), H = Math.round(height);
+  const out: string[] = [];
+  if (m.zoom) {
+    const n = Math.max(1, Math.round(sec * 30));
+    const z = m.zoom === 'in' ? `1+${ZOOM_SPAN}*on/${n}` : `${1 + ZOOM_SPAN}-${ZOOM_SPAN}*on/${n}`;
+    out.push('fps=30', `scale=${W * 2}:${H * 2}`, `zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30`, 'setsar=1');
+  }
+  if (m.shake) {
+    out.push(
+      `scale=${even(W * 1.12)}:${even(H * 1.12)}`,
+      `crop=${W}:${H}:x='(iw-ow)/2+(iw-ow)/2*0.6*sin(t*29)':y='(ih-oh)/2+(ih-oh)/2*0.6*sin(t*37+1.3)'`,
+      'setsar=1',
+    );
+  }
+  if (m.glitch) {
+    const shift = Math.max(4, Math.round(W / 100));
+    const burst = `enable='lt(mod(t,1.6),0.2)'`;
+    out.push(`rgbashift=rh=-${shift}:bh=${shift}:${burst}`, `noise=alls=30:allf=t:${burst}`);
+  }
+  return out;
+}
+
+/**
+ * The light and colour as filters: brightness, contrast and saturation in one `eq` (brightness ±0.25, contrast ×0.5–1.5,
+ * saturation ×0–2), warmth as a colour temperature (+100 = 3500 K warm, −100 = 9500 K cool) that keeps the lightness
+ * (without `pl=1` a warmer picture also came out darker, measured), then sharpening
+ * (`unsharp`, up to 1.5) and a vignette (an angle of 0.2–0.8 rad: wider is darker at the edges).
+ */
+export function adjustVf(a: Adjust): string[] {
+  const out: string[] = [];
+  const eq: string[] = [];
+  if (a.brightness) eq.push(`brightness=${(a.brightness / 100 * 0.25).toFixed(4)}`);
+  if (a.contrast) eq.push(`contrast=${(1 + a.contrast / 100 * 0.5).toFixed(4)}`);
+  if (a.saturation) eq.push(`saturation=${(1 + a.saturation / 100).toFixed(4)}`);
+  if (eq.length) out.push(`eq=${eq.join(':')}`);
+  if (a.warmth) out.push(`colortemperature=temperature=${6500 - a.warmth * 30}:pl=1`);
+  if (a.sharpen) out.push(`unsharp=5:5:${(a.sharpen / 100 * 1.5).toFixed(3)}:5:5:0`);
+  if (a.vignette) out.push(`vignette=angle=${(0.2 + a.vignette / 100 * 0.6).toFixed(4)}`);
+  return out;
+}
+
 /** The picture chain (`-vf`) of the first pass. */
 export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[] {
   const { edits, plan } = req;
   const vf: string[] = [];
   const speed = edit(edits, 'speed'), aspect = edit(edits, 'aspect'), grade = edit(edits, 'grade'), fade = edit(edits, 'fade');
-  const erase = edit(edits, 'erase');
+  const erase = edit(edits, 'erase'), stabilize = edit(edits, 'stabilize'), rotate = edit(edits, 'rotate'), flip = edit(edits, 'flip');
+  const motion = edit(edits, 'motion'), adjust = edit(edits, 'adjust');
   const still = plan.output === 'jpg';
   if (speed) vf.push(setptsFor(speed.factor));
   // Before the frame changes: the boxes are places of the source as shown.
   if (erase) vf.push(...eraseVf(erase.boxes, plan.frame ?? { width: plan.width, height: plan.height }));
+  // Steadied while the picture is still the camera's own (after the fill, which stays where the logo was).
+  if (stabilize) vf.push(STABILIZE_VF);
+  if (rotate) vf.push(rotateVf(rotate.deg));
+  if (flip) vf.push(flip.axis === 'vertical' ? 'vflip' : 'hflip');
   if (aspect) {
     const a = aspectVf(aspect.to, aspect.fit);
     // A JPEG takes full-range YUV: leave the pixel format to the encoder.
@@ -473,6 +634,9 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   } else if (!still) {
     vf.push('scale=trunc(iw/2)*2:trunc(ih/2)*2');
   }
+  // On the result's own frame: the plan's size is the frame here (a new shape, or the source's made even).
+  if (motion) vf.push(...motionVf(motion, plan.width, plan.height, plan.durationSec));
+  if (adjust) vf.push(...adjustVf(adjust));
   if (grade) vf.push(GRADE_VF[grade.style]);
   if (fade && fade.inSec > 0) vf.push(`fade=t=in:st=0:d=${secArg(fade.inSec)}`);
   if (fade && fade.outSec > 0) vf.push(`fade=t=out:st=${secArg(Math.max(0, plan.durationSec - fade.outSec))}:d=${secArg(fade.outSec)}`);
@@ -487,6 +651,8 @@ export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   const af: string[] = [];
   const speed = edit(edits, 'speed'), volume = edit(edits, 'volume'), fade = edit(edits, 'fade');
   if (speed) af.push(atempoChain(speed.factor));
+  if (edit(edits, 'denoise')) af.push(DENOISE_AF);
+  if (edit(edits, 'loudness')) af.push(LOUDNESS_AF);
   if (volume) af.push(`volume=${volume.db}dB`);
   if (fade && fade.inSec > 0) af.push(`afade=t=in:st=0:d=${secArg(fade.inSec)}`);
   if (fade && fade.outSec > 0) af.push(`afade=t=out:st=${secArg(Math.max(0, plan.durationSec - fade.outSec))}:d=${secArg(fade.outSec)}`);

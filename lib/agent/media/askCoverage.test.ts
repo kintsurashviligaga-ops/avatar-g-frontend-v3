@@ -32,8 +32,12 @@ describe('what a montage leaves out, by name', () => {
     ['cut these to the music with crossfades', []],
     ['cut to the music and fade between the clips', []],
     ['смонтируй под музыку с переходами', []],
-    ['დაამონტაჟე მუსიკაზე და ზუმი გაუკეთე', ['motion_fx']],
-    ['cut to the beat with a glitch and some shake', ['motion_fx']],
+    // Zoom, shake and glitch are edits now: a plain montage card names them for the finished video (the chat chains them).
+    ['დაამონტაჟე მუსიკაზე და ზუმი გაუკეთე', ['later_edit']],
+    ['cut to the beat with a glitch and some shake', ['later_edit']],
+    ['cut these to the music and play it backwards', ['reverse']],
+    ['cut to the music, 9:16 with a blurred background', ['fit_blur']],
+    ['смонтируй под музыку, 9:16 с размытым фоном', ['fit_blur']],
     ['cut to the music and add my logo top right', ['logo']],
     ['დაამონტაჟე და გაუკეთე ქეფშენები', ['speech_captions']],
     ['дай субтитры на английском, переведи', ['translate_captions']],
@@ -52,6 +56,11 @@ describe('what a montage leaves out, by name', () => {
     expect(kinds('დაამონტაჟე მუსიკაზე და დააწერე „zoom in“')).toEqual(['later_edit']);
   });
 
+  test('an effect the chain draws after the montage is not listed', () => {
+    expect(kinds('cut to the beat with a glitch and some shake', [{ op: 'motion', shake: true, glitch: true }])).toEqual([]);
+    expect(kinds('დაამონტაჟე მუსიკაზე და ზუმი გაუკეთე', [{ op: 'motion', zoom: 'in' }])).toEqual([]);
+  });
+
   test('a logo with a text: the text is planned by the chain, only the logo is named', () => {
     const t = 'cut these to the music, add my logo top right and write "Summer" at the bottom';
     const planned = [{ op: 'layers' as const, add: [{ kind: 'text' as const, text: 'Summer', anchor: 'bottom' as const }] }];
@@ -59,7 +68,7 @@ describe('what a montage leaves out, by name', () => {
   });
 
   test('each reason in ka · en · ru, and nothing at all when nothing is left out', () => {
-    for (const k of ['transition', 'motion_fx', 'logo', 'thumbnail', 'text_words', 'cta_words', 'speech_captions', 'translate_captions', 'cut_middle', 'trim', 'speed', 'layer_change'] as UnplannedKind[]) {
+    for (const k of ['transition', 'motion_fx', 'reverse', 'fit_blur', 'logo', 'thumbnail', 'text_words', 'cta_words', 'speech_captions', 'translate_captions', 'cut_middle', 'trim', 'speed', 'layer_change'] as UnplannedKind[]) {
       for (const l of ['ka', 'en', 'ru']) expect(unplannedText([{ kind: k }], l).length).toBeGreaterThan(20);
     }
     expect(unplannedText([{ kind: 'transition' }], 'en')).toBe('Not in this plan: transitions between shots: this edit has no boundary to draw them on.');

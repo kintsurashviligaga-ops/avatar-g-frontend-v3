@@ -21,7 +21,7 @@ import type { BannerProbe } from '@/lib/video/probeBanner';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { cancel, claimable, enqueue, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import {
-  EDIT_KIND, EDIT_PRICE_CREDITS, editNameFor, resolveEdits, validateEditRequest,
+  ADJUST_KEYS, EDIT_KIND, EDIT_PRICE_CREDITS, MAX_ADJUST, SIGNED_ADJUST, editNameFor, resolveEdits, validateEditRequest,
   type EditPlan, type EditPlanError, type EditRequest, type MediaEdit,
 } from './editPlan';
 import { findLayers, type Anchor, type Layer, type LayerTarget } from './layers';
@@ -151,14 +151,58 @@ async function revisionOf(deps: EditExecDeps, userId: string, file: string, asks
   return request ? { jobId, request } : null;
 }
 
+/** The look of the picture as the result shows it: asked again, it changes what is there (./mergeAsks stackLook). */
+const STACKED: ReadonlySet<string> = new Set(['adjust', 'rotate', 'flip', 'motion']);
+const opOf = (a: unknown): string | undefined => (a as { op?: string } | null)?.op;
+const numOr0 = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
 /**
- * The asks merged onto a parent edit: each asked op replaces the parent's own; layer changes apply to its layers. A
- * captions ask without a track keeps the parent's track (with and without captions: the same lines, delivered anew);
- * `off` takes the captions away.
+ * Light and colour, a turn, a mirror and a movement asked on a result that has them change what the result shows, so
+ * they add to the parent's own: „brighter" again is brighter still (to the limit), a turn of 90° more makes 180°, the
+ * same mirror twice is the picture as it was and two different ones are a half turn, „and a glitch" keeps the zoom.
+ * Null when none of them is asked again (each asked op then simply replaces the parent's). A value that is not a number
+ * is passed on as asked, for resolveEdits to refuse.
+ */
+function stackLook(parent: readonly MediaEdit[], asks: readonly unknown[]): unknown[] | null {
+  const ask = (op: string) => asks.find((a) => opOf(a) === op) as Record<string, unknown> | undefined;
+  if (![...STACKED].some((op) => ask(op) && parent.some((e) => e.op === op))) return null;
+  const out: unknown[] = [];
+  const pa = parent.find((e) => e.op === 'adjust'), aa = ask('adjust');
+  if (pa && aa && ADJUST_KEYS.every((k) => aa[k] === undefined || typeof aa[k] === 'number')) {
+    const m: Record<string, unknown> = { op: 'adjust' };
+    for (const k of ADJUST_KEYS) {
+      const low = SIGNED_ADJUST.has(k) ? -MAX_ADJUST : 0;
+      const v = Math.max(low, Math.min(MAX_ADJUST, Math.round(numOr0(pa[k]) + numOr0(aa[k]))));
+      if (v !== 0) m[k] = v;
+    }
+    if (Object.keys(m).length > 1) out.push(m);
+  } else if (aa || pa) out.push(aa ?? { ...pa });
+  let turn = 0;
+  const pf = parent.find((e) => e.op === 'flip'), af = ask('flip');
+  if (pf && af && (af.axis === undefined || af.axis === 'horizontal' || af.axis === 'vertical')) {
+    if ((af.axis ?? 'horizontal') !== pf.axis) turn = 180; // a mirror each way is a half turn; the same one twice, none
+  } else if (af || pf) out.push(af ?? { ...pf });
+  const pr = parent.find((e) => e.op === 'rotate'), ar = ask('rotate');
+  if (ar && typeof ar.deg !== 'number') out.push(ar);
+  else {
+    const deg = ((((pr?.deg ?? 0) + Math.round(numOr0(ar?.deg)) + turn) % 360) + 360) % 360;
+    if (deg !== 0) out.push({ op: 'rotate', deg });
+  }
+  const pm = parent.find((e) => e.op === 'motion'), am = ask('motion');
+  if (pm || am) out.push(pm && am ? { ...pm, ...am, op: 'motion' } : am ?? { ...pm });
+  return out;
+}
+
+/**
+ * The asks merged onto a parent edit: each asked op replaces the parent's own (the look of the picture adds to its
+ * own: stackLook); layer changes apply to its layers. A captions ask without a track keeps the parent's track (with and
+ * without captions: the same lines, delivered anew); `off` takes the captions away.
  */
 function mergeAsks(parent: readonly MediaEdit[], asks: unknown[]): unknown[] {
-  const asked = new Set(asks.map((a) => (a as { op?: string } | null)?.op));
-  const kept = parent.filter((e) => !asked.has(e.op) && e.op !== 'layers').map((e) => ({ ...e })) as unknown[];
+  const asked = new Set(asks.map(opOf));
+  const stacked = stackLook(parent, asks);
+  if (stacked) asks = [...asks.filter((a) => !STACKED.has(opOf(a) ?? '')), ...stacked];
+  const kept = parent.filter((e) => !asked.has(e.op) && e.op !== 'layers' && !(stacked && STACKED.has(e.op))).map((e) => ({ ...e })) as unknown[];
   // Places erased before stay erased: a new place is added to them („and the logo top left too").
   const parentErase = parent.find((e) => e.op === 'erase');
   if (parentErase && asked.has('erase')) {

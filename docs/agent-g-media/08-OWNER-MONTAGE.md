@@ -68,5 +68,5 @@ Re-run: `OWNER_MONTAGE_DIR=<dir> npx jest lib/agent/media/ownerMontage.ffmpeg.te
 
 - T4: GG on the Preview (06 §7). T5/T6: none. Production is unchanged (5481987) until GG's separate word.
 - Captions of the song's words: BLOCKED_OWNER (paid transcription), as in 07 §6.
-- Transitions, zoom/shake/glitch: not built; named on the card when asked.
+- Transitions, zoom/shake/glitch: built after this (2026-10-11 17:38Z ask), see `09-CAPCUT-FEATURES.md`.
 - Known misread, not fixed here: „ბოლო 5 წამი" in a montage message is read as a 5 s montage length (`minePlanParams`).

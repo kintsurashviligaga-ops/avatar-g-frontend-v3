@@ -114,3 +114,14 @@ before the end, „გადმოდი საიტზე" in the last 3 s; an
 - New and changed unit suites: beatPlan, montagePlan, montageAsk, layerWords, askCoverage, runChat, runCard,
   montageChat, taskSteps, taskView, editChat, editWords, editPlan, overlayFx, emoji. tsc 0; eslint on changed files
   0 errors (14 old warnings in OmniStudio.tsx).
+
+
+## 8. What the montage and the edit lacked (2026-10-11 17:38Z)
+
+Verdict: **BUILT and PROVEN T3** (`09-CAPCUT-FEATURES.md`): a montage with no music (each clip's own sound), the clips'
+own sound under a track, a recorded narration over the edit, photos alone; erasing a logo, a watermark, a text or
+subtitles that stay in one place; transitions between shots; and the effects (light and colour, mirror, quarter turns,
+zoom, shake, glitch, steadying, 9:16 over a blurred copy, background noise out, even loudness), in the chat, on Agent G's
+last result and by voice. Not built: playing backwards, a blurred background behind a montage's shots. BLOCKED_OWNER:
+removing a moving person / object / background (paid AI fill), narration from typed text (paid TTS). T4 (GG on the
+Preview, 09 §4) and Production: not run.

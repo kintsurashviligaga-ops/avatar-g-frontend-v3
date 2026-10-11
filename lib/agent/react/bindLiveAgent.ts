@@ -61,7 +61,9 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
-import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS } from '@/lib/agent/media/editPlan';
+import {
+  ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
+} from '@/lib/agent/media/editPlan';
 import { editAskOf, type EditAsk } from '@/lib/agent/media/editWords';
 import {
   ANCHORS, MAX_CUE_TEXT, MAX_CUES, MAX_IMAGE_SIZE, MAX_LAYER_TEXT, MAX_LAYERS, MIN_SIZE, MOTIONS_IN, TEXT_ROLES, TEXT_STYLES,
@@ -110,11 +112,16 @@ export const AGENT_AUDIO_NOTE =
 /** Added when the edit tool is on: the agent plans the edit of an attached video and never claims it ran. */
 export const AGENT_EDIT_NOTE =
   'When the user wants one of the videos or pictures they attached edited (trimmed, sped up or slowed down, reframed to ' +
-  '9:16, 16:9, 1:1 or 4:5, a colour look, fades, louder, quieter or silent, a still frame as a thumbnail; text, a CTA, ' +
-  'a logo from another attached picture, a blur or mosaic put on it; caption lines the user gave with their times), ' +
+  '9:16, 16:9, 1:1 or 4:5, cropped, with bars or over a blurred copy of itself, a colour look, brighter, darker, more ' +
+  'contrast, more or less colour, warmer or cooler, sharper, a vignette, mirrored, turned 90°, 180° or 270°, a zoom in ' +
+  'or out, a shake, a glitch, steadied, fades, louder, quieter, silent, background noise taken out, the sound evened ' +
+  'out, a still frame as a thumbnail; text, a CTA, a logo from another attached picture, a blur or mosaic put on it; ' +
+  'caption lines the user gave with their times), ' +
   'call quote_media_edit with the edits and the file number. Text is drawn exactly as the user said it: never reword, ' +
   'translate or invent it. Captions of what is spoken, or a translation of them, are not available yet (a paid call ' +
-  'is the owner\'s decision): say so instead of making lines up. A logo printed in the video itself cannot be removed. ' +
+  'is the owner\'s decision): say so instead of making lines up. A logo, watermark or subtitles that stay in one place ' +
+  'can be erased (op erase); a moving person or object, or the background, cannot (that needs a paid AI call). ' +
+  'Playing a video backwards is not available. ' +
   'The tool reads the file and returns the plan; it edits nothing. The edit starts only when the user presses Start ' +
   'on the plan in the MyAvatar chat, and it is free; never say it is done.';
 
@@ -234,6 +241,9 @@ const captionTrack = z.object({
   style: TEXT_STYLE.optional(),
 }).strict();
 
+/** A light-and-colour change: -100 (less) to 100 (more), 0 = as it is. */
+const signedAdjust = () => num(z.number().int().min(-MAX_ADJUST).max(MAX_ADJUST));
+
 /** A place of the picture itself to erase (a logo, a watermark, subtitles that stay there), and when. */
 const eraseBox = z.object({
   at: ANCHOR, fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional(),
@@ -245,11 +255,21 @@ const eraseBox = z.object({
  * (editAskOf); the quote resolves the rest against the file.
  */
 const editAsk = z.object({
-  op: z.enum(['trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions']),
+  op: z.enum([
+    'trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions',
+    'adjust', 'flip', 'rotate', 'motion', 'stabilize', 'denoise', 'loudness',
+  ]),
   fromSec: at().optional(), toSec: at().optional(), lastSec: at().optional(), cutEndSec: at().optional(),
   factor: num(z.number().min(MIN_SPEED).max(MAX_SPEED)).optional(),
   to: z.enum(ASPECTS as unknown as [string, ...string[]]).optional(),
-  fit: z.enum(['crop', 'pad']).optional(),
+  fit: z.enum(FITS as unknown as [string, ...string[]]).optional(),
+  brightness: signedAdjust().optional(), contrast: signedAdjust().optional(), saturation: signedAdjust().optional(), warmth: signedAdjust().optional(),
+  sharpen: num(z.number().int().min(0).max(MAX_ADJUST)).optional(), vignette: num(z.number().int().min(0).max(MAX_ADJUST)).optional(),
+  axis: z.enum(['horizontal', 'vertical']).optional(),
+  deg: num(z.number().int().min(-270).max(270)).optional(),
+  zoom: z.enum(['in', 'out']).optional(),
+  shake: z.boolean().optional(),
+  glitch: z.boolean().optional(),
   style: z.enum(GRADES as unknown as [string, ...string[]]).optional(),
   look: z.enum(OVERLAY_LOOKS as unknown as [string, ...string[]]).optional(),
   inSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),

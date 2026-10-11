@@ -60,8 +60,12 @@ const NUMBERED = new RegExp(`${L0}(?:video|clip|file|ვიდეო|კლი�
 const ALL = new RegExp(`${L0}(?:all|every|ყველა|ყველ\\p{L}+|все|всех|всё)${L1}`, 'iu');
 const OTHER = /other|rest|remaining|დანარჩენ|სხვა|остальн|другие|других/iu;
 
-/** The edits a montage leaves to an edit step; speed and mute would undo the cut to the beat, a trim or frame it does itself. */
-const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['grade', 'fade', 'volume', 'overlay', 'caption', 'layers']);
+/**
+ * The edits a montage leaves to an edit step; speed and mute would undo the cut to the beat, a trim or frame it does
+ * itself. Light and colour, a mirror and a zoom, shake or glitch go over the finished montage (a turn, steadying and
+ * the sound cleaned are a clip's own: the montage's sound is the track).
+ */
+const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['adjust', 'flip', 'motion', 'grade', 'fade', 'volume', 'overlay', 'caption', 'layers']);
 /**
  * On a montage not made yet, layers are only added, and only words and masks: a logo needs its own picture uploaded
  * (./askCoverage names it), and the texts asked with it are still drawn. Null = nothing of the ask is for this montage.

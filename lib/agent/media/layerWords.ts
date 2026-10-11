@@ -93,8 +93,8 @@ const WRITTEN = /წერია|დაწერილ|написан|напис
  * AI inpainting or segmentation (a paid provider call), not something ffmpeg can fill in.
  */
 const OBJECT = /ადამიან|პიროვნ|კაცი|კაცს|ქალბატონ|ბავშვ|მანქან|საგან|ობიექტ|ცხოველ|ძაღლ|ფონი|ფონს|ფონიდან|(?<![\p{L}])(?:person|people|man|woman|guy|girl|kid|object|car|thing|animal|dog|cat|background)(?![\p{L}])|человек|люд\p{L}*|мужчин|женщин|ребён|ребен|машин|предмет|объект|животн|собак|кошк|(?<![\p{L}])фон(?![\p{L}])/iu;
-/** Sound words: „ფონის მუსიკა მოაშორე" is the sound's, not the picture's. */
-const SOUND = /მუსიკ|ხმ|სიმღერ|music|sound|audio|song|музык|звук|песн/iu;
+/** Sound words: „ფონის მუსიკა მოაშორე" and "remove the background noise" are the sound's, not the picture's. */
+const SOUND = /მუსიკ|ხმ|სიმღერ|შიშინ|music|sound|audio|song|noise|hiss|(?<!\p{L})hum(?!\p{L})|музык|звук|песн|(?<!\p{L})шум|шипени/iu;
 
 const STYLE_WORDS: ReadonlyArray<{ style: TextStyle; re: RegExp }> = [
   { style: 'premium', re: /პრემიუმ|ელეგანტ|ძვირ|premium|elegant|luxury|luxurious|премиум|элегант|роскош/iu },

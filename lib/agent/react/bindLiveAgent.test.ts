@@ -288,6 +288,25 @@ describe('quote_media_edit (Agent G edit of an attached video, quote only)', () 
     expect(mockEditQuote).not.toHaveBeenCalled();
   });
 
+  test('CapCut\'s effects by voice: light and colour, a mirror, a turn, a movement, steadying, the sound cleaned', async () => {
+    const t = editTool(on())!;
+    const edits = [
+      { op: 'adjust', brightness: 25, warmth: -40, vignette: 50 }, { op: 'flip', axis: 'vertical' }, { op: 'rotate', deg: 90 },
+      { op: 'motion', zoom: 'in', glitch: true }, { op: 'stabilize' }, { op: 'denoise' }, { op: 'aspect', to: '9:16', fit: 'blur' },
+    ];
+    mockEditQuote.mockResolvedValueOnce(QUOTE);
+    await t.run({ file: 1, edits });
+    expect(mockEditQuote).toHaveBeenLastCalledWith({ liveEdit: true }, { userId: CTX.userId, file: FILES[0], edits });
+    mockEditQuote.mockClear();
+    for (const bad of [
+      { op: 'adjust', brightness: 300 }, { op: 'adjust', sharpen: -5 }, { op: 'flip', axis: 'diagonal' }, { op: 'rotate', deg: 720 },
+      { op: 'motion', zoom: 'sideways' }, { op: 'stabilize', factor: 2 }, { op: 'aspect', to: '9:16', fit: 'stretch' }, { op: 'reverse' },
+    ]) {
+      expect(JSON.stringify(await t.run({ edits: [bad] }))).toMatch(/error/i);
+    }
+    expect(mockEditQuote).not.toHaveBeenCalled();
+  });
+
   test('the system note tells the agent the edit starts only on Start', async () => {
     mockLlm.mockResolvedValueOnce('{"final":"ok"}');
     await runLiveAgent('make it 9:16', on());

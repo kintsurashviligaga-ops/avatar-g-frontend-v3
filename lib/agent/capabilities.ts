@@ -219,7 +219,7 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'media.edit': c({
     id: 'media.edit', serviceId: null,
-    does: 'Edit one of the user\'s videos or pictures (or Agent G\'s own last result): trim, speed, frame shape, colour, fades, volume or mute, a still as a thumbnail; text, a CTA, a logo, blur or mosaic layers and the user\'s own caption lines (Media Studio v2.1), each changeable later as a revision from the same source',
+    does: 'Edit one of the user\'s videos or pictures (or Agent G\'s own last result): trim, speed, frame shape (cropped, with bars or over a blurred copy), colour looks, light and colour (brightness, contrast, saturation, warmth, sharpness, vignette), mirror, a quarter turn, zoom, shake and glitch, steadying, fades, volume or mute, background noise out, even loudness, a fixed logo, watermark or subtitles erased, a still as a thumbnail; text, a CTA, a logo, blur or mosaic layers and the user\'s own caption lines (Media Studio v2.1), each changeable later as a revision from the same source',
     routes: ['/api/agent/media/edit', '/api/tasks'], engine: 'ffmpeg in a lease worker (lib/agent/media/editWorker)',
     pricing: { key: null, charge: 'free' }, approval: 'plan-start', timeoutSec: 600, retry: 'lease-retry',
     idempotency: 'one job per signed quote (jobId in the token)', cancel: 'task-api',

@@ -8,11 +8,11 @@
  *
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
-import { aspectFromPrompt } from './montageAsk';
+import { aspectFromPrompt, transitionAsk } from './montageAsk';
 import { mineComposition, type CompositionAsk, type CompositionMissing, type CompositionUnsupported } from './layerWords';
 import { MAX_CUES, type Anchor } from './layers';
-import type { FrameAspect, GradeStyle } from '@/lib/video/editFilters';
-import type { OverlayLook } from './editPlan';
+import type { FrameAspect, FrameFit, GradeStyle } from '@/lib/video/editFilters';
+import type { OverlayLook, ZoomWay } from './editPlan';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
 const B1 = '(?![\\p{L}\\p{N}])';
@@ -31,8 +31,17 @@ const timeAt = (m: RegExpExecArray, i: number): number => (m[i] !== undefined ? 
 export type EditAsk =
   | { op: 'trim'; fromSec?: number; toSec?: number; lastSec?: number; cutEndSec?: number }
   | { op: 'speed'; factor: number }
-  | { op: 'aspect'; to: FrameAspect; fit: 'crop' | 'pad' }
+  | { op: 'aspect'; to: FrameAspect; fit: FrameFit }
   | { op: 'grade'; style: GradeStyle }
+  /** The picture's own light and colour (./editPlan `adjust`): each a step from −100 to 100, sharpen and vignette 0–100. */
+  | { op: 'adjust'; brightness?: number; contrast?: number; saturation?: number; warmth?: number; sharpen?: number; vignette?: number }
+  | { op: 'flip'; axis?: 'horizontal' | 'vertical' }
+  /** Degrees, a quarter turn at a time; −90 is a quarter turn the other way. */
+  | { op: 'rotate'; deg: number }
+  | { op: 'motion'; zoom?: ZoomWay; shake?: boolean; glitch?: boolean }
+  | { op: 'stabilize' }
+  | { op: 'denoise' }
+  | { op: 'loudness' }
   | { op: 'fade'; inSec: number; outSec: number }
   | { op: 'volume'; db: number }
   | { op: 'mute' }
@@ -50,8 +59,11 @@ export interface MinedEdits {
   edits: EditAsk[];
   /** What the words ask for but do not give: the words to draw, a CTA's words, the logo's picture. */
   missing: CompositionMissing[];
-  /** What the words ask for that one edit cannot do (a stretch out of the middle; captions of speech; a translation). */
-  unsupported: Array<'cut_middle' | CompositionUnsupported>;
+  /**
+   * What the words ask for that one edit cannot do (a stretch out of the middle; captions of speech; a translation;
+   * playing backwards).
+   */
+  unsupported: Array<'cut_middle' | 'reverse' | CompositionUnsupported>;
   /** A picture layer asks for the attached picture (its ref is ./layerWords LOGO_REF until the upload's is put in). */
   logo?: true;
 }
@@ -109,7 +121,8 @@ const FADE_IN = /ფეიდ\s*-?\s*ინ|ბნელიდან|ნელ-�
 const FADE_OUT = /ფეიდ\s*-?\s*აუთ|ჩაქრ|ჩაბნელ|გაბნელ|fade[\s-]*out|fade\s+to\s+black|to\s+black|затух|затемн\p{L}*\s+в\s+конце|в\s+темноту|в\s+конце\s+затемн/iu;
 const FADE_LEN = new RegExp(`(?:${NUM}\\s*-?\\s*(?:წამიან|წმ-?იან)\\p{L}*)|(?:${NUM}\\s*-?\\s*(?:second|sec|s)${B1}\\s*fade)|(?:fade\\p{L}*\\s+(?:of\\s+|for\\s+)?${NUM}\\s*-?\\s*${SEC})|(?:${NUM}\\s*-?\\s*секундн\\p{L}*)`, 'iu');
 
-const MUTE = /უხმო|ხმის\s+გარეშე|ხმა\s+(?:მოაშორ|მოუშორ|მოხსენ|წაშალ|გათიშ|გამორთ)|(?:მოაშორ|მოუშორ|მოხსენ|წაშალ|გათიშ|გამორთ)\p{L}*\s+ხმა|mute|without\s+(?:the\s+)?(?:sound|audio)|no\s+(?:sound|audio)|remove\s+(?:the\s+)?(?:sound|audio)|silent|без\s+звука|(?:убер|удали|отключ|выключ)\p{L}*\s+звук/iu;
+// „ხმაური" (noise) is not „ხმა" (the sound): „ხმაური მოაშორე" cleans the sound, it does not silence it.
+const MUTE = /უხმო|ხმის\s+გარეშე|ხმა\s+(?:მოაშორ|მოუშორ|მოხსენ|წაშალ|გათიშ|გამორთ)|(?:მოაშორ|მოუშორ|მოხსენ|წაშალ|გათიშ|გამორთ)\p{L}*\s+ხმა(?!ურ)|mute|without\s+(?:the\s+)?(?:sound|audio)|no\s+(?:sound|audio)|remove\s+(?:the\s+)?(?:sound|audio)|silent|без\s+звука|(?:убер|удали|отключ|выключ)\p{L}*\s+звук/iu;
 const LOUDER = /ხმა\s+(?:აუწი|აუმატ|გაზარდ)|(?:აუწი|გაზარდ)\p{L}*\s+ხმა|ხმამაღლა|louder|turn\s+(?:it\s+)?up|volume\s+up|increase\s+(?:the\s+)?volume|boost\s+(?:the\s+)?(?:volume|sound|audio)|громче|увелич\p{L}*\s+громкост|прибав\p{L}*\s+звук/iu;
 const QUIETER = /ხმა\s+(?:დაუწი|შეამცირ|დაუკელ)|(?:დაუწი|შეამცირ)\p{L}*\s+ხმა|ჩუმად|quieter|turn\s+(?:it\s+)?down|volume\s+down|lower\s+(?:the\s+)?volume|reduce\s+(?:the\s+)?volume|тише|потише|уменьш\p{L}*\s+громкост|убав\p{L}*\s+звук/iu;
 const DB = new RegExp(`([+-]?\\d{1,2}(?:[.,]\\d)?)\\s*(?:dB|db|დბ|дБ|дб)${B1}`, 'u');
@@ -123,6 +136,150 @@ const GRAIN = /grain|მარცვ|გრეინ|зерн/iu;
 
 const THUMB = /ქავერ|თამბნეილ|მინიატიურ|ყდის\s+ფოტ|სქრინშოტ|კადრი\s+(?:ამოიღე|ამომიღე|გამიკეთე|გადაიღე)|thumbnail|cover\s+(?:image|photo|frame|picture)|poster\s+frame|still\s+frame|screenshot|freeze\s+frame|grab\s+a\s+frame|frame\s+grab|обложк|превью|миниатюр|скриншот|стоп\s*-?\s*кадр/iu;
 const THUMB_AT = new RegExp(`(?:${T}\\s*-?\\s*(?:წამზე|წმ-?ზე|ზე)${B1})|(?:${B0}at\\s+(?:the\\s+)?${T}\\s*(?:${SEC})?)|(?:${B0}на\\s+${T}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:${SEC})?)`, 'iu');
+
+// ── CapCut's everyday effects (GG 2026-10-11 17:38Z: „ქაფქათს და სხვა ფუნქციებს რაც აკლია") ─────────────────────────
+
+/** A strength said as a share: „30%-ით", "by 30 percent", «на 30%». */
+const PCT = /(\d{1,3})\s*(?:%|პროცენტ\p{L}*|percent|per\s+cent|процент\p{L}*)/iu;
+/** Less of something („less contrast", „კონტრასტი შეამცირე", «меньше контраста»): read in the word's own clause only. */
+const LESS = /ნაკლებ|შეამცირ|შეუმცირ|დაუწი|less|lower|reduce|decrease|tone\s+down|flatter|меньше|уменьш|убав|сниз|приглуш/iu;
+/** Where one clause ends: „more contrast, less brightness" is two of them. */
+const CLAUSE_END = /[,.;!?\n]|(?<!\p{L})(?:and|but|then|და|მაგრამ|მერე|и|но|потом)(?!\p{L})/giu;
+
+const BRIGHTER = /(?<!\p{L})გაანათ|უფრო\s+ნათ|ნათელი\s+გახად|სიკაშკაშე\s+(?:აუწი|მოუმატ|გაზარდ)|(?:აუწი|მოუმატ|გაზარდ)\p{L}*\s+სიკაშკაშ|brighter|brighten|lighten\s+(?:it|up|the)|brightness\s+up|(?:increase|raise|boost)\s+(?:the\s+)?brightness|ярче|осветл|светлее|(?:прибав|увелич|подним)\p{L}*\s+яркост/iu;
+const DARKER = /გაამუქ|დაამუქ|უფრო\s+მუქ|მუქი\s+გახად|სიკაშკაშე\s+(?:დაუწი|შეამცირ)|(?:დაუწი|შეამცირ)\p{L}*\s+სიკაშკაშ|darker|darken|less\s+bright|brightness\s+down|(?:reduce|lower|decrease)\s+(?:the\s+)?brightness|темнее|(?:убав|уменьш|сниз)\p{L}*\s+яркост/iu;
+const CONTRAST = /კონტრასტ|contrast|контраст/iu;
+const SATURATION = /გაჯერ|სატურაც|saturat|vivid|vibrant|punchy|colou?rful|насыщ|сочн|ცოცხალი?\s+ფერ|ფერ\p{L}*\s+(?:გააცოცხლ|გაამკვეთრ|გაამდიდრ|უფრო\s+(?:მკვეთრ|ცოცხ))|(?:გააცოცხლ|გაამკვეთრ|გაამდიდრ)\p{L}*\s+ფერ|მკვეთრი?\s+ფერ/iu;
+const DESATURATE = /desaturat|muted\s+colou?r|washed[\s-]*out|less\s+(?:saturat|colou?r|vivid)|ფერმკრთალ|ნაკლებ\p{L}*\s+(?:ფერ|გაჯერ)|გაჯერებ\p{L}*\s+(?:დაუწი|შეამცირ)|(?:დაუწი|შეამცირ)\p{L}*\s+გაჯერებ|приглуш\p{L}*\s+цвет|блекл|менее\s+насыщ|(?:уменьш|убав|сниз)\p{L}*\s+насыщ/iu;
+/** Sharpness, never „ფერები გაამკვეთრე" (vivid colours, the saturation's). */
+const SHARPEN = /სიმკვეთრ|(?<!ფერ\p{L}*\s+)გაამკვეთრ(?!\p{L}*\s+ფერ)|უფრო\s+მკვეთრ(?!\p{L}*\s+ფერ)|sharpen|sharper|crisper|(?<!\p{L})(?:резче|резкост\p{L}*)|чётче|четче|чёткост|четкост/iu;
+const VIGNETTE = /ვინიეტ|vignett|виньет/iu;
+const WARMER = /თბილ(?!ის)|გაათბ|warm(?:er|th)?(?!\p{L})|теплее|тёпл\p{L}*\s+(?:тон|цвет|оттен)|тепл(?:ые|ый|ая|ой|ого|ых|ую)\s+(?:тон|цвет|оттен)|потепл|золотист/iu;
+const COOLER = /ცივ(?:ი|ად|ო)?\s+(?:ტონ|ფერ|ელფერ)|გააცივ|უფრო\s+ცივ|გრილ|cooler|cool\s+(?:tones?|look|colou?rs?|tint)|cold\s+(?:tones?|look|colou?rs?)|bluish|холоднее|холодн\p{L}*\s+(?:тон|цвет|оттен)|похолод/iu;
+/** Warm LIGHT LEAKS are the overlay's (./overlayFx), not a warmer picture. */
+const WARM_LIGHT = /(?:warm|თბილ(?!ის)\p{L}*|тёпл\p{L}*|тепл\p{L}*)\s+(?:light|სინათლ|светов)/iu;
+
+/** A mirror: „სარკისებრად", "mirror / flip it", «отзеркаль». „ამოაბრუნე" is turning it over, not a quarter turn. */
+const FLIP = /სარკ(?:ე|ის|ულ)\p{L}*|(?<!\p{L})(?:ამოაბრუნ|გადააბრუნ)|mirror|(?<!\p{L})flip|отзеркал|зеркальн|отрази/iu;
+const VERTICAL = /ვერტიკალურად|vertical\p{L}*|upside\s*-?\s*down|თავდაყირა|вертикал\p{L}*|вверх\s+ногами/iu;
+const UPSIDE = /თავდაყირა|upside\s*-?\s*down|вверх\s+ногами/iu;
+/** A turn: the verbs that mean nothing else („მოატრიალე", "rotate", «поверни»); „turn" only with where it turns to. */
+const ROTATE = /(?<!\p{L})(?:მოაბრუნ|შემოაბრუნ|მოატრიალ|შეატრიალ|დაატრიალ|გადაატრიალ)|rotat|повер(?:ни|нуть|ните)(?!\p{L})/iu;
+const TURN = /(?<!\p{L})turn\s+(?:it\s+|the\s+(?:video|clip|picture|photo|image)\s+)?(?:by\s+)?(?:90|180|270|sideways|clockwise|counter|anti|left|right|upside|on\s+its\s+side)|разверн\p{L}*\s+(?:на\s+\d|влево|вправо)/iu;
+const DEGREES = /(?<![\d.,])(-?\d{2,3})\s*(?:°|გრადუს\p{L}*|degrees?|deg(?!\p{L})|градус\p{L}*)/iu;
+const LEFT = /მარცხნივ|მარცხნისკენ|საათის\s+ისრის\s+საწინააღმდეგოდ|(?<!\p{L})left(?!\p{L})|counter\s*-?\s*clockwise|anti\s*-?\s*clockwise|(?<!\p{L})ccw(?!\p{L})|влево|налево|против\s+часов/iu;
+const RIGHT = /მარჯვნივ|მარჯვნისკენ|საათის\s+ისრის\s+მიმართულებით|(?<!\p{L})right(?!\p{L})|clockwise|вправо|направо|по\s+часов/iu;
+
+/** A slow zoom („ზუმი", "zoom in", «наезд»); „მიახლოებით" is „about", never a zoom. */
+const ZOOM = /(?<!\p{L})(?:ზუმ|zoom|зум)|მიაახლოვ|push\s+in|ken\s+burns|наезд|приблизь/iu;
+const ZOOM_OUT = /ზუმ\p{L}*\s*-?\s*აუთ|zoom(?:ing)?\s*-?\s*out|pull\s+(?:back|out)|(?<!\p{L})დააშორ|отдали|отъезд|зум\p{L}*\s*-?\s*аут/iu;
+/** A shake as an effect asked for; „it is shaky" is a complaint (steadying's), never this. */
+const SHAKE = new RegExp([
+  'შეაკანკალ|შეკანკალ|ანჯღრ|კანკალის\\s+ეფექტ|კანკალ\\p{L}*\\s+(?:დაამატ|დაადე|გაუკეთ)|(?:დაამატ|დაადე|გაუკეთ)\\p{L}*\\s+(?:კამერის\\s+)?კანკალ',
+  '(?<!\\p{L})(?:camera\\s+)?shakes?\\s+effect|shaking\\s+effect|shaky[\\s-]*cam(?:era)?\\s+effect|earthquake',
+  '(?<!\\p{L})(?:add|put|with|and|some|a)\\s+(?:a\\s+|some\\s+|little\\s+|bit\\s+of\\s+)?(?:camera\\s+)?shak(?:e|ing)(?!\\p{L})|(?<!\\p{L})shake\\s+(?:it|the\\s+(?:video|clip|picture|camera))',
+  'эффект\\p{L}*\\s+тряск|тряск\\p{L}*\\s+(?:камер\\p{L}*\\s+)?(?:добав|сдела)|(?:добав|сдела)\\p{L}*\\s+(?:эффект\\s+)?тряск|встряхн',
+].join('|'), 'iu');
+const GLITCH = /გლიჩ|glitch|глитч/iu;
+/** A shaky clip steadied: „კანკალი მოაშორე" and "remove the shake" are this, never a shake effect. */
+const STABILIZE = /სტაბილიზ|დაასტაბილურ|სტაბილურ|კანკალ\p{L}*\s+(?:მოაშორ|მოუშორ|მოხსენ|გაასწორ|წაშალ|ამოიღ)|(?:მოაშორ|მოუშორ|გაასწორ|წაშალ|მოხსენ)\p{L}*\s+კანკალ|არ\s+კანკალებდეს|stabili[sz]|steady|steadier|deshake|(?:remove|fix|reduce|less|without|no)\s+(?:the\s+)?(?:camera\s+)?shak|стабилиз|(?:убер|убра|устран)\p{L}*\s+тряск|без\s+тряск|shaky[^.!?\n]{0,24}(?:fix|repair|smooth)|(?:fix|repair|smooth\s+out)\s+(?:the\s+|this\s+)?shaky|კანკალებ\p{L}*[^.!?\n]{0,24}(?:გაასწორ|გამოასწორ)|тряс\p{L}*[^.!?\n]{0,24}(?:исправ|почин)/iu;
+
+/** Noise out of the sound: a noise word with a word that takes it away, or a plain „clean the sound". */
+const NOISE = /ხმაურ|შიშინ|ზუზუნ|noise|hiss|(?<!\p{L})hum(?!\p{L})|(?<!\p{L})шум|шипени|(?<!\p{L})гул(?!\p{L})/iu;
+const NOISE_OFF = /მოაშორ|მოუშორ|მოხსენ|წაშალ|შეამცირ|გაწმინდ|გაასუფთავ|ამოიღ|remov|reduc|cut|clean|get\s+rid|eliminat|less|убер|удали|уменьш|почист|подав|без/iu;
+const DENOISE = /denois|noise\s+(?:reduction|removal|cancel\p{L}*)|(?:clean|clear)\s+(?:up\s+)?(?:the\s+)?(?:audio|sound|voice)|ხმა\s+(?:გაასუფთავ|გაწმინდ)|(?:გაასუფთავ|გაწმინდ)\p{L}*\s+ხმა(?!ურ)|шумоподав|почист\p{L}*\s+звук/iu;
+/** The sound evened out to one loudness. */
+const LOUDNESS = /ნორმალიზ|ხმა\s+(?:გაათანაბრ|დაანორმალ|დააბალანს)|(?:გაათანაბრ|დაანორმალ|დააბალანს)\p{L}*\s+ხმა|ხმის\s+(?:დონე|სიმაღლე|სიძლიერე)\s+(?:გაათანაბრ|გაასწორ|დაალაგ)|normali[sz]|loudness|even\s+out\s+(?:the\s+)?(?:volume|audio|sound|levels?)|level\s+(?:out\s+)?(?:the\s+)?(?:audio|sound|volume)|consistent\s+volume|нормализ|выровня\p{L}*\s+(?:звук|громкост)|выровнять\s+(?:звук|громкост)/iu;
+/** A new frame filled with the picture's own blur instead of bars (only with a frame asked: else it is a blur mask). */
+const BLUR_FIT = /ბუნდოვან\p{L}*\s+ფონ\p{L}*|დაბლარულ\p{L}*\s+ფონ\p{L}*|ბლარ\p{L}*\s+ფონ\p{L}*|ფონ\p{L}*\s+(?:დაბლარ|ბლარ|გაბუნდოვ|ბუნდოვან)\p{L}*|blurr?(?:ed|y)?\s+(?:background|backdrop|bg|sides|bars|edges|fill)|background\s+blur|blur\s+fill|размыт\p{L}*\s+фон\p{L}*|фон\p{L}*\s+размыт\p{L}*/iu;
+/** Played backwards: not here (ffmpeg holds the whole clip in memory for it). „In reverse order" is no playback. */
+const REVERSE = /უკუღმა|reverse(?!\s+(?:the\s+)?order)|backwards|rewind\s+effect|в\s+обратн\p{L}*\s+(?:сторон|направлен)|задом\s+наперёд|задом\s+наперед|реверс/iu;
+
+/** The clause a match stands in: up to 24 characters on each side, never past a comma, a full stop or an „and". */
+function clauseAround(t: string, m: RegExpExecArray): string {
+  let before = t.slice(Math.max(0, m.index - 24), m.index);
+  let after = t.slice(m.index + m[0].length, m.index + m[0].length + 24);
+  const stop = [...before.matchAll(CLAUSE_END)].pop();
+  if (stop) before = before.slice((stop.index ?? 0) + stop[0].length);
+  const cut = after.search(new RegExp(CLAUSE_END.source, 'iu'));
+  if (cut >= 0) after = after.slice(0, cut);
+  return `${before}${m[0]}${after}`;
+}
+
+/** Every match of `re` blanked with spaces: what was read is gone, and every other position stays where it was. */
+const blank = (t: string, re: RegExp): string => t.replace(new RegExp(re.source, `${re.flags.replace('g', '')}g`), (m) => ' '.repeat(m.length));
+
+/** The picture's own light and colour: each word its default step, or the share said in its clause. */
+function mineAdjust(text: string): EditAsk | null {
+  const t = blank(text, WARM_LIGHT);
+  const out: Record<string, number> = {};
+  const step = (m: RegExpExecArray, dflt: number): number => {
+    const p = PCT.exec(clauseAround(t, m));
+    return p ? Math.min(100, parseInt(p[1]!, 10)) : dflt;
+  };
+  const up = BRIGHTER.exec(t), down = DARKER.exec(t);
+  if (up && !down) out.brightness = step(up, 25);
+  else if (down && !up) out.brightness = -step(down, 25);
+  const c = CONTRAST.exec(t);
+  if (c) out.contrast = (LESS.test(clauseAround(t, c)) ? -1 : 1) * step(c, 25);
+  const less = DESATURATE.exec(t), more = less ? null : SATURATION.exec(t);
+  if (less) out.saturation = -step(less, 50);
+  else if (more) out.saturation = (LESS.test(clauseAround(t, more)) ? -1 : 1) * step(more, 35);
+  const warm = WARMER.exec(t), cool = COOLER.exec(t);
+  if (warm && !cool) out.warmth = step(warm, 40);
+  else if (cool && !warm) out.warmth = -step(cool, 40);
+  const sh = SHARPEN.exec(t);
+  if (sh) out.sharpen = step(sh, 50);
+  const v = VIGNETTE.exec(t);
+  if (v) out.vignette = step(v, 50);
+  return Object.keys(out).length ? ({ op: 'adjust', ...out } as EditAsk) : null;
+}
+
+/** A mirror and a turn. A turn with no degrees or side is a quarter turn clockwise, unless a frame shape is asked too. */
+function mineTurn(t: string, aspectAsked: boolean): EditAsk[] {
+  const out: EditAsk[] = [];
+  const flip = FLIP.exec(t);
+  const flipClause = flip ? clauseAround(t, flip) : '';
+  if (flip) out.push({ op: 'flip', axis: VERTICAL.test(flipClause) ? 'vertical' : 'horizontal' });
+  const verb = ROTATE.exec(t) ?? TURN.exec(t);
+  const upside = UPSIDE.exec(t);
+  // „Flip it upside down" is the flip's; a plain „upside down" is a half turn.
+  const anchor = verb ?? (upside && !(flip && UPSIDE.test(flipClause)) ? upside : null);
+  if (!anchor) return out;
+  const clause = clauseAround(t, anchor);
+  const deg = DEGREES.exec(clause) ?? (verb ? DEGREES.exec(t) : null);
+  let d: number | undefined;
+  if (deg) d = Number(deg[1]) * (LEFT.test(clause) && Number(deg[1]) === 90 ? -1 : 1);
+  else if (UPSIDE.test(clause)) d = 180;
+  else if (LEFT.test(clause)) d = -90;
+  else if (RIGHT.test(clause)) d = 90;
+  else if (!aspectAsked) d = 90;
+  if (d !== undefined) out.push({ op: 'rotate', deg: d });
+  return out;
+}
+
+/** A zoom, a shake, a glitch (together when asked together); a zoom that is the transitions' own style is theirs. */
+function mineMotion(t: string): EditAsk | null {
+  const transitions = transitionAsk(t);
+  const zoomStyle = transitions?.styles.includes('zoom') === true && !transitions.mixed;
+  const zoom: ZoomWay | undefined = zoomStyle ? undefined : ZOOM_OUT.test(t) ? 'out' : ZOOM.test(t) ? 'in' : undefined;
+  const shake = !STABILIZE.test(t) && SHAKE.test(t);
+  const glitch = GLITCH.test(t);
+  if (!zoom && !shake && !glitch) return null;
+  return { op: 'motion', ...(zoom ? { zoom } : {}), ...(shake ? { shake: true } : {}), ...(glitch ? { glitch: true } : {}) };
+}
+
+/** Every effect the words ask for, in ./editPlan EDIT_ORDER. */
+function mineEffects(t: string, aspectAsked: boolean): EditAsk[] {
+  const out: EditAsk[] = [];
+  if (STABILIZE.test(t)) out.push({ op: 'stabilize' });
+  out.push(...mineTurn(t, aspectAsked));
+  const motion = mineMotion(t);
+  if (motion) out.push(motion);
+  const adjust = mineAdjust(t);
+  if (adjust) out.push(adjust);
+  return out;
+}
 
 /** The first group of a regex match that holds a number. */
 function firstNum(m: RegExpExecArray | null): number | undefined {
@@ -176,10 +333,10 @@ function mineSpeed(t: string): EditAsk | null {
   return { op: 'speed', factor: slow ? 0.5 : 2 };
 }
 
-function mineAspect(t: string): EditAsk | null {
+function mineAspect(t: string, blurFit = false): EditAsk | null {
   const to: FrameAspect | null = FOUR_FIVE.test(t) ? '4:5' : (aspectFromPrompt(t) as FrameAspect | null);
   if (!to || !FRAME_WORD.test(t) && !/\d\s*[:x×/]\s*\d/.test(t)) return null;
-  return { op: 'aspect', to, fit: PAD.test(t) || (DESIGN.test(t) && !CROP.test(t)) ? 'pad' : 'crop' };
+  return { op: 'aspect', to, fit: blurFit ? 'blur' : PAD.test(t) || (DESIGN.test(t) && !CROP.test(t)) ? 'pad' : 'crop' };
 }
 
 function mineGrade(t: string): EditAsk | null {
@@ -198,6 +355,14 @@ function mineFade(t: string): EditAsk | null {
 function mineOverlay(t: string): EditAsk | null {
   if (!OVERLAY.test(t)) return null;
   return GRAIN.test(t) && !/light\s*-?\s*leak|ლაით|ანარეკლ|блик/iu.test(t) ? { op: 'overlay', look: 'grain' } : { op: 'overlay', look: 'light-leak' };
+}
+
+/** The sound cleaned: the noise taken out, and evened out to one loudness. */
+function mineSound(t: string): EditAsk[] {
+  const out: EditAsk[] = [];
+  if (DENOISE.test(t) || (NOISE.test(t) && NOISE_OFF.test(t))) out.push({ op: 'denoise' });
+  if (LOUDNESS.test(t)) out.push({ op: 'loudness' });
+  return out;
 }
 
 function mineVolume(t: string): EditAsk | null {
@@ -223,6 +388,13 @@ const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, Field>>>>
   overlay: { look: 'str' },
   thumbnail: { atSec: 'num' },
   erase: { at: 'str', boxes: 'list' },
+  adjust: { brightness: 'num', contrast: 'num', saturation: 'num', warmth: 'num', sharpen: 'num', vignette: 'num' },
+  flip: { axis: 'str' },
+  rotate: { deg: 'num' },
+  motion: { zoom: 'str', shake: 'bool', glitch: 'bool' },
+  stabilize: {},
+  denoise: {},
+  loudness: {},
   layers: { add: 'list', change: 'list', remove: 'list' },
   captions: { track: 'obj', deliver: 'str', off: 'bool' },
 };
@@ -298,10 +470,14 @@ export function mineEdits(text: unknown): MinedEdits {
   const out: MinedEdits = { edits: [], missing: [], unsupported: [] };
   if (!raw.trim()) return out;
 
+  // A new frame over the picture's own blur is the frame's („9:16 ბუნდოვანი ფონით"), not a blur mask: read out first.
+  const blurFit = BLUR_FIT.test(raw) && mineAspect(raw) !== null;
   // Text, logos, masks and captions first: the words to be drawn and the caption lines leave the message before the
   // rest of it is read as edits („აქ დააწერე: სიჩქარე" draws a word; it does not speed anything up).
-  const comp = mineComposition(raw);
-  const t = comp.rest.slice(0, 2000);
+  const comp = mineComposition(blurFit ? blank(raw, BLUR_FIT) : raw);
+  const t0 = comp.rest.slice(0, 2000);
+  // „Flip it vertically" is the flip's, not a vertical frame.
+  const t = FLIP.test(t0) ? blank(t0, VERTICAL) : t0;
   const styles = comp.asks.flatMap((a) => (a.op === 'layers' ? [...(a.add ?? []), ...(a.change ?? [])] : []));
   const textMotion = styles.some((x) => 'motionIn' in x && x.motionIn === 'fade');
   const textCinematic = styles.some((x) => 'style' in x && x.style === 'cinematic');
@@ -321,17 +497,24 @@ export function mineEdits(text: unknown): MinedEdits {
     const speed = mineSpeed(t);
     if (speed) out.edits.push(speed);
   }
-  const aspect = mineAspect(t);
+  const aspect = mineAspect(t, blurFit);
   if (aspect) out.edits.push(aspect);
+  const effects = mineEffects(t0, Boolean(aspect));
+  // A still takes the turn, the mirror and the light and colour; movement and steadying are a video's.
+  out.edits.push(...(thumb ? effects.filter((e) => e.op === 'rotate' || e.op === 'flip' || e.op === 'adjust') : effects));
   const grade = mineGrade(t);
-  // „კინემატოგრაფიული ტექსტი" is the text's look, not the video's colour.
-  if (grade && !(textCinematic && grade.op === 'grade' && grade.style === 'cinematic' && !COLOR.test(t))) out.edits.push(grade);
+  const named = GRADES.some((g) => g.re.test(t));
+  // „კინემატოგრაფიული ტექსტი" is the text's look, not the video's colour; „ფერები გააცოცხლე" is the colour asked, not a look.
+  const ownColour = effects.some((e) => e.op === 'adjust');
+  if (grade && !(textCinematic && grade.op === 'grade' && grade.style === 'cinematic' && !COLOR.test(t)) && (named || !ownColour)) out.edits.push(grade);
+  if (REVERSE.test(t)) out.unsupported.push('reverse');
   if (!thumb) {
     // A text that fades in is the text's motion, not a fade of the video.
     const fade = textMotion ? null : mineFade(t);
     if (fade) out.edits.push(fade);
     const volume = mineVolume(t);
     if (volume) out.edits.push(volume);
+    out.edits.push(...mineSound(t));
     const overlay = mineOverlay(t);
     if (overlay) out.edits.push(overlay);
   }

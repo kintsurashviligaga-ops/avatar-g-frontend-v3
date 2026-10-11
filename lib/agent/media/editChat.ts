@@ -6,7 +6,7 @@
  */
 import { formatDuration } from './audioChat';
 import type { EditErrorCode, EditQuote } from './editExec';
-import type { EraseBox, MediaEdit } from './editPlan';
+import type { Adjust, EraseBox, MediaEdit } from './editPlan';
 import type { EditAsk } from './editWords';
 import { ROLE_ANCHOR, ROLE_STYLE, type Anchor, type Layer, type LayerAsk, type TextStyle, type TimeAsk } from './layers';
 
@@ -129,6 +129,40 @@ function eraseLine(b: EraseBox, lang: Lang): string {
       : `ვშლი: ${where}${when} (ირგვლივი ფერებით ვავსებ)`;
 }
 
+const ADJUST_WORD: Record<'brightness' | 'contrast' | 'saturation' | 'sharpen' | 'vignette', Record<Lang, string>> = {
+  brightness: { ka: 'სიკაშკაშე', en: 'brightness', ru: 'яркость' },
+  contrast: { ka: 'კონტრასტი', en: 'contrast', ru: 'контраст' },
+  saturation: { ka: 'ფერების გაჯერება', en: 'saturation', ru: 'насыщенность' },
+  sharpen: { ka: 'სიმკვეთრე', en: 'sharpness', ru: 'резкость' },
+  vignette: { ka: 'ვინიეტი', en: 'vignette', ru: 'виньетка' },
+};
+const signed = (n: number): string => `${n > 0 ? '+' : '−'}${Math.abs(Math.round(n))}`;
+
+/** The light and colour in words: „სიკაშკაშე +25, თბილი ტონი +40, ვინიეტი 50". */
+function adjustLine(a: Adjust, lang: Lang): string {
+  const parts: string[] = [];
+  for (const k of ['brightness', 'contrast', 'saturation'] as const) if (a[k]) parts.push(`${ADJUST_WORD[k][lang]} ${signed(a[k]!)}`);
+  if (a.warmth) {
+    const warm = a.warmth > 0;
+    const word = lang === 'en' ? (warm ? 'warmer' : 'cooler') : lang === 'ru' ? (warm ? 'теплее' : 'холоднее') : (warm ? 'თბილი ტონი' : 'ცივი ტონი');
+    parts.push(`${word} +${Math.abs(Math.round(a.warmth))}`);
+  }
+  if (a.sharpen) parts.push(`${ADJUST_WORD.sharpen[lang]} +${Math.round(a.sharpen)}`);
+  if (a.vignette) parts.push(`${ADJUST_WORD.vignette[lang]} ${Math.round(a.vignette)}`);
+  const head = lang === 'en' ? 'light and colour' : lang === 'ru' ? 'свет и цвет' : 'სინათლე და ფერი';
+  return `${head}: ${parts.join(', ')}`;
+}
+
+/** The movement in words: „ეფექტი: ნელი ზუმი შიგნით + გლიჩი". */
+function motionLine(m: { zoom?: 'in' | 'out'; shake?: boolean; glitch?: boolean }, lang: Lang): string {
+  const parts: string[] = [];
+  if (m.zoom === 'in') parts.push(lang === 'en' ? 'slow zoom in' : lang === 'ru' ? 'плавный зум внутрь' : 'ნელი ზუმი შიგნით');
+  if (m.zoom === 'out') parts.push(lang === 'en' ? 'slow zoom out' : lang === 'ru' ? 'плавный зум наружу' : 'ნელი ზუმი გარეთ');
+  if (m.shake) parts.push(lang === 'en' ? 'camera shake' : lang === 'ru' ? 'тряска камеры' : 'კამერის კანკალი');
+  if (m.glitch) parts.push(lang === 'en' ? 'glitch' : lang === 'ru' ? 'глитч' : 'გლიჩი');
+  return `${lang === 'en' ? 'effect' : lang === 'ru' ? 'эффект' : 'ეფექტი'}: ${parts.join(' + ')}`;
+}
+
 /** One resolved edit in a few words: „keeps 0:05–0:12", „2× faster", „9:16, cropped", „sound off". */
 export function editLine(e: MediaEdit, locale: string, durationSec = 0): string {
   const lang = pick(locale);
@@ -143,13 +177,35 @@ export function editLine(e: MediaEdit, locale: string, durationSec = 0): string 
     case 'aspect': {
       const fit = e.fit === 'pad'
         ? (lang === 'en' ? 'with bars, nothing cut' : lang === 'ru' ? 'с полями, без обрезки' : 'ზოლებით, არაფერი იჭრება')
-        : (lang === 'en' ? 'cropped to fill' : lang === 'ru' ? 'с обрезкой по краям' : 'კიდეების ჩამოჭრით');
+        : e.fit === 'blur'
+          ? (lang === 'en' ? 'over a blurred copy of itself, nothing cut' : lang === 'ru' ? 'на размытом фоне, без обрезки' : 'ბუნდოვან ფონზე, არაფერი იჭრება')
+          : (lang === 'en' ? 'cropped to fill' : lang === 'ru' ? 'с обрезкой по краям' : 'კიდეების ჩამოჭრით');
       return lang === 'en' ? `frame ${e.to}, ${fit}` : lang === 'ru' ? `кадр ${e.to}, ${fit}` : `კადრი ${e.to}, ${fit}`;
     }
     case 'grade': {
       const name = GRADE[e.style]?.[lang] ?? e.style;
       return lang === 'en' ? `${name} colour` : lang === 'ru' ? `цвет: ${name}` : `ფერი: ${name}`;
     }
+    case 'adjust':
+      return adjustLine(e, lang);
+    case 'flip':
+      return e.axis === 'vertical'
+        ? (lang === 'en' ? 'flipped upside down' : lang === 'ru' ? 'отражено по вертикали' : 'ვერტიკალურად ამობრუნებული (თავდაყირა)')
+        : (lang === 'en' ? 'mirrored left to right' : lang === 'ru' ? 'зеркально слева направо' : 'სარკისებრად, მარცხნიდან მარჯვნივ');
+    case 'rotate':
+      return e.deg === 180
+        ? (lang === 'en' ? 'turned 180° (upside down)' : lang === 'ru' ? 'поворот на 180°' : '180°-ით მობრუნება (თავდაყირა)')
+        : e.deg === 270
+          ? (lang === 'en' ? 'turned 90° anticlockwise' : lang === 'ru' ? 'поворот на 90° против часовой' : '90°-ით მობრუნება საათის ისრის საწინააღმდეგოდ')
+          : (lang === 'en' ? 'turned 90° clockwise' : lang === 'ru' ? 'поворот на 90° по часовой' : '90°-ით მობრუნება საათის ისრის მიმართულებით');
+    case 'motion':
+      return motionLine(e, lang);
+    case 'stabilize':
+      return lang === 'en' ? 'steadied (the shake taken out)' : lang === 'ru' ? 'стабилизация (без тряски)' : 'სტაბილიზაცია (კანკალის მოშორება)';
+    case 'denoise':
+      return lang === 'en' ? 'background noise taken out of the sound' : lang === 'ru' ? 'фоновый шум убран из звука' : 'ხმიდან ფონური ხმაურის მოშორება';
+    case 'loudness':
+      return lang === 'en' ? 'sound evened out (-14 LUFS)' : lang === 'ru' ? 'громкость выровнена (-14 LUFS)' : 'ხმის გათანაბრება (-14 LUFS)';
     case 'fade': {
       const parts: string[] = [];
       if (e.inSec > 0) parts.push(lang === 'en' ? `fade in ${num(e.inSec)} ${s}` : lang === 'ru' ? `появление ${num(e.inSec)} ${s}` : `გამოჩენა ${num(e.inSec)} ${s}`);
@@ -230,6 +286,12 @@ export function askLine(e: EditAsk, locale: string): string {
   if (e.op === 'grade' || e.op === 'fade' || e.op === 'volume' || e.op === 'mute' || e.op === 'caption' || e.op === 'aspect') return editLine(e as MediaEdit, locale);
   if (e.op === 'overlay') return editLine({ op: 'overlay', look: e.look ?? 'light-leak' }, locale);
   if (e.op === 'speed') return editLine(e, locale);
+  if (e.op === 'adjust' || e.op === 'motion' || e.op === 'stabilize' || e.op === 'denoise' || e.op === 'loudness') return editLine(e as MediaEdit, locale);
+  if (e.op === 'flip') return editLine({ op: 'flip', axis: e.axis ?? 'horizontal' }, locale);
+  if (e.op === 'rotate') {
+    const deg = ((Math.round(e.deg) % 360) + 360) % 360;
+    return deg === 90 || deg === 180 || deg === 270 ? editLine({ op: 'rotate', deg }, locale) : '';
+  }
   if (e.op === 'erase') {
     const lang = pick(locale);
     const places = (e.boxes ?? (e.at ? [{ at: e.at }] : [])).flatMap((b) => (b.at ? [PLACE[b.at][lang]] : []));
@@ -309,7 +371,7 @@ export function editDoneText(r: { output: 'mp4' | 'jpg'; name: string; durationS
 }
 
 export type EditChatCode = EditErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'no_previous' | 'caption_text'
-  | 'cut_middle' | 'approval_unclear' | 'cta_text' | 'logo_file' | 'speech_captions' | 'translate_captions' | 'remove_object';
+  | 'cut_middle' | 'approval_unclear' | 'cta_text' | 'logo_file' | 'speech_captions' | 'translate_captions' | 'remove_object' | 'reverse';
 
 const AGAIN: Record<Lang, string> = { ka: ' მითხარი თავიდან, რა შევცვალო.', en: ' Tell me again what to change.', ru: ' Скажите ещё раз, что изменить.' };
 
@@ -363,6 +425,7 @@ const ERR: Record<EditChatCode, Record<Lang, string>> = {
   remove_object: { ka: 'ადამიანის, საგნის ან ფონის ამოღება ფიქსირებული ადგილი არ არის: ამას AI-ით შევსება სჭირდება (ფასიანი პროვაიდერის გამოძახება) და ჯერ ჩართული არ არის. შემიძლია მოვაშორო ტექსტი, ლოგო, წყლის ნიშანი ან სუბტიტრები, რომლებიც ერთ ადგილას დგას: თქვი, სადაა.', en: 'Taking out a person, an object or the background is not a fixed place: it needs AI fill (a paid provider call), which is not switched on yet. I can remove a text, a logo, a watermark or subtitles that stay in one place: say where it is.', ru: 'Убрать человека, предмет или фон нельзя как фиксированное место: для этого нужно заполнение ИИ (платный вызов провайдера), и оно пока не включено. Я могу убрать текст, логотип, водяной знак или субтитры, которые стоят на одном месте: скажите, где.' },
   speech_captions: { ka: 'მეტყველებიდან ქეფშენებს ჯერ თავად ვერ ვწერ: ამას სჭირდება ფასიანი ამოცნობა (ElevenLabs Scribe), რაზეც გადაწყვეტილება მფლობელს ეკუთვნის. ახლავე შემიძლია შენი ტექსტით: დაწერე „0:01–0:03 გამარჯობა" ან მიამაგრე .srt / .vtt.', en: 'I cannot write captions from the speech myself yet: that needs paid recognition (ElevenLabs Scribe), which is the owner\'s decision. I can use your own words now: write "0:01–0:03 Hello" or attach an .srt / .vtt.', ru: 'Субтитры из речи я пока сам не пишу: это платное распознавание (ElevenLabs Scribe), решение за владельцем. Сейчас могу с вашим текстом: напишите «0:01–0:03 Привет» или прикрепите .srt / .vtt.' },
   translate_captions: { ka: 'ქეფშენების თარგმნა ფასიან მოდელს სჭირდება და ჯერ ჩართული არ არის (მფლობელის გადაწყვეტილება). თარგმნილი ტექსტი თავად მომწერე დროებით და იმავე დროზე ჩავსვამ.', en: 'Translating captions needs a paid model and is not on yet (the owner\'s decision). Send the translated lines with their times and I will put them on at those times.', ru: 'Перевод субтитров требует платной модели и пока не включён (решение владельца). Пришлите перевод со временем — поставлю на те же моменты.' },
+  reverse: { ka: 'ვიდეოს უკუღმა გაშვება ჯერ არ შემიძლია: ამისთვის მთელი კლიპი ერთდროულად მეხსიერებაში უნდა ჩავტვირთო, რაც ერთი სერვერის შესაძლებლობას აღემატება. შემიძლია აჩქარება, შენელება, მოჭრა, ზუმი, კანკალი, გლიჩი, მობრუნება, სარკე, ფერი და სინათლე.', en: 'I cannot play a video backwards yet: it needs the whole clip in memory at once, more than one server has. I can speed it up, slow it down, trim it, zoom, shake, glitch, turn or mirror it, and change its light and colour.', ru: 'Проигрывать видео задом наперёд я пока не умею: для этого весь клип должен целиком поместиться в память, а это больше, чем есть у одного сервера. Могу ускорить, замедлить, обрезать, сделать зум, тряску, глитч, повернуть, отразить, поменять свет и цвет.' },
   cut_middle: { ka: 'შუიდან მონაკვეთის ამოჭრა ერთ ცვლილებად ჯერ არ შემიძლია. შემიძლია დავტოვო ერთი მონაკვეთი ან მოვაჭრა დასაწყისი ან ბოლო.', en: 'I cannot cut a stretch out of the middle in one edit yet. I can keep one stretch, or cut off the start or the end.', ru: 'Вырезать отрезок из середины одной правкой я пока не могу. Могу оставить один отрезок или обрезать начало или конец.' },
 };
 

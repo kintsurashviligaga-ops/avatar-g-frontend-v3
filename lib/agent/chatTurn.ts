@@ -188,13 +188,47 @@ function editStep(text: string, intent: ActIntent, s: ChatSnapshot): ChatStep | 
   if (!source) return { kind: 'say', text: editErrorText('bad_input', locale), keepComposer: true, intent };
   const mined = mineEdits(text);
   if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
+  if (mined.unsupported.includes('reverse')) return { kind: 'say', text: editErrorText('reverse', locale), intent };
   if (mined.missing.includes('caption_text')) return { kind: 'say', text: editErrorText('caption_text', locale), keepComposer: true, intent };
   if (!mined.edits.length) return null;
   return { kind: 'edit', source, edits: mined.edits, ...(source === 'file' ? { file: 0 } : {}), intent };
 }
 
-/** What a picture can take (./media/editPlan PICTURE_EDITS): places erased, a new frame, a colour, layers. */
-const PICTURE_OPS: ReadonlySet<string> = new Set(['erase', 'aspect', 'grade', 'layers']);
+/**
+ * CapCut's effects (GG 2026-10-11 17:38Z): light and colour, a turn, a mirror, a zoom, a shake, a glitch, steadying, a
+ * frame filled with the picture's own blur, the sound cleaned. Agent G's own edit reads them (free, a plan before Start);
+ * the remix has none of them, so on the one file attached they are Agent G's, with every other edit of the same words.
+ * With nothing attached, words that name the video or picture („ამ ვიდეოს ზუმი დაუმატე") are about Agent G's last
+ * result. Played backwards is said to be out, not passed to a door that would try it.
+ */
+function effectStep(text: string, intent: AgentIntent, s: ChatSnapshot): ChatStep | null {
+  if (s.mode !== 'chat' || !s.editOn) return null;
+  const kinds = s.attachments ?? [];
+  const attached = kinds.length === 1 && (kinds[0] === 'video' || kinds[0] === 'image') ? kinds[0] : null;
+  const prev = s.previous?.kind === 'video' || s.previous?.kind === 'image' ? s.previous.kind : null;
+  const onPrevious = !kinds.length && prev !== null && THIS_MEDIA.test(text);
+  const kind = attached ?? (onPrevious ? prev : null);
+  if (!kind) return null;
+  const mined = mineEdits(text);
+  const effect = mined.edits.some((e) => EFFECT_OPS.has(e.op) || (e.op === 'aspect' && e.fit === 'blur'));
+  const reverse = kind === 'video' && mined.unsupported.includes('reverse');
+  if (!effect && !reverse) return null;
+  const locale = intent.lang;
+  if (reverse) return { kind: 'say', text: editErrorText('reverse', locale), intent };
+  if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
+  if (mined.missing.length || mined.logo) return null;
+  // A photo takes the turn, the mirror, the light and colour; a zoom on a photo is bringing it to life (video.generate).
+  if (kind === 'image' && mined.edits.some((e) => !PICTURE_OPS.has(e.op))) return null;
+  return attached
+    ? { kind: 'edit', source: 'file', edits: mined.edits, file: 0, intent }
+    : { kind: 'edit', source: 'previous', edits: mined.edits, intent };
+}
+/** The video or picture named, with nothing attached: Agent G's last result. */
+const THIS_MEDIA = /(?:ამ|ეს|ამას|წინა|ბოლო)\s+(?:ვიდეო|კლიპ|სურათ|ფოტო|შედეგ|მონტაჟ)|(?:this|that|the|last|previous)\s+(?:video|clip|picture|photo|image|result|montage|edit)|(?:это|этот|эту|последн\p{L}*|предыдущ\p{L}*)\s+(?:видео|клип|фото|картинк|результат|монтаж)/iu;
+const EFFECT_OPS: ReadonlySet<string> = new Set(['adjust', 'flip', 'rotate', 'motion', 'stabilize', 'denoise', 'loudness']);
+
+/** What a picture can take (./media/editPlan PICTURE_EDITS): places erased, a turn, a mirror, a new frame, light and colour, layers. */
+const PICTURE_OPS: ReadonlySet<string> = new Set(['erase', 'rotate', 'flip', 'aspect', 'adjust', 'grade', 'layers']);
 
 /**
  * Media Studio v2.1: text, a CTA, a logo, a mask or captions put on a video or a picture, or a change to what Agent G
@@ -247,6 +281,7 @@ function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): Ch
 
   const mined = mineEdits(text);
   if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
+  if (mined.unsupported.includes('reverse')) return { kind: 'say', text: editErrorText('reverse', locale), intent };
   if (!mined.edits.length) return null;
   // A picture takes a frame, a colour and layers; captions, a trim or a speed are a video's.
   if (!video && mined.edits.some((e) => !PICTURE_OPS.has(e.op))) return { kind: 'say', text: editErrorText('no_video', locale), keepComposer: true, intent };
@@ -304,6 +339,8 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
   // Text, a logo, a mask or captions on the file, or a change to what Agent G put on its last result (v2.1).
   const composed = compositionStep(text, intent, s);
   if (composed) return composed;
+  const effect = effectStep(text, intent, s);
+  if (effect) return effect;
 
   if (intent.kind === 'act') {
     // „The music from 5 s" or „only the last five" on the montage Agent G just delivered: the same files planned again

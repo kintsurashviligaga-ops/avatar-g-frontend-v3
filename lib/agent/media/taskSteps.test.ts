@@ -249,7 +249,7 @@ describe('the montage card holds every part of the words (owner 2026-10-11)', ()
 
   test('what the words asked that a montage does not do is the card\'s notice, by name', () => {
     const m = montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music with crossfade transitions and a zoom' }, 'en');
-    expect(m.notice).toBe('Not in this plan: zoom, shake or glitch: these effects are not available yet.');
+    expect(m.notice).toBe('Not in this plan: effect: slow zoom in: ask for it on the finished montage.');
     expect(montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music, 9:16' }, 'en').notice).toBeUndefined();
   });
 });

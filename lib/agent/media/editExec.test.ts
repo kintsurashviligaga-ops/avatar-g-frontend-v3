@@ -10,6 +10,7 @@ import {
 } from './editExec';
 import { EDIT_GAVE_UP, sweepEditJobs, workEditJob } from './editWorker';
 import { EDITED, RESULT_URL, SOURCE, UPLOAD, USER, fakeEdit, type FakeEdit, type RenderOpts } from './testing/fakeEditDeps';
+import type { EditRequest } from './editPlan';
 
 const ASKS = [{ op: 'trim', fromSec: 5, toSec: 15 }, { op: 'speed', factor: 2 }, { op: 'aspect', to: '9:16' }];
 
@@ -94,6 +95,48 @@ describe('quote: the caller\'s own file, the edits resolved against it, a signed
 
   test('no quote key: nothing can be signed', async () => {
     expect(await quoteEdit(fakeEdit({ key: '' }).deps, { userId: USER, file: UPLOAD, edits: ASKS })).toMatchObject({ ok: false, error: 'not_configured' });
+  });
+});
+
+describe('a revision of our own result: the look adds to what the result shows (GG 2026-10-11 17:38Z)', () => {
+  const ID = '0f0e0d0c-0b0a-4908-8706-050403020100';
+  /** A render that delivers what was planned (its frame and length). */
+  const AS_PLANNED = async (_url: string, req: EditRequest) => ({
+    ok: true as const, bytes: Buffer.alloc(2_400_000, 1), input: SOURCE,
+    output: { ...SOURCE, width: req.plan.width, height: req.plan.height, durationSec: req.plan.durationSec },
+  });
+  /** A completed edit of UPLOAD with these edits, and the file a user would send back to change it. */
+  async function result(edits: unknown[]): Promise<{ f: FakeEdit; file: string }> {
+    const f = fakeEdit({ render: AS_PLANNED });
+    f.deps = { ...f.deps, newId: () => ID };
+    const id = await queued(f, edits);
+    expect(await workEditJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+    return { f, file: `https://x.supabase.co/storage/v1/object/sign/renders/edits/${ID}.mp4?token=t` };
+  }
+  const again = async (r: { f: FakeEdit; file: string }, edits: unknown[]) => {
+    const q = await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits });
+    if (!q.ok) throw new Error(`${q.error}: ${q.message}`);
+    expect(q.request.source.ref).toBe(UPLOAD); // from the source again, never the re-encoded result
+    return q.quote.edits;
+  };
+
+  test('brighter again is brighter still, to the limit; „more contrast" keeps the brightness; less again is as it was', async () => {
+    const r = await result([{ op: 'adjust', brightness: 25, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: 25 }])).toEqual([{ op: 'adjust', brightness: 50, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', contrast: 25 }])).toEqual([{ op: 'adjust', brightness: 25, contrast: 25, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: 90 }])).toEqual([{ op: 'adjust', brightness: 100, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: -25 }, { op: 'flip' }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'adjust', warmth: 40 }]);
+  });
+
+  test('a turn adds to the turn; the same mirror twice is none, a mirror each way a half turn; a glitch keeps the zoom', async () => {
+    const r = await result([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'flip' }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'flip', axis: 'vertical' }])).toEqual([{ op: 'rotate', deg: 270 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'motion', glitch: true }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in', glitch: true }]);
+    // A turn back to where it started leaves no turn; a turn that is no quarter turn is refused, not rounded.
+    expect(await again(r, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits: [{ op: 'rotate', deg: 45 }] })).toMatchObject({ ok: false, error: 'bad_edits' });
   });
 });
 

@@ -23,8 +23,12 @@ const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru'
 export type UnplannedKind =
   /** Transitions the plan cannot draw. Not listed since the montage plans them itself (its card says where they go). */
   | 'transition'
-  /** Zoom, shake, glitch: no such effect yet. */
+  /** Zoom, shake, glitch: no such effect yet. Not listed since 2026-10-11 (they are `motion` edits now); kept for old cards. */
   | 'motion_fx'
+  /** Playing a video backwards: ffmpeg's reverse holds the whole clip in memory, so it is not offered. */
+  | 'reverse'
+  /** The frame filled with a blurred copy of the shot: the montage fills its frame with each shot (edges trimmed). */
+  | 'fit_blur'
   /** A logo or other picture on the video: it needs its own picture, on the finished montage. */
   | 'logo'
   /** A cover still: taken from the finished video. */
@@ -56,7 +60,6 @@ export interface Unplanned {
 const TRANSITION = /transitions?|cross\s*-?\s*fade|dissolve|გადასვლ|ტრანზიშ|переход/iu;
 const FADE_WORD = /ფეიდ|fade|затух|растворен/iu;
 const BETWEEN = /between|შორის|между/iu;
-const MOTION_FX = /zoom|ზუმ|зум|shake|შერყევ|კანკალ|тряск|glitch|გლიჩ|глитч/iu;
 
 /** The montage holds these itself: speed as a ramp of shots, mute (the clips are silent, the track is the sound), the frame. */
 const MONTAGE_HOLDS: ReadonlySet<EditAsk['op']> = new Set(['speed', 'mute', 'aspect']);
@@ -66,7 +69,7 @@ const same = (a: EditAsk, b: EditAsk): boolean => JSON.stringify(a) === JSON.str
 /**
  * What the words of a montage message ask that its plan leaves out. `planned` are the edits a chained edit step will do
  * after the montage (none for a plain montage card); every other edit the words ask is named, as are the asks no edit
- * reads (transitions, zoom).
+ * does (playing backwards, a blurred background behind a montage's shots).
  */
 export function unplannedAsks(text: string | undefined, planned: readonly EditAsk[] = []): Unplanned[] {
   const raw = typeof text === 'string' ? text.slice(0, 20_000) : '';
@@ -79,8 +82,8 @@ export function unplannedAsks(text: string | undefined, planned: readonly EditAs
   const rest = mineComposition(raw).rest;
   // Transitions are the montage's own now (./montageAsk transitionAsk → lib/services/montage/transitionPlan): its card
   // names the styles and every boundary that stays a cut. Still read here, so a „fade between" is not also a whole-video fade.
+  // Zoom, shake and glitch are edits now (./editWords mineMotion): the chain after the montage draws them.
   const transition = TRANSITION.test(rest) || (FADE_WORD.test(rest) && BETWEEN.test(rest));
-  if (MOTION_FX.test(rest)) add({ kind: 'motion_fx' });
 
   const mined = mineEdits(raw);
   for (const m of mined.missing) add({ kind: m === 'caption_text' ? 'text_words' : m === 'cta_text' ? 'cta_words' : 'logo' });
@@ -92,6 +95,7 @@ export function unplannedAsks(text: string | undefined, planned: readonly EditAs
   for (const e of mined.edits) {
     if (planned.some((p) => same(p, e))) continue;
     if (e.op === 'speed') { if (!ramp) add({ kind: 'speed' }); continue; }
+    if (e.op === 'aspect' && e.fit === 'blur') { add({ kind: 'fit_blur' }); continue; }
     if (MONTAGE_HOLDS.has(e.op)) continue;
     if (e.op === 'thumbnail') { add({ kind: 'thumbnail' }); continue; }
     if (e.op === 'trim') { if (params.durationSec === undefined && params.musicStartSec === undefined) add({ kind: 'trim' }); continue; }
@@ -122,6 +126,14 @@ export function unplannedLine(u: Unplanned, locale: string): string {
       return lang === 'en' ? 'zoom, shake or glitch: these effects are not available yet'
         : lang === 'ru' ? 'зум, тряска или глитч: этих эффектов пока нет'
           : 'ზუმი, კანკალი ან გლიჩი: ეს ეფექტები ჯერ არ მაქვს';
+    case 'reverse':
+      return lang === 'en' ? 'playing it backwards: not available yet (the whole clip would have to fit in memory)'
+        : lang === 'ru' ? 'проиграть задом наперёд: пока нет (весь клип пришлось бы держать в памяти)'
+          : 'უკუღმა გაშვება: ჯერ არ მაქვს (მთელი კლიპი მეხსიერებაში უნდა დაეტიოს)';
+    case 'fit_blur':
+      return lang === 'en' ? 'a blurred background behind the picture: a montage fills its frame with every shot (edges trimmed); ask for it on a single video'
+        : lang === 'ru' ? 'размытый фон за картинкой: монтаж заполняет кадр каждым планом (края обрезаются); попросите это на отдельном видео'
+          : 'ბუნდოვანი ფონი კადრის უკან: მონტაჟი ყოველი კადრით მთელ ჩარჩოს ავსებს (კიდეები იჭრება); ეს ცალკე ვიდეოზე მთხოვე';
     case 'logo':
       return lang === 'en' ? 'a logo: once the montage is ready, send the logo picture with it and say where it goes'
         : lang === 'ru' ? 'логотип: когда монтаж будет готов, пришлите картинку логотипа и скажите, где его поставить'
