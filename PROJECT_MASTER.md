@@ -316,7 +316,7 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           red Stop now sits in the box while an Agent G card works; History on another device showed words only
           (each turn's files and each Agent G card, one row per card, now go in the existing
           chat_messages.metadata column, no migration; a chat opened again merges what another device added).
-          Old chats' cards were never saved server-side and cannot be recovered. Jest 12,831 green; Playwright on a production build
+          Old chats' cards were never saved server-side and cannot be recovered. Jest 12,831 green (12,841 after 93f37049); Playwright on a production build
           297 passed, 7 skipped, 1 expected failure (swarm-pipelines.spec.ts:30). BUILT_NOT_PROVEN until GG
           re-tests on the Preview and an iPhone. GG's iPhone Preview run 11:04Z: clip stills and the red Stop
           PROVEN [iPhone, Preview]; job 196a64b1 completed (QC ok 3/3, 0 ledger rows) and its user turn (4 files)
