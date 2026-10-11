@@ -6,7 +6,7 @@
 import { LEASE_MS } from '@/lib/orchestrator/jobLease';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { cancelMontageJob, enqueueMontageJob, quoteMontage } from './montageExec';
-import { GAVE_UP, HOLD_ABANDONED, sweepMontageJobs, workMontageJob } from './montageWorker';
+import { GAVE_UP, HOLD_ABANDONED, srcQcTimes, sweepMontageJobs, workMontageJob } from './montageWorker';
 import { FILES, MASTER_URL, TRACK, USER, balance, clip, fake, type Fake, type RenderOpts } from './testing/fakeMontageDeps';
 import { signQuote } from './quoteToken';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
@@ -160,6 +160,30 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
     await workMontageJob(f.deps, { jobId: id, worker: 'w1' });
     expect(f.store.rows.get(id)).toMatchObject({ status: 'failed', signedUrl: null });
     expect(f.store.rows.get(id)!.error).toMatch(/^qc_failed: clip 2 "b\.mp4" could not be checked/);
+  });
+
+  test('srcQcTimes: the planned moment first, then out by half output frames to ±50 ms, never below 0; a photo only at 0', () => {
+    expect(srcQcTimes(2.25)).toEqual([2.25, 2.233, 2.267, 2.217, 2.283, 2.2, 2.3]);
+    expect(srcQcTimes(0.02)).toEqual([0.02, 0.003, 0.037, 0.053, 0.07]);
+    expect(srcQcTimes(0)).toEqual([0]);
+  });
+
+  test('a clip the master shows half an output frame after its planned moment is seen there, and the moment is kept (Preview 12:34Z)', async () => {
+    const f = fake();
+    const id = await queued(f);
+    const grab = f.deps.grabFrames;
+    let planned = -1;
+    f.deps.grabFrames = async (url, t, o) => {
+      const real = await grab(url, t, o);
+      if (!url.endsWith('/b.mp4') || !real) return real;
+      planned = t[0]!;
+      // Only the frame 1/60 s after the planned moment is the one in the master; every other read is a different picture.
+      return real.map((fr, k) => (Math.abs(t[k]! - (planned + 1 / 60)) < 0.002 ? fr : new Uint8Array(fr!.length).fill(fr![0]! > 128 ? 0 : 255)));
+    };
+    expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+    const b = (f.store.rows.get(id)!.result as { qc: { clips: Array<{ index: number; diff: number; srcT: number; matchT?: number }> } }).qc.clips[1]!;
+    expect(b).toMatchObject({ index: 1, diff: 0, srcT: planned });
+    expect(b.matchT).toBeCloseTo(planned + 1 / 60, 2);
   });
 
   test('A/V: a soundtrack missing or ending away from the picture is not delivered', async () => {

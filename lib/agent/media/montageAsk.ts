@@ -219,6 +219,8 @@ export interface ClipEvidence {
   srcT: number;
   diff: number | null;
   ok: boolean;
+  /** The source moment that matched best, when it was not `srcT` (./montageWorker checkClips). */
+  matchT?: number;
 }
 
 export interface ClipVerdict {

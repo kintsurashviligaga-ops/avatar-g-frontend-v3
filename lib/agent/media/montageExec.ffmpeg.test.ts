@@ -192,6 +192,30 @@ test('a photo among the clips (owner, 2026-10-11 11:37Z): one still shot, framed
   }
 });
 
+test('fast motion (Preview 12:34Z, a real clip at 11.79 of 12): a 60 fps pan is seen at its place, not half a frame off', async () => {
+  // The stitch resamples to 30 fps, so the master's frame of a 60 fps clip can be the source's frame 1/60 s after the
+  // planned moment. Read only at the planned moment and ±1/30 s, the pan below measured 6.51 here; its real frame, 0.19.
+  const x = ['-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p'];
+  const zoom = make('zoom.mov', ['-f', 'lavfi', '-i', 'mandelbrot=size=720x1280:rate=30', '-t', '8', ...x, '-video_track_timescale', '600']);
+  const pan = make('pan.mov', ['-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=60', '-t', '8', '-vf', 'scroll=h=0.01:v=0.005', ...x, '-video_track_timescale', '600']);
+  const photo = make('fph.jpg', ['-f', 'lavfi', '-i', 'testsrc2=size=900x1200:rate=1', '-frames:v', '1', '-q:v', '3']);
+  const spin = make('spin.mp4', ['-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=24', '-t', '8', '-vf', "rotate=a='t*3':c=gray", ...x]);
+  const song = make('fsong.m4a', ['-f', 'lavfi', '-i', "aevalsrc='0.9*sin(2*PI*55*t)*exp(-30*mod(t-0.25+1,0.6122))*gte(t,0.25)':s=44100:d=90", '-c:a', 'aac']);
+  const store = memoryLeaseStore();
+  const deps = liveLike(store, []);
+  // GG's ask on Preview: two clips, a photo and a song, the music from 0:59.
+  const q = await quoteMontage(deps, { userId: 'u', files: [zoom, pan, song, photo, spin], targetSec: 20, musicFromSec: 59 });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  const queued = await enqueueMontageJob(deps, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  const r = await workMontageJob(deps, { jobId: queued.jobId, worker: 'w-motion' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+  const qc = (store.rows.get(queued.jobId)!.result as { qc: { clips: Array<{ name: string; diff: number; ok: boolean }>; ok: boolean } }).qc;
+  expect(qc.ok).toBe(true);
+  for (const c of qc.clips) expect([c.name, c.diff < 2]).toEqual([c.name, true]);
+  qcSeen.push(...qc.clips.map((c) => c.diff));
+});
+
 /** The per-clip QC's real numbers (diff of each clip's frame in the master against its source), for the calibration note. */
 const qcSeen: number[] = [];
 const qcMissed: number[] = [];

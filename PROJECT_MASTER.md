@@ -341,6 +341,11 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           Ken Burns cover-crop, QC at the photo), a note keeps the files, inline files show their check, per-clip QC
           takes the closest of three source frames (a real clip measured 11.96 against 12). Real ffmpeg: photo diff
           0.78. BUILT_NOT_PROVEN until GG re-tests on the Preview; Production needs GG's separate word. Report §17.
+          PREVIEW 12:34Z: GG's photo montage (2 clips + PNG + MP3, music from 0:59) delivered on Preview fe57d68, job
+          252fe0ee, QC ok (0.58 / 11.79 / photo 3.78): photo among clips PROVEN on Preview. The 11.79 was measured on
+          real ffmpeg: the 30 fps stitch shows a 60 fps source's frame 1/60 s late (6.51 planned vs 0.19 at +1/60 s);
+          the QC now searches the source in half-frame steps to ±50 ms and records matchT. Limit 12 unchanged; a
+          dropped clip still reads 52.65. Not on Production.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

@@ -32,10 +32,12 @@ const QC_CONCURRENCY = 3;
 /**
  * Look for every manifest video and photo in the master: one frame per picture from the output (one read of the master)
  * against the same moment of its source, conformed to the master's frame (a read per source, QC_CONCURRENCY at a time).
- * A video's source is read at that moment and one output frame either side, and the closest of the three counts: the
- * stitch resamples to OUTPUT_FPS and a phone clip's frames are not evenly spaced, so in fast motion the same moment
- * can land a frame off. A real Production clip measured 11.96 against the limit of 12 that way (2026-10-11 12:07Z);
- * a clip that is not there differs from all three.
+ * A video's source is read at that moment and every half output frame up to ±SRC_QC_REACH_SEC around it, and the
+ * closest frame counts (its time is kept as `matchT`): the stitch resamples to OUTPUT_FPS, so the frame the master
+ * shows can be the source's frame half an output frame after the planned moment, and in fast motion that alone is a
+ * large difference. Measured on real ffmpeg (a 60 fps panning clip, 2026-10-11): 6.51 at the planned moment, 0.19 at
+ * +1/60 s, which the earlier ±1/30 s reads stepped over. Real clips read 11.96 (Production 12:07Z) and 11.79 (Preview
+ * 12:34Z) against the limit of 12 that way. A clip that is not there differs from every one of them.
  */
 async function checkClips(deps: MontageExecDeps, request: AgentMontageRequest, masterUrl: string, signal: AbortSignal): Promise<ClipVerdict> {
   const points = clipCheckPoints(request);
@@ -43,20 +45,36 @@ async function checkClips(deps: MontageExecDeps, request: AgentMontageRequest, m
   const outFrames = (await deps.grabFrames(masterUrl, points.map((p) => p.outT), { size: CLIP_QC_SIZE, signal }).catch(() => null))
     ?? points.map(() => null);
   const srcFrames: Array<Uint8Array | null> = points.map(() => null);
+  const matchT: Array<number | null> = points.map(() => null);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(QC_CONCURRENCY, points.length) }, async () => {
     for (let i = next++; i < points.length; i = next++) {
       if (signal.aborted) return;
       const p = points[i]!;
-      const step = 1 / OUTPUT_FPS;
-      const times = p.srcT > 0 ? [p.srcT, ...(p.srcT - step > 0 ? [p.srcT - step] : []), p.srcT + step].map((t) => Math.round(t * 1000) / 1000) : [p.srcT];
+      const times = srcQcTimes(p.srcT);
       const got = await deps.grabFrames(p.url, times, { size: CLIP_QC_SIZE, fit, signal }).catch(() => null);
-      // The candidate closest to the output frame; the first (the planned moment) when none compares.
+      // The candidate closest to the output frame; the planned moment (listed first) wins a tie.
       const out = outFrames[i] ?? null;
-      srcFrames[i] = (got ?? []).reduce<Uint8Array | null>((best, f) => (f && (!best || frameDiff(out, f) < frameDiff(out, best)) ? f : best), null);
+      let best = -1;
+      (got ?? []).forEach((f, k) => { if (f && (best < 0 || frameDiff(out, f) < frameDiff(out, got![best]))) best = k; });
+      srcFrames[i] = best >= 0 ? got![best]! : null;
+      matchT[i] = best >= 0 ? times[best]! : null;
     }
   }));
-  return qcClips(points, outFrames, srcFrames);
+  const verdict = qcClips(points, outFrames, srcFrames);
+  return { ...verdict, clips: verdict.clips.map((c, i) => (matchT[i] != null && matchT[i] !== c.srcT ? { ...c, matchT: matchT[i]! } : c)) };
+}
+
+/** How far around the planned moment a video's source is searched (see checkClips): three half output frames. */
+const SRC_QC_REACH_SEC = 3 / (2 * OUTPUT_FPS);
+
+/** The source moments one clip is checked at: the planned one first, then out by half output frames, never below 0. */
+export function srcQcTimes(srcT: number): number[] {
+  if (!(srcT > 0)) return [0];
+  const half = 1 / (2 * OUTPUT_FPS);
+  const out = [srcT];
+  for (let k = 1; k * half <= SRC_QC_REACH_SEC + 1e-9; k += 1) out.push(srcT - k * half, srcT + k * half);
+  return out.filter((t) => t > 0).map((t) => Math.round(t * 1000) / 1000);
 }
 
 export type WorkResult =
