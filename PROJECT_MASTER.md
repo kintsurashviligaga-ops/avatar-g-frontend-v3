@@ -307,6 +307,18 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           (swarm-pipelines.spec.ts:30 expects the dev bypass, cert §Z); no test deleted. All BUILT_NOT_PROVEN:
           the signed-in Preview run and the iPhone dictation numbers are the owner's hands. Verdict for these fixes:
           NO-GO until those pass. Georgian report: docs/handoffs/agent-g-repair/final-report-ka.md.
+          Round 2 (GG's Preview notes 09:57Z, 10:21Z, 10:27Z; report §2 rows 16–19 and §16): GG's two Preview
+          montages completed on the server, read-only from the shared DB: f3214b2d (3/3 clips in the master, audio
+          29.094 vs video 29.1 s) and dafbe031 (4/4, 29.721 vs 29.733 s), 0 ledger rows for either: PROVEN [Preview]
+          for the server side. The chat side failed on those runs and is fixed on the branch: a language switch
+          kept no card (the chat is now kept open, the card saved each phase and its job followed by id); iPhone
+          clip tiles were black (stills from an in-DOM video on loadedmetadata/seeked, also the bubble poster); a
+          red Stop now sits in the box while an Agent G card works; History on another device showed words only
+          (each turn's files and each Agent G card, one row per card, now go in the existing
+          chat_messages.metadata column, no migration; a chat opened again merges what another device added).
+          Old chats' cards were never saved server-side and cannot be recovered. Jest 12,831 green; Playwright on a production build
+          297 passed, 7 skipped, 1 expected failure (swarm-pipelines.spec.ts:30). BUILT_NOT_PROVEN until GG
+          re-tests on the Preview and an iPhone.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

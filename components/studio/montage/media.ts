@@ -52,13 +52,23 @@ export async function extractFrames(url: string, durationSec: number, count: num
   if (!url || durationSec <= 0 || count <= 0) return [];
   const v = document.createElement('video');
   v.muted = true;
+  v.defaultMuted = true;
   v.playsInline = true;
+  v.setAttribute('playsinline', '');
+  v.setAttribute('muted', '');
   v.preload = 'auto';
   if (!isBlob(url)) v.crossOrigin = 'anonymous';
+  // ⚠️ IPHONE SAFARI (the owner's screenshots, 2026-10-11: every clip a black square, above the box and in the chat). It
+  // loads no frame for a video that is not in the page, and it fires `loadeddata` only once playback starts, so the old
+  // wait for `loadeddata` ran out and no still was ever made. The element now sits in the page out of sight, the wait is
+  // for the metadata, and a seek is what decodes the frame; a muted inline play is the last nudge when a seek alone did not.
+  Object.assign(v.style, { position: 'fixed', left: '-10000px', top: '0', width: '2px', height: '2px', opacity: '0', pointerEvents: 'none' });
+  document.body.appendChild(v);
   v.src = url;
+  try { v.load(); } catch { /* the src alone starts the load */ }
   const frames: string[] = [];
   try {
-    if (!(await once(v, 'loadeddata', 15_000))) return [];
+    if (!(await once(v, 'loadedmetadata', 15_000)) && v.readyState < 1) return [];
     const w0 = v.videoWidth || 16;
     const h0 = v.videoHeight || 9;
     const canvas = document.createElement('canvas');
@@ -71,6 +81,10 @@ export async function extractFrames(url: string, durationSec: number, count: num
       const t = Math.min(durationSec - 0.05, ((i + 0.5) / count) * durationSec);
       v.currentTime = Math.max(0, t);
       if (!(await once(v, 'seeked', 5_000))) break;
+      if (v.readyState < 2) {
+        void v.play()?.then(() => v.pause(), () => {});
+        if (!(await once(v, 'loadeddata', 3_000)) && v.readyState < 2) break;
+      }
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       frames.push(canvas.toDataURL('image/jpeg', 0.6));
     }
@@ -79,6 +93,7 @@ export async function extractFrames(url: string, durationSec: number, count: num
   } finally {
     v.removeAttribute('src');
     try { v.load(); } catch { /* ignore */ }
+    v.remove();
   }
   return frames;
 }

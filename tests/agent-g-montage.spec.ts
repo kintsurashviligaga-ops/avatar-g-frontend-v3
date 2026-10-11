@@ -185,6 +185,101 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     expect(chat[0]).not.toMatch(/data:(video|audio)\//);
   });
 
+  // ── THE PAGE GOES WHILE THE JOB RENDERS (the Preview run of 2026-10-11) ─────────────────────────────────────────────
+  // The owner switched the language mid-render: the card vanished, nothing followed the job, and the finished master went
+  // to the Library only. The job lives server-side, so the chat must carry its card across and land the master in it.
+  const delivered = (page: Page) => page.route(/\/api\/tasks\?id=/, (r) => r.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, task: { id: QUOTE.jobId, kind: 'agent-montage', service: 'film', status: 'completed', stage: null, pct: 100, attempt: 1, result: { url: 'https://e2e-media.supabase.co/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' }, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null } }),
+  }));
+  async function startAndRun(page: Page): Promise<void> {
+    await attachAndSend(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card.locator('li[data-step="stitch"]')).toHaveAttribute('data-state', 'active', { timeout: 15_000 });
+  }
+
+  test('a language switch mid-render keeps the chat and its card; the master lands in that bubble, the job queued once', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    await startAndRun(page);
+
+    await page.getByRole('button', { name: 'Language' }).first().click();
+    await page.getByRole('menuitemradio', { name: 'ქარ' }).click();
+    await page.waitForURL(/\/ka\/dashboard/, { timeout: 30_000 });
+    // The same chat on the Georgian page: the words that were sent, and the card still on the job, every file named.
+    const card = page.getByTestId('agent-montage-card');
+    await expect(page.getByRole('heading', { name: 'cut these to the music' })).toBeAttached({ timeout: 30_000 });
+    await expect(page.getByText('cut these to the music', { exact: true }).last()).toBeVisible();
+    await expect(card).toHaveAttribute('data-phase', 'running', { timeout: 20_000 });
+    await expect(page.getByTestId('agent-montage-card-files').locator('li')).toHaveText(['beach.webm', 'city.webm', 'song.wav']);
+    // The new page follows the job itself (reads it by id): the card is not a picture of the old one.
+    const before = calls.reads.length;
+    await expect.poll(() => calls.reads.length, { timeout: 15_000 }).toBeGreaterThan(before);
+
+    // The job ends while the Georgian page follows it: the master plays in the same bubble, and the card says it is done.
+    await delivered(page);
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    await expect(card).toHaveAttribute('data-phase', 'done');
+    await expect(card.locator('li[data-step][data-state="done"]')).toHaveCount(9);
+    // Following a job sends nothing: it was queued once, by the Start on the English page.
+    expect(calls.run).toHaveLength(1);
+  });
+
+  test('a reload mid-render opens a fresh chat; reopened from History, the chat takes its card back and gets the master', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    await startAndRun(page);
+
+    await page.reload();
+    await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 45_000 });
+    // A reload lands on a fresh chat, by design.
+    await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+
+    // The job finished while the chat was closed: opening it reads the job at once and puts the master in its bubble.
+    await delivered(page);
+    await page.getByRole('button', { name: 'cut these to the music' }).first().click();
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'done', { timeout: 20_000 });
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached();
+    await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
+    expect(calls.run).toHaveLength(1);
+  });
+
+  test('while the montage renders the box shows a red Stop with a turning ring; it stops the job as the card\'s Stop does', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    // Each clip shows a still of itself above the box, not a black square (the iPhone screenshots of 2026-10-11).
+    await page.locator('input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]').setInputFiles([
+      { name: 'beach.webm', mimeType: 'video/webm', buffer: CLIP },
+      { name: 'city.webm', mimeType: 'video/webm', buffer: CLIP },
+      { name: 'song.wav', mimeType: 'audio/wav', buffer: wav() },
+    ]);
+    await expect(page.getByTestId('composer-attachment-still')).toHaveCount(2, { timeout: 15_000 });
+    const still = await page.getByTestId('composer-attachment-still').first().getAttribute('src');
+    expect(still).toMatch(/^data:image\/jpeg;base64,/);
+    // Nothing runs yet: the box has no Stop.
+    await expect(page.getByTestId('composer-stop-job')).toHaveCount(0);
+    await say(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card).toHaveAttribute('data-phase', 'running');
+
+    const stop = page.getByTestId('composer-stop-job');
+    await expect(stop).toBeVisible();
+    await expect(stop).toHaveAttribute('data-kind', 'montage');
+    await expect(stop).toHaveClass(/bg-app-danger/);
+    await expect(stop.locator('.animate-spin')).toHaveCount(1);
+    // The clip sent with the ask keeps its still in the bubble too.
+    await expect(page.locator('video[poster^="data:image/jpeg"]').first()).toBeAttached();
+    // Typing does not take the Stop away: it stays beside Send.
+    await page.getByTestId('composer-input').fill('where are you?');
+    await expect(stop).toBeVisible();
+    await page.getByTestId('composer-input').fill('');
+    await stop.click();
+    await expect.poll(() => calls.cancel.length).toBe(1);
+    expect(calls.cancel[0]).toEqual({ action: 'cancel', id: QUOTE.jobId });
+  });
+
   test('a montage already running shows once: in the tray, with its stop, until the chat\'s own card takes it over', async ({ page }) => {
     const calls = await open(page, true, { live: true });
     const tray = page.getByTestId('job-tray');

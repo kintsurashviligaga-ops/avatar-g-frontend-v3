@@ -12,7 +12,7 @@ import type { MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { RunApproval } from '@/lib/agent/approval';
 import { codeOf, type ChatErrorCode } from './montageChat';
 import type { TaskView } from '@/lib/tasks/taskView';
-import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, followTask, taskEndedAt, type Fetch, type FollowDeps } from './jobFollow';
 
 export { FOLLOW_MS, POLL_MS, SEND_TRIES } from './jobFollow';
 
@@ -103,6 +103,20 @@ export function runAgentMontage(
     refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),
     lost: (why) => ({ ok: false, code: why }),
   });
+}
+
+/**
+ * Take a running montage back after the page was reloaded or replaced (a language switch mounts the studio afresh):
+ * follow its job by id, nothing is sent again. `endedAt` is when the job ended, so the card's clock stops there.
+ */
+export function resumeAgentMontage(deps: RunDeps, jobId: string): Promise<ClientRun & { endedAt?: number }> {
+  let endedAt: number | undefined;
+  return followTask<ClientRun>(deps, {
+    jobId,
+    done: (t) => { const r = done(t); if (r) endedAt = taskEndedAt(t); return r; },
+    refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),
+    lost: (why) => ({ ok: false, code: why }),
+  }, { queued: false, readNow: true, neverFound: 'not_found' }).then((r) => (endedAt ? { ...r, endedAt } : r));
 }
 
 /** Stop a running edit. The run's own answer then reports it as cancelled. */

@@ -4,7 +4,7 @@
  * route and followed to its end through the one task route (/api/tasks) with its progress, a lost answer sent again,
  * and Stop (through the task route too).
  */
-import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage, FOLLOW_MS, POLL_MS, SEND_TRIES } from './montageClient';
+import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, FOLLOW_MS, POLL_MS, SEND_TRIES } from './montageClient';
 
 type Call = { url: string; body?: Record<string, unknown> };
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -201,6 +201,47 @@ describe('run', () => {
       .toEqual({ ok: false, code: 'network' });
     expect(k.now()).toBeGreaterThanOrEqual(FOLLOW_MS);
     expect(reads(stuck).length).toBeLessThanOrEqual(FOLLOW_MS / POLL_MS + 1);
+  });
+
+  // ── A card taken back after the page went (a reload, a language switch: the Preview run of 2026-10-11) ──────────────
+  test('a running card taken back sends NOTHING: it reads the job at once and follows it to the master', async () => {
+    const views = [running(70), task({ status: 'completed', pct: 100, updatedAt: '2026-10-11T10:00:05.000Z', result: { url: 'https://m/out.mp4', media: 'video', durationSec: 19.97, aspect: '9:16' } })];
+    const s = server((c) => (c.body ? json(500, {}) : json(200, views.shift())));
+    const k = clock();
+    const progress: Array<[number | null, string | null]> = [];
+    const r = await resumeAgentMontage({ fetch: s.fetch, ...k, onProgress: (p, st) => progress.push([p, st]) }, 'job-1');
+    // Where the job ended, so the card's clock stops there and not at the moment the page came back.
+    expect(r).toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '9:16', endedAt: Date.parse('2026-10-11T10:00:05.000Z') });
+    expect(s.calls.filter((c) => c.body)).toEqual([]);
+    expect(reads(s).map((c) => c.url)).toEqual(['/api/tasks?id=job-1', '/api/tasks?id=job-1']);
+    expect(progress).toEqual([[70, 'stitch']]);
+    // The first read went out at once: only the second waited a poll.
+    expect(k.now()).toBe(POLL_MS);
+  });
+
+  test('a job that already ended while the page was away is read once; a stopped or failed one says why', async () => {
+    const s = server(() => json(200, COMPLETED));
+    expect(await resumeAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, 'job-1')).toEqual({ ok: true, videoUrl: 'https://m/out.mp4', durationSec: 19.97, aspect: '16:9' });
+    expect(s.calls).toHaveLength(1);
+    expect(await resumeAgentMontage({ fetch: server(() => json(200, failed('cancelled'))).fetch, ...clock(), onProgress: () => {} }, 'job-1')).toEqual({ ok: false, code: 'cancelled' });
+    expect(await resumeAgentMontage({ fetch: server(() => json(200, failed('qc_failed'))).fetch, ...clock(), onProgress: () => {} }, 'job-1')).toEqual({ ok: false, code: 'qc_failed' });
+  });
+
+  test('a job the server never had (the page went before its run got through) is not_found after a few reads, never a hang', async () => {
+    const s = server(() => json(404, { ok: false, error: 'not_found', message: 'No such task.' }));
+    expect(await resumeAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {} }, 'job-1')).toEqual({ ok: false, code: 'not_found' });
+    expect(s.calls).toHaveLength(3);
+    // A run still landing is waited out: the job appears on the second read.
+    const late = [json(404, { ok: false, error: 'not_found', message: 'No such task.' }), json(200, COMPLETED)];
+    expect((await resumeAgentMontage({ fetch: server(() => late.shift()!).fetch, ...clock(), onProgress: () => {} }, 'job-1')).ok).toBe(true);
+  });
+
+  test('a follow whose studio left the screen ends on its next tick (the new studio follows the job itself)', async () => {
+    let alive = true;
+    const s = server(() => { alive = false; return json(200, running(20)); });
+    const r = await resumeAgentMontage({ fetch: s.fetch, ...clock(), onProgress: () => {}, alive: () => alive }, 'job-1');
+    expect(r).toEqual({ ok: false, code: 'network' });
+    expect(s.calls).toHaveLength(1);
   });
 });
 
