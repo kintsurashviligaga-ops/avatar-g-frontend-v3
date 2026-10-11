@@ -31,6 +31,17 @@ const CUT = new RegExp([
 /** A trim of one clip is the remix's job, never a montage. */
 const TRIM = /\btrim\b|\bcut\s+(?:the\s+)?(?:first|last|off|out|beginning|end)\b|მოჭერ|შემოკლ|обрез|обрежь/iu;
 
+/** Does the message ask for a cut / montage („დაამონტაჟე", „cut these together", „склей")? Shapes aside. */
+export function hasMontageWords(text: string): boolean {
+  const t = (text || '').trim();
+  return !!t && (CUT.test(t) || detectStudioIntent(t)?.service === 'montage');
+}
+
+/** Does the message speak of music / a beat / a track? */
+export function hasMusicWords(text: string): boolean {
+  return MUSIC.test(text || '');
+}
+
 /** Is this message, with these attachments, a request to cut the clips to the track? */
 export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const t = (text || '').trim();

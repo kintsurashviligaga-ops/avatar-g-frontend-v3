@@ -52,12 +52,14 @@ export async function POST(req: NextRequest) {
   if (!contentType) {
     return NextResponse.json({ error: 'unsupported file type (images, video and audio only)' }, { status: 415 });
   }
-  if (body.size !== undefined && body.size !== null) {
-    const size = Number(body.size);
-    if (!Number.isFinite(size) || size < 0 || size > UPLOAD_MAX_BYTES) {
-      return NextResponse.json({ error: 'file too large (50MB max)' }, { status: 413 });
-    }
+  // The size is REQUIRED (every browser leg sends it): a token minted for „some file" let a caller skip the cap check here
+  // and learn it only from the bucket, after the whole upload.
+  if (body.size === undefined || body.size === null || body.size === '') {
+    return NextResponse.json({ error: 'size required' }, { status: 400 });
   }
+  const size = Number(body.size);
+  if (!Number.isFinite(size) || size <= 0) return NextResponse.json({ error: 'size required' }, { status: 400 });
+  if (size > UPLOAD_MAX_BYTES) return NextResponse.json({ error: 'file too large (50MB max)' }, { status: 413 });
 
   let admin: ReturnType<typeof createServiceRoleClient>;
   try {

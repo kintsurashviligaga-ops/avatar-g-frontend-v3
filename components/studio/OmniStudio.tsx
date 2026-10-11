@@ -192,6 +192,9 @@ import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes,
 import { documentToText } from '@/lib/chat/documentText';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
 import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
+import { montageEditorOpenedText, multiVideoRoute, pickOneVideoText } from '@/lib/chat/chatMediaRoute';
+import { uploadErrorText, uploadFileToStorage } from './ui/useUpload';
+import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
 // The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
@@ -262,6 +265,9 @@ function busyToastMessage(locale: Lang): string {
 // ⚠️ The SOURCE is read through fetchRehostSource: a lapsed signed URL (the "My twin" face) answers 400 with JSON, and
 // re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
 async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
+  // An attachment the chat already uploaded (or is uploading): its one stored copy.
+  const known = chatUploads.get(dataUrl);
+  if (known) return known;
   try {
     // The bytes first, so the sign call can declare their size and real type: /api/upload/sign and the bucket take
     // images, video and audio up to 50 MB only (lib/uploads/policy).
@@ -292,6 +298,19 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
     return null;
   }
 }
+
+/**
+ * THE CHAT'S ATTACHMENT UPLOADS — one per attached video / audio file, started the moment it is picked (ingestFiles) and
+ * keyed by the attachment's `dataUrl` (for those, an object URL of the picked File).
+ *
+ * ⚠️ EVERY FLOW USED TO UPLOAD ITS OWN SUBSET AT SEND. The remix uploaded the first video and the track, the montage
+ * all of them, the MP3 extraction the first file — each through uploadBigFile, after Send, with no progress and no
+ * state on the tile; a file that never uploaded was simply not in the result. Now a file goes up once, with progress,
+ * is checked by the server (/api/upload/verify reads the stored bytes), and uploadBigFile hands every flow the SAME
+ * stored path (no second copy). A failed upload resolves null and its tile says so; send() refuses until it is retried
+ * or removed, naming the file.
+ */
+const chatUploads = new Map<string, Promise<string | null>>();
 
 // Phase 6 polish — decode an uploaded audio File entirely client-side to get its real
 // duration + a downsampled waveform (N peaks in 0..1) for the music-video preview. Pure
@@ -984,7 +1003,14 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
 }
 
 
-interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean; /** A track let past the inline cap for Agent G's montage: it may travel only as an upload (send() enforces it). */ uploadOnly?: boolean }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean; /** A track let past the inline cap for Agent G's montage: it may travel only as an upload (send() enforces it). */ uploadOnly?: boolean;
+  /** A composer attachment's own id (the tray tile's key; the upload is tracked by `dataUrl`). */ id?: string;
+  /** The upload pipeline's state for a video / audio attachment (chatUploads): absent for inline-only files. */ status?: 'uploading' | 'ready' | 'failed';
+  /** 0..1 while uploading. */ progress?: number;
+  /** Where its bytes are stored (the server checked them) — what every flow and the Live call refer to it by. */ storagePath?: string;
+  /** Length in seconds (video / audio), when the browser could read it. */ durationSec?: number;
+  /** A still of a video's first moment, for its tile. */ poster?: string;
+  /** Why it failed, in the user's language. */ error?: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -1107,8 +1133,9 @@ function cardJobsOf(m: Msg): string[] {
 const cardRunning = (m: Msg): boolean =>
   m.montage?.phase === 'running' || m.audioJob?.phase === 'running' || m.editJob?.phase === 'running' || m.runJob?.phase === 'running';
 
-// Up to this many files/images (or one video) can ride along with a single message.
-const MAX_ATTACHMENTS = 5;
+// Up to this many files can ride along with a single message — enough for a montage of several clips and a track
+// (videos and big tracks are uploaded, not carried in the request: see chatUploads).
+const MAX_ATTACHMENTS = 8;
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -2056,9 +2083,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Which workspace the editor should open in, when the caller already knows (see SurgicalEditor).
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
-  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string }[] | null>(null);
+  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string; ref?: string }[] | null>(null);
   /** A voice call's montage open (lib/voice/liveTools `montage`): the music bed and where in the song it starts, and the format. */
-  const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number } | null>(null);
+  const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number; ref?: string } | null>(null);
   const [montageAspectSeed, setMontageAspectSeed] = useState<'9:16' | '16:9' | '1:1' | null>(null);
   /** Bumped by a voice montage open: a NEW edit with those seeds, even when Montage is already on screen (it reads its seeds at mount). */
   const [montageSessionKey, setMontageSessionKey] = useState(0);
@@ -2733,19 +2760,117 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // What the tray already carries INLINE (a video is not inline: it is uploaded to storage when its request runs).
   const inlineBytesRef = useRef(0);
   inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) || a.uploadOnly ? sum : sum + a.dataUrl.length), 0);
+  // ── THE CANONICAL ATTACHMENT UPLOAD (see chatUploads) ──
+  // A picked video / audio goes up AT ONCE, with progress on its tile; Ready only after the server checked the stored bytes.
+  const attachmentFilesRef = useRef(new Map<string, File>());
+  const attachmentAbortRef = useRef(new Map<string, AbortController>());
+  const patchAttachment = useCallback((id: string, patch: Partial<Media>) => {
+    setAttachments((prev) => (prev.some((a) => a.id === id) ? prev.map((a) => (a.id === id ? { ...a, ...patch } : a)) : prev));
+  }, []);
+  const startAttachmentUpload = useCallback((id: string, key: string, file: File, kind: 'video' | 'audio') => {
+    attachmentAbortRef.current.get(id)?.abort();
+    const ac = new AbortController();
+    attachmentAbortRef.current.set(id, ac);
+    let shown = 0;
+    patchAttachment(id, { status: 'uploading', progress: 0, error: undefined });
+    const upload = uploadFileToStorage(file, {
+      signal: ac.signal,
+      verifyKind: kind,
+      // A re-render per 2 % is plenty for a ring; the last step always lands.
+      onProgress: (f) => { const pct = Math.round(f * 100); if (pct - shown >= 2 || f >= 1) { shown = pct; patchAttachment(id, { progress: f }); } },
+    }).then((res) => {
+      if (attachmentAbortRef.current.get(id) === ac) attachmentAbortRef.current.delete(id);
+      if ('path' in res) {
+        patchAttachment(id, { status: 'ready', progress: 1, storagePath: res.path, error: undefined });
+        return res.path;
+      }
+      if (res.error !== 'aborted') {
+        const why = uploadErrorText(res.error, locale, file.name);
+        patchAttachment(id, { status: 'failed', error: why });
+        toast.error(why.includes(file.name) ? why : `${why} — ${file.name}`);
+      }
+      return null;
+    });
+    chatUploads.set(key, upload);
+  }, [locale, patchAttachment]);
+  /** Length and a first-frame still for a video / audio tile — best effort, never blocks. */
+  const probeAttachment = useCallback((id: string, url: string, kind: 'video' | 'audio') => {
+    void probeDuration(url, kind, 8000).then(async (durationSec) => {
+      if (durationSec > 0) patchAttachment(id, { durationSec });
+      if (kind === 'video' && durationSec > 0) {
+        const [poster] = await extractFrames(url, Math.min(durationSec, 1), 1, 112).catch(() => [] as string[]);
+        if (poster) patchAttachment(id, { poster });
+      }
+    });
+  }, [patchAttachment]);
+  /** Take a file out of the tray: its upload stops and its preview URL is released. */
+  const removeAttachment = useCallback((a: Media) => {
+    if (a.id) {
+      attachmentAbortRef.current.get(a.id)?.abort();
+      attachmentAbortRef.current.delete(a.id);
+      attachmentFilesRef.current.delete(a.id);
+    }
+    if (a.dataUrl.startsWith('blob:')) { chatUploads.delete(a.dataUrl); URL.revokeObjectURL(a.dataUrl); }
+    setAttachments((prev) => prev.filter((x) => x !== a));
+  }, []);
+  // Files sent or removed leave the tray: forget them (the „already attached" check only looks at the tray). Only ids that
+  // WERE in the tray are forgotten — one picked a moment ago may not have rendered yet.
+  const trayIdsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const live = new Set(attachments.map((a) => a.id).filter((x): x is string => !!x));
+    for (const id of trayIdsRef.current) if (!live.has(id)) attachmentFilesRef.current.delete(id);
+    trayIdsRef.current = live;
+  }, [attachments]);
+  /** Try a failed upload again with the same file. */
+  const retryAttachment = useCallback((a: Media) => {
+    const file = a.id ? attachmentFilesRef.current.get(a.id) : undefined;
+    if (!a.id || !file || (!isVideo(a.mimeType) && !isAudio(a.mimeType))) return;
+    startAttachmentUpload(a.id, a.dataUrl, file, isVideo(a.mimeType) ? 'video' : 'audio');
+  }, [startAttachmentUpload]);
   const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
     const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
     let room = MAX_ATTACHMENTS - attachmentCountRef.current;
+    // Uploading needs an account (/api/upload/sign is signed-in only): a guest's files stay in the browser.
+    const signedIn = typeof document === 'undefined' || document.documentElement.dataset.authed !== '0';
     for (const f of files) {
       if (opts?.scriptInVideo !== false && mode === 'video' && isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); continue; }
       const kind = classifyFile(f);
       const label = f.name || kind;
-      if (room <= 0) { toast.error(rejectionMessage('too_many', lang, label)); break; }
-      const cap = PER_FILE_CAP_BYTES[kind];
+      if (room <= 0) { toast.error(rejectionMessage('too_many', lang, label, 0, MAX_ATTACHMENTS)); break; }
+      // Video and audio are uploaded, not carried in the request: their cap is the upload's (50 MB), not the inline one.
+      const media = kind === 'video' || kind === 'audio';
+      const cap = media ? UPLOAD_MAX_BYTES : PER_FILE_CAP_BYTES[kind];
       if (f.size > cap) { toast.error(rejectionMessage('too_large', lang, label, cap)); continue; }
       if (f.size === 0) { toast.error(rejectionMessage('empty', lang, label)); continue; }
+      // The same file picked twice is one attachment.
+      if ([...attachmentFilesRef.current.values()].some((x) => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified)) {
+        toast(lang === 'en' ? `„${label}" is already attached` : lang === 'ru' ? `«${label}» уже прикреплён` : `„${label}" უკვე მიმაგრებულია`);
+        continue;
+      }
       try {
         const mime = mimeForFile(f);
+        const uploadType = media ? allowedUploadMime(mime, f.name) : null;
+        const canUpload = signedIn && !!uploadType;
+        const inlineSize = Math.ceil(f.size / 3) * 4 + 64;
+        // ⚠️ A VIDEO (OR A TRACK TOO BIG TO TRAVEL INLINE) IS NO LONGER READ INTO MEMORY AS BASE64. A 20 MB clip became a
+        // ~27 MB string per file, three of them froze an iPhone, and the montage then fetched each one back to upload it.
+        // The tile shows an object URL; the bytes go straight to storage (chatUploads) and every flow uses that copy.
+        if (kind === 'video' || (kind === 'audio' && inlineBytesRef.current + inlineSize > DEFAULT_TOTAL_CAP_BYTES)) {
+          if (kind === 'audio' && !canUpload) { toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES)); continue; }
+          const id = `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+          const objectUrl = URL.createObjectURL(f);
+          room -= 1;
+          attachmentFilesRef.current.set(id, f);
+          const item: Media = {
+            id, dataUrl: objectUrl, mimeType: uploadType || mime || (kind === 'video' ? 'video/mp4' : 'audio/mpeg'), size: f.size,
+            ...(f.name ? { name: f.name } : {}), ...(kind === 'audio' ? { uploadOnly: true } : {}),
+            ...(canUpload ? { status: 'uploading' as const, progress: 0 } : {}),
+          };
+          setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, item]);
+          if (canUpload) startAttachmentUpload(id, objectUrl, f, kind);
+          probeAttachment(id, objectUrl, kind);
+          continue;
+        }
         let dataUrl: string;
         let mimeType: string;
         let truncated = false;
@@ -2760,26 +2885,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
           mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
         }
-        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
-        // song passed the caps above and then failed at Send with only a generic error. Everything except a video
-        // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
-        // …except a song in the chat while Agent G's montage is open to this user: the montage (and the video remix) UPLOAD
-        // their track, browser → storage, so a real song (a 320 kbps MP3 is ~7 MB) may pass. It is marked, and send() lets
-        // it go only down those two paths: anywhere else it would be put in the request body and fail at Send.
-        const overInline = kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES;
-        const uploadOnly = overInline && kind === 'audio' && mode === 'chat' && (agentMontageOn || agentAudioOn);
-        if (overInline && !uploadOnly) {
+        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF passed the caps
+        // above and then failed at Send with only a generic error. What travels inline (photos, documents, a small track)
+        // must fit together (≈ 4 MB encoded); say so here, before the user writes. Video and big tracks went up above.
+        if (inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES) {
           toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES));
           continue;
         }
-        if (kind !== 'video' && !uploadOnly) inlineBytesRef.current += dataUrl.length;
+        inlineBytesRef.current += dataUrl.length;
         room -= 1;
-        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(uploadOnly ? { uploadOnly: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
+        // A small track rides inline (a question about the song) AND is uploaded, so a montage or an edit uses the stored copy.
+        const id = `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        attachmentFilesRef.current.set(id, f);
+        const upload = kind === 'audio' && canUpload;
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { id, dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(f.name ? { name: f.name } : {}), ...(upload ? { status: 'uploading' as const, progress: 0 } : {}) }]);
+        if (upload) startAttachmentUpload(id, dataUrl, f, 'audio');
+        if (kind === 'audio') probeAttachment(id, dataUrl, 'audio');
       } catch {
         toast.error(rejectionMessage('unreadable', lang, label));
       }
     }
-  }, [locale, mode, isScriptFile, loadScriptFile, agentMontageOn, agentAudioOn]);
+  }, [locale, mode, isScriptFile, loadScriptFile, startAttachmentUpload, probeAttachment]);
   const onChatDrop = useCallback((e: React.DragEvent) => {
     if (!dragHasFiles(e)) return;
     e.preventDefault();
@@ -5970,10 +6096,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
-    // A track let past the inline cap for Agent G's montage (ingestFiles) travels only as an upload: Agent G's montage and
-    // the video remix upload it; any other path would put it in the request body and fail at the platform's ~4.5 MB limit.
+    // A FILE THAT DID NOT UPLOAD IS NEVER QUIETLY LEFT OUT. Send waits until it is retried or removed, and says which.
+    const failedFiles = attachments.filter((a) => a.status === 'failed');
+    if (failedFiles.length) {
+      const names = failedFiles.map((a) => `„${a.name || attachedKind(a.mimeType)}"`).join(', ');
+      toast.error(locale === 'en' ? `${names} did not upload — tap Retry on it, or remove it, then send.`
+        : locale === 'ru' ? `${names} не загрузился — нажмите «Повтор» на нём или уберите его и отправьте снова.`
+          : `${names} ვერ აიტვირთა — დააჭირე „ხელახლა" ან ამოიღე და ისე გაგზავნე.`);
+      return;
+    }
+    // A track too big to travel inline (ingestFiles) goes only where it is used as an upload: Agent G's montage, the Montage
+    // editor, the video remix, the MP3 extraction and the run; any other path would put it in the request body.
     if (attachments.some((a) => a.uploadOnly)) {
       const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const editor = mode === 'chat' && (detectStudioIntent(text)?.service === 'montage' || multiVideoRoute(text, kinds) === 'montage_editor');
+      if (editor) { /* the Montage editor uses the stored track: see below */ } else {
       const montage = mode === 'chat' && agentMontageOn && beatMontageAsk(text, kinds);
       const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
       const extract = mode === 'chat' && agentAudioOn && audioExtractAsk(text, kinds)?.source === 'file';
@@ -5981,6 +6118,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // A long recording is what the whole-file analysis is for: it goes up and Gemini reads it by reference.
       const analyze = mode === 'chat' && agentAnalyzeOn && analyzeAsk(text, kinds)?.source === 'file';
       if (!montage && !remix && !extract && !run && !analyze) { toast.error(trackTooBigText(locale)); return; }
+      }
     }
     // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
@@ -6221,21 +6359,47 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
     }
+    // ── SEVERAL VIDEOS ARE NEVER A ONE-VIDEO EDIT (lib/chat/chatMediaRoute) ──
+    // GG's 2026-10-11 run: three clips + a track + „…დაამონტაჟე, მუსიკას დაამთხვიე" became a remix of clip one; the other
+    // two were dropped without a word. With two or more videos the turn is a montage (the editor below, with every file),
+    // a question about all of them (further down), or — for a one-video edit — a question back: which one.
+    const chatKinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+    const multiRoute = mode === 'chat' ? multiVideoRoute(text, chatKinds) : null;
+    if (multiRoute === 'pick_one_video') {
+      // Nothing is sent and nothing is dropped: the words and every file stay in the composer.
+      setMessages((prev) => [...prev, { role: 'assistant', text: pickOneVideoText(attachments.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), locale), notice: true }]);
+      return;
+    }
     const studio = mode === 'chat' ? detectStudioIntent(text) : null;
-    if (studio?.service === 'montage') {
-      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with the
-      // videos and photos the user attached already on its timeline, instead of a second, form-shaped montage.
-      const media = attachments
-        .filter((a) => isVideo(a.mimeType) || isImage(a.mimeType))
-        .map((a) => ({ url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const), ...(a.name ? { name: a.name } : {}) }));
-      const en = locale === 'en', ru = locale === 'ru';
+    if (studio?.service === 'montage' || multiRoute === 'montage_editor') {
+      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with EVERY clip and
+      // photo the user attached on its timeline in their order, and the first track as its music (it used to drop the
+      // track). Files already uploaded are handed over by their stored path, so nothing is uploaded twice.
+      const files = attachments;
+      const visual = files.filter((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+      const track = files.find((a) => isAudio(a.mimeType));
+      setBusy(true);
+      const stored = new Map<Media, string>();
+      await Promise.all([...visual, ...(track ? [track] : [])].map(async (a) => {
+        const path = a.storagePath ?? (await (chatUploads.get(a.dataUrl) ?? Promise.resolve(null)));
+        if (path) stored.set(a, path);
+      }));
+      setBusy(false);
+      const media = visual.map((a) => ({
+        url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const),
+        ...(a.name ? { name: a.name } : {}), ...(stored.get(a) ? { ref: stored.get(a)! } : {}),
+      }));
       const name = serviceLabel('montage', locale);
+      const en = locale === 'en', ru = locale === 'ru';
       const reply = media.length
-        ? (en ? `Opened **${name}** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **${name}** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **${name}** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
+        ? montageEditorOpenedText(files.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), agentMontageOn ? 'agent_shape' : 'agent_closed', locale)
         : (en ? `Opened **${name}** — add your videos or photos.` : ru ? `Открыл **${name}** — добавьте видео или фото.` : `გავხსენი **${name}** — დაამატე ვიდეოები ან ფოტოები.`);
-      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
+      setMessages((prev) => [...prev, { role: 'user', text, ...(files.length ? { medias: files, modelMedias: [] } : {}) }, { role: 'assistant', text: reply }]);
       setMontageSeed(media.length ? media : null);
-      if (media.length) setAttachments([]);
+      setMontageMusicSeed(track ? { url: track.dataUrl, name: track.name || 'Music', ...(stored.get(track) ? { ref: stored.get(track)! } : {}) } : null);
+      setMontageAspectSeed(null);
+      setMontageSessionKey((k) => k + 1);
+      if (files.length) setAttachments([]);
       setInput(''); stopDictationEcho();
       setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
       return;
@@ -10821,9 +10985,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}
         {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {attachments.map((a, ai) => (
-              <div key={ai} className="relative" title={a.name}>
+          <div className="mb-2 flex flex-wrap gap-2" data-testid="composer-attachments">
+            {attachments.map((a, ai) => {
+              // Every uploaded file says where it is: uploading (a bar and its %), Ready (stored and checked), or why it
+              // failed with Retry. The state is the server's, never a timer.
+              const pct = Math.round((a.progress ?? 0) * 100);
+              const stateWord = a.status === 'uploading'
+                ? (locale === 'en' ? `Uploading ${pct}%` : locale === 'ru' ? `Загрузка ${pct}%` : `იტვირთება ${pct}%`)
+                : a.status === 'ready' ? (locale === 'en' ? 'Ready' : locale === 'ru' ? 'Готово' : 'მზადაა')
+                  : a.status === 'failed' ? (locale === 'en' ? 'Failed' : locale === 'ru' ? 'Ошибка' : 'ვერ აიტვირთა') : '';
+              const facts = [
+                a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : '',
+                a.size ? formatBytes(a.size) : '',
+                a.durationSec ? fmtClock(Math.round(a.durationSec)) : '',
+              ].filter(Boolean).join(' · ');
+              return (
+              <div key={a.id ?? ai} className="relative" title={[a.name, facts, a.error || stateWord].filter(Boolean).join(' · ')}
+                data-testid="composer-attachment" data-status={a.status ?? 'local'}>
                 {isImage(a.mimeType) ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -10832,27 +11010,49 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span aria-hidden="true" className="mya-scanline pointer-events-none absolute inset-0" />
                   </>
                 ) : isVideo(a.mimeType) ? (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
+                  <span className="relative block h-14 w-14 overflow-hidden rounded-xl bg-app-surface ring-1 ring-app-border/15">
+                    {a.poster
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={a.poster} alt="" className="h-full w-full object-cover" />
+                      // eslint-disable-next-line jsx-a11y/media-has-caption
+                      : <video src={a.dataUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />}
+                    {a.durationSec ? <span className="absolute right-0.5 top-0.5 rounded bg-black/70 px-1 text-[9.5px] font-semibold tabular-nums leading-[14px] text-white">{fmtClock(Math.round(a.durationSec))}</span> : null}
+                  </span>
                 ) : (
-                  // A document or a sound: its icon, its NAME and its size (a 56 px square said only "pdf") — and, when its
-                  // text was cut at the cap, that it was.
+                  // A document or a sound: its icon, its NAME, its size and length (a 56 px square said only "pdf") — and,
+                  // when its text was cut at the cap, that it was.
                   <span className="flex h-14 max-w-[13rem] items-center gap-2 rounded-xl bg-app-surface px-3 text-app-accent">
                     {isAudio(a.mimeType) ? <Music2 size={18} className="shrink-0" /> : <FileText size={18} className="shrink-0" />}
                     <span className="min-w-0">
                       <span className="block max-w-[9.5rem] truncate text-[12px] font-medium leading-tight text-app-text">{a.name || (isAudio(a.mimeType) ? 'audio' : 'file')}</span>
                       <span className="block truncate text-[10.5px] uppercase leading-tight text-app-muted">
-                        {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : ''}
-                        {a.size ? `${a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? ' · ' : ''}${formatBytes(a.size)}` : ''}
+                        {facts}
                         {a.truncated ? ` · ${locale === 'en' ? 'shortened' : locale === 'ru' ? 'сокращён' : 'შეკვეცილია'}` : ''}
                       </span>
                     </span>
                   </span>
                 )}
-                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label={t.a11yRemove}
+                {a.status === 'uploading' && (
+                  <span className="pointer-events-none absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-black/40" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${a.name ?? ''} ${stateWord}`}>
+                    <span className="block h-full rounded-full bg-app-accent transition-[width] duration-200" style={{ width: `${Math.max(4, pct)}%` }} />
+                  </span>
+                )}
+                {a.status === 'ready' && (
+                  <span className="pointer-events-none absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-app-accent text-white ring-2 ring-app-bg" aria-label={stateWord}><Check size={10} strokeWidth={3} /></span>
+                )}
+                {a.status === 'failed' && (
+                  <button type="button" onClick={() => retryAttachment(a)} aria-label={`${locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повторить' : 'ხელახლა'} — ${a.name ?? ''}`}
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 rounded-xl bg-black/65 text-[10px] font-semibold text-white touch-manipulation">
+                    <AlertTriangle size={14} className="text-app-warning" aria-hidden="true" />
+                    <span className="flex items-center gap-0.5"><RotateCcw size={10} aria-hidden="true" />{locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повтор' : 'ხელახლა'}</span>
+                  </button>
+                )}
+                <span className="sr-only" aria-live="polite">{a.status === 'uploading' ? '' : stateWord}</span>
+                <button type="button" onClick={() => removeAttachment(a)} aria-label={t.a11yRemove}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

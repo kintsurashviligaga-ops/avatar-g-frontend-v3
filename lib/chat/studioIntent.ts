@@ -114,7 +114,7 @@ const SERVICE_NOUNS: Array<{ service: StudioService; re: RegExp }> = [
   { service: 'presentation', re: new RegExp(`${B0}(?:presentation|slide\\s*deck|slides?|deck|powerpoint|keynote|პრეზენტაცი${L}*|სლაიდ${L}*|презентаци${L}*|слайд${L}*)${B1}`, 'iu') },
   { service: 'model3d', re: new RegExp(`${B0}(?:3\\s*-?\\s*d\\s*(?:model|object|mesh|asset)|three[\\s-]?d\\s*model|glb|3d\\s*მოდელ${L}*|სამგანზომილებ${L}*|3d[\\s-]?модел${L}*|трёхмерн${L}*)${B1}`, 'iu') },
   // Montage LAST: its nouns (clips, footage) are the most likely to appear incidentally.
-  { service: 'montage', re: new RegExp(`${B0}(?:montage|stitch|splice|(?:combine|merge|join)\\s+(?:the\\s+)?(?:clips?|videos?|footage)|edit\\s+together|cut\\s+together|მონტაჟ${L}*|გააერთიან${L}*|монтаж${L}*|склей${L}*|соедини${L}*)${B1}`, 'iu') },
+  { service: 'montage', re: new RegExp(`${B0}(?:montage|stitch|splice|(?:combine|merge|join)\\s+(?:the\\s+)?(?:clips?|videos?|footage)|edit\\s+together|cut\\s+together|(?:და|გადა)?(?:მი|ა)?მონტაჟ${L}*|გააერთიან${L}*|შეაერთ${L}*|монтаж${L}*|склей${L}*|соедини${L}*)${B1}`, 'iu') },
   { service: 'avatar', re: new RegExp(`${B0}(?:avatar|talking\\s+head|lip[\\s-]?sync|ავატარ${L}*|аватар${L}*|липсинк)${B1}`, 'iu') },
 ];
 

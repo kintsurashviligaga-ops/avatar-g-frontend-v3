@@ -58,14 +58,18 @@ type Panel = 'music' | 'text' | 'filters' | 'adjust' | 'format' | 'transition' |
 export interface MontageStudioProps {
   locale: string;
   onExit: () => void;
-  /** Clips to open with — a video sent here from the chat („Open in editor"), or the attachments of a request. */
-  initialMedia?: { url: string; kind: 'video' | 'image'; name?: string }[];
+  /**
+   * Clips to open with — a video sent here from the chat („Open in editor"), or the attachments of a request — placed on
+   * the timeline IN THIS ORDER. `ref`: the storage path the chat already uploaded (and verified) these bytes to; such a
+   * clip is ready at once and is not uploaded a second time.
+   */
+  initialMedia?: { url: string; kind: 'video' | 'image'; name?: string; ref?: string }[];
   /**
    * A song to open with — e.g. one the Music tool just made — as the music bed, starting `startSec` into it (default
    * 0; clamped to the track once its length is known). An https URL is used as it is; a data:/blob: URL is uploaded
-   * like a picked file, and Export waits for it like any other source.
+   * like a picked file (unless `ref` says where the chat already stored it), and Export waits for it like any other source.
    */
-  initialMusic?: { url: string; name?: string; startSec?: number };
+  initialMusic?: { url: string; name?: string; startSec?: number; ref?: string };
   /** The format to start in. With `initialMedia` the format choice is skipped: the editor opens on the clips. */
   initialAspect?: MontageAspect;
   /** Called once with the finished video, so it lands in the conversation too (and survives closing this). */
@@ -320,34 +324,52 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     if (wasEmpty) window.setTimeout(() => seek(0), 0);
   }, [apply, flash, seek, t]);
 
-  // Opening with media (from the chat): hosted URLs are used as they are; data:/blob: are uploaded first.
+  // Opening with media (from the chat): hosted URLs are used as they are, clips the chat already stored (`ref`) are ready
+  // at once, other data:/blob: are uploaded first — and all of them land on the timeline in the order they were given.
+  // ⚠️ THIS USED TO ADD THE HOSTED ONES FIRST AND THE LOCAL ONES AFTER, so a mixed list came out reordered.
   const seeded = useRef(false);
   useEffect(() => {
     if (seeded.current || !initialMedia?.length) return;
     seeded.current = true;
     void (async () => {
-      const files: File[] = [];
-      const hosted: LibraryItem[] = [];
-      for (const m of initialMedia) {
-        if (/^https?:\/\//i.test(m.url)) {
-          hosted.push({ id: newId('lib'), kind: m.kind === 'video' ? 'film' : 'image', url: m.url, prompt: m.name ?? null, orientation: 'landscape', createdAt: '' });
-          continue;
-        }
-        try {
-          const blob = await (await fetch(m.url)).blob();
-          const type = blob.type || (m.kind === 'video' ? 'video/mp4' : 'image/png');
-          files.push(new File([blob], m.name || `clip.${m.kind === 'video' ? 'mp4' : 'png'}`, { type }));
-        } catch { /* an unreadable attachment is skipped rather than blocking the rest */ }
-      }
       try {
-        if (hosted.length) await addLibrary(hosted);
-        if (files.length) await addFiles(files);
+        const room = Math.max(0, MAX_SHOTS - editRef.current.clips.length);
+        if (initialMedia.length > room) flash(t.tooMany);
+        const made: MediaSource[] = [];
+        const uploads: Array<[string, File]> = [];
+        for (const m of initialMedia.slice(0, room)) {
+          const kind = m.kind === 'image' ? 'image' : 'video';
+          const id = newId('src');
+          const fallbackName = kind === 'video' ? t.video : t.photo;
+          if (/^https?:\/\//i.test(m.url) || m.ref) {
+            if (m.url.startsWith('blob:')) foreignUrls.current.add(m.url);
+            const durationSec = kind === 'video' ? await probeDuration(m.url, 'video', 8000) : 0;
+            made.push({ id, kind, name: (m.name ?? '').slice(0, 40) || fallbackName, previewUrl: m.url, ref: m.ref ?? m.url, status: 'ready', durationSec });
+            continue;
+          }
+          try {
+            const blob = await (await fetch(m.url)).blob();
+            const type = blob.type || (kind === 'video' ? 'video/mp4' : 'image/png');
+            const file = new File([blob], m.name || `clip.${kind === 'video' ? 'mp4' : 'png'}`, { type });
+            const previewUrl = URL.createObjectURL(file);
+            const durationSec = kind === 'video' ? await probeDuration(previewUrl, 'video', 8000) : 0;
+            made.push({ id, kind, name: file.name, previewUrl, ref: null, status: 'uploading', durationSec });
+            uploads.push([id, file]);
+          } catch { flash(t.failed); /* an unreadable attachment is skipped rather than blocking the rest — and said */ }
+        }
+        if (!made.length) return;
+        setSources((cur) => ({ ...cur, ...Object.fromEntries(made.map((x) => [x.id, x])) }));
+        if (made.some((x) => x.kind === 'video' && x.durationSec > MAX_SHOT_SEC)) flash(t.firstMinute);
+        const wasEmpty = editRef.current.clips.length === 0;
+        apply((e) => insertClips(e, made.map(clipForSource)).edit);
+        for (const [id, file] of uploads) enqueueUpload(id, file);
+        if (wasEmpty) window.setTimeout(() => seek(0), 0);
       } finally {
         // Nothing usable landed → the start screen after all, in the format it was opened in.
         setSeeding(false);
       }
     })();
-  }, [initialMedia, addFiles, addLibrary]);
+  }, [initialMedia, apply, enqueueUpload, flash, seek, t]);
 
   // FULL SCREEN, like CapCut: the editor's own bar (✕ · format · Export) is the only one — the shell's header hides
   // while it is open (globals.css `html[data-immersive]`).
@@ -402,13 +424,14 @@ export default function MontageStudio({ locale, onExit, initialMedia, initialMus
     if (musicSeeded.current || !initialMusic?.url) return;
     musicSeeded.current = true;
     const m = initialMusic;
-    const hosted = /^https?:\/\//i.test(m.url);
+    // Stored already: an https URL, or a track the chat uploaded (`ref`) — neither is uploaded again.
+    const hosted = /^https?:\/\//i.test(m.url) || !!m.ref;
     const id = newId('mus');
     const name = (m.name ?? '').trim().slice(0, 48) || t.audio;
     if (m.url.startsWith('blob:')) foreignUrls.current.add(m.url);
     setSources((cur) => ({
       ...cur,
-      [id]: { id, kind: 'audio', name, previewUrl: m.url, ref: hosted ? m.url : null, status: hosted ? 'ready' : 'uploading', durationSec: 0 },
+      [id]: { id, kind: 'audio', name, previewUrl: m.url, ref: hosted ? (m.ref ?? m.url) : null, status: hosted ? 'ready' : 'uploading', durationSec: 0 },
     }));
     const start = typeof m.startSec === 'number' && Number.isFinite(m.startSec) ? m.startSec : 0;
     apply((e) => setMusic(e, id, start, 0));
