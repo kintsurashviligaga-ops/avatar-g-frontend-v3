@@ -51,3 +51,41 @@ Typed wording that starts a montage: clips + one track and words about cutting, 
 - After the last change (montageChat, intent, chatTurn) re-run: 174 / 174. tsc 0; eslint on changed files 0.
 - Real ffmpeg: `mediaStudio.ffmpeg.test.ts` 3/3, `editLive.ffmpeg.test.ts` 9/9, `montageExec.ffmpeg.test.ts` green.
 - Not run: HawkScan (no API key, no running app); Playwright (no UI change in this phase).
+
+## 6. v2.1: captions, typography, overlays (same branch, same Draft PR)
+
+Verdict: the v2.1 edits are **BUILT and PROVEN T3** (real ffmpeg, 16/16 scenarios, `07` §5, `evidence-v21/`). T4 (GG on
+the Preview), iPhone/Safari playback and T6 are not run. Captions of what is *said*, translation and karaoke are
+BLOCKED_OWNER (paid calls); removing what is printed in the source is UNSUPPORTED and refused by name.
+
+### GG's Preview check for v2.1 (T4), same Preview link, admin account, NOT myavatar.ge
+
+1. Attach one photo, write „აქ დააწერე: მიტანის სერვისი თბილისში". A card appears; press Start. The result carries
+   exactly those words, and under it „შედეგზე შემოწმდა: …".
+2. Write „ტექსტი უფრო პრემიუმ და მინიმალისტური გახადე." A new card, Start: the same words in a new look; the photo
+   of step 1 stays as it was.
+3. Write „ეს დიზაინი 9:16 სტორად გადააკეთე." A new card, Start: a tall picture, the words inside the frame.
+4. Attach one video (8 s or longer) and write on one line
+   „ქეფშენები დაადე: 0:00-0:02 გამარჯობა; 0:02-0:04 მიტანა უფასოა". Start: the lines show on their times; under the
+   result the buttons SRT and VTT download the same lines.
+5. Write „იგივე ვიდეო მომეცი ქეფშენებით და ქეფშენების გარეშე." Start: the result has a „ქეფშენების გარეშე" button.
+6. Write „ბოლო სამ წამში ანიმაციური CTA ჩასვი: შეუკვეთე ახლავე". Start: the words slide in for the last 3 seconds.
+7. Attach the video and a logo picture together, write „ლოგო ზედა მარცხენა კუთხეში დაადე". Start: the logo is top left.
+   Then write „ზედა ლოგო მოხსენი". Start: the logo is gone, everything else the same.
+8. On the iPhone, play one result in Safari.
+
+### v2.1 owner decisions (each needs GG's separate word)
+
+| Decision | Options |
+|---|---|
+| Captions of what is said (ElevenLabs Scribe) | a per-test budget for paid transcription / keep BLOCKED_OWNER (typed and .srt tracks work) |
+| Translating a track (a model call) | allow it / keep BLOCKED_OWNER (a track typed in each language works) |
+| Merge + deploy | together with the v2.0 phase 1 decision above, after the Preview checks |
+
+### Tests for v2.1
+
+- Full jest before the last fix: 854 suites / 12,954 tests passed, 0 failed (5 suites, 30 tests skipped: own Postgres).
+- After the last fix (caption lines typed on one line): the affected suites re-run green (layerWords, editWords,
+  editExec, chatTurn, bindLiveAgent: 205 / 205) and `composition.ffmpeg.test.ts` re-run: 16 / 16 (the evidence in `evidence-v21/` is from this run).
+- tsc 0; eslint on the changed files 0. Not run: HawkScan (no API key, no running app); Playwright.
+

@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-11 (Claude, branch claude/agent-g-media-studio-v2-ekxxzp; Agent G Media Studio v2.0 phase 1, draft PR #57, AGENT G MEDIA STUDIO v2.0 below; before it the Agent G complete repair on claude/launch-certification-wmvitt, PR #55 / #56 merged, Production serves 5481987 since 13:01Z)
+LAST SESSION: 2026-10-11 (Claude, branch claude/agent-g-media-studio-v2-ekxxzp; Agent G Media Studio v2.0 phase 1 + v2.1 captions/typography/overlays, draft PR #57, AGENT G MEDIA STUDIO v2.0 below; before it the Agent G complete repair on claude/launch-certification-wmvitt, PR #55 / #56 merged, Production serves 5481987 since 13:01Z)
 LAST COMMIT: see `git log` on that branch (main = bc26fc66 = Production since 2026-10-10 20:28Z, PR #53 docs; before it
           c0297491, PR #50 merged 19:51:05Z; 6c7dff46, PR #52 auth hotfix, Production 2026-10-09 16:01Z; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
@@ -360,6 +360,15 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           export, per-clip source sound, caption/logo removal, Veo reference flow (paid). Docs docs/agent-g-media/00–06;
           Georgian report /mnt/project-files/reports/2026-10-11-media-studio-v2-ka.md. No migration, flag, price or
           provider change.
+          v2.1 (owner addendum 13:31Z, same branch and PR): text, CTA, logo, blur/mosaic layers and the user's own
+          caption tracks on videos AND pictures, in words KA/EN/RU (lib/agent/media/layerWords) and by Live Voice
+          (quote_media_edit), through the same quote → Task API → lease worker → ffmpeg → QC → Library. Revisions
+          without a migration: an edit of our own result re-renders the parent's request from the ORIGINAL source
+          (parent kept, branches independent). Captions burned, „with and without" (clean copy), SRT/VTT. QC on the
+          rendered file (lib/agent/media/layerQc). Real ffmpeg (T3): E2E-TX-01…10 + reload, missing glyphs, long
+          Georgian, masks, cancel, phone playback, 16/16 (composition.ffmpeg.test.ts). BLOCKED_OWNER: captions of
+          speech (Scribe, paid), translation (paid). UNSUPPORTED: removing what is printed in the source (refused,
+          `remove_from_source`). MISSING: tracking, compare/restore view. Docs docs/agent-g-media/07-V21-COMPOSITION.md.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

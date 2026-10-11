@@ -49,7 +49,7 @@ MEDIA_STUDIO_E2E_OUT=/tmp/media-studio-e2e.json \
 | E2E-27 | Stop then Resume | T1 | PARTIAL | runs resume reusing delivered steps (`lib/agent/run/runEngine.test.ts`); a single montage restarts as a new quote |
 | E2E-28 | Long render, tab closed | T1 | PROVEN T1 | `montageWorker.test.ts:350` (the sweep renders the waiting job) |
 | E2E-29 | Malformed / disguised upload | T1 | PROVEN T1 | `app/api/upload/verify/route.test.ts:74`, `:82`, `:89` (422 / 413, object removed) |
-| E2E-30 | Text/logo cleanup fails visual QC | — | MISSING | the feature does not exist; nothing can report false success |
+| E2E-30 | Text/logo cleanup fails visual QC | — | MISSING for source pixels | cleaning what is printed in the source does not exist and is refused (`remove_from_source`), so nothing can report false success; removing a layer of ours is QC'd against the source (TX-04, below) |
 
 ## Numbers measured in this phase (T3, real bundled ffmpeg, this container)
 
@@ -60,3 +60,10 @@ MEDIA_STUDIO_E2E_OUT=/tmp/media-studio-e2e.json \
   `audio` = {sourceStartSec 58, timelineStartSec 0, targetSec 70, endPolicy stop, sourceAudio remove}.
 - E2E-23 (120 s track): refused at the quote, no render, no job row.
 - 5 s trims: 150 / 150 / 125 frames; output length within 0.05 s of 5.
+
+## v2.1: captions, typography, overlays (E2E-TX-01…10)
+
+All ten pass at T3 on real bundled ffmpeg with synthetic fixtures, plus reload, missing glyphs, long Georgian text,
+masks, cancel and the phone container. The measured numbers, the re-run command and what each check means are in
+`07-V21-COMPOSITION.md` §5; the machine-readable record and a contact sheet per scenario are in `evidence-v21/`
+(`evidence.json`, `tx02.srt`, `tx02.vtt`, `tx01…tx10*.jpg`). T4 (GG on the Preview) and iPhone/Safari playback: not run.

@@ -1,5 +1,8 @@
 # Agent G Media Studio v2.0 — 04 QC and provenance
 
+v2.1 adds a second record for edits with layers or captions, `generation_jobs.result.layerQc`, measured on the
+rendered file: thresholds and checks in 07 §4 (`lib/agent/media/layerQc.ts`). A FAIL there fails the job.
+
 Every montage job writes its QC record into `generation_jobs.result.qc` before it may complete
 (`lib/agent/media/montageWorker.ts`). A job whose QC fails is FAILED with the record kept; it is never delivered.
 

@@ -23,6 +23,14 @@ Branch `claude/agent-g-media-studio-v2-ekxxzp` from `main` 5481987. Phases follo
 | 5 | Veo reference flow | BLOCKED_OWNER | — | paid tests need a budget |
 | 6 | Live Voice parity | PARTIAL | — | same server quote; not run by voice |
 | 7 | Release certification | NOT STARTED | — | needs GG's Preview run (06 §3) |
+| v2.1 | Layers (text, CTA, logo, blur/mosaic), styles, motion, stacking, safe areas — videos and pictures | DONE | (this PR) | T3 |
+| v2.1 | Caption tracks (typed / .srt / .vtt), burned on time, with and without, SRT/VTT export | DONE | (this PR) | T3 |
+| v2.1 | Revisions of our own result from the original source (no migration), concurrent branches | DONE | (this PR) | T3 |
+| v2.1 | QC on the rendered file (`layerQc`), FAIL never delivered | DONE | (this PR) | T3 |
+| v2.1 | Words → typed actions KA/EN/RU (the nine owner commands), chat routing, card extras | DONE | (this PR) | T1 |
+| v2.1 | Live Voice: the same typed layers / captions in `quote_media_edit` | BUILT_NOT_PROVEN | (this PR) | T1 |
+| v2.1 | Captions of speech, translation, karaoke | BLOCKED_OWNER | — | paid Scribe / model calls |
+| v2.1 | Removing what is printed in the source; tracking; compare / restore view | UNSUPPORTED / MISSING | — | 07 §6 |
 
 ## Files changed in this phase
 
@@ -34,6 +42,15 @@ Branch `claude/agent-g-media-studio-v2-ekxxzp` from `main` 5481987. Phases follo
 - `lib/agent/params.ts`, `lib/agent/intent.ts`, `lib/agent/chatTurn.ts` (+ tests): ordinal start, selection routing.
 - `lib/agent/media/mediaStudio.ffmpeg.test.ts` (new), `editLive.ffmpeg.test.ts`: real-ffmpeg evidence.
 - `docs/agent-g-media/00–06`, `PROJECT_MASTER.md` State Tracker.
+
+## Files changed for v2.1
+
+- New: `lib/agent/media/layers.ts`, `layerRender.ts`, `layerCompose.ts`, `layerQc.ts`, `layerPass.ts`, `layerWords.ts`
+  (+ `layerWords.test.ts`, `composition.ffmpeg.test.ts`).
+- Changed: `editPlan.ts`, `editExec.ts`, `editWorker.ts`, `editLive.ts`, `editWords.ts`, `editChat.ts`, `editClient.ts`,
+  `redoChat.ts`, `taskSteps.ts`, `lib/agent/chatTurn.ts`, `lib/agent/run/runChat.ts`, `lib/agent/react/bindLiveAgent.ts`,
+  `lib/agent/capabilities.ts`, `lib/tasks/taskView.ts`, `app/api/agent/media/edit/route.ts`,
+  `components/studio/OmniStudio.tsx` (+ tests).
 
 ## Continuation point
 

@@ -68,8 +68,24 @@ is not bounded by one 600 s function; both are owner decisions (migration, paid 
 | Silent export, „ჯერ ვიდეო უხმოდ" (E2E-06) | MISSING | Agent G's montage always needs one track (`montageExec.ts`, `no_track`); QC requires sound |
 | Keep source audio on chosen clips | MISSING in the chat; the lane supports it | `montageAsk.ts:98` always `musicOnly: true`; `montagePipeline` has per-shot `muted` + `under` |
 | Audio timeline start ≠ 0 | MISSING | the track always starts on the master's first frame (`audioTiming().timelineStartSec = 0`) |
-| E. Caption / logo removal over time | MISSING (UNSUPPORTED) | No approved temporal inpainting provider; Replicate inpaint is refused under Google-only (`lib/providers/mediaPolicy.ts:68`) |
+| E. Caption / logo removal over time | MISSING (UNSUPPORTED) for what is printed in the source | No approved temporal inpainting provider; Replicate inpaint is refused under Google-only (`lib/providers/mediaPolicy.ts:68`). Since v2.1, removing a text, logo or caption **we added** works by re-rendering from the original (07, TX-04); asking to remove something printed in the source is refused with `remove_from_source` |
 | F. Branded image editing (SiRniKi) | MISSING | Imagen 4 is 404 on Vertex; image engine choice is GG's action 6 |
 | G. Veo reference flow (refrigerator, 3 roles) | BLOCKED_OWNER | Paid Veo calls need a per-test budget; durations snap to the model's supported values (`lib/veo/engine.test.ts:274`) |
 | I. Live Voice parity for selection / offset | BUILT, not run by voice | the quote reads the words server-side for both (`lib/agent/react/bindLiveAgent.ts:252`); voice depends on the Live model passing the user's words on |
 | Visual review (`NEEDS_VISUAL_REVIEW`) | MISSING as an outcome; QC is all machine checks | |
+
+## 5. v2.1 addendum (captions, typography, overlays, motion), 2026-10-11 13:31Z
+
+Reconciled against this file before building; the full matrix is `07-V21-COMPOSITION.md` §1. In short:
+
+- **BUILT + PROVEN T3:** text layers in KA/EN/RU with the exact words typed (bundled FiraGO, a missing glyph is named
+  and refused), CTA in the last N seconds, move / resize / restyle / remove one layer or all, logo from an attached
+  picture, blur and mosaic masks, layers in time and stacking order, typed caption tracks burned on their times plus
+  SRT/VTT, the same video with and without captions, 9:16 / 1:1 / 16:9 with safe areas, non-destructive revisions
+  (each change re-renders from the original; the parent is kept; two revisions of one result are independent).
+- **Same actions by text and by Live Voice:** both build the typed `layers` / `captions` asks the server checks
+  (`lib/agent/media/layerWords.ts`, `lib/agent/react/bindLiveAgent.ts`).
+- **BLOCKED_OWNER:** captions of what is *said* (needs a paid ElevenLabs Scribe transcription), translation of a
+  track (a paid model call), word-level karaoke (needs the transcription's word times).
+- **UNSUPPORTED:** removing text or a logo printed in the source footage (see §4 row E).
+- **T4 (Preview, GG) and T6 (Production):** not run.

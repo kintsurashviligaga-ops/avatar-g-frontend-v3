@@ -1,0 +1,322 @@
+{
+ "tx01": {
+  "words": "მიტანის სერვისი თბილისში",
+  "box": {
+   "x": 196,
+   "y": 54,
+   "w": 1210,
+   "h": 154
+  },
+  "fontPx": 77,
+  "exactPsnr": 46,
+  "shownDiff": 22.16,
+  "packageDiff": 0.04,
+  "qc": "PASS"
+ },
+ "tx07": {
+  "frame": [
+   1080,
+   1920
+  ],
+  "safeArea": {
+   "x": 76,
+   "y": 230,
+   "w": 928,
+   "h": 1306
+  },
+  "box": {
+   "x": 82,
+   "y": 230,
+   "w": 916,
+   "h": 300
+  },
+  "exactPsnr": 48.6,
+  "parent": "TX-01"
+ },
+ "tx04": {
+  "logoBefore": 26.5,
+  "logoAfter": 1.28,
+  "packageBefore": 2.13,
+  "packageAfter": 2.12,
+  "textKept": 1.83,
+  "logoBox": {
+   "x": 78,
+   "y": 44,
+   "w": 116,
+   "h": 116
+  },
+  "packageBox": {
+   "x": 1040,
+   "y": 440,
+   "w": 160,
+   "h": 160
+  },
+  "qc": "PASS"
+ },
+ "tx06": {
+  "before": {
+   "id": "t1",
+   "anchor": "bottom",
+   "startSec": 0,
+   "endSec": 8,
+   "z": 2,
+   "kind": "text",
+   "role": "text",
+   "text": "მიტანის სერვისი თბილისში",
+   "size": 60,
+   "style": "cinematic",
+   "motionIn": "fade",
+   "motionOut": "none",
+   "motionSec": 0.5
+  },
+  "after": {
+   "id": "t1",
+   "anchor": "bottom",
+   "startSec": 0,
+   "endSec": 8,
+   "z": 2,
+   "kind": "text",
+   "role": "text",
+   "text": "მიტანის სერვისი თბილისში",
+   "size": 60,
+   "style": "premium",
+   "motionIn": "fade",
+   "motionOut": "none",
+   "motionSec": 0.5
+  },
+  "textChanged": 47.09,
+  "logoSame": 1.17,
+  "qc": "PASS"
+ },
+ "tx09": {
+  "from": {
+   "x": 78,
+   "y": 44,
+   "w": 116,
+   "h": 116
+  },
+  "to": {
+   "x": 1088,
+   "y": 44,
+   "w": 116,
+   "h": 116
+  },
+  "textSame": 1.82,
+  "oldPlace": 1.29,
+  "newPlace": 146.7,
+  "qc": "PASS"
+ },
+ "concurrentRevisions": {
+  "parent": "6569ee51-a6c7-4210-acaa-4a0d99251447",
+  "branches": [
+   "d3631d21-8109-4265-bdea-70682ca40251",
+   "91493435-6e4c-4aa3-bc29-bb455c222be5"
+  ],
+  "parentUnchanged": true
+ },
+ "tx05": {
+  "layer": {
+   "id": "t1",
+   "anchor": "bottom",
+   "startSec": 5,
+   "endSec": 8,
+   "z": 1,
+   "kind": "text",
+   "role": "cta",
+   "text": "შეუკვეთე ახლავე",
+   "size": 58,
+   "style": "brand",
+   "motionIn": "slide-up",
+   "motionOut": "none",
+   "motionSec": 0.5
+  },
+  "box": {
+   "x": 430,
+   "y": 584,
+   "w": 420,
+   "h": 86
+  },
+  "absentBefore": 1.24,
+  "topEdgeAt508": 624,
+  "topEdgeSettled": 584,
+  "heldAtEnd": 123.29,
+  "qc": "PASS"
+ },
+ "tx10": {
+  "layers": [
+   {
+    "id": "t1",
+    "kind": "text",
+    "from": 0,
+    "to": 3,
+    "z": 1
+   },
+   {
+    "id": "i1",
+    "kind": "image",
+    "from": 2,
+    "to": 6,
+    "z": 2
+   },
+   {
+    "id": "t2",
+    "kind": "text",
+    "from": 4,
+    "to": 8,
+    "z": 3
+   }
+  ],
+  "titleShown": 73.1,
+  "titleGone": 1.69,
+  "logoAlone": {
+   "red": 10000,
+   "white": 0
+  },
+  "textOverLogo": {
+   "red": 7042,
+   "white": 1182
+  },
+  "logoGone": {
+   "red": 105,
+   "sourceRed": 85
+  },
+  "occlusions": [
+   [
+    "i1",
+    "t2"
+   ]
+  ],
+  "qc": "PASS"
+ },
+ "tx02": {
+  "box": {
+   "x": 78,
+   "y": 566,
+   "w": 1126,
+   "h": 104
+  },
+  "timing": [
+   {
+    "cue": "გამარჯობა! ეს MyAvatar-ია.",
+    "from": 0.5,
+    "to": 2.4,
+    "before": 1.96,
+    "in": 20.57,
+    "mid": 21.22,
+    "lastIn": 20.87,
+    "after": 1.83,
+    "clean": 1.02
+   },
+   {
+    "cue": "ქეფშენები ზუსტ დროში ჩნდება.",
+    "from": 3,
+    "to": 5,
+    "before": 2.02,
+    "in": 24.7,
+    "mid": 24.72,
+    "lastIn": 25.2,
+    "after": 2.37,
+    "clean": 0.65
+   },
+   {
+    "cue": "მადლობა, რომ უყურებთ.",
+    "from": 5.6,
+    "to": 7.6,
+    "before": 2.59,
+    "in": 20.47,
+    "mid": 20.07,
+    "lastIn": 19.4,
+    "after": 1.89,
+    "clean": 0.63
+   }
+  ],
+  "srtBytes": 284,
+  "qc": "PASS",
+  "warnings": []
+ },
+ "tx03": {
+  "clean": "scene-edit-no-captions.mp4",
+  "captioned": "scene-edit.mp4",
+  "durations": [
+   8,
+   8.01
+  ]
+ },
+ "tx08": {
+  "cues": [
+   [
+    0.5,
+    2.4,
+    "Hello, this is MyAvatar."
+   ],
+   [
+    3,
+    5,
+    "Captions appear on time."
+   ],
+   [
+    5.6,
+    7.6,
+    "Thanks for watching."
+   ]
+  ],
+  "shownAt4": 10.19,
+  "gapAt295": 2.13,
+  "qc": "PASS",
+  "translation": "BLOCKED_OWNER (a paid model call)"
+ },
+ "missingGlyphs": {
+  "asked": "გამარჯობა 你好 😀",
+  "refused": "你 好 😀"
+ },
+ "longText": {
+  "letters": 136,
+  "box": {
+   "x": 82,
+   "y": 648,
+   "w": 918,
+   "h": 472
+  },
+  "fontPx": 57,
+  "fitted": true,
+  "exactPsnr": 38.8,
+  "refusedAt": 161
+ },
+ "mask": {
+  "mosaic": {
+   "box": {
+    "x": 0,
+    "y": 0,
+    "w": 384,
+    "h": 216
+   },
+   "detailKept": 0
+  },
+  "blur": {
+   "box": {
+    "x": 896,
+    "y": 0,
+    "w": 384,
+    "h": 216
+   },
+   "detailKept": 0
+  },
+  "unmaskedControl": 1,
+  "qc": "PASS"
+ },
+ "cancel": {
+  "abortedAfterMs": 1500,
+  "returnedAfterMs": 1512
+ },
+ "playback": {
+  "boxes": [
+   "ftyp",
+   "moov",
+   "free",
+   "mdat"
+  ],
+  "video": "Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 1280x720 [SAR 1:1 DAR 16:9], 2668 kb/s, 25 fps, 25 tbr, 12800 tbn (default)",
+  "audio": "Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz, mono, fltp, 98 kb/s (default)",
+  "device": "T5: a real iPhone/Safari play is the owner's check"
+ }
+}
