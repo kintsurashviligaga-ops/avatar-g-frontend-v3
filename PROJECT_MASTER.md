@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-10 (Claude, branch claude/launch-certification-wmvitt; Agent G PART 10 E2E certification and PART 11 launch verdict, docs/handoffs/AGENT_G_FINAL_LAUNCH_VERDICT.md; PR #50 merged c0297491 and live in Production from 19:55Z, every new flag off; PR #53 docs merged bc26fc66, Production serves bc26fc6 from 20:28Z; FINAL STATUS below)
+LAST SESSION: 2026-10-11 (Claude, branch claude/launch-certification-wmvitt, draft PR #55; Agent G complete repair, AGENT G COMPLETE REPAIR below; Production serves 2817c9b, PR #54 docs, unchanged)
 LAST COMMIT: see `git log` on that branch (main = bc26fc66 = Production since 2026-10-10 20:28Z, PR #53 docs; before it
           c0297491, PR #50 merged 19:51:05Z; 6c7dff46, PR #52 auth hotfix, Production 2026-10-09 16:01Z; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
@@ -293,6 +293,20 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           phone and iPhone Safari; Agent G in Production after its flag; analyze-my-file; channels and Calling after
           Meta's written answer. Report: /mnt/project-files/reports/2026-10-10-final-status.md.
           Verdict unchanged: full opening NO-GO; Production ready NO.
+          AGENT G COMPLETE REPAIR (owner, 2026-10-11 05:19Z; resume 06:31Z; draft PR #55, not merged, not deployed;
+          Production still serves 2817c9b, read from /api/version): GG's Production test (3 clips + 1 MP3) ran a
+          one-video remix of clip 1; the other two clips were dropped (root causes: docs/handoffs/agent-g-repair/
+          root-cause-audit.md). Fixed on the branch: upload on select with a stored-bytes check, per-file states and
+          Retry (af676053); names and stored paths survive a reload, every video is read (e3712f6a); Live Voice sees
+          the attached files and opens/hands them over (29fde219); one signed manifest, every clip used or refused,
+          per-clip QC before delivery (5d326897, real ffmpeg: a swapped-out clip measures 52.8 vs threshold 12);
+          dictation timing instrumented with ?micstats=1 p50/p95 (c154e3e3); the card lists every file and has its own
+          clip-check step (3c345ecb); phone fixes found in the screenshots (length badge under ×, card header count
+          cut off) and Live Voice hand-off steps that said a bare "Done" (last commit). Jest 12,805 green; build
+          green; Playwright on a production build 294 of 302 passed, 7 skipped, 1 expected failure
+          (swarm-pipelines.spec.ts:30 expects the dev bypass, cert §Z); no test deleted. All BUILT_NOT_PROVEN:
+          the signed-in Preview run and the iPhone dictation numbers are the owner's hands. Verdict for these fixes:
+          NO-GO until those pass. Georgian report: docs/handoffs/agent-g-repair/final-report-ka.md.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

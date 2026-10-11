@@ -274,9 +274,16 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
   test('closed to this user: no plan, no remix; the Montage editor opens with every clip and the track', async ({ page }) => {
     const calls = await open(page, false);
     await attachAndSend(page, 'cut these to the music');
-    await expect(page.getByText('not switched on for this account yet')).toBeVisible({ timeout: 20_000 });
+    // The editor opens over the chat with both clips on the timeline and the track as its music.
+    await expect(page.getByRole('heading', { name: 'Montage', level: 1 })).toBeVisible({ timeout: 20_000 });
+    const timeline = page.getByRole('group', { name: 'Timeline' });
+    await expect(timeline.getByRole('button', { name: /^Clip \d+ · / })).toHaveCount(2);
+    await expect(timeline.getByRole('button', { name: 'Music: song.wav' })).toBeVisible();
+    // Closing it (the unsaved project asks first) shows Agent G's reply naming why and every file.
+    await page.getByRole('button', { name: 'Close' }).first().click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByText(/not switched on for this account yet/)).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/all 2 clips on the timeline, in your order/)).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Montage', level: 1 })).toBeVisible();
     expect(calls.quote).toEqual([]);
     expect(calls.remixIntent).toEqual([]);
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);

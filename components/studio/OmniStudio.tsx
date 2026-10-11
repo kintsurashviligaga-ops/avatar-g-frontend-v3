@@ -11148,7 +11148,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       ? <img src={a.poster} alt="" className="h-full w-full object-cover" />
                       // eslint-disable-next-line jsx-a11y/media-has-caption
                       : <video src={a.dataUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />}
-                    {a.durationSec ? <span className="absolute right-0.5 top-0.5 rounded bg-black/70 px-1 text-[9.5px] font-semibold tabular-nums leading-[14px] text-white">{fmtClock(Math.round(a.durationSec))}</span> : null}
+                    {/* Top LEFT: the remove button sits on the top-right corner and covered the length there. */}
+                    {a.durationSec ? <span data-testid="composer-attachment-length" className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[9.5px] font-semibold tabular-nums leading-[14px] text-white">{fmtClock(Math.round(a.durationSec))}</span> : null}
                   </span>
                 ) : (
                   // A document or a sound: its icon, its NAME, its size and length (a 56 px square said only "pdf") — and,

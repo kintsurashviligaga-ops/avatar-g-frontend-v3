@@ -33,15 +33,18 @@ Read-only evidence from the Production database:
 | 11 | Live prompt contradictions | One truthful rule set | Text-chat rules ("cannot start a render", "read attachments fully") sat above the call rules; the tool-less legacy wire still claimed Google Search | `app/api/voice/live/route.ts` | The call rule overrides hand-off, says it cannot see file content, and legacy is built without search | `voice/live/route.test.ts` | Fixed (branch) |
 | 12 | "Take a screenshot of MyHome.ge" had no honest rule | Say plainly what is not possible | No browser worker exists; the prompt said nothing | `lib/chat/platformPrompt.ts` | `BROWSER: none — never claim to click, log in or screenshot a site.` | `platformPrompt.test.ts` | Fixed (branch). A real browser is paid infra (BLOCKED_OWNER) |
 
-## 2. Still open in this round
+## 2. Built later in this round
 
-- Montage manifest and per-clip QC (PART 2 and PART 10). Being built:
-  - one immutable manifest, with the file count checked at every boundary;
-  - after render, proof that each clip contributed frames, plus a soundtrack and A/V-sync check.
+| # | Part | What was built | Evidence | Status |
+|---|---|---|---|---|
+| 13 | PART 2, 10 | One immutable manifest of every file, signed into the request and re-checked at quote, run and worker. Every clip gets a shot or the request is refused (`clip_too_short`, `music_too_short`, `target_too_short`, `too_many_clips`). After render: master check, A/V sync from real stream lengths, then per-clip QC. A missing clip fails as `clip_missing` and the charge is paid back (5d326897) | Real ffmpeg (`montageExec.ffmpeg.test.ts`): present clips 0.01-0.05, a swapped-out clip 52.8 (threshold 12); a cancel kills ffmpeg within 1 s | BUILT_NOT_PROVEN (local real ffmpeg; no Preview run) |
+| 14 | PART 4 | Dictation: audio primed in the tap; Stop aborts the interim pass and sends the final at once; a due pass is deferred, never dropped; per-dictation timings (no words) beaconed to `/api/voice/dictation-metrics`; `Server-Timing: stt`; `?micstats=1` shows measured p50/p95 (c154e3e3) | Jest (`useDictation.test.ts`, `dictationMetrics.test.ts`, route tests) | BUILT_NOT_PROVEN. No device number exists yet; iPhone p50/p95 is GG's hands |
+| 15 | PART 9 | The task card names every file and the count ("3 videos + 1 MP3") and has its own step "Check every clip is in it", fed by the worker's `qc` stage (3c345ecb) | Jest, Playwright (mocked) | BUILT_NOT_PROVEN |
+| 16 | PART 13 | Browser specs had been red since upload on select: the sign mock had no `signedUrl`. `tests/fixtures/uploads.ts` serves the signed PUT and `/api/upload/verify` (3c345ecb) | Playwright on the production build | see the final report §4 |
 
-  Status: BUILT_NOT_PROVEN until merged and run on real FFmpeg.
-- Fast Georgian dictation (PART 4): partial text and latency metrics, being built. iPhone p50/p95 can only be measured on GG's iPhone (BLOCKED_OWNER: hands).
-- Authenticated Preview E2E (PART 13): the admin sign-in is GG's hands (project rule).
+Still open: the signed-in Preview E2E and the iPhone run (GG's hands, project rule). The Live Voice activity row no longer reads a bare "Done" for a hand-off: `agent_task`, `montage` and `read_webpage` say what happened ("Agent G's card is in the chat", "Montage on screen", "Read the page"; `LiveActivityFeed.test.tsx`), and a page read or an Agent G question spins until its answer is in (`liveActions.test.tsx`).
+
+Final report (Georgian, PART 15): [final-report-ka.md](final-report-ka.md).
 
 ## 3. Decisions only GG can make (unchanged by this round)
 

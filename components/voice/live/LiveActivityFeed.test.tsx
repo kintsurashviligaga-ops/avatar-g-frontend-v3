@@ -103,3 +103,18 @@ test('ask_agent_g is a step of its own — „Agent G is researching…" while i
   expect(liveCurrentStep([done], 'ka')).toMatchObject({ text: 'აგენტი G-ის პასუხი მზადაა' });
   expect(liveCurrentStep([{ ...running, state: 'failed' }], 'ru')).toMatchObject({ text: 'Агент G изучает вопрос — Не получилось' });
 });
+
+// GG's 2026-10-11 task: a step that only hands work off must not read „Done". agent_task puts a card in the chat
+// (nothing starts before the user's yes), Montage's export renders on, and a page read is done once the page is in.
+test('agent_task, montage and read_webpage say what actually happened, never a bare „Done", in ka, en and ru', () => {
+  const step = (name: string, state: LiveActivityItem['state']): LiveActivityItem => ({ id: name, kind: 'tool', state, name });
+  expect(liveCurrentStep([step('agent_task', 'done')], 'ka')).toMatchObject({ text: 'აგენტი G-ის ბარათი ჩატშია' });
+  expect(liveCurrentStep([step('agent_task', 'done')], 'en')).toMatchObject({ text: 'Agent G’s card is in the chat' });
+  expect(liveCurrentStep([step('montage', 'done')], 'ru')).toMatchObject({ text: 'Монтаж на экране' });
+  expect(liveCurrentStep([step('read_webpage', 'running')], 'ka')).toMatchObject({ text: 'გვერდს ვკითხულობ…' });
+  for (const name of ['agent_task', 'montage', 'read_webpage']) {
+    for (const locale of ['ka', 'en', 'ru'] as const) {
+      expect(liveCurrentStep([step(name, 'done')], locale)!.text).not.toMatch(/^(შესრულდა|Done|Готово)$/);
+    }
+  }
+});

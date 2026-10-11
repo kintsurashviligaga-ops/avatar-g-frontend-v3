@@ -92,9 +92,10 @@ export function AgentTaskCard({
         {/* On a phone a long status („ველოდები შენს დასტურს") shrinks before the step count does. */}
         <span className="min-w-[5.5rem] flex-1">
           <span className="block truncate text-[14px] font-semibold leading-tight text-app-text">{model.countText}</span>
+          {/* The file count leads: on a phone the line is cut at its end, and the count must never be what is cut. */}
           <span className="mt-0.5 block truncate text-[12px] leading-tight text-app-muted">
+            {model.inputs ? <><span data-testid={`${testId}-inputs`} className="text-app-text/80">{model.inputs.text}</span> · </> : null}
             Agent G · {model.title}
-            {model.inputs ? <> · <span data-testid={`${testId}-inputs`}>{model.inputs.text}</span></> : null}
             {folded && active ? <> · <span className="text-app-text/80">{active.label}</span></> : null}
           </span>
         </span>

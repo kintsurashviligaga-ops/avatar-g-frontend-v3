@@ -7,8 +7,9 @@ import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
  * What the chat can be given — photos, video, camera, files — and whether it can actually USE it, in a real browser against a
  * MOCKED /api/chat/gemini (nothing reaches a provider, nothing is charged).
  *
- *   · a QUESTION about an attached video is answered from its frames + soundtrack (made in the browser: no upload, the clip
- *     never travels), while an EDIT request still goes to the remix pipeline;
+ *   · a QUESTION about an attached video is answered from its frames + soundtrack (made in the browser: the clip never
+ *     travels in the chat request; it goes only to the user's own storage, on select), while an EDIT request still goes to
+ *     the remix pipeline;
  *   · a Word file and a source file are read as TEXT (a .docx used to reach the model as bytes it could not read);
  *   · the tray names each document with its type and size;
  *   · a set that cannot fit the platform's request body is refused at the picker, with the limit named.
@@ -19,7 +20,15 @@ import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 const sse = (frames: unknown[]): string => frames.map((f) => `data: ${typeof f === 'string' ? f : JSON.stringify(f)}\n\n`).join('');
 const CLIP = readFileSync(join(__dirname, 'fixtures/clip.webm'));
 
-async function openChat(page: Page): Promise<void> {
+/** A picked video uploads at once (upload on select); a test that counts uploads mocks them itself (mockRemix). */
+async function mockUploads(page: Page): Promise<void> {
+  let n = 0;
+  await page.route('**/api/upload/sign', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }));
+  await mockStoredUpload(page);
+}
+
+async function openChat(page: Page, opts: { ownUploads?: boolean } = {}): Promise<void> {
+  if (!opts.ownUploads) await mockUploads(page);
   await page.addInitScript(() => { try { localStorage.setItem('myavatar-cookie-consent', 'necessary'); } catch { /* private mode */ } });
   await page.route('**/api/chat/title', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"ტესტი"}' }));
   await page.goto('/ka/dashboard?tool=chat');
@@ -88,6 +97,20 @@ test.describe('the chat reads what it is given', () => {
     await expect(page.getByText('პასუხი.')).toBeVisible();
   });
 
+  test('a picked video shows Ready and its length, and the remove button never covers the length', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openChat(page);
+    await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
+    const tile = page.getByTestId('composer-attachment');
+    await expect(tile).toHaveAttribute('data-status', 'ready', { timeout: 15_000 });
+    const length = tile.getByTestId('composer-attachment-length');
+    await expect(length).toHaveText(/^0:0[34]$/);
+    const a = (await length.boundingBox())!;
+    const b = (await tile.getByRole('button', { name: 'მოცილება' }).boundingBox())!;
+    const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    expect(overlap).toBe(false);
+  });
+
   test('a video with no words is asked the default question, in the user\'s language', async ({ page }) => {
     const bodies = await mockChat(page);
     await openChat(page);
@@ -114,7 +137,8 @@ test.describe('the chat reads what it is given', () => {
   });
 
   // A CHARGED edit (here: a face swap, 15 credits) waits for Agent G's Create with the price on it — every other paid chat
-  // order already did. Nothing is uploaded or charged before the tap; Edit hands the words and the clip back.
+  // order already did. Nothing runs or is charged before the tap; the clip itself uploads once, when it is picked (upload on
+  // select, owner 2026-10-11), and the tap uses that stored copy. Edit hands the words and the clip back.
   async function mockRemix(page: Page, op: string): Promise<{ intent: unknown[]; remix: Array<Record<string, unknown>>; uploads: number[] }> {
     const calls = { intent: [] as unknown[], remix: [] as Array<Record<string, unknown>>, uploads: [] as number[] };
     await page.route('**/api/video/remix-intent', async (route) => {
@@ -131,21 +155,23 @@ test.describe('the chat reads what it is given', () => {
     return calls;
   }
 
-  test('a CHARGED edit waits for Agent G\'s Create with the price on it; nothing uploads or runs before the tap', async ({ page }) => {
+  test('a CHARGED edit waits for Agent G\'s Create with the price on it; nothing runs before the tap, and the clip uploads once', async ({ page }) => {
     await mockChat(page);
     const calls = await mockRemix(page, 'face_swap');
-    await openChat(page);
+    await openChat(page, { ownUploads: true });
     await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
     await expect(page.getByTitle('clip.webm')).toBeVisible();
     await send(page, 'შეცვალე პერსონაჟი ამ ვიდეოში');
     const create = page.getByTestId('agent-g-confirm');
     await expect(create).toBeVisible({ timeout: 15_000 });
     await expect(create).toHaveAttribute('data-price', '15');
-    await expect(page.getByText('ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს. დავიწყო?')).toBeVisible();
-    expect(calls.uploads).toEqual([]);
+    // The question names the file and the engine (an outside service, not Google or ElevenLabs).
+    await expect(page.getByText(/^ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს\. ფაილები: clip\.webm\. ძრავა: გარე სერვისი .*დავიწყო\?$/)).toBeVisible();
+    expect(calls.uploads).toEqual([1]);
     expect(calls.remix).toEqual([]);
     await create.click();
     await expect.poll(() => calls.remix.length, { timeout: 15_000 }).toBe(1);
+    expect(calls.uploads).toEqual([1]);
     expect(calls.remix[0]).toMatchObject({ op: 'face_swap', videoUrl: 'omni-uploads/u/clip-1' });
     await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);   // the card is spent: a second tap cannot run it again
     await expect(page.locator('video[src^="https://e2e-media.supabase.co/swapped.mp4"]')).toBeAttached({ timeout: 15_000 });
@@ -154,7 +180,7 @@ test.describe('the chat reads what it is given', () => {
   test('Edit on the price card runs nothing and puts the words and the clip back in the composer', async ({ page }) => {
     await mockChat(page);
     const calls = await mockRemix(page, 'background_remove');
-    await openChat(page);
+    await openChat(page, { ownUploads: true });
     await page.locator('input[type=file][accept="video/*"][multiple]').setInputFiles({ name: 'clip.webm', mimeType: 'video/webm', buffer: CLIP });
     await send(page, 'ფონი მოაშორე');
     await expect(page.getByTestId('agent-g-edit')).toBeVisible({ timeout: 15_000 });
@@ -162,7 +188,7 @@ test.describe('the chat reads what it is given', () => {
     await expect(page.getByTestId('composer-input')).toHaveValue('ფონი მოაშორე');
     await expect(page.getByTitle('clip.webm')).toBeVisible();
     await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);
-    expect(calls.uploads).toEqual([]);
+    expect(calls.uploads).toEqual([1]);   // the upload on select, and no other
     expect(calls.remix).toEqual([]);
   });
 
