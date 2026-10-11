@@ -28,6 +28,10 @@ test.each<[MediaEdit, string, string, string]>([
   [{ op: 'volume', db: -6 }, 'sound -6 dB', 'ხმა -6 dB', 'звук -6 дБ'],
   [{ op: 'mute' }, 'sound off', 'ხმის გარეშე', 'без звука'],
   [{ op: 'caption', text: 'ზაფხული' }, 'caption “ზაფხული”', 'წარწერა „ზაფხული“', 'подпись «ზაფხული»'],
+  [{ op: 'erase', boxes: [{ x: 0.69, y: 0.01, w: 0.3, h: 0.14, at: 'top-right' }, { x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom', fromSec: 0, toSec: 3 }] },
+    'erase: top right (filled in from around it) · erase: bottom, 0:00–0:03 (filled in from around it)',
+    'ვშლი: ზედა მარჯვენა კუთხე (ირგვლივი ფერებით ვავსებ) · ვშლი: ქვემოთ, 0:00–0:03 (ირგვლივი ფერებით ვავსებ)',
+    'убираю: вверху справа (заполняю цветами вокруг) · убираю: внизу, 0:00–0:03 (заполняю цветами вокруг)'],
   [{ op: 'thumbnail', atSec: 63 }, 'a still from 1:03', 'კადრი 1:03-დან', 'кадр с 1:03'],
 ])('%j reads as „%s"', (edit, en, ka, ru) => {
   expect(editLine(edit, 'en')).toBe(en);
@@ -107,4 +111,14 @@ describe('askLine: an edit as the words asked it, before a file resolves it (the
     expect(layerAskLine({ kind: 'image', ref: 'x' } as never, 'en')).toBe('your picture top right');
     expect(layerAskLine({ kind: 'mask', mode: 'mosaic', firstSec: 2 } as never, 'en')).toBe('pixelated: centre, the first 2 s');
   });
+});
+
+test('erasing: a missing place is asked for by name; a person, an object or the background is said, in three languages', () => {
+  for (const l of ['ka', 'en', 'ru']) {
+    expect(editErrorText('erase_where', l)).toMatch(/სად|Where|Где/);
+    expect(editErrorText('erase_too_large', l).length).toBeGreaterThan(20);
+    expect(editErrorText('remove_object', l)).toMatch(/AI|ИИ/);
+  }
+  expect(editCodeOf(422, { error: 'erase_where' })).toBe('erase_where');
+  expect(askLine({ op: 'erase', boxes: [{ at: 'top-left' }] }, 'ka')).toBe('მოშორება: ზედა მარცხენა კუთხე');
 });

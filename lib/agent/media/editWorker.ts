@@ -11,7 +11,7 @@
  */
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat } from '@/lib/orchestrator/jobLease';
 import { EDIT_KIND, type EditExecDeps } from './editExec';
-import { qcEdit, validateEditRequest } from './editPlan';
+import { displayDims, qcEdit, validateEditRequest } from './editPlan';
 import { runIdOf } from './montageExec';
 
 export type EditWorkResult =
@@ -93,6 +93,11 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
     if (!out.ok) return end(`${out.error}: ${out.detail ?? ''}`.trim());
     if (Math.abs(out.input.durationSec - request.plan.sourceSec) > SOURCE_DRIFT_SEC) {
       return end(`source_changed: ${out.input.durationSec.toFixed(1)} s now, ${request.plan.sourceSec} s when quoted`);
+    }
+    // Erased places are pixels of the frame quoted: another frame would erase somewhere else.
+    const frame = request.plan.frame, shown = displayDims(out.input);
+    if (frame && (shown.width !== frame.width || shown.height !== frame.height)) {
+      return end(`source_changed: frame ${shown.width}x${shown.height} now, ${frame.width}x${frame.height} when quoted`);
     }
 
     // ── QC before delivery ───────────────────────────────────────────────────────────────────────────────────────

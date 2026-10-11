@@ -24,7 +24,7 @@ import {
   EDIT_KIND, EDIT_PRICE_CREDITS, editNameFor, resolveEdits, validateEditRequest,
   type EditPlan, type EditPlanError, type EditRequest, type MediaEdit,
 } from './editPlan';
-import type { Layer } from './layers';
+import { findLayers, type Anchor, type Layer, type LayerTarget } from './layers';
 import type { LayerQcRecord } from './layerQc';
 import type { OverlayQcRecord } from './overlayFx';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
@@ -38,7 +38,7 @@ export type EditErrorCode =
   | 'bad_input' | 'media_not_yours' | 'unreadable' | 'not_configured' | 'invalid_request' | 'quote_invalid'
   | 'quote_changed' | 'quote_expired' | 'already_failed' | 'jobs_unavailable' | 'source_changed' | 'render_failed'
   | 'unavailable' | 'too_large' | 'qc_failed' | 'upload_failed' | 'cancelled' | 'not_found' | 'not_running'
-  | 'missing_glyphs' | 'text_does_not_fit' | 'layer_picture' | 'remove_from_source' | 'no_captions';
+  | 'missing_glyphs' | 'text_does_not_fit' | 'layer_picture' | 'no_captions';
 
 export interface EditError {
   ok: false;
@@ -159,6 +159,14 @@ async function revisionOf(deps: EditExecDeps, userId: string, file: string, asks
 function mergeAsks(parent: readonly MediaEdit[], asks: unknown[]): unknown[] {
   const asked = new Set(asks.map((a) => (a as { op?: string } | null)?.op));
   const kept = parent.filter((e) => !asked.has(e.op) && e.op !== 'layers').map((e) => ({ ...e })) as unknown[];
+  // Places erased before stay erased: a new place is added to them („and the logo top left too").
+  const parentErase = parent.find((e) => e.op === 'erase');
+  if (parentErase && asked.has('erase')) {
+    asks = asks.map((a) => {
+      const e = a as { op?: string; boxes?: unknown[] } | null;
+      return e?.op === 'erase' && Array.isArray(e.boxes) ? { ...e, boxes: [...parentErase.boxes.map((b) => ({ ...b })), ...e.boxes] } : a;
+    });
+  }
   const layersAsk = asks.find((a) => (a as { op?: string } | null)?.op === 'layers');
   const parentLayers = parent.find((e) => e.op === 'layers');
   // Layers not asked about stay as they were (the stored list, checked again against the new result).
@@ -186,17 +194,49 @@ function captionsWithout(asks: unknown, parent: readonly MediaEdit[] | null): bo
   });
 }
 
-/** A layer to remove that is not one of ours: what is in the picture itself (a printed logo) is never painted over. */
-function removesFromSource(asks: unknown, parentLayers: readonly Layer[]): boolean {
-  if (!Array.isArray(asks)) return false;
-  return asks.some((a) => {
-    const l = a as { op?: string; remove?: unknown } | null;
-    if (l?.op !== 'layers' || !Array.isArray(l.remove)) return false;
-    return l.remove.some((t) => {
-      const kind = (t as { kind?: unknown } | null)?.kind;
-      return !parentLayers.some((p) => !kind || p.kind === kind);
-    });
-  });
+/**
+ * What the words remove that is not a layer of ours (a logo, a watermark, a text or subtitles in the picture itself)
+ * becomes an erase of that place of the source (./editPlan `erase`): a removal no layer of ours answers, at the place it
+ * names (`at`, else `where`), in the stretch it names; „without subtitles" on a file with no captions of ours is the
+ * subtitles' band at the bottom. Layer removals that are ours stay layer removals. A place not said is asked for.
+ */
+export function eraseFromSource(asks: unknown, parentLayers: readonly Layer[], parentHasCaptions: boolean): unknown {
+  if (!Array.isArray(asks)) return asks;
+  const boxes: Array<Record<string, unknown>> = [];
+  let unplaced = false;
+  const out: unknown[] = [];
+  for (const a of asks) {
+    const l = a as { op?: string; remove?: unknown; off?: unknown; track?: unknown } | null;
+    if (l?.op === 'captions' && l.off === true && !l.track && !parentHasCaptions) {
+      boxes.push({ at: 'bottom' });
+      continue;
+    }
+    if (l?.op !== 'layers' || !Array.isArray(l.remove)) { out.push(a); continue; }
+    const ours: unknown[] = [];
+    for (const raw of l.remove) {
+      const t = (raw ?? {}) as LayerTarget & { at?: Anchor; fromSec?: number; toSec?: number; firstSec?: number; lastSec?: number };
+      if (findLayers(parentLayers, t).length) { ours.push(raw); continue; }
+      const at = t.at ?? t.where;
+      if (!at || t.all) { unplaced = true; continue; }
+      const { fromSec, toSec, firstSec, lastSec } = t;
+      boxes.push({ at, ...(fromSec !== undefined ? { fromSec } : {}), ...(toSec !== undefined ? { toSec } : {}), ...(firstSec !== undefined ? { firstSec } : {}), ...(lastSec !== undefined ? { lastSec } : {}) });
+    }
+    const rest: Record<string, unknown> = { ...(l as Record<string, unknown>) };
+    if (ours.length) rest.remove = ours;
+    else delete rest.remove;
+    if (rest.add || rest.change || rest.remove || rest.layers) out.push(rest);
+  }
+  if (unplaced) out.push({ op: 'erase', boxes: [] });
+  else if (boxes.length) {
+    const given = out.findIndex((a) => (a as { op?: string } | null)?.op === 'erase');
+    if (given >= 0) {
+      const e = out[given] as { boxes?: unknown[] };
+      out[given] = { ...e, boxes: [...(Array.isArray(e.boxes) ? e.boxes : []), ...boxes] };
+    } else {
+      out.push({ op: 'erase', boxes });
+    }
+  }
+  return out;
 }
 
 /** Probe the file, resolve the edits against it, plan and sign. Spends nothing, writes nothing but an audit event. */
@@ -213,12 +253,11 @@ export async function quoteEdit(deps: EditExecDeps, input: EditQuoteInput): Prom
   // A revision of an edit of ours: the same source again, the earlier edits changed (layers moved, removed, added).
   const parent = await revisionOf(deps, userId, file, input.edits);
   const sourceRef = parent ? parent.request.source.ref : file;
-  const asks = parent && Array.isArray(input.edits) ? mergeAsks(parent.request.edits, input.edits) : input.edits;
   const parentLayers: Layer[] = (parent?.request.edits.find((e) => e.op === 'layers') as { layers?: Layer[] } | undefined)?.layers ?? [];
-  if (removesFromSource(input.edits, parentLayers)) {
-    return refuse(err('remove_from_source', 'That is in the picture itself, not a layer of ours: nothing is changed.'));
-  }
-  if (captionsWithout(input.edits, parent?.request.edits ?? null)) {
+  // What is in the picture itself (not a layer of ours) is erased at its place, said on the card before Start.
+  const own = eraseFromSource(input.edits, parentLayers, Boolean(parent?.request.edits.some((e) => e.op === 'captions')));
+  const asks = parent && Array.isArray(own) ? mergeAsks(parent.request.edits, own) : own;
+  if (captionsWithout(own, parent?.request.edits ?? null)) {
     return refuse(err('no_captions', 'There are no captions of ours on this file: send the lines with their times.'));
   }
 

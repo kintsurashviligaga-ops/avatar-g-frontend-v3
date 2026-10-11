@@ -2,6 +2,7 @@
  * lib/agent/media/layerWords — the owner's nine v2.1 commands (2026-10-11 13:31Z addendum) and their en/ru twins, read
  * into the typed `layers` / `captions` asks the server resolves. The words drawn come from quotes or a colon only.
  */
+import { mineEdits } from './editWords';
 import { drawnItemsOf, drawnWordsOf, END_TEXT_SEC, LOGO_REF, mineComposition } from './layerWords';
 import { resolveLayers } from './layers';
 
@@ -32,7 +33,7 @@ describe('the owner\'s nine commands', () => {
 
   test('„ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე." — the top picture layer goes; the package is left alone', () => {
     const { m, l } = layersOf('ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე.');
-    expect(l?.remove).toEqual([{ kind: 'image', where: 'top' }]);
+    expect(l?.remove).toEqual([{ kind: 'image', where: 'top', at: 'top' }]);
     expect(l?.add).toBeUndefined();
     expect(l?.change).toBeUndefined();
     expect(m.logo).toBe(false);
@@ -85,7 +86,7 @@ describe('the same in English and Russian', () => {
     expect(layersOf('Add an animated CTA in the last three seconds: "Order now"').l?.add?.[0]).toMatchObject({ lastSec: 3 });
     expect(layersOf('Move the text to the left and make it smaller').l?.change?.[0]).toMatchObject({ moveH: 'left', sizeBy: 0.8 });
     expect(layersOf('Make the text more premium').l?.change).toEqual([{ target: { kind: 'text', all: true }, style: 'premium' }]);
-    expect(layersOf('Remove the top logo, keep the logo on the package').l?.remove).toEqual([{ kind: 'image', where: 'top' }]);
+    expect(layersOf('Remove the top logo, keep the logo on the package').l?.remove).toEqual([{ kind: 'image', where: 'top', at: 'top' }]);
     expect(mineComposition('Give me the same video with and without captions').asks).toEqual([{ op: 'captions', deliver: 'both' }]);
     expect(mineComposition('Add English subtitles').unsupported).toEqual(['speech_captions']);
   });
@@ -94,7 +95,7 @@ describe('the same in English and Russian', () => {
     expect(layersOf('Напиши на видео: «Доставка по Тбилиси»').l?.add).toEqual([{ kind: 'text', text: 'Доставка по Тбилиси' }]);
     expect(layersOf('Добавь CTA в последние 3 секунды: «Закажи сейчас»').l?.add?.[0]).toMatchObject({ role: 'cta', lastSec: 3 });
     expect(layersOf('Перемести текст вправо и уменьши').l?.change?.[0]).toMatchObject({ moveH: 'right', sizeBy: 0.8 });
-    expect(layersOf('Убери верхний логотип').l?.remove).toEqual([{ kind: 'image', where: 'top' }]);
+    expect(layersOf('Убери верхний логотип').l?.remove).toEqual([{ kind: 'image', where: 'top', at: 'top' }]);
     expect(mineComposition('То же видео с субтитрами и без').asks).toEqual([{ op: 'captions', deliver: 'both' }]);
   });
 });
@@ -159,6 +160,40 @@ describe('what the words carry', () => {
     expect(layersOf('ყველა ტექსტი წაშალე').l?.remove).toEqual([{ kind: 'text', all: true }]);
     const m = mineComposition('ტექსტი დაამატე');
     expect(m.missing).toEqual(['caption_text']);
+  });
+
+  test('what is in the picture itself: its exact place and its time go with the removal (GG 2026-10-11 17:38Z)', () => {
+    expect(layersOf('ზედა მარჯვენა კუთხეში ლოგო მოაშორე').l?.remove).toEqual([{ kind: 'image', where: 'top', at: 'top-right' }]);
+    expect(layersOf('წყლის ნიშანი ქვედა მარცხენა კუთხიდან წაშალე').l?.remove).toEqual([{ kind: 'image', where: 'bottom', at: 'bottom-left' }]);
+    expect(layersOf('remove the watermark in the bottom right corner').l?.remove).toEqual([{ kind: 'image', where: 'bottom', at: 'bottom-right' }]);
+    expect(layersOf('убери водяной знак в правом верхнем углу').l?.remove).toEqual([{ kind: 'image', where: 'top', at: 'top-right' }]);
+    expect(layersOf('ქვემოთ ტექსტი წაშალე').l?.remove).toEqual([{ kind: 'text', where: 'bottom', at: 'bottom' }]);
+    // Something written, no text noun said.
+    expect(layersOf('ზემოთ რაღაც წერია, მოაშორე').l?.remove).toEqual([{ kind: 'text', where: 'top', at: 'top' }]);
+    // A stretch: the removal's, not a trim.
+    const timed = layersOf('პირველ 3 წამში ზედა ტექსტი მოაშორე');
+    expect(timed.l?.remove).toEqual([{ kind: 'text', where: 'top', at: 'top', firstSec: 3 }]);
+    expect(timed.m.timeUsed).toBe(true);
+    expect(mineEdits('პირველ 3 წამში ზედა ტექსტი მოაშორე').edits.some((e) => e.op === 'trim')).toBe(false);
+  });
+
+  test('subtitles off and a logo removed in one message: both read', () => {
+    const m = mineComposition('ზედა მარჯვენა კუთხეში ლოგო მოაშორე და ქვედა სუბტიტრები წაშალე');
+    expect(m.asks).toEqual([
+      { op: 'captions', off: true },
+      { op: 'layers', remove: [{ kind: 'image', where: 'top', at: 'top-right' }] },
+    ]);
+  });
+
+  test('a person, an object or the background out of the picture: said, never smeared over', () => {
+    for (const t of ['ეს ადამიანი ვიდეოდან ამოიღე', 'remove the car from the video', 'убери человека из кадра', 'ფონი მოაშორე', 'remove the background']) {
+      const m = mineComposition(t);
+      expect(m.hit).toBe(true);
+      expect(m.unsupported).toEqual(['remove_object']);
+      expect(m.asks).toEqual([]);
+    }
+    // The background MUSIC is sound, not the picture.
+    expect(mineComposition('ფონის მუსიკა მოაშორე').unsupported).toEqual([]);
   });
 
   test('a timed range belongs to the layer', () => {

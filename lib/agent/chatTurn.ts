@@ -193,8 +193,8 @@ function editStep(text: string, intent: ActIntent, s: ChatSnapshot): ChatStep | 
   return { kind: 'edit', source, edits: mined.edits, ...(source === 'file' ? { file: 0 } : {}), intent };
 }
 
-/** What a picture can take (./media/editPlan PICTURE_EDITS): a new frame, a colour, layers. */
-const PICTURE_OPS: ReadonlySet<string> = new Set(['aspect', 'grade', 'layers']);
+/** What a picture can take (./media/editPlan PICTURE_EDITS): places erased, a new frame, a colour, layers. */
+const PICTURE_OPS: ReadonlySet<string> = new Set(['erase', 'aspect', 'grade', 'layers']);
 
 /**
  * Media Studio v2.1: text, a CTA, a logo, a mask or captions put on a video or a picture, or a change to what Agent G
@@ -234,8 +234,13 @@ function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): Ch
   const video = source === 'file' ? kinds[file!] === 'video' : prev === 'video';
 
   // What cannot be done, or is missing, is said before anything is uploaded.
+  if (comp.unsupported.includes('remove_object')) return { kind: 'say', text: editErrorText('remove_object', locale), intent };
   const speech = comp.unsupported.find((u) => u === 'speech_captions' || u === 'translate_captions');
   if (speech) return video ? { kind: 'say', text: editErrorText(speech, locale), intent } : null;
+  // A fresh file has no layers of ours: what is removed from it is in the picture, erased at the place said.
+  if (source === 'file' && comp.asks.some((a) => a.op === 'layers' && a.remove?.some((t) => t.all || !(t.at ?? t.where)))) {
+    return { kind: 'say', text: editErrorText('erase_where', locale), keepComposer: true, intent };
+  }
   if (comp.missing.includes('cta_text')) return { kind: 'say', text: editErrorText('cta_text', locale), keepComposer: true, intent };
   if (comp.missing.includes('caption_text')) return { kind: 'say', text: editErrorText('caption_text', locale), keepComposer: true, intent };
   if (comp.logo && logo === undefined) return { kind: 'say', text: editErrorText('logo_file', locale), keepComposer: true, intent };

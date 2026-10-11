@@ -35,6 +35,8 @@ export type UnplannedKind =
   /** Captions of the song's or the speech's words (automatic transcription is not on), or translated captions. */
   | 'speech_captions'
   | 'translate_captions'
+  /** A person, an object or the background taken out of the picture: AI fill, a paid provider call, not switched on. */
+  | 'remove_object'
   /** A stretch cut out of the middle, a trim the montage's length does not cover. */
   | 'cut_middle'
   | 'trim'
@@ -143,6 +145,10 @@ export function unplannedLine(u: Unplanned, locale: string): string {
       return lang === 'en' ? 'translated captions: not switched on yet'
         : lang === 'ru' ? 'перевод субтитров: пока не включён'
           : 'ქეფშენების თარგმანი: ჯერ ჩართული არ არის';
+    case 'remove_object':
+      return lang === 'en' ? 'taking a person, an object or the background out of the picture: that needs AI fill (a paid provider call), not switched on yet'
+        : lang === 'ru' ? 'убрать человека, предмет или фон из кадра: нужно заполнение ИИ (платный вызов провайдера), пока не включено'
+          : 'ადამიანის, საგნის ან ფონის ამოღება კადრიდან: AI-ით შევსება სჭირდება (ფასიანი პროვაიდერის გამოძახება), ჯერ ჩართული არ არის';
     case 'cut_middle':
       return lang === 'en' ? 'cutting a stretch out of the middle: the montage picks its own shots; ask for it on the finished video'
         : lang === 'ru' ? 'вырезать кусок из середины: монтаж сам выбирает кадры; попросите это на готовом видео'

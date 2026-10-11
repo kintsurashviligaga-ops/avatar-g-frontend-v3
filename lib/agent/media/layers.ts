@@ -230,6 +230,15 @@ export interface LayerTarget {
   where?: 'top' | 'bottom' | 'left' | 'right' | 'center';
   /** All the layers of that kind („all the text"). */
   all?: boolean;
+  /**
+   * The exact place a removal names („the top right corner"), and when: when no layer of ours is there, what is meant is
+   * in the picture itself, and ./editExec erases that place (./editPlan `erase`) in that stretch. Not used to find layers.
+   */
+  at?: Anchor;
+  fromSec?: number;
+  toSec?: number;
+  firstSec?: number;
+  lastSec?: number;
 }
 
 /** When, as asked: the whole result, its first or last seconds, an exact range, or all of it but its last seconds. */

@@ -1,6 +1,6 @@
 import {
   MAX_EDIT_OUTPUT_SEC, audioFilters, cleanCaption, displayDims, editNameFor, qcEdit,
-  renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
+  eraseVf, renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
 } from './editPlan';
 import type { BannerProbe } from '@/lib/video/probeBanner';
 
@@ -232,5 +232,75 @@ describe('the overlay edit', () => {
 
   test('the stored request with an overlay passes its own checks again', () => {
     expect(validateEditRequest(JSON.parse(JSON.stringify(request([{ op: 'overlay' }]))))).not.toBeNull();
+  });
+});
+
+describe('erase: what is in the picture itself, filled in from around its place (GG 2026-10-11 17:38Z)', () => {
+  test('a named place takes its box; numbers are taken as they are; the plan keeps the source frame', () => {
+    const r = plan([{ op: 'erase', boxes: [{ at: 'top-right' }, { x: 0.4, y: 0.4, w: 0.1, h: 0.05 }] }]);
+    expect(r.edits).toEqual([{ op: 'erase', boxes: [{ x: 0.69, y: 0.01, w: 0.3, h: 0.14, at: 'top-right' }, { x: 0.4, y: 0.4, w: 0.1, h: 0.05 }] }]);
+    expect(r.plan).toMatchObject({ output: 'mp4', durationSec: 30, width: 1920, height: 1080, frame: { width: 1920, height: 1080 }, copyVideo: false });
+  });
+
+  test('delogo in pixels of the frame as shown, before the frame changes, one pixel of picture kept around it', () => {
+    const req = request([{ op: 'aspect', to: '9:16' }, { op: 'erase', at: 'bottom' }]);
+    const vf = videoFilters(req);
+    expect(vf[0]).toBe('delogo=x=58:y=864:w=1805:h=205');
+    expect(vf[1]).toMatch(/^scale=|crop|pad/);
+    // A phone clip: the shown frame is portrait, and the boxes are of it.
+    const phone = request([{ op: 'erase', at: 'top-left' }], PHONE);
+    expect(phone.plan.frame).toEqual({ width: 1080, height: 1920 });
+    expect(videoFilters(phone)[0]).toBe('delogo=x=11:y=19:w=324:h=269');
+    // At the very edge: x and y at least 1, the box inside by one pixel.
+    expect(eraseVf([{ x: 0, y: 0, w: 1, h: 0.1 }], { width: 640, height: 360 })).toEqual(['delogo=x=1:y=1:w=638:h=36']);
+  });
+
+  test('a stretch of the result: firstSec, lastSec or a range, after a trim and a speed; the whole length is no stretch', () => {
+    const r = plan([{ op: 'trim', fromSec: 0, toSec: 20 }, { op: 'speed', factor: 2 }, { op: 'erase', boxes: [{ at: 'top', firstSec: 3 }, { at: 'bottom', lastSec: 2 }, { at: 'center', fromSec: 0, toSec: 10 }] }]);
+    const e = r.edits.find((x) => x.op === 'erase')!;
+    expect(e).toEqual({ op: 'erase', boxes: [
+      { x: 0.03, y: 0.01, w: 0.94, h: 0.17, at: 'top', fromSec: 0, toSec: 3 },
+      { x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom', fromSec: 8, toSec: 10 },
+      { x: 0.2, y: 0.38, w: 0.6, h: 0.24, at: 'center' },
+    ] });
+    const vf = videoFilters({ edits: r.edits, plan: r.plan });
+    expect(vf[0]).toMatch(/^setpts=/);
+    expect(vf[1]).toBe("delogo=x=58:y=11:w=1805:h=184:enable='between(t,0,3)'");
+    expect(vf[3]).toBe('delogo=x=384:y=410:w=1152:h=259');
+  });
+
+  test('a picture and a thumbnail take it (no stretch on a picture)', () => {
+    const PHOTO: BannerProbe = { durationSec: 0, hasVideo: true, hasAudio: false, width: 1200, height: 1600, rotation: 0, videoCodec: 'mjpeg', audioCodec: null };
+    const p = plan([{ op: 'erase', at: 'bottom-right' }], PHOTO);
+    expect(p.plan).toMatchObject({ output: 'jpg', still: true, frame: { width: 1200, height: 1600 } });
+    expect(renderArgs({ edits: p.edits, plan: p.plan }, 'in.jpg', 'out.jpg').join(' ')).toContain('-vf delogo=x=828:y=1360:w=360:h=224');
+    expect(resolveEdits([{ op: 'erase', boxes: [{ at: 'top', firstSec: 2 }] }], PHOTO)).toMatchObject({ ok: false, error: 'conflict' });
+    const t = plan([{ op: 'thumbnail', atSec: 4 }, { op: 'erase', at: 'top-left' }]);
+    expect(t.plan.output).toBe('jpg');
+    expect(t.edits.map((x) => x.op)).toEqual(['erase', 'thumbnail']);
+  });
+
+  test('refusals: no place, a place outside, too large a place, too many places, a stretch outside the result', () => {
+    expect(resolveEdits([{ op: 'erase', boxes: [] }], SRC)).toMatchObject({ ok: false, error: 'erase_where' });
+    expect(resolveEdits([{ op: 'erase' }], SRC)).toMatchObject({ ok: false, error: 'erase_where' });
+    expect(resolveEdits([{ op: 'erase', boxes: [{}] }], SRC)).toMatchObject({ ok: false, error: 'erase_where' });
+    expect(resolveEdits([{ op: 'erase', at: 'middle' }], SRC)).toMatchObject({ ok: false, error: 'bad_edits' });
+    expect(resolveEdits([{ op: 'erase', boxes: [{ x: 0.9, y: 0.1, w: 0.2, h: 0.1 }] }], SRC)).toMatchObject({ ok: false, error: 'bad_edits' });
+    expect(resolveEdits([{ op: 'erase', boxes: [{ x: 0.1, y: 0.1, w: 0.1 }] }], SRC)).toMatchObject({ ok: false, error: 'bad_edits' });
+    expect(resolveEdits([{ op: 'erase', boxes: [{ x: 0, y: 0, w: 0.8, h: 0.8 }] }], SRC)).toMatchObject({ ok: false, error: 'erase_too_large' });
+    expect(resolveEdits([{ op: 'erase', boxes: Array(5).fill({ at: 'top' }) }], SRC)).toMatchObject({ ok: false, error: 'bad_edits' });
+    expect(resolveEdits([{ op: 'erase', boxes: [{ at: 'top', fromSec: 40, toSec: 50 }] }], SRC)).toMatchObject({ ok: false, error: 'out_of_range' });
+  });
+
+  test('the stored request passes its own check again, and a changed box or a lost frame does not', () => {
+    const req = request([{ op: 'trim', fromSec: 2, toSec: 12 }, { op: 'erase', boxes: [{ at: 'bottom', lastSec: 4 }] }, { op: 'aspect', to: '1:1' }]);
+    expect(validateEditRequest(req)).not.toBeNull();
+    expect(validateEditRequest(JSON.parse(JSON.stringify(req)))).not.toBeNull();
+    // (Another frame is the token's to refuse, and the worker's: ./editWorker checks the source's frame before delivery.)
+    expect(validateEditRequest({ ...req, plan: { ...req.plan, frame: { width: 0, height: 360 } } })).toBeNull();
+    expect(validateEditRequest({ ...req, plan: { ...req.plan, frame: undefined } })).toBeNull();
+    const bad = JSON.parse(JSON.stringify(req)) as EditRequest;
+    (bad.edits.find((e) => e.op === 'erase') as { boxes: Array<{ w: number }> }).boxes[0]!.w = 0.99;
+    expect(validateEditRequest(bad)).toBeNull();
   });
 });

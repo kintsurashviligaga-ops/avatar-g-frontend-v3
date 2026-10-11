@@ -319,9 +319,13 @@ describe('a logo and a line, revised', () => {
     expect(m.packageBefore).toBeLessThan(3); // the package logo (the source's own pixels) never touched
     expect(m.packageAfter).toBeLessThan(3);
     expect(m.textKept).toBeLessThan(2);
-    // A logo that is not a layer of ours is not removed by pretending: what is left at the top is the picture itself.
+    // A logo that is no layer of ours any more is in the picture itself: its place is erased from the source (GG
+    // 2026-10-11 17:38Z), said on the card before Start, with the layers kept as they are.
     const again = await quote(r.url, [{ op: 'layers', remove: [{ kind: 'image', where: 'top' }] }]);
-    expect(again).toMatchObject({ ok: false, error: 'remove_from_source' });
+    expect(again).toMatchObject({ ok: true });
+    const edits = (again as { quote: { edits: Array<{ op: string }> } }).quote.edits;
+    expect(edits).toContainEqual({ op: 'erase', boxes: [{ x: 0.03, y: 0.01, w: 0.94, h: 0.17, at: 'top' }] });
+    expect(edits.some((e) => e.op === 'layers')).toBe(true);
     sheet('tx04-remove-top-logo-keep-package', [{ file: SCENE, t: at }, { file: first.file, t: at }, { file: r.file, t: at }]);
     evidence.tx04 = { ...m, logoBox, packageBox: PACKAGE, qc: r.qc.outcome };
   });

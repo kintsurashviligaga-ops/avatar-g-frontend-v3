@@ -6,7 +6,7 @@
  */
 import { formatDuration } from './audioChat';
 import type { EditErrorCode, EditQuote } from './editExec';
-import type { MediaEdit } from './editPlan';
+import type { EraseBox, MediaEdit } from './editPlan';
 import type { EditAsk } from './editWords';
 import { ROLE_ANCHOR, ROLE_STYLE, type Anchor, type Layer, type LayerAsk, type TextStyle, type TimeAsk } from './layers';
 
@@ -120,6 +120,15 @@ export function layerLine(l: Layer, locale: string, durationSec: number): string
   return `${mode}: ${PLACE[l.anchor][lang]}${when}`;
 }
 
+/** One erased place in words: „ვშლი: ზედა მარჯვენა კუთხე, 0:00–0:03 (ირგვლივი ფერებით ვავსებ)". */
+function eraseLine(b: EraseBox, lang: Lang): string {
+  const where = b.at ? PLACE[b.at][lang] : `${Math.round(b.x * 100)}%·${Math.round(b.y * 100)}% (${Math.round(b.w * 100)}×${Math.round(b.h * 100)}%)`;
+  const when = b.fromSec !== undefined && b.toSec !== undefined ? `, ${at(b.fromSec)}–${at(b.toSec)}` : '';
+  return lang === 'en' ? `erase: ${where}${when} (filled in from around it)`
+    : lang === 'ru' ? `убираю: ${where}${when} (заполняю цветами вокруг)`
+      : `ვშლი: ${where}${when} (ირგვლივი ფერებით ვავსებ)`;
+}
+
 /** One resolved edit in a few words: „keeps 0:05–0:12", „2× faster", „9:16, cropped", „sound off". */
 export function editLine(e: MediaEdit, locale: string, durationSec = 0): string {
   const lang = pick(locale);
@@ -157,6 +166,8 @@ export function editLine(e: MediaEdit, locale: string, durationSec = 0): string 
       return e.look === 'grain'
         ? (lang === 'en' ? 'overlay: film grain' : lang === 'ru' ? 'оверлей: зерно плёнки' : 'ოვერლეი: ფირის მარცვალი')
         : (lang === 'en' ? 'overlay: warm light leaks' : lang === 'ru' ? 'оверлей: тёплые световые блики' : 'ოვერლეი: თბილი სინათლის ანარეკლები');
+    case 'erase':
+      return e.boxes.map((b) => eraseLine(b, lang)).join(' · ');
     case 'caption':
       return lang === 'en' ? `caption ${q(lang, e.text)}` : lang === 'ru' ? `подпись ${q(lang, e.text)}` : `წარწერა ${q(lang, e.text)}`;
     case 'thumbnail':
@@ -219,6 +230,11 @@ export function askLine(e: EditAsk, locale: string): string {
   if (e.op === 'grade' || e.op === 'fade' || e.op === 'volume' || e.op === 'mute' || e.op === 'caption' || e.op === 'aspect') return editLine(e as MediaEdit, locale);
   if (e.op === 'overlay') return editLine({ op: 'overlay', look: e.look ?? 'light-leak' }, locale);
   if (e.op === 'speed') return editLine(e, locale);
+  if (e.op === 'erase') {
+    const lang = pick(locale);
+    const places = (e.boxes ?? (e.at ? [{ at: e.at }] : [])).flatMap((b) => (b.at ? [PLACE[b.at][lang]] : []));
+    return places.length ? (lang === 'en' ? `erase: ${places.join(', ')}` : lang === 'ru' ? `убрать: ${places.join(', ')}` : `მოშორება: ${places.join(', ')}`) : '';
+  }
   return '';
 }
 
@@ -293,7 +309,7 @@ export function editDoneText(r: { output: 'mp4' | 'jpg'; name: string; durationS
 }
 
 export type EditChatCode = EditErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'no_previous' | 'caption_text'
-  | 'cut_middle' | 'approval_unclear' | 'cta_text' | 'logo_file' | 'speech_captions' | 'translate_captions';
+  | 'cut_middle' | 'approval_unclear' | 'cta_text' | 'logo_file' | 'speech_captions' | 'translate_captions' | 'remove_object';
 
 const AGAIN: Record<Lang, string> = { ka: ' მითხარი თავიდან, რა შევცვალო.', en: ' Tell me again what to change.', ru: ' Скажите ещё раз, что изменить.' };
 
@@ -342,7 +358,9 @@ const ERR: Record<EditChatCode, Record<Lang, string>> = {
   logo_file: { ka: 'რომელი ლოგო დავადო? მიამაგრე ლოგოს სურათი (PNG, სასურველია გამჭვირვალე ფონით) და იგივე დამიწერე.', en: 'Which logo should I put on? Attach the logo picture (a PNG, ideally with a transparent background) and say it again.', ru: 'Какой логотип поставить? Прикрепите картинку логотипа (PNG, лучше с прозрачным фоном) и повторите просьбу.' },
   no_captions: { ka: 'ამ ფაილზე ჩემი დამატებული ქეფშენები არ არის. ახლის დასამატებლად დაწერე სტრიქონები დროით („0:01–0:03 გამარჯობა") ან მიამაგრე .srt / .vtt. თუ ქეფშენები თავად კადრშია, მათ ვერ ვაშორებ.', en: 'This file has no captions of mine. To add some, write the lines with their times ("0:01–0:03 Hello") or attach an .srt / .vtt. Captions printed in the picture itself I cannot remove.', ru: 'На этом файле нет моих субтитров. Чтобы добавить, напишите строки со временем («0:01–0:03 Привет») или прикрепите .srt / .vtt. Субтитры, вшитые в сам кадр, я убрать не могу.' },
   cta_text: { ka: 'რა ეწეროს ღილაკზე? დაწერე ბრჭყალებში, მაგალითად: CTA „შეუკვეთე ახლა".', en: 'What should the button say? Put it in quotes, for example: CTA "Order now".', ru: 'Что написать на кнопке? В кавычках, например: CTA «Закажи сейчас».' },
-  remove_from_source: { ka: 'ეს თავად კადრშია (ჩემი დამატებული ფენა არ არის). მისი მოშორება დროში ნებადართული ხელსაწყოებით ვერ ხერხდება, ამიტომ არაფერს ვცვლი. დანარჩენს (მაგალითად პაკეტის ლოგოს) არ ვეხები.', en: 'That is in the picture itself (not a layer I added). Removing it over time is not possible with the approved tools, so I change nothing. Everything else (the package logo too) stays as it is.', ru: 'Это в самом кадре (не мой слой). Убрать это во времени разрешёнными инструментами нельзя, поэтому я ничего не меняю. Остальное (и логотип на упаковке) не трогаю.' },
+  erase_where: { ka: 'სად არის ის, რაც უნდა მოვაშორო? თქვი ადგილი: ზედა მარცხენა ან მარჯვენა კუთხე, ქვედა მარცხენა ან მარჯვენა კუთხე, ზემოთ, ქვემოთ, მარცხნივ, მარჯვნივ ან ცენტრში. მაგალითად: „ზედა მარჯვენა კუთხეში ლოგო მოაშორე".', en: 'Where is what I should remove? Say the place: the top left or right corner, the bottom left or right corner, the top, the bottom, the left, the right or the centre. For example: “remove the logo in the top right corner”.', ru: 'Где то, что нужно убрать? Назовите место: левый или правый верхний угол, левый или правый нижний угол, верх, низ, слева, справа или центр. Например: «убери логотип в правом верхнем углу».' },
+  erase_too_large: { ka: 'ეს ადგილი კადრის ძალიან დიდი ნაწილია: იქ შევსება მხოლოდ ლაქას დატოვებდა. დამისახელე უფრო პატარა ადგილი (კუთხე, ზედა ან ქვედა ზოლი).', en: 'That place is too large a part of the picture: filling it in would only leave a smear. Name a smaller place (a corner, the top or bottom band).', ru: 'Это слишком большая часть кадра: заполнение оставит лишь пятно. Назовите место меньше (угол, верхнюю или нижнюю полосу).' },
+  remove_object: { ka: 'ადამიანის, საგნის ან ფონის ამოღება ფიქსირებული ადგილი არ არის: ამას AI-ით შევსება სჭირდება (ფასიანი პროვაიდერის გამოძახება) და ჯერ ჩართული არ არის. შემიძლია მოვაშორო ტექსტი, ლოგო, წყლის ნიშანი ან სუბტიტრები, რომლებიც ერთ ადგილას დგას: თქვი, სადაა.', en: 'Taking out a person, an object or the background is not a fixed place: it needs AI fill (a paid provider call), which is not switched on yet. I can remove a text, a logo, a watermark or subtitles that stay in one place: say where it is.', ru: 'Убрать человека, предмет или фон нельзя как фиксированное место: для этого нужно заполнение ИИ (платный вызов провайдера), и оно пока не включено. Я могу убрать текст, логотип, водяной знак или субтитры, которые стоят на одном месте: скажите, где.' },
   speech_captions: { ka: 'მეტყველებიდან ქეფშენებს ჯერ თავად ვერ ვწერ: ამას სჭირდება ფასიანი ამოცნობა (ElevenLabs Scribe), რაზეც გადაწყვეტილება მფლობელს ეკუთვნის. ახლავე შემიძლია შენი ტექსტით: დაწერე „0:01–0:03 გამარჯობა" ან მიამაგრე .srt / .vtt.', en: 'I cannot write captions from the speech myself yet: that needs paid recognition (ElevenLabs Scribe), which is the owner\'s decision. I can use your own words now: write "0:01–0:03 Hello" or attach an .srt / .vtt.', ru: 'Субтитры из речи я пока сам не пишу: это платное распознавание (ElevenLabs Scribe), решение за владельцем. Сейчас могу с вашим текстом: напишите «0:01–0:03 Привет» или прикрепите .srt / .vtt.' },
   translate_captions: { ka: 'ქეფშენების თარგმნა ფასიან მოდელს სჭირდება და ჯერ ჩართული არ არის (მფლობელის გადაწყვეტილება). თარგმნილი ტექსტი თავად მომწერე დროებით და იმავე დროზე ჩავსვამ.', en: 'Translating captions needs a paid model and is not on yet (the owner\'s decision). Send the translated lines with their times and I will put them on at those times.', ru: 'Перевод субтитров требует платной модели и пока не включён (решение владельца). Пришлите перевод со временем — поставлю на те же моменты.' },
   cut_middle: { ka: 'შუიდან მონაკვეთის ამოჭრა ერთ ცვლილებად ჯერ არ შემიძლია. შემიძლია დავტოვო ერთი მონაკვეთი ან მოვაჭრა დასაწყისი ან ბოლო.', en: 'I cannot cut a stretch out of the middle in one edit yet. I can keep one stretch, or cut off the start or the end.', ru: 'Вырезать отрезок из середины одной правкой я пока не могу. Могу оставить один отрезок или обрезать начало или конец.' },

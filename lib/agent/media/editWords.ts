@@ -10,7 +10,7 @@
  */
 import { aspectFromPrompt } from './montageAsk';
 import { mineComposition, type CompositionAsk, type CompositionMissing, type CompositionUnsupported } from './layerWords';
-import { MAX_CUES } from './layers';
+import { MAX_CUES, type Anchor } from './layers';
 import type { FrameAspect, GradeStyle } from '@/lib/video/editFilters';
 import type { OverlayLook } from './editPlan';
 
@@ -41,6 +41,8 @@ export type EditAsk =
   /** An overlay over the whole picture: light leaks (the default) or film grain (./overlayFx). */
   | { op: 'overlay'; look?: OverlayLook }
   | { op: 'thumbnail'; atSec?: number }
+  /** Places of the picture itself filled in from around them (./editPlan `erase`): a named place or exact fractions. */
+  | { op: 'erase'; at?: Anchor; boxes?: Array<{ at?: Anchor; x?: number; y?: number; w?: number; h?: number; fromSec?: number; toSec?: number; firstSec?: number; lastSec?: number }> }
   /** Media Studio v2.1: text, picture and mask layers, and caption tracks (./layerWords). */
   | CompositionAsk;
 
@@ -220,6 +222,7 @@ const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, Field>>>>
   caption: { text: 'str' },
   overlay: { look: 'str' },
   thumbnail: { atSec: 'num' },
+  erase: { at: 'str', boxes: 'list' },
   layers: { add: 'list', change: 'list', remove: 'list' },
   captions: { track: 'obj', deliver: 'str', off: 'bool' },
 };

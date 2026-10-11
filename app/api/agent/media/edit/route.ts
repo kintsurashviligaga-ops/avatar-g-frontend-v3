@@ -62,7 +62,9 @@ const STATUS: Partial<Record<EditErrorCode, number>> = {
   bad_captions: 422,
   missing_glyphs: 422,
   layer_picture: 422,
-  remove_from_source: 422,
+  // Erasing a place of the picture itself: the place was not said, or it is too large to fill.
+  erase_where: 422,
+  erase_too_large: 422,
   no_captions: 422,
   invalid_request: 400,
   quote_invalid: 400,

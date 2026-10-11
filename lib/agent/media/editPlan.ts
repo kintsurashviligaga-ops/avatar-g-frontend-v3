@@ -9,6 +9,11 @@
  * leaks drifting over it, or film grain: ./overlayFx) is its own pass between the first and the layers. The filters are the remix's own
  * (lib/video/editFilters), so the same words make the same picture on both doors.
  *
+ * ERASE (GG 2026-10-11 17:38Z: „ვიდეოში ტექსტი … წაშლა, ამოღება, მოშორება"): a logo, a watermark, a text or burned-in
+ * subtitles that stay in ONE place of the source picture are filled in from the pixels around that place (ffmpeg delogo),
+ * over the whole result or a stretch of it, on a video or a picture. Something that moves (a person, a car, a text that
+ * travels) is not a fixed place: that is AI inpainting, a paid provider call, the owner's decision; it is said, not faked.
+ *
  * WHAT IT DOES NOT: add music or a voice (the remix's charged ops: free here would undercut their price), join several
  * clips (that is the montage), or a split into several files (a run of trims: lib/agent/run). The model never picks
  * the numbers alone: the card shows the resolved edit and the user presses Start.
@@ -23,7 +28,7 @@ import {
   ASPECT_DIMS, GRADE_VF, MAX_SPEED, MIN_SPEED, aspectVf, atempoChain, setptsFor, type FrameAspect, type GradeStyle,
 } from '@/lib/video/editFilters';
 import {
-  resolveLayers, resolveTrack, type CaptionDelivery, type CaptionTrack, type Layer, type LayersAsk,
+  ANCHORS, resolveLayers, resolveTrack, type Anchor, type CaptionDelivery, type CaptionTrack, type Layer, type LayersAsk,
 } from './layers';
 
 /** generation_jobs rows of Agent G's edits carry this queue kind in params._exec. */
@@ -47,6 +52,8 @@ export type MediaEdit =
   | { op: 'volume'; db: number }
   | { op: 'mute' }
   | { op: 'caption'; text: string }
+  /** What is in the source picture itself, at fixed places, filled in from around it (a logo, a watermark, subtitles). */
+  | { op: 'erase'; boxes: EraseBox[] }
   /** An overlay over the whole picture: warm light leaks drifting over it, or film grain (./overlayFx). Video only. */
   | { op: 'overlay'; look: OverlayLook }
   /** Media Studio v2.1: the edit's own text, picture and mask layers (./layers), drawn over the result, non-destructive. */
@@ -58,11 +65,11 @@ export type MediaEdit =
 export type EditName = MediaEdit['op'];
 
 /** The one order edits are applied in (and stored in): time first, then the frame, then its look, then the sound. */
-export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'layers', 'captions', 'thumbnail'];
+export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'layers', 'captions', 'thumbnail'];
 /** What a thumbnail (one still) can be combined with. */
-const STILL_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'layers', 'thumbnail']);
+const STILL_EDITS: ReadonlySet<EditName> = new Set(['erase', 'aspect', 'grade', 'caption', 'layers', 'thumbnail']);
 /** What a picture (a still SOURCE: a poster, a banner, a photo) can be given. */
-const PICTURE_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'layers']);
+const PICTURE_EDITS: ReadonlySet<EditName> = new Set(['erase', 'aspect', 'grade', 'caption', 'layers']);
 /** Edits drawn in the second (composition) pass, over the first pass's output. */
 export const COMPOSED_EDITS: ReadonlySet<EditName> = new Set(['caption', 'layers', 'captions']);
 /** A single picture as ffmpeg reads one: an image codec and no length to speak of. */
@@ -76,6 +83,39 @@ export const OVERLAY_LOOKS: readonly OverlayLook[] = ['light-leak', 'grain'];
 /** An overlay is one more full-frame pass: it is for a result up to this long (one worker's time). */
 export const MAX_OVERLAY_SEC = 120;
 export const GRADES: readonly GradeStyle[] = ['vintage', 'cinematic', 'neon', 'noir', 'dramatic'];
+
+/**
+ * A place of the source picture to fill in, in fractions of the frame as shown (0–1, from its top left); `at` names the
+ * place it was asked by („the top right corner"), and `fromSec` / `toSec` the stretch of the result it is erased in.
+ */
+export interface EraseBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  at?: Anchor;
+  fromSec?: number;
+  toSec?: number;
+}
+export const MAX_ERASE_BOXES = 4;
+/** One box is at most this share of the frame: the fill comes from the box's edges, and a larger one is a smear. */
+export const MAX_ERASE_AREA = 0.35;
+export const MIN_ERASE_SIDE = 0.02;
+/**
+ * The places as words name them, sized for what sits there: a logo or a watermark in a corner, a title across the top,
+ * subtitles across the bottom (their usual band), a sticker at a side, a text in the middle.
+ */
+export const ERASE_AT: Readonly<Record<Anchor, { x: number; y: number; w: number; h: number }>> = {
+  'top-left': { x: 0.01, y: 0.01, w: 0.3, h: 0.14 },
+  top: { x: 0.03, y: 0.01, w: 0.94, h: 0.17 },
+  'top-right': { x: 0.69, y: 0.01, w: 0.3, h: 0.14 },
+  left: { x: 0.01, y: 0.3, w: 0.26, h: 0.4 },
+  center: { x: 0.2, y: 0.38, w: 0.6, h: 0.24 },
+  right: { x: 0.73, y: 0.3, w: 0.26, h: 0.4 },
+  'bottom-left': { x: 0.01, y: 0.85, w: 0.3, h: 0.14 },
+  bottom: { x: 0.03, y: 0.8, w: 0.94, h: 0.19 },
+  'bottom-right': { x: 0.69, y: 0.85, w: 0.3, h: 0.14 },
+};
 
 /** What the result will be, worked out at the quote from the source's probe and checked again after the render. */
 export interface EditPlan {
@@ -94,6 +134,8 @@ export interface EditPlan {
   still?: boolean;
   /** A second, clean copy is made too (the captions' `both`): the same edit without its captions. */
   clean?: boolean;
+  /** The source's frame as shown, when places of it are erased (the boxes are fractions of it; the filter takes pixels). */
+  frame?: { width: number; height: number };
 }
 
 export interface EditRequest {
@@ -109,13 +151,14 @@ export interface EditRequest {
 
 export type EditPlanErrorCode =
   | 'bad_edits' | 'no_video' | 'out_of_range' | 'too_long' | 'too_short' | 'conflict' | 'nothing_to_do'
-  | 'text_too_long' | 'too_many_layers' | 'layer_not_found' | 'layer_ambiguous' | 'bad_captions';
+  | 'text_too_long' | 'too_many_layers' | 'layer_not_found' | 'layer_ambiguous' | 'bad_captions' | 'erase_where' | 'erase_too_large';
 export type EditPlanError = { ok: false; error: EditPlanErrorCode; message: string; detail?: string };
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 /** Seconds as ffmpeg reads them: at most three decimals, no exponent. */
 export const secArg = (n: number): string => String(Math.round(n * 1000) / 1000);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 const fail = (error: EditPlanError['error'], message: string, detail?: string): EditPlanError => ({ ok: false, error, message, ...(detail ? { detail } : {}) });
 
 /** A caption as it may be burned: one paragraph, no control characters, at most MAX_CAPTION_CHARS. */
@@ -154,6 +197,8 @@ export function resolveEdits(
   /** Layer and caption asks wait for the result's length (after a trim or a speed change). */
   let layersAsk: LayersAsk | null = null;
   let captionsAsk: { track: unknown; deliver: unknown } | null = null;
+  /** The places to erase wait for the result's length too (a stretch of it). */
+  let eraseAsk: Record<string, unknown> | null = null;
 
   const seen = new Set<EditName>();
   const edits: MediaEdit[] = [];
@@ -238,6 +283,9 @@ export function resolveEdits(
       case 'layers':
         layersAsk = a as unknown as LayersAsk;
         break;
+      case 'erase':
+        eraseAsk = a as Record<string, unknown>;
+        break;
       case 'captions':
         captionsAsk = { track: a!.track, deliver: a!.deliver ?? 'burned' };
         break;
@@ -269,7 +317,12 @@ export function resolveEdits(
   if (fade && fade.inSec + fade.outSec > outSec) return fail('conflict', 'The fades are longer than the video.');
   if (get('overlay') && outSec > MAX_OVERLAY_SEC) return fail('too_long', `An overlay is for a video up to ${MAX_OVERLAY_SEC} s; this one would be ${Math.round(outSec)} s. Trim it first.`);
 
-  // ── layers and captions, on the result's own timeline ─────────────────────────────────────────────────────────────
+  // ── erased places, layers and captions, on the result's own timeline ─────────────────────────────────────────────
+  if (eraseAsk) {
+    const r = resolveErase(eraseAsk, outSec, still);
+    if (!r.ok) return r;
+    edits.push({ op: 'erase', boxes: r.boxes });
+  }
   let clean = false;
   if (layersAsk) {
     const r = resolveLayers(layersAsk, parent.layers ?? [], outSec, still);
@@ -302,8 +355,74 @@ export function resolveEdits(
       sourceSec: dur, output: still ? 'jpg' : 'mp4', durationSec: outSec,
       hasAudio: !still && src.hasAudio && !get('mute'), width: w, height: h, copyVideo,
       ...(picture ? { still: true } : {}), ...(clean ? { clean: true } : {}),
+      ...(edits.some((e) => e.op === 'erase') ? { frame: { width: shown.width, height: shown.height } } : {}),
     },
   };
+}
+
+/**
+ * The places asked to erase → the stored boxes: a named place (`at`) takes its ERASE_AT box, numbers are taken as they
+ * are (fractions of the frame), and a stretch (`fromSec` / `toSec`, `firstSec`, `lastSec`) is on the result's timeline.
+ * One box at most MAX_ERASE_AREA of the frame, inside it, at most MAX_ERASE_BOXES; a picture has no stretch.
+ */
+export function resolveErase(ask: Record<string, unknown>, outSec: number, still: boolean): { ok: true; boxes: EraseBox[] } | EditPlanError {
+  const where = 'Say where it is: a corner, the top, the bottom, a side or the centre.';
+  const list: unknown[] | null = Array.isArray(ask.boxes) ? ask.boxes : ask.at !== undefined ? [{ at: ask.at }] : null;
+  if (!list || list.length === 0) return fail('erase_where', where);
+  if (list.length > MAX_ERASE_BOXES) return fail('bad_edits', `Up to ${MAX_ERASE_BOXES} places at once.`);
+  const boxes: EraseBox[] = [];
+  for (const raw of list) {
+    const b = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    if (b.at !== undefined && !(ANCHORS as readonly unknown[]).includes(b.at)) return fail('bad_edits', where);
+    const at = b.at as Anchor | undefined;
+    const given = ['x', 'y', 'w', 'h'].filter((k) => b[k] !== undefined);
+    let box: { x: number; y: number; w: number; h: number };
+    if (given.length) {
+      if (given.length !== 4 || !['x', 'y', 'w', 'h'].every((k) => isNum(b[k]))) return fail('bad_edits', 'A place is its left, top, width and height.');
+      box = { x: round3(b.x as number), y: round3(b.y as number), w: round3(b.w as number), h: round3(b.h as number) };
+    } else if (at) {
+      box = { ...ERASE_AT[at] };
+    } else {
+      return fail('erase_where', where);
+    }
+    if (!(box.x >= 0 && box.y >= 0 && box.w >= MIN_ERASE_SIDE && box.h >= MIN_ERASE_SIDE && box.x + box.w <= 1.0005 && box.y + box.h <= 1.0005)) {
+      return fail('bad_edits', 'That place is not inside the picture.');
+    }
+    if (box.w * box.h > MAX_ERASE_AREA + 1e-9) {
+      return fail('erase_too_large', `A place to erase is at most ${Math.round(MAX_ERASE_AREA * 100)}% of the picture: a larger fill is only a smear.`);
+    }
+    // The stretch it is erased in, on the result's timeline.
+    const from = b.fromSec, to = b.toSec, first = b.firstSec, last = b.lastSec;
+    const timed = [from, to, first, last].some((v) => v !== undefined);
+    let win: { fromSec: number; toSec: number } | null = null;
+    if (timed) {
+      if (still) return fail('conflict', 'A picture has no time: say the place only.');
+      if ([from, to, first, last].some((v) => v !== undefined && !isNum(v))) return fail('bad_edits', 'A stretch is in seconds.');
+      let f: number, t: number;
+      if (first !== undefined) [f, t] = [0, Math.min(first as number, outSec)];
+      else if (last !== undefined) [f, t] = [Math.max(0, outSec - (last as number)), outSec];
+      else [f, t] = [(from as number | undefined) ?? 0, (to as number | undefined) ?? outSec];
+      f = round2(f); t = round2(Math.min(t, outSec));
+      if (f < 0 || f >= outSec || !(t - f >= 0.1)) return fail('out_of_range', `The result is ${secArg(outSec)} s long.`);
+      if (!(f <= 0.05 && t >= outSec - 0.05)) win = { fromSec: f, toSec: t };
+    }
+    boxes.push({ ...box, ...(at ? { at } : {}), ...(win ?? {}) });
+  }
+  return { ok: true, boxes };
+}
+
+/** The erased places as delogo filters, in pixels of the frame as shown (delogo needs one pixel of picture around a box). */
+export function eraseVf(boxes: readonly EraseBox[], frame: { width: number; height: number }): string[] {
+  const W = Math.round(frame.width), H = Math.round(frame.height);
+  const out: string[] = [];
+  for (const b of boxes) {
+    const x = Math.max(1, Math.round(b.x * W)), y = Math.max(1, Math.round(b.y * H));
+    const w = Math.min(Math.round(b.w * W), W - 1 - x), h = Math.min(Math.round(b.h * H), H - 1 - y);
+    if (!(w >= 1 && h >= 1)) continue;
+    const when = b.fromSec !== undefined && b.toSec !== undefined ? `:enable='between(t,${secArg(b.fromSec)},${secArg(b.toSec)})'` : '';
+    out.push(`delogo=x=${x}:y=${y}:w=${w}:h=${h}${when}`);
+  }
+  return out;
 }
 
 /** The stored (or returned) request, checked field by field; null when anything is off. */
@@ -316,6 +435,7 @@ export function validateEditRequest(x: unknown): EditRequest | null {
   if (!p || (p.output !== 'mp4' && p.output !== 'jpg') || !r.name.endsWith(`.${p.output}`)) return null;
   if (p.still !== undefined && p.still !== true) return null;
   if (p.clean !== undefined && p.clean !== true) return null;
+  if (p.frame !== undefined && !(p.frame && Number.isInteger(p.frame.width) && Number.isInteger(p.frame.height) && p.frame.width > 0 && p.frame.height > 0)) return null;
   if (!isNum(p.sourceSec) || !(p.still ? p.sourceSec === 0 && p.output === 'jpg' : p.sourceSec > 0) || !isNum(p.durationSec) || !isNum(p.width) || !isNum(p.height) || !(p.width > 0 && p.height > 0)) return null;
   if (typeof p.hasAudio !== 'boolean' || typeof p.copyVideo !== 'boolean') return null;
   if (r.parent !== undefined && !(r.parent && typeof r.parent.jobId === 'string' && /^[0-9a-f-]{36}$/i.test(r.parent.jobId) && Number.isInteger(r.parent.depth) && r.parent.depth >= 1 && r.parent.depth <= 50)) return null;
@@ -324,12 +444,13 @@ export function validateEditRequest(x: unknown): EditRequest | null {
   // The edits again, against the plan's own facts: the same rules the quote applied, the same result.
   const again = resolveEdits(r.edits, {
     durationSec: p.sourceSec, hasVideo: true, hasAudio: p.hasAudio || r.edits.some((e) => e?.op === 'mute'),
-    width: p.width, height: p.height, rotation: 0, videoCodec: p.still ? 'png' : p.copyVideo ? 'h264' : null,
+    width: p.frame?.width ?? p.width, height: p.frame?.height ?? p.height, rotation: 0, videoCodec: p.still ? 'png' : p.copyVideo ? 'h264' : null,
   });
   if (!again.ok) return null;
   if (JSON.stringify(again.edits) !== JSON.stringify(r.edits)) return null;
   if (again.plan.output !== p.output || Math.abs(again.plan.durationSec - p.durationSec) > 0.011) return null;
   if (Boolean(again.plan.clean) !== Boolean(p.clean)) return null;
+  if (JSON.stringify(again.plan.frame ?? null) !== JSON.stringify(p.frame ?? null)) return null;
   return r as EditRequest;
 }
 
@@ -340,8 +461,11 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   const { edits, plan } = req;
   const vf: string[] = [];
   const speed = edit(edits, 'speed'), aspect = edit(edits, 'aspect'), grade = edit(edits, 'grade'), fade = edit(edits, 'fade');
+  const erase = edit(edits, 'erase');
   const still = plan.output === 'jpg';
   if (speed) vf.push(setptsFor(speed.factor));
+  // Before the frame changes: the boxes are places of the source as shown.
+  if (erase) vf.push(...eraseVf(erase.boxes, plan.frame ?? { width: plan.width, height: plan.height }));
   if (aspect) {
     const a = aspectVf(aspect.to, aspect.fit);
     // A JPEG takes full-range YUV: leave the pixel format to the encoder.

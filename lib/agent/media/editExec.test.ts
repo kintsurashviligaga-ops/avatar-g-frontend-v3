@@ -59,15 +59,32 @@ describe('quote: the caller\'s own file, the edits resolved against it, a signed
     ['an unreadable file', { file: 'omni-uploads/user-a/missing.mp4' }, 'unreadable'],
     ['no edits', { edits: [] }, 'nothing_to_do'],
     ['an edit past the end', { edits: [{ op: 'trim', fromSec: 40 }] }, 'out_of_range'],
-    // v2.1: what is in the picture itself is not a layer of ours; captions not ours cannot be delivered again or taken off
-    ['a layer to remove that is in the picture itself', { edits: [{ op: 'layers', remove: [{ kind: 'image', where: 'top' }] }] }, 'remove_from_source'],
+    // What is in the picture itself is erased at the place said; no place said is asked for. Captions not ours cannot be delivered twice.
+    ['something in the picture itself, with no place', { edits: [{ op: 'layers', remove: [{ kind: 'image' }] }] }, 'erase_where'],
+    ['every text in the picture itself (no place)', { edits: [{ op: 'layers', remove: [{ kind: 'text', all: true }] }] }, 'erase_where'],
     ['the same video with and without captions it never had', { edits: [{ op: 'captions', deliver: 'both' }] }, 'no_captions'],
-    ['captions taken off a file that has none of ours', { edits: [{ op: 'captions', off: true }] }, 'no_captions'],
   ])('%s is refused and audited', async (_why, over, error) => {
     const f = fakeEdit({ foreign: ['omni-uploads/user-b/x.mp4'] });
     const q = await quoteEdit(f.deps, { userId: USER, file: UPLOAD, edits: ASKS, ...over });
     expect(q).toMatchObject({ ok: false, error });
     expect(f.audits.at(-1)).toMatchObject({ op: 'media_edit', phase: 'quote', outcome: 'refused', detail: error });
+  });
+
+  test('a removal no layer of ours answers is an erase of that place in the source (GG 2026-10-11 17:38Z)', async () => {
+    const f = fakeEdit();
+    const q = await quoted(f, [{ op: 'layers', remove: [{ kind: 'image', where: 'top', at: 'top-right' }, { kind: 'text', where: 'bottom', at: 'bottom', firstSec: 3 }] }]);
+    expect(q.quote.edits).toEqual([{ op: 'erase', boxes: [
+      { x: 0.69, y: 0.01, w: 0.3, h: 0.14, at: 'top-right' },
+      { x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom', fromSec: 0, toSec: 3 },
+    ] }]);
+    expect(q.quote.plan).toMatchObject({ output: 'mp4', durationSec: 30, hasAudio: true, frame: { width: SOURCE.width, height: SOURCE.height } });
+    expect(q.quote.credits).toBe(0);
+    // „Without subtitles" on a file with none of ours: the subtitles' band at the bottom.
+    const subs = await quoted(fakeEdit(), [{ op: 'captions', off: true }]);
+    expect(subs.quote.edits).toEqual([{ op: 'erase', boxes: [{ x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom' }] }]);
+    // The signed plan queues like any other.
+    const r = await enqueueEditJob(f.deps, { userId: USER, request: q.request, token: q.token });
+    expect(r).toMatchObject({ ok: true });
   });
 
   test('a file with no picture, or that cannot be probed', async () => {
@@ -209,6 +226,13 @@ describe('what cannot be delivered is failed at once, with its reason', () => {
     expect(f.uploads).toEqual([]);
     expect(f.beating()).toBe(0);
     expect(editCodeOfRow(error)).toBe(error.split(':')[0]);
+  });
+
+  test('an erase on a source whose frame changed since the quote is not delivered (it would erase somewhere else)', async () => {
+    const f = fakeEdit({ render: async () => ({ ok: true, bytes: Buffer.alloc(9e5), input: { ...SOURCE, width: 1280, height: 720 }, output: { ...EDITED, durationSec: 30, width: 1920, height: 1080 } }) });
+    const id = await queued(f, [{ op: 'erase', at: 'top-right' }]);
+    expect(await workEditJob(f.deps, { jobId: id, worker: 'w1' })).toEqual({ ran: true, outcome: 'failed', error: 'source_changed: frame 1280x720 now, 1920x1080 when quoted' });
+    expect(f.uploads).toEqual([]);
   });
 
   test('a render that throws is a failed job, not a crashed worker; storage refusing the file fails it too', async () => {

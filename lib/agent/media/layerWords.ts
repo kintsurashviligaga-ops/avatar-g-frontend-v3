@@ -9,8 +9,9 @@
  * ხარისხი" draws those words; it does not speed the video up). Text removal and text addition are separate asks.
  *
  * What the words ask for and this edit cannot do is said, not guessed: captions of what is SPOKEN need a transcription
- * (a paid call, the owner's decision), a translation needs a model call (the same); a logo printed in the video itself
- * is not a layer of ours and is never „removed" by painting over it.
+ * (a paid call, the owner's decision), a translation needs a model call (the same). A logo, a watermark or a text in
+ * the picture itself is removed by erasing its place (./editExec turns a removal no layer of ours answers into
+ * ./editPlan `erase`); a person, an object or the background is not a fixed place: AI inpainting, a paid call, said so.
  *
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
@@ -40,7 +41,7 @@ export interface CaptionsEditAsk {
 export type CompositionAsk = LayersEditAsk | CaptionsEditAsk;
 
 export type CompositionMissing = 'caption_text' | 'cta_text' | 'logo_file';
-export type CompositionUnsupported = 'speech_captions' | 'translate_captions';
+export type CompositionUnsupported = 'speech_captions' | 'translate_captions' | 'remove_object';
 
 export interface MinedComposition {
   /** The message asks for something of this kind at all (text, logo, mask, captions, a change to them). */
@@ -68,7 +69,7 @@ const PUT = /დააწერ|წააწერ|მიაწერ|დაა�
 const CTA = new RegExp(`${B0}(?:cta|ქოლ\\s*-?\\s*თუ\\s*-?\\s*ექშენ\\p{L}*|მოწოდებ\\p{L}*|call\\s*-?\\s*to\\s*-?\\s*action|призыв\\p{L}*)${B1}`, 'iu');
 /** A plain „write" next to words in quotes („write "Summer" at the bottom", «напиши «Лето»»): those words are drawn. */
 const WRITE_VERB = /(?<![\p{L}])(?:write|type|напиши|напишите|написать)(?![\p{L}])/iu;
-const LOGO = /ლოგო|ლოგოტიპ|სტიკერ|ემბლემ|logo|sticker|emblem|логотип|лого(?![\p{L}])|стикер|эмблем/iu;
+const LOGO = /ლოგო|ლოგოტიპ|სტიკერ|ემბლემ|წყლის\s+ნიშ|ვოტერმარკ|უოთერმარკ|logo|sticker|emblem|watermark|логотип|лого(?![\p{L}])|стикер|эмблем|водян\p{L}*\s+знак|вотермарк/iu;
 const MASK_BLUR = /დაბლარ|ბლარ|გაბუნდოვ|დაფარ|blur|размой|размыть|размытие|замаж/iu;
 const MASK_MOSAIC = /პიქსელ|მოზაიკ|pixelat|mosaic|пиксел|мозаик/iu;
 const CAPTIONS = /ქე[ფბპ]შენ|სუბტიტრ|ტიტრ|caption|subtitle|субтитр|титр/iu;
@@ -85,6 +86,15 @@ const SMALLER = /შეამცირ|დააპატარავ|პატ�
 const BIGGER = /გაზარდ|გაადიდ|უფრო\s+დიდ|bigger|larger|enlarge|increase|больше|увелич/iu;
 const REWORD = /შეცვალ|ჩაანაცვლ|replace|change\s+(?:the\s+)?(?:text|words|title)\s+to|замени|поменяй/iu;
 const ALL = /ყველა|მთელი|all|every|весь|все|всю/iu;
+/** Something written in the picture („ზემოთ რაღაც წერია, მოაშორე"): a text to erase, though no text noun is said. */
+const WRITTEN = /წერია|დაწერილ|написан|написано|is\s+written|written\s+(?:on|in|at)/iu;
+/**
+ * A person, an object or the background taken out of the picture: not a fixed place but a thing that moves or fills it,
+ * AI inpainting or segmentation (a paid provider call), not something ffmpeg can fill in.
+ */
+const OBJECT = /ადამიან|პიროვნ|კაცი|კაცს|ქალბატონ|ბავშვ|მანქან|საგან|ობიექტ|ცხოველ|ძაღლ|ფონი|ფონს|ფონიდან|(?<![\p{L}])(?:person|people|man|woman|guy|girl|kid|object|car|thing|animal|dog|cat|background)(?![\p{L}])|человек|люд\p{L}*|мужчин|женщин|ребён|ребен|машин|предмет|объект|животн|собак|кошк|(?<![\p{L}])фон(?![\p{L}])/iu;
+/** Sound words: „ფონის მუსიკა მოაშორე" is the sound's, not the picture's. */
+const SOUND = /მუსიკ|ხმ|სიმღერ|music|sound|audio|song|музык|звук|песн/iu;
 
 const STYLE_WORDS: ReadonlyArray<{ style: TextStyle; re: RegExp }> = [
   { style: 'premium', re: /პრემიუმ|ელეგანტ|ძვირ|premium|elegant|luxury|luxurious|премиум|элегант|роскош/iu },
@@ -343,7 +353,7 @@ function langOf(cues: readonly CaptionCue[]): 'ka' | 'en' | 'ru' | 'und' {
  * nothing („… და ზომა შეამცირე") is about the thing the clause before it named, so it stays with that one.
  */
 function clausesOf(t: string): string[] {
-  const parts = t.split(/[,;]\s+|\s+(?:და|and|и)\s+(?=\p{L}+\s+(?:\p{L}+\s+)?(?:მოხსენ|შეინარჩუნ|დატოვ|გადაიტან|შეამცირ|გაზარდ|keep|remove|move|make|оставь|убер|перемест))/u)
+  const parts = t.split(/[,;]\s+|\s+(?:და|and|и)\s+(?=\p{L}+\s+(?:\p{L}+\s+)?(?:მოხსენ|მოაშორ|წაშალ|ამოიღ|შეინარჩუნ|დატოვ|გადაიტან|შეამცირ|გაზარდ|keep|remove|delete|move|make|оставь|убер|удали|перемест))/u)
     .map((s) => s.trim()).filter(Boolean);
   const names = (s: string) => LOGO.test(s) || TEXT_NOUN.test(s) || MASK_BLUR.test(s) || MASK_MOSAIC.test(s) || WORDS_NOUN.test(s);
   const out: string[] = [];
@@ -388,6 +398,13 @@ export function mineComposition(text: unknown): MinedComposition {
         out.asks.push({ op: 'captions', deliver: 'both' });
       } else if (CAPTIONS_OFF.test(raw)) {
         out.asks.push({ op: 'captions', off: true });
+        // „… და ზედა ლოგო მოაშორე": the other clauses' removals and changes are read too, not dropped.
+        const others = clausesOf(raw).filter((c) => !CAPTIONS.test(c));
+        if (others.length) {
+          const layers: LayersEditAsk = { op: 'layers' };
+          clauseAsks(others, null, null, layers, out, false);
+          if (layers.add || layers.change || layers.remove) out.asks.push(layers);
+        }
       } else if (drawnWordsOf(raw)) {
         // One caption line with no times („Add a caption "Summer sale""): a text layer, read below.
         out.hit = false;
@@ -449,7 +466,11 @@ function clauseAsks(clauses: readonly string[], drawn: { words: string } | null,
     if (LOGO.test(c)) {
       out.hit = true;
       if (KEEP.test(c) && !REMOVE.test(c)) continue; // „პაკეტის ლოგო შეინარჩუნე": kept as it is, by construction
-      if (REMOVE.test(c)) { push('remove', { kind: 'image', ...(whereOf(place) ? { where: whereOf(place) } : {}) }); continue; }
+      if (REMOVE.test(c)) {
+        push('remove', { kind: 'image', ...(whereOf(place) ? { where: whereOf(place) } : {}), ...(anchor ? { at: anchor } : {}), ...(ctime ?? {}) });
+        if (ctime) out.timeUsed = true;
+        continue;
+      }
       if (MOVE.test(c) || ((SMALLER.test(c) || BIGGER.test(c)) && !PUT.test(c))) {
         push('change', { target: { kind: 'image' }, ...(MOVE.test(c) && anchor ? { anchor } : {}), ...(SMALLER.test(c) ? { sizeBy: 0.8 } : BIGGER.test(c) ? { sizeBy: 1.25 } : {}), ...(ctime ?? {}) });
         continue;
@@ -468,7 +489,14 @@ function clauseAsks(clauses: readonly string[], drawn: { words: string } | null,
       continue;
     }
     const aboutText = TEXT_NOUN.test(c);
+    const written = !aboutText && WRITTEN.test(c);
     const beats = WORDS_NOUN.test(c) && BEATS.test(c);
+    // A person, an object or the background out of the picture: said, never faked by smearing a box over it.
+    if (REMOVE.test(c) && OBJECT.test(c) && !aboutText && !written && !SOUND.test(c)) {
+      out.hit = true;
+      if (!out.unsupported.includes('remove_object')) out.unsupported.push('remove_object');
+      continue;
+    }
     const style = styleOf(c);
     const motion = beats ? 'words' : MOTION_WORDS.find((m) => m.re.test(c))?.motion;
     // New words to draw: „აქ დააწერე: …", "add the title „…"" (the words come from the quotes or the colon only).
@@ -482,10 +510,17 @@ function clauseAsks(clauses: readonly string[], drawn: { words: string } | null,
       if (ctime) out.timeUsed = true;
       continue;
     }
+    if (written && REMOVE.test(c) && !PUT.test(c)) {
+      out.hit = true;
+      push('remove', { kind: 'text', ...(whereOf(place) ? { where: whereOf(place) } : {}), ...(anchor ? { at: anchor } : {}), ...(ctime ?? {}) });
+      if (ctime) out.timeUsed = true;
+      continue;
+    }
     if (!aboutText && !beats) continue;
     if (REMOVE.test(c) && !PUT.test(c)) {
       out.hit = true;
-      push('remove', { kind: 'text', ...(ALL.test(c) ? { all: true } : whereOf(place) ? { where: whereOf(place) } : {}) });
+      push('remove', { kind: 'text', ...(ALL.test(c) ? { all: true } : whereOf(place) ? { where: whereOf(place) } : {}), ...(anchor ? { at: anchor } : {}), ...(ctime ?? {}) });
+      if (ctime) out.timeUsed = true;
       continue;
     }
     const change: LayerChange = {};

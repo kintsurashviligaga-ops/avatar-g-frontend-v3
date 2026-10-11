@@ -61,7 +61,7 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
-import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS } from '@/lib/agent/media/editPlan';
+import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS } from '@/lib/agent/media/editPlan';
 import { editAskOf, type EditAsk } from '@/lib/agent/media/editWords';
 import {
   ANCHORS, MAX_CUE_TEXT, MAX_CUES, MAX_IMAGE_SIZE, MAX_LAYER_TEXT, MAX_LAYERS, MIN_SIZE, MOTIONS_IN, TEXT_ROLES, TEXT_STYLES,
@@ -234,13 +234,18 @@ const captionTrack = z.object({
   style: TEXT_STYLE.optional(),
 }).strict();
 
+/** A place of the picture itself to erase (a logo, a watermark, subtitles that stay there), and when. */
+const eraseBox = z.object({
+  at: ANCHOR, fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional(),
+}).strict();
+
 /**
  * One edit as the model may ask it (lib/agent/media/editWords EditAsk), every field bounded. One flat object (the
  * function-declaration subset has no tagged union): `op` says which edit, and only that op's own fields may be set
  * (editAskOf); the quote resolves the rest against the file.
  */
 const editAsk = z.object({
-  op: z.enum(['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions']),
+  op: z.enum(['trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions']),
   fromSec: at().optional(), toSec: at().optional(), lastSec: at().optional(), cutEndSec: at().optional(),
   factor: num(z.number().min(MIN_SPEED).max(MAX_SPEED)).optional(),
   to: z.enum(ASPECTS as unknown as [string, ...string[]]).optional(),
@@ -258,6 +263,7 @@ const editAsk = z.object({
   track: captionTrack.optional(),
   deliver: z.enum(['burned', 'both', 'file']).optional(),
   off: z.boolean().optional(),
+  boxes: z.array(eraseBox).min(1).max(MAX_ERASE_BOXES).optional(),
 }).refine((a) => editAskOf(withSource(a)) !== null, { message: 'A field was set that its op does not take.' });
 
 /** A track the model passes on is the user's own lines: typed (lib/agent/media/editWords editAskOf takes no other). */
@@ -419,7 +425,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
       "layers {add?: [{kind: 'text', text, role?: 'title'|'cta'|'price'|'lower-third'|'label', anchor?, style?: 'minimal'|'premium'|'bold'|'brand'|'cinematic', motionIn?, fromSec?, toSec?, lastSec?, beforeLastSec?} " +
       "| {kind: 'image', picture: number (the attached logo), anchor?, size?} | {kind: 'mask', mode: 'blur'|'mosaic', anchor?}], " +
       "change?: [{target?: {kind?, where?, all?}, moveH?, moveV?, anchor?, sizeBy?, style?, motionIn?, text?}], remove?: [{kind?, where?, all?}]} (change and remove: only on Agent G's own last edit); " +
-      "captions {track?: {lang, cues: [{startSec, endSec, text}]}, deliver?: 'burned'|'both'|'file', off?: true}. " +
+      "captions {track?: {lang, cues: [{startSec, endSec, text}]}, deliver?: 'burned'|'both'|'file', off?: true}; " +
+      "erase {boxes: [{at: anchor, fromSec?, toSec?, firstSec?, lastSec?}]} (a text, logo, watermark or subtitles IN the picture itself that stay in one place, filled in from around it; never a person, an object or the background). " +
       'Returns the resolved plan (range kept, frame, length, layers); edits nothing until the user presses Start; free.',
     input: z.object({ file: num(z.number().int().min(1).max(13)).optional(), edits: z.array(editAsk).min(1).max(9) }),
     offered: (ctx) => editToolOn(ctx),

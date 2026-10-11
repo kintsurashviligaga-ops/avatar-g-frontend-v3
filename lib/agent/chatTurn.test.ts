@@ -378,6 +378,23 @@ describe('Media Studio v2.1: text, logos, masks and captions in words (owner, 20
     });
   });
 
+  test('a text, a logo, a watermark or subtitles in the picture itself: erased at the place said; no place, it asks; a person, said (GG 2026-10-11 17:38Z)', () => {
+    expect(planChatTurn('ზედა მარჯვენა კუთხეში ლოგო მოაშორე', on({ attachments: ['video'] }))).toMatchObject({
+      kind: 'edit', source: 'file', file: 0, edits: [{ op: 'layers', remove: [{ kind: 'image', where: 'top', at: 'top-right' }] }],
+    });
+    expect(planChatTurn('remove the watermark in the bottom right corner', on({ attachments: ['image'] }))).toMatchObject({
+      kind: 'edit', source: 'file', file: 0, edits: [{ op: 'layers', remove: [{ kind: 'image', at: 'bottom-right' }] }],
+    });
+    expect(planChatTurn('ქვედა სუბტიტრები წაშალე', on({ attachments: ['video'] }))).toMatchObject({ kind: 'edit', source: 'file', edits: [{ op: 'captions', off: true }] });
+    // No place said on a fresh file: asked before anything is uploaded.
+    const where = planChatTurn('ვიდეოდან ლოგო მოაშორე', on({ attachments: ['video'] }));
+    expect(where).toMatchObject({ kind: 'say', keepComposer: true });
+    expect((where as { text: string }).text).toContain('სად არის');
+    const person = planChatTurn('ეს ადამიანი ვიდეოდან ამოიღე', on({ attachments: ['video'] }));
+    expect(person).toMatchObject({ kind: 'say' });
+    expect((person as { text: string }).text).toContain('AI');
+  });
+
   test('a CTA in the last 3 s; without its words, it asks for them', () => {
     expect(planChatTurn('ბოლო სამ წამში ანიმაციური CTA ჩასვი: შეუკვეთე ახლავე', on({ attachments: ['video'] }))).toMatchObject({
       kind: 'edit', edits: [{ op: 'layers', add: [{ role: 'cta', text: 'შეუკვეთე ახლავე', lastSec: 3 }] }],
