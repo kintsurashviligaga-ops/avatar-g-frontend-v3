@@ -34,13 +34,24 @@ test('enabled only when the route says so; a closed or broken route is "no"', as
 });
 
 describe('quote', () => {
-  test('uploads every file in order and asks for the plan with the storage paths and the words', async () => {
+  test('uploads every file in order and asks for the plan with the storage paths, their original names and the words', async () => {
     const s = server(() => json(200, { ok: true, quote: QUOTE, request: { shots: [] }, token: 'tok' }));
     const upload = jest.fn(async (d: string) => `u/${d.slice(5)}`);
     const r = await quoteAgentMontage({ fetch: s.fetch, upload }, { prompt: 'cut to the song', files: FILES });
     expect(r).toEqual({ ok: true, quote: QUOTE, request: { shots: [] }, token: 'tok' });
     expect(upload).toHaveBeenCalledTimes(3);
-    expect(s.calls).toEqual([{ url: '/api/agent/media/montage', body: { action: 'quote', files: ['u/a', 'u/b', 'u/s'], prompt: 'cut to the song' } }]);
+    // `names` is parallel to `files`: the quote's manifest lists each file by the name the user knows it by.
+    expect(s.calls).toEqual([{ url: '/api/agent/media/montage', body: { action: 'quote', files: ['u/a', 'u/b', 'u/s'], names: ['a.mp4', 'b.mp4', 's.mp3'], prompt: 'cut to the song' } }]);
+    const unnamed = server(() => json(200, { ok: true, quote: QUOTE, request: {}, token: 'tok' }));
+    await quoteAgentMontage({ fetch: unnamed.fetch, upload }, { prompt: 'p', files: FILES.map(({ name: _n, ...f }) => f) });
+    expect(unnamed.calls[0]!.body!.names).toEqual(['', '', '']);
+  });
+
+  test('a refusal that not every clip fits carries its numbers for the chat', async () => {
+    const detail = { clips: 3, musicSec: 1.8, fromSec: 28.2, neededSec: 3 };
+    const s = server(() => json(422, { ok: false, error: 'music_too_short', message: 'm', files: [3], detail }));
+    expect(await quoteAgentMontage({ fetch: s.fetch, upload: async () => 'u/x' }, { prompt: 'p', files: FILES }))
+      .toEqual({ ok: false, code: 'music_too_short', files: [3], detail });
   });
 
   test('reports each settled upload, so the card counts them while they go', async () => {

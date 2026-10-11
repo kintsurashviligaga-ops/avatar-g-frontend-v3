@@ -151,13 +151,53 @@ describe('planBeatCuts lays the clips on the beat', () => {
     expect(planBeatCuts({ clipDurationsSec: [60, 60], musicSec: 200, grid: G120, targetSec: 15, ...LIMITS }).totalSec).toBeLessThanOrEqual(15);
   });
 
-  test('a short clip still appears with a shorter whole-beat shot; one too short for any shot is named, not dropped silently', () => {
-    const plan = planBeatCuts({ clipDurationsSec: [10, 1.2, 0.3, 10], musicSec: 120, grid: G120, ...LIMITS });
+  test('a short clip still appears with a shorter whole-beat shot', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [10, 1.2, 10], musicSec: 120, grid: G120, ...LIMITS });
     expect(plan.ok).toBe(true);
     const short = plan.cuts.filter((c) => c.clip === 1);
     expect(short).toHaveLength(1);
     expect(short[0]!.beats).toBe(2);
-    expect(plan.unusedClips).toEqual([2]);
+    expect(plan.unusedClips).toEqual([]);
+  });
+
+  // The owner's invariant (2026-10-11): "If 3 videos are required, an output made from only 1 or 2 is not a completed
+  // task." A clip that cannot get a shot fails the plan by name; it is never left out of a plan that says ok.
+  test('a clip too short for any shot fails the plan and is named (never left out of an ok plan)', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [10, 1.2, 0.3, 10], musicSec: 120, grid: G120, ...LIMITS });
+    expect(plan.ok).toBe(false);
+    expect(plan.cuts).toEqual([]);
+    expect(plan.problem).toEqual({ kind: 'clip_too_short', clips: [2], minShotSec: expect.any(Number) });
+    expect(plan.error).toMatch(/^clip 3 shorter than one/);
+  });
+
+  test('every clip gets a shot, in the user order, even when the first clips are long and the length is tight', () => {
+    for (const durations of [[60, 60, 2.5], [3, 3, 3], [40, 1.5, 40, 1.5, 40], [9, 9, 9, 9, 9, 9, 9, 9]]) {
+      for (const targetSec of [6, 10, 20, 60]) {
+        const plan = planBeatCuts({ clipDurationsSec: durations, musicSec: 120, grid: G120, targetSec, ...LIMITS });
+        if (!plan.ok) {
+          // Only a length too short for one shot per clip may refuse, and it says so in numbers.
+          expect(plan.problem?.kind).toBe('target_too_short');
+          continue;
+        }
+        expect(new Set(plan.cuts.map((c) => c.clip))).toEqual(new Set(durations.map((_, i) => i)));
+        // The user's order: all of the first clip's shots, then the second's, … (never a later clip before an earlier one).
+        const order = plan.cuts.map((c) => c.clip);
+        expect(order).toEqual([...order].sort((x, y) => x - y));
+        expect(plan.unusedClips).toEqual([]);
+      }
+    }
+  });
+
+  test('music, asked length or shot ceiling too short for one shot per clip: refused with the numbers, no clip dropped', () => {
+    const music = planBeatCuts({ clipDurationsSec: [10, 10, 10], musicSec: 1.6, grid: G120, ...LIMITS });
+    expect(music.ok).toBe(false);
+    expect(music.problem).toMatchObject({ kind: 'music_too_short', clips: 3 });
+    expect((music.problem as { neededSec: number }).neededSec).toBeGreaterThan((music.problem as { musicSec: number }).musicSec);
+    const target = planBeatCuts({ clipDurationsSec: [10, 10, 10, 10], musicSec: 120, grid: G120, targetSec: 1, ...LIMITS });
+    expect(target.ok).toBe(false);
+    expect(target.problem).toMatchObject({ kind: 'target_too_short', clips: 4, targetSec: 1 });
+    const many = planBeatCuts({ clipDurationsSec: Array.from({ length: LIMITS.maxShots + 1 }, () => 10), musicSec: 600, grid: G120, ...LIMITS });
+    expect(many.problem).toEqual({ kind: 'too_many_clips', clips: LIMITS.maxShots + 1, maxShots: LIMITS.maxShots });
   });
 
   test('no pulse: even cuts on a half-second grid, reported as not beat-synced, music from the top', () => {

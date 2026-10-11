@@ -5824,7 +5824,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: uploaderOnce(), onUploaded }, { prompt: text, files });
     patchMsgById(id, (m) => (r.ok
       ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
-      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
+      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names, r.detail)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
     const bubble = newAgentMontageBubble(text, files);

@@ -51,9 +51,70 @@ describe('quote', () => {
     expect(await quoteMontage(fake().deps, { userId: USER, files: Array(14).fill(FILES[0]) })).toMatchObject({ ok: false, error: 'too_many_files' });
   });
 
-  test('a clip too short for one shot is named in the quote, not dropped silently', async () => {
+  test('a clip too short for one shot is named and the quote FAILS: no plan ever leaves a clip out', async () => {
+    // Before (owner's report, 2026-10-11): the quote went ahead and only listed the clip in `unusedFiles`.
     const f = fake({ files: { [FILES[0]!]: clip(20), [FILES[1]!]: clip(0.3), [FILES[2]!]: TRACK } });
-    expect((await quoted(f)).quote.unusedFiles).toEqual([1]);
+    const q = await quoteMontage(f.deps, { userId: USER, files: FILES });
+    expect(q).toMatchObject({ ok: false, error: 'clip_too_short', files: [1], detail: { minShotSec: 0.6, durationsSec: [0.3] } });
+    expect(f.audits).toEqual([expect.objectContaining({ phase: 'quote', outcome: 'refused', detail: 'clip_too_short' })]);
+  });
+
+  describe('the manifest: every file, in the order sent, and every clip in the plan (owner, 2026-10-11)', () => {
+    // The owner's test: three videos (~9 s, ~11 s, ~6 s) and one ~30 s MP3; the output used only one video.
+    const OWNER = [`omni-uploads/${USER}/x1.mp4`, `omni-uploads/${USER}/x2.mp4`, `omni-uploads/${USER}/x3.mp4`, `omni-uploads/${USER}/x4.mp3`];
+    const ownerFiles = (track = { ...TRACK, durationSec: 30 }) => fake({
+      files: { [OWNER[0]!]: clip(9), [OWNER[1]!]: clip(11), [OWNER[2]!]: clip(6), [OWNER[3]!]: track },
+    });
+
+    test('3 videos + 1 MP3 → a manifest of 4 in the user order, names kept, and shots from all 3 clips in that order', async () => {
+      const f = ownerFiles();
+      // The fake's analyzeTrack reads TRACK (180 s); the manifest's music length is the one analyzed.
+      const q = await quoteMontage(f.deps, { userId: USER, files: OWNER, names: ['beach.mp4', 'city.mp4', 'dog.mp4', 'song.mp3'], prompt: 'cut these to the music' });
+      if (!q.ok) throw new Error(q.error);
+      expect(q.quote.manifest).toEqual([
+        { index: 0, path: OWNER[0], name: 'beach.mp4', kind: 'video', durationSec: 9 },
+        { index: 1, path: OWNER[1], name: 'city.mp4', kind: 'video', durationSec: 11 },
+        { index: 2, path: OWNER[2], name: 'dog.mp4', kind: 'video', durationSec: 6 },
+        { index: 3, path: OWNER[3], name: 'song.mp3', kind: 'audio', durationSec: 180 },
+      ]);
+      expect(q.quote.engine).toEqual({ id: 'ffmpeg-montage', label: 'FFmpeg montage', free: true });
+      expect(q.quote.clips).toBe(3);
+      expect(q.quote.unusedFiles).toEqual([]);
+      expect(q.quote.clipOrder).toEqual([0, 1, 2]);
+      // Every shot names its file; the set of shot files is exactly the three videos, kept in the user's order.
+      const sources = q.request.shots.map((s) => s.source);
+      expect(new Set(sources)).toEqual(new Set([0, 1, 2]));
+      expect(sources).toEqual([...sources].sort((a, b) => a - b));
+      expect(q.request.manifest).toEqual(q.quote.manifest);
+      expect(f.audits).toEqual([expect.objectContaining({ phase: 'quote', outcome: 'ok', files: 4 })]);
+    });
+
+    test('names: absent → the file reference\'s base name; a list that does not line up with the files is refused', async () => {
+      const q = await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER });
+      if (!q.ok) throw new Error(q.error);
+      expect(q.quote.manifest.map((m) => m.name)).toEqual(['x1.mp4', 'x2.mp4', 'x3.mp4', 'x4.mp3']);
+      expect(await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER, names: ['a', 'b'] })).toMatchObject({ ok: false, error: 'bad_input' });
+      expect(await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER, names: 'a,b,c,d' })).toMatchObject({ ok: false, error: 'bad_input' });
+      const odd = await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER, names: ['  a\u0000.mp4 ', '‮evil', '', 'song.mp3'] });
+      if (!odd.ok) throw new Error(odd.error);
+      expect(odd.quote.manifest.map((m) => m.name)).toEqual(['a.mp4', 'evil', 'x3.mp4', 'song.mp3']);
+    });
+
+    test('music too short for one shot per clip (it starts too late): refused, naming the track and the numbers', async () => {
+      const f = ownerFiles();
+      f.deps.analyzeTrack = async () => ({ probe: { ...TRACK, durationSec: 30 }, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0.2, confidence: 0.6 } });
+      const q = await quoteMontage(f.deps, { userId: USER, files: OWNER, musicFromSec: 28.9 });
+      expect(q).toMatchObject({ ok: false, error: 'music_too_short', files: [3], detail: { clips: 3, musicSec: 0.8, fromSec: 29.2, neededSec: 1.5 } });
+    });
+
+    test('a length asked for that cannot hold one shot per clip: refused, naming every clip', async () => {
+      const q = await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER, targetSec: 1 });
+      expect(q).toMatchObject({ ok: false, error: 'target_too_short', files: [0, 1, 2], detail: { clips: 3, targetSec: 1, neededSec: 1.5 } });
+      // The length that holds them all is quoted, with every clip in it.
+      const ok = await quoteMontage(ownerFiles().deps, { userId: USER, files: OWNER, targetSec: 1.5 });
+      if (!ok.ok) throw new Error(ok.error);
+      expect(new Set(ok.request.shots.map((s) => s.source))).toEqual(new Set([0, 1, 2]));
+    });
   });
 
   test('no pulse in the track: even cuts, and the quote says it is not on the beat', async () => {
@@ -116,6 +177,38 @@ describe('run: queue the confirmed quote, once', () => {
     f.clock.now += QUOTE_TTL_MS + 1;
     expect(await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token })).toMatchObject({ ok: false, error: 'quote_expired' });
     expect(f.store.rows.size).toBe(0);
+  });
+
+  test('the manifest is stored with the signed plan, and the audit counts the files sent (not shots + 1)', async () => {
+    const f = fake();
+    const q = await quoted(f);
+    await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token });
+    const row = f.store.rows.get(q.quote.jobId)!;
+    expect(row.params._job).toEqual({ request: q.request, manifest: q.quote.manifest });
+    expect((row.params._job as { manifest: unknown[] }).manifest).toHaveLength(3);
+    expect(q.request.shots.length + 1).not.toBe(3); // the old count was wrong whenever a clip had more than one shot
+    expect(f.audits.at(-1)).toMatchObject({ phase: 'run', outcome: 'ok', files: 3 });
+  });
+
+  test('a run cannot change the files: a manifest dropped, a clip\'s shots removed, or a file swapped is refused', async () => {
+    const f = fake();
+    const q = await quoted(f);
+    const { manifest: _gone, ...noManifest } = q.request;
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: noManifest, token: q.token })).toMatchObject({ ok: false, error: 'manifest_invalid' });
+    // Only clip 1's shots: clip 2 (file index 1) would be missing from the output.
+    const oneClip = { ...q.request, shots: q.request.shots.filter((s) => s.source === 0) };
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: oneClip, token: q.token })).toMatchObject({ ok: false, error: 'manifest_invalid', files: [1] });
+    // A shot re-pointed at the track, or at a file that is not in the manifest.
+    const atTrack = { ...q.request, shots: q.request.shots.map((s, i) => (i === 0 ? { ...s, source: 2 } : s)) };
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: atTrack, token: q.token })).toMatchObject({ ok: false, error: 'manifest_invalid' });
+    // A manifest that still covers every clip but is not the quoted one (a name, a file): the signature says no.
+    const renamed = { ...q.request, manifest: q.request.manifest.map((m) => (m.index === 0 ? { ...m, name: 'other.mp4' } : m)) };
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: renamed, token: q.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+    const swapped = { ...q.request, manifest: q.request.manifest.map((m) => (m.index === 1 ? { ...m, path: `omni-uploads/${USER}/z.mp4` } : m)) };
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: swapped, token: q.token })).toMatchObject({ ok: false, error: 'quote_changed' });
+    expect(f.store.rows.size).toBe(0);
+    // The request exactly as quoted still runs.
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: JSON.parse(JSON.stringify(q.request)), token: q.token })).toMatchObject({ ok: true, status: 'queued' });
   });
 
   test('a queue that cannot be written starts nothing', async () => {

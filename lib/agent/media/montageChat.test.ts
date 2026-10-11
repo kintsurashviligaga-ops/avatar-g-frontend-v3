@@ -44,6 +44,14 @@ describe('beatMontageAsk', () => {
 const Q: MontageQuote = {
   jobId: 'j', credits: 0, totalSec: 29.97, shots: 10, clips: 3, aspect: '9:16', beatSynced: true, bpm: 119.96,
   musicStartSec: 0.23, unusedFiles: [], expiresAt: 0,
+  manifest: [
+    { index: 0, path: 'u/a', name: 'a.mp4', kind: 'video', durationSec: 12.4 },
+    { index: 1, path: 'u/b', name: 'b.mp4', kind: 'video', durationSec: 7.9 },
+    { index: 2, path: 'u/c', name: 'tiny.mp4', kind: 'video', durationSec: 2.1 },
+    { index: 3, path: 'u/s', name: 'song.mp3', kind: 'audio', durationSec: 95 },
+  ],
+  clipOrder: [0, 1, 2],
+  engine: { id: 'ffmpeg-montage', label: 'FFmpeg montage', free: true },
 };
 
 describe('what Agent G says', () => {
@@ -57,15 +65,32 @@ describe('what Agent G says', () => {
     expect(quoteText(Q, undefined, 'ru')).toContain('Бесплатно.');
   });
 
-  test('no beat is said, not hidden; an unused clip is named; a price shows when there is one', () => {
-    const q = { ...Q, beatSynced: false, bpm: null, unusedFiles: [2], credits: 15 };
+  test('no beat is said, not hidden; every file is listed in the user order with its kind and length; the engine and price show', () => {
+    const q = { ...Q, beatSynced: false, bpm: null, credits: 15 };
     const en = quoteText(q, ['a.mp4', 'b.mp4', 'tiny.mp4', 'song.mp3'], 'en');
     expect(en).toContain('could not find a steady beat');
-    expect(en).toContain('“tiny.mp4” is too short for one shot');
-    expect(en).toContain('Price: ✦ 15.');
-    expect(quoteText(q, undefined, 'ka')).toContain('ფაილი 3 ერთ კადრზე მოკლეა');
+    expect(en).toContain('Files (4, in your order): 1 “a.mp4” video 12.4 s · 2 “b.mp4” video 7.9 s · 3 “tiny.mp4” video 2.1 s · 4 “song.mp3” music 95 s. Every clip is used.');
+    expect(en).toContain('Engine: FFmpeg montage. Price: ✦ 15.');
+    const ka = quoteText(q, undefined, 'ka');
+    expect(ka).toContain('ფაილები (4, შენი თანმიმდევრობით)');
+    expect(ka).toContain('ყველა კლიპი შედის.');
+    expect(ka).toContain('ძრავი: FFmpeg მონტაჟი.');
     expect(priceLabel(0, 'ka')).toBe('უფასო');
     expect(priceLabel(15, 'en')).toBe('✦ 15');
+  });
+
+  test('"not every clip fits" refusals say the cause and the way out in numbers, and never offer to drop a clip', () => {
+    const names = ['a.mp4', 'b.mp4', 'tiny.mp4', 'song.mp3'];
+    const short = errorText('clip_too_short', 'en', [2], names, { minShotSec: 1.1, durationsSec: [0.4] });
+    expect(short).toContain('“tiny.mp4” (0.4 s) is shorter than the shortest shot this edit can cut (1.1 s)');
+    expect(short).toContain('I will not leave a clip out');
+    const music = errorText('music_too_short', 'ka', [3], names, { clips: 3, musicSec: 1.8, fromSec: 28.2, neededSec: 3 });
+    expect(music).toContain('0:28-დან მხოლოდ 1.8 წმ გრძელდება');
+    expect(music).toContain('3 კლიპს კი თითო კადრისთვის მინიმუმ 3 წმ სჭირდება');
+    expect(errorText('target_too_short', 'ru', [0, 1, 2], names, { clips: 3, targetSec: 2, neededSec: 3 })).toContain('нужно минимум 3 с, а вы просили 2 с');
+    // Without the numbers the words still name the file and the rule.
+    expect(errorText('clip_too_short', 'en', [2], names)).toContain('“tiny.mp4” is too short for even one shot');
+    expect(errorText('clip_missing', 'ka')).toContain('ყველა შენი კლიპი არ ჩანდა');
   });
 
   test('stages, errors, and the codes a response carries', () => {

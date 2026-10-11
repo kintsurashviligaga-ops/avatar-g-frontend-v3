@@ -11,8 +11,10 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
-import { analyzeTrack, probeMedia } from '@/lib/services/montage/beatAnalysis';
+import { analyzeTrack, grabFrames, probeMedia, streamDurations } from '@/lib/services/montage/beatAnalysis';
 import { runMontage } from '@/lib/services/montage/montagePipeline';
+import { reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
+import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
 import { montageUnits } from '@/lib/services/montage/montagePlan';
 import { BudgetExceededError, guardedCall } from '@/lib/services/billing/guardedCall';
 import { supabaseLeaseStore } from '@/lib/orchestrator/jobLease';
@@ -71,6 +73,13 @@ export function liveMontageDeps(): MontageExecDeps {
         throw e;
       }
     },
+    // The per-clip QC reads the master and each source like the lane did: a source link the job was quoted with may
+    // have expired by now, so ours are re-signed first (the lane does the same before every render).
+    async grabFrames(url, timesSec, opts) {
+      const fresh = (await reSignIfInternal(url, SOURCE_TTL_SEC).catch(() => url)) || url;
+      return withFfmpegSignal(opts.signal, () => grabFrames(fresh, timesSec, { size: opts.size, ...(opts.fit ? { fit: opts.fit } : {}) }));
+    },
+    streamDurations: (url, opts) => withFfmpegSignal(opts?.signal, () => streamDurations(url)),
     store: supabaseLeaseStore(() => createServiceRoleClient(), reportError),
     billing: {
       reserve: (userId, credits, ref) => reserveProduce(userId, credits, ref),

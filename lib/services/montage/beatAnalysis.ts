@@ -3,7 +3,11 @@
  *
  *   probeMedia(url)    one `ffmpeg -i` banner: length, streams, frame size, rotation, codecs (ffmpeg-static has no ffprobe);
  *   analyzeTrack(url)  one decode of the track to mono 16-bit PCM at ANALYSIS_RATE (first MAX_ANALYSIS_SEC only), whose
- *                      banner also gives the track's length, then the beat grid from it.
+ *                      banner also gives the track's length, then the beat grid from it;
+ *   grabFrames(url, t) tiny grey frames at given times, one download and one ffmpeg run for all of them: the per-clip QC
+ *                      of the finished master (lib/agent/media/montageAsk qcClips);
+ *   streamDurations    the real length of a file's picture and sound streams from their packets (no decode): the A/V
+ *                      check of the master (montageAsk qcAvSync).
  *
  * Every input goes through lib/video/ffmpegExec: ffmpeg never fetches a URL itself (public hosts only, media types only,
  * size-capped download, local demuxers only). Fail-open to null, like the other ffmpeg helpers: the caller turns null
@@ -18,7 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
-import { parseProbeBanner, type BannerProbe } from '@/lib/video/probeBanner';
+import { parseFrameCrc, parseProbeBanner, type BannerProbe, type StreamDurations } from '@/lib/video/probeBanner';
 import { ANALYSIS_HOP, ANALYSIS_RATE, MAX_ANALYSIS_SEC, estimateBeatGrid, onsetStrength, type BeatGrid } from './beatPlan';
 
 function bin(): string | null {
@@ -67,5 +71,66 @@ export async function analyzeTrack(url: string, timeoutMs = 120_000): Promise<{ 
     return null;
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+export interface GrabOptions {
+  /** Each frame comes back `size`×`size` pixels, 8-bit grey (size² bytes). */
+  size: number;
+  /**
+   * Conform the frame to this output frame first, exactly as the montage lane conforms a clip (lib/video/remixOps
+   * fitAspect: cover-scale, then centre-crop), so a source frame compares with the master's frame of it.
+   */
+  fit?: { w: number; h: number };
+  timeoutMs?: number;
+}
+
+/**
+ * Tiny grey frames of `url` at each of `timesSec` (null where no frame was there). One input per time, each with its
+ * own accurate seek, all over ONE download (lib/video/ffmpegExec fetches a URL once per call however often it is an
+ * input) and one ffmpeg run. Null when ffmpeg is missing or the file could not be read at all.
+ */
+export async function grabFrames(url: string, timesSec: readonly number[], opts: GrabOptions): Promise<Array<Uint8Array | null> | null> {
+  const b = bin();
+  const size = Math.max(4, Math.min(256, Math.round(opts.size)));
+  if (!b || !timesSec.length || timesSec.some((t) => !Number.isFinite(t) || t < 0)) return null;
+  const dir = await mkdtemp(join(tmpdir(), 'mqc-'));
+  try {
+    const chain = [
+      ...(opts.fit ? [`scale=${opts.fit.w}:${opts.fit.h}:force_original_aspect_ratio=increase`, `crop=${opts.fit.w}:${opts.fit.h}`] : []),
+      `scale=${size}:${size}:flags=area`,
+      'format=gray',
+    ].join(',');
+    const args = ['-hide_banner', '-loglevel', 'error', '-y'];
+    timesSec.forEach((t) => args.push('-ss', t.toFixed(3), '-i', url));
+    const outs = timesSec.map((_, i) => join(dir, `f${i}.gray`));
+    outs.forEach((out, i) => args.push('-map', `${i}:v:0`, '-frames:v', '1', '-vf', chain, '-f', 'rawvideo', '-pix_fmt', 'gray', out));
+    await ffmpegExec(b, args, { maxBuffer: 1 << 22, timeout: opts.timeoutMs ?? 120_000 });
+    const frames: Array<Uint8Array | null> = [];
+    for (const out of outs) {
+      const buf = await readFile(out).catch(() => null);
+      frames.push(buf && buf.byteLength === size * size ? new Uint8Array(buf) : null);
+    }
+    return frames;
+  } catch {
+    return null;
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+/** The real length of the picture and the sound of `url`, from their packets (stream copy, no decode). Null = unreadable. */
+export async function streamDurations(url: string, timeoutMs = 120_000): Promise<StreamDurations | null> {
+  const b = bin();
+  if (!b) return null;
+  try {
+    const { stdout } = await ffmpegExec(
+      b,
+      ['-hide_banner', '-loglevel', 'error', '-i', url, '-map', '0:v:0?', '-map', '0:a:0?', '-c', 'copy', '-f', 'framecrc', '-'],
+      { maxBuffer: 1 << 25, timeout: timeoutMs },
+    );
+    return parseFrameCrc(stdout);
+  } catch {
+    return null;
   }
 }

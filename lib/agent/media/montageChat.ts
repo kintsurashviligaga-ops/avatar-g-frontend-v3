@@ -16,7 +16,8 @@
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
-import type { MontageErrorCode, MontageQuote } from './montageExec';
+import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
+import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS } from './montageAsk';
 
 export type AttachmentKind = 'video' | 'audio' | 'image' | 'other';
@@ -65,7 +66,7 @@ export interface AgentMontageState {
   token?: string;
   /** The user's words: kept on the job for the Library card. */
   prompt?: string;
-  /** The attachments' names, in the order sent: the quote names unused files by index. */
+  /** The attachments' names, in the order sent: a refusal names files by index (the quote's manifest has them too). */
   names?: string[];
   /** Attachments settled so far while the plan is read (the upload step's „2/4"). */
   uploaded?: number;
@@ -129,18 +130,33 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
   const from = q.musicStartSec >= 1
     ? ' ' + (lang === 'en' ? `The track starts at ${clockOf(q.musicStartSec)}.` : lang === 'ru' ? `Трек начинается с ${clockOf(q.musicStartSec)}.` : `მუსიკა იწყება ${clockOf(q.musicStartSec)}-დან.`)
     : '';
-  const unused = q.unusedFiles.length
-    ? ' ' + (lang === 'en'
-      ? `${q.unusedFiles.map((i) => fileName(names, i, lang)).join(', ')} ${q.unusedFiles.length === 1 ? 'is' : 'are'} too short for one shot and stay out.`
-      : lang === 'ru'
-        ? `${q.unusedFiles.map((i) => fileName(names, i, lang)).join(', ')} — короче одного кадра, не вошли.`
-        : `${q.unusedFiles.map((i) => fileName(names, i, lang)).join(', ')} ერთ კადრზე მოკლეა და არ შევიდა.`)
-    : '';
+  // Every file, in the user's order, as the quote fixed it (the manifest): every clip is in the edit, or there is no plan.
+  const files = q.manifest?.length ? `\n${manifestText(q.manifest, lang, names)}` : '';
+  const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${unused}\n${price} ${go}`;
+  return `${found}\n${plan}${from}${files}\n${engine} ${price} ${go}`;
+}
+
+/**
+ * The quote's files, in the user's order: number, name, video or music, length. „Every clip is used" closes it: the
+ * plan gives each video at least one shot, in this order, or it is refused (clip_too_short, music_too_short, …).
+ */
+export function manifestText(manifest: readonly MontageManifestItem[], locale: string, names?: string[]): string {
+  const lang = pick(locale);
+  const kind = (k: MontageManifestItem['kind']) => (k === 'video'
+    ? (lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო')
+    : (lang === 'en' ? 'music' : lang === 'ru' ? 'музыка' : 'მუსიკა'));
+  const unit = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
+  const list = manifest
+    .map((m) => `${m.index + 1} ${quoted(lang, m.name || names?.[m.index] || `${m.index + 1}`)} ${kind(m.kind)} ${sec(m.durationSec)} ${unit}`)
+    .join(' · ');
+  const n = manifest.length;
+  return lang === 'en' ? `Files (${n}, in your order): ${list}. Every clip is used.`
+    : lang === 'ru' ? `Файлы (${n}, в вашем порядке): ${list}. Используются все клипы.`
+      : `ფაილები (${n}, შენი თანმიმდევრობით): ${list}. ყველა კლიპი შედის.`;
 }
 
 const STAGE: Record<string, Record<Lang, string>> = {
@@ -188,6 +204,13 @@ const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
   several_tracks: { ka: 'ერთზე მეტი მუსიკაა. დატოვე მხოლოდ ერთი.', en: 'There is more than one track. Keep just one.', ru: 'Треков больше одного. Оставьте один.' },
   too_many_clips: { ka: `ერთ მონტაჟში მაქსიმუმ ${MAX_CLIPS} კლიპია.`, en: `One edit takes up to ${MAX_CLIPS} clips.`, ru: `В один монтаж — до ${MAX_CLIPS} клипов.` },
   plan_failed: { ka: 'ამ ფაილებით მონტაჟი არ გამოდის: კლიპები ან მუსიკა ძალიან მოკლეა.', en: 'No edit fits these files: the clips or the track are too short.', ru: 'Из этих файлов монтаж не собрать: клипы или трек слишком короткие.' },
+  // Not every clip can get a shot: the plan is refused, never made without a clip. The numbers, when the refusal carries
+  // them (MontageRefusalDetail), are added by errorText (see REFUSAL below); these are the words without them.
+  clip_too_short: { ka: '{f} ერთი კადრისთვისაც მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: არც ერთ კლიპს არ გამოვტოვებ. მიამაგრე უფრო გრძელი კლიპი, ან ამოიღე {f} და თავიდან მთხოვე.', en: '{f} is too short for even one shot, so I am not starting the edit: I will not leave a clip out. Attach a longer clip, or remove {f} and ask again.', ru: '{f} — короче даже одного кадра, поэтому монтаж не начинаю: ни один клип я не пропущу. Прикрепите клип подлиннее или уберите {f} и попросите снова.' },
+  music_too_short: { ka: 'მუსიკა ({f}) ძალიან მოკლეა, რომ ყველა კლიპს თითო კადრი მაინც ერგოს, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. დაიწყე მუსიკა უფრო ადრე, მიამაგრე უფრო გრძელი მუსიკა, ან გამოიყენე ნაკლები კლიპი.', en: 'The music ({f}) is too short to give every clip one shot, so I am not starting the edit: I will not leave a clip out. Start the music earlier, attach a longer track, or use fewer clips.', ru: 'Музыка ({f}) слишком короткая, чтобы каждому клипу досталось хотя бы по кадру, поэтому монтаж не начинаю: ни один клип я не пропущу. Начните музыку раньше, прикрепите трек подлиннее или используйте меньше клипов.' },
+  target_too_short: { ka: 'ამ სიგრძეში ყველა კლიპი ({f}) ვერ ეტევა, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. მთხოვე უფრო გრძელი მონტაჟი, ან გამოიყენე ნაკლები კლიპი.', en: 'Not every clip ({f}) fits in the length you asked for, so I am not starting the edit: I will not leave a clip out. Ask for a longer edit, or use fewer clips.', ru: 'В заданную длину помещаются не все клипы ({f}), поэтому монтаж не начинаю: ни один клип я не пропущу. Попросите монтаж подлиннее или используйте меньше клипов.' },
+  manifest_invalid: { ka: 'გეგმაში აღარ ჩანს ყველა ფაილი, რაც გამომიგზავნე, ამიტომ არ დავიწყე. გამომიგზავნე ფაილები თავიდან.', en: 'The plan no longer lists every file you sent, so I did not start it. Send the files again.', ru: 'В плане больше нет всех отправленных файлов, поэтому я не начал. Отправьте файлы снова.' },
+  clip_missing: { ka: 'მზა მონტაჟში ყველა შენი კლიპი არ ჩანდა, ამიტომ არ გაჩვენებ. არაფერი ჩამოგეჭრა. მთხოვე თავიდან.', en: 'The finished edit did not show every clip you sent, so I am not delivering it. Nothing was charged. Ask me again.', ru: 'В готовом монтаже видны не все ваши клипы, поэтому я его не отдаю. Ничего не списано. Попросите снова.' },
   not_configured: { ka: 'მონტაჟი ამ სერვერზე ჯერ არ არის ჩართული.', en: 'Montage is not set up on this server yet.', ru: 'Монтаж на этом сервере ещё не настроен.' },
   invalid_request: { ka: 'გეგმა დაზიანდა. გამომიგზავნე ფაილები თავიდან.', en: 'The plan was damaged. Send the files again.', ru: 'План повреждён. Отправьте файлы снова.' },
   quote_invalid: { ka: 'გეგმა დაზიანდა. გამომიგზავნე ფაილები თავიდან.', en: 'The plan was damaged. Send the files again.', ru: 'План повреждён. Отправьте файлы снова.' },
@@ -210,12 +233,52 @@ const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
   rate_limited: { ka: 'ძალიან ბევრი მოთხოვნაა ერთად. სცადე ერთ წუთში.', en: 'Too many requests at once. Try again in a minute.', ru: 'Слишком много запросов. Попробуйте через минуту.' },
 };
 
-/** Agent G's words for a refusal; `files` are 0-based indices into `names`. */
-export function errorText(code: string | undefined, locale: string, files?: number[], names?: string[]): string {
+/**
+ * Agent G's words for a refusal; `files` are 0-based indices into `names`. `detail` (a refusal's numbers, when the
+ * response carried them) turns a "not every clip fits" refusal into the exact cause: each file's length against the
+ * shortest shot, the music left against what the clips need, the length asked against what they need.
+ */
+export function errorText(code: string | undefined, locale: string, files?: number[], names?: string[], detail?: MontageRefusalDetail): string {
   const lang = pick(locale);
   const row = (code && (ERR as Record<string, Record<Lang, string>>)[code]) || ERR.render_failed;
   const f = files?.length ? files.map((i) => fileName(names, i, lang)).join(', ') : (lang === 'en' ? 'One file' : lang === 'ru' ? 'Один файл' : 'ერთი ფაილი');
-  return row[lang].replace('{f}', f);
+  const exact = code && detail ? refusalWithNumbers(code, lang, f, detail, files, names) : null;
+  return exact ?? row[lang].replaceAll('{f}', f);
+}
+
+/** The "not every clip fits" refusals with their numbers; null when the numbers a sentence needs are missing. */
+function refusalWithNumbers(code: string, lang: Lang, f: string, d: MontageRefusalDetail, files?: number[], names?: string[]): string | null {
+  const s = (n: number) => `${sec(n)} ${lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ'}`;
+  if (code === 'clip_too_short' && d.minShotSec) {
+    const min = s(d.minShotSec);
+    const each = files?.length && d.durationsSec?.length === files.length
+      ? files.map((i, k) => `${fileName(names, i, lang)} (${s(d.durationsSec![k]!)})`).join(', ')
+      : f;
+    const many = (files?.length ?? 0) > 1;
+    return lang === 'en'
+      ? `${each} ${many ? 'are' : 'is'} shorter than the shortest shot this edit can cut (${min}), so I am not starting the edit: I will not leave a clip out. Attach a clip of at least ${min}, or remove ${f} and ask again.`
+      : lang === 'ru'
+        ? `${each} — короче самого короткого кадра (${min}), поэтому монтаж не начинаю: ни один клип я не пропущу. Прикрепите клип не короче ${min} или уберите ${f} и попросите снова.`
+        : `${each} უმოკლეს კადრზეც (${min}) მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: არც ერთ კლიპს არ გამოვტოვებ. მიამაგრე მინიმუმ ${min} კლიპი, ან ამოიღე ${f} და თავიდან მთხოვე.`;
+  }
+  if (code === 'music_too_short' && d.neededSec && d.clips && d.musicSec !== undefined) {
+    const from = (d.fromSec ?? 0) >= 1 ? clockOf(d.fromSec!) : null;
+    const [have, need, n] = [s(d.musicSec), s(d.neededSec), d.clips];
+    return lang === 'en'
+      ? `${f}${from ? ` from ${from}` : ''} lasts only ${have}, but one shot for each of your ${n} clips needs at least ${need}, so I am not starting the edit: I will not leave a clip out. ${from ? 'Start the music earlier, attach' : 'Attach'} a longer track, or use fewer clips.`
+      : lang === 'ru'
+        ? `${f}${from ? ` с ${from}` : ''} длится всего ${have}, а чтобы каждому из ваших клипов (${n}) досталось по кадру, нужно минимум ${need}, поэтому монтаж не начинаю: ни один клип я не пропущу. ${from ? 'Начните музыку раньше, прикрепите' : 'Прикрепите'} трек подлиннее или используйте меньше клипов.`
+        : `${f}${from ? ` ${from}-დან` : ''} მხოლოდ ${have} გრძელდება, შენს ${n} კლიპს კი თითო კადრისთვის მინიმუმ ${need} სჭირდება, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. ${from ? 'დაიწყე მუსიკა უფრო ადრე, ' : ''}მიამაგრე უფრო გრძელი მუსიკა, ან გამოიყენე ნაკლები კლიპი.`;
+  }
+  if (code === 'target_too_short' && d.neededSec && d.targetSec && d.clips) {
+    const [want, need, n] = [s(d.targetSec), s(d.neededSec), d.clips];
+    return lang === 'en'
+      ? `To show all ${n} clips (${f}) the edit needs at least ${need}, but you asked for ${want}, so I am not starting it: I will not leave a clip out. Ask for at least ${need}, or use fewer clips.`
+      : lang === 'ru'
+        ? `Чтобы показать все клипы (${n}: ${f}), нужно минимум ${need}, а вы просили ${want}, поэтому монтаж не начинаю: ни один клип я не пропущу. Попросите хотя бы ${need} или используйте меньше клипов.`
+        : `ყველა კლიპის (${n}: ${f}) საჩვენებლად მონტაჟს მინიმუმ ${need} სჭირდება, შენ კი ${want} ითხოვე, ამიტომ არ ვიწყებ: კლიპს არ გამოვტოვებ. მთხოვე მინიმუმ ${need}, ან გამოიყენე ნაკლები კლიპი.`;
+  }
+  return null;
 }
 
 /** The code a refused response carries, or what its HTTP status means when it carries none. */

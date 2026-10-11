@@ -8,7 +8,7 @@
  * or failed. That read is also what wakes a worker when none has the job, so a closed connection, a locked phone or a
  * worker that died costs nothing: the edit goes on server-side and lands in the Library either way.
  */
-import type { MontageQuote } from './montageExec';
+import type { MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { RunApproval } from '@/lib/agent/approval';
 import { codeOf, type ChatErrorCode } from './montageChat';
 import type { TaskView } from '@/lib/tasks/taskView';
@@ -30,7 +30,8 @@ export interface QuoteDeps {
 
 export type ClientQuote =
   | { ok: true; quote: MontageQuote; request: unknown; token: string }
-  | { ok: false; code: ChatErrorCode; files?: number[] };
+  /** `files`: which attachments (0-based) the refusal is about; `detail`: its numbers (montageChat errorText's 5th argument). */
+  | { ok: false; code: ChatErrorCode; files?: number[]; detail?: MontageRefusalDetail };
 
 /** Is Agent G's montage open to this user? A closed or unreachable route is simply "no": the chat keeps its old flow. */
 export function montageEnabled(f: Fetch): Promise<boolean> {
@@ -56,13 +57,16 @@ export async function quoteAgentMontage(deps: QuoteDeps, input: { prompt: string
   if (missing.length) return { ok: false, code: 'upload_failed', files: missing };
 
   try {
-    const res = await postJson(deps.fetch, ROUTE, { action: 'quote', files: paths, prompt: input.prompt });
+    // The original names ride along (parallel to `files`): the quote's manifest lists every file by the name the user knows.
+    const names = input.files.map((f) => (typeof f.name === 'string' ? f.name : ''));
+    const res = await postJson(deps.fetch, ROUTE, { action: 'quote', files: paths, names, prompt: input.prompt });
     const body = await readJson(res);
     if (res.ok && body?.ok === true) {
       return { ok: true, quote: body.quote as MontageQuote, request: body.request, token: String(body.token) };
     }
     const files = Array.isArray(body?.files) ? (body!.files as number[]) : undefined;
-    return { ok: false, code: codeOf(res.status, body), ...(files ? { files } : {}) };
+    const detail = body?.detail && typeof body.detail === 'object' && !Array.isArray(body.detail) ? (body.detail as MontageRefusalDetail) : undefined;
+    return { ok: false, code: codeOf(res.status, body), ...(files ? { files } : {}), ...(detail ? { detail } : {}) };
   } catch {
     return { ok: false, code: 'network' };
   }

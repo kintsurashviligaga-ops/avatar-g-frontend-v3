@@ -3,12 +3,15 @@
  *
  * The first media execution Agent G does itself (PROJECT_MASTER Section F, slice 1). The request side, in four calls:
  *
- *   quote   the caller's own files only → probe each (clip or track?) → find the track's beat → plan the cuts →
- *           price it. Spends nothing and writes nothing; returns the plan and a signed quote (./quoteToken).
+ *   quote   the caller's own files only → probe each (clip or track?) → list them (the manifest, ./montageManifest) →
+ *           find the track's beat → plan the cuts, one shot at least for EVERY clip, or refuse naming the clip and the
+ *           cause → price it. Spends nothing and writes nothing; returns the plan (manifest inside) and a signed quote
+ *           (./quoteToken) whose fingerprint covers the manifest.
  *   run     only with that quote, which the USER confirmed in the chat: one queued job row under the quote's job id
  *           (so a second run of the same quote reports the first instead of queueing again) → credits charged when the
  *           edit costs any → answered at once. The render itself is the worker's (./montageWorker): it holds a lease
- *           on the row, renews it while the montage lane renders, QCs the master and delivers it. A worker that dies
+ *           on the row, re-checks the manifest, renews the lease while the montage lane renders, QCs the master (A/V,
+ *           and that every clip of the manifest really shows in it) and delivers it. A worker that dies
  *           is replaced (one retry); a job that cannot finish is failed and its charge paid back exactly once.
  *   status  the owner reads where the job is; a job no worker has (yet, or any more) is handed to one.
  *   cancel  the owner stops a queued or running job; its worker kills its ffmpeg at the next heartbeat.
@@ -23,7 +26,7 @@
  * lib/video/ffmpegExec (public hosts, media types, size caps). Every effect is injected (./montageLive binds the live
  * ones), so every rule below is unit-tested without ffmpeg, storage, the ledger or a network.
  */
-import type { BannerProbe } from '@/lib/video/probeBanner';
+import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { bodyFingerprint, produceRef } from '@/lib/orchestrator/idemRef';
 import {
@@ -32,14 +35,22 @@ import {
   MAX_TOTAL_SEC,
   MIN_SHOT_SEC,
   timelineDuration,
-  validateMontageRequest,
   type MontageAspect,
   type MontageRequest,
 } from '@/lib/services/montage/montagePlan';
-import { planBeatCuts, type BeatGrid } from '@/lib/services/montage/beatPlan';
+import { planBeatCuts, type BeatGrid, type CutProblem } from '@/lib/services/montage/beatPlan';
 import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import { MAX_FILES, aspectFromClips, montageBody, sortInputs } from './montageAsk';
+import {
+  buildManifest,
+  checkManifest,
+  clipOrder,
+  parseAgentRequest,
+  parseNames,
+  type AgentMontageRequest,
+  type MontageManifestItem,
+} from './montageManifest';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 
@@ -84,6 +95,14 @@ export interface MontageExecDeps {
   analyzeTrack(url: string): Promise<{ probe: BannerProbe; grid: BeatGrid | null } | null>;
   /** The montage lane. Aborting `signal` kills the ffmpeg of the leg that is running; `onStage` reports each leg. */
   render(req: MontageRequest, opts: { jobId: string; signal: AbortSignal; onStage: (step: string, pct: number) => Promise<unknown> }): Promise<MontageOutcome>;
+  /**
+   * The per-clip QC's eyes: tiny grey frames (`size`² bytes each) of `url` at each of `timesSec`, null where none was
+   * read; `fit` conforms each frame to the master's frame first, as the lane conformed the clip. Null = unreadable.
+   * Aborting `signal` kills its ffmpeg.
+   */
+  grabFrames(url: string, timesSec: readonly number[], opts: { size: number; fit?: { w: number; h: number }; signal?: AbortSignal }): Promise<Array<Uint8Array | null> | null>;
+  /** The real length of a file's picture and sound streams (the master's A/V check). Null = unreadable. */
+  streamDurations(url: string, opts?: { signal?: AbortSignal }): Promise<StreamDurations | null>;
   /** generation_jobs as a lease queue (lib/orchestrator/jobLease). */
   store: LeaseStore;
   billing: {
@@ -104,15 +123,44 @@ export type MontageErrorCode =
   | 'bad_input' | 'too_many_files' | 'media_not_yours' | 'unreadable' | 'no_clip' | 'no_track' | 'several_tracks'
   | 'too_many_clips' | 'plan_failed' | 'not_configured' | 'invalid_request' | 'quote_invalid' | 'quote_changed'
   | 'quote_expired' | 'in_progress' | 'already_failed' | 'jobs_unavailable' | 'insufficient_credits'
-  | 'billing_unavailable' | 'render_failed' | 'qc_failed' | 'cancelled' | 'not_found' | 'not_running';
+  | 'billing_unavailable' | 'render_failed' | 'qc_failed' | 'cancelled' | 'not_found' | 'not_running'
+  // Not every clip can get a shot (the quote refuses instead of leaving one out; ./montageManifest):
+  | 'clip_too_short' | 'music_too_short' | 'target_too_short'
+  // The list of files a run or a worker holds is not the quoted one, or misses a clip:
+  | 'manifest_invalid'
+  // The finished master does not show every clip (per-clip QC): not delivered.
+  | 'clip_missing';
+
+/** The numbers behind a refusal, so the chat can say the cause and the way out (./montageChat errorText). */
+export interface MontageRefusalDetail {
+  /** clip_too_short: the shortest shot this edit can cut, and each named file's length (same order as `files`). */
+  minShotSec?: number;
+  durationsSec?: number[];
+  /** music_too_short / target_too_short: how many clips must each get one shot, and the seconds that takes. */
+  clips?: number;
+  neededSec?: number;
+  /** music_too_short: how much music there is from where it starts, and where it starts. */
+  musicSec?: number;
+  fromSec?: number;
+  /** target_too_short: the length asked for. */
+  targetSec?: number;
+}
 
 export interface MontageError {
   ok: false;
   error: MontageErrorCode;
   message: string;
-  /** Which of the caller's files (0-based, in the order sent) the error is about. */
+  /** Which of the caller's files (0-based, in the order sent = manifest indices) the error is about. */
   files?: number[];
+  detail?: MontageRefusalDetail;
   jobId?: string;
+}
+
+/** What renders an Agent G montage: the platform's own ffmpeg lane, no model, no provider. */
+export interface MontageEngine {
+  id: 'ffmpeg-montage';
+  label: 'FFmpeg montage';
+  free: boolean;
 }
 
 export interface MontageQuote {
@@ -125,12 +173,20 @@ export interface MontageQuote {
   beatSynced: boolean;
   bpm: number | null;
   musicStartSec: number;
-  /** Files (0-based, in the order sent) too short for one shot: named in the quote, never dropped silently. */
+  /** Every file sent, in the order sent: what the card lists, and what the run and the worker are held to. */
+  manifest: MontageManifestItem[];
+  /** The manifest indices of the videos in the order they appear in the edit (always the user's order). */
+  clipOrder: number[];
+  engine: MontageEngine;
+  /**
+   * @deprecated Always empty: every clip gets at least one shot, or the quote fails (clip_too_short, music_too_short,
+   * target_too_short). Still sent so a card built before the manifest keeps working.
+   */
   unusedFiles: number[];
   expiresAt: number;
 }
 
-export type QuoteResult = { ok: true; quote: MontageQuote; request: MontageRequest; token: string } | MontageError;
+export type QuoteResult = { ok: true; quote: MontageQuote; request: AgentMontageRequest; token: string } | MontageError;
 
 /** Where a job is, as its owner sees it. */
 export type JobView =
@@ -153,9 +209,36 @@ export interface QuoteInput {
   targetSec?: unknown;
   /** Where the music starts, in seconds into the track; read from the prompt when absent (lib/agent/params). */
   musicFromSec?: unknown;
+  /** The files' original names, parallel to `files` (optional; a name falls back to the file reference's base name). */
+  names?: unknown;
 }
 
 const positive = (x: unknown): number | undefined => (typeof x === 'number' && Number.isFinite(x) && x > 0 ? x : undefined);
+const r3 = (n: number) => Number(n.toFixed(3));
+
+/** A plan that cannot give every clip a shot → the refusal that names the files and the cause (never a plan without them). */
+function refusalOf(problem: CutProblem | undefined, error: string | undefined, clips: readonly number[], track: number, clipSec: readonly number[]): MontageError {
+  switch (problem?.kind) {
+    case 'clip_too_short': {
+      const files = problem.clips.map((c) => clips[c]!);
+      return err('clip_too_short', `File ${files.map((f) => f + 1).join(', ')} is shorter than one ${problem.minShotSec}s shot, so it cannot be in the edit. Use a longer clip or remove it.`, {
+        files, detail: { minShotSec: problem.minShotSec, durationsSec: problem.clips.map((c) => r3(clipSec[c] ?? 0)) },
+      });
+    }
+    case 'music_too_short':
+      return err('music_too_short', `The music from ${problem.fromSec}s lasts ${problem.musicSec}s; one shot for each of the ${problem.clips} clips needs ${problem.neededSec}s. Start the music earlier, use a longer track, or remove a clip.`, {
+        files: [track], detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec },
+      });
+    case 'target_too_short':
+      return err('target_too_short', `One shot for each of the ${problem.clips} clips needs ${problem.neededSec}s; the length asked is ${problem.targetSec}s. Ask for a longer edit or remove a clip.`, {
+        files: [...clips], detail: { clips: problem.clips, targetSec: problem.targetSec, neededSec: problem.neededSec },
+      });
+    case 'too_many_clips':
+      return err('too_many_clips', `At most ${problem.maxShots} clips in one edit.`);
+    default:
+      return err('plan_failed', error ?? 'No edit fits these files.');
+  }
+}
 
 /** Analyse, plan and price. Spends nothing, writes nothing but an audit event. */
 export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Promise<QuoteResult> {
@@ -169,6 +252,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     return refuse(err('bad_input', 'Send the clips and the track as file references.'));
   }
   if (files.length > MAX_FILES) return refuse(err('too_many_files', `At most ${MAX_FILES} files: one track and up to ${MAX_FILES - 1} clips.`));
+  const names = parseNames(input.names, files.length);
+  if (!names.ok) return refuse(err('bad_input', `The file names do not match the files: ${names.error}.`));
   if (!deps.key()) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
 
   // ── the caller's own files only ────────────────────────────────────────────────────────────────────────────────
@@ -202,6 +287,14 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     return refuse(err('unreadable', 'The music track could not be read.', { files: [sorted.track] }));
   }
 
+  // ── the manifest: every file sent, in the order sent; files = manifest = videos + exactly one audio ──────────────
+  const trackProbe = { durationSec: track.probe.durationSec };
+  const manifest = buildManifest(files as string[], names.names, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track);
+  const counted = checkManifest(manifest);
+  if (!counted.ok || manifest.length !== files.length || counted.videos.length !== sorted.clips.length || counted.audio !== sorted.track) {
+    return refuse(err('manifest_invalid', `The files could not be listed: ${counted.ok ? 'the count does not match' : counted.error}.`));
+  }
+
   // ── plan ───────────────────────────────────────────────────────────────────────────────────────────────────────
   const clipProbes = sorted.clips.map((i) => probes[i]!);
   // The user's words name the length, the music start and the frame („20 წამიანი", „მუსიკა 5 წამიდან", „9:16"): the same
@@ -220,16 +313,22 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     ...(musicFromSec ? { musicFromSec } : {}),
     ...LIMITS,
   });
-  if (!plan.ok) return refuse(err('plan_failed', plan.error ?? 'No edit fits these files.'));
+  // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).
+  if (!plan.ok) return refuse(refusalOf(plan.problem, plan.error, sorted.clips, sorted.track, clipProbes.map((p) => p.durationSec)));
 
   const aspect: MontageAspect =
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
       ? input.aspect
       : said.aspect ?? aspectFromClips(clipProbes);
-  const body = montageBody(plan, sorted.clips.map((i) => urls[i]!), urls[sorted.track]!, aspect);
-  const valid = validateMontageRequest(body);
-  if (!valid.ok || !valid.request) return refuse(err('plan_failed', valid.error ?? 'The plan did not validate.'));
-  const request = valid.request;
+  const body = montageBody(plan, sorted.clips.map((i) => ({ url: urls[i]!, source: i })), urls[sorted.track]!, aspect, manifest);
+  // The same reader the run and the worker use: the lane's validation, the manifest, every shot's file, coverage.
+  const parsed = parseAgentRequest(body);
+  if (!parsed.ok) {
+    return refuse(parsed.code === 'manifest_invalid'
+      ? err('manifest_invalid', `Not every file is in the plan: ${parsed.error}.`, parsed.missing?.length ? { files: parsed.missing } : {})
+      : err('plan_failed', parsed.error));
+  }
+  const request = parsed.request;
 
   // ── price + sign ───────────────────────────────────────────────────────────────────────────────────────────────
   const jobId = deps.newId();
@@ -248,12 +347,18 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     beatSynced: plan.beatSynced,
     bpm: plan.bpm,
     musicStartSec: plan.musicStartSec,
-    unusedFiles: plan.unusedClips.map((c) => sorted.clips[c]!),
+    manifest: request.manifest,
+    clipOrder: clipOrder(request.shots),
+    engine: { ...MONTAGE_ENGINE, free: credits === 0 },
+    unusedFiles: [],
     expiresAt,
   };
-  await deps.audit({ userId, op: 'montage', phase: 'quote', outcome: 'ok', jobId, files: files.length, credits, durationSec: quote.totalSec });
+  await deps.audit({ userId, op: 'montage', phase: 'quote', outcome: 'ok', jobId, files: request.manifest.length, credits, durationSec: quote.totalSec });
   return { ok: true, quote, request, token };
 }
+
+/** The engine every Agent G montage names on its card. */
+export const MONTAGE_ENGINE = { id: 'ffmpeg-montage', label: 'FFmpeg montage' } as const;
 
 export interface RunInput {
   userId: string;
@@ -273,7 +378,7 @@ export const CANCELLED = 'cancelled by the user';
 export function codeOfRowError(error: string | null): MontageErrorCode {
   const e = error ?? '';
   if (/^cancel/i.test(e)) return 'cancelled';
-  for (const code of ['qc_failed', 'insufficient_credits', 'billing_unavailable', 'invalid_request'] as const) {
+  for (const code of ['qc_failed', 'clip_missing', 'manifest_invalid', 'insufficient_credits', 'billing_unavailable', 'invalid_request'] as const) {
     if (e.startsWith(code)) return code;
   }
   return 'render_failed';
@@ -328,9 +433,15 @@ export async function payDebt(deps: MontageExecDeps, row: LeaseRow): Promise<voi
 export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput): Promise<RunResult> {
   const { userId } = input;
   const approval = input.approval ?? TAP;
-  const valid = validateMontageRequest(input.request);
-  if (!valid.ok || !valid.request) return err('invalid_request', valid.error ?? 'The edit is not valid.');
-  const request = valid.request;
+  // The request with its manifest: every file quoted, each video with at least one shot (./montageManifest). The token
+  // below signs this whole object, so the manifest a run stores is exactly the one the user was quoted.
+  const parsed = parseAgentRequest(input.request);
+  if (!parsed.ok) {
+    if (parsed.code === 'invalid_request') return err('invalid_request', parsed.error);
+    await deps.audit({ userId, op: 'montage', phase: 'run', outcome: 'refused', detail: `manifest_invalid: ${parsed.error}`.slice(0, 200) });
+    return err('manifest_invalid', `The edit does not hold every quoted file: ${parsed.error}. Ask again for a fresh quote.`, parsed.missing?.length ? { files: parsed.missing } : {});
+  }
+  const { request, manifest } = parsed;
 
   const check = verifyQuote(input.token, deps.key(), { userId, fingerprint: bodyFingerprint(request), now: deps.now() });
   if (!check.ok) {
@@ -359,7 +470,8 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
       orientation: request.aspect === '9:16' ? 'vertical' : 'landscape',
       durationSec: totalSec,
       ...(prompt ? { prompt } : {}),
-      _job: { request },
+      // The signed request (manifest inside) and the manifest itself: the worker re-checks one against the other.
+      _job: { request, manifest },
       ...(credits > 0 ? { _reserve: { ref, credits } } : {}),
       ...(input.parent ? { _parent: input.parent } : {}),
       ...approvalParams(approval),
@@ -392,7 +504,7 @@ export async function enqueueMontageJob(deps: MontageExecDeps, input: RunInput):
     }
   }
   await deps.audit({
-    userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: request.shots.length + 1, credits, durationSec: totalSec,
+    userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, files: manifest.length, credits, durationSec: totalSec,
     approval: approval.channel, detail: withNote('queued', approval), ...(input.parent ? { runId: input.parent } : {}),
   });
   return { ok: true, jobId, status: 'queued', stage: 'queued', pct: 0, attempt: 0, replay: false };

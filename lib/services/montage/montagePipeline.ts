@@ -151,8 +151,12 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       ...(p.textOverlay ? { textOverlay: p.textOverlay as TextOverlay } : {}),
     }));
 
+    // A window the sequence renderer cannot render is DROPPED there and the rest still stitches (lib/video/
+    // sequenceWindows). For a montage that is a wrong edit, not a smaller one (FAIL POLICY above): it fails the job.
+    const dropped: number[] = [];
     // The grade rides the same post-fold chain the Surgical Editor's export uses — one `eq` pass over the master.
     const master = await renderConcat(resolved, seq, req.grade ? { grade: req.grade } : {}, w, h, {
+      onDrop: (d) => { dropped.push(...d.map((x) => x.index)); },
       // Without this the ultrafast/CRF20 master of a multi-minute montage exceeds the ~50MB storage
       // limit and the upload is REJECTED after a full encode. See maxrateForTarget.
       maxrateKbps: maxrateForTarget(totalSec),
@@ -169,6 +173,9 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
           WEEK_SEC,
         ),
     });
+    if (dropped.length) {
+      return { ok: false, step: 'stitch', error: `shot ${[...new Set(dropped)].map((i) => i + 1).join(', ')} could not be rendered, so the edit would miss it` };
+    }
     if (!master) return { ok: false, step: 'stitch', error: 'the shots could not be stitched together' };
     stepsRun.push('stitch');
 

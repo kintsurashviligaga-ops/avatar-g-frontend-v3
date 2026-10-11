@@ -2,8 +2,12 @@
  * lib/agent/media/montageWorker.ts — the worker side of Agent G's montage: render a queued job under a lease, and the
  * sweep that keeps the queue honest.
  *
- *   work    claim the row (lib/orchestrator/jobLease) → renew the lease every HEARTBEAT_MS while the EXISTING montage
- *           lane renders → QC the master → complete the row (= the Library). The heartbeat is also how the worker
+ *   work    claim the row (lib/orchestrator/jobLease) → re-check the stored manifest (every file quoted, every video
+ *           with a shot, ./montageManifest) → renew the lease every HEARTBEAT_MS while the EXISTING montage lane renders
+ *           → QC the master: picture + sound + codecs + length, A/V sync from the real stream lengths, and that EVERY
+ *           video of the manifest really shows in it (a frame of each clip, from the output, against the same moment
+ *           of the source: ./montageAsk qcClips) → complete the row (= the Library), the QC evidence in its result. A
+ *           master missing any clip is failed (`clip_missing`), never delivered. The heartbeat is also how the worker
  *           hears that the owner cancelled (or that the sweep gave the job up): it aborts the render, which kills the
  *           running ffmpeg (lib/video/ffmpegExec withFfmpegSignal), and nothing is delivered. A render that fails on
  *           its own (bad media, QC) is final at once, owing back whatever was charged. A worker that DIES (its function
@@ -15,10 +19,36 @@
  * that lost it (or a cancelled job) can no longer move the row, and a second worker never delivers over the first.
  */
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
-import { validateMontageRequest, timelineDuration } from '@/lib/services/montage/montagePlan';
+import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
 import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
-import { qcMaster } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, clipCheckPoints, qcAvSync, qcClips, qcMaster, type ClipVerdict } from './montageAsk';
+import { checkManifest, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
+
+/** How many sources the per-clip QC reads at once. */
+const QC_CONCURRENCY = 3;
+
+/**
+ * Look for every manifest video in the master: one frame per clip from the output (one read of the master) against
+ * the same moment of its source, conformed to the master's frame (a read per source, QC_CONCURRENCY at a time).
+ */
+async function checkClips(deps: MontageExecDeps, request: AgentMontageRequest, masterUrl: string, signal: AbortSignal): Promise<ClipVerdict> {
+  const points = clipCheckPoints(request);
+  const fit = ASPECT_DIMS[request.aspect];
+  const outFrames = (await deps.grabFrames(masterUrl, points.map((p) => p.outT), { size: CLIP_QC_SIZE, signal }).catch(() => null))
+    ?? points.map(() => null);
+  const srcFrames: Array<Uint8Array | null> = points.map(() => null);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(QC_CONCURRENCY, points.length) }, async () => {
+    for (let i = next++; i < points.length; i = next++) {
+      if (signal.aborted) return;
+      const p = points[i]!;
+      const got = await deps.grabFrames(p.url, [p.srcT], { size: CLIP_QC_SIZE, fit, signal }).catch(() => null);
+      srcFrames[i] = got?.[0] ?? null;
+    }
+  }));
+  return qcClips(points, outFrames, srcFrames);
+}
 
 export type WorkResult =
   | { ran: false; reason: string }
@@ -38,8 +68,8 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
   const owe = reserveOf(row) !== null;
   const credits = reserveOf(row)?.credits ?? 0;
 
-  const end = async (error: string, detail: string): Promise<WorkResult> => {
-    if (await fail(deps.store, jobId, worker, error, owe)) {
+  const end = async (error: string, detail: string, result?: Record<string, unknown>): Promise<WorkResult> => {
+    if (await fail(deps.store, jobId, worker, error, owe, result)) {
       await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'failed', jobId, credits, attempt, detail });
       const failed = await deps.store.read(jobId);
       if (failed) await payDebt(deps, failed);
@@ -62,10 +92,20 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     return { ran: true, outcome: 'lost' };
   };
 
-  const job = row.params._job as { request?: unknown } | undefined;
-  const valid = validateMontageRequest(job?.request);
-  if (!valid.ok || !valid.request) return end(`invalid_request: ${valid.error ?? 'the stored plan is not valid'}`.slice(0, 300), 'invalid stored plan');
-  const request = valid.request;
+  // ── before rendering: the stored plan holds every quoted file, and its manifest is the one stored beside it ──────
+  const job = row.params._job as { request?: unknown; manifest?: unknown } | undefined;
+  const parsed = parseAgentRequest(job?.request);
+  if (!parsed.ok) {
+    const what = parsed.code === 'invalid_request' ? 'the stored plan is not valid' : 'the stored plan does not hold every quoted file';
+    return end(`${parsed.code}: ${parsed.error}`.slice(0, 300), `${what}: ${parsed.error}`.slice(0, 200));
+  }
+  const stored = checkManifest(job?.manifest);
+  if (!stored.ok || !sameManifest(stored.manifest, parsed.manifest)) {
+    const why = stored.ok ? 'the stored manifest differs from the signed one' : stored.error;
+    return end(`manifest_invalid: ${why}`.slice(0, 300), `manifest: ${why}`.slice(0, 200));
+  }
+  const { request, manifest } = parsed;
+  const videos = manifest.filter((m) => m.kind === 'video').length;
   const totalSec = timelineDuration(request.shots);
   await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, credits, attempt, detail: 'started' });
 
@@ -95,17 +135,42 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     if (!outcome.ok) return end(`render_failed: ${outcome.step}: ${outcome.error}`.slice(0, 300), `${outcome.step}: ${outcome.error}`.slice(0, 200));
 
     // ── QC before delivery ───────────────────────────────────────────────────────────────────────────────────────
+    const videoUrl = outcome.result.videoUrl;
     const problems: string[] = [];
     if (!outcome.result.hasMusic) problems.push('the music did not mix');
-    const qc = qcMaster(await deps.probe(outcome.result.videoUrl), totalSec);
+    const qc = qcMaster(await deps.probe(videoUrl), totalSec);
     problems.push(...qc.problems);
     if (ctl.signal.aborted) return halted(beat);
-    if (problems.length) return end(`qc_failed: ${problems.join('; ')}`.slice(0, 300), `qc: ${problems.join('; ')}`.slice(0, 200));
+    // The real stream lengths: the soundtrack is there and lasts as long as the picture, the picture as the plan.
+    const av = qcAvSync(await deps.streamDurations(videoUrl, { signal: ctl.signal }).catch(() => null), totalSec);
+    problems.push(...av.problems);
+    if (ctl.signal.aborted) return halted(beat);
+    // Every video of the manifest really in the master (the owner's invariant): its frame, at its place.
+    const clips = await checkClips(deps, request, videoUrl, ctl.signal);
+    if (ctl.signal.aborted) return halted(beat);
+    const seen = new Set(clips.clips.map((c) => c.index));
+    const unplaced = manifest.filter((m) => m.kind === 'video' && !seen.has(m.index));
+    problems.push(...clips.problems, ...unplaced.map((m) => `clip ${m.index + 1} "${m.name}" has no place in the output`));
+    const evidence = {
+      qc: {
+        files: manifest.length,
+        videos,
+        clips: clips.clips,
+        maxDiff: CLIP_QC_MAX_DIFF,
+        av: { videoSec: av.videoSec, audioSec: av.audioSec },
+        durationSec: qc.durationSec,
+        ok: problems.length === 0,
+      },
+    };
+    if (problems.length) {
+      // A master missing a clip is the owner's "not a completed task": its own code, so the chat can say so.
+      const code = clips.missing.length || unplaced.length ? 'clip_missing' : 'qc_failed';
+      return end(`${code}: ${problems.join('; ')}`.slice(0, 300), `qc: ${problems.join('; ')}`.slice(0, 200), evidence);
+    }
 
-    const videoUrl = outcome.result.videoUrl;
     const delivered = await complete(deps.store, jobId, worker, {
       signedUrl: videoUrl,
-      result: { videoUrl, subtype: 'montage', via: 'agent-g', durationSec: qc.durationSec, aspect: request.aspect },
+      result: { videoUrl, subtype: 'montage', via: 'agent-g', durationSec: qc.durationSec, aspect: request.aspect, ...evidence },
     });
     if (!delivered) return halted(await afterLoss());
     await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: 'ok', jobId, credits, attempt, durationSec: qc.durationSec, detail: 'delivered' });
