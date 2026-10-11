@@ -15,20 +15,39 @@ export const MAX_CLIPS = MAX_SHOTS;
 export const MAX_FILES = MAX_CLIPS + 1;
 
 export type InputSort =
-  | { ok: true; clips: number[]; track: number }
+  /** `clips`: every picture in the order sent, videos AND photos; `stills`: which of them are photos (manifest indices). */
+  | { ok: true; clips: number[]; stills: number[]; track: number }
   | { ok: false; error: 'unreadable' | 'no_clip' | 'no_track' | 'several_tracks' | 'too_many_clips'; files?: number[] };
 
-/** Sort probed attachments: a video stream is a clip, sound without one is the track. Exactly one track. */
+/** Codecs ffmpeg reports for a still picture (a JPEG, PNG, WebP, HEIF, BMP or TIFF file is a one-frame „video"). */
+const STILL_CODECS = new Set(['mjpeg', 'png', 'webp', 'bmp', 'tiff', 'hevc', 'heif', 'av1', 'jpegxl', 'jpeg2000']);
+/** A real clip lasts longer than this; a still picture reads as one frame (~0.04 s) or as no length at all. */
+const STILL_MAX_SEC = 0.5;
+
+/**
+ * Is this probe a PHOTO (a still picture), not a clip? One picture stream of an image codec, no sound, no length to
+ * speak of. An MJPEG camera clip lasts seconds, so it stays a clip; a track's cover art is not a picture stream here
+ * (lib/video/probeBanner skips „attached pic").
+ */
+export function isStillProbe(p: Pick<BannerProbe, 'hasVideo' | 'hasAudio' | 'videoCodec' | 'durationSec'> | null): boolean {
+  return !!p && p.hasVideo && !p.hasAudio && STILL_CODECS.has((p.videoCodec ?? '').toLowerCase()) && !(p.durationSec > STILL_MAX_SEC);
+}
+
+/**
+ * Sort probed attachments: a video stream is a clip, a photo is a still shot, sound without a picture is the track.
+ * Exactly one track, and at least one video (a montage of photos only is a slideshow, not this edit).
+ */
 export function sortInputs(probes: ReadonlyArray<BannerProbe | null>): InputSort {
-  const unreadable = probes.flatMap((p, i) => (!p || (!p.hasVideo && !p.hasAudio) || !(p.durationSec > 0) ? [i] : []));
+  const unreadable = probes.flatMap((p, i) => (!p || (!p.hasVideo && !p.hasAudio) || (!(p.durationSec > 0) && !isStillProbe(p)) ? [i] : []));
   if (unreadable.length) return { ok: false, error: 'unreadable', files: unreadable };
   const clips = probes.flatMap((p, i) => (p!.hasVideo ? [i] : []));
+  const stills = clips.filter((i) => isStillProbe(probes[i]!));
   const tracks = probes.flatMap((p, i) => (!p!.hasVideo && p!.hasAudio ? [i] : []));
-  if (!clips.length) return { ok: false, error: 'no_clip' };
+  if (clips.length === stills.length) return { ok: false, error: 'no_clip' };
   if (!tracks.length) return { ok: false, error: 'no_track' };
   if (tracks.length > 1) return { ok: false, error: 'several_tracks', files: tracks };
   if (clips.length > MAX_CLIPS) return { ok: false, error: 'too_many_clips' };
-  return { ok: true, clips, track: tracks[0]! };
+  return { ok: true, clips, stills, track: tracks[0]! };
 }
 
 const VERTICAL = /(?:reels?|tik\s?tok|shorts|stor(?:y|ies)|vertical|portrait|9\s*[:x/]\s*16|ვერტიკალ|სთორი|რილს|вертикал|сторис|рилс)/iu;
@@ -52,11 +71,12 @@ export function aspectFromClips(probes: ReadonlyArray<Pick<BannerProbe, 'width' 
 
 /**
  * The montage request body (./montageManifest parseAgentRequest takes it): hard cuts, the track only, from its first
- * beat. `clips[c]` is the plan's clip c: its URL and its index in the manifest, which every shot carries as `source`.
+ * beat. `clips[c]` is the plan's clip c: its URL and its index in the manifest, which every shot carries as `source`;
+ * a photo's shot is an `image` shot (the lane turns it into a slow zoom of the shot's length).
  */
 export function montageBody(
   plan: CutPlan,
-  clips: ReadonlyArray<{ url: string; source: number }>,
+  clips: ReadonlyArray<{ url: string; source: number; still?: boolean }>,
   musicUrl: string,
   aspect: MontageAspect,
   manifest: readonly MontageManifestItem[],
@@ -65,7 +85,7 @@ export function montageBody(
     shots: plan.cuts.map((c) => ({
       url: clips[c.clip]?.url,
       source: clips[c.clip]?.source,
-      kind: 'video',
+      kind: clips[c.clip]?.still ? 'image' : 'video',
       startSec: c.startSec,
       endSec: c.endSec,
       transition: 'cut',
@@ -145,19 +165,29 @@ export interface ClipProbePoint {
   srcT: number;
 }
 
-/** One probe point per manifest video, in manifest order. A video with no shot gets none (coverage refused it earlier). */
+/**
+ * A photo is looked for this far into its shot: the lane's slow zoom starts at 1× (lib/video/remixOps kenBurnsClip), so
+ * a few frames in, the master shows the photo itself, conformed to the frame the way the QC conforms the source.
+ */
+export const STILL_QC_OFFSET_SEC = 0.1;
+
+/**
+ * One probe point per manifest picture (video or photo), in manifest order. A picture with no shot gets none (coverage
+ * refused it earlier). A video is looked for in the middle of its longest shot; a photo just after its shot starts.
+ */
 export function clipCheckPoints(request: AgentMontageRequest): ClipProbePoint[] {
   const timeline = outputTimeline(request.shots);
   const points: ClipProbePoint[] = [];
   for (const item of request.manifest) {
-    if (item.kind !== 'video') continue;
+    if (item.kind !== 'video' && item.kind !== 'image') continue;
     const mine = timeline.filter((t) => t.source === item.index);
     if (!mine.length) continue;
     const best = mine.reduce((a, b) => (b.outEndSec - b.outStartSec > a.outEndSec - a.outStartSec ? b : a));
-    const half = (best.outEndSec - best.outStartSec) / 2;
+    const len = best.outEndSec - best.outStartSec;
+    const into = item.kind === 'image' ? Math.min(STILL_QC_OFFSET_SEC, len / 4) : len / 2;
     points.push({
       index: item.index, name: item.name, url: request.shots[best.shot]!.url, shot: best.shot,
-      outT: r3(best.outStartSec + half), srcT: r3(best.srcStartSec + half),
+      outT: r3(best.outStartSec + into), srcT: item.kind === 'image' ? 0 : r3(best.srcStartSec + into),
     });
   }
   return points;
@@ -189,6 +219,8 @@ export interface ClipEvidence {
   srcT: number;
   diff: number | null;
   ok: boolean;
+  /** The source moment that matched best, when it was not `srcT` (./montageWorker checkClips). */
+  matchT?: number;
 }
 
 export interface ClipVerdict {

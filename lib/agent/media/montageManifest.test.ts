@@ -36,7 +36,7 @@ describe('buildManifest', () => {
       { index: 2, path: FILES[2], name: 'clipC.mp4', kind: 'video', durationSec: 6.1 },
       { index: 3, path: FILES[3], name: 'track.mp3', kind: 'audio', durationSec: 30 },
     ]);
-    expect(checkManifest(M)).toEqual({ ok: true, manifest: M, videos: [0, 1, 2], audio: 3 });
+    expect(checkManifest(M)).toEqual({ ok: true, manifest: M, videos: [0, 1, 2], stills: [], audio: 3 });
   });
 
   test('no names: each falls back to the reference\'s base name, decoded, without query', () => {
@@ -120,5 +120,32 @@ describe('parseAgentRequest (what the run and the worker read)', () => {
     expect(sameManifest(M, M.map((m) => ({ ...m })))).toBe(true);
     expect(sameManifest(M, [M[0]!, M[2]!, M[1]!, M[3]!])).toBe(false);
     expect(sameManifest(M, [M[0]!, { ...M[1]!, path: 'omni-uploads/u/other.mp4' }, M[2]!, M[3]!])).toBe(false);
+  });
+});
+
+describe('a photo in the manifest (owner, 2026-10-11 11:37Z)', () => {
+  const PF = ['omni-uploads/u/a1.mov', 'omni-uploads/u/p2.jpg', 'omni-uploads/u/s3.mp3'];
+  const PM = buildManifest(PF, ['a.mov', 'product.jpg', 'song.mp3'], [{ durationSec: 8 }, { durationSec: 0.04 }, { durationSec: 40 }], 2, [1]);
+
+  test('buildManifest marks it an image with no length; checkManifest lists it as a still', () => {
+    expect(PM[1]).toEqual({ index: 1, path: PF[1], name: 'product.jpg', kind: 'image', durationSec: 0 });
+    expect(checkManifest(PM)).toEqual({ ok: true, manifest: PM, videos: [0], stills: [1], audio: 2 });
+  });
+
+  test('refused: a photo with a length, photos with no video, a video with no length', () => {
+    expect(checkManifest(PM.map((m) => (m.index === 1 ? { ...m, durationSec: 3 } : m)))).toMatchObject({ ok: false, error: 'manifest item 2 is a photo with a length' });
+    expect(checkManifest(PM.map((m) => (m.index === 0 ? { ...m, kind: 'image', durationSec: 0 } : m)))).toMatchObject({ ok: false });
+    expect(checkManifest(PM.map((m) => (m.index === 0 ? { ...m, durationSec: 0 } : m)))).toMatchObject({ ok: false, error: 'manifest item 1 has no length' });
+    expect(checkManifest(PM.map((m) => (m.index === 1 ? { ...m, kind: 'gif' } : m)))).toMatchObject({ ok: false });
+  });
+
+  test('coverage: the photo needs its image shot; a run that leaves it out names it', () => {
+    const img = { url: `https://x.supabase.co/${PF[1]}`, source: 1, kind: 'image', startSec: 0, endSec: 2, transition: 'cut' };
+    const vid = { url: `https://x.supabase.co/${PF[0]}`, source: 0, kind: 'video', startSec: 0, endSec: 2, transition: 'cut' };
+    expect(checkCoverage([vid, img], PM)).toEqual({ ok: true });
+    expect(checkCoverage([vid], PM)).toMatchObject({ ok: false, missing: [1] });
+    expect(checkCoverage([vid, { ...img, kind: 'video' }], PM)).toMatchObject({ ok: false, missing: [] });
+    expect(checkCoverage([{ ...vid, kind: 'image' }, img], PM)).toMatchObject({ ok: false, missing: [] });
+    expect(parseAgentRequest({ ...body([vid, img], PM), musicUrl: `https://x.supabase.co/${PF[2]}` }).ok).toBe(true);
   });
 });

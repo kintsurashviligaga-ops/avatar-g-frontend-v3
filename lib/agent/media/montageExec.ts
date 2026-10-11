@@ -168,7 +168,10 @@ export interface MontageQuote {
   credits: number;
   totalSec: number;
   shots: number;
+  /** Videos in the edit (photos are counted apart, in `stills`). */
   clips: number;
+  /** Photos in the edit, each a still shot; absent when there are none. */
+  stills?: number;
   aspect: MontageAspect;
   beatSynced: boolean;
   bpm: number | null;
@@ -289,9 +292,10 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
 
   // ── the manifest: every file sent, in the order sent; files = manifest = videos + exactly one audio ──────────────
   const trackProbe = { durationSec: track.probe.durationSec };
-  const manifest = buildManifest(files as string[], names.names, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track);
+  const manifest = buildManifest(files as string[], names.names, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track, sorted.stills);
   const counted = checkManifest(manifest);
-  if (!counted.ok || manifest.length !== files.length || counted.videos.length !== sorted.clips.length || counted.audio !== sorted.track) {
+  if (!counted.ok || manifest.length !== files.length || counted.videos.length + counted.stills.length !== sorted.clips.length
+    || counted.stills.length !== sorted.stills.length || counted.audio !== sorted.track) {
     return refuse(err('manifest_invalid', `The files could not be listed: ${counted.ok ? 'the count does not match' : counted.error}.`));
   }
 
@@ -305,8 +309,11 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const askedSec = positive(input.targetSec) ?? said.durationSec;
   const target = askedSec ? Math.min(askedSec, MAX_TOTAL_SEC) : undefined;
   const musicFromSec = positive(input.musicFromSec) ?? said.musicStartSec;
+  const stillOf = sorted.clips.map((i) => sorted.stills.includes(i));
   const plan = planBeatCuts({
     clipDurationsSec: clipProbes.map((p) => p.durationSec),
+    // A photo is one still shot (beatPlan `stills`): never too short, shown once.
+    ...(sorted.stills.length ? { stills: stillOf } : {}),
     musicSec: track.probe.durationSec,
     grid: track.grid,
     ...(target ? { targetSec: target } : {}),
@@ -320,7 +327,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
       ? input.aspect
       : said.aspect ?? aspectFromClips(clipProbes);
-  const body = montageBody(plan, sorted.clips.map((i) => ({ url: urls[i]!, source: i })), urls[sorted.track]!, aspect, manifest);
+  const body = montageBody(plan, sorted.clips.map((i, c) => ({ url: urls[i]!, source: i, ...(stillOf[c] ? { still: true } : {}) })), urls[sorted.track]!, aspect, manifest);
   // The same reader the run and the worker use: the lane's validation, the manifest, every shot's file, coverage.
   const parsed = parseAgentRequest(body);
   if (!parsed.ok) {
@@ -342,7 +349,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     credits,
     totalSec: timelineDuration(request.shots),
     shots: request.shots.length,
-    clips: sorted.clips.length,
+    clips: sorted.clips.length - sorted.stills.length,
+    ...(sorted.stills.length ? { stills: sorted.stills.length } : {}),
     aspect,
     beatSynced: plan.beatSynced,
     bpm: plan.bpm,

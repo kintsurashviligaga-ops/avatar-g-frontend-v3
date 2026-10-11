@@ -264,8 +264,12 @@ export async function kenBurnsClip(image: string, durationSec = 5, aspect: '9:16
       await writeFile(input, Buffer.from(b64, 'base64'));
     }
     const out = join(dir, 'kb.mp4');
-    // Scale up (so zoompan has headroom), slow zoom to 1.15×, crop to the target.
-    const vf = `scale=${w * 2}:${h * 2},zoompan=z='min(zoom+0.0010,1.15)':d=${frames}:s=${w}x${h}:fps=${fps},format=yuv420p`;
+    // Cover the target frame at 2× (so zoompan has headroom) WITHOUT stretching: scale up until it covers, crop the
+    // overflow from the middle, the way every clip is fitted (fitAspect). Then a slow zoom to 1.15× into the centre.
+    // ⚠️ It used to be a bare `scale=${w*2}:${h*2}`: a square product photo in a 9:16 edit came out squashed. The first
+    // frame is now the photo exactly as fitted, which the montage's per-photo QC relies on (agent/media/montageAsk).
+    const vf = `scale=${w * 2}:${h * 2}:force_original_aspect_ratio=increase,crop=${w * 2}:${h * 2},`
+      + `zoompan=z='min(zoom+0.0010,1.15)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${w}x${h}:fps=${fps},format=yuv420p`;
     await exec(BIN, [
       '-y', '-loop', '1', '-i', input, '-t', String(durationSec),
       '-vf', vf, ...X264, '-movflags', '+faststart', out,

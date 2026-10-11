@@ -18,19 +18,26 @@
  * Every write is fenced: stage, completion and failure land only while this worker still holds the lease, so a worker
  * that lost it (or a cancelled job) can no longer move the row, and a second worker never delivers over the first.
  */
+import { OUTPUT_FPS } from '@/lib/services/montage/beatPlan';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
 import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
-import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, clipCheckPoints, qcAvSync, qcClips, qcMaster, type ClipVerdict } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, type ClipVerdict } from './montageAsk';
 import { checkManifest, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
 
 /** How many sources the per-clip QC reads at once. */
 const QC_CONCURRENCY = 3;
 
 /**
- * Look for every manifest video in the master: one frame per clip from the output (one read of the master) against
- * the same moment of its source, conformed to the master's frame (a read per source, QC_CONCURRENCY at a time).
+ * Look for every manifest video and photo in the master: one frame per picture from the output (one read of the master)
+ * against the same moment of its source, conformed to the master's frame (a read per source, QC_CONCURRENCY at a time).
+ * A video's source is read at that moment and every half output frame up to ±SRC_QC_REACH_SEC around it, and the
+ * closest frame counts (its time is kept as `matchT`): the stitch resamples to OUTPUT_FPS, so the frame the master
+ * shows can be the source's frame half an output frame after the planned moment, and in fast motion that alone is a
+ * large difference. Measured on real ffmpeg (a 60 fps panning clip, 2026-10-11): 6.51 at the planned moment, 0.19 at
+ * +1/60 s, which the earlier ±1/30 s reads stepped over. Real clips read 11.96 (Production 12:07Z) and 11.79 (Preview
+ * 12:34Z) against the limit of 12 that way. A clip that is not there differs from every one of them.
  */
 async function checkClips(deps: MontageExecDeps, request: AgentMontageRequest, masterUrl: string, signal: AbortSignal): Promise<ClipVerdict> {
   const points = clipCheckPoints(request);
@@ -38,16 +45,36 @@ async function checkClips(deps: MontageExecDeps, request: AgentMontageRequest, m
   const outFrames = (await deps.grabFrames(masterUrl, points.map((p) => p.outT), { size: CLIP_QC_SIZE, signal }).catch(() => null))
     ?? points.map(() => null);
   const srcFrames: Array<Uint8Array | null> = points.map(() => null);
+  const matchT: Array<number | null> = points.map(() => null);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(QC_CONCURRENCY, points.length) }, async () => {
     for (let i = next++; i < points.length; i = next++) {
       if (signal.aborted) return;
       const p = points[i]!;
-      const got = await deps.grabFrames(p.url, [p.srcT], { size: CLIP_QC_SIZE, fit, signal }).catch(() => null);
-      srcFrames[i] = got?.[0] ?? null;
+      const times = srcQcTimes(p.srcT);
+      const got = await deps.grabFrames(p.url, times, { size: CLIP_QC_SIZE, fit, signal }).catch(() => null);
+      // The candidate closest to the output frame; the planned moment (listed first) wins a tie.
+      const out = outFrames[i] ?? null;
+      let best = -1;
+      (got ?? []).forEach((f, k) => { if (f && (best < 0 || frameDiff(out, f) < frameDiff(out, got![best]))) best = k; });
+      srcFrames[i] = best >= 0 ? got![best]! : null;
+      matchT[i] = best >= 0 ? times[best]! : null;
     }
   }));
-  return qcClips(points, outFrames, srcFrames);
+  const verdict = qcClips(points, outFrames, srcFrames);
+  return { ...verdict, clips: verdict.clips.map((c, i) => (matchT[i] != null && matchT[i] !== c.srcT ? { ...c, matchT: matchT[i]! } : c)) };
+}
+
+/** How far around the planned moment a video's source is searched (see checkClips): three half output frames. */
+const SRC_QC_REACH_SEC = 3 / (2 * OUTPUT_FPS);
+
+/** The source moments one clip is checked at: the planned one first, then out by half output frames, never below 0. */
+export function srcQcTimes(srcT: number): number[] {
+  if (!(srcT > 0)) return [0];
+  const half = 1 / (2 * OUTPUT_FPS);
+  const out = [srcT];
+  for (let k = 1; k * half <= SRC_QC_REACH_SEC + 1e-9; k += 1) out.push(srcT - k * half, srcT + k * half);
+  return out.filter((t) => t > 0).map((t) => Math.round(t * 1000) / 1000);
 }
 
 export type WorkResult =
@@ -106,6 +133,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
   }
   const { request, manifest } = parsed;
   const videos = manifest.filter((m) => m.kind === 'video').length;
+  const stills = manifest.filter((m) => m.kind === 'image').length;
   const totalSec = timelineDuration(request.shots);
   await deps.audit({ ...run, userId, op: 'montage', phase: 'run', outcome: attempt > 1 ? 'retried' : 'ok', jobId, credits, attempt, detail: 'started' });
 
@@ -147,16 +175,17 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     const av = qcAvSync(await deps.streamDurations(videoUrl, { signal: ctl.signal }).catch(() => null), totalSec);
     problems.push(...av.problems);
     if (ctl.signal.aborted) return halted(beat);
-    // Every video of the manifest really in the master (the owner's invariant): its frame, at its place.
+    // Every video and photo of the manifest really in the master (the owner's invariant): its frame, at its place.
     const clips = await checkClips(deps, request, videoUrl, ctl.signal);
     if (ctl.signal.aborted) return halted(beat);
     const seen = new Set(clips.clips.map((c) => c.index));
-    const unplaced = manifest.filter((m) => m.kind === 'video' && !seen.has(m.index));
+    const unplaced = manifest.filter((m) => m.kind !== 'audio' && !seen.has(m.index));
     problems.push(...clips.problems, ...unplaced.map((m) => `clip ${m.index + 1} "${m.name}" has no place in the output`));
     const evidence = {
       qc: {
         files: manifest.length,
         videos,
+        ...(stills ? { stills } : {}),
         clips: clips.clips,
         maxDiff: CLIP_QC_MAX_DIFF,
         av: { videoSec: av.videoSec, audioSec: av.audioSec },

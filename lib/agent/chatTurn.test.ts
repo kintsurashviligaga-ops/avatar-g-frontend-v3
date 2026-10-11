@@ -310,3 +310,12 @@ test('an ask keeps the words and files in the composer; other notes do not', () 
   expect(status).toMatchObject({ kind: 'say' });
   expect((status as { keepComposer?: boolean }).keepComposer).toBeUndefined();
 });
+
+describe('a photo among the clips (owner, 2026-10-11 11:37Z)', () => {
+  const s = 'დაამონტაჟე ვიდეო და მუსიკა დაადე ზუსტად 0.55 წამიდან რომ დაიწყოს';
+  test('4 clips + a photo + an MP3: the studio\'s montage takes it (no „can\'t" note), runs open or not', () => {
+    const attachments = ['audio', 'video', 'video', 'video', 'video', 'image'] as ChatSnapshot['attachments'];
+    expect(planChatTurn(s, snap({ attachments })).kind).toBe('pass');
+    expect(planChatTurn(s, snap({ attachments, runOn: true })).kind).toBe('pass');
+  });
+});

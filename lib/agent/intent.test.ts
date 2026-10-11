@@ -243,3 +243,22 @@ describe('the focus tool still decides its own prompts', () => {
     expect(run('remix this song')).toMatchObject({ kind: 'unavailable', capability: 'music.remix' });
   });
 });
+
+describe('a photo among the clips rides along as a still (owner, 2026-10-11 11:37Z)', () => {
+  // The owner's words on myavatar.ge: 4 clips, a product photo and an MP3. The photo used to turn the montage into
+  // „move the music in a finished video" (media.edit music_offset), answered „can't" — and the files were dropped.
+  const s = 'დაამონტაჟე ვიდეო და მუსიკა დაადე ზუსტად 0.55 წამიდან რომ დაიწყოს';
+  test.each([
+    [[A, V, V, V, V, I]],
+    [[V, V, V, V, I, A]],
+    [[V, I, A]],
+  ])('the montage of the clips, the photo and the track, music from 0:55: %j', (attachments) => {
+    expect(act(run(s, { attachments }))).toMatchObject({ capability: 'agent.montage', target: 'attachment', missing: [], params: { musicStartSec: 55 } });
+  });
+  test('clips and a photo with no track: the montage, asking for the track', () => {
+    expect(act(run(s, { attachments: [V, V, I] }))).toMatchObject({ capability: 'agent.montage', missing: ['track'] });
+  });
+  test('photos alone are not this edit', () => {
+    expect(run('cut these to the music', { attachments: [I, I, A] })).not.toMatchObject({ capability: 'agent.montage' });
+  });
+});

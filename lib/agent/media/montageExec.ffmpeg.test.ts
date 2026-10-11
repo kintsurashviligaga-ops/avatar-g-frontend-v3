@@ -156,6 +156,66 @@ test('three clips + a 120 BPM track → a beat-cut H.264/AAC master of the plann
   }
 });
 
+test('a photo among the clips (owner, 2026-10-11 11:37Z): one still shot, framed like the clips, seen by the per-clip QC', async () => {
+  const enc = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac'];
+  const a = make('pa.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30:duration=7', '-f', 'lavfi', '-i', 'sine=f=300:duration=7', ...enc]);
+  // A portrait product photo, as the phone sends it (a JPEG): a picture with no length and no sound.
+  const photo = make('product.jpg', ['-f', 'lavfi', '-i', 'testsrc2=size=900x1200:rate=1', '-frames:v', '1', '-q:v', '3']);
+  const c = make('pc.mp4', ['-f', 'lavfi', '-i', 'smptehdbars=size=640x360:rate=25:duration=6', ...enc.slice(0, 6)]);
+  const song = make('psong.m4a', ['-f', 'lavfi', '-i', "aevalsrc='0.9*sin(2*PI*55*t)*exp(-30*mod(t-0.25+1,0.5))*gte(t,0.25)':s=44100:d=20", '-c:a', 'aac']);
+  const store = memoryLeaseStore();
+  const audits: string[] = [];
+  const deps = liveLike(store, audits);
+  const q = await quoteMontage(deps, { userId: 'u', files: [song, a, photo, c], targetSec: 10 });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(q.quote).toMatchObject({ clips: 2, stills: 1 });
+  expect(q.quote.manifest.map((m) => [m.name, m.kind, m.durationSec])).toEqual([
+    ['psong.m4a', 'audio', 20], ['pa.mp4', 'video', 7], ['product.jpg', 'image', 0], ['pc.mp4', 'video', 6],
+  ]);
+  const shotsOfPhoto = q.request.shots.filter((s) => s.source === 2);
+  expect(shotsOfPhoto).toHaveLength(1);
+  expect(shotsOfPhoto[0]).toMatchObject({ kind: 'image', startSec: 0 });
+
+  const queued = await enqueueMontageJob(deps, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  const r = await workMontageJob(deps, { jobId: queued.jobId, worker: 'w-photo' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+  const master = await probeMedia(r.videoUrl);
+  expect(master).toMatchObject({ hasVideo: true, hasAudio: true, videoCodec: 'h264', audioCodec: 'aac' });
+  expect(Math.abs(master!.durationSec - q.quote.totalSec)).toBeLessThan(1);
+  const qc = (store.rows.get(queued.jobId)!.result as { qc: { clips: Array<{ index: number; diff: number; ok: boolean }>; stills: number; ok: boolean } }).qc;
+  expect(qc).toMatchObject({ ok: true, stills: 1 });
+  expect(qc.clips.map((x) => [x.index, x.ok])).toEqual([[1, true], [2, true], [3, true]]);
+  qcSeen.push(...qc.clips.map((x) => x.diff));
+  if (process.env.MONTAGE_PHOTO_OUT) {
+    writeFileSync(process.env.MONTAGE_PHOTO_OUT, JSON.stringify({ quote: q.quote, shots: q.request.shots.map((s) => [s.url.split('/').pop(), s.kind, s.source, s.startSec, s.endSec]), master, qc }, null, 1));
+  }
+});
+
+test('fast motion (Preview 12:34Z, a real clip at 11.79 of 12): a 60 fps pan is seen at its place, not half a frame off', async () => {
+  // The stitch resamples to 30 fps, so the master's frame of a 60 fps clip can be the source's frame 1/60 s after the
+  // planned moment. Read only at the planned moment and ±1/30 s, the pan below measured 6.51 here; its real frame, 0.19.
+  const x = ['-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p'];
+  const zoom = make('zoom.mov', ['-f', 'lavfi', '-i', 'mandelbrot=size=720x1280:rate=30', '-t', '8', ...x, '-video_track_timescale', '600']);
+  const pan = make('pan.mov', ['-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=60', '-t', '8', '-vf', 'scroll=h=0.01:v=0.005', ...x, '-video_track_timescale', '600']);
+  const photo = make('fph.jpg', ['-f', 'lavfi', '-i', 'testsrc2=size=900x1200:rate=1', '-frames:v', '1', '-q:v', '3']);
+  const spin = make('spin.mp4', ['-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=24', '-t', '8', '-vf', "rotate=a='t*3':c=gray", ...x]);
+  const song = make('fsong.m4a', ['-f', 'lavfi', '-i', "aevalsrc='0.9*sin(2*PI*55*t)*exp(-30*mod(t-0.25+1,0.6122))*gte(t,0.25)':s=44100:d=90", '-c:a', 'aac']);
+  const store = memoryLeaseStore();
+  const deps = liveLike(store, []);
+  // GG's ask on Preview: two clips, a photo and a song, the music from 0:59.
+  const q = await quoteMontage(deps, { userId: 'u', files: [zoom, pan, song, photo, spin], targetSec: 20, musicFromSec: 59 });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  const queued = await enqueueMontageJob(deps, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  const r = await workMontageJob(deps, { jobId: queued.jobId, worker: 'w-motion' });
+  if (r.ran !== true || r.outcome !== 'delivered') throw new Error(`work: ${JSON.stringify(r)} ${store.rows.get(queued.jobId)?.error ?? ''}`);
+  const qc = (store.rows.get(queued.jobId)!.result as { qc: { clips: Array<{ name: string; diff: number; ok: boolean }>; ok: boolean } }).qc;
+  expect(qc.ok).toBe(true);
+  for (const c of qc.clips) expect([c.name, c.diff < 2]).toEqual([c.name, true]);
+  qcSeen.push(...qc.clips.map((c) => c.diff));
+});
+
 /** The per-clip QC's real numbers (diff of each clip's frame in the master against its source), for the calibration note. */
 const qcSeen: number[] = [];
 const qcMissed: number[] = [];

@@ -7,10 +7,14 @@
  * branch (components/studio/OmniStudio.tsx): it took the FIRST video only, laid the song under it as `add_music`,
  * charged for it, and dropped every other clip without a word. The rule here claims exactly those messages and nothing
  * the remix or the editor does better:
- *   · the files are video clips and ONE audio track, nothing else (a photo or a second track is not this edit);
+ *   · the files are video clips (at least one), PHOTOS if any, and ONE audio track, nothing else (a second track or a
+ *     document is not this edit). A photo is a still shot of the montage (owner 2026-10-11 11:37Z: four clips, a
+ *     product photo and a song; the photo used to throw the whole request out of the montage and onto a canned
+ *     „I cannot move the music in a finished video", with every file dropped);
  *   · the words are not a question („what song is this?" stays a question about the video);
- *   · with two or more clips, any music / beat / cut / montage word is enough: the remix could only ever use one clip;
- *   · with ONE clip, only a cut / montage word: „add music to this video" wants the whole clip with a song under it
+ *   · with two or more pictures (clips and photos), any music / beat / cut / montage word is enough: the remix could only
+ *     ever use one clip;
+ *   · with ONE clip and nothing else, only a cut / montage word: „add music to this video" wants the whole clip with a song under it
  *     (the remix's add_music), not the clip chopped into shots — and a trim („cut the first 10 seconds") stays a trim.
  */
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
@@ -43,15 +47,16 @@ export function hasMusicWords(text: string): boolean {
   return MUSIC.test(text || '');
 }
 
-/** Is this message, with these attachments, a request to cut the clips to the track? */
+/** Is this message, with these attachments, a request to cut the clips (and photos) to the track? */
 export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const t = (text || '').trim();
   if (!t || isVideoQuestion(t)) return false;
   const videos = kinds.filter((k) => k === 'video').length;
+  const photos = kinds.filter((k) => k === 'image').length;
   const audios = kinds.filter((k) => k === 'audio').length;
-  if (videos < 1 || videos > MAX_CLIPS || audios !== 1 || videos + audios !== kinds.length) return false;
+  if (videos < 1 || videos + photos > MAX_CLIPS || audios !== 1 || videos + photos + audios !== kinds.length) return false;
   const montageWords = CUT.test(t) || detectStudioIntent(t)?.service === 'montage';
-  if (videos === 1) return montageWords && !TRIM.test(t);
+  if (videos + photos === 1) return montageWords && !TRIM.test(t);
   return montageWords || MUSIC.test(t);
 }
 
@@ -121,11 +126,12 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     : (lang === 'en' ? 'I could not find a steady beat, so the cuts sit on an even half-second grid.'
       : lang === 'ru' ? 'Чёткого бита нет, поэтому склейки идут по ровной сетке в полсекунды.'
         : 'მკაფიო ბითი ვერ ვიპოვე, ამიტომ კადრებს თანაბარ, ნახევარწამიან ბადეზე ვჭრი.');
+  const st = q.stills ?? 0;
   const plan = lang === 'en'
-    ? `Plan: ${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'}, ${sec(q.totalSec)} s, ${q.aspect}, with your track as the only sound.`
+    ? `Plan: ${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'}${st ? ` and ${st} photo${st === 1 ? '' : 's'}` : ''}, ${sec(q.totalSec)} s, ${q.aspect}, with your track as the only sound.`
     : lang === 'ru'
-      ? `План: ${q.shots} кадров из клипов (${q.clips}), ${sec(q.totalSec)} с, ${q.aspect}, звук — только ваш трек.`
-      : `გეგმა: ${q.shots} კადრი ${q.clips} კლიპიდან, ${sec(q.totalSec)} წმ, ${q.aspect}, ხმად მხოლოდ შენი მუსიკა.`;
+      ? `План: ${q.shots} кадров из клипов (${q.clips})${st ? ` и фото (${st})` : ''}, ${sec(q.totalSec)} с, ${q.aspect}, звук — только ваш трек.`
+      : `გეგმა: ${q.shots} კადრი ${q.clips} კლიპიდან${st ? ` და ${st} ფოტოდან` : ''}, ${sec(q.totalSec)} წმ, ${q.aspect}, ხმად მხოლოდ შენი მუსიკა.`;
   // A start the user asked for („მუსიკა 5 წამიდან") is said; the first beat a fraction of a second in is not news.
   const from = q.musicStartSec >= 1
     ? ' ' + (lang === 'en' ? `The track starts at ${clockOf(q.musicStartSec)}.` : lang === 'ru' ? `Трек начинается с ${clockOf(q.musicStartSec)}.` : `მუსიკა იწყება ${clockOf(q.musicStartSec)}-დან.`)
@@ -148,15 +154,19 @@ export function manifestText(manifest: readonly MontageManifestItem[], locale: s
   const lang = pick(locale);
   const kind = (k: MontageManifestItem['kind']) => (k === 'video'
     ? (lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო')
-    : (lang === 'en' ? 'music' : lang === 'ru' ? 'музыка' : 'მუსიკა'));
+    : k === 'image'
+      ? (lang === 'en' ? 'photo' : lang === 'ru' ? 'фото' : 'ფოტო')
+      : (lang === 'en' ? 'music' : lang === 'ru' ? 'музыка' : 'მუსიკა'));
   const unit = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
+  // A photo has no length of its own (its shot sets it): no „0 s" after it.
   const list = manifest
-    .map((m) => `${m.index + 1} ${quoted(lang, m.name || names?.[m.index] || `${m.index + 1}`)} ${kind(m.kind)} ${sec(m.durationSec)} ${unit}`)
+    .map((m) => `${m.index + 1} ${quoted(lang, m.name || names?.[m.index] || `${m.index + 1}`)} ${kind(m.kind)}${m.kind === 'image' ? '' : ` ${sec(m.durationSec)} ${unit}`}`)
     .join(' · ');
   const n = manifest.length;
-  return lang === 'en' ? `Files (${n}, in your order): ${list}. Every clip is used.`
-    : lang === 'ru' ? `Файлы (${n}, в вашем порядке): ${list}. Используются все клипы.`
-      : `ფაილები (${n}, შენი თანმიმდევრობით): ${list}. ყველა კლიპი შედის.`;
+  const photos = manifest.some((m) => m.kind === 'image');
+  return lang === 'en' ? `Files (${n}, in your order): ${list}. Every ${photos ? 'clip and photo' : 'clip'} is used.`
+    : lang === 'ru' ? `Файлы (${n}, в вашем порядке): ${list}. Используются все ${photos ? 'клипы и фото' : 'клипы'}.`
+      : `ფაილები (${n}, შენი თანმიმდევრობით): ${list}. ${photos ? 'ყველა კლიპი და ფოტო' : 'ყველა კლიპი'} შედის.`;
 }
 
 const STAGE: Record<string, Record<Lang, string>> = {

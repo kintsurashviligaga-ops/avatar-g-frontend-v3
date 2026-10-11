@@ -17,6 +17,10 @@ describe('beatMontageAsk', () => {
     // one clip: only cut / montage words
     ['cut it to the beat', [V, A]],
     ['დაამონტაჟე ბითზე', [V, A]],
+    // photos ride along as still shots (owner, 2026-10-11 11:37Z: 4 clips + a photo + an MP3 got a refusal)
+    ['cut these to the music', [V, 'image', A]],
+    ['დაამონტაჟე ვიდეო და მუსიკა დაადე ზუსტად 0.55 წამიდან რომ დაიწყოს', [A, V, V, V, V, 'image']],
+    ['add this song', [V, 'image', A]],
   ])('claims %s', (text, kinds) => expect(beatMontageAsk(text, kinds as AttachmentKind[])).toBe(true));
 
   test.each([
@@ -31,9 +35,11 @@ describe('beatMontageAsk', () => {
     // the files must be clips and ONE track, nothing else
     ['cut these to the music', [V, V]],
     ['cut these to the music', [V, A, A]],
-    ['cut these to the music', [V, 'image', A]],
+    ['cut these to the music', [V, 'other', A]],
+    ['cut these to the music', ['image', 'image', A]],
     ['cut these to the music', [A]],
     ['cut these to the music', [...Array(13).fill(V), A]],
+    ['cut these to the music', [...Array(6).fill(V), ...Array(7).fill('image'), A]],
     // words are required
     ['', [V, V, A]],
     // nothing about cutting or music

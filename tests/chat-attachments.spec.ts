@@ -19,6 +19,8 @@ import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 
 const sse = (frames: unknown[]): string => frames.map((f) => `data: ${typeof f === 'string' ? f : JSON.stringify(f)}\n\n`).join('');
 const CLIP = readFileSync(join(__dirname, 'fixtures/clip.webm'));
+/** A 96×128 PNG (testsrc2): a photo the browser reads on the device and keeps inline (no upload). */
+const PHOTO = readFileSync(join(__dirname, 'fixtures/photo.png'));
 
 /** A picked video uploads at once (upload on select); a test that counts uploads mocks them itself (mockRemix). */
 async function mockUploads(page: Page): Promise<void> {
@@ -190,6 +192,24 @@ test.describe('the chat reads what it is given', () => {
     await expect(page.getByTestId('agent-g-confirm')).toHaveCount(0);
     expect(calls.uploads).toEqual([1]);   // the upload on select, and no other
     expect(calls.remix).toEqual([]);
+  });
+
+  test('a photo read on the device shows its check, and a note that cannot do the ask keeps the files in the box (owner, 2026-10-11)', async ({ page }) => {
+    const bodies = await mockChat(page);
+    await openChat(page);
+    await page.locator('input[type=file][multiple][accept="image/*"]').setInputFiles({ name: 'product.png', mimeType: 'image/png', buffer: PHOTO });
+    const tile = page.getByTestId('composer-attachment');
+    await expect(tile).toHaveAttribute('data-status', 'local', { timeout: 15_000 });
+    // The clips beside it had a check and the photo none: „ერთი არ იყო მონიშნული".
+    await expect(tile.getByLabel('მზადაა')).toBeVisible();
+    // A note Agent G answers itself (here: moving the music of a finished video, which no route does yet).
+    await send(page, 'მუსიკა 5 წამიდან დაიწყე');
+    await expect(page.getByText('დასრულებულ ვიდეოში მუსიკის გადაწევა ჯერ არ შემიძლია', { exact: false })).toBeVisible({ timeout: 15_000 });
+    // The words go; the photo stays, still checked, for the next words. It used to vanish with the note.
+    await expect(page.getByTestId('composer-input')).toHaveValue('');
+    await expect(page.getByTestId('composer-attachment')).toHaveCount(1);
+    await expect(page.getByTitle(/product\.png/)).toBeVisible();
+    expect(bodies).toHaveLength(0);
   });
 
   test('a Word file is read as text: it travels as text/plain under its own name', async ({ page }) => {
