@@ -8,7 +8,7 @@ import type { EditAsk } from './editWords';
 import { editCodeOf, type EditChatCode } from './editChat';
 import type { TaskView } from '@/lib/tasks/taskView';
 import type { RunApproval } from '@/lib/agent/approval';
-import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, followTask, taskEndedAt, type Fetch, type FollowDeps } from './jobFollow';
 
 const ROUTE = '/api/agent/media/edit';
 
@@ -83,6 +83,20 @@ export function runAgentEdit(
     refused: (status, body) => ({ ok: false, code: editCodeOf(status, body) }),
     lost: (why) => ({ ok: false, code: why }),
   });
+}
+
+/**
+ * Take a running edit back after the page was reloaded or replaced (a language switch mounts the studio afresh):
+ * follow its job by id, nothing is sent again. `endedAt` is when the job ended, so the card's clock stops there.
+ */
+export function resumeAgentEdit(deps: FollowDeps, jobId: string): Promise<EditClientRun & { endedAt?: number }> {
+  let endedAt: number | undefined;
+  return followTask<EditClientRun>(deps, {
+    jobId,
+    done: (t) => { const r = done(t); if (r) endedAt = taskEndedAt(t); return r; },
+    refused: (status, body) => ({ ok: false, code: editCodeOf(status, body) }),
+    lost: (why) => ({ ok: false, code: why }),
+  }, { queued: false, readNow: true, neverFound: 'not_found' }).then((r) => (endedAt ? { ...r, endedAt } : r));
 }
 
 /** Stop a running edit. The run's own follow then reports it as cancelled. */

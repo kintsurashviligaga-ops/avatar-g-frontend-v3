@@ -20,6 +20,22 @@ describe('mineMusicStart: where the track starts, only when the music is named',
     expect(mineMusicStartSec(text)).toBe(sec);
   });
 
+  // The owner, 2026-10-11, on an iPhone: „0.58" meant 0:58 and the song came in at 0:01. A phone has no colon on its
+  // number row, so two digits after a point or comma are a clock; one digit, or a fraction past 59, stay seconds.
+  test.each([
+    ['დაამონტაჟე ეფექტურად ვიდეო და სიმღერა ზუსტად 0.58 წამიდან დაადე', 58],
+    ['მუსიკა 0.58-დან', 58],
+    ['სიმღერა 1,30-დან დაიწყე', 90],
+    ['მუსიკა 1.05 წამიდან', 65],
+    ['music from 0.58 seconds', 58],
+    ['музыка с 1,30 секунды', 90],
+    ['მუსიკა 1.5 წამიდან', 1.5],
+    ['მუსიკა 2.75 წამიდან', 2.75],
+    ['music from 2.5 s', 2.5],
+  ])('a point between minutes and seconds: %s → %s s', (text, sec) => {
+    expect(mineMusicStartSec(text)).toBe(sec);
+  });
+
   test('no music word, no start: „5 წამიდან" alone is not about the track', () => {
     expect(mineMusicStart('ვიდეო 5 წამიდან დაიწყე')).toBeNull();
     expect(mineMusicStart('start from 5 seconds')).toBeNull();

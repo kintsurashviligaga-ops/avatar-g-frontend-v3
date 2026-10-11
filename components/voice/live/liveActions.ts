@@ -34,6 +34,7 @@
  * loop (POST /api/agent/run, asked for a short budget — LIVE_AGENT_BUDGET_MS / LIVE_AGENT_MAX_STEPS — so a voice call
  * never waits two minutes). The step spinner runs meanwhile; whatever comes back is web data, and the model is told so.
  */
+import { LIVE_AGENT_FILES_MAX, liveAttachedRefs } from '@/lib/voice/liveAttached';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { setChatMode } from '@/lib/chat/chatModeStore';
@@ -206,7 +207,7 @@ export type AgentRunAnswer =
  * client timeout (LIVE_AGENT_TIMEOUT_MS) that holds even when the fetch ignores its abort signal. Never throws.
  * `io` is for tests.
  */
-export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): Promise<AgentRunAnswer> {
+export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch; timeoutMs?: number; files?: readonly string[] } = {}): Promise<AgentRunAnswer> {
   const doFetch = io.fetchImpl ?? (typeof fetch === 'function' ? fetch : null);
   if (!doFetch) return { ok: false, error: 'network' };
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
@@ -219,7 +220,7 @@ export async function fetchAgentRun(task: string, io: { fetchImpl?: typeof fetch
     const res = await Promise.race([
       doFetch('/api/agent/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ goal: task, maxSteps: LIVE_AGENT_MAX_STEPS, budgetMs: LIVE_AGENT_BUDGET_MS, source: 'live' }),
+        body: JSON.stringify({ goal: task, maxSteps: LIVE_AGENT_MAX_STEPS, budgetMs: LIVE_AGENT_BUDGET_MS, source: 'live', ...(io.files?.length ? { files: io.files.slice(0, LIVE_AGENT_FILES_MAX) } : {}) }),
         ...(ctrl ? { signal: ctrl.signal } : {}),
       }),
       deadline,
@@ -337,7 +338,7 @@ export const browserLiveActionEnv: LiveActionEnv = {
   runGeneration: dispatchLiveRun,
   ui: browserLiveUi,
   readPage: fetchWebRead,
-  askAgent: (task) => fetchAgentRun(task),
+  askAgent: (task) => fetchAgentRun(task, { files: liveAttachedRefs() }),
   montageCommand: dispatchMontageCommand,
   recordApproval: (req) => fetchApproval(req),
   notify: dispatchLiveNote,

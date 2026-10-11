@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 
 /**
  * AGENT G CUTS THE CLIPS TO THE TRACK, IN THE CHAT (media execution, slice 1) — in a real browser, with every server route
@@ -30,7 +31,16 @@ function wav(seconds = 6, rate = 8000): Buffer {
   return buf;
 }
 
-const QUOTE = { jobId: '11111111-2222-4333-8444-555555555555', credits: 0, totalSec: 19.97, shots: 8, clips: 2, aspect: '16:9', beatSynced: true, bpm: 119.96, musicStartSec: 0.23, unusedFiles: [], expiresAt: Date.now() + 1_800_000 };
+const MANIFEST = [
+  { index: 0, path: 'omni-uploads/u/file-1', name: 'beach.webm', kind: 'video', durationSec: 5 },
+  { index: 1, path: 'omni-uploads/u/file-2', name: 'city.webm', kind: 'video', durationSec: 5 },
+  { index: 2, path: 'omni-uploads/u/file-3', name: 'song.wav', kind: 'audio', durationSec: 6 },
+];
+const QUOTE = {
+  jobId: '11111111-2222-4333-8444-555555555555', credits: 0, totalSec: 19.97, shots: 8, clips: 2, aspect: '16:9', beatSynced: true, bpm: 119.96,
+  musicStartSec: 0.23, manifest: MANIFEST, clipOrder: [0, 1], engine: { id: 'ffmpeg-montage', label: 'FFmpeg montage', free: true },
+  unusedFiles: [], expiresAt: Date.now() + 1_800_000,
+};
 
 interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; remixIntent: unknown[] }
 
@@ -44,7 +54,8 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean; /** th
     } catch { /* private mode */ }
   });
   let n = 0;
-  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't' }) }));
+  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }));
+  await mockStoredUpload(page);
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/video/remix-intent', async (r: Route) => {
@@ -132,7 +143,13 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
 
     const card = page.getByTestId('agent-montage-card');
     await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
-    expect(calls.quote).toEqual([{ action: 'quote', files: ['omni-uploads/u/file-1', 'omni-uploads/u/file-2', 'omni-uploads/u/file-3'], prompt: 'cut these to the music' }]);
+    expect(calls.quote).toEqual([{
+      action: 'quote', files: ['omni-uploads/u/file-1', 'omni-uploads/u/file-2', 'omni-uploads/u/file-3'],
+      names: ['beach.webm', 'city.webm', 'song.wav'], prompt: 'cut these to the music',
+    }]);
+    // The card names what it works on: the count in its header and every file, in the order sent.
+    await expect(page.getByTestId('agent-montage-card-inputs')).toHaveText('2 videos + 1 track');
+    await expect(page.getByTestId('agent-montage-card-files').locator('li')).toHaveText(['beach.webm', 'city.webm', 'song.wav']);
     await expect(card).toContainText('8 shots');
     await expect(card).toContainText('120 BPM');
     await expect(page.getByTestId('agent-montage-start')).toContainText('Free');
@@ -151,8 +168,9 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect(page.getByRole('button', { name: 'Download', exact: true }).first()).toBeVisible(); // playable, and downloadable
     // The card stays after the run (the owner's „it popped up and vanished"): every step ticked, nothing left to press.
     await expect(card).toHaveAttribute('data-phase', 'done');
-    await expect(card.locator('li[data-state="done"]')).toHaveCount(8);
-    await expect(card).toContainText('8/8 steps');
+    await expect(card.locator('li[data-step][data-state="done"]')).toHaveCount(9);
+    await expect(card).toContainText('9/9 steps');
+    await expect(card.locator('li[data-step="clipqc"]')).toContainText('2/2 clips found in the output');
     await expect(page.getByTestId('agent-montage-stop')).toHaveCount(0);
     expect(calls.run).toEqual([{ action: 'run', request: { shots: ['signed plan'] }, token: 'signed-token', prompt: 'cut these to the music' }]);
     expect(calls.reads.length).toBeGreaterThanOrEqual(2);
@@ -165,6 +183,101 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect.poll(() => chat.length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(chat[0]).toContain('looks great');
     expect(chat[0]).not.toMatch(/data:(video|audio)\//);
+  });
+
+  // ── THE PAGE GOES WHILE THE JOB RENDERS (the Preview run of 2026-10-11) ─────────────────────────────────────────────
+  // The owner switched the language mid-render: the card vanished, nothing followed the job, and the finished master went
+  // to the Library only. The job lives server-side, so the chat must carry its card across and land the master in it.
+  const delivered = (page: Page) => page.route(/\/api\/tasks\?id=/, (r) => r.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, task: { id: QUOTE.jobId, kind: 'agent-montage', service: 'film', status: 'completed', stage: null, pct: 100, attempt: 1, result: { url: 'https://e2e-media.supabase.co/agent-montage.mp4', media: 'video', durationSec: 19.97, aspect: '16:9' }, error: null, cancellable: false, label: null, position: null, createdAt: null, updatedAt: null } }),
+  }));
+  async function startAndRun(page: Page): Promise<void> {
+    await attachAndSend(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card.locator('li[data-step="stitch"]')).toHaveAttribute('data-state', 'active', { timeout: 15_000 });
+  }
+
+  test('a language switch mid-render keeps the chat and its card; the master lands in that bubble, the job queued once', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    await startAndRun(page);
+
+    await page.getByRole('button', { name: 'Language' }).first().click();
+    await page.getByRole('menuitemradio', { name: 'ქარ' }).click();
+    await page.waitForURL(/\/ka\/dashboard/, { timeout: 30_000 });
+    // The same chat on the Georgian page: the words that were sent, and the card still on the job, every file named.
+    const card = page.getByTestId('agent-montage-card');
+    await expect(page.getByRole('heading', { name: 'cut these to the music' })).toBeAttached({ timeout: 30_000 });
+    await expect(page.getByText('cut these to the music', { exact: true }).last()).toBeVisible();
+    await expect(card).toHaveAttribute('data-phase', 'running', { timeout: 20_000 });
+    await expect(page.getByTestId('agent-montage-card-files').locator('li')).toHaveText(['beach.webm', 'city.webm', 'song.wav']);
+    // The new page follows the job itself (reads it by id): the card is not a picture of the old one.
+    const before = calls.reads.length;
+    await expect.poll(() => calls.reads.length, { timeout: 15_000 }).toBeGreaterThan(before);
+
+    // The job ends while the Georgian page follows it: the master plays in the same bubble, and the card says it is done.
+    await delivered(page);
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached({ timeout: 20_000 });
+    await expect(card).toHaveAttribute('data-phase', 'done');
+    await expect(card.locator('li[data-step][data-state="done"]')).toHaveCount(9);
+    // Following a job sends nothing: it was queued once, by the Start on the English page.
+    expect(calls.run).toHaveLength(1);
+  });
+
+  test('a reload mid-render opens a fresh chat; reopened from History, the chat takes its card back and gets the master', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    await startAndRun(page);
+
+    await page.reload();
+    await expect(page.getByTestId('composer-input')).toBeVisible({ timeout: 45_000 });
+    // A reload lands on a fresh chat, by design.
+    await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
+
+    // The job finished while the chat was closed: opening it reads the job at once and puts the master in its bubble.
+    await delivered(page);
+    await page.getByRole('button', { name: 'cut these to the music' }).first().click();
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'done', { timeout: 20_000 });
+    await expect(page.locator('video[src^="https://e2e-media.supabase.co/agent-montage.mp4"]')).toBeAttached();
+    await expect(page.getByText(/Ready: 20 s, cut to your track/)).toBeVisible();
+    expect(calls.run).toHaveLength(1);
+  });
+
+  test('while the montage renders the box shows a red Stop with a turning ring; it stops the job as the card\'s Stop does', async ({ page }) => {
+    const calls = await open(page, true, { stay: true });
+    // Each clip shows a still of itself above the box, not a black square (the iPhone screenshots of 2026-10-11).
+    await page.locator('input[type=file][multiple][accept^="image/*,audio/*"][accept*="application/pdf"]').setInputFiles([
+      { name: 'beach.webm', mimeType: 'video/webm', buffer: CLIP },
+      { name: 'city.webm', mimeType: 'video/webm', buffer: CLIP },
+      { name: 'song.wav', mimeType: 'audio/wav', buffer: wav() },
+    ]);
+    await expect(page.getByTestId('composer-attachment-still')).toHaveCount(2, { timeout: 15_000 });
+    const still = await page.getByTestId('composer-attachment-still').first().getAttribute('src');
+    expect(still).toMatch(/^data:image\/jpeg;base64,/);
+    // Nothing runs yet: the box has no Stop.
+    await expect(page.getByTestId('composer-stop-job')).toHaveCount(0);
+    await say(page, 'cut these to the music');
+    const card = page.getByTestId('agent-montage-card');
+    await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
+    await page.getByTestId('agent-montage-start').click();
+    await expect(card).toHaveAttribute('data-phase', 'running');
+
+    const stop = page.getByTestId('composer-stop-job');
+    await expect(stop).toBeVisible();
+    await expect(stop).toHaveAttribute('data-kind', 'montage');
+    await expect(stop).toHaveClass(/bg-app-danger/);
+    await expect(stop.locator('.animate-spin')).toHaveCount(1);
+    // The clip sent with the ask keeps its still in the bubble too.
+    await expect(page.locator('video[poster^="data:image/jpeg"]').first()).toBeAttached();
+    // Typing does not take the Stop away: it stays beside Send.
+    await page.getByTestId('composer-input').fill('where are you?');
+    await expect(stop).toBeVisible();
+    await page.getByTestId('composer-input').fill('');
+    await stop.click();
+    await expect.poll(() => calls.cancel.length).toBe(1);
+    expect(calls.cancel[0]).toEqual({ action: 'cancel', id: QUOTE.jobId });
   });
 
   test('a montage already running shows once: in the tray, with its stop, until the chat\'s own card takes it over', async ({ page }) => {
@@ -251,11 +364,23 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     expect(chat).toEqual([]);
   });
 
-  test('closed to this user: the chat keeps its old flow and never asks for a plan', async ({ page }) => {
+  // Closed to this user: no plan is asked for, and the clips are never handed to the one-video remix either (GG's
+  // 2026-10-11 run: that remix took clip one and dropped the rest). The Montage editor opens with every file and says why.
+  test('closed to this user: no plan, no remix; the Montage editor opens with every clip and the track', async ({ page }) => {
     const calls = await open(page, false);
     await attachAndSend(page, 'cut these to the music');
-    await expect.poll(() => calls.remixIntent.length, { timeout: 20_000 }).toBe(1);
+    // The editor opens over the chat with both clips on the timeline and the track as its music.
+    await expect(page.getByRole('heading', { name: 'Montage', level: 1 })).toBeVisible({ timeout: 20_000 });
+    const timeline = page.getByRole('group', { name: 'Timeline' });
+    await expect(timeline.getByRole('button', { name: /^Clip \d+ · / })).toHaveCount(2);
+    await expect(timeline.getByRole('button', { name: 'Music: song.wav' })).toBeVisible();
+    // Closing it (the unsaved project asks first) shows Agent G's reply naming why and every file.
+    await page.getByRole('button', { name: 'Close' }).first().click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Close' }).click();
+    await expect(page.getByText(/not switched on for this account yet/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/all 2 clips on the timeline, in your order/)).toBeVisible();
     expect(calls.quote).toEqual([]);
+    expect(calls.remixIntent).toEqual([]);
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
   });
 });
@@ -283,7 +408,7 @@ test.describe('Agent G reads the message first', () => {
     await expect(page.getByText('Plan changed: the new one is below.')).toBeVisible();
     expect(calls.quote).toHaveLength(2);
     // The card's own words plus the change, and the SAME uploaded files (nothing is uploaded twice).
-    expect(calls.quote[1]).toEqual({ action: 'quote', files: calls.quote[0]!.files, prompt: 'cut these to the music\nstart the music at 5 seconds' });
+    expect(calls.quote[1]).toEqual({ action: 'quote', files: calls.quote[0]!.files, names: calls.quote[0]!.names, prompt: 'cut these to the music\nstart the music at 5 seconds' });
     expect(calls.run).toEqual([]);
     expect(chat).toEqual([]);
   });

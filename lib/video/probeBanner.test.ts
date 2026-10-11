@@ -1,5 +1,5 @@
 /** The banner parser, on banners captured from the bundled ffmpeg-static (7.0.2). */
-import { displaysPortrait, parseProbeBanner } from './probeBanner';
+import { displaysPortrait, parseFrameCrc, parseProbeBanner } from './probeBanner';
 
 const PHONE_PORTRAIT = `Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '/tmp/in0.mp4':
   Duration: 00:00:02.00, start: 0.000000, bitrate: 203 kb/s
@@ -42,4 +42,41 @@ test('a clip without sound, and text that is not a banner', () => {
   expect(p.hasAudio).toBe(false);
   expect(displaysPortrait(p)).toBe(false);
   expect(parseProbeBanner('No such file or directory')).toMatchObject({ durationSec: 0, hasVideo: false, hasAudio: false });
+});
+
+/**
+ * `ffmpeg -i x.mp4 -map 0:v:0? -map 0:a:0? -c copy -f framecrc -` from the bundled ffmpeg-static on a 1 s H.264 + AAC
+ * file (10 fps, 44.1 kHz), packets trimmed to the first and the last. The AAC priming packet sits before 0.
+ */
+const FRAMECRC = `#extradata 0:       44, 0x2f9c0d9c
+#extradata 1:        5, 0x03460155
+#software: Lavf61.1.100
+#tb 0: 1/10240
+#media_type 0: video
+#codec_id 0: h264
+#dimensions 0: 64x64
+#sar 0: 1/1
+#tb 1: 1/44100
+#media_type 1: audio
+#codec_id 1: aac
+#sample_rate 1: 44100
+#channel_layout_name 1: mono
+1,      -1024,      -1024,     1024,      225, 0xf24e73d9, F=0x5, S=1,       10
+0,          0,          0,     1024,     2243, 0x2b844e87
+1,          0,          0,     1024,      305, 0xe74f9b9c
+1,       1024,       1024,     1024,      177, 0x264c50c4
+0,       9216,       9216,     1024,      724, 0xfaf50183, F=0x0
+1,      41984,      41984,     1024,      192, 0xf5955f7a
+1,      43008,      43008,     1004,      244, 0x8d226a37`;
+
+describe('parseFrameCrc (the master\'s A/V check)', () => {
+  test('each stream\'s length from its packets: the end of the last, less where the first starts (priming before 0 ignored)', () => {
+    expect(parseFrameCrc(FRAMECRC)).toEqual({ videoSec: 1, audioSec: 0.998 });
+  });
+  test('a missing stream is null, garbage is no stream at all', () => {
+    const videoOnly = FRAMECRC.split('\n').filter((l) => !/^(1,|#\w+ 1:)/.test(l)).join('\n');
+    expect(parseFrameCrc(videoOnly)).toEqual({ videoSec: 1, audioSec: null });
+    expect(parseFrameCrc('')).toEqual({ videoSec: null, audioSec: null });
+    expect(parseFrameCrc('not, a, crc\n0, x, y')).toEqual({ videoSec: null, audioSec: null });
+  });
 });

@@ -229,9 +229,16 @@ export function complete(store: LeaseStore, id: string, owner: string, out: { si
   return finish(store, id, owner, { status: 'completed', stage: 'completed', pct: 100, signedUrl: out.signedUrl, result: out.result, error: null }, {});
 }
 
-/** Fail the row the worker holds. `owe` records a refund still to pay in the same write. */
-export function fail(store: LeaseStore, id: string, owner: string, error: string, owe: boolean): Promise<boolean> {
-  return finish(store, id, owner, { status: 'failed', stage: 'failed', error: error.slice(0, 300) }, owe ? { owe: 'refund', lastError: error.slice(0, 120) } : { lastError: error.slice(0, 120) });
+/**
+ * Fail the row the worker holds. `owe` records a refund still to pay in the same write. `result` keeps the evidence of
+ * why (a QC record) on the failed row; a failed row is never in the Library (no signed URL), whatever its result says.
+ */
+export function fail(store: LeaseStore, id: string, owner: string, error: string, owe: boolean, result?: Record<string, unknown>): Promise<boolean> {
+  return finish(
+    store, id, owner,
+    { status: 'failed', stage: 'failed', error: error.slice(0, 300), ...(result ? { result } : {}) },
+    owe ? { owe: 'refund', lastError: error.slice(0, 120) } : { lastError: error.slice(0, 120) },
+  );
 }
 
 export type CancelResult = { ok: true; row: LeaseRow } | { ok: false; reason: 'missing' | 'not_owner' | 'final' };

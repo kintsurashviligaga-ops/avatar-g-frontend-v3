@@ -3,8 +3,13 @@
  *
  *   GET                                       { enabled } for THIS user; never 404, so the studio asks instead of assuming.
  *   GET ?jobId=…                              the owner's job: queued | running (stage, pct) | completed (videoUrl) | failed.
- *   POST { action: 'quote', files, prompt?, aspect?, targetSec?, musicFromSec? }   analyse + plan + price; spends nothing.
+ *   POST { action: 'quote', files, names?, prompt?, aspect?, targetSec?, musicFromSec? }   analyse + plan + price; spends nothing.
+ *     `names` (optional) are the files' original names, parallel to `files` (same length, or the quote is refused).
+ *     The answer's quote carries the manifest (every file, in order, with its kind and length) and the engine; a plan
+ *     that cannot give EVERY clip a shot is refused (clip_too_short | music_too_short | target_too_short, with
+ *     `files` and `detail`), never made without a clip.
  *   POST { action: 'run', request, token, prompt?, approval? }      queue the quote the user confirmed, once; answers at once.
+ *     `request` is the quote's request verbatim: its manifest is inside it and under the token's signature.
  *     `approval` (lib/agent/approval): absent = the card's Start tap; a Live call's voice yes is judged again here.
  *   POST { action: 'cancel', jobId }                                stops the owner's queued or running edit.
  *
@@ -56,6 +61,11 @@ const STATUS: Partial<Record<MontageErrorCode, number>> = {
   not_configured: 503,
   render_failed: 502,
   qc_failed: 502,
+  clip_missing: 502,
+  clip_too_short: 422,
+  music_too_short: 422,
+  target_too_short: 422,
+  manifest_invalid: 400,
   cancelled: 409,
   not_found: 404,
 };
@@ -109,7 +119,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (action === 'quote') {
     return answer(await quoteMontage(deps, {
-      userId: user.id, files: body?.files, prompt: body?.prompt, aspect: body?.aspect, targetSec: body?.targetSec, musicFromSec: body?.musicFromSec,
+      userId: user.id, files: body?.files, names: body?.names, prompt: body?.prompt, aspect: body?.aspect, targetSec: body?.targetSec, musicFromSec: body?.musicFromSec,
     }));
   }
   if (action === 'run') {

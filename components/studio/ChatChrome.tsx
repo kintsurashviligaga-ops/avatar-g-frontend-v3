@@ -25,6 +25,7 @@ import {
 import { TOOL_META, isToolId, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { isStudioPath } from '@/lib/routing/landing';
+import { keepOpenChat } from '@/lib/chat/keepOpenChat';
 
 /** The chat's own icon, from the tool list — the hub row and the tool rows can never draw different marks. */
 const ChatIcon = TOOL_META.chat.Icon;
@@ -201,6 +202,9 @@ function LanguageSwitcher({ locale, up = false }: { locale: string; up?: boolean
     setOpen(false);
     if (code === locale) return;
     const next = (pathname || `/${locale}/dashboard`).replace(/^\/(ka|en|ru)(?=\/|$)/, `/${code}`);
+    // The same page under another locale mounts the studio afresh: the chat on screen (and an Agent G card running in it)
+    // is handed to that mount instead of being left behind for an empty one.
+    keepOpenChat();
     router.push(next.startsWith(`/${code}`) ? next : `/${code}/dashboard`);
   };
   return (

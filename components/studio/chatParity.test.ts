@@ -108,7 +108,10 @@ describe('the chat takes everything a person can bring', () => {
 
   it('a file that would overflow the platform\'s request body is refused at the picker, not at Send', () => {
     expect(omni).toContain("import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES,");
-    expect(omni).toMatch(/kind !== 'video' && inlineBytesRef\.current \+ dataUrl\.length > DEFAULT_TOTAL_CAP_BYTES/);
+    // what travels inline (photos, documents, a small track) must fit together; a video, or a track too big to travel
+    // inline, never does: it goes to storage on select (no base64 copy in memory) and a guest's big track is refused here
+    expect(omni).toMatch(/if \(kind === 'video' \|\| \(kind === 'audio' && inlineBytesRef\.current \+ inlineSize > DEFAULT_TOTAL_CAP_BYTES\)\) \{/);
+    expect(omni).toMatch(/if \(inlineBytesRef\.current \+ dataUrl\.length > DEFAULT_TOTAL_CAP_BYTES\) \{/);
     expect(omni).toContain("rejectionMessage('total_too_large'");
   });
 });
@@ -116,7 +119,10 @@ describe('the chat takes everything a person can bring', () => {
 describe('the chat can USE what it is given', () => {
   it('a video + a question (or no words) is read as frames + soundtrack; only an edit request reaches the paid remix', () => {
     expect(omni).toMatch(/if \(mode === 'chat' && attachments\.some\(\(a\) => isVideo\(a\.mimeType\)\) && !isVideoEditRequest\(text\)\) \{/);
-    expect(omni).toContain('digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob())');
+    // EVERY attached video is read (the request budget shared between them), not only the first
+    expect(omni).toContain('const digests = await Promise.all(videoAtts.map(async (v) => {');
+    expect(omni).toContain('try { return await captureVideoDigest(await (await fetch(v.dataUrl)).blob(), frameCount ? { frameCount } : {}); } catch { return null; }');
+    expect(omni).toContain('const perClip = Math.floor(budget / videoAtts.length);');
     // the analysis turn is answered by the chat stream, and the remix branch comes AFTER it
     expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeGreaterThan(0);
     expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeLessThan(omni.indexOf('VIDEO REMIX (chat-attached)'));
@@ -132,7 +138,7 @@ describe('the chat can USE what it is given', () => {
 
   it('Word and text files are read as text, and the tray names every document with its size', () => {
     expect(omni).toContain("const doc = await documentToText(f, kind, { readText: (file) => file.text(), readDataUrl: fileToDataUrl, fetch: (...a) => fetch(...a) });");
-    expect(omni).toContain('{formatBytes(a.size)}');
+    expect(omni).toContain('a.size ? formatBytes(a.size) : \'\'');
     expect(omni).toContain('size: f.size');
   });
 

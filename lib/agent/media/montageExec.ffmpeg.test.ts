@@ -48,7 +48,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { analyzeTrack, probeMedia } from '../../services/montage/beatAnalysis';
+import { analyzeTrack, grabFrames, probeMedia, streamDurations } from '../../services/montage/beatAnalysis';
+import { withFfmpegSignal } from '../../video/ffmpegExec';
 import { runMontage } from '../../services/montage/montagePipeline';
 import { memoryLeaseStore } from '../../orchestrator/testing/memoryLeaseStore';
 import { cancelMontageJob, enqueueMontageJob, quoteMontage, type MontageExecDeps } from './montageExec';
@@ -72,13 +73,15 @@ beforeAll(() => {
 
 /** The live wiring (montageLive) with the database, ledger and clock local. `beat` fires the heartbeat by hand. */
 let beat: () => Promise<void> = async () => {};
-function liveLike(store: ReturnType<typeof memoryLeaseStore>, audits: string[], onStage?: (step: string) => void): MontageExecDeps {
+function liveLike(store: ReturnType<typeof memoryLeaseStore>, audits: string[], onStage?: (step: string) => void, render?: typeof runMontage): MontageExecDeps {
   let ids = 0;
   return {
     resolveFile: async (ref) => ({ ok: true, url: ref }),
     probe: (url) => probeMedia(url),
     analyzeTrack: (url) => analyzeTrack(url),
-    render: (req, o) => runMontage(req, { jobId: o.jobId, signal: o.signal, onStage: async (step, pct) => { onStage?.(step); return o.onStage(step, pct); } }),
+    render: (req, o) => (render ?? runMontage)(req, { jobId: o.jobId, signal: o.signal, onStage: async (step, pct) => { onStage?.(step); return o.onStage(step, pct); } }),
+    grabFrames: (url, timesSec, o) => withFfmpegSignal(o.signal, () => grabFrames(url, timesSec, { size: o.size, ...(o.fit ? { fit: o.fit } : {}) })),
+    streamDurations: (url, o) => withFfmpegSignal(o?.signal, () => streamDurations(url)),
     store,
     billing: { reserve: async () => ({ proceed: true, charged: false, reason: 'ok' }), refund: async () => 'nothing' },
     audit: async (ev) => { audits.push(`${ev.phase}:${ev.outcome}${ev.detail ? `:${ev.detail}` : ''}`); },
@@ -140,10 +143,52 @@ test('three clips + a 120 BPM track → a beat-cut H.264/AAC master of the plann
   expect(store.rows.get('e2e-job')).toMatchObject({ status: 'completed', exec: { attempt: 1 } });
   expect(store.writes.progress).toBeGreaterThanOrEqual(4); // resolve, bridge, normalize, stitch (+ music), under the lease
   expect(audits).toEqual(['quote:ok', 'run:ok:queued', 'run:ok:started', 'run:ok:delivered']);
+  // The manifest: the four files in the order sent, and the per-clip QC SAW each of the three clips in the master.
+  expect(q.quote.manifest.map((m) => [m.name, m.kind])).toEqual([['a.mp4', 'video'], ['b.mp4', 'video'], ['c.mp4', 'video'], ['song.m4a', 'audio']]);
+  const qc = (store.rows.get('e2e-job')!.result as { qc: { clips: Array<{ index: number; diff: number; ok: boolean }>; av: { videoSec: number; audioSec: number }; ok: boolean } }).qc;
+  expect(qc.ok).toBe(true);
+  expect(qc.clips.map((c) => [c.index, c.ok])).toEqual([[0, true], [1, true], [2, true]]);
+  expect(Math.abs(qc.av.audioSec - qc.av.videoSec)).toBeLessThanOrEqual(0.25);
+  qcSeen.push(...qc.clips.map((c) => c.diff));
   // MONTAGE_E2E_OUT=<file> records the plan and the master as the slice's proof (docs/handoffs).
   if (process.env.MONTAGE_E2E_OUT) {
-    writeFileSync(process.env.MONTAGE_E2E_OUT, JSON.stringify({ quote: q.quote, shots: q.request.shots.map((s) => [s.url.split('/').pop(), s.startSec, s.endSec]), master }, null, 1));
+    writeFileSync(process.env.MONTAGE_E2E_OUT, JSON.stringify({ quote: q.quote, shots: q.request.shots.map((s) => [s.url.split('/').pop(), s.source, s.startSec, s.endSec]), master, qc }, null, 1));
   }
+});
+
+/** The per-clip QC's real numbers (diff of each clip's frame in the master against its source), for the calibration note. */
+const qcSeen: number[] = [];
+const qcMissed: number[] = [];
+afterAll(() => {
+  if (process.env.MONTAGE_QC_OUT) writeFileSync(process.env.MONTAGE_QC_OUT, JSON.stringify({ seen: qcSeen, missed: qcMissed }));
+});
+
+test('the bug GG saw, on real ffmpeg: a render that drops clip 2 for clip 1 is caught by the per-clip QC and not delivered', async () => {
+  const enc = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac'];
+  const a = make('qa.mp4', ['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=7', '-f', 'lavfi', '-i', 'sine=f=300:duration=7', ...enc]);
+  const b = make('qb.mp4', ['-f', 'lavfi', '-t', '6', '-i', 'mandelbrot=size=640x360:rate=30','-f', 'lavfi', '-i', 'sine=f=500:duration=6', ...enc]);
+  const c = make('qc.mp4', ['-f', 'lavfi', '-i', 'smptehdbars=size=640x360:rate=25:duration=6', ...enc.slice(0, 6)]);
+  const song = make('qsong.m4a', ['-f', 'lavfi', '-i', "aevalsrc='0.9*sin(2*PI*55*t)*exp(-30*mod(t-0.25+1,0.5))*gte(t,0.25)':s=44100:d=20", '-c:a', 'aac']);
+  const store = memoryLeaseStore();
+  const audits: string[] = [];
+  // The lane renders every shot of clip 2 from clip 1 instead: the master is a valid, full-length MP4 with the music,
+  // so the old QC (codecs, length, sound) passes it. Only the per-clip check can see that clip 2 is not in it.
+  const dropB: typeof runMontage = (req, o) => runMontage({ ...req, shots: req.shots.map((s) => (s.url === b ? { ...s, url: a } : s)) }, o);
+  const deps = liveLike(store, audits, undefined, dropB);
+  const q = await quoteMontage(deps, { userId: 'u', files: [a, b, c, song], targetSec: 10 });
+  if (!q.ok) throw new Error(`quote: ${q.error} ${q.message}`);
+  expect(q.quote.manifest.filter((m) => m.kind === 'video')).toHaveLength(3);
+  const queued = await enqueueMontageJob(deps, { userId: 'u', request: q.request, token: q.token });
+  if (!queued.ok) throw new Error(`run: ${queued.error} ${queued.message}`);
+  const r = await workMontageJob(deps, { jobId: queued.jobId, worker: 'w-drop' });
+  expect(r).toMatchObject({ ran: true, outcome: 'failed' });
+  const row = store.rows.get(queued.jobId)!;
+  expect(row).toMatchObject({ status: 'failed', signedUrl: null });
+  expect(row.error).toMatch(/^clip_missing: clip 2 "qb\.mp4" is not in the output/);
+  const qc = (row.result as { qc: { clips: Array<{ index: number; diff: number; ok: boolean }> } }).qc;
+  expect(qc.clips.map((x) => [x.index, x.ok])).toEqual([[0, true], [1, false], [2, true]]);
+  qcSeen.push(qc.clips[0]!.diff, qc.clips[2]!.diff);
+  qcMissed.push(qc.clips[1]!.diff);
 });
 
 test('a cancel during the conform leg kills its ffmpeg: the worker stops within a second and delivers nothing', async () => {

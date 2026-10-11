@@ -31,12 +31,50 @@ const OP_LABEL: Record<string, L> = {
   restyle: { ka: 'რესტაილი', en: 'Restyle', ru: 'Рестайл' },
 };
 
-/** Agent G's question before a charged edit of a video attached in the chat: the edit and its price, then Create / Edit. */
-export function remixAskText(rawOp: string, credits: number, locale: string): string {
+/**
+ * WHICH ENGINE does the edit, said before Create (GG 2026-10-11 PART 3: „the user understands the engine, the reason, the
+ * files and the cost before confirming"). „Music" is our own FFmpeg laying the track under the clip — no AI at all — and
+ * the ask said only „Music, 15 credits"; restyle / character / background / redub reach engines outside Google and
+ * ElevenLabs (the route's OUTSIDE_ENGINE_OPS), and the ask never said that either.
+ */
+export type RemixEngine = 'ffmpeg' | 'elevenlabs_ffmpeg' | 'outside';
+export function remixEngine(rawOp: string): RemixEngine {
+  const op = canonicalRemixOp(rawOp);
+  if (op === 'music') return 'ffmpeg';
+  if (op === 'voiceover') return 'elevenlabs_ffmpeg';
+  if (op === 'redub' || op === 'restyle' || op === 'character' || op === 'background_remove') return 'outside';
+  return 'ffmpeg';
+}
+
+const ENGINE_TEXT: Record<RemixEngine, L> = {
+  ffmpeg: {
+    ka: 'ძრავა: FFmpeg ჩვენს სერვერზე — ტრეკი ვიდეოს ქვეშ ჩაჯდება, AI არ გამოიყენება.',
+    en: 'Engine: FFmpeg on our server — the track is laid under the video, no AI is used.',
+    ru: 'Движок: FFmpeg на нашем сервере — трек ляжет под видео, ИИ не используется.',
+  },
+  elevenlabs_ffmpeg: {
+    ka: 'ძრავა: ElevenLabs (ხმა) + FFmpeg (ვიდეოსთან შერევა).',
+    en: 'Engine: ElevenLabs (the voice) + FFmpeg (mixed into the video).',
+    ru: 'Движок: ElevenLabs (голос) + FFmpeg (сведение с видео).',
+  },
+  outside: {
+    ka: 'ძრავა: გარე სერვისი (არა Google ან ElevenLabs).',
+    en: 'Engine: an outside service (not Google or ElevenLabs).',
+    ru: 'Движок: внешний сервис (не Google и не ElevenLabs).',
+  },
+};
+
+/**
+ * Agent G's question before a charged edit of a video attached in the chat: the edit, the files it uses (by name), the
+ * engine and the price, then Create / Edit.
+ */
+export function remixAskText(rawOp: string, credits: number, locale: string, files: readonly string[] = []): string {
   const op = canonicalRemixOp(rawOp);
   const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const label = OP_LABEL[op]?.[lang] ?? op;
-  if (lang === 'en') return `This edit of your video, „${label}", costs ${credits} credits. Shall I start?`;
-  if (lang === 'ru') return `Эта правка видео, «${label}», стоит ${credits} кредитов. Начать?`;
-  return `ვიდეოს ეს რედაქტირება, „${label}", ${credits} კრედიტი ღირს. დავიწყო?`;
+  const named = files.filter(Boolean);
+  const engine = ENGINE_TEXT[remixEngine(op)][lang];
+  if (lang === 'en') return `This edit of your video, „${label}", costs ${credits} credits.${named.length ? ` Files: ${named.join(' + ')}.` : ''} ${engine} Shall I start?`;
+  if (lang === 'ru') return `Эта правка видео, «${label}», стоит ${credits} кредитов.${named.length ? ` Файлы: ${named.join(' + ')}.` : ''} ${engine} Начать?`;
+  return `ვიდეოს ეს რედაქტირება, „${label}", ${credits} კრედიტი ღირს.${named.length ? ` ფაილები: ${named.join(' + ')}.` : ''} ${engine} დავიწყო?`;
 }

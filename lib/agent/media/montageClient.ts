@@ -8,11 +8,11 @@
  * or failed. That read is also what wakes a worker when none has the job, so a closed connection, a locked phone or a
  * worker that died costs nothing: the edit goes on server-side and lands in the Library either way.
  */
-import type { MontageQuote } from './montageExec';
+import type { MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { RunApproval } from '@/lib/agent/approval';
 import { codeOf, type ChatErrorCode } from './montageChat';
 import type { TaskView } from '@/lib/tasks/taskView';
-import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, followTask, taskEndedAt, type Fetch, type FollowDeps } from './jobFollow';
 
 export { FOLLOW_MS, POLL_MS, SEND_TRIES } from './jobFollow';
 
@@ -30,7 +30,8 @@ export interface QuoteDeps {
 
 export type ClientQuote =
   | { ok: true; quote: MontageQuote; request: unknown; token: string }
-  | { ok: false; code: ChatErrorCode; files?: number[] };
+  /** `files`: which attachments (0-based) the refusal is about; `detail`: its numbers (montageChat errorText's 5th argument). */
+  | { ok: false; code: ChatErrorCode; files?: number[]; detail?: MontageRefusalDetail };
 
 /** Is Agent G's montage open to this user? A closed or unreachable route is simply "no": the chat keeps its old flow. */
 export function montageEnabled(f: Fetch): Promise<boolean> {
@@ -56,13 +57,16 @@ export async function quoteAgentMontage(deps: QuoteDeps, input: { prompt: string
   if (missing.length) return { ok: false, code: 'upload_failed', files: missing };
 
   try {
-    const res = await postJson(deps.fetch, ROUTE, { action: 'quote', files: paths, prompt: input.prompt });
+    // The original names ride along (parallel to `files`): the quote's manifest lists every file by the name the user knows.
+    const names = input.files.map((f) => (typeof f.name === 'string' ? f.name : ''));
+    const res = await postJson(deps.fetch, ROUTE, { action: 'quote', files: paths, names, prompt: input.prompt });
     const body = await readJson(res);
     if (res.ok && body?.ok === true) {
       return { ok: true, quote: body.quote as MontageQuote, request: body.request, token: String(body.token) };
     }
     const files = Array.isArray(body?.files) ? (body!.files as number[]) : undefined;
-    return { ok: false, code: codeOf(res.status, body), ...(files ? { files } : {}) };
+    const detail = body?.detail && typeof body.detail === 'object' && !Array.isArray(body.detail) ? (body.detail as MontageRefusalDetail) : undefined;
+    return { ok: false, code: codeOf(res.status, body), ...(files ? { files } : {}), ...(detail ? { detail } : {}) };
   } catch {
     return { ok: false, code: 'network' };
   }
@@ -99,6 +103,20 @@ export function runAgentMontage(
     refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),
     lost: (why) => ({ ok: false, code: why }),
   });
+}
+
+/**
+ * Take a running montage back after the page was reloaded or replaced (a language switch mounts the studio afresh):
+ * follow its job by id, nothing is sent again. `endedAt` is when the job ended, so the card's clock stops there.
+ */
+export function resumeAgentMontage(deps: RunDeps, jobId: string): Promise<ClientRun & { endedAt?: number }> {
+  let endedAt: number | undefined;
+  return followTask<ClientRun>(deps, {
+    jobId,
+    done: (t) => { const r = done(t); if (r) endedAt = taskEndedAt(t); return r; },
+    refused: (status, body) => ({ ok: false, code: codeOf(status, body) }),
+    lost: (why) => ({ ok: false, code: why }),
+  }, { queued: false, readNow: true, neverFound: 'not_found' }).then((r) => (endedAt ? { ...r, endedAt } : r));
 }
 
 /** Stop a running edit. The run's own answer then reports it as cancelled. */

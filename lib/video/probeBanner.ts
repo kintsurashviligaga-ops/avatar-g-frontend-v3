@@ -48,3 +48,50 @@ export function displaysPortrait(p: Pick<BannerProbe, 'width' | 'height' | 'rota
   const h = quarter ? p.width : p.height;
   return h > w;
 }
+
+/** The real length of a file's first picture and first sound stream (null = no such stream). */
+export interface StreamDurations {
+  videoSec: number | null;
+  audioSec: number | null;
+}
+
+/**
+ * Stream lengths out of `ffmpeg -map 0:v:0? -map 0:a:0? -c copy -f framecrc -` (the banner only has the container's
+ * length): per stream, its time base and media type from the header lines, then the end of its last packet (pts +
+ * duration) less where its first packet starts (encoder priming before 0 does not count).
+ */
+export function parseFrameCrc(text: string): StreamDurations {
+  const tb = new Map<number, number>();
+  const type = new Map<number, string>();
+  const span = new Map<number, { start: number; end: number }>();
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const h = /^#(tb|media_type)\s+(\d+):\s*(\S+)/.exec(line);
+    if (h) {
+      const s = Number(h[2]);
+      if (h[1] === 'tb') {
+        const [num, den] = h[3]!.split('/').map(Number);
+        if (num && den) tb.set(s, num / den);
+      } else {
+        type.set(s, h[3]!);
+      }
+      continue;
+    }
+    const p = /^\s*(\d+),\s*(-?\d+),\s*(-?\d+),\s*(\d+),/.exec(line);
+    if (!p) continue;
+    const s = Number(p[1]);
+    const base = tb.get(s);
+    if (!base) continue;
+    const pts = Number(p[3]) * base;
+    const end = pts + Number(p[4]) * base;
+    const cur = span.get(s);
+    span.set(s, cur ? { start: Math.min(cur.start, pts), end: Math.max(cur.end, end) } : { start: pts, end });
+  }
+  const lengthOf = (kind: string): number | null => {
+    for (const [s, t] of type) {
+      const sp = span.get(s);
+      if (t === kind && sp) return Number((sp.end - Math.max(0, sp.start)).toFixed(3));
+    }
+    return null;
+  };
+  return { videoSec: lengthOf('video'), audioSec: lengthOf('audio') };
+}

@@ -19,56 +19,90 @@ const states = (m: { steps: Array<{ state: StepState }> }) => m.steps.map((s) =>
 describe('the montage card is every step, from the upload to the saved result', () => {
   test('from the moment it is sent: the upload counts the files, then the analysis spins', () => {
     const first = montageTask({ phase: 'reading', names: NAMES, uploaded: 1, t0: 1000 }, 'en');
-    expect(first.steps).toHaveLength(8);
-    expect(states(first)).toBe('active pending pending pending pending pending pending pending');
+    expect(first.steps).toHaveLength(9);
+    expect(states(first)).toBe('active pending pending pending pending pending pending pending pending');
     expect(first.steps[0]).toMatchObject({ label: 'Upload the files', note: '1/4' });
-    expect(first).toMatchObject({ status: 'working', statusText: 'Working', countText: '0/8 steps', clock: { from: 1000 } });
+    expect(first).toMatchObject({ status: 'working', statusText: 'Working', countText: '0/9 steps', clock: { from: 1000 } });
+    // The header names what it works on from the first second (kinds by extension until the quote's manifest).
+    expect(first.inputs).toEqual({
+      text: '3 videos + 1 MP3',
+      files: [{ name: 'clip-1.mp4', kind: 'video' }, { name: 'clip-2.mp4', kind: 'video' }, { name: 'clip-3.mp4', kind: 'video' }, { name: 'track.mp3', kind: 'audio' }],
+    });
 
     const reading = montageTask({ phase: 'reading', names: NAMES, uploaded: 4 }, 'en');
-    expect(states(reading)).toBe('done active pending pending pending pending pending pending');
+    expect(states(reading)).toBe('done active pending pending pending pending pending pending pending');
     expect(reading.steps[0]!.detail).toBe('3 clips · 1 track');
   });
 
   test('the plan waits for Start, with what was found and what it will make', () => {
     const m = montageTask({ phase: 'quoted', names: NAMES, quote: MQ }, 'ka');
-    expect(states(m)).toBe('done done waiting pending pending pending pending pending');
+    expect(states(m)).toBe('done done waiting pending pending pending pending pending pending');
     expect(m.steps[1]!.detail).toBe('119 BPM · ყოველი ჭრა ბითზე');
     expect(m.steps[2]).toMatchObject({ detail: '6 კადრი 3 კლიპიდან · 10.6 წმ · 16:9 · უფასო', note: 'ველოდები „დაწყებას“' });
-    expect(m).toMatchObject({ status: 'waiting', countText: '2/8 ნაბიჯი', clock: null });
+    expect(m).toMatchObject({ status: 'waiting', countText: '2/9 ნაბიჯი', clock: null, inputs: { text: '3 ვიდეო + 1 MP3' } });
+  });
+
+  test('a song that does not start at its top says where it comes in, before Start', () => {
+    const at58 = { ...MQ, musicStartSec: 58.2 };
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: at58 }, 'ka').steps[1]!.detail).toBe('119 BPM · ყოველი ჭრა ბითზე · მუსიკა 0:58-დან');
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: at58 }, 'en').steps[1]!.detail).toContain(' · music from 0:58');
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: { ...at58, musicStartSec: 90, beatSynced: false } }, 'ru').steps[1]!.detail).toContain(' · музыка с 1:30');
+    // Under a second is the song's top, said as nothing.
+    expect(montageTask({ phase: 'quoted', names: NAMES, quote: { ...MQ, musicStartSec: 0.4 } }, 'ka').steps[1]!.detail).toBe('119 BPM · ყოველი ჭრა ბითზე');
   });
 
   test('a run marks every step before its stage done, even one a poll skipped', () => {
     const m = montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: 'stitch', pct: 71.6, t0: 5000 }, 'en');
-    expect(states(m)).toBe('done done done done done active pending pending');
+    expect(states(m)).toBe('done done done done done active pending pending pending');
     expect(m.steps[5]!.label).toBe('Join the shots');
-    expect(m).toMatchObject({ pct: 72, countText: '5/8 steps', clock: { from: 5000 } });
-    expect(states(montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: null }, 'en'))).toBe('done done done active pending pending pending pending');
+    expect(m).toMatchObject({ pct: 72, countText: '5/9 steps', clock: { from: 5000 } });
+    expect(states(montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: null }, 'en'))).toBe('done done done active pending pending pending pending pending');
+    // The worker's own check of every clip in the master is a step of its own, after the music.
+    const qc = montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: 'qc', pct: 97 }, 'en');
+    expect(states(qc)).toBe('done done done done done done done active pending');
+    expect(qc.steps[7]!.label).toBe('Check every clip is in it');
     expect(montageTask({ phase: 'running', names: NAMES, quote: MQ, stage: 'music', stopping: true }, 'ru').steps[6]!.note).toBe('Останавливаю…');
   });
 
   test('done keeps the whole list, all ticked, with the clock frozen', () => {
     const m = montageTask({ phase: 'done', names: NAMES, quote: MQ, stage: 'completed', t0: 5000, t1: 77_000 }, 'ka');
-    expect(states(m)).toBe('done done done done done done done done');
-    expect(m).toMatchObject({ status: 'done', statusText: 'მზადაა', countText: '8/8 ნაბიჯი', pct: null, clock: { from: 5000, to: 77_000 } });
-    expect(m.steps[7]!.detail).toBe('ბიბლიოთეკაშიც შევინახე');
+    expect(states(m)).toBe('done done done done done done done done done');
+    expect(m).toMatchObject({ status: 'done', statusText: 'მზადაა', countText: '9/9 ნაბიჯი', pct: null, clock: { from: 5000, to: 77_000 } });
+    expect(m.steps[7]!.detail).toBe('შედეგში ყველა კლიპი იპოვა: 3/3 · ხმა სინქრონშია');
+    expect(m.steps[8]!.detail).toBe('ბიბლიოთეკაშიც შევინახე');
   });
 
   test('Stop marks the step it stopped on; the rest were never reached', () => {
     const m = montageTask({ phase: 'cancelled', names: NAMES, quote: MQ, stage: 'normalize', t0: 1, t1: 2 }, 'en');
-    expect(states(m)).toBe('done done done done stopped skipped skipped skipped');
+    expect(states(m)).toBe('done done done done stopped skipped skipped skipped skipped');
     expect(m).toMatchObject({ status: 'stopped', statusText: 'Stopped' });
   });
 
   test('Cancel on the plan stops at the plan', () => {
     const m = montageTask({ phase: 'dismissed', names: NAMES, quote: MQ }, 'en');
-    expect(states(m)).toBe('done done stopped skipped skipped skipped skipped skipped');
+    expect(states(m)).toBe('done done stopped skipped skipped skipped skipped skipped skipped');
     expect(m.steps[2]!.note).toBe('Cancelled');
   });
 
   test('a failure marks where it broke: an upload, the reading, or the stage of the run', () => {
-    expect(states(montageTask({ phase: 'failed', names: NAMES, error: 'upload_failed' }, 'en'))).toBe('failed skipped skipped skipped skipped skipped skipped skipped');
-    expect(states(montageTask({ phase: 'failed', names: NAMES, error: 'plan_failed' }, 'en'))).toBe('done failed skipped skipped skipped skipped skipped skipped');
-    expect(states(montageTask({ phase: 'failed', names: NAMES, quote: MQ, stage: 'music', error: 'render_failed' }, 'en'))).toBe('done done done done done done failed skipped');
+    expect(states(montageTask({ phase: 'failed', names: NAMES, error: 'upload_failed' }, 'en'))).toBe('failed skipped skipped skipped skipped skipped skipped skipped skipped');
+    expect(states(montageTask({ phase: 'failed', names: NAMES, error: 'plan_failed' }, 'en'))).toBe('done failed skipped skipped skipped skipped skipped skipped skipped');
+    expect(states(montageTask({ phase: 'failed', names: NAMES, quote: MQ, stage: 'music', error: 'render_failed' }, 'en'))).toBe('done done done done done done failed skipped skipped');
+    // A master missing a clip fails on the check, never on the save: the card shows where it really stopped.
+    const missing = montageTask({ phase: 'failed', names: NAMES, quote: MQ, stage: 'qc', error: 'clip_missing' }, 'en');
+    expect(states(missing)).toBe('done done done done done done done failed skipped');
+    expect(missing.steps[7]!.detail).toBeUndefined();
+  });
+
+  test('the inputs come from the quote\'s manifest once there is one; a non-MP3 track is a track', () => {
+    const manifest = [
+      { index: 0, path: 'u/a.mov', name: 'IMG_0001.MOV', kind: 'video' as const, durationSec: 9 },
+      { index: 1, path: 'u/b.mp4', name: 'b.mp4', kind: 'video' as const, durationSec: 11 },
+      { index: 2, path: 'u/s.m4a', name: 'song.m4a', kind: 'audio' as const, durationSec: 30 },
+    ];
+    const m = montageTask({ phase: 'quoted', names: ['x', 'y', 'z'], quote: { ...MQ, clips: 2, manifest } }, 'en');
+    expect(m.inputs).toEqual({ text: '2 videos + 1 track', files: [{ name: 'IMG_0001.MOV', kind: 'video' }, { name: 'b.mp4', kind: 'video' }, { name: 'song.m4a', kind: 'audio' }] });
+    expect(montageTask({ phase: 'reading' }, 'en').inputs).toBeUndefined();
   });
 
   test('no steady beat says so on the analysis step', () => {

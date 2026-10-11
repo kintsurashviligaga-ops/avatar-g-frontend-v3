@@ -152,6 +152,12 @@ describe('buildPlatformPrompt — date line (Tbilisi, UTC+4)', () => {
   });
 });
 
+describe('buildPlatformPrompt — what it cannot do, it says (GG 2026-10-11 PART 7)', () => {
+  it.each(LOCALES)('no browser: never claims a click, a sign-in or a screenshot of a site (%s)', (locale) => {
+    expect(build(locale)).toContain('BROWSER: none — never claim to click, log in or screenshot a site.');
+  });
+});
+
 describe('buildPlatformPrompt — shape and size', () => {
   it.each(LOCALES)('stays within the 5,000-character budget (%s)', (locale) => {
     // September + Wednesday are the longest month/weekday names, so NOW is the worst case for the date line.

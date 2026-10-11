@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient } from '@/lib/supabase/client';
-import type { Database } from '@/types/database.types';
+import type { Database, Json } from '@/types/database.types';
 
 /**
  * ⚠️ EVERY FUNCTION IN THIS FILE FAILS SOFT, AND THAT IS WHY A TOTAL OUTAGE WAS INVISIBLE FOR MONTHS.
@@ -42,6 +42,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   created_at: string;
+  /** What a bubble holds beyond its words (lib/chat/turnMeta): the files a turn sent, an Agent G card, its result. */
+  metadata?: unknown;
 }
 
 /**
@@ -101,19 +103,44 @@ export async function updateSessionTitle(
 export async function saveMessage(
   sessionId: string,
   role: 'user' | 'assistant' | 'system',
-  content: string
-): Promise<void> {
+  content: string,
+  metadata?: Record<string, unknown>,
+  id?: string,
+): Promise<boolean> {
   try {
     const client = getClient();
-    if (!client) return;
+    if (!client) return false;
 
-    await client.from('chat_messages').insert({
+    const { error } = await client.from('chat_messages').insert({
+      ...(id ? { id } : {}),
       session_id: sessionId,
       role,
       content,
+      ...(metadata ? { metadata: metadata as Json } : {}),
     });
-  } catch {
-    // silently ignore
+    if (error) { reportPersistenceFailure('saveMessage', error); return false; }
+    return true;
+  } catch (e) {
+    reportPersistenceFailure('saveMessage', e);
+    return false;
+  }
+}
+
+/**
+ * Rewrite one saved bubble in place (its words and what it holds): an Agent G card is ONE row that follows its card from
+ * the plan to the result, so another device opening the chat sees where it is now (lib/chat/turnMeta). RLS keeps it to
+ * the owner's own session (chat_messages_owner_all). Fail-soft like the rest: false when it did not land.
+ */
+export async function updateMessage(id: string, content: string, metadata: Record<string, unknown>): Promise<boolean> {
+  try {
+    const client = getClient();
+    if (!client) return false;
+    const { error } = await client.from('chat_messages').update({ content, metadata: metadata as Json }).eq('id', id);
+    if (error) { reportPersistenceFailure('updateMessage', error); return false; }
+    return true;
+  } catch (e) {
+    reportPersistenceFailure('updateMessage', e);
+    return false;
   }
 }
 
@@ -150,7 +177,7 @@ export async function getMessages(sessionId: string): Promise<ChatMessage[]> {
 
     const { data, error } = await client
       .from('chat_messages')
-      .select('id, role, content, created_at')
+      .select('id, role, content, created_at, metadata')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true });
 

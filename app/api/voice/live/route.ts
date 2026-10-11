@@ -142,9 +142,16 @@ function liveCallRule(search: boolean, actions: boolean): string {
     'LIVE VOICE CALL: everything you say is spoken aloud in real time. The FORMAT guidance above does not apply here —',
     'speak natural sentences with no Markdown, lists, headings, tables, code blocks, LaTeX or emoji; describe structure',
     'in words. If the user speaks another language, answer in that language.',
+    // ⚠️ THE TEXT CHAT'S RULES CONTRADICTED THE CALL'S. Above, HANDING OFF says no reply can start a render and ANSWERING
+    // says attached files are read in full — true for the text chat, false here: with actions the call DOES open tools
+    // and start renders (after the user's yes), and it never sees a file's content, only its name.
     actions
-      ? LIVE_ACTIONS_RULE
+      ? `${LIVE_ACTIONS_RULE} In this call the HANDING OFF rule above does not apply: you open tools and start renders yourself with your functions, always after the user's clear yes to the price.`
       : 'When a studio tool fits, name it and say how to open it; keep any suggested prompt short enough to say aloud.',
+    'You cannot see or hear the content of files the user attached in this call (a photo, a video, a track): you know them only by name (get_screen_state). Never describe what is in them; offer what you can do with them, or ask the user to type the question in the chat, where the files are read.',
+    actions
+      ? ''
+      : 'You cannot open or read web pages during this call: never describe a page you have not read; suggest asking in the text chat.',
     search
       ? ''
       : 'You cannot search the web during this call: for anything that changes over time (news, prices, scores, weather), say you cannot check it live right now and suggest asking in the text chat.',
@@ -228,10 +235,10 @@ export async function POST(request: NextRequest) {
     const voice = voiceFor(profile, body.voice, body.gender);
     const promptNow = new Date();
     // The instruction names the action functions ONLY when the lock carries them, so it is built per attempt.
-    const liveFor = (withActions: boolean) => toGeminiLiveSetup(
+    const liveFor = (withActions: boolean, withSearch: boolean = search) => toGeminiLiveSetup(
       { ...profile, voice },
       // The report (when there is one) goes BEFORE the call rule: that rule stays the last block, where the model weighs it most.
-      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: search })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(search, withActions)}` },
+      { locale, platformSystem: `${buildPlatformPrompt({ locale, now: promptNow, googleSearch: withSearch })}${memoryBlock ? `\n\n${memoryBlock}` : ''}${threadBlock ? `\n\n${threadBlock}` : ''}${reportBlock ? `\n\n${reportBlock}` : ''}\n\n${liveCallRule(withSearch, withActions)}` },
     );
     const live = liveFor(actionsWanted);
     const transcribe = body.transcribe === true;
@@ -292,7 +299,8 @@ export async function POST(request: NextRequest) {
       const detail = await res.text().catch(() => '');
       structuredLog('warn', 'voice.live.setup_lock_rejected', { lock: 'full', status: res.status, detail: detail.slice(0, 300) });
       // Still server-owned: the legacy wire the product ran on before parity (no transcription/resumption/tools).
-      const plain = actionsWanted ? liveFor(false) : live;
+      // The legacy wire carries NO tools — not even Google Search — so its instruction must not claim search either.
+      const plain = liveFor(false, false);
       const legacy = buildLiveSetup({
         model,
         systemInstruction: plain.systemInstruction,

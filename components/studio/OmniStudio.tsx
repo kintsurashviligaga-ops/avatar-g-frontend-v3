@@ -75,6 +75,7 @@ import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
+import { setLiveAttachedRefs } from '@/lib/voice/liveAttached';
 import { agentAudioPlanOf, liveFingerprint, livePlanOf, livePlansOf, quotedPlanNote } from '@/lib/voice/livePlans';
 import { LIVE_ACTION_EVENT, LIVE_AGENT_ANSWER_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type LiveResultNote, type LiveResultRef, type LiveRunDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
@@ -118,7 +119,8 @@ import { trackJobUpdate, trackJobComplete, trackJobFail, trackJobPosition } from
 import type { Job as QueueJob } from '@/lib/jobs/jobQueue';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import { detectIntent, isGenerativeCommand, resolveGenerativeLane } from '@/lib/chat/intentDetector';
-import { createSession, saveMessage, getMessages, getConversations } from '@/lib/chat-history';
+import { createSession, saveMessage, updateMessage, getMessages, getConversations } from '@/lib/chat-history';
+import { cardSignature, hasCard, mergeServerTurns, readTurnMeta, turnMetaOf } from '@/lib/chat/turnMeta';
 import { computeCloudAdditions, dedupeConversations } from '@/lib/chat/conversationSync';
 import { mapWithConcurrency } from '@/lib/chat/filmClipRetry';
 import { JobTray } from './JobTray';
@@ -150,7 +152,7 @@ import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
 import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
-import { cancelAgentMontage, montageEnabled, quoteAgentMontage, runAgentMontage } from '@/lib/agent/media/montageClient';
+import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
 import { AgentRunCard } from '@/components/studio/AgentRunCard';
@@ -160,7 +162,7 @@ import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, s
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
 import type { RunEvent } from '@/lib/agent/run/runEngine';
 import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
-import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, runAgentEdit } from '@/lib/agent/media/editClient';
+import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, resumeAgentEdit, runAgentEdit, type EditClientRun } from '@/lib/agent/media/editClient';
 import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, analyzeRetryable, type AgentAnalyzeState, type AnalyzeAsk } from '@/lib/agent/media/analyzeChat';
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
 import type { EditAsk } from '@/lib/agent/media/editWords';
@@ -168,9 +170,12 @@ import { agentRedo, attachmentKind, cardRetry, type AgentRedo } from '@/lib/agen
 import { planChatTurn, wordsAreForChat, type ChatSnapshot, type ThreadCard, type TrayJob } from '@/lib/agent/chatTurn';
 import { askReply, replacedNote } from '@/lib/agent/intentReply';
 import { OFFER_UPLOAD, audioDoneText, audioErrorText, audioExtractAsk, audioQuoteText, audioStageText, checkingText, formatBytes as formatAudioBytes, formatDuration, uploadPrefill, type AgentAudioState, type AudioAsk } from '@/lib/agent/media/audioChat';
-import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, runAgentAudio } from '@/lib/agent/media/audioClient';
+import { audioEnabled, cancelAgentAudio, quoteAudioFile, quoteAudioLink, resumeAgentAudio, runAgentAudio, type AudioClientRun } from '@/lib/agent/media/audioClient';
 import { findLinks } from '@/lib/agent/media/audioSource';
-import { peekTask } from '@/lib/agent/media/jobFollow';
+import { peekTask, type FollowDeps } from '@/lib/agent/media/jobFollow';
+import { notStartedText, persistAudio, persistEdit, persistMontage, persistRun, restoreAgentCards } from '@/lib/agent/media/cardPersist';
+import { KEEP_OPEN_CHAT_EVENT } from '@/lib/chat/keepOpenChat';
+import { newestWorkingCard } from '@/lib/agent/media/workingCard';
 import { TOOL_META, isToolId, toolName, toolSub, type ToolId } from '@/lib/studio/tools';
 import { toolGroups } from '@/lib/catalog/nav';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
@@ -187,11 +192,16 @@ import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
+import { DictationMetricsReadout } from '@/components/chat/composer/DictationMetricsReadout';
 import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 import { documentToText } from '@/lib/chat/documentText';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
 import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
+import { montageEditorOpenedText, multiVideoRoute, pickOneVideoText } from '@/lib/chat/chatMediaRoute';
+import { attachedEarlierNote, attachedKind, clock as fileClock, readAttachedFiles, toAttachedFile, type AttachedFile } from '@/lib/chat/attachedFiles';
+import { uploadErrorText, uploadFileToStorage } from './ui/useUpload';
+import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
 import { useShootStudio } from '@/components/studio/create/newtools/useShootStudio';
 // The Interior designer's and the Photographer's views (panel · panel · centre pane) load when one of the tools is opened.
@@ -262,6 +272,9 @@ function busyToastMessage(locale: Lang): string {
 // ⚠️ The SOURCE is read through fetchRehostSource: a lapsed signed URL (the "My twin" face) answers 400 with JSON, and
 // re-hosting that body as the face is a paid render of an error message. `onBadSource` lets the caller say so.
 async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e: RehostSourceError) => void): Promise<string | null> {
+  // An attachment the chat already uploaded (or is uploading): its one stored copy.
+  const known = chatUploads.get(dataUrl);
+  if (known) return known;
   try {
     // The bytes first, so the sign call can declare their size and real type: /api/upload/sign and the bucket take
     // images, video and audio up to 50 MB only (lib/uploads/policy).
@@ -292,6 +305,19 @@ async function uploadBigFile(dataUrl: string, mimeType: string, onBadSource?: (e
     return null;
   }
 }
+
+/**
+ * THE CHAT'S ATTACHMENT UPLOADS — one per attached video / audio file, started the moment it is picked (ingestFiles) and
+ * keyed by the attachment's `dataUrl` (for those, an object URL of the picked File).
+ *
+ * ⚠️ EVERY FLOW USED TO UPLOAD ITS OWN SUBSET AT SEND. The remix uploaded the first video and the track, the montage
+ * all of them, the MP3 extraction the first file — each through uploadBigFile, after Send, with no progress and no
+ * state on the tile; a file that never uploaded was simply not in the result. Now a file goes up once, with progress,
+ * is checked by the server (/api/upload/verify reads the stored bytes), and uploadBigFile hands every flow the SAME
+ * stored path (no second copy). A failed upload resolves null and its tile says so; send() refuses until it is retried
+ * or removed, naming the file.
+ */
+const chatUploads = new Map<string, Promise<string | null>>();
 
 // Phase 6 polish — decode an uploaded audio File entirely client-side to get its real
 // duration + a downsampled waveform (N peaks in 0..1) for the music-video preview. Pure
@@ -984,7 +1010,14 @@ async function downscaleDataUrl(dataUrl: string, maxDim = 1280): Promise<string>
 }
 
 
-interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean; /** A track let past the inline cap for Agent G's montage: it may travel only as an upload (send() enforces it). */ uploadOnly?: boolean }
+interface Media { dataUrl: string; mimeType: string; /** The original file name (tile tooltip / label); absent for generated media. */ name?: string; /** The original file's size in bytes (the tray shows it). */ size?: number; /** A document whose text was cut at the cap. */ truncated?: boolean; /** A track let past the inline cap for Agent G's montage: it may travel only as an upload (send() enforces it). */ uploadOnly?: boolean;
+  /** A composer attachment's own id (the tray tile's key; the upload is tracked by `dataUrl`). */ id?: string;
+  /** The upload pipeline's state for a video / audio attachment (chatUploads): absent for inline-only files. */ status?: 'uploading' | 'ready' | 'failed';
+  /** 0..1 while uploading. */ progress?: number;
+  /** Where its bytes are stored (the server checked them) — what every flow and the Live call refer to it by. */ storagePath?: string;
+  /** Length in seconds (video / audio), when the browser could read it. */ durationSec?: number;
+  /** A still of a video's first moment, for its tile. */ poster?: string;
+  /** Why it failed, in the user's language. */ error?: string }
 // A one-click re-roll spec: enough to re-run the EXACT image/music generation that
 // produced a result (same prompt + settings → a fresh variation). Persisted with the
 // message so the Regenerate button survives reloads.
@@ -1054,7 +1087,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1072,6 +1105,8 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   noRetry?: boolean;
   /** The reply failed mid-answer: its text ends with the chat's own „\n\n⚠️ …" line, which the model must not get. */
   errorTail?: boolean;
+  /** This card's row in the account's history (lib/chat/turnMeta): rewritten as the card moves, read by another device. */
+  cloudRowId?: string;
   inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
@@ -1103,12 +1138,37 @@ export function imgTargetFor(quality: string): number {
 function cardJobsOf(m: Msg): string[] {
   return [...[m.montage, m.audioJob, m.editJob].flatMap((c) => { const id = cardOwnsJob(c); return id ? [id] : []; }), ...runCardJobs(m.runJob)];
 }
+/** Where a card's run ended: the job's own end for a card taken back after the page was replaced, not the moment of the read. */
+const endOf = (r: { endedAt?: number }): number => Math.min(Date.now(), r.endedAt ?? Date.now());
+/** A row id for a card saved to the account's history, made here so the card can rewrite its own row later. */
+function newRowId(): string {
+  try { if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID(); } catch { /* below */ }
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  b[6] = (b[6]! & 0x0f) | 0x40;
+  b[8] = (b[8]! & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+/** Is this card still reading its files (no plan yet)? Such a card lives in this page only and is not saved yet. */
+const cardReading = (m: Msg): boolean => m.montage?.phase === 'reading' || m.editJob?.phase === 'reading'
+  || m.audioJob?.phase === 'checking' || m.runJob?.phase === 'reading';
+/** The account's saved turns of a chat as messages: the words, and what each held (lib/chat/turnMeta). */
+function serverTurns(rows: ReadonlyArray<{ id: string; role: string; content: string; metadata?: unknown }>): Msg[] {
+  return rows
+    .filter((r) => r.role === 'user' || r.role === 'assistant')
+    .map((r) => {
+      const meta = readTurnMeta(r.metadata) as Partial<Msg>;
+      return { ...meta, role: r.role as 'user' | 'assistant', text: r.content, ...(meta.id ? { cloudRowId: r.id } : {}) };
+    });
+}
 /** An Agent G card whose work is running now (Stop has something to stop). */
 const cardRunning = (m: Msg): boolean =>
   m.montage?.phase === 'running' || m.audioJob?.phase === 'running' || m.editJob?.phase === 'running' || m.runJob?.phase === 'running';
 
-// Up to this many files/images (or one video) can ride along with a single message.
-const MAX_ATTACHMENTS = 5;
+// Up to this many files can ride along with a single message — enough for a montage of several clips and a track
+// (videos and big tracks are uploaded, not carried in the request: see chatUploads).
+const MAX_ATTACHMENTS = 8;
 
 const isImage = (m: string) => m.startsWith('image/');
 const isAudio = (m: string) => m.startsWith('audio/');
@@ -1338,7 +1398,9 @@ function loadConversations(): Conversation[] {
     // Each conversation once (lib/chat/conversationSync.dedupeConversations): an archive that already holds copies of one
     // server session — the re-import fixed there — reads, and so saves, as one row again.
     return dedupeConversations(parsed
-      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages)))
+      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages))
+      // A turn's saved file list is read back defensively (a stored path is only ever the owner's checked upload path).
+      .map((c) => (c.messages.some((m) => m && m.files) ? { ...c, messages: c.messages.map((m) => (m && m.files ? { ...m, files: readAttachedFiles(m.files) } : m)) } : c)))
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   } catch { return []; }
 }
@@ -1420,20 +1482,27 @@ function leanMessages(messages: Msg[]): Msg[] {
       // The attachment bytes are never stored; WHAT was attached is, so after a reload the model is told a photo or a PDF
       // was part of that turn instead of seeing a question about "this" with nothing attached.
       ...(m.medias?.length ? { attached: m.medias.map((x) => attachedKind(x.mimeType)) } : m.attached?.length ? { attached: m.attached } : {}),
+      // …and each file by name, size, length and checked storage path, so after a reload the bubble lists them, the model
+      // is told „1. clipA.mp4 (video, 0:09)", and a montage can be opened from the stored copies (lib/chat/attachedFiles).
+      ...(m.medias?.length ? { files: m.medias.map(toAttachedFile) } : m.files?.length ? { files: m.files } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
       ...(m.regen ? { regen: dropRef(m.regen) } : {}),
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
+      // A video result's shape, so its player keeps the right box after a reload.
+      ...(m.orientation ? { orientation: m.orientation } : {}),
+      // Agent G's cards, lean, and the id they are patched by: a card read back while its job runs is taken back to that
+      // job, and the result lands in this bubble (lib/agent/media/cardPersist — the language switch of 2026-10-11).
+      ...(m.id && (m.montage || m.audioJob || m.editJob || m.runJob) ? { id: m.id } : {}),
+      ...(m.montage ? { montage: persistMontage(m.montage) } : {}),
+      ...(m.audioJob ? { audioJob: persistAudio(m.audioJob) } : {}),
+      ...(m.editJob ? { editJob: persistEdit(m.editJob) } : {}),
+      ...(m.editName ? { editName: m.editName } : {}),
+      ...(m.runJob ? { runJob: persistRun(m.runJob) } : {}),
+      ...(m.noRetry ? { noRetry: true } : {}),
+      ...(m.cloudRowId ? { cloudRowId: m.cloudRowId } : {}),
     }));
-}
-/** A short word for an attachment's kind, for the model's context after a reload. */
-function attachedKind(mime: string): string {
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('video/')) return 'video';
-  if (mime.startsWith('audio/')) return 'audio';
-  if (mime === 'application/pdf') return 'PDF';
-  return 'file';
 }
 function conversationTitle(messages: Msg[]): string {
   const firstUser = messages.find((m) => m.role === 'user' && m.text.trim());
@@ -2017,7 +2086,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     openedEmptyCloudRef.current = !!c && !!serverSidOf(c) && c.messages.length === 0;
     if (openedEmptyCloudRef.current) hydratingRef.current = conversationId;
   }
-  const [messages, setMessages] = useState<Msg[]>(() => loadConversationMessages(conversationId));
+  // Agent G's cards come back in a state this page can carry on (a running one is followed again below).
+  const [messages, setMessages] = useState<Msg[]>(() => restoreAgentCards(loadConversationMessages(conversationId), locale));
   // Mirror of `messages` for the mount-hydration effect below (reads the current view without a
   // stale-closure / exhaustive-deps churn).
   const messagesRef = useRef<Msg[]>(messages);
@@ -2056,9 +2126,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Which workspace the editor should open in, when the caller already knows (see SurgicalEditor).
   const [editorMode, setEditorMode] = useState<'video' | 'photo' | 'audio' | null>(null);
   // The clips a montage request brought with it (the chat's attachments) — put on the timeline when the editor opens.
-  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string }[] | null>(null);
+  const [montageSeed, setMontageSeed] = useState<{ url: string; kind: 'video' | 'image'; name?: string; ref?: string }[] | null>(null);
   /** A voice call's montage open (lib/voice/liveTools `montage`): the music bed and where in the song it starts, and the format. */
-  const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number } | null>(null);
+  const [montageMusicSeed, setMontageMusicSeed] = useState<{ url: string; name?: string; startSec?: number; ref?: string } | null>(null);
   const [montageAspectSeed, setMontageAspectSeed] = useState<'9:16' | '16:9' | '1:1' | null>(null);
   /** Bumped by a voice montage open: a NEW edit with those seeds, even when Montage is already on screen (it reads its seeds at mount). */
   const [montageSessionKey, setMontageSessionKey] = useState(0);
@@ -2733,19 +2803,131 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // What the tray already carries INLINE (a video is not inline: it is uploaded to storage when its request runs).
   const inlineBytesRef = useRef(0);
   inlineBytesRef.current = attachments.reduce((sum, a) => (isVideo(a.mimeType) || a.uploadOnly ? sum : sum + a.dataUrl.length), 0);
+  // ── THE CANONICAL ATTACHMENT UPLOAD (see chatUploads) ──
+  // A picked video / audio goes up AT ONCE, with progress on its tile; Ready only after the server checked the stored bytes.
+  const attachmentFilesRef = useRef(new Map<string, File>());
+  const attachmentAbortRef = useRef(new Map<string, AbortController>());
+  const patchAttachment = useCallback((id: string, patch: Partial<Media>) => {
+    setAttachments((prev) => (prev.some((a) => a.id === id) ? prev.map((a) => (a.id === id ? { ...a, ...patch } : a)) : prev));
+  }, []);
+  const startAttachmentUpload = useCallback((id: string, key: string, file: File, kind: 'video' | 'audio') => {
+    attachmentAbortRef.current.get(id)?.abort();
+    const ac = new AbortController();
+    attachmentAbortRef.current.set(id, ac);
+    let shown = 0;
+    patchAttachment(id, { status: 'uploading', progress: 0, error: undefined });
+    const upload = uploadFileToStorage(file, {
+      signal: ac.signal,
+      verifyKind: kind,
+      // A re-render per 2 % is plenty for a ring; the last step always lands.
+      onProgress: (f) => { const pct = Math.round(f * 100); if (pct - shown >= 2 || f >= 1) { shown = pct; patchAttachment(id, { progress: f }); } },
+    }).then((res) => {
+      if (attachmentAbortRef.current.get(id) === ac) attachmentAbortRef.current.delete(id);
+      if ('path' in res) {
+        patchAttachment(id, { status: 'ready', progress: 1, storagePath: res.path, error: undefined });
+        // A file sent while it was still uploading: its bubble learns where it is stored too, so the saved turn keeps it.
+        setMessages((prev) => (prev.some((m) => m.medias?.some((x) => x.dataUrl === key))
+          ? prev.map((m) => (m.medias?.some((x) => x.dataUrl === key)
+            ? { ...m, medias: m.medias.map((x) => (x.dataUrl === key ? { ...x, status: 'ready' as const, progress: 1, storagePath: res.path } : x)) }
+            : m))
+          : prev));
+        return res.path;
+      }
+      if (res.error !== 'aborted') {
+        const why = uploadErrorText(res.error, locale, file.name);
+        patchAttachment(id, { status: 'failed', error: why });
+        toast.error(why.includes(file.name) ? why : `${why} — ${file.name}`);
+      }
+      return null;
+    });
+    chatUploads.set(key, upload);
+  }, [locale, patchAttachment]);
+  /** Length and a first-frame still for a video / audio tile — best effort, never blocks. */
+  const probeAttachment = useCallback((id: string, url: string, kind: 'video' | 'audio') => {
+    void probeDuration(url, kind, 8000).then(async (durationSec) => {
+      if (durationSec > 0) patchAttachment(id, { durationSec });
+      // A length the phone did not report is no reason to go without a still: the frame at 0.1 s is asked for anyway.
+      if (kind === 'video') {
+        const [poster] = await extractFrames(url, durationSec > 0 ? Math.min(durationSec, 1) : 0.2, 1, 160).catch(() => [] as string[]);
+        if (!poster) return;
+        patchAttachment(id, { poster });
+        // A clip sent before its still was ready: its bubble gets the still too (iPhone Safari draws no frame of its own).
+        setMessages((prev) => (prev.some((m) => m.medias?.some((x) => x.dataUrl === url && !x.poster))
+          ? prev.map((m) => (m.medias?.some((x) => x.dataUrl === url && !x.poster)
+            ? { ...m, medias: m.medias.map((x) => (x.dataUrl === url && !x.poster ? { ...x, poster } : x)) }
+            : m))
+          : prev));
+      }
+    });
+  }, [patchAttachment]);
+  /** Take a file out of the tray: its upload stops and its preview URL is released. */
+  const removeAttachment = useCallback((a: Media) => {
+    if (a.id) {
+      attachmentAbortRef.current.get(a.id)?.abort();
+      attachmentAbortRef.current.delete(a.id);
+      attachmentFilesRef.current.delete(a.id);
+    }
+    if (a.dataUrl.startsWith('blob:')) { chatUploads.delete(a.dataUrl); URL.revokeObjectURL(a.dataUrl); }
+    setAttachments((prev) => prev.filter((x) => x !== a));
+  }, []);
+  // Files sent or removed leave the tray: forget them (the „already attached" check only looks at the tray). Only ids that
+  // WERE in the tray are forgotten — one picked a moment ago may not have rendered yet.
+  const trayIdsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const live = new Set(attachments.map((a) => a.id).filter((x): x is string => !!x));
+    for (const id of trayIdsRef.current) if (!live.has(id)) attachmentFilesRef.current.delete(id);
+    trayIdsRef.current = live;
+  }, [attachments]);
+  /** Try a failed upload again with the same file. */
+  const retryAttachment = useCallback((a: Media) => {
+    const file = a.id ? attachmentFilesRef.current.get(a.id) : undefined;
+    if (!a.id || !file || (!isVideo(a.mimeType) && !isAudio(a.mimeType))) return;
+    startAttachmentUpload(a.id, a.dataUrl, file, isVideo(a.mimeType) ? 'video' : 'audio');
+  }, [startAttachmentUpload]);
   const ingestFiles = useCallback(async (files: File[], opts?: { scriptInVideo?: boolean }) => {
     const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
     let room = MAX_ATTACHMENTS - attachmentCountRef.current;
+    // Uploading needs an account (/api/upload/sign is signed-in only): a guest's files stay in the browser.
+    const signedIn = typeof document === 'undefined' || document.documentElement.dataset.authed !== '0';
     for (const f of files) {
       if (opts?.scriptInVideo !== false && mode === 'video' && isScriptFile({ name: f.name, type: f.type })) { void loadScriptFile(f); continue; }
       const kind = classifyFile(f);
       const label = f.name || kind;
-      if (room <= 0) { toast.error(rejectionMessage('too_many', lang, label)); break; }
-      const cap = PER_FILE_CAP_BYTES[kind];
+      if (room <= 0) { toast.error(rejectionMessage('too_many', lang, label, 0, MAX_ATTACHMENTS)); break; }
+      // Video and audio are uploaded, not carried in the request: their cap is the upload's (50 MB), not the inline one.
+      const media = kind === 'video' || kind === 'audio';
+      const cap = media ? UPLOAD_MAX_BYTES : PER_FILE_CAP_BYTES[kind];
       if (f.size > cap) { toast.error(rejectionMessage('too_large', lang, label, cap)); continue; }
       if (f.size === 0) { toast.error(rejectionMessage('empty', lang, label)); continue; }
+      // The same file picked twice is one attachment.
+      if ([...attachmentFilesRef.current.values()].some((x) => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified)) {
+        toast(lang === 'en' ? `„${label}" is already attached` : lang === 'ru' ? `«${label}» уже прикреплён` : `„${label}" უკვე მიმაგრებულია`);
+        continue;
+      }
       try {
         const mime = mimeForFile(f);
+        const uploadType = media ? allowedUploadMime(mime, f.name) : null;
+        const canUpload = signedIn && !!uploadType;
+        const inlineSize = Math.ceil(f.size / 3) * 4 + 64;
+        // ⚠️ A VIDEO (OR A TRACK TOO BIG TO TRAVEL INLINE) IS NO LONGER READ INTO MEMORY AS BASE64. A 20 MB clip became a
+        // ~27 MB string per file, three of them froze an iPhone, and the montage then fetched each one back to upload it.
+        // The tile shows an object URL; the bytes go straight to storage (chatUploads) and every flow uses that copy.
+        if (kind === 'video' || (kind === 'audio' && inlineBytesRef.current + inlineSize > DEFAULT_TOTAL_CAP_BYTES)) {
+          if (kind === 'audio' && !canUpload) { toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES)); continue; }
+          const id = `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+          const objectUrl = URL.createObjectURL(f);
+          room -= 1;
+          attachmentFilesRef.current.set(id, f);
+          const item: Media = {
+            id, dataUrl: objectUrl, mimeType: uploadType || mime || (kind === 'video' ? 'video/mp4' : 'audio/mpeg'), size: f.size,
+            ...(f.name ? { name: f.name } : {}), ...(kind === 'audio' ? { uploadOnly: true } : {}),
+            ...(canUpload ? { status: 'uploading' as const, progress: 0 } : {}),
+          };
+          setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, item]);
+          if (canUpload) startAttachmentUpload(id, objectUrl, f, kind);
+          probeAttachment(id, objectUrl, kind);
+          continue;
+        }
         let dataUrl: string;
         let mimeType: string;
         let truncated = false;
@@ -2760,26 +2942,27 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           dataUrl = kind === 'image' ? await downscaleDataUrl(raw) : raw;
           mimeType = (kind === 'image' ? dataUrlMimeOf(dataUrl) : null) || mime || 'application/octet-stream';
         }
-        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF or a 20 MB
-        // song passed the caps above and then failed at Send with only a generic error. Everything except a video
-        // travels inline, so the tray as a whole must fit (≈ 4 MB encoded); say so here, before the user writes.
-        // …except a song in the chat while Agent G's montage is open to this user: the montage (and the video remix) UPLOAD
-        // their track, browser → storage, so a real song (a 320 kbps MP3 is ~7 MB) may pass. It is marked, and send() lets
-        // it go only down those two paths: anywhere else it would be put in the request body and fail at Send.
-        const overInline = kind !== 'video' && inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES;
-        const uploadOnly = overInline && kind === 'audio' && mode === 'chat' && (agentMontageOn || agentAudioOn);
-        if (overInline && !uploadOnly) {
+        // ⚠️ THE REAL CEILING IS THE PLATFORM'S ~4.5 MB REQUEST BODY, NOT THE PER-FILE CAP: a 15 MB PDF passed the caps
+        // above and then failed at Send with only a generic error. What travels inline (photos, documents, a small track)
+        // must fit together (≈ 4 MB encoded); say so here, before the user writes. Video and big tracks went up above.
+        if (inlineBytesRef.current + dataUrl.length > DEFAULT_TOTAL_CAP_BYTES) {
           toast.error(rejectionMessage('total_too_large', lang, label, DEFAULT_TOTAL_CAP_BYTES));
           continue;
         }
-        if (kind !== 'video' && !uploadOnly) inlineBytesRef.current += dataUrl.length;
+        inlineBytesRef.current += dataUrl.length;
         room -= 1;
-        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(uploadOnly ? { uploadOnly: true } : {}), ...(f.name ? { name: f.name } : {}) }]);
+        // A small track rides inline (a question about the song) AND is uploaded, so a montage or an edit uses the stored copy.
+        const id = `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        attachmentFilesRef.current.set(id, f);
+        const upload = kind === 'audio' && canUpload;
+        setAttachments((prev) => prev.length >= MAX_ATTACHMENTS ? prev : [...prev, { id, dataUrl, mimeType, size: f.size, ...(truncated ? { truncated: true } : {}), ...(f.name ? { name: f.name } : {}), ...(upload ? { status: 'uploading' as const, progress: 0 } : {}) }]);
+        if (upload) startAttachmentUpload(id, dataUrl, f, 'audio');
+        if (kind === 'audio') probeAttachment(id, dataUrl, 'audio');
       } catch {
         toast.error(rejectionMessage('unreadable', lang, label));
       }
     }
-  }, [locale, mode, isScriptFile, loadScriptFile, agentMontageOn, agentAudioOn]);
+  }, [locale, mode, isScriptFile, loadScriptFile, startAttachmentUpload, probeAttachment]);
   const onChatDrop = useCallback((e: React.DragEvent) => {
     if (!dragHasFiles(e)) return;
     e.preventDefault();
@@ -2899,19 +3082,29 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMessages([]);
       let msgs: Msg[] = [];
       try {
-        const rows = await getMessages(sid);
-        msgs = rows
-          .filter((r) => r.role === 'user' || r.role === 'assistant')
-          .map((r) => ({ role: r.role as 'user' | 'assistant', text: r.content }));
+        msgs = serverTurns(await getMessages(sid));
       } catch { /* fail-open → empty view; the server row persists, a re-open can hydrate */ }
       // An empty answer (offline, a read error) keeps the guard: the row stays a cloud row instead of being deleted.
       if (msgs.length && hydratingRef.current === id) hydratingRef.current = null;
       // Only if the user is still on it: a click on another chat while this loaded has already replaced the view.
-      if (conversationIdRef.current === id) setMessages(msgs);
+      if (conversationIdRef.current === id) setMessages(restoreAgentCards(msgs, locale));
     } else {
-      setMessages(loadConversationMessages(id));
+      const local = loadConversationMessages(id);
+      setMessages(restoreAgentCards(local, locale));
+      // A chat this device holds may have gone on elsewhere (the phone ran the montage, the computer opens it): its
+      // saved copy is read once more and what the other device added comes in (lib/chat/turnMeta.mergeServerTurns).
+      const savedSid = sid || readSessionMap(currentUid())[id];
+      if (savedSid) {
+        void getMessages(savedSid).then((rows) => {
+          if (conversationIdRef.current !== id || !rows.length) return;
+          setMessages((prev) => {
+            const merged = mergeServerTurns(prev, serverTurns(rows));
+            return merged === prev ? prev : restoreAgentCards(merged, locale);
+          });
+        }).catch(() => { /* offline: this device's copy stays */ });
+      }
     }
-  }, [conversationId, messages, endChatStream, unparkTypeAhead]);
+  }, [conversationId, messages, endChatStream, unparkTypeAhead, locale]);
   const startNewConversation = useCallback((): string => {
     unparkTypeAhead();
     upsertConversation(conversationId, messages, activeToolRef.current); // save current
@@ -2993,6 +3186,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
   }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
+  // A LANGUAGE SWITCH KEEPS THE CHAT (lib/chat/keepOpenChat). The switch mounts this studio afresh, and a fresh mount
+  // opens an empty chat; the switcher announces it first, so the chat on screen is saved as it is and handed to the next
+  // mount, exactly as a pick from History is. An empty chat hands nothing over: the next mount opens a fresh one anyway.
+  useEffect(() => {
+    const keep = () => {
+      const msgs = messagesRef.current;
+      if (!msgs.length || hydratingRef.current === conversationIdRef.current) return;
+      upsertConversation(conversationIdRef.current, msgs, activeToolRef.current);
+      try { window.localStorage.setItem(OMNI_RESUME_KEY, conversationIdRef.current); } catch { /* private mode */ }
+    };
+    window.addEventListener(KEEP_OPEN_CHAT_EVENT, keep);
+    return () => window.removeEventListener(KEEP_OPEN_CHAT_EVENT, keep);
+  }, []);
   useEffect(() => {
     if (openedEmptyCloudRef.current) void resumeConversation(conversationIdRef.current);
     // Mount only: the handoff is one-shot.
@@ -5135,12 +5341,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, []);
   // Fire-and-forget mirror of one chat turn to the server. Never blocks or throws into the chat
   // UX; ensureChatSession + saveMessage are both fail-soft (anonymous / RLS / network → no-op).
-  const persistChatTurn = useCallback((role: 'user' | 'assistant', content: string) => {
+  // A turn that sent files saves their records with its words (lib/chat/turnMeta: name, size, length, checked storage
+  // path; never the bytes), so the chat opened on another device lists what was sent instead of a lone question.
+  const persistChatTurn = useCallback((role: 'user' | 'assistant', content: string, medias?: Media[]) => {
     const text = (content || '').trim();
     if (!text) return;
+    const meta = medias?.length ? turnMetaOf({ files: medias.map(toAttachedFile) }) : null;
     // The user's own first line becomes the session title — see ensureChatSession.
     void ensureChatSession(role === 'user' ? text : undefined)
-      .then((sid) => { if (sid) void saveMessage(sid, role, text); });
+      .then((sid) => { if (sid) void saveMessage(sid, role, text, meta ?? undefined); });
   }, [ensureChatSession]);
 
   // THE THREAD → LIVE. A voice call opened from this chat continues it: the Live mint asks which chat session is on screen
@@ -5460,8 +5669,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // model answered it (a real answer always records its model). A turn whose files are gone after a reload says so.
     const payload = serializeHistory(history.map((m) => ({
       role: m.role,
-      text: m.role === 'user' && !m.medias?.length && m.attached?.length
-        ? `${m.text}\n[attached earlier: ${m.attached.join(', ')} — no longer available to you]`
+      text: m.role === 'user' && !m.medias?.length && (m.files?.length || m.attached?.length)
+        ? `${m.text}\n${attachedEarlierNote(m.files, m.attached)}`
         : m.errorTail ? m.text.replace(/\n\n⚠️[^\n]*$/u, '') : m.text,
       ...(m.notice || (m.role === 'assistant' && /^\s*(⚠|⏹)/u.test(m.text ?? '') && !m.chatModelId && !m.chatModel
         && !m.imageUrl && !m.videoUrl && !m.audioUrl && !m.glbUrl) ? { notice: true } : {}),
@@ -5659,6 +5868,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Plans whose Start already went out: a double tap lands before the card re-renders as 'running', and a second run
   // request would come back 409 and mark a card failed while its edit is still going.
   const montageRunsRef = useRef(new Set<string>());
+  // The montage / MP3 / edit cards whose job this studio follows right now (a Start, or a card taken back after a reload).
+  // A follow that ends removes its card: if its result could not land (another chat was on screen), the card is still
+  // 'running' in the saved chat, and opening that chat takes it back and reads the end at once.
+  const cardFollowsRef = useRef(new Set<string>());
+  // Is this studio on screen? A language switch mounts a new one; the follows of the old one end on their next tick.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const newAgentMontageBubble = useCallback((text: string, files: Media[]): Msg => ({
     role: 'assistant', id: `agm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: readingText(locale),
     montage: { phase: 'reading', prompt: text, names: files.map((f) => f.name ?? ''), uploaded: 0, t0: Date.now() },
@@ -5691,16 +5910,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // Each upload that settles moves the card's „2/4"; the last one hands the step to the analysis.
     const onUploaded = (n: number) => patchMsgById(id, (m) => (m.montage?.phase === 'reading' ? { ...m, montage: { ...m.montage, uploaded: n } } : m));
     const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: uploaderOnce(), onUploaded }, { prompt: text, files });
-    patchMsgById(id, (m) => (r.ok
+    // A card stopped while it read its files (the composer's Stop) stays stopped: the plan that came back is dropped.
+    patchMsgById(id, (m) => (m.montage?.phase !== 'reading' ? m : r.ok
       ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
-      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
+      : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names, r.detail)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {
     const bubble = newAgentMontageBubble(text, files);
     // The bubble shows the clips and the track; the MODEL never gets them (`modelMedias: []`): this turn's files went to
     // the edit, and resending them inline with the next chat turns (lib/chat/mediaWindow) would overflow that request.
     setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
-    persistChatTurn('user', text);
+    persistChatTurn('user', text, files);
     await quoteAgentMontageInto(bubble.id!, text, files);
   }, [newAgentMontageBubble, persistChatTurn, quoteAgentMontageInto]);
 
@@ -5722,7 +5942,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? await quoteAudioFile({ fetch: f, upload: (d, m) => uploadBigFile(d, m) }, { dataUrl: file.dataUrl, mimeType: file.mimeType, ...(file.name ? { name: file.name } : {}) })
         : ({ ok: false, code: 'bad_input' } as const);
     // A Live call hears the plan once the card is 'quoted' (the plan-note effect above): it says it and waits for a yes.
-    patchMsgById(id, (m) => (r.ok
+    patchMsgById(id, (m) => (m.audioJob?.phase !== 'checking' ? m : r.ok
       ? { ...m, text: audioQuoteText(r.quote, locale), audioJob: { phase: 'quoted', source: ask.source, quote: r.quote, request: r.request, token: r.token } }
       : {
         ...m,
@@ -5735,7 +5955,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const bubble = newAgentAudioBubble(ask);
     // The file went to the extraction; the MODEL never gets it inline (`modelMedias: []`), as with the montage.
     setMessages((prev) => [...prev, { role: 'user', text, ...(file ? { medias: [file], modelMedias: [] } : {}) }, bubble]);
-    persistChatTurn('user', text);
+    persistChatTurn('user', text, file ? [file] : undefined);
     await quoteAgentAudioInto(bubble.id!, ask, file);
   }, [newAgentAudioBubble, persistChatTurn, quoteAgentAudioInto]);
 
@@ -5755,7 +5975,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       : from.url
         ? await quoteEditResult(f, from.url, edits)
         : ({ ok: false, code: 'no_previous' } as const);
-    patchMsgById(id, (m) => (r.ok
+    patchMsgById(id, (m) => (m.editJob?.phase !== 'reading' ? m : r.ok
       ? { ...m, text: editQuoteText(r.quote, locale, source), editJob: { phase: 'quoted', source, quote: r.quote, request: r.request, token: r.token, ask: m.editJob?.ask, t0: m.editJob?.t0 } }
       : { ...m, text: `⚠️ ${editErrorText(r.code, locale, 'detail' in r ? r.detail : undefined)}`, noRetry: true, editJob: { phase: 'failed', source, error: r.code, ask: m.editJob?.ask, t0: m.editJob?.t0, t1: Date.now() } }));
   }, [locale, patchMsgById]);
@@ -5763,7 +5983,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const bubble = newAgentEditBubble(source, { edits, ...(from.url ? { url: from.url } : {}) });
     // The file went to the edit; the MODEL never gets it inline (`modelMedias: []`), as with the montage and the MP3.
     setMessages((prev) => [...prev, { role: 'user', text, ...(from.file ? { medias: [from.file], modelMedias: [] } : {}) }, bubble]);
-    persistChatTurn('user', text);
+    persistChatTurn('user', text, from.file ? [from.file] : undefined);
     await quoteAgentEditInto(bubble.id!, source, edits, from);
   }, [newAgentEditBubble, persistChatTurn, quoteAgentEditInto]);
 
@@ -5936,6 +6156,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setAttachments(job.attachments);
   }, [patchMsgById]);
 
+  /**
+   * ONE WAY TO OPEN THE MONTAGE EDITOR WITH THE USER'S OWN FILES — the typed chat and the Live call both use it, so a
+   * spoken „montage these" is exactly a typed one. Every clip and photo goes on the timeline in the order given, the first
+   * track is the music, and a file already uploaded is handed over by its stored path (nothing goes up twice). Answers
+   * how many clips and whether a track went in.
+   */
+  const seedMontageWith = useCallback(async (files: Media[]): Promise<{ clips: number; music: boolean }> => {
+    const visual = files.filter((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+    const track = files.find((a) => isAudio(a.mimeType));
+    const stored = new Map<Media, string>();
+    await Promise.all([...visual, ...(track ? [track] : [])].map(async (a) => {
+      const path = a.storagePath ?? (await (chatUploads.get(a.dataUrl) ?? Promise.resolve(null)));
+      if (path) stored.set(a, path);
+    }));
+    const media = visual.map((a) => ({
+      url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const),
+      ...(a.name ? { name: a.name } : {}), ...(stored.get(a) ? { ref: stored.get(a)! } : {}),
+    }));
+    setMontageSeed(media.length ? media : null);
+    setMontageMusicSeed(track ? { url: track.dataUrl, name: track.name || 'Music', ...(stored.get(track) ? { ref: stored.get(track)! } : {}) } : null);
+    setMontageAspectSeed(null);
+    setMontageSessionKey((k) => k + 1);
+    setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+    return { clips: media.length, music: !!track };
+  }, [setMode]);
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
@@ -5970,10 +6215,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const videoOnlyInputs = mode === 'video' && (!!videoScriptDoc?.text?.trim() || videoCharacterRefs.length > 0);
     // Nothing to send → return quietly (no toast for an empty box).
     if (!text && attachments.length === 0 && !videoOnlyInputs) return;
-    // A track let past the inline cap for Agent G's montage (ingestFiles) travels only as an upload: Agent G's montage and
-    // the video remix upload it; any other path would put it in the request body and fail at the platform's ~4.5 MB limit.
+    // A FILE THAT DID NOT UPLOAD IS NEVER QUIETLY LEFT OUT. Send waits until it is retried or removed, and says which.
+    const failedFiles = attachments.filter((a) => a.status === 'failed');
+    if (failedFiles.length) {
+      const names = failedFiles.map((a) => `„${a.name || attachedKind(a.mimeType)}"`).join(', ');
+      toast.error(locale === 'en' ? `${names} did not upload — tap Retry on it, or remove it, then send.`
+        : locale === 'ru' ? `${names} не загрузился — нажмите «Повтор» на нём или уберите его и отправьте снова.`
+          : `${names} ვერ აიტვირთა — დააჭირე „ხელახლა" ან ამოიღე და ისე გაგზავნე.`);
+      return;
+    }
+    // A track too big to travel inline (ingestFiles) goes only where it is used as an upload: Agent G's montage, the Montage
+    // editor, the video remix, the MP3 extraction and the run; any other path would put it in the request body.
     if (attachments.some((a) => a.uploadOnly)) {
       const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const editor = mode === 'chat' && (detectStudioIntent(text)?.service === 'montage' || multiVideoRoute(text, kinds) === 'montage_editor');
+      if (editor) { /* the Montage editor uses the stored track: see below */ } else {
       const montage = mode === 'chat' && agentMontageOn && beatMontageAsk(text, kinds);
       const remix = mode === 'chat' && !!text && kinds.includes('video') && isVideoEditRequest(text);
       const extract = mode === 'chat' && agentAudioOn && audioExtractAsk(text, kinds)?.source === 'file';
@@ -5981,6 +6237,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // A long recording is what the whole-file analysis is for: it goes up and Gemini reads it by reference.
       const analyze = mode === 'chat' && agentAnalyzeOn && analyzeAsk(text, kinds)?.source === 'file';
       if (!montage && !remix && !extract && !run && !analyze) { toast.error(trackTooBigText(locale)); return; }
+      }
     }
     // AGENT G READS THE MESSAGE FIRST (lib/agent/chatTurn). „Stop", „where are you?", „go on", a change to the montage
     // plan on screen („მუსიკა 5 წამიდან დაიწყე"), a request missing its track / photo / video, an edit there is no route
@@ -6221,23 +6478,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return;
       }
     }
+    // ── SEVERAL VIDEOS ARE NEVER A ONE-VIDEO EDIT (lib/chat/chatMediaRoute) ──
+    // GG's 2026-10-11 run: three clips + a track + „…დაამონტაჟე, მუსიკას დაამთხვიე" became a remix of clip one; the other
+    // two were dropped without a word. With two or more videos the turn is a montage (the editor below, with every file),
+    // a question about all of them (further down), or — for a one-video edit — a question back: which one.
+    const chatKinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+    const multiRoute = mode === 'chat' ? multiVideoRoute(text, chatKinds) : null;
+    if (multiRoute === 'pick_one_video') {
+      // Nothing is sent and nothing is dropped: the words and every file stay in the composer.
+      setMessages((prev) => [...prev, { role: 'assistant', text: pickOneVideoText(attachments.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), locale), notice: true }]);
+      return;
+    }
     const studio = mode === 'chat' ? detectStudioIntent(text) : null;
-    if (studio?.service === 'montage') {
-      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with the
-      // videos and photos the user attached already on its timeline, instead of a second, form-shaped montage.
-      const media = attachments
-        .filter((a) => isVideo(a.mimeType) || isImage(a.mimeType))
-        .map((a) => ({ url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const), ...(a.name ? { name: a.name } : {}) }));
-      const en = locale === 'en', ru = locale === 'ru';
+    if (studio?.service === 'montage' || multiRoute === 'montage_editor') {
+      // ONE MONTAGE. „Cut these together" opens the editor itself — the one the Montage tool opens — with EVERY clip and
+      // photo the user attached on its timeline in their order, and the first track as its music (it used to drop the
+      // track). Files already uploaded are handed over by their stored path, so nothing is uploaded twice.
+      const files = attachments;
+      setBusy(true);
+      const seeded = await seedMontageWith(files);
+      setBusy(false);
       const name = serviceLabel('montage', locale);
-      const reply = media.length
-        ? (en ? `Opened **${name}** — your ${media.length} file(s) are on the timeline.` : ru ? `Открыл **${name}** — ваши файлы (${media.length}) уже на таймлайне.` : `გავხსენი **${name}** — შენი ${media.length} ფაილი უკვე თაიმლაინზეა.`)
+      const en = locale === 'en', ru = locale === 'ru';
+      const reply = seeded.clips
+        ? montageEditorOpenedText(files.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), agentMontageOn ? 'agent_shape' : 'agent_closed', locale)
         : (en ? `Opened **${name}** — add your videos or photos.` : ru ? `Открыл **${name}** — добавьте видео или фото.` : `გავხსენი **${name}** — დაამატე ვიდეოები ან ფოტოები.`);
-      setMessages((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }]);
-      setMontageSeed(media.length ? media : null);
-      if (media.length) setAttachments([]);
+      setMessages((prev) => [...prev, { role: 'user', text, ...(files.length ? { medias: files, modelMedias: [] } : {}) }, { role: 'assistant', text: reply }]);
+      if (files.length) setAttachments([]);
       setInput(''); stopDictationEcho();
-      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
       return;
     }
     if (studio) {
@@ -6413,26 +6681,38 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // credits on a colour grade. The clip is read here, in the browser, as frames + the start of its soundtrack
     // (lib/chat/videoDigest) and answered by the chat model like any other turn — no upload, no charge. Edit requests
     // ("add subtitles", "make it vintage", the chips' phrases) still go to the remix pipeline below.
+    // ⚠️ IT READ ONLY THE FIRST VIDEO. With three clips attached, „what happens in these?" was answered from clip one; the
+    // other two never reached the model and nothing said so. Every video is read now, the request budget is shared between
+    // them, and a clip the browser cannot read is NAMED — the turn is not sent with it silently missing.
     if (mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && !isVideoEditRequest(text)) {
-      const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      const videoAtts = attachments.filter((a) => isVideo(a.mimeType));
       setBusy(true);
-      let digest: Awaited<ReturnType<typeof captureVideoDigest>> = null;
-      try { digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob()); } catch { digest = null; }
-      if (!digest) {
+      // Fewer frames per clip when there are several: the same request has to carry all of them.
+      const frameCount = videoAtts.length > 1 ? Math.max(3, Math.floor(8 / videoAtts.length) + 1) : undefined;
+      const digests = await Promise.all(videoAtts.map(async (v) => {
+        try { return await captureVideoDigest(await (await fetch(v.dataUrl)).blob(), frameCount ? { frameCount } : {}); } catch { return null; }
+      }));
+      const unreadable = videoAtts.filter((_, i) => !digests[i]).map((v, i) => v.name || `${i + 1}`);
+      if (unreadable.length) {
         setBusy(false);
-        toast.error(locale === 'en' ? 'This browser cannot read that video — try an MP4 (H.264) or WebM clip'
-          : locale === 'ru' ? 'Браузер не может прочитать это видео — попробуйте MP4 (H.264) или WebM'
-            : 'ამ ბრაუზერმა ვიდეო ვერ წაიკითხა — სცადე MP4 (H.264) ან WebM');
+        const names = unreadable.join(', ');
+        toast.error(locale === 'en' ? `This browser cannot read ${names} — try an MP4 (H.264) or WebM clip, or remove it`
+          : locale === 'ru' ? `Браузер не может прочитать ${names} — попробуйте MP4 (H.264) или WebM, или уберите файл`
+            : `ამ ბრაუზერმა ვერ წაიკითხა: ${names} — სცადე MP4 (H.264) ან WebM, ან ამოიღე ეს ფაილი`);
         return;
       }
       const others = attachments.filter((a) => !isVideo(a.mimeType));
       const budget = Math.max(400_000, DEFAULT_TOTAL_CAP_BYTES - others.reduce((n, a) => n + a.dataUrl.length, 0));
-      const parts = digestToMedia(videoAtt.name || 'video', fitDigest(digest, budget));
+      const perClip = Math.floor(budget / videoAtts.length);
+      const parts = videoAtts.flatMap((v, i) => digestToMedia(
+        videoAtts.length > 1 ? `${i + 1}. ${v.name || 'video'}` : (v.name || 'video'),
+        fitDigest(digests[i]!, perClip),
+      ));
       const asked = text || defaultVideoQuestion(locale);
       const videoTurn: Msg = { role: 'user', text: asked, inputMethod: viaVoice ? 'voice' : 'text', medias: attachments, modelMedias: [...others, ...parts] };
       setInput(''); setAttachments([]);
       inputSourceRef.current = 'text';
-      persistChatTurn('user', asked);
+      persistChatTurn('user', asked, attachments);
       autoPlayReplyRef.current = viaVoice;
       setBusy(false);
       await streamChat([...messages, videoTurn]);
@@ -6445,6 +6725,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // matching ffmpeg/generative op runs via /api/video/remix. Fail-open: any miss
     // surfaces a clean retry notice and keeps the original.
     if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
+      // A remix edits ONE video. With several attached (a question that is also an edit request lands here), ask which —
+      // never edit the first and drop the rest.
+      if (attachments.filter((a) => isVideo(a.mimeType)).length > 1) {
+        // As with the routing rule above: nothing is sent, the words and every file stay in the composer.
+        setMessages((prev) => [...prev, { role: 'assistant', text: pickOneVideoText(attachments.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), locale), notice: true }]);
+        return;
+      }
       const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
       const sent = attachments;
       // One bubble carries the edit from „running" to its result (or Agent G's price question): patched by id, never „the
@@ -6496,7 +6783,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (!mine()) return;
           const credits = remixOpCredits();
           remixAsksRef.current.set(bubbleId, job);
-          patch({ role: 'assistant', text: remixAskText(op, credits, locale), remixAsk: { credits } });
+          patch({ role: 'assistant', text: remixAskText(op, credits, locale, [videoAtt.name || 'video', ...(audioAtt && (op === 'add_music' || op === 'music' || op === 'redub') ? [audioAtt.name || 'audio'] : [])]), remixAsk: { credits } });
           trackQuoteShown(serviceForTool('remix'), credits, 'agent-card');
           return;
         }
@@ -6816,12 +7103,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const userMsg: Msg = { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text', ...(attachments.length ? { medias: attachments } : {}) };
     setInput(''); setAttachments([]);
     inputSourceRef.current = 'text'; // reset for the next turn (the box is now empty)
-    persistChatTurn('user', text); // mirror the user turn to the server (fail-soft; anonymous → no-op)
+    persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     // Arm auto-play ONLY for a voice-initiated turn — its reply will be spoken aloud at stream end; a typed
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -7123,6 +7410,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(orig.medias ? { medias: orig.medias } : {}),
       ...(orig.modelMedias ? { modelMedias: orig.modelMedias } : {}),
       ...(orig.attached ? { attached: orig.attached } : {}),
+      ...(orig.files ? { files: orig.files } : {}),
       ...(orig.inputMethod ? { inputMethod: orig.inputMethod } : {}),
     }]);
     persistChatTurn('user', trimmed);
@@ -7469,6 +7757,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return all[0] ?? null;
   };
   const kindWord = (k: 'image' | 'video' | 'audio') => (k === 'audio' ? 'music track' : k);
+  /** The files the user attached, for a call: what is in the composer (with its upload state), else the newest turn's. */
+  const liveAttachmentsState = (): Record<string, unknown> => {
+    const describe = (a: Media, i: number) => ({
+      n: i + 1, kind: attachedKind(a.mimeType), ...(a.name ? { name: a.name.slice(0, 80) } : {}),
+      ...(a.durationSec ? { lengthSec: Math.round(a.durationSec) } : {}), ...(a.status ? { upload: a.status } : {}),
+    });
+    if (attachments.length) return { attachments: attachments.slice(0, MAX_ATTACHMENTS).map(describe), attachmentsWhere: 'composer (not sent yet)' };
+    const turn = [...messages].reverse().find((m) => m.role === 'user' && (m.medias?.length || m.files?.length));
+    if (!turn) return {};
+    if (turn.medias?.length) return { attachments: turn.medias.slice(0, MAX_ATTACHMENTS).map(describe), attachmentsWhere: 'sent in this chat' };
+    return {
+      attachments: turn.files!.slice(0, MAX_ATTACHMENTS).map((f, i) => ({ n: i + 1, kind: f.kind, ...(f.name ? { name: f.name } : {}) })),
+      attachmentsWhere: 'sent earlier; the files themselves are no longer loaded (attach them again to use them)',
+    };
+  };
   /** What a call may know about the screen (get_screen_state). Short strings only — it is spoken context, not a dump. */
   const liveScreenState = (): Record<string, unknown> => {
     const settings: Record<string, unknown> | undefined =
@@ -7492,11 +7795,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // The tray's renders and the server's durable jobs it follows (Agent G's cards are listed apart: agentPlans).
       runningGenerations: liveTasks().slice(0, 4),
       results: liveResults().slice(0, 8).map((r) => ({ n: r.n, kind: r.kind === 'audio' ? 'music' : r.kind, ...(r.what ? { what: r.what } : {}) })),
+      // The user's OWN files: the composer's, else the newest turn that carried files (by number and name — never a URL).
+      ...liveAttachmentsState(),
       messagesInThisChat: messages.length,
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
   liveChatSendRef.current = (text: string) => { void send({ promptOverride: text }); };
+  // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
+  // newest turn that carried files) — the same references a typed request sends.
+  setLiveAttachedRefs(() => {
+    const pick = (list: Media[]) => list.map((a) => a.storagePath).filter((p): p is string => !!p);
+    if (attachments.length) return pick(attachments);
+    const turn = [...messagesRef.current].reverse().find((m) => m.role === 'user' && (m.medias?.length || m.files?.length));
+    return turn ? (turn.medias?.length ? pick(turn.medias) : (turn.files ?? []).map((f) => f.path).filter((p): p is string => !!p)) : [];
+  });
   liveApiRef.current = (d: LiveActionEventDetail): boolean => {
     const reply = (r: LiveStudioReply) => { d.reply = r; };
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
@@ -7653,6 +7966,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       case 'montage': {
         if (d.action !== 'open') return false; // export / set_music_start / state: the editor's own hook answers
+        if (d.source === 'attached') {
+          // THE USER'S OWN FILES, ALL OF THEM. The call could only open results made in this chat, so „montage the four
+          // files I attached" answered no_video while they sat in the composer. Now: the composer's files, else the
+          // newest turn that carried a clip — through the same seedMontageWith the typed chat uses.
+          const tray = attachments;
+          const fromTray = tray.some((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+          const turn = fromTray ? null : [...messagesRef.current].reverse().find((m) => m.role === 'user' && m.medias?.some((x) => isVideo(x.mimeType) || isImage(x.mimeType)));
+          const files = fromTray ? tray : (turn?.medias ?? []);
+          if (!files.length) {
+            reply({ ok: false, error: 'no_attachments', message: 'No clip or photo is attached in this chat (a chat reopened later no longer has the files). Ask the user to attach the files with the + button.' });
+            return true;
+          }
+          const failed = files.filter((a) => a.status === 'failed').map((a) => a.name || 'a file');
+          if (failed.length) {
+            reply({ ok: false, error: 'upload_failed', message: `These files did not upload: ${failed.join(', ')}. Ask the user to press Retry on them first.` });
+            return true;
+          }
+          const items = files.map((a) => ({ kind: (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other') as AttachmentKind, ...(a.name ? { name: a.name } : {}) }));
+          void seedMontageWith(files);
+          const voiceWord = locale === 'en' ? '🎙 By voice: montage' : locale === 'ru' ? '🎙 Голосом: монтаж' : '🎙 ხმით: მონტაჟი';
+          setMessages((prev) => [...prev,
+            ...(fromTray ? [{ role: 'user' as const, text: voiceWord, medias: files, modelMedias: [], inputMethod: 'voice' as const }] : []),
+            { role: 'assistant' as const, text: montageEditorOpenedText(items, agentMontageOn ? 'agent_shape' : 'agent_closed', locale) }]);
+          if (fromTray) setAttachments([]);
+          const clips = items.filter((i) => i.kind === 'video' || i.kind === 'image');
+          const track = items.find((i) => i.kind === 'audio');
+          reply({
+            ok: true,
+            message: `Montage is opening with all ${clips.length} of the user's clips in their order (${clips.map((c, i) => `${i + 1}. ${c.name || c.kind}`).join(', ')})`
+              + `${track ? ` and ${track.name || 'their track'} as the music` : ''}. Export there is free. Tell the user to check the order and press Export,`
+              + ' or call montage export when they say so.',
+          });
+          return true;
+        }
         const videos = (d.videos?.length ? d.videos : [{ kind: 'video' as const }])
           .map((ref) => resolveLiveResult(ref))
           .filter((r): r is NonNullable<typeof r> => !!r && (r.kind === 'video' || r.kind === 'image'));
@@ -7993,28 +8340,51 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Agent G's montage card: Start queues the signed plan (once — the card leaves 'quoted' before the request goes), the
   // job's stage and percent are its progress, and the master lands in this bubble. Cancel drops a plan; Stop cancels the
   // job: its worker kills the running render and anything charged is paid back (the follow then reads „cancelled").
+  // The follow's effects, one place for every Agent G card: fetch, the clock, and „is this studio still on screen" (a
+  // language switch mounts a new one, which follows the job itself; the old follow then ends quietly).
+  const followDeps = useCallback((onProgress: FollowDeps['onProgress']): FollowDeps => ({
+    fetch: (u, init) => fetch(u, init),
+    sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
+    now: () => Date.now(),
+    alive: () => mountedRef.current,
+    onProgress,
+  }), []);
+  const montageProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
+    // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
+    ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
+    : m)), [patchMsgById]);
+  // The run's end in this bubble: the master and its shape, or why it stopped. `resumed`: the card was taken back after
+  // a reload, so a job the server never saw means its run never got through (nothing was charged).
+  const settleAgentMontage = useCallback((id: string, r: MontageRun & { endedAt?: number }, resumed = false) => {
+    if (r.ok) {
+      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || m.montage?.quote?.totalSec || 0, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
+      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
+    } else {
+      const stopped = r.code === 'cancelled';
+      const text = stopped ? errorText('cancelled', locale) : `⚠️ ${resumed && r.code === 'not_found' ? notStartedText(locale) : errorText(r.code, locale)}`;
+      patchMsgById(id, (m) => ({ ...m, text, noRetry: true, montage: { ...m.montage!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: endOf(r) } }));
+    }
+  }, [locale, patchMsgById]);
   const confirmAgentMontage = useCallback(async (id: string, approval?: RunApproval) => {
     const card = messagesRef.current.find((m) => m.id === id)?.montage;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || montageRunsRef.current.has(id)) return;
     montageRunsRef.current.add(id);
+    cardFollowsRef.current.add(id);
     patchMsgById(id, (m) => ({ ...m, text: stageText(null, locale), montage: { ...m.montage!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
-    const r = await runAgentMontage({
-      fetch: (u, init) => fetch(u, init),
-      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
-      now: () => Date.now(),
-      // The stage is kept even while a Stop is on its way: the card marks the step the edit stops on.
-      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.montage?.phase === 'running'
-        ? { ...m, montage: { ...m.montage, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
-        : m)),
-    }, { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
-    if (r.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || card.quote!.totalSec, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || card.quote!.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
-      try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
-    } else {
-      const stopped = r.code === 'cancelled';
-      patchMsgById(id, (m) => ({ ...m, text: stopped ? errorText('cancelled', locale) : `⚠️ ${errorText(r.code, locale)}`, noRetry: true, montage: { ...m.montage!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: Date.now() } }));
-    }
-  }, [locale, patchMsgById]);
+    try {
+      const r = await runAgentMontage(followDeps(montageProgress(id)), { request: card.request, token: card.token, prompt: card.prompt, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
+      settleAgentMontage(id, r);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [followDeps, locale, montageProgress, patchMsgById, settleAgentMontage]);
+  // A running card read back from the history (a reload, a language switch, a chat reopened): follow its job, send nothing.
+  const resumeMontageCard = useCallback(async (id: string, jobId: string) => {
+    if (cardFollowsRef.current.has(id)) return;
+    cardFollowsRef.current.add(id);
+    try {
+      const r = await resumeAgentMontage(followDeps(montageProgress(id)), jobId);
+      if (mountedRef.current) settleAgentMontage(id, r, true);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [followDeps, montageProgress, settleAgentMontage]);
   const stopAgentMontage = useCallback(async (id: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.montage;
     if (!card) return;
@@ -8032,28 +8402,41 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
   // Agent G's audio card: Start queues the signed plan once, the job's stage and percent are its progress, and the MP3
   // lands in this bubble's player under its own name. Cancel drops a plan; Stop cancels the job (its worker kills ffmpeg).
+  const audioProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.audioJob?.phase === 'running'
+    // The stage is kept even while a Stop is on its way: the card marks the step the extraction stops on.
+    ? { ...m, audioJob: { ...m.audioJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
+    : m)), [patchMsgById]);
+  const settleAgentAudio = useCallback((id: string, r: AudioClientRun & { endedAt?: number }, resumed = false) => {
+    if (r.ok) {
+      patchMsgById(id, (m) => {
+        const info = `${formatDuration(r.durationSec)} · ${formatAudioBytes(r.bytes, locale)} · MP3 ${r.bitrateKbps || m.audioJob?.quote?.bitrateKbps || ''} kbps`;
+        return { ...m, text: audioDoneText(r, locale), audioUrl: r.audioUrl, audioName: r.name, audioInfo: info, audioJob: { ...m.audioJob!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } };
+      });
+    } else {
+      const stopped = r.code === 'cancelled';
+      const text = stopped ? audioErrorText('cancelled', locale) : `⚠️ ${resumed && r.code === 'not_found' ? notStartedText(locale) : audioErrorText(r.code, locale)}`;
+      patchMsgById(id, (m) => ({ ...m, text, noRetry: true, audioJob: { ...m.audioJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, offerUpload: false, stopping: false, t1: endOf(r) } }));
+    }
+  }, [locale, patchMsgById]);
   const confirmAgentAudio = useCallback(async (id: string, approval?: RunApproval) => {
     const card = messagesRef.current.find((m) => m.id === id)?.audioJob;
     if (!card || card.phase !== 'quoted' || !card.quote || !card.token || audioRunsRef.current.has(id)) return;
     audioRunsRef.current.add(id);
+    cardFollowsRef.current.add(id);
     patchMsgById(id, (m) => ({ ...m, text: audioStageText(null, locale), audioJob: { ...m.audioJob!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
-    const r = await runAgentAudio({
-      fetch: (u, init) => fetch(u, init),
-      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
-      now: () => Date.now(),
-      // The stage is kept even while a Stop is on its way: the card marks the step the extraction stops on.
-      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.audioJob?.phase === 'running'
-        ? { ...m, audioJob: { ...m.audioJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
-        : m)),
-    }, { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
-    if (r.ok) {
-      const info = `${formatDuration(r.durationSec)} · ${formatAudioBytes(r.bytes, locale)} · MP3 ${r.bitrateKbps || card.quote.bitrateKbps} kbps`;
-      patchMsgById(id, (m) => ({ ...m, text: audioDoneText(r, locale), audioUrl: r.audioUrl, audioName: r.name, audioInfo: info, audioJob: { ...m.audioJob!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
-    } else {
-      const stopped = r.code === 'cancelled';
-      patchMsgById(id, (m) => ({ ...m, text: stopped ? audioErrorText('cancelled', locale) : `⚠️ ${audioErrorText(r.code, locale)}`, noRetry: true, audioJob: { ...m.audioJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, offerUpload: false, stopping: false, t1: Date.now() } }));
-    }
-  }, [locale, patchMsgById]);
+    try {
+      const r = await runAgentAudio(followDeps(audioProgress(id)), { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
+      settleAgentAudio(id, r);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [audioProgress, followDeps, locale, patchMsgById, settleAgentAudio]);
+  const resumeAudioCard = useCallback(async (id: string, jobId: string) => {
+    if (cardFollowsRef.current.has(id)) return;
+    cardFollowsRef.current.add(id);
+    try {
+      const r = await resumeAgentAudio(followDeps(audioProgress(id)), jobId);
+      if (mountedRef.current) settleAgentAudio(id, r, true);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [audioProgress, followDeps, settleAgentAudio]);
   const stopAgentAudio = useCallback(async (id: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.audioJob;
     if (!card) return;
@@ -8069,30 +8452,41 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [locale, patchMsgById]);
   // Agent G's edit card: Start queues the signed plan once, the job's stage and percent are its progress, the result lands
   // under the card (a video, or a still as a picture). Cancel drops a plan; Stop cancels the job (its worker kills ffmpeg).
-  const confirmAgentEdit = useCallback(async (id: string, approval?: RunApproval) => {
-    const card = messagesRef.current.find((m) => m.id === id)?.editJob;
-    if (!card || card.phase !== 'quoted' || !card.quote || !card.token || editRunsRef.current.has(id)) return;
-    editRunsRef.current.add(id);
-    patchMsgById(id, (m) => ({ ...m, text: editStageText(null, locale), editJob: { ...m.editJob!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
-    const r = await runAgentEdit({
-      fetch: (u, init) => fetch(u, init),
-      sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
-      now: () => Date.now(),
-      onProgress: (pct, stage) => patchMsgById(id, (m) => (m.editJob?.phase === 'running'
-        ? { ...m, editJob: { ...m.editJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
-        : m)),
-    }, { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
+  const editProgress = useCallback((id: string): FollowDeps['onProgress'] => (pct, stage) => patchMsgById(id, (m) => (m.editJob?.phase === 'running'
+    ? { ...m, editJob: { ...m.editJob, ...(pct !== null ? { pct } : {}), ...(stage ? { stage } : {}) } }
+    : m)), [patchMsgById]);
+  const settleAgentEdit = useCallback((id: string, r: EditClientRun & { endedAt?: number }, resumed = false) => {
     if (r.ok) {
       const media = r.output === 'jpg'
         ? { imageUrl: r.url }
         : { videoUrl: r.url, orientation: r.height > r.width ? 'vertical' as const : r.height === r.width && r.width > 0 ? 'square' as const : 'landscape' as const };
-      patchMsgById(id, (m) => ({ ...m, text: editDoneText(r, locale), ...media, editName: r.name, editJob: { ...m.editJob!, phase: 'done', stage: 'completed', stopping: false, t1: Date.now() } }));
+      patchMsgById(id, (m) => ({ ...m, text: editDoneText(r, locale), ...media, editName: r.name, editJob: { ...m.editJob!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';
-      patchMsgById(id, (m) => ({ ...m, text: stopped ? editErrorText('cancelled', locale) : `⚠️ ${editErrorText(r.code, locale)}`, noRetry: true, editJob: { ...m.editJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: Date.now() } }));
+      const text = stopped ? editErrorText('cancelled', locale) : `⚠️ ${resumed && r.code === 'not_found' ? notStartedText(locale) : editErrorText(r.code, locale)}`;
+      patchMsgById(id, (m) => ({ ...m, text, noRetry: true, editJob: { ...m.editJob!, phase: stopped ? 'cancelled' : 'failed', error: r.code, stopping: false, t1: endOf(r) } }));
     }
   }, [locale, patchMsgById]);
+  const confirmAgentEdit = useCallback(async (id: string, approval?: RunApproval) => {
+    const card = messagesRef.current.find((m) => m.id === id)?.editJob;
+    if (!card || card.phase !== 'quoted' || !card.quote || !card.token || editRunsRef.current.has(id)) return;
+    editRunsRef.current.add(id);
+    cardFollowsRef.current.add(id);
+    patchMsgById(id, (m) => ({ ...m, text: editStageText(null, locale), editJob: { ...m.editJob!, phase: 'running', pct: 0, stage: null, t0: Date.now(), t1: undefined } }));
+    try {
+      const r = await runAgentEdit(followDeps(editProgress(id)), { request: card.request, token: card.token, jobId: card.quote.jobId, ...(approval ? { approval } : {}) });
+      settleAgentEdit(id, r);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [editProgress, followDeps, locale, patchMsgById, settleAgentEdit]);
+  const resumeEditCard = useCallback(async (id: string, jobId: string) => {
+    if (cardFollowsRef.current.has(id)) return;
+    cardFollowsRef.current.add(id);
+    try {
+      const r = await resumeAgentEdit(followDeps(editProgress(id)), jobId);
+      if (mountedRef.current) settleAgentEdit(id, r, true);
+    } finally { cardFollowsRef.current.delete(id); }
+  }, [editProgress, followDeps, settleAgentEdit]);
   const stopAgentEdit = useCallback(async (id: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.editJob;
     if (!card) return;
@@ -8123,18 +8517,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const id = bubble.id!;
     // As with the montage: the files went to the run, never inline to the chat model with the next turns.
     setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
-    persistChatTurn('user', text);
+    persistChatTurn('user', text, files);
     const names = files.map((f) => f.name ?? '');
     const up = await uploadAll({
       upload: uploaderOnce(),
       onUploaded: (n) => patchMsgById(id, (m) => (m.runJob?.phase === 'reading' ? { ...m, runJob: { ...m.runJob, uploaded: n } } : m)),
     }, files.map((f) => ({ dataUrl: f.dataUrl, mimeType: f.mimeType })));
     if (!up.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: `⚠️ ${runErrorText(up.code, locale, up.files, names)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: up.code, files: up.files, t1: Date.now() } }));
+      patchMsgById(id, (m) => (m.runJob?.phase !== 'reading' ? m : { ...m, text: `⚠️ ${runErrorText(up.code, locale, up.files, names)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: up.code, files: up.files, t1: Date.now() } }));
       return;
     }
+    if (messagesRef.current.find((m) => m.id === id)?.runJob?.phase !== 'reading') return; // stopped while its files went up
     const r = await planRunClient((u, init) => fetch(u, init), chainSpec(chain, text, up.paths));
-    patchMsgById(id, (m) => (r.ok
+    patchMsgById(id, (m) => (m.runJob?.phase !== 'reading' ? m : r.ok
       ? { ...m, text: runPlanText(chain, { names, credits: r.plan.credits, editsText: chainEditsText(chain, locale) }, locale), runJob: { ...m.runJob!, phase: 'planned', plan: r.plan, spec: r.spec, token: r.token } }
       : { ...m, text: `⚠️ ${runErrorText(r.code, locale)}`, noRetry: true, runJob: { ...m.runJob!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, newAgentRunBubble, patchMsgById, persistChatTurn, uploaderOnce]);
@@ -8146,7 +8541,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       fetch: (u, init) => fetch(u, init),
       sleep: (ms) => new Promise((res) => setTimeout(res, ms)),
       now: () => Date.now(),
-      stopped: () => runFollowRef.current.get(id) !== runId,
+      // A studio no longer on screen stops too: the one that replaced it (a language switch) follows the run itself.
+      stopped: () => !mountedRef.current || runFollowRef.current.get(id) !== runId,
       onTask: (task, evs) => patchMsgById(id, (m) => (mine(m) && m.runJob ? { ...m, runJob: { ...m.runJob, task, events: evs } } : m)),
     }, runId, events ? { events } : {});
     if (!end.ok && end.code === 'stopped') return;
@@ -8207,6 +8603,74 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       patchMsgById(id, (m) => (m.runJob?.stopping ? { ...m, runJob: { ...m.runJob, stopping: false } } : m));
     }
   }, [locale, patchMsgById]);
+  // THE COMPOSER'S STOP WHILE AGENT G WORKS (lib/agent/media/workingCard; the owner on the Preview, 2026-10-11: „during
+  // a process the send button does not turn into a square, so you cannot feel it running; a red Stop would sit better").
+  // The newest card still working is what it stops: a job, through that card's own Stop (the server stops it, nothing
+  // more is charged); a card still reading its files, by closing it (no job yet: nothing runs, nothing is charged).
+  const workingCard = useMemo(() => newestWorkingCard(messages), [messages]);
+  const stopWorkingCard = useCallback(() => {
+    const w = newestWorkingCard(messagesRef.current);
+    if (!w || w.stopping) return;
+    if (w.reading) {
+      const t1 = Date.now();
+      patchMsgById(w.id, (m) => {
+        if (w.kind === 'montage' && m.montage?.phase === 'reading') return { ...m, text: errorText('cancelled', locale), noRetry: true, montage: { ...m.montage, phase: 'cancelled', t1 } };
+        if (w.kind === 'audio' && m.audioJob?.phase === 'checking') return { ...m, text: audioErrorText('cancelled', locale), noRetry: true, audioJob: { ...m.audioJob, phase: 'cancelled', t1 } };
+        if (w.kind === 'edit' && m.editJob?.phase === 'reading') return { ...m, text: editErrorText('cancelled', locale), noRetry: true, editJob: { ...m.editJob, phase: 'cancelled', t1 } };
+        if (w.kind === 'run' && m.runJob?.phase === 'reading') return { ...m, text: errorText('cancelled', locale), noRetry: true, runJob: { ...m.runJob, phase: 'dismissed', t1 } };
+        return m;
+      });
+      return;
+    }
+    if (w.kind === 'montage') void stopAgentMontage(w.id);
+    else if (w.kind === 'audio') void stopAgentAudio(w.id);
+    else if (w.kind === 'edit') void stopAgentEdit(w.id);
+    else void stopAgentRun(w.id);
+  }, [locale, patchMsgById, stopAgentAudio, stopAgentEdit, stopAgentMontage, stopAgentRun]);
+  // AGENT G'S CARDS IN THE ACCOUNT'S HISTORY (lib/chat/turnMeta; the owner, 2026-10-11: „when a chat opens from History
+  // the conversation and the whole process must show, nothing lost"). A card born on this page is saved from its plan on
+  // as ONE row, rewritten when its phase or its result changes (never per percent), so another device opening the chat
+  // sees the plan, the run or the finished video, and follows a running job by its id. A card first seen already past
+  // reading was read back from storage: it is written only once it changes here.
+  const cardSigRef = useRef(new Map<string, string>());
+  const cardRowRef = useRef(new Map<string, string>());
+  const cardWriteRef = useRef(new Map<string, Promise<void>>());
+  const saveCardRow = useCallback((m: Msg) => {
+    const id = m.id!;
+    const lean = leanMessages([m])[0];
+    const meta = lean ? turnMetaOf(lean as Parameters<typeof turnMetaOf>[0]) : null;
+    if (!meta) return;
+    const content = (m.text || '').trim() || '…';
+    const prev = cardWriteRef.current.get(id) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      const rowId = cardRowRef.current.get(id) ?? messagesRef.current.find((x) => x.id === id)?.cloudRowId;
+      if (rowId) { await updateMessage(rowId, content, meta); return; }
+      const sid = await ensureChatSession();
+      if (!sid) return;
+      const fresh = newRowId();
+      cardRowRef.current.set(id, fresh);
+      if (await saveMessage(sid, 'assistant', content, meta, fresh)) patchMsgById(id, (x) => (x.cloudRowId ? x : { ...x, cloudRowId: fresh }));
+      else cardRowRef.current.delete(id);
+    }).catch(() => { /* fail-soft: the chat goes on, this device keeps its copy */ });
+    cardWriteRef.current.set(id, next);
+  }, [ensureChatSession, patchMsgById]);
+  useEffect(() => {
+    if (hydratingRef.current === conversationId) return;
+    for (const m of messages) {
+      if (m.role !== 'assistant' || !m.id || !hasCard(m)) continue;
+      const sig = cardSignature(m);
+      const seen = cardSigRef.current.get(m.id);
+      if (seen === undefined) {
+        // Born here (reading its files): saved once it has a plan. Read back from storage: saved only when it changes.
+        cardSigRef.current.set(m.id, cardReading(m) ? '' : sig);
+        if (m.cloudRowId) cardRowRef.current.set(m.id, m.cloudRowId);
+        continue;
+      }
+      if (seen === sig || cardReading(m)) continue;
+      cardSigRef.current.set(m.id, sig);
+      saveCardRow(m);
+    }
+  }, [messages, conversationId, saveCardRow]);
   // The user's yes to one step's own price, bound to the quote the card shows. The follow reads the run on from there.
   const approveAgentRun = useCallback(async (id: string, step: string, quoteId: string) => {
     const card = messagesRef.current.find((m) => m.id === id)?.runJob;
@@ -8239,6 +8703,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     inputSourceRef.current = 'text';
     fileRef.current?.click();
   }, [locale, inputSourceRef]);
+
+  // TAKE A RUNNING CARD BACK. A card read back from the history in 'running' — the page was reloaded, the language
+  // switched (a new studio mounts), or the chat was reopened from History — has nothing following its job: the old follow
+  // lived in the page that went. Its job went on server-side, so it is followed again by its id (nothing is sent), and the
+  // result lands in this bubble instead of only in the Library (the Preview run of 2026-10-11). Cards this studio already
+  // follows are left alone.
+  useEffect(() => {
+    for (const m of messages) {
+      if (!m.id) continue;
+      if (m.montage?.phase === 'running' && m.montage.quote?.jobId && !cardFollowsRef.current.has(m.id)) void resumeMontageCard(m.id, m.montage.quote.jobId);
+      else if (m.audioJob?.phase === 'running' && m.audioJob.quote?.jobId && !cardFollowsRef.current.has(m.id)) void resumeAudioCard(m.id, m.audioJob.quote.jobId);
+      else if (m.editJob?.phase === 'running' && m.editJob.quote?.jobId && !cardFollowsRef.current.has(m.id)) void resumeEditCard(m.id, m.editJob.quote.jobId);
+      else if (m.runJob?.phase === 'running' && m.runJob.runId && !m.runJob.resuming && !runFollowRef.current.has(m.id)) void followAgentRun(m.id, m.runJob.runId);
+    }
+  }, [messages, resumeMontageCard, resumeAudioCard, resumeEditCard, followAgentRun]);
 
   // ONE OWNER PER JOB (the JobTray's rule): an Agent G card narrates its own job, so the tray leaves that job to it —
   // while it runs AND after it ended (lib/agent/media/taskSteps `cardOwnsJob`): the card now stays with its whole list,
@@ -8387,7 +8866,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           : m));
         const bubble = newAgentMontageBubble(step.prompt, files);
         setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
-        persistChatTurn('user', text);
+        persistChatTurn('user', text, files);
         void quoteAgentMontageInto(bubble.id!, step.prompt, files);
         return true;
       }
@@ -8405,7 +8884,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         const bubble = newAgentMontageBubble(step.prompt, files);
         setMessages((prev) => [...prev, { role: 'user', text, medias: files, modelMedias: [] }, bubble]);
-        persistChatTurn('user', text);
+        persistChatTurn('user', text, files);
         void quoteAgentMontageInto(bubble.id!, step.prompt, files);
         return true;
       }
@@ -8476,7 +8955,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                           <img src={md.dataUrl} alt="attachment" loading="lazy" decoding="async" className="max-h-44 rounded-lg" />
                         </button>
                       ) : isVideo(md.mimeType) ? (
-                        <ChatVideoPlayer key={mi} src={md.dataUrl} variant="attachment" locale={locale} {...(md.name ? { label: md.name } : {})} />
+                        <ChatVideoPlayer key={mi} src={md.dataUrl} variant="attachment" locale={locale} {...(md.name ? { label: md.name } : {})} {...(md.poster ? { poster: md.poster } : {})} />
                       ) : isAudio(md.mimeType) ? (
                         <ChatAudioPlayer key={mi} src={md.dataUrl} locale={locale} {...(md.name ? { name: md.name } : {})} />
                       ) : (
@@ -8485,6 +8964,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ))}
                   </div>
                 )}
+                {!m.medias?.length && m.files?.length ? (
+                  // After a reload the bytes are gone; WHAT the turn carried is still listed, by name, in order.
+                  <div className={`mb-2 flex flex-wrap gap-1.5 ${m.role === 'user' ? 'justify-end' : ''}`} data-testid="bubble-attached-files">
+                    {m.files.map((f, fi) => (
+                      <span key={fi} title={f.name || f.kind}
+                        className="inline-flex max-w-[16rem] items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted ring-1 ring-app-border/10">
+                        {f.kind === 'video' ? <Film size={12} aria-hidden="true" /> : f.kind === 'audio' ? <Music2 size={12} aria-hidden="true" />
+                          : f.kind === 'image' ? <ImageIcon size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+                        <span className="truncate">{f.name || f.kind}</span>
+                        {f.durationSec ? <span className="shrink-0 tabular-nums">{fileClock(f.durationSec)}</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {m.imageUrl && !m.editJob && (
                   <div className="space-y-1.5">
                     {/* THE IMAGE IN ITS OWN SHAPE. It was `w-full object-contain` — a 4:5 portrait sat in a wide dark
@@ -10790,12 +11283,35 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
+        {/* Measured mic latency on this device, only with ?micstats=1 (a phone has no inspector; see the component). */}
+        <DictationMetricsReadout locale={locale} />
         {/* No service shortcuts IN the composer or on the empty home — the tool chip and the navigation are how a
             service is chosen. */}
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
-        {mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && (
+        {/* Two or more clips are a MONTAGE, not a one-video remix (lib/chat/chatMediaRoute): say so, with one chip that asks
+            for it — the remix chips below would only ask which one video to edit. */}
+        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length > 1 && (() => {
+          const clips = attachments.filter((a) => isVideo(a.mimeType)).length;
+          const withTrack = attachments.some((a) => isAudio(a.mimeType));
+          const fill = locale === 'en' ? `montage these ${clips} clips${withTrack ? ' to the music' : ''}`
+            : locale === 'ru' ? `смонтируй эти ${clips} клипа${withTrack ? ' под музыку' : ''}`
+              : `დაამონტაჟე ეს ${clips} ვიდეო${withTrack ? ' და მუსიკას დაამთხვიე' : ''}`;
+          return (
+            <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="composer-montage-mode">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
+                <Scissors size={13} aria-hidden="true" />
+                {locale === 'en' ? `Montage · ${clips} clips${withTrack ? ' + music' : ''}` : locale === 'ru' ? `Монтаж · ${clips} клипа${withTrack ? ' + музыка' : ''}` : `მონტაჟი · ${clips} ვიდეო${withTrack ? ' + მუსიკა' : ''}`}
+              </span>
+              <button type="button" onClick={() => { setInput(fill); taRef.current?.focus(); }}
+                className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-app-border/20 bg-app-bg/40 px-2.5 py-1 text-[12px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent">
+                <Film size={13} aria-hidden="true" /> {locale === 'en' ? 'Montage them' : locale === 'ru' ? 'Смонтировать' : 'დამონტაჟება'}
+              </button>
+            </div>
+          );
+        })()}
+        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length === 1 && (
           <div className="mb-2 space-y-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
               {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
@@ -10821,9 +11337,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         {/* Attachment previews — up to MAX_ATTACHMENTS files / images / a video,
             each removable. They ride with the next message (text + files together). */}
         {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {attachments.map((a, ai) => (
-              <div key={ai} className="relative" title={a.name}>
+          <div className="mb-2 flex flex-wrap gap-2" data-testid="composer-attachments">
+            {attachments.map((a, ai) => {
+              // Every uploaded file says where it is: uploading (a bar and its %), Ready (stored and checked), or why it
+              // failed with Retry. The state is the server's, never a timer.
+              const pct = Math.round((a.progress ?? 0) * 100);
+              const stateWord = a.status === 'uploading'
+                ? (locale === 'en' ? `Uploading ${pct}%` : locale === 'ru' ? `Загрузка ${pct}%` : `იტვირთება ${pct}%`)
+                : a.status === 'ready' ? (locale === 'en' ? 'Ready' : locale === 'ru' ? 'Готово' : 'მზადაა')
+                  : a.status === 'failed' ? (locale === 'en' ? 'Failed' : locale === 'ru' ? 'Ошибка' : 'ვერ აიტვირთა') : '';
+              const facts = [
+                a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : '',
+                a.size ? formatBytes(a.size) : '',
+                a.durationSec ? fmtClock(Math.round(a.durationSec)) : '',
+              ].filter(Boolean).join(' · ');
+              return (
+              <div key={a.id ?? ai} className="relative" title={[a.name, facts, a.error || stateWord].filter(Boolean).join(' · ')}
+                data-testid="composer-attachment" data-status={a.status ?? 'local'}>
                 {isImage(a.mimeType) ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -10832,27 +11362,52 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span aria-hidden="true" className="mya-scanline pointer-events-none absolute inset-0" />
                   </>
                 ) : isVideo(a.mimeType) ? (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <video src={a.dataUrl} className="h-14 w-14 rounded-xl object-cover" muted playsInline preload="metadata" />
+                  <span className="relative block h-14 w-14 overflow-hidden rounded-xl bg-app-surface ring-1 ring-app-border/15">
+                    {a.poster
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={a.poster} alt="" data-testid="composer-attachment-still" className="h-full w-full object-cover" />
+                      // ⚠️ NOT A <video> UNTIL THE STILL IS READY. iPhone Safari draws no frame for a video that has not played, so
+                      // the tile was a black square on the black page (the owner's screenshots, 2026-10-11: „the files don't
+                      // show"). A clip icon says what it is until probeAttachment's still lands a moment later.
+                      : <span className="flex h-full w-full items-center justify-center text-app-accent" data-testid="composer-attachment-icon"><Film size={20} aria-hidden="true" /></span>}
+                    {/* Top LEFT: the remove button sits on the top-right corner and covered the length there. */}
+                    {a.durationSec ? <span data-testid="composer-attachment-length" className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[9.5px] font-semibold tabular-nums leading-[14px] text-white">{fmtClock(Math.round(a.durationSec))}</span> : null}
+                  </span>
                 ) : (
-                  // A document or a sound: its icon, its NAME and its size (a 56 px square said only "pdf") — and, when its
-                  // text was cut at the cap, that it was.
+                  // A document or a sound: its icon, its NAME, its size and length (a 56 px square said only "pdf") — and,
+                  // when its text was cut at the cap, that it was.
                   <span className="flex h-14 max-w-[13rem] items-center gap-2 rounded-xl bg-app-surface px-3 text-app-accent">
                     {isAudio(a.mimeType) ? <Music2 size={18} className="shrink-0" /> : <FileText size={18} className="shrink-0" />}
                     <span className="min-w-0">
                       <span className="block max-w-[9.5rem] truncate text-[12px] font-medium leading-tight text-app-text">{a.name || (isAudio(a.mimeType) ? 'audio' : 'file')}</span>
                       <span className="block truncate text-[10.5px] uppercase leading-tight text-app-muted">
-                        {a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : ''}
-                        {a.size ? `${a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? ' · ' : ''}${formatBytes(a.size)}` : ''}
+                        {facts}
                         {a.truncated ? ` · ${locale === 'en' ? 'shortened' : locale === 'ru' ? 'сокращён' : 'შეკვეცილია'}` : ''}
                       </span>
                     </span>
                   </span>
                 )}
-                <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, k) => k !== ai))} aria-label={t.a11yRemove}
+                {a.status === 'uploading' && (
+                  <span className="pointer-events-none absolute inset-x-1.5 bottom-1.5 h-1 overflow-hidden rounded-full bg-black/40" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={`${a.name ?? ''} ${stateWord}`}>
+                    <span className="block h-full rounded-full bg-app-accent transition-[width] duration-200" style={{ width: `${Math.max(4, pct)}%` }} />
+                  </span>
+                )}
+                {a.status === 'ready' && (
+                  <span className="pointer-events-none absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-app-accent text-white ring-2 ring-app-bg" aria-label={stateWord}><Check size={10} strokeWidth={3} /></span>
+                )}
+                {a.status === 'failed' && (
+                  <button type="button" onClick={() => retryAttachment(a)} aria-label={`${locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повторить' : 'ხელახლა'} — ${a.name ?? ''}`}
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 rounded-xl bg-black/65 text-[10px] font-semibold text-white touch-manipulation">
+                    <AlertTriangle size={14} className="text-app-warning" aria-hidden="true" />
+                    <span className="flex items-center gap-0.5"><RotateCcw size={10} aria-hidden="true" />{locale === 'en' ? 'Retry' : locale === 'ru' ? 'Повтор' : 'ხელახლა'}</span>
+                  </button>
+                )}
+                <span className="sr-only" aria-live="polite">{a.status === 'uploading' ? '' : stateWord}</span>
+                <button type="button" onClick={() => removeAttachment(a)} aria-label={t.a11yRemove}
                   className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-app-surface text-app-muted shadow ring-1 ring-app-border/15 hover:text-app-text touch-manipulation before:absolute before:-inset-2.5 before:content-['']"><X size={11} /></button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -11164,7 +11719,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 dictate mid-reply would take away the only way to stop that reply. */}
             {busy && (recording || transcribing) && (
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className={chatOnly ? `${chatRound} bg-app-text text-app-bg hover:opacity-90` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent'}>
+                className={`${chatOnly ? chatRound : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
                 <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             )}
@@ -11178,9 +11733,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             )}
             {/* Dictation state wins the primary slot: while recording, Stop must mean "stop the mic". */}
             {busy && !recording && !transcribing ? (
-              // Gemini's stop: a solid circle in the text colour with a filled square.
+              // The stop: a red circle with a filled white square (the owner, 2026-10-11: „a red Stop would sit better").
               <button type="button" onClick={stop} aria-label={t.stop} title={t.stop}
-                className={chatOnly ? `${chatRound} bg-app-text text-app-bg hover:opacity-90` : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-app-surface text-app-text transition-colors hover:text-app-accent'}>
+                className={`${chatOnly ? chatRound : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity'} bg-app-danger text-white hover:opacity-90`}>
                 <Square size={chatOnly ? 14 : 15} className="fill-current" />
               </button>
             ) : recording ? (
@@ -11224,7 +11779,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ვერ ჩაირთო“). primeLive asks every other mic holder to let go, resumes playback and starts the
                     mic while the gesture is live; the session adopts both. A guest is sent to sign-in instead —
                     their browser is never asked for the microphone. */}
-                {!canRun && (
+                {!canRun && !workingCard && (
                 <button type="button" onClick={() => {
                   if (document.documentElement.dataset.authed !== '0') primeLive();
                   window.dispatchEvent(new CustomEvent('myavatar:voice-open'));
@@ -11234,6 +11789,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   className="group relative ml-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-app-accent transition-colors duration-200 hover:bg-app-accent/10">
                   <span className="voice-eq relative" aria-hidden="true"><span /><span /><span /><span /></span>
                 </button>
+                )}
+                {/* WHILE AGENT G WORKS, THE BOX SAYS SO (lib/agent/media/workingCard): Live voice's place goes to a red Stop with a
+                    turning ring, and it stays beside Send when something is typed, so a montage minutes long never leaves the
+                    box looking idle. It stops the newest card that is working, exactly as that card's own Stop does. */}
+                {workingCard && (
+                  <button type="button" onClick={stopWorkingCard} disabled={workingCard.stopping}
+                    data-testid="composer-stop-job" data-kind={workingCard.kind}
+                    aria-label={locale === 'en' ? 'Stop the task' : locale === 'ru' ? 'Остановить задачу' : 'დავალების შეჩერება'}
+                    title={locale === 'en' ? 'Stop the task' : locale === 'ru' ? 'Остановить задачу' : 'დავალების შეჩერება'}
+                    className={`${chatOnly ? chatRound : 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-opacity'} relative ml-0.5 bg-app-danger text-white hover:opacity-90 disabled:opacity-60 touch-manipulation`}>
+                    <span aria-hidden="true" className="pointer-events-none absolute -inset-[3px] rounded-full border-2 border-app-danger/25 border-t-app-danger animate-spin motion-reduce:animate-none" />
+                    {workingCard.stopping ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Square size={chatOnly ? 14 : 15} className="fill-current" aria-hidden="true" />}
+                  </button>
                 )}
                 {input.trim() && !chatOnly && (
                   // Prompt-enhance is a desktop-only power tool — hidden on mobile so the single-row

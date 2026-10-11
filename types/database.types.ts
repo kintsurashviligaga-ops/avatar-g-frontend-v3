@@ -50,6 +50,7 @@ export interface Database {
           role: string;
           content: string;
           created_at: string;
+          metadata: Json;
         };
         Insert: {
           id?: string;
@@ -57,6 +58,7 @@ export interface Database {
           role: string;
           content: string;
           created_at?: string;
+          metadata?: Json;
         };
         Update: {
           id?: string;
@@ -64,6 +66,7 @@ export interface Database {
           role?: string;
           content?: string;
           created_at?: string;
+          metadata?: Json;
         };
         Relationships: [];
       };

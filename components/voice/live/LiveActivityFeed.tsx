@@ -71,6 +71,11 @@ const S: Record<Locale, Strings> = {
       open_url: { running: 'ბმულს ვამზადებ', done: 'ბმული ეკრანზეა — შეეხე' },
       ask_agent_g: { running: 'აგენტი G იკვლევს', done: 'აგენტი G-ის პასუხი მზადაა' },
       extract_audio: { running: 'აგენტი G აუდიოს ამზადებს', done: 'აგენტი G-ის გეგმა ჩატშია' },
+      // A hand-off never reads „შესრულდა“: agent_task only puts Agent G's card in the chat (it starts on the user's
+      // yes) and Montage's export renders on; the job's own progress is on its card.
+      agent_task: { running: 'აგენტი G ამოცანას ამზადებს', done: 'აგენტი G-ის ბარათი ჩატშია' },
+      montage: { running: 'მონტაჟზე ვმუშაობ', done: 'მონტაჟი ეკრანზეა' },
+      read_webpage: { running: 'გვერდს ვკითხულობ', done: 'გვერდი წავიკითხე' },
     },
     tool: { running: 'ვასრულებ', done: 'შესრულდა' },
     failed: 'ვერ შესრულდა',
@@ -100,6 +105,9 @@ const S: Record<Locale, Strings> = {
       open_url: { running: 'Getting the link ready', done: 'Link on screen — tap it' },
       ask_agent_g: { running: 'Agent G is researching', done: 'Agent G answered' },
       extract_audio: { running: 'Agent G is on the audio', done: 'Agent G’s audio is in the chat' },
+      agent_task: { running: 'Agent G is setting up the task', done: 'Agent G’s card is in the chat' },
+      montage: { running: 'Working in Montage', done: 'Montage on screen' },
+      read_webpage: { running: 'Reading the page', done: 'Read the page' },
     },
     tool: { running: 'Working', done: 'Done' },
     failed: 'Didn’t work',
@@ -129,6 +137,9 @@ const S: Record<Locale, Strings> = {
       open_url: { running: 'Готовлю ссылку', done: 'Ссылка на экране — нажмите' },
       ask_agent_g: { running: 'Агент G изучает вопрос', done: 'Агент G ответил' },
       extract_audio: { running: 'Агент G готовит аудио', done: 'Аудио Агента G в чате' },
+      agent_task: { running: 'Агент G готовит задачу', done: 'Карточка Агента G в чате' },
+      montage: { running: 'Работаю в монтаже', done: 'Монтаж на экране' },
+      read_webpage: { running: 'Читаю страницу', done: 'Страница прочитана' },
     },
     tool: { running: 'Выполняю', done: 'Готово' },
     failed: 'Не получилось',
@@ -156,6 +167,9 @@ const TOOL_ICON: Record<string, ReactNode> = {
   open_url: <Globe size={16} aria-hidden />,
   ask_agent_g: <Bot size={16} aria-hidden />,
   extract_audio: <FileAudio size={16} aria-hidden />,
+  agent_task: <Bot size={16} aria-hidden />,
+  montage: <Clapperboard size={16} aria-hidden />,
+  read_webpage: <Globe size={16} aria-hidden />,
 };
 
 /**

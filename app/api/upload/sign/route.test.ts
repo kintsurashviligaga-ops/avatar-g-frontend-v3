@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * POST /api/upload/sign — mints a service-role upload token only for images, video and audio, and refuses a declared
- * size over the 50 MB cap. It used to sign ANY content type at any size.
+ * size over the 50 MB cap (the size is required). It used to sign ANY content type at any size.
  */
 let mockUser: { id: string } | null = { id: 'u1' };
 const mockSignedPaths: string[] = [];
@@ -67,6 +67,9 @@ test('an untyped file is typed from its name (a .heic from Chrome arrives with n
   expect(mockSignedPaths[0]).toMatch(/\.heic$/);
 });
 
-test('an older client that sends no size still works (the bucket enforces the cap on the PUT)', async () => {
-  expect((await POST(req({ contentType: 'audio/mpeg' }))).status).toBe(200);
+test('no declared size (or an empty file) → 400, no token minted: every browser leg sends the size', async () => {
+  expect((await POST(req({ contentType: 'audio/mpeg' }))).status).toBe(400);
+  expect((await POST(req({ contentType: 'audio/mpeg', size: 0 }))).status).toBe(400);
+  expect((await POST(req({ contentType: 'audio/mpeg', size: 'big' }))).status).toBe(400);
+  expect(mockSignedPaths).toEqual([]);
 });

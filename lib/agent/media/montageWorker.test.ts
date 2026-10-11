@@ -48,7 +48,7 @@ describe('work: one job, rendered under a lease', () => {
       result: { videoUrl: MASTER_URL, subtype: 'montage', via: 'agent-g', durationSec: 30 },
       exec: { attempt: 1, owner: null, leaseUntil: null },
     });
-    expect(f.store.writes.progress).toBe(1); // the 'stitch' leg, written under the lease
+    expect(f.store.writes.progress).toBe(2); // the 'stitch' leg and the 'qc' check, written under the lease
     expect(f.beating()).toBe(0);
     expect(trail(f)).toEqual(['run:ok:queued', 'run:ok:started', 'run:ok:delivered']);
   });
@@ -101,6 +101,81 @@ describe('work: one job, rendered under a lease', () => {
     expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'failed' });
     expect(f.store.rows.get(id)!.error).toMatch(/^invalid_request: /);
     expect(f.renders).toHaveLength(0);
+  });
+});
+
+describe('every clip of the manifest, before and after the render (owner, 2026-10-11)', () => {
+  test('a delivered job carries the per-clip QC evidence: every video seen at its place in the output', async () => {
+    const f = fake();
+    const id = await queued(f);
+    expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+    const qc = (f.store.rows.get(id)!.result as { qc: { clips: Array<Record<string, unknown>>; files: number; videos: number; ok: boolean; av: unknown } }).qc;
+    expect(qc).toMatchObject({ files: 3, videos: 2, ok: true, av: { videoSec: 30, audioSec: 30 } });
+    expect(qc.clips).toEqual([
+      expect.objectContaining({ index: 0, name: 'a.mp4', diff: 0, ok: true }),
+      expect.objectContaining({ index: 1, name: 'b.mp4', diff: 0, ok: true }),
+    ]);
+    // One read of the master for all clips, one per source (conformed to the master's frame).
+    expect(f.grabs.filter((g) => g.url === MASTER_URL)).toHaveLength(1);
+    expect(f.grabs.filter((g) => g.url !== MASTER_URL).map((g) => g.fit)).toEqual([true, true]);
+  });
+
+  test('a master that does not show one clip is FAILED (clip_missing), never completed, with the evidence on the row', async () => {
+    const f = fake({ omit: [1] });
+    const id = await queued(f, 7);
+    expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ ran: true, outcome: 'failed' });
+    const row = f.store.rows.get(id)!;
+    expect(row).toMatchObject({ status: 'failed', signedUrl: null });
+    expect(row.error).toMatch(/^clip_missing: clip 2 "b\.mp4" is not in the output at /);
+    const qc = (row.result as { qc: { clips: Array<{ index: number; ok: boolean; diff: number }>; ok: boolean } }).qc;
+    expect(qc.ok).toBe(false);
+    expect(qc.clips.map((c) => [c.index, c.ok])).toEqual([[0, true], [1, false]]);
+    expect(qc.clips[1]!.diff).toBeGreaterThan(12);
+    expect(balance(f)).toBe(0); // the priced path still pays back what it charged
+    expect(trail(f)).toContainEqual(expect.stringMatching(/^run:failed:qc: clip 2 "b\.mp4" is not in the output at /));
+  });
+
+  test('a clip that cannot be checked (its frame did not read) fails closed: not delivered', async () => {
+    const f = fake();
+    const id = await queued(f);
+    const grab = f.deps.grabFrames;
+    f.deps.grabFrames = async (url, t, o) => (url.endsWith('/b.mp4') ? null : grab(url, t, o));
+    await workMontageJob(f.deps, { jobId: id, worker: 'w1' });
+    expect(f.store.rows.get(id)).toMatchObject({ status: 'failed', signedUrl: null });
+    expect(f.store.rows.get(id)!.error).toMatch(/^qc_failed: clip 2 "b\.mp4" could not be checked/);
+  });
+
+  test('A/V: a soundtrack missing or ending away from the picture is not delivered', async () => {
+    for (const streams of [{ videoSec: 30, audioSec: null }, { videoSec: 30, audioSec: 29.5 }, null]) {
+      const f = fake({ streams });
+      const id = await queued(f);
+      await workMontageJob(f.deps, { jobId: id, worker: 'w1' });
+      expect(f.store.rows.get(id)).toMatchObject({ status: 'failed', signedUrl: null });
+      expect(f.store.rows.get(id)!.error).toMatch(/^qc_failed: /);
+    }
+    const f = fake({ streams: { videoSec: 30, audioSec: 30.1 } });
+    const id = await queued(f);
+    expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+  });
+
+  test('before rendering: a stored plan missing a clip, or a stored manifest that is not the signed one, is failed unrendered', async () => {
+    const cases: Array<(p: { request: { shots: Array<{ source: number }>; manifest: Array<{ name: string }> }; manifest: Array<{ name: string }> }) => unknown> = [
+      (p) => ({ ...p, request: { ...p.request, shots: p.request.shots.filter((s) => s.source === 0) } }),
+      (p) => ({ ...p, manifest: p.manifest.slice(1) }),
+      (p) => ({ ...p, manifest: p.manifest.map((m, i) => (i === 0 ? { ...m, name: 'x.mp4' } : m)) }),
+      (p) => ({ request: p.request }),
+      (p) => ({ ...p, request: { ...p.request, manifest: undefined } }),
+    ];
+    for (const change of cases) {
+      const f = fake();
+      const id = await queued(f);
+      const row = f.store.rows.get(id)!;
+      row.params = { ...row.params, _job: change(row.params._job as never) };
+      expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'failed' });
+      expect(f.store.rows.get(id)!).toMatchObject({ status: 'failed', signedUrl: null });
+      expect(f.store.rows.get(id)!.error).toMatch(/^manifest_invalid: /);
+      expect(f.renders).toHaveLength(0);
+    }
   });
 });
 

@@ -59,7 +59,7 @@ describe('the run card in the studio', () => {
     const retry = between('const retryAgentRun = useCallback(', '// The upload offer after a refused link');
     expect(retry).toContain('canRetry(card)');
     expect(retry).toContain('followAgentRun(id, r.runId)');
-    expect(between('const followAgentRun = useCallback(', 'const confirmAgentRun = useCallback(')).toContain('stopped: () => runFollowRef.current.get(id) !== runId');
+    expect(between('const followAgentRun = useCallback(', 'const confirmAgentRun = useCallback(')).toContain('stopped: () => !mountedRef.current || runFollowRef.current.get(id) !== runId');
   });
 
   test('the card is drawn under the reply and its results stay with it (not drawn twice by the generic players)', () => {

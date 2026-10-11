@@ -35,6 +35,11 @@ export interface FollowDeps {
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   onProgress: (pct: number | null, stage: string | null) => void;
+  /**
+   * Is the studio that follows still on screen? A follow whose page was replaced (a language switch mounts the studio
+   * afresh) ends quietly instead of reading the job for 25 more minutes on behalf of nothing: the new studio follows it.
+   */
+  alive?: () => boolean;
 }
 
 /** The `run` answer as a job's route reports it (an executor's JobView). */
@@ -95,15 +100,47 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
   }
 
   // ── follow it ──────────────────────────────────────────────────────────────────────────────────────────────────────
+  return followTask(deps, { ...spec, jobId }, { queued, readNow, neverFound: 'network' });
+}
+
+/** Where a follow starts: whether the job is known to exist, and whether its first read is due at once. */
+export interface FollowFrom {
+  /** The job was seen (queued, or read): a later "no such job" means it is gone. */
+  queued: boolean;
+  /** Read at once instead of after a poll interval (a replayed run that already ended, a card taken back). */
+  readNow?: boolean;
+  /**
+   * What a job never found in a few reads means: the run never got through (`network`, after a send that got no
+   * answer), or there is no such job for this user (`not_found`, for a card taken back after the page was replaced).
+   */
+  neverFound: 'network' | 'not_found';
+}
+
+/**
+ * Follow a job by its id until it is delivered or failed, reporting its progress, without sending anything. It is the
+ * second half of `sendAndFollow`, and on its own it is how the studio takes a running card back after its page was
+ * reloaded or replaced (a language switch): the job went on server-side, and its result lands in the card that asked.
+ */
+export async function followTask<R>(
+  deps: FollowDeps,
+  spec: Pick<FollowSpec<R>, 'jobId' | 'done' | 'refused' | 'lost'>,
+  from: FollowFrom,
+): Promise<R> {
+  const report = (v: { pct?: unknown; stage?: unknown }) =>
+    deps.onProgress(typeof v.pct === 'number' ? v.pct : null, typeof v.stage === 'string' ? v.stage : null);
+  let { queued } = from;
+  let readNow = !!from.readNow;
   const until = deps.now() + FOLLOW_MS;
   let unknown = 0;
   while (deps.now() < until) {
+    if (deps.alive && !deps.alive()) return spec.lost('network');
     if (readNow) readNow = false;
     else await deps.sleep(POLL_MS);
+    if (deps.alive && !deps.alive()) return spec.lost('network');
     let res: Response;
     let body: Record<string, unknown> | null;
     try {
-      res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(jobId)}`, { credentials: 'include', cache: 'no-store' });
+      res = await deps.fetch(`${TASKS_ROUTE}?id=${encodeURIComponent(spec.jobId)}`, { credentials: 'include', cache: 'no-store' });
       body = await readJson(res);
     } catch {
       continue; // offline for a moment: the job goes on
@@ -118,13 +155,19 @@ export async function sendAndFollow<R>(deps: FollowDeps, spec: FollowSpec<R>): P
     }
     if (res.status === 404 && body?.error === 'not_found' && typeof body.message === 'string') {
       // No such job: the run never got through (or this is not the user's). Give it a few reads, then say so.
-      if (queued || ++unknown >= 3) return spec.lost(queued ? 'not_found' : 'network');
+      if (queued || ++unknown >= 3) return spec.lost(queued ? 'not_found' : from.neverFound);
       continue;
     }
     if (res.status === 401 || res.status === 404) return spec.refused(res.status, body);
     // 429 or a 5xx: read again on the next tick.
   }
   return spec.lost('network');
+}
+
+/** When a task ended, in ms (its row's last write): a card taken back later stops its clock there, not on the reload. */
+export function taskEndedAt(t: TaskView): number | undefined {
+  const n = t.updatedAt ? Date.parse(t.updatedAt) : NaN;
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**

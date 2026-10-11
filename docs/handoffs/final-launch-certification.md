@@ -533,6 +533,26 @@ No merge, deploy, migration or paid call was made; Production data was only read
 | 22 services | Production history per service and the test that covers each (service audit §7). No service is PROVEN end to end: there is still no live run on the current code. Labels: 9 BLOCKED_OWNER, 8 BUILT_NOT_PROVEN, 3 PARTIAL, 2 MISSING (one change since 2026-10-09: video.editing BUILT_NOT_PROVEN → PARTIAL, for the Agent G Stop and MP4 PROVEN in the database) | as listed |
 | Preview A–G | One page for the owner: A–D in about 6 minutes (top of `docs/handoffs/2026-10-09-preview-run-sheet.md`), test clips and a 120 bpm track in `/mnt/project-files/reports/preview-test-media/`, and the read-only SQL Claude runs afterwards | waits on the owner (Y 20) |
 
+
+## AA. Agent G complete repair, 2026-10-11
+
+Asked by the owner 2026-10-11 05:19Z (P0 Master Task), resumed 06:31Z. Branch `claude/launch-certification-wmvitt`, draft
+PR #55; nothing merged or deployed, Production still serves `2817c9b` (`/api/version`, read 2026-10-11). Root causes:
+`docs/handoffs/agent-g-repair/root-cause-audit.md`; Georgian report: `docs/handoffs/agent-g-repair/final-report-ka.md`.
+
+| Area | Result | Label |
+|---|---|---|
+| Owner's bug (3 clips + 1 MP3 → one-video remix of clip 1) | 2+ videos never reach the one-video remix; a montage ask goes to Agent G (flag on) or the Montage editor with every file (flag off) | BUILT_NOT_PROVEN |
+| Attachments | Upload on select, `/api/upload/verify` checks the stored bytes, per-file progress and Ready / Failed / Retry, names and stored paths survive a reload | BUILT_NOT_PROVEN |
+| Montage integrity | Signed manifest checked at quote, run and worker; per-clip QC on real ffmpeg (present 0.01-0.05, swapped 52.8, threshold 12); `clip_missing` fails and refunds | BUILT_NOT_PROVEN (local real ffmpeg) |
+| Dictation | Timings per dictation, `?micstats=1` p50/p95; no device number yet | BUILT_NOT_PROVEN |
+| Live Voice | Sees the attached files, opens them in Montage, hands them to Agent G; a late answer reaches the renewed connection | BUILT_NOT_PROVEN |
+| Browser automation | None; text and voice now say so | BLOCKED (paid infra, owner) |
+| Regression | tsc 0; Jest 846 suites / 12,805 tests green; `next build` OK; Playwright on a production build: 294 of 302 passed, 7 skipped, 1 expected failure (`swarm-pipelines.spec.ts:30` expects the dev bypass and fails on every production build, cert §Z); no test deleted | PROVEN (local, mocked routes) |
+| Signed-in Preview E2E, iPhone Safari | Not run: the admin sign-in and the phone are the owner's hands | BLOCKED (owner) |
+
+Verdict for these fixes: NO-GO until the signed-in Preview and iPhone runs pass.
+
 ---
 
 PRODUCTION READY: NO

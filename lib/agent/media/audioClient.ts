@@ -7,7 +7,7 @@ import type { AudioQuote, AudioRights } from './audioExtract';
 import { audioCodeOf, type AudioChatCode } from './audioChat';
 import type { TaskView } from '@/lib/tasks/taskView';
 import type { RunApproval } from '@/lib/agent/approval';
-import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, type Fetch, type FollowDeps } from './jobFollow';
+import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, followTask, taskEndedAt, type Fetch, type FollowDeps } from './jobFollow';
 
 const ROUTE = '/api/agent/media/audio';
 
@@ -81,6 +81,20 @@ export function runAgentAudio(
     refused: (status, body) => ({ ok: false, code: audioCodeOf(status, body) }),
     lost: (why) => ({ ok: false, code: why }),
   });
+}
+
+/**
+ * Take a running audio extraction back after the page was reloaded or replaced (a language switch mounts the studio afresh):
+ * follow its job by id, nothing is sent again. `endedAt` is when the job ended, so the card's clock stops there.
+ */
+export function resumeAgentAudio(deps: FollowDeps, jobId: string): Promise<AudioClientRun & { endedAt?: number }> {
+  let endedAt: number | undefined;
+  return followTask<AudioClientRun>(deps, {
+    jobId,
+    done: (t) => { const r = done(t); if (r) endedAt = taskEndedAt(t); return r; },
+    refused: (status, body) => ({ ok: false, code: audioCodeOf(status, body) }),
+    lost: (why) => ({ ok: false, code: why }),
+  }, { queued: false, readNow: true, neverFound: 'not_found' }).then((r) => (endedAt ? { ...r, endedAt } : r));
 }
 
 /** Stop a running extraction. The run's own follow then reports it as cancelled. */

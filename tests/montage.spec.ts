@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 import { mkdirSync } from 'node:fs';
 
 /**
@@ -38,7 +39,8 @@ async function prepare(page: Page) {
     } catch { /* private mode */ }
   });
   let n = 0;
-  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `u/e2e-${++n}`, token: 't' }) }));
+  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `u/e2e-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }));
+  await mockStoredUpload(page);
   await page.route(/supabase\.co\/storage\/v1\/object\/upload\/sign/, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/e2e"}' }));
   await page.route('**/api/orchestrator/jobs*', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"jobs":[]}' }));
   // The one task route: the job tray's list and the export's own progress read (by its id) find nothing here.
