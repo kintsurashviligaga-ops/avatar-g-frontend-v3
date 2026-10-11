@@ -23,7 +23,7 @@ import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
 import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
-import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, type ClipVerdict } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, audioTiming, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, sourceContribution, type ClipVerdict, type QcOutcome } from './montageAsk';
 import { checkManifest, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
 
 /** How many sources the per-clip QC reads at once. */
@@ -191,6 +191,11 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
         av: { videoSec: av.videoSec, audioSec: av.audioSec },
         durationSec: qc.durationSec,
         ok: problems.length === 0,
+        outcome: (problems.length === 0 ? 'PASS' : 'FAIL') as QcOutcome,
+        // Provenance (Media Studio v2.0 §6): what each source fills in the master, from the rendered shots, and the
+        // two audio clocks (the track's offset, the master's timeline) the master was made with.
+        sources: sourceContribution(request),
+        audio: audioTiming(request),
       },
     };
     if (problems.length) {

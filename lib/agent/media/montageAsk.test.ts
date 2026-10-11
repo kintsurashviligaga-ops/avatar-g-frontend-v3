@@ -3,7 +3,7 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs, sourceContribution } from './montageAsk';
 import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
 import { planBeatCuts } from '@/lib/services/montage/beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC } from '@/lib/services/montage/montagePlan';
@@ -204,5 +204,33 @@ describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo +
       ],
     } as unknown as AgentMontageRequest;
     expect(clipCheckPoints(req).map((p) => [p.index, p.outT, p.srcT])).toEqual([[0, 1, 2], [1, 2 + STILL_QC_OFFSET_SEC, 0], [2, 6, 2]]);
+  });
+});
+
+describe('provenance from the render graph (Media Studio v2.0 §6)', () => {
+  const manifest = [
+    { index: 0, path: 'a', name: 'a.mp4', kind: 'video' as const, durationSec: 10 },
+    { index: 1, path: 's', name: 'song.mp3', kind: 'audio' as const, durationSec: 200 },
+    { index: 2, path: 'b', name: 'b.jpg', kind: 'image' as const, durationSec: 0 },
+  ];
+  const shot = (source: number, startSec: number, endSec: number, kind: 'video' | 'image' = 'video') =>
+    ({ url: `u${source}`, source, kind, startSec, endSec, muted: true, transition: 'cut' as const });
+  const request = {
+    shots: [shot(0, 1, 3), shot(2, 0, 2, 'image'), shot(0, 5, 7.5)],
+    aspect: '9:16' as const, musicUrl: 'u1', musicStartSec: 58, musicDuckDb: 0, musicOnly: true, manifest,
+  };
+
+  test('each used picture: its shots, its windows in the master and the source, its seconds of the master', () => {
+    expect(sourceContribution(request)).toEqual([
+      { index: 0, name: 'a.mp4', kind: 'video', shots: 2, outputSec: 4.5, windows: [
+        { outStartSec: 0, outEndSec: 2, srcStartSec: 1, srcEndSec: 3 },
+        { outStartSec: 4, outEndSec: 6.5, srcStartSec: 5, srcEndSec: 7.5 },
+      ] },
+      { index: 2, name: 'b.jpg', kind: 'image', shots: 1, outputSec: 2, windows: [{ outStartSec: 2, outEndSec: 4, srcStartSec: 0, srcEndSec: 2 }] },
+    ]);
+  });
+
+  test('the two audio clocks stay apart: the track from 0:58, laid from the first frame, for the master length', () => {
+    expect(audioTiming(request)).toEqual({ sourceStartSec: 58, timelineStartSec: 0, targetSec: 6.5, endPolicy: 'stop', sourceAudio: 'remove', replacementAudio: 'replace' });
   });
 });

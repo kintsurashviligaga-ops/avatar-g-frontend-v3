@@ -7,7 +7,7 @@ import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import { displaysPortrait } from '@/lib/video/probeBanner';
 import type { CutPlan } from '@/lib/services/montage/beatPlan';
 import type { MontageAspect, MontageShot } from '@/lib/services/montage/montagePlan';
-import { MAX_SHOTS, shotDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
+import { MAX_SHOTS, shotDuration, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
 import type { AgentMontageRequest, MontageManifestItem } from './montageManifest';
 
 /** One track plus at most MAX_SHOTS clips (a clip is used at least once, so more could never all appear). */
@@ -285,3 +285,69 @@ export function qcAvSync(d: StreamDurations | null, expectedSec: number): AvVerd
   }
   return { ok: problems.length === 0, problems, videoSec: d.videoSec, audioSec: d.audioSec };
 }
+
+// ── provenance: what each source really contributes, read from the render graph (Media Studio v2.0 §6) ─────────────
+
+/** One source's share of the master: every window of it the master shows, where, and for how long in total. */
+export interface SourceContribution {
+  index: number;
+  name: string;
+  kind: 'video' | 'image';
+  shots: number;
+  /** Seconds of the MASTER this source fills. Every used picture has more than 0, or the plan was refused. */
+  outputSec: number;
+  windows: Array<{ outStartSec: number; outEndSec: number; srcStartSec: number; srcEndSec: number }>;
+}
+
+/** The audio clocks of a montage, kept apart (Media Studio v2.0 §D): the track's own clock and the master's. */
+export interface AudioTiming {
+  /** Seconds into the ORIGINAL track that play at the master's first frame (the user's offset, exactly). */
+  sourceStartSec: number;
+  /** Where on the master's timeline the track starts. Agent G's montage lays it from the first frame. */
+  timelineStartSec: number;
+  /** How long the master is: the track must play from sourceStartSec for this long (the quote refused otherwise). */
+  targetSec: number;
+  /** What happens at the track's end: Agent G never loops or extends it; the quote refuses a track too short. */
+  endPolicy: 'stop';
+  /** The clips' own sound (Media Studio v2.0 sourceAudioPolicy): removed (music only), or kept with the track ducked under it. */
+  sourceAudio: 'remove' | 'preserve';
+  /** What the track does to it (replacementAudioPolicy): replaces it, or is mixed beneath it. */
+  replacementAudio: 'replace' | 'mix';
+}
+
+/**
+ * The source-contribution manifest of a signed request: built from the SAME shots the lane renders (outputTimeline),
+ * so it describes the render graph, not the plan's intentions. Sources with no shot are absent (the request's coverage
+ * check refused such a plan before it was signed).
+ */
+export function sourceContribution(request: AgentMontageRequest): SourceContribution[] {
+  const timeline = outputTimeline(request.shots);
+  const out: SourceContribution[] = [];
+  for (const item of request.manifest) {
+    if (item.kind === 'audio') continue;
+    const mine = timeline.filter((t) => t.source === item.index);
+    if (!mine.length) continue;
+    out.push({
+      index: item.index, name: item.name, kind: item.kind, shots: mine.length,
+      outputSec: r3(mine.reduce((sum, t) => sum + (t.outEndSec - t.outStartSec), 0)),
+      windows: mine.map((t) => ({ outStartSec: t.outStartSec, outEndSec: t.outEndSec, srcStartSec: t.srcStartSec, srcEndSec: t.srcEndSec })),
+    });
+  }
+  return out;
+}
+
+/** The audio clocks a signed request asks for. */
+export function audioTiming(request: AgentMontageRequest): AudioTiming {
+  return {
+    sourceStartSec: r3(request.musicStartSec ?? 0),
+    timelineStartSec: 0,
+    targetSec: r3(timelineDuration(request.shots)),
+    endPolicy: 'stop',
+    // montagePipeline: musicOnly → 'bed' (the clips' sound is dropped), otherwise 'under' (it stays, the track ducks).
+    sourceAudio: request.musicOnly ? 'remove' : 'preserve',
+    replacementAudio: request.musicOnly ? 'replace' : 'mix',
+  };
+}
+
+/** The QC outcome vocabulary (Media Studio v2.0 §6). Agent G's montage QC is all machine checks: PASS or FAIL. */
+export type QcOutcome = 'PASS' | 'PARTIAL' | 'FAIL' | 'UNVERIFIED';
