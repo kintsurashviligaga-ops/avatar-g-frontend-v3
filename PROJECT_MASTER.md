@@ -46,7 +46,7 @@ CURRENT STATUS: Certification: NOT production ready (docs/handoffs/final-launch-
           /api/health, /ka, /ru 200; no migration, no env change; rollback: Instant Rollback to 29e7d67 or revert 6c7dff4).
           2026-10-09 ~06:30Z engineering report + launch blocker matrix (owner, dependency, evidence, Definition of
           Done, fix order): docs/handoffs/2026-10-09-engineering-report.md. Verdict unchanged: NOT production ready.
-LAST SESSION: 2026-10-11 (Claude, branch claude/launch-certification-wmvitt, draft PR #55; Agent G complete repair, AGENT G COMPLETE REPAIR below; Production serves 2817c9b, PR #54 docs, unchanged)
+LAST SESSION: 2026-10-11 (Claude, branch claude/launch-certification-wmvitt; Agent G complete repair, AGENT G COMPLETE REPAIR below; PR #55 merged as bad4c89a on GG's verified tap „ახლავე" 11:23:15Z, Production serves bad4c89 since 11:27Z)
 LAST COMMIT: see `git log` on that branch (main = bc26fc66 = Production since 2026-10-10 20:28Z, PR #53 docs; before it
           c0297491, PR #50 merged 19:51:05Z; 6c7dff46, PR #52 auth hotfix, Production 2026-10-09 16:01Z; before it
           29e7d67b, PR #49 merged 2026-10-09 08:02Z on the owner's "Deploy":
@@ -324,6 +324,14 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           still BUILT_NOT_PROVEN. New bug in that run: „0.58 წამიდან" (a phone keyboard has no colon) was read as
           0.58 s, not 0:58; fixed in 93f37049 (two digits after a point or comma are m:ss; the card's plan step
           says „მუსიკა 0:58-დან"), BUILT_NOT_PROVEN until re-tested.
+          DEPLOYED 2026-10-11: GG tapped „ახლავე" on the deploy card (11:23:15Z, verified). PR #55 merged as bad4c89a
+          (head 53d973ea, PR CI and main CI + E2E green); Production serves bad4c89 (build 11:27:07Z). T6 checks
+          (anonymous GET + SELECT, 11:30–11:32Z): /api/health healthy, montage {"enabled":false}, /api/tasks 401,
+          run-migration 404, /ka/pricing 200; DB before and after equal (42 profiles / 24 users, 0 negative, balances
+          1,003,393, ledger 222 / 2,873, 0 duplicate debit refs, 0 active jobs); 0 × 5xx, 4xx only the known ones. No
+          flag, price, secret, migration or provider change; AGENT_G_MEDIA_EXEC stays off in Production (several videos
+          open the Montage editor). Signed-in Production use is BUILT_NOT_PROVEN until GG tries it. Rollback: revert
+          bad4c89a or Instant Rollback to the 2817c9b deployment; nothing to undo in the DB.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

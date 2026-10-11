@@ -225,13 +225,18 @@ DB სვეტი მიმაგრებებისთვის აღარ
 ## 14. PR, merge და deploy
 
 - PR #55 (draft, → main): commit-ები af676053 … 765c6236, 7af986d0 (მეორე რაუნდი) და 93f37049 („0.58" = 0:58).
-- Merge: **არა**.
-- Production deploy: **არა**.
-- Production უცვლელია (2817c9b).
+- GG-მა 11:23:15Z-ზე გადაწყვეტილების ბარათზე აირჩია „ახლავე" (დადასტურებული შეხება): merge და deploy.
+- Merge: **კი**, `bad4c89a` (ჩვეულებრივი merge, head `53d973ea`, force push არ ყოფილა). PR-ის CI (verify, preview-e2e) და `main`-ის CI + E2E მწვანეა.
+- Production deploy: **კი**. myavatar.ge ემსახურება `bad4c89`-ს (`/api/version` build 11:27:07Z, `/api/health` healthy).
+- Deploy-ის შემდეგ (**T6 Production**, შესვლის გარეშე, მხოლოდ GET და SELECT, 11:30–11:32Z): `/api/agent/media/montage` → `{"enabled":false}` (Agent G-ის მონტაჟი გამორთული რჩება); `/api/tasks` 401; `/api/admin/run-migration` 404; `/ka/pricing` 200. ბაზა merge-მდე (11:25Z) და შემდეგ (11:31Z) ერთნაირია: 42 profile / 24 auth user, 0 უარყოფითი ბალანსი, ბალანსების ჯამი 1,003,393, `credit_ledger` 222 / 2,873, 0 დუბლირებული debit ref, 0 აქტიური სამუშაო. Supabase-ის log-ები 11:00–11:33Z: 0 პასუხი ≥ 500; 4xx მხოლოდ ძველი (`generation_jobs` 400, არარსებული ცხრილების 404).
+- ფლაგი, ფასი, secret, მიგრაცია ან provider არ შეცვლილა (diff-ში ასეთი ფაილი არ არის).
+- Rollback, თუ დასჭირდება: `bad4c89a`-ის revert ან Vercel Instant Rollback `2817c9b`-ის deployment-ზე. ბაზაში გასაუქმებელი არაფერია: ახალი კოდი მხოლოდ არსებულ `chat_messages.metadata` სვეტში წერს.
 
 ## 15. GO / NO-GO
 
-**NO-GO** ამ შესწორებების Production-ში გასაშვებად, სანამ ავტორიზებული Preview და iPhone E2E არ ჩაივლის (§13, პუნქტები 1–4).
+GG-მა deploy 11:23:15Z-ზე დაამტკიცა და შესწორებები Production-შია (§14). რაც Preview-ზე დადასტურდა: 3 + 1 ფაილის ატვირთვა და მონტაჟი (PROVEN [Preview], 3 სამუშაო), iPhone-ის კადრები და წითელი Stop (PROVEN [iPhone, Preview]). Production-ში შესულ მომხმარებელზე Claude არ ამოწმებს (პროექტის წესი), ამიტომ Production-ში ეს ჯერ **BUILT_NOT_PROVEN**-ია, სანამ GG myavatar.ge-ზე არ სცდის.
+
+ჯერ დაუდასტურებელია: ხმით მონტაჟი, კარნახის p50/p95, ენის შეცვლა მონტაჟის დროს, History სხვა მოწყობილობაზე, „0.58" ხელახლა. Agent G-ის მონტაჟი Production-ში **გამორთულია** (`AGENT_G_MEDIA_EXEC`, GG-ის გადაწყვეტილება #5): myavatar.ge-ზე რამდენიმე ვიდეო Montage-ის რედაქტორს ხსნის, Agent G-ის ბარათს არა.
 
 კოდი, ერთეულის ტესტები, რეალური FFmpeg-ის QC და ბრაუზერის mock ტესტები მზადაა (§4).
 
