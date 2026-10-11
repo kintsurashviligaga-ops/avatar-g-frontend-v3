@@ -206,11 +206,18 @@ export interface CutInput {
   /** The track's length in seconds. */
   musicSec: number;
   grid: BeatGrid | null;
-  /** The length the user asked for; DEFAULT_TARGET_SEC when absent. */
+  /**
+   * The length the user ASKED for, in seconds; DEFAULT_TARGET_SEC when absent. Asked = binding (Media Studio v2.0 §D,
+   * owner 2026-10-11): the plan lasts exactly this long (to the output frame), or it is refused with the reason
+   * (music_too_short, footage_too_short, target_too_long). It is never silently shortened. With no length asked, the
+   * default is only a wish and shrinks to the music and the footage there are, as before.
+   */
   targetSec?: number;
   /**
-   * Where the user asked the music to start („მუსიკა 5 წამიდან დაიწყე"), in seconds into the track. The edit starts on
-   * the first beat at or after it, so the first cut still lands on a beat; with no beat grid, exactly there.
+   * Where the user asked the music to start („მუსიკა 0:58-დან დაიწყე"), in seconds into the track (the audio SOURCE
+   * offset). The master's first frame plays the track from EXACTLY there: the user's offset is never moved. When it
+   * falls between two beats, the first shot is longer by the lead-in to the next beat (`leadInSec`), so every later cut
+   * still lands on a beat.
    */
   musicFromSec?: number;
   maxShots: number;
@@ -242,10 +249,17 @@ export interface PlannedCut {
 export type CutProblem =
   /** These clips are shorter than the shortest shot this edit can cut (`minShotSec`, the beat unit's whole multiple). */
   | { kind: 'clip_too_short'; clips: number[]; minShotSec: number }
-  /** The music from `fromSec` lasts `musicSec`: less than the `neededSec` one shot per clip takes. */
-  | { kind: 'music_too_short'; clips: number; musicSec: number; fromSec: number; neededSec: number }
+  /**
+   * The music from `fromSec` lasts `musicSec`: less than the `neededSec` one shot per clip takes, or (with `targetSec`)
+   * less than the length the user asked for. The track is never looped or padded to hide it.
+   */
+  | { kind: 'music_too_short'; clips: number; musicSec: number; fromSec: number; neededSec: number; targetSec?: number }
   /** The length asked for (`targetSec`) is less than the `neededSec` one shot per clip takes. */
   | { kind: 'target_too_short'; clips: number; targetSec: number; neededSec: number }
+  /** The clips together (`footageSec`, each used once) are shorter than the length asked for (`targetSec`). */
+  | { kind: 'footage_too_short'; clips: number; footageSec: number; targetSec: number }
+  /** The length asked for is longer than one edit renders (`maxSec`). */
+  | { kind: 'target_too_long'; targetSec: number; maxSec: number }
   /** More clips than the renderer takes shots. */
   | { kind: 'too_many_clips'; clips: number; maxShots: number };
 
@@ -255,8 +269,10 @@ export interface CutPlan {
   /** Set when the plan failed because not every clip could get a shot. */
   problem?: CutProblem;
   cuts: PlannedCut[];
-  /** Where in the track the first frame lands: the first beat (at or after the asked start; 0 with no grid and no start). */
+  /** Where in the track the first frame lands: exactly the asked start; with none, the first beat (0 with no grid). */
   musicStartSec: number;
+  /** Seconds from the asked start to the first beat after it (added to the first shot); 0 when on a beat or no grid. */
+  leadInSec: number;
   totalSec: number;
   beatSynced: boolean;
   bpm: number | null;
@@ -276,7 +292,7 @@ const up1 = (n: number) => Math.ceil(n * 10 - 1e-6) / 10;
 
 function fail(error: string, grid: BeatGrid | null, problem?: CutProblem): CutPlan {
   return {
-    ok: false, error, ...(problem ? { problem } : {}), cuts: [], musicStartSec: 0, totalSec: 0, beatSynced: false, bpm: grid?.bpm ?? null,
+    ok: false, error, ...(problem ? { problem } : {}), cuts: [], musicStartSec: 0, leadInSec: 0, totalSec: 0, beatSynced: false, bpm: grid?.bpm ?? null,
     unitSec: grid?.periodSec ?? FALLBACK_UNIT_SEC, beatsPerShot: 0, unusedClips: [],
   };
 }
@@ -295,7 +311,12 @@ export function planBeatCuts(input: CutInput): CutPlan {
   const { grid } = input;
   const unit = grid && grid.periodSec > 0 ? grid.periodSec : FALLBACK_UNIT_SEC;
   const askedFrom = Number.isFinite(input.musicFromSec) && (input.musicFromSec ?? 0) > 0 ? input.musicFromSec! : 0;
-  const musicStartSec = musicStartOnBeat(grid, askedFrom);
+  // The user's offset is kept exactly; only an edit with no asked start begins on the track's first beat.
+  const musicStartSec = askedFrom > 0 ? askedFrom : musicStartOnBeat(grid, 0);
+  const frameSec = 1 / OUTPUT_FPS;
+  const rawLead = askedFrom > 0 && grid && grid.periodSec > 0 ? musicStartOnBeat(grid, askedFrom) - askedFrom : 0;
+  // A lead-in under half a frame cannot be seen or heard as off the beat: none.
+  const leadInSec = rawLead >= frameSec / 2 ? rawLead : 0;
   const still = (c: number): boolean => input.stills?.[c] === true;
   // A still's "length" is the longest shot it could be: it never runs out, and it holds one shot only (below).
   const durations = input.clipDurationsSec.map((d, c) => (still(c) ? input.maxShotSec : Number.isFinite(d) && d > 0 ? d - TAIL_GUARD_SEC : 0));
@@ -323,18 +344,32 @@ export function planBeatCuts(input: CutInput): CutPlan {
   // ── the music (from where it starts) must hold one shot per clip ─────────────────────────────────────────────────
   const footage = durations.reduce((s, d) => s + Math.max(0, d), 0);
   const music = Number.isFinite(input.musicSec) ? input.musicSec - musicStartSec : 0;
-  const musicProblem = (): CutProblem => ({ kind: 'music_too_short', clips: n, musicSec: r3(Math.max(0, music)), fromSec: r3(musicStartSec), neededSec });
+  const musicProblem = (): Extract<CutProblem, { kind: 'music_too_short' }> => ({ kind: 'music_too_short', clips: n, musicSec: r3(Math.max(0, music)), fromSec: r3(musicStartSec), neededSec });
   if (askedFrom > 0 && !(music > 0)) return fail(`the track ends before ${r3(askedFrom)}s`, grid, musicProblem());
   if (!(music > 0)) return fail('the track has no length', grid, musicProblem());
 
-  const asked = Number.isFinite(input.targetSec) && (input.targetSec ?? 0) > 0 ? input.targetSec! : DEFAULT_TARGET_SEC;
-  const target = Math.min(asked, music, footage, input.maxTotalSec);
+  const explicit = Number.isFinite(input.targetSec) && (input.targetSec ?? 0) > 0;
+  const asked = explicit ? input.targetSec! : DEFAULT_TARGET_SEC;
+  if (explicit) {
+    // An asked length is binding: every reason it cannot be met is said, none is hidden by a shorter master.
+    if (asked > input.maxTotalSec + 1e-6) {
+      return fail(`the length asked (${r3(asked)}s) is longer than one edit (${input.maxTotalSec}s)`, grid, { kind: 'target_too_long', targetSec: r3(asked), maxSec: input.maxTotalSec });
+    }
+    if (music + 1e-6 < asked) {
+      return fail(`the music from ${r3(musicStartSec)}s lasts ${r3(Math.max(0, music))}s, shorter than the ${r3(asked)}s asked`, grid, { ...musicProblem(), targetSec: r3(asked) });
+    }
+    if (footage + 1e-6 < asked) {
+      return fail(`the clips together last ${r3(footage)}s, shorter than the ${r3(asked)}s asked`, grid, { kind: 'footage_too_short', clips: n, footageSec: r3(footage), targetSec: r3(asked) });
+    }
+  }
+  const target = explicit ? asked : Math.min(asked, music, footage, input.maxTotalSec);
 
   const wantSec = Math.max(MIN_CUT_SEC, target / Math.max(1, input.maxShots));
   const k = BEATS_PER_SHOT.find((b) => b >= minBeats && b * unit >= wantSec - 1e-9 && b <= maxBeats)
     ?? Math.min(maxBeats, Math.max(minBeats, Math.ceil(wantSec / unit)));
 
-  let budget = Math.floor((target + 1e-6) / unit);
+  // Whole beats after the lead-in (the lead-in rides on the first shot).
+  let budget = Math.floor((target - leadInSec + 1e-6) / unit);
   if (budget < n * minBeats) {
     // Name what is short: the music (from its start), or the length the user asked for. (The footage cannot be: every
     // clip holds a shot, see above; nor can the renderer's ceiling, which is many shots long.)
@@ -381,13 +416,35 @@ export function planBeatCuts(input: CutInput): CutPlan {
   // Each shot's length comes from where its cut falls in the MASTER, snapped to the output frame grid: the stitch
   // resamples every shot to OUTPUT_FPS, so lengths of raw beats would each round by up to half a frame and the cuts
   // would drift off the beat as they add up. Snapping the cumulative positions keeps every cut within half a frame.
+  // A cut after b beats sits at leadInSec + b·unit (the first shot starts at 0 and carries the lead-in).
   const order = durations.flatMap((_, c) => shotsOf[c]!.map((beats) => ({ c, beats })));
   const lens: number[] = [];
   let beatsSoFar = 0;
   for (const { beats } of order) {
-    const t0 = Math.round(beatsSoFar * unit * OUTPUT_FPS);
+    const t0 = beatsSoFar === 0 ? 0 : Math.round((leadInSec + beatsSoFar * unit) * OUTPUT_FPS);
     beatsSoFar += beats;
-    lens.push((Math.round(beatsSoFar * unit * OUTPUT_FPS) - t0) / OUTPUT_FPS);
+    lens.push((Math.round((leadInSec + beatsSoFar * unit) * OUTPUT_FPS) - t0) / OUTPUT_FPS);
+  }
+  if (explicit) {
+    // An asked length is met to the frame: what the whole beats leave over (less than a shot) is added to the last
+    // shots, last first, within each clip's footage and the renderer's longest shot. Every inner cut stays on its
+    // beat; only the master's end moves, to where the user asked it to be.
+    const want = Math.round(target * OUTPUT_FPS);
+    let rem = want - Math.round(lens.reduce((s, len) => s + len, 0) * OUTPUT_FPS);
+    const usedOf = durations.map((_, c) => order.reduce((s, o, i) => (o.c === c ? s + lens[i]! : s), 0));
+    for (let i = order.length - 1; i >= 0 && rem > 0; i -= 1) {
+      const c = order[i]!.c;
+      const roomClip = still(c) ? Number.POSITIVE_INFINITY : Math.floor((durations[c]! - usedOf[c]! + 1e-6) * OUTPUT_FPS);
+      const roomShot = Math.floor((input.maxShotSec - frameSec - lens[i]! + 1e-6) * OUTPUT_FPS);
+      const add = Math.max(0, Math.min(rem, roomClip, roomShot));
+      if (!add) continue;
+      lens[i] = (Math.round(lens[i]! * OUTPUT_FPS) + add) / OUTPUT_FPS;
+      usedOf[c] = usedOf[c]! + add / OUTPUT_FPS;
+      rem -= add;
+    }
+    if (rem > 0) {
+      return fail(`the clips cannot fill the ${r3(target)}s asked within ${input.maxShots} shots`, grid, { kind: 'footage_too_short', clips: n, footageSec: r3(footage), targetSec: r3(target) });
+    }
   }
 
   const cuts: PlannedCut[] = [];
@@ -417,6 +474,7 @@ export function planBeatCuts(input: CutInput): CutPlan {
     ok: true,
     cuts,
     musicStartSec: r3(musicStartSec),
+    leadInSec: r3(leadInSec),
     totalSec,
     beatSynced: Boolean(grid),
     bpm: grid?.bpm ?? null,

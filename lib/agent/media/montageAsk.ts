@@ -37,7 +37,7 @@ export function isStillProbe(p: Pick<BannerProbe, 'hasVideo' | 'hasAudio' | 'vid
  * Sort probed attachments: a video stream is a clip, a photo is a still shot, sound without a picture is the track.
  * Exactly one track, and at least one video (a montage of photos only is a slideshow, not this edit).
  */
-export function sortInputs(probes: ReadonlyArray<BannerProbe | null>): InputSort {
+export function sortInputs(probes: ReadonlyArray<BannerProbe | null>, maxClips: number = MAX_CLIPS): InputSort {
   const unreadable = probes.flatMap((p, i) => (!p || (!p.hasVideo && !p.hasAudio) || (!(p.durationSec > 0) && !isStillProbe(p)) ? [i] : []));
   if (unreadable.length) return { ok: false, error: 'unreadable', files: unreadable };
   const clips = probes.flatMap((p, i) => (p!.hasVideo ? [i] : []));
@@ -46,7 +46,7 @@ export function sortInputs(probes: ReadonlyArray<BannerProbe | null>): InputSort
   if (clips.length === stills.length) return { ok: false, error: 'no_clip' };
   if (!tracks.length) return { ok: false, error: 'no_track' };
   if (tracks.length > 1) return { ok: false, error: 'several_tracks', files: tracks };
-  if (clips.length > MAX_CLIPS) return { ok: false, error: 'too_many_clips' };
+  if (clips.length > maxClips) return { ok: false, error: 'too_many_clips' };
   return { ok: true, clips, stills, track: tracks[0]! };
 }
 

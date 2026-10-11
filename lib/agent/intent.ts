@@ -34,6 +34,7 @@ import { audioExtractAsk, wantsAudioFile } from '@/lib/agent/media/audioChat';
 import { withoutLinks } from '@/lib/agent/media/audioSource';
 import { mineEdits } from '@/lib/agent/media/editWords';
 import { hasPlanParams, mineParams } from './params';
+import { parseSelection } from './media/sourceSelect';
 import type {
   ActTarget, AgentIntent, AttachmentKind, CapabilityId, ControlOp, EditOp, IntentParams, Lang, MissingInput,
 } from './contracts';
@@ -240,8 +241,9 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   if (audio) return act('agent.audio-extract', audio.source === 'link' ? 'link' : 'attachment');
   if (wantsAudioFile(withoutLinks(text))) return act('agent.audio-extract', 'new', {}, ['source']);
 
-  // 5) A change to the montage plan on screen: a new frame shape, length or music start, and nothing new asked for.
-  if (input.pending?.capability === 'agent.montage' && !kinds.length && hasPlanParams(params) && words(text).length <= 10
+  // 5) A change to the montage plan on screen: a new frame shape, length, music start or source selection („მარტო ბოლო
+  //    შვიდი", lib/agent/media/sourceSelect), and nothing new asked for. The same files are quoted again.
+  if (input.pending?.capability === 'agent.montage' && !kinds.length && (hasPlanParams(params) || parseSelection(text) !== null) && words(text).length <= 10
     && !NEW_THING.test(text) && !routeAgentIntent(text) && !detectStudioIntent(text)) {
     return act('agent.montage', 'pending', params);
   }

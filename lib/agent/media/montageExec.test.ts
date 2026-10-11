@@ -104,7 +104,7 @@ describe('quote', () => {
       const f = ownerFiles();
       f.deps.analyzeTrack = async () => ({ probe: { ...TRACK, durationSec: 30 }, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0.2, confidence: 0.6 } });
       const q = await quoteMontage(f.deps, { userId: USER, files: OWNER, musicFromSec: 28.9 });
-      expect(q).toMatchObject({ ok: false, error: 'music_too_short', files: [3], detail: { clips: 3, musicSec: 0.8, fromSec: 29.2, neededSec: 1.5 } });
+      expect(q).toMatchObject({ ok: false, error: 'music_too_short', files: [3], detail: { clips: 3, musicSec: 1.1, fromSec: 28.9, neededSec: 1.5 } });
     });
 
     test('a length asked for that cannot hold one shot per clip: refused, naming every clip', async () => {
@@ -313,17 +313,87 @@ describe('when an edit has a price (the path a priced service takes)', () => {
   });
 });
 
+describe('source selection (Media Studio v2.0 §C, E2E-22): an excluded file is in no shot and no signed request', () => {
+  const SEVEN = Array.from({ length: 7 }, (_, i) => `omni-uploads/${USER}/v${i + 1}.mp4`);
+  const SONG = `omni-uploads/${USER}/song.mp3`;
+  const nine = () => fake({ files: Object.fromEntries([...SEVEN.map((f) => [f, clip(12)]), [SONG, TRACK]]) });
+
+  test('„მარტო ბოლო ხუთი" of 7 clips + a song: clips 3–7 and the song are quoted; 1 and 2 are named as left out', async () => {
+    const f = nine();
+    const files = [...SEVEN.slice(0, 3), SONG, ...SEVEN.slice(3)];
+    const q = await quoteMontage(f.deps, { userId: USER, files, prompt: 'დაამონტაჟე მუსიკაზე, მარტო ბოლო ხუთი' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.selection).toEqual({ sent: 8, used: [2, 3, 4, 5, 6, 7], excluded: [0, 1], excludedNames: ['v1.mp4', 'v2.mp4'], phrase: expect.any(String) });
+    expect(q.quote.manifest.map((m) => m.path)).toEqual([SEVEN[2], SONG, SEVEN[3], SEVEN[4], SEVEN[5], SEVEN[6]]);
+    expect(q.quote.clips).toBe(5);
+    const urls = new Set(q.request.shots.map((s) => s.url));
+    for (const gone of SEVEN.slice(0, 2)) expect([...urls].some((u) => u.includes(gone))).toBe(false);
+    expect(JSON.stringify(q.request)).not.toContain('v1.mp4');
+    expect(JSON.stringify(q.request)).not.toContain('v2.mp4');
+    expect(f.audits.at(-1)).toMatchObject({ outcome: 'ok', detail: 'selection: used 6 of 8, excluded 1,2' });
+    // The run takes exactly that signed request: the excluded files cannot be added back without breaking the signature.
+    const back = { ...q.request, shots: [...q.request.shots, { ...q.request.shots[0]!, url: SEVEN[0]!, source: 0 }] };
+    expect(await enqueueMontageJob(f.deps, { userId: USER, request: back, token: q.token })).toMatchObject({ ok: false });
+  });
+
+  test('a later line wins: „გარდა მესამისა" then „მარტო ბოლო ორი"', async () => {
+    const q = await quoteMontage(nine().deps, { userId: USER, files: [...SEVEN.slice(0, 4), SONG], prompt: 'cut these to the music, except the third\nმარტო ბოლო ორი' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.selection).toMatchObject({ used: [2, 3, 4], excluded: [0, 1] });
+  });
+
+  test('a selection naming a clip that is not there is refused with the numbers; nothing is left out on its own', async () => {
+    const f = nine();
+    const q = await quoteMontage(f.deps, { userId: USER, files: [...SEVEN.slice(0, 5), SONG], prompt: 'მარტო ბოლო შვიდი' });
+    expect(q).toMatchObject({ ok: false, error: 'selection_invalid', detail: { pictures: 5, asked: [7] } });
+    expect(f.audits).toEqual([expect.objectContaining({ phase: 'quote', outcome: 'refused', detail: 'selection_invalid' })]);
+  });
+
+  test('a refusal after a selection names the files as they were sent', async () => {
+    const f = fake({ files: { [SEVEN[0]!]: clip(12), [SEVEN[1]!]: clip(0.3), [SEVEN[2]!]: clip(12), [SONG]: TRACK } });
+    const q = await quoteMontage(f.deps, { userId: USER, files: [SEVEN[0], SEVEN[1], SEVEN[2], SONG], prompt: 'except the first' });
+    expect(q).toMatchObject({ ok: false, error: 'clip_too_short', files: [1] });
+  });
+});
+
+describe('an asked length is binding (Media Studio v2.0 §D, E2E-23)', () => {
+  test('0:58 + 70 s with a track that ends at 2:00 is refused with the numbers; never looped, never shortened', async () => {
+    const f = fake({ files: { [FILES[0]!]: clip(60), [FILES[1]!]: clip(60), [FILES[2]!]: { ...TRACK, durationSec: 120 } } });
+    f.deps.analyzeTrack = async () => ({ probe: { ...TRACK, durationSec: 120 }, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0.2, confidence: 0.6 } });
+    const q = await quoteMontage(f.deps, { userId: USER, files: FILES, prompt: 'ჯამში 70 წამი გააკეთე, სიმღერა 58-ე წამიდან დაიწყე' });
+    expect(q).toMatchObject({ ok: false, error: 'music_too_short', files: [2], detail: { fromSec: 58, musicSec: 62, targetSec: 70 } });
+    expect(f.renders).toHaveLength(0);
+    expect(f.reserves).toHaveLength(0);
+  });
+
+  test('0:58 + 70 s with enough track: the plan is exactly 70 s from exactly 0:58', async () => {
+    const f = fake({ files: { [FILES[0]!]: clip(60), [FILES[1]!]: clip(60), [FILES[2]!]: { ...TRACK, durationSec: 200 } } });
+    f.deps.analyzeTrack = async () => ({ probe: { ...TRACK, durationSec: 200 }, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0.2, confidence: 0.6 } });
+    const q = await quoteMontage(f.deps, { userId: USER, files: FILES, prompt: 'ჯამში 70 წამი გააკეთე, სიმღერა 58-ე წამიდან დაიწყე' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.totalSec).toBe(70);
+    expect(q.quote.musicStartSec).toBe(58);
+    expect(q.request.musicStartSec).toBe(58);
+  });
+
+  test('more than one edit renders, or more than the clips hold: refused by name', async () => {
+    expect(await quoteMontage(fake().deps, { userId: USER, files: FILES, targetSec: 400 })).toMatchObject({ ok: false, error: 'target_too_long', detail: { targetSec: 400, maxSec: 300 } });
+    const f = fake({ files: { [FILES[0]!]: clip(10), [FILES[1]!]: clip(10), [FILES[2]!]: TRACK } });
+    expect(await quoteMontage(f.deps, { userId: USER, files: FILES, targetSec: 60 })).toMatchObject({ ok: false, error: 'footage_too_short', files: [0, 1], detail: { clips: 2, targetSec: 60 } });
+  });
+});
+
 describe('the user\'s words set the length and the music start (Agent G PART 1)', () => {
-  test('„მუსიკა 5 წამიდან დაიწყე": the plan and the signed request start on the first beat after 5 s', async () => {
+  test('„მუსიკა 5 წამიდან დაიწყე": the plan and the signed request start at exactly 5 s (the user offset is never moved)', async () => {
     const q = await quoted(fake(), { prompt: 'ამ ვიდეოებიდან კლიპი გამიკეთე, მუსიკა 5 წამიდან დაიწყე' });
-    expect(q.quote.musicStartSec).toBe(5.2);
-    expect(q.request.musicStartSec).toBe(5.2);
+    expect(q.quote.musicStartSec).toBe(5);
+    expect(q.request.musicStartSec).toBe(5);
   });
 
   test('„20 წამიანი" sets the length; an explicit number wins over the words', async () => {
     expect((await quoted(fake(), { prompt: 'cut these to the song, 20-second reel' })).quote.totalSec).toBeLessThanOrEqual(20);
     expect((await quoted(fake(), { prompt: 'cut these to the song, 20-second reel', targetSec: 12 })).quote.totalSec).toBeLessThanOrEqual(12);
-    expect((await quoted(fake(), { musicFromSec: 10 })).quote.musicStartSec).toBe(10.2);
+    expect((await quoted(fake(), { musicFromSec: 10 })).quote.musicStartSec).toBe(10);
   });
 
   test('a per-shot length is not the length of the edit', async () => {
@@ -334,7 +404,7 @@ describe('the user\'s words set the length and the music start (Agent G PART 1)'
     const q = await quoted(fake(), { prompt: 'cut these to the song for a reel 9:16, 20-second\nmake it 16:9\nმუსიკა 5 წამიდან დაიწყე' });
     expect(q.quote.aspect).toBe('16:9');
     expect(q.quote.totalSec).toBeLessThanOrEqual(20);
-    expect(q.quote.musicStartSec).toBe(5.2);
+    expect(q.quote.musicStartSec).toBe(5);
     const back = await quoted(fake(), { prompt: 'cut these to the song 16:9\n9:16' });
     expect(back.quote.aspect).toBe('9:16');
   });

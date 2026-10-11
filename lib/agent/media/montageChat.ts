@@ -137,20 +137,28 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     ? ' ' + (lang === 'en' ? `The track starts at ${clockOf(q.musicStartSec)}.` : lang === 'ru' ? `Трек начинается с ${clockOf(q.musicStartSec)}.` : `მუსიკა იწყება ${clockOf(q.musicStartSec)}-დან.`)
     : '';
   // Every file, in the user's order, as the quote fixed it (the manifest): every clip is in the edit, or there is no plan.
-  const files = q.manifest?.length ? `\n${manifestText(q.manifest, lang, names)}` : '';
+  const files = q.manifest?.length ? `\n${manifestText(q.manifest, lang, names, q.selection?.used)}` : '';
+  // The files the user's words left out („მარტო ბოლო შვიდი"): named, so nothing is dropped without being said.
+  const left = q.selection?.excluded.length
+    ? '\n' + (lang === 'en'
+      ? `Left out as you asked (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`
+      : lang === 'ru'
+        ? `Не использую по вашей просьбе (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`
+        : `შენი თხოვნით არ ვიყენებ (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`)
+    : '';
   const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${files}\n${engine} ${price} ${go}`;
+  return `${found}\n${plan}${from}${files}${left}\n${engine} ${price} ${go}`;
 }
 
 /**
  * The quote's files, in the user's order: number, name, video or music, length. „Every clip is used" closes it: the
  * plan gives each video at least one shot, in this order, or it is refused (clip_too_short, music_too_short, …).
  */
-export function manifestText(manifest: readonly MontageManifestItem[], locale: string, names?: string[]): string {
+export function manifestText(manifest: readonly MontageManifestItem[], locale: string, names?: string[], sentPos?: readonly number[]): string {
   const lang = pick(locale);
   const kind = (k: MontageManifestItem['kind']) => (k === 'video'
     ? (lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო')
@@ -160,7 +168,8 @@ export function manifestText(manifest: readonly MontageManifestItem[], locale: s
   const unit = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
   // A photo has no length of its own (its shot sets it): no „0 s" after it.
   const list = manifest
-    .map((m) => `${m.index + 1} ${quoted(lang, m.name || names?.[m.index] || `${m.index + 1}`)} ${kind(m.kind)}${m.kind === 'image' ? '' : ` ${sec(m.durationSec)} ${unit}`}`)
+    // `sentPos`: after a source selection the manifest holds only the used files; they keep the numbers they were sent with.
+    .map((m) => `${(sentPos?.[m.index] ?? m.index) + 1} ${quoted(lang, m.name || names?.[m.index] || `${m.index + 1}`)} ${kind(m.kind)}${m.kind === 'image' ? '' : ` ${sec(m.durationSec)} ${unit}`}`)
     .join(' · ');
   const n = manifest.length;
   const photos = manifest.some((m) => m.kind === 'image');
@@ -220,6 +229,9 @@ const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
   clip_too_short: { ka: '{f} ერთი კადრისთვისაც მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: არც ერთ კლიპს არ გამოვტოვებ. მიამაგრე უფრო გრძელი კლიპი, ან ამოიღე {f} და თავიდან მთხოვე.', en: '{f} is too short for even one shot, so I am not starting the edit: I will not leave a clip out. Attach a longer clip, or remove {f} and ask again.', ru: '{f} — короче даже одного кадра, поэтому монтаж не начинаю: ни один клип я не пропущу. Прикрепите клип подлиннее или уберите {f} и попросите снова.' },
   music_too_short: { ka: 'მუსიკა ({f}) ძალიან მოკლეა, რომ ყველა კლიპს თითო კადრი მაინც ერგოს, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. დაიწყე მუსიკა უფრო ადრე, მიამაგრე უფრო გრძელი მუსიკა, ან გამოიყენე ნაკლები კლიპი.', en: 'The music ({f}) is too short to give every clip one shot, so I am not starting the edit: I will not leave a clip out. Start the music earlier, attach a longer track, or use fewer clips.', ru: 'Музыка ({f}) слишком короткая, чтобы каждому клипу досталось хотя бы по кадру, поэтому монтаж не начинаю: ни один клип я не пропущу. Начните музыку раньше, прикрепите трек подлиннее или используйте меньше клипов.' },
   target_too_short: { ka: 'ამ სიგრძეში ყველა კლიპი ({f}) ვერ ეტევა, ამიტომ მონტაჟს არ ვიწყებ: კლიპს არ გამოვტოვებ. მთხოვე უფრო გრძელი მონტაჟი, ან გამოიყენე ნაკლები კლიპი.', en: 'Not every clip ({f}) fits in the length you asked for, so I am not starting the edit: I will not leave a clip out. Ask for a longer edit, or use fewer clips.', ru: 'В заданную длину помещаются не все клипы ({f}), поэтому монтаж не начинаю: ни один клип я не пропущу. Попросите монтаж подлиннее или используйте меньше клипов.' },
+  footage_too_short: { ka: 'კლიპები ერთად ({f}) შენს მიერ თხოვნილ სიგრძეზე მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: კადრებს არ გავიმეორებ და მონტაჟს ჩუმად არ შევამოკლებ. დაამატე კლიპები, ან მთხოვე უფრო მოკლე მონტაჟი.', en: 'Your clips ({f}) together are shorter than the length you asked for, so I am not starting the edit: I will not repeat shots or quietly make it shorter. Add clips, or ask for a shorter edit.', ru: 'Ваши клипы ({f}) вместе короче заданной длины, поэтому монтаж не начинаю: повторять кадры или молча укорачивать я не буду. Добавьте клипы или попросите монтаж короче.' },
+  selection_invalid: { ka: 'შენს სიტყვებში დასახელებული ვიდეო არ არის მიმაგრებულ ფაილებში, ამიტომ არაფერი დამიწყია. თქვი ზუსტად, რომელი კლიპები გამოვიყენო.', en: 'Your words name a clip that is not among the attached files, so I started nothing. Say exactly which clips to use.', ru: 'В ваших словах указан клип, которого нет среди файлов, поэтому я ничего не начал. Скажите точно, какие клипы использовать.' },
+  target_too_long: { ka: 'ერთი მონტაჟი მაქსიმუმ 5 წუთია. მთხოვე უფრო მოკლე.', en: 'One edit is at most 5 minutes. Ask for a shorter one.', ru: 'Один монтаж — не длиннее 5 минут. Попросите покороче.' },
   manifest_invalid: { ka: 'გეგმაში აღარ ჩანს ყველა ფაილი, რაც გამომიგზავნე, ამიტომ არ დავიწყე. გამომიგზავნე ფაილები თავიდან.', en: 'The plan no longer lists every file you sent, so I did not start it. Send the files again.', ru: 'В плане больше нет всех отправленных файлов, поэтому я не начал. Отправьте файлы снова.' },
   clip_missing: { ka: 'მზა მონტაჟში ყველა შენი კლიპი არ ჩანდა, ამიტომ არ გაჩვენებ. არაფერი ჩამოგეჭრა. მთხოვე თავიდან.', en: 'The finished edit did not show every clip you sent, so I am not delivering it. Nothing was charged. Ask me again.', ru: 'В готовом монтаже видны не все ваши клипы, поэтому я его не отдаю. Ничего не списано. Попросите снова.' },
   not_configured: { ka: 'მონტაჟი ამ სერვერზე ჯერ არ არის ჩართული.', en: 'Montage is not set up on this server yet.', ru: 'Монтаж на этом сервере ещё не настроен.' },
@@ -271,6 +283,39 @@ function refusalWithNumbers(code: string, lang: Lang, f: string, d: MontageRefus
       : lang === 'ru'
         ? `${each} — короче самого короткого кадра (${min}), поэтому монтаж не начинаю: ни один клип я не пропущу. Прикрепите клип не короче ${min} или уберите ${f} и попросите снова.`
         : `${each} უმოკლეს კადრზეც (${min}) მოკლეა, ამიტომ მონტაჟს არ ვიწყებ: არც ერთ კლიპს არ გამოვტოვებ. მიამაგრე მინიმუმ ${min} კლიპი, ან ამოიღე ${f} და თავიდან მთხოვე.`;
+  }
+  if (code === 'music_too_short' && d.targetSec && d.musicSec !== undefined) {
+    // An asked length the track cannot hold from the asked start: say until when it must play. Never looped or cut.
+    const from = clockOf(d.fromSec ?? 0);
+    const until = clockOf((d.fromSec ?? 0) + d.targetSec);
+    const [have, want] = [s(d.musicSec), s(d.targetSec)];
+    return lang === 'en'
+      ? `${f} from ${from} lasts only ${have}; ${want} needs it to play until ${until}, so I am not starting the edit: I will not loop the song or quietly make the edit shorter. Start the music earlier, attach a longer track, or ask for a shorter edit.`
+      : lang === 'ru'
+        ? `${f} с ${from} длится всего ${have}; для ${want} он должен звучать до ${until}, поэтому монтаж не начинаю: зацикливать песню или молча укорачивать монтаж я не буду. Начните музыку раньше, прикрепите трек подлиннее или попросите монтаж короче.`
+        : `${f} ${from}-დან მხოლოდ ${have} გრძელდება; ${want}-ისთვის ${until}-მდე უნდა ჟღერდეს, ამიტომ მონტაჟს არ ვიწყებ: სიმღერას არ გავიმეორებ და მონტაჟს ჩუმად არ შევამოკლებ. დაიწყე მუსიკა უფრო ადრე, მიამაგრე უფრო გრძელი მუსიკა, ან მთხოვე უფრო მოკლე მონტაჟი.`;
+  }
+  if (code === 'footage_too_short' && d.targetSec && d.footageSec !== undefined) {
+    const [have, want] = [s(d.footageSec), s(d.targetSec)];
+    return lang === 'en'
+      ? `Your clips (${f}) last ${have} together, each used once; ${want} needs more, so I am not starting the edit: I will not repeat shots or quietly make it shorter. Add clips, or ask for ${have} or less.`
+      : lang === 'ru'
+        ? `Ваши клипы (${f}) вместе длятся ${have}, каждый используется один раз; для ${want} этого мало, поэтому монтаж не начинаю: повторять кадры или молча укорачивать я не буду. Добавьте клипы или попросите не больше ${have}.`
+        : `შენი კლიპები (${f}) ერთად ${have} გრძელდება, თითო ერთხელ; ${want}-ისთვის ეს არ კმარა, ამიტომ მონტაჟს არ ვიწყებ: კადრებს არ გავიმეორებ და მონტაჟს ჩუმად არ შევამოკლებ. დაამატე კლიპები, ან მთხოვე მაქსიმუმ ${have}.`;
+  }
+  if (code === 'selection_invalid' && d.pictures !== undefined && d.asked?.length) {
+    const named = d.asked.join(', ');
+    return lang === 'en'
+      ? `You named ${named}, but ${d.pictures} clip${d.pictures === 1 ? ' is' : 's are'} attached, so I started nothing and left nothing out on my own. Say which of the ${d.pictures} to use.`
+      : lang === 'ru'
+        ? `Вы назвали ${named}, а прикреплено клипов: ${d.pictures}, поэтому я ничего не начал и сам ничего не убрал. Скажите, какие из ${d.pictures} использовать.`
+        : `დაასახელე ${named}, მიმაგრებულია კი ${d.pictures} კლიპი, ამიტომ არაფერი დამიწყია და თავისით არაფერი ამომიღია. მითხარი, ${d.pictures}-დან რომელი გამოვიყენო.`;
+  }
+  if (code === 'target_too_long' && d.targetSec && d.maxSec) {
+    const [want, max] = [s(d.targetSec), s(d.maxSec)];
+    return lang === 'en' ? `One edit is at most ${max}; you asked for ${want}. Ask for ${max} or less.`
+      : lang === 'ru' ? `Один монтаж — не длиннее ${max}; вы просили ${want}. Попросите не больше ${max}.`
+        : `ერთი მონტაჟი მაქსიმუმ ${max}-ია; შენ ${want} ითხოვე. მთხოვე მაქსიმუმ ${max}.`;
   }
   if (code === 'music_too_short' && d.neededSec && d.clips && d.musicSec !== undefined) {
     const from = (d.fromSec ?? 0) >= 1 ? clockOf(d.fromSec!) : null;

@@ -118,7 +118,9 @@ describe('planBeatCuts lays the clips on the beat', () => {
     const plan = planBeatCuts({ clipDurationsSec: [40, 25, 33, 18], musicSec: 240, grid: g, targetSec: 90, ...LIMITS });
     expect(plan.ok).toBe(true);
     let beats = 0;
-    plan.cuts.forEach((c, i) => {
+    // The master's own end is where the user asked it to be (90 s, below); every cut before it is on a beat.
+    expect(plan.totalSec).toBe(90);
+    plan.cuts.slice(0, -1).forEach((c, i) => {
       beats += c.beats;
       const at = cutPositions(plan)[i]!;
       expect(Math.abs(at * OUTPUT_FPS - Math.round(at * OUTPUT_FPS))).toBeLessThan(0.02); // on a frame (3-decimal rounding)
@@ -148,7 +150,7 @@ describe('planBeatCuts lays the clips on the beat', () => {
   test('the edit is never longer than the footage, the music, or the length asked for', () => {
     expect(planBeatCuts({ clipDurationsSec: [4, 4], musicSec: 200, grid: G120, ...LIMITS }).totalSec).toBeLessThanOrEqual(8);
     expect(planBeatCuts({ clipDurationsSec: [60, 60], musicSec: 12.2, grid: G120, ...LIMITS }).totalSec).toBeLessThanOrEqual(12);
-    expect(planBeatCuts({ clipDurationsSec: [60, 60], musicSec: 200, grid: G120, targetSec: 15, ...LIMITS }).totalSec).toBeLessThanOrEqual(15);
+    expect(planBeatCuts({ clipDurationsSec: [60, 60], musicSec: 200, grid: G120, targetSec: 15, ...LIMITS }).totalSec).toBe(15);
   });
 
   test('a short clip still appears with a shorter whole-beat shot', () => {
@@ -175,8 +177,8 @@ describe('planBeatCuts lays the clips on the beat', () => {
       for (const targetSec of [6, 10, 20, 60]) {
         const plan = planBeatCuts({ clipDurationsSec: durations, musicSec: 120, grid: G120, targetSec, ...LIMITS });
         if (!plan.ok) {
-          // Only a length too short for one shot per clip may refuse, and it says so in numbers.
-          expect(plan.problem?.kind).toBe('target_too_short');
+          // Only a length too short for one shot per clip, or longer than the footage, may refuse, in numbers.
+          expect(['target_too_short', 'footage_too_short']).toContain(plan.problem?.kind);
           continue;
         }
         expect(new Set(plan.cuts.map((c) => c.clip))).toEqual(new Set(durations.map((_, i) => i)));
@@ -241,14 +243,46 @@ describe('the music starts where the user asked (Agent G PART 1, „მუსი
     expect(musicStartOnBeat(null, -3)).toBe(0);
   });
 
-  test('the plan starts there, still cuts on the beat, and has less music to fill', () => {
+  test('the plan starts EXACTLY there, the first shot carries the lead-in, later cuts land on the beat', () => {
     const plan = planBeatCuts({ clipDurationsSec: [20, 20, 20], musicSec: 40, grid: G120, musicFromSec: 5, ...LIMITS });
     expect(plan.ok).toBe(true);
-    expect(plan.musicStartSec).toBe(5.2);
-    expect(plan.totalSec).toBeLessThanOrEqual(40 - 5.2);
+    expect(plan.musicStartSec).toBe(5);
+    expect(plan.leadInSec).toBe(0.2);
+    expect(plan.totalSec).toBeLessThanOrEqual(40 - 5);
+    // Cut positions in the TRACK (start + position in the master) sit on the 120 BPM grid (beats at 0.2 + k·0.5).
+    for (const at of cutPositions(plan).slice(0, -1)) {
+      const inTrack = 5 + at;
+      expect(Math.abs((inTrack - 0.2) / 0.5 - Math.round((inTrack - 0.2) / 0.5))).toBeLessThan(0.05);
+    }
     // The montage body carries the start into the render.
     const plain = planBeatCuts({ clipDurationsSec: [20, 20, 20], musicSec: 40, grid: G120, ...LIMITS });
     expect(plain.musicStartSec).toBe(0.2);
+  });
+
+  test('an asked length is binding: 0:58 + 70 s needs the track to 2:08, else refused (never looped, never shorter)', () => {
+    const clips = [20, 20, 20, 20, 20];
+    const ok = planBeatCuts({ clipDurationsSec: clips, musicSec: 130, grid: G120, musicFromSec: 58, targetSec: 70, ...LIMITS });
+    expect(ok.ok).toBe(true);
+    expect(ok.musicStartSec).toBe(58);
+    expect(ok.totalSec).toBe(70);
+    expect(new Set(ok.cuts.map((c) => c.clip))).toEqual(new Set([0, 1, 2, 3, 4]));
+    const short = planBeatCuts({ clipDurationsSec: clips, musicSec: 120, grid: G120, musicFromSec: 58, targetSec: 70, ...LIMITS });
+    expect(short.ok).toBe(false);
+    expect(short.problem).toMatchObject({ kind: 'music_too_short', fromSec: 58, musicSec: 62, targetSec: 70 });
+    const footage = planBeatCuts({ clipDurationsSec: [10, 10, 10], musicSec: 300, grid: G120, targetSec: 70, ...LIMITS });
+    expect(footage.problem).toMatchObject({ kind: 'footage_too_short', clips: 3, targetSec: 70 });
+    const long = planBeatCuts({ clipDurationsSec: [200, 200], musicSec: 900, grid: G120, targetSec: 400, ...LIMITS });
+    expect(long.problem).toEqual({ kind: 'target_too_long', targetSec: 400, maxSec: LIMITS.maxTotalSec });
+  });
+
+  test('60, 70, 80 and 90 s asked are met to the frame on a real-looking set of clips', () => {
+    for (const targetSec of [60, 70, 80, 90]) {
+      const plan = planBeatCuts({ clipDurationsSec: [31.2, 17.9, 44, 12.6, 25.5, 19.1, 8.4], musicSec: 240, grid: { bpm: 97, periodSec: 60 / 97, phaseSec: 0.31, confidence: 1 }, musicFromSec: 32, targetSec, ...LIMITS });
+      expect(plan.ok).toBe(true);
+      expect(plan.totalSec).toBe(targetSec);
+      expect(new Set(plan.cuts.map((c) => c.clip)).size).toBe(7);
+      for (const c of plan.cuts) expect(c.endSec - c.startSec).toBeLessThanOrEqual(MAX_SHOT_SEC);
+    }
   });
 
   test('a start past the end of the track is refused by name, not silently moved', () => {

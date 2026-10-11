@@ -45,6 +45,7 @@ import { MAX_FILES, aspectFromClips, montageBody, sortInputs } from './montageAs
 import {
   buildManifest,
   checkManifest,
+  cleanName,
   clipOrder,
   parseAgentRequest,
   parseNames,
@@ -52,6 +53,7 @@ import {
   type MontageManifestItem,
 } from './montageManifest';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
+import { selectSources } from './sourceSelect';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 
 /**
@@ -126,10 +128,14 @@ export type MontageErrorCode =
   | 'billing_unavailable' | 'render_failed' | 'qc_failed' | 'cancelled' | 'not_found' | 'not_running'
   // Not every clip can get a shot (the quote refuses instead of leaving one out; ./montageManifest):
   | 'clip_too_short' | 'music_too_short' | 'target_too_short'
+  // An asked length is binding (Media Studio v2.0 §D): the clips cannot fill it, or one edit cannot be that long.
+  | 'footage_too_short' | 'target_too_long'
   // The list of files a run or a worker holds is not the quoted one, or misses a clip:
   | 'manifest_invalid'
   // The finished master does not show every clip (per-clip QC): not delivered.
-  | 'clip_missing';
+  | 'clip_missing'
+  // The user's words name a picture that is not there („ბოლო შვიდი" of five), or leave none (./sourceSelect).
+  | 'selection_invalid';
 
 /** The numbers behind a refusal, so the chat can say the cause and the way out (./montageChat errorText). */
 export interface MontageRefusalDetail {
@@ -142,8 +148,15 @@ export interface MontageRefusalDetail {
   /** music_too_short: how much music there is from where it starts, and where it starts. */
   musicSec?: number;
   fromSec?: number;
-  /** target_too_short: the length asked for. */
+  /** target_too_short / footage_too_short / target_too_long / music_too_short (an asked length): the length asked for. */
   targetSec?: number;
+  /** footage_too_short: how long the clips are together, each used once. */
+  footageSec?: number;
+  /** target_too_long: the longest edit one job renders. */
+  maxSec?: number;
+  /** selection_invalid: how many pictures were sent, and the positions (1-based) or count the words named. */
+  pictures?: number;
+  asked?: number[];
 }
 
 export interface MontageError {
@@ -180,6 +193,12 @@ export interface MontageQuote {
   manifest: MontageManifestItem[];
   /** The manifest indices of the videos in the order they appear in the edit (always the user's order). */
   clipOrder: number[];
+  /**
+   * The user's source selection („მარტო ბოლო შვიდი", ./sourceSelect), when the words made one: indices are positions in
+   * the files SENT (0-based). The manifest above lists only the used files; the excluded ones are in no shot, no
+   * signed request and no render graph. Absent = every file sent is used.
+   */
+  selection?: { sent: number; used: number[]; excluded: number[]; excludedNames: string[]; phrase: string };
   engine: MontageEngine;
   /**
    * @deprecated Always empty: every clip gets at least one shot, or the quote fails (clip_too_short, music_too_short,
@@ -229,8 +248,21 @@ function refusalOf(problem: CutProblem | undefined, error: string | undefined, c
       });
     }
     case 'music_too_short':
+      if (problem.targetSec) {
+        return err('music_too_short', `The music from ${problem.fromSec}s lasts ${problem.musicSec}s; the ${problem.targetSec}s asked needs it until ${r3(problem.fromSec + problem.targetSec)}s. Start the music earlier, use a longer track, or ask for a shorter edit.`, {
+          files: [track], detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec, targetSec: problem.targetSec },
+        });
+      }
       return err('music_too_short', `The music from ${problem.fromSec}s lasts ${problem.musicSec}s; one shot for each of the ${problem.clips} clips needs ${problem.neededSec}s. Start the music earlier, use a longer track, or remove a clip.`, {
         files: [track], detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec },
+      });
+    case 'footage_too_short':
+      return err('footage_too_short', `The ${problem.clips} clips together last ${problem.footageSec}s, each used once; the ${problem.targetSec}s asked needs more. Add clips or ask for a shorter edit.`, {
+        files: [...clips], detail: { clips: problem.clips, footageSec: problem.footageSec, targetSec: problem.targetSec },
+      });
+    case 'target_too_long':
+      return err('target_too_long', `One edit is at most ${problem.maxSec}s; ${problem.targetSec}s was asked.`, {
+        detail: { targetSec: problem.targetSec, maxSec: problem.maxSec },
       });
     case 'target_too_short':
       return err('target_too_short', `One shot for each of the ${problem.clips} clips needs ${problem.neededSec}s; the length asked is ${problem.targetSec}s. Ask for a longer edit or remove a clip.`, {
@@ -272,8 +304,40 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   }
 
   // ── analyse: which is a clip, which is the track, how long is each, where is the beat ─────────────────────────────
-  const probes: Array<BannerProbe | null> = [];
+  let probes: Array<BannerProbe | null> = [];
   for (const url of urls) probes.push(await deps.probe(url));
+
+  // ── the user's source selection (Media Studio v2.0 §C): applied before the manifest, so an excluded file is in no
+  // shot, no signed request and no render graph. Numbers count the pictures in the order sent, never the track. ─────
+  const prompt = typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : '';
+  let sentFiles = files as string[];
+  let sentNames = names.names;
+  let selectionInfo: MontageQuote['selection'];
+  const all = sortInputs(probes, Number.POSITIVE_INFINITY);
+  if (all.ok) {
+    const sel = selectSources(prompt, all.clips.length);
+    if (sel.mode === 'invalid') {
+      return refuse(err('selection_invalid', sel.reason === 'out_of_range'
+        ? `The words "${sel.phrase}" name a file that is not there: ${all.clips.length} pictures were sent.`
+        : `The words "${sel.phrase}" leave no picture to edit.`, { detail: { pictures: all.clips.length, asked: sel.asked } }));
+    }
+    if (sel.mode === 'subset') {
+      const keepSent = new Set([...sel.keep.map((k) => all.clips[k]!), all.track]);
+      const used = files.map((_, i) => i).filter((i) => keepSent.has(i));
+      const excluded = sel.excluded.map((k) => all.clips[k]!);
+      selectionInfo = {
+        sent: files.length, used, excluded, phrase: sel.phrase.slice(0, 120),
+        excludedNames: excluded.map((i) => cleanName(names.names?.[i], (files[i] as string).trim())),
+      };
+      sentFiles = used.map((i) => files[i] as string);
+      sentNames = sentNames ? used.map((i) => sentNames![i]!) : null;
+      urls.splice(0, urls.length, ...used.map((i) => urls[i]!));
+      probes = used.map((i) => probes[i]!);
+    }
+  }
+  // After a source selection the plan's file numbers are positions in the USED files: say them as the files sent.
+  const asSent = (e: MontageError): MontageError =>
+    (selectionInfo && e.files ? { ...e, files: e.files.map((i) => selectionInfo!.used[i] ?? i) } : e);
   const sorted = sortInputs(probes);
   if (!sorted.ok) {
     const message: Record<typeof sorted.error, string> = {
@@ -283,18 +347,18 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
       several_tracks: 'Attach exactly one music track.',
       too_many_clips: `At most ${MAX_FILES - 1} clips in one edit.`,
     };
-    return refuse(err(sorted.error, message[sorted.error], sorted.files ? { files: sorted.files } : {}));
+    return refuse(asSent(err(sorted.error, message[sorted.error], sorted.files ? { files: sorted.files } : {})));
   }
   const track = await deps.analyzeTrack(urls[sorted.track]!);
   if (!track || !(track.probe.durationSec > 0)) {
-    return refuse(err('unreadable', 'The music track could not be read.', { files: [sorted.track] }));
+    return refuse(asSent(err('unreadable', 'The music track could not be read.', { files: [sorted.track] })));
   }
 
   // ── the manifest: every file sent, in the order sent; files = manifest = videos + exactly one audio ──────────────
   const trackProbe = { durationSec: track.probe.durationSec };
-  const manifest = buildManifest(files as string[], names.names, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track, sorted.stills);
+  const manifest = buildManifest(sentFiles, sentNames, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track, sorted.stills);
   const counted = checkManifest(manifest);
-  if (!counted.ok || manifest.length !== files.length || counted.videos.length + counted.stills.length !== sorted.clips.length
+  if (!counted.ok || manifest.length !== sentFiles.length || counted.videos.length + counted.stills.length !== sorted.clips.length
     || counted.stills.length !== sorted.stills.length || counted.audio !== sorted.track) {
     return refuse(err('manifest_invalid', `The files could not be listed: ${counted.ok ? 'the count does not match' : counted.error}.`));
   }
@@ -304,10 +368,10 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // The user's words name the length, the music start and the frame („20 წამიანი", „მუსიკა 5 წამიდან", „9:16"): the same
   // reader the chat uses to decide that a message changes this plan (lib/agent/params), so the card and the edit never
   // disagree. A plan changed in the chat comes back with the change on a later line, and a later line wins.
-  const prompt = typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : '';
   const said = prompt ? minePlanParams(prompt) : {};
   const askedSec = positive(input.targetSec) ?? said.durationSec;
-  const target = askedSec ? Math.min(askedSec, MAX_TOTAL_SEC) : undefined;
+  // Not capped here: an asked length past one edit is refused by the planner (target_too_long), never cut silently.
+  const target = askedSec;
   const musicFromSec = positive(input.musicFromSec) ?? said.musicStartSec;
   const stillOf = sorted.clips.map((i) => sorted.stills.includes(i));
   const plan = planBeatCuts({
@@ -321,7 +385,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     ...LIMITS,
   });
   // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).
-  if (!plan.ok) return refuse(refusalOf(plan.problem, plan.error, sorted.clips, sorted.track, clipProbes.map((p) => p.durationSec)));
+  if (!plan.ok) return refuse(asSent(refusalOf(plan.problem, plan.error, sorted.clips, sorted.track, clipProbes.map((p) => p.durationSec))));
 
   const aspect: MontageAspect =
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
@@ -332,7 +396,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const parsed = parseAgentRequest(body);
   if (!parsed.ok) {
     return refuse(parsed.code === 'manifest_invalid'
-      ? err('manifest_invalid', `Not every file is in the plan: ${parsed.error}.`, parsed.missing?.length ? { files: parsed.missing } : {})
+      ? asSent(err('manifest_invalid', `Not every file is in the plan: ${parsed.error}.`, parsed.missing?.length ? { files: parsed.missing } : {}))
       : err('plan_failed', parsed.error));
   }
   const request = parsed.request;
@@ -357,11 +421,15 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     musicStartSec: plan.musicStartSec,
     manifest: request.manifest,
     clipOrder: clipOrder(request.shots),
+    ...(selectionInfo ? { selection: selectionInfo } : {}),
     engine: { ...MONTAGE_ENGINE, free: credits === 0 },
     unusedFiles: [],
     expiresAt,
   };
-  await deps.audit({ userId, op: 'montage', phase: 'quote', outcome: 'ok', jobId, files: request.manifest.length, credits, durationSec: quote.totalSec });
+  await deps.audit({
+    userId, op: 'montage', phase: 'quote', outcome: 'ok', jobId, files: request.manifest.length, credits, durationSec: quote.totalSec,
+    ...(selectionInfo ? { detail: `selection: used ${selectionInfo.used.length} of ${selectionInfo.sent}, excluded ${selectionInfo.excluded.map((i) => i + 1).join(',')}` } : {}),
+  });
   return { ok: true, quote, request, token };
 }
 

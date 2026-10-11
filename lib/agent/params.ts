@@ -34,8 +34,9 @@ const seconds = (raw: string): number => {
 
 const NUM = '(\\d{1,4}(?:[.,]\\d{1,2})?)';
 const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => number }> = [
-  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „5 წმ-დან", „0.58 წამიდან" (0:58)
-  { re: new RegExp(`(?:მე-?)?${NUM}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „58-ე წამიდან" (the owner's Media Studio v2.0 sentence), „5 წმ-დან",
+  // „0.58 წამიდან" (0:58)
+  { re: new RegExp(`(?:მე-?)?${NUM}(?:\\s*-?\\s*ე)?\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
   // „0:05-დან", „0.58-დან", „1,30-დან"
   { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)\\s*-?\\s*დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second"

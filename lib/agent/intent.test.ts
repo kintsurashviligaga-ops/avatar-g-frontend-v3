@@ -217,6 +217,10 @@ describe('a change to the plan on screen', () => {
     expect(act(run(text, pending))).toMatchObject({ capability: 'agent.montage', target: 'pending', params });
   });
 
+  test.each(['მარტო ბოლო შვიდი', 'მესამის გარდა', 'only the last 7', 'кроме третьего'])('a source selection re-quotes the same files: %s', (text) => {
+    expect(act(run(text, pending))).toMatchObject({ capability: 'agent.montage', target: 'pending' });
+  });
+
   test('asking for something new is not a change to the plan', () => {
     expect(run('make a 30 second video of a dog', pending)).not.toMatchObject({ target: 'pending' });
     expect(run('გააკეთე 20-წამიანი რეკლამა', pending)).toMatchObject({ capability: 'video.product-ad' });
