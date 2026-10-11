@@ -221,6 +221,6 @@ describe('the montage step and the edit step say every part of the ask', () => {
   test('what the words asked that neither step does is the card\'s notice', () => {
     const chain: RunChain = { ...CUT_EDIT, unplanned: [{ kind: 'transition' }, { kind: 'logo' }] };
     const m = runTask(base({ phase: 'planned', chain }), 'en');
-    expect(m.notice).toBe('Not in this plan: transitions between shots: a beat montage cuts straight, so every cut stays on its beat · a logo: once the montage is ready, send the logo picture with it and say where it goes.');
+    expect(m.notice).toBe('Not in this plan: transitions between shots: this edit has no boundary to draw them on · a logo: once the montage is ready, send the logo picture with it and say where it goes.');
   });
 });

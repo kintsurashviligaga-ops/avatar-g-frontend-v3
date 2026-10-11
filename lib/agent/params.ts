@@ -9,7 +9,7 @@
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
 import { mineDurationSec, mineTargetLanguage } from '@/lib/chat/studioIntent';
-import { aspectFromPrompt } from '@/lib/agent/media/montageAsk';
+import { aspectFromPrompt, withoutTransitionLength } from '@/lib/agent/media/montageAsk';
 import type { IntentParams } from './contracts';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
@@ -69,11 +69,12 @@ export const mineMusicStartSec = (text: string): number | undefined => mineMusic
 const PER_SHOT = new RegExp(`${B0}(?:each|every|per|თითო|ყოველი|каждый|каждая|каждое|по)${B1}`, 'iu');
 
 /**
- * The length of the whole result, when the user named one. A music start („5 წამიდან") is not a length, and a per-shot
- * length is not the length of the edit: both are taken out before the length is read.
+ * The length of the whole result, when the user named one. A music start („5 წამიდან") is not a length, a per-shot
+ * length is not the length of the edit, and neither is a transition's („0.4 წამიანი გადასვლები"): all are taken out
+ * before the length is read.
  */
 export function mineTotalDurationSec(text: string): number | undefined {
-  let t = String(text ?? '');
+  let t = withoutTransitionLength(String(text ?? ''));
   // Every start phrase, not only the first: a changed plan can carry two („from 3 seconds" … „5 წამიდან").
   for (let k = 0; k < 6; k += 1) {
     const start = mineMusicStart(t);

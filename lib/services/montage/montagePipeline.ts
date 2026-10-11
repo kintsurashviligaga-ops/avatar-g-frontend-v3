@@ -31,6 +31,7 @@ import {
   shotDuration,
   maxrateForTarget,
   type MontageRequest,
+  type TransitionStyle,
 } from './montagePlan';
 
 const WEEK_SEC = 604_800;
@@ -79,7 +80,7 @@ async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> 
 }
 
 /** surgicalOps speaks 'none'; the studio speaks 'cut'. Map once, here. */
-function toTransition(t: 'crossfade' | 'fade' | undefined): Transition {
+function toTransition(t: TransitionStyle | undefined): Transition {
   return t ?? 'none';
 }
 
@@ -151,6 +152,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       end: p.end,
       muted: p.muted,
       transition: toTransition(p.transition),
+      ...(p.transitionSec !== undefined ? { transitionSec: p.transitionSec } : {}),
       ...(p.textOverlay ? { textOverlay: p.textOverlay as TextOverlay } : {}),
       ...(p.speed !== undefined ? { speed: p.speed } : {}),
     }));

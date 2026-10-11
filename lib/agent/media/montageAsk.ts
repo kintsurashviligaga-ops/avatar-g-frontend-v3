@@ -7,8 +7,9 @@ import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import { displaysPortrait } from '@/lib/video/probeBanner';
 import type { BeatGrid, CutPlan, RampMode } from '@/lib/services/montage/beatPlan';
 import { MUSIC_UNDER_OWN_DB } from '@/lib/services/montage/montageSound';
-import type { MontageAspect, MontageShot } from '@/lib/services/montage/montagePlan';
-import { MAX_SHOTS, shotDuration, shotSpeed, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
+import type { MontageAspect, MontageShot, TransitionStyle } from '@/lib/services/montage/montagePlan';
+import { MAX_SHOTS, MAX_TRANSITION_SEC, shotDuration, shotSpeed, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
+import { MIXED_STYLES, type TransitionAsk, type TransitionShot } from '@/lib/services/montage/transitionPlan';
 import { isPictureKind, type AgentMontageRequest, type MontageManifestItem } from './montageManifest';
 
 /** At most MAX_SHOTS pictures (a picture is used at least once, so more could never all appear), a track and a narration. */
@@ -160,6 +161,134 @@ export function rampOf(text: string | undefined): RampMode | null {
   return fast && slow ? 'mixed' : slow ? 'slow' : fast ? 'fast' : null;
 }
 
+// ── transitions between the shots, in the user's words (GG 2026-10-11 17:38Z: „ქაფქათს … რაც აკლია") ─────────────────
+
+/** Where a transition is asked: the word itself („გადასვლები", "transitions", «переходы») or a crossfade by name. */
+const TRANSITION_AT = /transitions?|crossfades?|cross\s*-?\s*fades?|dissolves?|გადასვლ\p{L}*|ტრანზიშ\p{L}*|კროს\s*-?\s*ფეიდ\p{L}*|переход\p{L}*|кроссфейд\p{L}*|наплыв\p{L}*/giu;
+/** „A fade between the clips" is a crossfade too. */
+const FADE_BETWEEN = /(?:ფეიდ\p{L}*|fades?|fading|затухани\p{L}*)[^.!?;\n]{0,24}(?:between|შორის|между)|(?:between|შორის|между)[^.!?;\n]{0,24}(?:ფეიდ\p{L}*|fades?|fading|затухани\p{L}*)/giu;
+/** „No transitions", „hard cuts": the edit cuts straight, as asked. */
+const NO_TRANSITION = /(?:no|without)\s+(?:any\s+)?transitions?|hard\s+cuts?|გადასვლ\p{L}*\s+(?:გარეშე|არ\s+(?:მინდა|გინდა|დაამატო|გააკეთო))|(?<!\p{L})არ\s+(?:მინდა|დაამატო)\s+გადასვლ|без\s+переход\p{L}*|резк\p{L}*\s+склейк\p{L}*/iu;
+/** A grade, not a transition colour: „შავ-თეთრი", "black and white", «чёрно-белый». Blanked before styles are read. */
+const MONO = /შავ\s*-?\s*თეთრ\p{L}*|black\s*(?:and|&)\s*white|b\s*&\s*w|ч[её]рно\s*-?\s*бел\p{L}*/giu;
+/** A word right after a style word that makes it something else: a white TEXT, a zoom EFFECT. */
+const NOT_A_STYLE = /^\s*(?:-\s*)?(?:ტექსტ|წარწერ|ასო|შრიფტ|ფონ|ეფექტ|text|letters|font|caption|title|background|effect|текст|надпис|шрифт|фон|эффект)/iu;
+// Each alternation is held to a word start: „around" is no circle, „blackboard" no fade.
+const STYLE_WORDS: ReadonlyArray<readonly [TransitionStyle, RegExp]> = [
+  ['crossfade', /(?<!\p{L})(?:cross\s*-?\s*fade\p{L}*|crossfade\p{L}*|dissolv\p{L}*|smooth\p{L}*|soft\p{L}*|მდოვრ\p{L}*|რბილ\p{L}*|ნაზ\p{L}*|კროს\s*-?\s*ფეიდ\p{L}*|плавн\p{L}*|мягк\p{L}*|кроссфейд\p{L}*|наплыв\p{L}*|растворени\p{L}*)/giu],
+  ['fade', /(?<!\p{L})(?:(?:through|to|into)\s+black|black|შავ\p{L}*|ჩაბნელ\p{L}*|черн\p{L}*|чёрн\p{L}*|затемн\p{L}*)/giu],
+  ['flash', /(?<!\p{L})(?:flash\p{L}*|white|ფლეშ\p{L}*|თეთრ\p{L}*|ციმციმ\p{L}*|გაელვ\p{L}*|вспышк\p{L}*|бел\p{L}*)/giu],
+  ['wipe', /(?<!\p{L})(?:wipe\p{L}*|ვაიპ\p{L}*|шторк\p{L}*|вайп\p{L}*)/giu],
+  ['slide', /(?<!\p{L})(?:slid\p{L}*|სლაიდ\p{L}*|სრიალ\p{L}*|გასრიალ\p{L}*|გადაცურ\p{L}*|сдвиг\p{L}*|слайд\p{L}*|скольж\p{L}*|выезд\p{L}*)/giu],
+  ['zoom', /(?<!\p{L})(?:zoom\p{L}*|ზუმ\p{L}*|зум\p{L}*)/giu],
+  ['circle', /(?<!\p{L})(?:circl\p{L}*|round|წრ(?:ე|ის|იულ|ით|ეებ)\p{L}*|кругл\p{L}*|круг\p{L}*)/giu],
+  ['pixelize', /(?<!\p{L})(?:pixel\p{L}*|პიქსელ\p{L}*|пиксел\p{L}*)/giu],
+  ['blur', /(?<!\p{L})(?:blur\p{L}*|ბლერ\p{L}*|ბლურ\p{L}*|ბუნდოვ\p{L}*|გაბუნდოვ\p{L}*|размыт\p{L}*|блюр\p{L}*)/giu],
+];
+/** Between two styles of one list: separators and „and / or" only. */
+const LIST_GAP = /^[\s,/&+\-–]*(?:(?:and|or|და|ან|и|или)[\s,/&+\-–]*)?$/iu;
+/** Between a style and the transition word after it: „zoom transitions", „ზუმის ტიპის გადასვლები", «зум-переходы». */
+const BEFORE_GAP = /^[\s\-–]*(?:(?:style|type|like|ტიპის|სტილის|სტილით|სტილში|типа|стиля|в\s+стиле)[\s\-–]*)?$/iu;
+/** Between the transition word and a style after it: at most two words („transitions with a zoom", „переходы с зумом"). */
+const AFTER_GAP = /^[\s:\-–—(]*(?:[\p{L}.]+[\s:\-–—(]+){0,2}$/u;
+/** „transitions AND a zoom" is a zoom effect beside the transitions, not their style. */
+const AND = /(?<!\p{L})(?:and|plus|also|და|ასევე|и|также|плюс)(?!\p{L})|[,;]/iu;
+/** „Different transitions": a different style at each boundary. */
+const MIXED = /different|various|varied|random|mix(?:ed)?(?!\p{L})|სხვადასხვა|ყოველ\p{L}*\s+(?:ჯერზე\s+|ჯერ\s+)?სხვა|შერეულ\p{L}*|ნაირნაირ\p{L}*|разн\p{L}*|случайн\p{L}*|микс\p{L}*|смешанн\p{L}*/iu;
+/** A length beside the word: „0.5 წამიანი გადასვლები", "1 second transitions", «переходы по 0,5 с». Never „from 1 s". */
+const TRANSITION_LEN = /(?<!(?:from|from\s+the|от|с)\s)(?<![\d.,])(\d+(?:[.,]\d+)?)\s*-?\s*(?:s|secs?|seconds?|წმ|წამ(?:იან\p{L}*|ის|ი)?|сек\p{L}*|с)(?!\p{L})/iu;
+const HALF_SECOND = /half\s+a?\s*second|ნახევარ\s*-?\s*წამ\p{L}*|полсекунд\p{L}*|пол\s+секунд\p{L}*/iu;
+const QUICK = /quick\p{L}*|fast(?!\s*-?\s*motion)|short|swift|(?<!\p{L})(?:სწრაფ|ჩქარ|მოკლე)\p{L}*|быстр\p{L}*|коротк\p{L}*/iu;
+const SLOW = /slow(?!\s*-?\s*mo|\s+(?:it\s+)?down|er)|long|gentle|(?<!\p{L})(?:ნელ|გრძელ|ხანგრძლივ)\p{L}*|медленн\p{L}*|длинн\p{L}*|долг\p{L}*/iu;
+const QUICK_SEC = 0.3;
+const SLOW_SEC = 1;
+/** How far around the transition word a style or a length is read (never past a full stop). */
+const NEAR = 36;
+
+const SECS = '\\d+(?:[.,]\\d+)?\\s*-?\\s*(?:s|secs?|seconds?|წმ|წამ\\p{L}*|сек\\p{L}*|с)(?!\\p{L})';
+const T_WORD = 'transitions?|crossfades?|cross\\s*-?\\s*fades?|dissolves?|fades?(?:\\s*-?\\s*(?:out|in))?|გადასვლ\\p{L}*|ტრანზიშ\\p{L}*|კროს\\s*-?\\s*ფეიდ\\p{L}*|ფეიდ\\p{L}*|переход\\p{L}*|кроссфейд\\p{L}*|наплыв\\p{L}*|затухани\\p{L}*';
+/** One style word between a length and the transition word: „0.4 წამიანი ზუმ გადასვლები", "1 s zoom transitions". */
+const T_STYLE = '(?:zoom|slide|wipe|flash|blur|circle|pixel|white|black|soft|smooth|ზუმ|სლაიდ|ფლეშ|ბლერ|მდოვრ|რბილ|თეთრ|შავ|зум|слайд|плавн|мягк)\\p{L}*\\s+';
+/**
+ * A transition's length as typed: before the word („0.4 წამიანი გადასვლები", "half-second … " is not a number) or after
+ * it with at most one joining word ("transitions of 0.5 s", «переходы по 0,5 с», „გადასვლები 0.4 წამი").
+ */
+const TRANSITION_LEN_PHRASE = new RegExp(
+  `(?<![\\d.,])${SECS}[\\s-]*(?:long\\s+)?(?:${T_STYLE})?(?:${T_WORD})|(?<!\\p{L})(?:${T_WORD})[\\s:\\-–—(]*(?:(?:of|lasting|by|for|at|each|თითო|по|длиной|в)\\s+)?(?<![\\d.,])${SECS}`,
+  'giu',
+);
+
+/**
+ * The text with every transition length blanked: „0.4 წამიანი გადასვლები" (or "fade out 2 s") is a transition's
+ * length, never the edit's.
+ */
+export function withoutTransitionLength(text: string): string {
+  return String(text ?? '').replace(TRANSITION_LEN_PHRASE, (m) => ' '.repeat(m.length));
+}
+
+/**
+ * The transitions a montage message asks for: the styles named next to the word, in the order named (each boundary
+ * takes the next; „different" = a mix), and the length (a number of seconds, „quick" or „slow"). Null = none asked, or
+ * „no transitions". A transition with no style named is a crossfade.
+ */
+export function transitionAsk(text: string | undefined): TransitionAsk | null {
+  const raw = typeof text === 'string' ? text.slice(0, 4000) : '';
+  if (!raw.trim() || NO_TRANSITION.test(raw)) return null;
+  // Blank what only looks like a style (a black-and-white grade) without moving any position.
+  const t = raw.replace(MONO, (m) => ' '.repeat(m.length));
+  const at = [...t.matchAll(TRANSITION_AT), ...t.matchAll(FADE_BETWEEN)].map((m) => ({ from: m.index ?? 0, to: (m.index ?? 0) + m[0].length }));
+  if (!at.length) return null;
+  const windows = at.map(({ from, to }) => {
+    let a = Math.max(0, from - NEAR), b = Math.min(t.length, to + NEAR);
+    const before = t.slice(a, from), after = t.slice(to, b);
+    // A decimal point („0.5 წამიანი") is not a full stop.
+    const stopB = [...before.matchAll(/[.!?;\n](?!\d)/gu)].pop();
+    if (stopB) a += (stopB.index ?? 0) + 1;
+    const stopA = after.search(/[.!?;\n](?!\d)/u);
+    if (stopA >= 0) b = to + stopA;
+    return { a, b };
+  });
+  // The styles are the words joined to a transition word: inside it („crossfades", „fade to black between"), a list right
+  // before it („zoom and slide transitions"), or a list right after it („transitions with a zoom, a slide").
+  const words = STYLE_WORDS.flatMap(([style, re]) => [...t.matchAll(re)].map((m) => ({ from: m.index ?? 0, to: (m.index ?? 0) + m[0].length, style })))
+    .filter((w) => !NOT_A_STYLE.test(t.slice(w.to, w.to + 14)))
+    .sort((x, y) => x.from - y.from || y.to - x.to)
+    .filter((w, i, all) => !all.slice(0, i).some((v) => w.from < v.to));
+  const found = new Map<number, TransitionStyle>();
+  for (const span of at) {
+    for (const w of words) if (w.from >= span.from && w.to <= span.to) found.set(w.from, w.style);
+    let edge = span.from;
+    for (const w of [...words].reverse()) {
+      if (w.to > edge) continue;
+      const gap = t.slice(w.to, edge);
+      if (!(edge === span.from ? BEFORE_GAP : LIST_GAP).test(gap)) break;
+      found.set(w.from, w.style);
+      edge = w.from;
+    }
+    edge = span.to;
+    for (const w of words) {
+      if (w.from < edge) continue;
+      const gap = t.slice(edge, w.from);
+      if (!(edge === span.to ? AFTER_GAP.test(gap) && !AND.test(gap) : LIST_GAP.test(gap))) break;
+      found.set(w.from, w.style);
+      edge = w.to;
+    }
+  }
+  const named = [...new Set([...found.entries()].sort((x, y) => x[0] - y[0]).map(([, st]) => st))];
+  // A crossfade named by the transition word itself („crossfades") alongside other styles is one of them, not a mix.
+  const near = windows.map((w) => t.slice(w.a, w.b)).join(' \n ');
+  const mixed = !named.filter((s) => s !== 'crossfade').length && MIXED.test(near);
+  const styles: TransitionStyle[] = mixed ? [...MIXED_STYLES] : named.length ? named : ['crossfade'];
+  let sec: number | undefined;
+  const len = TRANSITION_LEN.exec(near);
+  const v = len ? Number(len[1]!.replace(',', '.')) : NaN;
+  if (Number.isFinite(v) && v >= 0.1 && v <= MAX_TRANSITION_SEC) sec = v;
+  else if (HALF_SECOND.test(near)) sec = 0.5;
+  else if (QUICK.test(near)) sec = QUICK_SEC;
+  else if (SLOW.test(near)) sec = SLOW_SEC;
+  return { styles, ...(sec !== undefined ? { sec } : {}), ...(mixed ? { mixed: true } : {}) };
+}
+
 /** With no shape named, the shape most of the clips were shot in (as displayed: a phone's rotation counts). */
 export function aspectFromClips(probes: ReadonlyArray<Pick<BannerProbe, 'width' | 'height' | 'rotation'>>): MontageAspect {
   const portrait = probes.filter((p) => displaysPortrait(p)).length;
@@ -188,19 +317,25 @@ export function montageBody(
   sound: MontageSound,
   aspect: MontageAspect,
   manifest: readonly MontageManifestItem[],
+  /** Per cut, its window and the transition into it (lib/services/montage/transitionPlan); absent = hard cuts. */
+  transitions?: readonly TransitionShot[],
 ): Record<string, unknown> {
   const own = sound.mode === 'own' || sound.mode === 'own+music';
   return {
-    shots: plan.cuts.map((c) => ({
-      url: clips[c.clip]?.url,
-      source: clips[c.clip]?.source,
-      kind: clips[c.clip]?.still ? 'image' : 'video',
-      startSec: c.startSec,
-      endSec: c.endSec,
-      ...(c.speed !== undefined && c.speed !== 1 ? { speed: c.speed } : {}),
-      transition: 'cut',
-      muted: !own,
-    })),
+    shots: plan.cuts.map((c, k) => {
+      const tr = transitions?.[k];
+      return {
+        url: clips[c.clip]?.url,
+        source: clips[c.clip]?.source,
+        kind: clips[c.clip]?.still ? 'image' : 'video',
+        startSec: tr ? tr.startSec : c.startSec,
+        endSec: tr ? tr.endSec : c.endSec,
+        ...(c.speed !== undefined && c.speed !== 1 ? { speed: c.speed } : {}),
+        transition: tr && k > 0 ? tr.transition : 'cut',
+        ...(tr && k > 0 && tr.transition !== 'cut' && tr.transitionSec !== undefined ? { transitionSec: tr.transitionSec } : {}),
+        muted: !own,
+      };
+    }),
     aspect,
     ...(sound.musicUrl ? { musicUrl: sound.musicUrl, musicStartSec: plan.musicStartSec } : {}),
     musicDuckDb: 0,
@@ -253,14 +388,15 @@ export interface TimelineShot {
 
 /**
  * Where every shot lands in the master: cumulative shot lengths, folded the way the lane folds them (a cut adds the
- * shot; a transition overlaps it, lib/services/montage/montagePlan timelineDuration). Agent G's montages are all cuts.
+ * shot; a transition overlaps it by its length, lib/services/montage/montagePlan timelineDuration). A shot's window
+ * includes the transition into it and out of it: `outStartSec` is where it starts to show.
  */
 export function outputTimeline(shots: ReadonlyArray<MontageShot & { source: number }>): TimelineShot[] {
   const out: TimelineShot[] = [];
   let total = 0;
   shots.forEach((s, i) => {
     const dur = shotDuration(s);
-    const start = i === 0 || s.transition === 'cut' ? total : total - transitionOverlap(total, dur);
+    const start = i === 0 || s.transition === 'cut' ? total : total - transitionOverlap(total, dur, s.transitionSec);
     out.push({ shot: i, source: s.source, outStartSec: r3(start), outEndSec: r3(start + dur), srcStartSec: s.startSec, srcEndSec: s.endSec, speed: shotSpeed(s) });
     total = start + dur;
   });
@@ -286,7 +422,9 @@ export const STILL_QC_OFFSET_SEC = 0.1;
 
 /**
  * One probe point per manifest picture (video or photo), in manifest order. A picture with no shot gets none (coverage
- * refused it earlier). A video is looked for in the middle of its longest shot; a photo just after its shot starts.
+ * refused it earlier). A video is looked for in the middle of its longest shot (a transition takes at most 30 % of a
+ * shot at either end, lib/services/montage/transitionPlan, so the middle is the clip alone); a photo just after its
+ * shot starts, and after the transition into it.
  */
 export function clipCheckPoints(request: AgentMontageRequest): ClipProbePoint[] {
   const timeline = outputTimeline(request.shots);
@@ -297,7 +435,10 @@ export function clipCheckPoints(request: AgentMontageRequest): ClipProbePoint[] 
     if (!mine.length) continue;
     const best = mine.reduce((a, b) => (b.outEndSec - b.outStartSec > a.outEndSec - a.outStartSec ? b : a));
     const len = best.outEndSec - best.outStartSec;
-    const into = item.kind === 'image' ? Math.min(STILL_QC_OFFSET_SEC, len / 4) : len / 2;
+    // A transition into the shot blends it with the one before: a photo is looked for just after it, never inside it.
+    const prev = timeline[best.shot - 1];
+    const inSec = prev ? Math.max(0, prev.outEndSec - best.outStartSec) : 0;
+    const into = item.kind === 'image' ? Math.min(inSec + STILL_QC_OFFSET_SEC, inSec + len / 4) : len / 2;
     points.push({
       index: item.index, name: item.name, url: request.shots[best.shot]!.url, shot: best.shot,
       // A ramped shot shows `speed` seconds of its source per second of the master.

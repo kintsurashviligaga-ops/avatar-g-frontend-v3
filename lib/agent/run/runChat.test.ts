@@ -205,14 +205,16 @@ describe('a montage with speed, music start, overlay and texts is one plan: mont
     expect(en).toContain('cut the clips to your track (music from 0:59 · speed by the music: slower and faster shots)');
   });
 
-  test('what neither step does is named on the plan: a transition, a logo with no picture (its text is still drawn)', () => {
+  test('the transitions are the montage step\'s; a logo with no picture is named (its text is still drawn)', () => {
     const t = 'cut these to the music with crossfade transitions, add my logo top right and write "Summer" at the bottom';
     const chain = runChainAsk(t, ['video', 'video', 'audio'])!;
     expect(chain.kind).toBe('cut-edit');
     expect(chain.kind === 'cut-edit' && chain.edits).toEqual([{ op: 'layers', add: [{ kind: 'text', text: 'Summer', anchor: 'bottom' }] }]);
-    expect(chain.unplanned?.map((u) => u.kind)).toEqual(['transition', 'logo']);
+    expect(chain.montage?.transitions).toEqual({ styles: ['crossfade'] });
+    expect(chain.unplanned?.map((u) => u.kind)).toEqual(['logo']);
     const en = runPlanText(chain, { credits: 0, editsText: chainEditsText(chain, 'en') }, 'en');
-    expect(en).toContain('Not in this plan: transitions between shots');
+    expect(en).toContain('transitions: crossfade');
+    expect(en).not.toContain('Not in this plan: transitions');
     expect(en).toContain('a logo: once the montage is ready');
   });
 

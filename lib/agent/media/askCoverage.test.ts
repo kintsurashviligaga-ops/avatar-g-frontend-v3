@@ -27,10 +27,11 @@ describe('what a montage leaves out, by name', () => {
   });
 
   test.each<[string, UnplannedKind[]]>([
-    ['დაამონტაჟე მუსიკაზე, კადრებს შორის გადასვლები გაუკეთე', ['transition']],
-    ['cut these to the music with crossfades', ['transition']],
-    ['cut to the music and fade between the clips', ['transition']],
-    ['смонтируй под музыку с переходами', ['transition']],
+    // Transitions are the montage's own (./montageAsk transitionAsk): never listed as left out.
+    ['დაამონტაჟე მუსიკაზე, კადრებს შორის გადასვლები გაუკეთე', []],
+    ['cut these to the music with crossfades', []],
+    ['cut to the music and fade between the clips', []],
+    ['смонтируй под музыку с переходами', []],
     ['დაამონტაჟე მუსიკაზე და ზუმი გაუკეთე', ['motion_fx']],
     ['cut to the beat with a glitch and some shake', ['motion_fx']],
     ['cut to the music and add my logo top right', ['logo']],
@@ -61,7 +62,7 @@ describe('what a montage leaves out, by name', () => {
     for (const k of ['transition', 'motion_fx', 'logo', 'thumbnail', 'text_words', 'cta_words', 'speech_captions', 'translate_captions', 'cut_middle', 'trim', 'speed', 'layer_change'] as UnplannedKind[]) {
       for (const l of ['ka', 'en', 'ru']) expect(unplannedText([{ kind: k }], l).length).toBeGreaterThan(20);
     }
-    expect(unplannedText([{ kind: 'transition' }], 'en')).toBe('Not in this plan: transitions between shots: a beat montage cuts straight, so every cut stays on its beat.');
+    expect(unplannedText([{ kind: 'transition' }], 'en')).toBe('Not in this plan: transitions between shots: this edit has no boundary to draw them on.');
     expect(unplannedText([], 'ka')).toBe('');
     expect(unplannedText(undefined, 'ka')).toBe('');
     expect(unplannedAsks('')).toEqual([]);

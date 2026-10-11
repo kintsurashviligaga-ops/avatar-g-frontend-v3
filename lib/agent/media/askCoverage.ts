@@ -21,7 +21,7 @@ type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
 
 export type UnplannedKind =
-  /** Crossfades or other transitions between the shots: a beat montage cuts straight, so each cut stays on its beat. */
+  /** Transitions the plan cannot draw. Not listed since the montage plans them itself (its card says where they go). */
   | 'transition'
   /** Zoom, shake, glitch: no such effect yet. */
   | 'motion_fx'
@@ -77,8 +77,9 @@ export function unplannedAsks(text: string | undefined, planned: readonly EditAs
 
   // The words to be drawn are read out first: „დააწერე „zoom in"" draws a word, it asks no zoom.
   const rest = mineComposition(raw).rest;
+  // Transitions are the montage's own now (./montageAsk transitionAsk → lib/services/montage/transitionPlan): its card
+  // names the styles and every boundary that stays a cut. Still read here, so a „fade between" is not also a whole-video fade.
   const transition = TRANSITION.test(rest) || (FADE_WORD.test(rest) && BETWEEN.test(rest));
-  if (transition) add({ kind: 'transition' });
   if (MOTION_FX.test(rest)) add({ kind: 'motion_fx' });
 
   const mined = mineEdits(raw);
@@ -114,9 +115,9 @@ export function unplannedLine(u: Unplanned, locale: string): string {
   const lang = pick(locale);
   switch (u.kind) {
     case 'transition':
-      return lang === 'en' ? 'transitions between shots: a beat montage cuts straight, so every cut stays on its beat'
-        : lang === 'ru' ? 'переходы между кадрами: монтаж под бит режет встык, чтобы каждая склейка оставалась в бит'
-          : 'გადასვლები კადრებს შორის: ბითზე მონტაჟი პირდაპირ ჭრის, რომ ყოველი ჭრა ბითზე დარჩეს';
+      return lang === 'en' ? 'transitions between shots: this edit has no boundary to draw them on'
+        : lang === 'ru' ? 'переходы между кадрами: в этом монтаже нет склеек для них'
+          : 'გადასვლები კადრებს შორის: ამ მონტაჟს გადასასვლელი ადგილი არ აქვს';
     case 'motion_fx':
       return lang === 'en' ? 'zoom, shake or glitch: these effects are not available yet'
         : lang === 'ru' ? 'зум, тряска или глитч: этих эффектов пока нет'

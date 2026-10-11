@@ -10,6 +10,10 @@ import {
   MIN_SHOT_SEC,
   MAX_TOTAL_SEC,
   TRANSITION_MAX_SEC,
+  TRANSITION_STYLES,
+  MIN_TRANSITION_SEC,
+  MAX_TRANSITION_SEC,
+  isMontageTransition,
   maxrateForTarget,
   coerceMusicStartSec,
   MAX_MUSIC_START_SEC,
@@ -189,6 +193,43 @@ describe('timeline arithmetic — must mirror runSequence, not approximate it', 
       shot({ endSec: 4, transition: 'crossfade' }),
     ]);
     expect(t).toBe(7.8);
+  });
+});
+
+describe('transition styles and their own length (GG 2026-10-11 17:38Z)', () => {
+  it('every style folds like a crossfade, and a shot\'s own length replaces the 0.6 s cap', () => {
+    for (const st of TRANSITION_STYLES) {
+      expect(timelineDuration([shot({ endSec: 5 }), shot({ endSec: 4, transition: st })])).toBe(8.4);
+      expect(timelineDuration([shot({ endSec: 5 }), shot({ endSec: 4, transition: st, transitionSec: 1.2 })])).toBe(7.8);
+    }
+    expect(transitionOverlap(10, 10, 1.5)).toBe(1.5);
+    expect(transitionOverlap(10, 2, 1.5)).toBe(1);      // still half of the shot at most
+    expect(transitionOverlap(10, 10, 99)).toBe(MAX_TRANSITION_SEC);
+    expect(transitionOverlap(10, 10, 0.01)).toBe(MIN_TRANSITION_SEC);
+    expect(transitionOverlap(10, 10, Number.NaN)).toBe(TRANSITION_MAX_SEC);
+  });
+
+  it('validation: a style is kept, an unknown one is a cut, a length out of range is refused, the first shot has none', () => {
+    const u = 'https://x.supabase.co/a.mp4';
+    const v = validateMontageRequest({ aspect: '9:16', shots: [
+      { url: u, startSec: 0, endSec: 4, transition: 'zoom', transitionSec: 1 },
+      { url: u, startSec: 0, endSec: 4, transition: 'slide', transitionSec: 0.5 },
+      { url: u, startSec: 0, endSec: 4, transition: 'spin' },
+    ] });
+    expect(v.ok).toBe(true);
+    expect(v.request!.shots.map((x) => [x.transition, x.transitionSec])).toEqual([['cut', undefined], ['slide', 0.5], ['cut', undefined]]);
+    for (const bad of [0.05, 3, '1', Number.NaN]) {
+      expect(validateMontageRequest({ shots: [{ url: u, endSec: 4 }, { url: u, endSec: 4, transition: 'wipe', transitionSec: bad }] }).ok).toBe(false);
+    }
+    expect(isMontageTransition('pixelize')).toBe(true);
+    expect(isMontageTransition('spin')).toBe(false);
+  });
+
+  it('the concat plan carries the length only with a transition', () => {
+    const plan = buildConcatPlan([shot(), shot({ transition: 'flash', transitionSec: 0.4 }), shot({ transition: 'blur' })]);
+    expect(plan[1]).toMatchObject({ transition: 'flash', transitionSec: 0.4 });
+    expect(plan[2]?.transition).toBe('blur');
+    expect(plan[2]?.transitionSec).toBeUndefined();
   });
 });
 

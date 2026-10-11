@@ -62,6 +62,17 @@ describe('mineTotalDurationSec: the length of the result', () => {
     expect(mineTotalDurationSec('თითო კადრი 2 წამი')).toBeUndefined();
     expect(mineTotalDurationSec('каждый кадр 2 секунды')).toBeUndefined();
   });
+
+  test('a transition’s length (or a fade’s) is not the length of the edit', () => {
+    expect(mineTotalDurationSec('დაამონტაჟე მუსიკაზე, 0.4 წამიანი გადასვლები ჩაბნელებით და ფლეშით')).toBeUndefined();
+    expect(mineTotalDurationSec('30 წამიანი ვიდეო, 0.5 წამიანი გადასვლებით')).toBe(30);
+    expect(mineTotalDurationSec('30 წამიანი ვიდეო ზუმ გადასვლებით')).toBe(30);
+    expect(mineTotalDurationSec('make a 20 second edit with 1 second zoom transitions')).toBe(20);
+    expect(mineTotalDurationSec('make a 20 second edit, transitions of 0.5 s')).toBe(20);
+    expect(mineTotalDurationSec('монтаж 15 секунд, переходы по 0,5 с')).toBe(15);
+    expect(mineTotalDurationSec('გადასვლები 0.4 წამი, ვიდეო 25 წამი')).toBe(25);
+    expect(mineTotalDurationSec('fade out 2 s at the end, 30 seconds')).toBe(30);
+  });
 });
 
 test('mineParams sets only what was said', () => {

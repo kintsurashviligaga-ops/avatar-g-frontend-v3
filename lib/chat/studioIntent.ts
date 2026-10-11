@@ -152,18 +152,20 @@ function mineSlideCount(text: string): number | undefined {
 
 /**
  * A length the user named, in seconds. „20-წამიანი" and "20-second" carry a hyphen between the number and the unit: the
- * miner used to want only spaces there, so the commonest way to write a length in Georgian named none.
+ * miner used to want only spaces there, so the commonest way to write a length in Georgian named none. A number is read
+ * whole: „7.5 seconds" is 7.5, never the 5 after its point (and „0.4 წამიანი" never 4).
  */
 export function mineDurationSec(text: string): number | undefined {
-  const sec = new RegExp(`(\\d{1,4})\\s*-?\\s*(?:s${B1}|sec${B1}|secs${B1}|second|seconds|წამ${L}*|сек${L}*)`, 'iu').exec(text);
+  const num = (raw: string) => Number(raw.replace(',', '.'));
+  const sec = new RegExp(`(?<![\\d.,])(\\d{1,4}(?:[.,]\\d{1,2})?)\\s*-?\\s*(?:s${B1}|sec${B1}|secs${B1}|second|seconds|წამ${L}*|сек${L}*)`, 'iu').exec(text);
   if (sec?.[1]) {
-    const n = parseInt(sec[1], 10);
+    const n = num(sec[1]);
     if (Number.isFinite(n) && n > 0) return Math.min(3600, n);
   }
-  const min = new RegExp(`(\\d{1,3})\\s*-?\\s*(?:m${B1}|min${B1}|mins${B1}|minute|minutes|წუთ${L}*|минут${L}*)`, 'iu').exec(text);
+  const min = new RegExp(`(?<![\\d.,])(\\d{1,3}(?:[.,]\\d{1,2})?)\\s*-?\\s*(?:m${B1}|min${B1}|mins${B1}|minute|minutes|წუთ${L}*|минут${L}*)`, 'iu').exec(text);
   if (min?.[1]) {
-    const n = parseInt(min[1], 10);
-    if (Number.isFinite(n) && n > 0) return Math.min(3600, n * 60);
+    const n = num(min[1]);
+    if (Number.isFinite(n) && n > 0) return Math.min(3600, Math.round(n * 60));
   }
   return undefined;
 }

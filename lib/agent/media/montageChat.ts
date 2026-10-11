@@ -24,6 +24,8 @@ import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/serv
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS, MAX_SOUNDS, asksNarration, wantsNoMusic, wantsOwnSound, wantsSilence } from './montageAsk';
+import type { TransitionStyle } from '@/lib/services/montage/montagePlan';
+import type { TransitionAsk, TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
 export type AttachmentKind = 'video' | 'audio' | 'image' | 'other';
 type Lang = 'ka' | 'en' | 'ru';
@@ -190,6 +192,78 @@ export function rampText(r: RampResult, locale: string): string {
   return `${head}: ${parts.join('; ')}; ${tail}${kept}`;
 }
 
+/** A transition style by name, in the user's language. */
+export function transitionName(style: TransitionStyle, locale: string): string {
+  const lang = pick(locale);
+  const N: Record<TransitionStyle, Record<Lang, string>> = {
+    crossfade: { ka: 'მდოვრე გადადნობა', en: 'crossfade', ru: 'плавный наплыв' },
+    fade: { ka: 'შავში გაქრობა', en: 'fade through black', ru: 'через чёрное' },
+    flash: { ka: 'თეთრი ციმციმი', en: 'white flash', ru: 'белая вспышка' },
+    wipe: { ka: 'გადაწმენდა (wipe)', en: 'wipe', ru: 'шторка' },
+    slide: { ka: 'გასრიალება (slide)', en: 'slide', ru: 'сдвиг' },
+    zoom: { ka: 'ზუმი', en: 'zoom', ru: 'зум' },
+    circle: { ka: 'წრე', en: 'circle', ru: 'круг' },
+    pixelize: { ka: 'პიქსელები', en: 'pixelate', ru: 'пиксели' },
+    blur: { ka: 'ბლერი', en: 'blur', ru: 'размытие' },
+  };
+  return N[style][lang];
+}
+
+/** A transition ask before the quote („გადასვლები: ზუმი, 0.5 წმ"), for the run card's montage words. */
+export function transitionAskText(a: TransitionAsk, locale: string): string {
+  const lang = pick(locale);
+  const head = lang === 'en' ? 'transitions' : lang === 'ru' ? 'переходы' : 'გადასვლები';
+  const what = a.mixed ? (lang === 'en' ? 'different each time' : lang === 'ru' ? 'каждый раз разные' : 'ყოველ ჯერზე სხვა')
+    : a.styles.map((st) => transitionName(st, locale)).join(', ');
+  const len = a.sec !== undefined ? `, ${sec(a.sec)} ${lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ'}` : '';
+  return `${head}: ${what}${len}`;
+}
+
+/**
+ * The transitions of a quoted montage in words: the styles, the length, how many of the boundaries got one, and why any
+ * stayed a cut or the edit got shorter. Never a transition the plan does not hold.
+ */
+export function transitionsText(t: TransitionSummary, locale: string): string {
+  const lang = pick(locale);
+  const unit = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
+  if (!t.boundaries) {
+    return lang === 'en' ? 'Transitions: none, the edit is one continuous shot, so there is nothing to go from one to another.'
+      : lang === 'ru' ? 'Переходы: нет, в монтаже один непрерывный кадр, переходить не между чем.'
+        : 'გადასვლები: არ არის, მონტაჟი ერთი უწყვეტი კადრია და გადასასვლელი არაფერია.';
+  }
+  const styles = t.mixed
+    ? (lang === 'en' ? `different each time (${t.styles.map((s) => transitionName(s, locale)).join(', ')})`
+      : lang === 'ru' ? `каждый раз разные (${t.styles.map((s) => transitionName(s, locale)).join(', ')})`
+        : `ყოველ ჯერზე სხვა (${t.styles.map((s) => transitionName(s, locale)).join(', ')})`)
+    : t.styles.map((s) => transitionName(s, locale)).join(', ');
+  const len = t.minSec !== undefined ? `${sec(t.minSec)}–${sec(t.sec)} ${unit}` : `${sec(t.sec)} ${unit}`;
+  const head = lang === 'en' ? `Transitions: ${styles}, ${len}, at ${t.applied} of ${t.boundaries} cuts`
+    : lang === 'ru' ? `Переходы: ${styles}, ${len}, на ${t.applied} из ${t.boundaries} склеек`
+      : `გადასვლები: ${styles}, ${len}, ${t.boundaries} ჭრიდან ${t.applied}-ზე`;
+  const notes: string[] = [];
+  if (t.tooShort) {
+    notes.push(lang === 'en' ? `${t.tooShort} stay${t.tooShort === 1 ? 's' : ''} a straight cut: the shots there are too short for a transition you could see`
+      : lang === 'ru' ? `${t.tooShort} — прямая склейка: кадры там слишком короткие для заметного перехода`
+        : `${t.tooShort} პირდაპირ ჭრად რჩება: იქ კადრები ძალიან მოკლეა, გადასვლა არ გამოჩნდებოდა`);
+  }
+  if (t.noFootage) {
+    notes.push(lang === 'en' ? `${t.noFootage} stay${t.noFootage === 1 ? 's' : ''} a straight cut: the clips there have no footage to spare and the length is held (the beat or the length you asked)`
+      : lang === 'ru' ? `${t.noFootage} — прямая склейка: у клипов там нет запаса, а длина держится (бит или ваша длина)`
+        : `${t.noFootage} პირდაპირ ჭრად რჩება: იქ კლიპებს ზედმეტი კადრები არ აქვს, სიგრძე კი უცვლელია (ბითი ან შენი თხოვნა)`);
+  }
+  if (t.minSec !== undefined) {
+    notes.push(lang === 'en' ? `some are shorter than ${sec(t.sec)} ${unit} to fit their shots`
+      : lang === 'ru' ? `некоторые короче ${sec(t.sec)} ${unit}, чтобы уместиться в кадры`
+        : `ზოგი ${sec(t.sec)} ${unit}-ზე მოკლეა, რომ კადრებში ჩაეტიოს`);
+  }
+  if (t.shortenedSec > 0) {
+    notes.push(lang === 'en' ? `the shots overlap there, so the edit is ${sec(t.shortenedSec)} ${unit} shorter`
+      : lang === 'ru' ? `кадры там накладываются, поэтому монтаж короче на ${sec(t.shortenedSec)} ${unit}`
+        : `იქ კადრები ერთმანეთს ედება, ამიტომ მონტაჟი ${sec(t.shortenedSec)} ${unit}-ით მოკლეა`);
+  }
+  return `${head}${notes.length ? `; ${notes.join('; ')}` : ''}.`;
+}
+
 /** The same in a few words for the card („3 slowed 0.5× · 3 faster 1.5×"). */
 export function rampShort(r: RampResult, locale: string): string {
   const lang = pick(locale);
@@ -214,6 +288,7 @@ export interface MontageWords {
   durationSec?: number;
   musicStartSec?: number;
   ramp?: RampMode;
+  transitions?: TransitionAsk;
 }
 
 /** The montage's own asks in a few words, before its quote: „მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: … · 9:16". */
@@ -225,13 +300,14 @@ export function montageWordsLine(w: MontageWords | undefined, locale: string): s
     parts.push(lang === 'en' ? `music from ${clockOf(w.musicStartSec)}` : lang === 'ru' ? `музыка с ${clockOf(w.musicStartSec)}` : `მუსიკა ${clockOf(w.musicStartSec)}-დან`);
   }
   if (w.ramp) parts.push(rampAskText(w.ramp, locale));
+  if (w.transitions) parts.push(transitionAskText(w.transitions, locale));
   if (w.durationSec !== undefined) parts.push(`${sec(w.durationSec)} ${lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ'}`);
   if (w.aspect) parts.push(w.aspect);
   return parts.join(' · ');
 }
 
 /** A quoted montage step in numbers (lib/agent/run/runEngine StepSummary): „12 კადრი · 29.7 წმ · 9:16 · 95 BPM · მუსიკა 0:59-დან · 3 შენელ. 0.5×". */
-export function montagePlanLine(p: { shots?: number; totalSec?: number; aspect?: string; bpm?: number | null; musicStartSec?: number; ramp?: RampResult }, locale: string): string {
+export function montagePlanLine(p: { shots?: number; totalSec?: number; aspect?: string; bpm?: number | null; musicStartSec?: number; ramp?: RampResult; transitions?: TransitionSummary }, locale: string): string {
   const lang = pick(locale);
   const parts: string[] = [];
   if (p.shots) parts.push(lang === 'en' ? `${p.shots} shots` : lang === 'ru' ? `кадров: ${p.shots}` : `${p.shots} კადრი`);
@@ -242,6 +318,11 @@ export function montagePlanLine(p: { shots?: number; totalSec?: number; aspect?:
     parts.push(lang === 'en' ? `music from ${clockOf(p.musicStartSec)}` : lang === 'ru' ? `музыка с ${clockOf(p.musicStartSec)}` : `მუსიკა ${clockOf(p.musicStartSec)}-დან`);
   }
   if (p.ramp) parts.push(rampShort(p.ramp, locale));
+  if (p.transitions?.boundaries) {
+    const t = p.transitions;
+    const what = t.mixed ? (lang === 'en' ? 'mixed' : lang === 'ru' ? 'разные' : 'შერეული') : t.styles.map((st) => transitionName(st, locale)).join('/');
+    parts.push(lang === 'en' ? `transitions ${what} ${t.applied}/${t.boundaries}` : lang === 'ru' ? `переходы ${what} ${t.applied}/${t.boundaries}` : `გადასვლები ${what} ${t.applied}/${t.boundaries}`);
+  }
   return parts.join(' · ');
 }
 
@@ -355,12 +436,13 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
         : `შენი თხოვნით არ ვიყენებ (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`)
     : '';
   const ramp = q.ramp ? `\n${rampText(q.ramp, locale)}` : '';
+  const trans = q.transitions ? `\n${transitionsText(q.transitions, locale)}` : '';
   const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${noted}${ramp}${files}${left}\n${engine} ${price} ${go}`;
+  return `${found}\n${plan}${from}${noted}${ramp}${trans}${files}${left}\n${engine} ${price} ${go}`;
 }
 
 /**

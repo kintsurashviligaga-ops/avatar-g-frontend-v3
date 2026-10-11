@@ -19,6 +19,7 @@ import {
   type EnergyEnvelope,
 } from './beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC, validateMontageRequest, timelineDuration } from './montagePlan';
+import { planTransitions } from './transitionPlan';
 
 /** A deterministic pseudo-random generator, so the noise tests never flake. */
 function rng(seed: number): () => number {
@@ -462,5 +463,49 @@ describe('planBeatCuts with ramps: shots change speed, every cut stays on its be
     expect(v.ok).toBe(true);
     expect(v.request!.shots.filter((x) => x.speed !== undefined).length).toBe(plan.ramp!.slow + plan.ramp!.fast);
     expect(Math.abs(timelineDuration(v.request!.shots) - plan.totalSec)).toBeLessThan(0.01);
+  });
+});
+
+describe('transitions asked (rollSec): every shot leaves its roll free, every cut stays on its beat', () => {
+  const free = (plan: ReturnType<typeof planBeatCuts>, k: number) => {
+    const c = plan.cuts[k]!;
+    const before = plan.cuts.filter((o, j) => j !== k && o.clip === c.clip && o.endSec <= c.startSec + 1e-9).map((o) => o.endSec);
+    return c.startSec - Math.max(0, ...before);
+  };
+
+  test('short clips fully used: without rolls no transition fits; with them every boundary gets one', () => {
+    const input = { clipDurationsSec: [6, 6, 6], musicSec: 30, grid: G120, ...LIMITS };
+    const hard = planBeatCuts(input);
+    const soft = planBeatCuts({ ...input, rollSec: 0.5 });
+    expect(hard.ok && soft.ok).toBe(true);
+    const ask = { styles: ['zoom' as const] };
+    const durations = input.clipDurationsSec;
+    expect(planTransitions({ cuts: hard.cuts, clipDurationsSec: durations, ask, keepLength: true, maxShotSec: MAX_SHOT_SEC }).summary.noFootage).toBeGreaterThan(0);
+    const t = planTransitions({ cuts: soft.cuts, clipDurationsSec: durations, ask, keepLength: true, maxShotSec: MAX_SHOT_SEC });
+    expect(t.summary).toMatchObject({ noFootage: 0, tooShort: 0, applied: soft.cuts.length - 1 });
+    expect(t.totalSec).toBeCloseTo(soft.totalSec, 3);
+    // Every shot but the first has its half second free before it, inside its clip.
+    for (let k = 1; k < soft.cuts.length; k += 1) expect([k, free(soft, k) >= 0.5 - 1e-6]).toEqual([k, true]);
+    for (const c of soft.cuts) expect(c.endSec).toBeLessThanOrEqual(6 - 0.05 + 1e-6);
+    // Fewer shots fit, each still a whole number of beats: every cut on the beat.
+    expect(soft.totalSec).toBeLessThan(hard.totalSec);
+    for (const at of cutPositions(soft)) expect(Math.abs(at / 0.5 - Math.round(at / 0.5))).toBeLessThan(0.07);
+  });
+
+  test('no roll asked is the plan as it always was; a clip too short for its roll still gets its shot', () => {
+    const input = { clipDurationsSec: [12.4, 7.9, 21], musicSec: 95, grid: G120, ...LIMITS };
+    expect(planBeatCuts({ ...input, rollSec: 0 })).toEqual(planBeatCuts(input));
+    const tight = planBeatCuts({ clipDurationsSec: [10, 2.1, 10], musicSec: 120, grid: G120, ...LIMITS, rollSec: 0.5 });
+    expect(tight.ok).toBe(true);
+    expect(new Set(tight.cuts.map((c) => c.clip))).toEqual(new Set([0, 1, 2]));
+  });
+
+  test('ramped shots: each roll at the shot’s own speed, still inside its clip', () => {
+    const env: EnergyEnvelope = { blockSec: 0.5, values: Array.from({ length: 120 }, (_, i) => (i % 8 < 4 ? -1 : 1)) };
+    const plan = planBeatCuts({ clipDurationsSec: [9, 9, 9], musicSec: 60, grid: G120, ...LIMITS, rollSec: 0.5, ramp: { mode: 'mixed', energy: env } });
+    expect(plan.ok).toBe(true);
+    expect(plan.cuts.some((c) => (c.speed ?? 1) > 1)).toBe(true);
+    for (const c of plan.cuts) expect(c.endSec).toBeLessThanOrEqual(9 - 0.05 + 1e-6);
+    for (let k = 1; k < plan.cuts.length; k += 1) expect([k, free(plan, k) >= 0.5 * (plan.cuts[k]!.speed ?? 1) - 1e-6]).toEqual([k, true]);
   });
 });

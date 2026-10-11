@@ -19,6 +19,7 @@
  *   · Every status change goes the legal way through lib/agent/contracts RUN_TRANSITIONS, and is an event.
  */
 import { TERMINAL_RUN_STATUSES, transitionPath, type AgentApproval, type CapabilityId, type RunStatus } from '../contracts';
+import type { TransitionSummary } from '@/lib/services/montage/transitionPlan';
 import { refsOf, TOOL_CAPABILITY, type RunSpec, type RunTool } from './runSpec';
 
 /** generation_jobs rows of Agent G runs carry this queue kind in params._exec. */
@@ -62,6 +63,8 @@ export interface StepSummary {
   bpm?: number | null;
   musicStartSec?: number;
   ramp?: { mode: 'mixed' | 'slow' | 'fast'; slow: number; fast: number; byEnergy: boolean; keptForFootage: number };
+  /** The transitions between the shots, as the quote planned them (lib/services/montage/transitionPlan). */
+  transitions?: TransitionSummary;
 }
 
 export interface RunStepState {

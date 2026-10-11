@@ -262,8 +262,22 @@ export async function fadeClip(videoUrl: string, p: FadeParams): Promise<string 
 // the user split-and-muted. No per-action server round-trips.
 
 export interface DraftMutedRange { start: number; end: number }
-/** How a segment blends FROM the previous one. 'none' = hard cut; 'crossfade' = xfade; 'fade' = fade through black. */
-export type Transition = 'none' | 'crossfade' | 'fade';
+/**
+ * How a segment blends FROM the previous one. 'none' = hard cut; every other is one ffmpeg `xfade` (XFADE below):
+ * 'crossfade' a dissolve, 'fade' through black, 'flash' through white, a wipe, a slide, a zoom, an opening circle, a
+ * pixel dissolve, a blur. The editor offers the first three; Agent G's montage all of them.
+ */
+export type Transition = 'none' | 'crossfade' | 'fade' | 'flash' | 'wipe' | 'slide' | 'zoom' | 'circle' | 'pixelize' | 'blur';
+/**
+ * The ffmpeg `xfade` transition each style is. A FIXED TABLE: a value that is not a key here is a hard cut, so nothing
+ * a client sends ever reaches the filtergraph as text.
+ */
+const XFADE: Readonly<Record<Exclude<Transition, 'none'>, string>> = {
+  crossfade: 'fade', fade: 'fadeblack', flash: 'fadewhite', wipe: 'wipeleft', slide: 'slideleft', zoom: 'zoomin',
+  circle: 'circleopen', pixelize: 'pixelize', blur: 'hblur',
+};
+const xfadeOf = (t: unknown): string | null =>
+  (typeof t === 'string' && t !== 'none' && Object.prototype.hasOwnProperty.call(XFADE, t) ? XFADE[t as Exclude<Transition, 'none'>] : null);
 export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-center' | 'center';
 /** A burned-in title/watermark/handle on a segment. Rendered via resvg (Georgian-safe) + ffmpeg overlay. */
 export interface TextOverlay { text: string; position: OverlayPosition; fontSize: number; fontColor: string }
@@ -452,8 +466,11 @@ export async function probeDimensions(url: string): Promise<{ w: number; h: numb
   }
 }
 
-/** `speed`: this segment's own playback speed (a montage's speed ramp), on top of the draft's; absent = 1. */
-interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay; speed?: number }
+/**
+ * `speed`: this segment's own playback speed (a montage's speed ramp), on top of the draft's; absent = 1.
+ * `transitionSec`: the longest the transition INTO it may last (absent = XD); the fold still halves it against each side.
+ */
+interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; transitionSec?: number; textOverlay?: TextOverlay; speed?: number }
 
 /**
  * CORE sequence renderer (single ffmpeg pass, N inputs). For each entry it builds a UNIFORM, audio-safe stream —
@@ -603,14 +620,15 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   for (let k = 1; k < entries.length; k += 1) {
     const e = entries[k]!;
     const segDur = (e.end - e.start) / segSpd(e);
-    const trans: Transition = e.transition === 'crossfade' || e.transition === 'fade' ? e.transition : 'none';
-    if (trans === 'none') {
+    const xf = xfadeOf(e.transition);
+    if (!xf) {
       parts.push(`${curV}${curA}[v${k}][a${k}]concat=n=2:v=1:a=1[cv${k}][ca${k}]`);
       curV = `[cv${k}]`; curA = `[ca${k}]`; curDur += segDur;
     } else {
-      const dd = Math.max(0.1, Math.min(XD, segDur * 0.5, curDur * 0.5));
+      // ⚠️ MIRRORED by transitionOverlap in lib/services/montage/montagePlan (the montage's length and its QC points).
+      const maxD = typeof e.transitionSec === 'number' && Number.isFinite(e.transitionSec) ? clampNum(e.transitionSec, 0.1, 2) : XD;
+      const dd = Math.max(0.1, Math.min(maxD, segDur * 0.5, curDur * 0.5));
       const off = Math.max(0, curDur - dd).toFixed(3);
-      const xf = trans === 'fade' ? 'fadeblack' : 'fade';
       parts.push(`${curV}[v${k}]xfade=transition=${xf}:duration=${dd.toFixed(3)}:offset=${off}[xv${k}]`);
       parts.push(`${curA}[a${k}]acrossfade=d=${dd.toFixed(3)}[xa${k}]`);
       curV = `[xv${k}]`; curA = `[xa${k}]`; curDur += segDur - dd;
@@ -672,12 +690,12 @@ async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d
 }
 
 /** One entry in a MULTI-CLIP sequence — references a source by index, with its trim window + mute + transition. */
-export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay; speed?: number }
+export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; transitionSec?: number; textOverlay?: TextOverlay; speed?: number }
 
 /**
  * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip, each scaled +
  * letterbox-padded to a UNIFORM target resolution, with silent-clip audio fallback and per-boundary transitions
- * (hard cut / crossfade / fade-through-black). One ffmpeg pass, N inputs. (Crop is skipped for the multi path.)
+ * (hard cut or one of the XFADE styles). One ffmpeg pass, N inputs. (Crop is skipped for the multi path.)
  */
 export async function renderConcat(
   sources: string[],

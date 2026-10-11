@@ -33,12 +33,12 @@ export function montageAdapter(deps: () => MontageExecDeps): StepAdapter {
         userId, files: step.files, prompt: step.prompt, aspect: step.aspect, targetSec: step.targetSec, musicFromSec: step.musicFromSec,
       });
       if (!q.ok) return { ok: false, error: q.error };
-      const { shots, totalSec, aspect, bpm, musicStartSec, ramp } = q.quote;
+      const { shots, totalSec, aspect, bpm, musicStartSec, ramp, transitions } = q.quote;
       return {
         ok: true,
         quote: {
           taskId: q.quote.jobId, credits: q.quote.credits, request: q.request, token: q.token, expiresAt: q.quote.expiresAt,
-          summary: { shots, totalSec, aspect, bpm, musicStartSec, ...(ramp ? { ramp } : {}) },
+          summary: { shots, totalSec, aspect, bpm, musicStartSec, ...(ramp ? { ramp } : {}), ...(transitions ? { transitions } : {}) },
         },
       };
     },

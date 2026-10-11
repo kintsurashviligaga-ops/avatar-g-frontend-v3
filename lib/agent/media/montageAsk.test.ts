@@ -3,10 +3,11 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, pickTracks, qcAvSync, qcClips, qcMaster, soundOf, sortInputs, sourceContribution, wantsBeatCuts } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, pickTracks, qcAvSync, qcClips, qcMaster, soundOf, sortInputs, sourceContribution, transitionAsk, wantsBeatCuts } from './montageAsk';
 import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
 import { planBeatCuts } from '@/lib/services/montage/beatPlan';
-import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC } from '@/lib/services/montage/montagePlan';
+import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC, timelineDuration } from '@/lib/services/montage/montagePlan';
+import { MIXED_STYLES, planTransitions } from '@/lib/services/montage/transitionPlan';
 import type { AgentMontageRequest } from './montageManifest';
 import { signQuote, verifyQuote } from './quoteToken';
 import { agentMediaAccess, agentMediaOpenTo } from './access';
@@ -216,6 +217,81 @@ describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo +
       ],
     } as unknown as AgentMontageRequest;
     expect(clipCheckPoints(req).map((p) => [p.index, p.outT, p.srcT])).toEqual([[0, 1, 2], [1, 2 + STILL_QC_OFFSET_SEC, 0], [2, 6, 2]]);
+  });
+});
+
+describe('transitions between the shots (GG 2026-10-11 17:38Z: „ქაფქათს და სხვა ფუნქციებს")', () => {
+  test.each<[string, ReturnType<typeof transitionAsk>]>([
+    ['დაამონტაჟე მუსიკაზე, კადრებს შორის გადასვლები გაუკეთე', { styles: ['crossfade'] }],
+    ['cut these to the music with crossfades', { styles: ['crossfade'] }],
+    ['cut to the music and fade between the clips', { styles: ['crossfade'] }],
+    ['cut to the music, fade to black between the clips', { styles: ['fade'] }],
+    ['смонтируй под музыку с переходами', { styles: ['crossfade'] }],
+    ['ზუმით გადასვლები გაუკეთე', { styles: ['zoom'] }],
+    ['zoom and slide transitions', { styles: ['zoom', 'slide'] }],
+    ['transitions with a white flash', { styles: ['flash'] }],
+    ['переходы: зум, шторка и вспышка', { styles: ['zoom', 'wipe', 'flash'] }],
+    ['სხვადასხვა გადასვლები ჩასვი', { styles: [...MIXED_STYLES], mixed: true }],
+    ['use different transitions every time', { styles: [...MIXED_STYLES], mixed: true }],
+    ['წრიული და პიქსელის გადასვლები', { styles: ['circle', 'pixelize'] }],
+    ['blur transitions, 0.8 s', { styles: ['blur'], sec: 0.8 }],
+    ['0.5 წამიანი მდოვრე გადასვლები', { styles: ['crossfade'], sec: 0.5 }],
+    ['переходы по 0,3 с', { styles: ['crossfade'], sec: 0.3 }],
+    ['quick transitions', { styles: ['crossfade'], sec: 0.3 }],
+    ['ნელი, მდოვრე გადასვლები', { styles: ['crossfade'], sec: 1 }],
+  ])('%s → %j', (text, want) => {
+    expect(transitionAsk(text)).toEqual(want);
+  });
+
+  test('no transition asked, or none wanted: null', () => {
+    for (const t of ['დაამონტაჟე მუსიკაზე', 'cut these to the beat', 'no transitions, hard cuts', 'გადასვლების გარეშე დაამონტაჟე', 'без переходов', '', undefined]) {
+      expect(transitionAsk(t)).toBeNull();
+    }
+  });
+
+  test('a zoom EFFECT beside the transitions, a white TEXT, a black-and-white grade and the edit\'s length are not the transitions\' own', () => {
+    expect(transitionAsk('cut these to the music with crossfade transitions and a zoom')).toEqual({ styles: ['crossfade'] });
+    expect(transitionAsk('ზუმ ეფექტი და გადასვლები')).toEqual({ styles: ['crossfade'] });
+    expect(transitionAsk('შავ-თეთრი გახადე და გადასვლები დაამატე')).toEqual({ styles: ['crossfade'] });
+    expect(transitionAsk('transitions, white text "Summer"')).toEqual({ styles: ['crossfade'] });
+    expect(transitionAsk('20 წამიანი მონტაჟი გადასვლებით')).toEqual({ styles: ['crossfade'] });
+    expect(transitionAsk('მუსიკა 1 წამიდან, გადასვლებით')).toEqual({ styles: ['crossfade'] });
+  });
+
+  test('the body carries each shot\'s window and transition; the lane, the timeline and the QC agree on the length', () => {
+    const manifest: MontageManifestItem[] = [
+      { index: 0, path: 'u/a.mov', name: 'a.mov', kind: 'video', durationSec: 14 },
+      { index: 1, path: 'u/p.jpg', name: 'p.jpg', kind: 'image', durationSec: 0 },
+      { index: 2, path: 'u/b.mov', name: 'b.mov', kind: 'video', durationSec: 9 },
+      { index: 3, path: 'u/s.mp3', name: 's.mp3', kind: 'audio', durationSec: 95 },
+    ];
+    const plan = planBeatCuts({
+      clipDurationsSec: [14, 0, 9], stills: [false, true, false], musicSec: 95, grid: null, targetSec: 20,
+      maxShots: MAX_SHOTS, maxTotalSec: MAX_TOTAL_SEC, minShotSec: MIN_SHOT_SEC, maxShotSec: MAX_SHOT_SEC,
+    });
+    const tr = planTransitions({ cuts: plan.cuts, clipDurationsSec: [14, 0, 9], stills: [false, true, false], ask: { styles: ['zoom'] }, keepLength: true, maxShotSec: MAX_SHOT_SEC });
+    expect(tr.summary.applied).toBeGreaterThan(0);
+    const clips = [
+      { url: 'https://x.supabase.co/a.mov', source: 0 },
+      { url: 'https://x.supabase.co/p.jpg', source: 1, still: true },
+      { url: 'https://x.supabase.co/b.mov', source: 2 },
+    ];
+    const body = montageBody(plan, clips, { mode: 'music', musicUrl: 'https://x.supabase.co/s.mp3' }, '9:16', manifest, tr.shots);
+    const parsed = parseAgentRequest(body);
+    expect(parsed.ok).toBe(true);
+    const req = (parsed as { request: AgentMontageRequest }).request;
+    expect(req.shots[0]!.transition).toBe('cut');
+    expect(req.shots.filter((s) => s.transition === 'zoom').length).toBe(tr.summary.applied);
+    // Held to the beat: the length with the transitions is the plan's, to the millisecond.
+    expect(timelineDuration(req.shots)).toBe(plan.totalSec);
+    expect(timelineDuration(req.shots)).toBe(tr.totalSec);
+    const tl = outputTimeline(req.shots);
+    expect(tl[tl.length - 1]!.outEndSec).toBe(plan.totalSec);
+    // The photo is looked for after the transition into it; a video in the middle of its shot.
+    const photo = clipCheckPoints(req).find((p) => p.index === 1)!;
+    const at = tl.find((x) => x.source === 1)!;
+    const into = tl[at.shot - 1] ? tl[at.shot - 1]!.outEndSec - at.outStartSec : 0;
+    expect(photo.outT).toBeCloseTo(at.outStartSec + into + STILL_QC_OFFSET_SEC, 3);
   });
 });
 

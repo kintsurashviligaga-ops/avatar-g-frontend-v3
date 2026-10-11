@@ -40,6 +40,7 @@ import {
 } from '@/lib/services/montage/montagePlan';
 import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
 import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
+import { DEFAULT_TRANSITION_SEC, planTransitions, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
 import {
@@ -51,6 +52,7 @@ import {
   rampOf,
   soundOf,
   sortInputs,
+  transitionAsk,
   wantsBeatCuts,
   type SoundMode,
   type TrackInfo,
@@ -228,6 +230,11 @@ export interface MontageQuote {
    * chosen by the music under them. Absent = none asked.
    */
   ramp?: RampResult;
+  /**
+   * The transitions the words asked for („გადასვლები", „zoom transitions", «разные переходы»): the styles, the length,
+   * how many boundaries got one, and why any stayed a cut. Absent = none asked (hard cuts).
+   */
+  transitions?: TransitionSummary;
   /** Every file sent, in the order sent: what the card lists, and what the run and the worker are held to. */
   manifest: MontageManifestItem[];
   /** The manifest indices of the videos in the order they appear in the edit (always the user's order). */
@@ -434,7 +441,11 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // clip is one stretch in the order sent (./joinPlan: a beat-long slice of speech is noise), unless the words ask
   // for the beat or for speed ramps, which follow the music.
   const onBeat = music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
-  const planFor = (targetSec: number | undefined): CutPlan | JoinPlan => (onBeat && music
+  // Transitions asked („zoom transitions", „მდოვრე გადასვლებით"): on the beat, every shot leaves its roll free (./beatPlan
+  // rollSec), so the transition into it plays from footage no shot uses and the cut stays on its beat.
+  const tAsk = prompt ? transitionAsk(prompt) : null;
+  const rollSec = tAsk && onBeat ? tAsk.sec ?? DEFAULT_TRANSITION_SEC : 0;
+  const planFor = (targetSec: number | undefined, withRolls = true): CutPlan | JoinPlan => (onBeat && music
     ? planBeatCuts({
       clipDurationsSec: clipProbes.map((p) => p.durationSec),
       // A photo is one still shot (beatPlan `stills`): never too short, shown once.
@@ -444,6 +455,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
       ...(targetSec ? { targetSec } : {}),
       ...(musicFromSec ? { musicFromSec } : {}),
       ...(rampMode ? { ramp: { mode: rampMode, energy: music.energy ?? null } } : {}),
+      ...(rollSec && withRolls ? { rollSec } : {}),
       ...LIMITS,
     })
     : planJoin({
@@ -452,16 +464,35 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
       ...(targetSec ? { targetSec } : {}),
       ...LIMITS,
     }));
-  let plan = planFor(target);
+  // The rolls never cost the edit what was asked: a length the footage meets only without them is planned without them
+  // (the transitions then take what footage there is, and the card says where they could not).
+  const planned = (targetSec: number | undefined): CutPlan | JoinPlan => {
+    const p = planFor(targetSec);
+    return p.ok || !rollSec ? p : planFor(targetSec, false);
+  };
+  let plan = planned(target);
   // A narration longer than the edit: with no length asked, the edit grows to hold it when the pictures can fill it
   // (photos stretch, clips play longer); otherwise the card says how much of its end is not heard.
   const voiceEnd = voice ? voice.probe.durationSec : 0;
+  let heldForVoice = false;
   if (plan.ok && voice && !target && plan.totalSec + 0.25 < voiceEnd) {
-    const longer = planFor(Math.min(voiceEnd, MAX_TOTAL_SEC));
-    if (longer.ok) plan = longer;
+    const longer = planned(Math.min(voiceEnd, MAX_TOTAL_SEC));
+    if (longer.ok) { plan = longer; heldForVoice = true; }
   }
   // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).
   if (!plan.ok) return refuse(asSent(refusalOf(plan.problem, plan.error, sorted.clips, picked.music, clipProbes.map((p) => p.durationSec))));
+  // Transitions between the shots (./montageAsk transitionAsk, lib/services/montage/transitionPlan): paid for with
+  // footage the shots did not use, so cuts on the beat and an asked length stay exactly where they were; only an edit
+  // whose length is free gets shorter for an overlap no footage covers. Whatever stays a cut, the card says why.
+  const transitions = tAsk ? planTransitions({
+    cuts: plan.cuts,
+    clipDurationsSec: clipProbes.map((p) => p.durationSec),
+    stills: stillOf,
+    ask: tAsk,
+    keepLength: onBeat || target !== undefined || heldForVoice,
+    maxShotSec: MAX_SHOT_SEC,
+  }) : null;
+  const editSec = transitions ? transitions.totalSec : plan.totalSec;
   // The join plan does not read the music: it starts where the words say, and under the clips' own sound a track
   // shorter than the edit just ends (the card says where); one that has nothing left from that second is refused.
   const musicStartSec = onBeat ? plan.musicStartSec : r3(musicFromSec ?? 0);
@@ -473,9 +504,9 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
         files: [picked.music!], detail: { clips: sorted.clips.length, musicSec: r3(Math.max(0, left)), fromSec: musicStartSec, neededSec: r3(plan.totalSec) },
       })));
     }
-    if (left + 0.05 < plan.totalSec) musicEndsSec = r3(left);
+    if (left + 0.05 < editSec) musicEndsSec = r3(left);
   }
-  const voiceCutSec = voice && voiceEnd > plan.totalSec + 0.25 ? r3(voiceEnd - plan.totalSec) : 0;
+  const voiceCutSec = voice && voiceEnd > editSec + 0.25 ? r3(voiceEnd - editSec) : 0;
 
   const aspect: MontageAspect =
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
@@ -487,6 +518,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     { mode: sound, ...(music ? { musicUrl: urls[picked.music!]! } : {}), ...(voice ? { voiceUrl: urls[picked.voice!]! } : {}) },
     aspect,
     manifest,
+    transitions?.shots,
   );
   // The same reader the run and the worker use: the lane's validation, the manifest, every shot's file, coverage.
   const parsed = parseAgentRequest(body);
@@ -523,6 +555,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     ...('shortened' in plan && plan.shortened ? { shortened: plan.shortened } : {}),
     ...(rampMode && !music ? { rampWithoutMusic: true } : {}),
     ...(plan.ramp ? { ramp: plan.ramp } : {}),
+    ...(transitions ? { transitions: transitions.summary } : {}),
     manifest: request.manifest,
     clipOrder: clipOrder(request.shots),
     ...(selectionInfo ? { selection: selectionInfo } : {}),

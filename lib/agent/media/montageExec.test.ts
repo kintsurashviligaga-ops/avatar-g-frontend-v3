@@ -504,3 +504,55 @@ describe('the sound of a montage, and pictures alone', () => {
     expect(q.quote).toMatchObject({ sound: 'own+music', musicEndsSec: 6 });
   });
 });
+
+describe('transitions between the shots (GG 2026-10-11 17:38Z: „ქაფქათს და სხვა ფუნქციებს")', () => {
+  const U = (n: string) => `omni-uploads/${USER}/${n}`;
+  const JPG = { durationSec: 0.04, hasVideo: true, hasAudio: false, width: 1080, height: 1350, rotation: 0, videoCodec: 'mjpeg', audioCodec: null };
+  const quote = async (files: Record<string, typeof TRACK | null>, extra: Record<string, unknown> = {}) => {
+    const f = fake({ files });
+    return quoteMontage(f.deps, { userId: USER, files: Object.keys(files), ...extra });
+  };
+
+  test('on the beat: every boundary gets its transition and the edit keeps its length (30 s, cuts on the beat)', async () => {
+    const f = fake();
+    const plain = await quoted(f, { prompt: 'cut these to the song for a reel' });
+    const q = await quoted(f, { prompt: 'cut these to the song for a reel with zoom transitions' });
+    expect(q.quote.totalSec).toBe(plain.quote.totalSec);
+    expect(q.quote.transitions).toMatchObject({ styles: ['zoom'], sec: 0.5, noFootage: 0, shortenedSec: 0 });
+    expect(q.quote.transitions!.applied).toBe(q.quote.transitions!.boundaries);
+    expect(q.request.shots[0]!.transition).toBe('cut');
+    expect(q.request.shots.slice(1).every((s) => s.transition === 'zoom' && s.transitionSec === 0.5)).toBe(true);
+  });
+
+  test('no music, whole clips: no footage to spare, so the shots overlap and the card says how much shorter', async () => {
+    const q = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('c.mp4')]: clip(3) }, { prompt: 'დაამონტაჟე ეს ვიდეოები, მდოვრე გადასვლებით' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.transitions).toMatchObject({ styles: ['crossfade'], boundaries: 2, applied: 2, shortenedSec: 1 });
+    expect(q.quote.totalSec).toBeCloseTo(15.8 - 1, 2);
+  });
+
+  test('an asked length is still met to the frame: a boundary without footage stays a cut, and is counted', async () => {
+    const q = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('c.mp4')]: clip(3) }, { prompt: '15 წამიანი, გადასვლებით' });
+    if (!q.ok) throw new Error(q.error);
+    // The plan's own frame windows, written to the millisecond (the same 1 ms as with hard cuts).
+    expect(q.quote.totalSec).toBeCloseTo(15, 2);
+    const t = q.quote.transitions!;
+    expect(t.applied + t.noFootage + t.tooShort).toBe(t.boundaries);
+    expect(t.shortenedSec).toBe(0);
+  });
+
+  test('photos: a different transition at each boundary, each photo just longer, nothing shorter', async () => {
+    const q = await quote({ [U('1.jpg')]: JPG, [U('2.jpg')]: JPG, [U('3.jpg')]: JPG, [U('4.jpg')]: JPG }, { prompt: 'make a slideshow with different transitions' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.totalSec).toBe(12);
+    expect(q.request.shots.map((s) => s.transition)).toEqual(['cut', 'crossfade', 'slide', 'zoom']);
+    expect(q.quote.transitions).toMatchObject({ mixed: true, applied: 3, boundaries: 3 });
+  });
+
+  test('none asked: hard cuts, as every montage before', async () => {
+    const q = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5) }, { prompt: 'დაამონტაჟე' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.transitions).toBeUndefined();
+    expect(q.request.shots.every((s) => s.transition === 'cut' && s.transitionSec === undefined)).toBe(true);
+  });
+});

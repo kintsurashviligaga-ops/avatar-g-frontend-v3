@@ -1,6 +1,7 @@
 /** The studio chat's side of Agent G's montage: which messages it claims, and what it says (ka · en · ru). */
 import type { MontageQuote } from './montageExec';
-import { beatMontageAsk, codeOf, errorText, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, type AttachmentKind } from './montageChat';
+import { beatMontageAsk, codeOf, errorText, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, type AttachmentKind } from './montageChat';
+import { MIXED_STYLES, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
 const V: AttachmentKind = 'video';
 const A: AttachmentKind = 'audio';
@@ -183,5 +184,36 @@ describe('speed ramps in words (owner 2026-10-11: „ააჩქარე … �
     expect(montageWordsLine({ ramp: 'slow' }, 'en')).toBe('slower shots where the music is calm');
     expect(montageWordsLine(undefined, 'en')).toBe('');
     expect(montagePlanLine({ shots: 12, totalSec: 29.7, aspect: '9:16', bpm: null, musicStartSec: 0.2 }, 'ru')).toBe('кадров: 12 · 29.7 с · 9:16');
+  });
+});
+
+describe('transitions on the card, in ka · en · ru', () => {
+  const T: TransitionSummary = { styles: ['zoom'], mixed: false, sec: 0.5, boundaries: 9, applied: 9, tooShort: 0, noFootage: 0, shortenedSec: 0 };
+
+  test('the styles, the length and how many boundaries got one', () => {
+    expect(transitionsText(T, 'ka')).toBe('გადასვლები: ზუმი, 0.5 წმ, 9 ჭრიდან 9-ზე.');
+    expect(transitionsText(T, 'en')).toBe('Transitions: zoom, 0.5 s, at 9 of 9 cuts.');
+    expect(transitionsText(T, 'ru')).toBe('Переходы: зум, 0.5 с, на 9 из 9 склеек.');
+    const q = quoteText({ ...Q, transitions: T }, undefined, 'ka');
+    expect(q).toContain('გადასვლები: ზუმი, 0.5 წმ, 9 ჭრიდან 9-ზე.');
+    expect(quoteText(Q, undefined, 'ka')).not.toContain('გადასვლები');
+  });
+
+  test('every boundary that stays a cut is said, with why, and an edit that got shorter says by how much', () => {
+    const t: TransitionSummary = { ...T, styles: [...MIXED_STYLES], mixed: true, applied: 6, tooShort: 2, noFootage: 1, minSec: 0.3, shortenedSec: 0 };
+    const ka = transitionsText(t, 'ka');
+    expect(ka).toContain('ყოველ ჯერზე სხვა (მდოვრე გადადნობა, გასრიალება (slide), ზუმი, გადაწმენდა (wipe), თეთრი ციმციმი, წრე)');
+    expect(ka).toContain('0.3–0.5 წმ, 9 ჭრიდან 6-ზე');
+    expect(ka).toContain('2 პირდაპირ ჭრად რჩება: იქ კადრები ძალიან მოკლეა');
+    expect(ka).toContain('1 პირდაპირ ჭრად რჩება: იქ კლიპებს ზედმეტი კადრები არ აქვს');
+    const en = transitionsText({ ...T, shortenedSec: 1 }, 'en');
+    expect(en).toBe('Transitions: zoom, 0.5 s, at 9 of 9 cuts; the shots overlap there, so the edit is 1 s shorter.');
+    expect(transitionsText({ ...T, boundaries: 0, applied: 0 }, 'ru')).toContain('один непрерывный кадр');
+  });
+
+  test('before the quote: the words as the montage step will read them; after it: the counts', () => {
+    expect(transitionAskText({ styles: ['flash', 'slide'], sec: 0.3 }, 'ka')).toBe('გადასვლები: თეთრი ციმციმი, გასრიალება (slide), 0.3 წმ');
+    expect(montageWordsLine({ transitions: { styles: [...MIXED_STYLES], mixed: true } }, 'en')).toBe('transitions: different each time');
+    expect(montagePlanLine({ shots: 10, totalSec: 30, transitions: { ...T, applied: 8 } }, 'en')).toBe('10 shots · 30 s · transitions zoom 8/9');
   });
 });

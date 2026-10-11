@@ -22,7 +22,7 @@
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import { findLinks, withoutLinks } from '@/lib/agent/media/audioSource';
 import { beatMontageAsk, montageWordsLine, type AttachmentKind, type MontageWords } from '@/lib/agent/media/montageChat';
-import { MAX_CLIPS, rampOf } from '@/lib/agent/media/montageAsk';
+import { MAX_CLIPS, rampOf, transitionAsk } from '@/lib/agent/media/montageAsk';
 import { mineEdits, type EditAsk } from '@/lib/agent/media/editWords';
 import { mineComposition } from '@/lib/agent/media/layerWords';
 import { unplannedAsks, unplannedText, type Unplanned } from '@/lib/agent/media/askCoverage';
@@ -99,16 +99,18 @@ export function montagePromptOf(text: string): string {
   return mineComposition(withoutLinks(text || '')).rest.replace(/[ \t]+/g, ' ').trim();
 }
 
-/** What the montage step will read from the words: the music start, the length, the frame, the speed ramps. */
+/** What the montage step will read from the words: the music start, the length, the frame, the speed ramps, the transitions. */
 export function montageWordsOf(text: string): MontageWords {
   const t = montagePromptOf(text);
   const p = minePlanParams(t);
   const ramp = rampOf(t);
+  const transitions = transitionAsk(t);
   return {
     ...(p.aspect ? { aspect: p.aspect } : {}),
     ...(p.durationSec !== undefined ? { durationSec: p.durationSec } : {}),
     ...(p.musicStartSec !== undefined ? { musicStartSec: p.musicStartSec } : {}),
     ...(ramp ? { ramp } : {}),
+    ...(transitions ? { transitions } : {}),
   };
 }
 
