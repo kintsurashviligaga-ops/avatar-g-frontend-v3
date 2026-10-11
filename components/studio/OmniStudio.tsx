@@ -193,6 +193,7 @@ import { documentToText } from '@/lib/chat/documentText';
 import { captureVideoDigest, digestToMedia, fitDigest } from '@/lib/chat/videoDigest';
 import { defaultVideoQuestion, isVideoEditRequest } from '@/lib/chat/videoIntent';
 import { montageEditorOpenedText, multiVideoRoute, pickOneVideoText } from '@/lib/chat/chatMediaRoute';
+import { attachedEarlierNote, attachedKind, clock as fileClock, readAttachedFiles, toAttachedFile, type AttachedFile } from '@/lib/chat/attachedFiles';
 import { uploadErrorText, uploadFileToStorage } from './ui/useUpload';
 import { extractFrames, probeDuration } from './montage/media';
 const ServiceParamsPanel = dynamic(() => import('./ServiceParamsPanel').then((m) => m.ServiceParamsPanel), { ssr: false, loading: () => <div className="h-24" /> });
@@ -1080,7 +1081,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Never persisted. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Never persisted. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Never persisted. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Never persisted. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1365,7 +1366,9 @@ function loadConversations(): Conversation[] {
     // Each conversation once (lib/chat/conversationSync.dedupeConversations): an archive that already holds copies of one
     // server session — the re-import fixed there — reads, and so saves, as one row again.
     return dedupeConversations(parsed
-      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages)))
+      .filter((c): c is Conversation => !!c && typeof (c as Conversation).id === 'string' && Array.isArray((c as Conversation).messages))
+      // A turn's saved file list is read back defensively (a stored path is only ever the owner's checked upload path).
+      .map((c) => (c.messages.some((m) => m && m.files) ? { ...c, messages: c.messages.map((m) => (m && m.files ? { ...m, files: readAttachedFiles(m.files) } : m)) } : c)))
       .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   } catch { return []; }
 }
@@ -1447,20 +1450,15 @@ function leanMessages(messages: Msg[]): Msg[] {
       // The attachment bytes are never stored; WHAT was attached is, so after a reload the model is told a photo or a PDF
       // was part of that turn instead of seeing a question about "this" with nothing attached.
       ...(m.medias?.length ? { attached: m.medias.map((x) => attachedKind(x.mimeType)) } : m.attached?.length ? { attached: m.attached } : {}),
+      // …and each file by name, size, length and checked storage path, so after a reload the bubble lists them, the model
+      // is told „1. clipA.mp4 (video, 0:09)", and a montage can be opened from the stored copies (lib/chat/attachedFiles).
+      ...(m.medias?.length ? { files: m.medias.map(toAttachedFile) } : m.files?.length ? { files: m.files } : {}),
       // Two short strings, so the "which model answered" label survives a reload like the reply it labels.
       ...(m.chatModelId ? { chatModelId: m.chatModelId } : {}),
       ...(m.chatMode ? { chatMode: m.chatMode } : {}),
       ...(m.regen ? { regen: dropRef(m.regen) } : {}),
       ...(m.batch ? { batch: { tiles: m.batch.tiles, spec: dropRef(m.batch.spec) as ImageRegenSpec } } : {}),
     }));
-}
-/** A short word for an attachment's kind, for the model's context after a reload. */
-function attachedKind(mime: string): string {
-  if (mime.startsWith('image/')) return 'image';
-  if (mime.startsWith('video/')) return 'video';
-  if (mime.startsWith('audio/')) return 'audio';
-  if (mime === 'application/pdf') return 'PDF';
-  return 'file';
 }
 function conversationTitle(messages: Msg[]): string {
   const firstUser = messages.find((m) => m.role === 'user' && m.text.trim());
@@ -2782,6 +2780,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (attachmentAbortRef.current.get(id) === ac) attachmentAbortRef.current.delete(id);
       if ('path' in res) {
         patchAttachment(id, { status: 'ready', progress: 1, storagePath: res.path, error: undefined });
+        // A file sent while it was still uploading: its bubble learns where it is stored too, so the saved turn keeps it.
+        setMessages((prev) => (prev.some((m) => m.medias?.some((x) => x.dataUrl === key))
+          ? prev.map((m) => (m.medias?.some((x) => x.dataUrl === key)
+            ? { ...m, medias: m.medias.map((x) => (x.dataUrl === key ? { ...x, status: 'ready' as const, progress: 1, storagePath: res.path } : x)) }
+            : m))
+          : prev));
         return res.path;
       }
       if (res.error !== 'aborted') {
@@ -5586,8 +5590,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // model answered it (a real answer always records its model). A turn whose files are gone after a reload says so.
     const payload = serializeHistory(history.map((m) => ({
       role: m.role,
-      text: m.role === 'user' && !m.medias?.length && m.attached?.length
-        ? `${m.text}\n[attached earlier: ${m.attached.join(', ')} — no longer available to you]`
+      text: m.role === 'user' && !m.medias?.length && (m.files?.length || m.attached?.length)
+        ? `${m.text}\n${attachedEarlierNote(m.files, m.attached)}`
         : m.errorTail ? m.text.replace(/\n\n⚠️[^\n]*$/u, '') : m.text,
       ...(m.notice || (m.role === 'assistant' && /^\s*(⚠|⏹)/u.test(m.text ?? '') && !m.chatModelId && !m.chatModel
         && !m.imageUrl && !m.videoUrl && !m.audioUrl && !m.glbUrl) ? { notice: true } : {}),
@@ -6577,21 +6581,33 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // credits on a colour grade. The clip is read here, in the browser, as frames + the start of its soundtrack
     // (lib/chat/videoDigest) and answered by the chat model like any other turn — no upload, no charge. Edit requests
     // ("add subtitles", "make it vintage", the chips' phrases) still go to the remix pipeline below.
+    // ⚠️ IT READ ONLY THE FIRST VIDEO. With three clips attached, „what happens in these?" was answered from clip one; the
+    // other two never reached the model and nothing said so. Every video is read now, the request budget is shared between
+    // them, and a clip the browser cannot read is NAMED — the turn is not sent with it silently missing.
     if (mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && !isVideoEditRequest(text)) {
-      const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
+      const videoAtts = attachments.filter((a) => isVideo(a.mimeType));
       setBusy(true);
-      let digest: Awaited<ReturnType<typeof captureVideoDigest>> = null;
-      try { digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob()); } catch { digest = null; }
-      if (!digest) {
+      // Fewer frames per clip when there are several: the same request has to carry all of them.
+      const frameCount = videoAtts.length > 1 ? Math.max(3, Math.floor(8 / videoAtts.length) + 1) : undefined;
+      const digests = await Promise.all(videoAtts.map(async (v) => {
+        try { return await captureVideoDigest(await (await fetch(v.dataUrl)).blob(), frameCount ? { frameCount } : {}); } catch { return null; }
+      }));
+      const unreadable = videoAtts.filter((_, i) => !digests[i]).map((v, i) => v.name || `${i + 1}`);
+      if (unreadable.length) {
         setBusy(false);
-        toast.error(locale === 'en' ? 'This browser cannot read that video — try an MP4 (H.264) or WebM clip'
-          : locale === 'ru' ? 'Браузер не может прочитать это видео — попробуйте MP4 (H.264) или WebM'
-            : 'ამ ბრაუზერმა ვიდეო ვერ წაიკითხა — სცადე MP4 (H.264) ან WebM');
+        const names = unreadable.join(', ');
+        toast.error(locale === 'en' ? `This browser cannot read ${names} — try an MP4 (H.264) or WebM clip, or remove it`
+          : locale === 'ru' ? `Браузер не может прочитать ${names} — попробуйте MP4 (H.264) или WebM, или уберите файл`
+            : `ამ ბრაუზერმა ვერ წაიკითხა: ${names} — სცადე MP4 (H.264) ან WebM, ან ამოიღე ეს ფაილი`);
         return;
       }
       const others = attachments.filter((a) => !isVideo(a.mimeType));
       const budget = Math.max(400_000, DEFAULT_TOTAL_CAP_BYTES - others.reduce((n, a) => n + a.dataUrl.length, 0));
-      const parts = digestToMedia(videoAtt.name || 'video', fitDigest(digest, budget));
+      const perClip = Math.floor(budget / videoAtts.length);
+      const parts = videoAtts.flatMap((v, i) => digestToMedia(
+        videoAtts.length > 1 ? `${i + 1}. ${v.name || 'video'}` : (v.name || 'video'),
+        fitDigest(digests[i]!, perClip),
+      ));
       const asked = text || defaultVideoQuestion(locale);
       const videoTurn: Msg = { role: 'user', text: asked, inputMethod: viaVoice ? 'voice' : 'text', medias: attachments, modelMedias: [...others, ...parts] };
       setInput(''); setAttachments([]);
@@ -6609,6 +6625,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // matching ffmpeg/generative op runs via /api/video/remix. Fail-open: any miss
     // surfaces a clean retry notice and keeps the original.
     if (mode === 'chat' && text && attachments.some((a) => isVideo(a.mimeType))) {
+      // A remix edits ONE video. With several attached (a question that is also an edit request lands here), ask which —
+      // never edit the first and drop the rest.
+      if (attachments.filter((a) => isVideo(a.mimeType)).length > 1) {
+        // As with the routing rule above: nothing is sent, the words and every file stay in the composer.
+        setMessages((prev) => [...prev, { role: 'assistant', text: pickOneVideoText(attachments.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), locale), notice: true }]);
+        return;
+      }
       const videoAtt = attachments.find((a) => isVideo(a.mimeType))!;
       const sent = attachments;
       // One bubble carries the edit from „running" to its result (or Agent G's price question): patched by id, never „the
@@ -6660,7 +6683,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           if (!mine()) return;
           const credits = remixOpCredits();
           remixAsksRef.current.set(bubbleId, job);
-          patch({ role: 'assistant', text: remixAskText(op, credits, locale), remixAsk: { credits } });
+          patch({ role: 'assistant', text: remixAskText(op, credits, locale, [videoAtt.name || 'video', ...(audioAtt && (op === 'add_music' || op === 'music' || op === 'redub') ? [audioAtt.name || 'audio'] : [])]), remixAsk: { credits } });
           trackQuoteShown(serviceForTool('remix'), credits, 'agent-card');
           return;
         }
@@ -7287,6 +7310,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(orig.medias ? { medias: orig.medias } : {}),
       ...(orig.modelMedias ? { modelMedias: orig.modelMedias } : {}),
       ...(orig.attached ? { attached: orig.attached } : {}),
+      ...(orig.files ? { files: orig.files } : {}),
       ...(orig.inputMethod ? { inputMethod: orig.inputMethod } : {}),
     }]);
     persistChatTurn('user', trimmed);
@@ -8649,6 +8673,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     ))}
                   </div>
                 )}
+                {!m.medias?.length && m.files?.length ? (
+                  // After a reload the bytes are gone; WHAT the turn carried is still listed, by name, in order.
+                  <div className={`mb-2 flex flex-wrap gap-1.5 ${m.role === 'user' ? 'justify-end' : ''}`} data-testid="bubble-attached-files">
+                    {m.files.map((f, fi) => (
+                      <span key={fi} title={f.name || f.kind}
+                        className="inline-flex max-w-[16rem] items-center gap-1.5 rounded-lg bg-app-elevated px-2 py-1 text-[11px] text-app-muted ring-1 ring-app-border/10">
+                        {f.kind === 'video' ? <Film size={12} aria-hidden="true" /> : f.kind === 'audio' ? <Music2 size={12} aria-hidden="true" />
+                          : f.kind === 'image' ? <ImageIcon size={12} aria-hidden="true" /> : <FileText size={12} aria-hidden="true" />}
+                        <span className="truncate">{f.name || f.kind}</span>
+                        {f.durationSec ? <span className="shrink-0 tabular-nums">{fileClock(f.durationSec)}</span> : null}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {m.imageUrl && !m.editJob && (
                   <div className="space-y-1.5">
                     {/* THE IMAGE IN ITS OWN SHAPE. It was `w-full object-contain` — a 4:5 portrait sat in a wide dark
@@ -10959,7 +10997,28 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
 
         {/* Video Remix Mode — a video attached in chat = "edit this video". Show the
             indicator + quick-action chips that pre-fill the right request. */}
-        {mode === 'chat' && attachments.some((a) => isVideo(a.mimeType)) && (
+        {/* Two or more clips are a MONTAGE, not a one-video remix (lib/chat/chatMediaRoute): say so, with one chip that asks
+            for it — the remix chips below would only ask which one video to edit. */}
+        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length > 1 && (() => {
+          const clips = attachments.filter((a) => isVideo(a.mimeType)).length;
+          const withTrack = attachments.some((a) => isAudio(a.mimeType));
+          const fill = locale === 'en' ? `montage these ${clips} clips${withTrack ? ' to the music' : ''}`
+            : locale === 'ru' ? `смонтируй эти ${clips} клипа${withTrack ? ' под музыку' : ''}`
+              : `დაამონტაჟე ეს ${clips} ვიდეო${withTrack ? ' და მუსიკას დაამთხვიე' : ''}`;
+          return (
+            <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="composer-montage-mode">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
+                <Scissors size={13} aria-hidden="true" />
+                {locale === 'en' ? `Montage · ${clips} clips${withTrack ? ' + music' : ''}` : locale === 'ru' ? `Монтаж · ${clips} клипа${withTrack ? ' + музыка' : ''}` : `მონტაჟი · ${clips} ვიდეო${withTrack ? ' + მუსიკა' : ''}`}
+              </span>
+              <button type="button" onClick={() => { setInput(fill); taRef.current?.focus(); }}
+                className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-app-border/20 bg-app-bg/40 px-2.5 py-1 text-[12px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent">
+                <Film size={13} aria-hidden="true" /> {locale === 'en' ? 'Montage them' : locale === 'ru' ? 'Смонтировать' : 'დამონტაჟება'}
+              </button>
+            </div>
+          );
+        })()}
+        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length === 1 && (
           <div className="mb-2 space-y-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
               {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}

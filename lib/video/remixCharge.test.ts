@@ -4,7 +4,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CHARGED_REMIX_OPS, canonicalRemixOp, isChargedRemixOp, remixAskText, remixOpCredits } from './remixCharge';
+import { CHARGED_REMIX_OPS, canonicalRemixOp, isChargedRemixOp, remixAskText, remixEngine, remixOpCredits } from './remixCharge';
 import { CREDIT_COSTS } from '@/lib/credits/pricing';
 
 describe('remixCharge', () => {
@@ -36,8 +36,18 @@ describe('remixCharge', () => {
   });
 
   test('the question names the edit and the price in the user\'s language', () => {
-    expect(remixAskText('face_swap', 15, 'ka')).toBe('ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს. დავიწყო?');
-    expect(remixAskText('add_music', 15, 'en')).toBe('This edit of your video, „Music", costs 15 credits. Shall I start?');
-    expect(remixAskText('background_remove', 15, 'ru')).toBe('Эта правка видео, «Удаление фона», стоит 15 кредитов. Начать?');
+    expect(remixAskText('face_swap', 15, 'ka')).toBe('ვიდეოს ეს რედაქტირება, „პერსონაჟის შეცვლა", 15 კრედიტი ღირს. ძრავა: გარე სერვისი (არა Google ან ElevenLabs). დავიწყო?');
+    expect(remixAskText('add_music', 15, 'en')).toBe('This edit of your video, „Music", costs 15 credits. Engine: FFmpeg on our server — the track is laid under the video, no AI is used. Shall I start?');
+    expect(remixAskText('background_remove', 15, 'ru')).toBe('Эта правка видео, «Удаление фона», стоит 15 кредитов. Движок: внешний сервис (не Google и не ElevenLabs). Начать?');
+  });
+
+  it('names the files it uses and the engine before Create (GG 2026-10-11 PART 3)', () => {
+    expect(remixAskText('music', 15, 'ka', ['clipA.mp4', 'track.mp3'])).toBe(
+      'ვიდეოს ეს რედაქტირება, „მუსიკა", 15 კრედიტი ღირს. ფაილები: clipA.mp4 + track.mp3. ძრავა: FFmpeg ჩვენს სერვერზე — ტრეკი ვიდეოს ქვეშ ჩაჯდება, AI არ გამოიყენება. დავიწყო?',
+    );
+    expect(remixAskText('voiceover', 15, 'en', ['clip.mov'])).toContain('Files: clip.mov. Engine: ElevenLabs (the voice) + FFmpeg');
+    expect(['music', 'add_music', 'voiceover', 'redub', 'restyle', 'character', 'face_swap', 'background_remove'].map(remixEngine)).toEqual(
+      ['ffmpeg', 'ffmpeg', 'elevenlabs_ffmpeg', 'outside', 'outside', 'outside', 'outside', 'outside'],
+    );
   });
 });

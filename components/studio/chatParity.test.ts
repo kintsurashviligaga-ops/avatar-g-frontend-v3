@@ -119,7 +119,10 @@ describe('the chat takes everything a person can bring', () => {
 describe('the chat can USE what it is given', () => {
   it('a video + a question (or no words) is read as frames + soundtrack; only an edit request reaches the paid remix', () => {
     expect(omni).toMatch(/if \(mode === 'chat' && attachments\.some\(\(a\) => isVideo\(a\.mimeType\)\) && !isVideoEditRequest\(text\)\) \{/);
-    expect(omni).toContain('digest = await captureVideoDigest(await (await fetch(videoAtt.dataUrl)).blob())');
+    // EVERY attached video is read (the request budget shared between them), not only the first
+    expect(omni).toContain('const digests = await Promise.all(videoAtts.map(async (v) => {');
+    expect(omni).toContain('try { return await captureVideoDigest(await (await fetch(v.dataUrl)).blob(), frameCount ? { frameCount } : {}); } catch { return null; }');
+    expect(omni).toContain('const perClip = Math.floor(budget / videoAtts.length);');
     // the analysis turn is answered by the chat stream, and the remix branch comes AFTER it
     expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeGreaterThan(0);
     expect(omni.indexOf('VIDEO UNDERSTANDING (chat-attached)')).toBeLessThan(omni.indexOf('VIDEO REMIX (chat-attached)'));
