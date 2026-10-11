@@ -246,9 +246,10 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
     return act('agent.montage', 'pending', params);
   }
 
-  // 6) Cut the clips to the track. Clips with no track, or clips named but not attached: say what is missing.
+  // 6) Cut the clips to the track (photos ride along as still shots). Clips with no track, or clips named but not
+  //    attached: say what is missing.
   if (beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
-  if (nAudio === 0 && nVideo >= 1 && nVideo === kinds.length && beatMontageAsk(text, [...kinds, 'audio'])) {
+  if (nAudio === 0 && nVideo >= 1 && nVideo + nImage === kinds.length && beatMontageAsk(text, [...kinds, 'audio'])) {
     return act('agent.montage', 'attachment', params, ['track']);
   }
   if (!kinds.length && CLIPS_REF.test(text) && beatMontageAsk(text, ['video', 'video', 'audio'])) {

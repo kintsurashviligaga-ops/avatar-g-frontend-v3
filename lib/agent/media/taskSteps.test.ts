@@ -110,6 +110,28 @@ describe('the montage card is every step, from the upload to the saved result', 
   });
 });
 
+describe('a photo among the clips (owner, 2026-10-11 11:37Z)', () => {
+  const manifest = [
+    { index: 0, path: 'u/s.mp3', name: 'song.mp3', kind: 'audio' as const, durationSec: 95 },
+    { index: 1, path: 'u/a.mov', name: 'IMG_1.MOV', kind: 'video' as const, durationSec: 9 },
+    { index: 2, path: 'u/b.mov', name: 'IMG_2.MOV', kind: 'video' as const, durationSec: 11 },
+    { index: 3, path: 'u/p.jpg', name: 'product.jpg', kind: 'image' as const, durationSec: 0 },
+  ];
+  const q = { ...MQ, clips: 2, stills: 1, manifest };
+  test('the card names the photo: in the files, the plan and the per-clip check', () => {
+    const plan = montageTask({ phase: 'quoted', names: ['a', 'b', 'c', 'd'], quote: q }, 'ka');
+    expect(plan.inputs?.text).toBe('2 ვიდეო + 1 ფოტო + 1 MP3');
+    expect(plan.inputs?.files.map((f) => f.kind)).toEqual(['audio', 'video', 'video', 'image']);
+    expect(plan.steps[0]!.detail).toBe('2 კლიპი · 1 ფოტო · 1 მუსიკა');
+    expect(plan.steps[2]!.detail).toBe('6 კადრი 2 კლიპიდან და 1 ფოტოდან · 10.6 წმ · 16:9 · უფასო');
+    const done = montageTask({ phase: 'done', names: ['a', 'b', 'c', 'd'], quote: q, stage: 'completed' }, 'en');
+    expect(done.steps[7]!.detail).toBe('3/3 clips and photos found in the output · sound in sync');
+  });
+  test('before the quote, a photo is known by its name', () => {
+    expect(montageTask({ phase: 'reading', names: ['a.mov', 'p.HEIC', 'song.mp3'] }, 'en').inputs?.text).toBe('1 video + 1 photo + 1 MP3');
+  });
+});
+
 describe('the MP3 card: source, rights, plan, extraction, check, save', () => {
   test('a link is checked first; the plan names the host, the size, the licence and the file', () => {
     expect(states(audioTask({ phase: 'checking', source: 'link', t0: 9 }, 'en'))).toBe('active pending pending pending pending pending');

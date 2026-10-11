@@ -219,6 +219,12 @@ export interface CutInput {
   minShotSec: number;
   /** The longest shot the renderer takes (montagePlan MAX_SHOT_SEC). */
   maxShotSec: number;
+  /**
+   * Which clips are PHOTOS (parallel to clipDurationsSec): a still has no length of its own, so it is never too short
+   * and gets exactly ONE shot (a full one when the budget allows), shown from its start (the lane turns it into a slow
+   * zoom, lib/services/montage/montagePipeline). Its entry in clipDurationsSec is ignored.
+   */
+  stills?: readonly boolean[];
 }
 
 export interface PlannedCut {
@@ -290,7 +296,9 @@ export function planBeatCuts(input: CutInput): CutPlan {
   const unit = grid && grid.periodSec > 0 ? grid.periodSec : FALLBACK_UNIT_SEC;
   const askedFrom = Number.isFinite(input.musicFromSec) && (input.musicFromSec ?? 0) > 0 ? input.musicFromSec! : 0;
   const musicStartSec = musicStartOnBeat(grid, askedFrom);
-  const durations = input.clipDurationsSec.map((d) => (Number.isFinite(d) && d > 0 ? d - TAIL_GUARD_SEC : 0));
+  const still = (c: number): boolean => input.stills?.[c] === true;
+  // A still's "length" is the longest shot it could be: it never runs out, and it holds one shot only (below).
+  const durations = input.clipDurationsSec.map((d, c) => (still(c) ? input.maxShotSec : Number.isFinite(d) && d > 0 ? d - TAIL_GUARD_SEC : 0));
   const n = durations.length;
   if (!n) return fail('no clips', grid);
   if (n > input.maxShots) {
@@ -305,8 +313,8 @@ export function planBeatCuts(input: CutInput): CutPlan {
   const neededSec = up1(n * minBeats * unit);
 
   // ── every clip must hold one shot ────────────────────────────────────────────────────────────────────────────────
-  const capacity = durations.map((d) => Math.floor((Math.max(0, d) + 1e-6) / unit));
-  const short = capacity.flatMap((cap, c) => (cap < minBeats ? [c] : []));
+  const capacity = durations.map((d, c) => (still(c) ? maxBeats : Math.floor((Math.max(0, d) + 1e-6) / unit)));
+  const short = capacity.flatMap((cap, c) => (cap < minBeats && !still(c) ? [c] : []));
   if (short.length) {
     const minShotSec = up1(minBeats * unit + TAIL_GUARD_SEC);
     return fail(`clip ${short.map((c) => c + 1).join(', ')} shorter than one ${minShotSec}s shot`, grid, { kind: 'clip_too_short', clips: short, minShotSec });
@@ -348,7 +356,8 @@ export function planBeatCuts(input: CutInput): CutPlan {
     // Cannot happen after the checks above; kept so a future change fails loudly instead of dropping a clip.
     if (take < minBeats) return fail(`clip ${c + 1} could not get a shot`, grid, musicProblem());
     shotsOf[c]!.push(take);
-    capacity[c] = capacity[c]! - take;
+    // A photo is shown once: a second shot of the same still reads as a stutter, not as rhythm.
+    capacity[c] = still(c) ? 0 : capacity[c]! - take;
     budget -= take;
     shots += 1;
   }
@@ -388,9 +397,10 @@ export function planBeatCuts(input: CutInput): CutPlan {
     if (!own.length) return;
     const mine = lens.slice(next, next + own.length);
     next += own.length;
-    // Spread the clip's shots across it with equal gaps, so a long clip is sampled, not just its opening seconds.
+    // Spread the clip's shots across it with equal gaps, so a long clip is sampled, not just its opening seconds. A
+    // still's one shot starts at 0 (the lane renders it for exactly the shot's length).
     const used = mine.reduce((s, len) => s + len, 0);
-    const gap = Math.max(0, d - used) / (own.length + 1);
+    const gap = still(c) ? 0 : Math.max(0, d - used) / (own.length + 1);
     let at = gap;
     own.forEach((beats, j) => {
       const len = mine[j]!;

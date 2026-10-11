@@ -7,7 +7,7 @@ import { LEASE_MS } from '@/lib/orchestrator/jobLease';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { cancelMontageJob, enqueueMontageJob, quoteMontage } from './montageExec';
 import { GAVE_UP, HOLD_ABANDONED, sweepMontageJobs, workMontageJob } from './montageWorker';
-import { FILES, MASTER_URL, USER, balance, clip, fake, type Fake, type RenderOpts } from './testing/fakeMontageDeps';
+import { FILES, MASTER_URL, TRACK, USER, balance, clip, fake, type Fake, type RenderOpts } from './testing/fakeMontageDeps';
 import { signQuote } from './quoteToken';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 
@@ -118,6 +118,23 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
     // One read of the master for all clips, one per source (conformed to the master's frame).
     expect(f.grabs.filter((g) => g.url === MASTER_URL)).toHaveLength(1);
     expect(f.grabs.filter((g) => g.url !== MASTER_URL).map((g) => g.fit)).toEqual([true, true]);
+  });
+
+  test('a photo among the clips (owner, 2026-10-11 11:37Z): one image shot, checked at its place like a clip, delivered', async () => {
+    const PH = [`omni-uploads/${USER}/a.mp4`, `omni-uploads/${USER}/p.jpg`, `omni-uploads/${USER}/b.mp4`, `omni-uploads/${USER}/song.mp3`];
+    const still = { ...clip(0.04), hasAudio: false, videoCodec: 'mjpeg', audioCodec: null };
+    const f = fake({ files: { [PH[0]!]: clip(20), [PH[1]!]: still, [PH[2]!]: clip(20), [PH[3]!]: TRACK } });
+    const q = await quoteMontage(f.deps, { userId: USER, files: PH, prompt: 'cut these to the music' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ clips: 2, stills: 1 });
+    expect(q.quote.manifest?.map((m) => [m.kind, m.durationSec])).toEqual([['video', 20], ['image', 0], ['video', 20], ['audio', 180]]);
+    expect(q.request.shots.filter((s) => s.source === 1).map((s) => [s.kind, s.startSec])).toEqual([['image', 0]]);
+    const r = await enqueueMontageJob(f.deps, { userId: USER, request: q.request, token: q.token });
+    if (!r.ok) throw new Error(r.error);
+    expect(await workMontageJob(f.deps, { jobId: q.quote.jobId, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+    const qc = (f.store.rows.get(q.quote.jobId)!.result as { qc: { clips: Array<{ index: number; ok: boolean; srcT: number }>; files: number; videos: number; stills: number; ok: boolean } }).qc;
+    expect(qc).toMatchObject({ files: 4, videos: 2, stills: 1, ok: true });
+    expect(qc.clips.map((c) => [c.index, c.ok])).toEqual([[0, true], [1, true], [2, true]]);
   });
 
   test('a master that does not show one clip is FAILED (clip_missing), never completed, with the evidence on the row', async () => {

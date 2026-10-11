@@ -256,3 +256,44 @@ describe('the music starts where the user asked (Agent G PART 1, „მუსი
     expect(plan).toMatchObject({ ok: false, error: 'the track ends before 45s' });
   });
 });
+
+describe('a photo among the clips is one still shot (owner, 2026-10-11 11:37Z: 4 clips + a photo + an MP3)', () => {
+  test('the photo gets exactly one shot from 0, on the beat, never refused as too short; every clip still appears', () => {
+    // The photo's "length" (0) is ignored: a still has no length of its own.
+    const plan = planBeatCuts({ clipDurationsSec: [20, 20, 0, 20, 20], stills: [false, false, true, false, false], musicSec: 120, grid: G120, targetSec: 30, ...LIMITS });
+    expect(plan.ok).toBe(true);
+    const photo = plan.cuts.filter((c) => c.clip === 2);
+    expect(photo).toHaveLength(1);
+    expect(photo[0]!.startSec).toBe(0);
+    expect(photo[0]!.endSec).toBeGreaterThanOrEqual(MIN_SHOT_SEC);
+    expect(photo[0]!.endSec).toBeLessThanOrEqual(MAX_SHOT_SEC);
+    expect(new Set(plan.cuts.map((c) => c.clip))).toEqual(new Set([0, 1, 2, 3, 4]));
+    // The clips around it get the rest of the length (more than one shot each), the photo never a second.
+    expect(plan.cuts.length).toBeGreaterThan(5);
+    expect(plan.totalSec).toBeLessThanOrEqual(30);
+  });
+
+  test('without `stills` a 0 s entry is still refused as too short (the flag, not the length, makes a photo)', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [20, 0, 20], musicSec: 120, grid: G120, ...LIMITS });
+    expect(plan).toMatchObject({ ok: false, problem: { kind: 'clip_too_short', clips: [1] } });
+  });
+
+  test('as a montage request the photo shot is an image shot the renderer accepts, and the length holds', () => {
+    const stills = [false, true, false];
+    const plan = planBeatCuts({ clipDurationsSec: [12.4, 0, 21], stills, musicSec: 95, grid: G120, targetSec: 30, ...LIMITS });
+    expect(plan.ok).toBe(true);
+    const body = {
+      shots: plan.cuts.map((c) => ({
+        url: `https://x.supabase.co/c${c.clip}.${stills[c.clip] ? 'jpg' : 'mp4'}`, kind: stills[c.clip] ? 'image' : 'video',
+        startSec: c.startSec, endSec: c.endSec, transition: 'cut',
+      })),
+      aspect: '9:16',
+      musicUrl: 'https://x.supabase.co/song.mp3',
+      musicStartSec: plan.musicStartSec,
+      musicOnly: true,
+    };
+    const v = validateMontageRequest(body);
+    expect(v.ok).toBe(true);
+    expect(Math.abs(timelineDuration(v.request!.shots) - plan.totalSec)).toBeLessThan(0.01);
+  });
+});

@@ -3,7 +3,10 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, aspectFromClips, aspectFromPrompt, clipCheckPoints, frameDiff, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs } from './montageAsk';
+import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
+import { planBeatCuts } from '@/lib/services/montage/beatPlan';
+import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC } from '@/lib/services/montage/montagePlan';
 import type { AgentMontageRequest } from './montageManifest';
 import { signQuote, verifyQuote } from './quoteToken';
 import { agentMediaAccess, agentMediaOpenTo } from './access';
@@ -36,7 +39,7 @@ describe('quote token', () => {
 
 describe('inputs and shape', () => {
   test('clips have a picture, the track has only sound; one track exactly', () => {
-    expect(sortInputs([P({}), P({ hasVideo: false }), P({})])).toEqual({ ok: true, clips: [0, 2], track: 1 });
+    expect(sortInputs([P({}), P({ hasVideo: false }), P({})])).toEqual({ ok: true, clips: [0, 2], stills: [], track: 1 });
     expect(sortInputs([P({}), null])).toEqual({ ok: false, error: 'unreadable', files: [1] });
     expect(sortInputs([P({ hasVideo: false })])).toEqual({ ok: false, error: 'no_clip' });
     expect(sortInputs([P({}), P({ durationSec: 0 })])).toEqual({ ok: false, error: 'unreadable', files: [1] });
@@ -137,5 +140,69 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
     expect(qcAvSync({ videoSec: 30, audioSec: 28 }, 30).problems).toEqual(['sound 28.00s against picture 30.00s']);
     expect(qcAvSync({ videoSec: 20, audioSec: 20 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s']);
     expect(qcAvSync(null, 30)).toMatchObject({ ok: false });
+  });
+});
+
+describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo + an MP3 were refused)', () => {
+  const JPG = P({ hasAudio: false, videoCodec: 'mjpeg', durationSec: 0.04, width: 1200, height: 1600, audioCodec: undefined });
+
+  test('a still picture is a photo; a camera clip in MJPEG, a clip with sound, an h264 clip and nothing are not', () => {
+    expect(isStillProbe(JPG)).toBe(true);
+    expect(isStillProbe({ ...JPG, videoCodec: 'png', durationSec: 0 })).toBe(true);
+    expect(isStillProbe({ ...JPG, videoCodec: 'HEVC', durationSec: Number.NaN })).toBe(true);
+    expect(isStillProbe({ ...JPG, durationSec: 6 })).toBe(false);
+    expect(isStillProbe({ ...JPG, hasAudio: true })).toBe(false);
+    expect(isStillProbe({ ...JPG, videoCodec: 'h264' })).toBe(false);
+    expect(isStillProbe(null)).toBe(false);
+  });
+
+  test('sortInputs: the photo is a picture of the edit and named a still; photos alone are no clip; a 0 s photo is readable', () => {
+    expect(sortInputs([P({}), JPG, P({ hasVideo: false })])).toEqual({ ok: true, clips: [0, 1], stills: [1], track: 2 });
+    expect(sortInputs([P({ hasVideo: false }), P({}), P({}), P({}), P({}), { ...JPG, durationSec: 0 }]))
+      .toEqual({ ok: true, clips: [1, 2, 3, 4, 5], stills: [5], track: 0 });
+    expect(sortInputs([JPG, JPG, P({ hasVideo: false })])).toEqual({ ok: false, error: 'no_clip' });
+  });
+
+  test('the body shows the photo as an image shot, the run check accepts it, and every file of the manifest has its shot', () => {
+    const manifest: MontageManifestItem[] = [
+      { index: 0, path: 'u/a.mov', name: 'a.mov', kind: 'video', durationSec: 14 },
+      { index: 1, path: 'u/p.jpg', name: 'p.jpg', kind: 'image', durationSec: 0 },
+      { index: 2, path: 'u/b.mov', name: 'b.mov', kind: 'video', durationSec: 9 },
+      { index: 3, path: 'u/s.mp3', name: 's.mp3', kind: 'audio', durationSec: 95 },
+    ];
+    const plan = planBeatCuts({
+      clipDurationsSec: [14, 0, 9], stills: [false, true, false], musicSec: 95, grid: null, targetSec: 20,
+      maxShots: MAX_SHOTS, maxTotalSec: MAX_TOTAL_SEC, minShotSec: MIN_SHOT_SEC, maxShotSec: MAX_SHOT_SEC,
+    });
+    expect(plan.ok).toBe(true);
+    const clips = [
+      { url: 'https://x.supabase.co/a.mov', source: 0 },
+      { url: 'https://x.supabase.co/p.jpg', source: 1, still: true },
+      { url: 'https://x.supabase.co/b.mov', source: 2 },
+    ];
+    const body = montageBody(plan, clips, 'https://x.supabase.co/s.mp3', '9:16', manifest) as { shots: Array<{ kind: string; source: number }> };
+    expect(body.shots.filter((s) => s.source === 1).map((s) => s.kind)).toEqual(['image']);
+    expect(body.shots.filter((s) => s.source !== 1).every((s) => s.kind === 'video')).toBe(true);
+    const parsed = parseAgentRequest(body);
+    expect(parsed.ok).toBe(true);
+    expect(checkCoverage(body.shots, manifest)).toEqual({ ok: true });
+    // A photo's shot sent as a video shot (or the other way round) is refused, not repaired.
+    const swapped = body.shots.map((s) => (s.source === 1 ? { ...s, kind: 'video' } : s));
+    expect(checkCoverage(swapped, manifest)).toMatchObject({ ok: false });
+  });
+
+  test('the per-clip check looks for the photo just after its shot starts, at the photo itself (t = 0)', () => {
+    const shot = (source: number, kind: 'video' | 'image', startSec: number, endSec: number) => ({ url: `https://x.supabase.co/c${source}`, source, kind, startSec, endSec, transition: 'cut' as const });
+    const req = {
+      shots: [shot(0, 'video', 1, 3), shot(1, 'image', 0, 2), shot(2, 'video', 0, 4)],
+      aspect: '9:16', musicUrl: 'https://x.supabase.co/s.mp3', musicStartSec: 0, musicDuckDb: 0, musicOnly: true,
+      manifest: [
+        { index: 0, path: 'p0', name: 'a.mp4', kind: 'video', durationSec: 9 },
+        { index: 1, path: 'p1', name: 'p.jpg', kind: 'image', durationSec: 0 },
+        { index: 2, path: 'p2', name: 'c.mp4', kind: 'video', durationSec: 6 },
+        { index: 3, path: 'p3', name: 's.mp3', kind: 'audio', durationSec: 30 },
+      ],
+    } as unknown as AgentMontageRequest;
+    expect(clipCheckPoints(req).map((p) => [p.index, p.outT, p.srcT])).toEqual([[0, 1, 2], [1, 2 + STILL_QC_OFFSET_SEC, 0], [2, 6, 2]]);
   });
 });

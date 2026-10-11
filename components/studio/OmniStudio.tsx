@@ -8818,7 +8818,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     switch (step.kind) {
       case 'say':
         // A request missing its input keeps the words and the files in the box: add the track (photo, video), send again.
-        if (!step.keepComposer) clearComposer();
+        // Any other note keeps the files: they were attached for this ask, and dropping them on a refusal lost the
+        // owner's uploads (2026-10-11 11:37Z). Only the words go.
+        if (!step.keepComposer) { setInput(''); inputSourceRef.current = 'text'; stopDictationEcho(); }
         say(step.text);
         return true;
       case 'stop':
@@ -11002,6 +11004,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       reference={musicAudioAtt && !(hasTrainedVoice && useMyVoice && !musicInstrumental) ? musicAudioMode : null}
     />
   ) : null;
+  // The composer's montage chip: two or more clips, or a clip with photos and a track (the photos become still shots).
+  const chipVideos = attachments.filter((a) => isVideo(a.mimeType)).length;
+  const montageChipOn = chipVideos > 1
+    || (chipVideos === 1 && attachments.some((a) => isImage(a.mimeType)) && attachments.some((a) => isAudio(a.mimeType)));
   // The chat composer's one-row shape (see the pill): while the text fits a line and nothing else needs the row.
   // Desktop only: Gemini's PHONE composer is two rows (the text full width on top, the controls under it) — squeezing
   // „+“, mic and Live beside the text left a ~180 px box that wrapped even the placeholder.
@@ -11292,17 +11298,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             indicator + quick-action chips that pre-fill the right request. */}
         {/* Two or more clips are a MONTAGE, not a one-video remix (lib/chat/chatMediaRoute): say so, with one chip that asks
             for it — the remix chips below would only ask which one video to edit. */}
-        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length > 1 && (() => {
+        {mode === 'chat' && montageChipOn && (() => {
           const clips = attachments.filter((a) => isVideo(a.mimeType)).length;
+          const photos = attachments.filter((a) => isImage(a.mimeType)).length;
           const withTrack = attachments.some((a) => isAudio(a.mimeType));
-          const fill = locale === 'en' ? `montage these ${clips} clips${withTrack ? ' to the music' : ''}`
-            : locale === 'ru' ? `смонтируй эти ${clips} клипа${withTrack ? ' под музыку' : ''}`
-              : `დაამონტაჟე ეს ${clips} ვიდეო${withTrack ? ' და მუსიკას დაამთხვიე' : ''}`;
+          // Photos ride along as still shots (lib/agent/media/montageAsk isStillProbe): the chip counts them too.
+          const fill = locale === 'en' ? `montage these ${clips} clips${photos ? ` and ${photos} photo${photos > 1 ? 's' : ''}` : ''}${withTrack ? ' to the music' : ''}`
+            : locale === 'ru' ? `смонтируй эти ${clips} клипа${photos ? ` и ${photos} фото` : ''}${withTrack ? ' под музыку' : ''}`
+              : `დაამონტაჟე ეს ${clips} ვიდეო${photos ? ` და ${photos} ფოტო` : ''}${withTrack ? ' და მუსიკას დაამთხვიე' : ''}`;
           return (
             <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="composer-montage-mode">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
                 <Scissors size={13} aria-hidden="true" />
-                {locale === 'en' ? `Montage · ${clips} clips${withTrack ? ' + music' : ''}` : locale === 'ru' ? `Монтаж · ${clips} клипа${withTrack ? ' + музыка' : ''}` : `მონტაჟი · ${clips} ვიდეო${withTrack ? ' + მუსიკა' : ''}`}
+                {locale === 'en' ? `Montage · ${clips} clips${photos ? ` + ${photos} photo${photos > 1 ? 's' : ''}` : ''}${withTrack ? ' + music' : ''}`
+                  : locale === 'ru' ? `Монтаж · ${clips} клипа${photos ? ` + ${photos} фото` : ''}${withTrack ? ' + музыка' : ''}`
+                    : `მონტაჟი · ${clips} ვიდეო${photos ? ` + ${photos} ფოტო` : ''}${withTrack ? ' + მუსიკა' : ''}`}
               </span>
               <button type="button" onClick={() => { setInput(fill); taRef.current?.focus(); }}
                 className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-app-border/20 bg-app-bg/40 px-2.5 py-1 text-[12px] font-medium text-app-text transition-colors hover:border-app-accent/50 hover:text-app-accent">
@@ -11311,7 +11321,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             </div>
           );
         })()}
-        {mode === 'chat' && attachments.filter((a) => isVideo(a.mimeType)).length === 1 && (
+        {mode === 'chat' && !montageChipOn && attachments.filter((a) => isVideo(a.mimeType)).length === 1 && (
           <div className="mb-2 space-y-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-app-accent/15 px-3 py-1 text-[11.5px] font-semibold text-app-accent ring-1 ring-app-accent/25">
               {locale === 'en' ? 'Video Remix Mode' : locale === 'ru' ? 'Режим ремикса видео' : 'ვიდეო რემიქსის რეჟიმი'}
@@ -11342,9 +11352,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               // Every uploaded file says where it is: uploading (a bar and its %), Ready (stored and checked), or why it
               // failed with Retry. The state is the server's, never a timer.
               const pct = Math.round((a.progress ?? 0) * 100);
+              // A photo or document read in full on this device rides inline with the message (no upload, so no status):
+              // it is ready too, and says so. It had no check while the clips beside it did (owner, 2026-10-11 11:40Z).
+              const ready = a.status === 'ready' || (!a.status && !!a.dataUrl);
               const stateWord = a.status === 'uploading'
                 ? (locale === 'en' ? `Uploading ${pct}%` : locale === 'ru' ? `Загрузка ${pct}%` : `იტვირთება ${pct}%`)
-                : a.status === 'ready' ? (locale === 'en' ? 'Ready' : locale === 'ru' ? 'Готово' : 'მზადაა')
+                : ready ? (locale === 'en' ? 'Ready' : locale === 'ru' ? 'Готово' : 'მზადაა')
                   : a.status === 'failed' ? (locale === 'en' ? 'Failed' : locale === 'ru' ? 'Ошибка' : 'ვერ აიტვირთა') : '';
               const facts = [
                 a.name && /\.([a-z0-9]{1,5})$/i.test(a.name) ? a.name.split('.').pop() : '',
@@ -11392,7 +11405,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                     <span className="block h-full rounded-full bg-app-accent transition-[width] duration-200" style={{ width: `${Math.max(4, pct)}%` }} />
                   </span>
                 )}
-                {a.status === 'ready' && (
+                {ready && (
                   <span className="pointer-events-none absolute -bottom-1 -left-1 flex h-4 w-4 items-center justify-center rounded-full bg-app-accent text-white ring-2 ring-app-bg" aria-label={stateWord}><Check size={10} strokeWidth={3} /></span>
                 )}
                 {a.status === 'failed' && (

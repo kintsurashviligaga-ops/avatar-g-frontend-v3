@@ -332,6 +332,15 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           flag, price, secret, migration or provider change; AGENT_G_MEDIA_EXEC stays off in Production (several videos
           open the Montage editor). Signed-in Production use is BUILT_NOT_PROVEN until GG tries it. Rollback: revert
           bad4c89a or Instant Rollback to the 2817c9b deployment; nothing to undo in the DB.
+          FLAG 2026-10-11: GG tapped „მხოლოდ ჩემთვის" (11:44:12Z, verified) and set AGENT_G_MEDIA_EXEC=admin in
+          Production themselves, then Redeploy (same commit bad4c89, build 11:55:56Z; /api/health healthy). Chat montage
+          is open to admins only; not public. First Production Agent G montage 6efe92f3 (12:03–12:07Z, admin account,
+          3 videos + MP3): QC ok 3/3, 19.17 s, music from 57.13 s, 0 ledger rows: PROVEN [Prod, DB RO], without a photo.
+          ROUND 3 (on this branch, not deployed): a photo among the clips made the ask a „move the music" edit,
+          answered „can't", and the note dropped the files; fixed: photos are one still shot each (manifest kind image,
+          Ken Burns cover-crop, QC at the photo), a note keeps the files, inline files show their check, per-clip QC
+          takes the closest of three source frames (a real clip measured 11.96 against 12). Real ffmpeg: photo diff
+          0.78. BUILT_NOT_PROVEN until GG re-tests on the Preview; Production needs GG's separate word. Report §17.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):

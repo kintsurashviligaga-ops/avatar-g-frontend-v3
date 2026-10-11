@@ -102,7 +102,9 @@ export async function grabFrames(url: string, timesSec: readonly number[], opts:
       'format=gray',
     ].join(',');
     const args = ['-hide_banner', '-loglevel', 'error', '-y'];
-    timesSec.forEach((t) => args.push('-ss', t.toFixed(3), '-i', url));
+    // No seek for t = 0: ffmpeg's image demuxer returns NO frame for a still opened with `-ss 0` (a photo of an Agent G
+    // montage is checked at its own t = 0, ../../agent/media/montageAsk clipCheckPoints), and a video needs none there.
+    timesSec.forEach((t) => args.push(...(t > 0 ? ['-ss', t.toFixed(3)] : []), '-i', url));
     const outs = timesSec.map((_, i) => join(dir, `f${i}.gray`));
     outs.forEach((out, i) => args.push('-map', `${i}:v:0`, '-frames:v', '1', '-vf', chain, '-f', 'rawvideo', '-pix_fmt', 'gray', out));
     await ffmpegExec(b, args, { maxBuffer: 1 << 22, timeout: opts.timeoutMs ?? 120_000 });

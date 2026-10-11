@@ -58,7 +58,7 @@ export interface TaskCardModel {
   inputs?: TaskInputs;
 }
 
-export interface TaskInputFile { name: string; kind: 'video' | 'audio' }
+export interface TaskInputFile { name: string; kind: 'video' | 'audio' | 'image' }
 export interface TaskInputs { text: string; files: TaskInputFile[] }
 
 const T = {
@@ -141,6 +141,7 @@ export const MONTAGE_STEPS = ['upload', 'analyse', 'plan', 'prepare', 'normalize
 const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 6, qc: 7, completed: 8 };
 
 const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i;
+const IMAGE_NAME = /\.(jpe?g|png|webp|heic|heif|gif|bmp|avif)$/i;
 
 /**
  * The files a montage works on, in the order sent: from the quote's manifest once there is one (the server checked
@@ -150,15 +151,17 @@ export function montageInputs(s: Pick<AgentMontageState, 'quote' | 'names'>, loc
   const lang = pick(locale);
   const files: TaskInputFile[] = s.quote?.manifest?.length
     ? s.quote.manifest.map((m) => ({ name: m.name, kind: m.kind }))
-    : (s.names ?? []).map((name) => ({ name, kind: AUDIO_NAME.test(name) ? 'audio' as const : 'video' as const }));
+    : (s.names ?? []).map((name) => ({ name, kind: AUDIO_NAME.test(name) ? 'audio' as const : IMAGE_NAME.test(name) ? 'image' as const : 'video' as const }));
   if (!files.length) return undefined;
   const v = files.filter((f) => f.kind === 'video').length;
+  const ph = files.filter((f) => f.kind === 'image').length;
   const tracks = files.filter((f) => f.kind === 'audio');
   const mp3 = tracks.length > 0 && tracks.every((f) => /\.mp3$/i.test(f.name));
   const videos = lang === 'en' ? `${v} video${v === 1 ? '' : 's'}` : lang === 'ru' ? `${v} видео` : `${v} ვიდეო`;
+  const photos = !ph ? '' : lang === 'en' ? `${ph} photo${ph === 1 ? '' : 's'}` : lang === 'ru' ? `${ph} фото` : `${ph} ფოტო`;
   const audio = !tracks.length ? '' : mp3 ? `${tracks.length} MP3`
     : lang === 'en' ? `${tracks.length} track${tracks.length === 1 ? '' : 's'}` : lang === 'ru' ? `аудио: ${tracks.length}` : `${tracks.length} აუდიო`;
-  return { text: audio ? `${videos} + ${audio}` : videos, files };
+  return { text: [videos, photos, audio].filter(Boolean).join(' + '), files };
 }
 
 /** " · music from 0:58": where in the song the montage starts, in whole seconds as the chat says it. */
@@ -198,18 +201,21 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
   }
   const states = lay(MONTAGE_STEPS, at, mode);
 
-  const clips = Math.max(0, total - 1);
+  // Photos are named apart once the quote knows them; before it every picture counts as a clip.
+  const stills = q?.stills ?? 0;
+  const clips = Math.max(0, total - 1 - stills);
+  const photoPart = stills ? (lang === 'en' ? ` · ${stills} photo${stills === 1 ? '' : 's'}` : lang === 'ru' ? ` · фото: ${stills}` : ` · ${stills} ფოტო`) : '';
   const filesDetail = total > 0
-    ? (lang === 'en' ? `${clips} clip${clips === 1 ? '' : 's'} · 1 track` : lang === 'ru' ? `клипов: ${clips} · трек: 1` : `${clips} კლიპი · 1 მუსიკა`)
+    ? (lang === 'en' ? `${clips} clip${clips === 1 ? '' : 's'}${photoPart} · 1 track` : lang === 'ru' ? `клипов: ${clips}${photoPart} · трек: 1` : `${clips} კლიპი${photoPart} · 1 მუსიკა`)
     : undefined;
   // Where the song comes in, when it is not its top: the owner typed „0.58" (2026-10-11) and the card never said that the
   // plan had read 0.58 s. Named here, a wrong start is seen before Start.
   const from = q && q.musicStartSec >= 1 ? musicFrom(q.musicStartSec, lang) : '';
   const beatDetail = q ? (q.beatSynced && q.bpm ? `${Math.round(q.bpm)} BPM · ${say('onBeat', lang)}` : say('noBeat', lang)) + from : undefined;
   const planDetail = q
-    ? (lang === 'en' ? `${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
-      : lang === 'ru' ? `${q.shots} кадров из клипов (${q.clips}) · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`
-        : `${q.shots} კადრი ${q.clips} კლიპიდან · ${sec(q.totalSec)} წმ · ${q.aspect} · ${priceLabel(q.credits, locale)}`)
+    ? (lang === 'en' ? `${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'}${stills ? ` and ${stills} photo${stills === 1 ? '' : 's'}` : ''} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
+      : lang === 'ru' ? `${q.shots} кадров из клипов (${q.clips})${stills ? ` и фото (${stills})` : ''} · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`
+        : `${q.shots} კადრი ${q.clips} კლიპიდან${stills ? ` და ${stills} ფოტოდან` : ''} · ${sec(q.totalSec)} წმ · ${q.aspect} · ${priceLabel(q.credits, locale)}`)
     : undefined;
 
   const steps: TaskStep[] = MONTAGE_STEPS.map((key, i) => {
@@ -229,9 +235,10 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
     // The worker delivers only when every clip of the manifest is found in the master and the sound lasts as long as
     // the picture (lib/agent/media/montageWorker): a done card can say so.
     if (key === 'clipqc' && state === 'done' && q) {
-      step.detail = lang === 'en' ? `${q.clips}/${q.clips} clips found in the output · sound in sync`
-        : lang === 'ru' ? `в итоге найдены все клипы: ${q.clips}/${q.clips} · звук синхронен`
-          : `შედეგში ყველა კლიპი იპოვა: ${q.clips}/${q.clips} · ხმა სინქრონშია`;
+      const n = q.clips + stills;
+      step.detail = lang === 'en' ? `${n}/${n} ${stills ? 'clips and photos' : 'clips'} found in the output · sound in sync`
+        : lang === 'ru' ? `в итоге найдены все ${stills ? 'клипы и фото' : 'клипы'}: ${n}/${n} · звук синхронен`
+          : `შედეგში ყველა ${stills ? 'კლიპი და ფოტო' : 'კლიპი'} იპოვა: ${n}/${n} · ხმა სინქრონშია`;
     }
     if (key === 'finish' && state === 'done') step.detail = say('savedLib', lang);
     return step;
