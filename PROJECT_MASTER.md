@@ -318,7 +318,12 @@ NEXT ACTION: the fix order in docs/handoffs/2026-10-09-engineering-report.md §6
           chat_messages.metadata column, no migration; a chat opened again merges what another device added).
           Old chats' cards were never saved server-side and cannot be recovered. Jest 12,831 green; Playwright on a production build
           297 passed, 7 skipped, 1 expected failure (swarm-pipelines.spec.ts:30). BUILT_NOT_PROVEN until GG
-          re-tests on the Preview and an iPhone.
+          re-tests on the Preview and an iPhone. GG's iPhone Preview run 11:04Z: clip stills and the red Stop
+          PROVEN [iPhone, Preview]; job 196a64b1 completed (QC ok 3/3, 0 ledger rows) and its user turn (4 files)
+          and card row were written to chat_messages.metadata, PROVEN [Preview, DB RO]; the cross-device view is
+          still BUILT_NOT_PROVEN. New bug in that run: „0.58 წამიდან" (a phone keyboard has no colon) was read as
+          0.58 s, not 0:58; fixed in 93f37049 (two digits after a point or comma are m:ss; the card's plan step
+          says „მუსიკა 0:58-დან"), BUILT_NOT_PROVEN until re-tested.
           Supabase Auth review (2026-10-09, draft PR #51; the PR itself is not merged: draft PRs are never merged
           automatically) in BLOCKERS below; its four auth fixes reached Production through PR #52 (6c7dff4, 16:01Z) and
           this branch since 96312b40 (main merged in, no overlap); its one other code change is ported (see BLOCKERS):
