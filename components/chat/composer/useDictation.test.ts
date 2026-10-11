@@ -329,15 +329,18 @@ describe('recorder path (WAV)', () => {
     expect(h.result.current.d.transcribing).toBe(false);
   });
 
-  test('interim passes run on the tick cadence and stream text in', async () => {
+  test('interim passes run on the captured-audio cadence and stream text in', async () => {
     jest.useFakeTimers();
     const h = harness({ deps: { speechRecognition: () => undefined } });
     await act(async () => { await h.result.current.d.toggle(); });
     await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
-    expect(h.fetchMock).toHaveBeenCalledTimes(1);
+    expect(h.fetchMock).toHaveBeenCalledTimes(1); // 1 s of audio ≥ FIRST_INTERIM_MS
     expect(h.result.current.value).toBe('გამარჯობა');
     await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
-    expect(h.fetchMock).toHaveBeenCalledTimes(2); // shouldRunInterim(2, 1)
+    expect(h.fetchMock).toHaveBeenCalledTimes(1); // still 1 s captured: the next pass is due at 1.9 s
+    h.cap.state.seconds = 2;
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(h.fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('two failed passes (a 429 counts) show the warning', async () => {
@@ -347,6 +350,7 @@ describe('recorder path (WAV)', () => {
     await act(async () => { await h.result.current.d.toggle(); });
     await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
     expect(h.result.current.d.warn).toBeNull();
+    h.cap.state.seconds = 2;
     await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
     expect(h.result.current.d.warn).toMatch(/not responding/);
   });
@@ -456,6 +460,7 @@ describe('the language the user SPEAKS, not the UI’s (lib/voice/speechLang)', 
     expect(langPosted({ fetchMock }, 0)).toBe('auto');
     expect(h.saveLang).toHaveBeenCalledWith('ka-GE');
     expect(h.result.current.value).toBe('გამარჯობა');
+    h.cap.state.seconds = 2;
     await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
     expect(langPosted({ fetchMock }, 1)).toBe('ka-GE'); // pinned for the rest of the clip
   });
@@ -546,5 +551,141 @@ describe('mic release (Live voice opening)', () => {
     expect(h.fetchMock).not.toHaveBeenCalled();
     await act(async () => { finishCapture(); await flush(); });
     expect(h.fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── Speed and truth: the phase, Stop never waiting, deferred passes, the final-pass code, the metrics ─────────────
+
+describe('speed and truth (owner, 2026-10-11 PART 4)', () => {
+  type Held = { resolve: (r: Response) => void; init: RequestInit };
+  /** A fetch whose answers the test releases one by one; an aborted request rejects like the browser's. */
+  function heldFetch() {
+    const held: Held[] = [];
+    const fetchMock = jest.fn((_url: string, init: RequestInit) => new Promise<Response>((resolve, reject) => {
+      held.push({ resolve, init });
+      init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    }));
+    return { held, fetchMock };
+  }
+  const withTiming = (body: unknown, sttMs: number) =>
+    ({ ...jsonRes(body), headers: { get: (n: string) => (n.toLowerCase() === 'server-timing' ? `stt;dur=${sttMs}` : null) } }) as unknown as Response;
+
+  test("'starting' from the tap until the mic really runs, then 'listening', then 'processing' until the final text", async () => {
+    let grant!: (s: MediaStream) => void;
+    const { stream } = fakeStream();
+    const getUserMedia = jest.fn(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const { held, fetchMock } = heldFetch();
+    const primeCapture = jest.fn();
+    const h = harness({ deps: { speechRecognition: () => undefined, getUserMedia, primeCapture, fetch: fetchMock as unknown as typeof fetch } });
+    let p!: Promise<void>;
+    act(() => { p = h.result.current.d.toggle(); });
+    expect(primeCapture).toHaveBeenCalledTimes(1); // inside the tap, before the permission prompt resolved
+    expect(h.result.current.d.phase).toBe('starting');
+    expect(h.result.current.d.recording).toBe(true);
+    await act(async () => { grant(stream); await p; await flush(); });
+    expect(h.result.current.d.phase).toBe('listening');
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    expect(h.result.current.d.phase).toBe('processing');
+    expect(h.result.current.d.transcribing).toBe(true);
+    await act(async () => { held[0]!.resolve(jsonRes({ text: 'გამარჯობა' })); await flush(); });
+    expect(h.result.current.d.phase).toBe('idle');
+    expect(h.result.current.value).toBe('გამარჯობა');
+  });
+
+  test('Stop aborts the interim pass in flight and sends the final pass at once (it never queues behind it)', async () => {
+    jest.useFakeTimers();
+    const { held, fetchMock } = heldFetch();
+    const reportMetrics = jest.fn();
+    const h = harness({ deps: { speechRecognition: () => undefined, fetch: fetchMock as unknown as typeof fetch, reportMetrics } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(1); // the interim pass, still in flight
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    expect(held[0]!.init.signal!.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // the final pass went out without waiting
+    await act(async () => { held[1]!.resolve(jsonRes({ text: 'საბოლოო' })); await flush(); });
+    expect(h.result.current.value).toBe('საბოლოო');
+    expect(reportMetrics).toHaveBeenCalledTimes(1);
+    expect(reportMetrics.mock.calls[0]![0]).toMatchObject({ outcome: 'text', passes: 2, aborted: 1, failed: 0, passMs: [expect.any(Number)] });
+  });
+
+  test('a pass that comes due while one is in flight is deferred, not lost, and runs the moment that one returns', async () => {
+    jest.useFakeTimers();
+    const { held, fetchMock } = heldFetch();
+    const reportMetrics = jest.fn();
+    const h = harness({ deps: { speechRecognition: () => undefined, fetch: fetchMock as unknown as typeof fetch, reportMetrics } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    h.cap.state.seconds = 2; // the next pass is due (1.9 s) while the first is still out
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS * 3); });
+    expect(fetchMock).toHaveBeenCalledTimes(1); // never two at once
+    await act(async () => { held[0]!.resolve(jsonRes({ text: 'პირველი' })); await flush(); });
+    expect(h.result.current.value).toBe('პირველი');
+    expect(fetchMock).toHaveBeenCalledTimes(2); // ran at once, without waiting for another tick
+    await act(async () => { held[1]!.resolve(jsonRes({ text: 'პირველი მეორე' })); await flush(); });
+    expect(h.result.current.value).toBe('პირველი მეორე');
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    await act(async () => { held[2]!.resolve(jsonRes({ text: 'პირველი მეორე მესამე' })); await flush(); });
+    expect(reportMetrics.mock.calls[0]![0]).toMatchObject({ passes: 3, deferred: 1, aborted: 0 });
+  });
+
+  test("the route's `code` on the FINAL pass is shown at once; on an interim pass it stays silent", async () => {
+    jest.useFakeTimers();
+    const fetchMock = jest.fn(async () => jsonRes({ text: '', code: 'stt_unavailable' }));
+    const reportMetrics = jest.fn();
+    const h = harness({ locale: 'en', deps: { speechRecognition: () => undefined, fetch: fetchMock as unknown as typeof fetch, reportMetrics } });
+    await act(async () => { await h.result.current.d.toggle(); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(TICK_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(h.result.current.d.warn).toBeNull();
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    expect(h.result.current.d.warn).toBe(dictationWarning('unavailable', 'en'));
+    expect(h.result.current.value).toBe('');
+    expect(reportMetrics.mock.calls[0]![0]).toMatchObject({ outcome: 'error', errorCode: 'stt_unavailable' });
+  });
+
+  test('one metrics summary per dictation: the three latencies a person feels, the engine time, and never the words', async () => {
+    let grant!: (s: MediaStream) => void;
+    const { stream } = fakeStream();
+    const getUserMedia = jest.fn(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const { held, fetchMock } = heldFetch();
+    const reportMetrics = jest.fn();
+    const h = harness({ deps: { speechRecognition: () => undefined, getUserMedia, fetch: fetchMock as unknown as typeof fetch, reportMetrics } });
+    h.setNow(1000);
+    let p!: Promise<void>;
+    act(() => { p = h.result.current.d.toggle(); });
+    h.setNow(1180);
+    await act(async () => { grant(stream); await p; await flush(); });
+    h.setNow(5000);
+    await act(async () => { h.result.current.d.stop(); await flush(); });
+    h.setNow(5900);
+    await act(async () => { held[0]!.resolve(withTiming({ text: 'საიდუმლო სიტყვები', language: 'ka-GE' }, 640)); await flush(); });
+    expect(reportMetrics).toHaveBeenCalledTimes(1);
+    const m = reportMetrics.mock.calls[0]![0];
+    expect(m).toEqual({
+      v: 1, engine: 'recorder', lang: 'ka-GE', outcome: 'text', capture: 'wav', warm: false,
+      tapToListeningMs: 180, listeningToFirstTextMs: 4720, stopToFinalMs: 900, listenMs: 3820,
+      passes: 1, passMs: [900], serverSttMs: [640], finalPassMs: 900,
+      aborted: 0, deferred: 0, failed: 0, restarts: 0,
+    });
+    expect(JSON.stringify(m)).not.toMatch(/საიდუმლო/);
+  });
+
+  test('cancelled while the permission prompt is up: one summary, outcome cancelled, no listening time', async () => {
+    let grant!: (s: MediaStream) => void;
+    const { stream, track } = fakeStream();
+    const getUserMedia = jest.fn(() => new Promise<MediaStream>((r) => { grant = r; }));
+    const reportMetrics = jest.fn();
+    const h = harness({ deps: { speechRecognition: () => undefined, getUserMedia, reportMetrics } });
+    let p!: Promise<void>;
+    act(() => { p = h.result.current.d.toggle(); });
+    act(() => { h.result.current.d.stop(); });
+    expect(h.result.current.d.phase).toBe('idle');
+    await act(async () => { grant(stream); await p; await flush(); });
+    expect(track.stop).toHaveBeenCalled();
+    expect(reportMetrics).toHaveBeenCalledTimes(1);
+    expect(reportMetrics.mock.calls[0]![0]).toMatchObject({ outcome: 'cancelled' });
+    expect(reportMetrics.mock.calls[0]![0]).not.toHaveProperty('tapToListeningMs');
   });
 });

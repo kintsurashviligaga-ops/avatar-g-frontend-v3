@@ -188,6 +188,7 @@ import { higgsfieldPicked, imageModelField } from '@/lib/studio/modelPick';
 import { musicControlsModeOf, musicControlsNote } from './ui/musicControlsCopy';
 import { describeGenerationFailure, refundNoticeOr } from './ui/serviceError';
 import { useDictation } from '@/components/chat/composer/useDictation';
+import { DictationMetricsReadout } from '@/components/chat/composer/DictationMetricsReadout';
 import { typedSpeechLang } from '@/lib/voice/speechLang';
 import { DEFAULT_TOTAL_CAP_BYTES, PER_FILE_CAP_BYTES, classifyFile, formatBytes, dataUrlMimeOf, filesFromClipboard, mimeForFile, rejectionMessage, withDataUrlMime } from '@/components/chat/composer/useAttachments';
 import { documentToText } from '@/lib/chat/documentText';
@@ -11062,6 +11063,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             <AlertTriangle size={14} aria-hidden="true" className="mr-1.5 inline-block align-[-2px] text-app-warning" />{dictationWarn}
           </div>
         )}
+        {/* Measured mic latency on this device, only with ?micstats=1 (a phone has no inspector; see the component). */}
+        <DictationMetricsReadout locale={locale} />
         {/* No service shortcuts IN the composer or on the empty home — the tool chip and the navigation are how a
             service is chosen. */}
 

@@ -175,6 +175,10 @@ export async function POST(req: NextRequest) {
       }
     };
 
+    // How long the engines took, as `Server-Timing: stt;dur=…`: the composer's dictation metrics (lib/voice/
+    // dictationMetrics) split each pass's round-trip into the engine's share and the network's.
+    const sttStartedAt = Date.now();
+    const timing = () => ({ 'Server-Timing': `stt;dur=${Date.now() - sttStartedAt}` });
     if (googleOnly) {
       // ── Google only: Gemini is the whole engine. ──
       if (geminiKeyPresent) await runGemini();
@@ -232,6 +236,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (text) code = undefined;
+    const headers = timing();
     const heard = text ? transcriptSpeechLang(text) : null;
     const payload = { text, provider, ...(heard ? { language: heard } : {}), ...(code ? { code } : {}) };
     if (diagAllowed) {
@@ -250,9 +255,9 @@ export async function POST(req: NextRequest) {
           geminiError: geminiErrMsg,
           replicateError: replicateErrMsg,
         },
-      });
+      }, { headers });
     }
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, { headers });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[transcribe] failed', err instanceof Error ? err.message : err);
