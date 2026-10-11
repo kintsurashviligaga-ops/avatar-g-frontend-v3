@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 
 /**
  * AGENT G TAKES THE MP3 OUT OF A LINK, IN THE CHAT (lib/agent/media/audioExtract) — in a real browser, with the server
@@ -39,7 +40,8 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean } = {})
     } catch { /* private mode */ }
   });
   let n = 0;
-  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't' }) }));
+  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }));
+  await mockStoredUpload(page);
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/chat/gemini', (r) => { calls.chat.push(r.request().postData() ?? ''); return r.fulfill({ status: 500, body: '' }); });

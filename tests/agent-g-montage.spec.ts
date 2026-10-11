@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 
 /**
  * AGENT G CUTS THE CLIPS TO THE TRACK, IN THE CHAT (media execution, slice 1) — in a real browser, with every server route
@@ -30,7 +31,16 @@ function wav(seconds = 6, rate = 8000): Buffer {
   return buf;
 }
 
-const QUOTE = { jobId: '11111111-2222-4333-8444-555555555555', credits: 0, totalSec: 19.97, shots: 8, clips: 2, aspect: '16:9', beatSynced: true, bpm: 119.96, musicStartSec: 0.23, unusedFiles: [], expiresAt: Date.now() + 1_800_000 };
+const MANIFEST = [
+  { index: 0, path: 'omni-uploads/u/file-1', name: 'beach.webm', kind: 'video', durationSec: 5 },
+  { index: 1, path: 'omni-uploads/u/file-2', name: 'city.webm', kind: 'video', durationSec: 5 },
+  { index: 2, path: 'omni-uploads/u/file-3', name: 'song.wav', kind: 'audio', durationSec: 6 },
+];
+const QUOTE = {
+  jobId: '11111111-2222-4333-8444-555555555555', credits: 0, totalSec: 19.97, shots: 8, clips: 2, aspect: '16:9', beatSynced: true, bpm: 119.96,
+  musicStartSec: 0.23, manifest: MANIFEST, clipOrder: [0, 1], engine: { id: 'ffmpeg-montage', label: 'FFmpeg montage', free: true },
+  unusedFiles: [], expiresAt: Date.now() + 1_800_000,
+};
 
 interface Calls { quote: Array<Record<string, unknown>>; run: Array<Record<string, unknown>>; reads: string[]; cancel: unknown[]; remixIntent: unknown[] }
 
@@ -44,7 +54,8 @@ async function open(page: Page, enabled: boolean, opts: { live?: boolean; /** th
     } catch { /* private mode */ }
   });
   let n = 0;
-  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't' }) }));
+  await page.route('**/api/upload/sign', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }));
+  await mockStoredUpload(page);
   await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
   await page.route('**/api/chat/title', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '{"title":"t"}' }));
   await page.route('**/api/video/remix-intent', async (r: Route) => {
@@ -132,7 +143,13 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
 
     const card = page.getByTestId('agent-montage-card');
     await expect(card).toHaveAttribute('data-phase', 'quoted', { timeout: 20_000 });
-    expect(calls.quote).toEqual([{ action: 'quote', files: ['omni-uploads/u/file-1', 'omni-uploads/u/file-2', 'omni-uploads/u/file-3'], prompt: 'cut these to the music' }]);
+    expect(calls.quote).toEqual([{
+      action: 'quote', files: ['omni-uploads/u/file-1', 'omni-uploads/u/file-2', 'omni-uploads/u/file-3'],
+      names: ['beach.webm', 'city.webm', 'song.wav'], prompt: 'cut these to the music',
+    }]);
+    // The card names what it works on: the count in its header and every file, in the order sent.
+    await expect(page.getByTestId('agent-montage-card-inputs')).toHaveText('2 videos + 1 track');
+    await expect(page.getByTestId('agent-montage-card-files').locator('li')).toHaveText(['beach.webm', 'city.webm', 'song.wav']);
     await expect(card).toContainText('8 shots');
     await expect(card).toContainText('120 BPM');
     await expect(page.getByTestId('agent-montage-start')).toContainText('Free');
@@ -151,8 +168,9 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     await expect(page.getByRole('button', { name: 'Download', exact: true }).first()).toBeVisible(); // playable, and downloadable
     // The card stays after the run (the owner's „it popped up and vanished"): every step ticked, nothing left to press.
     await expect(card).toHaveAttribute('data-phase', 'done');
-    await expect(card.locator('li[data-state="done"]')).toHaveCount(8);
-    await expect(card).toContainText('8/8 steps');
+    await expect(card.locator('li[data-step][data-state="done"]')).toHaveCount(9);
+    await expect(card).toContainText('9/9 steps');
+    await expect(card.locator('li[data-step="clipqc"]')).toContainText('2/2 clips found in the output');
     await expect(page.getByTestId('agent-montage-stop')).toHaveCount(0);
     expect(calls.run).toEqual([{ action: 'run', request: { shots: ['signed plan'] }, token: 'signed-token', prompt: 'cut these to the music' }]);
     expect(calls.reads.length).toBeGreaterThanOrEqual(2);
@@ -251,11 +269,16 @@ test.describe('Agent G cuts the clips to the track in the chat', () => {
     expect(chat).toEqual([]);
   });
 
-  test('closed to this user: the chat keeps its old flow and never asks for a plan', async ({ page }) => {
+  // Closed to this user: no plan is asked for, and the clips are never handed to the one-video remix either (GG's
+  // 2026-10-11 run: that remix took clip one and dropped the rest). The Montage editor opens with every file and says why.
+  test('closed to this user: no plan, no remix; the Montage editor opens with every clip and the track', async ({ page }) => {
     const calls = await open(page, false);
     await attachAndSend(page, 'cut these to the music');
-    await expect.poll(() => calls.remixIntent.length, { timeout: 20_000 }).toBe(1);
+    await expect(page.getByText('not switched on for this account yet')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/all 2 clips on the timeline, in your order/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Montage', level: 1 })).toBeVisible();
     expect(calls.quote).toEqual([]);
+    expect(calls.remixIntent).toEqual([]);
     await expect(page.getByTestId('agent-montage-card')).toHaveCount(0);
   });
 });
@@ -283,7 +306,7 @@ test.describe('Agent G reads the message first', () => {
     await expect(page.getByText('Plan changed: the new one is below.')).toBeVisible();
     expect(calls.quote).toHaveLength(2);
     // The card's own words plus the change, and the SAME uploaded files (nothing is uploaded twice).
-    expect(calls.quote[1]).toEqual({ action: 'quote', files: calls.quote[0]!.files, prompt: 'cut these to the music\nstart the music at 5 seconds' });
+    expect(calls.quote[1]).toEqual({ action: 'quote', files: calls.quote[0]!.files, names: calls.quote[0]!.names, prompt: 'cut these to the music\nstart the music at 5 seconds' });
     expect(calls.run).toEqual([]);
     expect(chat).toEqual([]);
   });

@@ -20,9 +20,12 @@ const stepStates = () => Array.from(document.querySelectorAll('li[data-step]')).
 test('the montage card is there from the first second, counting the uploads', () => {
   render(<AgentMontageCard state={{ phase: 'reading', names: NAMES, uploaded: 2, t0: Date.now() }} locale="en" onStart={noop} onCancel={noop} />);
   expect(screen.getByTestId('agent-montage-card').getAttribute('data-phase')).toBe('reading');
-  expect(screen.getByText('0/8 steps')).toBeTruthy();
-  expect(stepStates()).toEqual(['active', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending']);
+  expect(screen.getByText('0/9 steps')).toBeTruthy();
+  expect(stepStates()).toEqual(['active', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending']);
   expect(screen.getByText('2/4')).toBeTruthy();
+  // Every file by name, in the order sent, and the count in the header: nothing can be left out unseen.
+  expect(screen.getByTestId('agent-montage-card-inputs').textContent).toBe('3 videos + 1 MP3');
+  expect(Array.from(screen.getByTestId('agent-montage-card-files').querySelectorAll('li')).map((li) => li.textContent)).toEqual(NAMES);
   expect(screen.queryByRole('button', { name: /Start/ })).toBeNull();
 });
 
@@ -42,7 +45,7 @@ test('the plan offers Start and Cancel; a run offers Stop; done keeps every step
   rerender(<AgentMontageCard state={{ phase: 'done', names: NAMES, quote: MQ, stage: 'completed', t0: 1_000, t1: 73_000 }} locale="en" onStart={noop} onCancel={noop} />);
   expect(screen.getByTestId('agent-montage-card').getAttribute('data-phase')).toBe('done');
   expect(stepStates().every((s) => s === 'done')).toBe(true);
-  expect(screen.getByText('8/8 steps')).toBeTruthy();
+  expect(screen.getByText('9/9 steps')).toBeTruthy();
   expect(screen.getByText('1:12')).toBeTruthy();
   expect(screen.queryByRole('button', { name: /Stop|Start|Cancel/ })).toBeNull();
 });

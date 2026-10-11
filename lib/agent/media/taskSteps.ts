@@ -54,7 +54,12 @@ export interface TaskCardModel {
   pct: number | null;
   /** The card's clock: running from `from`, or frozen at `to`. Absent while the plan waits for the user. */
   clock: { from: number; to?: number } | null;
+  /** What the task works on, in the order sent („3 videos + 1 MP3" and each file by name). */
+  inputs?: TaskInputs;
 }
+
+export interface TaskInputFile { name: string; kind: 'video' | 'audio' }
+export interface TaskInputs { text: string; files: TaskInputFile[] }
 
 const T = {
   agentMontage: { ka: 'მონტაჟი მუსიკის რიტმზე', en: 'Montage to the beat', ru: 'Монтаж под бит' },
@@ -75,7 +80,8 @@ const T = {
   normalize: { ka: 'კადრების ჭრა ერთ ფორმატში', en: 'Cut the shots to one format', ru: 'Нарезка кадров в один формат' },
   stitch: { ka: 'კადრების გაერთიანება', en: 'Join the shots', ru: 'Склейка кадров' },
   music: { ka: 'მუსიკის დადება', en: 'Lay the track under it', ru: 'Наложение трека' },
-  finish: { ka: 'შემოწმება და შენახვა', en: 'Check and save', ru: 'Проверка и сохранение' },
+  clipqc: { ka: 'ყველა კლიპის შემოწმება შედეგში', en: 'Check every clip is in it', ru: 'Проверка: все клипы в итоге' },
+  finish: { ka: 'შენახვა ჩატსა და ბიბლიოთეკაში', en: 'Save to the chat and Library', ru: 'Сохранение в чат и Библиотеку' },
   savedLib: { ka: 'ბიბლიოთეკაშიც შევინახე', en: 'Also saved to your Library', ru: 'Сохранено и в Библиотеку' },
   noBeat: { ka: 'მკაფიო ბითი არ არის · ნახევარწამიანი ბადე', en: 'No steady beat · an even half-second grid', ru: 'Чёткого бита нет · ровная сетка в полсекунды' },
   onBeat: { ka: 'ყოველი ჭრა ბითზე', en: 'every cut on a beat', ru: 'каждая склейка в бит' },
@@ -130,9 +136,30 @@ const clamp = (n: number | undefined) => (typeof n === 'number' && isFinite(n) ?
 
 // ── The montage ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export const MONTAGE_STEPS = ['upload', 'analyse', 'plan', 'prepare', 'normalize', 'stitch', 'music', 'finish'] as const;
-/** The job's stage → the step it belongs to (lib/agent/media/montageWorker's stages). */
-const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 6, completed: 7 };
+export const MONTAGE_STEPS = ['upload', 'analyse', 'plan', 'prepare', 'normalize', 'stitch', 'music', 'clipqc', 'finish'] as const;
+/** The job's stage → the step it belongs to (lib/agent/media/montageWorker's stages; 'qc' = every clip checked in the master). */
+const MONTAGE_STAGE_AT: Record<string, number> = { queued: 3, starting: 3, retrying: 3, resolve: 3, bridge: 3, normalize: 4, stitch: 5, music: 6, qc: 7, completed: 8 };
+
+const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|weba)$/i;
+
+/**
+ * The files a montage works on, in the order sent: from the quote's manifest once there is one (the server checked
+ * every kind), before that from the names (a kind by extension, for the header only).
+ */
+export function montageInputs(s: Pick<AgentMontageState, 'quote' | 'names'>, locale: string): TaskInputs | undefined {
+  const lang = pick(locale);
+  const files: TaskInputFile[] = s.quote?.manifest?.length
+    ? s.quote.manifest.map((m) => ({ name: m.name, kind: m.kind }))
+    : (s.names ?? []).map((name) => ({ name, kind: AUDIO_NAME.test(name) ? 'audio' as const : 'video' as const }));
+  if (!files.length) return undefined;
+  const v = files.filter((f) => f.kind === 'video').length;
+  const tracks = files.filter((f) => f.kind === 'audio');
+  const mp3 = tracks.length > 0 && tracks.every((f) => /\.mp3$/i.test(f.name));
+  const videos = lang === 'en' ? `${v} video${v === 1 ? '' : 's'}` : lang === 'ru' ? `${v} видео` : `${v} ვიდეო`;
+  const audio = !tracks.length ? '' : mp3 ? `${tracks.length} MP3`
+    : lang === 'en' ? `${tracks.length} track${tracks.length === 1 ? '' : 's'}` : lang === 'ru' ? `аудио: ${tracks.length}` : `${tracks.length} აუდიო`;
+  return { text: audio ? `${videos} + ${audio}` : videos, files };
+}
 
 export function montageTask(s: AgentMontageState, locale: string): TaskCardModel {
   const lang = pick(locale);
@@ -189,12 +216,21 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
       if (state === 'stopped') step.note = say('dismissed', lang);
     }
     if (state === 'active' && s.stopping) step.note = say('stopping', lang);
+    // The worker delivers only when every clip of the manifest is found in the master and the sound lasts as long as
+    // the picture (lib/agent/media/montageWorker): a done card can say so.
+    if (key === 'clipqc' && state === 'done' && q) {
+      step.detail = lang === 'en' ? `${q.clips}/${q.clips} clips found in the output · sound in sync`
+        : lang === 'ru' ? `в итоге найдены все клипы: ${q.clips}/${q.clips} · звук синхронен`
+          : `შედეგში ყველა კლიპი იპოვა: ${q.clips}/${q.clips} · ხმა სინქრონშია`;
+    }
     if (key === 'finish' && state === 'done') step.detail = say('savedLib', lang);
     return step;
   });
 
   const clock = clockOf(s.phase, s.t0, s.t1);
-  return finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+  const model = finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
+  const inputs = montageInputs(s, locale);
+  return inputs ? { ...model, inputs } : model;
 }
 
 // ── The MP3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────

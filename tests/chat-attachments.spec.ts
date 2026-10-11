@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, type Page, type Route } from '@playwright/test';
+import { mockStoredUpload, SIGNED_UPLOAD_URL } from './fixtures/uploads';
 
 /**
  * What the chat can be given — photos, video, camera, files — and whether it can actually USE it, in a real browser against a
@@ -120,7 +121,8 @@ test.describe('the chat reads what it is given', () => {
       calls.intent.push(route.request().postDataJSON());
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ op, params: {} }) });
     });
-    await page.route('**/api/upload/sign', (route) => { calls.uploads.push(1); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/clip-${calls.uploads.length}`, token: 't' }) }); });
+    await page.route('**/api/upload/sign', (route) => { calls.uploads.push(1); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ bucket: 'uploads', path: `omni-uploads/u/clip-${calls.uploads.length}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }) }); });
+    await mockStoredUpload(page);
     await page.route(/\/storage\/v1\/object\/upload\/sign\//, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{"Key":"uploads/u/x"}' }));
     await page.route('**/api/video/remix', async (route) => {
       calls.remix.push(route.request().postDataJSON());

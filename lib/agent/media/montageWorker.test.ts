@@ -48,7 +48,7 @@ describe('work: one job, rendered under a lease', () => {
       result: { videoUrl: MASTER_URL, subtype: 'montage', via: 'agent-g', durationSec: 30 },
       exec: { attempt: 1, owner: null, leaseUntil: null },
     });
-    expect(f.store.writes.progress).toBe(1); // the 'stitch' leg, written under the lease
+    expect(f.store.writes.progress).toBe(2); // the 'stitch' leg and the 'qc' check, written under the lease
     expect(f.beating()).toBe(0);
     expect(trail(f)).toEqual(['run:ok:queued', 'run:ok:started', 'run:ok:delivered']);
   });

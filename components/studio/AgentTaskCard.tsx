@@ -7,14 +7,14 @@
  * It stays in the thread after the work ends, with every step and where it ended; the header folds the list away.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Hand, Minus, Sparkles, Square, X } from 'lucide-react';
+import { Check, ChevronDown, Film, Hand, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
 
 type Lang = 'ka' | 'en' | 'ru';
-const L: Record<Lang, { fold: string; unfold: string; steps: string; state: Record<StepState, string> }> = {
-  ka: { fold: 'ნაბიჯების დაკეცვა', unfold: 'ნაბიჯების ჩვენება', steps: 'ნაბიჯები', state: { done: 'შესრულდა', active: 'მიმდინარეობს', waiting: 'გელოდება', pending: 'წინ არის', failed: 'ვერ შესრულდა', stopped: 'გაჩერდა', skipped: 'არ შესრულებულა' } },
-  en: { fold: 'Fold the steps', unfold: 'Show the steps', steps: 'Steps', state: { done: 'done', active: 'in progress', waiting: 'waiting for you', pending: 'up next', failed: 'failed', stopped: 'stopped', skipped: 'not reached' } },
-  ru: { fold: 'Свернуть шаги', unfold: 'Показать шаги', steps: 'Шаги', state: { done: 'выполнено', active: 'выполняется', waiting: 'ждёт вас', pending: 'впереди', failed: 'не удалось', stopped: 'остановлено', skipped: 'не выполнялось' } },
+const L: Record<Lang, { fold: string; unfold: string; steps: string; files: string; state: Record<StepState, string> }> = {
+  ka: { fold: 'ნაბიჯების დაკეცვა', unfold: 'ნაბიჯების ჩვენება', steps: 'ნაბიჯები', files: 'ფაილები', state: { done: 'შესრულდა', active: 'მიმდინარეობს', waiting: 'გელოდება', pending: 'წინ არის', failed: 'ვერ შესრულდა', stopped: 'გაჩერდა', skipped: 'არ შესრულებულა' } },
+  en: { fold: 'Fold the steps', unfold: 'Show the steps', steps: 'Steps', files: 'Files', state: { done: 'done', active: 'in progress', waiting: 'waiting for you', pending: 'up next', failed: 'failed', stopped: 'stopped', skipped: 'not reached' } },
+  ru: { fold: 'Свернуть шаги', unfold: 'Показать шаги', steps: 'Шаги', files: 'Файлы', state: { done: 'выполнено', active: 'выполняется', waiting: 'ждёт вас', pending: 'впереди', failed: 'не удалось', stopped: 'остановлено', skipped: 'не выполнялось' } },
 };
 
 function StepIcon({ state }: { state: StepState }) {
@@ -94,6 +94,7 @@ export function AgentTaskCard({
           <span className="block truncate text-[14px] font-semibold leading-tight text-app-text">{model.countText}</span>
           <span className="mt-0.5 block truncate text-[12px] leading-tight text-app-muted">
             Agent G · {model.title}
+            {model.inputs ? <> · <span data-testid={`${testId}-inputs`}>{model.inputs.text}</span></> : null}
             {folded && active ? <> · <span className="text-app-text/80">{active.label}</span></> : null}
           </span>
         </span>
@@ -111,6 +112,17 @@ export function AgentTaskCard({
       ) : null}
 
       <div id={listId} hidden={folded}>
+        {/* Every file the task works on, by name and in the order sent: the user sees nothing was left out. */}
+        {model.inputs?.files.length ? (
+          <ul aria-label={t.files} data-testid={`${testId}-files`} className="flex flex-wrap gap-1.5 px-4 pt-3">
+            {model.inputs.files.map((f, i) => (
+              <li key={`${i}-${f.name}`} title={f.name} className="flex max-w-[11.5rem] items-center gap-1.5 rounded-full border border-app-border/20 px-2.5 py-1 text-[12px] leading-none text-app-text/85">
+                {f.kind === 'audio' ? <Music2 size={12} aria-hidden="true" className="shrink-0 text-app-muted" /> : <Film size={12} aria-hidden="true" className="shrink-0 text-app-muted" />}
+                <span className="truncate">{f.name}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <ol aria-label={t.steps} className="px-4 pb-1 pt-3">
           {model.steps.map((s, i) => {
             const last = i === model.steps.length - 1;

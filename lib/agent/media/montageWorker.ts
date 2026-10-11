@@ -135,6 +135,8 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     if (!outcome.ok) return end(`render_failed: ${outcome.step}: ${outcome.error}`.slice(0, 300), `${outcome.step}: ${outcome.error}`.slice(0, 200));
 
     // ── QC before delivery ───────────────────────────────────────────────────────────────────────────────────────
+    // Its own stage, so the card shows the check running (and, on a failure, that the check is where it stopped).
+    await deps.store.progress(jobId, worker, 'qc', 97).catch(() => false);
     const videoUrl = outcome.result.videoUrl;
     const problems: string[] = [];
     if (!outcome.result.hasMusic) problems.push('the music did not mix');
