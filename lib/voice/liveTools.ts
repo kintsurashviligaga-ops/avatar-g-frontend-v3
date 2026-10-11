@@ -170,6 +170,9 @@ export const LIVE_MONTAGE_ASPECTS = ['9:16', '16:9', '1:1'] as const;
 export type LiveMontageAspect = (typeof LIVE_MONTAGE_ASPECTS)[number];
 /** montage: how far into the song the music starts (the trim of its beginning). */
 export const LIVE_MUSIC_START_MAX_SEC = 3600;
+/** montage open: whose files — results made in this chat, or every file the user attached (the composer, else their newest turn with files). */
+export const LIVE_MONTAGE_SOURCES = ['results', 'attached'] as const;
+export type LiveMontageSource = (typeof LIVE_MONTAGE_SOURCES)[number];
 /** montage open: at most this many videos on the timeline from one call. */
 export const LIVE_MONTAGE_VIDEOS_MAX = 10;
 /** The window event the Montage editor answers while it is open (components/studio/montage). */
@@ -489,7 +492,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       + 'song\'s beginning; its end is cut to the video\'s length — in aspectRatio 9:16, 16:9 or 1:1. "set_music_start": '
       + 'move where the music starts. "export": render the edit; the finished video appears in the chat. "state": what is in '
       + 'the edit. Example: the user wants the new song on the new video from 0:30 → open with videos "latest", music '
-      + '"latest", musicStartSec 30, then export.',
+      + '"latest", musicStartSec 30, then export. The user\'s OWN files ("these clips", "the four files I attached"): open '
+      + 'with source "attached" — every file they attached (get_screen_state lists them under attachments), in their '
+      + 'order, the first track as the music; never pick one of them.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -498,6 +503,7 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
         music: { type: 'STRING', description: 'open: "latest", a result number, or "none".' },
         musicStartSec: { type: 'INTEGER', description: `Seconds into the song where the music starts (0-${LIVE_MUSIC_START_MAX_SEC}).` },
         aspectRatio: { type: 'STRING', enum: [...LIVE_MONTAGE_ASPECTS], description: 'open: the edit\'s frame shape.' },
+        source: { type: 'STRING', enum: [...LIVE_MONTAGE_SOURCES], description: 'open: "results" (made in this chat, the default) or "attached" (the files the user attached).' },
       },
       required: ['action'],
     },
@@ -603,6 +609,8 @@ export const LIVE_ACTIONS_RULE = [
   'combines videos and music and trims the music, for free. Carry out multi-step requests step by step, e.g. "make music,',
   'then a video, then put the music on it from 0:30": prepare and (after a yes to each price) start the music, then the',
   'video; when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
+  'Files the user ATTACHED (get_screen_state lists them under attachments, by number and name) are theirs to use: to cut',
+  'them together call montage open with source "attached" — all of them, in their order; never say you cannot see them.',
   'Messages that start with [App] come from the app, not the user: they say when a generation finished or failed —',
   'continue the plan with the next step, or tell the user in one sentence.',
   'read_webpage reads a public page (title, text, links) so you can answer about it or follow its links; you cannot press',
@@ -669,6 +677,8 @@ export interface MontageAction {
   music?: LiveResultRef | null;
   musicStartSec?: number;
   aspectRatio?: LiveMontageAspect;
+  /** open: „attached" = every file the user attached, in order (videos / music are then not read). */
+  source?: LiveMontageSource;
 }
 /** A public page to read — `url` is normalised by validateLiveUrl. */
 export interface ReadWebpageAction { type: 'read_webpage'; url: string }
@@ -1265,6 +1275,8 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     }
 
     if (what === 'open') {
+      const rawSource = own(args, 'source');
+      if (typeof rawSource === 'string' && /attach|upload|mine|my files|user/i.test(rawSource)) action.source = 'attached';
       const rawVideos = own(args, 'videos');
       if (rawVideos !== undefined && rawVideos !== null && rawVideos !== '') {
         const parts = (typeof rawVideos === 'number' ? [rawVideos] : String(rawVideos).split(/[,\s]+/)).filter((p) => String(p).trim() !== '');

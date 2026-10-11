@@ -530,6 +530,22 @@ type MintResult = { ok: true } | { ok: false; code: LiveErrorCode };
 
 // ─── The hook ─────────────────────────────────────────────────────────────────
 
+/**
+ * Tool answers that arrived after the connection they were asked on had closed, as one [App] note for the new one: each
+ * function's name and its answer (cut to a size the model reads quickly). Null when there is nothing to tell.
+ */
+export function lateToolAnswerNote(responses: readonly LiveFunctionResponse[]): string | null {
+  const parts = responses
+    .filter((r) => r && typeof r.name === 'string' && r.name)
+    .map((r) => {
+      let body = '';
+      try { body = JSON.stringify(r.response ?? {}); } catch { body = '{}'; }
+      return `${r.name}: ${body.length > 1500 ? `${body.slice(0, 1500)}…` : body}`;
+    });
+  if (!parts.length) return null;
+  return `[App] The connection was renewed while you waited, so these answers arrive as a note — use them now: ${parts.join(' | ')}`;
+}
+
 export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}): UseGeminiLiveSessionResult {
   const optsRef = useRef(options);
   optsRef.current = options;
@@ -582,6 +598,8 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
   // Session
   const sessionRef = useRef<GeminiLiveSession | null>(null);
   const readyRef = useRef(false);
+  /** Tool answers that came back after the connection was renewed: told to the new connection as [App] notes. */
+  const lateAnswersRef = useRef<string[]>([]);
   const tokenRef = useRef<{ token: string; expiresAtMs: number | null } | null>(null);
   const modelRef = useRef<string | null>(null);
   const serverSetupRef = useRef<Obj | null>(null);
@@ -971,6 +989,7 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
     phaseRef.current = 'resume';
     clearGoAwayTimer();
     flushPendingMic(session);
+    for (const note of lateAnswersRef.current.splice(0)) session.sendText(note);
     errorRef.current = null;
     setError(null);
     setErrorDetail(null);
@@ -999,7 +1018,14 @@ export function useGeminiLiveSession(options: UseGeminiLiveSessionOptions = {}):
       type: 'toolDone',
       results: responses.map((r) => ({ id: r.id, ok: !(r.response && typeof r.response === 'object' && 'error' in r.response) })),
     });
-    if (sessionRef.current === session) session.sendToolResponse(responses);
+    if (sessionRef.current === session) { session.sendToolResponse(responses); return; }
+    // ⚠️ A LATE ANSWER WAS DROPPED. ask_agent_g / read_webpage answer after the network (up to a minute); when the
+    // connection was renewed meanwhile (goAway, a network blip) the answer went to the dead socket and the model never
+    // learned what Agent G found — it could only guess or say nothing. Now the new connection is told, as an [App] note.
+    const note = lateToolAnswerNote(responses);
+    if (!note) return;
+    if (readyRef.current && sessionRef.current) sessionRef.current.sendText(note);
+    else lateAnswersRef.current.push(note);
   }, []);
 
   const afterTurnBoundary = useCallback(() => {

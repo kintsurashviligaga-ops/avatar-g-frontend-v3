@@ -301,6 +301,18 @@ describe('the mint', () => {
     // The frame the browser sends is exactly what the token was minted for.
     expect(j.setupMessage.setup).toEqual(legacy);
     expect(logMock).toHaveBeenCalledWith('warn', 'voice.live.setup_lock_rejected', expect.objectContaining({ lock: 'full' }));
+    // the legacy wire has no Google Search, and its instruction says so instead of promising it
+    const text = String(legacy.systemInstruction?.parts?.[0]?.text ?? '');
+    expect(text).toMatch(/cannot search the web during this call/);
+    expect(text).not.toMatch(/You have Google Search/);
+  });
+
+  test('the call never claims to see a file\'s content, and with actions it overrides the text chat\'s hand-off rule', async () => {
+    const res = await POST(post({ actions: true }));
+    expect(res.status).toBe(200);
+    const text = lockedText();
+    expect(text).toMatch(/You cannot see or hear the content of files the user attached in this call/);
+    expect(text).toMatch(/the HANDING OFF rule above does not apply/);
   });
 
   test('only if the legacy lock is rejected too does it drop to the {model}-only lock, and says so', async () => {

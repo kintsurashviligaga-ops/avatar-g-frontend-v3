@@ -496,6 +496,13 @@ describe('the hands — validators', () => {
     expect(v('montage', { action: 'export' })).toEqual({ ok: true, action: { type: 'montage', action: 'export' } });
   });
 
+  it('montage open with source "attached": the user\'s own files, all of them (GG 2026-10-11 PART 5/6)', () => {
+    expect(v('montage', { action: 'open', source: 'attached' })).toEqual({ ok: true, action: { type: 'montage', action: 'open', source: 'attached' } });
+    expect(v('montage', { action: 'open', source: 'my uploaded files' })).toEqual({ ok: true, action: { type: 'montage', action: 'open', source: 'attached' } });
+    // results stay the default: nothing else changes for „the new song on the new video"
+    expect(v('montage', { action: 'open', source: 'results', videos: 'latest' })).toEqual({ ok: true, action: { type: 'montage', action: 'open', videos: [{ kind: 'video' }] } });
+  });
+
   it('read_webpage: only a public web address, normalised', () => {
     expect(v('read_webpage', { url: 'example.ge/news' })).toEqual({ ok: true, action: { type: 'read_webpage', url: 'https://example.ge/news' } });
     for (const url of ['http://localhost:3000', 'http://169.254.169.254/latest', 'javascript:alert(1)', 'http://10.0.0.1/']) {

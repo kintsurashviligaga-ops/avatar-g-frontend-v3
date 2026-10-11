@@ -5,6 +5,7 @@
  * canvas_unavailable); nothing here can start a render; cards are newest-first, capped at 3,
  * and a toolCallCancellation drops them; a looping model is cut off.
  */
+import { liveAttachedRefs, setLiveAttachedRefs } from '@/lib/voice/liveAttached';
 import { act, renderHook } from '@testing-library/react';
 
 import { LIVE_ACTION_EVENT, OPEN_ARTIFACT_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type OpenArtifactDetail } from '@/lib/voice/liveTools';
@@ -682,6 +683,23 @@ describe('ask_agent_g', () => {
     const out = executeLiveToolCall(call('g1', 'ask_agent_g', args), h.env);
     return { out, done: out.pending ? await out.pending : undefined, asked: h.asked };
   };
+
+  test('the user\'s attached files go with the ask (their stored paths, at most 13) — never an empty list', async () => {
+    const { fetchImpl, calls } = fakeFetch(200, RUN);
+    const files = Array.from({ length: 15 }, (_, i) => `omni-uploads/u1/${i}-clip.mp4`);
+    await fetchAgentRun('cut these together', { fetchImpl, files });
+    expect(JSON.parse(String(calls[0]!.init.body)).files).toEqual(files.slice(0, 13));
+    await fetchAgentRun('cut these together', { fetchImpl, files: [] });
+    expect(JSON.parse(String(calls[1]!.init.body))).not.toHaveProperty('files');
+  });
+
+  test('the studio registers what the user attached; a reader that throws gives nothing', () => {
+    setLiveAttachedRefs(() => ['omni-uploads/u1/a.mp4', '', 'omni-uploads/u1/t.mp3']);
+    expect(liveAttachedRefs()).toEqual(['omni-uploads/u1/a.mp4', 'omni-uploads/u1/t.mp3']);
+    setLiveAttachedRefs(() => { throw new Error('unmounted'); });
+    expect(liveAttachedRefs()).toEqual([]);
+    setLiveAttachedRefs(() => []);
+  });
 
   test('fetchAgentRun POSTs { goal, maxSteps ≈ 4, budgetMs ≈ 45 s, source: "live" } with the session cookie', async () => {
     const { fetchImpl, calls } = fakeFetch(200, RUN);

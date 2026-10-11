@@ -75,6 +75,7 @@ import { getChatMode } from '@/lib/chat/chatModeStore';
 import { primeLive } from '@/lib/voice/livePrime';
 import { aspectForOrientation, matchStyle, snapMusicSeconds, videoOrientationFor } from '@/lib/voice/liveStudio';
 import { answerLiveThreadId } from '@/lib/voice/liveThread';
+import { setLiveAttachedRefs } from '@/lib/voice/liveAttached';
 import { agentAudioPlanOf, liveFingerprint, livePlanOf, livePlansOf, quotedPlanNote } from '@/lib/voice/livePlans';
 import { LIVE_ACTION_EVENT, LIVE_AGENT_ANSWER_EVENT, LIVE_RESULT_EVENT, LIVE_RUN_EVENT, type LiveActionEventDetail, type LiveAgentAnswerDetail, type LiveResultNote, type LiveResultRef, type LiveRunDetail, type LiveStudioReply } from '@/lib/voice/liveTools';
 import { useMicRelease } from '@/lib/voice/micBus';
@@ -6066,6 +6067,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     setAttachments(job.attachments);
   }, [patchMsgById]);
 
+  /**
+   * ONE WAY TO OPEN THE MONTAGE EDITOR WITH THE USER'S OWN FILES — the typed chat and the Live call both use it, so a
+   * spoken „montage these" is exactly a typed one. Every clip and photo goes on the timeline in the order given, the first
+   * track is the music, and a file already uploaded is handed over by its stored path (nothing goes up twice). Answers
+   * how many clips and whether a track went in.
+   */
+  const seedMontageWith = useCallback(async (files: Media[]): Promise<{ clips: number; music: boolean }> => {
+    const visual = files.filter((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+    const track = files.find((a) => isAudio(a.mimeType));
+    const stored = new Map<Media, string>();
+    await Promise.all([...visual, ...(track ? [track] : [])].map(async (a) => {
+      const path = a.storagePath ?? (await (chatUploads.get(a.dataUrl) ?? Promise.resolve(null)));
+      if (path) stored.set(a, path);
+    }));
+    const media = visual.map((a) => ({
+      url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const),
+      ...(a.name ? { name: a.name } : {}), ...(stored.get(a) ? { ref: stored.get(a)! } : {}),
+    }));
+    setMontageSeed(media.length ? media : null);
+    setMontageMusicSeed(track ? { url: track.dataUrl, name: track.name || 'Music', ...(stored.get(track) ? { ref: stored.get(track)! } : {}) } : null);
+    setMontageAspectSeed(null);
+    setMontageSessionKey((k) => k + 1);
+    setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
+    return { clips: media.length, music: !!track };
+  }, [setMode]);
   const send = useCallback(async (opts?: { forceMyVoice?: boolean; promptOverride?: string; viaVoice?: boolean; /** Agent G already confirmed this prompt with the user (its card) — skip the gate. */ confirmed?: boolean; /** The user pressed a panel's own Generate button (its price is on it): that IS the confirmation. */ explicit?: boolean; /** A card confirmed in plain chat: the tool it was for (the chat dispatch runs exactly that). */ target?: GateMode }) => {
     // ⚠️ A GUEST MAY CHAT, AND NOTHING ELSE LEAVES THE BROWSER. The home page opens on the chat for visitors without
     // an account (the server's guest policy: lib/chat/guestChat), so a PLAIN chat turn — chat mode, text only, not a
@@ -6380,32 +6406,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // photo the user attached on its timeline in their order, and the first track as its music (it used to drop the
       // track). Files already uploaded are handed over by their stored path, so nothing is uploaded twice.
       const files = attachments;
-      const visual = files.filter((a) => isVideo(a.mimeType) || isImage(a.mimeType));
-      const track = files.find((a) => isAudio(a.mimeType));
       setBusy(true);
-      const stored = new Map<Media, string>();
-      await Promise.all([...visual, ...(track ? [track] : [])].map(async (a) => {
-        const path = a.storagePath ?? (await (chatUploads.get(a.dataUrl) ?? Promise.resolve(null)));
-        if (path) stored.set(a, path);
-      }));
+      const seeded = await seedMontageWith(files);
       setBusy(false);
-      const media = visual.map((a) => ({
-        url: a.dataUrl, kind: isVideo(a.mimeType) ? ('video' as const) : ('image' as const),
-        ...(a.name ? { name: a.name } : {}), ...(stored.get(a) ? { ref: stored.get(a)! } : {}),
-      }));
       const name = serviceLabel('montage', locale);
       const en = locale === 'en', ru = locale === 'ru';
-      const reply = media.length
+      const reply = seeded.clips
         ? montageEditorOpenedText(files.map((a, i) => ({ kind: chatKinds[i]!, ...(a.name ? { name: a.name } : {}) })), agentMontageOn ? 'agent_shape' : 'agent_closed', locale)
         : (en ? `Opened **${name}** — add your videos or photos.` : ru ? `Открыл **${name}** — добавьте видео или фото.` : `გავხსენი **${name}** — დაამატე ვიდეოები ან ფოტოები.`);
       setMessages((prev) => [...prev, { role: 'user', text, ...(files.length ? { medias: files, modelMedias: [] } : {}) }, { role: 'assistant', text: reply }]);
-      setMontageSeed(media.length ? media : null);
-      setMontageMusicSeed(track ? { url: track.dataUrl, name: track.name || 'Music', ...(stored.get(track) ? { ref: stored.get(track)! } : {}) } : null);
-      setMontageAspectSeed(null);
-      setMontageSessionKey((k) => k + 1);
       if (files.length) setAttachments([]);
       setInput(''); stopDictationEcho();
-      setPanelService(null); setEditorAsset(null); setEditorMode('video'); setMode('surgical');
       return;
     }
     if (studio) {
@@ -7008,7 +7019,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
@@ -7657,6 +7668,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return all[0] ?? null;
   };
   const kindWord = (k: 'image' | 'video' | 'audio') => (k === 'audio' ? 'music track' : k);
+  /** The files the user attached, for a call: what is in the composer (with its upload state), else the newest turn's. */
+  const liveAttachmentsState = (): Record<string, unknown> => {
+    const describe = (a: Media, i: number) => ({
+      n: i + 1, kind: attachedKind(a.mimeType), ...(a.name ? { name: a.name.slice(0, 80) } : {}),
+      ...(a.durationSec ? { lengthSec: Math.round(a.durationSec) } : {}), ...(a.status ? { upload: a.status } : {}),
+    });
+    if (attachments.length) return { attachments: attachments.slice(0, MAX_ATTACHMENTS).map(describe), attachmentsWhere: 'composer (not sent yet)' };
+    const turn = [...messages].reverse().find((m) => m.role === 'user' && (m.medias?.length || m.files?.length));
+    if (!turn) return {};
+    if (turn.medias?.length) return { attachments: turn.medias.slice(0, MAX_ATTACHMENTS).map(describe), attachmentsWhere: 'sent in this chat' };
+    return {
+      attachments: turn.files!.slice(0, MAX_ATTACHMENTS).map((f, i) => ({ n: i + 1, kind: f.kind, ...(f.name ? { name: f.name } : {}) })),
+      attachmentsWhere: 'sent earlier; the files themselves are no longer loaded (attach them again to use them)',
+    };
+  };
   /** What a call may know about the screen (get_screen_state). Short strings only — it is spoken context, not a dump. */
   const liveScreenState = (): Record<string, unknown> => {
     const settings: Record<string, unknown> | undefined =
@@ -7680,11 +7706,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // The tray's renders and the server's durable jobs it follows (Agent G's cards are listed apart: agentPlans).
       runningGenerations: liveTasks().slice(0, 4),
       results: liveResults().slice(0, 8).map((r) => ({ n: r.n, kind: r.kind === 'audio' ? 'music' : r.kind, ...(r.what ? { what: r.what } : {}) })),
+      // The user's OWN files: the composer's, else the newest turn that carried files (by number and name — never a URL).
+      ...liveAttachmentsState(),
       messagesInThisChat: messages.length,
       signedIn: typeof document === 'undefined' || document.documentElement.dataset.authed !== '0',
     };
   };
   liveChatSendRef.current = (text: string) => { void send({ promptOverride: text }); };
+  // What a call's ask_agent_g hands Agent G: the checked stored paths of the user's files (composer first, else the
+  // newest turn that carried files) — the same references a typed request sends.
+  setLiveAttachedRefs(() => {
+    const pick = (list: Media[]) => list.map((a) => a.storagePath).filter((p): p is string => !!p);
+    if (attachments.length) return pick(attachments);
+    const turn = [...messagesRef.current].reverse().find((m) => m.role === 'user' && (m.medias?.length || m.files?.length));
+    return turn ? (turn.medias?.length ? pick(turn.medias) : (turn.files ?? []).map((f) => f.path).filter((p): p is string => !!p)) : [];
+  });
   liveApiRef.current = (d: LiveActionEventDetail): boolean => {
     const reply = (r: LiveStudioReply) => { d.reply = r; };
     const signedOut = typeof document !== 'undefined' && document.documentElement.dataset.authed === '0';
@@ -7841,6 +7877,40 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       case 'montage': {
         if (d.action !== 'open') return false; // export / set_music_start / state: the editor's own hook answers
+        if (d.source === 'attached') {
+          // THE USER'S OWN FILES, ALL OF THEM. The call could only open results made in this chat, so „montage the four
+          // files I attached" answered no_video while they sat in the composer. Now: the composer's files, else the
+          // newest turn that carried a clip — through the same seedMontageWith the typed chat uses.
+          const tray = attachments;
+          const fromTray = tray.some((a) => isVideo(a.mimeType) || isImage(a.mimeType));
+          const turn = fromTray ? null : [...messagesRef.current].reverse().find((m) => m.role === 'user' && m.medias?.some((x) => isVideo(x.mimeType) || isImage(x.mimeType)));
+          const files = fromTray ? tray : (turn?.medias ?? []);
+          if (!files.length) {
+            reply({ ok: false, error: 'no_attachments', message: 'No clip or photo is attached in this chat (a chat reopened later no longer has the files). Ask the user to attach the files with the + button.' });
+            return true;
+          }
+          const failed = files.filter((a) => a.status === 'failed').map((a) => a.name || 'a file');
+          if (failed.length) {
+            reply({ ok: false, error: 'upload_failed', message: `These files did not upload: ${failed.join(', ')}. Ask the user to press Retry on them first.` });
+            return true;
+          }
+          const items = files.map((a) => ({ kind: (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other') as AttachmentKind, ...(a.name ? { name: a.name } : {}) }));
+          void seedMontageWith(files);
+          const voiceWord = locale === 'en' ? '🎙 By voice: montage' : locale === 'ru' ? '🎙 Голосом: монтаж' : '🎙 ხმით: მონტაჟი';
+          setMessages((prev) => [...prev,
+            ...(fromTray ? [{ role: 'user' as const, text: voiceWord, medias: files, modelMedias: [], inputMethod: 'voice' as const }] : []),
+            { role: 'assistant' as const, text: montageEditorOpenedText(items, agentMontageOn ? 'agent_shape' : 'agent_closed', locale) }]);
+          if (fromTray) setAttachments([]);
+          const clips = items.filter((i) => i.kind === 'video' || i.kind === 'image');
+          const track = items.find((i) => i.kind === 'audio');
+          reply({
+            ok: true,
+            message: `Montage is opening with all ${clips.length} of the user's clips in their order (${clips.map((c, i) => `${i + 1}. ${c.name || c.kind}`).join(', ')})`
+              + `${track ? ` and ${track.name || 'their track'} as the music` : ''}. Export there is free. Tell the user to check the order and press Export,`
+              + ' or call montage export when they say so.',
+          });
+          return true;
+        }
         const videos = (d.videos?.length ? d.videos : [{ kind: 'video' as const }])
           .map((ref) => resolveLiveResult(ref))
           .filter((r): r is NonNullable<typeof r> => !!r && (r.kind === 'video' || r.kind === 'image'));
