@@ -227,9 +227,10 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
   }
 
   if (intent.kind === 'act') {
-    // „The music from 5 s" on the montage Agent G just delivered: the same files planned again with the change.
-    if (s.mode === 'chat' && s.montageOn && s.previousMontage && intent.capability === 'media.edit'
-      && intent.params.editOp === 'music_offset' && intent.target === 'previous') {
+    // „The music from 5 s" or „only the last five" on the montage Agent G just delivered: the same files planned again
+    // with the change.
+    if (s.mode === 'chat' && s.montageOn && s.previousMontage && intent.target === 'previous'
+      && ((intent.capability === 'media.edit' && intent.params.editOp === 'music_offset') || intent.capability === 'agent.montage')) {
       return { kind: 'remontage', cardId: s.previousMontage.id, prompt: mergeMontagePrompt(s.previousMontage.prompt, text), intent };
     }
     const edit = editStep(text, intent, s);

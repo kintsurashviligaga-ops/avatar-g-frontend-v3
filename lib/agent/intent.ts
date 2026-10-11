@@ -290,6 +290,11 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   if (params.musicStartSec !== undefined && !generative) {
     return act('media.edit', videoTarget ?? 'new', { ...params, editOp: 'music_offset' }, videoTarget ? [] : ['video']);
   }
+  // „მარტო ბოლო ხუთი" about the last result: the montage's own files planned again with only those pictures (counted
+  // as they were sent; lib/agent/chatTurn remontage). A quote again, nothing runs before Start.
+  if (!kinds.length && prev === 'video' && !generative && parseSelection(text) !== null && words(text).length <= 10 && !NEW_THING.test(text)) {
+    return act('agent.montage', 'previous', params);
+  }
   if (COLOR.test(text) && CHANGE.test(text) && !(generative && NEW_THING.test(text))) {
     const onImage = nImage >= 1 || (!kinds.length && prev === 'image');
     const onVideo = nVideo >= 1 || (!kinds.length && prev === 'video');

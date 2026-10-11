@@ -209,6 +209,17 @@ describe('Agent G edits a video itself (its edit route open)', () => {
     expect(closed.kind).toBe('say');
   });
 
+  test('„მარტო ბოლო ხუთი" on the montage Agent G just delivered plans it again with only those pictures (E2E-22)', () => {
+    const prev = { ...lastVideo, previousMontage: { id: 'm-done', prompt: 'ამ შვიდი ვიდეოდან კლიპი გამიკეთე' } };
+    for (const words of ['მარტო ბოლო ხუთი გამოიყენე', 'only the last five clips', 'кроме третьего']) {
+      expect(planChatTurn(words, on(prev))).toMatchObject({ kind: 'remontage', cardId: 'm-done', prompt: `ამ შვიდი ვიდეოდან კლიპი გამიკეთე\n${words}` });
+    }
+    // Not a selection: the old readings stand.
+    expect(planChatTurn('the first 3 seconds are too dark', on(prev)).kind).not.toBe('remontage');
+    // No delivered montage: nothing is re-planned.
+    expect(planChatTurn('მარტო ბოლო ხუთი გამოიყენე', on(lastVideo)).kind).not.toBe('remontage');
+  });
+
   test('with the edit route closed the old answers stand: nothing is planned', () => {
     const step = planChatTurn('წინა ვიდეო 9:16-ზე გადაიყვანე.', snap(lastVideo));
     if (step.kind !== 'say') throw new Error(step.kind);

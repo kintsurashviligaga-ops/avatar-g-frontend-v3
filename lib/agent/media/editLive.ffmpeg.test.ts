@@ -27,6 +27,7 @@ import { probeMedia } from '../../services/montage/beatAnalysis';
 import { enqueueEditJob, quoteEdit, type EditExecDeps } from './editExec';
 import { renderEdit } from './editLive';
 import { qcEdit, resolveEdits, type EditRequest } from './editPlan';
+import { mineEdits } from './editWords';
 import { workEditJob } from './editWorker';
 
 jest.setTimeout(180_000);
@@ -97,6 +98,31 @@ test('trim + speed + 9:16 + noir + fades: an H.264/AAC MP4 of the planned frame 
   // The fade-in starts from black: the first frame is darker than one in the middle.
   const mean = (b: Buffer) => b.reduce((s, v) => s + v, 0) / b.length;
   expect(mean(greyFrame(r.file, 0, 54, 96))).toBeLessThan(mean(greyFrame(r.file, 2.5, 54, 96)) - 20);
+});
+
+/** The video frames a file really has, decoded (not the container's claim). */
+function frames(path: string): number {
+  const raw = execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-i', path, '-map', '0:v:0', '-vf', 'scale=2:2', '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 1 << 24 });
+  return raw.length / 4;
+}
+
+test('Media Studio v2.0 §D: the owner\'s words for 5 s give 5 s to the frame (150 frames at 30 fps, 125 at 25)', async () => {
+  const at30 = make('clip30.mp4', [
+    '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=12', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest',
+  ]);
+  for (const [words, path, want] of [
+    ['პირველი 5 წამი დატოვე', at30, 150],
+    ['keep only the last 5 seconds', at30, 150],
+    ['оставь первые 5 секунд', CLIP, 125],
+  ] as const) {
+    const asks = mineEdits(words).edits;
+    expect([words, asks.map((x) => x.op)]).toEqual([words, ['trim']]);
+    const r = await edit(path, asks);
+    expect([words, r.plan.durationSec, r.qc.ok]).toEqual([words, 5, true]);
+    expect([words, frames(r.file)]).toEqual([words, want]);
+    expect([words, Math.abs(r.out.output!.durationSec - 5) < 0.05]).toEqual([words, true]);
+  }
 });
 
 test('a phone clip (rotated) is edited upright, as planned from the frame it shows', async () => {
