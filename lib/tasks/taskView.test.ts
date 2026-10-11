@@ -167,6 +167,18 @@ describe('an Agent G multi-step run (PART 2): one task with its steps and its ev
     expect(t.steps![0]).toMatchObject({ status: 'awaiting_approval', approval: { credits: 5, quoteId: 'q-1', expiresAt: T0 + 60_000 }, credits: 5 });
   });
 
+  test('a quoted montage step shows its plan in numbers (shots, length, music start, speed ramps); a state without it shows none', () => {
+    const run = newRun(spec, approval, () => 0, T0);
+    const clip = stepOf(run, 'clip')!;
+    const summary = { shots: 12, totalSec: 29.7, aspect: '9:16', bpm: 95, musicStartSec: 59, ramp: { mode: 'mixed' as const, slow: 3, fast: 3, byEnergy: true, keptForFootage: 0 } };
+    clip.quote = { taskId: 'job-1', credits: 0, request: {}, token: 'tok', expiresAt: T0 + 60_000, quoteId: 'q-2', summary };
+    const t = taskFromRun(runRow(), run);
+    expect(t.steps![1]).toMatchObject({ id: 'clip', plan: summary });
+    expect(t.steps![0]).not.toHaveProperty('plan');
+    delete clip.quote.summary;
+    expect(taskFromRun(runRow(), run).steps![1]).not.toHaveProperty('plan');
+  });
+
   test('ended: completed gives the last result; partially completed keeps what was delivered; cancelled and failed say so', () => {
     const done = midway();
     const clip = stepOf(done, 'clip')!;

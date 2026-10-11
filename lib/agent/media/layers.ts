@@ -232,12 +232,14 @@ export interface LayerTarget {
   all?: boolean;
 }
 
-/** When, as asked: the whole result, its first or last seconds, or an exact range. */
+/** When, as asked: the whole result, its first or last seconds, an exact range, or all of it but its last seconds. */
 export interface TimeAsk {
   fromSec?: number;
   toSec?: number;
   firstSec?: number;
   lastSec?: number;
+  /** Up to this many seconds before the end („myavatar.ge" until the end text „გადმოდი საიტზე" takes the last 3 s). */
+  beforeLastSec?: number;
 }
 
 export interface TextLayerAsk extends TimeAsk {
@@ -307,10 +309,16 @@ const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n
 /** The time window an ask names, on a result of `dur` s (a still: 0 / 0). */
 function windowOf(t: TimeAsk, dur: number, still: boolean, fallback?: Timed): Timed | null {
   if (still) return { startSec: 0, endSec: 0 };
-  const has = t.fromSec !== undefined || t.toSec !== undefined || t.firstSec !== undefined || t.lastSec !== undefined;
+  const has = t.fromSec !== undefined || t.toSec !== undefined || t.firstSec !== undefined || t.lastSec !== undefined || t.beforeLastSec !== undefined;
   if (!has) return fallback ? { ...fallback } : { startSec: 0, endSec: r2(dur) };
   let s: number, e: number;
-  if (t.lastSec !== undefined) {
+  if (t.beforeLastSec !== undefined && t.lastSec === undefined && t.firstSec === undefined && t.toSec === undefined) {
+    if (!isNum(t.beforeLastSec) || t.beforeLastSec <= 0) return null;
+    s = isNum(t.fromSec) ? t.fromSec : 0;
+    e = Math.max(0, dur - t.beforeLastSec);
+    // A result too short to leave the end its seconds: the text stays the whole length rather than fail the edit.
+    if (e - s < MIN_LAYER_SEC) { s = 0; e = dur; }
+  } else if (t.lastSec !== undefined) {
     if (!isNum(t.lastSec) || t.lastSec <= 0) return null;
     s = Math.max(0, dur - t.lastSec); e = dur;
   } else if (t.firstSec !== undefined) {

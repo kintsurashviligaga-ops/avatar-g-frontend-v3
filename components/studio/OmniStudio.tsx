@@ -157,6 +157,7 @@ import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
 import { AgentRunCard } from '@/components/studio/AgentRunCard';
 import { AgentAnalyzeCard } from '@/components/studio/AgentAnalyzeCard';
+import { unplannedAsks, unplannedText } from '@/lib/agent/media/askCoverage';
 import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runPlanText, runReadingText, type RunChain } from '@/lib/agent/run/runChat';
 import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
@@ -5913,7 +5914,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const r = await quoteAgentMontage({ fetch: (u, init) => fetch(u, init), upload: uploaderOnce(), onUploaded }, { prompt: text, files });
     // A card stopped while it read its files (the composer's Stop) stays stopped: the plan that came back is dropped.
     patchMsgById(id, (m) => (m.montage?.phase !== 'reading' ? m : r.ok
-      ? { ...m, text: quoteText(r.quote, names, locale), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
+      // The plan in words, and what the words asked that it leaves out, by name (lib/agent/media/askCoverage).
+      ? { ...m, text: [quoteText(r.quote, names, locale), unplannedText(unplannedAsks(text), locale)].filter(Boolean).join('\n'), montage: { ...m.montage!, phase: 'quoted', quote: r.quote, request: r.request, token: r.token } }
       : { ...m, text: `⚠️ ${errorText(r.code, locale, r.files, names, r.detail)}`, noRetry: true, montage: { ...m.montage!, phase: 'failed', error: r.code, t1: Date.now() } }));
   }, [locale, patchMsgById, uploaderOnce]);
   const startAgentMontage = useCallback(async (text: string, files: Media[]) => {

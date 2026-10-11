@@ -543,10 +543,11 @@ describe('caption tracks', () => {
 
 test('words a font cannot draw are refused at the quote, named, and nothing is queued', async () => {
   const before = store.rows.size;
+  // An emoji is drawn in colour (./emoji, Twemoji): only the letters no font has are refused.
   const q = await quote('omni-uploads/u1/scene.mp4', [{ op: 'layers', add: [{ kind: 'text', text: 'გამარჯობა 你好 😀' }] }]);
   expect(q).toMatchObject({ ok: false, error: 'missing_glyphs' });
   if (q.ok) return;
-  expect(q.detail?.split(' ')).toEqual(['你', '好', '😀']);
+  expect(q.detail?.split(' ')).toEqual(['你', '好']);
   expect(store.rows.size).toBe(before);
   evidence.missingGlyphs = { asked: 'გამარჯობა 你好 😀', refused: q.detail };
 });

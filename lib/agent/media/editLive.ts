@@ -24,6 +24,8 @@ import { COMPOSED_EDITS, displayDims, renderArgs, type EditRequest } from './edi
 import { audit, every, quoteKey } from './montageLive';
 import { runLayerPass } from './layerPass';
 import { missingGlyphs } from './layerRender';
+import { grabFrame } from './layerQc';
+import { OVERLAY_FLAT_SPREAD, frameDiff, lumaCorrelation, lumaSpread, overlayArgs, overlayCheckPoints, overlayVerdict, type OverlayQcRecord } from './overlayFx';
 
 const WEEK_SEC = 604_800;
 /** A signed link to the caller's own file: the quote's 30 minutes plus a run, with room to spare. */
@@ -42,8 +44,9 @@ function refusalOf(text: string): RenderOutcome | null {
 }
 
 /**
- * The source → the edited MP4 (or the JPEG): ./editPlan's first pass, then the composition pass (./layerPass: the
- * caption, the layers, the caption track, measured on the rendered file) when the edit has any.
+ * The source → the edited MP4 (or the JPEG): ./editPlan's first pass, then the overlay pass (./overlayFx, measured) when
+ * the edit has one, then the composition pass (./layerPass: the caption, the layers, the caption track, measured on the
+ * rendered file) when the edit has any.
  */
 export async function renderEdit(
   url: string,
@@ -55,9 +58,10 @@ export async function renderEdit(
   if (!bin) return { ok: false, error: 'render_failed', detail: 'ffmpeg is missing' };
   const ext = request.plan.output;
   const composed = request.edits.some((e) => COMPOSED_EDITS.has(e.op));
+  const overlay = ext === 'mp4' ? request.edits.find((e) => e.op === 'overlay') : undefined;
   const dir = await mkdtemp(join(tmpdir(), 'edit-'));
   const final = join(dir, `out.${ext}`);
-  const first = composed ? join(dir, ext === 'jpg' ? 'mid.png' : 'mid.mp4') : final;
+  const first = composed || overlay ? join(dir, ext === 'jpg' ? 'mid.png' : 'mid.mp4') : final;
   const exec = { maxBuffer: 1 << 24, timeout: FF_TIMEOUT_MS, signal: opts.signal };
   try {
     let stderr: string;
@@ -77,12 +81,44 @@ export async function renderEdit(
     }
     const input = parseProbeBanner(stderr);
 
-    if (composed) {
+    let base = first;
+    let overlayQc: OverlayQcRecord | undefined;
+    if (overlay?.op === 'overlay') {
       const mid = await probeMedia(first);
+      const { width, height } = mid ? displayDims(mid) : { width: request.plan.width, height: request.plan.height };
+      const lit = composed ? join(dir, 'lit.mp4') : final;
+      const fade = request.edits.find((e) => e.op === 'fade');
+      try {
+        await ffmpegExec(bin, overlayArgs(first, lit, {
+          look: overlay.look, width, height, durationSec: request.plan.durationSec, ...(fade?.op === 'fade' ? { fade: { inSec: fade.inSec, outSec: fade.outSec } } : {}),
+        }), exec, io);
+      } catch (e) {
+        if (opts.signal.aborted) return { ok: false, error: 'render_failed', detail: 'cancelled' };
+        const last = stderrOf(e).trim().split('\n').filter(Boolean).pop() ?? 'ffmpeg failed';
+        return { ok: false, error: 'render_failed', detail: `overlay: ${last.slice(0, 150)}` };
+      }
+      // Measured on the files: the same instants without and with the overlay, at a small size.
+      const qw = 160, qh = Math.max(2, Math.round((160 * height) / width / 2) * 2);
+      const samples: OverlayQcRecord['samples'] = [];
+      for (const at of overlayCheckPoints(request.plan.durationSec)) {
+        const a = await grabFrame(bin, first, at, qw, qh).catch(() => null);
+        const b = await grabFrame(bin, lit, at, qw, qh).catch(() => null);
+        if (a?.length && b?.length) {
+          samples.push({ atSec: at, diff: frameDiff(a, b), corr: lumaCorrelation(a, b), ...(lumaSpread(a) < OVERLAY_FLAT_SPREAD ? { flat: true as const } : {}) });
+        }
+      }
+      overlayQc = overlayVerdict(overlay.look, samples);
+      if (opts.signal.aborted) return { ok: false, error: 'render_failed', detail: 'cancelled' };
+      if (overlayQc.outcome === 'FAIL') return { ok: false, error: 'qc_failed', detail: overlayQc.problems.join('; ') };
+      base = lit;
+    }
+
+    if (composed) {
+      const mid = await probeMedia(base);
       const { width, height } = mid ? displayDims(mid) : { width: request.plan.width, height: request.plan.height };
       const cleanOut = join(dir, `clean.${ext}`);
       const pass = await runLayerPass({
-        bin, dir, base: first, out: final, cleanOut, still: ext === 'jpg', fw: width, fh: height,
+        bin, dir, base, out: final, cleanOut, still: ext === 'jpg', fw: width, fh: height,
         durationSec: ext === 'jpg' ? 0 : request.plan.durationSec, edits: request.edits, assets: opts.assets ?? {},
         wantClean: Boolean(request.plan.clean), exec, io,
       });
@@ -91,11 +127,11 @@ export async function renderEdit(
       const output = await probeMedia(final);
       const bytes = await readFile(final);
       const clean = pass.clean ? { bytes: await readFile(pass.clean), output: await probeMedia(pass.clean) } : undefined;
-      return { ok: true, bytes, input, output, layerQc: pass.layerQc, ...(clean ? { clean } : {}), ...(pass.subtitles ? { subtitles: pass.subtitles } : {}) };
+      return { ok: true, bytes, input, output, layerQc: pass.layerQc, ...(overlayQc ? { overlayQc } : {}), ...(clean ? { clean } : {}), ...(pass.subtitles ? { subtitles: pass.subtitles } : {}) };
     }
     const output = await probeMedia(final);
     const bytes = await readFile(final);
-    return { ok: true, bytes, input, output };
+    return { ok: true, bytes, input, output, ...(overlayQc ? { overlayQc } : {}) };
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }

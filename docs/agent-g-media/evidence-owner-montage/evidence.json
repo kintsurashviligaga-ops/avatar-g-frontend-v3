@@ -1,0 +1,264 @@
+{
+ "owner": {
+  "chain": {
+   "montage": {
+    "musicStartSec": 59,
+    "ramp": "mixed"
+   },
+   "edits": [
+    {
+     "op": "overlay",
+     "look": "light-leak"
+    },
+    {
+     "op": "layers",
+     "add": [
+      {
+       "kind": "text",
+       "text": "myavatar.ge🚀",
+       "style": "cinematic",
+       "motionIn": "slide-up",
+       "beforeLastSec": 3
+      },
+      {
+       "kind": "text",
+       "text": "გადმოდი საიტზე",
+       "role": "cta",
+       "lastSec": 3
+      }
+     ]
+    }
+   ]
+  },
+  "quote": {
+   "shots": 10,
+   "totalSec": 30,
+   "aspect": "9:16",
+   "bpm": 119.96,
+   "musicStartSec": 59,
+   "ramp": {
+    "mode": "mixed",
+    "slow": 3,
+    "fast": 3,
+    "byEnergy": true,
+    "keptForFootage": 0
+   }
+  },
+  "master": {
+   "frames": 900,
+   "durationSec": 30,
+   "width": 720,
+   "height": 1280,
+   "audio": {
+    "sourceStartSec": 59,
+    "timelineStartSec": 0,
+    "targetSec": 30,
+    "endPolicy": "stop",
+    "sourceAudio": "remove",
+    "replacementAudio": "replace"
+   },
+   "markerDb": -6.9,
+   "afterMarkerDb": -91
+  },
+  "windows": [
+   {
+    "asked": 1,
+    "measured": 1,
+    "srcStartSec": 2.317,
+    "srcSeenSec": 2.27,
+    "outStartSec": 0,
+    "outEndSec": 3.5
+   },
+   {
+    "asked": 0.5,
+    "measured": 0.5,
+    "srcStartSec": 8.133,
+    "srcSeenSec": 8.08,
+    "outStartSec": 3.5,
+    "outEndSec": 6.5
+   },
+   {
+    "asked": 0.5,
+    "measured": 0.5,
+    "srcStartSec": 2.983,
+    "srcSeenSec": 2.97,
+    "outStartSec": 6.5,
+    "outEndSec": 9.5
+   },
+   {
+    "asked": 0.5,
+    "measured": 0.5,
+    "srcStartSec": 7.467,
+    "srcSeenSec": 7.47,
+    "outStartSec": 9.5,
+    "outEndSec": 12.5
+   },
+   {
+    "asked": 1,
+    "measured": 1,
+    "srcStartSec": 1.983,
+    "srcSeenSec": 1.93,
+    "outStartSec": 12.5,
+    "outEndSec": 15.5
+   },
+   {
+    "asked": 1,
+    "measured": 1,
+    "srcStartSec": 6.967,
+    "srcSeenSec": 6.99,
+    "outStartSec": 15.5,
+    "outEndSec": 18.5
+   },
+   {
+    "asked": 1,
+    "measured": 1,
+    "srcStartSec": 1.483,
+    "srcSeenSec": 1.49,
+    "outStartSec": 18.5,
+    "outEndSec": 21.5
+   },
+   {
+    "asked": 1.5,
+    "measured": 1.5,
+    "srcStartSec": 5.967,
+    "srcSeenSec": 5.96,
+    "outStartSec": 21.5,
+    "outEndSec": 24.5
+   },
+   {
+    "asked": 1.5,
+    "measured": 1.5,
+    "srcStartSec": 1.233,
+    "srcSeenSec": 1.23,
+    "outStartSec": 24.5,
+    "outEndSec": 27.5
+   },
+   {
+    "asked": 1.5,
+    "measured": 1.5,
+    "srcStartSec": 6.967,
+    "srcSeenSec": 6.96,
+    "outStartSec": 27.5,
+    "outEndSec": 30
+   }
+  ],
+  "light": [
+   {
+    "t": 2,
+    "thirds": [
+     15.06,
+     1.59,
+     0.39
+    ]
+   },
+   {
+    "t": 8,
+    "thirds": [
+     0.43,
+     4.1,
+     7.27
+    ]
+   },
+   {
+    "t": 15,
+    "thirds": [
+     0.32,
+     1.74,
+     8.67
+    ]
+   },
+   {
+    "t": 22,
+    "thirds": [
+     23.65,
+     0.54,
+     0.44
+    ]
+   },
+   {
+    "t": 28,
+    "thirds": [
+     0.45,
+     1.74,
+     16.53
+    ]
+   }
+  ],
+  "edit": {
+   "frames": 900,
+   "overlayQc": {
+    "outcome": "PASS",
+    "look": "light-leak",
+    "samples": [
+     {
+      "atSec": 7.5,
+      "diff": 5.28,
+      "corr": 0.973
+     },
+     {
+      "atSec": 15,
+      "diff": 3.59,
+      "corr": 0.988
+     },
+     {
+      "atSec": 22.5,
+      "diff": 6.42,
+      "corr": 0.95
+     }
+    ],
+    "problems": []
+   },
+   "layerQc": {
+    "outcome": "PASS",
+    "checks": [
+     {
+      "text": "myavatar.ge🚀",
+      "box": {
+       "x": 188,
+       "y": 938,
+       "w": 344,
+       "h": 86
+      },
+      "atSec": 13.5,
+      "shownDiff": 17.47,
+      "beforeDiff": null,
+      "afterDiff": null
+     },
+     {
+      "text": "გადმოდი საიტზე",
+      "box": {
+       "x": 156,
+       "y": 938,
+       "w": 408,
+       "h": 86
+      },
+      "atSec": 28.75,
+      "shownDiff": 81.75,
+      "beforeDiff": null,
+      "afterDiff": null
+     }
+    ]
+   },
+   "layers": [
+    {
+     "text": "myavatar.ge🚀",
+     "style": "cinematic",
+     "startSec": 0,
+     "endSec": 27,
+     "motionIn": "slide-up"
+    },
+    {
+     "text": "გადმოდი საიტზე",
+     "style": "brand",
+     "startSec": 27,
+     "endSec": 30,
+     "motionIn": "slide-up"
+    }
+   ],
+   "rocket": {
+    "red": 215,
+    "blue": 475
+   }
+  }
+ }
+}

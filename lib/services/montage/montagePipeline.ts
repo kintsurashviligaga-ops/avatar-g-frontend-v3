@@ -149,6 +149,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       muted: p.muted,
       transition: toTransition(p.transition),
       ...(p.textOverlay ? { textOverlay: p.textOverlay as TextOverlay } : {}),
+      ...(p.speed !== undefined ? { speed: p.speed } : {}),
     }));
 
     // A window the sequence renderer cannot render is DROPPED there and the rest still stitches (lib/video/

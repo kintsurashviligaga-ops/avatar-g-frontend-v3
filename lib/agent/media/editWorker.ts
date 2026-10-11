@@ -101,6 +101,8 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
     if (!qc.ok) return end(`qc_failed: ${qc.problems.join('; ')}`);
     // The layers, measured on the rendered file (./layerQc): a layer not where, when or as asked is not delivered.
     if (out.layerQc?.outcome === 'FAIL') return end(`qc_failed: ${out.layerQc.problems.slice(0, 4).join('; ')}`);
+    // The overlay too: one that did nothing, or drowned the picture, is not delivered.
+    if (out.overlayQc?.outcome === 'FAIL') return end(`qc_failed: ${out.overlayQc.problems.slice(0, 3).join('; ')}`);
     const cleanQc = out.clean ? qcEdit(out.clean.output, request.plan, out.clean.bytes.byteLength) : null;
     if (cleanQc && !cleanQc.ok) return end(`qc_failed: the copy without captions: ${cleanQc.problems.join('; ')}`);
 
@@ -133,6 +135,7 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
         ...(cleanUrl ? { clean: { url: cleanUrl, name: cleanNameOf(request.name) } } : {}),
         ...(out.subtitles ? { subtitles: out.subtitles } : {}),
         ...(out.layerQc ? { layerQc: out.layerQc } : {}),
+        ...(out.overlayQc ? { overlayQc: out.overlayQc } : {}),
         ...(request.parent ? { parentJobId: request.parent.jobId } : {}),
       },
     });

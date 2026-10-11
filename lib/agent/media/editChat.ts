@@ -8,7 +8,7 @@ import { formatDuration } from './audioChat';
 import type { EditErrorCode, EditQuote } from './editExec';
 import type { MediaEdit } from './editPlan';
 import type { EditAsk } from './editWords';
-import type { Anchor, Layer, TextStyle } from './layers';
+import { ROLE_ANCHOR, ROLE_STYLE, type Anchor, type Layer, type LayerAsk, type TextStyle, type TimeAsk } from './layers';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -153,6 +153,10 @@ export function editLine(e: MediaEdit, locale: string, durationSec = 0): string 
     }
     case 'mute':
       return lang === 'en' ? 'sound off' : lang === 'ru' ? 'без звука' : 'ხმის გარეშე';
+    case 'overlay':
+      return e.look === 'grain'
+        ? (lang === 'en' ? 'overlay: film grain' : lang === 'ru' ? 'оверлей: зерно плёнки' : 'ოვერლეი: ფირის მარცვალი')
+        : (lang === 'en' ? 'overlay: warm light leaks' : lang === 'ru' ? 'оверлей: тёплые световые блики' : 'ოვერლეი: თბილი სინათლის ანარეკლები');
     case 'caption':
       return lang === 'en' ? `caption ${q(lang, e.text)}` : lang === 'ru' ? `подпись ${q(lang, e.text)}` : `წარწერა ${q(lang, e.text)}`;
     case 'thumbnail':
@@ -170,6 +174,52 @@ export function editLine(e: MediaEdit, locale: string, durationSec = 0): string 
       return `${what}, ${deliver}${e.track.karaoke ? (lang === 'en' ? ', word highlight' : lang === 'ru' ? ', подсветка слов' : ', სიტყვების მონიშვნით') : ''}`;
     }
   }
+}
+
+/** When a layer ask shows, in words, before there is a file to resolve it against („ბოლო 3 წამში", „until 3 s before the end"). */
+function whenAsked(a: TimeAsk, lang: Lang): string {
+  const s = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წამ';
+  if (a.lastSec !== undefined) return lang === 'en' ? `the last ${num(a.lastSec)} ${s}` : lang === 'ru' ? `последние ${num(a.lastSec)} ${s}` : `ბოლო ${num(a.lastSec)} ${s}ში`;
+  if (a.firstSec !== undefined) return lang === 'en' ? `the first ${num(a.firstSec)} ${s}` : lang === 'ru' ? `первые ${num(a.firstSec)} ${s}` : `პირველ ${num(a.firstSec)} ${s}ში`;
+  if (a.fromSec !== undefined && a.toSec !== undefined) return `${at(a.fromSec)}–${at(a.toSec)}`;
+  if (a.beforeLastSec !== undefined) {
+    const from = a.fromSec !== undefined ? (lang === 'en' ? `from ${at(a.fromSec)} ` : lang === 'ru' ? `с ${at(a.fromSec)} ` : `${at(a.fromSec)}-დან `) : '';
+    return lang === 'en' ? `${from}until ${num(a.beforeLastSec)} ${s} before the end` : lang === 'ru' ? `${from}до последних ${num(a.beforeLastSec)} ${s}` : `${from}ბოლო ${num(a.beforeLastSec)} ${s}ამდე`;
+  }
+  if (a.fromSec !== undefined) return lang === 'en' ? `from ${at(a.fromSec)}` : lang === 'ru' ? `с ${at(a.fromSec)}` : `${at(a.fromSec)}-დან`;
+  if (a.toSec !== undefined) return lang === 'en' ? `until ${at(a.toSec)}` : lang === 'ru' ? `до ${at(a.toSec)}` : `${at(a.toSec)}-მდე`;
+  return '';
+}
+
+/** One layer as asked, with the defaults the resolver gives it (./layers resolveLayers): place, look, motion and time. */
+export function layerAskLine(l: LayerAsk, locale: string): string {
+  const lang = pick(locale);
+  const when = whenAsked(l, lang);
+  const w = when ? `, ${when}` : '';
+  if (l.kind === 'text') {
+    const role = l.role ?? 'text';
+    const motion = l.motionIn ?? (role === 'cta' ? 'slide-up' : 'fade');
+    const how = [STYLE[l.style ?? ROLE_STYLE[role]][lang], motion !== 'none' ? MOTION[motion]?.[lang] : ''].filter(Boolean).join(', ');
+    return `${q(lang, l.text)} ${PLACE[l.anchor ?? ROLE_ANCHOR[role]][lang]}${w} (${how})`;
+  }
+  if (l.kind === 'image') {
+    const place = PLACE[l.anchor ?? 'top-right'][lang];
+    return lang === 'en' ? `your picture ${place}${w}` : lang === 'ru' ? `ваша картинка ${place}${w}` : `შენი სურათი ${place}${w}`;
+  }
+  const mode = l.mode === 'mosaic' ? (lang === 'en' ? 'pixelated' : lang === 'ru' ? 'пикселизация' : 'მოზაიკა') : (lang === 'en' ? 'blurred' : lang === 'ru' ? 'размытие' : 'დაბინდვა');
+  return `${mode}: ${PLACE[l.anchor ?? 'center'][lang]}${w}`;
+}
+
+/**
+ * One edit as the words asked it, before a file resolves it: a layers ask is its added layers (it has no resolved
+ * `layers` yet); grade, fade, volume, overlay and caption asks are already the edit itself.
+ */
+export function askLine(e: EditAsk, locale: string): string {
+  if (e.op === 'layers') return (e.add ?? []).map((l) => layerAskLine(l, locale)).join(' · ');
+  if (e.op === 'grade' || e.op === 'fade' || e.op === 'volume' || e.op === 'mute' || e.op === 'caption' || e.op === 'aspect') return editLine(e as MediaEdit, locale);
+  if (e.op === 'overlay') return editLine({ op: 'overlay', look: e.look ?? 'light-leak' }, locale);
+  if (e.op === 'speed') return editLine(e, locale);
+  return '';
 }
 
 /** The plan's edits on one line: „keeps 0:05–0:12 · 2× faster · frame 9:16, cropped to fill". */

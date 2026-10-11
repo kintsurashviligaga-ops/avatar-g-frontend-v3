@@ -10,7 +10,13 @@ import {
   onsetStrength,
   musicStartOnBeat,
   planBeatCuts,
+  energyBetween,
+  energyEnvelope,
+  rampSpeeds,
+  RAMP_FAST,
+  RAMP_SLOW,
   type BeatGrid,
+  type EnergyEnvelope,
 } from './beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC, validateMontageRequest, timelineDuration } from './montagePlan';
 
@@ -328,6 +334,133 @@ describe('a photo among the clips is one still shot (owner, 2026-10-11 11:37Z: 4
     };
     const v = validateMontageRequest(body);
     expect(v.ok).toBe(true);
+    expect(Math.abs(timelineDuration(v.request!.shots) - plan.totalSec)).toBeLessThan(0.01);
+  });
+});
+
+// ── speed ramps (owner 2026-10-11: „სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე") ─────────────────────────────
+
+/** A click track whose loudness steps: quiet for `quietSec`, then loud, so the music's strength is known exactly. */
+function quietThenLoud(bpm: number, quietSec: number, seconds: number): Int16Array {
+  const pcm = clickTrack(bpm, 0.2, seconds, { hats: true });
+  const cut = Math.round(quietSec * ANALYSIS_RATE);
+  for (let i = 0; i < cut; i += 1) pcm[i] = Math.round(pcm[i]! * 0.05);
+  return pcm;
+}
+
+/** Each cut's end on the master: a shot lasts its source window ÷ its speed. */
+function masterCuts(plan: ReturnType<typeof planBeatCuts>): number[] {
+  let t = 0;
+  return plan.cuts.map((c) => (t += (c.endSec - c.startSec) / (c.speed ?? 1)));
+}
+
+describe('energyEnvelope reads where the music is calm and where it is strong', () => {
+  test('a quiet stretch scores lower than the loud one after it, block by block', () => {
+    const env = energyEnvelope(quietThenLoud(120, 10, 20));
+    expect(env.blockSec).toBeGreaterThan(0.4);
+    expect(env.blockSec).toBeLessThan(0.6);
+    expect(env.values.length).toBeGreaterThanOrEqual(38);
+    expect(energyBetween(env, 0, 9)).toBeLessThan(energyBetween(env, 11, 20));
+  });
+
+  test('silence and nothing are flat (no strength to choose by)', () => {
+    const env = energyEnvelope(new Int16Array(ANALYSIS_RATE * 4));
+    expect([...env.values].every((v) => v === 0)).toBe(true);
+    expect(energyEnvelope(new Int16Array(10)).values.length).toBe(0);
+    expect(energyBetween({ blockSec: 0.5, values: new Float32Array(0) }, 0, 3)).toBe(0);
+  });
+});
+
+describe('rampSpeeds: the calmest shots slow down, the strongest speed up', () => {
+  const e = [0.1, -1.2, 0.4, 1.5, -0.3, 0.9, -0.8, 2.0];
+  test('mixed: a quarter each way, never the same shot', () => {
+    const sp = rampSpeeds(e, 'mixed');
+    expect(sp.filter((v) => v === RAMP_SLOW)).toHaveLength(2);
+    expect(sp.filter((v) => v === RAMP_FAST)).toHaveLength(2);
+    expect(sp[1]).toBe(RAMP_SLOW); // the calmest
+    expect(sp[6]).toBe(RAMP_SLOW);
+    expect(sp[7]).toBe(RAMP_FAST); // the strongest
+    expect(sp[3]).toBe(RAMP_FAST);
+  });
+  test('one way only: a third of the shots, that way', () => {
+    expect(rampSpeeds(e, 'slow').filter((v) => v === RAMP_SLOW)).toHaveLength(3);
+    expect(rampSpeeds(e, 'slow').some((v) => v > 1)).toBe(false);
+    expect(rampSpeeds(e, 'fast').filter((v) => v === RAMP_FAST)).toHaveLength(3);
+    expect(rampSpeeds(e, 'fast').some((v) => v < 1)).toBe(false);
+  });
+  test('a still is never ramped, and too few shots ramp nothing', () => {
+    const sp = rampSpeeds(e, 'mixed', [true, false, true, true, true, true, true, false]);
+    expect(sp[1]).toBe(1);
+    expect(sp[7]).toBe(1);
+    expect(rampSpeeds([0.5], 'mixed')).toEqual([1]);
+    expect(rampSpeeds([0.5], 'slow')).toEqual([RAMP_SLOW]);
+  });
+});
+
+describe('planBeatCuts with ramps: shots change speed, every cut stays on its beat', () => {
+  const pcm = quietThenLoud(120, 20, 60);
+  const g = grid(pcm)!;
+  const energy: EnergyEnvelope = energyEnvelope(pcm);
+
+  test('slow shots in the quiet half, fast ones in the loud half; the master is as long as without ramps', () => {
+    const base = planBeatCuts({ clipDurationsSec: [30, 30, 30, 30, 30], musicSec: 60, grid: g, ...LIMITS });
+    const plan = planBeatCuts({ clipDurationsSec: [30, 30, 30, 30, 30], musicSec: 60, grid: g, ...LIMITS, ramp: { mode: 'mixed', energy } });
+    expect(plan.ok).toBe(true);
+    expect(plan.ramp).toMatchObject({ mode: 'mixed', byEnergy: true, keptForFootage: 0 });
+    expect(plan.ramp!.slow).toBeGreaterThanOrEqual(1);
+    expect(plan.ramp!.fast).toBeGreaterThanOrEqual(1);
+    expect(plan.totalSec).toBe(base.totalSec);
+    // The same cut points as the plan without ramps: a ramp changes what a shot shows, never where it ends.
+    const a = masterCuts(base), b = masterCuts(plan);
+    expect(b).toHaveLength(a.length);
+    b.forEach((t, i) => expect(Math.abs(t - a[i]!)).toBeLessThan(0.002));
+    // Where each ramped shot sits on the master: slow ones before the music turns loud, fast ones after.
+    let t = 0;
+    for (const c of plan.cuts) {
+      const len = (c.endSec - c.startSec) / (c.speed ?? 1);
+      const mid = plan.musicStartSec + t + len / 2;
+      if (c.speed === RAMP_SLOW) expect(mid).toBeLessThan(20);
+      if (c.speed === RAMP_FAST) expect(mid).toBeGreaterThan(20);
+      // A shot plays its length × its speed of the clip, inside the clip.
+      expect(c.startSec).toBeGreaterThanOrEqual(0);
+      expect(c.endSec).toBeLessThanOrEqual(30 + 1e-6);
+      t += len;
+    }
+  });
+
+  test('a clip without the footage for a faster shot keeps it at normal speed, and says so', () => {
+    // Two 8 s clips fill a 15 s edit: every shot already uses nearly all of its clip, so none can play 1.5× faster.
+    const plan = planBeatCuts({ clipDurationsSec: [8, 8], musicSec: 60, grid: g, musicFromSec: 22, ...LIMITS, ramp: { mode: 'fast', energy } });
+    expect(plan.ok).toBe(true);
+    expect(plan.ramp!.keptForFootage).toBeGreaterThanOrEqual(1);
+    expect(plan.ramp!.fast).toBe(0);
+    for (const c of plan.cuts) expect(c.endSec).toBeLessThanOrEqual(8 + 1e-6);
+  });
+
+  test('no envelope: nothing is ramped, and the plan says it could not read the music', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [30, 30, 30], musicSec: 60, grid: g, ...LIMITS, ramp: { mode: 'mixed', energy: null } });
+    expect(plan.ok).toBe(true);
+    expect(plan.ramp).toEqual({ mode: 'mixed', slow: 0, fast: 0, byEnergy: false, keptForFootage: 0 });
+    expect(plan.cuts.some((c) => c.speed !== undefined)).toBe(false);
+  });
+
+  test('photos are never ramped', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [30, 0, 30, 0], stills: [false, true, false, true], musicSec: 60, grid: g, ...LIMITS, ramp: { mode: 'mixed', energy } });
+    expect(plan.ok).toBe(true);
+    for (const c of plan.cuts) if (c.clip === 1 || c.clip === 3) expect(c.speed).toBeUndefined();
+  });
+
+  test('the ramped plan is a valid montage request', () => {
+    const plan = planBeatCuts({ clipDurationsSec: [30, 30, 30, 30, 30], musicSec: 60, grid: g, ...LIMITS, ramp: { mode: 'mixed', energy } });
+    const v = validateMontageRequest({
+      shots: plan.cuts.map((c) => ({ url: `https://x.supabase.co/c${c.clip}.mp4`, kind: 'video', startSec: c.startSec, endSec: c.endSec, transition: 'cut', ...(c.speed ? { speed: c.speed } : {}) })),
+      aspect: '9:16',
+      musicUrl: 'https://x.supabase.co/song.mp3',
+      musicStartSec: plan.musicStartSec,
+      musicOnly: true,
+    });
+    expect(v.ok).toBe(true);
+    expect(v.request!.shots.filter((x) => x.speed !== undefined).length).toBe(plan.ramp!.slow + plan.ramp!.fast);
     expect(Math.abs(timelineDuration(v.request!.shots) - plan.totalSec)).toBeLessThan(0.01);
   });
 });

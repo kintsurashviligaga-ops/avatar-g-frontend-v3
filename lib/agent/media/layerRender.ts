@@ -10,14 +10,19 @@
  *
  * Every state of one layer (a typewriter's letters, a word-by-word reveal, a scale-in) is drawn on the SAME canvas, so
  * the overlay's position never moves while the text comes in.
+ *
+ * COLOUR EMOJI („myavatar.ge🚀"): resvg draws no colour emoji font, so each emoji is its Twemoji SVG set where the
+ * character stands (./emoji), measured into the line like a letter. A character the font has (©, ™) stays the font's
+ * unless it asks for the emoji picture itself (a selector, a joiner, a keycap, a flag).
  */
 import 'server-only';
 import { Resvg } from '@resvg/resvg-js';
 import { overlayFontFiles } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import {
-  fontPxFor, graphemes, placeBox, safeArea,
+  fontPxFor, placeBox, safeArea,
   type Anchor, type CaptionCue, type CaptionTrack, type Rect, type TextLayer, type TextStyle,
 } from './layers';
+import { clusters, emojiPresentation, twemojiKey, twemojiSvg } from './emoji';
 
 interface Look {
   family: string;
@@ -60,34 +65,97 @@ function resvg(svg: string): Resvg {
 }
 
 const widthCache = new Map<string, number>();
-/** The drawn width of one line, in px (resvg's bounding box of the line as it will be set). */
-export function measure(text: string, family: string, fs: number, lsEm: number): number {
+/** The right edge of a run of text set from x = 0 (resvg's bounding box), in px, unrounded. */
+function inkRight(text: string, family: string, fs: number, lsEm: number): number {
   if (!text.trim()) return 0;
   const key = `${family}|${fs}|${lsEm}|${text}`;
   const hit = widthCache.get(key);
   if (hit !== undefined) return hit;
-  const w = Math.ceil(fs * (graphemes(text).length + 2) * 1.2);
-  const svg = `<svg width="${w}" height="${Math.ceil(fs * 2)}" xmlns="http://www.w3.org/2000/svg"><text x="0" y="${Math.round(fs * 1.4)}" font-family="${family}" font-size="${fs}" letter-spacing="${r2(lsEm * fs)}">${esc(text)}</text></svg>`;
+  const w = Math.ceil(fs * (clusters(text).length + 2) * 1.2);
+  const svg = `<svg width="${w}" height="${Math.ceil(fs * 2)}" xmlns="http://www.w3.org/2000/svg"><text x="0" y="${Math.round(fs * 1.4)}" font-family="${family}" font-size="${fs}" letter-spacing="${r2(lsEm * fs)}" xml:space="preserve">${esc(text)}</text></svg>`;
   const b = resvg(svg).getBBox();
-  const width = b ? Math.ceil(b.x + b.width) : 0;
+  const width = b ? b.x + b.width : 0;
   if (widthCache.size > 4000) widthCache.clear();
   widthCache.set(key, width);
   return width;
 }
 
+/** How far a run of text moves the pen (its letters and their spacing), measured between two H's. */
+const advanceOf = (text: string, family: string, fs: number, lsEm: number): number =>
+  inkRight(`H${text}H`, family, fs, lsEm) - inkRight('HH', family, fs, lsEm);
+
+/** An emoji's square, its pen advance and how far above the baseline its top is, for a font of `fs` px. */
+export const emojiBox = (fs: number, lsEm: number): { size: number; advance: number; rise: number; pad: number } => {
+  const size = Math.round(fs * 1.02);
+  const advance = Math.round(fs * 1.16 + lsEm * fs);
+  return { size, advance, rise: Math.round(fs * 0.84), pad: Math.round((fs * 1.16 - size) / 2) };
+};
+
+export type Run = { kind: 'text'; text: string } | { kind: 'emoji'; text: string; key: string };
+
+/** A line as runs of text and emoji (an emoji only where the font has no glyph for it, or it asks for the picture). */
+export function runsOf(line: string): Run[] {
+  const out: Run[] = [];
+  for (const c of clusters(line)) {
+    const key = /\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|\u20E3/u.test(c) ? twemojiKey(c) : null;
+    if (key && (emojiPresentation(c) || !fontHas(c))) { out.push({ kind: 'emoji', text: c, key }); continue; }
+    const last = out[out.length - 1];
+    if (last?.kind === 'text') last.text += c;
+    else out.push({ kind: 'text', text: c });
+  }
+  return out;
+}
+
+/** Each run's x from the line's start, and the line's drawn width (its right edge). */
+function placeRuns(runs: Run[], family: string, fs: number, lsEm: number): { xs: number[]; width: number } {
+  const xs: number[] = [];
+  let x = 0, right = 0;
+  runs.forEach((r, i) => {
+    xs.push(Math.round(x));
+    if (r.kind === 'emoji') {
+      const e = emojiBox(fs, lsEm);
+      right = Math.max(right, x + e.pad + e.size);
+      x += e.advance;
+    } else {
+      right = Math.max(right, x + inkRight(r.text, family, fs, lsEm));
+      if (i < runs.length - 1) x += advanceOf(r.text, family, fs, lsEm);
+    }
+  });
+  return { xs, width: right };
+}
+
+/** The drawn width of one line, in px (resvg's bounding box of the line as it will be set; emoji in their squares). */
+export function measure(text: string, family: string, fs: number, lsEm: number): number {
+  if (!text.trim()) return 0;
+  const runs = runsOf(text);
+  if (!runs.some((r) => r.kind === 'emoji')) return Math.ceil(inkRight(text, family, fs, lsEm));
+  return Math.ceil(placeRuns(runs, family, fs, lsEm).width);
+}
+
 const glyphCache = new Map<string, boolean>();
-/** The characters of `text` the bundled fonts cannot draw (an emoji, a script they do not cover), each once, in order. */
+/** The font draws this one character (a code point). */
+function fontHas(ch: string): boolean {
+  let ok = glyphCache.get(ch);
+  if (ok === undefined) {
+    const svg = `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg"><text x="20" y="120" font-family="FiraGO" font-size="80">${esc(ch)}</text></svg>`;
+    ok = Boolean(resvg(svg).getBBox());
+    glyphCache.set(ch, ok);
+  }
+  return ok;
+}
+
+/**
+ * The characters of `text` neither the bundled fonts nor the bundled emoji can draw (a skin-toned emoji, a script the
+ * font does not cover), each once, in order, as a person sees them.
+ */
 export function missingGlyphs(text: string): string[] {
   const out: string[] = [];
-  for (const ch of new Set(graphemes(text))) {
-    if (/\s/.test(ch)) continue;
-    let ok = glyphCache.get(ch);
-    if (ok === undefined) {
-      const svg = `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg"><text x="20" y="120" font-family="FiraGO" font-size="80">${esc(ch)}</text></svg>`;
-      ok = Boolean(resvg(svg).getBBox());
-      glyphCache.set(ch, ok);
-    }
-    if (!ok) out.push(ch);
+  for (const c of new Set(clusters(text))) {
+    if (/^\s+$/u.test(c)) continue;
+    if (runsOf(c).every((r) => r.kind === 'emoji')) continue;
+    // Selectors and joiners draw nothing themselves; every other code point must be the font's.
+    const cps = [...c].filter((x) => !/[\uFE0E\uFE0F\u200D]/u.test(x));
+    if (cps.some((x) => !fontHas(x))) out.push(c);
   }
   return out;
 }
@@ -191,7 +259,7 @@ function visible(lines: string[], o: DrawOpts): string[] {
       return ws.slice(0, take).join(' ');
     }
     let out = '';
-    for (const ch of graphemes(line)) {
+    for (const ch of clusters(line)) {
       if (ch !== ' ') {
         if (charsLeft <= 0) break;
         charsLeft -= 1;
@@ -224,6 +292,26 @@ export function layoutSvg(t: TextLayout, o: DrawOpts): string {
       : words.map((w, k) => (wordIndex + k === o.litWord ? `<tspan fill="${KARAOKE_FILL}">${esc(w)}</tspan>` : esc(w))).join(' ');
     wordIndex += t.lines[i]!.split(' ').filter(Boolean).length;
     if (!line) return;
+    const runs = runsOf(line);
+    if (runs.some((r) => r.kind === 'emoji')) {
+      // Text and emoji runs, each at its measured place (a karaoke highlight is drawn on lines without emoji only).
+      const { xs } = placeRuns(runs, look.family, fs, look.ls);
+      const e = emojiBox(fs, look.ls);
+      runs.forEach((r, k) => {
+        const x = x0 + xs[k]!;
+        if (r.kind === 'emoji') { parts.push(twemojiSvg(r.key, x + e.pad, y - e.rise, e.size, `${t.id}l${i}e${k}`)); return; }
+        if (!r.text.trim()) return;
+        if (look.shadow > 0) {
+          const d = Math.max(1, Math.round(fs * 0.05));
+          parts.push(`<text x="${x + d}" y="${y + d}" ${attrs} fill="#000000" fill-opacity="${look.shadow}" xml:space="preserve">${esc(r.text)}</text>`);
+        }
+        if (look.stroke > 0) {
+          parts.push(`<text x="${x}" y="${y}" ${attrs} fill="#000000" stroke="#000000" stroke-width="${r2(look.stroke * fs)}" stroke-linejoin="round" xml:space="preserve">${esc(r.text)}</text>`);
+        }
+        parts.push(`<text x="${x}" y="${y}" ${attrs} fill="${look.fill}" xml:space="preserve">${esc(r.text)}</text>`);
+      });
+      return;
+    }
     if (look.shadow > 0) {
       const d = Math.max(1, Math.round(fs * 0.05));
       parts.push(`<text x="${x0 + d}" y="${y + d}" ${attrs} fill="#000000" fill-opacity="${look.shadow}">${esc(line)}</text>`);
@@ -281,7 +369,7 @@ export function drawText(l: TextLayer, layout: TextLayout, bgLuminance: number |
     for (let k = 0; k < steps; k += 1) states.push({ png: rasterize(layoutSvg(layout, { ...base, scale: 0.7 + 0.3 * easeOut(k / steps) })), atSec: r2((span * k) / steps) });
     states.push({ png: rasterize(layoutSvg(layout, base)), atSec: r2(span) });
   } else if (l.motionIn === 'typewriter') {
-    const total = graphemes(l.text.replace(/\s+/g, '')).length;
+    const total = clusters(l.text.replace(/\s+/g, '')).length;
     const step = Math.max(1, Math.ceil(total / 100));
     for (let c = step; c < total; c += step) states.push({ png: rasterize(layoutSvg(layout, { ...base, chars: c })), atSec: r2((span * (c - step)) / total) });
     states.push({ png: rasterize(layoutSvg(layout, base)), atSec: r2((span * Math.max(0, total - step)) / total) });

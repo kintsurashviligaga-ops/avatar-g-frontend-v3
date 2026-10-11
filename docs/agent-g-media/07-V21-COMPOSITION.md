@@ -100,7 +100,7 @@ Re-run: `MEDIA_STUDIO_V21_DIR=/tmp/v21 node node_modules/.bin/jest lib/agent/med
 | TX-09 | Logo moved right (concurrent with TX-06) | old place 1.29, new place 146.7; parent file byte-identical after both | PROVEN T3 |
 | TX-10 | Several layers in time and stacking | title 0–3 s, logo 2–6 s, text 4–8 s on top of the logo (white over red at 5.5 s); overlap reported | PROVEN T3 |
 | — | Reload | the stored job answers both copies, files and QC; another user gets `not_found` | PROVEN T3 |
-| — | Missing glyphs | „你 好 😀" named and refused; nothing queued | PROVEN T3 |
+| — | Missing glyphs | „你 好" named and refused; nothing queued (since 2026-10-11 an emoji such as 😀 or 🚀 is drawn in colour, Twemoji: `08`) | PROVEN T3 |
 | — | Long Georgian text | 136 letters fit 9:16 (asked size 70, fitted to 57 px, exact PSNR 38.8 dB); 161 refused | PROVEN T3 |
 | — | Masks | mosaic and blur keep 0 of the detail (threshold ≤ 0.35); the unmasked control 1 | PROVEN T3 |
 | — | Cancel mid-render | aborted at 1.5 s, returned 12 ms later, nothing delivered | PROVEN T3 |

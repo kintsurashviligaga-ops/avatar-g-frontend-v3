@@ -5,9 +5,9 @@
  */
 import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import { displaysPortrait } from '@/lib/video/probeBanner';
-import type { CutPlan } from '@/lib/services/montage/beatPlan';
+import type { CutPlan, RampMode } from '@/lib/services/montage/beatPlan';
 import type { MontageAspect, MontageShot } from '@/lib/services/montage/montagePlan';
-import { MAX_SHOTS, shotDuration, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
+import { MAX_SHOTS, shotDuration, shotSpeed, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
 import type { AgentMontageRequest, MontageManifestItem } from './montageManifest';
 
 /** One track plus at most MAX_SHOTS clips (a clip is used at least once, so more could never all appear). */
@@ -63,6 +63,24 @@ export function aspectFromPrompt(text: string | undefined): MontageAspect | null
   return null;
 }
 
+// ⚠️ NO `\b` next to Georgian or Cyrillic (ASCII-only): token edges there are Unicode lookarounds.
+const FASTER = /ააჩქარ|აჩქარ|ჩქარ(?:ად|ი)|სწრაფ|speed\s*(?:it\s+)?up|faster|fast\s*-?\s*motion|ускор|быстре/iu;
+const SLOWER = /შეანელ|შენელ|(?<!\p{L})ანელ|(?<!\p{L})ნელა|ნელ\p{L}*\s+მოძრაობ|სლოუ\s*-?\s*მო|slow\s*-?\s*mo|slow\s+(?:it\s+)?down|slower|замедл|медленн|слоу\s*-?\s*мо/iu;
+const RAMP = /speed\s*-?\s*ramp|სპიდ\s*-?\s*რემპ|рамп\p{L}*\s+скорост|скоростн\p{L}*\s+рамп/iu;
+
+/**
+ * Speed changes asked of a montage („სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე", "speed ramps", «замедли»):
+ * both ways (the music decides where), only slower, only faster. Null = none asked. A montage never changes the speed
+ * of the whole edit (that would move its cuts off the beat): the words become a ramp of single shots
+ * (lib/services/montage/beatPlan rampSpeeds).
+ */
+export function rampOf(text: string | undefined): RampMode | null {
+  const t = typeof text === 'string' ? text : '';
+  if (RAMP.test(t)) return 'mixed';
+  const fast = FASTER.test(t), slow = SLOWER.test(t);
+  return fast && slow ? 'mixed' : slow ? 'slow' : fast ? 'fast' : null;
+}
+
 /** With no shape named, the shape most of the clips were shot in (as displayed: a phone's rotation counts). */
 export function aspectFromClips(probes: ReadonlyArray<Pick<BannerProbe, 'width' | 'height' | 'rotation'>>): MontageAspect {
   const portrait = probes.filter((p) => displaysPortrait(p)).length;
@@ -88,6 +106,7 @@ export function montageBody(
       kind: clips[c.clip]?.still ? 'image' : 'video',
       startSec: c.startSec,
       endSec: c.endSec,
+      ...(c.speed !== undefined && c.speed !== 1 ? { speed: c.speed } : {}),
       transition: 'cut',
       muted: true,
     })),
@@ -136,6 +155,8 @@ export interface TimelineShot {
   outEndSec: number;
   srcStartSec: number;
   srcEndSec: number;
+  /** The shot's playback speed (1 unless ramped): a second of the master shows `speed` seconds of the source. */
+  speed: number;
 }
 
 /**
@@ -148,7 +169,7 @@ export function outputTimeline(shots: ReadonlyArray<MontageShot & { source: numb
   shots.forEach((s, i) => {
     const dur = shotDuration(s);
     const start = i === 0 || s.transition === 'cut' ? total : total - transitionOverlap(total, dur);
-    out.push({ shot: i, source: s.source, outStartSec: r3(start), outEndSec: r3(start + dur), srcStartSec: s.startSec, srcEndSec: s.endSec });
+    out.push({ shot: i, source: s.source, outStartSec: r3(start), outEndSec: r3(start + dur), srcStartSec: s.startSec, srcEndSec: s.endSec, speed: shotSpeed(s) });
     total = start + dur;
   });
   return out;
@@ -187,7 +208,8 @@ export function clipCheckPoints(request: AgentMontageRequest): ClipProbePoint[] 
     const into = item.kind === 'image' ? Math.min(STILL_QC_OFFSET_SEC, len / 4) : len / 2;
     points.push({
       index: item.index, name: item.name, url: request.shots[best.shot]!.url, shot: best.shot,
-      outT: r3(best.outStartSec + into), srcT: item.kind === 'image' ? 0 : r3(best.srcStartSec + into),
+      // A ramped shot shows `speed` seconds of its source per second of the master.
+      outT: r3(best.outStartSec + into), srcT: item.kind === 'image' ? 0 : r3(best.srcStartSec + into * best.speed),
     });
   }
   return points;
@@ -296,7 +318,8 @@ export interface SourceContribution {
   shots: number;
   /** Seconds of the MASTER this source fills. Every used picture has more than 0, or the plan was refused. */
   outputSec: number;
-  windows: Array<{ outStartSec: number; outEndSec: number; srcStartSec: number; srcEndSec: number }>;
+  /** `speed`: a ramped window plays its source at this speed (absent = 1). */
+  windows: Array<{ outStartSec: number; outEndSec: number; srcStartSec: number; srcEndSec: number; speed?: number }>;
 }
 
 /** The audio clocks of a montage, kept apart (Media Studio v2.0 §D): the track's own clock and the master's. */
@@ -330,7 +353,7 @@ export function sourceContribution(request: AgentMontageRequest): SourceContribu
     out.push({
       index: item.index, name: item.name, kind: item.kind, shots: mine.length,
       outputSec: r3(mine.reduce((sum, t) => sum + (t.outEndSec - t.outStartSec), 0)),
-      windows: mine.map((t) => ({ outStartSec: t.outStartSec, outEndSec: t.outEndSec, srcStartSec: t.srcStartSec, srcEndSec: t.srcEndSec })),
+      windows: mine.map((t) => ({ outStartSec: t.outStartSec, outEndSec: t.outEndSec, srcStartSec: t.srcStartSec, srcEndSec: t.srcEndSec, ...(t.speed !== 1 ? { speed: t.speed } : {}) })),
     });
   }
   return out;

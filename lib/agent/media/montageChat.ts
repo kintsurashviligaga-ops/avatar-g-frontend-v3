@@ -20,6 +20,7 @@
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import type { MontageAspect } from '@/lib/services/montage/montagePlan';
+import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS } from './montageAsk';
@@ -123,6 +124,101 @@ const clockOf = (sec: number): string => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
 
+const x = (n: number) => `${n}×`;
+
+/**
+ * The speed ramps of a plan in one sentence: how many shots slow down and speed up, and that the music chose them; or
+ * why none could (one shot, a track whose strength could not be read). Never a ramp the plan does not hold.
+ */
+export function rampText(r: RampResult, locale: string): string {
+  const lang = pick(locale);
+  const n = r.slow + r.fast;
+  if (!n && r.keptForFootage) {
+    return lang === 'en' ? 'Speed changes: none, every shot already uses almost all of its clip, so there is no footage left to speed up.'
+      : lang === 'ru' ? 'Изменение скорости: нет, каждый кадр уже берёт почти весь свой клип, ускорять нечего.'
+        : 'სიჩქარის ცვლა: ვერ მოხერხდა, ყოველი კადრი თითქმის მთელ თავის კლიპს იყენებს და ასაჩქარებელი მასალა აღარ რჩება.';
+  }
+  if (!n) {
+    return !r.byEnergy
+      ? (lang === 'en' ? 'Speed changes: none, the strength of the music could not be read, so every shot plays at its own speed.'
+        : lang === 'ru' ? 'Изменение скорости: нет, силу музыки прочитать не удалось, поэтому все кадры идут с обычной скоростью.'
+          : 'სიჩქარის ცვლა: ვერ მოხერხდა, მუსიკის სიძლიერე ვერ წავიკითხე, ამიტომ ყველა კადრი ჩვეულებრივი სიჩქარითაა.')
+      : (lang === 'en' ? 'Speed changes: none, there are too few shots to change against each other.'
+        : lang === 'ru' ? 'Изменение скорости: нет, кадров слишком мало, чтобы менять их относительно друг друга.'
+          : 'სიჩქარის ცვლა: ვერ მოხერხდა, კადრები ძალიან ცოტაა ერთმანეთთან შესადარებლად.');
+  }
+  const parts: string[] = [];
+  if (r.slow) parts.push(lang === 'en' ? `${r.slow} shot${r.slow === 1 ? '' : 's'} slowed to ${x(RAMP_SLOW)} where the music is calm`
+    : lang === 'ru' ? `замедлено до ${x(RAMP_SLOW)} на спокойных местах: ${r.slow}`
+      : `${r.slow} კადრი შენელებულია ${x(RAMP_SLOW)}-მდე, სადაც მუსიკა მშვიდია`);
+  if (r.fast) parts.push(lang === 'en' ? `${r.fast} sped up to ${x(RAMP_FAST)} where it is strongest`
+    : lang === 'ru' ? `ускорено до ${x(RAMP_FAST)} на самых сильных: ${r.fast}`
+      : `${r.fast} აჩქარებულია ${x(RAMP_FAST)}-მდე, სადაც ყველაზე ძლიერია`);
+  const kept = r.keptForFootage
+    ? (lang === 'en' ? ` ${r.keptForFootage} stay at normal speed: their clip is too short to speed up.`
+      : lang === 'ru' ? ` Обычная скорость у ${r.keptForFootage}: их клип слишком короткий для ускорения.`
+        : ` ${r.keptForFootage} კადრი ჩვეულებრივი სიჩქარით დარჩა: მისი კლიპი აჩქარებისთვის მოკლეა.`)
+    : '';
+  const head = lang === 'en' ? 'Speed by the music' : lang === 'ru' ? 'Скорость по музыке' : 'სიჩქარე მუსიკის მიხედვით';
+  const tail = lang === 'en' ? 'every cut stays on its beat.' : lang === 'ru' ? 'каждая склейка остаётся в бит.' : 'ყოველი ჭრა ისევ ბითზე რჩება.';
+  return `${head}: ${parts.join('; ')}; ${tail}${kept}`;
+}
+
+/** The same in a few words for the card („3 slowed 0.5× · 3 faster 1.5×"). */
+export function rampShort(r: RampResult, locale: string): string {
+  const lang = pick(locale);
+  if (!(r.slow + r.fast)) return lang === 'en' ? 'speed unchanged' : lang === 'ru' ? 'скорость без изменений' : 'სიჩქარე არ შეცვლილა';
+  const parts: string[] = [];
+  if (r.slow) parts.push(lang === 'en' ? `${r.slow} slowed ${x(RAMP_SLOW)}` : lang === 'ru' ? `${r.slow} замедл. ${x(RAMP_SLOW)}` : `${r.slow} შენელ. ${x(RAMP_SLOW)}`);
+  if (r.fast) parts.push(lang === 'en' ? `${r.fast} faster ${x(RAMP_FAST)}` : lang === 'ru' ? `${r.fast} ускор. ${x(RAMP_FAST)}` : `${r.fast} აჩქ. ${x(RAMP_FAST)}`);
+  return parts.join(' · ');
+}
+
+/** A speed ramp as asked, before the music has been read („speed by the music: slower and faster"). */
+export function rampAskText(mode: RampMode, locale: string): string {
+  const lang = pick(locale);
+  if (mode === 'slow') return lang === 'en' ? 'slower shots where the music is calm' : lang === 'ru' ? 'замедление на спокойных местах' : 'შენელება, სადაც მუსიკა მშვიდია';
+  if (mode === 'fast') return lang === 'en' ? 'faster shots where the music is strongest' : lang === 'ru' ? 'ускорение на самых сильных местах' : 'აჩქარება, სადაც მუსიკა ყველაზე ძლიერია';
+  return lang === 'en' ? 'speed by the music: slower and faster shots' : lang === 'ru' ? 'скорость по музыке: замедление и ускорение' : 'სიჩქარე მუსიკის მიხედვით: შენელება და აჩქარება';
+}
+
+/** What a montage reads from the words (lib/agent/params minePlanParams + ./montageAsk rampOf), as the plan will hold it. */
+export interface MontageWords {
+  aspect?: string;
+  durationSec?: number;
+  musicStartSec?: number;
+  ramp?: RampMode;
+}
+
+/** The montage's own asks in a few words, before its quote: „მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: … · 9:16". */
+export function montageWordsLine(w: MontageWords | undefined, locale: string): string {
+  if (!w) return '';
+  const lang = pick(locale);
+  const parts: string[] = [];
+  if (w.musicStartSec !== undefined && w.musicStartSec > 0) {
+    parts.push(lang === 'en' ? `music from ${clockOf(w.musicStartSec)}` : lang === 'ru' ? `музыка с ${clockOf(w.musicStartSec)}` : `მუსიკა ${clockOf(w.musicStartSec)}-დან`);
+  }
+  if (w.ramp) parts.push(rampAskText(w.ramp, locale));
+  if (w.durationSec !== undefined) parts.push(`${sec(w.durationSec)} ${lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ'}`);
+  if (w.aspect) parts.push(w.aspect);
+  return parts.join(' · ');
+}
+
+/** A quoted montage step in numbers (lib/agent/run/runEngine StepSummary): „12 კადრი · 29.7 წმ · 9:16 · 95 BPM · მუსიკა 0:59-დან · 3 შენელ. 0.5×". */
+export function montagePlanLine(p: { shots?: number; totalSec?: number; aspect?: string; bpm?: number | null; musicStartSec?: number; ramp?: RampResult }, locale: string): string {
+  const lang = pick(locale);
+  const parts: string[] = [];
+  if (p.shots) parts.push(lang === 'en' ? `${p.shots} shots` : lang === 'ru' ? `кадров: ${p.shots}` : `${p.shots} კადრი`);
+  if (p.totalSec) parts.push(`${sec(p.totalSec)} ${lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ'}`);
+  if (p.aspect) parts.push(p.aspect);
+  if (p.bpm) parts.push(`${Math.round(p.bpm)} BPM`);
+  if (p.musicStartSec !== undefined && p.musicStartSec >= 1) {
+    parts.push(lang === 'en' ? `music from ${clockOf(p.musicStartSec)}` : lang === 'ru' ? `музыка с ${clockOf(p.musicStartSec)}` : `მუსიკა ${clockOf(p.musicStartSec)}-დან`);
+  }
+  if (p.ramp) parts.push(rampShort(p.ramp, locale));
+  return parts.join(' · ');
+}
+
 /** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
 export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
   const lang = pick(locale);
@@ -153,12 +249,13 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
         ? `Не использую по вашей просьбе (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`
         : `შენი თხოვნით არ ვიყენებ (${q.selection.phrase}): ${q.selection.excluded.map((i, k) => `${i + 1} ${quoted(lang, q.selection!.excludedNames[k] ?? '')}`).join(' · ')}.`)
     : '';
+  const ramp = q.ramp ? `\n${rampText(q.ramp, locale)}` : '';
   const engine = lang === 'en' ? 'Engine: FFmpeg montage.' : lang === 'ru' ? 'Движок: FFmpeg-монтаж.' : 'ძრავი: FFmpeg მონტაჟი.';
   const price = q.credits > 0
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${files}${left}\n${engine} ${price} ${go}`;
+  return `${found}\n${plan}${from}${ramp}${files}${left}\n${engine} ${price} ${go}`;
 }
 
 /**

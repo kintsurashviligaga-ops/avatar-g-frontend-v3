@@ -452,7 +452,8 @@ export async function probeDimensions(url: string): Promise<{ w: number; h: numb
   }
 }
 
-interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
+/** `speed`: this segment's own playback speed (a montage's speed ramp), on top of the draft's; absent = 1. */
+interface SeqEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay; speed?: number }
 
 /**
  * CORE sequence renderer (single ffmpeg pass, N inputs). For each entry it builds a UNIFORM, audio-safe stream —
@@ -502,7 +503,8 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   // Speed — guarded so 1.0 is byte-identical to before. Video retimed via setpts, audio via atempo; all durations
   // used for transition offsets/fades are in OUTPUT space (source ÷ spd).
   const spd = clampNum(numFinite(d.speed, 1), 0.25, 4);
-  const sped = Math.abs(spd - 1) > 1e-3;
+  // A segment's own speed (a montage's ramp) multiplies the draft's; 1 everywhere keeps the graph byte-identical.
+  const segSpd = (e: SeqEntry): number => clampNum(spd * clampNum(numFinite(e.speed, 1), 0.25, 4), 0.25, 4);
 
   // BOUNDED CONCURRENCY, not Promise.all and not fully serial.
   //
@@ -564,9 +566,11 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   entries.forEach((e, i) => {
     const st = Math.max(0, e.start).toFixed(3);
     const en = Math.max(e.start + 0.04, e.end).toFixed(3);
-    const durOut = ((e.end - e.start) / spd).toFixed(3); // per-segment OUTPUT length (for the silence fallback)
+    const f = segSpd(e);
+    const sped = Math.abs(f - 1) > 1e-3;
+    const durOut = ((e.end - e.start) / f).toFixed(3); // per-segment OUTPUT length (for the silence fallback)
     // fps + yuv420p make every segment concat/xfade-compatible (uniform timebase + pixel format).
-    const setptsV = sped ? `setpts=(PTS-STARTPTS)/${spd.toFixed(4)}` : 'setpts=PTS-STARTPTS';
+    const setptsV = sped ? `setpts=(PTS-STARTPTS)/${f.toFixed(4)}` : 'setpts=PTS-STARTPTS';
     const vchain = `[${e.src}:v]trim=start=${st}:end=${en},${setptsV},${scale}fps=30,format=yuv420p`;
     const ovIdx = overlayInputIdx[i];
     if (ovIdx !== null) {
@@ -583,7 +587,7 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     }
     if (hasAudio[e.src]) {
       const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
-      if (sped) af.push(...atempoChainV(spd));
+      if (sped) af.push(...atempoChainV(f));
       if (e.muted) af.push('volume=0');
       parts.push(`[${e.src}:a]${af.join(',')}[a${i}]`);
     } else {
@@ -594,11 +598,11 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
 
   // Left-fold with a per-boundary transition. Durations are OUTPUT-space (÷ spd) so xfade offsets stay correct.
   let curV = '[v0]', curA = '[a0]';
-  let curDur = (first.end - first.start) / spd;
+  let curDur = (first.end - first.start) / segSpd(first);
   const XD = 0.6;
   for (let k = 1; k < entries.length; k += 1) {
     const e = entries[k]!;
-    const segDur = (e.end - e.start) / spd;
+    const segDur = (e.end - e.start) / segSpd(e);
     const trans: Transition = e.transition === 'crossfade' || e.transition === 'fade' ? e.transition : 'none';
     if (trans === 'none') {
       parts.push(`${curV}${curA}[v${k}][a${k}]concat=n=2:v=1:a=1[cv${k}][ca${k}]`);
@@ -668,7 +672,7 @@ async function renderSequenceDraft(videoUrl: string, segments: DraftSegment[], d
 }
 
 /** One entry in a MULTI-CLIP sequence — references a source by index, with its trim window + mute + transition. */
-export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay }
+export interface ConcatEntry { src: number; start: number; end: number; muted: boolean; transition?: Transition; textOverlay?: TextOverlay; speed?: number }
 
 /**
  * MULTI-CLIP concat — stitch trimmed windows of SEVERAL distinct sources into one clip, each scaled +

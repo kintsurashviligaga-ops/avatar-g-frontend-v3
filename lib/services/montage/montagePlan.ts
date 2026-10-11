@@ -39,6 +39,11 @@ export interface MontageShot {
   caption?: string;
   /** Where the caption sits. Absent = 'bottom', the subtitle position every montage had before. */
   captionPos?: MontageCaptionPos;
+  /**
+   * Playback speed of a video shot (a speed ramp): the window [startSec, endSec] of the source plays in
+   * (endSec - startSec) / speed seconds of the master. Absent = 1. Never on a still.
+   */
+  speed?: number;
 }
 
 export interface MontageRequest {
@@ -83,6 +88,10 @@ export const MIN_SHOTS = 1;
 /** Per-shot bounds. Under 0.4s a crossfade has nothing to work with; over 60s it is not a montage shot. */
 export const MIN_SHOT_SEC = 0.4;
 export const MAX_SHOT_SEC = 60;
+
+/** A shot's speed bounds (the same as the editor's speed: atempo chains cover them). */
+export const MIN_SHOT_SPEED = 0.25;
+export const MAX_SHOT_SPEED = 4;
 
 /** Total master ceiling, in seconds — the encode budget, not an artistic limit. */
 export const MAX_TOTAL_SEC = 300;
@@ -147,9 +156,15 @@ export function coerceGrade(raw: unknown): MontageGrade | undefined {
   return neutral ? undefined : g;
 }
 
-/** Output length of one shot, after trimming. */
+/** A shot's playback speed: its own when set on a video, else 1. */
+export function shotSpeed(shot: Pick<MontageShot, 'kind' | 'speed'>): number {
+  const v = shot.speed;
+  return shot.kind === 'video' && typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 1;
+}
+
+/** Output length of one shot, after trimming (and its speed: a slowed shot lasts longer than its window). */
 export function shotDuration(shot: MontageShot): number {
-  return Math.max(0, shot.endSec - shot.startSec);
+  return Math.max(0, (shot.endSec - shot.startSec) / shotSpeed(shot));
 }
 
 /**
@@ -224,7 +239,18 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
   const fallbackEnd = kind === 'image' ? startSec + 3 : startSec + 5;
   const endSec = Number.isFinite(endRaw) && endRaw > startSec ? endRaw : fallbackEnd;
 
-  const dur = endSec - startSec;
+  // A speed is refused, not clamped, when it is out of range: a shot that plays at another speed than asked is a wrong
+  // edit. 1 (or none) is no speed at all, so an unramped request is exactly what it was before ramps.
+  let speed: number | undefined;
+  if (r.speed !== undefined && r.speed !== null) {
+    const v = Number(r.speed);
+    if (typeof r.speed !== 'number' || !Number.isFinite(v) || v < MIN_SHOT_SPEED || v > MAX_SHOT_SPEED) {
+      return { error: `shot ${index + 1} speed must be ${MIN_SHOT_SPEED} to ${MAX_SHOT_SPEED}` };
+    }
+    if (kind === 'video' && Math.abs(v - 1) > 1e-3) speed = Number(v.toFixed(3));
+  }
+
+  const dur = (endSec - startSec) / (speed ?? 1);
   if (dur < MIN_SHOT_SEC) return { error: `shot ${index + 1} is shorter than ${MIN_SHOT_SEC}s` };
   if (dur > MAX_SHOT_SEC) return { error: `shot ${index + 1} is longer than ${MAX_SHOT_SEC}s` };
 
@@ -241,6 +267,7 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
       muted: kind === 'image' ? true : r.muted === true,
       transition: isMontageTransition(r.transition) ? r.transition : 'cut',
       ...(caption ? { caption, ...(captionPos === 'center' ? { captionPos } : {}) } : {}),
+      ...(speed !== undefined ? { speed } : {}),
     },
   };
 }
@@ -327,6 +354,8 @@ export interface ConcatEntryPlan {
   muted: boolean;
   transition?: 'crossfade' | 'fade';
   textOverlay?: { text: string; position: 'bottom-center' | 'center'; fontSize: number; fontColor: string };
+  /** The shot's playback speed when it is not 1 (a speed ramp). */
+  speed?: number;
 }
 
 /**
@@ -348,6 +377,7 @@ export function buildConcatPlan(
     const dur = shotDuration(shot);
     const start = shot.kind === 'image' ? 0 : shot.startSec;
     const end = shot.kind === 'image' ? dur : shot.endSec;
+    const speed = shotSpeed(shot);
 
     return {
       src: i,
@@ -357,6 +387,7 @@ export function buildConcatPlan(
       muted: opts.musicOnly === true ? true : shot.muted,
       // The first shot never carries a transition — validate() already normalized it to 'cut'.
       ...(shot.transition !== 'cut' ? { transition: shot.transition } : {}),
+      ...(speed !== 1 ? { speed } : {}),
       ...(shot.caption
         ? {
             textOverlay: {

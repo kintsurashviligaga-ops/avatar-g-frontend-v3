@@ -2,7 +2,8 @@
  * lib/agent/media/layerWords — the owner's nine v2.1 commands (2026-10-11 13:31Z addendum) and their en/ru twins, read
  * into the typed `layers` / `captions` asks the server resolves. The words drawn come from quotes or a colon only.
  */
-import { drawnWordsOf, LOGO_REF, mineComposition } from './layerWords';
+import { drawnItemsOf, drawnWordsOf, END_TEXT_SEC, LOGO_REF, mineComposition } from './layerWords';
+import { resolveLayers } from './layers';
 
 const layersOf = (text: string) => {
   const m = mineComposition(text);
@@ -170,5 +171,73 @@ describe('what the words carry', () => {
     for (const t of ['ვიდეო 10 წამამდე შეამოკლე', 'make it brighter', 'сделай ярче', '']) {
       expect(mineComposition(t).hit).toBe(false);
     }
+  });
+});
+
+// ── the owner's montage message (2026-10-11 15:27Z): texts written without quotes, a motion, an end text ─────────────
+
+const GG = 'დაამონტაჟე, სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე რომ ეფექტი გამოვიდეს და მუსიკა დაადე 0.59 წამიდან რომ დაიწყოს, ასევე დაადე ოვერლეი, გაუკეთე ქებშენი და ლამაზად დააწერე მოუშენით myavatar.ge🚀 და ბოლოს ქართულად უნდა დაიწეროს გადმოდი საიტზე';
+
+describe('texts written out without quotes', () => {
+  test('the owner\'s message: „myavatar.ge🚀" beautiful and moving until the end, „გადმოდი საიტზე" the last 3 s', () => {
+    const { m, l } = layersOf(GG);
+    expect(m.unsupported).toEqual([]); // „გაუკეთე ქებშენი" is the text written out, not a transcription
+    expect(m.missing).toEqual([]);
+    expect(l?.add).toEqual([
+      { kind: 'text', text: 'myavatar.ge🚀', style: 'cinematic', motionIn: 'slide-up', beforeLastSec: END_TEXT_SEC },
+      { kind: 'text', text: 'გადმოდი საიტზე', role: 'cta', lastSec: END_TEXT_SEC },
+    ]);
+    // The rest of the message keeps its other asks (speed, music start, overlay) and loses only the drawn words.
+    expect(m.rest).toContain('ააჩქარე');
+    expect(m.rest).toContain('0.59 წამიდან');
+    expect(m.rest).toContain('ოვერლეი');
+    expect(m.rest).not.toContain('myavatar');
+    expect(m.rest).not.toContain('საიტზე');
+  });
+
+  test('each unquoted text stops where the next ask begins („… და ბოლო 2 წამში დაიწეროს …")', () => {
+    const { l } = layersOf('დააწერე გამარჯობა! და ბოლო 2 წამში დაიწეროს ნახვამდის');
+    expect(l?.add).toEqual([
+      { kind: 'text', text: 'გამარჯობა!', beforeLastSec: 2 },
+      { kind: 'text', text: 'ნახვამდის', lastSec: 2 },
+    ]);
+  });
+
+  test('a colon still takes its words as before, and a long sentence after „დააწერე რომ" is not drawn', () => {
+    expect(layersOf('აქ დააწერე: სიჩქარე და ხარისხი').l?.add).toEqual([{ kind: 'text', text: 'სიჩქარე და ხარისხი' }]);
+    expect(drawnItemsOf('დააწერე რომ ეს არის ჩვენი ახალი პროდუქტი რომელიც ძალიან კარგია და ყველამ უნდა იყიდოს აუცილებლად დღესვე')).toBeNull();
+  });
+
+  test('two quoted texts with their places; English „a text that says"; a plain „write" before quotes', () => {
+    expect(layersOf('დააწერე „A“ ზემოთ და „B“ ქვემოთ').l?.add).toEqual([
+      { kind: 'text', text: 'A', anchor: 'top' },
+      { kind: 'text', text: 'B', anchor: 'bottom' },
+    ]);
+    expect(layersOf('add a text that says Summer sale at the bottom').l?.add).toEqual([{ kind: 'text', text: 'Summer sale', anchor: 'bottom' }]);
+    expect(layersOf('write "Summer" at the bottom').l?.add).toEqual([{ kind: 'text', text: 'Summer', anchor: 'bottom' }]);
+  });
+
+  test('a logo beside one quoted text: both, each from its own clause', () => {
+    const { m, l } = layersOf('cut these to the music, add my logo top right and write "Summer" at the bottom');
+    expect(m.logo).toBe(true);
+    expect(l?.add).toEqual([
+      { kind: 'text', text: 'Summer', anchor: 'bottom' },
+      { kind: 'image', ref: LOGO_REF, anchor: 'top-right' },
+    ]);
+  });
+});
+
+describe('beforeLastSec: a text up to the seconds the end text takes', () => {
+  test('on a 30 s result it shows 0–27 s; the end text 27–30 s; on a 2 s result it keeps the whole length', () => {
+    const r = resolveLayers({ op: 'layers', add: [
+      { kind: 'text', text: 'myavatar.ge🚀', beforeLastSec: 3 },
+      { kind: 'text', text: 'გადმოდი საიტზე', role: 'cta', lastSec: 3 },
+    ] }, [], 30, false);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.layers.map((x) => [x.startSec, x.endSec])).toEqual([[0, 27], [27, 30]]);
+    const short = resolveLayers({ op: 'layers', add: [{ kind: 'text', text: 'x', beforeLastSec: 3 }] }, [], 2, false);
+    expect(short.ok && short.layers[0]!.endSec).toBe(2);
+    expect(resolveLayers({ op: 'layers', add: [{ kind: 'text', text: 'x', beforeLastSec: -1 }] }, [], 30, false).ok).toBe(false);
   });
 });

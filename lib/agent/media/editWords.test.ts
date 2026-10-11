@@ -143,3 +143,22 @@ describe('editAskOf: an ask from a tool call or a run step, rebuilt from its kno
     expect(editAskOf({ op: 'captions', off: 'yes' })).toBeNull();
   });
 });
+
+describe('the overlay (owner 2026-10-11: „ასევე დაადე ოვერლეი")', () => {
+  test.each<[string, EditAsk[]]>([
+    ['ასევე დაადე ოვერლეი', [{ op: 'overlay', look: 'light-leak' }]],
+    ['add a light leak overlay', [{ op: 'overlay', look: 'light-leak' }]],
+    ['add some film grain', [{ op: 'overlay', look: 'grain' }]],
+    ['ფირის მარცვალი დაადე', [{ op: 'overlay', look: 'grain' }]],
+    ['наложи оверлей', [{ op: 'overlay', look: 'light-leak' }]],
+    ['добавь зерно плёнки', [{ op: 'overlay', look: 'grain' }]],
+  ])('%s', (text, want) => {
+    expect(edits(text)).toEqual(want);
+  });
+
+  test('„overlay the text" is a text, not an effect; a stored overlay ask takes its look and nothing else', () => {
+    expect(edits('overlay the text „Summer“').some((e) => e.op === 'overlay')).toBe(false);
+    expect(editAskOf({ op: 'overlay', look: 'grain' })).toEqual({ op: 'overlay', look: 'grain' });
+    expect(editAskOf({ op: 'overlay', look: 'grain', extra: 1 })).toBeNull();
+  });
+});

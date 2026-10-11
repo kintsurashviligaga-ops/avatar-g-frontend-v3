@@ -137,13 +137,17 @@ export function composeGraph(items: readonly ComposeItem[], opts: { still: boole
 
 const X264 = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-pix_fmt', 'yuv420p'];
 
-/** The composition pass over a video: the layers on the first pass's output, its sound copied as it is. */
-export function composeVideoArgs(base: string, items: readonly ComposeItem[], out: string): string[] {
+/**
+ * The composition pass over a video: the layers on the first pass's output, its sound copied as it is, the length the
+ * plan's. Not `-shortest`: an AAC track ends a few hundredths before its video (29.977 s under 30 s of picture), and
+ * `-shortest` cut the picture there, dropping the last frames, the end text's with them (owner's montage, 2026-10-11).
+ */
+export function composeVideoArgs(base: string, items: readonly ComposeItem[], out: string, durationSec: number): string[] {
   const g = composeGraph(items, { still: false });
   return [
     '-hide_banner', '-y', '-i', base, ...g.inputs.flat(),
     '-filter_complex', g.graph, '-map', `[${g.out}]`, '-map', '0:a?',
-    ...X264, '-c:a', 'copy', '-shortest', '-movflags', '+faststart', '-f', 'mp4', out,
+    ...X264, '-c:a', 'copy', '-t', s3(durationSec), '-movflags', '+faststart', '-f', 'mp4', out,
   ];
 }
 

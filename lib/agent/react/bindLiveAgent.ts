@@ -61,7 +61,7 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
-import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB } from '@/lib/agent/media/editPlan';
+import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS } from '@/lib/agent/media/editPlan';
 import { editAskOf, type EditAsk } from '@/lib/agent/media/editWords';
 import {
   ANCHORS, MAX_CUE_TEXT, MAX_CUES, MAX_IMAGE_SIZE, MAX_LAYER_TEXT, MAX_LAYERS, MIN_SIZE, MOTIONS_IN, TEXT_ROLES, TEXT_STYLES,
@@ -186,8 +186,8 @@ const at = () => num(z.number().min(0).max(36_000));
 const ANCHOR = z.enum(ANCHORS as unknown as [string, ...string[]]);
 const TEXT_STYLE = z.enum(TEXT_STYLES as unknown as [string, ...string[]]);
 const MOTION_IN = z.enum(MOTIONS_IN as unknown as [string, ...string[]]);
-/** When a layer shows (Media Studio v2.1): the whole result, its first or last seconds, or a range. */
-const layerTime = { fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional() };
+/** When a layer shows (Media Studio v2.1): the whole result, its first or last seconds, a range, or all but its last seconds. */
+const layerTime = { fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional(), beforeLastSec: at().optional() };
 /**
  * A layer to put on (lib/agent/media/layers LayerAsk), flat: `kind` says which. A picture is one of the attached files,
  * named by its number (`picture`), never a link the model writes.
@@ -240,12 +240,13 @@ const captionTrack = z.object({
  * (editAskOf); the quote resolves the rest against the file.
  */
 const editAsk = z.object({
-  op: z.enum(['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'thumbnail', 'layers', 'captions']),
+  op: z.enum(['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions']),
   fromSec: at().optional(), toSec: at().optional(), lastSec: at().optional(), cutEndSec: at().optional(),
   factor: num(z.number().min(MIN_SPEED).max(MAX_SPEED)).optional(),
   to: z.enum(ASPECTS as unknown as [string, ...string[]]).optional(),
   fit: z.enum(['crop', 'pad']).optional(),
   style: z.enum(GRADES as unknown as [string, ...string[]]).optional(),
+  look: z.enum(OVERLAY_LOOKS as unknown as [string, ...string[]]).optional(),
   inSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
   outSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
   db: num(z.number().min(MIN_VOLUME_DB).max(MAX_VOLUME_DB)).optional(),
@@ -414,8 +415,8 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     description:
       'PLAN ONLY — edit one video or picture the user attached. Input {file?: number (1 = the first attached file), edits: [{op, ...}]}, ops: ' +
       "trim {fromSec?, toSec?} or {lastSec} or {cutEndSec}; speed {factor 0.25-4}; aspect {to: '9:16'|'16:9'|'1:1'|'4:5', fit?: 'crop'|'pad'}; " +
-      "grade {style: 'vintage'|'cinematic'|'neon'|'noir'|'dramatic'}; fade {inSec?, outSec?}; volume {db}; mute; thumbnail {atSec?} (a still JPEG); " +
-      "layers {add?: [{kind: 'text', text, role?: 'title'|'cta'|'price'|'lower-third'|'label', anchor?, style?: 'minimal'|'premium'|'bold'|'brand'|'cinematic', motionIn?, fromSec?, toSec?, lastSec?} " +
+      "grade {style: 'vintage'|'cinematic'|'neon'|'noir'|'dramatic'}; fade {inSec?, outSec?}; volume {db}; mute; overlay {look?: 'light-leak'|'grain'} (video only); thumbnail {atSec?} (a still JPEG); " +
+      "layers {add?: [{kind: 'text', text, role?: 'title'|'cta'|'price'|'lower-third'|'label', anchor?, style?: 'minimal'|'premium'|'bold'|'brand'|'cinematic', motionIn?, fromSec?, toSec?, lastSec?, beforeLastSec?} " +
       "| {kind: 'image', picture: number (the attached logo), anchor?, size?} | {kind: 'mask', mode: 'blur'|'mosaic', anchor?}], " +
       "change?: [{target?: {kind?, where?, all?}, moveH?, moveV?, anchor?, sizeBy?, style?, motionIn?, text?}], remove?: [{kind?, where?, all?}]} (change and remove: only on Agent G's own last edit); " +
       "captions {track?: {lang, cues: [{startSec, endSec, text}]}, deliver?: 'burned'|'both'|'file', off?: true}. " +

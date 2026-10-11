@@ -5,7 +5,8 @@
  *
  * WHAT IT DOES (Master Task PART 3, slice 2): cut a stretch out (trim), play faster or slower (speed), a new frame shape
  * (aspect, crop or pad), a colour look (grade), fade in / out, louder / quieter / silent (volume, mute), one burned-in
- * line of text (caption), or one still frame as a picture (thumbnail). The filters are the remix's own
+ * line of text (caption), or one still frame as a picture (thumbnail). An overlay over the whole picture (warm light
+ * leaks drifting over it, or film grain: ./overlayFx) is its own pass between the first and the layers. The filters are the remix's own
  * (lib/video/editFilters), so the same words make the same picture on both doors.
  *
  * WHAT IT DOES NOT: add music or a voice (the remix's charged ops: free here would undercut their price), join several
@@ -46,6 +47,8 @@ export type MediaEdit =
   | { op: 'volume'; db: number }
   | { op: 'mute' }
   | { op: 'caption'; text: string }
+  /** An overlay over the whole picture: warm light leaks drifting over it, or film grain (./overlayFx). Video only. */
+  | { op: 'overlay'; look: OverlayLook }
   /** Media Studio v2.1: the edit's own text, picture and mask layers (./layers), drawn over the result, non-destructive. */
   | { op: 'layers'; layers: Layer[] }
   /** A caption track: burned in, burned in plus a clean copy, or a clean video with the .srt / .vtt only. */
@@ -55,7 +58,7 @@ export type MediaEdit =
 export type EditName = MediaEdit['op'];
 
 /** The one order edits are applied in (and stored in): time first, then the frame, then its look, then the sound. */
-export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'layers', 'captions', 'thumbnail'];
+export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'layers', 'captions', 'thumbnail'];
 /** What a thumbnail (one still) can be combined with. */
 const STILL_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'layers', 'thumbnail']);
 /** What a picture (a still SOURCE: a poster, a banner, a photo) can be given. */
@@ -68,6 +71,10 @@ export const isPictureProbe = (p: Pick<BannerProbe, 'durationSec' | 'videoCodec'
   IMAGE_CODECS.has(String(p.videoCodec ?? '').toLowerCase()) && !(p.durationSec > 0.5);
 
 export const ASPECTS: readonly FrameAspect[] = ['9:16', '16:9', '1:1', '4:5'];
+export type OverlayLook = 'light-leak' | 'grain';
+export const OVERLAY_LOOKS: readonly OverlayLook[] = ['light-leak', 'grain'];
+/** An overlay is one more full-frame pass: it is for a result up to this long (one worker's time). */
+export const MAX_OVERLAY_SEC = 120;
 export const GRADES: readonly GradeStyle[] = ['vintage', 'cinematic', 'neon', 'noir', 'dramatic'];
 
 /** What the result will be, worked out at the quote from the source's probe and checked again after the render. */
@@ -216,6 +223,12 @@ export function resolveEdits(
       case 'mute':
         edits.push({ op: 'mute' });
         break;
+      case 'overlay': {
+        const look = a!.look ?? 'light-leak';
+        if (!(OVERLAY_LOOKS as readonly unknown[]).includes(look)) return fail('bad_edits', 'The overlay is light leaks or film grain.');
+        edits.push({ op: 'overlay', look: look as OverlayLook });
+        break;
+      }
       case 'caption': {
         const text = cleanCaption(a!.text);
         if (!text) return fail('bad_edits', 'Say the words to put on the video.');
@@ -254,6 +267,7 @@ export function resolveEdits(
   if (!still && outSec > MAX_EDIT_OUTPUT_SEC) return fail('too_long', `The result would be ${Math.round(outSec)} s; Agent G edits up to ${MAX_EDIT_OUTPUT_SEC} s at a time. Trim it first.`);
   if (!still && outSec < MIN_EDIT_OUTPUT_SEC) return fail('too_short', 'The result would be shorter than half a second.');
   if (fade && fade.inSec + fade.outSec > outSec) return fail('conflict', 'The fades are longer than the video.');
+  if (get('overlay') && outSec > MAX_OVERLAY_SEC) return fail('too_long', `An overlay is for a video up to ${MAX_OVERLAY_SEC} s; this one would be ${Math.round(outSec)} s. Trim it first.`);
 
   // ── layers and captions, on the result's own timeline ─────────────────────────────────────────────────────────────
   let clean = false;
@@ -363,7 +377,7 @@ const X264 = (crf: number): string[] => ['-c:v', 'libx264', '-preset', 'veryfast
  */
 export function renderArgs(req: Pick<EditRequest, 'edits' | 'plan'>, input: string, out: string): string[] {
   const { edits, plan } = req;
-  const captioned = edits.some((e) => COMPOSED_EDITS.has(e.op));
+  const captioned = edits.some((e) => COMPOSED_EDITS.has(e.op) || e.op === 'overlay');
   if (plan.output === 'jpg') {
     const at = edit(edits, 'thumbnail')?.atSec;
     const vf = videoFilters(req);

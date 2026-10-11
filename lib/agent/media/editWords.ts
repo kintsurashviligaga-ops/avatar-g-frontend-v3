@@ -12,6 +12,7 @@ import { aspectFromPrompt } from './montageAsk';
 import { mineComposition, type CompositionAsk, type CompositionMissing, type CompositionUnsupported } from './layerWords';
 import { MAX_CUES } from './layers';
 import type { FrameAspect, GradeStyle } from '@/lib/video/editFilters';
+import type { OverlayLook } from './editPlan';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
 const B1 = '(?![\\p{L}\\p{N}])';
@@ -37,6 +38,8 @@ export type EditAsk =
   | { op: 'mute' }
   /** A stored or tool-sent caption of the v2.0 kind; words in the chat now become a text layer (./layerWords). */
   | { op: 'caption'; text: string }
+  /** An overlay over the whole picture: light leaks (the default) or film grain (./overlayFx). */
+  | { op: 'overlay'; look?: OverlayLook }
   | { op: 'thumbnail'; atSec?: number }
   /** Media Studio v2.1: text, picture and mask layers, and caption tracks (./layerWords). */
   | CompositionAsk;
@@ -108,6 +111,13 @@ const MUTE = /უხმო|ხმის\s+გარეშე|ხმა\s+(?:მ�
 const LOUDER = /ხმა\s+(?:აუწი|აუმატ|გაზარდ)|(?:აუწი|გაზარდ)\p{L}*\s+ხმა|ხმამაღლა|louder|turn\s+(?:it\s+)?up|volume\s+up|increase\s+(?:the\s+)?volume|boost\s+(?:the\s+)?(?:volume|sound|audio)|громче|увелич\p{L}*\s+громкост|прибав\p{L}*\s+звук/iu;
 const QUIETER = /ხმა\s+(?:დაუწი|შეამცირ|დაუკელ)|(?:დაუწი|შეამცირ)\p{L}*\s+ხმა|ჩუმად|quieter|turn\s+(?:it\s+)?down|volume\s+down|lower\s+(?:the\s+)?volume|reduce\s+(?:the\s+)?volume|тише|потише|уменьш\p{L}*\s+громкост|убав\p{L}*\s+звук/iu;
 const DB = new RegExp(`([+-]?\\d{1,2}(?:[.,]\\d)?)\\s*(?:dB|db|დბ|дБ|дб)${B1}`, 'u');
+
+/**
+ * An overlay as an effect over the picture („დაადე ოვერლეი", "add an overlay", «наложи оверлей»), never the verb of a
+ * text („overlay the words …" is a text layer: ./layerWords).
+ */
+const OVERLAY = /ოვერლე\p{L}*|оверле\p{L}*|(?:an?|the|some|cool|nice|light|film)\s+overlay(?!\s+(?:the\s+)?(?:text|words?|title|caption|logo))|overlay\s+effect|light\s*-?\s*leaks?|ლაით\s*-?\s*ლიქ\p{L}*|სინათლის\s+ანარეკლ\p{L}*|световы\p{L}*\s+блик\p{L}*|film\s+grain|ფირის\s+მარცვ\p{L}*|зерн\p{L}*\s+пл[её]нк\p{L}*/iu;
+const GRAIN = /grain|მარცვ|გრეინ|зерн/iu;
 
 const THUMB = /ქავერ|თამბნეილ|მინიატიურ|ყდის\s+ფოტ|სქრინშოტ|კადრი\s+(?:ამოიღე|ამომიღე|გამიკეთე|გადაიღე)|thumbnail|cover\s+(?:image|photo|frame|picture)|poster\s+frame|still\s+frame|screenshot|freeze\s+frame|grab\s+a\s+frame|frame\s+grab|обложк|превью|миниатюр|скриншот|стоп\s*-?\s*кадр/iu;
 const THUMB_AT = new RegExp(`(?:${T}\\s*-?\\s*(?:წამზე|წმ-?ზე|ზე)${B1})|(?:${B0}at\\s+(?:the\\s+)?${T}\\s*(?:${SEC})?)|(?:${B0}на\\s+${T}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:${SEC})?)`, 'iu');
@@ -183,6 +193,11 @@ function mineFade(t: string): EditAsk | null {
   return { op: 'fade', inSec: i || !o ? len : 0, outSec: o || !i ? len : 0 };
 }
 
+function mineOverlay(t: string): EditAsk | null {
+  if (!OVERLAY.test(t)) return null;
+  return GRAIN.test(t) && !/light\s*-?\s*leak|ლაით|ანარეკლ|блик/iu.test(t) ? { op: 'overlay', look: 'grain' } : { op: 'overlay', look: 'light-leak' };
+}
+
 function mineVolume(t: string): EditAsk | null {
   if (MUTE.test(t)) return { op: 'mute' };
   const louder = LOUDER.test(t), quieter = QUIETER.test(t);
@@ -203,6 +218,7 @@ const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, Field>>>>
   volume: { db: 'num' },
   mute: {},
   caption: { text: 'str' },
+  overlay: { look: 'str' },
   thumbnail: { atSec: 'num' },
   layers: { add: 'list', change: 'list', remove: 'list' },
   captions: { track: 'obj', deliver: 'str', off: 'bool' },
@@ -313,6 +329,8 @@ export function mineEdits(text: unknown): MinedEdits {
     if (fade) out.edits.push(fade);
     const volume = mineVolume(t);
     if (volume) out.edits.push(volume);
+    const overlay = mineOverlay(t);
+    if (overlay) out.edits.push(overlay);
   }
   out.edits.push(...comp.asks);
   out.missing.push(...comp.missing);

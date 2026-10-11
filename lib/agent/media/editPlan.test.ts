@@ -217,3 +217,20 @@ describe('qcEdit', () => {
     expect(qcEdit({ ...SRC, durationSec: 0.04, hasAudio: false, videoCodec: 'png' }, still, 90_000).problems).toEqual(['picture codec png']);
   });
 });
+
+describe('the overlay edit', () => {
+  test('light leaks by default, film grain when asked; it changes no length and re-encodes the picture', () => {
+    expect(plan([{ op: 'overlay' }]).edits).toEqual([{ op: 'overlay', look: 'light-leak' }]);
+    const r = plan([{ op: 'overlay', look: 'grain' }, { op: 'grade', style: 'noir' }]);
+    expect(r.edits).toContainEqual({ op: 'overlay', look: 'grain' });
+    expect(r.plan).toMatchObject({ output: 'mp4', durationSec: 30, copyVideo: false });
+  });
+
+  test('another look is refused by name', () => {
+    expect(resolveEdits([{ op: 'overlay', look: 'sparkles' }], SRC)).toMatchObject({ ok: false, error: 'bad_edits' });
+  });
+
+  test('the stored request with an overlay passes its own checks again', () => {
+    expect(validateEditRequest(JSON.parse(JSON.stringify(request([{ op: 'overlay' }]))))).not.toBeNull();
+  });
+});

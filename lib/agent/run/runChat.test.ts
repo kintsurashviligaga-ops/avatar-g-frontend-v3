@@ -2,7 +2,8 @@
  * Which chat messages become a two-step Agent G run, in ka · en · ru, and the run spec they make: every spec built here
  * is one the server's own check (validateRunSpec) accepts as it is, so the chat never sends a plan the route refuses.
  */
-import { chainSpec, runChainAsk, runCodeOf, runErrorText, runPlanText, sourceLine, type RunChain } from './runChat';
+import { chainSpec, montagePromptOf, montageWordsOf, runChainAsk, runCodeOf, runErrorText, runPlanText, sourceLine, type RunChain } from './runChat';
+import { chainEditsText } from './runCard';
 import { validateRunSpec } from './runSpec';
 import type { AttachmentKind } from '@/lib/agent/media/montageChat';
 
@@ -152,5 +153,67 @@ describe('words', () => {
     expect(runCodeOf(400, { error: 'bad_spec' })).toBe('bad_spec');
     expect(runCodeOf(404, { error: 'not_found' })).toBe('not_found');
     expect(runCodeOf(502, null)).toBe('network');
+  });
+});
+
+// ── the owner's montage message (2026-10-11 15:27Z): every part on one plan ────────────────────────────────────────────
+
+describe('a montage with speed, music start, overlay and texts is one plan: montage, then the edit', () => {
+  const GG = 'დაამონტაჟე, სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე რომ ეფექტი გამოვიდეს და მუსიკა დაადე 0.59 წამიდან რომ დაიწყოს, ასევე დაადე ოვერლეი, გაუკეთე ქებშენი და ლამაზად დააწერე მოუშენით myavatar.ge🚀 და ბოლოს ქართულად უნდა დაიწეროს გადმოდი საიტზე';
+  const FIVE: AttachmentKind[] = ['video', 'video', 'video', 'video', 'video', 'audio'];
+
+  test('the chain holds the overlay and both texts; the montage words hold the music start and the ramp; nothing is left out', () => {
+    const chain = runChainAsk(GG, FIVE);
+    expect(chain).toEqual({
+      kind: 'cut-edit',
+      edits: [
+        { op: 'overlay', look: 'light-leak' },
+        { op: 'layers', add: [
+          { kind: 'text', text: 'myavatar.ge🚀', style: 'cinematic', motionIn: 'slide-up', beforeLastSec: 3 },
+          { kind: 'text', text: 'გადმოდი საიტზე', role: 'cta', lastSec: 3 },
+        ] },
+      ],
+      montage: { musicStartSec: 59, ramp: 'mixed' },
+    });
+  });
+
+  test('the montage step reads the words without the texts to be drawn; the edit step carries the texts', () => {
+    const chain = runChainAsk(GG, FIVE)!;
+    const spec = chainSpec(chain, GG, ['u/1.mp4', 'u/2.mp4', 'u/3.mp4', 'u/4.mp4', 'u/5.mp4', 'u/rod.mp3']);
+    expect(validateRunSpec(spec).ok).toBe(true);
+    const cut = spec.steps[0] as { prompt?: string };
+    expect(cut.prompt).toContain('0.59 წამიდან');
+    expect(cut.prompt).toContain('ააჩქარე');
+    expect(cut.prompt).not.toContain('myavatar');
+    expect(spec.title).toBe(GG.slice(0, 120).trim());
+    expect(montageWordsOf('დაამონტაჟე და დააწერე „20 წამი სიჩქარე“')).toEqual({});
+    expect(montagePromptOf('დაამონტაჟე და დააწერე „20 წამი სიჩქარე“ https://x.example/a')).toBe('დაამონტაჟე და დააწერე');
+  });
+
+  test('the plan in words names every part: the music start, the speed by the music, the overlay, both texts and when', () => {
+    const chain = runChainAsk(GG, FIVE)!;
+    const ka = runPlanText(chain, { credits: 0, editsText: chainEditsText(chain, 'ka') }, 'ka');
+    expect(ka).toContain('1. კლიპებს შენს მუსიკაზე დავამონტაჟებ (მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: შენელება და აჩქარება)');
+    expect(ka).toContain('ოვერლეი: თბილი სინათლის ანარეკლები');
+    expect(ka).toContain('„myavatar.ge🚀“ ქვემოთ, ბოლო 3 წამამდე (კინემატოგრაფიული, ქვემოდან შემოდის)');
+    expect(ka).toContain('„გადმოდი საიტზე“ ქვემოთ, ბოლო 3 წამში (ბრენდის ღილაკი, ქვემოდან შემოდის)');
+    expect(ka).not.toContain('არ შედის');
+    const en = runPlanText(chain, { credits: 0, editsText: chainEditsText(chain, 'en') }, 'en');
+    expect(en).toContain('cut the clips to your track (music from 0:59 · speed by the music: slower and faster shots)');
+  });
+
+  test('what neither step does is named on the plan: a transition, a logo with no picture (its text is still drawn)', () => {
+    const t = 'cut these to the music with crossfade transitions, add my logo top right and write "Summer" at the bottom';
+    const chain = runChainAsk(t, ['video', 'video', 'audio'])!;
+    expect(chain.kind).toBe('cut-edit');
+    expect(chain.kind === 'cut-edit' && chain.edits).toEqual([{ op: 'layers', add: [{ kind: 'text', text: 'Summer', anchor: 'bottom' }] }]);
+    expect(chain.unplanned?.map((u) => u.kind)).toEqual(['transition', 'logo']);
+    const en = runPlanText(chain, { credits: 0, editsText: chainEditsText(chain, 'en') }, 'en');
+    expect(en).toContain('Not in this plan: transitions between shots');
+    expect(en).toContain('a logo: once the montage is ready');
+  });
+
+  test('a logo alone is no edit step: the montage card takes it and names the logo', () => {
+    expect(runChainAsk('cut these to the music and add my logo top right', ['video', 'video', 'audio'])).toBeNull();
   });
 });

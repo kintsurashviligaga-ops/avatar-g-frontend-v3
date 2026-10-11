@@ -157,6 +157,10 @@ export function AgentTaskCard({
             );
           })}
         </ol>
+        {/* What the words asked that this plan leaves out, by name and why: seen before Start, never dropped unseen. */}
+        {model.notice ? (
+          <p data-testid={`${testId}-notice`} role="note" className="px-4 pb-2 text-[12px] leading-[1.4] text-app-warning">{model.notice}</p>
+        ) : null}
         {footer ? <div className="px-4 pb-2">{footer}</div> : null}
       </div>
       {/* The buttons stay when the list is folded: Stop must never hide behind a fold. */}

@@ -238,3 +238,18 @@ describe('each card says why it broke, and what it spent', () => {
     expect(jobCreditsText('failed', undefined, 'en')).toBeNull();
   });
 });
+
+describe('the montage card holds every part of the words (owner 2026-10-11)', () => {
+  const NAMES4 = ['a.mp4', 'b.mp4', 'c.mp4', 'song.mp3'];
+  test('the plan row has the speed ramps; the analyse row the music start', () => {
+    const m = montageTask({ phase: 'quoted', names: NAMES4, quote: { ...MQ, musicStartSec: 59, ramp: { mode: 'mixed', slow: 2, fast: 1, byEnergy: true, keptForFootage: 0 } } }, 'ka');
+    expect(m.steps.find((x) => x.key === 'plan')!.detail).toContain('2 შენელ. 0.5× · 1 აჩქ. 1.5×');
+    expect(m.steps.find((x) => x.key === 'analyse')!.detail).toContain('მუსიკა 0:59-დან');
+  });
+
+  test('what the words asked that a montage does not do is the card\'s notice, by name', () => {
+    const m = montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music with crossfade transitions and a zoom' }, 'en');
+    expect(m.notice).toBe('Not in this plan: transitions between shots: a beat montage cuts straight, so every cut stays on its beat · zoom, shake or glitch: these effects are not available yet.');
+    expect(montageTask({ phase: 'quoted', names: NAMES4, quote: MQ, prompt: 'cut these to the music, 9:16' }, 'en').notice).toBeUndefined();
+  });
+});

@@ -1,6 +1,6 @@
 /** The studio chat's side of Agent G's montage: which messages it claims, and what it says (ka · en · ru). */
 import type { MontageQuote } from './montageExec';
-import { beatMontageAsk, codeOf, errorText, orientationOf, priceLabel, quoteText, stageText, trackTooBigText, type AttachmentKind } from './montageChat';
+import { beatMontageAsk, codeOf, errorText, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, type AttachmentKind } from './montageChat';
 
 const V: AttachmentKind = 'video';
 const A: AttachmentKind = 'audio';
@@ -136,5 +136,32 @@ describe('a music start the user asked for is on the card (Agent G PART 1)', () 
     expect(quoteText(q, undefined, 'en')).toContain('The track starts at 0:05.');
     expect(quoteText(q, undefined, 'ru')).toContain('Трек начинается с 0:05.');
     expect(quoteText(Q, undefined, 'en')).not.toContain('The track starts');
+  });
+});
+
+describe('speed ramps in words (owner 2026-10-11: „ააჩქარე … შეანელე")', () => {
+  const R = { mode: 'mixed' as const, slow: 3, fast: 3, byEnergy: true, keptForFootage: 0 };
+  test('the quote says how many shots slow down and speed up, and that every cut stays on its beat', () => {
+    const ka = quoteText({ ...Q, musicStartSec: 59, ramp: R }, undefined, 'ka');
+    expect(ka).toContain('მუსიკა იწყება 0:59-დან.');
+    expect(ka).toContain('სიჩქარე მუსიკის მიხედვით: 3 კადრი შენელებულია 0.5×-მდე, სადაც მუსიკა მშვიდია; 3 აჩქარებულია 1.5×-მდე, სადაც ყველაზე ძლიერია; ყოველი ჭრა ისევ ბითზე რჩება.');
+    expect(quoteText({ ...Q, ramp: R }, undefined, 'en')).toContain('Speed by the music: 3 shots slowed to 0.5× where the music is calm; 3 sped up to 1.5× where it is strongest; every cut stays on its beat.');
+    expect(quoteText(Q, undefined, 'en')).not.toContain('Speed');
+  });
+
+  test('none could change: the reason is said (music unread, too few shots, no footage), never a ramp that is not there', () => {
+    expect(rampText({ ...R, slow: 0, fast: 0, byEnergy: false }, 'en')).toMatch(/could not be read/);
+    expect(rampText({ ...R, slow: 0, fast: 0 }, 'en')).toMatch(/too few shots/);
+    expect(rampText({ ...R, mode: 'fast', slow: 0, fast: 0, keptForFootage: 2 }, 'en')).toMatch(/almost all of its clip/);
+    expect(rampText({ ...R, fast: 1, keptForFootage: 2 }, 'ka')).toContain('2 კადრი ჩვეულებრივი სიჩქარით დარჩა');
+  });
+
+  test('short forms for the cards', () => {
+    expect(rampShort(R, 'ka')).toBe('3 შენელ. 0.5× · 3 აჩქ. 1.5×');
+    expect(rampShort({ ...R, slow: 0, fast: 0 }, 'en')).toBe('speed unchanged');
+    expect(montageWordsLine({ musicStartSec: 59, ramp: 'mixed', durationSec: 20, aspect: '9:16' }, 'ka')).toBe('მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: შენელება და აჩქარება · 20 წმ · 9:16');
+    expect(montageWordsLine({ ramp: 'slow' }, 'en')).toBe('slower shots where the music is calm');
+    expect(montageWordsLine(undefined, 'en')).toBe('');
+    expect(montagePlanLine({ shots: 12, totalSec: 29.7, aspect: '9:16', bpm: null, musicStartSec: 0.2 }, 'ru')).toBe('кадров: 12 · 29.7 с · 9:16');
   });
 });

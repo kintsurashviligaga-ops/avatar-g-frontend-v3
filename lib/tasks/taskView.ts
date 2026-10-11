@@ -16,7 +16,7 @@ import type { JobView } from '@/lib/agent/media/montageExec';
 import type { AudioJobView, AudioRights } from '@/lib/agent/media/audioExtract';
 import type { EditJobView } from '@/lib/agent/media/editExec';
 import type { CapabilityId } from '@/lib/agent/contracts';
-import type { ChildView, RunEvent, RunState } from '@/lib/agent/run/runEngine';
+import type { ChildView, RunEvent, RunState, StepSummary } from '@/lib/agent/run/runEngine';
 import type { RunTool } from '@/lib/agent/run/runSpec';
 import { isFinalStatus, normalizeStatus, type TaskStatus } from './statusModel';
 
@@ -91,6 +91,8 @@ export interface TaskStepView {
   approval: { credits: number; quoteId: string; expiresAt: number } | null;
   /** What the step's job is priced at, once quoted (held while it runs, spent when delivered); null before its quote. */
   credits?: number | null;
+  /** What the quoted step will make (a montage: shots, beat, music start, speed ramps); absent before its quote. */
+  plan?: StepSummary;
 }
 
 /** A job row as the route reads it (generation_jobs, the columns in lib/orchestrator/jobs JOB_COLUMNS). */
@@ -244,6 +246,7 @@ export function taskFromRun(row: TaskRow, run: RunState, children: Readonly<Reco
       reused: !!s.reused,
       approval: s.status === 'awaiting_approval' && s.quote ? { credits: s.quote.credits, quoteId: s.quote.quoteId, expiresAt: s.quote.expiresAt } : null,
       credits: s.quote ? s.quote.credits : null,
+      ...(s.quote?.summary ? { plan: s.quote.summary } : {}),
     };
   });
   const status = runTaskStatus(run);

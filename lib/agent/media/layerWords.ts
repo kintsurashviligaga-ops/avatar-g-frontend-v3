@@ -17,7 +17,7 @@
 import { cardinalOf } from './sourceSelect';
 import {
   parseTimedLines, type Anchor, type CaptionCue, type CaptionDelivery, type LayerAsk, type LayerChange, type LayerTarget,
-  type MotionIn, type TextRole, type TextStyle, type TimeAsk,
+  type MotionIn, type TextLayerAsk, type TextRole, type TextStyle, type TimeAsk,
 } from './layers';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
@@ -62,14 +62,16 @@ export const LOGO_REF = '@attachment';
 // ── the words ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** What a text layer is called (a caption line with no times is one too: „Add a caption "Summer sale""). */
-const TEXT_NOUN = /ტექსტ|წარწერ|სათაურ|სლოგან|ფრაზ|წერილ|ქეფშენ|სუბტიტრ|text|title|headline|slogan|lettering|caption|subtitle|words?(?![\p{L}])|текст|надпис|подпис|заголов|слоган|фраз|субтитр/iu;
+const TEXT_NOUN = /ტექსტ|წარწერ|სათაურ|სლოგან|ფრაზ|წერილ|ქე[ფბპ]შენ|სუბტიტრ|text|title|headline|slogan|lettering|caption|subtitle|words?(?![\p{L}])|текст|надпис|подпис|заголов|слоган|фраз|субтитр/iu;
 /** Writing ON something („დააწერე", "put", "overlay"), not writing a text („დაწერე ტექსტი ბიზნესისთვის" is the chat's). */
 const PUT = /დააწერ|წააწერ|მიაწერ|დაადე|დაადო|ჩასვ|ჩაამატ|დაამატ|დაურთ|გამოაჩინ|ჩაწერ|put|add|overlay|place|insert|stamp|burn|write\s+on|напиши\s+на|добав|налож|встав|размест|поставь|нанеси/iu;
 const CTA = new RegExp(`${B0}(?:cta|ქოლ\\s*-?\\s*თუ\\s*-?\\s*ექშენ\\p{L}*|მოწოდებ\\p{L}*|call\\s*-?\\s*to\\s*-?\\s*action|призыв\\p{L}*)${B1}`, 'iu');
+/** A plain „write" next to words in quotes („write "Summer" at the bottom", «напиши «Лето»»): those words are drawn. */
+const WRITE_VERB = /(?<![\p{L}])(?:write|type|напиши|напишите|написать)(?![\p{L}])/iu;
 const LOGO = /ლოგო|ლოგოტიპ|სტიკერ|ემბლემ|logo|sticker|emblem|логотип|лого(?![\p{L}])|стикер|эмблем/iu;
 const MASK_BLUR = /დაბლარ|ბლარ|გაბუნდოვ|დაფარ|blur|размой|размыть|размытие|замаж/iu;
 const MASK_MOSAIC = /პიქსელ|მოზაიკ|pixelat|mosaic|пиксел|мозаик/iu;
-const CAPTIONS = /ქეფშენ|სუბტიტრ|ტიტრ|caption|subtitle|субтитр|титр/iu;
+const CAPTIONS = /ქე[ფბპ]შენ|სუბტიტრ|ტიტრ|caption|subtitle|субтитр|титр/iu;
 const CAPTIONS_BOTH = /(?:ქეფშენ|სუბტიტრ)\p{L}*\s+და\s+(?:ქეფშენ|სუბტიტრ)\p{L}*\s+გარეშე|with\s+and\s+without\s+(?:the\s+)?(?:captions|subtitles)|(?:captions|subtitles)\s+and\s+without|с\s+субтитрами\s+и\s+без/iu;
 const CAPTIONS_OFF = /(?:ქეფშენ|სუბტიტრ)\p{L}*\s+(?:გარეშე|მოაშორ|მოხსენ|წაშალ)|without\s+(?:the\s+)?(?:captions|subtitles)|(?:remove|delete)\s+(?:the\s+)?(?:captions|subtitles)|без\s+субтитр|(?:убер|удали)\p{L}*\s+субтитр/iu;
 const CAPTIONS_FILE = /srt|vtt|ფაილად|(?:as\s+a\s+)?file\s+only|только\s+файл/iu;
@@ -88,7 +90,7 @@ const STYLE_WORDS: ReadonlyArray<{ style: TextStyle; re: RegExp }> = [
   { style: 'premium', re: /პრემიუმ|ელეგანტ|ძვირ|premium|elegant|luxury|luxurious|премиум|элегант|роскош/iu },
   { style: 'bold', re: /მსხვილ|თამამ|bold|punchy|жирн|смел/iu },
   { style: 'brand', re: /ბრენდ|brand|бренд/iu },
-  { style: 'cinematic', re: /კინემატოგრაფ|კინოსავით|cinematic|filmic|кинематограф|киношн/iu },
+  { style: 'cinematic', re: /კინემატოგრაფ|კინოსავით|ლამაზ|cinematic|filmic|beautiful|красив|кинематограф|киношн/iu },
   { style: 'minimal', re: /მინიმალ|მარტივ|სუფთა|minimal|simple|clean|минимал|прост|чист/iu },
 ];
 
@@ -100,7 +102,7 @@ const MOTION_WORDS: ReadonlyArray<{ motion: MotionIn; re: RegExp }> = [
   { motion: 'scale', re: /გადიდებით|ზუმ|scale\s+in|zoom\s+in|pop|увеличени|зум/iu },
   { motion: 'fade', re: /ფეიდ|ნელ-ნელა|fade|плавн/iu },
 ];
-const ANIMATED = /ანიმაცი|ანიმირებ|მოძრავ|animat|motion|moving|анимац|анимир|движущ/iu;
+const ANIMATED = /ანიმაცი|ანიმირებ|მოძრავ|მოძრაობ|მოუშენ|მოუშნ|მოშენ|animat|motion|moving|анимац|анимир|движущ/iu;
 const BEATS = /ბიტ|რიტმ|beat|rhythm|бит(?![\p{L}])|битам|ритм/iu;
 const WORDS_NOUN = /სიტყვ|words|слов/iu;
 
@@ -182,6 +184,151 @@ export function drawnWordsOf(text: string): { words: string; span: [number, numb
   return null;
 }
 
+// ── words written without quotes ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Writing words ON the picture, the words right after the verb, unquoted: „ლამაზად დააწერე მოუშენით myavatar.ge🚀",
+ * „ბოლოს უნდა დაიწეროს გადმოდი საიტზე", "a text that says Summer sale", «с надписью Привет». Not „დაწერე" (write me a
+ * text: the chat's job) and not a bare "write" / «напиши» (a song, a post): only the forms that mean ON the video.
+ */
+const WRITE_ON = new RegExp([
+  `${B0}(?:დააწერ|წააწერ|მიაწერ|დაიწერ|დაეწერ|ეწერ)\\p{L}*`,
+  `${B0}(?:text|caption|title|words?|line|sign)\\s+(?:that\\s+|which\\s+)?(?:says|reads|saying|reading)${B1}`,
+  `${B0}with\\s+the\\s+words${B1}`,
+  `${B0}(?:с\\s+надписью|надпись(?:ю)?|напиши\\s+на\\s+(?:нём|видео|экране))${B1}`,
+].join('|'), 'giu');
+
+/** Words between the verb and the text that are about how or where, never part of it („ლამაზად", „მოუშენით", „ბოლოს"). */
+const LEAD_FILLER = new RegExp(`^(?:${[
+  'ლამაზ\\p{L}*', 'მოუშენ\\p{L}*', 'მოუშნ\\p{L}*', 'მოშენ\\p{L}*', 'მოძრაობ\\p{L}*', 'ანიმაცი\\p{L}*', 'ანიმირებ\\p{L}*',
+  'ქართულ\\p{L}*', 'ინგლისურ\\p{L}*', 'რუსულ\\p{L}*', 'ტექსტ\\p{L}*', 'წარწერ\\p{L}*', 'სიტყვ\\p{L}*', 'ქე[ფბპ]შენ\\p{L}*',
+  'უნდა', 'ვიდეოზე', 'ეკრანზე', 'კადრზე', 'ზედ', 'აქ', 'ასე', 'ეს', 'რომ', 'შემდეგი', 'ბოლოს', 'ბოლოში', 'დასასრულს',
+  'დასაწყისში', 'თავში', 'ქვემოთ', 'ზემოთ', 'შუაში', 'ცენტრში', 'მარცხნივ', 'მარჯვნივ', 'დიდად', 'მსხვილად',
+  '(?:ბოლო|პირველ\\p{L}*)\\s+\\S{1,12}\\s+წამ\\p{L}*',
+  'beautifully', 'nicely', 'animated', 'with\\s+motion', 'in\\s+(?:georgian|english|russian)', 'on\\s+(?:it|the\\s+video|top)',
+  'at\\s+the\\s+(?:end|start|beginning|bottom|top)',
+  'красиво', 'с\\s+анимацией', 'по-грузински', 'по-английски', 'по-русски', 'на\\s+видео', 'в\\s+конце', 'в\\s+начале', 'внизу', 'вверху',
+].join('|')})(?:\\s+|$)`, 'iu');
+/** The same kind of words after the text (where, when, how), never the text's own last words („მოდი აქ" keeps „აქ"). */
+const TRAIL_FILLER = new RegExp(`(?:^|\\s+)(?:${[
+  'ბოლოს', 'ბოლოში', 'დასასრულს', 'დასაწყისში', 'ქვემოთ', 'ზემოთ', 'შუაში', 'ცენტრში', 'მარცხნივ', 'მარჯვნივ',
+  'ვიდეოზე', 'ეკრანზე', 'კადრზე', 'ლამაზად', 'მოუშენით', 'მოუშნით', 'მოშენით', 'მოძრაობით', 'ანიმაციით', 'ქართულად', 'ინგლისურად', 'რუსულად',
+  '(?:ბოლო|პირველ\\p{L}*)\\s+\\S{1,12}\\s+წამ\\p{L}*',
+  'at\\s+the\\s+(?:end|start|beginning|bottom|top)', 'on\\s+(?:it|the\\s+video|top)', 'beautifully', 'with\\s+motion', 'in\\s+(?:georgian|english|russian)',
+  'в\\s+конце', 'в\\s+начале', 'внизу', 'вверху', 'на\\s+видео', 'красиво', 'с\\s+анимацией',
+].join('|')})$`, 'iu');
+
+/** Something else to do in the clause after „და" / "and" / «и»: the words end there („myavatar.ge🚀 და ბოლოს დაიწეროს …"). */
+const COMMAND = new RegExp([
+  'დააწერ|წააწერ|მიაწერ|დაიწერ|დაეწერ|ეწერ|დაწერ|დაადე|დაადო|ჩასვ|ჩაამატ|დაამატ|მოხსენ|მოაშორ|წაშალ|გადაიტან|ააჩქარ|აჩქარ',
+  'შეანელ|ჩააქრ|გათიშ|გახად|გააკეთ|გაუკეთ|დაამონტაჟ|მუსიკ|ლოგო|ოვერლე|ქე[ფბპ]შენ|ბოლოს|ბოლოში|დასასრულს|დასაწყისში',
+  '\\badd\\b|\\bput\\b|\\bmake\\b|\\bremove\\b|\\bspeed|\\bslow|\\bfade|\\bcut\\b|\\bmusic|\\blogo|\\boverlay|\\bblur|\\bwrite\\b|at\\s+the\\s+(?:end|start|beginning)',
+  'добав|сделай|убер|удали|ускор|замедл|музык|логотип|оверле|размой|напиши|надпис|в\\s+конце|в\\s+начале',
+].join('|'), 'iu');
+
+/** At the end of the video („ბოლოს", "at the end"): the end text, the last seconds. At its start: the first ones. */
+const END_WORDS = /ბოლოს|ბოლოში|დასასრულს|ბოლოსკენ|at\s+the\s+end|in\s+the\s+end|в\s+конце/iu;
+const START_WORDS = /დასაწყისში|თავიდანვე|at\s+the\s+(?:start|beginning)|в\s+начале/iu;
+/** The end text's seconds when the words give none. */
+export const END_TEXT_SEC = 3;
+const MAX_UNQUOTED_WORDS = 10;
+const MAX_UNQUOTED_CHARS = 80;
+
+/** Where a clause starts, looking back from `at`: after „,", „;", a line break, a sentence's end, or „ და " / " and " / « и ». */
+function clauseStart(t: string, at: number, floor: number): number {
+  const head = t.slice(floor, at);
+  let best = 0;
+  for (const m of head.matchAll(/[,;\n]|[.!?。](?=\s)|\s(?:და|and|и)\s/giu)) best = m.index + m[0].length;
+  return floor + best;
+}
+
+/** Where the words that start at `from` end: a hard break, or „ და " before something else to do. */
+function wordsEnd(t: string, from: number): number {
+  const re = /[,;\n"“”«»„]|[.。](?=\s|$)|[!?](?=\s+\p{L})|\s(?:და|and|и)\s/giu;
+  re.lastIndex = from;
+  for (let m = re.exec(t); m; m = re.exec(t)) {
+    const ch = m[0];
+    if (/^[!?]$/.test(ch)) return m.index + 1; // the exclamation stays the text's
+    if (/\s/.test(ch[0]!)) {
+      // „ და " ends the words only when the rest of that clause asks for something.
+      const after = m.index + ch.length;
+      const hard = /[,;\n]|[.。](?=\s|$)/u.exec(t.slice(after));
+      const clause = t.slice(after, hard ? after + hard.index : t.length);
+      if (!COMMAND.test(clause)) continue;
+    }
+    return m.index;
+  }
+  return t.length;
+}
+
+export interface DrawnItem {
+  /** The words to draw, exactly as typed. */
+  words: string;
+  /** Where they are in the message (the quotes included for quoted words). */
+  span: [number, number];
+  /** The clause that is about them (where, when, how): the message from the clause's start to the words' end. */
+  ctx: [number, number];
+}
+
+/**
+ * Every text the message asks to draw, in order: each quoted text that a write or put word is about, and each text written
+ * unquoted after a write-ON verb. Null when the message has a colon text (that one takes the rest of the message, as
+ * before) or nothing to draw at all.
+ */
+export function drawnItemsOf(text: string): DrawnItem[] | null {
+  const single = drawnWordsOf(text);
+  const quoted = /["“”«»„]/u.test(text);
+  if (single && !quoted) return null;
+  const items: DrawnItem[] = [];
+  // Quoted texts, each with its clause.
+  for (const m of text.matchAll(/["“”«»„]([^"“”«»„]{1,200})["“”«»„]/gu)) {
+    const words = m[1]!.trim();
+    if (!words) continue;
+    const span: [number, number] = [m.index, m.index + m[0].length];
+    const start = clauseStart(text, span[0], 0);
+    const end = wordsEnd(text, span[1]);
+    const around = `${text.slice(start, span[0])} ${text.slice(span[1], end)}`;
+    // A text is asked for around it, or it continues a list of them („„A" ზემოთ და „B" ქვემოთ").
+    if (!(items.length || PUT.test(around) || TEXT_NOUN.test(around) || CTA.test(around) || WRITE_VERB.test(around) || new RegExp(WRITE_ON.source, 'iu').test(around))) continue;
+    items.push({ words, span, ctx: [start, Math.max(end, span[1])] });
+  }
+  // Unquoted texts after a write-ON verb.
+  WRITE_ON.lastIndex = 0;
+  for (const m of text.matchAll(WRITE_ON)) {
+    const verbEnd = m.index + m[0].length;
+    if (items.some((it) => verbEnd > it.span[0] && verbEnd <= it.span[1])) continue;
+    let from = verbEnd;
+    const tail = text.slice(from);
+    // A quote or a colon right after the verb: those words are read as quoted / colon words.
+    if (/^\s*["“”«»„:：]/u.test(tail)) continue;
+    // Skip what is about how or where, before the words.
+    for (let guard = 0; guard < 8; guard += 1) {
+      const lead = /^\s+/u.exec(text.slice(from));
+      if (lead) from += lead[0].length;
+      const f = LEAD_FILLER.exec(text.slice(from));
+      if (!f || !f[0]) break;
+      from += f[0].length;
+    }
+    const end = wordsEnd(text, from);
+    let words = text.slice(from, end).trim();
+    for (let guard = 0; guard < 6; guard += 1) {
+      const tr = TRAIL_FILLER.exec(words);
+      if (!tr) break;
+      words = words.slice(0, tr.index).trim();
+    }
+    words = words.replace(/[\s,;:–—-]+$/u, '').trim();
+    if (!words || !/[\p{L}\p{N}\p{Extended_Pictographic}]/u.test(words)) continue;
+    // A sentence, not a text to draw („დააწერე რომ ეს პროდუქტი …" at length): left to the chat.
+    if (words.split(/\s+/).length > MAX_UNQUOTED_WORDS || words.length > MAX_UNQUOTED_CHARS) continue;
+    const at = text.indexOf(words, from);
+    const span: [number, number] = [at, at + words.length];
+    const floor = items.filter((it) => it.span[1] <= m.index).reduce((a, it) => Math.max(a, it.span[1]), 0);
+    items.push({ words, span, ctx: [clauseStart(text, m.index, floor), Math.max(end, span[1])] });
+  }
+  items.sort((a, b) => a.span[0] - b.span[0]);
+  return items.length ? items : null;
+}
+
 /** The language of caption lines by their letters. */
 function langOf(cues: readonly CaptionCue[]): 'ka' | 'en' | 'ru' | 'und' {
   const all = cues.map((c) => c.text).join(' ');
@@ -232,6 +379,9 @@ export function mineComposition(text: unknown): MinedComposition {
           ...(deliver ? { deliver } : {}),
         });
         out.rest = head;
+      } else if (drawnItemsOf(raw)?.some((it) => !/["“”«»„]/u.test(raw.slice(it.span[0], it.span[0] + 1)))) {
+        // „გაუკეთე ქეფშენი და დააწერე myavatar.ge🚀": the caption is the words written out, a text layer read below.
+        out.hit = false;
       } else if (TRANSLATE.test(raw)) {
         out.unsupported.push('translate_captions');
       } else if (deliver === 'both') {
@@ -248,6 +398,14 @@ export function mineComposition(text: unknown): MinedComposition {
       if (out.hit) return out;
     }
   }
+
+  // ── several texts, or a text written without quotes: each from its own clause ──────────────────────────────────
+  const items = drawnItemsOf(raw);
+  const unquoted = items?.some((it) => !/["“”«»„]/u.test(raw.slice(it.span[0], it.span[0] + 1))) ?? false;
+  // A logo or a mask beside one quoted text („add my logo top right and write "Summer" at the bottom"): each from its own
+  // clause too. Read as one clause, the logo took it and the text was lost.
+  const others = items?.length === 1 && (LOGO.test(raw) || MASK_BLUR.test(raw) || MASK_MOSAIC.test(raw));
+  if (items && (unquoted || items.length >= 2 || others)) return composeItems(raw, items, out);
 
   const drawn = drawnWordsOf(raw);
   const instr = drawn ? `${raw.slice(0, drawn.span[0])} ${raw.slice(drawn.span[1])}`.trim() : raw;
@@ -271,10 +429,19 @@ export function mineComposition(text: unknown): MinedComposition {
 
   // ── each clause about a logo, a text or a mask ─────────────────────────────────────────────────────────────────
   const layers: LayersEditAsk = { op: 'layers' };
+  clauseAsks(drawn ? [instr] : clausesOf(instr), drawn, time, layers, out, true);
+  if (layers.add || layers.change || layers.remove) out.asks.push(layers);
+  return out;
+}
+
+/**
+ * The clauses' logos, masks, text changes and removals into `layers`; with `drawn`, the drawn words added as a text.
+ * `askWords`: a clause that asks for a text and gives no words says so (off when the words came in other clauses).
+ */
+function clauseAsks(clauses: readonly string[], drawn: { words: string } | null, time: TimeAsk | null, layers: LayersEditAsk, out: MinedComposition, askWords: boolean): void {
   const push = <K extends 'add' | 'change' | 'remove'>(k: K, v: NonNullable<LayersEditAsk[K]>[number]) => {
     ((layers[k] ??= []) as unknown[]).push(v);
   };
-  const clauses = drawn ? [instr] : clausesOf(instr);
   for (const c of clauses) {
     const place = placeOf(c);
     const anchor = anchorFrom(place);
@@ -305,7 +472,7 @@ export function mineComposition(text: unknown): MinedComposition {
     const style = styleOf(c);
     const motion = beats ? 'words' : MOTION_WORDS.find((m) => m.re.test(c))?.motion;
     // New words to draw: „აქ დააწერე: …", "add the title „…"" (the words come from the quotes or the colon only).
-    if (drawn && (PUT.test(c) || aboutText) && !REWORD.test(c) && !REMOVE.test(c)) {
+    if (drawn && (PUT.test(c) || aboutText || WRITE_VERB.test(c)) && !REWORD.test(c) && !REMOVE.test(c)) {
       out.hit = true;
       const role = ROLE_WORDS.find((r) => r.re.test(c))?.role;
       push('add', {
@@ -338,7 +505,7 @@ export function mineComposition(text: unknown): MinedComposition {
     if (ctime) { Object.assign(change, ctime); out.timeUsed = true; }
     if (!Object.keys(change).length) {
       // „Add a text" with no words: say which words.
-      if (PUT.test(c)) { out.hit = true; out.missing.push('caption_text'); }
+      if (PUT.test(c) && askWords) { out.hit = true; out.missing.push('caption_text'); }
       continue;
     }
     out.hit = true;
@@ -346,6 +513,55 @@ export function mineComposition(text: unknown): MinedComposition {
     const every = (change.style || change.motionIn) && !change.text && !change.moveH && !change.moveV && !change.anchor && !change.sizeBy;
     push('change', { target: { kind: 'text', ...(every || ALL.test(c) ? { all: true } : whereOf(place) && !MOVE.test(c) ? { where: whereOf(place) } : {}) }, ...change });
   }
-  if (layers.add || layers.change || layers.remove) out.asks.push(layers);
+}
+
+/**
+ * Several texts, or texts written without quotes („ლამაზად დააწერე მოუშენით myavatar.ge🚀 და ბოლოს ქართულად უნდა
+ * დაიწეროს გადმოდი საიტზე"): each is added with what its own clause says (where, when, look, motion). A text „at the
+ * end" is the end text (a CTA, its last seconds); a text that names no time then stays until the end text begins, so the
+ * two never cover each other. The rest of the message (outside those clauses) is read for logos, masks and changes.
+ */
+function composeItems(raw: string, items: readonly DrawnItem[], out: MinedComposition): MinedComposition {
+  const layers: LayersEditAsk = { op: 'layers' };
+  const adds: TextLayerAsk[] = [];
+  let endSec = 0;
+  for (const it of items) {
+    const ctx = `${raw.slice(it.ctx[0], it.span[0])} ${raw.slice(it.span[1], it.ctx[1])}`;
+    const explicit = timeOf(ctx);
+    const end = !explicit && END_WORDS.test(ctx);
+    const start = !explicit && !end && START_WORDS.test(ctx);
+    const time: TimeAsk | null = explicit ?? (end ? { lastSec: END_TEXT_SEC } : start ? { firstSec: END_TEXT_SEC } : null);
+    if (explicit) out.timeUsed = true;
+    if (time?.lastSec) endSec = Math.max(endSec, time.lastSec);
+    const role: TextRole | undefined = CTA.test(ctx) || end ? 'cta' : ROLE_WORDS.find((r) => r.re.test(ctx))?.role;
+    const anchor = anchorFrom(placeOf(ctx));
+    const style = styleOf(ctx);
+    const beats = WORDS_NOUN.test(ctx) && BEATS.test(ctx);
+    const motion = beats ? 'words' : MOTION_WORDS.find((m) => m.re.test(ctx))?.motion ?? (ANIMATED.test(ctx) ? 'slide-up' as const : undefined);
+    adds.push({
+      kind: 'text', text: it.words, ...(role ? { role } : {}), ...(anchor ? { anchor } : {}), ...(style ? { style } : {}),
+      ...(motion ? { motionIn: motion } : {}), ...(beats ? { beats: true } : {}), ...(time ?? {}),
+    });
+  }
+  // The texts with no time of their own make room for the end text.
+  if (endSec > 0) {
+    for (const a of adds) {
+      if (a.fromSec === undefined && a.toSec === undefined && a.firstSec === undefined && a.lastSec === undefined) a.beforeLastSec = endSec;
+    }
+  }
+  out.hit = true;
+  layers.add = adds;
+  // Outside the texts' clauses: logos, masks, changes (no new words there, and no „which words?" for a text asked).
+  let rest = '';
+  let at = 0;
+  for (const it of items) { rest += `${raw.slice(at, it.ctx[0])} `; at = Math.max(at, it.ctx[1]); }
+  rest += raw.slice(at);
+  clauseAsks(clausesOf(rest.trim()), null, null, layers, out, false);
+  out.asks.push(layers);
+  // What the other edits may still read: everything but the words to be drawn.
+  let kept = '';
+  at = 0;
+  for (const it of items) { kept += `${raw.slice(at, it.span[0])} `; at = it.span[1]; }
+  out.rest = `${kept}${raw.slice(at)}`.replace(/[ \t]{2,}/g, ' ').trim();
   return out;
 }

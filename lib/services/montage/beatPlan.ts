@@ -25,6 +25,13 @@
  * shorter than the shortest shot, or a track (or an asked length) too short for one shot per clip — the plan FAILS with
  * a `problem` that names the cause and the clips, instead of leaving any clip out. `unusedClips` is always empty on a
  * plan that is ok.
+ *
+ * SPEED RAMPS („სადაც საჭიროა ააჩქარე, სადაც საჭიროა შეანელე", owner 2026-10-11): with `ramp`, each shot keeps its
+ * length on the master (so every cut stays on its beat) and plays its footage faster or slower, chosen by the music
+ * UNDER that shot: the calmest stretches of the track get slow motion (RAMP_SLOW), the strongest get sped up
+ * (RAMP_FAST). The music's strength is `energyEnvelope` (loudness and how dense the onsets are, per half second). A
+ * sped-up shot reads more of its clip; a clip that has not enough footage for it keeps that shot at normal speed, so
+ * the ramp never costs a clip its place. Stills are never ramped.
  */
 
 /** The rate the track is decoded at for analysis. Beats need no more; it keeps a 5-minute track under 7 MB. */
@@ -51,6 +58,92 @@ export const BEATS_PER_SHOT: readonly number[] = [1, 2, 4, 6, 8, 12, 16, 24, 32,
 const TAIL_GUARD_SEC = 0.05;
 /** ⚠️ MIRRORS the `fps=30` every segment gets in lib/video/surgicalOps `runSequence`. Change both together. */
 export const OUTPUT_FPS = 30;
+
+/** The music's strength is measured per block of this many seconds. */
+export const ENERGY_BLOCK_SEC = 0.5;
+/** A ramped shot plays at this speed: slow motion on the calm parts, faster on the strong ones. */
+export const RAMP_SLOW = 0.5;
+export const RAMP_FAST = 1.5;
+/** With both ways asked, this share of the shots goes each way (at least one each); with one way, RAMP_ONE_WAY_SHARE. */
+export const RAMP_SHARE = 0.25;
+export const RAMP_ONE_WAY_SHARE = 1 / 3;
+
+/** Which way the words ask the shots to change speed: both (where it fits), only slower, only faster. */
+export type RampMode = 'mixed' | 'slow' | 'fast';
+
+export interface EnergyEnvelope {
+  blockSec: number;
+  /** One value per block from the track's start: above 0 stronger than the track's average, below 0 calmer. */
+  values: ArrayLike<number>;
+}
+
+/**
+ * How strong the music is, block by block: its loudness and how dense its onsets are (a drum fill, a chorus), each
+ * standardized over the track and averaged. Pure: `pcm` is the analysis decode (mono 16-bit at ANALYSIS_RATE).
+ */
+export function energyEnvelope(pcm: ArrayLike<number>, blockSec = ENERGY_BLOCK_SEC, hop = ANALYSIS_HOP): EnergyEnvelope {
+  const per = Math.max(1, Math.round((blockSec * ANALYSIS_RATE) / hop));
+  const onset = onsetStrength(pcm, hop);
+  const frames = Math.floor(pcm.length / hop);
+  const blocks = Math.floor(frames / per);
+  const loud = new Float64Array(blocks);
+  const dense = new Float64Array(blocks);
+  for (let b = 0; b < blocks; b += 1) {
+    let e = 0;
+    let o = 0;
+    for (let f = b * per; f < (b + 1) * per; f += 1) {
+      const base = f * hop;
+      for (let i = 0; i < hop; i += 1) { const x = (pcm[base + i] ?? 0) / 32768; e += x * x; }
+      o += onset[f] ?? 0;
+    }
+    loud[b] = Math.log1p(1000 * Math.sqrt(e / (per * hop)));
+    dense[b] = o / per;
+  }
+  const z = (a: Float64Array): Float64Array => {
+    if (!a.length) return a;
+    let m = 0;
+    for (const v of a) m += v;
+    m /= a.length;
+    let sd = 0;
+    for (const v of a) sd += (v - m) ** 2;
+    sd = Math.sqrt(sd / a.length);
+    return a.map((v) => (sd > 1e-9 ? (v - m) / sd : 0));
+  };
+  const zl = z(loud), zd = z(dense);
+  const values = new Float32Array(blocks);
+  for (let b = 0; b < blocks; b += 1) values[b] = (zl[b]! + zd[b]!) / 2;
+  return { blockSec: per * hop / ANALYSIS_RATE, values };
+}
+
+/** The music's mean strength between two moments of the track (seconds); 0 where the envelope says nothing. */
+export function energyBetween(env: EnergyEnvelope, fromSec: number, toSec: number): number {
+  const n = env.values.length;
+  if (!n || !(env.blockSec > 0) || !(toSec > fromSec)) return 0;
+  const a = Math.max(0, Math.floor(fromSec / env.blockSec));
+  const b = Math.min(n, Math.ceil(toSec / env.blockSec));
+  if (b <= a) return 0;
+  let s = 0;
+  for (let i = a; i < b; i += 1) s += env.values[i] ?? 0;
+  return s / (b - a);
+}
+
+/**
+ * Each shot's speed from the music under it (`energies`, one per shot in master order): with `mode` mixed, the calmest
+ * RAMP_SHARE of the shots slow down and the strongest RAMP_SHARE speed up (at least one each, never the same shot); with
+ * one way asked, that way only, for RAMP_ONE_WAY_SHARE of them. `eligible` false keeps a shot at 1× (a still).
+ */
+export function rampSpeeds(energies: readonly number[], mode: RampMode, eligible: readonly boolean[] = []): number[] {
+  const speeds = energies.map(() => 1);
+  const idx = energies.map((_, i) => i).filter((i) => eligible[i] !== false);
+  if (idx.length < (mode === 'mixed' ? 2 : 1)) return speeds;
+  // Calmest first; ties keep the master order, so the same track always makes the same edit.
+  const calm = [...idx].sort((x, y) => energies[x]! - energies[y]! || x - y);
+  const strong = [...idx].sort((x, y) => energies[y]! - energies[x]! || x - y);
+  const k = Math.max(1, Math.round(idx.length * (mode === 'mixed' ? RAMP_SHARE : RAMP_ONE_WAY_SHARE)));
+  if (mode !== 'fast') for (const i of calm.slice(0, mode === 'mixed' ? Math.min(k, Math.floor(idx.length / 2)) : k)) speeds[i] = RAMP_SLOW;
+  if (mode !== 'slow') for (const i of strong.slice(0, mode === 'mixed' ? Math.min(k, Math.floor(idx.length / 2)) : k)) if (speeds[i] === 1) speeds[i] = RAMP_FAST;
+  return speeds;
+}
 
 export interface BeatGrid {
   bpm: number;
@@ -232,14 +325,34 @@ export interface CutInput {
    * zoom, lib/services/montage/montagePipeline). Its entry in clipDurationsSec is ignored.
    */
   stills?: readonly boolean[];
+  /**
+   * Speed ramps asked („ააჩქარე და შეანელე სადაც საჭიროა"): which way, and the music's strength to choose by (the
+   * track's envelope from its own start, analysis seconds). Absent = every shot at its own speed, as before.
+   */
+  ramp?: { mode: RampMode; energy: EnergyEnvelope | null };
 }
 
 export interface PlannedCut {
   /** Index into the clip list. */
   clip: number;
+  /** The window of the CLIP the shot plays (source seconds): `speed` × its length on the master. */
   startSec: number;
   endSec: number;
   beats: number;
+  /** The shot's playback speed when it is not 1 (a ramp): 0.5 = slow motion, 1.5 = faster. */
+  speed?: number;
+}
+
+/** What the ramp did, in numbers the card says. */
+export interface RampResult {
+  mode: RampMode;
+  /** Shots slowed down / sped up (after a clip short of footage kept one at normal speed). */
+  slow: number;
+  fast: number;
+  /** Chosen by the music's strength (true), or the envelope was missing and nothing was ramped. */
+  byEnergy: boolean;
+  /** Fast shots kept at normal speed because their clip had not enough footage for them. */
+  keptForFootage: number;
 }
 
 /**
@@ -284,6 +397,8 @@ export interface CutPlan {
    * Kept for the callers that still read it.
    */
   unusedClips: number[];
+  /** Present when ramps were asked: how many shots slow down and speed up. */
+  ramp?: RampResult;
 }
 
 const r3 = (n: number) => Number(n.toFixed(3));
@@ -447,23 +562,52 @@ export function planBeatCuts(input: CutInput): CutPlan {
     }
   }
 
+  // ── speed ramps: each shot's speed from the music under it; its length on the master never changes ─────────────────
+  const speeds = lens.map(() => 1);
+  let ramp: RampResult | undefined;
+  if (input.ramp) {
+    const env = input.ramp.energy;
+    const energies: number[] = [];
+    if (env && env.values.length) {
+      let t = 0;
+      for (const len of lens) { energies.push(energyBetween(env, musicStartSec + t, musicStartSec + t + len)); t += len; }
+      const got = rampSpeeds(energies, input.ramp.mode, order.map((o) => !still(o.c)));
+      got.forEach((v, i) => { speeds[i] = v; });
+    }
+    // A faster shot reads more of its clip: a clip without the footage for it keeps its weakest fast shots at 1×.
+    let kept = 0;
+    durations.forEach((d, c) => {
+      if (still(c)) return;
+      const mine = order.map((o, i) => (o.c === c ? i : -1)).filter((i) => i >= 0);
+      const need = () => mine.reduce((s, i) => s + lens[i]! * speeds[i]!, 0);
+      const fast = mine.filter((i) => speeds[i]! > 1).sort((x, y) => (energies[x] ?? 0) - (energies[y] ?? 0) || y - x);
+      while (need() > d + 1e-6 && fast.length) { speeds[fast.shift()!] = 1; kept += 1; }
+    });
+    ramp = {
+      mode: input.ramp.mode, slow: speeds.filter((v) => v < 1).length, fast: speeds.filter((v) => v > 1).length,
+      byEnergy: Boolean(env && env.values.length), keptForFootage: kept,
+    };
+  }
+
   const cuts: PlannedCut[] = [];
   let next = 0;
   durations.forEach((d, c) => {
     const own = shotsOf[c]!;
     if (!own.length) return;
     const mine = lens.slice(next, next + own.length);
+    const sp = speeds.slice(next, next + own.length);
     next += own.length;
     // Spread the clip's shots across it with equal gaps, so a long clip is sampled, not just its opening seconds. A
-    // still's one shot starts at 0 (the lane renders it for exactly the shot's length).
-    const used = mine.reduce((s, len) => s + len, 0);
+    // still's one shot starts at 0 (the lane renders it for exactly the shot's length). A ramped shot reads its length
+    // × its speed of the clip.
+    const used = mine.reduce((s, len, j) => s + len * sp[j]!, 0);
     const gap = still(c) ? 0 : Math.max(0, d - used) / (own.length + 1);
     let at = gap;
     own.forEach((beats, j) => {
-      const len = mine[j]!;
-      const start = Math.max(0, Math.min(at, d - len));
-      cuts.push({ clip: c, startSec: r3(start), endSec: r3(start + len), beats });
-      at = start + len + gap;
+      const src = mine[j]! * sp[j]!;
+      const start = Math.max(0, Math.min(at, d - src));
+      cuts.push({ clip: c, startSec: r3(start), endSec: r3(start + src), beats, ...(sp[j] !== 1 ? { speed: sp[j]! } : {}) });
+      at = start + src + gap;
     });
   });
   const totalSec = r3(lens.reduce((s, len) => s + len, 0));
@@ -481,5 +625,6 @@ export function planBeatCuts(input: CutInput): CutPlan {
     unitSec: r3(unit),
     beatsPerShot: k,
     unusedClips: [],
+    ...(ramp ? { ramp } : {}),
   };
 }

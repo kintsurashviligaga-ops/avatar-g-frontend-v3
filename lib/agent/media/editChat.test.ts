@@ -5,8 +5,9 @@
 import type { EditQuote } from './editExec';
 import type { MediaEdit } from './editPlan';
 import {
-  editCodeOf, editDoneText, editErrorText, editLine, editQuoteText, editStageText, editsLine, outputLine, readingText,
+  askLine, editCodeOf, editDoneText, editErrorText, editLine, editQuoteText, editStageText, editsLine, layerAskLine, outputLine, readingText,
 } from './editChat';
+import { mineEdits } from './editWords';
 
 const Q: EditQuote = {
   jobId: 'j', credits: 0, name: 'trip-edit.mp4', expiresAt: 1,
@@ -76,4 +77,34 @@ test('a refused response reads as its own code, or as what its status means', ()
   expect(editCodeOf(404, {})).toBe('closed');
   expect(editCodeOf(404, { error: 'not_found', message: 'No such job.' })).toBe('not_found');
   expect(editCodeOf(500, { error: 'boom' })).toBe('render_failed');
+});
+
+describe('askLine: an edit as the words asked it, before a file resolves it (the plan card of a montage chain)', () => {
+  // Owner 2026-10-11: the card of this message showed none of the overlay or the texts; a layers ask crashed the plan line.
+  const GG = 'დაამონტაჟე, სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე რომ ეფექტი გამოვიდეს და მუსიკა დაადე 0.59 წამიდან რომ დაიწყოს, ასევე დაადე ოვერლეი, გაუკეთე ქებშენი და ლამაზად დააწერე მოუშენით myavatar.ge🚀 და ბოლოს ქართულად უნდა დაიწეროს გადმოდი საიტზე';
+
+  test('the overlay and both texts, each with its place, time, look and motion, in ka · en · ru', () => {
+    const asks = mineEdits(GG).edits.filter((e) => e.op === 'overlay' || e.op === 'layers');
+    expect(asks.map((e) => askLine(e, 'ka'))).toEqual([
+      'ოვერლეი: თბილი სინათლის ანარეკლები',
+      '„myavatar.ge🚀“ ქვემოთ, ბოლო 3 წამამდე (კინემატოგრაფიული, ქვემოდან შემოდის) · „გადმოდი საიტზე“ ქვემოთ, ბოლო 3 წამში (ბრენდის ღილაკი, ქვემოდან შემოდის)',
+    ]);
+    expect(asks.map((e) => askLine(e, 'en'))).toEqual([
+      'overlay: warm light leaks',
+      '“myavatar.ge🚀” bottom, until 3 s before the end (cinematic, slides up) · “გადმოდი საიტზე” bottom, the last 3 s (brand button, slides up)',
+    ]);
+    expect(askLine(asks[1]!, 'ru')).toContain('«გადმოდი საიტზე» внизу, последние 3 с');
+  });
+
+  test('a layers ask has no resolved layers yet and never throws; an ask with nothing to show is empty', () => {
+    expect(askLine({ op: 'layers' }, 'en')).toBe('');
+    expect(askLine({ op: 'layers', add: [] }, 'ka')).toBe('');
+    expect(askLine({ op: 'trim', fromSec: 1 }, 'en')).toBe('');
+    expect(askLine({ op: 'overlay' }, 'en')).toBe('overlay: warm light leaks');
+  });
+
+  test('a picture and a mask take the resolver\'s default places', () => {
+    expect(layerAskLine({ kind: 'image', ref: 'x' } as never, 'en')).toBe('your picture top right');
+    expect(layerAskLine({ kind: 'mask', mode: 'mosaic', firstSec: 2 } as never, 'en')).toBe('pixelated: centre, the first 2 s');
+  });
 });

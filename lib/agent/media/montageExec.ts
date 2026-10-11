@@ -38,10 +38,10 @@ import {
   type MontageAspect,
   type MontageRequest,
 } from '@/lib/services/montage/montagePlan';
-import { planBeatCuts, type BeatGrid, type CutProblem } from '@/lib/services/montage/beatPlan';
+import { planBeatCuts, type BeatGrid, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
 import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
-import { MAX_FILES, aspectFromClips, montageBody, sortInputs } from './montageAsk';
+import { MAX_FILES, aspectFromClips, montageBody, rampOf, sortInputs } from './montageAsk';
 import {
   buildManifest,
   checkManifest,
@@ -94,7 +94,8 @@ export interface MontageExecDeps {
   /** A file reference the caller sent → a URL ffmpeg may read. Only the caller's own upload or Library item. */
   resolveFile(ref: string, userId: string): Promise<FileRef>;
   probe(url: string): Promise<BannerProbe | null>;
-  analyzeTrack(url: string): Promise<{ probe: BannerProbe; grid: BeatGrid | null } | null>;
+  /** The track's length, beat and (for speed ramps) how strong the music is along it; `energy` absent = no ramp by it. */
+  analyzeTrack(url: string): Promise<{ probe: BannerProbe; grid: BeatGrid | null; energy?: EnergyEnvelope } | null>;
   /** The montage lane. Aborting `signal` kills the ffmpeg of the leg that is running; `onStage` reports each leg. */
   render(req: MontageRequest, opts: { jobId: string; signal: AbortSignal; onStage: (step: string, pct: number) => Promise<unknown> }): Promise<MontageOutcome>;
   /**
@@ -189,6 +190,11 @@ export interface MontageQuote {
   beatSynced: boolean;
   bpm: number | null;
   musicStartSec: number;
+  /**
+   * The speed ramps the words asked for („ააჩქარე და შეანელე სადაც საჭიროა"): how many shots slow down and speed up,
+   * chosen by the music under them. Absent = none asked.
+   */
+  ramp?: RampResult;
   /** Every file sent, in the order sent: what the card lists, and what the run and the worker are held to. */
   manifest: MontageManifestItem[];
   /** The manifest indices of the videos in the order they appear in the edit (always the user's order). */
@@ -373,6 +379,8 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   // Not capped here: an asked length past one edit is refused by the planner (target_too_long), never cut silently.
   const target = askedSec;
   const musicFromSec = positive(input.musicFromSec) ?? said.musicStartSec;
+  // „ააჩქარე … შეანელე" on a montage: single shots change speed where the music calls for it; the cuts stay on the beat.
+  const rampMode = prompt ? rampOf(prompt) : null;
   const stillOf = sorted.clips.map((i) => sorted.stills.includes(i));
   const plan = planBeatCuts({
     clipDurationsSec: clipProbes.map((p) => p.durationSec),
@@ -382,6 +390,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     grid: track.grid,
     ...(target ? { targetSec: target } : {}),
     ...(musicFromSec ? { musicFromSec } : {}),
+    ...(rampMode ? { ramp: { mode: rampMode, energy: track.energy ?? null } } : {}),
     ...LIMITS,
   });
   // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).
@@ -419,6 +428,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     beatSynced: plan.beatSynced,
     bpm: plan.bpm,
     musicStartSec: plan.musicStartSec,
+    ...(plan.ramp ? { ramp: plan.ramp } : {}),
     manifest: request.manifest,
     clipOrder: clipOrder(request.shots),
     ...(selectionInfo ? { selection: selectionInfo } : {}),

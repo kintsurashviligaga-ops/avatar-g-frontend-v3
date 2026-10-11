@@ -231,7 +231,7 @@ export async function runLayerPass(input: LayerPassInput): Promise<LayerPassResu
   samples.sort(order);
   const run = async (list: readonly ComposeItem[], out: string): Promise<string | null> => {
     try {
-      await ffmpegExec(bin, still ? composeStillArgs(base, list, out) : composeVideoArgs(base, list, out), exec, io);
+      await ffmpegExec(bin, still ? composeStillArgs(base, list, out) : composeVideoArgs(base, list, out, dur), exec, io);
       return null;
     } catch (e) {
       const text = String((e as { stderr?: string })?.stderr ?? (e as Error)?.message ?? '');

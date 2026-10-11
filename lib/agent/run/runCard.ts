@@ -9,10 +9,10 @@
  */
 import { formatDuration } from '@/lib/agent/media/audioChat';
 import { audioErrorText, audioStageText } from '@/lib/agent/media/audioChat';
-import { editErrorText, editLine, editStageText } from '@/lib/agent/media/editChat';
-import { errorText as montageErrorText, priceLabel, stageText as montageStageText } from '@/lib/agent/media/montageChat';
+import { askLine, editErrorText, editStageText } from '@/lib/agent/media/editChat';
+import { errorText as montageErrorText, montagePlanLine, montageWordsLine, priceLabel, rampShort, stageText as montageStageText } from '@/lib/agent/media/montageChat';
+import { unplannedText } from '@/lib/agent/media/askCoverage';
 import { countText, type StepState, type TaskCardModel, type TaskStatus, type TaskStep } from '@/lib/agent/media/taskSteps';
-import type { MediaEdit } from '@/lib/agent/media/editPlan';
 import type { EditAsk } from '@/lib/agent/media/editWords';
 import type { TaskStepView, TaskView } from '@/lib/tasks/taskView';
 import type { RunEvent } from './runEngine';
@@ -104,11 +104,11 @@ function stepLabel(tool: RunTool, chain: RunChain, lang: Lang): string {
   return say('editMontage', lang);
 }
 
-/** The edits of a chain in a few words („black and white colour · caption “Summer”"). */
+/** The edits of a chain in a few words („black and white colour · overlay: warm light leaks · “Summer” bottom, …"). */
 export function chainEditsText(chain: RunChain, locale: string): string {
   if (chain.kind !== 'cut-edit') return '';
-  // grade / fade / volume / caption: an ask is already the resolved edit (only trims and stills resolve against a file).
-  return chain.edits.map((e: EditAsk) => editLine(e as MediaEdit, locale)).join(' · ');
+  // As asked, before the montage exists: a layers ask is its added layers with their place, look, motion and time.
+  return chain.edits.map((e: EditAsk) => askLine(e, locale)).filter(Boolean).join(' · ');
 }
 
 /** Why a step ended without a result, in the words its own card uses. */
@@ -290,11 +290,18 @@ export function runTask(s: AgentRunState, locale: string): RunCardModel {
     else state = 'pending';
     const step: TaskStep = { key: `step:${id}`, label: labels[id]!, state };
     if (tool === 'edit' && s.chain.kind === 'cut-edit' && state !== 'failed') step.detail = chainEditsText(s.chain, locale);
+    // The montage's own asks: as the words name them before its quote, in the quote's numbers after it (shots, beat,
+    // music start, how many shots slow down and speed up).
+    if (tool === 'montage' && state !== 'failed') {
+      const planned = v?.plan ? montagePlanLine(v.plan, locale) : montageWordsLine(s.chain.montage, locale);
+      if (planned) step.detail = planned;
+    }
     if (v) {
       if (state === 'done') {
         const r = resultLine(v, lang);
         const credits = typeof v.credits === 'number' && v.credits > 0 ? ` · ✦ ${v.credits}` : '';
-        step.detail = v.reused ? `${r ? `${r} · ` : ''}${say('reused', lang)}` : `${r ?? ''}${credits}`;
+        const ramp = tool === 'montage' && v.plan?.ramp ? ` · ${rampShort(v.plan.ramp, locale)}` : '';
+        step.detail = v.reused ? `${r ? `${r} · ` : ''}${say('reused', lang)}` : `${r ?? ''}${ramp}${credits}`;
       } else if (state === 'active') {
         step.note = s.stopping ? say('stopping', lang) : v.taskId && (v.status === 'running' || v.stage) ? stepStageText(tool, v.stage, locale) : say('inLine', lang);
       } else if (state === 'waiting' && v.approval) {
@@ -351,9 +358,11 @@ export function runTask(s: AgentRunState, locale: string): RunCardModel {
     : null;
 
   const title = s.chain.kind === 'sound-cut' ? say('titleSoundCut', lang) : s.chain.kind === 'cut-edit' ? say('titleCutEdit', lang) : say('title', lang);
+  // What the words asked that neither step does, by name and why (lib/agent/media/askCoverage).
+  const notice = unplannedText(s.chain.unplanned, locale);
   return {
     title, steps, done, total: steps.length, countText: countText(done, steps.length, locale), status, statusText, pct, clock,
-    credits: credits ? creditsText(credits, locale) : null, log, approval,
+    credits: credits ? creditsText(credits, locale) : null, log, approval, ...(notice ? { notice } : {}),
   };
 }
 

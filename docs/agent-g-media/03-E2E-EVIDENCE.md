@@ -67,3 +67,9 @@ All ten pass at T3 on real bundled ffmpeg with synthetic fixtures, plus reload, 
 masks, cancel and the phone container. The measured numbers, the re-run command and what each check means are in
 `07-V21-COMPOSITION.md` §5; the machine-readable record and a contact sheet per scenario are in `evidence-v21/`
 (`evidence.json`, `tx02.srt`, `tx02.vtt`, `tx01…tx10*.jpg`). T4 (GG on the Preview) and iPhone/Safari playback: not run.
+
+## The owner's montage message (2026-10-11 15:27Z)
+
+Speed ramps by the music, music from 0:59, the overlay, the moving text with a colour emoji and the end text, one
+plan, real bundled ffmpeg (`ownerMontage.ffmpeg.test.ts`): PROVEN T3. Numbers and contact sheets: `08-OWNER-MONTAGE.md`
+§2 and `evidence-owner-montage/`. T4 (GG on the Preview): not run.

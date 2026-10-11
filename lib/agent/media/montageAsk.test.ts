@@ -3,7 +3,7 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs, sourceContribution } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs, sourceContribution } from './montageAsk';
 import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
 import { planBeatCuts } from '@/lib/services/montage/beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC } from '@/lib/services/montage/montagePlan';
@@ -114,6 +114,13 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
 
   test('one probe point per video, in the middle of its longest shot, in the output and in the source', () => {
     expect(clipCheckPoints(REQ).map((p) => [p.index, p.name, p.outT, p.srcT])).toEqual([[0, 'a.mp4', 1, 2], [1, 'b.mp4', 5, 2], [2, 'c.mp4', 7.5, 2.5]]);
+  });
+
+  test('a ramped shot: the output point is in its middle on the master, the source point that far × its speed into the window', () => {
+    const ramped = { ...REQ, shots: [{ ...REQ.shots[0]!, speed: 0.5 }, REQ.shots[1]!, { ...REQ.shots[2]!, speed: 2 }, REQ.shots[3]!] } as AgentMontageRequest;
+    // Shot 0: 1–3 s of a.mp4 at 0.5× lasts 4 s on the master; shot 2: 0–4 s of b.mp4 at 2× lasts 2 s.
+    expect(outputTimeline(ramped.shots).map((t) => [t.source, t.outStartSec, t.outEndSec, t.speed])).toEqual([[0, 0, 4, 0.5], [0, 4, 5, 1], [1, 5, 7, 2], [2, 7, 8, 1]]);
+    expect(clipCheckPoints(ramped).map((p) => [p.index, p.outT, p.srcT])).toEqual([[0, 2, 2], [1, 6, 2], [2, 7.5, 2.5]]);
   });
 
   const grey = (v: number, n = 4) => new Uint8Array(n).fill(v);
@@ -232,5 +239,26 @@ describe('provenance from the render graph (Media Studio v2.0 §6)', () => {
 
   test('the two audio clocks stay apart: the track from 0:58, laid from the first frame, for the master length', () => {
     expect(audioTiming(request)).toEqual({ sourceStartSec: 58, timelineStartSec: 0, targetSec: 6.5, endPolicy: 'stop', sourceAudio: 'remove', replacementAudio: 'replace' });
+  });
+});
+
+describe('rampOf: the speed changes a montage message asks for', () => {
+  test.each([
+    ['დაამონტაჟე, სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე რომ ეფექტი გამოვიდეს', 'mixed'],
+    ['cut these to the music with speed ramps', 'mixed'],
+    ['speed up and slow down where it fits', 'mixed'],
+    ['дай замедление и ускорение по музыке', 'mixed'],
+    ['დაამონტაჟე და ზოგი კადრი შეანელე', 'slow'],
+    ['slow-mo on the calm parts', 'slow'],
+    ['make some shots faster', 'fast'],
+    ['ускорь кадры на припеве', 'fast'],
+  ])('%s → %s', (text, mode) => {
+    expect(rampOf(text)).toBe(mode);
+  });
+
+  test('no speed words, or a word that only contains the letters („პანელი"), asks for nothing', () => {
+    expect(rampOf('დაამონტაჟე ეს კლიპები მუსიკაზე 9:16')).toBeNull();
+    expect(rampOf('ქვედა პანელი გამიკეთე')).toBeNull();
+    expect(rampOf(undefined)).toBeNull();
   });
 });

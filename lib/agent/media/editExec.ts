@@ -26,6 +26,7 @@ import {
 } from './editPlan';
 import type { Layer } from './layers';
 import type { LayerQcRecord } from './layerQc';
+import type { OverlayQcRecord } from './overlayFx';
 import { QUOTE_TTL_MS, signQuote, verifyQuote } from './quoteToken';
 import { TAP, approvalParams, withNote, type RunApproval } from '@/lib/agent/approval';
 import type { AuditEvent, FileRef } from './montageExec';
@@ -55,6 +56,8 @@ export type RenderOutcome =
     clean?: { bytes: Buffer; output: BannerProbe | null };
     /** The layers measured on the rendered file (./layerQc). */
     layerQc?: LayerQcRecord;
+    /** The overlay measured on the rendered file (./overlayFx): there, and the picture kept under it. */
+    overlayQc?: OverlayQcRecord;
     /** The caption track as files. */
     subtitles?: { srt: string; vtt: string };
   }

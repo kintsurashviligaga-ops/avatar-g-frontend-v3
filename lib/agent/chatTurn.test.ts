@@ -258,6 +258,18 @@ describe('two steps in one message: one run card (runs open)', () => {
     expect(planChatTurn('cut these to the music', runs({ attachments: ['video', 'video', 'audio'] })).kind).toBe('pass');
   });
 
+  test('the owner\'s montage (2026-10-11): speed by the music, music from 0:59, the overlay and both texts in one run', () => {
+    const GG = 'დაამონტაჟე, სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე რომ ეფექტი გამოვიდეს და მუსიკა დაადე 0.59 წამიდან რომ დაიწყოს, ასევე დაადე ოვერლეი, გაუკეთე ქებშენი და ლამაზად დააწერე მოუშენით myavatar.ge🚀 და ბოლოს ქართულად უნდა დაიწეროს გადმოდი საიტზე';
+    expect(planChatTurn(GG, runs({ attachments: ['video', 'video', 'video', 'video', 'video', 'audio'] }))).toMatchObject({
+      kind: 'run',
+      chain: {
+        kind: 'cut-edit',
+        montage: { musicStartSec: 59, ramp: 'mixed' },
+        edits: [{ op: 'overlay', look: 'light-leak' }, { op: 'layers', add: [{ text: 'myavatar.ge🚀' }, { text: 'გადმოდი საიტზე', role: 'cta' }] }],
+      },
+    });
+  });
+
   test('a focus tool never starts a run', () => {
     expect(planChatTurn('Use the audio from the first video and cut the other clips to it', runs({ mode: 'video', attachments: ['video', 'video'] })).kind).not.toBe('run');
   });

@@ -89,3 +89,28 @@ BLOCKED_OWNER (paid calls); removing what is printed in the source is UNSUPPORTE
   editExec, chatTurn, bindLiveAgent: 205 / 205) and `composition.ffmpeg.test.ts` re-run: 16 / 16 (the evidence in `evidence-v21/` is from this run).
 - tsc 0; eslint on the changed files 0. Not run: HawkScan (no API key, no running app); Playwright.
 
+
+## 7. The owner's montage message (2026-10-11 15:27Z): the whole ask on one card
+
+Verdict: **BUILT and PROVEN T3** (`08-OWNER-MONTAGE.md`): speed by the music on single shots (0.5× / 1.5×, measured
+from the pictures), music from 0:59, the light-leak overlay, „myavatar.ge🚀" moving in (the rocket in colour) until 3 s
+before the end, „გადმოდი საიტზე" in the last 3 s; anything not doable is named on the card. T4 and Production: not run.
+
+### GG's Preview check (T4), same Preview link, admin account, NOT myavatar.ge
+
+1. Attach five clips and one song (the song longer than 1:30), and send the same sentence as at 15:27.
+2. Expect one card with two steps: the montage line ends „მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: შენელება და
+   აჩქარება"; the next line names the overlay and both texts. After a moment the montage line shows the numbers
+   („… კადრი · … წმ · 9:16 · … BPM · მუსიკა 0:59-დან · N შენელ. 0.5× · N აჩქ. 1.5×").
+3. Press Start once. The result: the song from 0:59, some shots slower and some faster, the warm light over it,
+   „myavatar.ge🚀" sliding up at the bottom, and „გადმოდი საიტზე" on a blue button in the last 3 seconds.
+
+### Tests for this change
+
+- Full jest: 858 suites / 13,044 tests passed, 0 failed (5 suites / 30 tests skipped: own Postgres), including
+  `ownerMontage.ffmpeg.test.ts` 1/1 and `composition.ffmpeg.test.ts`, `mediaStudio.ffmpeg.test.ts`,
+  `montageExec.ffmpeg.test.ts`, `editLive.ffmpeg.test.ts` after the layers' length fix. `chatTurn.test.ts` (the owner's
+  sentence → one run) added after that run: 62 / 62.
+- New and changed unit suites: beatPlan, montagePlan, montageAsk, layerWords, askCoverage, runChat, runCard,
+  montageChat, taskSteps, taskView, editChat, editWords, editPlan, overlayFx, emoji. tsc 0; eslint on changed files
+  0 errors (14 old warnings in OmniStudio.tsx).
