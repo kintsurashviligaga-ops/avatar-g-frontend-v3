@@ -21,6 +21,11 @@ describe('beatMontageAsk', () => {
     ['cut these to the music', [V, 'image', A]],
     ['დაამონტაჟე ვიდეო და მუსიკა დაადე ზუსტად 0.55 წამიდან რომ დაიწყოს', [A, V, V, V, V, 'image']],
     ['add this song', [V, 'image', A]],
+    // „make me a clip" with clips and a track (Media Studio v2.0: GG's own wording)
+    ['ამ ვიდეოებით კლიპი გამიკეთე, მარტო ბოლო ხუთი გამოიყენე', [V, V, V, V, V, V, V, A]],
+    ['გამიკეთე კლიპი ამ ვიდეოებით', [V, V, A]],
+    ['make me a clip from these', [V, V, A]],
+    ['сделай клип из этих видео', [V, V, A]],
   ])('claims %s', (text, kinds) => expect(beatMontageAsk(text, kinds as AttachmentKind[])).toBe(true));
 
   test.each([
@@ -44,6 +49,8 @@ describe('beatMontageAsk', () => {
     ['', [V, V, A]],
     // nothing about cutting or music
     ['add subtitles', [V, V, A]],
+    ['ამ კლიპებს სუბტიტრები დაადე', [V, V, A]],
+    ['რა კლიპია ეს?', [V, V, A]],
   ])('leaves %s alone', (text, kinds) => expect(beatMontageAsk(text, kinds as AttachmentKind[])).toBe(false));
 });
 

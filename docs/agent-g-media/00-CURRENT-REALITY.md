@@ -40,6 +40,7 @@ T5 real paid provider · T6 Production after an authorised deploy.
 | D3 | „58-ე წამიდან" (ordinal) was not read as a start | GG's own sentence lost the offset | `lib/agent/params.ts:36` |
 | D4 | No source selection at all | „მარტო ბოლო შვიდი" used every clip | `lib/agent/media/sourceSelect.ts:218` + quote `montageExec.ts:315` |
 | D5 | A refusal after a selection would name files by their position in the subset | wrong file numbers in the error | `montageExec.ts:339` (`asSent`) |
+| D6 | „ამ ვიდეოებით კლიპი გამიკეთე“ with clips and a track was not read as a montage | an ordinary chat answer instead of a plan | `lib/agent/media/montageChat.ts:37` (`MAKE_CLIP`) |
 
 ## 3. Limits, reconciled (spec §A)
 

@@ -12,6 +12,7 @@ Branch `claude/agent-g-media-studio-v2-ekxxzp` from `main` 5481987. Phases follo
 | 2 | Source selection in words (KA/EN/RU), on a waiting plan | DONE | 7c08947 | T3 |
 | 2 | Source selection on a delivered montage (re-plan) | DONE | deed8ed | T1 |
 | 2 | Refusal numbers name files as sent | DONE | 7c08947 | T1 |
+| 2 | „კლიპი გამიკეთე“ / „make me a clip“ / „сделай клип“ with clips + track starts a montage | DONE | (this PR) | T1 |
 | 2 | 5 s trim = 150 frames at 30 fps | VERIFIED (no code change needed) | deed8ed (test) | T3 |
 | 2 | Revisions with CAS, compare / restore | MISSING | — | BLOCKED_OWNER (migration) |
 | 3 | QC outcome word + source-contribution manifest + audio clocks | DONE | 6acc865 | T3 |

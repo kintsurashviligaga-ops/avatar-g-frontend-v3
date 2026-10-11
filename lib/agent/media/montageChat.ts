@@ -33,13 +33,20 @@ const CUT = new RegExp([
   'montage|\\bedit\\b|\\bcut\\b|stitch|splice|combine|merge|\\bjoin\\b|\\breel\\b|tiktok|shorts',
   'монтаж|смонтир|склей|соедини|нарежь|нарез|рилс',
 ].join('|'), 'iu');
+/** „ამ ვიდეოებით კლიპი გამიკეთე", „make me a clip", „сделай клип": with clips and a track, a clip is the montage. */
+const MAKE_CLIP = new RegExp([
+  'კლიპ\\p{L}*\\s+(?:\\p{L}+\\s+)?(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ|ამიწყ|ააწყ)',
+  '(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ)\\p{L}*\\s+(?:\\p{L}+\\s+)?კლიპ',
+  '\\bmake\\s+(?:me\\s+)?an?\\s+(?:music\\s+video|clip)\\b',
+  '(?:сделай|создай|смонтируй)\\s+(?:мне\\s+)?клип',
+].join('|'), 'iu');
 /** A trim of one clip is the remix's job, never a montage. */
 const TRIM = /\btrim\b|\bcut\s+(?:the\s+)?(?:first|last|off|out|beginning|end)\b|მოჭერ|შემოკლ|обрез|обрежь/iu;
 
 /** Does the message ask for a cut / montage („დაამონტაჟე", „cut these together", „склей")? Shapes aside. */
 export function hasMontageWords(text: string): boolean {
   const t = (text || '').trim();
-  return !!t && (CUT.test(t) || detectStudioIntent(t)?.service === 'montage');
+  return !!t && (CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage');
 }
 
 /** Does the message speak of music / a beat / a track? */
@@ -55,7 +62,7 @@ export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const photos = kinds.filter((k) => k === 'image').length;
   const audios = kinds.filter((k) => k === 'audio').length;
   if (videos < 1 || videos + photos > MAX_CLIPS || audios !== 1 || videos + photos + audios !== kinds.length) return false;
-  const montageWords = CUT.test(t) || detectStudioIntent(t)?.service === 'montage';
+  const montageWords = CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage';
   if (videos + photos === 1) return montageWords && !TRIM.test(t);
   return montageWords || MUSIC.test(t);
 }
