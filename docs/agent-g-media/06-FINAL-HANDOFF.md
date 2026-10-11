@@ -47,5 +47,7 @@ Typed wording that starts a montage: clips + one track and words about cutting, 
 
 ## 5. Tests in this phase
 
-See `02-IMPLEMENTATION-TRACKER.md` and the PR. Real-ffmpeg suites: `mediaStudio.ffmpeg.test.ts` 3/3,
-`editLive.ffmpeg.test.ts` 9/9, `montageExec.ffmpeg.test.ts` unchanged and green.
+- Full jest: 852 suites / 12,903 tests passed, 0 failed (5 suites skipped: they need their own Postgres).
+- After the last change (montageChat, intent, chatTurn) re-run: 174 / 174. tsc 0; eslint on changed files 0.
+- Real ffmpeg: `mediaStudio.ffmpeg.test.ts` 3/3, `editLive.ffmpeg.test.ts` 9/9, `montageExec.ffmpeg.test.ts` green.
+- Not run: HawkScan (no API key, no running app); Playwright (no UI change in this phase).
