@@ -71,9 +71,12 @@ describe('the montage, then an edit of it', () => {
     expect(runChainAsk('cut these to the music, vertical 9:16', [V, V, A])).toBeNull();
     // A fade between the clips is a transition, not a whole-video fade.
     expect(runChainAsk('cut these to the music with a fade between clips', [V, V, A])).toBeNull();
-    // Two tracks, or photos with no clip: not a montage at all.
-    expect(runChainAsk('cut these to the music, black and white', [V, A, A])).toBeNull();
-    expect(runChainAsk('cut these to the music, black and white', [I, I, A])).toBeNull();
+    // Three sound files: not a montage at all.
+    expect(runChainAsk('cut these to the music, black and white', [V, A, A, A])).toBeNull();
+    // A track and a narration, photos alone, or no music at all (GG 2026-10-11 17:38Z): the montage, then its edit.
+    expect(runChainAsk('cut these to the music, black and white', [V, A, A])).toMatchObject({ kind: 'cut-edit' });
+    expect(runChainAsk('cut these to the music, black and white', [I, I, A])).toMatchObject({ kind: 'cut-edit' });
+    expect(runChainAsk('join these clips, black and white', [V, V])).toMatchObject({ kind: 'cut-edit' });
     // A photo among the clips rides along as a still shot (owner, 2026-10-11 11:37Z): the montage, then its edit.
     expect(runChainAsk('cut these to the music, black and white', [V, I, A])).toMatchObject({ kind: 'cut-edit' });
   });

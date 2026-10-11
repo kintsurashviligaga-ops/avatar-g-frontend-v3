@@ -29,7 +29,8 @@ import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { isVideoEditRequest } from '@/lib/chat/videoIntent';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { resolveService } from '@/lib/catalog/services';
-import { beatMontageAsk } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, hasMontageWords } from '@/lib/agent/media/montageChat';
+import { asksNarration } from '@/lib/agent/media/montageAsk';
 import { audioExtractAsk, wantsAudioFile } from '@/lib/agent/media/audioChat';
 import { withoutLinks } from '@/lib/agent/media/audioSource';
 import { mineEdits } from '@/lib/agent/media/editWords';
@@ -248,10 +249,15 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
     return act('agent.montage', 'pending', params);
   }
 
-  // 6) Cut the clips to the track (photos ride along as still shots). Clips with no track, or clips named but not
-  //    attached: say what is missing.
+  // 6) A montage of the attached pictures: to a track, under the clips' own sound, or with none sent (GG 2026-10-11
+  //    17:38Z). Words that make the music the point with no track sent, or clips named but not attached: say what is
+  //    missing.
   if (beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
-  if (nAudio === 0 && nVideo >= 1 && nVideo + nImage === kinds.length && beatMontageAsk(text, [...kinds, 'audio'])) {
+  if (nAudio === 0 && nVideo + nImage >= 2 && nVideo + nImage === kinds.length && asksNarration(text) && hasMontageWords(text)) {
+    return act('agent.montage', 'attachment', params, ['narration']);
+  }
+  // („Озвучь это видео" alone is dubbing, not a montage missing its track.)
+  if (nAudio === 0 && (nVideo >= 1 || nImage >= 2) && nVideo + nImage === kinds.length && !asksNarration(text) && beatMontageAsk(text, [...kinds, 'audio'])) {
     return act('agent.montage', 'attachment', params, ['track']);
   }
   if (!kinds.length && CLIPS_REF.test(text) && beatMontageAsk(text, ['video', 'video', 'audio'])) {

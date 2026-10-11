@@ -36,7 +36,7 @@ describe('buildManifest', () => {
       { index: 2, path: FILES[2], name: 'clipC.mp4', kind: 'video', durationSec: 6.1 },
       { index: 3, path: FILES[3], name: 'track.mp3', kind: 'audio', durationSec: 30 },
     ]);
-    expect(checkManifest(M)).toEqual({ ok: true, manifest: M, videos: [0, 1, 2], stills: [], audio: 3 });
+    expect(checkManifest(M)).toEqual({ ok: true, manifest: M, videos: [0, 1, 2], stills: [], audio: 3, voice: null });
   });
 
   test('no names: each falls back to the reference\'s base name, decoded, without query', () => {
@@ -67,11 +67,14 @@ describe('names are display text from untrusted input', () => {
 describe('checkManifest refuses anything a quote would not write', () => {
   test.each<[string, unknown]>([
     ['missing', undefined],
-    ['one file', M.slice(0, 1)],
+    ['a lone sound file', [{ ...M[3], index: 0 }]],
+    ['no picture', [{ ...M[3], index: 0 }, { ...M[3], index: 1, kind: 'voice' }]],
+    ['empty', []],
     ['too many files', Array.from({ length: MAX_MANIFEST_FILES + 1 }, (_, i) => ({ ...M[0], index: i }))],
     ['out of order', [M[1], M[0], M[2], M[3]]],
-    ['no audio', M.slice(0, 3)],
     ['two audios', [...M.slice(0, 3), M[3], { ...M[3], index: 4 }]],
+    ['two narrations', [...M.slice(0, 3), { ...M[3], kind: 'voice' }, { ...M[3], index: 4, kind: 'voice' }]],
+    ['an unknown kind', [M[0], { ...M[1], kind: 'subtitle' }, M[2], M[3]]],
     ['an image', [M[0], { ...M[1], kind: 'image' }, M[2], M[3]]],
     ['a padded path', [M[0], { ...M[1], path: ` ${M[1]!.path}` }, M[2], M[3]]],
     ['a dirty name', [M[0], { ...M[1], name: 'b‮.mp4' }, M[2], M[3]]],
@@ -129,12 +132,12 @@ describe('a photo in the manifest (owner, 2026-10-11 11:37Z)', () => {
 
   test('buildManifest marks it an image with no length; checkManifest lists it as a still', () => {
     expect(PM[1]).toEqual({ index: 1, path: PF[1], name: 'product.jpg', kind: 'image', durationSec: 0 });
-    expect(checkManifest(PM)).toEqual({ ok: true, manifest: PM, videos: [0], stills: [1], audio: 2 });
+    expect(checkManifest(PM)).toEqual({ ok: true, manifest: PM, videos: [0], stills: [1], audio: 2, voice: null });
   });
 
-  test('refused: a photo with a length, photos with no video, a video with no length', () => {
+  test('refused: a photo with a length, a video with no length; photos with no video are a montage (GG 2026-10-11 17:38Z)', () => {
     expect(checkManifest(PM.map((m) => (m.index === 1 ? { ...m, durationSec: 3 } : m)))).toMatchObject({ ok: false, error: 'manifest item 2 is a photo with a length' });
-    expect(checkManifest(PM.map((m) => (m.index === 0 ? { ...m, kind: 'image', durationSec: 0 } : m)))).toMatchObject({ ok: false });
+    expect(checkManifest(PM.map((m) => (m.index === 0 ? { ...m, kind: 'image', durationSec: 0 } : m)))).toMatchObject({ ok: true, videos: [], stills: [0, 1], audio: 2 });
     expect(checkManifest(PM.map((m) => (m.index === 0 ? { ...m, durationSec: 0 } : m)))).toMatchObject({ ok: false, error: 'manifest item 1 has no length' });
     expect(checkManifest(PM.map((m) => (m.index === 1 ? { ...m, kind: 'gif' } : m)))).toMatchObject({ ok: false });
   });
@@ -147,5 +150,34 @@ describe('a photo in the manifest (owner, 2026-10-11 11:37Z)', () => {
     expect(checkCoverage([vid, { ...img, kind: 'video' }], PM)).toMatchObject({ ok: false, missing: [] });
     expect(checkCoverage([{ ...vid, kind: 'image' }, img], PM)).toMatchObject({ ok: false, missing: [] });
     expect(parseAgentRequest({ ...body([vid, img], PM), musicUrl: `https://x.supabase.co/${PF[2]}` }).ok).toBe(true);
+  });
+});
+
+
+// GG 2026-10-11 17:38Z: a montage with no music, and one with the user's own narration over it.
+describe('no music, and a narration', () => {
+  test('pictures alone are a manifest; a narration is listed as `voice`, apart from the music', () => {
+    const noMusic = M.slice(0, 3);
+    expect(checkManifest(noMusic)).toEqual({ ok: true, manifest: noMusic, videos: [0, 1, 2], stills: [], audio: null, voice: null });
+    const VF = ['u/a.mp4', 'u/s.mp3', 'u/v.m4a'];
+    const vm = buildManifest(VF, ['a.mp4', 'song.mp3', 'me.m4a'], [{ durationSec: 9 }, { durationSec: 60 }, { durationSec: 12 }], 1, [], 2);
+    expect(vm.map((m) => m.kind)).toEqual(['video', 'audio', 'voice']);
+    expect(checkManifest(vm)).toMatchObject({ ok: true, videos: [0], audio: 1, voice: 2 });
+    const only = buildManifest(['u/a.mp4', 'u/v.m4a'], null, [{ durationSec: 9 }, { durationSec: 12 }], null, [], 1);
+    expect(checkManifest(only)).toMatchObject({ ok: true, audio: null, voice: 1 });
+  });
+
+  test('a shot cut from the narration is refused like one cut from the music', () => {
+    const vm = buildManifest(['u/a.mp4', 'u/v.m4a'], null, [{ durationSec: 9 }, { durationSec: 12 }], null, [], 1);
+    expect(checkCoverage([{ source: 1, kind: 'video' }], vm)).toMatchObject({ ok: false });
+    expect(checkCoverage([{ source: 0, kind: 'video' }], vm)).toEqual({ ok: true });
+  });
+
+  test('the request lays exactly the sound the manifest lists', () => {
+    const noMusic = M.slice(0, 3);
+    const silent = { shots: [shot(0), shot(1), shot(2)], aspect: '9:16', musicDuckDb: 0, musicOnly: false, manifest: noMusic };
+    expect(parseAgentRequest(silent)).toMatchObject({ ok: true });
+    expect(parseAgentRequest({ ...silent, musicUrl: 'https://x.supabase.co/s4.mp3' })).toMatchObject({ ok: false, code: 'manifest_invalid' });
+    expect(parseAgentRequest({ ...silent, voiceUrl: 'https://x.supabase.co/v.m4a' })).toMatchObject({ ok: false, code: 'manifest_invalid' });
   });
 });

@@ -40,15 +40,16 @@ describe('quote', () => {
     expect(q).toMatchObject({ ok: false, error: 'media_not_yours', files: [1] });
   });
 
-  test('the inputs must be clips plus exactly one track', async () => {
-    const two = fake({ files: { [FILES[0]!]: clip(20), [FILES[1]!]: TRACK, [FILES[2]!]: TRACK } });
-    expect(await quoteMontage(two.deps, { userId: USER, files: FILES })).toMatchObject({ ok: false, error: 'several_tracks', files: [1, 2] });
-    const none = fake({ files: { [FILES[0]!]: clip(20), [FILES[1]!]: clip(20), [FILES[2]!]: clip(5) } });
-    expect(await quoteMontage(none.deps, { userId: USER, files: FILES })).toMatchObject({ ok: false, error: 'no_track' });
+  test('the inputs: pictures, and at most two sound files (a track and a narration)', async () => {
+    const F4 = [...FILES, `omni-uploads/${USER}/d.mp3`];
+    const three = fake({ files: { [F4[0]!]: clip(20), [F4[1]!]: TRACK, [F4[2]!]: TRACK, [F4[3]!]: TRACK } });
+    expect(await quoteMontage(three.deps, { userId: USER, files: F4 })).toMatchObject({ ok: false, error: 'several_tracks', files: [1, 2, 3] });
+    const sounds = fake({ files: { [FILES[0]!]: TRACK, [FILES[1]!]: TRACK, [FILES[2]!]: TRACK } });
+    expect(await quoteMontage(sounds.deps, { userId: USER, files: FILES })).toMatchObject({ ok: false, error: 'no_clip' });
     const bad = fake({ files: { [FILES[0]!]: clip(20), [FILES[1]!]: null, [FILES[2]!]: TRACK } });
     expect(await quoteMontage(bad.deps, { userId: USER, files: FILES })).toMatchObject({ ok: false, error: 'unreadable', files: [1] });
     expect(await quoteMontage(fake().deps, { userId: USER, files: [] })).toMatchObject({ ok: false, error: 'bad_input' });
-    expect(await quoteMontage(fake().deps, { userId: USER, files: Array(14).fill(FILES[0]) })).toMatchObject({ ok: false, error: 'too_many_files' });
+    expect(await quoteMontage(fake().deps, { userId: USER, files: Array(15).fill(FILES[0]) })).toMatchObject({ ok: false, error: 'too_many_files' });
   });
 
   test('a clip too short for one shot is named and the quote FAILS: no plan ever leaves a clip out', async () => {
@@ -68,14 +69,14 @@ describe('quote', () => {
 
     test('3 videos + 1 MP3 → a manifest of 4 in the user order, names kept, and shots from all 3 clips in that order', async () => {
       const f = ownerFiles();
-      // The fake's analyzeTrack reads TRACK (180 s); the manifest's music length is the one analyzed.
+      // The manifest's music length is the one analyzed (the fake reads the track's own 30 s).
       const q = await quoteMontage(f.deps, { userId: USER, files: OWNER, names: ['beach.mp4', 'city.mp4', 'dog.mp4', 'song.mp3'], prompt: 'cut these to the music' });
       if (!q.ok) throw new Error(q.error);
       expect(q.quote.manifest).toEqual([
         { index: 0, path: OWNER[0], name: 'beach.mp4', kind: 'video', durationSec: 9 },
         { index: 1, path: OWNER[1], name: 'city.mp4', kind: 'video', durationSec: 11 },
         { index: 2, path: OWNER[2], name: 'dog.mp4', kind: 'video', durationSec: 6 },
-        { index: 3, path: OWNER[3], name: 'song.mp3', kind: 'audio', durationSec: 180 },
+        { index: 3, path: OWNER[3], name: 'song.mp3', kind: 'audio', durationSec: 30 },
       ]);
       expect(q.quote.engine).toEqual({ id: 'ffmpeg-montage', label: 'FFmpeg montage', free: true });
       expect(q.quote.clips).toBe(3);
@@ -407,5 +408,99 @@ describe('the user\'s words set the length and the music start (Agent G PART 1)'
     expect(q.quote.musicStartSec).toBe(5);
     const back = await quoted(fake(), { prompt: 'cut these to the song 16:9\n9:16' });
     expect(back.quote.aspect).toBe('9:16');
+  });
+});
+
+
+// GG 2026-10-11 17:38Z: „თუ მუსიკა არ ავტვირთე … არ იწყებს", „თავისი ხმაც და ზემოდან მუსიკა ან ნარაცია", „სურათის მონტაჟს".
+describe('the sound of a montage, and pictures alone', () => {
+  const U = (n: string) => `omni-uploads/${USER}/${n}`;
+  const JPG = { durationSec: 0.04, hasVideo: true, hasAudio: false, width: 1080, height: 1350, rotation: 0, videoCodec: 'mjpeg', audioCodec: null };
+  const VOICE = { ...TRACK, durationSec: 12, audioCodec: 'aac' };
+  const quote = async (files: Record<string, typeof TRACK | null>, extra: Record<string, unknown> = {}, grids?: Record<string, null>) => {
+    const f = fake({ files, ...(grids ? { grids } : {}) });
+    return { f, q: await quoteMontage(f.deps, { userId: USER, files: Object.keys(files), ...extra }) };
+  };
+
+  test('no music sent: every clip whole, in order, with its own sound; no track in the request', async () => {
+    const { q } = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('c.mp4')]: clip(3) }, { prompt: 'დაამონტაჟე ეს ვიდეოები' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ sound: 'own', cutting: 'whole', musicFile: null, beatSynced: false, bpm: null, musicStartSec: 0, clips: 3 });
+    expect(q.request.musicUrl).toBeUndefined();
+    expect(q.request.musicOnly).toBe(false);
+    expect(q.request.shots.map((x) => x.source)).toEqual([0, 1, 2]);
+    expect(q.request.shots.every((x) => x.muted === false)).toBe(true);
+    // Each clip as one stretch, nearly all of it (the last frames are never read): 8 + 5 + 3 s less the tail guard, in whole frames.
+    expect(q.quote.totalSec).toBeCloseTo(15.8, 2);
+    expect(q.request.manifest.map((m) => m.kind)).toEqual(['video', 'video', 'video']);
+  });
+
+  test('„უხმოდ" with no music: a silent edit (every shot muted)', async () => {
+    const { q } = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5) }, { prompt: 'გააერთიანე უხმოდ' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.sound).toBe('silent');
+    expect(q.request.shots.every((x) => x.muted)).toBe(true);
+  });
+
+  test('photos alone, no music: each photo 3 s; with a track: on its beat', async () => {
+    const plain = await quote({ [U('1.jpg')]: JPG, [U('2.jpg')]: JPG, [U('3.jpg')]: JPG }, { prompt: 'make a slideshow' });
+    if (!plain.q.ok) throw new Error(plain.q.error);
+    expect(plain.q.quote).toMatchObject({ clips: 0, stills: 3, cutting: 'whole', sound: 'own', totalSec: 9 });
+    expect(plain.q.request.shots.map((x) => x.kind)).toEqual(['image', 'image', 'image']);
+    const music = await quote({ [U('1.jpg')]: JPG, [U('2.jpg')]: JPG, [U('s.mp3')]: TRACK }, { prompt: 'cut these to the music' });
+    if (!music.q.ok) throw new Error(music.q.error);
+    expect(music.q.quote).toMatchObject({ clips: 0, stills: 2, cutting: 'beat', sound: 'music', musicFile: 2, beatSynced: true });
+  });
+
+  test('„თავისი ხმაც და ზემოდან მუსიკა": the clips whole with their sound, the track under it at -10 dB', async () => {
+    const { q } = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('s.mp3')]: TRACK }, { prompt: 'დაამონტაჟე, თავისი ხმაც დარჩეს და მუსიკა ზემოდან დაადე' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ sound: 'own+music', cutting: 'whole', musicFile: 2 });
+    expect(q.request).toMatchObject({ musicOnly: false, musicGainDb: -10, musicUrl: expect.stringContaining('s.mp3') });
+    expect(q.request.shots.every((x) => !x.muted)).toBe(true);
+    // „ბითზე" keeps the cuts on the beat even with the clips' own sound.
+    const beat = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('s.mp3')]: TRACK }, { prompt: 'დაამონტაჟე ბითზე, თავისი ხმაც დარჩეს' });
+    if (!beat.q.ok) throw new Error(beat.q.error);
+    expect(beat.q.quote).toMatchObject({ sound: 'own+music', cutting: 'beat' });
+  });
+
+  test('a track and the user\'s narration: the recording is named the narration, laid over the music', async () => {
+    const files = { [U('a.mp4')]: clip(20), [U('b.mp4')]: clip(20), [U('song.mp3')]: TRACK, [U('my-voice.m4a')]: VOICE };
+    const { q } = await quote(files, { prompt: 'cut these to the music and put my voice-over on top' }, { [U('my-voice.m4a')]: null });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ sound: 'music', musicFile: 2, voice: { file: 3, durationSec: 12, startSec: 0 } });
+    expect(q.request.manifest.map((m) => m.kind)).toEqual(['video', 'video', 'audio', 'voice']);
+    expect(q.request.voiceUrl).toContain('my-voice.m4a');
+    expect(q.request.musicUrl).toContain('song.mp3');
+  });
+
+  test('photos and a narration only: the photos stretch to hold all of it', async () => {
+    const files = { [U('1.jpg')]: JPG, [U('2.jpg')]: JPG, [U('3.jpg')]: JPG, [U('narration.mp3')]: VOICE };
+    const { q } = await quote(files, { prompt: 'make a slideshow with my narration' }, { [U('narration.mp3')]: null });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ sound: 'own', musicFile: null, voice: { file: 3, durationSec: 12 }, totalSec: 12 });
+    expect(q.quote.voice?.cutSec).toBeUndefined();
+  });
+
+  test('a narration longer than the clips can hold: the card says how much of its end is not heard', async () => {
+    const files = { [U('a.mp4')]: clip(3), [U('b.mp4')]: clip(3), [U('narration.mp3')]: VOICE };
+    const { q } = await quote(files, { prompt: 'დაამონტაჟე და ჩემი ნარაცია დაადე' }, { [U('narration.mp3')]: null });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.voice).toMatchObject({ durationSec: 12, cutSec: expect.any(Number) });
+    expect(q.quote.voice!.cutSec!).toBeCloseTo(12 - q.quote.totalSec, 2);
+  });
+
+  test('speed ramps asked with no music: named on the quote, every shot at its speed', async () => {
+    const { q } = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5) }, { prompt: 'დაამონტაჟე, სადაც საჭიროა ააჩქარე და შეანელე' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote.rampWithoutMusic).toBe(true);
+    expect(q.request.shots.every((x) => (x.speed ?? 1) === 1)).toBe(true);
+  });
+
+  test('a track shorter than an edit with the clips\' own sound ends early, and the card says where', async () => {
+    const short = { ...TRACK, durationSec: 6 };
+    const { q } = await quote({ [U('a.mp4')]: clip(8), [U('b.mp4')]: clip(5), [U('s.mp3')]: short }, { prompt: 'გააერთიანე, ორიგინალი ხმით, მუსიკაც დაადე' });
+    if (!q.ok) throw new Error(q.error);
+    expect(q.quote).toMatchObject({ sound: 'own+music', musicEndsSec: 6 });
   });
 });

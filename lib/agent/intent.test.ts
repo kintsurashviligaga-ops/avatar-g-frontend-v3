@@ -262,7 +262,16 @@ describe('a photo among the clips rides along as a still (owner, 2026-10-11 11:3
   test('clips and a photo with no track: the montage, asking for the track', () => {
     expect(act(run(s, { attachments: [V, V, I] }))).toMatchObject({ capability: 'agent.montage', missing: ['track'] });
   });
-  test('photos alone are not this edit', () => {
-    expect(run('cut these to the music', { attachments: [I, I, A] })).not.toMatchObject({ capability: 'agent.montage' });
+  test('photos alone are a montage too (GG 2026-10-11 17:38Z: „სურათის მონტაჟსაც არ აკეთებს")', () => {
+    expect(run('cut these to the music', { attachments: [I, I, A] })).toMatchObject({ capability: 'agent.montage', missing: [] });
+    expect(run('make a slideshow', { attachments: [I, I, I] })).toMatchObject({ capability: 'agent.montage', missing: [] });
+  });
+  test('no music sent: the montage starts with the clips\' own sound; music named as the point asks for the track', () => {
+    expect(run('დაამონტაჟე ეს ვიდეოები', { attachments: [V, V] })).toMatchObject({ capability: 'agent.montage', missing: [] });
+    expect(run('ამ სამი ვიდეოდან მუსიკალური კლიპი გამიკეთე', { attachments: [V, V, V] })).toMatchObject({ capability: 'agent.montage', missing: ['track'] });
+  });
+  test('a narration asked with no recording asks for the file; „озвучь это видео" stays dubbing', () => {
+    expect(run('დაამონტაჟე და ჩემი ნარაცია დაადე', { attachments: [V, V] })).toMatchObject({ capability: 'agent.montage', missing: ['narration'] });
+    expect(run('Озвучь это видео на русском', { attachments: [V] })).not.toMatchObject({ capability: 'agent.montage' });
   });
 });

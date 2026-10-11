@@ -18,7 +18,7 @@ import type { CapabilityId } from '../contracts';
 /** At most this many steps in one run (the card must stay readable; the sweep must finish a tick quickly). */
 export const MAX_RUN_STEPS = 6;
 /** At most this many files in one montage step (lib/agent/media/montageAsk MAX_FILES). */
-export const MAX_MONTAGE_FILES = 13;
+export const MAX_MONTAGE_FILES = 14;
 /** At most this many edits in one edit step (one of each kind: lib/agent/media/editPlan EDIT_ORDER). */
 export const MAX_STEP_EDITS = 9;
 const MAX_REF = 2048;
@@ -110,7 +110,7 @@ export function validateRunSpec(x: unknown): { ok: true; spec: RunSpec } | SpecE
       steps.push({ id, tool: 'audio_extract', source, ...(typeof raw.name === 'string' ? { name: raw.name.trim() } : {}) });
     } else if (raw.tool === 'montage') {
       if (!Array.isArray(raw.files) || raw.files.length < 2 || raw.files.length > MAX_MONTAGE_FILES) {
-        return fail(`A montage takes 2 to ${MAX_MONTAGE_FILES} files: the clips and one track.`, id);
+        return fail(`A montage takes 2 to ${MAX_MONTAGE_FILES} files: the clips or photos, and at most a track and a narration.`, id);
       }
       const files: FileRef[] = [];
       for (const f of raw.files as unknown[]) {

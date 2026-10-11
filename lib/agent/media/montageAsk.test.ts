@@ -3,7 +3,7 @@ jest.mock('../../admin/guard', () => ({ isAdminUser: (u: { app_metadata?: { role
 
 import type { User } from '@supabase/supabase-js';
 import type { BannerProbe } from '@/lib/video/probeBanner';
-import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, qcAvSync, qcClips, qcMaster, sortInputs, sourceContribution } from './montageAsk';
+import { CLIP_QC_MAX_DIFF, STILL_QC_OFFSET_SEC, aspectFromClips, rampOf, audioTiming, aspectFromPrompt, clipCheckPoints, frameDiff, isStillProbe, montageBody, outputTimeline, pickTracks, qcAvSync, qcClips, qcMaster, soundOf, sortInputs, sourceContribution, wantsBeatCuts } from './montageAsk';
 import { checkCoverage, parseAgentRequest, type MontageManifestItem } from './montageManifest';
 import { planBeatCuts } from '@/lib/services/montage/beatPlan';
 import { MAX_SHOTS, MAX_SHOT_SEC, MAX_TOTAL_SEC, MIN_SHOT_SEC } from '@/lib/services/montage/montagePlan';
@@ -38,8 +38,11 @@ describe('quote token', () => {
 });
 
 describe('inputs and shape', () => {
-  test('clips have a picture, the track has only sound; one track exactly', () => {
-    expect(sortInputs([P({}), P({ hasVideo: false }), P({})])).toEqual({ ok: true, clips: [0, 2], stills: [], track: 1 });
+  test('clips have a picture, a sound file only sound; none, one or two sound files (GG 2026-10-11 17:38Z)', () => {
+    expect(sortInputs([P({}), P({ hasVideo: false }), P({})])).toEqual({ ok: true, clips: [0, 2], stills: [], audios: [1] });
+    expect(sortInputs([P({}), P({})])).toEqual({ ok: true, clips: [0, 1], stills: [], audios: [] });
+    expect(sortInputs([P({}), P({ hasVideo: false }), P({ hasVideo: false })])).toEqual({ ok: true, clips: [0], stills: [], audios: [1, 2] });
+    expect(sortInputs([P({}), P({ hasVideo: false }), P({ hasVideo: false }), P({ hasVideo: false })])).toEqual({ ok: false, error: 'several_tracks', files: [1, 2, 3] });
     expect(sortInputs([P({}), null])).toEqual({ ok: false, error: 'unreadable', files: [1] });
     expect(sortInputs([P({ hasVideo: false })])).toEqual({ ok: false, error: 'no_clip' });
     expect(sortInputs([P({}), P({ durationSec: 0 })])).toEqual({ ok: false, error: 'unreadable', files: [1] });
@@ -163,11 +166,13 @@ describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo +
     expect(isStillProbe(null)).toBe(false);
   });
 
-  test('sortInputs: the photo is a picture of the edit and named a still; photos alone are no clip; a 0 s photo is readable', () => {
-    expect(sortInputs([P({}), JPG, P({ hasVideo: false })])).toEqual({ ok: true, clips: [0, 1], stills: [1], track: 2 });
+  test('sortInputs: the photo is a picture of the edit and named a still; photos alone are a montage; a 0 s photo is readable', () => {
+    expect(sortInputs([P({}), JPG, P({ hasVideo: false })])).toEqual({ ok: true, clips: [0, 1], stills: [1], audios: [2] });
     expect(sortInputs([P({ hasVideo: false }), P({}), P({}), P({}), P({}), { ...JPG, durationSec: 0 }]))
-      .toEqual({ ok: true, clips: [1, 2, 3, 4, 5], stills: [5], track: 0 });
-    expect(sortInputs([JPG, JPG, P({ hasVideo: false })])).toEqual({ ok: false, error: 'no_clip' });
+      .toEqual({ ok: true, clips: [1, 2, 3, 4, 5], stills: [5], audios: [0] });
+    // Photos alone are a montage too (GG 2026-10-11 17:38Z: „სურათის მონტაჟსაც არ აკეთებს"); sound alone is not.
+    expect(sortInputs([JPG, JPG, P({ hasVideo: false })])).toEqual({ ok: true, clips: [0, 1], stills: [0, 1], audios: [2] });
+    expect(sortInputs([P({ hasVideo: false })])).toEqual({ ok: false, error: 'no_clip' });
   });
 
   test('the body shows the photo as an image shot, the run check accepts it, and every file of the manifest has its shot', () => {
@@ -187,7 +192,7 @@ describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo +
       { url: 'https://x.supabase.co/p.jpg', source: 1, still: true },
       { url: 'https://x.supabase.co/b.mov', source: 2 },
     ];
-    const body = montageBody(plan, clips, 'https://x.supabase.co/s.mp3', '9:16', manifest) as { shots: Array<{ kind: string; source: number }> };
+    const body = montageBody(plan, clips, { mode: 'music', musicUrl: 'https://x.supabase.co/s.mp3' }, '9:16', manifest) as { shots: Array<{ kind: string; source: number }> };
     expect(body.shots.filter((s) => s.source === 1).map((s) => s.kind)).toEqual(['image']);
     expect(body.shots.filter((s) => s.source !== 1).every((s) => s.kind === 'video')).toBe(true);
     const parsed = parseAgentRequest(body);
@@ -260,5 +265,87 @@ describe('rampOf: the speed changes a montage message asks for', () => {
     expect(rampOf('დაამონტაჟე ეს კლიპები მუსიკაზე 9:16')).toBeNull();
     expect(rampOf('ქვედა პანელი გამიკეთე')).toBeNull();
     expect(rampOf(undefined)).toBeNull();
+  });
+});
+
+
+// GG 2026-10-11 17:38Z: „ვიდეოში რომ იყოს თავისი ხმაც და ზემოდან მუსიკა დაედოს ან ნარაცია".
+describe('the sound of a montage, in the user\'s words', () => {
+  test.each([
+    ['cut these to the music', true, 'music'],
+    ['დაამონტაჟე, თავისი ხმაც დარჩეს და ზემოდან მუსიკა დაადე', true, 'own+music'],
+    ['keep the original sound and put the song under it', true, 'own+music'],
+    ['смонтируй, оставь оригинальный звук и добавь музыку', true, 'own+music'],
+    ['დაამონტაჟე ეს ვიდეოები', false, 'own'],
+    ['join these clips', false, 'own'],
+    ['გააერთიანე უხმოდ', false, 'silent'],
+    ['join them without sound', false, 'silent'],
+    ['склей без звука', false, 'silent'],
+    // „უხმოდ" said of the music only, with a track: the track stays
+    ['cut these to the music', false, 'own'],
+  ] as const)('%s (music sent: %s) → %s', (text, hasMusic, mode) => expect(soundOf(text, hasMusic)).toBe(mode));
+
+  test('pickTracks: the recording named as one is the narration; else the one with a beat is the music', () => {
+    const song = { index: 2, name: 'song.mp3', durationSec: 180, grid: { bpm: 120, periodSec: 0.5, phaseSec: 0, confidence: 0.6 } };
+    const voice = { index: 3, name: 'voice memo.m4a', durationSec: 20, grid: null };
+    const plain = { index: 3, name: 'audio2.m4a', durationSec: 20, grid: null };
+    expect(pickTracks('cut to the music', [song, voice])).toEqual({ music: 2, voice: 3 });
+    expect(pickTracks('cut to the music', [voice, song])).toEqual({ music: 2, voice: 3 });
+    expect(pickTracks('cut to the music', [song, plain])).toEqual({ music: 2, voice: 3 });
+    // One file: the music, unless the words ask a narration and no music, or its name says it is a recording.
+    expect(pickTracks('cut to the music', [song])).toEqual({ music: 2, voice: null });
+    expect(pickTracks('დაამონტაჟე და ჩემი ნარაცია დაადე', [plain])).toEqual({ music: null, voice: 3 });
+    expect(pickTracks('დაამონტაჟე, ნარაციაც და მუსიკაც', [song])).toEqual({ music: 2, voice: null });
+    expect(pickTracks('join these', [voice])).toEqual({ music: null, voice: 3 });
+    expect(pickTracks('join these', [])).toEqual({ music: null, voice: null });
+  });
+
+  test('wantsBeatCuts: the beat named in any language', () => {
+    expect(wantsBeatCuts('დაამონტაჟე ბითზე')).toBe(true);
+    expect(wantsBeatCuts('cut on the beat')).toBe(true);
+    expect(wantsBeatCuts('нарежь в ритм')).toBe(true);
+    expect(wantsBeatCuts('join these clips')).toBe(false);
+  });
+
+  const M2: MontageManifestItem[] = [
+    { index: 0, path: 'u/a.mov', name: 'a.mov', kind: 'video', durationSec: 14 },
+    { index: 1, path: 'u/b.mov', name: 'b.mov', kind: 'video', durationSec: 9 },
+  ];
+  const PLAN = { ok: true, cuts: [{ clip: 0, startSec: 0, endSec: 6, beats: 0 }, { clip: 1, startSec: 0, endSec: 4, beats: 0 }], musicStartSec: 0, leadInSec: 0, totalSec: 10, beatSynced: false, bpm: null, unitSec: 1 / 30, beatsPerShot: 0, unusedClips: [] };
+  const CLIPS = [{ url: 'https://x.supabase.co/a.mov', source: 0 }, { url: 'https://x.supabase.co/b.mov', source: 1 }];
+
+  test('montageBody: the clips\' own sound kept unless the music alone or silence was asked; the request carries only the sound sent', () => {
+    const own = montageBody(PLAN, CLIPS, { mode: 'own' }, '16:9', M2) as Record<string, unknown> & { shots: Array<{ muted: boolean }> };
+    expect(own.shots.every((x) => !x.muted)).toBe(true);
+    expect(own).toMatchObject({ musicOnly: false });
+    expect(own).not.toHaveProperty('musicUrl');
+    expect(own).not.toHaveProperty('musicGainDb');
+    const silent = montageBody(PLAN, CLIPS, { mode: 'silent' }, '16:9', M2) as { shots: Array<{ muted: boolean }> };
+    expect(silent.shots.every((x) => x.muted)).toBe(true);
+    const under = montageBody(PLAN, CLIPS, { mode: 'own+music', musicUrl: 'https://x.supabase.co/s.mp3' }, '16:9', [...M2, { index: 2, path: 'u/s.mp3', name: 's.mp3', kind: 'audio', durationSec: 60 }]);
+    expect(under).toMatchObject({ musicOnly: false, musicGainDb: -10, musicUrl: 'https://x.supabase.co/s.mp3', musicStartSec: 0 });
+    const voiced = montageBody(PLAN, CLIPS, { mode: 'own', voiceUrl: 'https://x.supabase.co/v.m4a', voiceStartSec: 1.5 }, '16:9', [...M2, { index: 2, path: 'u/v.m4a', name: 'v.m4a', kind: 'voice', durationSec: 8 }]);
+    expect(voiced).toMatchObject({ voiceUrl: 'https://x.supabase.co/v.m4a', voiceStartSec: 1.5 });
+    expect(voiced).not.toHaveProperty('musicUrl');
+  });
+
+  test('the run check takes each sound mode, and audioTiming says what each does', () => {
+    const vm = [...M2, { index: 2, path: 'u/v.m4a', name: 'v.m4a', kind: 'voice' as const, durationSec: 8 }];
+    const own = parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'own', voiceUrl: 'https://x.supabase.co/v.m4a' }, '16:9', vm));
+    if (!own.ok) throw new Error(own.error);
+    expect(audioTiming(own.request)).toMatchObject({ sourceAudio: 'preserve', replacementAudio: 'none', voice: { timelineStartSec: 0 } });
+    const silent = parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'silent' }, '16:9', M2));
+    if (!silent.ok) throw new Error(silent.error);
+    expect(audioTiming(silent.request)).toMatchObject({ sourceAudio: 'remove', replacementAudio: 'none' });
+    expect(audioTiming(silent.request)).not.toHaveProperty('voice');
+    // A narration in the manifest the request does not lay, or one laid that the manifest does not list: refused.
+    expect(parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'own' }, '16:9', vm))).toMatchObject({ ok: false, code: 'manifest_invalid' });
+    expect(parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'own', voiceUrl: 'https://x.supabase.co/v.m4a' }, '16:9', M2))).toMatchObject({ ok: false, code: 'manifest_invalid' });
+    // The same for the music.
+    const am = [...M2, { index: 2, path: 'u/s.mp3', name: 's.mp3', kind: 'audio' as const, durationSec: 60 }];
+    expect(parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'own' }, '16:9', am))).toMatchObject({ ok: false, code: 'manifest_invalid' });
+    const mix = parseAgentRequest(montageBody(PLAN, CLIPS, { mode: 'own+music', musicUrl: 'https://x.supabase.co/s.mp3' }, '16:9', am));
+    if (!mix.ok) throw new Error(mix.error);
+    expect(audioTiming(mix.request)).toMatchObject({ sourceAudio: 'preserve', replacementAudio: 'mix' });
   });
 });

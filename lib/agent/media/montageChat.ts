@@ -23,7 +23,7 @@ import type { MontageAspect } from '@/lib/services/montage/montagePlan';
 import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/services/montage/beatPlan';
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { MontageManifestItem } from './montageManifest';
-import { MAX_CLIPS } from './montageAsk';
+import { MAX_CLIPS, MAX_SOUNDS, asksNarration, wantsNoMusic, wantsOwnSound, wantsSilence } from './montageAsk';
 
 export type AttachmentKind = 'video' | 'audio' | 'image' | 'other';
 type Lang = 'ka' | 'en' | 'ru';
@@ -55,17 +55,43 @@ export function hasMusicWords(text: string): boolean {
   return MUSIC.test(text || '');
 }
 
-/** Is this message, with these attachments, a request to cut the clips (and photos) to the track? */
+/** „მუსიკის გარეშე", "no music": music named only to say there is none. */
+const NO_MUSIC_WORDS = /მუსიკის\s+გარეშე|უმუსიკო|without\s+(?:any\s+)?music|\bno\s+music\b|без\s+музык\p{L}*/giu;
+
+/** A sound named („ამ ხმაზე", "the audio from the first video", «под звук»): with no sound file sent, a sound to cut to. */
+const SOUND_WORD = /(?<!\p{L})ხმ|audio|sound|звук/iu;
+
+/** „სლაიდშოუ", "slideshow", «слайд-шоу»: with photos, a montage word of its own. */
+const SLIDESHOW = /სლაიდ|slide\s*-?\s*show|слайд/iu;
+
+/**
+ * Is this message, with these attachments, a montage Agent G makes? Pictures (videos and photos, at least one) and at
+ * most two sound files (a track, a narration), nothing else:
+ *   · a track or a narration with two or more pictures: any montage, music, beat or narration word;
+ *   · one picture and a sound file: a montage word (never a trim), or a narration („ჩემი ნარაცია დაადე ამ ვიდეოს");
+ *   · NO sound file (GG 2026-10-11 17:38Z: „თუ მუსიკა არ ავტვირთე … არ იწყებს"): two or more pictures and a montage word
+ *     (or „slideshow" with photos), joined with the clips' own sound. When the words make music the point („მუსიკალური
+ *     კლიპი", „ბითზე") and there is no track, this is not it: the chat asks for the track (lib/agent/intent).
+ */
 export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
   const t = (text || '').trim();
   if (!t || isVideoQuestion(t)) return false;
   const videos = kinds.filter((k) => k === 'video').length;
   const photos = kinds.filter((k) => k === 'image').length;
   const audios = kinds.filter((k) => k === 'audio').length;
-  if (videos < 1 || videos + photos > MAX_CLIPS || audios !== 1 || videos + photos + audios !== kinds.length) return false;
-  const montageWords = CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage';
-  if (videos + photos === 1) return montageWords && !TRIM.test(t);
-  return montageWords || MUSIC.test(t);
+  const pictures = videos + photos;
+  if (pictures < 1 || pictures > MAX_CLIPS || audios > MAX_SOUNDS || pictures + audios !== kinds.length) return false;
+  const montageWords = CUT.test(t) || MAKE_CLIP.test(t) || detectStudioIntent(t)?.service === 'montage' || (photos > 0 && SLIDESHOW.test(t));
+  if (!audios) {
+    // A narration asked with no recording sent is not this edit as sent: the chat asks for the file (lib/agent/intent).
+    if (pictures < 2 || !montageWords || TRIM.test(t) || asksNarration(t)) return false;
+    // „Cut them to the first video's sound" names a sound to cut to (lib/agent/run/runChat's sound-cut), not the clips'
+    // own: unless the words keep the clips' sound or ask for none.
+    if (SOUND_WORD.test(t) && !wantsOwnSound(t) && !wantsSilence(t)) return false;
+    return !MUSIC.test(t.replace(NO_MUSIC_WORDS, '')) || wantsNoMusic(t);
+  }
+  if (pictures === 1) return (montageWords && !TRIM.test(t)) || asksNarration(t);
+  return montageWords || MUSIC.test(t) || asksNarration(t);
 }
 
 export type AgentMontagePhase = 'reading' | 'quoted' | 'running' | 'done' | 'failed' | 'cancelled' | 'dismissed';
@@ -113,9 +139,9 @@ export function priceLabel(credits: number, locale: string): string {
 /** What Agent G says while it uploads and reads the files. */
 export function readingText(locale: string): string {
   const lang = pick(locale);
-  return lang === 'en' ? 'Reading your clips and the track: lengths, format and the beat…'
-    : lang === 'ru' ? 'Читаю клипы и трек: длительность, формат и бит…'
-      : 'ვკითხულობ კლიპებს და მუსიკას: ხანგრძლივობას, ფორმატს და ბითს…';
+  return lang === 'en' ? 'Reading your files: lengths, format, the sound and the beat…'
+    : lang === 'ru' ? 'Читаю файлы: длительность, формат, звук и бит…'
+      : 'ვკითხულობ ფაილებს: ხანგრძლივობას, ფორმატს, ხმას და ბითს…';
 }
 
 /** 5.2 → "0:05", 95 → "1:35". */
@@ -219,24 +245,103 @@ export function montagePlanLine(p: { shots?: number; totalSec?: number; aspect?:
   return parts.join(' · ');
 }
 
-/** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
-export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
+/**
+ * What the montage sounds like, in words (./montageExec MontageQuote `sound`, `voice`): the music alone, the clips' own
+ * sound with the music beneath it, the clips' own sound alone, or nothing; and the narration over it when there is one.
+ */
+export function soundText(q: Pick<MontageQuote, 'sound' | 'voice' | 'clips' | 'manifest'>, locale: string, names?: string[]): string {
   const lang = pick(locale);
-  const found = q.beatSynced && q.bpm
+  const mode = q.sound ?? 'music';
+  let base: string;
+  if (mode === 'own+music') {
+    base = lang === 'en' ? "the clips' own sound, with your music beneath it" : lang === 'ru' ? 'родной звук клипов, ваша музыка под ним' : 'კლიპების საკუთარი ხმით, შენი მუსიკა მის ქვეშ';
+  } else if (mode === 'own') {
+    base = q.clips === 0
+      ? (lang === 'en' ? 'no music (photos have no sound)' : lang === 'ru' ? 'без музыки (у фото нет звука)' : 'მუსიკის გარეშე (ფოტოებს ხმა არ აქვს)')
+      : (lang === 'en' ? "each clip's own sound and no music" : lang === 'ru' ? 'каждый клип со своим звуком, без музыки' : 'ყოველი კლიპი თავისი ხმით, მუსიკის გარეშე');
+  } else if (mode === 'silent') {
+    base = lang === 'en' ? 'no sound' : lang === 'ru' ? 'без звука' : 'უხმოდ';
+  } else {
+    base = lang === 'en' ? 'your track as the only sound' : lang === 'ru' ? 'звук — только ваш трек' : 'ხმად მხოლოდ შენი მუსიკა';
+  }
+  if (!q.voice) return base;
+  const v = q.voice;
+  const name = q.manifest?.find((m) => m.index === v.file)?.name ?? names?.[v.file] ?? '';
+  const over = lang === 'en'
+    ? `, and over it your narration${name ? ` ${quoted(lang, name)}` : ''} (${sec(v.durationSec)} s): the rest goes quieter while it speaks`
+    : lang === 'ru'
+      ? `, поверх — ваша озвучка${name ? ` ${quoted(lang, name)}` : ''} (${sec(v.durationSec)} с): остальное звучит тише, пока она говорит`
+      : `, ზემოდან შენი ნარაცია${name ? ` ${quoted(lang, name)}` : ''} (${sec(v.durationSec)} წმ): როცა ლაპარაკობს, დანარჩენი ხმა ჩუმდება`;
+  return base + over;
+}
+
+/** What the sound cannot do as sent, said before Start: a track that ends early, a narration longer than the edit, ramps with nothing to ramp by. */
+function soundNotes(q: MontageQuote, lang: Lang): string[] {
+  const notes: string[] = [];
+  if (q.musicEndsSec !== undefined) {
+    notes.push(lang === 'en' ? `The music ends at ${clockOf(q.musicEndsSec)}; the clips' own sound goes on after it.`
+      : lang === 'ru' ? `Музыка заканчивается на ${clockOf(q.musicEndsSec)}; дальше звучат сами клипы.`
+        : `მუსიკა ${clockOf(q.musicEndsSec)}-ზე მთავრდება; შემდეგ კლიპების ხმა გრძელდება.`);
+  }
+  if (q.voice?.cutSec) {
+    notes.push(lang === 'en' ? `The narration is ${sec(q.voice.durationSec)} s and the edit ${sec(q.totalSec)} s: its last ${sec(q.voice.cutSec)} s will not be heard. Add pictures or ask for a longer edit to hear all of it.`
+      : lang === 'ru' ? `Озвучка ${sec(q.voice.durationSec)} с, монтаж ${sec(q.totalSec)} с: последние ${sec(q.voice.cutSec)} с не прозвучат. Добавьте кадры или попросите монтаж длиннее.`
+        : `ნარაცია ${sec(q.voice.durationSec)} წმ-ია, მონტაჟი ${sec(q.totalSec)} წმ: ბოლო ${sec(q.voice.cutSec)} წმ არ გაისმის. სრულად რომ გაისმას, დაამატე კლიპები ან ფოტოები, ან უფრო გრძელი მონტაჟი მთხოვე.`);
+  }
+  if (q.rampWithoutMusic) {
+    notes.push(lang === 'en' ? 'Speed changes follow the music, and no music was sent, so every shot keeps its normal speed.'
+      : lang === 'ru' ? 'Скорость меняется по музыке, а музыки нет, поэтому все кадры идут с обычной скоростью.'
+        : 'სიჩქარე მუსიკის მიხედვით იცვლება, მუსიკა კი არ მიგიმაგრებია, ამიტომ ყველა კადრი ჩვეულებრივი სიჩქარით მიდის.');
+  }
+  return notes;
+}
+
+/** How the pictures are cut: on the beat (what the track's tempo allowed), or each clip whole in the user's order. */
+function cuttingText(q: MontageQuote, lang: Lang): string {
+  const st = q.stills ?? 0;
+  if (q.cutting === 'whole') {
+    if (q.shortened) {
+      const pct = Math.round(q.shortened.share * 100);
+      return lang === 'en' ? `The clips together last ${sec(q.shortened.footageSec)} s, longer than one edit (${q.shortened.maxSec} s), so each gives the same share of itself (${pct}%), from its middle, in your order.`
+        : lang === 'ru' ? `Клипы вместе длятся ${sec(q.shortened.footageSec)} с — больше одного монтажа (${q.shortened.maxSec} с), поэтому из середины каждого беру одинаковую долю (${pct}%), в вашем порядке.`
+          : `კლიპები ერთად ${sec(q.shortened.footageSec)} წმ-ია, ერთ მონტაჟზე (${q.shortened.maxSec} წმ) მეტი, ამიტომ თითოეულიდან შუა ნაწილს თანაბრად ვიღებ (${pct}%), შენი თანმიმდევრობით.`;
+    }
+    if (!q.clips) {
+      return lang === 'en' ? 'Each photo shows with a slow zoom, in your order.' : lang === 'ru' ? 'Каждое фото — с медленным приближением, в вашем порядке.' : 'ყოველი ფოტო ნელი გადიდებით ჩანს, შენი თანმიმდევრობით.';
+    }
+    return lang === 'en' ? `Each clip plays as one piece, in your order${st ? ', each photo with a slow zoom' : ''}.`
+      : lang === 'ru' ? `Каждый клип идёт одним куском, в вашем порядке${st ? ', каждое фото — с медленным приближением' : ''}.`
+        : `ყოველი კლიპი ერთ ნაწილად მიდის, შენი თანმიმდევრობით${st ? ', ყოველი ფოტო ნელი გადიდებით' : ''}.`;
+  }
+  return q.beatSynced && q.bpm
     ? (lang === 'en' ? `The track is ${Math.round(q.bpm)} BPM; every cut lands on a beat.`
       : lang === 'ru' ? `Темп трека ${Math.round(q.bpm)} BPM; каждая склейка попадает в бит.`
         : `მუსიკის ტემპი ${Math.round(q.bpm)} BPM-ია; ყოველი ჭრა ბითზე მოდის.`)
     : (lang === 'en' ? 'I could not find a steady beat, so the cuts sit on an even half-second grid.'
       : lang === 'ru' ? 'Чёткого бита нет, поэтому склейки идут по ровной сетке в полсекунды.'
         : 'მკაფიო ბითი ვერ ვიპოვე, ამიტომ კადრებს თანაბარ, ნახევარწამიან ბადეზე ვჭრი.');
+}
+
+/** Agent G's plan, in words: what it found, what it will make, what it costs, and that nothing starts before Confirm. */
+export function quoteText(q: MontageQuote, names: string[] | undefined, locale: string): string {
+  const lang = pick(locale);
+  const found = cuttingText(q, lang);
   const st = q.stills ?? 0;
-  const plan = lang === 'en'
-    ? `Plan: ${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'}${st ? ` and ${st} photo${st === 1 ? '' : 's'}` : ''}, ${sec(q.totalSec)} s, ${q.aspect}, with your track as the only sound.`
+  const what = lang === 'en'
+    ? (q.clips ? `${q.clips} clip${q.clips === 1 ? '' : 's'}${st ? ` and ${st} photo${st === 1 ? '' : 's'}` : ''}` : `${st} photo${st === 1 ? '' : 's'}`)
     : lang === 'ru'
-      ? `План: ${q.shots} кадров из клипов (${q.clips})${st ? ` и фото (${st})` : ''}, ${sec(q.totalSec)} с, ${q.aspect}, звук — только ваш трек.`
-      : `გეგმა: ${q.shots} კადრი ${q.clips} კლიპიდან${st ? ` და ${st} ფოტოდან` : ''}, ${sec(q.totalSec)} წმ, ${q.aspect}, ხმად მხოლოდ შენი მუსიკა.`;
+      ? (q.clips ? `клипов (${q.clips})${st ? ` и фото (${st})` : ''}` : `фото (${st})`)
+      : (q.clips ? `${q.clips} კლიპიდან${st ? ` და ${st} ფოტოდან` : ''}` : `${st} ფოტოდან`);
+  const sound = soundText(q, locale, names);
+  const plan = lang === 'en'
+    ? `Plan: ${q.shots} shots from ${what}, ${sec(q.totalSec)} s, ${q.aspect}, with ${sound}.`
+    : lang === 'ru'
+      ? `План: ${q.shots} кадров из ${what}, ${sec(q.totalSec)} с, ${q.aspect}, ${sound}.`
+      : `გეგმა: ${q.shots} კადრი ${what}, ${sec(q.totalSec)} წმ, ${q.aspect}, ${sound}.`;
+  const notes = soundNotes(q, lang);
+  const noted = notes.length ? `\n${notes.join('\n')}` : '';
   // A start the user asked for („მუსიკა 5 წამიდან") is said; the first beat a fraction of a second in is not news.
-  const from = q.musicStartSec >= 1
+  const from = q.musicFile !== null && q.musicStartSec >= 1
     ? ' ' + (lang === 'en' ? `The track starts at ${clockOf(q.musicStartSec)}.` : lang === 'ru' ? `Трек начинается с ${clockOf(q.musicStartSec)}.` : `მუსიკა იწყება ${clockOf(q.musicStartSec)}-დან.`)
     : '';
   // Every file, in the user's order, as the quote fixed it (the manifest): every clip is in the edit, or there is no plan.
@@ -255,7 +360,7 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     ? (lang === 'en' ? `Price: ✦ ${q.credits}.` : lang === 'ru' ? `Цена: ✦ ${q.credits}.` : `ფასი: ✦ ${q.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');
   const go = lang === 'en' ? 'Nothing starts until you press Start.' : lang === 'ru' ? 'Ничего не начнётся, пока вы не нажмёте «Начать».' : 'არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.';
-  return `${found}\n${plan}${from}${ramp}${files}${left}\n${engine} ${price} ${go}`;
+  return `${found}\n${plan}${from}${noted}${ramp}${files}${left}\n${engine} ${price} ${go}`;
 }
 
 /**
@@ -268,7 +373,9 @@ export function manifestText(manifest: readonly MontageManifestItem[], locale: s
     ? (lang === 'en' ? 'video' : lang === 'ru' ? 'видео' : 'ვიდეო')
     : k === 'image'
       ? (lang === 'en' ? 'photo' : lang === 'ru' ? 'фото' : 'ფოტო')
-      : (lang === 'en' ? 'music' : lang === 'ru' ? 'музыка' : 'მუსიკა'));
+      : k === 'voice'
+        ? (lang === 'en' ? 'narration' : lang === 'ru' ? 'озвучка' : 'ნარაცია')
+        : (lang === 'en' ? 'music' : lang === 'ru' ? 'музыка' : 'მუსიკა'));
   const unit = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
   // A photo has no length of its own (its shot sets it): no „0 s" after it.
   const list = manifest
@@ -290,7 +397,7 @@ const STAGE: Record<string, Record<Lang, string>> = {
   bridge: { ka: 'ფაილებს ვამზადებ', en: 'Preparing the files', ru: 'Готовлю файлы' },
   normalize: { ka: 'კადრებს ვჭრი და ერთ ფორმატში მოვყავარ', en: 'Cutting the shots to one format', ru: 'Нарезаю кадры в один формат' },
   stitch: { ka: 'კადრებს ვაერთებ', en: 'Joining the shots', ru: 'Склеиваю кадры' },
-  music: { ka: 'მუსიკას ვამატებ', en: 'Laying the track under it', ru: 'Накладываю трек' },
+  music: { ka: 'ხმას ვამატებ: მუსიკას და ნარაციას', en: 'Mixing the sound: the music and the narration', ru: 'Свожу звук: музыку и озвучку' },
   qc: { ka: 'ვამოწმებ, რომ ყველა კლიპი შედეგშია', en: 'Checking every clip is in the output', ru: 'Проверяю, что все клипы в итоге' },
   completed: { ka: 'ვამოწმებ შედეგს', en: 'Checking the result', ru: 'Проверяю результат' },
 };
@@ -308,8 +415,14 @@ export function trackTooBigText(locale: string): string {
       : 'ეს მუსიკა ჩატში გასაგზავნად ძალიან დიდია (4 მბ-ზე მეტი). მიამაგრე მასთან კლიპები და დაწერე, მაგალითად: „დაამონტაჟე მუსიკაზე“.';
 }
 
-export function doneText(durationSec: number, locale: string): string {
+/** `sound`: the quote's (absent = the music alone, as every montage was before GG 2026-10-11 17:38Z). */
+export function doneText(durationSec: number, locale: string, sound?: MontageQuote['sound']): string {
   const lang = pick(locale);
+  if (sound && sound !== 'music') {
+    return lang === 'en' ? `Ready: ${sec(durationSec)} s. It is also in your Library.`
+      : lang === 'ru' ? `Готово: ${sec(durationSec)} с. Видео есть и в Библиотеке.`
+        : `მზადაა: ${sec(durationSec)} წმ. ბიბლიოთეკაშიც შევინახე.`;
+  }
   return lang === 'en' ? `Ready: ${sec(durationSec)} s, cut to your track. It is also in your Library.`
     : lang === 'ru' ? `Готово: ${sec(durationSec)} с, смонтировано под ваш трек. Видео есть и в Библиотеке.`
       : `მზადაა: ${sec(durationSec)} წმ, შენს მუსიკაზე დამონტაჟებული. ბიბლიოთეკაშიც შევინახე.`;

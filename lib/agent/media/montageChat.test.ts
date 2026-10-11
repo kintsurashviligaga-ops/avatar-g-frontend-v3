@@ -26,6 +26,20 @@ describe('beatMontageAsk', () => {
     ['გამიკეთე კლიპი ამ ვიდეოებით', [V, V, A]],
     ['make me a clip from these', [V, V, A]],
     ['сделай клип из этих видео', [V, V, A]],
+    // GG 2026-10-11 17:38Z: no music sent is still a montage (the clips' own sound); photos alone are one too; a track
+    // and the user's own narration together; the clips' own sound kept under the track; a narration over one clip.
+    ['დაამონტაჟე ეს ვიდეოები', [V, V]],
+    ['გააერთიანე ეს კლიპები მუსიკის გარეშე', [V, V, V]],
+    ['join these clips', [V, 'image', V]],
+    ['смонтируй эти видео без музыки', [V, V]],
+    ['make a slideshow', ['image', 'image', 'image']],
+    ['ამ ფოტოებით სლაიდშოუ გამიკეთე', ['image', 'image']],
+    ['cut these to the music', ['image', 'image', A]],
+    ['cut these to the music', [V, A, A]],
+    ['დაამონტაჟე და ზემოდან ჩემი ნარაცია დაადე', [V, V, A, A]],
+    ['ჩემი ნარაცია დაადე ამ ვიდეოს', [V, A]],
+    ['add my voice-over to this video', [V, A]],
+    ['დაამონტაჟე, თავისი ხმაც დარჩეს და მუსიკა ზემოდან დაადე', [V, V, A]],
   ])('claims %s', (text, kinds) => expect(beatMontageAsk(text, kinds as AttachmentKind[])).toBe(true));
 
   test.each([
@@ -37,12 +51,18 @@ describe('beatMontageAsk', () => {
     // a question is a question
     ['what song is this?', [V, V, A]],
     ['რა მუსიკაა ამ ვიდეოში', [V, V, A]],
-    // the files must be clips and ONE track, nothing else
-    ['cut these to the music', [V, V]],
-    ['cut these to the music', [V, A, A]],
+    // the files must be pictures and at most two sound files (a track and a narration), nothing else
+    ['cut these to the music', [V, A, A, A]],
     ['cut these to the music', [V, 'other', A]],
-    ['cut these to the music', ['image', 'image', A]],
     ['cut these to the music', [A]],
+    // no sound file: music named as the point (the chat asks for the track), a narration with no recording (the chat
+    // asks for the file), one clip alone, or dubbing („озвучь" is not a montage)
+    ['cut these to the music', [V, V]],
+    ['make a music video from these', [V, V]],
+    ['დაამონტაჟე და ჩემი ნარაცია დაადე', [V, V]],
+    ['დაამონტაჟე', [V]],
+    ['Озвучь это видео на русском', [V]],
+    ['add background music', [V, V]],
     ['cut these to the music', [...Array(13).fill(V), A]],
     ['cut these to the music', [...Array(6).fill(V), ...Array(7).fill('image'), A]],
     // words are required

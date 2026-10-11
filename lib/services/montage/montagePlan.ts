@@ -60,6 +60,15 @@ export interface MontageRequest {
   musicDuckDb: number;
   /** Drop every source's own audio and keep only the bed. */
   musicOnly: boolean;
+  /**
+   * The music's level in dB (≤ 0) when Agent G mixes the sound itself (./montageSound): 0 when the track is the only
+   * sound, lower when the clips' own sound leads („თავისი ხმაც და ზემოდან მუსიკა"). Absent = the editor's older mix.
+   */
+  musicGainDb?: number;
+  /** A narration (the user's own recording) laid over the master from `voiceStartSec`; the rest steps back under it. */
+  voiceUrl?: string;
+  /** The master second the narration starts at. Only ever set alongside `voiceUrl`. */
+  voiceStartSec?: number;
   /** Optional colour grade over the whole master. Absent when neutral, so an ungraded edit encodes as before. */
   grade?: MontageGrade;
 }
@@ -314,6 +323,25 @@ export function validateMontageRequest(body: unknown): ValidationResult {
 
   const duckRaw = Number(b.musicDuckDb);
   const grade = coerceGrade(b.grade);
+
+  // Agent G's own mix (./montageSound): refused, not clamped, when out of range — a bed at another level than quoted
+  // is a different edit than the one the user started.
+  let musicGainDb: number | undefined;
+  if (b.musicGainDb !== undefined && b.musicGainDb !== null) {
+    if (typeof b.musicGainDb !== 'number' || !Number.isFinite(b.musicGainDb) || b.musicGainDb < -30 || b.musicGainDb > 0) {
+      return { ok: false, error: 'musicGainDb must be a number of dB from -30 to 0' };
+    }
+    if (musicUrl) musicGainDb = Number(b.musicGainDb.toFixed(1));
+  }
+  const voiceUrl = typeof b.voiceUrl === 'string' ? b.voiceUrl.trim() : '';
+  if (voiceUrl && !/^https?:\/\//i.test(voiceUrl)) return { ok: false, error: 'voiceUrl must be an http(s) url' };
+  let voiceStartSec = 0;
+  if (b.voiceStartSec !== undefined && b.voiceStartSec !== null) {
+    if (typeof b.voiceStartSec !== 'number' || !Number.isFinite(b.voiceStartSec) || b.voiceStartSec < 0 || b.voiceStartSec >= total) {
+      return { ok: false, error: 'voiceStartSec must be a second inside the montage' };
+    }
+    voiceStartSec = Number(b.voiceStartSec.toFixed(3));
+  }
   return {
     ok: true,
     request: {
@@ -326,6 +354,8 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       // Clamped to a sane duck range; 0 would bury the dialogue, -40 would silence the bed's purpose.
       musicDuckDb: Number.isFinite(duckRaw) ? Math.max(-30, Math.min(0, duckRaw)) : -12,
       musicOnly: b.musicOnly === true,
+      ...(musicGainDb !== undefined ? { musicGainDb } : {}),
+      ...(voiceUrl ? { voiceUrl, ...(voiceStartSec > 0 ? { voiceStartSec } : {}) } : {}),
       ...(grade ? { grade } : {}),
     },
   };

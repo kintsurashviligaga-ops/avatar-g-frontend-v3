@@ -38,10 +38,23 @@ import {
   type MontageAspect,
   type MontageRequest,
 } from '@/lib/services/montage/montagePlan';
-import { planBeatCuts, type BeatGrid, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
+import { planBeatCuts, type BeatGrid, type CutPlan, type CutProblem, type EnergyEnvelope, type RampResult } from '@/lib/services/montage/beatPlan';
+import { planJoin, type JoinPlan } from '@/lib/services/montage/joinPlan';
 import { minePlanParams } from '@/lib/agent/params';
 import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRow, type LeaseStore } from '@/lib/orchestrator/jobLease';
-import { MAX_FILES, aspectFromClips, montageBody, rampOf, sortInputs } from './montageAsk';
+import {
+  MAX_CLIPS,
+  MAX_FILES,
+  aspectFromClips,
+  montageBody,
+  pickTracks,
+  rampOf,
+  soundOf,
+  sortInputs,
+  wantsBeatCuts,
+  type SoundMode,
+  type TrackInfo,
+} from './montageAsk';
 import {
   buildManifest,
   checkManifest,
@@ -191,6 +204,26 @@ export interface MontageQuote {
   bpm: number | null;
   musicStartSec: number;
   /**
+   * What the edit sounds like (GG 2026-10-11 17:38Z): the music alone, the clips' own sound with the music beneath it,
+   * the clips' own sound alone (no music sent), or nothing. A narration, when there is one, is laid over any of them.
+   */
+  sound: SoundMode;
+  /** How the cuts are made: on the music's beat, or each clip WHOLE as one stretch in the order sent (./joinPlan). */
+  cutting: 'beat' | 'whole';
+  /** The manifest index of the music track; null = a montage without music. */
+  musicFile: number | null;
+  /** The music ends before the edit does (own sound leads, so it is not refused): the master second it stops at. */
+  musicEndsSec?: number;
+  /**
+   * The narration the user recorded: its file, its length, the master second it starts at, and `cutSec`, how much of
+   * its end the edit is too short to hold (absent = all of it is heard).
+   */
+  voice?: { file: number; durationSec: number; startSec: number; cutSec?: number };
+  /** No length was asked and the clips together run past one edit: each clip gives this share of itself, from its middle. */
+  shortened?: { footageSec: number; maxSec: number; share: number };
+  /** The words asked for speed ramps, which follow the music: with no music sent there is nothing to ramp by. */
+  rampWithoutMusic?: boolean;
+  /**
    * The speed ramps the words asked for („ააჩქარე და შეანელე სადაც საჭიროა"): how many shots slow down and speed up,
    * chosen by the music under them. Absent = none asked.
    */
@@ -245,7 +278,8 @@ const positive = (x: unknown): number | undefined => (typeof x === 'number' && N
 const r3 = (n: number) => Number(n.toFixed(3));
 
 /** A plan that cannot give every clip a shot → the refusal that names the files and the cause (never a plan without them). */
-function refusalOf(problem: CutProblem | undefined, error: string | undefined, clips: readonly number[], track: number, clipSec: readonly number[]): MontageError {
+function refusalOf(problem: CutProblem | undefined, error: string | undefined, clips: readonly number[], track: number | null, clipSec: readonly number[]): MontageError {
+  const trackFiles = track !== null ? [track] : [];
   switch (problem?.kind) {
     case 'clip_too_short': {
       const files = problem.clips.map((c) => clips[c]!);
@@ -256,11 +290,11 @@ function refusalOf(problem: CutProblem | undefined, error: string | undefined, c
     case 'music_too_short':
       if (problem.targetSec) {
         return err('music_too_short', `The music from ${problem.fromSec}s lasts ${problem.musicSec}s; the ${problem.targetSec}s asked needs it until ${r3(problem.fromSec + problem.targetSec)}s. Start the music earlier, use a longer track, or ask for a shorter edit.`, {
-          files: [track], detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec, targetSec: problem.targetSec },
+          files: trackFiles, detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec, targetSec: problem.targetSec },
         });
       }
       return err('music_too_short', `The music from ${problem.fromSec}s lasts ${problem.musicSec}s; one shot for each of the ${problem.clips} clips needs ${problem.neededSec}s. Start the music earlier, use a longer track, or remove a clip.`, {
-        files: [track], detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec },
+        files: trackFiles, detail: { clips: problem.clips, musicSec: problem.musicSec, fromSec: problem.fromSec, neededSec: problem.neededSec },
       });
     case 'footage_too_short':
       return err('footage_too_short', `The ${problem.clips} clips together last ${problem.footageSec}s, each used once; the ${problem.targetSec}s asked needs more. Add clips or ask for a shorter edit.`, {
@@ -290,9 +324,9 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   };
   const files = Array.isArray(input.files) ? input.files : null;
   if (!files || !files.length || files.some((f) => typeof f !== 'string' || !f.trim() || f.length > 2048)) {
-    return refuse(err('bad_input', 'Send the clips and the track as file references.'));
+    return refuse(err('bad_input', 'Send the clips, photos and sound files as file references.'));
   }
-  if (files.length > MAX_FILES) return refuse(err('too_many_files', `At most ${MAX_FILES} files: one track and up to ${MAX_FILES - 1} clips.`));
+  if (files.length > MAX_FILES) return refuse(err('too_many_files', `At most ${MAX_FILES} files: up to ${MAX_CLIPS} clips or photos, a music track and a narration.`));
   const names = parseNames(input.names, files.length);
   if (!names.ok) return refuse(err('bad_input', `The file names do not match the files: ${names.error}.`));
   if (!deps.key()) return refuse(err('not_configured', 'Quotes cannot be signed on this server.'));
@@ -309,12 +343,12 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     urls.push(r.url);
   }
 
-  // ── analyse: which is a clip, which is the track, how long is each, where is the beat ─────────────────────────────
+  // ── analyse: which is a clip, a photo or a sound file, how long is each ─────────────────────────────────────────
   let probes: Array<BannerProbe | null> = [];
   for (const url of urls) probes.push(await deps.probe(url));
 
   // ── the user's source selection (Media Studio v2.0 §C): applied before the manifest, so an excluded file is in no
-  // shot, no signed request and no render graph. Numbers count the pictures in the order sent, never the track. ─────
+  // shot, no signed request and no render graph. Numbers count the pictures in the order sent, never a sound file. ──
   const prompt = typeof input.prompt === 'string' ? input.prompt.slice(0, 2000) : '';
   let sentFiles = files as string[];
   let sentNames = names.names;
@@ -328,7 +362,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
         : `The words "${sel.phrase}" leave no picture to edit.`, { detail: { pictures: all.clips.length, asked: sel.asked } }));
     }
     if (sel.mode === 'subset') {
-      const keepSent = new Set([...sel.keep.map((k) => all.clips[k]!), all.track]);
+      const keepSent = new Set([...sel.keep.map((k) => all.clips[k]!), ...all.audios]);
       const used = files.map((_, i) => i).filter((i) => keepSent.has(i));
       const excluded = sel.excluded.map((k) => all.clips[k]!);
       selectionInfo = {
@@ -347,25 +381,39 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const sorted = sortInputs(probes);
   if (!sorted.ok) {
     const message: Record<typeof sorted.error, string> = {
-      unreadable: 'Some files could not be read as video or audio.',
-      no_clip: 'Attach at least one video clip.',
-      no_track: 'Attach the music track too.',
-      several_tracks: 'Attach exactly one music track.',
-      too_many_clips: `At most ${MAX_FILES - 1} clips in one edit.`,
+      unreadable: 'Some files could not be read as video, photo or audio.',
+      no_clip: 'Attach at least one video clip or photo.',
+      several_tracks: 'Attach at most two sound files: one music track and one narration.',
+      too_many_clips: `At most ${MAX_CLIPS} clips and photos in one edit.`,
     };
     return refuse(asSent(err(sorted.error, message[sorted.error], sorted.files ? { files: sorted.files } : {})));
   }
-  const track = await deps.analyzeTrack(urls[sorted.track]!);
-  if (!track || !(track.probe.durationSec > 0)) {
-    return refuse(asSent(err('unreadable', 'The music track could not be read.', { files: [sorted.track] })));
-  }
 
-  // ── the manifest: every file sent, in the order sent; files = manifest = videos + exactly one audio ──────────────
-  const trackProbe = { durationSec: track.probe.durationSec };
-  const manifest = buildManifest(sentFiles, sentNames, probes.map((p, i) => (i === sorted.track ? trackProbe : p!)), sorted.track, sorted.stills);
+  // ── the sound: which file is the music, which the narration, and what the edit sounds like ────────────────────
+  // GG 2026-10-11 17:38Z: no music sent is a montage with the clips' own sound, never a refusal; „თავისი ხმაც" keeps
+  // that sound under a track; a recording of the user's voice is laid over the edit (./montageAsk pickTracks, soundOf).
+  type TrackAnalysis = NonNullable<Awaited<ReturnType<MontageExecDeps['analyzeTrack']>>>;
+  const analysed = new Map<number, TrackAnalysis>();
+  const tracks: TrackInfo[] = [];
+  for (const i of sorted.audios) {
+    const a = await deps.analyzeTrack(urls[i]!);
+    if (!a || !(a.probe.durationSec > 0)) {
+      return refuse(asSent(err('unreadable', sorted.audios.length > 1 ? `Sound file ${i + 1} could not be read.` : 'The sound file could not be read.', { files: [i] })));
+    }
+    analysed.set(i, a);
+    tracks.push({ index: i, name: cleanName(sentNames?.[i], sentFiles[i]!.trim()), durationSec: a.probe.durationSec, grid: a.grid });
+  }
+  const picked = pickTracks(prompt, tracks);
+  const music = picked.music !== null ? analysed.get(picked.music)! : null;
+  const voice = picked.voice !== null ? analysed.get(picked.voice)! : null;
+  const sound = soundOf(prompt, music !== null);
+
+  // ── the manifest: every file sent, in the order sent; files = manifest = pictures + at most a track and a narration
+  const soundProbe = new Map(tracks.map((t) => [t.index, { durationSec: t.durationSec }]));
+  const manifest = buildManifest(sentFiles, sentNames, probes.map((p, i) => soundProbe.get(i) ?? p!), picked.music, sorted.stills, picked.voice);
   const counted = checkManifest(manifest);
   if (!counted.ok || manifest.length !== sentFiles.length || counted.videos.length + counted.stills.length !== sorted.clips.length
-    || counted.stills.length !== sorted.stills.length || counted.audio !== sorted.track) {
+    || counted.stills.length !== sorted.stills.length || counted.audio !== picked.music || counted.voice !== picked.voice) {
     return refuse(err('manifest_invalid', `The files could not be listed: ${counted.ok ? 'the count does not match' : counted.error}.`));
   }
 
@@ -378,29 +426,68 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const askedSec = positive(input.targetSec) ?? said.durationSec;
   // Not capped here: an asked length past one edit is refused by the planner (target_too_long), never cut silently.
   const target = askedSec;
-  const musicFromSec = positive(input.musicFromSec) ?? said.musicStartSec;
+  const musicFromSec = music ? (positive(input.musicFromSec) ?? said.musicStartSec) : undefined;
   // „ააჩქარე … შეანელე" on a montage: single shots change speed where the music calls for it; the cuts stay on the beat.
   const rampMode = prompt ? rampOf(prompt) : null;
   const stillOf = sorted.clips.map((i) => sorted.stills.includes(i));
-  const plan = planBeatCuts({
-    clipDurationsSec: clipProbes.map((p) => p.durationSec),
-    // A photo is one still shot (beatPlan `stills`): never too short, shown once.
-    ...(sorted.stills.length ? { stills: stillOf } : {}),
-    musicSec: track.probe.durationSec,
-    grid: track.grid,
-    ...(target ? { targetSec: target } : {}),
-    ...(musicFromSec ? { musicFromSec } : {}),
-    ...(rampMode ? { ramp: { mode: rampMode, energy: track.energy ?? null } } : {}),
-    ...LIMITS,
-  });
+  // With the music alone the cuts follow its beat (the montage as it always was). Where the clips' own sound plays, a
+  // clip is one stretch in the order sent (./joinPlan: a beat-long slice of speech is noise), unless the words ask
+  // for the beat or for speed ramps, which follow the music.
+  const onBeat = music !== null && (sound === 'music' || rampMode !== null || wantsBeatCuts(prompt));
+  const planFor = (targetSec: number | undefined): CutPlan | JoinPlan => (onBeat && music
+    ? planBeatCuts({
+      clipDurationsSec: clipProbes.map((p) => p.durationSec),
+      // A photo is one still shot (beatPlan `stills`): never too short, shown once.
+      ...(sorted.stills.length ? { stills: stillOf } : {}),
+      musicSec: music.probe.durationSec,
+      grid: music.grid,
+      ...(targetSec ? { targetSec } : {}),
+      ...(musicFromSec ? { musicFromSec } : {}),
+      ...(rampMode ? { ramp: { mode: rampMode, energy: music.energy ?? null } } : {}),
+      ...LIMITS,
+    })
+    : planJoin({
+      clipDurationsSec: clipProbes.map((p) => p.durationSec),
+      ...(sorted.stills.length ? { stills: stillOf } : {}),
+      ...(targetSec ? { targetSec } : {}),
+      ...LIMITS,
+    }));
+  let plan = planFor(target);
+  // A narration longer than the edit: with no length asked, the edit grows to hold it when the pictures can fill it
+  // (photos stretch, clips play longer); otherwise the card says how much of its end is not heard.
+  const voiceEnd = voice ? voice.probe.durationSec : 0;
+  if (plan.ok && voice && !target && plan.totalSec + 0.25 < voiceEnd) {
+    const longer = planFor(Math.min(voiceEnd, MAX_TOTAL_SEC));
+    if (longer.ok) plan = longer;
+  }
   // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).
-  if (!plan.ok) return refuse(asSent(refusalOf(plan.problem, plan.error, sorted.clips, sorted.track, clipProbes.map((p) => p.durationSec))));
+  if (!plan.ok) return refuse(asSent(refusalOf(plan.problem, plan.error, sorted.clips, picked.music, clipProbes.map((p) => p.durationSec))));
+  // The join plan does not read the music: it starts where the words say, and under the clips' own sound a track
+  // shorter than the edit just ends (the card says where); one that has nothing left from that second is refused.
+  const musicStartSec = onBeat ? plan.musicStartSec : r3(musicFromSec ?? 0);
+  let musicEndsSec: number | undefined;
+  if (music && !onBeat) {
+    const left = music.probe.durationSec - musicStartSec;
+    if (!(left >= MIN_SHOT_SEC)) {
+      return refuse(asSent(err('music_too_short', `The music lasts ${r3(music.probe.durationSec)}s; it cannot start at ${musicStartSec}s.`, {
+        files: [picked.music!], detail: { clips: sorted.clips.length, musicSec: r3(Math.max(0, left)), fromSec: musicStartSec, neededSec: r3(plan.totalSec) },
+      })));
+    }
+    if (left + 0.05 < plan.totalSec) musicEndsSec = r3(left);
+  }
+  const voiceCutSec = voice && voiceEnd > plan.totalSec + 0.25 ? r3(voiceEnd - plan.totalSec) : 0;
 
   const aspect: MontageAspect =
     input.aspect === '9:16' || input.aspect === '16:9' || input.aspect === '1:1'
       ? input.aspect
       : said.aspect ?? aspectFromClips(clipProbes);
-  const body = montageBody(plan, sorted.clips.map((i, c) => ({ url: urls[i]!, source: i, ...(stillOf[c] ? { still: true } : {}) })), urls[sorted.track]!, aspect, manifest);
+  const body = montageBody(
+    { ...plan, musicStartSec },
+    sorted.clips.map((i, c) => ({ url: urls[i]!, source: i, ...(stillOf[c] ? { still: true } : {}) })),
+    { mode: sound, ...(music ? { musicUrl: urls[picked.music!]! } : {}), ...(voice ? { voiceUrl: urls[picked.voice!]! } : {}) },
+    aspect,
+    manifest,
+  );
   // The same reader the run and the worker use: the lane's validation, the manifest, every shot's file, coverage.
   const parsed = parseAgentRequest(body);
   if (!parsed.ok) {
@@ -427,7 +514,14 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     aspect,
     beatSynced: plan.beatSynced,
     bpm: plan.bpm,
-    musicStartSec: plan.musicStartSec,
+    musicStartSec: music ? musicStartSec : 0,
+    sound,
+    cutting: onBeat ? 'beat' : 'whole',
+    musicFile: picked.music,
+    ...(musicEndsSec !== undefined ? { musicEndsSec } : {}),
+    ...(voice ? { voice: { file: picked.voice!, durationSec: r3(voice.probe.durationSec), startSec: 0, ...(voiceCutSec ? { cutSec: voiceCutSec } : {}) } } : {}),
+    ...('shortened' in plan && plan.shortened ? { shortened: plan.shortened } : {}),
+    ...(rampMode && !music ? { rampWithoutMusic: true } : {}),
     ...(plan.ramp ? { ramp: plan.ramp } : {}),
     manifest: request.manifest,
     clipOrder: clipOrder(request.shots),

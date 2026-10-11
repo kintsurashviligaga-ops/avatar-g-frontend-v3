@@ -91,7 +91,8 @@ export interface IntentParams {
 export type ActTarget = 'attachment' | 'link' | 'previous' | 'pending' | 'new';
 
 /** An input the act needs and the message did not bring. Agent G asks for it; nothing runs or is charged. */
-export type MissingInput = 'clips' | 'track' | 'video' | 'photo' | 'source' | 'previous' | 'detail';
+/** `narration`: a montage asked with the user's own voice-over and no recording sent (Agent G mixes a file, never a made-up voice). */
+export type MissingInput = 'clips' | 'track' | 'narration' | 'video' | 'photo' | 'source' | 'previous' | 'detail';
 
 export type ControlOp = 'stop' | 'status' | 'continue';
 

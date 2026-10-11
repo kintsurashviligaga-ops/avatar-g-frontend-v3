@@ -61,7 +61,8 @@ export interface TaskCardModel {
   notice?: string;
 }
 
-export interface TaskInputFile { name: string; kind: 'video' | 'audio' | 'image' }
+/** `audio`: the music track; `voice`: a narration the user recorded (./montageManifest ManifestKind). */
+export interface TaskInputFile { name: string; kind: 'video' | 'audio' | 'image' | 'voice' }
 export interface TaskInputs { text: string; files: TaskInputFile[] }
 
 const T = {
@@ -164,7 +165,8 @@ export function montageInputs(s: Pick<AgentMontageState, 'quote' | 'names'>, loc
   const photos = !ph ? '' : lang === 'en' ? `${ph} photo${ph === 1 ? '' : 's'}` : lang === 'ru' ? `${ph} фото` : `${ph} ფოტო`;
   const audio = !tracks.length ? '' : mp3 ? `${tracks.length} MP3`
     : lang === 'en' ? `${tracks.length} track${tracks.length === 1 ? '' : 's'}` : lang === 'ru' ? `аудио: ${tracks.length}` : `${tracks.length} აუდიო`;
-  return { text: [videos, photos, audio].filter(Boolean).join(' + '), files };
+  const voice = !files.some((f) => f.kind === 'voice') ? '' : lang === 'en' ? 'narration' : lang === 'ru' ? 'озвучка' : 'ნარაცია';
+  return { text: [v ? videos : '', photos, audio, voice].filter(Boolean).join(' + '), files };
 }
 
 /** " · music from 0:58": where in the song the montage starts, in whole seconds as the chat says it. */

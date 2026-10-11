@@ -5,19 +5,23 @@
  */
 import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import { displaysPortrait } from '@/lib/video/probeBanner';
-import type { CutPlan, RampMode } from '@/lib/services/montage/beatPlan';
+import type { BeatGrid, CutPlan, RampMode } from '@/lib/services/montage/beatPlan';
+import { MUSIC_UNDER_OWN_DB } from '@/lib/services/montage/montageSound';
 import type { MontageAspect, MontageShot } from '@/lib/services/montage/montagePlan';
 import { MAX_SHOTS, shotDuration, shotSpeed, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
-import type { AgentMontageRequest, MontageManifestItem } from './montageManifest';
+import { isPictureKind, type AgentMontageRequest, type MontageManifestItem } from './montageManifest';
 
-/** One track plus at most MAX_SHOTS clips (a clip is used at least once, so more could never all appear). */
+/** At most MAX_SHOTS pictures (a picture is used at least once, so more could never all appear), a track and a narration. */
 export const MAX_CLIPS = MAX_SHOTS;
-export const MAX_FILES = MAX_CLIPS + 1;
+export const MAX_FILES = MAX_CLIPS + 2;
+/** A music track and a narration: the most sound files one montage takes. */
+export const MAX_SOUNDS = 2;
 
 export type InputSort =
-  /** `clips`: every picture in the order sent, videos AND photos; `stills`: which of them are photos (manifest indices). */
-  | { ok: true; clips: number[]; stills: number[]; track: number }
-  | { ok: false; error: 'unreadable' | 'no_clip' | 'no_track' | 'several_tracks' | 'too_many_clips'; files?: number[] };
+  /** `clips`: every picture in the order sent, videos AND photos; `stills`: which of them are photos; `audios`: the sound
+   *  files (none, one, or a track and a narration: ./montageAsk pickTracks says which is which). Manifest indices. */
+  | { ok: true; clips: number[]; stills: number[]; audios: number[] }
+  | { ok: false; error: 'unreadable' | 'no_clip' | 'several_tracks' | 'too_many_clips'; files?: number[] };
 
 /** Codecs ffmpeg reports for a still picture (a JPEG, PNG, WebP, HEIF, BMP or TIFF file is a one-frame „video"). */
 const STILL_CODECS = new Set(['mjpeg', 'png', 'webp', 'bmp', 'tiff', 'hevc', 'heif', 'av1', 'jpegxl', 'jpeg2000']);
@@ -34,20 +38,95 @@ export function isStillProbe(p: Pick<BannerProbe, 'hasVideo' | 'hasAudio' | 'vid
 }
 
 /**
- * Sort probed attachments: a video stream is a clip, a photo is a still shot, sound without a picture is the track.
- * Exactly one track, and at least one video (a montage of photos only is a slideshow, not this edit).
+ * Sort probed attachments: a video stream is a clip, a photo is a still shot, sound without a picture is a track or a
+ * narration. At least one picture: videos, photos, or both (GG 2026-10-11 17:38Z: „სურათის მონტაჟსაც არ აკეთებს", a
+ * montage of photos alone, and „მუსიკა თუ არ ავტვირთე … არ იწყებს", a montage with no track). At most two sound files.
  */
 export function sortInputs(probes: ReadonlyArray<BannerProbe | null>, maxClips: number = MAX_CLIPS): InputSort {
   const unreadable = probes.flatMap((p, i) => (!p || (!p.hasVideo && !p.hasAudio) || (!(p.durationSec > 0) && !isStillProbe(p)) ? [i] : []));
   if (unreadable.length) return { ok: false, error: 'unreadable', files: unreadable };
   const clips = probes.flatMap((p, i) => (p!.hasVideo ? [i] : []));
   const stills = clips.filter((i) => isStillProbe(probes[i]!));
-  const tracks = probes.flatMap((p, i) => (!p!.hasVideo && p!.hasAudio ? [i] : []));
-  if (clips.length === stills.length) return { ok: false, error: 'no_clip' };
-  if (!tracks.length) return { ok: false, error: 'no_track' };
-  if (tracks.length > 1) return { ok: false, error: 'several_tracks', files: tracks };
+  const audios = probes.flatMap((p, i) => (!p!.hasVideo && p!.hasAudio ? [i] : []));
+  if (!clips.length) return { ok: false, error: 'no_clip' };
+  if (audios.length > MAX_SOUNDS) return { ok: false, error: 'several_tracks', files: audios };
   if (clips.length > maxClips) return { ok: false, error: 'too_many_clips' };
-  return { ok: true, clips, stills, track: tracks[0]! };
+  return { ok: true, clips, stills, audios };
+}
+
+// ── the sound of a montage, in the user's words ────────────────────────────────────────────────────────────────────
+
+/** „თავისი ხმაც", „keep the original sound", «оригинальный звук»: the clips' own sound stays in the edit. */
+const OWN_SOUND = new RegExp([
+  '(?:თავის|საკუთარ|ორიგინალ|ბუნებრივ|ნამდვილ)\\p{L}*\\s+ხმ', '(?<!\\p{L})ხმაც(?!\\p{L})', 'ხმ\\p{L}*\\s+(?:დატოვ|შეინარჩუნ|არ\\s+მოაშორ|არ\\s+წაშალ)',
+  '(?:ვიდეო|კლიპ)\\p{L}*\\s+ხმ\\p{L}*\\s+(?:დატოვ|იყოს|შეინარჩუნ)',
+  'original\\s+(?:sound|audio)', 'keep\\s+(?:the\\s+|their\\s+|its\\s+)?(?:original\\s+|own\\s+|clips?\\W?s?\\s+|videos?\\W?s?\\s+)?(?:sound|audio)',
+  '(?:own|natural)\\s+(?:sound|audio)', 'with\\s+(?:the|their|its)\\s+(?:own\\s+)?(?:sound|audio)',
+  'оригинальн\\p{L}*\\s+звук', '(?:свой|собственн\\p{L}*|родн\\p{L}*)\\s+звук', '(?:оставь|сохрани)\\p{L}*\\s+звук', 'звук\\s+(?:оставь|сохрани)',
+].join('|'), 'iu');
+/** „უხმოდ", "without sound", «без звука»: a silent edit (no music, no clips' sound). */
+const SILENT = new RegExp([
+  'უხმო', 'ხმის\\s+გარეშე', 'ხმ\\p{L}*\\s+(?:მოაშორ|წაშალ|გათიშ|ამოართვ)', '(?:მოაშორ|წაშალ|გათიშ)\\p{L}*\\s+ხმ',
+  'without\\s+(?:any\\s+)?(?:sound|audio)', '\\bno\\s+(?:sound|audio)\\b', '\\bsilent\\b', '\\bmute(?:d)?\\b',
+  'без\\s+звука', 'беззвучн', '(?:убери|выключи)\\p{L}*\\s+звук',
+].join('|'), 'iu');
+/** „მუსიკის გარეშე", "no music", «без музыки»: the words say there is to be no music (so no track is missing). */
+const NO_MUSIC = /მუსიკის\s+გარეშე|უმუსიკო|მუსიკა\s+(?:არ\s+(?:მინდა|დაადო|დაადე|გინდა)|არა)|without\s+(?:any\s+)?music|\bno\s+music\b|без\s+музык/iu;
+/** A narration the user recorded: „ჩემი ნარაცია", „გახმოვანება", "voice-over", «озвучка». */
+const NARRATION = /ნარაცი|გახმოვან|ჩემი\s+ხმ|ჩემს\s+ხმ|ჩანაწერ|ხმოვან\p{L}*\s+(?:ტექსტ|კომენტ)|voice\s*-?\s*over|narrat|\bmy\s+voice\b|озвуч|закадров|голос\s+за\s+кадром|мой\s+голос/iu;
+/** A sound file named as a recording of a voice, not a song. */
+const VOICE_NAME = /voice|narrat|\bvo\b|record|\brec\b|memo|dictaphone|ნარაც|გახმოვ|ხმა|ჩანაწერ|голос|озвуч|запис/iu;
+
+export function wantsOwnSound(text: string | undefined): boolean { return OWN_SOUND.test(text ?? ''); }
+export function wantsSilence(text: string | undefined): boolean { return SILENT.test(text ?? ''); }
+export function wantsNoMusic(text: string | undefined): boolean { return NO_MUSIC.test(text ?? ''); }
+export function asksNarration(text: string | undefined): boolean { return NARRATION.test(text ?? ''); }
+/** „ბითზე", „რიტმში", "on the beat", «в ритм»: cut on the music's beat even where the clips' own sound plays. */
+const BEAT_CUTS = /ბით|ბიტ|რიტმ|\bbeats?\b|rhythm|(?<!\p{L})бит|ритм/iu;
+export function wantsBeatCuts(text: string | undefined): boolean { return BEAT_CUTS.test(text ?? ''); }
+
+/**
+ * What the montage sounds like:
+ *   music      the track alone (the clips' own sound dropped): the beat montage as it always was;
+ *   own+music  the clips' own sound leads and the track plays beneath it („თავისი ხმაც და ზემოდან მუსიკა");
+ *   own        no track: the clips' own sound (a montage with no music, GG 2026-10-11 17:38Z);
+ *   silent     nothing („უხმოდ"); a narration, when there is one, is still laid over any of these.
+ */
+export type SoundMode = 'music' | 'own+music' | 'own' | 'silent';
+
+export function soundOf(text: string | undefined, hasMusic: boolean): SoundMode {
+  const own = wantsOwnSound(text);
+  if (hasMusic) return own ? 'own+music' : 'music';
+  return wantsSilence(text) && !own ? 'silent' : 'own';
+}
+
+export interface TrackInfo {
+  /** The file's index in the manifest (the order sent). */
+  index: number;
+  name: string;
+  durationSec: number;
+  grid: BeatGrid | null;
+}
+
+/**
+ * Which sound file is the music and which the narration. One file: a narration when the words ask for one and not for
+ * music, or its name says it is a recording; otherwise the music. Two: the one named as a recording is the narration;
+ * else the one with a beat is the music (a voice has none; the steadier beat when both do), else the longer one. The card
+ * names both before Start, so a wrong guess is seen, never heard first.
+ */
+export function pickTracks(text: string | undefined, tracks: readonly TrackInfo[]): { music: number | null; voice: number | null } {
+  if (!tracks.length) return { music: null, voice: null };
+  const named = (t: TrackInfo) => VOICE_NAME.test(t.name);
+  if (tracks.length === 1) {
+    const t = tracks[0]!;
+    const voice = (asksNarration(text) && !/მუსიკ|music|song|музык|песн/iu.test((text ?? '').replace(NARRATION, ''))) || (named(t) && !t.grid);
+    return voice ? { music: null, voice: t.index } : { music: t.index, voice: null };
+  }
+  const [a, b] = tracks as [TrackInfo, TrackInfo];
+  if (named(a) !== named(b)) return named(a) ? { music: b.index, voice: a.index } : { music: a.index, voice: b.index };
+  const conf = (t: TrackInfo) => t.grid?.confidence ?? -1;
+  if (conf(a) !== conf(b)) return conf(a) > conf(b) ? { music: a.index, voice: b.index } : { music: b.index, voice: a.index };
+  return a.durationSec >= b.durationSec ? { music: a.index, voice: b.index } : { music: b.index, voice: a.index };
 }
 
 const VERTICAL = /(?:reels?|tik\s?tok|shorts|stor(?:y|ies)|vertical|portrait|9\s*[:x/]\s*16|ვერტიკალ|სთორი|რილს|вертикал|сторис|рилс)/iu;
@@ -87,18 +166,30 @@ export function aspectFromClips(probes: ReadonlyArray<Pick<BannerProbe, 'width' 
   return portrait * 2 > probes.length ? '9:16' : '16:9';
 }
 
+/** The sound of a montage request: the mode, and the music and narration files it lays (absent = none). */
+export interface MontageSound {
+  mode: SoundMode;
+  musicUrl?: string;
+  voiceUrl?: string;
+  /** The master second the narration starts at. */
+  voiceStartSec?: number;
+}
+
 /**
- * The montage request body (./montageManifest parseAgentRequest takes it): hard cuts, the track only, from its first
- * beat. `clips[c]` is the plan's clip c: its URL and its index in the manifest, which every shot carries as `source`;
- * a photo's shot is an `image` shot (the lane turns it into a slow zoom of the shot's length).
+ * The montage request body (./montageManifest parseAgentRequest takes it): hard cuts, the sound as asked (`sound`).
+ * `clips[c]` is the plan's clip c: its URL and its index in the manifest, which every shot carries as `source`; a
+ * photo's shot is an `image` shot (the lane turns it into a slow zoom of the shot's length). With music alone the
+ * request is exactly what it always was (the bed path, clips muted); the clips' own sound is kept only when asked or
+ * when there is no music.
  */
 export function montageBody(
   plan: CutPlan,
   clips: ReadonlyArray<{ url: string; source: number; still?: boolean }>,
-  musicUrl: string,
+  sound: MontageSound,
   aspect: MontageAspect,
   manifest: readonly MontageManifestItem[],
 ): Record<string, unknown> {
+  const own = sound.mode === 'own' || sound.mode === 'own+music';
   return {
     shots: plan.cuts.map((c) => ({
       url: clips[c.clip]?.url,
@@ -108,13 +199,14 @@ export function montageBody(
       endSec: c.endSec,
       ...(c.speed !== undefined && c.speed !== 1 ? { speed: c.speed } : {}),
       transition: 'cut',
-      muted: true,
+      muted: !own,
     })),
     aspect,
-    musicUrl,
-    musicStartSec: plan.musicStartSec,
+    ...(sound.musicUrl ? { musicUrl: sound.musicUrl, musicStartSec: plan.musicStartSec } : {}),
     musicDuckDb: 0,
-    musicOnly: true,
+    musicOnly: sound.mode === 'music',
+    ...(sound.musicUrl && sound.mode === 'own+music' ? { musicGainDb: MUSIC_UNDER_OWN_DB } : {}),
+    ...(sound.voiceUrl ? { voiceUrl: sound.voiceUrl, ...(sound.voiceStartSec ? { voiceStartSec: sound.voiceStartSec } : {}) } : {}),
     manifest,
   };
 }
@@ -332,10 +424,12 @@ export interface AudioTiming {
   targetSec: number;
   /** What happens at the track's end: Agent G never loops or extends it; the quote refuses a track too short. */
   endPolicy: 'stop';
-  /** The clips' own sound (Media Studio v2.0 sourceAudioPolicy): removed (music only), or kept with the track ducked under it. */
+  /** The clips' own sound (Media Studio v2.0 sourceAudioPolicy): removed (music only, or a silent edit), or kept. */
   sourceAudio: 'remove' | 'preserve';
-  /** What the track does to it (replacementAudioPolicy): replaces it, or is mixed beneath it. */
-  replacementAudio: 'replace' | 'mix';
+  /** What the track does to it (replacementAudioPolicy): replaces it, is mixed beneath it, or there is no track. */
+  replacementAudio: 'replace' | 'mix' | 'none';
+  /** The narration, when there is one: where on the master it starts; the rest steps back under it. */
+  voice?: { timelineStartSec: number };
 }
 
 /**
@@ -347,11 +441,11 @@ export function sourceContribution(request: AgentMontageRequest): SourceContribu
   const timeline = outputTimeline(request.shots);
   const out: SourceContribution[] = [];
   for (const item of request.manifest) {
-    if (item.kind === 'audio') continue;
+    if (!isPictureKind(item.kind)) continue;
     const mine = timeline.filter((t) => t.source === item.index);
     if (!mine.length) continue;
     out.push({
-      index: item.index, name: item.name, kind: item.kind, shots: mine.length,
+      index: item.index, name: item.name, kind: item.kind === 'image' ? 'image' : 'video', shots: mine.length,
       outputSec: r3(mine.reduce((sum, t) => sum + (t.outEndSec - t.outStartSec), 0)),
       windows: mine.map((t) => ({ outStartSec: t.outStartSec, outEndSec: t.outEndSec, srcStartSec: t.srcStartSec, srcEndSec: t.srcEndSec, ...(t.speed !== 1 ? { speed: t.speed } : {}) })),
     });
@@ -367,8 +461,9 @@ export function audioTiming(request: AgentMontageRequest): AudioTiming {
     targetSec: r3(timelineDuration(request.shots)),
     endPolicy: 'stop',
     // montagePipeline: musicOnly → 'bed' (the clips' sound is dropped), otherwise 'under' (it stays, the track ducks).
-    sourceAudio: request.musicOnly ? 'remove' : 'preserve',
-    replacementAudio: request.musicOnly ? 'replace' : 'mix',
+    sourceAudio: request.musicOnly || request.shots.every((s) => s.muted) ? 'remove' : 'preserve',
+    replacementAudio: !request.musicUrl ? 'none' : request.musicOnly ? 'replace' : 'mix',
+    ...(request.voiceUrl ? { voice: { timelineStartSec: r3(request.voiceStartSec ?? 0) } } : {}),
   };
 }
 

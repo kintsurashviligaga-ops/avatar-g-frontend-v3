@@ -7,7 +7,7 @@
  * It stays in the thread after the work ends, with every step and where it ended; the header folds the list away.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
+import { Check, ChevronDown, Film, Hand, Image as ImageIcon, Mic, Minus, Music2, Sparkles, Square, X } from 'lucide-react';
 import { clockText, type StepState, type TaskCardModel } from '@/lib/agent/media/taskSteps';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -119,6 +119,7 @@ export function AgentTaskCard({
             {model.inputs.files.map((f, i) => (
               <li key={`${i}-${f.name}`} title={f.name} className="flex max-w-[11.5rem] items-center gap-1.5 rounded-full border border-app-border/20 px-2.5 py-1 text-[12px] leading-none text-app-text/85">
                 {f.kind === 'audio' ? <Music2 size={12} aria-hidden="true" className="shrink-0 text-app-muted" />
+                  : f.kind === 'voice' ? <Mic size={12} aria-hidden="true" className="shrink-0 text-app-muted" />
                   : f.kind === 'image' ? <ImageIcon size={12} aria-hidden="true" className="shrink-0 text-app-muted" />
                     : <Film size={12} aria-hidden="true" className="shrink-0 text-app-muted" />}
                 <span className="truncate">{f.name}</span>

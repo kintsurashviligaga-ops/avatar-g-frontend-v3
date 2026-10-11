@@ -8385,7 +8385,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // a reload, so a job the server never saw means its run never got through (nothing was charged).
   const settleAgentMontage = useCallback((id: string, r: MontageRun & { endedAt?: number }, resumed = false) => {
     if (r.ok) {
-      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || m.montage?.quote?.totalSec || 0, locale), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
+      patchMsgById(id, (m) => ({ ...m, text: doneText(r.durationSec || m.montage?.quote?.totalSec || 0, locale, m.montage?.quote?.sound), videoUrl: r.videoUrl, orientation: orientationOf(r.aspect || m.montage?.quote?.aspect), montage: { ...m.montage!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';

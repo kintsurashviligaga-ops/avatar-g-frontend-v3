@@ -75,6 +75,8 @@ export function fake(opts: {
   files?: Record<string, BannerProbe | null>;
   foreign?: string[];
   grid?: BeatGrid | null;
+  /** A sound file's own beat (by file reference); the rest get `grid`. A narration has none (null). */
+  grids?: Record<string, BeatGrid | null>;
   render?: (req: MontageRequest, o: RenderOpts) => Promise<MontageOutcome>;
   master?: BannerProbe | null;
   /** The master's real stream lengths (default: both the master's probed length). */
@@ -114,14 +116,18 @@ export function fake(opts: {
       if (url === MASTER_URL) return opts.master === undefined ? { ...clip(30), durationSec: 30 } : opts.master;
       return files[url.replace('https://x.supabase.co/signed/', '')] ?? null;
     },
-    async analyzeTrack() {
-      return { probe: TRACK, grid: opts.grid === undefined ? GRID : opts.grid };
+    async analyzeTrack(url) {
+      // The sound file's own length when the test gave one (a narration, a short track); TRACK otherwise.
+      const ref = url.replace('https://x.supabase.co/signed/', '');
+      const p = files[ref];
+      const grid = opts.grids && ref in opts.grids ? opts.grids[ref]! : opts.grid === undefined ? GRID : opts.grid;
+      return { probe: p && !p.hasVideo ? p : TRACK, grid };
     },
     async render(req, o) {
       f.renders.push(req);
       if (opts.render) return opts.render(req, o);
       await o.onStage('stitch', 88);
-      return { ok: true, result: { videoUrl: MASTER_URL, durationSec: 30, shots: req.shots.length, aspect: req.aspect, bridged: 0, hasMusic: true, stepsRun: ['resolve', 'normalize', 'stitch', 'music'] } };
+      return { ok: true, result: { videoUrl: MASTER_URL, durationSec: 30, shots: req.shots.length, aspect: req.aspect, bridged: 0, hasMusic: Boolean(req.musicUrl), hasVoice: Boolean(req.voiceUrl), stepsRun: ['resolve', 'normalize', 'stitch', ...(req.musicUrl || req.voiceUrl ? ['music' as const] : [])] } };
     },
     async grabFrames(url, timesSec, o) {
       f.grabs.push({ url, timesSec: [...timesSec], fit: Boolean(o.fit) });
