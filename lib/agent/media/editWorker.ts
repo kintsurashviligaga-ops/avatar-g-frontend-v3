@@ -23,6 +23,9 @@ export type EditWorkResult =
 /** A source whose length moved by more than this since the quote is not the file the user saw planned. */
 const SOURCE_DRIFT_SEC = 1;
 
+/** The name of the copy without captions: `clip-edit.mp4` → `clip-edit-no-captions.mp4`. */
+export const cleanNameOf = (name: string): string => name.replace(/(\.[a-z0-9]+)?$/i, (ext) => `-no-captions${ext}`);
+
 /** Edit one queued job, if this worker can claim it. Never throws. */
 export async function workEditJob(deps: EditExecDeps, input: { jobId: string; worker: string }): Promise<EditWorkResult> {
   const { jobId, worker } = input;
@@ -55,6 +58,17 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
   // ── the source, checked again as it is now: still the caller's own ─────────────────────────────────────────────
   const src = await deps.resolveFile(request.source.ref, userId);
   if (!src.ok) return end(src.reason === 'not_yours' ? 'media_not_yours: not the caller\'s file' : 'unreadable: the file cannot be read');
+  // The pictures laid on it (a logo, a sticker): the caller's own files too, checked as they are now.
+  const assets: Record<string, string> = {};
+  for (const e of request.edits) {
+    if (e.op !== 'layers') continue;
+    for (const l of e.layers) {
+      if (l.kind !== 'image' || assets[l.ref]) continue;
+      const pic = await deps.resolveFile(l.ref, userId);
+      if (!pic.ok) return end(pic.reason === 'not_yours' ? 'media_not_yours: a picture layer is not the caller\'s file' : 'layer_picture: a picture layer cannot be read');
+      assets[l.ref] = pic.url;
+    }
+  }
 
   // ── the heartbeat: renews the lease, and is how this worker hears it must stop ───────────────────────────────────
   const ctl = new AbortController();
@@ -71,7 +85,7 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
     await deps.store.progress(jobId, worker, 'render', 10);
     let out;
     try {
-      out = await deps.render(src.url, request, { signal: ctl.signal });
+      out = await deps.render(src.url, request, { signal: ctl.signal, assets });
     } catch (e) {
       out = { ok: false as const, error: 'render_failed' as const, detail: e instanceof Error ? e.message : 'render failed' };
     }
@@ -85,6 +99,10 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
     await deps.store.progress(jobId, worker, 'qc', 80);
     const qc = qcEdit(out.output, request.plan, out.bytes.byteLength);
     if (!qc.ok) return end(`qc_failed: ${qc.problems.join('; ')}`);
+    // The layers, measured on the rendered file (./layerQc): a layer not where, when or as asked is not delivered.
+    if (out.layerQc?.outcome === 'FAIL') return end(`qc_failed: ${out.layerQc.problems.slice(0, 4).join('; ')}`);
+    const cleanQc = out.clean ? qcEdit(out.clean.output, request.plan, out.clean.bytes.byteLength) : null;
+    if (cleanQc && !cleanQc.ok) return end(`qc_failed: the copy without captions: ${cleanQc.problems.join('; ')}`);
 
     // Still ours? A worker that stalled past its lease (the job retried elsewhere, or given up) stores nothing.
     const still = await heartbeat(deps.store, jobId, worker, deps.now());
@@ -93,6 +111,9 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
     const url = await deps.upload(jobId, out.bytes, request.plan.output).catch(() => null);
     if (ctl.signal.aborted) return halted(beat);
     if (!url) return end('upload_failed: storage refused the result');
+    const cleanUrl = out.clean ? await deps.upload(jobId, out.clean.bytes, request.plan.output, 'clean').catch(() => null) : null;
+    if (ctl.signal.aborted) return halted(beat);
+    if (out.clean && !cleanUrl) return end('upload_failed: storage refused the copy without captions');
 
     // Filed like the montage: the row's signed_url puts it in the Library and the tray.
     const delivered = await complete(deps.store, jobId, worker, {
@@ -106,9 +127,13 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
         width: request.plan.width,
         height: request.plan.height,
         bytes: out.bytes.byteLength,
-        subtype: request.plan.output === 'jpg' ? 'thumbnail' : 'edit',
+        subtype: request.plan.output === 'jpg' ? (request.plan.still ? 'design' : 'thumbnail') : 'edit',
         via: 'agent-g',
         edits: request.edits.map((e) => e.op),
+        ...(cleanUrl ? { clean: { url: cleanUrl, name: cleanNameOf(request.name) } } : {}),
+        ...(out.subtitles ? { subtitles: out.subtitles } : {}),
+        ...(out.layerQc ? { layerQc: out.layerQc } : {}),
+        ...(request.parent ? { parentJobId: request.parent.jobId } : {}),
       },
     });
     if (!delivered) return halted(await afterLoss());

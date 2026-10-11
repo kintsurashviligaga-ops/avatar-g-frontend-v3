@@ -35,6 +35,12 @@ export interface TaskResult {
   /** An edit's frame (Agent G edits, lib/agent/media/editExec). */
   width?: number;
   height?: number;
+  /** An edit's copy without its captions (Media Studio v2.1, captions delivered `both`). */
+  clean?: { url: string; name: string };
+  /** An edit's caption track as files (UTF-8 text). */
+  subtitles?: { srt: string; vtt: string };
+  /** An edit's QC, measured on the rendered file (lib/agent/media/layerQc): PASS, or PARTIAL with what it could not measure. */
+  qc?: { outcome: string; warnings: string[] };
 }
 
 export interface TaskView {
@@ -200,6 +206,9 @@ export function taskFromEdit(row: TaskRow, kind: string, v: EditJobView): TaskVi
         ? {
           url: v.url, media: v.output === 'jpg' ? 'image' : 'video', name: v.name, width: v.width, height: v.height,
           ...(v.output === 'mp4' ? { durationSec: v.durationSec } : {}),
+          ...(v.clean ? { clean: v.clean } : {}),
+          ...(v.subtitles ? { subtitles: v.subtitles } : {}),
+          ...(v.layerQc ? { qc: { outcome: v.layerQc.outcome, warnings: v.layerQc.warnings } } : {}),
         }
         : null,
     };

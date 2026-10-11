@@ -67,7 +67,8 @@ export function agentRedo<F extends { mimeType: string }>(
     const e = reply.editJob;
     if (!open.edit || !e.ask?.edits.length) return { kind: 'none' };
     if (e.source === 'previous') return e.ask.url ? { kind: 'edit', source: 'previous', edits: e.ask.edits, url: e.ask.url } : { kind: 'none' };
-    const file = files.find((f) => attachmentKind(f.mimeType) === 'video');
+    // The video attached; else the picture (v2.1: the first one; a second one was the logo, its upload's path is in the edits).
+    const file = files.find((f) => attachmentKind(f.mimeType) === 'video') ?? files.find((f) => attachmentKind(f.mimeType) === 'image');
     return file ? { kind: 'edit', source: 'file', edits: e.ask.edits, file } : { kind: 'none' };
   }
   const kinds = files.map((f) => attachmentKind(f.mimeType));

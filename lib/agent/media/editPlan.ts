@@ -21,6 +21,9 @@ import { MAX_CAPTION_CHARS } from '@/lib/video/remixCaption';
 import {
   ASPECT_DIMS, GRADE_VF, MAX_SPEED, MIN_SPEED, aspectVf, atempoChain, setptsFor, type FrameAspect, type GradeStyle,
 } from '@/lib/video/editFilters';
+import {
+  resolveLayers, resolveTrack, type CaptionDelivery, type CaptionTrack, type Layer, type LayersAsk,
+} from './layers';
 
 /** generation_jobs rows of Agent G's edits carry this queue kind in params._exec. */
 export const EDIT_KIND = 'agent-media-edit';
@@ -43,14 +46,26 @@ export type MediaEdit =
   | { op: 'volume'; db: number }
   | { op: 'mute' }
   | { op: 'caption'; text: string }
+  /** Media Studio v2.1: the edit's own text, picture and mask layers (./layers), drawn over the result, non-destructive. */
+  | { op: 'layers'; layers: Layer[] }
+  /** A caption track: burned in, burned in plus a clean copy, or a clean video with the .srt / .vtt only. */
+  | { op: 'captions'; track: CaptionTrack; deliver: CaptionDelivery }
   | { op: 'thumbnail'; atSec: number };
 
 export type EditName = MediaEdit['op'];
 
 /** The one order edits are applied in (and stored in): time first, then the frame, then its look, then the sound. */
-export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'thumbnail'];
+export const EDIT_ORDER: readonly EditName[] = ['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'layers', 'captions', 'thumbnail'];
 /** What a thumbnail (one still) can be combined with. */
-const STILL_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'thumbnail']);
+const STILL_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'layers', 'thumbnail']);
+/** What a picture (a still SOURCE: a poster, a banner, a photo) can be given. */
+const PICTURE_EDITS: ReadonlySet<EditName> = new Set(['aspect', 'grade', 'caption', 'layers']);
+/** Edits drawn in the second (composition) pass, over the first pass's output. */
+export const COMPOSED_EDITS: ReadonlySet<EditName> = new Set(['caption', 'layers', 'captions']);
+/** A single picture as ffmpeg reads one: an image codec and no length to speak of. */
+const IMAGE_CODECS = new Set(['png', 'mjpeg', 'webp', 'bmp', 'tiff', 'jpegls', 'jpeg2000']);
+export const isPictureProbe = (p: Pick<BannerProbe, 'durationSec' | 'videoCodec'>): boolean =>
+  IMAGE_CODECS.has(String(p.videoCodec ?? '').toLowerCase()) && !(p.durationSec > 0.5);
 
 export const ASPECTS: readonly FrameAspect[] = ['9:16', '16:9', '1:1', '4:5'];
 export const GRADES: readonly GradeStyle[] = ['vintage', 'cinematic', 'neon', 'noir', 'dramatic'];
@@ -68,6 +83,10 @@ export interface EditPlan {
   height: number;
   /** Sound-only edits of an H.264 source keep its picture as it is (no re-encode, nothing lost, much faster). */
   copyVideo: boolean;
+  /** The source is a picture (a poster, a banner, a photo): one frame in, one JPEG out (`sourceSec` 0). */
+  still?: boolean;
+  /** A second, clean copy is made too (the captions' `both`): the same edit without its captions. */
+  clean?: boolean;
 }
 
 export interface EditRequest {
@@ -77,15 +96,20 @@ export interface EditRequest {
   edits: MediaEdit[];
   name: string;
   plan: EditPlan;
+  /** A revision: the earlier edit (its job) this one changes, rendered again from the same source (./editExec). */
+  parent?: { jobId: string; depth: number };
 }
 
-export type EditPlanError = { ok: false; error: 'bad_edits' | 'no_video' | 'out_of_range' | 'too_long' | 'too_short' | 'conflict' | 'nothing_to_do'; message: string };
+export type EditPlanErrorCode =
+  | 'bad_edits' | 'no_video' | 'out_of_range' | 'too_long' | 'too_short' | 'conflict' | 'nothing_to_do'
+  | 'text_too_long' | 'too_many_layers' | 'layer_not_found' | 'layer_ambiguous' | 'bad_captions';
+export type EditPlanError = { ok: false; error: EditPlanErrorCode; message: string; detail?: string };
 
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
 /** Seconds as ffmpeg reads them: at most three decimals, no exponent. */
 export const secArg = (n: number): string => String(Math.round(n * 1000) / 1000);
 const round2 = (n: number): number => Math.round(n * 100) / 100;
-const fail = (error: EditPlanError['error'], message: string): EditPlanError => ({ ok: false, error, message });
+const fail = (error: EditPlanError['error'], message: string, detail?: string): EditPlanError => ({ ok: false, error, message, ...(detail ? { detail } : {}) });
 
 /** A caption as it may be burned: one paragraph, no control characters, at most MAX_CAPTION_CHARS. */
 export function cleanCaption(x: unknown): string {
@@ -111,13 +135,18 @@ const even = (n: number): number => Math.max(2, Math.floor(n / 2) * 2);
 export function resolveEdits(
   asks: unknown,
   src: Pick<BannerProbe, 'durationSec' | 'hasVideo' | 'hasAudio' | 'width' | 'height' | 'rotation' | 'videoCodec'>,
+  parent: { layers?: readonly Layer[] } = {},
 ): { ok: true; edits: MediaEdit[]; plan: EditPlan } | EditPlanError {
   if (!Array.isArray(asks) || asks.length === 0) return fail('nothing_to_do', 'Say what to change.');
   if (asks.length > EDIT_ORDER.length) return fail('bad_edits', 'Too many edits at once.');
   if (!src.hasVideo || !(src.width > 0 && src.height > 0)) return fail('no_video', 'This file has no picture to edit.');
+  const picture = isPictureProbe(src);
   // Every number is rounded BEFORE it is checked, so the stored request passes the same checks again (validateEditRequest).
-  const dur = round2(src.durationSec);
-  if (!(dur > 0)) return fail('no_video', 'This file\'s length cannot be read.');
+  const dur = picture ? 0 : round2(src.durationSec);
+  if (!picture && !(dur > 0)) return fail('no_video', 'This file\'s length cannot be read.');
+  /** Layer and caption asks wait for the result's length (after a trim or a speed change). */
+  let layersAsk: LayersAsk | null = null;
+  let captionsAsk: { track: unknown; deliver: unknown } | null = null;
 
   const seen = new Set<EditName>();
   const edits: MediaEdit[] = [];
@@ -127,6 +156,9 @@ export function resolveEdits(
     if (typeof op !== 'string' || !(EDIT_ORDER as readonly string[]).includes(op)) return fail('bad_edits', 'An edit is not one Agent G knows.');
     if (seen.has(op as EditName)) return fail('bad_edits', `"${op}" is asked twice.`);
     seen.add(op as EditName);
+    if (picture && !PICTURE_EDITS.has(op as EditName)) {
+      return fail('conflict', 'This is a picture: it takes a frame shape, a colour look and text or a logo, nothing about time or sound.');
+    }
     switch (op as EditName) {
       case 'trim': {
         const from = a!.fromSec, to = a!.toSec, last = a!.lastSec, cutEnd = a!.cutEndSec;
@@ -190,6 +222,12 @@ export function resolveEdits(
         edits.push({ op: 'caption', text });
         break;
       }
+      case 'layers':
+        layersAsk = a as unknown as LayersAsk;
+        break;
+      case 'captions':
+        captionsAsk = { track: a!.track, deliver: a!.deliver ?? 'burned' };
+        break;
       case 'thumbnail': {
         const raw = a!.atSec === undefined ? Math.min(1, dur / 2) : a!.atSec;
         const at = isNum(raw) ? round2(raw) : NaN;
@@ -202,6 +240,7 @@ export function resolveEdits(
 
   // ── what goes with what ───────────────────────────────────────────────────────────────────────────────────────────
   if (seen.has('thumbnail') && [...seen].some((n) => !STILL_EDITS.has(n))) return fail('conflict', 'A thumbnail is one picture: it takes a frame shape, a colour look and a caption, nothing about time or sound.');
+  if (seen.has('captions') && seen.has('thumbnail')) return fail('conflict', 'Captions are for a video, not a still.');
   if (seen.has('mute') && seen.has('volume')) return fail('conflict', 'Silent and louder at once?');
   if ((seen.has('mute') || seen.has('volume')) && !src.hasAudio) return fail('conflict', 'This video has no sound.');
   edits.sort((x, y) => EDIT_ORDER.indexOf(x.op) - EDIT_ORDER.indexOf(y.op));
@@ -209,22 +248,46 @@ export function resolveEdits(
   // ── the result ────────────────────────────────────────────────────────────────────────────────────────────────────
   const get = <K extends EditName>(k: K) => edits.find((e) => e.op === k) as Extract<MediaEdit, { op: K }> | undefined;
   const trim = get('trim'), speed = get('speed'), aspect = get('aspect'), fade = get('fade');
-  const still = Boolean(get('thumbnail'));
+  const still = Boolean(get('thumbnail')) || picture;
   const kept = trim ? trim.toSec - trim.fromSec : dur;
   const outSec = still ? 0 : round2(kept / (speed?.factor ?? 1));
   if (!still && outSec > MAX_EDIT_OUTPUT_SEC) return fail('too_long', `The result would be ${Math.round(outSec)} s; Agent G edits up to ${MAX_EDIT_OUTPUT_SEC} s at a time. Trim it first.`);
   if (!still && outSec < MIN_EDIT_OUTPUT_SEC) return fail('too_short', 'The result would be shorter than half a second.');
   if (fade && fade.inSec + fade.outSec > outSec) return fail('conflict', 'The fades are longer than the video.');
 
+  // ── layers and captions, on the result's own timeline ─────────────────────────────────────────────────────────────
+  let clean = false;
+  if (layersAsk) {
+    const r = resolveLayers(layersAsk, parent.layers ?? [], outSec, still);
+    if (!r.ok) {
+      const code: EditPlanErrorCode = r.error === 'bad_layers' ? 'bad_edits' : r.error === 'not_on_still' ? 'conflict' : r.error;
+      return fail(code, r.message, r.detail);
+    }
+    // Every layer removed: the edit is what is left of it (nothing, when the layers were all there was).
+    if (r.layers.length) edits.push({ op: 'layers', layers: r.layers });
+  }
+  if (captionsAsk) {
+    const deliver = captionsAsk.deliver;
+    if (deliver !== 'burned' && deliver !== 'both' && deliver !== 'file') return fail('bad_captions', 'Captions are burned in, burned in with a clean copy, or a file.');
+    const r = resolveTrack(captionsAsk.track, outSec);
+    if (!r.ok) return fail(r.error === 'out_of_range' ? 'out_of_range' : 'bad_captions', r.message);
+    edits.push({ op: 'captions', track: r.track, deliver });
+    clean = deliver === 'both';
+  }
+  if (!edits.length) return fail('nothing_to_do', 'That leaves nothing to change.');
+  edits.sort((x, y) => EDIT_ORDER.indexOf(x.op) - EDIT_ORDER.indexOf(y.op));
+
   const shown = displayDims(src);
   const copyVideo = !still && edits.every((e) => e.op === 'volume' || e.op === 'mute') && src.videoCodec === 'h264';
-  const [w, h] = aspect ? ASPECT_DIMS[aspect.to] : copyVideo ? [shown.width, shown.height] : [even(shown.width), even(shown.height)];
+  // A picture keeps its own size (a JPEG needs no even sides); a video's sides are made even for H.264.
+  const [w, h] = aspect ? ASPECT_DIMS[aspect.to] : copyVideo || picture ? [shown.width, shown.height] : [even(shown.width), even(shown.height)];
   return {
     ok: true,
     edits,
     plan: {
       sourceSec: dur, output: still ? 'jpg' : 'mp4', durationSec: outSec,
       hasAudio: !still && src.hasAudio && !get('mute'), width: w, height: h, copyVideo,
+      ...(picture ? { still: true } : {}), ...(clean ? { clean: true } : {}),
     },
   };
 }
@@ -237,18 +300,22 @@ export function validateEditRequest(x: unknown): EditRequest | null {
   if (typeof r.name !== 'string' || !/^[^/\\]{1,108}\.(?:mp4|jpg)$/.test(r.name)) return null;
   const p = r.plan as EditPlan | undefined;
   if (!p || (p.output !== 'mp4' && p.output !== 'jpg') || !r.name.endsWith(`.${p.output}`)) return null;
-  if (!isNum(p.sourceSec) || !(p.sourceSec > 0) || !isNum(p.durationSec) || !isNum(p.width) || !isNum(p.height) || !(p.width > 0 && p.height > 0)) return null;
+  if (p.still !== undefined && p.still !== true) return null;
+  if (p.clean !== undefined && p.clean !== true) return null;
+  if (!isNum(p.sourceSec) || !(p.still ? p.sourceSec === 0 && p.output === 'jpg' : p.sourceSec > 0) || !isNum(p.durationSec) || !isNum(p.width) || !isNum(p.height) || !(p.width > 0 && p.height > 0)) return null;
   if (typeof p.hasAudio !== 'boolean' || typeof p.copyVideo !== 'boolean') return null;
+  if (r.parent !== undefined && !(r.parent && typeof r.parent.jobId === 'string' && /^[0-9a-f-]{36}$/i.test(r.parent.jobId) && Number.isInteger(r.parent.depth) && r.parent.depth >= 1 && r.parent.depth <= 50)) return null;
   if (p.output === 'mp4' && !(p.durationSec >= MIN_EDIT_OUTPUT_SEC && p.durationSec <= MAX_EDIT_OUTPUT_SEC)) return null;
   if (!Array.isArray(r.edits) || r.edits.length === 0) return null;
   // The edits again, against the plan's own facts: the same rules the quote applied, the same result.
   const again = resolveEdits(r.edits, {
     durationSec: p.sourceSec, hasVideo: true, hasAudio: p.hasAudio || r.edits.some((e) => e?.op === 'mute'),
-    width: p.width, height: p.height, rotation: 0, videoCodec: p.copyVideo ? 'h264' : null,
+    width: p.width, height: p.height, rotation: 0, videoCodec: p.still ? 'png' : p.copyVideo ? 'h264' : null,
   });
   if (!again.ok) return null;
   if (JSON.stringify(again.edits) !== JSON.stringify(r.edits)) return null;
   if (again.plan.output !== p.output || Math.abs(again.plan.durationSec - p.durationSec) > 0.011) return null;
+  if (Boolean(again.plan.clean) !== Boolean(p.clean)) return null;
   return r as EditRequest;
 }
 
@@ -296,12 +363,12 @@ const X264 = (crf: number): string[] => ['-c:v', 'libx264', '-preset', 'veryfast
  */
 export function renderArgs(req: Pick<EditRequest, 'edits' | 'plan'>, input: string, out: string): string[] {
   const { edits, plan } = req;
-  const captioned = Boolean(edit(edits, 'caption'));
+  const captioned = edits.some((e) => COMPOSED_EDITS.has(e.op));
   if (plan.output === 'jpg') {
-    const at = edit(edits, 'thumbnail')!.atSec;
+    const at = edit(edits, 'thumbnail')?.atSec;
     const vf = videoFilters(req);
     return [
-      '-hide_banner', '-y', '-ss', secArg(at), '-i', input, '-map', '0:v:0', '-frames:v', '1', '-an', '-sn', '-dn',
+      '-hide_banner', '-y', ...(at !== undefined ? ['-ss', secArg(at)] : []), '-i', input, '-map', '0:v:0', '-frames:v', '1', '-an', '-sn', '-dn',
       ...(vf.length ? ['-vf', vf.join(',')] : []),
       ...(captioned ? ['-c:v', 'png'] : ['-c:v', 'mjpeg', '-q:v', '2', '-strict', 'unofficial']),
       '-map_metadata', '-1', '-f', 'image2', out,
@@ -317,23 +384,6 @@ export function renderArgs(req: Pick<EditRequest, 'edits' | 'plan'>, input: stri
     ...(plan.copyVideo ? ['-c:v', 'copy'] : ['-vf', videoFilters(req).join(','), ...X264(captioned ? 18 : 20)]),
     ...(plan.hasAudio ? [...(af.length ? ['-af', af.join(',')] : []), '-c:a', 'aac', '-b:a', '192k'] : ['-an']),
     '-sn', '-dn', '-map_metadata', '-1', '-movflags', '+faststart', '-f', 'mp4', out,
-  ];
-}
-
-/** The caption's size on a frame: a line a phone can read, the same share of the short side on every shape. */
-export const captionFontPx = (width: number, height: number): number => Math.max(18, Math.round(Math.min(width, height) * 0.055));
-
-/** The second pass: the caption's full-frame PNG over the first pass's output. */
-export function captionArgs(output: 'mp4' | 'jpg', mid: string, png: string, out: string): string[] {
-  if (output === 'jpg') {
-    return [
-      '-hide_banner', '-y', '-i', mid, '-i', png, '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto[v]', '-map', '[v]',
-      '-frames:v', '1', '-c:v', 'mjpeg', '-q:v', '2', '-strict', 'unofficial', '-f', 'image2', out,
-    ];
-  }
-  return [
-    '-hide_banner', '-y', '-i', mid, '-i', png, '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]',
-    '-map', '[v]', '-map', '0:a?', ...X264(20), '-c:a', 'copy', '-movflags', '+faststart', '-f', 'mp4', out,
   ];
 }
 

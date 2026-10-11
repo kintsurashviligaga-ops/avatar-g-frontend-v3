@@ -7,7 +7,7 @@
  */
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
@@ -15,14 +15,15 @@ import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { probeMedia } from '@/lib/services/montage/beatAnalysis';
 import { ffmpegExec, type FfmpegIo } from '@/lib/video/ffmpegExec';
 import { parseProbeBanner } from '@/lib/video/probeBanner';
-import { renderTextLayerPng } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { reSignIfInternal, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { supabaseLeaseStore } from '@/lib/orchestrator/jobLease';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import type { EditExecDeps, RenderOutcome } from './editExec';
-import { captionArgs, captionFontPx, displayDims, renderArgs, type EditRequest } from './editPlan';
+import { COMPOSED_EDITS, displayDims, renderArgs, type EditRequest } from './editPlan';
 import { audit, every, quoteKey } from './montageLive';
+import { runLayerPass } from './layerPass';
+import { missingGlyphs } from './layerRender';
 
 const WEEK_SEC = 604_800;
 /** A signed link to the caller's own file: the quote's 30 minutes plus a run, with room to spare. */
@@ -40,20 +41,23 @@ function refusalOf(text: string): RenderOutcome | null {
   return { ok: false, error: 'unavailable', detail: code };
 }
 
-/** The source → the edited MP4 (or the JPEG): ./editPlan's first pass, then the caption's pass when there is one. */
+/**
+ * The source → the edited MP4 (or the JPEG): ./editPlan's first pass, then the composition pass (./layerPass: the
+ * caption, the layers, the caption track, measured on the rendered file) when the edit has any.
+ */
 export async function renderEdit(
   url: string,
   request: Pick<EditRequest, 'edits' | 'plan'>,
-  opts: { signal: AbortSignal },
+  opts: { signal: AbortSignal; assets?: Record<string, string> },
   io: FfmpegIo = {},
 ): Promise<RenderOutcome> {
   const bin = (ffmpegStatic as unknown as string | null) ?? null;
   if (!bin) return { ok: false, error: 'render_failed', detail: 'ffmpeg is missing' };
   const ext = request.plan.output;
-  const caption = request.edits.find((e) => e.op === 'caption');
+  const composed = request.edits.some((e) => COMPOSED_EDITS.has(e.op));
   const dir = await mkdtemp(join(tmpdir(), 'edit-'));
   const final = join(dir, `out.${ext}`);
-  const first = caption ? join(dir, ext === 'jpg' ? 'mid.png' : 'mid.mp4') : final;
+  const first = composed ? join(dir, ext === 'jpg' ? 'mid.png' : 'mid.mp4') : final;
   const exec = { maxBuffer: 1 << 24, timeout: FF_TIMEOUT_MS, signal: opts.signal };
   try {
     let stderr: string;
@@ -73,23 +77,21 @@ export async function renderEdit(
     }
     const input = parseProbeBanner(stderr);
 
-    if (caption?.op === 'caption') {
+    if (composed) {
       const mid = await probeMedia(first);
       const { width, height } = mid ? displayDims(mid) : { width: request.plan.width, height: request.plan.height };
-      const png = await renderTextLayerPng(
-        { text: caption.text, position: 'bottom-center', fontSize: captionFontPx(width, height), fontColor: '#FFFFFF' },
-        width, height,
-      );
-      if (!png) return { ok: false, error: 'render_failed', detail: 'the caption could not be drawn' };
-      const pngPath = join(dir, 'caption.png');
-      await writeFile(pngPath, png);
-      try {
-        await ffmpegExec(bin, captionArgs(ext, first, pngPath, final), exec, io);
-      } catch (e) {
-        if (opts.signal.aborted) return { ok: false, error: 'render_failed', detail: 'cancelled' };
-        const last = stderrOf(e).trim().split('\n').filter(Boolean).pop() ?? 'ffmpeg failed';
-        return { ok: false, error: 'render_failed', detail: `caption: ${last.slice(0, 150)}` };
-      }
+      const cleanOut = join(dir, `clean.${ext}`);
+      const pass = await runLayerPass({
+        bin, dir, base: first, out: final, cleanOut, still: ext === 'jpg', fw: width, fh: height,
+        durationSec: ext === 'jpg' ? 0 : request.plan.durationSec, edits: request.edits, assets: opts.assets ?? {},
+        wantClean: Boolean(request.plan.clean), exec, io,
+      });
+      if (opts.signal.aborted) return { ok: false, error: 'render_failed', detail: 'cancelled' };
+      if (!pass.ok) return { ok: false, error: pass.error, detail: pass.detail };
+      const output = await probeMedia(final);
+      const bytes = await readFile(final);
+      const clean = pass.clean ? { bytes: await readFile(pass.clean), output: await probeMedia(pass.clean) } : undefined;
+      return { ok: true, bytes, input, output, layerQc: pass.layerQc, ...(clean ? { clean } : {}), ...(pass.subtitles ? { subtitles: pass.subtitles } : {}) };
     }
     const output = await probeMedia(final);
     const bytes = await readFile(final);
@@ -108,9 +110,10 @@ export function liveEditDeps(): EditExecDeps {
     },
     probe: (url) => probeMedia(url),
     render: (url, request, opts) => renderEdit(url, request, opts),
-    upload: (jobId, bytes, output) => uploadBufferAndSign(
-      'renders', `edits/${jobId}.${output}`, bytes, output === 'jpg' ? 'image/jpeg' : 'video/mp4', WEEK_SEC,
+    upload: (jobId, bytes, output, variant) => uploadBufferAndSign(
+      'renders', `edits/${jobId}${variant === 'clean' ? '-clean' : ''}.${output}`, bytes, output === 'jpg' ? 'image/jpeg' : 'video/mp4', WEEK_SEC,
     ),
+    missingGlyphs: (texts) => missingGlyphs(texts.join(' ')),
     resign: (url) => reSignIfInternal(url, WEEK_SEC),
     store: supabaseLeaseStore(() => createServiceRoleClient(), reportError),
     audit,

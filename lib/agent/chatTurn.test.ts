@@ -193,8 +193,10 @@ describe('Agent G edits a video itself (its edit route open)', () => {
     expect(picture.text).toMatch(/ახალს არ შევქმნი/);
   });
 
-  test('subtitles stay the remix\'s; edits of an attached video other than its frame stay the remix\'s', () => {
-    expect(planChatTurn('სუბტიტრები დაამატე.', on({ attachments: ['video'] })).kind).toBe('pass');
+  test('subtitles of the speech are said to need a transcription (v2.1); edits of an attached video other than its frame stay the remix\'s', () => {
+    const subs = planChatTurn('სუბტიტრები დაამატე.', on({ attachments: ['video'] }));
+    expect(subs).toMatchObject({ kind: 'say' });
+    expect(subs.kind === 'say' && subs.text).toMatch(/ElevenLabs Scribe/);
     expect(planChatTurn('Make this video 2x faster.', on({ attachments: ['video'] })).kind).toBe('pass');
   });
 
@@ -328,5 +330,76 @@ describe('a photo among the clips (owner, 2026-10-11 11:37Z)', () => {
     const attachments = ['audio', 'video', 'video', 'video', 'video', 'image'] as ChatSnapshot['attachments'];
     expect(planChatTurn(s, snap({ attachments })).kind).toBe('pass');
     expect(planChatTurn(s, snap({ attachments, runOn: true })).kind).toBe('pass');
+  });
+});
+
+describe('Media Studio v2.1: text, logos, masks and captions in words (owner, 2026-10-11 13:31Z)', () => {
+  const on = (over: Partial<ChatSnapshot> = {}): ChatSnapshot => snap({ editOn: true, ...over });
+  const lastEdit = { previous: { kind: 'video' as const }, previousEdit: true };
+
+  test('„აქ დააწერე: მიტანის სერვისი თბილისში." on an attached video, an attached picture, or Agent G\'s last result', () => {
+    const add = [{ op: 'layers', add: [{ kind: 'text', text: 'მიტანის სერვისი თბილისში' }] }];
+    expect(planChatTurn('აქ დააწერე: მიტანის სერვისი თბილისში.', on({ attachments: ['video'] }))).toMatchObject({ kind: 'edit', source: 'file', file: 0, edits: add });
+    expect(planChatTurn('აქ დააწერე: მიტანის სერვისი თბილისში.', on({ attachments: ['image'] }))).toMatchObject({ kind: 'edit', source: 'file', file: 0, edits: add });
+    expect(planChatTurn('აქ დააწერე: მიტანის სერვისი თბილისში.', on({ previous: { kind: 'image' } }))).toMatchObject({ kind: 'edit', source: 'previous', edits: add });
+    // Closed, or nothing to write on: the old flow answers.
+    expect(planChatTurn('აქ დააწერე: მიტანის სერვისი თბილისში.', snap({ attachments: ['video'] })).kind).not.toBe('edit');
+    expect(planChatTurn('აქ დააწერე: მიტანის სერვისი თბილისში.', on()).kind).toBe('pass');
+  });
+
+  test('changes to what Agent G put there: only on its own last edit; „make the text premium" after a chat answer is the chat\'s', () => {
+    expect(planChatTurn('ტექსტი უფრო პრემიუმ და მინიმალისტური გახადე.', on(lastEdit))).toMatchObject({
+      kind: 'edit', source: 'previous', edits: [{ op: 'layers', change: [{ target: { kind: 'text', all: true }, style: 'premium' }] }],
+    });
+    expect(planChatTurn('ტექსტი უფრო პრემიუმ და მინიმალისტური გახადე.', on({ previous: { kind: 'video' } })).kind).toBe('pass');
+    expect(planChatTurn('ტექსტი მარცხნივ გადაიტანე და ზომა შეამცირე.', on(lastEdit))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'layers', change: [{ moveH: 'left', sizeBy: 0.8 }] }],
+    });
+    expect(planChatTurn('ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე.', on(lastEdit))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'layers', remove: [{ kind: 'image', where: 'top' }] }],
+    });
+    expect(planChatTurn('სიტყვები მუსიკის ბიტებზე გამოაჩინე.', on(lastEdit))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'layers', change: [{ motionIn: 'words', beats: true }] }],
+    });
+    expect(planChatTurn('იგივე ვიდეო მომეცი ქეფშენებით და ქეფშენების გარეშე.', on(lastEdit))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'captions', deliver: 'both' }],
+    });
+  });
+
+  test('a CTA in the last 3 s; without its words, it asks for them', () => {
+    expect(planChatTurn('ბოლო სამ წამში ანიმაციური CTA ჩასვი: შეუკვეთე ახლავე', on({ attachments: ['video'] }))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'layers', add: [{ role: 'cta', text: 'შეუკვეთე ახლავე', lastSec: 3 }] }],
+    });
+    expect(planChatTurn('ბოლო სამ წამში ანიმაციური CTA ჩასვი.', on({ attachments: ['video'] }))).toMatchObject({ kind: 'say', keepComposer: true });
+  });
+
+  test('a logo: the attached picture goes on the attached video, or on Agent G\'s last result; none attached, it asks', () => {
+    expect(planChatTurn('ლოგო ზედა მარჯვენა კუთხეში დაადე', on({ attachments: ['video', 'image'] }))).toMatchObject({
+      kind: 'edit', source: 'file', file: 0, logo: 1, edits: [{ op: 'layers', add: [{ kind: 'image', ref: '@attachment', anchor: 'top-right' }] }],
+    });
+    expect(planChatTurn('ლოგო ზედა მარჯვენა კუთხეში დაადე', on({ ...lastEdit, attachments: ['image'] }))).toMatchObject({ kind: 'edit', source: 'previous', logo: 0 });
+    expect(planChatTurn('ლოგო ზედა მარჯვენა კუთხეში დაადე', on({ attachments: ['image', 'image'] }))).toMatchObject({ kind: 'edit', source: 'file', file: 0, logo: 1 });
+    expect(planChatTurn('ლოგო ზედა მარჯვენა კუთხეში დაადე', on({ attachments: ['video'] }))).toMatchObject({ kind: 'say', keepComposer: true });
+  });
+
+  test('captions: typed lines on a video; of the speech or translated, said (a paid call is the owner\'s decision)', () => {
+    expect(planChatTurn('ქეფშენები დაადე:\n0:00-0:02 გამარჯობა\n0:02-0:04 მიტანა უფასოა', on({ attachments: ['video'] }))).toMatchObject({
+      kind: 'edit', edits: [{ op: 'captions', track: { lang: 'ka', source: 'typed' } }],
+    });
+    const speech = planChatTurn('ვიდეოს ქართული ქეფშენები დაამატე.', on({ attachments: ['video'] }));
+    expect(speech.kind === 'say' && speech.text).toMatch(/ElevenLabs Scribe/);
+    const tr = planChatTurn('ქეფშენები ინგლისურად თარგმნე', on(lastEdit));
+    expect(tr.kind === 'say' && tr.text).toMatch(/ფასიან მოდელს/);
+    // Captions on a picture are not a thing: the chat answers.
+    expect(planChatTurn('ქეფშენები დაამატე', on({ attachments: ['image'] })).kind).not.toBe('edit');
+  });
+
+  test('„ეს დიზაინი 9:16 სტორად გადააკეთე." on a picture: the whole design kept, with bars', () => {
+    expect(planChatTurn('ეს დიზაინი 9:16 სტორად გადააკეთე.', on({ attachments: ['image'] }))).toMatchObject({
+      kind: 'edit', source: 'file', file: 0, edits: [{ op: 'aspect', to: '9:16', fit: 'pad' }],
+    });
+    expect(planChatTurn('ეს დიზაინი 9:16 სტორად გადააკეთე.', on({ previous: { kind: 'image' } }))).toMatchObject({ kind: 'edit', source: 'previous' });
+    // A trim is a video's: on a picture it is not planned.
+    expect(planChatTurn('პირველი 3 წამი დატოვე', on({ attachments: ['image'] })).kind).not.toBe('edit');
   });
 });

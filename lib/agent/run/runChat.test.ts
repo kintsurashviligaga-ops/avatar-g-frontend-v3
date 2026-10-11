@@ -54,7 +54,7 @@ describe('the sound of one source, the clips cut to it', () => {
 
 describe('the montage, then an edit of it', () => {
   test.each([
-    ['en', 'cut these to the music, black and white, with the caption "Summer 2026"', [{ op: 'grade', style: 'noir' }, { op: 'caption', text: 'Summer 2026' }]],
+    ['en', 'cut these to the music, black and white, with the caption "Summer 2026"', [{ op: 'grade', style: 'noir' }, { op: 'layers', add: [{ kind: 'text', text: 'Summer 2026' }] }]],
     ['ka', 'დაამონტაჟე ეს კლიპები მუსიკაზე, შავ-თეთრი და ბოლოს ჩაქრეს', [{ op: 'grade', style: 'noir' }, { op: 'fade', inSec: 0, outSec: 1 }]],
     ['ru', 'смонтируй под музыку, чёрно-белый', [{ op: 'grade', style: 'noir' }]],
   ])('%s: %s', (_lang, text, edits) => {

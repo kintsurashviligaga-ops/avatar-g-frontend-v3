@@ -1,5 +1,5 @@
 import {
-  MAX_EDIT_OUTPUT_SEC, audioFilters, captionArgs, captionFontPx, cleanCaption, displayDims, editNameFor, qcEdit,
+  MAX_EDIT_OUTPUT_SEC, audioFilters, cleanCaption, displayDims, editNameFor, qcEdit,
   renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
 } from './editPlan';
 import type { BannerProbe } from '@/lib/video/probeBanner';
@@ -177,14 +177,9 @@ describe('the ffmpeg arguments', () => {
     expect(captioned).not.toContain('-vf'); // nothing to change in the frame itself
   });
 
-  test('a caption is a second pass: the PNG over the first pass, sound copied', () => {
+  test('a caption is a second pass (./layerPass): the first pass is written finer, the layers go on it', () => {
     const first = renderArgs(request([{ op: 'caption', text: 'Hi' }]), 'in', 'mid.mp4');
     expect(first[first.indexOf('-crf') + 1]).toBe('18'); // finer: it is encoded once more
-    const second = captionArgs('mp4', 'mid.mp4', 'cap.png', 'out.mp4');
-    expect(second).toEqual(expect.arrayContaining(['-i', 'mid.mp4', '-i', 'cap.png', '-filter_complex', '[0:v][1:v]overlay=0:0:format=auto,format=yuv420p[v]', '-map', '0:a?', '-c:a', 'copy']));
-    expect(captionArgs('jpg', 'mid.png', 'cap.png', 'out.jpg')).toEqual(expect.arrayContaining(['-frames:v', '1', '-c:v', 'mjpeg']));
-    expect(captionFontPx(1080, 1920)).toBe(59);
-    expect(captionFontPx(320, 240)).toBe(18);
   });
 });
 

@@ -9,7 +9,8 @@
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
 import { aspectFromPrompt } from './montageAsk';
-import { extractOverlayText } from '@/lib/video/remixCaption';
+import { mineComposition, type CompositionAsk, type CompositionMissing, type CompositionUnsupported } from './layerWords';
+import { MAX_CUES } from './layers';
 import type { FrameAspect, GradeStyle } from '@/lib/video/editFilters';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
@@ -34,15 +35,20 @@ export type EditAsk =
   | { op: 'fade'; inSec: number; outSec: number }
   | { op: 'volume'; db: number }
   | { op: 'mute' }
+  /** A stored or tool-sent caption of the v2.0 kind; words in the chat now become a text layer (./layerWords). */
   | { op: 'caption'; text: string }
-  | { op: 'thumbnail'; atSec?: number };
+  | { op: 'thumbnail'; atSec?: number }
+  /** Media Studio v2.1: text, picture and mask layers, and caption tracks (./layerWords). */
+  | CompositionAsk;
 
 export interface MinedEdits {
   edits: EditAsk[];
-  /** What the words ask for but do not give: the caption's text. */
-  missing: Array<'caption_text'>;
-  /** What the words ask for that one edit cannot do (removing a stretch from the middle). */
-  unsupported: Array<'cut_middle'>;
+  /** What the words ask for but do not give: the words to draw, a CTA's words, the logo's picture. */
+  missing: CompositionMissing[];
+  /** What the words ask for that one edit cannot do (a stretch out of the middle; captions of speech; a translation). */
+  unsupported: Array<'cut_middle' | CompositionUnsupported>;
+  /** A picture layer asks for the attached picture (its ref is ./layerWords LOGO_REF until the upload's is put in). */
+  logo?: true;
 }
 
 // ── the words ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -76,6 +82,9 @@ const SPEED = /სიჩქარ|აჩქარ|ჩქარ|შეანე�
 const SLOW = /შეანელ|ანელ|ნელა|ნელ\p{L}*\s+მოძრაობ|slower|slow[\s-]*mo|slow\s+(?:it\s+)?down|half\s+speed|замедл|медленнее|слоу[\s-]*мо/iu;
 const FACTOR = new RegExp(`(?:${NUM}\\s*(?:x|×|х)${B1})|(?:${NUM}\\s*-?\\s*ჯერ)|(?:${B0}в\\s+${NUM}\\s+раз)|(?:${NUM}\\s+times)`, 'iu');
 
+/** A design (a poster, a banner, a post): a new frame keeps all of it, with bars, unless the words say crop. */
+const DESIGN = /დიზაინ|პოსტერ|ბანერ|ფლაერ|აფიშ|design|poster|banner|flyer|дизайн|постер|баннер|флаер|афиш/iu;
+const CROP = /მოჭერ|მოიჭრას|ჩამოჭერ|crop|обреж|обрез/iu;
 const PAD = /შავი?\s+ზოლ|ზოლებით|მთლიანად\s+(?:ჩანდეს|დარჩეს)|არ\s+მოიჭრას|letterbox|black\s+bars|pad(?:ding|ded)?|fit\s+(?:the\s+)?whole|without\s+crop|no\s+crop|keep\s+(?:the\s+)?whole|с\s+полями|чёрн\p{L}*\s+полос|черн\p{L}*\s+полос|целиком|без\s+обрез/iu;
 const FOUR_FIVE = /4\s*[:x×/]\s*5|ინსტაგრამის\s+პოსტ|instagram\s+(?:feed\s+)?post|пост\s+(?:для\s+)?инстаграм/iu;
 const FRAME_WORD = /ფორმატ|ზომ|ასპექტ|ratio|aspect|format|frame|vertical|horizontal|square|ვერტიკალ|ჰორიზონტალ|კვადრატ|вертикал|горизонтал|квадрат|формат|reels|tiktok|shorts|stories|youtube|ტიკტოკ|რილს|სთორ|сторис|рилс|тикток|ютуб/iu;
@@ -99,8 +108,6 @@ const MUTE = /უხმო|ხმის\s+გარეშე|ხმა\s+(?:მ�
 const LOUDER = /ხმა\s+(?:აუწი|აუმატ|გაზარდ)|(?:აუწი|გაზარდ)\p{L}*\s+ხმა|ხმამაღლა|louder|turn\s+(?:it\s+)?up|volume\s+up|increase\s+(?:the\s+)?volume|boost\s+(?:the\s+)?(?:volume|sound|audio)|громче|увелич\p{L}*\s+громкост|прибав\p{L}*\s+звук/iu;
 const QUIETER = /ხმა\s+(?:დაუწი|შეამცირ|დაუკელ)|(?:დაუწი|შეამცირ)\p{L}*\s+ხმა|ჩუმად|quieter|turn\s+(?:it\s+)?down|volume\s+down|lower\s+(?:the\s+)?volume|reduce\s+(?:the\s+)?volume|тише|потише|уменьш\p{L}*\s+громкост|убав\p{L}*\s+звук/iu;
 const DB = new RegExp(`([+-]?\\d{1,2}(?:[.,]\\d)?)\\s*(?:dB|db|დბ|дБ|дб)${B1}`, 'u');
-
-const CAPTION = /სუბტიტრ|წარწერ|ტექსტ\p{L}*\s+(?:დაადე|დაამატ|ჩაწერ|დააწერ)|(?:დაადე|დაამატ|ჩაწერ|დააწერ)\p{L}*\s+ტექსტ|caption|subtitle|title\s+(?:on|over)|text\s+(?:on|over)|(?:add|put|write|burn)\s+(?:a\s+|the\s+)?(?:text|title|line|words)|надпис|субтитр|титр|текст\s+(?:на|поверх)|(?:добав|налож|напиш)\p{L}*\s+текст/iu;
 
 const THUMB = /ქავერ|თამბნეილ|მინიატიურ|ყდის\s+ფოტ|სქრინშოტ|კადრი\s+(?:ამოიღე|ამომიღე|გამიკეთე|გადაიღე)|thumbnail|cover\s+(?:image|photo|frame|picture)|poster\s+frame|still\s+frame|screenshot|freeze\s+frame|grab\s+a\s+frame|frame\s+grab|обложк|превью|миниатюр|скриншот|стоп\s*-?\s*кадр/iu;
 const THUMB_AT = new RegExp(`(?:${T}\\s*-?\\s*(?:წამზე|წმ-?ზე|ზე)${B1})|(?:${B0}at\\s+(?:the\\s+)?${T}\\s*(?:${SEC})?)|(?:${B0}на\\s+${T}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:${SEC})?)`, 'iu');
@@ -160,7 +167,7 @@ function mineSpeed(t: string): EditAsk | null {
 function mineAspect(t: string): EditAsk | null {
   const to: FrameAspect | null = FOUR_FIVE.test(t) ? '4:5' : (aspectFromPrompt(t) as FrameAspect | null);
   if (!to || !FRAME_WORD.test(t) && !/\d\s*[:x×/]\s*\d/.test(t)) return null;
-  return { op: 'aspect', to, fit: PAD.test(t) ? 'pad' : 'crop' };
+  return { op: 'aspect', to, fit: PAD.test(t) || (DESIGN.test(t) && !CROP.test(t)) ? 'pad' : 'crop' };
 }
 
 function mineGrade(t: string): EditAsk | null {
@@ -185,7 +192,9 @@ function mineVolume(t: string): EditAsk | null {
   return { op: 'volume', db: louder ? size : -size };
 }
 
-const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, 'num' | 'str'>>>> = {
+type Field = 'num' | 'str' | 'bool' | 'list' | 'obj';
+
+const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, Field>>>> = {
   trim: { fromSec: 'num', toSec: 'num', lastSec: 'num', cutEndSec: 'num' },
   speed: { factor: 'num' },
   aspect: { to: 'str', fit: 'str' },
@@ -195,7 +204,49 @@ const ASK_KEYS: Readonly<Record<EditAsk['op'], Readonly<Record<string, 'num' | '
   mute: {},
   caption: { text: 'str' },
   thumbnail: { atSec: 'num' },
+  layers: { add: 'list', change: 'list', remove: 'list' },
+  captions: { track: 'obj', deliver: 'str', off: 'bool' },
 };
+
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Plain data only, rebuilt (a layer list, a caption track): finite numbers, short strings, booleans, and bounded arrays
+ * and objects of them. Undefined for anything else. Their meaning is ./layers resolveLayers / resolveTrack's to check.
+ */
+function plainOf(x: unknown, depth: number): unknown {
+  if (typeof x === 'number') return Number.isFinite(x) ? x : undefined;
+  if (typeof x === 'string') return x.length <= 2048 ? x : undefined;
+  if (typeof x === 'boolean') return x;
+  if (depth <= 0 || !x || typeof x !== 'object') return undefined;
+  if (Array.isArray(x)) {
+    if (x.length > MAX_CUES) return undefined;
+    const out: unknown[] = [];
+    for (const v of x) { const p = plainOf(v, depth - 1); if (p === undefined) return undefined; out.push(p); }
+    return out;
+  }
+  const entries = Object.entries(x);
+  if (entries.length > 24) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of entries) {
+    if (v === undefined) continue;
+    if (UNSAFE_KEYS.has(k)) return undefined;
+    const p = plainOf(v, depth - 1);
+    if (p === undefined) return undefined;
+    out[k] = p;
+  }
+  return out;
+}
+
+function fieldOf(type: Field, v: unknown): unknown {
+  switch (type) {
+    case 'num': return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+    case 'str': return typeof v === 'string' && v.length <= 200 ? v : undefined;
+    case 'bool': return typeof v === 'boolean' ? v : undefined;
+    case 'list': return Array.isArray(v) && v.length <= 24 ? plainOf(v, 3) : undefined;
+    case 'obj': return v && typeof v === 'object' && !Array.isArray(v) ? plainOf(v, 4) : undefined;
+  }
+}
 
 /**
  * One ask as a model's tool call or a run step sends it, rebuilt from its known fields only: the op, and each field the
@@ -212,22 +263,38 @@ export function editAskOf(x: unknown): EditAsk | null {
     if (k === 'op' || v === undefined) continue;
     const type = keys[k];
     if (!type) return null;
-    if (type === 'num' ? !(typeof v === 'number' && Number.isFinite(v)) : !(typeof v === 'string' && v.length <= 200)) return null;
-    out[k] = v;
+    const value = fieldOf(type, v);
+    if (value === undefined) return null;
+    out[k] = value;
   }
+  // A track is the user's own words (typed or a file): a transcript or a translation is never taken from a caller.
+  const track = out.track as { source?: unknown } | undefined;
+  if (track && track.source !== 'typed' && track.source !== 'file') return null;
   return out as EditAsk;
 }
 
 /** Every edit the message asks for, in the words' own terms (unresolved against any file). */
 export function mineEdits(text: unknown): MinedEdits {
-  const t = typeof text === 'string' ? text.slice(0, 2000) : '';
+  const raw = typeof text === 'string' ? text.slice(0, 20_000) : '';
   const out: MinedEdits = { edits: [], missing: [], unsupported: [] };
-  if (!t.trim()) return out;
+  if (!raw.trim()) return out;
+
+  // Text, logos, masks and captions first: the words to be drawn and the caption lines leave the message before the
+  // rest of it is read as edits („აქ დააწერე: სიჩქარე" draws a word; it does not speed anything up).
+  const comp = mineComposition(raw);
+  const t = comp.rest.slice(0, 2000);
+  const styles = comp.asks.flatMap((a) => (a.op === 'layers' ? [...(a.add ?? []), ...(a.change ?? [])] : []));
+  const textMotion = styles.some((x) => 'motionIn' in x && x.motionIn === 'fade');
+  const textCinematic = styles.some((x) => 'style' in x && x.style === 'cinematic');
 
   const thumb = THUMB.test(t);
   if (thumb) {
     const at = timeOfAlternatives(THUMB_AT.exec(t));
     out.edits.push(at === undefined ? { op: 'thumbnail' } : { op: 'thumbnail', atSec: at });
+  } else if (comp.timeUsed) {
+    // „in the last 3 seconds" was the layer's time: it trims nothing.
+    const speed = mineSpeed(t);
+    if (speed) out.edits.push(speed);
   } else {
     const trim = mineTrim(t);
     if (trim.ask) out.edits.push(trim.ask);
@@ -238,17 +305,18 @@ export function mineEdits(text: unknown): MinedEdits {
   const aspect = mineAspect(t);
   if (aspect) out.edits.push(aspect);
   const grade = mineGrade(t);
-  if (grade) out.edits.push(grade);
+  // „კინემატოგრაფიული ტექსტი" is the text's look, not the video's colour.
+  if (grade && !(textCinematic && grade.op === 'grade' && grade.style === 'cinematic' && !COLOR.test(t))) out.edits.push(grade);
   if (!thumb) {
-    const fade = mineFade(t);
+    // A text that fades in is the text's motion, not a fade of the video.
+    const fade = textMotion ? null : mineFade(t);
     if (fade) out.edits.push(fade);
     const volume = mineVolume(t);
     if (volume) out.edits.push(volume);
   }
-  if (CAPTION.test(t)) {
-    const words = extractOverlayText(t);
-    if (words) out.edits.push({ op: 'caption', text: words });
-    else out.missing.push('caption_text');
-  }
+  out.edits.push(...comp.asks);
+  out.missing.push(...comp.missing);
+  out.unsupported.push(...comp.unsupported);
+  if (comp.logo) out.logo = true;
   return out;
 }

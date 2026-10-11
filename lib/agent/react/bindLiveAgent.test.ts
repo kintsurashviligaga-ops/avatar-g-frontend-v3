@@ -293,6 +293,40 @@ describe('quote_media_edit (Agent G edit of an attached video, quote only)', () 
     await runLiveAgent('make it 9:16', on());
     expect(mockLlm.mock.calls[0]![0].system).toContain(AGENT_EDIT_NOTE);
   });
+
+  test('v2.1 by voice: the same typed layers and captions as the chat; a logo is an attached file by number, a track is typed', async () => {
+    mockEditQuote.mockResolvedValueOnce(QUOTE);
+    const t = editTool(on())!;
+    await t.run({
+      file: 1,
+      edits: [
+        { op: 'layers', add: [{ kind: 'text', text: 'მიტანის სერვისი თბილისში', anchor: 'bottom' }, { kind: 'image', picture: 2, anchor: 'top-left' }] },
+        { op: 'captions', track: { lang: 'ka', cues: [{ startSec: 0, endSec: 2, text: 'გამარჯობა' }] }, deliver: 'both' },
+      ],
+    });
+    expect(mockEditQuote).toHaveBeenCalledWith({ liveEdit: true }, {
+      userId: CTX.userId, file: FILES[0], edits: [
+        { op: 'layers', add: [{ kind: 'text', text: 'მიტანის სერვისი თბილისში', anchor: 'bottom' }, { kind: 'image', anchor: 'top-left', ref: FILES[1] }] },
+        { op: 'captions', track: { lang: 'ka', cues: [{ startSec: 0, endSec: 2, text: 'გამარჯობა' }], source: 'typed' }, deliver: 'both' },
+      ],
+    });
+    expect(AGENT_EDIT_NOTE).toMatch(/never reword, translate or invent/);
+  });
+
+  test('v2.1 by voice: a picture that is not attached, a link for a picture, or a model-made transcript is refused before anything is read', async () => {
+    const t = editTool(on())!;
+    for (const input of [
+      { edits: [{ op: 'layers', add: [{ kind: 'image', picture: 7 }] }] },
+      { edits: [{ op: 'layers', add: [{ kind: 'image', ref: 'https://evil.example/x.png' }] }] },
+      { edits: [{ op: 'captions', track: { lang: 'ka', source: 'transcript', cues: [{ startSec: 0, endSec: 2, text: 'x' }] } }] },
+      { edits: [{ op: 'layers', add: [{ kind: 'text', text: 'x'.repeat(500) }] }] },
+      { edits: [{ op: 'captions', off: 'yes' }] },
+    ]) {
+      const out = JSON.stringify(await t.run(input));
+      expect(out).toMatch(/error/i);
+    }
+    expect(mockEditQuote).not.toHaveBeenCalled();
+  });
 });
 
 describe('analyze_media (Agent G reads one file with Gemini; it starts nothing)', () => {

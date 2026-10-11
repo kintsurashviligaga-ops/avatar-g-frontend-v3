@@ -357,7 +357,7 @@ export function editTask(s: AgentEditState, locale: string): TaskCardModel {
   }
   const states = lay(EDIT_STEPS, at, mode);
   const free = lang === 'en' ? 'free' : lang === 'ru' ? 'бесплатно' : 'უფასო';
-  const planDetail = q ? `${editsLine(q.edits, locale)} · ${outputLine(q.plan, locale)} · ${q.credits > 0 ? `✦ ${q.credits}` : free}` : undefined;
+  const planDetail = q ? `${editsLine(q.edits, locale, q.plan.durationSec)} · ${outputLine(q.plan, locale)} · ${q.credits > 0 ? `✦ ${q.credits}` : free}` : undefined;
 
   const steps: TaskStep[] = EDIT_STEPS.map((key, i) => {
     const state = states[i]!;

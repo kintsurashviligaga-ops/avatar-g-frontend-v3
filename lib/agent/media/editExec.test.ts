@@ -59,6 +59,10 @@ describe('quote: the caller\'s own file, the edits resolved against it, a signed
     ['an unreadable file', { file: 'omni-uploads/user-a/missing.mp4' }, 'unreadable'],
     ['no edits', { edits: [] }, 'nothing_to_do'],
     ['an edit past the end', { edits: [{ op: 'trim', fromSec: 40 }] }, 'out_of_range'],
+    // v2.1: what is in the picture itself is not a layer of ours; captions not ours cannot be delivered again or taken off
+    ['a layer to remove that is in the picture itself', { edits: [{ op: 'layers', remove: [{ kind: 'image', where: 'top' }] }] }, 'remove_from_source'],
+    ['the same video with and without captions it never had', { edits: [{ op: 'captions', deliver: 'both' }] }, 'no_captions'],
+    ['captions taken off a file that has none of ours', { edits: [{ op: 'captions', off: true }] }, 'no_captions'],
   ])('%s is refused and audited', async (_why, over, error) => {
     const f = fakeEdit({ foreign: ['omni-uploads/user-b/x.mp4'] });
     const q = await quoteEdit(f.deps, { userId: USER, file: UPLOAD, edits: ASKS, ...over });

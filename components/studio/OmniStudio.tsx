@@ -161,7 +161,8 @@ import { chainSpec, runChainAsk, runDoneText, runErrorText, runPartialText, runP
 import { approveRunStep, cancelRun, followRun, planRunClient, resumeRunClient, startRunClient, uploadAll } from '@/lib/agent/run/runClient';
 import { canRetry, chainEditsText, runCardJobs, runCardPhase, runTask, stepErrorText, type AgentRunState } from '@/lib/agent/run/runCard';
 import type { RunEvent } from '@/lib/agent/run/runEngine';
-import { editDoneText, editErrorText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
+import { editDoneText, editErrorText, editExtrasText, editQuoteText, editStageText, readingText as editReadingText, type AgentEditState } from '@/lib/agent/media/editChat';
+import { LOGO_REF } from '@/lib/agent/media/layerWords';
 import { cancelAgentEdit, editEnabled, quoteEditFile, quoteEditResult, resumeAgentEdit, runAgentEdit, type EditClientRun } from '@/lib/agent/media/editClient';
 import { analyzeAnswerText, analyzeAsk, analyzeErrorText, analyzeReadingText, analyzeRetryable, type AgentAnalyzeState, type AnalyzeAsk } from '@/lib/agent/media/analyzeChat';
 import { analyzeEnabled, runAnalyze } from '@/lib/agent/media/analyzeClient';
@@ -5968,8 +5969,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     role: 'assistant', id: `age-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text: editReadingText(source, locale),
     editJob: { phase: 'reading', source, ...(ask ? { ask } : {}), t0: Date.now() },
   }), [locale]);
-  const quoteAgentEditInto = useCallback(async (id: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
+  const quoteAgentEditInto = useCallback(async (id: string, source: 'file' | 'previous', asked: EditAsk[], from: { file?: Media; url?: string }, logo?: Media) => {
     const f = (u: string, init?: RequestInit) => fetch(u, init);
+    // v2.1: the logo the words put on (lib/agent/media/layerWords LOGO_REF) is the attached picture, uploaded to the user's
+    // own storage first; its path goes in its place (and in the card's ask, so ↻ asks with the same file again).
+    let edits = asked;
+    if (logo) {
+      const path = await uploadBigFile(logo.dataUrl, logo.mimeType).catch(() => null);
+      if (!path) {
+        patchMsgById(id, (m) => (m.editJob?.phase !== 'reading' ? m : { ...m, text: `⚠️ ${editErrorText('upload_failed', locale)}`, noRetry: true, editJob: { phase: 'failed', source, error: 'upload_failed', ask: m.editJob?.ask, t0: m.editJob?.t0, t1: Date.now() } }));
+        return;
+      }
+      edits = asked.map((e) => (e.op === 'layers' && e.add
+        ? { ...e, add: e.add.map((l) => (l.kind === 'image' && l.ref === LOGO_REF ? { ...l, ref: path } : l)) }
+        : e));
+      patchMsgById(id, (m) => (m.editJob?.ask ? { ...m, editJob: { ...m.editJob, ask: { ...m.editJob.ask, edits } } } : m));
+    }
     const r = from.file
       ? await quoteEditFile({ fetch: f, upload: (d, m) => uploadBigFile(d, m) }, { dataUrl: from.file.dataUrl, mimeType: from.file.mimeType, ...(from.file.name ? { name: from.file.name } : {}) }, edits)
       : from.url
@@ -5979,12 +5994,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ? { ...m, text: editQuoteText(r.quote, locale, source), editJob: { phase: 'quoted', source, quote: r.quote, request: r.request, token: r.token, ask: m.editJob?.ask, t0: m.editJob?.t0 } }
       : { ...m, text: `⚠️ ${editErrorText(r.code, locale, 'detail' in r ? r.detail : undefined)}`, noRetry: true, editJob: { phase: 'failed', source, error: r.code, ask: m.editJob?.ask, t0: m.editJob?.t0, t1: Date.now() } }));
   }, [locale, patchMsgById]);
-  const startAgentEdit = useCallback(async (text: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }) => {
+  const startAgentEdit = useCallback(async (text: string, source: 'file' | 'previous', edits: EditAsk[], from: { file?: Media; url?: string }, logo?: Media) => {
     const bubble = newAgentEditBubble(source, { edits, ...(from.url ? { url: from.url } : {}) });
     // The file went to the edit; the MODEL never gets it inline (`modelMedias: []`), as with the montage and the MP3.
-    setMessages((prev) => [...prev, { role: 'user', text, ...(from.file ? { medias: [from.file], modelMedias: [] } : {}) }, bubble]);
-    persistChatTurn('user', text, from.file ? [from.file] : undefined);
-    await quoteAgentEditInto(bubble.id!, source, edits, from);
+    const medias = [...(from.file ? [from.file] : []), ...(logo ? [logo] : [])];
+    setMessages((prev) => [...prev, { role: 'user', text, ...(medias.length ? { medias, modelMedias: [] } : {}) }, bubble]);
+    persistChatTurn('user', text, medias.length ? medias : undefined);
+    await quoteAgentEditInto(bubble.id!, source, edits, from, logo);
   }, [newAgentEditBubble, persistChatTurn, quoteAgentEditInto]);
 
   // AGENT G — „WHAT IS IN MY VIDEO?" (lib/agent/media/analyzeChat, PART 6). Where AGENT_G_FILE_ANALYSIS opens it, a
@@ -8165,6 +8181,16 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const dl = useCallback(async (url: string, filename: string) => {
     await saveMedia(url, filename, { fallbackExt: 'jpg' });
   }, []);
+  // A text file made here (an edit's captions as .srt / .vtt): saved from memory, nothing is fetched.
+  const saveText = useCallback((text: string, filename: string, type: string) => {
+    try {
+      const href = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+      const a = document.createElement('a');
+      a.href = href; a.download = filename; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    } catch { /* ignore */ }
+  }, []);
 
   // Share an output (image / track / talking-video). Best UX: hand the real FILE to the
   // native share sheet, so it lands as media in WhatsApp / Instagram / Messenger. Falls
@@ -8460,7 +8486,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       const media = r.output === 'jpg'
         ? { imageUrl: r.url }
         : { videoUrl: r.url, orientation: r.height > r.width ? 'vertical' as const : r.height === r.width && r.width > 0 ? 'square' as const : 'landscape' as const };
-      patchMsgById(id, (m) => ({ ...m, text: editDoneText(r, locale), ...media, editName: r.name, editJob: { ...m.editJob!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r) } }));
+      patchMsgById(id, (m) => ({ ...m, text: editDoneText(r, locale), ...media, editName: r.name, editJob: { ...m.editJob!, phase: 'done', stage: 'completed', stopping: false, t1: endOf(r), ...(r.out ? { out: r.out } : {}) } }));
       try { window.dispatchEvent(new Event('myavatar:library-updated')); } catch { /* ignore */ }
     } else {
       const stopped = r.code === 'cancelled';
@@ -8796,6 +8822,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       montageOn: agentMontageOn,
       audioOn: agentAudioOn,
       editOn: agentEditOn,
+      previousEdit: prevResult?.editJob?.phase === 'done',
       previousMontage: prevResult?.id && prevResult.montage?.phase === 'done' ? { id: prevResult.id, prompt: prevResult.montage.prompt } : null,
       runOn: agentMontageOn,
       resumableRunId: lastReply?.id && lastReply.runJob && canRetry(lastReply.runJob) ? lastReply.id : null,
@@ -8891,13 +8918,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         return true;
       }
       case 'edit': {
-        // Agent G edits the one video attached, or its own last video: a plan card (free), nothing runs before Start.
-        const file = step.source === 'file' ? attachments.find((a) => attachmentKind(a.mimeType) === 'video') : undefined;
-        const url = step.source === 'previous' ? prevResult?.videoUrl : undefined;
-        if (!file && !url) return false;
+        // Agent G edits the video or picture attached, or its own last result: a plan card (free), nothing runs before
+        // Start. A logo the words put on is the other picture attached (v2.1).
+        const file = step.source === 'file'
+          ? (step.file !== undefined ? attachments[step.file] : attachments.find((a) => attachmentKind(a.mimeType) === 'video'))
+          : undefined;
+        const url = step.source === 'previous' ? (prevResult?.videoUrl ?? prevResult?.imageUrl) : undefined;
+        const logo = step.logo !== undefined ? attachments[step.logo] : undefined;
+        if ((!file && !url) || (step.logo !== undefined && !logo)) return false;
         clearComposer();
         if (!isDesktop) setOptionsOpen(false);
-        void startAgentEdit(text, step.source, step.edits, file ? { file } : { url });
+        void startAgentEdit(text, step.source, step.edits, file ? { file } : { url }, logo);
         return true;
       }
       case 'run': {
@@ -9522,6 +9553,32 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                       {/* No „save to Library": the edit job is already a Library item (the card's last step says so). */}
                       {editButton((m.videoUrl ?? m.imageUrl)!, m.videoUrl ? 'video' : 'image')}
                     </div>
+                    {m.editJob.out && (() => {
+                      // v2.1: the same video without its captions, the caption track as files, and what QC measured.
+                      const out = m.editJob.out;
+                      const words = editExtrasText(out, locale);
+                      const base = (m.editName ?? 'myavatar-edit').replace(/\.[a-z0-9]+$/i, '');
+                      const chip = 'inline-flex min-h-11 items-center gap-1.5 rounded-full bg-app-elevated px-3 text-sm text-app-text ring-1 ring-app-border/15 transition hover:text-app-accent active:scale-95 sm:min-h-9';
+                      return (
+                        <div className="space-y-1.5" data-testid="agent-edit-extras">
+                          {(out.clean || out.subtitles) && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {out.clean && (
+                                <button type="button" onClick={() => void dl(out.clean!.url, out.clean!.name)} data-testid="edit-download-clean" className={chip}>
+                                  <Download size={14} aria-hidden="true" /> {words.clean}
+                                </button>
+                              )}
+                              {out.subtitles && (['srt', 'vtt'] as const).map((ext) => (
+                                <button key={ext} type="button" onClick={() => saveText(out.subtitles![ext], `${base}.${ext}`, ext === 'vtt' ? 'text/vtt' : 'application/x-subrip')} data-testid={`edit-download-${ext}`} className={chip}>
+                                  <Download size={14} aria-hidden="true" /> {words[ext]}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {words.qc && <p className="text-xs text-app-muted" data-testid="edit-qc">{words.qc}</p>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {m.role === 'assistant' && m.audioJob && m.audioUrl && (

@@ -8,6 +8,7 @@ import { formatDuration } from './audioChat';
 import type { EditErrorCode, EditQuote } from './editExec';
 import type { MediaEdit } from './editPlan';
 import type { EditAsk } from './editWords';
+import type { Anchor, Layer, TextStyle } from './layers';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -41,6 +42,32 @@ export interface AgentEditState {
   t0?: number;
   t1?: number;
   error?: string;
+  /** What came out besides the file (v2.1): the copy without captions, the caption files, the measured QC. */
+  out?: EditOutExtras;
+}
+
+export interface EditOutExtras {
+  clean?: { url: string; name: string };
+  subtitles?: { srt: string; vtt: string };
+  qc?: { outcome: string; warnings: string[] };
+}
+
+/** The labels of what came out besides the file: the clean copy, the caption files, the QC line. */
+export function editExtrasText(out: EditOutExtras, locale: string): { clean: string; srt: string; vtt: string; qc: string | null } {
+  const lang = pick(locale);
+  const qc = out.qc
+    ? out.qc.outcome === 'PASS'
+      ? (lang === 'en' ? 'Checked on the result: every text, logo and caption is where and when it was asked.' : lang === 'ru' ? 'Проверено на результате: каждый текст, логотип и субтитр там и тогда, где просили.' : 'შედეგზე შემოწმდა: ყველა ტექსტი, ლოგო და ქეფშენი იქაა და მაშინ ჩანს, სადაც და როცა ითხოვე.')
+      : out.qc.outcome === 'PARTIAL'
+        ? (lang === 'en' ? 'Checked on the result, partly: some of it could not be measured.' : lang === 'ru' ? 'Проверено на результате частично: часть измерить не удалось.' : 'შედეგზე ნაწილობრივ შემოწმდა: ზოგი რამის გაზომვა ვერ მოხერხდა.')
+        : null
+    : null;
+  return {
+    clean: lang === 'en' ? 'Without captions' : lang === 'ru' ? 'Без субтитров' : 'ქეფშენების გარეშე',
+    srt: 'SRT',
+    vtt: 'VTT',
+    qc,
+  };
 }
 
 const GRADE: Record<string, Record<Lang, string>> = {
@@ -51,8 +78,50 @@ const GRADE: Record<string, Record<Lang, string>> = {
   cinematic: { ka: 'კინემატოგრაფიული', en: 'cinematic', ru: 'кинематографичный' },
 };
 
+const PLACE: Record<Anchor, Record<Lang, string>> = {
+  'top-left': { ka: 'ზედა მარცხენა კუთხე', en: 'top left', ru: 'вверху слева' },
+  top: { ka: 'ზემოთ', en: 'top', ru: 'вверху' },
+  'top-right': { ka: 'ზედა მარჯვენა კუთხე', en: 'top right', ru: 'вверху справа' },
+  left: { ka: 'მარცხნივ', en: 'left', ru: 'слева' },
+  center: { ka: 'ცენტრში', en: 'centre', ru: 'по центру' },
+  right: { ka: 'მარჯვნივ', en: 'right', ru: 'справа' },
+  'bottom-left': { ka: 'ქვედა მარცხენა კუთხე', en: 'bottom left', ru: 'внизу слева' },
+  bottom: { ka: 'ქვემოთ', en: 'bottom', ru: 'внизу' },
+  'bottom-right': { ka: 'ქვედა მარჯვენა კუთხე', en: 'bottom right', ru: 'внизу справа' },
+};
+const STYLE: Record<TextStyle, Record<Lang, string>> = {
+  minimal: { ka: 'მინიმალისტური', en: 'minimal', ru: 'минимализм' },
+  cinematic: { ka: 'კინემატოგრაფიული', en: 'cinematic', ru: 'кинематографичный' },
+  premium: { ka: 'პრემიუმ', en: 'premium', ru: 'премиум' },
+  bold: { ka: 'თამამი', en: 'bold', ru: 'жирный' },
+  brand: { ka: 'ბრენდის ღილაკი', en: 'brand button', ru: 'фирменная кнопка' },
+};
+const MOTION: Record<string, Record<Lang, string>> = {
+  fade: { ka: 'ნაზად შემოდის', en: 'fades in', ru: 'плавно появляется' },
+  'slide-up': { ka: 'ქვემოდან შემოდის', en: 'slides up', ru: 'выезжает снизу' },
+  'slide-left': { ka: 'გვერდიდან შემოდის', en: 'slides in', ru: 'выезжает сбоку' },
+  scale: { ka: 'იზრდება', en: 'scales in', ru: 'вырастает' },
+  typewriter: { ka: 'ასო-ასო', en: 'letter by letter', ru: 'по буквам' },
+  words: { ka: 'სიტყვა-სიტყვა', en: 'word by word', ru: 'по словам' },
+};
+
+/** One layer in a few words: „„მიტანა თბილისში" ქვემოთ, 0:07–0:10, ქვემოდან შემოდის". */
+export function layerLine(l: Layer, locale: string, durationSec: number): string {
+  const lang = pick(locale);
+  const when = l.endSec > 0 && !(l.startSec <= 0.05 && l.endSec >= durationSec - 0.05) ? `, ${at(l.startSec)}–${at(l.endSec)}` : '';
+  if (l.kind === 'text') {
+    const how = [STYLE[l.style][lang], l.motionIn !== 'none' ? MOTION[l.motionIn]?.[lang] : '', l.beats ? (lang === 'en' ? 'on the beats' : lang === 'ru' ? 'в ритм' : 'ბიტებზე') : ''].filter(Boolean).join(', ');
+    return `${q(lang, l.text)} ${PLACE[l.anchor][lang]}${when} (${how})`;
+  }
+  if (l.kind === 'image') {
+    return lang === 'en' ? `your picture ${PLACE[l.anchor][lang]}${when}` : lang === 'ru' ? `ваша картинка ${PLACE[l.anchor][lang]}${when}` : `შენი სურათი ${PLACE[l.anchor][lang]}${when}`;
+  }
+  const mode = l.mode === 'mosaic' ? (lang === 'en' ? 'pixelated' : lang === 'ru' ? 'пикселизация' : 'მოზაიკა') : (lang === 'en' ? 'blurred' : lang === 'ru' ? 'размытие' : 'დაბინდვა');
+  return `${mode}: ${PLACE[l.anchor][lang]}${when}`;
+}
+
 /** One resolved edit in a few words: „keeps 0:05–0:12", „2× faster", „9:16, cropped", „sound off". */
-export function editLine(e: MediaEdit, locale: string): string {
+export function editLine(e: MediaEdit, locale: string, durationSec = 0): string {
   const lang = pick(locale);
   const s = lang === 'en' ? 's' : lang === 'ru' ? 'с' : 'წმ';
   switch (e.op) {
@@ -88,12 +157,24 @@ export function editLine(e: MediaEdit, locale: string): string {
       return lang === 'en' ? `caption ${q(lang, e.text)}` : lang === 'ru' ? `подпись ${q(lang, e.text)}` : `წარწერა ${q(lang, e.text)}`;
     case 'thumbnail':
       return lang === 'en' ? `a still from ${at(e.atSec)}` : lang === 'ru' ? `кадр с ${at(e.atSec)}` : `კადრი ${at(e.atSec)}-დან`;
+    case 'layers':
+      return e.layers.map((l) => layerLine(l, locale, durationSec)).join(' · ');
+    case 'captions': {
+      const n = e.track.cues.length;
+      const what = lang === 'en' ? `captions: ${n} line${n === 1 ? '' : 's'}` : lang === 'ru' ? `субтитры: ${n} строк` : `ქეფშენები: ${n} სტრიქონი`;
+      const deliver = e.deliver === 'both'
+        ? (lang === 'en' ? 'with and without captions' : lang === 'ru' ? 'с субтитрами и без' : 'ქეფშენებით და მათ გარეშე')
+        : e.deliver === 'file'
+          ? (lang === 'en' ? 'as .srt / .vtt files, the video clean' : lang === 'ru' ? 'файлами .srt / .vtt, видео чистое' : '.srt / .vtt ფაილებად, ვიდეო სუფთა')
+          : (lang === 'en' ? 'burned in' : lang === 'ru' ? 'вшиты в видео' : 'ვიდეოში ჩაწერილი');
+      return `${what}, ${deliver}${e.track.karaoke ? (lang === 'en' ? ', word highlight' : lang === 'ru' ? ', подсветка слов' : ', სიტყვების მონიშვნით') : ''}`;
+    }
   }
 }
 
 /** The plan's edits on one line: „keeps 0:05–0:12 · 2× faster · frame 9:16, cropped to fill". */
-export function editsLine(edits: readonly MediaEdit[], locale: string): string {
-  return edits.map((e) => editLine(e, locale)).join(' · ');
+export function editsLine(edits: readonly MediaEdit[], locale: string, durationSec = 0): string {
+  return edits.map((e) => editLine(e, locale, durationSec)).join(' · ');
 }
 
 /** What comes out: „MP4 · 0:05 · 1080×1920" or „JPEG · 1080×1920". */
@@ -111,7 +192,8 @@ export function editQuoteText(quote: EditQuote, locale: string, source: 'file' |
   const from = source === 'previous'
     ? (lang === 'en' ? 'Source: the result I made last here.' : lang === 'ru' ? 'Источник: мой последний результат здесь.' : 'წყარო: ჩემი ბოლო შედეგი აქ.')
     : (lang === 'en' ? 'Source: your video.' : lang === 'ru' ? 'Источник: ваше видео.' : 'წყარო: შენი ვიდეო.');
-  const plan = lang === 'en' ? `Plan: ${editsLine(quote.edits, locale)}.` : lang === 'ru' ? `План: ${editsLine(quote.edits, locale)}.` : `გეგმა: ${editsLine(quote.edits, locale)}.`;
+  const line = editsLine(quote.edits, locale, quote.plan.durationSec);
+  const plan = lang === 'en' ? `Plan: ${line}.` : lang === 'ru' ? `План: ${line}.` : `გეგმა: ${line}.`;
   const out = lang === 'en' ? `Result: ${q(lang, quote.name)}, ${outputLine(quote.plan, locale)}.`
     : lang === 'ru' ? `Результат: ${q(lang, quote.name)}, ${outputLine(quote.plan, locale)}.`
       : `შედეგი: ${q(lang, quote.name)}, ${outputLine(quote.plan, locale)}.`;
@@ -161,7 +243,7 @@ export function editDoneText(r: { output: 'mp4' | 'jpg'; name: string; durationS
 }
 
 export type EditChatCode = EditErrorCode | 'upload_failed' | 'network' | 'closed' | 'unauthenticated' | 'rate_limited' | 'no_previous' | 'caption_text'
-  | 'cut_middle' | 'approval_unclear';
+  | 'cut_middle' | 'approval_unclear' | 'cta_text' | 'logo_file' | 'speech_captions' | 'translate_captions';
 
 const AGAIN: Record<Lang, string> = { ka: ' მითხარი თავიდან, რა შევცვალო.', en: ' Tell me again what to change.', ru: ' Скажите ещё раз, что изменить.' };
 
@@ -199,6 +281,20 @@ const ERR: Record<EditChatCode, Record<Lang, string>> = {
   rate_limited: { ka: 'ძალიან ბევრი მოთხოვნაა ერთად. სცადე ერთ წუთში.', en: 'Too many requests at once. Try again in a minute.', ru: 'Слишком много запросов. Попробуйте через минуту.' },
   no_previous: { ka: 'ამ საუბარში ჯერ ვიდეო არ გამიკეთებია. მიამაგრე ვიდეო, რომელიც შევცვალო.', en: 'I have not made a video in this chat yet. Attach the video to change.', ru: 'В этом чате я ещё не делал видео. Прикрепите видео, которое изменить.' },
   caption_text: { ka: 'რა ეწეროს? დაწერე ტექსტი ბრჭყალებში, მაგალითად: წარწერა „ზაფხული 2026".', en: 'What should it say? Put the text in quotes, for example: caption "Summer 2026".', ru: 'Что написать? Дайте текст в кавычках, например: подпись «Лето 2026».' },
+  text_too_long: { ka: 'ტექსტი ძალიან გრძელია (160 სიმბოლომდე). შეამოკლე და მომწერე თავიდან.', en: 'The text is too long (up to 160 characters). Shorten it and send it again.', ru: 'Текст слишком длинный (до 160 символов). Сократите и пришлите снова.' },
+  too_many_layers: { ka: 'ერთ შედეგზე 12 ფენამდე შემიძლია.', en: 'I can put up to 12 layers on one result.', ru: 'На один результат — до 12 слоёв.' },
+  layer_not_found: { ka: 'ასეთი ფენა მე არ დამიმატებია. რაც თავად კადრშია (მაგალითად ლოგო ან წარწერა ვიდეოში), იმას ვერ ვაშორებ.', en: 'I did not add such a layer. What is in the picture itself (a logo or text in the video) I cannot remove.', ru: 'Такого слоя я не добавлял. То, что есть в самом кадре (логотип или надпись в видео), я убрать не могу.' },
+  layer_ambiguous: { ka: 'რამდენიმე ტექსტია. რომელი შევცვალო? მაგალითად: „ზედა ტექსტი…".', en: 'There are several texts. Which one? For example: "the top text…".', ru: 'Текстов несколько. Какой изменить? Например: «верхний текст…».' },
+  bad_captions: { ka: 'ქეფშენების დრო ან ტექსტი ვერ წავიკითხე. დაწერე ასე: „0:01–0:03 გამარჯობა", ან მიამაგრე .srt / .vtt ფაილი.', en: 'I could not read the captions\' times or words. Write "0:01–0:03 Hello", or attach an .srt / .vtt file.', ru: 'Не удалось прочитать время или текст субтитров. Напишите «0:01–0:03 Привет» или прикрепите .srt / .vtt.' },
+  missing_glyphs: { ka: 'ამ სიმბოლოებს ჩემი შრიფტი ვერ ხატავს, ამიტომ არაფერი დამიწყია:', en: 'My font cannot draw these characters, so nothing was started:', ru: 'Мой шрифт не может нарисовать эти символы, поэтому ничего не запущено:' },
+  text_does_not_fit: { ka: 'ტექსტი კადრში ვერ ეტევა ოთხ სტრიქონად. შეამოკლე ან ზომა შეამცირე.', en: 'The text does not fit the frame in four lines. Shorten it or make it smaller.', ru: 'Текст не помещается в кадр в четыре строки. Сократите или уменьшите.' },
+  layer_picture: { ka: 'სურათი (მაგალითად ლოგო) ვერ გავხსენი ან შენი არ არის.', en: 'The picture (a logo) could not be opened, or it is not yours.', ru: 'Картинку (логотип) не удалось открыть, или она не ваша.' },
+  logo_file: { ka: 'რომელი ლოგო დავადო? მიამაგრე ლოგოს სურათი (PNG, სასურველია გამჭვირვალე ფონით) და იგივე დამიწერე.', en: 'Which logo should I put on? Attach the logo picture (a PNG, ideally with a transparent background) and say it again.', ru: 'Какой логотип поставить? Прикрепите картинку логотипа (PNG, лучше с прозрачным фоном) и повторите просьбу.' },
+  no_captions: { ka: 'ამ ფაილზე ჩემი დამატებული ქეფშენები არ არის. ახლის დასამატებლად დაწერე სტრიქონები დროით („0:01–0:03 გამარჯობა") ან მიამაგრე .srt / .vtt. თუ ქეფშენები თავად კადრშია, მათ ვერ ვაშორებ.', en: 'This file has no captions of mine. To add some, write the lines with their times ("0:01–0:03 Hello") or attach an .srt / .vtt. Captions printed in the picture itself I cannot remove.', ru: 'На этом файле нет моих субтитров. Чтобы добавить, напишите строки со временем («0:01–0:03 Привет») или прикрепите .srt / .vtt. Субтитры, вшитые в сам кадр, я убрать не могу.' },
+  cta_text: { ka: 'რა ეწეროს ღილაკზე? დაწერე ბრჭყალებში, მაგალითად: CTA „შეუკვეთე ახლა".', en: 'What should the button say? Put it in quotes, for example: CTA "Order now".', ru: 'Что написать на кнопке? В кавычках, например: CTA «Закажи сейчас».' },
+  remove_from_source: { ka: 'ეს თავად კადრშია (ჩემი დამატებული ფენა არ არის). მისი მოშორება დროში ნებადართული ხელსაწყოებით ვერ ხერხდება, ამიტომ არაფერს ვცვლი. დანარჩენს (მაგალითად პაკეტის ლოგოს) არ ვეხები.', en: 'That is in the picture itself (not a layer I added). Removing it over time is not possible with the approved tools, so I change nothing. Everything else (the package logo too) stays as it is.', ru: 'Это в самом кадре (не мой слой). Убрать это во времени разрешёнными инструментами нельзя, поэтому я ничего не меняю. Остальное (и логотип на упаковке) не трогаю.' },
+  speech_captions: { ka: 'მეტყველებიდან ქეფშენებს ჯერ თავად ვერ ვწერ: ამას სჭირდება ფასიანი ამოცნობა (ElevenLabs Scribe), რაზეც გადაწყვეტილება მფლობელს ეკუთვნის. ახლავე შემიძლია შენი ტექსტით: დაწერე „0:01–0:03 გამარჯობა" ან მიამაგრე .srt / .vtt.', en: 'I cannot write captions from the speech myself yet: that needs paid recognition (ElevenLabs Scribe), which is the owner\'s decision. I can use your own words now: write "0:01–0:03 Hello" or attach an .srt / .vtt.', ru: 'Субтитры из речи я пока сам не пишу: это платное распознавание (ElevenLabs Scribe), решение за владельцем. Сейчас могу с вашим текстом: напишите «0:01–0:03 Привет» или прикрепите .srt / .vtt.' },
+  translate_captions: { ka: 'ქეფშენების თარგმნა ფასიან მოდელს სჭირდება და ჯერ ჩართული არ არის (მფლობელის გადაწყვეტილება). თარგმნილი ტექსტი თავად მომწერე დროებით და იმავე დროზე ჩავსვამ.', en: 'Translating captions needs a paid model and is not on yet (the owner\'s decision). Send the translated lines with their times and I will put them on at those times.', ru: 'Перевод субтитров требует платной модели и пока не включён (решение владельца). Пришлите перевод со временем — поставлю на те же моменты.' },
   cut_middle: { ka: 'შუიდან მონაკვეთის ამოჭრა ერთ ცვლილებად ჯერ არ შემიძლია. შემიძლია დავტოვო ერთი მონაკვეთი ან მოვაჭრა დასაწყისი ან ბოლო.', en: 'I cannot cut a stretch out of the middle in one edit yet. I can keep one stretch, or cut off the start or the end.', ru: 'Вырезать отрезок из середины одной правкой я пока не могу. Могу оставить один отрезок или обрезать начало или конец.' },
 };
 
@@ -211,7 +307,8 @@ export function editErrorText(code: string | undefined, locale: string, detail?:
   const row = (code && (ERR as Record<string, Record<Lang, string>>)[code]) || ERR.render_failed;
   const text = row[lang];
   // The plan's own message names the numbers („The video is 30 s long.") in English; only the English card repeats it.
-  const more = lang === 'en' && detail && (code === 'out_of_range' || code === 'conflict' || code === 'too_long') ? ` ${detail}` : '';
+  const more = code === 'missing_glyphs' && detail ? ` ${detail}`
+    : lang === 'en' && detail && (code === 'out_of_range' || code === 'conflict' || code === 'too_long') ? ` ${detail}` : '';
   return text + more + (code && SAY_AGAIN.has(code) ? AGAIN[lang] : '');
 }
 

@@ -13,8 +13,9 @@
  *                    priced again; nothing runs before Start
  *   remontage        the montage Agent G just DELIVERED takes the change the same way (the music from 5 s): a new plan
  *                    from the same files and words, nothing runs before Start
- *   edit             Agent G edits one attached video, or its own last video, itself (lib/agent/media/editExec): the
- *                    edits read from the words (./media/editWords), planned on a card, run on Start
+ *   edit             Agent G edits one attached video or picture, or its own last result, itself (./media/editExec):
+ *                    the edits read from the words (./media/editWords; text, logos, masks and captions ./media/layerWords),
+ *                    planned on a card, run on Start
  *   run              two steps chained (./run/runChat): the sound of one video or link with the other clips cut to it,
  *                    or a montage and the edits a montage does not do itself; planned on one card, run on Start
  *   resume           „continue" after a run that ended without every result: a new run that keeps what was delivered
@@ -24,6 +25,7 @@
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
 import { mineEdits, type EditAsk } from './media/editWords';
+import { mineComposition } from './media/layerWords';
 import { editErrorText } from './media/editChat';
 import { runChainAsk, type RunChain } from './run/runChat';
 import { analyzeAsk, type AnalyzeAsk } from './media/analyzeChat';
@@ -80,6 +82,8 @@ export interface ChatSnapshot {
   montageOn: boolean;
   audioOn: boolean;
   editOn?: boolean;
+  /** The last result is an edit Agent G made in this thread (its layers and captions can be changed in words). */
+  previousEdit?: boolean;
   /** The last result is a montage Agent G delivered in this thread: its card, and the words it was planned from. */
   previousMontage?: { id: string; prompt?: string } | null;
   /** Multi-step runs are open to this user (the same AGENT_G_MEDIA_EXEC door as the montage). */
@@ -111,8 +115,12 @@ export type ChatStep =
   | { kind: 'redo'; intent: AgentIntent }
   | { kind: 'requote'; cardId: string; prompt: string; intent: AgentIntent }
   | { kind: 'remontage'; cardId: string; prompt: string; intent: AgentIntent }
-  /** source: the one video attached to this message, or the last video Agent G made in this thread. */
-  | { kind: 'edit'; source: 'file' | 'previous'; edits: EditAsk[]; intent: AgentIntent }
+  /**
+   * source: a video or picture attached to this message (`file`: its index in the attachments, default the first video),
+   * or the last result Agent G made in this thread. `logo`: the index of the attached picture an image layer puts on
+   * (./media/layerWords LOGO_REF, replaced by the uploaded file's path).
+   */
+  | { kind: 'edit'; source: 'file' | 'previous'; edits: EditAsk[]; file?: number; logo?: number; intent: AgentIntent }
   /** Two steps chained, planned on one card (nothing runs before Start). */
   | { kind: 'run'; chain: RunChain; intent: AgentIntent }
   /** Carry the run card on (a new run that reuses what was delivered). */
@@ -168,6 +176,13 @@ function editStep(text: string, intent: ActIntent, s: ChatSnapshot): ChatStep | 
   if (intent.missing.includes('previous') || (onPrevious && s.previous?.kind !== 'video')) {
     return { kind: 'say', text: editErrorText('no_previous', locale), keepComposer: true, intent };
   }
+  // A picture (the one attached, or Agent G's last result) takes a new frame, a colour and layers (v2.1).
+  const picture = cap === 'media.edit' && ((kinds.length === 1 && kinds[0] === 'image') || (!kinds.length && s.previous?.kind === 'image'));
+  if (picture) {
+    const mined = mineEdits(text);
+    if (!mined.edits.length || mined.edits.some((e) => !PICTURE_OPS.has(e.op))) return null;
+    return { kind: 'edit', source: kinds.length ? 'file' : 'previous', edits: mined.edits, ...(kinds.length ? { file: 0 } : {}), intent };
+  }
   if (intent.missing.includes('video')) return { kind: 'say', text: askReply(intent, locale), keepComposer: true, intent };
   const source = onPrevious ? 'previous' : intent.target === 'attachment' && kinds.length === 1 && kinds[0] === 'video' ? 'file' : null;
   if (!source) return { kind: 'say', text: editErrorText('bad_input', locale), keepComposer: true, intent };
@@ -175,7 +190,62 @@ function editStep(text: string, intent: ActIntent, s: ChatSnapshot): ChatStep | 
   if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
   if (mined.missing.includes('caption_text')) return { kind: 'say', text: editErrorText('caption_text', locale), keepComposer: true, intent };
   if (!mined.edits.length) return null;
-  return { kind: 'edit', source, edits: mined.edits, intent };
+  return { kind: 'edit', source, edits: mined.edits, ...(source === 'file' ? { file: 0 } : {}), intent };
+}
+
+/** What a picture can take (./media/editPlan PICTURE_EDITS): a new frame, a colour, layers. */
+const PICTURE_OPS: ReadonlySet<string> = new Set(['aspect', 'grade', 'layers']);
+
+/**
+ * Media Studio v2.1: text, a CTA, a logo, a mask or captions put on a video or a picture, or a change to what Agent G
+ * put on its own last result („ზედა ლოგო მოხსენი", „იგივე ქეფშენებით და მათ გარეშე"). Words that only change what is
+ * there are read so on the last result only when that is an edit of Agent G's: otherwise „make the text more premium"
+ * is about a text the chat wrote, and the chat answers it. Null: not this.
+ */
+function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): ChatStep | null {
+  if (s.mode !== 'chat' || !s.editOn) return null;
+  const comp = mineComposition(text);
+  if (!comp.hit) return null;
+  const kinds = s.attachments ?? [];
+  if (kinds.some((k) => k !== 'video' && k !== 'image')) return null;
+  const locale = intent.lang;
+  const videos = kinds.flatMap((k, i) => (k === 'video' ? [i] : []));
+  const images = kinds.flatMap((k, i) => (k === 'image' ? [i] : []));
+  const prev = s.previous?.kind === 'video' || s.previous?.kind === 'image' ? s.previous.kind : null;
+  const revises = comp.asks.some((a) => (a.op === 'layers' ? Boolean(a.change?.length || a.remove?.length) : !a.track));
+  const adds = comp.asks.some((a) => (a.op === 'layers' ? Boolean(a.add?.length) : Boolean(a.track)));
+
+  // Which file: a video attached; else the picture attached (the second one is the logo); else the last result.
+  let source: 'file' | 'previous' | null = null;
+  let file: number | undefined, logo: number | undefined;
+  if (videos.length > 1) return null;
+  if (videos.length === 1) {
+    if (images.length > (comp.logo ? 1 : 0)) return null;
+    source = 'file'; file = videos[0];
+    if (comp.logo) logo = images[0];
+  } else if (images.length) {
+    if (images.length > 2 || (images.length === 2 && !comp.logo)) return null;
+    if (comp.logo && images.length === 1 && prev && s.previousEdit) { source = 'previous'; logo = images[0]; }
+    else { source = 'file'; file = images[0]; if (comp.logo) logo = images[1]; }
+  } else if (prev && (s.previousEdit || (adds && !revises))) {
+    source = 'previous';
+  }
+  if (!source) return null;
+  const video = source === 'file' ? kinds[file!] === 'video' : prev === 'video';
+
+  // What cannot be done, or is missing, is said before anything is uploaded.
+  const speech = comp.unsupported.find((u) => u === 'speech_captions' || u === 'translate_captions');
+  if (speech) return video ? { kind: 'say', text: editErrorText(speech, locale), intent } : null;
+  if (comp.missing.includes('cta_text')) return { kind: 'say', text: editErrorText('cta_text', locale), keepComposer: true, intent };
+  if (comp.missing.includes('caption_text')) return { kind: 'say', text: editErrorText('caption_text', locale), keepComposer: true, intent };
+  if (comp.logo && logo === undefined) return { kind: 'say', text: editErrorText('logo_file', locale), keepComposer: true, intent };
+
+  const mined = mineEdits(text);
+  if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
+  if (!mined.edits.length) return null;
+  // A picture takes a frame, a colour and layers; captions, a trim or a speed are a video's.
+  if (!video && mined.edits.some((e) => !PICTURE_OPS.has(e.op))) return { kind: 'say', text: editErrorText('no_video', locale), keepComposer: true, intent };
+  return { kind: 'edit', source, edits: mined.edits, ...(file !== undefined ? { file } : {}), ...(logo !== undefined ? { logo } : {}), intent };
 }
 
 /** One message, read against the screen: the step the studio takes. */
@@ -225,6 +295,10 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
     const chain = runChainAsk(text, s.attachments ?? []);
     if (chain) return { kind: 'run', chain, intent };
   }
+
+  // Text, a logo, a mask or captions on the file, or a change to what Agent G put on its last result (v2.1).
+  const composed = compositionStep(text, intent, s);
+  if (composed) return composed;
 
   if (intent.kind === 'act') {
     // „The music from 5 s" or „only the last five" on the montage Agent G just delivered: the same files planned again

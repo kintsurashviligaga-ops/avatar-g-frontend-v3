@@ -219,11 +219,11 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'media.edit': c({
     id: 'media.edit', serviceId: null,
-    does: 'Edit one of the user\'s videos (or Agent G\'s own last result): trim, speed, frame shape, colour, fades, volume or mute, a caption, or a still as a thumbnail',
+    does: 'Edit one of the user\'s videos or pictures (or Agent G\'s own last result): trim, speed, frame shape, colour, fades, volume or mute, a still as a thumbnail; text, a CTA, a logo, blur or mosaic layers and the user\'s own caption lines (Media Studio v2.1), each changeable later as a revision from the same source',
     routes: ['/api/agent/media/edit', '/api/tasks'], engine: 'ffmpeg in a lease worker (lib/agent/media/editWorker)',
     pricing: { key: null, charge: 'free' }, approval: 'plan-start', timeoutSec: 600, retry: 'lease-retry',
     idempotency: 'one job per signed quote (jobId in the token)', cancel: 'task-api',
-    qc: 'the planned frame and codecs, sound exactly when planned, length within 0.5 s or 3 % of the plan', artifact: 'video', library: 'filed',
+    qc: 'the planned frame and codecs, sound exactly when planned, length within 0.5 s or 3 % of the plan; every layer and caption measured on the rendered file (lib/agent/media/layerQc: present when and where planned, the drawn pixels, nothing else changed)', artifact: 'video', library: 'filed',
     label: 'BUILT_NOT_PROVEN', liveTool: { name: 'quote_media_edit', confirms: 'media_edit_run' }, flag: 'AGENT_G_MEDIA_EXEC',
   }),
   'media.analyze': c({

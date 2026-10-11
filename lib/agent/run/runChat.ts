@@ -58,7 +58,10 @@ const ALL = new RegExp(`${L0}(?:all|every|ყველა|ყველ\\p{L}+|в
 const OTHER = /other|rest|remaining|დანარჩენ|სხვა|остальн|другие|других/iu;
 
 /** The edits a montage leaves to an edit step; speed and mute would undo the cut to the beat, a trim or frame it does itself. */
-const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['grade', 'fade', 'volume', 'caption']);
+const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['grade', 'fade', 'volume', 'caption', 'layers']);
+/** On a montage not made yet, layers are only added, and only words and masks (a logo needs its own picture uploaded). */
+const freshLayers = (e: EditAsk): boolean =>
+  e.op !== 'layers' || (!e.change?.length && !e.remove?.length && Boolean(e.add?.length) && !e.add!.some((l) => l.kind === 'image'));
 /** A fade „between the clips" is a transition, which a whole-video fade is not. */
 const TRANSITION = /between|transition|გადასვლ|შორის|между|переход/iu;
 
@@ -117,7 +120,7 @@ export function runChainAsk(text: string, kinds: readonly AttachmentKind[]): Run
 
   // ── the montage, then an edit of it ──
   if (links.length === 0 && beatMontageAsk(t, [...kinds])) {
-    const edits = mineEdits(t).edits.filter((e) => AFTER_MONTAGE.has(e.op) && !(e.op === 'fade' && TRANSITION.test(t)));
+    const edits = mineEdits(t).edits.filter((e) => AFTER_MONTAGE.has(e.op) && freshLayers(e) && !(e.op === 'fade' && TRANSITION.test(t)));
     if (edits.length) return { kind: 'cut-edit', edits };
   }
   return null;
