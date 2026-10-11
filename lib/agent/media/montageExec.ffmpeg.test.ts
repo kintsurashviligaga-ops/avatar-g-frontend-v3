@@ -93,10 +93,13 @@ function liveLike(store: ReturnType<typeof memoryLeaseStore>, audits: string[], 
 }
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-/** PIDs of the conform pass's ffmpeg (fitAspect writes into a remix-fit-* temp dir). */
+/**
+ * PIDs of the conform pass's ffmpeg (fitAspect writes into a remix-fit-* temp dir), only this test process's own
+ * children: other suites running in parallel workers (ownerMontage.ffmpeg) run the same conform pass.
+ */
 function encoders(): number[] {
   try {
-    return execFileSync('pgrep', ['-f', `^${bin} .*remix-fit-`]).toString().trim().split('\n').map(Number).filter(Boolean);
+    return execFileSync('pgrep', ['-P', String(process.pid), '-f', `^${bin} .*remix-fit-`]).toString().trim().split('\n').map(Number).filter(Boolean);
   } catch {
     return []; // pgrep exits 1 when nothing matches
   }
