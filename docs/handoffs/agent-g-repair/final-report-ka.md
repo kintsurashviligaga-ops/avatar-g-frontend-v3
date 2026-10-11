@@ -69,7 +69,7 @@ env production
 | c154e3e3 | კარნახი: მიკროფონი მზადაა შეხებისთანავე, Stop არ ელოდება, ყველა გადაცემა ითვლება, ლატენტობა იზომება | `components/chat/composer/useDictation.ts`, `lib/voice/interimCadence.ts`, `lib/voice/dictationMetrics.ts` (ახალი), `app/api/voice/dictation-metrics` (ახალი), `DictationMetricsReadout.tsx` (ახალი), `app/api/voice/transcribe` (Server-Timing) |
 | 3c345ecb | ბარათზე ყველა ფაილის სახელი და რაოდენობა, ცალკე „კლიპების შემოწმება" ნაბიჯი; ბრაუზერის ტესტების ატვირთვის mock | `lib/agent/media/taskSteps.ts`, `components/studio/AgentTaskCard.tsx`, `montageWorker.ts` (`qc` ეტაპი), `tests/fixtures/uploads.ts` (ახალი), 7 spec |
 | 765c6236 | ტელეფონის სკრინშოტებში ნაპოვნი ორი ხარვეზი: ვიდეოს სიგრძე წაშლის ღილაკის ქვეშ იმალებოდა, ბარათის სათაურში ფაილების რაოდენობა იჭრებოდა. Live Voice-ის ნაბიჯი hand-off-ზე აღარ წერს უბრალოდ „შესრულდა"-ს. ბრაუზერის ტესტები ატვირთვას mock-ით იღებს | `OmniStudio.tsx` (სიგრძე მარცხნივ ზემოთ), `AgentTaskCard.tsx` (რაოდენობა პირველია), `LiveActivityFeed.tsx`, `tests/chat-attachments.spec.ts`, `tests/agent-g-montage.spec.ts` |
-| მეორე რაუნდის commit (ამ განახლებასთან ერთად) | §2, 16–19: ბარათი ენის შეცვლას და reload-ს უძლებს და სამუშაოს მიჰყვება; iPhone-ზე კლიპის კადრი; წითელი Stop ჩატბოქსში; ფაილები და ბარათები ანგარიშის History-ში | `lib/agent/media/jobFollow.ts`, `cardPersist.ts` (ახალი), `workingCard.ts` (ახალი), `montageClient.ts`, `audioClient.ts`, `editClient.ts`, `lib/chat/keepOpenChat.ts` (ახალი), `lib/chat/turnMeta.ts` (ახალი), `lib/chat-history.ts`, `components/studio/montage/media.ts`, `ChatChrome.tsx`, `OmniStudio.tsx`, `tests/chat-history-devices.spec.ts` (ახალი), `tests/agent-g-montage.spec.ts` |
+| 7af986d0 (მეორე რაუნდი) | §2, 16–19: ბარათი ენის შეცვლას და reload-ს უძლებს და სამუშაოს მიჰყვება; iPhone-ზე კლიპის კადრი; წითელი Stop ჩატბოქსში; ფაილები და ბარათები ანგარიშის History-ში | `lib/agent/media/jobFollow.ts`, `cardPersist.ts` (ახალი), `workingCard.ts` (ახალი), `montageClient.ts`, `audioClient.ts`, `editClient.ts`, `lib/chat/keepOpenChat.ts` (ახალი), `lib/chat/turnMeta.ts` (ახალი), `lib/chat-history.ts`, `components/studio/montage/media.ts`, `ChatChrome.tsx`, `OmniStudio.tsx`, `tests/chat-history-devices.spec.ts` (ახალი), `tests/agent-g-montage.spec.ts` |
 
 ## 4. ტესტების შედეგები
 
@@ -223,7 +223,7 @@ DB სვეტი მიმაგრებებისთვის აღარ
 
 ## 14. PR, merge და deploy
 
-- PR #55 (draft, → main): commit-ები af676053 … 765c6236 და მეორე რაუნდის commit-ი.
+- PR #55 (draft, → main): commit-ები af676053 … 765c6236 და 7af986d0 (მეორე რაუნდი).
 - Merge: **არა**.
 - Production deploy: **არა**.
 - Production უცვლელია (2817c9b).
