@@ -4573,14 +4573,22 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed, locale]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
-  // Fail-open: a storyboard miss falls back to a direct render so the user is
-  // never blocked. A user Cancel (abort) stops quietly without rendering.
+  // Video Core §5 — a storyboard miss is SAID, with a Retry, and renders nothing. The old reading was fail-OPEN: the
+  // moment the plan call missed (or threw), the full film render started unreviewed and, with it, the charge — a
+  // provider outage became a paid film nobody approved. A user Cancel (abort) still stops quietly.
   const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', opts?: { nativeSec?: number }) => {
     // FIX 4 — remember this request so a failed render can be retried in one click.
     lastVideoReqRef.current = { filmPrompt, refs, orientation };
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
+    // The failure, visible: the route's own sentence when it gave one (describeOpFailure keeps machine codes out of a
+    // Georgian interface), the translated line otherwise — as the chat's error card, whose Retry plans the storyboard
+    // again (never a render) and whose Dismiss puts it away. Nothing after a user cancel.
+    const failVisible = (body?: unknown) => {
+      if (ac.signal.aborted) return;
+      setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${describeOpFailure(body, t.sbFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation } }]);
+    };
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
     // The grid the board is planned on: the length just set by the chat step (state has not settled yet) or the panel's.
@@ -4615,7 +4623,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? j.hostedRefs
         : refs;
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
-        await startFilmRender(filmPrompt, refs, orientation, undefined); // plan miss → direct render (or queue when flag ON)
+        failVisible(j); // plan miss → the error card with Retry; NO render, NO charge
         return;
       }
       const planned = j.scenes;
@@ -4784,11 +4792,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }));
     } catch {
       if (ac.signal.aborted) return; // user cancelled — do nothing
-      await startFilmRender(filmPrompt, refs, orientation, undefined);
+      failVisible(); // the plan call itself failed (network, a 5xx with no body) → the error card with Retry; NO render
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts, pickedVideoTemplateId]);
+  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, scenePrompts, pickedVideoTemplateId, t.sbFailed]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An

@@ -105,3 +105,34 @@ describe('the final length reaches the render and the server cuts to it, or refu
     expect(assembler).not.toMatch(/'-t', String\(masterDurSec\),/);
   });
 });
+
+describe('§5 · a storyboard miss is SAID with a Retry — nothing renders, nothing is charged, on its own', () => {
+  test('both fail-open renders are gone from createStoryboard', () => {
+    expect(studio).not.toMatch(/startFilmRender\(filmPrompt, refs, orientation, undefined\)/);
+  });
+  test('the plan miss and the thrown plan call both post the error card whose Retry plans the storyboard again', () => {
+    expect(studio).toMatch(/const failVisible = \(body\?: unknown\) => \{\s*if \(ac\.signal\.aborted\) return;/);
+    expect(studio).toMatch(/describeOpFailure\(body, t\.sbFailed\)\}`, retryVideo: true, retryReq: \{ filmPrompt, refs, orientation \} \}\]\);/);
+    expect(studio).toMatch(/failVisible\(j\);[^\n]*\n\s*return;/);
+    expect(studio).toMatch(/if \(ac\.signal\.aborted\) return;[^\n]*\n\s*failVisible\(\);/);
+    expect(studio).toMatch(/onRetry=\{!busy && r \? \(\) => void createStoryboard\(r\.filmPrompt, r\.refs, r\.orientation\) : undefined\}/);
+  });
+});
+
+describe('§6 · above the film ceiling it is the long-form route or a refusal with the reason — never a 96 s film', () => {
+  test("the chat step's refusal returns before the board is planned", () => {
+    const open = studio.slice(studio.indexOf("case 'open': {"));
+    const refusal = open.indexOf('if (!v.ok) {');
+    const planned = open.indexOf('void createStoryboard(text, routeRefs, routeOrientation, { nativeSec });');
+    expect(refusal).toBeGreaterThan(0);
+    expect(planned).toBeGreaterThan(refusal);
+    const branch = open.slice(refusal, open.indexOf('nativeSec = v.plan.nativeSec;'));
+    expect(branch).toMatch(/describeDurationBlock\(v, locale\)/);
+    expect(branch).toMatch(/return true;/);
+  });
+  test('long-form stays closed by the one switch the owner flips; the picker reads the server, never a stop list', () => {
+    const createPanel = code(read('lib/video/createPanel.ts'));
+    expect(createPanel).toMatch(/export const LONGFORM_ORDER_WIRED = false;/);
+    expect(createPanel).toMatch(/export function effectiveCapabilities\(server: VideoCapabilities, wired: boolean = LONGFORM_ORDER_WIRED\)/);
+  });
+});
