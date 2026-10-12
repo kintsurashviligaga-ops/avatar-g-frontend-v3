@@ -99,6 +99,8 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
       kind={kind}
       locale={locale}
       compact
+      // A server-observed job prints only the server's percent: with pct null there is no "<n>%" estimate.
+      measuredOnly={job.observed === true}
       elapsed={elapsed}
       title={job.label}
       state={state}

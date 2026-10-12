@@ -127,7 +127,9 @@ test.describe('Video Core — One Window navigation', () => {
     await expect(page.getByTestId('agent-montage-result')).toHaveCount(1, { timeout: 10_000 });
     await expect(page.getByTestId('agent-montage-result').locator('video')).toBeAttached();
     const attachmentFollowed = await page.getByTitle('third.webm').isVisible().catch(() => false);
-    recordFinding(info, 'nav-attachments-on-switch', `A clip attached in the composer of the new session ${attachmentFollowed ? 'STAYS in the composer when the earlier conversation is reopened (composer attachments are not scoped per conversation)' : 'is dropped when the earlier conversation is reopened (the composer is per conversation)'}. Results (the montage card and its master) are scoped to their conversation.`);
+    recordFinding(info, 'nav-attachments-on-switch', `A clip attached in the composer of the new session ${attachmentFollowed ? 'STAYS in the composer when the earlier conversation is reopened (composer attachments are not scoped per conversation)' : 'is parked with its own session when the earlier conversation is reopened (the composer is per conversation)'}. Results (the montage card and its master) are scoped to their conversation.`);
+    // Round-3 browser defect 6, fixed: a History pick parks the composer's files with the chat being left.
+    expect(attachmentFollowed, 'the new session\'s clip must not ride into the reopened conversation').toBe(false);
     expect(calls.run).toHaveLength(1); // reopening never re-runs anything
   });
 });

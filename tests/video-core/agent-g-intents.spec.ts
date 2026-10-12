@@ -89,8 +89,9 @@ test.describe('Video Core — Agent G reads the sentence', () => {
       const plan24 = await openedVideoTool(page, calls, locale, { sceneCount: 3 }, 0);
       await expect(page.getByText(PLAN.p24[locale]).first()).toBeVisible();
       await expect(page.getByTestId('video-mode-musicvideo')).toHaveAttribute('aria-checked', 'true');
-      // The board was planned in the same tick the mode was set: observe which mode the plan request carried.
-      recordFinding(info, `intent-mv24-plan-mode-${locale}`, `"${S.mv24[locale]}" opened the Video tool in music-video mode (the panel shows it), but the storyboard plan POST /api/film/storyboard carried musicVideoMode=${String(plan24.musicVideoMode)} — the board is planned with the mode from BEFORE the sentence (components/studio/OmniStudio.tsx:4647 reads videoMode from the render closure; the open step at ~8995 calls createStoryboard right after setVideoMode).`);
+      // The board is planned in the same tick the mode is set: the plan request carries the music-video mode (defect 1, fixed).
+      expect(plan24.musicVideoMode).toBe(true);
+      recordFinding(info, `intent-mv24-plan-mode-${locale}`, `"${S.mv24[locale]}" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=${String(plan24.musicVideoMode)}.`);
       await expect(page.getByTestId('video-duration-plan')).toHaveCount(0); // 24 s needs no trim: no deviation line
       expect(calls.chat).toHaveLength(0);
       expect(calls.quote).toHaveLength(0);
@@ -118,17 +119,11 @@ test.describe('Video Core — Agent G reads the sentence', () => {
       expect(calls.quote).toHaveLength(0);
       expect(calls.storyboard).toHaveLength(storyboardCalls);
 
-      // 4 · „start the music at second 58" with nothing attached: KA and RU get Agent G's own note (no model call);
-      //     EN is a chat message — observed and recorded, see the test.fail() below.
+      // 4 · „start the music at second 58" with nothing attached: Agent G's own note in KA, EN and RU (no model call).
+      //     EN was a chat message until round 3 (defect 4: lib/agent/params.ts START_PATTERNS lacked "at second N").
       await say(page, S.music58[locale]);
-      if (locale === 'en') {
-        await expect.poll(() => calls.chat.length, { timeout: 15_000 }).toBe(2);
-        await expect(page.getByText(REPLY)).toHaveCount(2, { timeout: 15_000 });
-        recordFinding(info, 'intent-en-music-58', `EN "${S.music58.en}" (nothing attached) is a chat message: the model answered it. KA/RU equivalents get Agent G's own note (lib/agent/intentReply.ts:158). lib/agent/params.ts START_PATTERNS mine "at 58 seconds" / "from the 58th second", not "at second 58".`);
-      } else {
-        await expect(page.getByText(SAY58[locale])).toBeVisible({ timeout: 15_000 });
-        expect(calls.chat).toHaveLength(1);
-      }
+      await expect(page.getByText(SAY58[locale])).toBeVisible({ timeout: 15_000 });
+      expect(calls.chat).toHaveLength(1);
       const chatAfter58 = calls.chat.length;
 
       // 5 · „the video must be exactly 29.7 seconds" (no make-verb): a chat message in every language — recorded.
@@ -151,7 +146,7 @@ test.describe('Video Core — Agent G reads the sentence', () => {
       if (locale === 'ka') await shot(page, `video-tool-duration-plan-${info.project.name}`);
     });
 
-    test(`[${locale}] with two clips and a track the words are the montage lane: one quote with the files and the words; a change re-quotes`, async ({ page }, info) => {
+    test(`[${locale}] with two clips and a track the words are the montage lane: one quote with the files and the words; a change re-quotes`, async ({ page }) => {
       const calls = await openStudio(page, { locale, reply: REPLY });
       await page.waitForTimeout(ROUTE_CHECK_MS);
       await attachClipsAndTrack(page, NAMES);
@@ -169,26 +164,19 @@ test.describe('Video Core — Agent G reads the sentence', () => {
       await expect(page.getByTestId('agent-montage-start')).toBeVisible();
 
       // The change while the plan waits for Start.
+      // KA, EN and RU re-quote the plan with the music start (EN "at second 58" was a chat message until round-3 defect 4).
       await say(page, S.music58[locale]);
-      if (locale === 'en') {
-        // EN "at second 58" is not read as a change: the model answers, the quoted card stays as it was.
-        await expect.poll(() => calls.chat.length, { timeout: 15_000 }).toBe(1);
-        expect(calls.quote).toHaveLength(1);
-        await expect(cards.first()).toHaveAttribute('data-phase', 'quoted');
-        recordFinding(info, 'intent-en-music-58-requote', `EN "${S.music58.en}" said over a waiting montage plan is a chat message (model answered); KA/RU re-quote the plan with the music start. lib/agent/params.ts START_PATTERNS lack "at second N".`);
-      } else {
-        await expect.poll(() => calls.quote.length, { timeout: 15_000 }).toBe(2);
-        const q1 = calls.quote[1]!;
-        expect(q1.action).toBe('quote');
-        expect(q1.prompt).toBe(`${S.last5[locale]}\n${S.music58[locale]}`);
-        expect(q1.names).toEqual(NAMES);
-        expect(Array.isArray(q1.files) && (q1.files as unknown[]).length).toBe(3);
-        await expect(cards).toHaveCount(2);
-        await expect(cards.nth(0)).toHaveAttribute('data-phase', 'dismissed');
-        await expect(cards.nth(1)).toHaveAttribute('data-phase', 'quoted', { timeout: 10_000 });
-        await expect(page.getByText(REPLACED[locale])).toBeVisible();
-        expect(calls.chat).toHaveLength(0);
-      }
+      await expect.poll(() => calls.quote.length, { timeout: 15_000 }).toBe(2);
+      const q1 = calls.quote[1]!;
+      expect(q1.action).toBe('quote');
+      expect(q1.prompt).toBe(`${S.last5[locale]}\n${S.music58[locale]}`);
+      expect(q1.names).toEqual(NAMES);
+      expect(Array.isArray(q1.files) && (q1.files as unknown[]).length).toBe(3);
+      await expect(cards).toHaveCount(2);
+      await expect(cards.nth(0)).toHaveAttribute('data-phase', 'dismissed');
+      await expect(cards.nth(1)).toHaveAttribute('data-phase', 'quoted', { timeout: 10_000 });
+      await expect(page.getByText(REPLACED[locale])).toBeVisible();
+      expect(calls.chat).toHaveLength(0);
       expect(calls.run).toHaveLength(0); // nothing ran: every plan waits for Start
     });
 
@@ -218,8 +206,8 @@ test.describe('Video Core — Agent G reads the sentence', () => {
     });
   }
 
+  // Round-3 browser defect 4, fixed: lib/agent/params.ts START_PATTERNS now read "at second 58" (was chat-only in EN).
   test('[en] the brief\'s "start the music at second 58" gets the same Agent G note as KA/RU', async ({ page }) => {
-    test.fail(true, 'lib/agent/params.ts START_PATTERNS mine "at 58 seconds" / "from the 58th second" but not "at second 58": the EN sentence falls through to the chat model while KA/RU get Agent G\'s note (lib/agent/intentReply.ts:158).');
     const calls = await openStudio(page, { locale: 'en', reply: REPLY });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await say(page, S.music58.en);
@@ -239,15 +227,18 @@ test.describe('Video Core — Agent G reads the sentence', () => {
     });
   }
 
-  test('[ka] the 24-second music-video sentence plans its storyboard in music-video mode', async ({ page }) => {
-    test.fail(true, 'components/studio/OmniStudio.tsx open step: setVideoMode(musicvideo) and createStoryboard() run in the same tick, and createStoryboard (line ~4647) reads videoMode from the render closure — the plan POST carries musicVideoMode=false for a music-video sentence.');
-    const calls = await openStudio(page, { locale: 'ka' });
-    await page.waitForTimeout(ROUTE_CHECK_MS);
-    await say(page, S.mv24.ka);
-    await expect(page.getByText(ROUTE_NOTE.ka)).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => calls.storyboard.length, { timeout: 15_000 }).toBeGreaterThan(0);
-    expect(calls.storyboard[0]!.musicVideoMode).toBe(true);
-  });
+  // Round-3 browser defect 1, fixed: the chat's open step hands createStoryboard the mode it just set (it used to read the
+  // render's stale videoMode, so a music-video sentence was planned as a film).
+  for (const locale of LOCALES) {
+    test(`[${locale}] the 24-second music-video sentence plans its storyboard in music-video mode`, async ({ page }) => {
+      const calls = await openStudio(page, { locale });
+      await page.waitForTimeout(ROUTE_CHECK_MS);
+      await say(page, S.mv24[locale]);
+      await expect(page.getByText(ROUTE_NOTE[locale])).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() => calls.storyboard.length, { timeout: 15_000 }).toBeGreaterThan(0);
+      expect(calls.storyboard[0]!.musicVideoMode).toBe(true);
+    });
+  }
 
   test('[ka] AC-23 — a music delay this version cannot honour is said on the quote card in a note starting „ამ ვერსიაში არ არის მხარდაჭერილი"', async ({ page }, info) => {
     const calls = await openStudio(page, { locale: 'ka', quote: { ...QUOTE, musicStartSec: 0, unsupported: ['music_delay'] } });

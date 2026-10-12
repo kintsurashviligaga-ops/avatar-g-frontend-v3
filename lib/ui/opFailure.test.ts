@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { describeOpFailure } from './opFailure';
+import { describeOpFailure, opFailureReason } from './opFailure';
 
 const FB = 'Failed';
 
@@ -44,4 +44,16 @@ describe('bounds and junk', () => {
     'returns the bare fallback for %p', (body) => {
       expect(describeOpFailure(body, FB)).toBe(FB);
     });
+});
+
+describe('opFailureReason: the route\'s sentence alone (Video Core round 3)', () => {
+  it('returns the human sentence, bounded', () => {
+    expect(opFailureReason({ error: 'qc_rejected', message: 'The finished video failed its quality check.' })).toBe('The finished video failed its quality check.');
+    expect(opFailureReason({ message: 'x'.repeat(400) })).toHaveLength(160);
+  });
+  it('a machine code or nothing is null, so the caller falls back to its own line', () => {
+    expect(opFailureReason({ error: 'music_unreadable' })).toBeNull();
+    expect(opFailureReason(null)).toBeNull();
+    expect(opFailureReason({})).toBeNull();
+  });
 });

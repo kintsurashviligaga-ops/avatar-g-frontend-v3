@@ -25,7 +25,7 @@ import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/vide
 import { describeAspect } from '@/lib/video/aspectConform';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
-import { describeOpFailure } from '@/lib/ui/opFailure';
+import { describeOpFailure, opFailureReason } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -2111,6 +2111,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
+  // The composer's files belong to the conversation they were attached in (Video Core round 3, browser finding
+  // nav-attachments-on-switch): a History pick or a New Chat from the sidebar parks them under the chat being left and
+  // brings back the opened chat's own. A tool pick inside a flow keeps them (switchToolSession is not touched).
+  const attachmentsNowRef = useRef<Media[]>([]);
+  attachmentsNowRef.current = attachments;
+  const attachmentDraftsRef = useRef<Map<string, Media[]>>(new Map());
+  const swapAttachmentDraft = useCallback((leaving: string, opening: string) => {
+    if (leaving === opening) return;
+    const drafts = attachmentDraftsRef.current;
+    if (attachmentsNowRef.current.length) drafts.set(leaving, attachmentsNowRef.current); else drafts.delete(leaving);
+    setAttachments(drafts.get(opening) ?? []);
+    drafts.delete(opening);
+  }, []);
   const [busy, setBusy] = useState(false);
   // AGENT G's MEDIA EXECUTION (slice 1, lib/agent/media): is „cut my clips to my track" open to this user? The route
   // decides (AGENT_G_MEDIA_EXEC: off in Production unless the owner turns it on, admins on a Preview); while it says no,
@@ -3202,8 +3215,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // via window events — so the sidebar works without prop-threading through the chrome.
   useEffect(() => {
     // preventDefault tells the sidebar the pick was taken (ChatChrome hands it over at mount otherwise).
-    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) { e.preventDefault(); resumeConversation(id); } };
-    const onNew = () => startNewConversation();
+    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) { e.preventDefault(); swapAttachmentDraft(conversationIdRef.current, id); resumeConversation(id); } };
+    const onNew = () => { const leaving = conversationIdRef.current; swapAttachmentDraft(leaving, startNewConversation()); };
     const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
     const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
@@ -3216,7 +3229,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.removeEventListener('myavatar:delete-conversation', onDelete as EventListener);
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
-  }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
+  }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations, swapAttachmentDraft]);
   // A LANGUAGE SWITCH KEEPS THE CHAT (lib/chat/keepOpenChat). The switch mounts this studio afresh, and a fresh mount
   // opens an empty chat; the switcher announces it first, so the chat on screen is saved as it is and handed to the next
   // mount, exactly as a pick from History is. An empty chat hands nothing over: the next mount opens a fresh one anyway.
@@ -4038,7 +4051,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
+            // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) — alone, so it is what the
+            // error card shows; "the service may be busy" only when the route said nothing a person can read.
+            : { role: 'assistant', text: `⚠️ ${opFailureReason(res) ?? t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
       if (mine() && res.ok && res.masterUrl) {
@@ -4611,7 +4626,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Video Core §5 — a storyboard miss is SAID, with a Retry, and renders nothing. The old reading was fail-OPEN: the
   // moment the plan call missed (or threw), the full film render started unreviewed and, with it, the charge — a
   // provider outage became a paid film nobody approved. A user Cancel (abort) still stops quietly.
-  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', opts?: { nativeSec?: number }) => {
+  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', opts?: { nativeSec?: number; musicVideoMode?: boolean }) => {
+    // The mode the caller decided, when it decided one in this same tick: the chat's `open` step sets the panel's mode AND
+    // plans the board at once, and `videoMode` here is still the render's value from BEFORE that set (Video Core round 3,
+    // browser defect 1 — a music-video sentence was planned as a film). The panel's own Generate passes nothing.
+    const musicVideoMode = opts?.musicVideoMode ?? videoMode === 'musicvideo';
     // FIX 4 — remember this request so a failed render can be retried in one click.
     lastVideoReqRef.current = { filmPrompt, refs, orientation };
     const ac = new AbortController();
@@ -4644,7 +4663,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // returns null → brief-driven plan untouched), so a music video with a written treatment gets its
         // scenes honoured while a freeform brief is unaffected. (Spoken multi-voice casting stays doc-only
         // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, ...templateRef, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, ...templateRef, locale, sceneCount, planOnly: true, musicVideoMode, ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null; hostedRefs?: string[] | null };
       // The plan call above already hosted every attached photo to a signed Supabase URL. Reuse THOSE
@@ -4720,7 +4739,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // INVENTS a persona (the "30-year-old man in a skydiver suit" drift). With refs it locks the real subject
             // and the route vision-extracts the actual character from the photo.
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, ...templateRef, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, ...templateRef, locale, sceneCount, scriptsOnly: true, musicVideoMode }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null; masterBrief?: { scenes?: unknown } | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
@@ -7993,10 +8012,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         reply({ ok: true });
         return true;
       }
-      case 'new_chat':
-        startNewConversation();
+      case 'new_chat': {
+        const leaving = conversationIdRef.current;
+        swapAttachmentDraft(leaving, startNewConversation());
         reply({ ok: true, message: 'Started a new, empty chat on screen.' });
         return true;
+      }
       case 'stop': {
         const done: string[] = [];
         if ((d.what === 'reply' || d.what === 'all') && (busy || genActiveRef.current)) { stop(); done.push('stopped the answer in progress'); }
@@ -8995,7 +9016,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         persistChatTurn('user', text, attachments);
         setInput(''); setAttachments(tracks); inputSourceRef.current = 'text'; stopDictationEcho();
         if (!isDesktop) setOptionsOpen(false);
-        void createStoryboard(text, routeRefs, routeOrientation, { nativeSec });
+        void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });
         return true;
       }
       case 'stop':
@@ -9392,6 +9413,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         state="error"
                         locale={locale}
                         error={m.text}
+                        errorFull
                         onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
                         onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
                       />

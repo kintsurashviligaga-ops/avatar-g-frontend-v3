@@ -45,6 +45,10 @@ const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => 
   // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second", "from the 0:58 mark", "from position 0:58"
   { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(?:(?:position|mark|point|timestamp)\\s+(?:of\\s+)?)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?${NUM}(?:st|nd|rd|th)?\\s*-?\\s*(?:s|sec|secs|second|seconds)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  // "at second 58", "from second 58", "starting at sec 58", "at the 58-second mark" (Video Core round 3: the brief's EN
+  // sentence "Start the music at second 58." fell to the chat model while its KA/RU twins were understood)
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+(?:the\\s+)?(?:second|sec)\\s+${NUM}${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}(?:from|at|starting\\s+(?:at|from))\\s+the\\s+${NUM}\\s*-?\\s*(?:s|sec|second)\\s+mark${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
   // „с 5 секунды", „с 5-й секунды", „с 0:05", «с позиции 0:58», «с отметки 1:05»
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+(?:(?:позиции|отметки|момента|места)\\s+)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+${NUM}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:секунд\\p{L}*|сек\\p{L}*)`, 'iu'), read: (m) => seconds(m[1]!) },

@@ -74,7 +74,7 @@ test.describe('Video Core — job cards', () => {
   });
 
   test('the tray row prints no "%" for a job whose server sends no percent', async ({ page }) => {
-    test.fail(true, 'components/studio/JobTray.tsx:106 passes no pct for a job with pct null, and components/studio/ui/GenerationProgress.tsx:193-204 + 241-243 then prints a time-eased ESTIMATE as "<n>%" — a percent the server never sent.');
+    // Round-3 browser defect 2, fixed: the tray's server-observed rows print only a measured percent (measuredOnly).
     await openStudio(page, { taskViews: [taskView({ status: 'running', stage: 'stitch', pct: null, attempt: 1, cancellable: true })], live: true });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await montageRunning(page);
@@ -155,7 +155,7 @@ test.describe('Video Core — job cards', () => {
   });
 
   test('film: the server\'s reason for a refused assemble is readable ON the error card, not only in its tooltip', async ({ page, isMobile }) => {
-    test.fail(true, 'components/studio/ui/ResultCard.tsx:111+192 — oneLineError is "<generic videoFailed sentence> — <server message>" clamped to two lines (line-clamp-2), so the server reason (qc_rejected / music_unreadable message) is cut off on screen and survives only in the <p title> tooltip.');
+    // Round-3 browser defect 3, fixed: the film's error card carries the route's own sentence alone, unclamped (errorFull).
     const calls = await openStudio(page, { assemble: QC_REJECTED });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await filmToAssemble(page, isMobile);

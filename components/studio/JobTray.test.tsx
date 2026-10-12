@@ -77,3 +77,21 @@ test('the store refuses to stop what the server cannot stop, and sends nothing',
   expect(await useJobQueue.getState().cancelDurable('nope')).toBe(false);
   expect(cancels()).toHaveLength(0);
 });
+
+test('a server job with no percent prints no "%" in the tray — no time-eased estimate dressed as a measurement (Video Core round 3)', () => {
+  const unmeasured = mapTaskToTrayJob(task({ id: 'job-n', pct: null }), 'en');
+  act(() => { useJobQueue.setState({ durableJobs: [unmeasured], inlineJobIds: [] }); });
+  const { container } = render(<JobTray locale="en" />);
+  expect(screen.getByText('Agent G · montage')).toBeTruthy();
+  expect(screen.getByText('Joining the shots')).toBeTruthy();
+  expect(container.textContent ?? '').not.toMatch(/\d+\s*%/);
+  expect(container.textContent ?? '').not.toMatch(/remaining/i);
+  expect(container.querySelector('[data-progress="indeterminate"]')).not.toBeNull();
+});
+
+test('a server job that does report a percent still shows that percent', () => {
+  act(() => { useJobQueue.setState({ durableJobs: [montage], inlineJobIds: [] }); });
+  const { container } = render(<JobTray locale="en" />);
+  expect(container.textContent ?? '').toMatch(/55\s*%/);
+  expect(container.querySelector('[data-progress="indeterminate"]')).toBeNull();
+});

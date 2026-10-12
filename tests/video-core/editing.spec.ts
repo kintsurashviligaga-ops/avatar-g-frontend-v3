@@ -17,7 +17,7 @@ import { openStudio, say, attachClips, attachClipsAndTrack, shot, EDIT_URL, MAST
 const NAMES: [string, string, string] = ['beach.webm', 'city.webm', 'song.wav'];
 
 test.describe('Video Core — editing in the chat', () => {
-  test('an attached video + „Convert this video to 9:16." → plan card → Start → the edit under the card', async ({ page, isMobile }) => {
+  test('an attached video + „Convert this video to 9:16." → plan card → Start → the edit under the card', async ({ page }) => {
     const calls = await openStudio(page, { edit: true });
     await page.waitForTimeout(ROUTE_CHECK_MS);
     await attachClips(page, ['beach.webm']);

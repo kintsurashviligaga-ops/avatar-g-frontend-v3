@@ -28,12 +28,23 @@ function looksLikeCode(s: string): boolean {
 }
 
 export function describeOpFailure(body: unknown, fallback: string): string {
+  const why = opFailureReason(body);
+  return why ? `${fallback} — ${why}` : fallback;
+}
+
+/**
+ * The route's own sentence alone, or null when it gave only a code (or nothing). For a surface where the caller's
+ * generic line would push the reason out of view: the film's error card printed "Video generation failed — the
+ * service may be busy…" ahead of a precise "The finished video failed its quality check (…)" and clipped the latter
+ * (Video Core round 3, browser defect 3). Bounded like describeOpFailure.
+ */
+export function opFailureReason(body: unknown): string | null {
   const b = (body ?? {}) as { message?: unknown; error?: unknown; detail?: unknown };
   for (const field of [b.message, b.detail, b.error]) {
     if (typeof field !== 'string') continue;
     const v = field.trim();
     // Bound it: a provider can echo an entire prompt back inside its error, and a toast is not a log.
-    if (v && !looksLikeCode(v)) return `${fallback} — ${v.slice(0, 160)}`;
+    if (v && !looksLikeCode(v)) return v.slice(0, 160);
   }
-  return fallback;
+  return null;
 }
