@@ -35,11 +35,12 @@ interface FakeOrder {
   id: string;
   external: string;
   amount: number;
-  status: 'created' | 'completed' | 'rejected' | 'refunded';
+  status: 'created' | 'completed' | 'rejected' | 'refund_requested' | 'refunded_partially' | 'refunded';
   saveCard: boolean;
   parent: string | null;
   currency: string;
   transferAmount?: number;
+  refundAmount?: number;
 }
 const bank = {
   orders: new Map<string, FakeOrder>(),
@@ -64,7 +65,12 @@ function receiptOf(o: FakeOrder) {
     order_id: o.id,
     external_order_id: o.external,
     order_status: { key: o.status },
-    purchase_units: { request_amount: String(o.amount), transfer_amount: String(o.transferAmount ?? (o.status === 'completed' ? o.amount : 0)), currency_code: o.currency },
+    purchase_units: {
+      request_amount: String(o.amount),
+      transfer_amount: String(o.transferAmount ?? (o.status === 'completed' ? o.amount : 0)),
+      refund_amount: String(o.refundAmount ?? 0),
+      currency_code: o.currency,
+    },
     payment_detail: {
       transfer_method: { key: 'card' },
       payer_identifier: '548888xxxxxx9893',
@@ -441,6 +447,92 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     await cronTick();
     expect(bank.calls.filter((x) => x.endsWith('/subscribe')).length).toBe(before);
     expect(await balance(u)).toBe(525);
+  });
+
+  // ── E12 ──
+  test('E12 refund of a top-up: requested → part back → all back, recorded step by step; credits never move; a replayed "completed" changes nothing', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    const paidReceipt = receiptOf(bank.orders.get(bogId)!); // kept: replayed below
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(200);
+
+    const o = bank.orders.get(bogId)!;
+    o.status = 'refund_requested';
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'refund_requested' });
+    expect((await row(c.json.orderId)).status).toBe('refund_requested');
+    expect((await status(u, c.json.orderId)).json.status).toBe('refund_requested');
+
+    // the old "completed" callback arrives late (or is replayed): ignored — no re-fulfil, row not pulled back
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'refund_requested' });
+    expect((await row(c.json.orderId)).status).toBe('refund_requested');
+
+    Object.assign(o, { status: 'refunded_partially', transferAmount: 15, refundAmount: 5 });
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'refunded_partially' });
+    expect((await status(u, c.json.orderId)).json.status).toBe('refunded_partially');
+
+    Object.assign(o, { status: 'refunded', transferAmount: 0, refundAmount: 20 });
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'refunded' });
+    expect((await status(u, c.json.orderId)).json.status).toBe('refunded');
+
+    // a late "requested" never pulls it back; the cron leaves it alone
+    o.status = 'refund_requested';
+    await webhook.POST(signedCallback(receiptOf(o)));
+    await webhook.POST(signedCallback(paidReceipt));
+    await cronTick();
+    const final = await row(c.json.orderId);
+    expect(final.status).toBe('refunded');
+    expect(final.credited_at).toBeTruthy();
+    // refund policy unchanged: the 200 credits stay (no automatic clawback), and were granted exactly once
+    expect(await balance(u)).toBe(200);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 200 }]);
+  });
+
+  // ── E13 ──
+  test('E13 refund of a cancelled plan: a replayed "completed" can no longer revive auto-renewal or grant the month again', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    const paidReceipt = receiptOf(bank.orders.get(bogId)!);
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'completed' });
+    expect(await balance(u)).toBe(230);
+
+    // the customer cancels auto-renewal; the owner refunds the month in Business Manager
+    expect(await (await subscription.DELETE(authed(u, 'https://e2e.myavatar.test/api/billing/bog/subscription', { method: 'DELETE' }))).json()).toEqual({ canceled: 1 });
+    const o = bank.orders.get(bogId)!;
+    Object.assign(o, { status: 'refunded', transferAmount: 0, refundAmount: 54 });
+    expect(await (await webhook.POST(signedCallback(receiptOf(o)))).json()).toMatchObject({ status: 'refunded' });
+
+    // the first-payment callback is delivered again
+    expect(await (await webhook.POST(signedCallback(paidReceipt))).json()).toMatchObject({ status: 'refunded' });
+    const { data: sub } = await svc.from('subscriptions').select('cancel_at_period_end,bog_parent_order_id').eq('user_id', u).single();
+    expect(sub.cancel_at_period_end).toBe(true);
+    expect((await row(c.json.orderId)).status).toBe('refunded');
+    expect(await balance(u)).toBe(230);
+    const { data: grants } = await svc.from('subscription_allowance_grants').select('invoice_id').eq('user_id', u);
+    expect(grants).toHaveLength(1);
+  });
+
+  // ── E14 ──
+  test('E14 sandbox credentials on a Vercel deployment (Production database): no order, no settlement, no cron', async () => {
+    const before = (await svc.from('bog_orders').select('shop_order_id', { count: 'exact', head: true })).count;
+    process.env.VERCEL_ENV = 'preview';
+    try {
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'topup', amountGel: 10 });
+      expect(c.status).toBe(503);
+      expect(c.json.error_code).toBe('BOG_SANDBOX_BLOCKED');
+      expect((await webhook.POST(signedCallback({ order_id: randomUUID(), order_status: { key: 'completed' } }))).status).toBe(503);
+      expect(await cronTick()).toMatchObject({ ok: true, skipped: 'bog_sandbox_blocked' });
+      expect(bank.calls).toHaveLength(0);
+      expect((await svc.from('bog_orders').select('shop_order_id', { count: 'exact', head: true })).count).toBe(before);
+    } finally {
+      delete process.env.VERCEL_ENV;
+    }
   });
 
   // ── E11 ──

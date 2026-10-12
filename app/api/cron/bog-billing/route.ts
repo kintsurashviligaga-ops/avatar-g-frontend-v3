@@ -17,7 +17,7 @@ import { isCronAuthorized } from '@/lib/api/cronAuth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { reportError } from '@/lib/observability/report-error';
 import { bogConfig, chargeSavedCard } from '@/lib/billing/bogClient';
-import { BOG_ORDER_COLUMNS, bogCallbackUrl, reconcileBogOrder, type BogOrderRow } from '@/lib/billing/bogSettlement';
+import { BOG_ORDER_COLUMNS, bogCallbackUrl, bogSandboxBlocked, reconcileBogOrder, type BogOrderRow } from '@/lib/billing/bogSettlement';
 import { claimBogRenewal, recordBogRenewalFailure } from '@/lib/billing/wallet-ledger';
 import { monthlyAllowanceCredits } from '@/lib/billing/tiers';
 
@@ -32,6 +32,9 @@ async function handle(req: NextRequest) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const cfg = bogConfig();
   if (!cfg) return NextResponse.json({ ok: true, skipped: 'bog_unconfigured' });
+  // Sandbox credentials against the Production database would charge real saved cards through the sandbox (and fail
+  // them into cancellation): a hosted deployment with BOG_ENV=sandbox does nothing here.
+  if (bogSandboxBlocked(cfg)) return NextResponse.json({ ok: true, skipped: 'bog_sandbox_blocked' });
 
   let svc: ReturnType<typeof createServiceRoleClient>;
   try {
@@ -85,7 +88,7 @@ async function handle(req: NextRequest) {
       .lte('current_period_end', new Date(now + 3600_000).toISOString())
       .order('current_period_end', { ascending: true })
       .limit(RENEW_BATCH);
-    const callbackUrl = bogCallbackUrl();
+    const callbackUrl = bogCallbackUrl(cfg.environment === 'sandbox' ? req.nextUrl.origin : undefined, cfg.environment);
     for (const sub of (due ?? []) as Array<{ id: string; tier: string | null }>) {
       const credits = monthlyAllowanceCredits(sub.tier);
       if (credits <= 0) continue;

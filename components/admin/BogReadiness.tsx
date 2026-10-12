@@ -18,7 +18,8 @@ interface Readiness {
   cronSecretSet: boolean;
   checkoutMode?: 'off' | 'admin' | 'public';
   limitsGel?: { singleTransaction: number; per24h: number; per30d: number };
-  paidGel?: { last24h: number; last30d: number };
+  paidGel?: { last24h: number; last30d: number; capped?: boolean };
+  sandboxBlocked?: boolean;
   ordersByStatus: Record<string, number>;
   recentOrders: Array<{ kind: string; status: string; amountGel: number; createdAt: string; rejectReason: string | null }>;
 }
@@ -84,9 +85,21 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
               </span>
             )}
           </div>
+          {r.sandboxBlocked && (
+            <p className="text-[11px] text-rose-400" data-testid="bog-sandbox-blocked">
+              {ka
+                ? 'Sandbox-ის მონაცემები ამ deploy-ზე დაბლოკილია: ის Production-ის ბაზას იყენებს. გადახდა გამორთულია.'
+                : 'Sandbox credentials are blocked on this deployment: it uses the Production database. Checkout is off.'}
+            </p>
+          )}
           {r.limitsGel && r.paidGel && (
             <p className="text-[11px] text-gray-400" data-testid="bog-limits">
               {ka ? 'ბანკის ლიმიტი' : 'Bank limits'}: {ka ? 'ერთი გადახდა' : 'per payment'} ≤ {r.limitsGel.singleTransaction} ₾ · 24{ka ? 'სთ' : 'h'} {r.paidGel.last24h}/{r.limitsGel.per24h} ₾ · 30{ka ? ' დღე' : 'd'} {r.paidGel.last30d}/{r.limitsGel.per30d} ₾
+              {' '}
+              <span className="text-gray-500">
+                ({ka ? 'მოძრავი ფანჯარა; ითვლის გადახდილ, დაბრუნებულ და შესამოწმებელ შეკვეთებს' : 'rolling windows; counts paid, refunded and under-review orders'}
+                {r.paidGel.capped ? (ka ? '; 1000+ შეკვეთა' : '; 1000+ orders') : ''})
+              </span>
             </p>
           )}
           <p className="break-all text-[11px] text-gray-500">callback: {r.callbackUrl}</p>

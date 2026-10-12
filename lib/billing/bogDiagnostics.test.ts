@@ -1,8 +1,11 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
 jest.mock('./bogSettlement', () => ({
+  BOG_REFUND_STATUSES: ['refund_requested', 'refunded_partially', 'refunded'],
   bogSchemaReady: jest.fn(async () => true),
-  bogCallbackUrl: () => 'https://myavatar.ge/api/billing/bog/webhook',
+  bogCallbackUrl: (origin?: string, env?: string) =>
+    env === 'sandbox' ? `${origin}/api/billing/bog/webhook` : 'https://myavatar.ge/api/billing/bog/webhook',
+  bogSandboxBlocked: (cfg: { environment?: string } | null, env: NodeJS.ProcessEnv) => cfg?.environment === 'sandbox' && Boolean(env.VERCEL_ENV),
 }));
 
 import { bogReadiness, probeBogOAuth } from './bogDiagnostics';
@@ -62,6 +65,27 @@ describe('probeBogOAuth — one token request, no order', () => {
     expect((await probeBogOAuth({ fetch: boom as unknown as typeof fetch }, ENV)).verdict).toBe('no_answer');
     expect((await probeBogOAuth({ fetch: answer(200, { nope: 1 }) as unknown as typeof fetch }, ENV)).verdict).toBe('malformed_answer');
   });
+
+  test('a 2xx answer without access_token shows its keys, never its values (one may be a token)', async () => {
+    const jwt = 'eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl';
+    const r = await probeBogOAuth({ fetch: answer(200, { token: jwt, token_type: 'bearer' }) as unknown as typeof fetch }, ENV);
+    expect(r).toMatchObject({ verdict: 'malformed_answer', answer: 'JSON keys: token, token_type' });
+    expect(JSON.stringify(r)).not.toContain(jwt);
+    expect((await probeBogOAuth({ fetch: answer(200, '<html>ok</html>') as unknown as typeof fetch }, ENV)).answer).toBe('not JSON (15 bytes)');
+  });
+
+  test('a refusal that echoes the credentials back — escaped, or as the Basic header — prints none of them', async () => {
+    const secret = 'Se"cr/et+=';
+    const env = { ...ENV, BOG_SECRET_KEY: secret };
+    const basic = Buffer.from(`client-abcd1234:${secret}`).toString('base64');
+    const r = await probeBogOAuth({ fetch: answer(401, { error: 'invalid_client', got: secret, header: `Basic ${basic}`, access_token: 'eyJabcde.eyJfghij.sig' }) as unknown as typeof fetch }, env);
+    const out = JSON.stringify(r);
+    expect(r.verdict).toBe('credentials_refused');
+    expect(out).not.toContain(JSON.stringify(secret).slice(1, -1));
+    expect(out).not.toContain(basic);
+    expect(out).not.toContain('eyJabcde');
+    expect(r.answer).toContain('[redacted]');
+  });
 });
 
 describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
@@ -69,9 +93,28 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
     { kind: 'subscription', status: 'init_failed', amount_gel: '54', created_at: '2026-10-06T14:02:00Z', reject_reason: `init (production): oauth HTTP 401 ${SECRET}`, user_id: 'u1' },
     { kind: 'topup', status: 'init_failed', amount_gel: 10, created_at: '2026-10-03T07:38:18Z', reject_reason: null, user_id: 'u2' },
   ];
-  const db = {
-    from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: rows, error: null }) }) }) }),
-  } as never;
+  // A recording fake: the recent-orders query is select → order → limit; the paid-₾ query adds in + gte.
+  const fakeDb = (recent: unknown[], paid: unknown[] = []) => {
+    const calls: Array<Record<string, unknown>> = [];
+    return {
+      calls,
+      db: {
+        from: () => {
+          const q: Record<string, unknown> = {};
+          calls.push(q);
+          const b = {
+            select: (cols: string) => ((q.select = cols), b),
+            in: (col: string, vals: unknown[]) => ((q.in = [col, vals]), b),
+            gte: (col: string, val: unknown) => ((q.gte = [col, val]), b),
+            order: () => b,
+            limit: async (n: number) => ((q.limit = n), { data: q.in ? paid : recent, error: null }),
+          };
+          return b;
+        },
+      } as never,
+    };
+  };
+  const db = fakeDb(rows).db;
 
   test('configured production deployment', async () => {
     const r = await bogReadiness(db, ENV);
@@ -85,8 +128,9 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
       schemaReady: true,
       cronSecretSet: true,
       checkoutMode: 'public',
+      sandboxBlocked: false,
       limitsGel: { singleTransaction: 500, per24h: 1000, per30d: 5000 },
-      paidGel: { last24h: 0, last30d: 0 },
+      paidGel: { last24h: 0, last30d: 0, window: 'rolling', capped: false },
       ordersByStatus: { init_failed: 2 },
     });
     expect(r.recentOrders[0]).toEqual({ kind: 'subscription', status: 'init_failed', amountGel: 54, createdAt: '2026-10-06T14:02:00Z', rejectReason: 'init (production): oauth HTTP 401 [redacted]' });
@@ -107,18 +151,38 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
     expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admim' })).checkoutMode).toBe('off');
   });
 
-  test('paid ₾ against BOG\'s rolling limits: completed and refunded count, failed and pending do not', async () => {
+  test('paid ₾ against BOG\'s limits: its own query, every status whose money reached the bank, timed by when it was paid', async () => {
     const now = Date.parse('2026-10-20T12:00:00Z');
     const paid = [
-      { kind: 'topup', status: 'completed', amount_gel: '500', created_at: '2026-10-20T08:00:00Z', reject_reason: null },
-      { kind: 'renewal', status: 'completed', amount_gel: 54, created_at: '2026-10-19T13:00:00Z', reject_reason: null },
-      { kind: 'subscription', status: 'refunded', amount_gel: 108, created_at: '2026-10-10T10:00:00Z', reject_reason: null },
-      { kind: 'topup', status: 'pending', amount_gel: 50, created_at: '2026-10-20T11:00:00Z', reject_reason: null },
-      { kind: 'topup', status: 'init_failed', amount_gel: 20, created_at: '2026-10-20T11:30:00Z', reject_reason: null },
-      { kind: 'topup', status: 'completed', amount_gel: 20, created_at: '2026-09-01T00:00:00Z', reject_reason: null },
+      { amount_gel: '500', created_at: '2026-10-20T08:00:00Z', credited_at: '2026-10-20T08:01:00Z' },
+      // made 25 h ago but paid (credited) 20 h ago → inside the 24 h window
+      { amount_gel: 54, created_at: '2026-10-19T11:00:00Z', credited_at: '2026-10-19T16:00:00Z' },
+      { amount_gel: 108, created_at: '2026-10-10T10:00:00Z', credited_at: '2026-10-10T10:02:00Z' },
+      // amount_mismatch: paid, never credited → timed by created_at
+      { amount_gel: 20, created_at: '2026-10-01T00:00:00Z', credited_at: null },
+      // paid 33 days ago → outside 30 days
+      { amount_gel: 20, created_at: '2026-09-17T00:00:00Z', credited_at: '2026-09-17T00:01:00Z' },
     ];
-    const paidDb = { from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: paid, error: null }) }) }) }) } as never;
+    const { db: paidDb, calls } = fakeDb([], paid);
     const r = await bogReadiness(paidDb, ENV, now);
-    expect(r.paidGel).toEqual({ last24h: 554, last30d: 662 });
+    expect(r.paidGel).toEqual({ last24h: 554, last30d: 682, window: 'rolling', capped: false });
+    const q = calls.find((c) => c.in)!;
+    expect(q.in).toEqual(['status', ['completed', 'refund_requested', 'refunded_partially', 'refunded', 'amount_mismatch']]);
+    expect(q.gte).toEqual(['created_at', new Date(now - 31 * 86_400_000).toISOString()]);
+    expect(q.select).toBe('amount_gel,created_at,credited_at');
+    expect(q.limit).toBe(1000);
+  });
+
+  test('1,000 paid orders in the window is flagged (more could not be under the bank\'s 5,000 ₾ / 30 days)', async () => {
+    const now = Date.parse('2026-10-20T12:00:00Z');
+    const many = Array.from({ length: 1000 }, () => ({ amount_gel: 5, created_at: '2026-10-19T00:00:00Z', credited_at: null }));
+    const r = await bogReadiness(fakeDb([], many).db, ENV, now);
+    expect(r.paidGel).toMatchObject({ last30d: 5000, capped: true });
+  });
+
+  test('sandbox credentials on a Vercel deployment are reported as blocked; the callback shown is never the live site', async () => {
+    const r = await bogReadiness(db, { ...ENV, BOG_ENV: 'sandbox', VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv);
+    expect(r).toMatchObject({ environment: 'sandbox', sandboxBlocked: true });
+    expect(r.callbackUrl).not.toContain('myavatar.ge');
   });
 });

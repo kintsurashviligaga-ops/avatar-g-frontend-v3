@@ -8,7 +8,11 @@ jest.mock('../../../../lib/monetization/provider', () => ({ getBillingProvider: 
 let mockIsAdmin = false;
 jest.mock('../../../../lib/auth/adminGuard', () => ({ isAdmin: jest.fn(async () => mockIsAdmin) }));
 let mockSchemaReady = true;
-jest.mock('../../../../lib/billing/bogSettlement', () => ({ bogSchemaReady: jest.fn(async () => mockSchemaReady) }));
+jest.mock('../../../../lib/billing/bogSettlement', () => ({
+  ...jest.requireActual('../../../../lib/billing/bogSettlement'),
+  bogSchemaReady: jest.fn(async () => mockSchemaReady),
+}));
+jest.mock('../../../../lib/billing/wallet-ledger', () => ({}));
 jest.mock('../../../../lib/supabase/server', () => ({ createServiceRoleClient: () => ({}) }));
 
 import { GET } from './route';
@@ -22,6 +26,9 @@ beforeEach(() => {
   process.env.BOG_CLIENT_ID = 'client-id';
   process.env.BOG_SECRET_KEY = 'secret';
   delete process.env.BOG_CHECKOUT_MODE;
+  delete process.env.BOG_ENV;
+  delete process.env.VERCEL_ENV;
+  delete process.env.VERCEL;
 });
 afterAll(() => {
   process.env = { ...ENV };
@@ -52,4 +59,15 @@ test('off mode, or an unknown value → nobody sees BOG, admins included', async
     process.env.BOG_CHECKOUT_MODE = v;
     expect((await caps()).bog).toBe(false);
   }
+});
+
+test('sandbox credentials on a Vercel deployment (Production database) → no BOG button, admins included', async () => {
+  mockIsAdmin = true;
+  process.env.BOG_ENV = 'sandbox';
+  for (const v of ['production', 'preview']) {
+    process.env.VERCEL_ENV = v;
+    expect((await caps()).bog).toBe(false);
+  }
+  delete process.env.VERCEL_ENV;
+  expect((await caps()).bog).toBe(true); // a local dev server on its own database
 });

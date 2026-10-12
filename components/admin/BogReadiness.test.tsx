@@ -22,9 +22,21 @@ test('shows the deployment state and runs the credential check on request only',
   expect(screen.getByText(/oauth HTTP 401 invalid_client/)).toBeTruthy();
   expect(screen.getByText('Checkout: admins only')).toBeTruthy();
   expect(screen.getByTestId('bog-limits').textContent).toContain('24h 5/1000 ₾ · 30d 59/5000 ₾');
+  expect(screen.getByTestId('bog-limits').textContent).toMatch(/rolling windows; counts paid, refunded and under-review orders/);
+  expect(screen.queryByTestId('bog-sandbox-blocked')).toBeNull();
   expect(f).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: /Test credentials with BOG/ }));
   await waitFor(() => expect(screen.getByText(/credentials_refused · HTTP 401/)).toBeTruthy());
   expect(screen.getByText('set BOG_ENV=sandbox')).toBeTruthy();
   expect(f).toHaveBeenLastCalledWith('/api/admin/billing/bog', expect.objectContaining({ method: 'POST', body: JSON.stringify({ action: 'oauth' }) }));
+});
+
+test('sandbox credentials on this deployment are called out', async () => {
+  global.fetch = jest.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ bog: { ...readiness, environment: 'sandbox', sandboxBlocked: true, paidGel: { last24h: 0, last30d: 0, capped: false } } }),
+  })) as unknown as typeof fetch;
+  render(<BogReadiness ka={false} />);
+  expect((await screen.findByTestId('bog-sandbox-blocked')).textContent).toMatch(/Production database/);
 });

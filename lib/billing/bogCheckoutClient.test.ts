@@ -105,6 +105,10 @@ describe('paymentReturnMessage', () => {
     expect(paymentReturnMessage(null, 'success', 'en').ok).toBe(true);
     expect(paymentReturnMessage({ ...base, status: 'review' }, 'success', 'en').text).toMatch(/verifying/);
     expect(paymentReturnMessage({ ...base, status: 'refunded' }, null, 'en').text).toBe('This payment was refunded.');
+    expect(paymentReturnMessage({ ...base, status: 'refunded_partially' }, null, 'en').text).toBe('Part of this payment was refunded.');
+    expect(paymentReturnMessage({ ...base, status: 'refund_requested' }, null, 'en').text).toMatch(/requested and is being processed/);
+    expect(paymentReturnMessage({ ...base, status: 'refund_requested' }, null, 'ka').text).toMatch(/მოთხოვნილია/);
+    expect(paymentReturnMessage({ ...base, status: 'refunded_partially' }, 'failed', 'ru')).toMatchObject({ ok: true, text: 'Часть этого платежа возвращена.' });
   });
 
   test('dates in the user’s language; garbage → empty', () => {

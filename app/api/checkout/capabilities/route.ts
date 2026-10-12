@@ -12,6 +12,8 @@
  *            20261002a is applied never show a button that cannot record an order. Checkout's 503 backstops.
  *            BOG_CHECKOUT_MODE narrows it: 'off' → false for everyone, 'admin' → true only for an admin's session
  *            (the owner's controlled live test), unset/'public' → everyone (lib/billing/bogClient bogCheckoutMode).
+ *            Sandbox credentials never open it on a Vercel deployment: those write to the Production database
+ *            (lib/billing/bogSettlement bogSandboxBlocked).
  *
  * Public + fail-open: never throws, defaults every rail to false on any error so the UI degrades to
  * "no rail available" rather than showing a button that can't complete.
@@ -19,8 +21,8 @@
 import { NextResponse } from 'next/server';
 import { getBillingProvider } from '@/lib/monetization/provider';
 import { isAdmin } from '@/lib/auth/adminGuard';
-import { bogCheckoutMode, bogFullyConfigured } from '@/lib/billing/bogClient';
-import { bogSchemaReady } from '@/lib/billing/bogSettlement';
+import { bogCheckoutMode, bogConfig } from '@/lib/billing/bogClient';
+import { bogSandboxBlocked, bogSchemaReady } from '@/lib/billing/bogSettlement';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -38,9 +40,11 @@ export async function GET() {
     // Creds AND the billing migration (20261002a) — never offer a rail whose checkout cannot record the order —
     // AND this viewer may start a BOG checkout (BOG_CHECKOUT_MODE).
     const mode = bogCheckoutMode();
+    const cfg = bogConfig();
     bog =
       mode !== 'off' &&
-      bogFullyConfigured() &&
+      cfg !== null &&
+      !bogSandboxBlocked(cfg) &&
       (mode === 'public' || (await isAdmin())) &&
       (await bogSchemaReady(createServiceRoleClient()));
   } catch {

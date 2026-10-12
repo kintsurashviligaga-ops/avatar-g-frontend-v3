@@ -21,7 +21,7 @@ import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
 import { isAdminIdentity } from '@/lib/auth/adminGuard';
 import { bogCheckoutMode, bogConfig, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
 import { BOG_SINGLE_TRANSACTION_LIMIT_GEL, bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
-import { bogCallbackUrl, newBogOrderId } from '@/lib/billing/bogSettlement';
+import { bogCallbackUrl, bogSandboxBlocked, newBogOrderId } from '@/lib/billing/bogSettlement';
 import { TIERS } from '@/lib/billing/tiers';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +42,10 @@ const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(
 export async function POST(request: NextRequest) {
   const cfg = bogConfig();
   if (!cfg) return json({ error: 'Bank of Georgia payments are not configured', error_code: 'BOG_UNCONFIGURED' }, 503);
+  // A sandbox order on a deployment that writes to the Production database would turn a test card into real credits.
+  if (bogSandboxBlocked(cfg)) {
+    return json({ error: 'Sandbox credentials cannot take orders on this deployment', error_code: 'BOG_SANDBOX_BLOCKED' }, 503);
+  }
   const mode = bogCheckoutMode();
   if (mode === 'off') return json({ error: 'Bank of Georgia payments are switched off', error_code: 'BOG_DISABLED' }, 503);
 
@@ -148,7 +152,7 @@ export async function POST(request: NextRequest) {
     amountGel: Number(row.amount_gel),
     productId,
     description,
-    callbackUrl: bogCallbackUrl(origin),
+    callbackUrl: bogCallbackUrl(origin, cfg.environment),
     successUrl: back('success'),
     failUrl: back('failed'),
     locale,

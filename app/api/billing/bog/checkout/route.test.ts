@@ -39,11 +39,12 @@ jest.mock('../../../../../lib/billing/pricingConfig.db', () => ({
   getActiveTiers: jest.fn(async () => [5, 9, 10, 20, 29, 50, 89, 500, 600].map((g) => ({ gelAmount: g, creditsAmount: g * 10, label: null, isActive: true }))),
 }));
 let mockConfigured = true;
+let mockEnvironment: 'production' | 'sandbox' = 'production';
 const mockCreateOrder = jest.fn();
 const mockSaveCard = jest.fn();
 jest.mock('../../../../../lib/billing/bogClient', () => ({
   ...jest.requireActual('../../../../../lib/billing/bogClient'),
-  bogConfig: () => (mockConfigured ? { environment: 'production', clientId: 'c', secretKey: 's' } : null),
+  bogConfig: () => (mockConfigured ? { environment: mockEnvironment, clientId: 'c', secretKey: 's' } : null),
   createBogOrder: (...a: unknown[]) => mockCreateOrder(...a),
   saveCardForAutomaticPayments: (...a: unknown[]) => mockSaveCard(...a),
 }));
@@ -63,7 +64,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUserId = 'user-1';
   mockConfigured = true;
+  mockEnvironment = 'production';
   mockIsAdmin = false;
+  delete process.env.VERCEL_ENV;
+  delete process.env.VERCEL;
   mockLog = [];
   delete process.env.BOG_CHECKOUT_MODE;
   mockDb.live = [];
@@ -209,5 +213,38 @@ describe('BOG_CHECKOUT_MODE', () => {
     mockIsAdmin = true;
     expect((await POST(post({ kind: 'topup', amountGel: 5 }))).status).toBe(200);
     expect(mockCreateOrder).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sandbox credentials never touch Production', () => {
+  test('on any Vercel deployment (Production database) → 503 BOG_SANDBOX_BLOCKED, before auth, no row, no order', async () => {
+    mockEnvironment = 'sandbox';
+    for (const v of ['production', 'preview']) {
+      process.env.VERCEL_ENV = v;
+      const res = await POST(post({ kind: 'topup', amountGel: 20 }));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error_code: 'BOG_SANDBOX_BLOCKED' });
+    }
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  test('locally (no Vercel), a sandbox order calls back to this server — never the canonical live site', async () => {
+    mockEnvironment = 'sandbox';
+    const res = await POST(
+      new NextRequest('http://localhost:3000/api/billing/bog/checkout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: 'topup', amountGel: 20 }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockCreateOrder.mock.calls[0][2].callbackUrl).toBe('http://localhost:3000/api/billing/bog/webhook');
+  });
+
+  test('live credentials are unaffected by the guard (callback stays the canonical site)', async () => {
+    process.env.VERCEL_ENV = 'production';
+    expect((await POST(post({ kind: 'topup', amountGel: 20 }))).status).toBe(200);
+    expect(mockCreateOrder.mock.calls[0][2].callbackUrl).toBe('https://myavatar.ge/api/billing/bog/webhook');
   });
 });

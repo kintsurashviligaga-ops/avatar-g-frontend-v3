@@ -19,7 +19,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, type BogCheckoutMode, type BogConfig } from './bogClient';
 import { BOG_LIMITS_GEL } from './bogCatalog';
-import { bogCallbackUrl, bogSchemaReady } from './bogSettlement';
+import { BOG_REFUND_STATUSES, bogCallbackUrl, bogSandboxBlocked, bogSchemaReady } from './bogSettlement';
 
 type Db = Pick<SupabaseClient, 'from'>;
 
@@ -45,15 +45,51 @@ export interface BogReadiness {
   cronSecretSet: boolean;
   /** Who may start a BOG checkout (BOG_CHECKOUT_MODE). */
   checkoutMode: BogCheckoutMode;
-  /** BOG's limits for this merchant, and the paid ₾ that counts against the rolling ones (from the last 200 orders). */
+  /** Sandbox credentials on a Vercel deployment (Production database): checkout is closed (bogSandboxBlocked). */
+  sandboxBlocked: boolean;
+  /** BOG's limits for this merchant, and the paid ₾ counted against the 24 h / 30 day ones (see paidAgainstLimits). */
   limitsGel: typeof BOG_LIMITS_GEL;
-  paidGel: { last24h: number; last30d: number };
+  paidGel: { last24h: number; last30d: number; window: 'rolling'; capped: boolean };
   ordersByStatus: Record<string, number>;
   recentOrders: BogRecentOrder[];
 }
 
-/** Statuses whose money reached the bank — what BOG's rolling limits count (a refund does not give the limit back). */
-const PAID_STATUSES = new Set(['completed', 'refunded']);
+/**
+ * Statuses whose money reached the bank, counted against BOG's 24 h / 30 day limits. Deliberately on the high side:
+ * whether a refund gives the limit back is not confirmed by the bank, and an amount_mismatch order was paid but not
+ * credited — both count. The windows are rolling (the last 24 h / 30 days from now), timed by when the payment was
+ * credited, else when the order was made; whether BOG counts calendar days is not confirmed either.
+ */
+const PAID_STATUSES = ['completed', ...BOG_REFUND_STATUSES, 'amount_mismatch'] as const;
+/** 5,000 ₾ / 30 days at our smallest order (5 ₾) is 1,000 orders; reading more could not change the verdict. */
+const PAID_ROWS_MAX = 1_000;
+const DAY_MS = 86_400_000;
+
+async function paidAgainstLimits(db: Db, nowMs: number): Promise<BogReadiness['paidGel']> {
+  const paid = { last24h: 0, last30d: 0, window: 'rolling' as const, capped: false };
+  try {
+    const { data } = await db
+      .from('bog_orders')
+      .select('amount_gel,created_at,credited_at')
+      .in('status', [...PAID_STATUSES])
+      // Orders settle within 48 h of being made (the cron expires the rest), so 31 days of orders covers 30 of payments.
+      .gte('created_at', new Date(nowMs - 31 * DAY_MS).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(PAID_ROWS_MAX);
+    const rows = (data ?? []) as Array<{ amount_gel: number | string; created_at: string; credited_at: string | null }>;
+    for (const r of rows) {
+      const age = nowMs - Date.parse(r.credited_at || r.created_at);
+      const amount = Number(r.amount_gel);
+      if (!Number.isFinite(age) || !Number.isFinite(amount)) continue;
+      if (age <= 30 * DAY_MS) paid.last30d += amount;
+      if (age <= DAY_MS) paid.last24h += amount;
+    }
+    paid.capped = rows.length >= PAID_ROWS_MAX;
+  } catch {
+    /* unreadable → zeros; the schema flag says what is wrong */
+  }
+  return { ...paid, last24h: Math.round(paid.last24h * 100) / 100, last30d: Math.round(paid.last30d * 100) / 100 };
+}
 
 function callbackKeyKind(cfg: BogConfig): BogReadiness['callbackKey'] {
   if (cfg.callbackPublicKey === BOG_PUBLISHED_CALLBACK_KEYS.production) return 'published-production';
@@ -66,8 +102,9 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env,
   const schemaReady = await bogSchemaReady(db);
   let recentOrders: BogRecentOrder[] = [];
   const ordersByStatus: Record<string, number> = {};
-  const paidGel = { last24h: 0, last30d: 0 };
+  let paidGel: BogReadiness['paidGel'] = { last24h: 0, last30d: 0, window: 'rolling', capped: false };
   if (schemaReady) {
+    paidGel = await paidAgainstLimits(db, nowMs);
     try {
       const { data } = await db
         .from('bog_orders')
@@ -75,14 +112,7 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env,
         .order('created_at', { ascending: false })
         .limit(200);
       const rows = (data ?? []) as Array<{ kind: string; status: string; amount_gel: number | string; created_at: string; reject_reason: string | null }>;
-      for (const r of rows) {
-        ordersByStatus[r.status] = (ordersByStatus[r.status] ?? 0) + 1;
-        const age = nowMs - Date.parse(r.created_at);
-        const amount = Number(r.amount_gel);
-        if (!PAID_STATUSES.has(r.status) || !Number.isFinite(age) || !Number.isFinite(amount)) continue;
-        if (age <= 30 * 86_400_000) paidGel.last30d += amount;
-        if (age <= 86_400_000) paidGel.last24h += amount;
-      }
+      for (const r of rows) ordersByStatus[r.status] = (ordersByStatus[r.status] ?? 0) + 1;
       recentOrders = rows.slice(0, 20).map((r) => ({
         kind: r.kind,
         status: r.status,
@@ -100,22 +130,46 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env,
     clientIdTail: cfg ? cfg.clientId.slice(-4) : null,
     callbackKey: cfg ? callbackKeyKind(cfg) : null,
     callbackIpAllowlist: cfg?.callbackIpAllowlist.length ?? 0,
-    callbackUrl: bogCallbackUrl(),
+    // A sandbox order's callback is the origin of the request that made it — never the live site.
+    callbackUrl: cfg?.environment === 'sandbox' ? bogCallbackUrl('(this deployment)', 'sandbox') : bogCallbackUrl(),
     apiBase: cfg?.apiBase ?? null,
     schemaReady,
     cronSecretSet: Boolean((env.CRON_SECRET || '').trim()),
     checkoutMode: bogCheckoutMode(env),
+    sandboxBlocked: bogSandboxBlocked(cfg, env),
     limitsGel: BOG_LIMITS_GEL,
-    paidGel: { last24h: Math.round(paidGel.last24h * 100) / 100, last30d: Math.round(paidGel.last30d * 100) / 100 },
+    paidGel,
     ordersByStatus,
     recentOrders,
   };
 }
 
-/** Belt and braces: a stored reason is already scrubbed at write time; scrub again before it leaves the server. */
+/**
+ * Belt and braces: a stored reason is already scrubbed at write time; scrub again before it leaves the server — the
+ * secret verbatim, JSON-escaped and URL-encoded, the Basic header, and anything shaped like a token.
+ */
 function scrub(text: string, cfg: BogConfig | null): string {
-  const t = cfg?.secretKey ? text.split(cfg.secretKey).join('[redacted]') : text;
-  return t.slice(0, 200);
+  let t = text;
+  if (cfg?.secretKey) {
+    const s = cfg.secretKey;
+    const basic = Buffer.from(`${cfg.clientId}:${s}`).toString('base64');
+    for (const form of new Set([s, JSON.stringify(s).slice(1, -1), encodeURIComponent(s), basic])) t = t.split(form).join('[redacted]');
+  }
+  return t
+    .replace(/"(access_token|refresh_token|id_token)"\s*:\s*"[^"]*"/g, '"$1":"[hidden]"')
+    .replace(/eyJ[\w-]{4,}\.[\w-]{4,}\.[\w-]*/g, '[token]')
+    .slice(0, 200);
+}
+
+/** A 2xx answer without a token: say what it held (its keys), never its values — one of them may be a token. */
+function describeKeys(text: string): string {
+  try {
+    const j = JSON.parse(text) as unknown;
+    if (j && typeof j === 'object' && !Array.isArray(j)) return `JSON keys: ${Object.keys(j).slice(0, 12).join(', ') || '(none)'}`;
+    return `JSON ${Array.isArray(j) ? 'array' : typeof j}`;
+  } catch {
+    return `not JSON (${text.length} bytes)`;
+  }
 }
 
 export type BogProbeVerdict =
@@ -194,7 +248,7 @@ export async function probeBogOAuth(
       token = undefined;
     }
     // Never echo the token itself.
-    return typeof token === 'string' && token ? done('ok', res.status, null) : done('malformed_answer', res.status, answer);
+    return typeof token === 'string' && token ? done('ok', res.status, null) : done('malformed_answer', res.status, describeKeys(text));
   }
   if (res.status === 400 || res.status === 401) return done('credentials_refused', res.status, answer);
   if (res.status === 403) return done('forbidden', res.status, answer);
