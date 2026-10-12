@@ -18,6 +18,9 @@
  * This file is PURE (no IO, no ffmpeg) so it is trivially unit-testable and
  * client-safe; the caller gathers the facts (size on disk + a best-effort
  * `ffmpeg -i` probe) and feeds them in.
+ *
+ * A CRITICAL issue is not a grade, it is a refusal: see MasterQaRejected / qcBlockingIssues at the end of this file — the
+ * assembler withholds such a master, and /api/video/assemble records the attempt as failed and returns the charge.
  */
 
 export interface MasterFacts {
@@ -161,4 +164,43 @@ export function validateMaster(f: MasterFacts): QaReport {
   const grade: QaReport['grade'] = critical > 0 ? 'F' : score >= 90 ? 'A' : score >= 75 ? 'B' : 'C';
 
   return { pass: critical === 0, score, grade, issues };
+}
+
+// ── The gate (Video Core v1.0 §7 / §8) ───────────────────────────────────────────────────────────────────────────────
+// `pass: false` used to be a label on a delivered film: the route stamped the master, settled the charge and handed the
+// grade F back beside the URL. A critical issue is the film NOT being what was paid for (no frames of it, no sound it
+// was mixed with, not the length that was contracted), so it now WITHHOLDS the master: the assembler throws
+// MasterQaRejected before hosting anything, the route's saga fails on its dispatch step and compensates (the one refund
+// per attempt, the free slot or the billing waiver handed back), and the attempt is recorded as failed — never as a
+// delivered film. Warnings still ride along on a delivered master.
+
+/** The issues that withhold a master: every critical one (pure; the policy in one place). */
+export function qcBlockingIssues(qa: QaReport | null | undefined): QaIssue[] {
+  return qa ? qa.issues.filter((i) => i.severity === 'critical') : [];
+}
+
+/** One line a user can read: which checks failed and how (the first critical issue's own words). */
+export function describeQcRejection(qa: QaReport): string {
+  const blocking = qcBlockingIssues(qa);
+  if (!blocking.length) return 'the master passed every critical check';
+  return blocking.map((i) => `${i.code}: ${i.detail}`).join('; ');
+}
+
+/** Thrown by the assembler in place of a master that failed a critical check; carries the report for the route. */
+export class MasterQaRejected extends Error {
+  readonly code = 'qc_rejected' as const;
+  readonly qa: QaReport;
+  readonly issueCodes: QaIssue['code'][];
+  constructor(qa: QaReport) {
+    super(`master rejected by QC (grade ${qa.grade}, score ${qa.score}) — ${describeQcRejection(qa)}`);
+    this.name = 'MasterQaRejected';
+    this.qa = qa;
+    this.issueCodes = qcBlockingIssues(qa).map((i) => i.code);
+  }
+}
+
+/** `err` is the assembler's QC rejection (instanceof-safe across module copies: the code and the report are checked). */
+export function isMasterQaRejected(err: unknown): err is MasterQaRejected {
+  return err instanceof MasterQaRejected
+    || (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'qc_rejected' && typeof (err as { qa?: unknown }).qa === 'object');
 }

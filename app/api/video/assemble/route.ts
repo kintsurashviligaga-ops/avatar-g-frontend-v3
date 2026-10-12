@@ -41,7 +41,7 @@ import { cutMasterToLength } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
-import { type QaReport } from '@/lib/orchestrator/masterQa';
+import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -838,7 +838,20 @@ async function assembleImpl(req: NextRequest) {
           const work = cfg && !finalCut
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
             : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null, ...(resolvedDialogueStems.length ? { dialogueStems: resolvedDialogueStems } : {}) }, ac.signal);
-          const res = await Promise.race([work, deadline]);
+          let res: { url: string; qa?: QaReport };
+          try {
+            res = await Promise.race([work, deadline]);
+          } catch (err) {
+            // Video Core v1.0 §7/§8 — the assembler WITHHELD the master (a critical QC issue: frame_count_mismatch,
+            // silent_master, empty_master). Keep its report for the response, then fail this step like any other
+            // dispatch failure: the saga compensates reserve-credits (the attempt's one refund / the free slot / the
+            // billing waiver handed back), nothing is stamped as a delivered film, and the idempotency claim is released.
+            if (isMasterQaRejected(err)) {
+              ctx.bag.qa = err.qa;
+              ctx.bag.qcRejected = err.issueCodes;
+            }
+            throw err;
+          }
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).
           ctx.bag.qa = (res as { qa?: QaReport }).qa ?? null;
@@ -895,6 +908,20 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json(
         { error: 'insufficient_credits', reason: 'insufficient_credits', message: topUp, failedStep: saga.failedStep },
         { status: 402 },
+      );
+    }
+    // Video Core v1.0 §7/§8 — the master failed a CRITICAL quality check and was withheld (never hosted). This is a
+    // terminal failure of the attempt, said with the check that failed: the charge was compensated above (once, by
+    // the saga), the film is recorded as failed (not as a master), and the client shows the message with a Retry.
+    const qcRejected = Array.isArray(bag.qcRejected) ? (bag.qcRejected as string[]) : null;
+    if (qcRejected) {
+      const qcReport = (bag.qa as QaReport | null | undefined) ?? null;
+      const detail = qcReport ? qcReport.issues.filter((i) => i.severity === 'critical').map((i) => `${i.code}: ${i.detail}`).join('; ') : qcRejected.join(', ');
+      const message = `The finished video failed its quality check (${detail}). Nothing was delivered and this attempt was not charged — please try again.`;
+      if (filmTokenId) await recordFilmFailed(filmTokenId, `qc_rejected: ${qcRejected.join(',')}`);
+      return NextResponse.json(
+        { error: 'qc_rejected', reason: 'qc_rejected', codes: qcRejected, qa: qcReport, failedStep: saga.failedStep, message, compensated: saga.compensatedSteps },
+        { status: 502 },
       );
     }
     // PHASE 47 §1 — record the terminal failure so the tracker stops claiming

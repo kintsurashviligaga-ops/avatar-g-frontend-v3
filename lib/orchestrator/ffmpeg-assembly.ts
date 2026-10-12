@@ -20,7 +20,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
-import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
+import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { countDecodedFrames } from '@/lib/video/frameCount';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
@@ -662,6 +662,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     });
     if (!qa.pass) {
       console.warn(`[masterQa] master FAILED quality gate (grade ${qa.grade}, score ${qa.score}):`, qa.issues.map((i) => i.code).join(', '));
+      // Video Core v1.0 §7/§8 — a critical defect WITHHOLDS the master. It is not hosted, not returned, not stamped:
+      // the route's saga fails on this throw, compensates the charge once, and records the attempt as failed. A
+      // 29.7 s film that decodes to 890 frames is not "a film with a note", it is not the film that was paid for.
+      throw new MasterQaRejected(qa);
     }
 
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;

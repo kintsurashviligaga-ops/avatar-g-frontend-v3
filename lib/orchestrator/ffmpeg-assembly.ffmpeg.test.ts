@@ -9,8 +9,10 @@
  *     (a cloned, frozen last frame), 720 frames at 24 fps — the freeze the contract removes, measured;
  *   · the single-clip cut (lib/video/finalCut): a 6 s clip asked at 5 s → 150 frames; a 32 s clip at 29.7 s → 891;
  *   · four 8 s clips with 1 s crossfades stitch to 29 s: 29.7 s cannot be cut from that → the assembler REFUSES
- *     (longer_than_master) before any encode, and nothing is hosted.
- * OPT-IN (three 1080p encodes, ~4 min on 2 threads): VIDEO_CORE_FFMPEG_IT=1 npx jest lib/orchestrator/ffmpeg-assembly.ffmpeg.test.ts
+ *     (longer_than_master) before any encode, and nothing is hosted;
+ *   · the gate (§7/§8): a master whose decoded count misses the contract by one frame is WITHHELD (MasterQaRejected,
+ *     nothing hosted), and the single-clip cut throws instead of hosting a cut whose count is off.
+ * OPT-IN (four 1080p encodes, ~5 min on 2 threads): VIDEO_CORE_FFMPEG_IT=1 npx jest lib/orchestrator/ffmpeg-assembly.ffmpeg.test.ts
  * VIDEO_CORE_EVIDENCE_OUT=<file> writes the measured numbers and argv snapshots (docs/handoffs/video-core/evidence).
  */
 jest.mock('server-only', () => ({}));
@@ -19,6 +21,12 @@ jest.mock('../providers/mediaPolicy', () => ({ isMediaGoogleOnly: () => true }))
 jest.mock('../pipeline/compositing/ffmpeg-overlay', () => ({ renderOverlayPng: async () => null, renderMusicBugPng: async () => null }));
 jest.mock('../pipeline/compositing/caption-burn', () => ({ burnCaptionSegments: async () => null }));
 jest.mock('../security/allowlistedAudioFetch', () => ({ readBodyWithCap: async (res: Response) => Buffer.from(await res.arrayBuffer()) }));
+// The frame counter is the REAL one, wrapped so one test can hand the QC a count that is off by a frame (the module's
+// exports are not redefinable, so a jest.spyOn would not do).
+jest.mock('../video/frameCount', () => {
+  const actual = jest.requireActual('../video/frameCount');
+  return { ...actual, countDecodedFrames: jest.fn(actual.countDecodedFrames) };
+});
 
 const mockFiles = new Map<string, string>();
 jest.mock('../web/publicFetch', () => {
@@ -62,7 +70,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { assembleWithFfmpeg } from './ffmpeg-assembly';
-import { finalCutArgs } from '../video/finalCut';
+import { MasterQaRejected } from './masterQa';
+import { finalCutArgs, cutMasterToLength } from '../video/finalCut';
+import * as frameCount from '../video/frameCount';
 import { countDecodedFrames, decodedFrameArgs, frameExactVerdict } from '../video/frameCount';
 import { framesFor } from '../video/durationContract';
 
@@ -152,6 +162,24 @@ maybe('the film assembler, contracted (Video Core v1.0 §4), on the real ffmpeg'
     expect(uploads.length).toBe(before);
     cases.c_refusal = { joins: 'crossfade ×3 (1 s each)', nativeSec: 32, stitchedSec: 29, requestedSec: 29.7, refused: 'longer_than_master', hosted: false };
   });
+
+  test('a master whose decoded count misses the contract (890 of 891) is WITHHELD: MasterQaRejected, nothing hosted (§7/§8)', async () => {
+    // The encode is real; only the count the QC reads is forced one frame short, the way a dropped frame would read.
+    const segments = [0, 1, 2, 3].map((i) => ({ url: clip(`e8_${i}.mp4`, 8, 24, 'testsrc', '320x180'), durationSec: 8 }));
+    const before = uploads.length;
+    (frameCount.countDecodedFrames as jest.Mock).mockResolvedValueOnce(890);
+    let caught: unknown = null;
+    try {
+      await assembleWithFfmpeg({ segments, globalRender: { transition: 'cut', orientation: 'landscape' }, finalDurationSec: 29.7, pipelineId: 'vc-t3-e' });
+    } catch (err) { caught = err; }
+    expect(caught).toBeInstanceOf(MasterQaRejected);
+    const rej = caught as MasterQaRejected;
+    expect(rej.issueCodes).toEqual(['frame_count_mismatch']);
+    expect(rej.qa.pass).toBe(false);
+    expect(rej.message).toMatch(/master holds 890 frames, the contracted final is 891 \(-1\)/);
+    expect(uploads.length).toBe(before); // the rejected master never reached storage
+    cases.e_withheld = { requestedSec: 29.7, expectedFrames: 891, countedFrames: 890, thrown: rej.name, codes: rej.issueCodes, hosted: false, qa: rej.qa };
+  });
 });
 
 maybe('the single-clip final cut (lib/video/finalCut) on the real ffmpeg', () => {
@@ -173,6 +201,20 @@ maybe('the single-clip final cut (lib/video/finalCut) on the real ffmpeg', () =>
     expect(frames297).toBe(891);
     expect(Math.abs(banner(out297).durationSec - 29.7)).toBeLessThan(0.05);
     cases.d_single_cut = { fiveFromSix: { argv: argv5.map((a) => (a === six ? '<in.mp4>' : a === out5 ? '<out.mp4>' : a)), decodedFrames: frames5, banner: banner(out5) }, twentyNine7From32: { decodedFrames: frames297, banner: banner(out297) } };
+  });
+
+  test('cutMasterToLength hosts a 5 s cut that counts 150 frames, and throws (hosting nothing) when the count is off (§7/§8)', async () => {
+    const six = local(clip('single6b.mp4', 6, 24, 'testsrc2', '320x240'));
+    const before = uploads.length;
+    const url = await cutMasterToLength(six, 5);
+    expect(url).toMatch(/films\/final-\d+-150f-/);
+    expect(uploads.length).toBe(before + 1);
+    expect(await countDecodedFrames(bin, local(url))).toBe(150);
+
+    (frameCount.countDecodedFrames as jest.Mock).mockResolvedValueOnce(149);
+    await expect(cutMasterToLength(six, 5)).rejects.toThrow(/final cut: frame_count_mismatch — the cut holds 149 frames, the contracted final is 150 \(-1\)/);
+    expect(uploads.length).toBe(before + 1); // the off cut was not hosted
+    cases.f_single_cut_gate = { fiveFromSix: { hosted: true, decodedFrames: 150 }, forcedOff: { countedFrames: 149, expectedFrames: 150, thrown: true, hosted: false } };
   });
 });
 

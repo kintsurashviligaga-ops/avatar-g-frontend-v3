@@ -5,7 +5,8 @@
  * same cut for a master that already exists as a file — the single-clip film (one 6 s clip asked as 5 s → 150 frames).
  * The picture is re-timed to VIDEO_FPS and stopped at the final length, so the delivered file holds exactly
  * framesFor(finalSec) frames (29.7 s → 891); the audio stops with it. Fail-CLOSED: a cut that cannot be made throws, and
- * the caller treats that as the attempt's failure — the uncut master is never delivered as if it were the final.
+ * so does a cut whose decoded frame count is not framesFor(finalSec) (counted before hosting, lib/video/frameCount); the
+ * caller treats either as the attempt's failure — the uncut master is never delivered as if it were the final.
  *
  * ffmpeg never fetches a URL itself: http(s) inputs go through lib/video/ffmpegExec (public-host guard, local file).
  */
@@ -17,6 +18,7 @@ import { join } from 'node:path';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { VIDEO_FPS, framesFor } from '@/lib/video/durationContract';
+import { countDecodedFrames } from '@/lib/video/frameCount';
 
 const RENDER_BUCKET = process.env.RENDER_BUCKET ?? 'renders';
 
@@ -43,6 +45,15 @@ export async function cutMasterToLength(videoUrl: string, finalSec: number): Pro
     await ffmpegExec(bin, finalCutArgs(videoUrl, out, finalSec), { maxBuffer: 1 << 26, timeout: 180_000 });
     const buf = await readFile(out);
     if (buf.byteLength < 1_024) throw new Error('final cut: empty output');
+    // Video Core v1.0 §4/§7 — the cut is checked on its DECODED frames before it is hosted, like the stitched master
+    // (ffmpeg-assembly → masterQa frame_count_mismatch): a count that is off throws, and the catch in the route rolls
+    // the attempt back. A count that could not be read is logged and the cut is delivered (unverified, said as such).
+    const expectedFrames = framesFor(finalSec);
+    const actualFrames = await countDecodedFrames(bin, out).catch(() => null);
+    if (typeof actualFrames === 'number' && actualFrames !== expectedFrames) {
+      throw new Error(`final cut: frame_count_mismatch — the cut holds ${actualFrames} frames, the contracted final is ${expectedFrames} (${actualFrames - expectedFrames > 0 ? '+' : ''}${actualFrames - expectedFrames})`);
+    }
+    if (actualFrames === null) console.warn(`[finalCut] frames could not be counted (${expectedFrames} expected) — delivering unverified`);
     const path = `films/final-${Date.now()}-${framesFor(finalSec)}f-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf, 'video/mp4', 604_800);
     if (!url) throw new Error('final cut: hosting the cut master failed');

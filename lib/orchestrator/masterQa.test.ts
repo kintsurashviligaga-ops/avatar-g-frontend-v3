@@ -113,3 +113,48 @@ describe('validateMaster', () => {
     expect(qa.pass).toBe(false);
   });
 });
+
+describe('the gate — a critical issue withholds the master (Video Core v1.0 §7/§8)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { qcBlockingIssues, describeQcRejection, MasterQaRejected, isMasterQaRejected } = require('./masterQa') as typeof import('./masterQa');
+
+  test('a contracted 29.7 s film that decodes to 890 frames is a critical frame_count_mismatch, and blocking', () => {
+    const qa = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.7, expectedFrames: 891, actualFrames: 890 });
+    expect(qa.pass).toBe(false);
+    expect(qcBlockingIssues(qa).map((i) => i.code)).toEqual(['frame_count_mismatch']);
+    expect(describeQcRejection(qa)).toMatch(/^frame_count_mismatch: master holds 890 frames, the contracted final is 891 \(-1\)$/);
+  });
+
+  test('exactly 891 frames → nothing blocks; an uncountable master is a warning, not a block', () => {
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: 891 }))).toEqual([]);
+    const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
+    expect(unread.pass).toBe(true);
+    expect(qcBlockingIssues(unread)).toEqual([]);
+    expect(unread.issues.map((i) => `${i.code}:${i.severity}`)).toEqual(['frame_count_mismatch:warn']);
+  });
+
+  test('silent_master and empty_master block too; warnings (drift, bloat, sub-1080p) never do', () => {
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, audioPresent: false })).map((i) => i.code)).toEqual(['silent_master']);
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, sizeBytes: 10 })).map((i) => i.code)).toEqual(['empty_master']);
+    const warnsOnly = validateMaster({ ...HEALTHY, actualDurSec: 40, sizeBytes: 90_000_000, width: 1280, height: 720 });
+    expect(warnsOnly.pass).toBe(true);
+    expect(warnsOnly.issues.length).toBe(3);
+    expect(qcBlockingIssues(warnsOnly)).toEqual([]);
+    expect(qcBlockingIssues(null)).toEqual([]);
+  });
+
+  test('MasterQaRejected carries the report and the codes, and is recognised across module copies', () => {
+    const qa = validateMaster({ ...HEALTHY, expectedFrames: 720, actualFrames: 722, audioPresent: false });
+    const err = new MasterQaRejected(qa);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('MasterQaRejected');
+    expect(err.code).toBe('qc_rejected');
+    expect(err.qa).toBe(qa);
+    expect(err.issueCodes).toEqual(['silent_master', 'frame_count_mismatch']);
+    expect(err.message).toMatch(/master rejected by QC \(grade F, score 0\) — silent_master: .*; frame_count_mismatch: master holds 722 frames, the contracted final is 720 \(\+2\)/);
+    expect(isMasterQaRejected(err)).toBe(true);
+    expect(isMasterQaRejected({ code: 'qc_rejected', qa })).toBe(true); // a copy from another module instance
+    expect(isMasterQaRejected(new Error('dispatch stalled'))).toBe(false);
+    expect(isMasterQaRejected(null)).toBe(false);
+  });
+});
