@@ -1,0 +1,41 @@
+# Video Core v1.0 — acceptance matrix AC-01…AC-28 (§12)
+
+Environment for every row: sandbox (Linux, Node v22.22.0, Jest 30, ffmpeg-static 7.0.2), branch `claude/video-core-v1-6gh97e`,
+main = 30be5a2. **No row ran at T4 (Preview), T5 (paid provider) or T6 (Production)**; a mocked-provider PASS is not a
+real-provider E2E PASS. Full jest on the final tree: 877 suites / 13,494 tests passed, 0 real failures (5 suites skipped: they need
+their own Postgres; one "failed" suite is the PHASE 0 probe file removed during the run). tsc 0 errors; eslint 0 errors.
+SHA column: the commit that makes the row true; `2a2f8b7` = the PHASE 3 commit (frame-exact QC + lane fix).
+
+| ID | Scenario | Result | SHA | Tier | Test | Evidence · subcases |
+| --- | --- | --- | --- | --- | --- | --- |
+| AC-01 | „24-წამიანი მუსიკალური კლიპი“ in a new chat | **PASS** (routing, length, workflow) · subcase "only the missing input is asked" NOT RUN (T2) | 36115f2 | T1 | `lib/agent/intent.videoCore.test.ts` 30/30 | `evidence/ac01-intent-before.txt` (19 failed before); kind `video.music-video`, 24 s, the Video tool opened with the plan said |
+| AC-02 | KA/EN/RU equivalents and paraphrases | **PASS** | f2f3dae, 36115f2 | T1 | `durationWords.test`, `intent.videoCore.test`, `lib/agent/intentCorpus.ts` | one reader for words/clocks/compounds; verb-last Georgian; not one hard-coded phrase |
+| AC-03 | „ერთწუთიანი“ / „ერთი წუთი“ / „60 წამი“ → 60 s, 1800 frames | **PASS** parse · plan · quote (T1); render/QC at 60 s **NOT RUN** (T3 measured 29.7 s and 24 s on the same path) | f2f3dae, 8a04807 | T1 (+T3 by the same path) | `durationWords.test`, `durationContract.test` (60 → 1800), `frameCount.test` | the 60 s encode itself was not run (time); nothing in the path depends on the value |
+| AC-04 | „ოთხწუთიანი“ / „240 წამი“ | **PASS (closed path)**: refusal `longform_closed` said before the board, 0 render, 0 charge, never 96 s · open path **NOT RUN / BLOCKED** (`LONGFORM_ORDER_WIRED=false`, paid Veo) | 5434df7 | T1 | `videoCoreWiring.test` §6, `createPanel.test`, `lib/video/longform/*.test` | the closed-path PASS does not approve 240 s generation |
+| AC-05 | „29.7 წამი“ / „29,7 წამი“ → 29.7 everywhere, 891 frames | **PASS** | f2f3dae … 2a2f8b7 | T1 + **T3** | `durationContract.test`, `ffmpeg-assembly.ffmpeg.test` (opt-in) | `t3-film-frame-counts.json`: Requested 29.7 · Native 32 · Final 29.7, **891 decoded frames**, Duration 29.70, QA A |
+| AC-06 | 5 clips + music 0:59 + 29.7 s + 9:16 + Georgian end text | **PARTIAL**: parse PASS (T1); offset + exact length PROVEN T3 by the E2E-23 analogue (0:58, 70 s); Georgian text layer PROVEN T3 (v2.1 suites); the five conditions **as one render NOT RUN** | — | T1 / T3 (parts) | `intent.videoCore.test`, `videoCore.musicOffset.test`, `composition.ffmpeg.test` | no single fixture combines all five yet |
+| AC-07 | music from 0:58, 70 s video, 130 s track | **PASS** | 30be5a2 (PR #57) re-verified | **T3** | `mediaStudio.ffmpeg.test` E2E-23, `videoCore.musicOffset.test` | `t3-montage-media-studio-e2e.json`: 2100 frames, 70.000 s, `sourceStartSec 58`, `timelineStartSec 0`; 72 s available |
+| AC-08 | the same on a 120 s track | **PASS** | 30be5a2 re-verified | **T3** | `mediaStudio.ffmpeg.test` E2E-23 short | `music_too_short {fromSec 58, musicSec 62, targetSec 70}`, 0 renders, 0 rows |
+| AC-09 | only the last 5 of 7 | **PASS** | 30be5a2 re-verified | **T3** | `mediaStudio.ffmpeg.test` E2E-22, `videoCore.musicOffset.test` (KA/EN/RU) | excluded sources 0 frames; indices as sent kept |
+| AC-10 | montage quote from Agent G text | **PASS** (T1/T3) | 30be5a2 | T1 + T3 | `montageExec.test`, `montageExec.ffmpeg.test`, `montageChat.test` | real card, signed token, start/status/cancel/result; T6 seen 2026-10-11 (Prod job 6efe92f3), not re-run |
+| AC-11 | edit quote of a delivered video | **PASS** | 30be5a2 | **T3** | `editLive.ffmpeg.test` 9/9, `composition.ffmpeg.test` | parent unchanged; revision = new artifact |
+| AC-12 | audio → montage → edit as one run | **PARTIAL** | 30be5a2 | T1 | `lib/agent/run/runEngine.test` | resume reuses delivered steps; a single montage restarts as a new quote; no E2E of the three-step run |
+| AC-13 | storyboard failure / timeout / malformed | **PASS** (source pins) · browser run NOT RUN (T2) | df5c8e9 | T1 | `videoCoreWiring.test` §5 | error card with Retry; both fail-open renders removed; 0 render, 0 charge |
+| AC-14 | change / move / delete a scene | **PARTIAL**: editing exists (pre-existing UI); revision fingerprint + `approvalMatches` BUILT (T1) but **not wired**; "old approval never used on a changed paid plan" not enforced by a revision id | df5c8e9 | T1 | `revision.test` 17/17 | needs the proposal tables or a signed approval token (`storyboard-revisions.md`) |
+| AC-15 | switching projects | **PARTIAL**: the chat step never carries the last project's length; the board takes its own grid (T1 pins) · mode/assets across conversations **NOT RUN** (T2) | 5434df7 | T1 | `videoCoreWiring.test` | |
+| AC-16 | double click / concurrent retry / duplicate event | **PASS** | 30be5a2 re-run | T1 | `montageExec.test:158`, `:287` | one job, one charge |
+| AC-17 | cancel / late callback / worker crash / retry | **PASS** | 30be5a2 re-run | T1 + T3 | `montageWorker.test:264`, `:327`, `:350`; cancel in `montageExec.ffmpeg.test` | fenced writes; refund once; ffmpeg killed |
+| AC-18 | reload / language / reconnect / other session | **PARTIAL** | 30be5a2 | T1 | `cardPersist.test` | same-device reload PROVEN T4 on 2026-10-11, not re-run; no server project record |
+| AC-19 | expired quote / signed URL / lost source | **PARTIAL** | 30be5a2, 5434df7 | T1 | `quoteToken` tests, `app/api/video/assemble` (`media_not_yours` 403, `final_duration_invalid` 400) | refusals by name; a changed montage plan is a new quote; no fake success |
+| AC-20 | another user's file / job / quote / approval / artifact | **PASS** | 30be5a2 re-run | T1 | `montageExec.test:38`, `:224`; `app/api/upload/verify/route.test`; assemble route ownership check | server refuses; T6 anonymous probe of 458 routes was in the certification run (earlier) |
+| AC-21 | Georgian text / CTA / logo / captions | **PASS** | 30be5a2 re-run | **T3** | `composition.ffmpeg.test`, `effects.ffmpeg.test`, `transitions.ffmpeg.test` | exact words and times; SRT/VTT; clean export; parent kept |
+| AC-22 | remove our overlay; ask to remove a baked-in logo | **PASS** | 30be5a2 re-run | **T3** | `composition.ffmpeg.test` (TX-04), `editChat` (`remove_from_source` refused) | the overlay disappears; a source edit is refused, never faked |
+| AC-23 | add clips / replace music / silent export / delayed music / source audio | **PARTIAL**: replace music = new montage (PASS as new); add clips MISSING; silent export MISSING; delayed music (timeline start ≠ 0) MISSING; source audio: lane supports, chat MISSING | 30be5a2 | T3 / — | `00-CURRENT-REALITY.md` §4 | each gap named in `blockers-and-deferred.md` |
+| AC-24 | 29+ assets | **BLOCKED** as a capability (chat 8 / quote 13; owner decisions) · "no file is lost silently" **PASS** (refused by count) | 30be5a2 | T1 | `montageAsk` caps, `00` §3 | |
+| AC-25 | provider unavailable / flag closed / role gate | **PASS** | 30be5a2 re-run | T1 | `lib/veo/engine.test` (`not_configured`), `lib/agent/media/access.test`, `__tests__/provider-boundary.test`, `lib/agent/tools/registry.test` | exact status; no fallback; no web search in place of execution |
+| AC-26 | plan → approval → progress → error/result in one window | **PARTIAL** | 30be5a2 | T1 | pins; cards | Stop/Retry PROVEN T4 on 2026-10-11 (iPhone), not re-run; no T2 in this task |
+| AC-27 | capability inventory | **PASS** as a document · consolidation (§2.3) NAVIGATION_ONLY | docs commit | — | `capability-matrix.md` | canonical IDs and deep links unchanged |
+| AC-28 | finished work: Preview/Play, Download, Library; owner + revision | **PARTIAL** | 30be5a2 | T1 | ownership tests | Library delivery PROVEN T6 on 2026-10-11 (before this branch); revision binding MISSING |
+
+Totals: PASS 15 (AC-01, 02, 05, 07, 08, 09, 10, 11, 16, 17, 20, 21, 22, 25, 27) · PASS with a NOT RUN subcase 2 (AC-03, AC-04 closed path)
+· PARTIAL 10 (AC-06, 12, 13 browser, 14, 15, 18, 19, 23, 26, 28) · BLOCKED 1 (AC-24). Nothing is marked PASS on a tier it did not run at.
