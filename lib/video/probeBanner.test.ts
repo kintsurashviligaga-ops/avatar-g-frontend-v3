@@ -71,12 +71,12 @@ const FRAMECRC = `#extradata 0:       44, 0x2f9c0d9c
 
 describe('parseFrameCrc (the master\'s A/V check)', () => {
   test('each stream\'s length from its packets: the end of the last, less where the first starts (priming before 0 ignored)', () => {
-    expect(parseFrameCrc(FRAMECRC)).toEqual({ videoSec: 1, audioSec: 0.998 });
+    expect(parseFrameCrc(FRAMECRC)).toEqual({ videoSec: 1, audioSec: 0.998, videoFrames: 2 });
   });
   test('a missing stream is null, garbage is no stream at all', () => {
     const videoOnly = FRAMECRC.split('\n').filter((l) => !/^(1,|#\w+ 1:)/.test(l)).join('\n');
-    expect(parseFrameCrc(videoOnly)).toEqual({ videoSec: 1, audioSec: null });
-    expect(parseFrameCrc('')).toEqual({ videoSec: null, audioSec: null });
-    expect(parseFrameCrc('not, a, crc\n0, x, y')).toEqual({ videoSec: null, audioSec: null });
+    expect(parseFrameCrc(videoOnly)).toEqual({ videoSec: 1, audioSec: null, videoFrames: 2 });
+    expect(parseFrameCrc('')).toEqual({ videoSec: null, audioSec: null, videoFrames: null });
+    expect(parseFrameCrc('not, a, crc\n0, x, y')).toEqual({ videoSec: null, audioSec: null, videoFrames: null });
   });
 });

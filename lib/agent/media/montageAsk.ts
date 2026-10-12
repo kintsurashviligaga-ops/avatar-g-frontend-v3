@@ -5,7 +5,7 @@
  */
 import type { BannerProbe, StreamDurations } from '@/lib/video/probeBanner';
 import { displaysPortrait } from '@/lib/video/probeBanner';
-import type { BeatGrid, CutPlan, RampMode } from '@/lib/services/montage/beatPlan';
+import { OUTPUT_FPS, type BeatGrid, type CutPlan, type RampMode } from '@/lib/services/montage/beatPlan';
 import { MUSIC_UNDER_OWN_DB } from '@/lib/services/montage/montageSound';
 import type { MontageAspect, MontageShot, TransitionStyle } from '@/lib/services/montage/montagePlan';
 import { MAX_SHOTS, MAX_TRANSITION_SEC, shotDuration, shotSpeed, timelineDuration, transitionOverlap } from '@/lib/services/montage/montagePlan';
@@ -524,24 +524,34 @@ export interface AvVerdict {
   problems: string[];
   videoSec: number | null;
   audioSec: number | null;
+  /** The picture's frames as counted, and the frames the plan's length takes at OUTPUT_FPS; null when not counted. */
+  videoFrames: number | null;
+  plannedFrames: number | null;
 }
 
 /**
  * A/V check of the master from its real stream lengths: a picture and a soundtrack, the picture as long as the plan
- * (qcMaster's tolerance) and the sound as long as the picture (AV_SYNC_TOLERANCE_SEC).
+ * (qcMaster's tolerance) and the sound as long as the picture (AV_SYNC_TOLERANCE_SEC). When the reader counted the
+ * picture's packets (one per frame), the check is FRAME-EXACT (Video Core v1.0 §4): the master holds exactly
+ * round(planned × OUTPUT_FPS) frames — 70 s = 2100, 29.7 s = 891 — or it is not delivered, whatever the container says.
  */
 export function qcAvSync(d: StreamDurations | null, expectedSec: number): AvVerdict {
-  if (!d) return { ok: false, problems: ['the stream lengths could not be read'], videoSec: null, audioSec: null };
+  if (!d) return { ok: false, problems: ['the stream lengths could not be read'], videoSec: null, audioSec: null, videoFrames: null, plannedFrames: null };
   const problems: string[] = [];
   if (d.videoSec === null) problems.push('no picture stream');
   if (d.audioSec === null) problems.push('no soundtrack stream');
   if (d.videoSec !== null && !(Math.abs(d.videoSec - expectedSec) <= Math.max(1, expectedSec * 0.03))) {
     problems.push(`picture ${d.videoSec.toFixed(2)}s, planned ${expectedSec.toFixed(2)}s`);
   }
+  const videoFrames = typeof d.videoFrames === 'number' && Number.isFinite(d.videoFrames) ? d.videoFrames : null;
+  const plannedFrames = Number.isFinite(expectedSec) && expectedSec > 0 ? Math.round(expectedSec * OUTPUT_FPS) : null;
+  if (videoFrames !== null && plannedFrames !== null && videoFrames !== plannedFrames) {
+    problems.push(`picture ${videoFrames} frames, planned ${plannedFrames} (${expectedSec.toFixed(3)}s at ${OUTPUT_FPS} fps)`);
+  }
   if (d.videoSec !== null && d.audioSec !== null && !(Math.abs(d.audioSec - d.videoSec) <= AV_SYNC_TOLERANCE_SEC)) {
     problems.push(`sound ${d.audioSec.toFixed(2)}s against picture ${d.videoSec.toFixed(2)}s`);
   }
-  return { ok: problems.length === 0, problems, videoSec: d.videoSec, audioSec: d.audioSec };
+  return { ok: problems.length === 0, problems, videoSec: d.videoSec, audioSec: d.audioSec, videoFrames, plannedFrames };
 }
 
 // ── provenance: what each source really contributes, read from the render graph (Media Studio v2.0 §6) ─────────────

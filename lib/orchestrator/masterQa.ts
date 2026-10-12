@@ -12,6 +12,8 @@
  *                      timeline (a dropped clip, or a mis-stitched xfade chain)
  *   • bitrate_bloat  — the encode ballooned (the film-grain 5× / ~27 Mbps bug)
  *   • sub_1080p      — the master fell below the 1920×1080 delivery target
+ *   • frame_count_mismatch — a film with a contracted final length (Video Core v1.0 §4) does not hold exactly
+ *                      framesFor(final) decoded frames (29.7 s at 30 fps = 891): the contract was not delivered
  *
  * This file is PURE (no IO, no ffmpeg) so it is trivially unit-testable and
  * client-safe; the caller gathers the facts (size on disk + a best-effort
@@ -32,6 +34,12 @@ export interface MasterFacts {
   /** Probed pixel dimensions, or null when the probe was unavailable. */
   width: number | null;
   height: number | null;
+  /**
+   * Video Core v1.0 §4 — under a contracted final length: the frames the final must hold (framesFor(finalSec, fps)) and
+   * the frames the master really decodes to (lib/video/frameCount). Both absent/null → no frame check (a legacy master).
+   */
+  expectedFrames?: number | null;
+  actualFrames?: number | null;
 }
 
 export type QaSeverity = 'critical' | 'warn';
@@ -42,7 +50,8 @@ export interface QaIssue {
     | 'silent_master'
     | 'duration_drift'
     | 'bitrate_bloat'
-    | 'sub_1080p';
+    | 'sub_1080p'
+    | 'frame_count_mismatch';
   severity: QaSeverity;
   detail: string;
 }
@@ -90,6 +99,21 @@ export function validateMaster(f: MasterFacts): QaReport {
       severity: 'critical',
       detail: 'a soundtrack was composed but the master contains no audio stream',
     });
+  }
+
+  // 2b — Video Core v1.0 §4: a contracted final is FRAME-exact. The duration drift below tolerates ±15 %; a film
+  //      the user asked at 29.7 s is 891 frames at 30 fps, not "about 29.7 s". A count that could not be read is
+  //      said too (the contract is unverified, which is not a pass).
+  if (typeof f.expectedFrames === 'number' && f.expectedFrames > 0) {
+    if (typeof f.actualFrames !== 'number') {
+      issues.push({ code: 'frame_count_mismatch', severity: 'warn', detail: `the master's frames could not be counted (${f.expectedFrames} expected)` });
+    } else if (f.actualFrames !== f.expectedFrames) {
+      issues.push({
+        code: 'frame_count_mismatch',
+        severity: 'critical',
+        detail: `master holds ${f.actualFrames} frames, the contracted final is ${f.expectedFrames} (${f.actualFrames - f.expectedFrames > 0 ? '+' : ''}${f.actualFrames - f.expectedFrames})`,
+      });
+    }
   }
 
   // 3 — duration tracks the compiled timeline within ±15% (a dropped clip or a

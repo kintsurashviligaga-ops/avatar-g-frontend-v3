@@ -1,0 +1,184 @@
+{
+ "S1-no-music": {
+  "prompt": "დაამონტაჟე ეს ვიდეოები",
+  "card": "ყოველი კლიპი ერთ ნაწილად მიდის, შენი თანმიმდევრობით.\nგეგმა: 2 კადრი 2 კლიპიდან, 6.9 წმ, 9:16, ყოველი კლიპი თავისი ხმით, მუსიკის გარეშე.\nფაილები (2, შენი თანმიმდევრობით): 1 „clipA.mp4“ ვიდეო 4 წმ · 2 „clipB.mp4“ ვიდეო 3 წმ. ყველა კლიპი შედის.\nძრავი: FFmpeg მონტაჟი. უფასოა. არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.",
+  "quote": {
+   "sound": "own",
+   "cutting": "whole",
+   "totalSec": 6.866,
+   "shots": 2,
+   "voice": null,
+   "musicEndsSec": null
+  },
+  "qc": {
+   "outcome": "PASS",
+   "audio": {
+    "sourceStartSec": 0,
+    "timelineStartSec": 0,
+    "targetSec": 6.866,
+    "endPolicy": "stop",
+    "sourceAudio": "preserve",
+    "replacementAudio": "none"
+   }
+  },
+  "masterSec": 6.87,
+  "bands": {
+   "cutAtSec": 3.933,
+   "a440": -30.2,
+   "a1k": -83.3,
+   "b440": -82.5,
+   "b1k": -30.1,
+   "sourceA440": -30.2,
+   "sourceB1k": -30.1
+  }
+ },
+ "S2-photos": {
+  "prompt": "make a slideshow",
+  "card": "ყოველი ფოტო ნელი გადიდებით ჩანს, შენი თანმიმდევრობით.\nგეგმა: 3 კადრი 3 ფოტოდან, 9 წმ, 9:16, მუსიკის გარეშე (ფოტოებს ხმა არ აქვს).\nფაილები (3, შენი თანმიმდევრობით): 1 „red.jpg“ ფოტო · 2 „green.jpg“ ფოტო · 3 „blue.jpg“ ფოტო. ყველა კლიპი და ფოტო შედის.\nძრავი: FFmpeg მონტაჟი. უფასოა. არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.",
+  "quote": {
+   "sound": "own",
+   "cutting": "whole",
+   "totalSec": 9,
+   "shots": 3,
+   "voice": null,
+   "musicEndsSec": null
+  },
+  "qc": {
+   "outcome": "PASS",
+   "audio": {
+    "sourceStartSec": 0,
+    "timelineStartSec": 0,
+    "targetSec": 9,
+    "endPolicy": "stop",
+    "sourceAudio": "remove",
+    "replacementAudio": "none"
+   }
+  },
+  "masterSec": 9,
+  "centres": [
+   [
+    220,
+    31,
+    31
+   ],
+   [
+    29,
+    200,
+    60
+   ],
+   [
+    40,
+    60,
+    219
+   ]
+  ]
+ },
+ "S3-own-and-music": {
+  "prompt": "დაამონტაჟე, თავისი ხმაც დარჩეს და მუსიკა ზემოდან დაადე",
+  "card": "ყოველი კლიპი ერთ ნაწილად მიდის, შენი თანმიმდევრობით.\nგეგმა: 2 კადრი 2 კლიპიდან, 6.9 წმ, 9:16, კლიპების საკუთარი ხმით, შენი მუსიკა მის ქვეშ.\nფაილები (3, შენი თანმიმდევრობით): 1 „clipA.mp4“ ვიდეო 4 წმ · 2 „clipB.mp4“ ვიდეო 3 წმ · 3 „song.m4a“ მუსიკა 30 წმ. ყველა კლიპი შედის.\nძრავი: FFmpeg მონტაჟი. უფასოა. არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.",
+  "quote": {
+   "sound": "own+music",
+   "cutting": "whole",
+   "totalSec": 6.866,
+   "shots": 2,
+   "voice": null,
+   "musicEndsSec": null
+  },
+  "qc": {
+   "outcome": "PASS",
+   "audio": {
+    "sourceStartSec": 0,
+    "timelineStartSec": 0,
+    "targetSec": 6.866,
+    "endPolicy": "stop",
+    "sourceAudio": "preserve",
+    "replacementAudio": "mix"
+   }
+  },
+  "masterSec": 6.87,
+  "levels": {
+   "clipSourceDb": -30.2,
+   "clipInMasterDb": -30.2,
+   "songSourceDb": -30.2,
+   "songInMasterDb": -40.3
+  }
+ },
+ "S4-narration": {
+  "prompt": "დაამონტაჟე, თავისი ხმაც დარჩეს, მუსიკაც დაადე და ზემოდან ჩემი ნარაცია",
+  "card": "ყოველი კლიპი ერთ ნაწილად მიდის, შენი თანმიმდევრობით.\nგეგმა: 2 კადრი 2 კლიპიდან, 6.9 წმ, 9:16, კლიპების საკუთარი ხმით, შენი მუსიკა მის ქვეშ, ზემოდან შენი ნარაცია „my-voice.m4a“ (6 წმ): როცა ლაპარაკობს, დანარჩენი ხმა ჩუმდება.\nფაილები (4, შენი თანმიმდევრობით): 1 „clipA.mp4“ ვიდეო 4 წმ · 2 „clipB.mp4“ ვიდეო 3 წმ · 3 „song.m4a“ მუსიკა 30 წმ · 4 „my-voice.m4a“ ნარაცია 6 წმ. ყველა კლიპი შედის.\nძრავი: FFmpeg მონტაჟი. უფასოა. არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.",
+  "quote": {
+   "sound": "own+music",
+   "cutting": "whole",
+   "totalSec": 6.866,
+   "shots": 2,
+   "voice": {
+    "file": 3,
+    "durationSec": 6,
+    "startSec": 0
+   },
+   "musicEndsSec": null
+  },
+  "qc": {
+   "outcome": "PASS",
+   "audio": {
+    "sourceStartSec": 0,
+    "timelineStartSec": 0,
+    "targetSec": 6.866,
+    "endPolicy": "stop",
+    "sourceAudio": "preserve",
+    "replacementAudio": "mix",
+    "voice": {
+     "timelineStartSec": 0
+    }
+   }
+  },
+  "masterSec": 6.87,
+  "levels": {
+   "before": {
+    "own": -30.2,
+    "bed": -40.4,
+    "voice": -90.3
+   },
+   "during": {
+    "own": -48.9,
+    "bed": -58.9,
+    "voice": -12.1
+   }
+  }
+ },
+ "S5-photos-narration": {
+  "prompt": "make a slideshow with my narration",
+  "card": "ყოველი ფოტო ნელი გადიდებით ჩანს, შენი თანმიმდევრობით.\nგეგმა: 3 კადრი 3 ფოტოდან, 12 წმ, 9:16, მუსიკის გარეშე (ფოტოებს ხმა არ აქვს), ზემოდან შენი ნარაცია „narration.m4a“ (12 წმ): როცა ლაპარაკობს, დანარჩენი ხმა ჩუმდება.\nფაილები (4, შენი თანმიმდევრობით): 1 „red.jpg“ ფოტო · 2 „green.jpg“ ფოტო · 3 „blue.jpg“ ფოტო · 4 „narration.m4a“ ნარაცია 12 წმ. ყველა კლიპი და ფოტო შედის.\nძრავი: FFmpeg მონტაჟი. უფასოა. არაფერი დაიწყება, სანამ „დაწყებას“ არ დააჭერ.",
+  "quote": {
+   "sound": "own",
+   "cutting": "whole",
+   "totalSec": 12,
+   "shots": 3,
+   "voice": {
+    "file": 3,
+    "durationSec": 12,
+    "startSec": 0
+   },
+   "musicEndsSec": null
+  },
+  "qc": {
+   "outcome": "PASS",
+   "audio": {
+    "sourceStartSec": 0,
+    "timelineStartSec": 0,
+    "targetSec": 12,
+    "endPolicy": "stop",
+    "sourceAudio": "remove",
+    "replacementAudio": "none",
+    "voice": {
+     "timelineStartSec": 0
+    }
+   }
+  },
+  "masterSec": 12,
+  "voiceDb": {
+   "start": -12.1,
+   "end": -12.1
+  }
+ }
+}

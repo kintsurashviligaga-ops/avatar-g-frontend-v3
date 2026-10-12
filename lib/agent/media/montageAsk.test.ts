@@ -152,6 +152,17 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
     expect(qcAvSync({ videoSec: 20, audioSec: 20 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s']);
     expect(qcAvSync(null, 30)).toMatchObject({ ok: false });
   });
+
+  test('A/V, frame-exact (Video Core v1.0 §4): with the packets counted, the master holds round(planned × 30) frames or fails', () => {
+    expect(qcAvSync({ videoSec: 70, audioSec: 70, videoFrames: 2100 }, 70)).toMatchObject({ ok: true, videoFrames: 2100, plannedFrames: 2100 });
+    expect(qcAvSync({ videoSec: 29.7, audioSec: 29.7, videoFrames: 891 }, 29.7)).toMatchObject({ ok: true, plannedFrames: 891 });
+    // The container says 70 s (inside the 3 % tolerance) but one frame is missing: not delivered.
+    expect(qcAvSync({ videoSec: 69.967, audioSec: 70, videoFrames: 2099 }, 70).problems).toEqual(['picture 2099 frames, planned 2100 (70.000s at 30 fps)']);
+    expect(qcAvSync({ videoSec: 29.7, audioSec: 29.7, videoFrames: 892 }, 29.7)).toMatchObject({ ok: false });
+    // A reader that did not count the frames keeps the length check alone (the fakes, an older reader).
+    expect(qcAvSync({ videoSec: 30, audioSec: 30 }, 30)).toMatchObject({ ok: true, videoFrames: null, plannedFrames: 900 });
+    expect(qcAvSync({ videoSec: 30, audioSec: 30, videoFrames: null }, 30)).toMatchObject({ ok: true, videoFrames: null });
+  });
 });
 
 describe('a photo among the clips (owner, 2026-10-11 11:37Z: 4 clips + a photo + an MP3 were refused)', () => {

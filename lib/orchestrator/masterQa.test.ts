@@ -86,6 +86,22 @@ describe('validateMaster', () => {
     expect(qa.issues).toHaveLength(0);
   });
 
+  test('Video Core v1.0 §4 — a contracted final: exactly its frames, or a critical frame_count_mismatch', () => {
+    const exact = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.7, expectedFrames: 891, actualFrames: 891 });
+    expect(exact.pass).toBe(true);
+    expect(exact.issues.map((i) => i.code)).not.toContain('frame_count_mismatch');
+    // 29.67 s is inside the ±15 % drift; one frame short is still a failed contract.
+    const short = validateMaster({ ...HEALTHY, expectedDurSec: 29.7, actualDurSec: 29.67, expectedFrames: 891, actualFrames: 890 });
+    expect(short.pass).toBe(false);
+    expect(short.issues).toContainEqual({ code: 'frame_count_mismatch', severity: 'critical', detail: 'master holds 890 frames, the contracted final is 891 (-1)' });
+    expect(validateMaster({ ...HEALTHY, expectedFrames: 720, actualFrames: 721 }).issues[0]).toMatchObject({ code: 'frame_count_mismatch', detail: expect.stringContaining('(+1)') });
+    // The count could not be read: said as a warning (unverified), not passed over.
+    const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
+    expect(unread.issues).toContainEqual({ code: 'frame_count_mismatch', severity: 'warn', detail: "the master's frames could not be counted (891 expected)" });
+    // No contract (legacy master): no frame check at all.
+    expect(validateMaster(HEALTHY).issues.map((i) => i.code)).not.toContain('frame_count_mismatch');
+  });
+
   test('multiple criticals still clamp score at 0, never negative', () => {
     const qa = validateMaster({
       ...HEALTHY,

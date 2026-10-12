@@ -22,6 +22,7 @@ import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinema
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { countDecodedFrames } from '@/lib/video/frameCount';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
 import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { fetchPublic } from '@/lib/web/publicFetch';
@@ -641,6 +642,14 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // The verdict rides back on the response so the orchestrator/UI never
     // silently delivers a broken film.
     const probe = await probeMaster(bin, out);
+    // Video Core v1.0 §4 — a contracted final is checked on its DECODED frames (lib/video/frameCount), not on the
+    // container's duration: 29.7 s at 30 fps is 891 frames. The count rides on the QA report (frame_count_mismatch when
+    // it is off or unreadable); a legacy master (no contract) is not counted.
+    const actualFrames = finalCut?.ok ? await countDecodedFrames(bin, out, { ...(signal ? { signal } : {}) }).catch(() => null) : null;
+    if (finalCut?.ok) {
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] frame-exact QC: ${actualFrames ?? 'unreadable'} / ${finalCut.finalFrames} frames at ${fps} fps`);
+    }
     const qa = validateMaster({
       sizeBytes: data.byteLength,
       expectedDurSec: deliverSec,
@@ -649,6 +658,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       audioPresent: probe.audioPresent,
       width: probe.width,
       height: probe.height,
+      ...(finalCut?.ok ? { expectedFrames: finalCut.finalFrames, actualFrames } : {}),
     });
     if (!qa.pass) {
       console.warn(`[masterQa] master FAILED quality gate (grade ${qa.grade}, score ${qa.score}):`, qa.issues.map((i) => i.code).join(', '));

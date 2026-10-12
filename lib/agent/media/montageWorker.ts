@@ -191,7 +191,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
         ...(stills ? { stills } : {}),
         clips: clips.clips,
         maxDiff: CLIP_QC_MAX_DIFF,
-        av: { videoSec: av.videoSec, audioSec: av.audioSec },
+        av: { videoSec: av.videoSec, audioSec: av.audioSec, videoFrames: av.videoFrames, plannedFrames: av.plannedFrames },
         durationSec: qc.durationSec,
         ok: problems.length === 0,
         outcome: (problems.length === 0 ? 'PASS' : 'FAIL') as QcOutcome,
