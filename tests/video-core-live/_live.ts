@@ -111,9 +111,20 @@ export async function decodedFrames(file: string): Promise<Decoded> {
 }
 
 /** Evidence the job uploads (JSON next to the report), one file per name. */
+/** Keys and values that must never reach a file or the (public) CI log, even though every one here is local and throwaway. */
+const SECRETISH_KEY = /token|secret|signature|password|apikey|authorization/i;
+function redact(_key: string, value: unknown): unknown {
+  if (SECRETISH_KEY.test(_key)) return '***';
+  if (typeof value === 'string') return value.replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '***').replace(/([?&](?:token|sig|signature)=)[^&"\s]+/gi, '$1***');
+  return value;
+}
+
+/** Writes test-results/video-core-live/evidence/<name>.json and prints the same, redacted, as one line of the CI log. */
 export function evidence(name: string, data: unknown): void {
   mkdirSync(EVIDENCE_DIR, { recursive: true });
-  writeFileSync(join(EVIDENCE_DIR, `${name}.json`), `${JSON.stringify(data, null, 2)}\n`);
+  writeFileSync(join(EVIDENCE_DIR, `${name}.json`), `${JSON.stringify(data, redact, 2)}\n`);
+  // eslint-disable-next-line no-console
+  console.log(`[evidence] ${name} ${JSON.stringify(data, redact)}`);
 }
 
 export async function shot(page: Page, name: string): Promise<void> {
