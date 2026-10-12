@@ -103,7 +103,10 @@ Findings (the product's behaviour, pinned as observed, nothing changed):
   nothing is hosted, but the failure is **not named**: `assembleWithFfmpeg` rejects with execFile's raw `Error` whose message
   is the full argv plus ffmpeg's stderr (temp paths included). It is not a `MasterQaRejected` and carries no `VIDEO_REFUSALS`
   code; the route's saga reports it as a generic `assembly_failed` (refunded once), so the user cannot tell "your music file
-  is unreadable" from "the stitch crashed".
+  is unreadable" from "the stitch crashed". **Fixed in round 3 (P1), after this run:** every audio lane is probed for an
+  audio stream after the download and before the encode is built (`lib/orchestrator/soundtrackUnreadable.ts`); the case was
+  re-run on the real ffmpeg on top of eb6e914 → `SoundtrackUnreadable` (`music_unreadable`, lane `music`) in 46 ms, 0 encode
+  commands, 0 uploads: `t3-round3-invalid-music-fixed.json`. The route answers `422 music_unreadable` (defect register #21).
 - **D7 measured**: the untouched 8 s clip is 192 frames at 24 fps; one more encode (`cutMasterToLength`) would make it 240
   frames at 30 fps in ~0.5 s. The decision stands as written (no conform, no new charge).
 - **Test-only aside**: `next.config.js` sets `compiler.removeConsole: { exclude: ['error', 'warn'] }`, and next/jest applies it,

@@ -1,0 +1,29 @@
+{
+ "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+ "sha": "eb6e914",
+ "node": "v22.22.0",
+ "startedAt": "2026-10-12T13:13:44.449Z",
+ "cases": {
+  "invalidMusic": {
+   "requestedSec": 29.7,
+   "musicBytes": 65536,
+   "hosted": false,
+   "uploadsAdded": 0,
+   "ms": 46,
+   "outcome": "threw",
+   "thrown": {
+    "name": "SoundtrackUnreadable",
+    "isMasterQaRejected": false,
+    "code": "music_unreadable",
+    "issueCodes": null,
+    "firstLine": "soundtrack lane: music_unreadable — the soundtrack file has no readable audio stream; nothing was encoded",
+    "ffmpegLines": []
+   },
+   "qa": null,
+   "qaCodes": [],
+   "ffmpegRunsAfterDownload": 0,
+   "decodedFrames": null
+  }
+ },
+ "finishedAt": "2026-10-12T13:13:45.727Z"
+}

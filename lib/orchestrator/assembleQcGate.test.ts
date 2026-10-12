@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runSaga, type SagaStep } from './saga';
 import { validateMaster, MasterQaRejected, isMasterQaRejected, type QaReport } from './masterQa';
+import { SoundtrackUnreadable, isSoundtrackUnreadable } from './soundtrackUnreadable';
 
 const rejected: QaReport = validateMaster({
   sizeBytes: 6_000_000, expectedDurSec: 29.7, actualDurSec: 29.7, audioExpected: true, audioPresent: true, width: 1920, height: 1080,
@@ -37,6 +38,7 @@ function steps(assemble: () => Promise<{ url: string; qa: QaReport }>, log: stri
         try {
           res = await assemble();
         } catch (err) {
+          if (isSoundtrackUnreadable(err)) ctx.bag.soundtrackUnreadable = err.lane;
           if (isMasterQaRejected(err)) { ctx.bag.qa = err.qa; ctx.bag.qcRejected = err.issueCodes; }
           throw err;
         }
@@ -84,6 +86,19 @@ describe('the saga on a rejected master (real runner)', () => {
     expect(log).toEqual(['debit', 'commit']);
     expect(bag.tempUrl).toBe('https://r/master.mp4');
     expect(bag.qcRejected).toBeUndefined();
+  });
+
+  test('an unreadable soundtrack (round 3 P1) fails dispatch BEFORE any encode: one compensation, the lane on the bag, no QC report', async () => {
+    const log: string[] = [];
+    const bag: Record<string, unknown> = {};
+    const saga = await runSaga(steps(async () => { throw new SoundtrackUnreadable('music'); }, log), { bag });
+    expect(saga.ok).toBe(false);
+    expect(log).toEqual(['debit', expect.stringMatching(/^refund:/)]);
+    expect(bag.soundtrackUnreadable).toBe('music');
+    expect(bag.qcRejected).toBeUndefined();
+    expect(isSoundtrackUnreadable({ code: 'music_unreadable', lane: 'voice' })).toBe(true);
+    expect(isSoundtrackUnreadable(new Error('Command failed: ffmpeg …'))).toBe(false);
+    expect(new SoundtrackUnreadable('sfx').message).toMatch(/^sound-effects lane: music_unreadable — /);
   });
 
   test('any other dispatch failure still compensates once, with no QC report attached', async () => {
@@ -134,6 +149,23 @@ describe('the route and the assembler, on the source (T2)', () => {
     expect(route.slice(gate, fallback)).toMatch(/recordFilmFailed\(filmTokenId, `qc_rejected: \$\{err\.issueCodes\.join\(','\)\}`\)/);
     expect(route.slice(gate, fallback)).toMatch(/error: 'qc_rejected', reason: 'qc_rejected', codes: \[\.\.\.err\.issueCodes\], qa: null, single: true/);
     expect(route.slice(gate, fallback)).toMatch(/\{ status: 502 \}/);
+  });
+
+  test('every audio lane is probed for an audio stream after the download and before the encode is built (round 3 P1)', () => {
+    const probe = assembler.indexOf("for (const [lane, file] of [['music', music], ['voice', voice], ['sfx', sfx]] as const) {");
+    const throwAt = assembler.indexOf('if (file && !(await probeHasAudio(bin, file))) throw new SoundtrackUnreadable(lane);');
+    const graph = assembler.indexOf('const g = m.globalRender ?? {};');
+    expect(probe).toBeGreaterThan(0);
+    expect(throwAt).toBeGreaterThan(probe);
+    expect(graph).toBeGreaterThan(throwAt);
+    expect(route).toMatch(/if \(isSoundtrackUnreadable\(err\)\) ctx\.bag\.soundtrackUnreadable = err\.lane;/);
+    const fail = route.indexOf('if (!saga.ok) {');
+    const bad = route.indexOf("error: 'music_unreadable', reason: 'music_unreadable', lane: badLane");
+    const qc = route.indexOf("error: 'qc_rejected', reason: 'qc_rejected', codes: qcRejected, qa: qcReport");
+    expect(bad).toBeGreaterThan(fail);
+    expect(qc).toBeGreaterThan(bad);
+    expect(route).toMatch(/await recordFilmFailed\(filmTokenId, `music_unreadable: \$\{badLane\}`\);/);
+    expect(route).toMatch(/\{ status: 422 \},/);
   });
 
   test('the dispatch step keeps the rejected report on the bag and rethrows', () => {

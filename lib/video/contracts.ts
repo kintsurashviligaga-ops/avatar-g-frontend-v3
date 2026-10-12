@@ -31,7 +31,7 @@ export type EvidenceTier = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'NOT RUN';
 export type VideoRefusalCode =
   | 'final_duration_invalid' | 'qc_rejected' | 'revision_mismatch' | 'media_not_yours' | 'insufficient_credits'
   | 'assembly_failed' | 'assemble_failed' | 'longform_closed' | 'quote_expired' | 'quote_changed' | 'qc_failed'
-  | 'music_too_short' | 'clip_too_short' | 'target_too_short' | 'duplicate_request';
+  | 'music_too_short' | 'clip_too_short' | 'target_too_short' | 'duplicate_request' | 'music_unreadable';
 
 export interface VideoLaneContract {
   id: VideoLaneId;
@@ -66,7 +66,7 @@ const FILM_MODULES = [
   'lib/video/durationWords.ts', 'lib/video/durationContract.ts', 'lib/video/storyboard/revision.ts',
   'lib/orchestrator/ffmpeg-assembly.ts', 'lib/orchestrator/masterQa.ts', 'lib/video/frameCount.ts', 'lib/video/finalCut.ts',
 ] as const;
-const FILM_REFUSALS = ['longform_closed', 'revision_mismatch', 'final_duration_invalid', 'qc_rejected', 'media_not_yours', 'insufficient_credits', 'assembly_failed'] as const;
+const FILM_REFUSALS = ['longform_closed', 'revision_mismatch', 'final_duration_invalid', 'qc_rejected', 'music_unreadable', 'media_not_yours', 'insufficient_credits', 'assembly_failed'] as const;
 
 export const VIDEO_LANES: readonly VideoLaneContract[] = [
   {
@@ -187,6 +187,7 @@ export const VIDEO_REFUSALS: readonly VideoRefusal[] = [
   { code: 'insufficient_credits', lanes: ['film', 'single-clip', 'music-video', 'product-ad', 'longform', 'montage', 'editing', 'remix', 'motion', 'swap', 'vfx'], where: 'app/api/video/assemble/route.ts', http: 402, means: 'the wallet cannot cover the quote', charge: 'before any charge' },
   { code: 'qc_rejected', lanes: ['film', 'single-clip', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 502, means: 'the finished master (or the single clip’s cut) failed a critical quality check (frame_count_mismatch, frame_count_unverified — a count that could not be read is a refusal too, silent_master, empty_master) and was withheld', charge: 'refunded once' },
   { code: 'assembly_failed', lanes: ['film', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 502, means: 'the stitch failed or stalled (saga path)', charge: 'refunded once' },
+  { code: 'music_unreadable', lanes: ['film', 'music-video'], where: 'app/api/video/assemble/route.ts', http: 422, means: 'an audio lane (the soundtrack, the narration, the sfx) has no readable audio stream: the assembler refused before any encode (round 3), nothing hosted', charge: 'refunded once' },
   { code: 'assemble_failed', lanes: ['single-clip'], where: 'app/api/video/assemble/route.ts', http: 500, means: 'the single clip could not be fetched or cut — the legacy spelling of assembly_failed on the single-clip path (consolidation plan D5 unifies it)', charge: 'refunded once' },
   { code: 'quote_expired', lanes: ['montage', 'editing'], where: 'lib/agent/media/montageExec.ts', http: null, means: 'the signed quote is past its expiry; a new quote is needed', charge: 'before any charge' },
   { code: 'quote_changed', lanes: ['montage', 'editing'], where: 'lib/agent/media/montageExec.ts', http: null, means: 'the plan or the files changed since the quote; a new quote is needed', charge: 'before any charge' },

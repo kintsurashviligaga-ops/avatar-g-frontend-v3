@@ -75,6 +75,10 @@ Nothing is stamped as a delivered film. Warnings (`duration_drift`, `bitrate_blo
 **Round 3 (P0):** a master whose frames could not be counted under a contract is a refusal too — `frame_count_unverified`
 (critical, stitched path), `FinalCutRejected(null, expected)` with `issueCodes ['frame_count_unverified']` (single clip), and the
 montage QC problem `picture frames not counted` (→ `qc_failed`, refund). A check that did not run is not a pass.
+**Round 3 (P1, missing / invalid audio):** an audio lane (soundtrack, narration, sfx) with no readable audio stream is refused
+BEFORE any encode — `SoundtrackUnreadable` (`lib/orchestrator/soundtrackUnreadable.ts`) → `/api/video/assemble` compensates
+once and answers `422 music_unreadable` naming the lane (it used to die inside the encode as an unnamed `assembly_failed`).
+A clip with no audio stream is not a refusal: its 8 s get a silence lane and the master is delivered (measured, T3).
 
 ## 3. Storyboard and revision contract (§5) — `lib/video/storyboard/revision.ts`
 

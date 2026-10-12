@@ -42,6 +42,7 @@ import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-cap
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
+import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -859,6 +860,9 @@ async function assembleImpl(req: NextRequest) {
             // silent_master, empty_master). Keep its report for the response, then fail this step like any other
             // dispatch failure: the saga compensates reserve-credits (the attempt's one refund / the free slot / the
             // billing waiver handed back), nothing is stamped as a delivered film, and the idempotency claim is released.
+            // Round 3 (P1) — an audio lane with no readable audio stream: the assembler refused BEFORE any encode; the saga
+            // compensates like any dispatch failure and the response below names the lane (422 music_unreadable).
+            if (isSoundtrackUnreadable(err)) ctx.bag.soundtrackUnreadable = err.lane;
             if (isMasterQaRejected(err)) {
               ctx.bag.qa = err.qa;
               ctx.bag.qcRejected = err.issueCodes;
@@ -921,6 +925,17 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json(
         { error: 'insufficient_credits', reason: 'insufficient_credits', message: topUp, failedStep: saga.failedStep },
         { status: 402 },
+      );
+    }
+    // Round 3 (P1) — the soundtrack, the narration or the sfx file had no readable audio stream: the assembler refused
+    // before any encode (SoundtrackUnreadable), the saga compensated above, and the attempt is named for what it is —
+    // a bad input file, not a failed stitch — so the client can say "attach another track", with a Retry.
+    const badLane = bag.soundtrackUnreadable === 'music' || bag.soundtrackUnreadable === 'voice' || bag.soundtrackUnreadable === 'sfx' ? (bag.soundtrackUnreadable as SoundtrackLane) : null;
+    if (badLane) {
+      if (filmTokenId) await recordFilmFailed(filmTokenId, `music_unreadable: ${badLane}`);
+      return NextResponse.json(
+        { error: 'music_unreadable', reason: 'music_unreadable', lane: badLane, failedStep: saga.failedStep, message: describeSoundtrackRefusal(badLane), compensated: saga.compensatedSteps },
+        { status: 422 },
       );
     }
     // Video Core v1.0 §7/§8 — the master failed a CRITICAL quality check and was withheld (never hosted). This is a

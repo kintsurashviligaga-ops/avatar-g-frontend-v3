@@ -303,7 +303,7 @@ maybe('Video Core v1.0 round 3 — the film assembler on the real ffmpeg (T3)', 
     expect(critical(result?.qa)).toEqual([]);
   });
 
-  test('invalidMusic: 4 × 8 s contracted 29.7 s with a soundtrack URL that is 64 KB of garbage → ffmpeg refuses the input before any encode (a plain Error, not a QC verdict), nothing hosted (observed)', async () => {
+  test('invalidMusic: 4 × 8 s contracted 29.7 s with a soundtrack URL that is 64 KB of garbage → the assembler refuses the lane BEFORE any encode (SoundtrackUnreadable, music_unreadable), nothing hosted', async () => {
     const sources = [0, 1, 2, 3].map((i) => clip(`badmus_${i}.mp4`, 8));
     const garbage = join(dir, 'music.mp3');
     writeFileSync(garbage, randomBytes(64 * 1024));
@@ -333,23 +333,20 @@ maybe('Video Core v1.0 round 3 — the film assembler on the real ffmpeg (T3)', 
       ffmpegRunsAfterDownload: mockArgv.slice(mark).filter((a) => a.includes('-filter_complex')).length,
       decodedFrames: result ? countReal(local(result.url)) : null,
     };
-    // OBSERVED (2026-10-12, ffmpeg 7.0.2-static, tree dac6106): the soundtrack is downloaded unchecked (no probe, no
-    // content sniff) and handed to the ONE encode command as `-i music.m4a`; ffmpeg refuses to open input #4 ("Invalid
-    // data found when processing input") and exits (code 183) in ~0.1 s, before a frame is encoded. The assembler does
-    // not catch or name this: assembleWithFfmpeg rejects with execFile's own `Error` ("Command failed: <argv>\n<stderr>"),
-    // which is neither MasterQaRejected nor any VIDEO_REFUSALS code (the route's saga reports it as assembly_failed).
-    // No QA report exists for the attempt, and nothing reached storage.
+    // OBSERVED on 2361153 (2026-10-12, ffmpeg 7.0.2-static, evidence t3-round3-film.json): the soundtrack was downloaded
+    // unchecked and handed to the ONE encode command as `-i music.m4a`; ffmpeg refused input #4 ("Invalid data found when
+    // processing input", exit 183) in ~0.1 s and the assembler rejected with execFile's raw `Error` — unnamed, so the
+    // route said assembly_failed. FIXED in round 3 (P1): every audio lane is probed for an audio stream after the download
+    // (lib/orchestrator/soundtrackUnreadable), so the attempt ends BEFORE the encode command exists, as a named refusal.
     expect(result).toBeNull();
-    // (execFile's Error is built in Node's own realm, so `instanceof Error` is false inside the Jest vm: check its shape.)
-    expect(err?.name).toBe('Error');
+    expect(err?.name).toBe('SoundtrackUnreadable');
+    expect(err?.code).toBe('music_unreadable');
+    expect((err as { lane?: unknown } | null)?.lane).toBe('music');
     expect(caught).not.toBeInstanceOf(MasterQaRejected);
-    expect(err?.code).not.toBe('qc_rejected');
-    expect(err?.message).toMatch(/^Command failed: /);
-    expect(err?.message).toMatch(/music\.m4a/);
-    expect(err?.message).toMatch(/Invalid data found when processing input/);
     expect(err?.issueCodes).toBeUndefined();
+    expect(err?.message).toMatch(/^soundtrack lane: music_unreadable — /);
     expect(hosted).toBe(0);
-    expect(mockArgv.slice(mark).filter((a) => a.includes('-filter_complex')).length).toBe(1); // the encode was attempted once and died at input open
+    expect(mockArgv.slice(mark).filter((a) => a.includes('-filter_complex')).length).toBe(0); // no encode command was built
   });
 
   test('qcRejectThenRetry: the QC reads 890 of 891 → MasterQaRejected, nothing hosted; the SAME input again → 891 frames hosted (§7/§8 retry path)', async () => {

@@ -21,6 +21,7 @@ import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filterg
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
+import { SoundtrackUnreadable } from './soundtrackUnreadable';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { countDecodedFrames } from '@/lib/video/frameCount';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
@@ -225,6 +226,12 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     ]);
     // eslint-disable-next-line no-console
     console.log(`[assemble] downloaded ${segs.length} clips + ${[voice, music, sfx].filter(Boolean).length} audio lanes in ${Date.now() - tDl}ms`);
+    // Round 3 (P1) — every audio lane is checked for an audio stream BEFORE the one encode command is built. A file ffmpeg
+    // cannot read as audio used to die inside the encode as execFile's raw "Command failed" (unnamed: the route said
+    // assembly_failed); it is a named refusal now, SoundtrackUnreadable (music_unreadable), with nothing encoded or hosted.
+    for (const [lane, file] of [['music', music], ['voice', voice], ['sfx', sfx]] as const) {
+      if (file && !(await probeHasAudio(bin, file))) throw new SoundtrackUnreadable(lane);
+    }
 
     const g = m.globalRender ?? {};
     // Video Core v1.0 §4 — a film with a contracted final length renders on the 30 fps timeline, so the delivered length is a
