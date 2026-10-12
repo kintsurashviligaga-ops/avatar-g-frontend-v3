@@ -195,14 +195,15 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
   });
 
   test('A/V: a soundtrack missing or ending away from the picture is not delivered', async () => {
-    for (const streams of [{ videoSec: 30, audioSec: null }, { videoSec: 30, audioSec: 29.5 }, null]) {
+    // Round 3 (P0): a reader that did not count the frames is a failure of its own (the frame-exact check did not run).
+    for (const streams of [{ videoSec: 30, audioSec: null, videoFrames: 900 }, { videoSec: 30, audioSec: 29.5, videoFrames: 900 }, { videoSec: 30, audioSec: 30 }, null]) {
       const f = fake({ streams });
       const id = await queued(f);
       await workMontageJob(f.deps, { jobId: id, worker: 'w1' });
       expect(f.store.rows.get(id)).toMatchObject({ status: 'failed', signedUrl: null });
       expect(f.store.rows.get(id)!.error).toMatch(/^qc_failed: /);
     }
-    const f = fake({ streams: { videoSec: 30, audioSec: 30.1 } });
+    const f = fake({ streams: { videoSec: 30, audioSec: 30.1, videoFrames: 900 } });
     const id = await queued(f);
     expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
   });

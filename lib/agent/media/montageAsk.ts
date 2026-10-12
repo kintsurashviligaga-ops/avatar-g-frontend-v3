@@ -531,9 +531,10 @@ export interface AvVerdict {
 
 /**
  * A/V check of the master from its real stream lengths: a picture and a soundtrack, the picture as long as the plan
- * (qcMaster's tolerance) and the sound as long as the picture (AV_SYNC_TOLERANCE_SEC). When the reader counted the
- * picture's packets (one per frame), the check is FRAME-EXACT (Video Core v1.0 §4): the master holds exactly
+ * (qcMaster's tolerance) and the sound as long as the picture (AV_SYNC_TOLERANCE_SEC). The reader counts the picture's
+ * packets (one per frame), and the check is FRAME-EXACT (Video Core v1.0 §4): the master holds exactly
  * round(planned × OUTPUT_FPS) frames — 70 s = 2100, 29.7 s = 891 — or it is not delivered, whatever the container says.
+ * A picture whose frames were not counted fails the check as well (round 3, P0): unverified is not frame-exact.
  */
 export function qcAvSync(d: StreamDurations | null, expectedSec: number): AvVerdict {
   if (!d) return { ok: false, problems: ['the stream lengths could not be read'], videoSec: null, audioSec: null, videoFrames: null, plannedFrames: null };
@@ -547,6 +548,12 @@ export function qcAvSync(d: StreamDurations | null, expectedSec: number): AvVerd
   const plannedFrames = Number.isFinite(expectedSec) && expectedSec > 0 ? Math.round(expectedSec * OUTPUT_FPS) : null;
   if (videoFrames !== null && plannedFrames !== null && videoFrames !== plannedFrames) {
     problems.push(`picture ${videoFrames} frames, planned ${plannedFrames} (${expectedSec.toFixed(3)}s at ${OUTPUT_FPS} fps)`);
+  }
+  // Round 3 (P0): the frame-exact check is MANDATORY. A reader that saw the picture but did not count its frames
+  // leaves the length unverified, and an unverified master is not delivered as a frame-exact one (it used to pass on
+  // the container's seconds alone). The live reader (lib/video/probeBanner parseFrameCrc) always counts.
+  if (videoFrames === null && plannedFrames !== null && d.videoSec !== null) {
+    problems.push(`picture frames not counted, planned ${plannedFrames}: the frame-exact check did not run`);
   }
   if (d.videoSec !== null && d.audioSec !== null && !(Math.abs(d.audioSec - d.videoSec) <= AV_SYNC_TOLERANCE_SEC)) {
     problems.push(`sound ${d.audioSec.toFixed(2)}s against picture ${d.videoSec.toFixed(2)}s`);

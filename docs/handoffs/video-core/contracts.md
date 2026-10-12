@@ -71,8 +71,10 @@ Frame accuracy is proven on decoded frames (`lib/video/frameCount.ts`), not cont
 `lib/orchestrator/ffmpeg-assembly` throws `MasterQaRejected` before hosting it; `lib/video/finalCut.cutMasterToLength` counts
 its own frames before hosting and throws `FinalCutRejected` on a miss; `/api/video/assemble` fails the attempt (`502 qc_rejected`, codes + report; on the single-clip path codes `['frame_count_mismatch']` with the counted and expected frames),
 compensates once (refund / free slot / billing waiver returned), releases the idempotency claim and records the film FAILED.
-Nothing is stamped as a delivered film. Warnings (`duration_drift`, `bitrate_bloat`, `sub_1080p`, an uncountable master) still
-ride on a delivered master.
+Nothing is stamped as a delivered film. Warnings (`duration_drift`, `bitrate_bloat`, `sub_1080p`) still ride on a delivered master.
+**Round 3 (P0):** a master whose frames could not be counted under a contract is a refusal too — `frame_count_unverified`
+(critical, stitched path), `FinalCutRejected(null, expected)` with `issueCodes ['frame_count_unverified']` (single clip), and the
+montage QC problem `picture frames not counted` (→ `qc_failed`, refund). A check that did not run is not a pass.
 
 ## 3. Storyboard and revision contract (§5) — `lib/video/storyboard/revision.ts`
 

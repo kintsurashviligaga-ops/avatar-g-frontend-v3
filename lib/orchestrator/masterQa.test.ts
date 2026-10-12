@@ -95,9 +95,10 @@ describe('validateMaster', () => {
     expect(short.pass).toBe(false);
     expect(short.issues).toContainEqual({ code: 'frame_count_mismatch', severity: 'critical', detail: 'master holds 890 frames, the contracted final is 891 (-1)' });
     expect(validateMaster({ ...HEALTHY, expectedFrames: 720, actualFrames: 721 }).issues[0]).toMatchObject({ code: 'frame_count_mismatch', detail: expect.stringContaining('(+1)') });
-    // The count could not be read: said as a warning (unverified), not passed over.
+    // The count could not be read: a CRITICAL refusal of its own (round 3, P0) — a check that did not run is not a pass.
     const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
-    expect(unread.issues).toContainEqual({ code: 'frame_count_mismatch', severity: 'warn', detail: "the master's frames could not be counted (891 expected)" });
+    expect(unread.pass).toBe(false);
+    expect(unread.issues).toContainEqual({ code: 'frame_count_unverified', severity: 'critical', detail: "the master's frames could not be counted (891 expected): the frame-exact check did not run, so the contract is unverified" });
     // No contract (legacy master): no frame check at all.
     expect(validateMaster(HEALTHY).issues.map((i) => i.code)).not.toContain('frame_count_mismatch');
   });
@@ -125,12 +126,15 @@ describe('the gate — a critical issue withholds the master (Video Core v1.0 §
     expect(describeQcRejection(qa)).toMatch(/^frame_count_mismatch: master holds 890 frames, the contracted final is 891 \(-1\)$/);
   });
 
-  test('exactly 891 frames → nothing blocks; an uncountable master is a warning, not a block', () => {
+  test('exactly 891 frames → nothing blocks; an uncountable master under a contract BLOCKS (frame_count_unverified, round 3 P0)', () => {
     expect(qcBlockingIssues(validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: 891 }))).toEqual([]);
     const unread = validateMaster({ ...HEALTHY, expectedFrames: 891, actualFrames: null });
-    expect(unread.pass).toBe(true);
-    expect(qcBlockingIssues(unread)).toEqual([]);
-    expect(unread.issues.map((i) => `${i.code}:${i.severity}`)).toEqual(['frame_count_mismatch:warn']);
+    expect(unread.pass).toBe(false);
+    expect(qcBlockingIssues(unread).map((i) => i.code)).toEqual(['frame_count_unverified']);
+    expect(unread.issues.map((i) => `${i.code}:${i.severity}`)).toEqual(['frame_count_unverified:critical']);
+    expect(describeQcRejection(unread)).toMatch(/^frame_count_unverified: the master's frames could not be counted \(891 expected\)/);
+    // Without a contract there is nothing to count against: a legacy master is not refused for an unread count.
+    expect(qcBlockingIssues(validateMaster({ ...HEALTHY, actualFrames: null }))).toEqual([]);
   });
 
   test('silent_master and empty_master block too; warnings (drift, bloat, sub-1080p) never do', () => {

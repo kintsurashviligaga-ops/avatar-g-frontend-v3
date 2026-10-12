@@ -14,6 +14,8 @@
  *   • sub_1080p      — the master fell below the 1920×1080 delivery target
  *   • frame_count_mismatch — a film with a contracted final length (Video Core v1.0 §4) does not hold exactly
  *                      framesFor(final) decoded frames (29.7 s at 30 fps = 891): the contract was not delivered
+ *   • frame_count_unverified — the same contract, but the master's frames could NOT be counted: the frame-exact
+ *                      check did not run, and a check that did not run is not a pass (round 3, P0)
  *
  * This file is PURE (no IO, no ffmpeg) so it is trivially unit-testable and
  * client-safe; the caller gathers the facts (size on disk + a best-effort
@@ -54,7 +56,8 @@ export interface QaIssue {
     | 'duration_drift'
     | 'bitrate_bloat'
     | 'sub_1080p'
-    | 'frame_count_mismatch';
+    | 'frame_count_mismatch'
+    | 'frame_count_unverified';
   severity: QaSeverity;
   detail: string;
 }
@@ -105,11 +108,13 @@ export function validateMaster(f: MasterFacts): QaReport {
   }
 
   // 2b — Video Core v1.0 §4: a contracted final is FRAME-exact. The duration drift below tolerates ±15 %; a film
-  //      the user asked at 29.7 s is 891 frames at 30 fps, not "about 29.7 s". A count that could not be read is
-  //      said too (the contract is unverified, which is not a pass).
+  //      the user asked at 29.7 s is 891 frames at 30 fps, not "about 29.7 s". A count that could not be read is a
+  //      refusal too (round 3, P0): the mandatory check did not run, so the master is NOT frame-accurate as far as
+  //      anyone can tell — it used to ride out as a warning on a delivered film, which sold an unverified master as
+  //      a verified one.
   if (typeof f.expectedFrames === 'number' && f.expectedFrames > 0) {
     if (typeof f.actualFrames !== 'number') {
-      issues.push({ code: 'frame_count_mismatch', severity: 'warn', detail: `the master's frames could not be counted (${f.expectedFrames} expected)` });
+      issues.push({ code: 'frame_count_unverified', severity: 'critical', detail: `the master's frames could not be counted (${f.expectedFrames} expected): the frame-exact check did not run, so the contract is unverified` });
     } else if (f.actualFrames !== f.expectedFrames) {
       issues.push({
         code: 'frame_count_mismatch',

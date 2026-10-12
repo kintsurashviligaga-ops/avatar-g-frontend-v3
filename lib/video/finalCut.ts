@@ -36,18 +36,24 @@ export function finalCutArgs(input: string, out: string, finalSec: number, fps: 
 
 /**
  * The single-clip QC gate's refusal: the cut's decoded frame count is not framesFor(finalSec). The assemble route answers it
- * as `502 qc_rejected` (codes ['frame_count_mismatch']) after rolling the attempt back, the same answer the stitched master's
+ * as `502 qc_rejected` (codes ['frame_count_mismatch'] or ['frame_count_unverified']) after rolling the attempt back, the same answer the stitched master's
  * MasterQaRejected gets — one refusal vocabulary for both paths (lib/video/contracts VIDEO_REFUSALS).
  */
+export type FinalCutIssueCode = 'frame_count_mismatch' | 'frame_count_unverified';
+
 export class FinalCutRejected extends Error {
   readonly code = 'qc_rejected' as const;
-  readonly issueCodes = ['frame_count_mismatch'] as const;
+  readonly issueCodes: readonly [FinalCutIssueCode];
   readonly expectedFrames: number;
-  readonly actualFrames: number;
-  constructor(actualFrames: number, expectedFrames: number) {
-    const diff = actualFrames - expectedFrames;
-    super(`final cut: frame_count_mismatch — the cut holds ${actualFrames} frames, the contracted final is ${expectedFrames} (${diff > 0 ? '+' : ''}${diff})`);
+  /** The frames the cut decoded to; null when they could not be counted (the check did not run — also a refusal). */
+  readonly actualFrames: number | null;
+  constructor(actualFrames: number | null, expectedFrames: number) {
+    const diff = actualFrames === null ? 0 : actualFrames - expectedFrames;
+    super(actualFrames === null
+      ? `final cut: frame_count_unverified — the cut's frames could not be counted, the contracted final is ${expectedFrames}; a check that did not run is not a pass`
+      : `final cut: frame_count_mismatch — the cut holds ${actualFrames} frames, the contracted final is ${expectedFrames} (${diff > 0 ? '+' : ''}${diff})`);
     this.name = 'FinalCutRejected';
+    this.issueCodes = [actualFrames === null ? 'frame_count_unverified' : 'frame_count_mismatch'];
     this.expectedFrames = expectedFrames;
     this.actualFrames = actualFrames;
   }
@@ -71,13 +77,13 @@ export async function cutMasterToLength(videoUrl: string, finalSec: number): Pro
     if (buf.byteLength < 1_024) throw new Error('final cut: empty output');
     // Video Core v1.0 §4/§7 — the cut is checked on its DECODED frames before it is hosted, like the stitched master
     // (ffmpeg-assembly → masterQa frame_count_mismatch): a count that is off throws, and the catch in the route rolls
-    // the attempt back. A count that could not be read is logged and the cut is delivered (unverified, said as such).
+    // the attempt back. A count that could not be read throws too (round 3, P0 — frame_count_unverified): the check
+    // is mandatory under a contract, and a cut nobody could count is not a frame-accurate one; it used to be delivered.
     const expectedFrames = framesFor(finalSec);
     const actualFrames = await countDecodedFrames(bin, out).catch(() => null);
-    if (typeof actualFrames === 'number' && actualFrames !== expectedFrames) {
+    if (actualFrames === null || actualFrames !== expectedFrames) {
       throw new FinalCutRejected(actualFrames, expectedFrames);
     }
-    if (actualFrames === null) console.warn(`[finalCut] frames could not be counted (${expectedFrames} expected) — delivering unverified`);
     const path = `films/final-${Date.now()}-${framesFor(finalSec)}f-${Math.random().toString(36).slice(2, 8)}.mp4`;
     const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf, 'video/mp4', 604_800);
     if (!url) throw new Error('final cut: hosting the cut master failed');

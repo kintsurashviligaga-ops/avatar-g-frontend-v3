@@ -656,7 +656,9 @@ async function assembleImpl(req: NextRequest) {
         return NextResponse.json({
           error: 'qc_rejected', reason: 'qc_rejected', codes: [...err.issueCodes], qa: null, single: true,
           expectedFrames: err.expectedFrames, actualFrames: err.actualFrames,
-          message: `The finished video failed its quality check (frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}). Nothing was delivered and this attempt was not charged — please try again.`,
+          message: `The finished video failed its quality check (${err.actualFrames === null
+            ? `frame_count_unverified: its frames could not be counted, ${err.expectedFrames} were contracted`
+            : `frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}`}). Nothing was delivered and this attempt was not charged — please try again.`,
         }, { status: 502 });
       }
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});

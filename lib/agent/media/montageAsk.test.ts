@@ -146,10 +146,10 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
   });
 
   test('A/V: picture and sound present, the picture as long as planned, the sound ending with the picture', () => {
-    expect(qcAvSync({ videoSec: 30, audioSec: 29.9 }, 30)).toMatchObject({ ok: true });
-    expect(qcAvSync({ videoSec: 30, audioSec: null }, 30).problems).toEqual(['no soundtrack stream']);
-    expect(qcAvSync({ videoSec: 30, audioSec: 28 }, 30).problems).toEqual(['sound 28.00s against picture 30.00s']);
-    expect(qcAvSync({ videoSec: 20, audioSec: 20 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s']);
+    expect(qcAvSync({ videoSec: 30, audioSec: 29.9, videoFrames: 900 }, 30)).toMatchObject({ ok: true });
+    expect(qcAvSync({ videoSec: 30, audioSec: null, videoFrames: 900 }, 30).problems).toEqual(['no soundtrack stream']);
+    expect(qcAvSync({ videoSec: 30, audioSec: 28, videoFrames: 900 }, 30).problems).toEqual(['sound 28.00s against picture 30.00s']);
+    expect(qcAvSync({ videoSec: 20, audioSec: 20, videoFrames: 600 }, 30).problems).toEqual(['picture 20.00s, planned 30.00s', 'picture 600 frames, planned 900 (30.000s at 30 fps)']);
     expect(qcAvSync(null, 30)).toMatchObject({ ok: false });
   });
 
@@ -159,9 +159,11 @@ describe('per-clip contribution QC (owner, 2026-10-11)', () => {
     // The container says 70 s (inside the 3 % tolerance) but one frame is missing: not delivered.
     expect(qcAvSync({ videoSec: 69.967, audioSec: 70, videoFrames: 2099 }, 70).problems).toEqual(['picture 2099 frames, planned 2100 (70.000s at 30 fps)']);
     expect(qcAvSync({ videoSec: 29.7, audioSec: 29.7, videoFrames: 892 }, 29.7)).toMatchObject({ ok: false });
-    // A reader that did not count the frames keeps the length check alone (the fakes, an older reader).
-    expect(qcAvSync({ videoSec: 30, audioSec: 30 }, 30)).toMatchObject({ ok: true, videoFrames: null, plannedFrames: 900 });
-    expect(qcAvSync({ videoSec: 30, audioSec: 30, videoFrames: null }, 30)).toMatchObject({ ok: true, videoFrames: null });
+    // Round 3 (P0): a reader that did not count the frames leaves the length UNVERIFIED — that is a failure, not a pass.
+    expect(qcAvSync({ videoSec: 30, audioSec: 30 }, 30)).toMatchObject({ ok: false, videoFrames: null, plannedFrames: 900, problems: ['picture frames not counted, planned 900: the frame-exact check did not run'] });
+    expect(qcAvSync({ videoSec: 30, audioSec: 30, videoFrames: null }, 30)).toMatchObject({ ok: false, videoFrames: null });
+    // No picture at all is said as that (not as an uncounted one as well).
+    expect(qcAvSync({ videoSec: null, audioSec: 30 }, 30).problems).toEqual(['no picture stream']);
   });
 });
 

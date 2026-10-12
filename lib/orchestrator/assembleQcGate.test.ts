@@ -115,8 +115,11 @@ describe('the route and the assembler, on the source (T2)', () => {
     const host = finalCut.indexOf('const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf');
     expect(count).toBeGreaterThan(0);
     expect(host).toBeGreaterThan(count);
-    expect(finalCut).toMatch(/if \(typeof actualFrames === 'number' && actualFrames !== expectedFrames\) \{\s*throw new FinalCutRejected\(actualFrames, expectedFrames\);/);
-    expect(finalCut).toMatch(/super\(`final cut: frame_count_mismatch — the cut holds \$\{actualFrames\} frames, the contracted final is \$\{expectedFrames\}/);
+    // Round 3 (P0): a count that could not be read throws as well — `null` is not a pass.
+    expect(finalCut).toMatch(/if \(actualFrames === null \|\| actualFrames !== expectedFrames\) \{\s*throw new FinalCutRejected\(actualFrames, expectedFrames\);/);
+    expect(finalCut).not.toMatch(/delivering unverified/);
+    expect(finalCut).toMatch(/`final cut: frame_count_unverified — the cut's frames could not be counted, the contracted final is \$\{expectedFrames\}/);
+    expect(finalCut).toMatch(/`final cut: frame_count_mismatch — the cut holds \$\{actualFrames\} frames, the contracted final is \$\{expectedFrames\}/);
   });
 
   test('the single-clip path answers the same qc_rejected after rolling the reservation back, before the assemble_failed fallback', () => {
