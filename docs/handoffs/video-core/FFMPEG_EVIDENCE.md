@@ -18,6 +18,7 @@ lavfi clips, local "downloads" and temp-dir "uploads"; every provider and flag m
 | Media Studio E2E-22 / E2E-23 | `MEDIA_STUDIO_E2E_OUT=<file> npx jest lib/agent/media/mediaStudio.ffmpeg.test.ts` | green | PHASE 3 tree | `evidence/t3-montage-media-studio-e2e.json` |
 | Sound of a montage S1–S5 | `SOUND_MONTAGE_DIR=<dir> npx jest lib/agent/media/soundMontage.ffmpeg.test.ts` | green | PHASE 3 tree | `evidence/t3-sound-montage-s1-s5.json` |
 | The seven PR #57 real-ffmpeg suites (composition, transitions, effects, erase, editLive, audioLive, ownerMontage) | `npx jest lib/agent/media --testPathPattern ffmpeg` | 46/46 on this tree (round 2) | 71a6ec7 tree | CI logs |
+| Speed edits, A/V sync, output integrity (round-3 final) | `VIDEO_CORE_SPEED_OUT=docs/handoffs/video-core/evidence/round3-final/t3-speed-sync-integrity.json npx jest lib/agent/media/videoCoreSpeedSync.ffmpeg.test.ts` | green | 357926b | `evidence/round3-final/t3-speed-sync-integrity.json` |
 
 CI (`ci.yml` "verify") runs the ungated montage suites and the AC-06 chain on every push; the two `VIDEO_CORE_FFMPEG_IT` film
 suites are opt-in because of their 5–11 min runtime and were run by hand as above.
@@ -49,6 +50,26 @@ suites are opt-in because of their 5–11 min runtime and were run by hand as ab
 | montage E2E-22: „მარტო ბოლო ხუთი“ of 7 | | 10 s | 300; the excluded clips contribute **0** frames (`qc.sources`) | | | yes | |
 | montage "three clips + 120 BPM" (30/25 fps sources) | | 10 s | **300** (was 301 before PHASE 3) | 10 · 30 · 1280×720 | yes | yes | maxDiff 12 |
 | sound S1–S5 | no music / photos / own + music / narration / photos + narration | | masters 6.87 · 9 · 6.87 · 6.87 · 12 s | | own sound kept at level, track −10 dB beneath, narration on top | yes | |
+
+### Round-3 final additions (2026-10-12, 357926b): speed, A/V sync, integrity
+
+A marker clip (white frame + 1 kHz beep at exactly 2.000 s) makes A/V sync measurable: the flash is found on decoded frames,
+the beep onset on a 5 ms RMS envelope, and the offset is judged by ITU-R BT.1359 (sound may lead by < 45 ms or lag by < 125 ms).
+Integrity = `ffmpeg -v error -xerror -i <file> -f null -` exit code plus a decoded-frame count against the 30 fps grid.
+
+| Case | Planned | Container · decoded frames | Flash · beep | A/V offset | Integrity |
+| --- | --- | --- | --- | --- | --- |
+| source, 30 fps | 6 s | 6.00 s · **180** | 2.000 · 2.000 | 0 ms | exit 0 |
+| speed 2× **BEFORE** the fix | 3 s | 3.04 s · **76** (25 fps) | 1.040 · — | −51.6 ms (sound early, outside BT.1359) | exit 0 |
+| speed 2× AFTER (`setpts=0.5000*PTS,fps=30`) | 3 s | 3.01 s · **90** | 1.000 · 0.990 | −10 ms | exit 0 |
+| speed 0.5× BEFORE | 8 s | 7.97 s · **199** (25 fps) | — | — | exit 0 |
+| speed 0.5× AFTER | 8 s | 8.00 s · **240** | 4.000 · 3.965 | −35 ms | exit 0 |
+| 24 fps source → 9:16 | 5 s | 5.01 s · **120**, 1080×1920 | 2.000 · 2.000 | 0 ms | exit 0 |
+| a whole 29.7 s master | 29.7 s | **891** | — | — | exit 0 |
+| the same master cut to 60 % of its bytes | 29.7 s | **531** → `count_mismatch` (−360) | — | — | **exit 183** (`Invalid NAL unit size`) |
+
+What this adds: slow motion and speed-up now land on the product's 30 fps grid with sound in sync (defect row 30); a damaged
+file is caught twice, by the decoder's exit code and by the frame count, so metadata duration alone is never the evidence.
 
 ## 3. What the numbers establish (task PHASE 4)
 

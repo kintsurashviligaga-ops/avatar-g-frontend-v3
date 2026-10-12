@@ -3,12 +3,15 @@
 Status: **audit of the code as it stands (dac6106, branch `claude/video-core-v1-6gh97e`, draft PR #58). Nothing live was
 called; the sandbox has no Google credentials and none were sought.** Every "live" item below is a plan GG decides on,
 one approval per test, with the exact cost written next to it. Unit evidence: `npx jest lib/veo lib/video/director
-app/api/video/director` → **22 suites, 974 / 974 tests passed** (2026-10-12, this sandbox).
+app/api/video/director` → **22 suites, 974 / 974 tests passed** (2026-10-12, this sandbox). **Re-run on the final round-3
+head (357926b, 2026-10-12 18:49Z): 22 suites, 980 / 980 passed, 0 skipped** (`evidence/round3-final/veo-director-unit.json`).
+Every live item stays **NOT RUN — OWNER/PROVIDER BLOCKED**: no paid Veo call has been approved for round 3, and mocks are not
+reported as live tests.
 
 ## მოკლედ
 
 1. კოდი Vertex-ისთვის კონფიგურირებულია: 8 env ცვლადი (სახელები §1), WIF (Vercel OIDC → STS → SA impersonation), Veo us-central1, bucket `gs://…`, მოდელები `veo-3.1-*-001`.
-2. 974/974 unit ტესტი გადის; არც ერთი ფასიანი გამოძახება სანდბოქსიდან არ გაკეთებულა და არ შეიძლება.
+2. 980/980 unit ტესტი გადის (საბოლოო head 357926b; ადრე 974/974); არც ერთი ფასიანი გამოძახება სანდბოქსიდან არ გაკეთებულა და არ შეიძლება.
 3. 29.7 წმ ფილმი = 4 სცენა × 8 წმ (32 წმ native) → 891 კადრი 30 fps-ზე; ანუ **4 Veo PredictLongRunning ოპერაცია**, poll-ები უფასოა.
 4. ფასი (კოდის ტარიფით): Fast 1080p ხმით ≈ $3.84 (720p $3.20), Standard ≈ $12.80, Lite ≈ $2.56; მომხმარებელს 100 / 330 / 60 კრედიტი.
 5. ერთადერთი გაზომილი წერტილი: 2026-10-08 T1 — 4 წმ Fast 720p კლიპი ≈ $0.40 (inferred; Billing-ით ჯერ არ არის დადასტურებული).

@@ -80,8 +80,8 @@ Result: **69 suites · 890 tests passed · 8 skipped · 0 failed.** The 8 skippe
 
 | Item | Status | Cause · what would prove it |
 | --- | --- | --- |
-| `deduct_credits_once` replay refusal on a real PostgREST | NOT RUN (8 tests skipped) | needs an isolated Supabase/PostgREST with migration 20261002d; Production must not be used for a write test (task rule). Prove on an isolated project/branch (B2) |
-| Any balance movement on a real account | NOT RUN by design | "Never run destructive financial tests against real customer balances"; the ledger is mocked at T1 |
+| `deduct_credits_once` replay refusal on a real PostgREST | **PROVEN (round-3 final, §8)** on a throwaway local Postgres 16 + PostgREST 12.2.3; not on Production (task rule) | `scripts/lease-isolation/run.sh`, before and after migration 20261002d; the 8 tests are skipped only in the default jest run, which has no database |
+| Any balance movement on a real account | NOT RUN by design (a throwaway ledger moved instead, §8) | "Never run destructive financial tests against real customer balances"; the ledger is mocked at T1 |
 | Live payment webhooks (BOG, Stripe live) | NOT RUN | BOG creds and live Stripe are GG's (memory: production-payments); outside Video Core |
 | Rate limiting on Preview (Upstash) and the no-Redis degradation on a deployed build | BUILT_NOT_PROVEN | `lib/orchestrator/idempotency.test.ts` proves the no-Redis path locally; a Preview run needs the isolated environment (B2) |
 | HawkScan DAST | NOT RUN | `HAWK_API_KEY` is unset in this sandbox and the repo has no `stackhawk.yml` (B7); a scan needs the key and a reachable deployed URL |
@@ -163,3 +163,30 @@ Result: **69 suites · 890 tests passed · 8 skipped · 0 failed.** The 8 skippe
 | `lib/video/director/storyboard.test.ts` | 33 | 0 | 0 |
 
 **Total: 69 suites · 890 passed · 8 skipped · 0 failed.**
+
+## 8. Round-3 final pass (2026-10-12): the same rules on a real database
+
+Head 954e385 → 357926b (no billing code changed after it). A throwaway Postgres 16 cluster on 127.0.0.1 behind a real
+PostgREST v12.2.3 (static binary; Docker Hub answered 429), built by `scripts/lease-isolation/run.sh` from the Production
+shape in `scripts/lease-isolation/schema.sql`. Nothing in it can reach Production; it is deleted at the end of the run.
+
+```text
+PG_PORT=54339 REST_PORT=54340 POSTGREST_BIN=<scratch>/pgrst/postgrest bash scripts/lease-isolation/run.sh
+```
+
+Exit 0. Log: `evidence/round3-final/pg-isolation-run.txt`.
+
+| Suite (real DB) | Result | What it proves |
+| --- | --- | --- |
+| `leaseIsolation.pg` (run twice: before and after 20261002d) | 7/7 · 7/7 | a dead worker's job is taken over once its lease lapses and is charged once; two deaths → given up, refunded once, a second sweep pays nothing; a refund debt on a failed row is paid by the next sweep, once; an owner stop → nothing delivered, charge back once; a hold whose request died is failed after `HOLD_MS` and paid back; 8 workers racing one job → exactly one gets it |
+| `ledgerOnce.pg` before 20261002d | 7 passed · 1 phase-skipped | first call charges, a sequential replay is refused and charges nothing; `refuseReplay` → `duplicate_request`, not a free render; insufficient credits stay insufficient; no profile → no charge; the concurrent-twins window before the migration is shown, not hidden |
+| `ledgerOnce.pg` after 20261002d | 7 passed · 1 phase-skipped | the same, and **8 concurrent twins → one debit, exactly one may render** |
+| `runIsolation.pg` (real ffmpeg) | 6/6 | a three-step Agent G run gives three real results, one start per plan; a crash mid-render resumes from the database alone; a stop kills ffmpeg and returns the 7 credits once; a priced step waits for its own yes (forged ones refused), 8 racing ticks → one job and one charge per step; a failed priced step is paid back and a resume reuses delivered work; another user can neither steer the run nor use its token, uploads or results |
+| `outboxIsolation.pg` | 4/4 | a finished job is told once per outlet; two deliverers → once each; a refund and our record do not undo each other |
+
+Three harness repairs were needed first, none in product code (defect register row 31): PostgREST without Docker, throwaway
+twin debits deleted before the migration's preflight, and the crash-recovery case sampling the master from the live database
+since per-clip QC.
+
+**What this still does not prove:** the same rules through the browser on a deployed build with a real Supabase Auth and
+Storage (blocked: no isolated Supabase yet, `SUPABASE_TEST_ENV.md`), and anything on a real customer balance (never, by rule).

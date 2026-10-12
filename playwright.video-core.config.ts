@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Chrome viewport and an iPhone 13 viewport, because every Video Core screen is contracted for both.
  *
  * Every server route in these specs is mocked with page.route — nothing is uploaded, rendered or charged.
- * Results land in docs/handoffs/video-core/evidence/t2-round3/playwright-results.json (plus the list reporter).
+ * Results land in docs/handoffs/video-core/evidence/t2-round3-final/playwright-results.json (plus the list reporter).
  */
 const port = Number(process.env.PLAYWRIGHT_DEV_PORT || 3000);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${port}`;
@@ -20,7 +20,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: [
     ['list'],
-    ['json', { outputFile: 'docs/handoffs/video-core/evidence/t2-round3/playwright-results.json' }],
+    ['json', { outputFile: 'docs/handoffs/video-core/evidence/t2-round3-final/playwright-results.json' }],
   ],
   outputDir: 'test-results/video-core',
   globalSetup: './tests/video-core/_global-setup.ts',

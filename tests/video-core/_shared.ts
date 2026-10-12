@@ -9,10 +9,10 @@ import { mockStoredUpload, SIGNED_UPLOAD_URL } from '../fixtures/uploads';
  * server has no session, so „signed in" is pinned on <html data-authed> the way tests/agent-g-montage.spec.ts does it.
  *
  * The findings a spec OBSERVES (what the app does not persist, what it routes elsewhere) are recorded, not asserted
- * green: test.info().annotations plus a `findings` array in the evidence folder (docs/handoffs/video-core/evidence/t2-round3).
+ * green: test.info().annotations plus a `findings` array in the evidence folder (docs/handoffs/video-core/evidence/t2-round3-final; t2-round3 is the earlier run, kept as it was).
  */
 
-export const EVIDENCE_DIR = join(__dirname, '..', '..', 'docs', 'handoffs', 'video-core', 'evidence', 't2-round3');
+export const EVIDENCE_DIR = join(__dirname, '..', '..', 'docs', 'handoffs', 'video-core', 'evidence', 't2-round3-final');
 export const FINDINGS_FILE = join(EVIDENCE_DIR, 'findings.json');
 
 export type Locale = 'en' | 'ka' | 'ru';
@@ -67,6 +67,15 @@ export interface Calls {
   assemble: Array<Record<string, unknown>>;
   directorRuns: Array<Record<string, unknown>>;
   statusReads: string[];
+  /** Uploads: POST /api/upload/sign bodies, PUT URLs to the signed storage URL, POST /api/upload/verify bodies. */
+  sign: Array<Record<string, unknown>>;
+  put: string[];
+  verify: Array<Record<string, unknown>>;
+  /** GET /api/studio/library URLs and POST /api/studio/library bodies (an explicit „Save to library"). */
+  libraryReads: string[];
+  librarySaves: Array<Record<string, unknown>>;
+  /** Every GET of a result on the media host (a download fetches the master again). */
+  media: string[];
 }
 
 export interface Reply { status: number; body: unknown }
@@ -95,6 +104,12 @@ export interface StudioOptions {
   directorRuns?: Reply;
   /** The chat model's canned reply. */
   reply?: string;
+  /** POST /api/upload/verify answers this instead of { ok: true } (a refused or broken check of the stored bytes). */
+  verifyFails?: Reply;
+  /** GET /api/studio/library → { items } (default none). */
+  library?: Array<Record<string, unknown>>;
+  /** Jobs the server lists as live (?active=1) from the start — work started elsewhere (another tab, before a reload). */
+  others?: Array<Record<string, unknown>>;
 }
 
 const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -135,7 +150,7 @@ export const MUSIC_UNREADABLE: Reply = {
  */
 export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<Calls> {
   const locale: Locale = opts.locale ?? 'en';
-  const calls: Calls = { chat: [], quote: [], run: [], editQuote: [], editRun: [], reads: [], cancel: [], storyboard: [], orchestrate: [], assemble: [], directorRuns: [], statusReads: [] };
+  const calls: Calls = { chat: [], quote: [], run: [], editQuote: [], editRun: [], reads: [], cancel: [], storyboard: [], orchestrate: [], assemble: [], directorRuns: [], statusReads: [], sign: [], put: [], verify: [], libraryReads: [], librarySaves: [], media: [] };
   await page.addInitScript(() => {
     try {
       localStorage.setItem('myavatar-cookie-consent', 'necessary');
@@ -146,11 +161,25 @@ export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<
 
   // Uploads: sign → PUT (storage host) → verify. Nothing leaves the browser.
   let n = 0;
-  await page.route('**/api/upload/sign', (r) => r.fulfill(json(200, { bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL })));
+  await page.route('**/api/upload/sign', (r) => {
+    calls.sign.push((r.request().postDataJSON() ?? {}) as Record<string, unknown>);
+    return r.fulfill(json(200, { bucket: 'uploads', path: `omni-uploads/u/file-${++n}`, token: 't', signedUrl: SIGNED_UPLOAD_URL }));
+  });
   await mockStoredUpload(page);
-  await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => r.fulfill(json(200, { Key: 'uploads/u/x' })));
+  await page.route(/\/storage\/v1\/object\/upload\/sign\//, (r) => {
+    if (r.request().method() === 'PUT') calls.put.push(r.request().url());
+    return r.fulfill(json(200, { Key: 'uploads/u/x' }));
+  });
+  await page.route('**/api/upload/verify', (r) => {
+    calls.verify.push((r.request().postDataJSON() ?? {}) as Record<string, unknown>);
+    const rep = opts.verifyFails ?? { status: 200, body: { ok: true } };
+    return r.fulfill(json(rep.status, rep.body));
+  });
   // Results are served from the storage domain.
-  await page.route('https://e2e-media.supabase.co/**', (r) => r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP }));
+  await page.route('https://e2e-media.supabase.co/**', (r) => {
+    calls.media.push(r.request().url());
+    return r.fulfill({ status: 200, contentType: 'video/webm', body: CLIP });
+  });
 
   // The chat model and its title.
   await page.route('**/api/chat/title', (r) => r.fulfill(json(200, { title: 't' })));
@@ -162,7 +191,14 @@ export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<
       body: sse([{ meta: { provider: 'gemini', model: 'gemini-3.8-flash', mode: 'fast' } }, { text: opts.reply ?? 'Noted — the chat model answered this one.' }, '[DONE]']),
     });
   });
-  await page.route('**/api/studio/library', (r) => r.fulfill(json(200, { items: [] })));
+  await page.route(/\/api\/studio\/library(\?.*)?$/, (r) => {
+    if (r.request().method() === 'POST') {
+      calls.librarySaves.push((r.request().postDataJSON() ?? {}) as Record<string, unknown>);
+      return r.fulfill(json(200, { success: true }));
+    }
+    calls.libraryReads.push(r.request().url());
+    return r.fulfill(json(200, { items: opts.library ?? [] }));
+  });
   await page.route('**/api/video/capabilities', (r) => r.fulfill(json(200, { longform: false, maxSeconds: 96 })));
   await page.route(/\/api\/video\/director$/, (r) => r.fulfill(json(200, { enabled: opts.director === true })));
   await page.route('**/api/video/director/runs', async (r: Route) => {
@@ -207,20 +243,27 @@ export async function openStudio(page: Page, opts: StudioOptions = {}): Promise<
     taskView({ status: 'completed', pct: 100, result: { url: MASTER_URL, media: 'video', durationSec: 19.97, aspect: '16:9' } }),
   ];
   const first = views[0];
+  let stopped = false;
   await page.route(/\/api\/tasks(\?.*)?$/, async (r: Route) => {
     if (r.request().method() === 'GET') {
       const id = new URL(r.request().url()).searchParams.get('id');
       if (!id) {
-        const live = opts.live && first && (first.status === 'running' || first.status === 'queued') ? [first] : [];
-        await r.fulfill(json(200, { ok: true, tasks: live }));
+        // A job is live only once it was started (a run was posted) and until it was stopped — as the server lists it.
+        const live = opts.live && calls.run.length > 0 && !stopped && first && (first.status === 'running' || first.status === 'queued') ? [first] : [];
+        await r.fulfill(json(200, { ok: true, tasks: [...(opts.others ?? []), ...live] }));
         return;
       }
       calls.reads.push(id);
-      const task = id === EDIT_JOB ? nextEditView() : views.length > 1 ? views.shift() : views[0];
+      // After a Stop the worker ends the job: every later read says cancelled (lib/tasks cancelTask → status cancelled).
+      const task = stopped && id === JOB_ID
+        ? taskView({ status: 'cancelled', stage: (first?.stage as string | null) ?? null, pct: null, error: 'cancelled' })
+        : id === EDIT_JOB ? nextEditView() : views.length > 1 ? views.shift() : views[0];
       await r.fulfill(json(200, { ok: true, task }));
       return;
     }
-    calls.cancel.push(r.request().postDataJSON());
+    const posted = (r.request().postDataJSON() ?? {}) as Record<string, unknown>;
+    calls.cancel.push(posted);
+    if (posted.action === 'cancel') stopped = true;
     await r.fulfill(json(200, { ok: true, task: null }));
   });
   const editViews = [

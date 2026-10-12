@@ -32,10 +32,29 @@ Tiers: T1 mocked · T2 local browser · T3 real ffmpeg · T4 Preview · T5 paid 
 | 22 | **round 3 P1 (AC-23)**: a later music start on the timeline was read as a track offset; add-clips / replace-music follow-ups became a silent new quote | UNSUPPORTED, SAID: quote `unsupported: ['music_delay']` + card note; follow-up answered as unsupported before any quote; nothing charged | 261a261 | `montageAsk.test:382`, `montageExec.test:431`, `montageChat.test:221`, `videoCoreWiring.test:186` | T1 (+T2 note rendering, `evidence/t2-round3`) | the contract fields (timeline start ≠ 0, add-to-manifest, swap-in-place) are GG's shared-contract decision (`blockers-and-deferred.md` item 5) |
 | 23 | **round 3 (CI)**: `DirectorRunOverlay.test` expected the pre-round-3 body → CI red on fc1971b | PROVEN: test pinned to the new body (locale; approval beside the storyboard) | 7078648 | `DirectorRunOverlay.test` (7/7) | T1 | — |
 
-## Round-3 browser findings (T2, local Playwright, mocked server)
+## Round-3 final pass (2026-10-12, GG 18:17Z brief): browser, billing harness, speed edits
 
-Filled from `evidence/t2-round3/summary.md` once that run is in (desktop + iPhone 13 projects). A behaviour the specs found
-not persisted or not supported is listed there as a finding with its file:line, never as a passing test.
+Found by the real-browser run (`tests/video-core`, desktop Chrome + iPhone 13, every server route mocked at the page;
+`evidence/t2-round3/`), by re-running the real-Postgres suites, and by measuring speed edits on real ffmpeg.
+
+| # | Trigger | Final state | Fix (commit) | Regression test | Highest tier measured | Remaining limitation |
+| --- | --- | --- | --- | --- | --- | --- |
+| 24 | „შექმენი 24-წამიანი მუსიკალური კლიპი“ from the chat planned a **film** (`musicVideoMode:false`) in KA/EN/RU | PROVEN: the chat's open step hands the mode it decided to `createStoryboard` | a9ec305 | `tests/video-core/agent-g-intents.spec.ts` (plan-mode, 3 locales × 2 devices) | T2 | — |
+| 25 | the job tray showed an eased estimate as "NN%" for a server job that reported no percent | PROVEN: `measuredOnly` progress (no number, no remaining time, indeterminate bar) for server-observed jobs | a9ec305 | `GenerationProgress.test` (+5), `JobTray.test` (+2), `cards.spec.ts` | T2 | other studios keep their eased estimate by design |
+| 26 | the film error card said "service may be busy" and clipped the route's real reason (QC refusal, unreadable soundtrack) | PROVEN: the card carries the route's own sentence, unclamped | a9ec305 | `opFailure.test`, `ResultCard.test`, `cards.spec.ts` | T2 | — |
+| 27 | EN "Start the music at second 58." was a chat message (KA/RU understood) | PROVEN: "at/from second N" and "at the N-second mark" read as the music start | a9ec305 | `params.test` (+5), `agent-g-intents.spec.ts` | T2 | — |
+| 28 | the bare sentence "the video must be exactly 29.7 seconds" (no make-verb) stays a chat message | OPEN — GG (product decision D9 in `RELEASE_READINESS_CHECKLIST.md`): kept as a declared `test.fail` with the reason | — | `agent-g-intents.spec.ts` (declared failure) | T2 | proposal: read it as a length for the open Video tool / plan |
+| 29 | composer attachments followed the user into another conversation | PROVEN: History pick / New chat parks the composer's files with the chat being left | a9ec305 | `navigation.spec.ts` (`attachmentFollowed` must be false) | T2 | — |
+| 30 | a speed edit (2× / 0.5×) produced a **25 fps** file: 2× = 3.04 s / 76 frames, flash 40 ms late, sound 52 ms early | PROVEN: `setpts=…,fps=30`; 2× = 3.01 s / **90** frames, flash at 1.000 s, sound −10 ms; 0.5× = 8.00 s / **240** frames, −35 ms; both inside ITU-R BT.1359 | 357926b | `editPlan.test`, `videoCoreSpeedSync.ffmpeg.test` | T3 | — |
+| 31 | (test harness) the real-Postgres isolation suites had stopped passing: Docker Hub 429, a throwaway twin race blocking 20261002d's preflight, per-clip QC sampling the wrong store | PROVEN: `POSTGREST_BIN`, throwaway twins deleted before the migration, live-store sampling; lease 7/7 ×2, ledgerOnce 7+1 skip ×2, run 6/6 (real ffmpeg), outbox 4/4 | 954e385 | `scripts/lease-isolation/run.sh` | T1 + real Postgres 16 + PostgREST 12.2.3 | — |
+| 32 | (environment) the repo's 114 migrations do not rebuild the schema on a fresh database: 35 fail, among them the one that creates `credit_ledger`; 14 version prefixes are shared by several files | OPEN — GG: a Production **schema-only** dump seeds any test database (`SUPABASE_TEST_ENV.md`); migration hygiene is out of Video Core's scope | — | `evidence/round3-final/migration-replay-fresh-db.tsv` | local Postgres 16 | blocks a full-backend browser E2E until the dump exists |
+| 33 | CI `verify` red on a9ec305…357926b: three source pins in `components/studio/create/videoCoreWiring.test.ts` still expected the old `createStoryboard` call and signature after the music-video fix | P1 (CI gate) | FIXED cc0657f: pins match the new call; 23/23 locally; CI re-run on cc0657f |
+| 34 | Phone (390×664): the floating job tray covered the newest montage card's Start even with the thread scrolled to its end; the thread kept no room for the tray (`components/studio/JobTray.tsx` fixed z-60) | P2 (UX, phone) | FIXED: the tray publishes `--job-tray-h`, the thread ends with a spacer of that height (`job-tray-spacer`); `tests/video-core/flows.spec.ts` "[phone] a job already running elsewhere…" is now a plain assertion, PASS on mobile |
+
+Not defects, recorded as findings (behaviour by design, said in `evidence/t2-round3/findings.json`): a reload opens a fresh
+conversation (History reopens it); `?tool=video` is taken off the URL after opening, so Back/Forward carry no tool; the Video
+mode pick is not persisted across a reload; a director `revision_mismatch` offers "Edit storyboard", not Retry; the montage
+lane names an unreadable soundtrack with the generic QC wording, not `music_unreadable`.
 
 ## What is not in this register on purpose
 

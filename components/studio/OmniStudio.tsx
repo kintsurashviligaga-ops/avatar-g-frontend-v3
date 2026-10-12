@@ -11466,6 +11466,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             </div>
           </div>
         )) : messageList}
+        {/* Room for the floating job tray (JobTray publishes --job-tray-h, 0 when it is hidden), so the newest card's
+            buttons scroll clear of it on a phone (round-3 browser defect 7). No margin of its own from space-y-*. */}
+        <div aria-hidden="true" data-testid="job-tray-spacer" className="shrink-0" style={{ height: 'var(--job-tray-h, 0px)', marginTop: 0 }} />
       </div>
       {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
           one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
