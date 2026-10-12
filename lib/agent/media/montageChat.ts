@@ -24,6 +24,7 @@ import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/serv
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS, MAX_SOUNDS, asksNarration, wantsNoMusic, wantsOwnSound, wantsSilence } from './montageAsk';
+import { parseSelection } from './sourceSelect';
 import type { TransitionStyle } from '@/lib/services/montage/montagePlan';
 import type { TransitionAsk, TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
@@ -97,7 +98,9 @@ export function beatMontageAsk(text: string, kinds: AttachmentKind[]): boolean {
     return !MUSIC.test(t.replace(NO_MUSIC_WORDS, '')) || wantsNoMusic(t);
   }
   if (pictures === 1) return (montageWords && !TRIM.test(t)) || asksNarration(t);
-  return montageWords || MUSIC.test(t) || asksNarration(t);
+  // „შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი" with the clips and a track names no montage word, but a choice among the
+  // clips sent IS the montage of them (Video Core v1.0 §3.3; the choice itself: ./sourceSelect, applied in montageExec).
+  return montageWords || MUSIC.test(t) || asksNarration(t) || parseSelection(t) !== null;
 }
 
 export type AgentMontagePhase = 'reading' | 'quoted' | 'running' | 'done' | 'failed' | 'cancelled' | 'dismissed';

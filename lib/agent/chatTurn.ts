@@ -126,7 +126,13 @@ export type ChatStep =
   /** Carry the run card on (a new run that reuses what was delivered). */
   | { kind: 'resume'; cardId: string; intent: AgentIntent }
   /** A question about the attached file or a YouTube link, answered by the whole-file analysis on its own card. */
-  | { kind: 'analyze'; ask: AnalyzeAsk; intent: AgentIntent };
+  | { kind: 'analyze'; ask: AnalyzeAsk; intent: AgentIntent }
+  /**
+   * A video or a music video asked in words („24-წამიანი მუსიკალური კლიპი გამიკეთე"): the Video tool opens in that mode, at
+   * that length, and plans for review; nothing renders or is charged before Generate (Video Core v1.0 AC-01). No
+   * `durationSec` when the words named none: the tool must not inherit the last project's length (§10).
+   */
+  | { kind: 'open'; tool: 'video'; videoMode: 'musicvideo' | 'documentary'; durationSec?: number; aspect?: string; intent: AgentIntent };
 
 const LIVE_CARD: ReadonlySet<string> = new Set(['reading', 'checking', 'running']);
 const LIVE_JOB: ReadonlySet<string> = new Set(['queued', 'rendering']);
@@ -362,6 +368,17 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
     }
     if (how === 'ask') return { kind: 'say', text: askReply(intent, locale), keepComposer: true, intent };
     if (how === 'unsupported') return { kind: 'say', text: unsupportedReply(intent, locale), intent };
+    // A video or a music video asked in words, in the chat: the Video tool in that mode, at that length (Video Core v1.0
+    // AC-01). A photo brought to life and „the same character" keep their own path; the edits were answered above.
+    if (s.mode === 'chat' && !intent.missing.length && intent.target !== 'previous'
+      && (intent.capability === 'video.music-video' || (intent.capability === 'video.generate' && !intent.params.fromImage && !intent.params.sameCharacter && !intent.params.editOp))) {
+      return {
+        kind: 'open', tool: 'video', videoMode: intent.capability === 'video.music-video' ? 'musicvideo' : 'documentary',
+        ...(intent.params.durationSec !== undefined ? { durationSec: intent.params.durationSec } : {}),
+        ...(intent.params.aspect ? { aspect: intent.params.aspect } : {}),
+        intent,
+      };
+    }
   }
 
   // „What is said in my video?" where the analysis is open: Gemini reads the whole file, not a few frames. A request to
