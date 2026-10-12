@@ -1,0 +1,51 @@
+# Isolated, throwaway Supabase for the Video Core real-backend E2E (GitHub Actions only).
+# Started with `supabase start --workdir e2e/video-core-live`; destroyed with the runner. It never links to a hosted
+# project: there is no `project_ref`, no `supabase link`, and tests/video-core-live/guard.ts refuses any non-loopback URL.
+# The schema comes from ../baseline/*.sql (applied with psql after start), NOT from supabase/migrations at the repo root:
+# those 114 files do not replay on a fresh database (docs/handoffs/video-core/evidence/round3-final/migration-replay-fresh-db.tsv).
+project_id = "myavatar-video-core-e2e"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[studio]
+enabled = false
+
+[inbucket]
+enabled = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false
+
+[storage]
+enabled = true
+file_size_limit = "200MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000", "http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
