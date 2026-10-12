@@ -24,6 +24,7 @@ import { RAMP_FAST, RAMP_SLOW, type RampMode, type RampResult } from '@/lib/serv
 import type { MontageErrorCode, MontageQuote, MontageRefusalDetail } from './montageExec';
 import type { MontageManifestItem } from './montageManifest';
 import { MAX_CLIPS, MAX_SOUNDS, asksNarration, wantsNoMusic, wantsOwnSound, wantsSilence } from './montageAsk';
+import type { UnsupportedMontageAsk } from './montageExec';
 import { parseSelection } from './sourceSelect';
 import type { TransitionStyle } from '@/lib/services/montage/montagePlan';
 import type { TransitionAsk, TransitionSummary } from '@/lib/services/montage/transitionPlan';
@@ -364,6 +365,68 @@ export function soundText(q: Pick<MontageQuote, 'sound' | 'voice' | 'clips' | 'm
 }
 
 /** What the sound cannot do as sent, said before Start: a track that ends early, a narration longer than the edit, ramps with nothing to ramp by. */
+/**
+ * Round 3 (AC-23) — what the words asked for that this version cannot do, said on the card before Start (never applied
+ * as something else, never dropped without a word). `music_delay`: the track starts on the first frame; the number was
+ * NOT read as a track offset, and the way to ask for the track's own second is given.
+ */
+export function unsupportedNotes(q: Pick<MontageQuote, 'unsupported'>, lang: Lang): string[] {
+  return (q.unsupported ?? []).map((u: UnsupportedMontageAsk) => {
+    switch (u) {
+      case 'music_delay':
+        return lang === 'en'
+          ? 'Not supported in this version: starting the music later on the timeline. The track starts on the first frame, and I did not move its own start point. If you meant a second inside the track, say „music from 5 seconds“.'
+          : lang === 'ru'
+            ? 'В этой версии не поддерживается: более поздний старт музыки на таймлайне. Трек начинается с первого кадра; его собственную точку старта я не менял. Если вы имели в виду секунду внутри трека, скажите «музыка с 5 секунды».'
+            : 'ამ ვერსიაში არ არის მხარდაჭერილი: მუსიკის მოგვიანებით ჩართვა ტაიმლაინზე. მუსიკა პირველივე კადრიდან იწყება და ტრეკის საწყისი წერტილი არ შემიცვლია. თუ ტრეკის შიგნით რომელიმე წამი გულისხმობდი, თქვი „მუსიკა 5 წამიდან“.';
+      default:
+        return '';
+    }
+  }).filter(Boolean);
+}
+
+/**
+ * Round 3 (AC-23) — a follow-up on a montage already in this thread that this version cannot do IN PLACE: new clips to
+ * add to a delivered edit („ეს ორიც დაამატე", "add these too", «добавь ещё эти»), or a new track to swap in („სხვა
+ * მუსიკა დაადე", "replace the music", «замени музыку»). The signed quote / manifest closes a delivered montage (its file
+ * list and price), so both are a NEW montage of every file: the studio says so (followUpUnsupportedText) instead of
+ * cutting the new files alone or letting the model improvise. The caller checks that a montage card is in the thread.
+ */
+export type MontageFollowUp = 'add_clips' | 'replace_music';
+const ADD_WORDS = /დაამატ|დავამატ|დაუმატ|ჩაამატ|კიდევ|ესეც|ამასაც|ეს\s+(?:ორიც|სამიც|ოთხიც)|ამ\s+(?:ორსაც|სამსაც)|ისიც|\badd\b|\balso\b|\btoo\b|as\s+well|\bappend\b|\binclude\b|добав|ещё|еще|тоже|также/iu;
+const REFERS_PREVIOUS = /მონტაჟ\p{L}*(?:ს|ში|ზე)(?!\p{L})|წინა|ძველ|იმავე|იმას|(?:to|into|onto)\s+(?:the|that|my|previous|last|existing)\s+(?:montage|edit|video|clip|cut|reel)|\bprevious\b|\bexisting\b|к\s+(?:монтажу|тому|прошлому|предыдущему)|в\s+(?:тот|прошлый|предыдущий)|предыдущ|прошл/iu;
+const REPLACE_MUSIC = new RegExp([
+  String.raw`(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|სხვა|ახალ|ამ)\p{L}*\s+(?:\S+\s+){0,2}?(?:მუსიკ|სიმღერ|ტრეკ)`,
+  String.raw`(?:მუსიკ|სიმღერ|ტრეკ)\p{L}*\s+(?:\S+\s+){0,2}?(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|დაადე|დაუდე|ჩაუსვ|ჩაანაცვლ)`,
+  String.raw`(?:replace|change|swap|switch|use|put)\s+(?:the\s+|this\s+|a\s+)?(?:(?:new|other|different)\s+)?(?:music|track|song|soundtrack)`, String.raw`(?:music|track|song|soundtrack)\s+instead`,
+  String.raw`(?:замени|поменяй|смени|поставь|другую|другой|новую|новый|эту|этот)\s+(?:\S+\s+)?(?:музык|трек|песн)`,
+].join('|'), 'iu');
+export function montageFollowUpAsk(text: string, kinds: AttachmentKind[]): MontageFollowUp | null {
+  const t = (text || '').trim();
+  if (!t || !kinds.length) return null;
+  const pictures = kinds.filter((k) => k === 'video' || k === 'image').length;
+  const audios = kinds.filter((k) => k === 'audio').length;
+  if (pictures + audios !== kinds.length) return null;
+  if (!pictures && audios === 1) return REPLACE_MUSIC.test(t) ? 'replace_music' : null;
+  if (pictures >= 1 && audios <= 1 && ADD_WORDS.test(t) && (!hasMontageWords(t) || REFERS_PREVIOUS.test(t))) return 'add_clips';
+  return null;
+}
+export function followUpUnsupportedText(kind: MontageFollowUp, locale: string): string {
+  const lang = pick(locale);
+  if (kind === 'replace_music') {
+    return lang === 'en'
+      ? 'Replacing the music in a finished edit is not supported in this version: a delivered montage is closed by its signed file list and price. Attach the clips together with the new track and ask for the montage again — you will see the new plan and price before Start. Nothing was sent and nothing was charged.'
+      : lang === 'ru'
+        ? 'Замена музыки в готовом монтаже в этой версии не поддерживается: готовый монтаж закрыт подписанным списком файлов и ценой. Прикрепите клипы вместе с новым треком и попросите монтаж снова — новый план и цену вы увидите до старта. Ничего не отправлено и не списано.'
+        : 'მზა მონტაჟში მუსიკის შეცვლა ამ ვერსიაში არ არის მხარდაჭერილი: გაცემული მონტაჟი ხელმოწერილი ფაილების სიითა და ფასით დახურულია. მიამაგრე კლიპები ახალ მუსიკასთან ერთად და მონტაჟი თავიდან მთხოვე — ახალ გეგმას და ფასს დაწყებამდე ნახავ. არაფერი გაგზავნილა და არაფერი ჩამოგეჭრა.';
+  }
+  return lang === 'en'
+    ? 'Adding clips to a finished edit is not supported in this version: a delivered montage is closed by its signed file list and price. Attach every clip together (the earlier ones and the new ones) with the track and ask for the montage again — you will see the new plan and price before Start. Nothing was sent and nothing was charged.'
+    : lang === 'ru'
+      ? 'Добавление клипов в готовый монтаж в этой версии не поддерживается: готовый монтаж закрыт подписанным списком файлов и ценой. Прикрепите все клипы вместе (прежние и новые) с треком и попросите монтаж снова — новый план и цену вы увидите до старта. Ничего не отправлено и не списано.'
+      : 'მზა მონტაჟში კლიპების დამატება ამ ვერსიაში არ არის მხარდაჭერილი: გაცემული მონტაჟი ხელმოწერილი ფაილების სიითა და ფასით დახურულია. მიამაგრე ყველა კლიპი ერთად (წინა და ახალი) მუსიკასთან ერთად და მონტაჟი თავიდან მთხოვე — ახალ გეგმას და ფასს დაწყებამდე ნახავ. არაფერი გაგზავნილა და არაფერი ჩამოგეჭრა.';
+}
+
 function soundNotes(q: MontageQuote, lang: Lang): string[] {
   const notes: string[] = [];
   if (q.musicEndsSec !== undefined) {
@@ -426,7 +489,7 @@ export function quoteText(q: MontageQuote, names: string[] | undefined, locale: 
     : lang === 'ru'
       ? `План: ${q.shots} кадров из ${what}, ${sec(q.totalSec)} с, ${q.aspect}, ${sound}.`
       : `გეგმა: ${q.shots} კადრი ${what}, ${sec(q.totalSec)} წმ, ${q.aspect}, ${sound}.`;
-  const notes = soundNotes(q, lang);
+  const notes = [...soundNotes(q, lang), ...unsupportedNotes(q, lang)];
   const noted = notes.length ? `\n${notes.join('\n')}` : '';
   // A start the user asked for („მუსიკა 5 წამიდან") is said; the first beat a fraction of a second in is not news.
   const from = q.musicFile !== null && q.musicStartSec >= 1

@@ -46,6 +46,7 @@ import { cancel, claimable, enqueue, failPending, release, settled, type LeaseRo
 import {
   MAX_CLIPS,
   MAX_FILES,
+  asksMusicDelay,
   aspectFromClips,
   montageBody,
   pickTracks,
@@ -194,6 +195,9 @@ export interface MontageEngine {
   free: boolean;
 }
 
+/** An ask the montage contract of this version cannot carry; named on the quote, never silently reinterpreted. */
+export type UnsupportedMontageAsk = 'music_delay';
+
 export interface MontageQuote {
   jobId: string;
   credits: number;
@@ -227,6 +231,12 @@ export interface MontageQuote {
   shortened?: { footageSec: number; maxSec: number; share: number };
   /** The words asked for speed ramps, which follow the music: with no music sent there is nothing to ramp by. */
   rampWithoutMusic?: boolean;
+  /**
+   * What the words asked for that this version cannot do, SAID on the card instead of applied as something else or dropped
+   * (round 3, AC-23): `music_delay` — a later start of the music on the timeline (the track starts on the first frame;
+   * AudioTiming.timelineStartSec is a field of the signed contract). Absent = nothing unsupported was asked.
+   */
+  unsupported?: UnsupportedMontageAsk[];
   /**
    * The speed ramps the words asked for („ააჩქარე და შეანელე სადაც საჭიროა"): how many shots slow down and speed up,
    * chosen by the music under them. Absent = none asked.
@@ -446,7 +456,11 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const askedSec = positive(input.targetSec) ?? said.durationSec;
   // Not capped here: an asked length past one edit is refused by the planner (target_too_long), never cut silently.
   const target = askedSec;
-  const musicFromSec = music ? (positive(input.musicFromSec) ?? said.musicStartSec) : undefined;
+  // Round 3 (AC-23) — a LATER start of the music on the timeline („ვიდეოს მე-5 წამიდან") is not a track offset and this
+  // version cannot do it (the track starts on the first frame): the number is NOT read as `musicFromSec`, and the quote
+  // says so (`unsupported: ['music_delay']`), so nothing is applied as something else or dropped without a word.
+  const delayAsked = !!prompt && asksMusicDelay(prompt);
+  const musicFromSec = music ? (positive(input.musicFromSec) ?? (delayAsked ? undefined : said.musicStartSec)) : undefined;
   // „ააჩქარე … შეანელე" on a montage: single shots change speed where the music calls for it; the cuts stay on the beat.
   const rampMode = prompt ? rampOf(prompt) : null;
   const limits = { ...LIMITS, maxTotalSec: Math.min(MAX_TOTAL_SEC, positive(input.maxSec) ?? MAX_TOTAL_SEC) };
@@ -568,6 +582,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
     ...(voice ? { voice: { file: picked.voice!, durationSec: r3(voice.probe.durationSec), startSec: 0, ...(voiceCutSec ? { cutSec: voiceCutSec } : {}) } } : {}),
     ...('shortened' in plan && plan.shortened ? { shortened: plan.shortened } : {}),
     ...(rampMode && !music ? { rampWithoutMusic: true } : {}),
+    ...(delayAsked && music ? { unsupported: ['music_delay' as const] } : {}),
     ...(plan.ramp ? { ramp: plan.ramp } : {}),
     ...(transitions ? { transitions: transitions.summary } : {}),
     manifest: request.manifest,

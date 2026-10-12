@@ -181,6 +181,14 @@ describe('the storyboard is approved as a REVISION, and the render is checked ag
     expect(refuse).toBeGreaterThan(check);
     expect(frozen).toBeGreaterThan(refuse);
   });
+  test('a follow-up on a delivered montage (add clips / swap the music) is answered as unsupported BEFORE the montage lane or the model sees it (round 3 AC-23)', () => {
+    const follow = studio.indexOf("if (mode === 'chat' && agentMontageOn && attachments.length > 0 && messages.some((m) => m.montage)) {");
+    const say = studio.indexOf('text: followUpUnsupportedText(follow, locale), notice: true');
+    const lane = studio.indexOf("if (mode === 'chat' && agentMontageOn && attachments.length > 1) {");
+    expect(follow).toBeGreaterThan(0);
+    expect(say).toBeGreaterThan(follow);
+    expect(lane).toBeGreaterThan(say);
+  });
   test('the orchestrate route validates the approval BEFORE the orchestrator is called, and refuses with revision_mismatch', () => {
     const check = orchestrateRoute.indexOf('const verdict = validateRenderApproval(data.storyboardApproval, {');
     const refuse = orchestrateRoute.indexOf("error: 'revision_mismatch'");

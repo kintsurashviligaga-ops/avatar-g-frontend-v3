@@ -87,6 +87,38 @@ const BEAT_CUTS = /ბით|ბიტ|რიტმ|\bbeats?\b|rhythm|(?<!\p{L})
 export function wantsBeatCuts(text: string | undefined): boolean { return BEAT_CUTS.test(text ?? ''); }
 
 /**
+ * A LATER start of the music ON THE TIMELINE („მუსიკა ვიდეოს მე-5 წამიდან დაიწყოს", „მუსიკა მოგვიანებით შემოდიოდეს", "start
+ * the music 5 seconds into the video", "delay the track", «музыка с 5-й секунды видео», «музыку позже») — not an offset INTO
+ * the track („მუსიკა 58-ე წამიდან" = the track's own 58th second: lib/agent/params mineMusicStart, `musicFromSec`).
+ * The montage contract lays the track on the master's first frame (AudioTiming.timelineStartSec = 0, a field of the
+ * signed quote / manifest), so this version cannot do it: the quote SAYS so (`unsupported: ['music_delay']`, round 3
+ * AC-23) and does not read the number as a track offset — never applied as something else, never dropped without a word.
+ */
+const MUSIC_WORD = /მუსიკ|სიმღერ|ტრეკ|საუნდტრეკ|music|track|song|soundtrack|музык|трек|песн|саундтрек/iu;
+const MUSIC_DELAY = new RegExp([
+  // a point in the VIDEO, not in the track: „ვიდეოს მე-5 წამიდან", „მონტაჟის 3 წამიდან", „ტაიმლაინზე 5 წამიდან", „კლიპის მე-2 წამზე"
+  String.raw`(?:ვიდეოს|კლიპის|მონტაჟის|რგოლის|ტაიმლაინ\p{L}*)\s+(?:მე-?)?\d[\d.,:]*\s*-?\s*(?:ე\s*)?(?:წამიდან|წმ\.?\s*-?\s*დან|წამზე|წამთან)`,
+  // „მოგვიანებით", „დააგვიანე", „N წამის შემდეგ დაიწყოს / ჩაირთოს / შემოვიდეს", „პირველი N წამი მუსიკის გარეშე / უმუსიკოდ"
+  String.raw`მოგვიანებით|დააგვიან|დაგვიანებით`, String.raw`\d+\s*-?\s*წამის\s+(?:შემდეგ|მერე)\s+(?:დაიწყ|ჩაირთ|ჩართ|შემო)`,
+  String.raw`პირველ\p{L}*\s+\d+\s*-?\s*წამ\p{L}*\s+(?:მუსიკის\s+გარეშე|უმუსიკო|უხმო)`,
+  // "5 seconds into the video", "delay the music", "the track comes in later / after 3 s", "from the 5th second of the video",
+  // "no music for the first 5 seconds"
+  String.raw`\d[\d.:]*\s*-?\s*(?:s|secs?|seconds?)\s+into\s+the\s+(?:video|clip|edit|montage|film|timeline|reel)`,
+  String.raw`(?:delay|postpone|hold\s+back)\s+(?:the\s+)?(?:music|track|song|soundtrack)`,
+  String.raw`(?:music|track|song|soundtrack)\s+(?:should\s+)?(?:comes?\s+in|kicks?\s+in|starts?|begins?)\s+(?:later|after\s+\d|only\s+(?:at|from|after)\s+\d)`,
+  String.raw`(?:music|track|song|soundtrack)\s+(?:only\s+)?(?:from|after|at)\s+(?:the\s+)?\d[\d.:]*(?:st|nd|rd|th)?\s*-?\s*(?:s|secs?|seconds?)\s+(?:of|into)\s+the\s+(?:video|clip|edit|montage|film|timeline|reel)`,
+  String.raw`(?:no\s+music|silence|silent)\s+(?:for\s+|during\s+)?(?:the\s+)?first\s+\d+\s*(?:s|secs?|seconds?)`,
+  // «с 5-й секунды видео», «музыку позже / не сразу / с задержкой», «задержи музыку», «первые 5 секунд без музыки»
+  String.raw`(?:с|со|на)\s+\d[\d.:]*\s*-?\s*(?:й|ой|ей)?\s*секунд\p{L}*\s+(?:видео|клипа|монтажа|ролика|таймлайна)`,
+  String.raw`(?:музык|трек|песн|саундтрек)\p{L}*\s+(?:\S+\s+){0,2}?(?:позже|попозже|не\s+сразу|с\s+задержкой)`, String.raw`задерж\p{L}*\s+(?:музык|трек|песн)`,
+  String.raw`первы\p{L}*\s+\d+\s*секунд\p{L}*\s+без\s+музык`,
+].join('|'), 'iu');
+export function asksMusicDelay(text: string | undefined): boolean {
+  const t = text ?? '';
+  return MUSIC_WORD.test(t) && MUSIC_DELAY.test(t);
+}
+
+/**
  * What the montage sounds like:
  *   music      the track alone (the clips' own sound dropped): the beat montage as it always was;
  *   own+music  the clips' own sound leads and the track plays beneath it („თავისი ხმაც და ზემოდან მუსიკა");

@@ -154,7 +154,7 @@ import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
-import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, doneText, errorText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
@@ -6562,6 +6562,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // a question about a service never opens its form.
     // Agent G cuts the attached clips to the attached track (see startAgentMontage): only when the route opened it to this
     // user and the message asks for exactly that (lib/agent/media/montageChat.beatMontageAsk); everything else is untouched.
+    // Round 3 (AC-23) — a follow-up on a montage already in this thread that this version cannot do IN PLACE (new clips to add
+    // to a delivered edit, a new track to swap in): said plainly with the way out (lib/agent/media/montageChat
+    // followUpUnsupportedText), instead of a new edit of the new files alone or a model reply that improvises. Nothing is
+    // sent and nothing is dropped: the words and the files stay in the composer.
+    if (mode === 'chat' && agentMontageOn && attachments.length > 0 && messages.some((m) => m.montage)) {
+      const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const follow = montageFollowUpAsk(text, kinds);
+      if (follow) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: followUpUnsupportedText(follow, locale), notice: true }]);
+        return;
+      }
+    }
     if (mode === 'chat' && agentMontageOn && attachments.length > 1) {
       const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
       if (beatMontageAsk(text, kinds)) {
