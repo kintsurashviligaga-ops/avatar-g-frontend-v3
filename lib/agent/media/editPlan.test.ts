@@ -134,7 +134,7 @@ describe('the ffmpeg arguments', () => {
     expect(args).not.toContain('-filter_complex'); // a phone clip keeps its rotation
     const vf = args[args.indexOf('-vf') + 1];
     expect(vf).toBe([
-      'setpts=0.5000*PTS',
+      'setpts=0.5000*PTS,fps=30',
       'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=yuv420p',
       'hue=s=0,eq=contrast=1.25:brightness=-0.02,vignette=PI/4',
       'fade=t=in:st=0:d=1', 'fade=t=out:st=4:d=1', 'format=yuv420p',

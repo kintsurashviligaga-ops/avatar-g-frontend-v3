@@ -620,7 +620,10 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   const erase = edit(edits, 'erase'), stabilize = edit(edits, 'stabilize'), rotate = edit(edits, 'rotate'), flip = edit(edits, 'flip');
   const motion = edit(edits, 'motion'), adjust = edit(edits, 'adjust');
   const still = plan.output === 'jpg';
-  if (speed) vf.push(setptsFor(speed.factor));
+  // Back on the 30 fps grid right after the re-timing (Video Core round 3, measured): setpts leaves the stream's rate
+  // unknown, the encoder then fell to 25 fps, and a 2× edit of a 6 s 30 fps clip came out 3.04 s / 76 frames with the
+  // picture a frame behind its sound. `fps=30` drops (faster) or repeats (slower) whole frames on the product's grid.
+  if (speed) vf.push(`${setptsFor(speed.factor)},fps=30`);
   // Before the frame changes: the boxes are places of the source as shown.
   if (erase) vf.push(...eraseVf(erase.boxes, plan.frame ?? { width: plan.width, height: plan.height }));
   // Steadied while the picture is still the camera's own (after the fill, which stays where the logo was).
