@@ -42,13 +42,15 @@ describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
     expect(studio).toMatch(/const v = planFinalDuration\(step\.durationSec, videoCaps, videoPlanOpts\);/);
     expect(studio).toMatch(/lengthNote = describeDurationPlan\(v\.plan, locale\);/);
     expect(studio).toMatch(/say\(`\$\{describeDurationBlock\(v, locale\)\}/);
-    expect(studio).toMatch(/void createStoryboard\(text, routeRefs, routeOrientation, \{ nativeSec \}\);/);
+    // Round 3 (browser defect 24): the step hands over the mode it decided, so the plan is a music video in the same tick.
+    expect(studio).toMatch(/void createStoryboard\(text, routeRefs, routeOrientation, \{ nativeSec, musicVideoMode: step\.videoMode === 'musicvideo' \}\);/);
   });
   test('no length in the words → the panel default, named — never the last project\'s length', () => {
     expect(studio).toMatch(/nativeSec = VIDEO_PANEL_DEFAULTS\.duration;/);
   });
   test('the storyboard takes the grid it is planned on, not the closure\'s stale length', () => {
-    expect(studio).toMatch(/opts\?: \{ nativeSec\?: number \}\) => \{/);
+    expect(studio).toMatch(/opts\?: \{ nativeSec\?: number; musicVideoMode\?: boolean \}\) => \{/);
+    expect(studio).toMatch(/const musicVideoMode = opts\?\.musicVideoMode \?\? videoMode === 'musicvideo';/);
     expect(studio).toMatch(/const planSec = opts\?\.nativeSec \?\? videoDuration;/);
     expect(studio).toMatch(/sceneCountForSeconds\(planSec\)/);
     expect(studio).toMatch(/clipSecForSeconds\(planSec\)/);
@@ -132,7 +134,7 @@ describe('§6 · above the film ceiling it is the long-form route or a refusal w
   test("the chat step's refusal returns before the board is planned", () => {
     const open = studio.slice(studio.indexOf("case 'open': {"));
     const refusal = open.indexOf('if (!v.ok) {');
-    const planned = open.indexOf('void createStoryboard(text, routeRefs, routeOrientation, { nativeSec });');
+    const planned = open.indexOf("void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });");
     expect(refusal).toBeGreaterThan(0);
     expect(planned).toBeGreaterThan(refusal);
     const branch = open.slice(refusal, open.indexOf('nativeSec = v.plan.nativeSec;'));
