@@ -106,6 +106,8 @@ export interface VideoCreatePanelProps {
   /** Video Core v1.0 §4 — the length the user asked for in words when it is off the grid (OmniStudio videoRequestedSec):
    *  the panel then says requested · rendered · final beside the length instead of the rendered length alone. */
   requestedSec?: number | null;
+  /** The plan's join model (lib/video/durationContract joinOverlapFor): 0 with cuts, 1 s per soft join — the scenes are counted from the stitched length. */
+  joinOverlapSec?: number;
   story: ReactNode;
   voice: ReactNode;
   advanced: ReactNode;
@@ -140,7 +142,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
   const tier = plan.tier;
   const credits = videoQuote({ seconds, tier, mode });
   // The three lengths of an off-grid request — said only when there IS a trim to say (an on-grid ask is one length, the tile's).
-  const requestPlan = activePlan(p.requestedSec, seconds, caps);
+  const requestPlan = activePlan(p.requestedSec, seconds, caps, { joinOverlapSec: p.joinOverlapSec ?? 0 });
   const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
 
   // ── the remembered model ────────────────────────────────────────────────────────────────────────────────────────────
@@ -241,7 +243,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
           </VideoGenerateBar>
         </div>
 
-      <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} requestedSec={p.requestedSec ?? null} />
+      <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} requestedSec={p.requestedSec ?? null} joinOverlapSec={p.joinOverlapSec ?? 0} />
       <VideoFormatSheet open={sheet === 'format'} onClose={() => setSheet(null)} locale={locale} format={format} onChange={p.onFormat} musicVideo={mode === 'musicvideo'} notes={croppedNotes} />
       <ModelPicker
         service="video"

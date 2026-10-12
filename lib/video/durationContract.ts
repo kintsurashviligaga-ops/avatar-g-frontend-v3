@@ -17,7 +17,7 @@
  * The price is the NATIVE length (what is rendered; lib/video/createPanel videoQuote); the plan says so beside the trim.
  */
 import {
-  FILM_MAX_SEC, SCENE_SEC, SHORT_CLIP_SECS, VIDEO_MAX_SEC, VIDEO_MIN_SEC, formatVideoDuration, videoRoute, type VideoRoute,
+  FILM_MAX_SCENES, FILM_MAX_SEC, SCENE_SEC, SHORT_CLIP_SECS, VIDEO_MAX_SEC, VIDEO_MIN_SEC, formatVideoDuration, videoRoute, type VideoRoute,
 } from './duration';
 
 /** The timeline's frame rate: every delivered length is a whole number of these. */
@@ -34,15 +34,42 @@ export function quantizeToFrames(seconds: number, fps: number = VIDEO_FPS): numb
 }
 
 /**
- * The smallest grid length that is not shorter than the request: 5 → 6, 7.5 → 8, 29.7 → 32, 60 → 64, 65 → 72, 70 → 72,
- * 24 → 24, 240 → 240. Below one clip: 4. Above the longest film: the length itself (the caller refuses it).
+ * One soft join between two scenes (crossfade · dissolve · fade) overlaps them by this much, so the stitched master is that
+ * much shorter than the clips laid end to end (lib/orchestrator/ffmpeg-filtergraph TRANSITION_SEC — the two are pinned equal
+ * in durationContract.test). A cut takes nothing off.
  */
-export function nativeGridSeconds(requestedSec: number): number {
+export const JOIN_OVERLAP_SEC = 1;
+
+/** What one join of this kind takes off the stitched length: a cut (or none) nothing, a soft join JOIN_OVERLAP_SEC. */
+export function joinOverlapFor(join: string | null | undefined): number {
+  return !join || join === 'cut' ? 0 : JOIN_OVERLAP_SEC;
+}
+
+function overlapSeconds(v: number | undefined): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, SCENE_SEC - 1) : 0;
+}
+
+export interface PlanOptions {
+  /** The overlap EVERY join between scenes takes, in seconds: 0 for cuts (the studio's default), JOIN_OVERLAP_SEC for the soft
+   *  joins. The stitched master is sceneCount × clipSec − (sceneCount − 1) × joinOverlapSec, and the final is cut from THAT —
+   *  so a 60 s film with crossfades needs 9 scenes (64 s stitched), not the 8 (57 s) that the clips alone would suggest. */
+  joinOverlapSec?: number;
+}
+
+/**
+ * The smallest grid length whose STITCHED master is not shorter than the request: 5 → 6, 7.5 → 8, 29.7 → 32, 60 → 64,
+ * 65 → 72, 70 → 72, 24 → 24, 240 → 240 with cuts; with 1 s soft joins 60 → 72 (9 scenes stitch to 64 s; 8 would be 57),
+ * 29.7 → 40, 24 → 32. Below one clip: 4. Above the longest film: the length itself (the caller refuses it).
+ */
+export function nativeGridSeconds(requestedSec: number, joinOverlapSec: number = 0): number {
   const r = Number(requestedSec);
   if (!Number.isFinite(r) || r <= SHORT_CLIP_SECS[0]!) return SHORT_CLIP_SECS[0]!;
   const clip = SHORT_CLIP_SECS.find((c) => r <= c);
   if (clip !== undefined) return clip;
-  const scenes = Math.max(2, Math.ceil(r / SCENE_SEC - 1e-9));
+  const ov = overlapSeconds(joinOverlapSec);
+  // N scenes stitch to N·SCENE_SEC − (N−1)·ov: the smallest N (≥ 2) whose stitch is not shorter than the request.
+  const scenes = Math.max(2, Math.ceil((r - ov) / (SCENE_SEC - ov) - 1e-9));
   return scenes * SCENE_SEC;
 }
 
@@ -53,7 +80,7 @@ export interface DurationCapabilities {
   maxSeconds: number;
 }
 
-export type DurationBlock = 'too_short' | 'too_long' | 'longform_closed';
+export type DurationBlock = 'too_short' | 'too_long' | 'longform_closed' | 'joins_exceed_film';
 
 export interface DurationPlan {
   requestedSec: number;
@@ -63,44 +90,60 @@ export interface DurationPlan {
   sceneCount: number;
   /** One clip's length: the clip itself for 4 · 6 · 8 s, 8 s for every film. */
   clipSec: number;
+  /** What every join takes off the stitched master (PlanOptions): 0 for cuts, a single clip and the long-form concat. */
+  joinOverlapSec: number;
+  /** The stitched master the final is cut from: nativeSec − (sceneCount − 1) × joinOverlapSec. Equal to nativeSec with cuts. */
+  stitchSec: number;
   finalSec: number;
   finalFrames: number;
+  /** stitchSec − finalSec: what the cut removes; 0 when the stitched master is exactly the request. */
   trimSec: number;
   route: VideoRoute;
-  /** 'trim': the native master is longer than the request and is cut to it; 'none': the request is on the grid. */
+  /** 'trim': the stitched master is longer than the request and is cut to it; 'none': the request is exactly the stitch. */
   deviation: 'none' | 'trim';
 }
 
 export type DurationVerdict =
   | { ok: true; plan: DurationPlan }
-  | { ok: false; reason: DurationBlock; requestedSec: number; maxSec: number };
+  | { ok: false; reason: DurationBlock; requestedSec: number; maxSec: number; joinOverlapSec?: number };
 
 /**
  * The plan for a requested length, or the refusal: too short (under 4 s), too long (over 4 min), or a long-form length
  * (104 … 240 s) while that pipeline is closed to the studio — the answer is the reason and the longest open length, never
  * a 96 s film in place of a 240 s one.
  */
-export function planFinalDuration(requestedSec: number, caps: DurationCapabilities): DurationVerdict {
+export function planFinalDuration(requestedSec: number, caps: DurationCapabilities, opts: PlanOptions = {}): DurationVerdict {
   const r = Number(requestedSec);
   if (!Number.isFinite(r) || r < VIDEO_MIN_SEC) return { ok: false, reason: 'too_short', requestedSec: Number.isFinite(r) ? r : 0, maxSec: openMaxSeconds(caps) };
   if (r > VIDEO_MAX_SEC) return { ok: false, reason: 'too_long', requestedSec: r, maxSec: openMaxSeconds(caps) };
-  const nativeSec = nativeGridSeconds(r);
-  const route = videoRoute(nativeSec);
-  if (route === 'longform' && (!caps.longform || nativeSec > caps.maxSeconds)) {
+  const gridSec = nativeGridSeconds(r); // the cut grid decides the route
+  const route = videoRoute(gridSec);
+  if (route === 'longform' && (!caps.longform || gridSec > caps.maxSeconds)) {
     return { ok: false, reason: 'longform_closed', requestedSec: r, maxSec: openMaxSeconds(caps) };
   }
+  // Joins overlap only inside a film: a single clip has none, and the long-form stitch is a straight concat.
+  const ov = route === 'film' ? overlapSeconds(opts.joinOverlapSec) : 0;
+  const nativeSec = ov > 0 ? nativeGridSeconds(r, ov) : gridSec;
+  if (route === 'film' && nativeSec > FILM_MAX_SEC) {
+    // With these joins the request needs more scenes than the film pipeline makes; with cuts it would fit.
+    return { ok: false, reason: 'joins_exceed_film', requestedSec: r, maxSec: FILM_MAX_SEC - (FILM_MAX_SCENES - 1) * ov, joinOverlapSec: ov };
+  }
+  const sceneCount = nativeSec <= SCENE_SEC ? 1 : nativeSec / SCENE_SEC;
+  const clipSec = nativeSec <= SCENE_SEC ? nativeSec : SCENE_SEC;
+  const stitchSec = Math.round((nativeSec - (sceneCount - 1) * ov) * 1000) / 1000;
   const finalFrames = framesFor(r);
   const finalSec = finalFrames / VIDEO_FPS;
-  const trimSec = Math.max(0, Math.round((nativeSec - finalSec) * 1000) / 1000);
-  const clipSec = nativeSec <= SCENE_SEC ? nativeSec : SCENE_SEC;
+  const trimSec = Math.max(0, Math.round((stitchSec - finalSec) * 1000) / 1000);
   return {
     ok: true,
     plan: {
       requestedSec: r,
       requestedFrames: finalFrames,
       nativeSec,
-      sceneCount: nativeSec <= SCENE_SEC ? 1 : nativeSec / SCENE_SEC,
+      sceneCount,
       clipSec,
+      joinOverlapSec: ov,
+      stitchSec,
       finalSec,
       finalFrames,
       trimSec,
@@ -131,7 +174,13 @@ function exact(seconds: number, locale: string): string {
  */
 export function describeDurationPlan(plan: DurationPlan, locale: string = 'ka'): string {
   const l = lang(locale);
-  const scenes = plan.sceneCount > 1 ? ` (${plan.sceneCount} × ${formatVideoDuration(plan.clipSec, locale)})` : '';
+  // With soft joins the scenes do not add up to the rendered length: say what they stitch to („9 × 8წმ · 1წმ გადასვლები = 1:05").
+  const joins = plan.sceneCount > 1 && plan.joinOverlapSec > 0
+    ? (l === 'en' ? ` · ${exact(plan.joinOverlapSec, locale)} joins = ${exact(plan.stitchSec, locale)}`
+      : l === 'ru' ? ` · стыки ${exact(plan.joinOverlapSec, locale)} = ${exact(plan.stitchSec, locale)}`
+        : ` · ${exact(plan.joinOverlapSec, locale)} გადასვლები = ${exact(plan.stitchSec, locale)}`)
+    : '';
+  const scenes = plan.sceneCount > 1 ? ` (${plan.sceneCount} × ${formatVideoDuration(plan.clipSec, locale)}${joins})` : '';
   const req = exact(plan.requestedSec, locale);
   const nat = formatVideoDuration(plan.nativeSec, locale);
   const fin = exact(plan.finalSec, locale);
@@ -162,6 +211,13 @@ export function describeDurationBlock(v: Extract<DurationVerdict, { ok: false }>
       : l === 'ru' ? `${req} длиннее самого длинного видео (${formatVideoDuration(VIDEO_MAX_SEC, locale)}).`
         : `${req} უგრძეს ვიდეოზე (${formatVideoDuration(VIDEO_MAX_SEC, locale)}) მეტია.`;
   }
+  if (v.reason === 'joins_exceed_film') {
+    const ov = exact(v.joinOverlapSec ?? JOIN_OVERLAP_SEC, locale);
+    const cutMax = formatVideoDuration(FILM_MAX_SEC, locale);
+    return l === 'en' ? `A ${req} film with ${ov} joins needs more than ${FILM_MAX_SCENES} scenes. The longest film with these joins is ${max}; with cuts between the scenes, ${cutMax}.`
+      : l === 'ru' ? `Фильм ${req} со стыками ${ov} требует больше ${FILM_MAX_SCENES} сцен. Самый длинный фильм с такими стыками — ${max}; с резкими склейками — ${cutMax}.`
+        : `${req}-იანი ფილმი ${ov} გადასვლებით ${FILM_MAX_SCENES} სცენაზე მეტს ითხოვს. ამ გადასვლებით უგრძესი ფილმი ${max}-ია; სცენებს შორის ჭრით — ${cutMax}.`;
+  }
   return l === 'en' ? `A ${req} film needs the long-form pipeline, which is not open yet. The longest film today is ${max}; nothing shorter was made in its place.`
     : l === 'ru' ? `Фильм ${req} требует длинноформатного конвейера, который ещё не открыт. Самый длинный фильм сегодня — ${max}; более короткий вместо него не создавался.`
       : `${req}-იანი ფილმი გრძელი ფორმის პაიპლაინს სჭირდება, რომელიც ჯერ არ არის ღია. დღეს უგრძესი ფილმი ${max}-ია; მის ნაცვლად უფრო მოკლე არ გაკეთებულა.`;
@@ -174,9 +230,9 @@ export function describeDurationBlock(v: Extract<DurationVerdict, { ok: false }>
  * native length it was planned on (the user picking another length drops the request). Null otherwise — the panel then
  * says one length, as before.
  */
-export function activePlan(requestedSec: number | null | undefined, panelSec: number, caps: DurationCapabilities): DurationPlan | null {
+export function activePlan(requestedSec: number | null | undefined, panelSec: number, caps: DurationCapabilities, opts: PlanOptions = {}): DurationPlan | null {
   if (requestedSec === null || requestedSec === undefined) return null;
-  const v = planFinalDuration(requestedSec, caps);
+  const v = planFinalDuration(requestedSec, caps, opts);
   if (!v.ok || v.plan.nativeSec !== panelSec) return null;
   return v.plan;
 }
@@ -206,4 +262,25 @@ export function finalCutForAssemble(masterSec: number, finalDurationSec: unknown
   const trimSec = Math.max(0, Math.round((master - finalSec) * 1000) / 1000);
   if (trimSec >= SCENE_SEC) return { ok: false, reason: 'trim_exceeds_scene', masterSec: master, finalSec: said };
   return { ok: true, finalSec, finalFrames, trimSec };
+}
+
+/**
+ * Why the board cannot be cut to the request, said on screen before any render („დაფა ამ გადასვლებით 57წმ-ზე იკვრება; 1:00 მისგან
+ * ვერ მოიჭრება"): the studio's render-time check and the server's 400 share the verdict shape, so the words are one set.
+ */
+export function describeFinalCutRefusal(v: Extract<FinalCutVerdict, { ok: false }>, locale: string = 'ka'): string {
+  const l = lang(locale);
+  const master = Number.isFinite(v.masterSec) ? exact(Math.round(v.masterSec * 1000) / 1000, locale) : '?';
+  const fin = v.finalSec !== null ? exact(v.finalSec, locale) : (l === 'en' ? 'the request' : l === 'ru' ? 'запрос' : 'მოთხოვნა');
+  const why: Record<FinalCutRefusal, [string, string, string]> = {
+    longer_than_master: ['ის დაფაზე გრძელია', 'it is longer than the board', 'он длиннее монтажа'],
+    trim_exceeds_scene: ['მთელი სცენა მოიჭრებოდა', 'a whole scene would be cut', 'пришлось бы отрезать целую сцену'],
+    off_frame_grid: ['ის კადრების მთელი რიცხვი არ არის', 'it is not a whole number of frames', 'это не целое число кадров'],
+    too_short: [`ის ${formatVideoDuration(VIDEO_MIN_SEC, locale)}-ზე ნაკლებია`, `it is under ${formatVideoDuration(VIDEO_MIN_SEC, locale)}`, `он короче ${formatVideoDuration(VIDEO_MIN_SEC, locale)}`],
+    not_a_number: ['ის სიგრძე არ არის', 'it is not a length', 'это не длина'],
+  };
+  const [ka, en, ru] = why[v.reason];
+  return l === 'en' ? `The board stitches to ${master} with these joins; ${fin} cannot be cut from it (${en}). Pick a length on the panel to drop the request, or change the joins.`
+    : l === 'ru' ? `С этими стыками монтаж получается ${master}; ${fin} из него не вырезать (${ru}). Выберите длину на панели, чтобы снять запрос, или измените стыки.`
+      : `დაფა ამ გადასვლებით ${master}-ზე იკვრება; ${fin} მისგან ვერ მოიჭრება (${ka}). პანელზე სიგრძე აირჩიე მოთხოვნის მოსახსნელად, ან გადასვლები შეცვალე.`;
 }

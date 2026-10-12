@@ -538,6 +538,23 @@ async function postOrchestrate(body: Record<string, unknown>, signal?: AbortSign
   return json;
 }
 
+/**
+ * The transition fields of a film's globalRender: the whole-film transition, and the per-join list from the scene timeline
+ * (comma-separated — globalRender carries scalars only). A mixed list needs the soft (xfade) chain, so the whole-film field
+ * then says 'crossfade' unless every join is a cut; the assembler renders each 'cut' inside a mixed chain as a one-frame join.
+ * Pure: the studio's render-time length check (Video Core v1.0 §4) composes the joins through this same function, so the
+ * stitched length it predicts is the one the route and the assembler read (ffmpeg-filtergraph resolveJoins).
+ */
+export function composeTransitionRender(transition: string | null | undefined, joinTransitions: readonly string[] | null | undefined): Record<string, string> {
+  const g: Record<string, string> = {};
+  if (transition) g.transition = transition;
+  if (joinTransitions && joinTransitions.length) {
+    g.transitions = joinTransitions.join(',');
+    if (!transition || transition === 'cut') g.transition = joinTransitions.every((t) => t === 'cut') ? 'cut' : 'crossfade';
+  }
+  return g;
+}
+
 /** Mirror of MyAvatarChatV2.assembleFilm — hand the landed clips to the authed stitch. */
 async function assembleMaster(
   clipUrls: string[],
@@ -580,14 +597,7 @@ async function assembleMaster(
   // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
   // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
   // the route keeps its defaults (and the existing documentary mix) when nothing is set.
-  const globalRender: Record<string, string | number | boolean> = {};
-  if (transition) globalRender.transition = transition;
-  // globalRender carries scalars only: the per-join list travels comma-separated ("cut,dissolve,cut").
-  if (joinTransitions && joinTransitions.length) {
-    globalRender.transitions = joinTransitions.join(',');
-    // A mixed list needs the soft (xfade) chain; the assembler renders each 'cut' in it as a one-frame join.
-    if (!transition || transition === 'cut') globalRender.transition = joinTransitions.every((t) => t === 'cut') ? 'cut' : 'crossfade';
-  }
+  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(transition, joinTransitions) };
   if (audioMix?.threeTrack) globalRender.three_track_mix = true;
   if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
   if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;

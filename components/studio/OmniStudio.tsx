@@ -48,7 +48,8 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
 import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
@@ -65,7 +66,7 @@ import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
-import { describeDurationBlock, describeDurationPlan, openMaxSeconds, planFinalDuration } from '@/lib/video/durationContract';
+import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, openMaxSeconds, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
@@ -2605,6 +2606,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
   const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
+  // Video Core v1.0 §4 — the plan's join model: the scene timeline's default join. A cut takes nothing off the stitched master; a
+  // soft join (crossfade · dissolve · fade) 1 s, so a 60 s film with crossfades is planned as 9 scenes, not 8. The exact per-join
+  // stitch of the board that renders is checked in startFilmRender from the joins it will make.
+  const videoPlanOpts = useMemo(() => ({ joinOverlapSec: joinOverlapFor(veoPlan.transitionDefault) }), [veoPlan.transitionDefault]);
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
   // V1–V6 director runs (VIDEO_DIRECTOR_RUNS): when on for this user, an approved board renders shot by shot through
@@ -3710,7 +3715,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // …through the duration contract (Video Core v1.0 §4 · §6): off the grid → rendered on the grid above it and delivered
       // as asked; a long-form length while that pipeline is closed → the longest open length AND the reason on screen,
       // never a shorter film passed off as the board's length.
-      const sbPlan = planFinalDuration(Number(sb.duration), videoCaps);
+      const sbPlan = planFinalDuration(Number(sb.duration), videoCaps, videoPlanOpts);
       if (sbPlan.ok) { setVideoDuration(sbPlan.plan.nativeSec); setVideoRequestedSec(sbPlan.plan.deviation === 'trim' ? sbPlan.plan.requestedSec : null); }
       else { setVideoDuration(openMaxSeconds(videoCaps)); setVideoRequestedSec(null); }
       setVideoOrientation(sb.orientation);
@@ -3729,7 +3734,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), sbPlan.ok ? 2800 : 7000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transitCharacterUrl, transitAudioUrl, transitStoryboard]);
+  }, [transitCharacterUrl, transitAudioUrl, transitStoryboard, videoPlanOpts]);
 
   // Track the composer's live height so anything floating at the bottom clears it.
   //
@@ -4229,11 +4234,20 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // final is what is delivered: the length asked in words when it is off the grid AND was planned on this very grid, else
     // the native length itself (the cut then only pins the frame count at 30 fps). A board whose script set its own cadence
     // is a grid the words did not plan on: no contract is sent, and the film is the board's length.
-    const nativeOfRender = renderSceneCount * (filmClipSec ?? FILM_CLIP_SEC);
-    const requestedPlan = videoRequestedSec !== null ? planFinalDuration(videoRequestedSec, videoCaps) : null;
-    const finalDurationSec = requestedPlan
-      ? (requestedPlan.ok && requestedPlan.plan.nativeSec === nativeOfRender ? requestedPlan.plan.finalSec : undefined)
-      : nativeOfRender;
+    const veoRender = toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount);
+    // The joins THIS render makes (the scene timeline's list, else the panel's transition), composed as the film client posts
+    // them and read as the assembler reads them: the stitched master is the clips end to end less every join's overlap (a soft
+    // join 1 s, a cut inside a mixed chain one frame). The request is checked against THAT, so the server's answer is known
+    // here — a request this board cannot be cut to is refused on screen, with a Retry that plans the board again; never a film
+    // of another length. No request: the stitched length itself is the contract (it pins the frame count at 30 fps).
+    const renderJoins = veoRender.scenes.length > 1 ? veoRender.scenes.slice(0, -1).map((sc) => sc.transitionOut) : [];
+    const stitchOfRender = stitchedSeconds(renderSceneCount, filmClipSec ?? FILM_CLIP_SEC, composeTransitionRender(videoTransition, renderJoins), VIDEO_FPS);
+    const requestedCut = videoRequestedSec !== null ? finalCutForAssemble(stitchOfRender, videoRequestedSec) : null;
+    if (requestedCut && !requestedCut.ok) {
+      setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${describeFinalCutRefusal(requestedCut, locale)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation } }]);
+      return Promise.resolve();
+    }
+    const finalDurationSec = requestedCut ? requestedCut.finalSec : quantizeToFrames(stitchOfRender);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
@@ -4241,7 +4255,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       voiceTone, videoModel, hasTrainedVoice, videoMasterScript,
       // The format follows THIS request's orientation (a retry replays the orientation it was planned with, whatever
       // the panel holds now); a music video is 9:16 whatever either says.
-      veo: toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount),
+      veo: veoRender,
       motionIntensity: veoPlan.cameraDefault.intensity,
       ...(filmClipSec ? { clipSec: filmClipSec } : {}),
       ...(finalDurationSec !== undefined ? { finalDurationSec } : {}),
@@ -4272,7 +4286,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoRequestedSec, videoCaps, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoRequestedSec, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -7788,7 +7802,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Video Core v1.0 §4 — the duration contract, not the nearest stop: rendered on the grid above the request, delivered as
         // asked (60 → rendered 64, final 60); a length the open pipelines cannot make is refused with the reason (240 while
         // long-form is closed), and the panel is left as it was.
-        const v = planFinalDuration(a.durationSec, videoCaps);
+        const v = planFinalDuration(a.durationSec, videoCaps, videoPlanOpts);
         if (v.ok) {
           setVideoDuration(v.plan.nativeSec);
           setVideoRequestedSec(v.plan.deviation === 'trim' ? v.plan.requestedSec : null);
@@ -8916,7 +8930,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         let nativeSec: number;
         let lengthNote: string;
         if (step.durationSec !== undefined) {
-          const v = planFinalDuration(step.durationSec, videoCaps);
+          const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
           if (!v.ok) {
             setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
             setVideoDuration(openMaxSeconds(videoCaps)); setVideoRequestedSec(null);
@@ -10335,6 +10349,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               }}
               caps={videoCaps}
               requestedSec={videoRequestedSec}
+              joinOverlapSec={videoPlanOpts.joinOverlapSec}
               storySummary={styleLabel(videoStyle, locale)}
               voiceSummary={videoSoundtrack?.name}
               storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}

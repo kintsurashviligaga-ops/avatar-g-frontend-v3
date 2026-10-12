@@ -44,7 +44,7 @@ const DONE_BTN = 'flex min-h-[52px] w-full items-center justify-center rounded-2
 
 // ── Length ────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, caps, tier, mode, requestedSec }: {
+export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, caps, tier, mode, requestedSec, joinOverlapSec }: {
   open: boolean;
   onClose: () => void;
   locale: string;
@@ -55,8 +55,10 @@ export function VideoDurationSheet({ open, onClose, locale, seconds, onChange, c
   mode: VideoMode;
   /** Video Core v1.0 §4 — an off-grid length asked in words; the sheet then says requested · rendered · final under the clock. */
   requestedSec?: number | null;
+  /** The plan's join model: 0 with cuts, 1 s per soft join (lib/video/durationContract joinOverlapFor). */
+  joinOverlapSec?: number;
 }) {
-  const requestPlan = activePlan(requestedSec, seconds, caps);
+  const requestPlan = activePlan(requestedSec, seconds, caps, { joinOverlapSec: joinOverlapSec ?? 0 });
   const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
   const lastOpen = lastOpenStopIndex(caps);
   const index = Math.min(Math.max(0, durationStopIndex(seconds)), lastOpen);

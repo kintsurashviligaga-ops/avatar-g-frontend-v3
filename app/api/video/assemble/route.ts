@@ -35,7 +35,8 @@ import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
-import { finalCutForAssemble } from '@/lib/video/durationContract';
+import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { cutMasterToLength } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
@@ -268,21 +269,6 @@ async function assembleImpl(req: NextRequest) {
     seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
     mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
   });
-  // Video Core v1.0 §4 — the contracted FINAL length against the clips actually handed over (the native master). Checked
-  // HERE, before any charge or status write: a final this master cannot be cut to (longer than it, a trim of a whole
-  // scene, off the frame grid) is a 400 with the reason — never a film of another length passed off as the request.
-  const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
-  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null ? null : finalCutForAssemble(nativeTotalSec, body.finalDurationSec);
-  if (finalCut && !finalCut.ok) {
-    return NextResponse.json({
-      error: 'final_duration_invalid',
-      reason: finalCut.reason,
-      masterSec: nativeTotalSec,
-      finalSec: finalCut.finalSec,
-      message: `The final length ${String(body.finalDurationSec)}s cannot be cut from the ${nativeTotalSec}s of clips rendered (${finalCut.reason}). Nothing was stitched or charged.`,
-    }, { status: 400 });
-  }
-
   // Anonymous trial renders are allowed. The expensive part — rendering the 5
   // clips — already runs for anonymous callers (dispatch is open), so gating ONLY
   // the cheap final stitch left users with rendered-but-unusable clips and the
@@ -317,6 +303,26 @@ async function assembleImpl(req: NextRequest) {
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
+  // Video Core v1.0 §4 — the contracted FINAL length against the clips actually handed over AND the joins this render makes:
+  // the stitched master is the clips laid end to end less every join's overlap (a soft join 1 s, a cut inside a mixed chain one
+  // frame — lib/orchestrator/ffmpeg-filtergraph stitchedSeconds, the assembler's own reading), so a 60 s final from 8 × 8 s
+  // with crossfades (57 s) is refused HERE, before any charge or status write, with the reason — never a film of another
+  // length passed off as the request. The joins are resolved exactly as the manifest below composes them: a film hard-cuts
+  // unless the caller's globalRender says otherwise.
+  const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
+  const clipSecOfRender = Math.max(1, Math.round(nativeTotalSec / segments.length));
+  const stitchSec = stitchedSeconds(segments.length, clipSecOfRender, { ...(filmTokenId ? { transition: 'cut' } : {}), ...(body.globalRender ?? {}) }, VIDEO_FPS);
+  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null ? null : finalCutForAssemble(stitchSec, body.finalDurationSec);
+  if (finalCut && !finalCut.ok) {
+    return NextResponse.json({
+      error: 'final_duration_invalid',
+      reason: finalCut.reason,
+      masterSec: stitchSec,
+      nativeSec: nativeTotalSec,
+      finalSec: finalCut.finalSec,
+      message: `The final length ${String(body.finalDurationSec)}s cannot be cut from the ${Math.round(stitchSec * 1000) / 1000}s this film stitches to (${nativeTotalSec}s of clips; ${finalCut.reason}). Nothing was stitched or charged.`,
+    }, { status: 400 });
+  }
   // PRODUCT-AD single-charge token (rank 2): the client jobId that /api/video/remix already billed
   // (full video tier) for a Product-Ad. Separate from filmTokenId so it drives the billing SKIP
   // below WITHOUT any film-specific side-effects (no recordFilmAssembling / recordFilmFailed / 'cut').

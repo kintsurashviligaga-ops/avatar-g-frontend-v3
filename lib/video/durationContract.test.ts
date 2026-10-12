@@ -6,9 +6,10 @@
  */
 import { CLOSED_CAPABILITIES } from './createPanel';
 import { snapVideoSeconds } from './duration';
+import { joinOverlaps } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import {
-  VIDEO_FPS, activePlan, describeDurationBlock, describeDurationPlan, finalCutForAssemble, framesFor, nativeGridSeconds, openMaxSeconds,
-  planFinalDuration, quantizeToFrames,
+  JOIN_OVERLAP_SEC, VIDEO_FPS, activePlan, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, framesFor,
+  joinOverlapFor, nativeGridSeconds, openMaxSeconds, planFinalDuration, quantizeToFrames,
 } from './durationContract';
 
 const OPEN = { longform: true, maxSeconds: 240 };
@@ -163,5 +164,78 @@ describe('finalCutForAssemble: the server checks the final against the clips it 
   });
   test('the legacy 30 s pad of a short 4-scene film is cut back to its real length (24 s of 6 s clips)', () => {
     expect(finalCutForAssemble(30, 24)).toEqual({ ok: true, finalSec: 24, finalFrames: 720, trimSec: 6 });
+  });
+});
+
+describe('soft joins shorten the stitched master, so the plan counts scenes from the STITCH (§4 · §7)', () => {
+  const SOFT = { joinOverlapSec: 1 };
+  test('the overlap of one soft join is the filtergraph\'s, and a cut takes nothing', () => {
+    expect(JOIN_OVERLAP_SEC).toBe(1);
+    expect(joinOverlaps(3, 'crossfade', undefined, 30)).toEqual([JOIN_OVERLAP_SEC, JOIN_OVERLAP_SEC]);
+    expect(joinOverlapFor('cut')).toBe(0);
+    expect(joinOverlapFor(undefined)).toBe(0);
+    expect(joinOverlapFor('crossfade')).toBe(1);
+    expect(joinOverlapFor('dissolve')).toBe(1);
+  });
+  test('60 s with crossfades: 9 scenes (72 s rendered) stitch to 64 s, cut to 60 = 1800 frames — 8 scenes would be 57 s', () => {
+    const v = planFinalDuration(60, CLOSED_CAPABILITIES, SOFT);
+    if (!v.ok) throw new Error(v.reason);
+    expect(v.plan).toMatchObject({ nativeSec: 72, sceneCount: 9, joinOverlapSec: 1, stitchSec: 64, finalSec: 60, finalFrames: 1800, trimSec: 4, deviation: 'trim' });
+    expect(nativeGridSeconds(60, 1)).toBe(72);
+    expect(nativeGridSeconds(60)).toBe(64);
+  });
+  test('29.7 s with crossfades: 5 scenes (40 s) stitch to 36, cut to 29.7 = 891 frames; 24 s on the grid is still a trim', () => {
+    const a = planFinalDuration(29.7, CLOSED_CAPABILITIES, SOFT);
+    if (!a.ok) throw new Error(a.reason);
+    expect(a.plan).toMatchObject({ nativeSec: 40, sceneCount: 5, stitchSec: 36, finalSec: 29.7, finalFrames: 891, trimSec: 6.3 });
+    const b = planFinalDuration(24, CLOSED_CAPABILITIES, SOFT);
+    if (!b.ok) throw new Error(b.reason);
+    expect(b.plan).toMatchObject({ nativeSec: 32, sceneCount: 4, stitchSec: 29, finalSec: 24, finalFrames: 720, trimSec: 5, deviation: 'trim' });
+  });
+  test('a request that IS the stitch has no trim: 64 s = 9 × 8 − 8 × 1', () => {
+    const v = planFinalDuration(64, CLOSED_CAPABILITIES, SOFT);
+    if (!v.ok) throw new Error(v.reason);
+    expect(v.plan).toMatchObject({ nativeSec: 72, sceneCount: 9, stitchSec: 64, trimSec: 0, deviation: 'none' });
+    expect(describeDurationPlan(v.plan, 'en')).toBe('Length 1:04 (9 × 8s · 1s joins = 1:04) · 1920 frames');
+  });
+  test('a single clip has no join; the long-form concat has no overlap', () => {
+    const one = planFinalDuration(5, CLOSED_CAPABILITIES, SOFT);
+    if (!one.ok) throw new Error(one.reason);
+    expect(one.plan).toMatchObject({ route: 'single', nativeSec: 6, joinOverlapSec: 0, stitchSec: 6, trimSec: 1 });
+    const lf = planFinalDuration(240, OPEN, SOFT);
+    if (!lf.ok) throw new Error(lf.reason);
+    expect(lf.plan).toMatchObject({ route: 'longform', nativeSec: 240, sceneCount: 30, joinOverlapSec: 0, stitchSec: 240, trimSec: 0 });
+  });
+  test('with crossfades the film ceiling is 85 s (12 × 8 − 11): 85 fits, 86 and 90 are refused with the reason', () => {
+    const ok = planFinalDuration(85, CLOSED_CAPABILITIES, SOFT);
+    if (!ok.ok) throw new Error(ok.reason);
+    expect(ok.plan).toMatchObject({ nativeSec: 96, sceneCount: 12, stitchSec: 85, trimSec: 0 });
+    expect(planFinalDuration(86, CLOSED_CAPABILITIES, SOFT)).toEqual({ ok: false, reason: 'joins_exceed_film', requestedSec: 86, maxSec: 85, joinOverlapSec: 1 });
+    const v = planFinalDuration(90, CLOSED_CAPABILITIES, SOFT);
+    expect(v).toMatchObject({ ok: false, reason: 'joins_exceed_film', maxSec: 85 });
+    expect(describeDurationBlock(v as Extract<typeof v, { ok: false }>, 'en')).toBe('A 1:30 film with 1s joins needs more than 12 scenes. The longest film with these joins is 1:25; with cuts between the scenes, 1:36.');
+    // with cuts the same 90 s is a 96 s film
+    expect(planFinalDuration(90, CLOSED_CAPABILITIES)).toMatchObject({ ok: true, plan: { nativeSec: 96, stitchSec: 96, trimSec: 6 } });
+  });
+  test('the plan line says what the scenes stitch to', () => {
+    const v = planFinalDuration(60, CLOSED_CAPABILITIES, SOFT);
+    if (!v.ok) throw new Error(v.reason);
+    expect(describeDurationPlan(v.plan, 'en')).toBe('Requested 1:00 · Rendered 1:12 (9 × 8s · 1s joins = 1:04) · Final 1:00 (1800 frames, 4s trimmed; priced at 1:12)');
+    expect(describeDurationPlan(v.plan, 'ka')).toBe('მოთხოვნილი 1:00 · რენდერი 1:12 (9 × 8წმ · 1წმ გადასვლები = 1:04) · საბოლოო 1:00 (1800 კადრი, 4წმ მოიჭრება; ფასი 1:12-ზე)');
+    expect(describeDurationPlan(v.plan, 'ru')).toBe('Запрошено 1:00 · Рендер 1:12 (9 × 8с · стыки 1с = 1:04) · Итог 1:00 (1800 кадров, обрезка 4с; цена за 1:12)');
+  });
+  test('activePlan follows the joins: 60 s with crossfades lives on the 72 s panel, not the 64 s one', () => {
+    expect(activePlan(60, 72, CLOSED_CAPABILITIES, SOFT)).toMatchObject({ stitchSec: 64, finalSec: 60 });
+    expect(activePlan(60, 64, CLOSED_CAPABILITIES, SOFT)).toBeNull();
+    expect(activePlan(60, 64, CLOSED_CAPABILITIES)).toMatchObject({ stitchSec: 64, finalSec: 60 });
+  });
+  test('the render-time refusal, said: 8 crossfaded scenes stitch to 57 s, a 60 s request cannot be cut from them', () => {
+    const v = finalCutForAssemble(57, 60);
+    if (v.ok) throw new Error('expected a refusal');
+    expect(describeFinalCutRefusal(v, 'en')).toBe('The board stitches to 57s with these joins; 1:00 cannot be cut from it (it is longer than the board). Pick a length on the panel to drop the request, or change the joins.');
+    expect(describeFinalCutRefusal(v, 'ka')).toMatch(/^დაფა ამ გადასვლებით 57წმ-ზე იკვრება; 1:00 მისგან ვერ მოიჭრება \(ის დაფაზე გრძელია\)\./);
+    const w = finalCutForAssemble(72, 60);
+    if (w.ok) throw new Error('expected a refusal');
+    expect(describeFinalCutRefusal(w, 'ru')).toMatch(/целую сцену/);
   });
 });

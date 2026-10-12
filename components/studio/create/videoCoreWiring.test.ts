@@ -27,11 +27,11 @@ describe('no silent snap: the nearest stop is never sold as the length (AC-04)',
     expect(studio).toMatch(/const \[videoRequestedSec, setVideoRequestedSec\] = useState<number \| null>\(null\)/);
   });
   test('the live tool plans the length through the contract and reports a refusal instead of changing the panel', () => {
-    expect(studio).toMatch(/const v = planFinalDuration\(a\.durationSec, videoCaps\);/);
+    expect(studio).toMatch(/const v = planFinalDuration\(a\.durationSec, videoCaps, videoPlanOpts\);/);
     expect(studio).toMatch(/applied\.durationRefused = v\.reason;/);
   });
   test('the Image Studio storyboard hand-over plans its length the same way, and a refused one is said', () => {
-    expect(studio).toMatch(/const sbPlan = planFinalDuration\(Number\(sb\.duration\), videoCaps\);/);
+    expect(studio).toMatch(/const sbPlan = planFinalDuration\(Number\(sb\.duration\), videoCaps, videoPlanOpts\);/);
     expect(studio).toMatch(/describeDurationBlock\(sbPlan, locale\)/);
   });
 });
@@ -39,7 +39,7 @@ describe('no silent snap: the nearest stop is never sold as the length (AC-04)',
 describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
   test("the chat step 'open' is handled: mode, length through the contract, storyboard planned on that grid", () => {
     expect(studio).toMatch(/case 'open': \{/);
-    expect(studio).toMatch(/const v = planFinalDuration\(step\.durationSec, videoCaps\);/);
+    expect(studio).toMatch(/const v = planFinalDuration\(step\.durationSec, videoCaps, videoPlanOpts\);/);
     expect(studio).toMatch(/lengthNote = describeDurationPlan\(v\.plan, locale\);/);
     expect(studio).toMatch(/say\(`\$\{describeDurationBlock\(v, locale\)\}/);
     expect(studio).toMatch(/void createStoryboard\(text, routeRefs, routeOrientation, \{ nativeSec \}\);/);
@@ -58,22 +58,26 @@ describe('chat → the Video tool, with the plan said (AC-01 · §3)', () => {
 describe('the panel says requested · rendered · final, and a pick on it drops the request', () => {
   test('OmniStudio binds the request to the panel and clears it on a pick', () => {
     expect(studio).toMatch(/onSeconds=\{\(s\) => \{ setVideoDuration\(s\); setVideoRequestedSec\(null\); \}\}/);
-    expect(studio).toMatch(/requestedSec=\{videoRequestedSec\}/);
+    expect(studio).toMatch(/requestedSec=\{videoRequestedSec\}\s*joinOverlapSec=\{videoPlanOpts\.joinOverlapSec\}/);
   });
   test('the panel and the length sheet draw the plan line from the one contract', () => {
-    expect(panel).toMatch(/const requestPlan = activePlan\(p\.requestedSec, seconds, caps\);/);
+    expect(panel).toMatch(/const requestPlan = activePlan\(p\.requestedSec, seconds, caps, \{ joinOverlapSec: p\.joinOverlapSec \?\? 0 \}\);/);
     expect(panel).toMatch(/requestPlan\.deviation === 'trim' \? requestPlan : null/);
     expect(panel).toMatch(/data-testid="video-duration-plan"/);
-    expect(panel).toMatch(/requestedSec=\{p\.requestedSec \?\? null\}/);
-    expect(pickers).toMatch(/const requestPlan = activePlan\(requestedSec, seconds, caps\);/);
+    expect(panel).toMatch(/requestedSec=\{p\.requestedSec \?\? null\} joinOverlapSec=\{p\.joinOverlapSec \?\? 0\}/);
+    expect(pickers).toMatch(/const requestPlan = activePlan\(requestedSec, seconds, caps, \{ joinOverlapSec: joinOverlapSec \?\? 0 \}\);/);
     expect(pickers).toMatch(/data-testid="video-duration-plan-sheet"/);
   });
 });
 
 describe('the final length reaches the render and the server cuts to it, or refuses (§4 · §8)', () => {
   test('the render snapshot carries finalDurationSec only when the request was planned on the grid that renders', () => {
-    expect(studio).toMatch(/const nativeOfRender = renderSceneCount \* \(filmClipSec \?\? FILM_CLIP_SEC\);/);
-    expect(studio).toMatch(/requestedPlan\.ok && requestedPlan\.plan\.nativeSec === nativeOfRender \? requestedPlan\.plan\.finalSec : undefined/);
+    // raw source: the comment stripper swallows this region (a '/*' inside a string literal above it)
+    expect(read('components/studio/OmniStudio.tsx')).toMatch(/const videoPlanOpts = useMemo\(\(\) => \(\{ joinOverlapSec: joinOverlapFor\(veoPlan\.transitionDefault\) \}\), \[veoPlan\.transitionDefault\]\);/);
+    expect(studio).toMatch(/const stitchOfRender = stitchedSeconds\(renderSceneCount, filmClipSec \?\? FILM_CLIP_SEC, composeTransitionRender\(videoTransition, renderJoins\), VIDEO_FPS\);/);
+    expect(studio).toMatch(/const requestedCut = videoRequestedSec !== null \? finalCutForAssemble\(stitchOfRender, videoRequestedSec\) : null;/);
+    expect(studio).toMatch(/describeFinalCutRefusal\(requestedCut, locale\)\}`, retryVideo: true, retryReq: \{ filmPrompt, refs, orientation \} \}\]\);\s*return Promise\.resolve\(\);/);
+    expect(studio).toMatch(/const finalDurationSec = requestedCut \? requestedCut\.finalSec : quantizeToFrames\(stitchOfRender\);/);
     expect(studio).toMatch(/\.\.\.\(finalDurationSec !== undefined \? \{ finalDurationSec \} : \{\}\),/);
     expect(studio).toMatch(/\.\.\.\(typeof finalDurationSec === 'number' \? \{ finalDurationSec \} : \{\}\),/);
   });
@@ -83,7 +87,8 @@ describe('the final length reaches the render and the server cuts to it, or refu
     expect(filmClient).toMatch(/opts\.joinTransitions \?\? null, opts\.finalDurationSec \?\? null\);/);
   });
   test('the route checks it against the clips BEFORE any charge, and answers 400 with the reason', () => {
-    const check = route.indexOf('finalCutForAssemble(nativeTotalSec, body.finalDurationSec)');
+    const check = route.indexOf('finalCutForAssemble(stitchSec, body.finalDurationSec)');
+    expect(route).toMatch(/const stitchSec = stitchedSeconds\(segments\.length, clipSecOfRender, \{ \.\.\.\(filmTokenId \? \{ transition: 'cut' \} : \{\}\), \.\.\.\(body\.globalRender \?\? \{\}\) \}, VIDEO_FPS\);/);
     const charge = route.indexOf('await lockTokens(uid, assembleCost, 900)');
     const tracker = route.indexOf('await recordFilmAssembling(filmTokenId)');
     expect(check).toBeGreaterThan(0);
@@ -99,6 +104,10 @@ describe('the final length reaches the render and the server cuts to it, or refu
   test('the assembler re-checks, renders the contract on the 30 fps timeline and stops the master at the final length', () => {
     expect(assembler).toMatch(/const fps = String\(g\.fps\) === '60' \? 60 : finalRequested !== null \? VIDEO_FPS : 24;/);
     expect(assembler).toMatch(/const finalCut = finalRequested !== null \? finalCutForAssemble\(masterDurSec, finalRequested\) : null;/);
+    expect(assembler).toMatch(/const stitchSec = inputs\.length \* clipSec - overlapSec\.reduce\(\(a, b\) => a \+ b, 0\);/);
+    expect(assembler).toMatch(/const masterDurSec = finalRequested !== null \? stitchSec : expectedMasterDuration\(inputs\.length, clipSec, transSec\);/);
+    expect(assembler).toMatch(/\.\.\.\(finalRequested !== null \? \{ padToTarget: false \} : \{\}\),/);
+    expect(assembler).toMatch(/const \{ transition, transitions: joinTransitions \} = resolveJoins\(segs\.length, g\);/);
     expect(assembler).toMatch(/if \(finalCut && !finalCut\.ok\) throw new Error\(`final duration refused/);
     expect(assembler).toMatch(/'-t', String\(deliverSec\),/);
     expect(assembler).toMatch(/expectedDurSec: deliverSec,/);
