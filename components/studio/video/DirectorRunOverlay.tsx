@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DirectorRunView } from '@/lib/video/director/run';
 import type { ShotDecision, Storyboard } from '@/lib/video/director/types';
+import type { RenderApprovalWire } from '@/lib/video/storyboard/revision';
 
 /** How often a running run is stepped. Veo takes about a minute per clip; faster polling only spends quota. */
 const STEP_MS = 5_000;
@@ -55,9 +56,15 @@ async function postJson(url: string, body: unknown): Promise<{ status: number; j
   return { status: res.status, json: (await res.json().catch(() => null)) as Record<string, unknown> | null };
 }
 
-export function DirectorRunOverlay({ storyboard, locale, onEdit, onClose }: {
+export function DirectorRunOverlay({ storyboard, approval, locale, onEdit, onClose }: {
   /** The board the user approved, as the director's Storyboard (lib/video/director/fromStudio). */
   storyboard: Storyboard;
+  /**
+   * The board's approval (revision, fingerprint, the approved board) taken at the tap — posted with the storyboard so the
+   * server can refuse a run that is not that revision (400 revision_mismatch; round 3 P1). Optional only for a storyboard
+   * that was never a board.
+   */
+  approval?: RenderApprovalWire;
   locale: Lang;
   /** Back to the board to change it; the run (if any) has ended. */
   onEdit: () => void;
@@ -78,7 +85,7 @@ export function DirectorRunOverlay({ storyboard, locale, onEdit, onClose }: {
     started.current = true;
     void (async () => {
       try {
-        const { status, json } = await postJson('/api/video/director/runs', { storyboard });
+        const { status, json } = await postJson('/api/video/director/runs', { storyboard, ...(approval ? { storyboardApproval: approval } : {}), locale });
         if (status === 201 && json?.run) return setPhase({ kind: 'run', view: json.run as DirectorRunView });
         setPhase({
           kind: 'refused',
@@ -89,7 +96,7 @@ export function DirectorRunOverlay({ storyboard, locale, onEdit, onClose }: {
         setPhase({ kind: 'refused', message: tr(locale, 'კავშირი ვერ დამყარდა.', 'Could not reach the server.', 'Нет связи с сервером.'), problems: [] });
       }
     })();
-  }, [storyboard, locale]);
+  }, [storyboard, approval, locale]);
 
   const runId = phase.kind === 'run' ? phase.view.id : null;
   const running = phase.kind === 'run' && phase.view.state === 'running';

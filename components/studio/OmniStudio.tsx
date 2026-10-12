@@ -3034,7 +3034,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     storyboardRevisionRef.current = snapshotRevision(storyboard, inferOrigin(storyboardPrevBoardRef.current, storyboard), storyboardRevisionRef.current);
     storyboardPrevBoardRef.current = storyboard;
   }, [storyboard]);
-  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard } | null>(null);
+  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard; approval: RenderApprovalWire } | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   // Which storyboard scene is currently re-rolling its single frame (null = none).
   const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
@@ -12225,32 +12225,34 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
+            const sb = storyboard;
+            // Video Core v1.0 §5 — the render is approved FROM this board's revision. The snapshot is taken on the board the
+            // tap saw (the effect may not have run for a change made this very tick: snapshotRevision returns the current
+            // revision when nothing changed, the next one otherwise), and the approval carries the number, the fingerprint
+            // and the board, so the server can refuse a render that is not this board — on the film path (orchestrate) and
+            // on the director path (POST /api/video/director/runs, round 3 P1) alike.
+            const approvedRev = snapshotRevision(sb, inferOrigin(storyboardPrevBoardRef.current, sb), storyboardRevisionRef.current);
+            storyboardRevisionRef.current = approvedRev;
+            const storyboardApproval = approvalForRender(approvedRev, sb);
             if (directorRunsOn) {
               // The director renders exactly this board (V2/V3/V6): its scenes' text, frame, length and tier, nothing
               // added — the music bed, narration and colour pass of the film render are not part of a director run.
-              const board = storyboard;
+              const board = sb;
               const seed = veoPlan.seedLock && Number.isInteger(board.seed) && board.seed >= 0 && board.seed <= 0xffff_ffff ? board.seed : undefined;
               setStoryboard(null);
               setDirectorBoard({
                 studio: board,
                 director: studioToDirectorStoryboard(board, { id: `board-${Date.now().toString(36)}`, quality: veoPlan.tier, clipSec: FILM_CLIP_SEC, ...(seed !== undefined ? { seed } : {}) }),
+                approval: storyboardApproval,
               });
               return;
             }
-            const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
+            const frameUrls = sb.scenes.map((s) => s.frameUrl);
             // REFERENCE MODE — the photos ride as Veo asset references and Veo composes every scene itself, so the
             // board's frames are only the plan: sending them would make each clip animate FROM a frame (Veo cannot
             // take a first frame and references together) and would drop the refs below.
             const referenceMode = veoPlan.referenceMode === 'reference';
             const sceneFrames = !referenceMode && frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
-            const sb = storyboard;
-            // Video Core v1.0 §5 — the render is approved FROM this board's revision. The snapshot is taken on the board the
-            // tap saw (the effect may not have run for a change made this very tick: snapshotRevision returns the current
-            // revision when nothing changed, the next one otherwise), and the approval carries the number, the fingerprint
-            // and the board, so the server can refuse a render that is not this board.
-            const approvedRev = snapshotRevision(sb, inferOrigin(storyboardPrevBoardRef.current, sb), storyboardRevisionRef.current);
-            storyboardRevisionRef.current = approvedRev;
-            const storyboardApproval = approvalForRender(approvedRev, sb);
             setStoryboard(null);
             // Thread the (possibly EDITED) per-scene descriptions into the render: an edited scene uses the user's own
             // words; the rest keep the rich LLM script. ONE derivation, shared with the server's check of the approval
@@ -12275,6 +12277,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {directorBoard && (
         <DirectorRunOverlay
           storyboard={directorBoard.director}
+          approval={directorBoard.approval}
           locale={locale}
           onEdit={() => { const back = directorBoard.studio; setDirectorBoard(null); setStoryboard(back); }}
           onClose={() => setDirectorBoard(null)}

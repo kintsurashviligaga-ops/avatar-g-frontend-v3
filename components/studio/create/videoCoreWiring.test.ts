@@ -164,6 +164,23 @@ describe('the storyboard is approved as a REVISION, and the render is checked ag
     expect(filmClient).toMatch(/storyboardApproval\?: RenderApprovalWire;/);
     expect(filmClient).toMatch(/\.\.\.\(opts\.storyboardApproval \? \{ storyboardApproval: opts\.storyboardApproval \} : \{\}\),/);
   });
+  test('the director path carries the same approval: the tap approves BEFORE the branch, the overlay posts it, the runs route checks it first (round 3 P1)', () => {
+    const approve = studio.indexOf('const storyboardApproval = approvalForRender(approvedRev, sb);');
+    const branch = studio.indexOf('if (directorRunsOn) {');
+    expect(approve).toBeGreaterThan(0);
+    expect(branch).toBeGreaterThan(approve);
+    expect(studio).toMatch(/approval: storyboardApproval,/);
+    expect(studio).toMatch(/approval=\{directorBoard\.approval\}/);
+    const overlay = code(read('components/studio/video/DirectorRunOverlay.tsx'));
+    expect(overlay).toMatch(/postJson\('\/api\/video\/director\/runs', \{ storyboard, \.\.\.\(approval \? \{ storyboardApproval: approval \} : \{\}\), locale \}\)/);
+    const runsRoute = code(read('app/api/video/director/runs/route.ts'));
+    const check = runsRoute.indexOf('const verdict = checkStoryboardApproval(draft, approval as RenderApprovalWire);');
+    const refuse = runsRoute.indexOf("error: 'revision_mismatch'");
+    const frozen = runsRoute.indexOf('const storyboard = freeze(draft);');
+    expect(check).toBeGreaterThan(0);
+    expect(refuse).toBeGreaterThan(check);
+    expect(frozen).toBeGreaterThan(refuse);
+  });
   test('the orchestrate route validates the approval BEFORE the orchestrator is called, and refuses with revision_mismatch', () => {
     const check = orchestrateRoute.indexOf('const verdict = validateRenderApproval(data.storyboardApproval, {');
     const refuse = orchestrateRoute.indexOf("error: 'revision_mismatch'");

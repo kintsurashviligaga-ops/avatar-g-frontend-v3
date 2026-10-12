@@ -100,8 +100,11 @@ scripts, scene count and clip length against it BEFORE the orchestrator is calle
 with the reason, nothing dispatched or charged; the approval (number + fingerprint + when) rides in the job metadata.
 Failure safety (built earlier): a plan miss, a timeout or a thrown plan call posts the chat's error card with **Retry** and
 **Dismiss**; no render, no charge, no silent fallback. Persistence: the tables stay a **proposal**
-(`proposals/20261012a_storyboard_revisions.sql`, not applied — B3); the director run path (`VIDEO_DIRECTOR_RUNS`) carries
-no approval yet (PARTIAL).
+(`proposals/20261012a_storyboard_revisions.sql`, not applied — B3). **Round 3 (P1):** the director run path
+(`VIDEO_DIRECTOR_RUNS`) carries the same approval: `POST /api/video/director/runs` checks the storyboard against it
+(`checkStoryboardApproval`: fingerprint, scene count, each shot's text and length in the director's order) and answers
+`400 revision_mismatch` before `freeze` — nothing stored, nothing charged. A run posted without an approval (no board behind
+it) is accepted as its own approved document; mandatory approval for every run is decision D8.
 
 ## 4. Timeline and montage contract (§7)
 
