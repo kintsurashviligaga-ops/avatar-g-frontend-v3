@@ -5,7 +5,7 @@
 | # | Needs | Why | Check that could not run |
 | --- | --- | --- | --- |
 | B1 | A per-test Veo/Vertex budget (T5) | the task authorizes no paid call; every provider path is mocked | real clip durations vs the contract (Native 64 for Requested 60), V1–V6 on a live model, long-form scenes |
-| B2 | A Preview run by GG (T4) on an already existing Preview, or permission for a new one | the task forbids a new Preview; this branch builds none (`vercel.json`) | AC-01 card flow in a browser, AC-13 Retry card, AC-15 project switch, AC-18 reload, AC-26 one window |
+| B2 | An **isolated** Preview (T4): a Supabase branch / second project + branch-scoped Vercel env, or a local `supabase start` stack in CI | round 3 (GG 10:17Z) authorized a Preview: it is **enabled again** (`dac6106`, Ready on `fc1971b`: `PREVIEW_EVIDENCE.md` §1) — but it binds the **Production** Supabase project, so only read-only checks are allowed there and no mutation E2E ran; the sandbox cannot reach `*.vercel.app` (HTTP 000) and the Vercel connector is 403 | AC-01 card flow in a real deployed browser, AC-13 Retry card, AC-15 project switch, AC-18 reload, AC-26 one-window flow at T4; the isolation options, cost and the approval GG owes are in `PREVIEW_EVIDENCE.md` §2 |
 | B3 | Applying `proposals/20261012a_storyboard_revisions.sql` as a migration | Preview shares the Production Supabase project; no migration in this task | AC-14 revision/approval binding, AC-28 artifact ↔ revision |
 | B4 | Flipping `LONGFORM_ORDER_WIRED` (one switch) + B1 | long-form is closed by name | AC-04 open path (exact 240 s = 7200 frames) |
 | B5 | Segmented ingestion + a worker host beyond one 600 s function (paid infra) | chat 8 / quote 13 files | AC-24 29+ assets |
