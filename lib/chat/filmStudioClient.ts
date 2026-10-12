@@ -193,6 +193,9 @@ export interface DriveFilmOptions {
   transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black';
   /** Per-join transitions from the studio's scene timeline (length = scenes − 1). Wins over `transition`. */
   joinTransitions?: Array<'cut' | 'crossfade' | 'dissolve' | 'fade_black'>;
+  /** Video Core v1.0 §4 — the contracted FINAL length (lib/video/durationContract): the master is cut to it frame-exact on
+   *  the 30 fps timeline by the assembler; the clips rendered stay the native (priced) length. */
+  finalDurationSec?: number;
   /**
    * The timecoded Master Production Script. ⚠️ IT USED TO BE DROPPED HERE: the studio passed it, but this interface
    * had no such field and the dispatch body never sent it, so the server's master-script casting, dialogue stems
@@ -558,6 +561,8 @@ async function assembleMaster(
   clipSec?: number | null,
   /** Per-join transitions (the studio's scene timeline). */
   joinTransitions?: string[] | null,
+  /** Video Core v1.0 §4 — the contracted final length the assembler cuts the master to. */
+  finalDurationSec?: number | null,
 ): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
@@ -610,6 +615,8 @@ async function assembleMaster(
       ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
+      // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
+      ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
       // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
       // landscape is the route default.
       ...(orientation && orientation !== 'landscape' ? { orientation } : {}),
@@ -962,7 +969,7 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, opts.finalDurationSec ?? null);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }

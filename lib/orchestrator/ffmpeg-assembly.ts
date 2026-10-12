@@ -21,6 +21,7 @@ import { buildFilterComplex, joinOverlaps, sceneAwareTransitions } from './ffmpe
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
+import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
 import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { fetchPublic } from '@/lib/web/publicFetch';
@@ -113,6 +114,11 @@ export interface FfmpegManifest {
    *  existing voice-keyed sidechain. Anything else (absent, one speaker, an untimed/dropped turn) → the
    *  single-voice `voiceoverUrl` path runs UNCHANGED (fail-open fallback). */
   dialogueStems?: { url: string; speaker: string; startSec?: number | null }[];
+  /** Video Core v1.0 §4 — the contracted FINAL length (lib/video/durationContract). The clips are the native master; the
+   *  delivered film is this long, by a frame-exact `-t` on the 30 fps timeline (29.7 s = 891 frames). Checked against the
+   *  master it is cut from: a length that cannot be cut from it is a thrown refusal (the saga refunds), never another
+   *  length delivered. Absent → the master is N × clipSec at 24 fps, as before. */
+  finalDurationSec?: number | null;
 }
 
 /** True when the CPU assembler can run (binary bundled). */
@@ -220,7 +226,10 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     console.log(`[assemble] downloaded ${segs.length} clips + ${[voice, music, sfx].filter(Boolean).length} audio lanes in ${Date.now() - tDl}ms`);
 
     const g = m.globalRender ?? {};
-    const fps = String(g.fps) === '60' ? 60 : 24;
+    // Video Core v1.0 §4 — a film with a contracted final length renders on the 30 fps timeline, so the delivered length is a
+    // whole number of frames (24 s = 720, 29.7 s = 891). Without one: 24 fps, as before.
+    const finalRequested = typeof m.finalDurationSec === 'number' && Number.isFinite(m.finalDurationSec) ? m.finalDurationSec : null;
+    const fps = String(g.fps) === '60' ? 60 : finalRequested !== null ? VIDEO_FPS : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
     const transition = String(g.transition ?? 'crossfade');
     // Per-join transitions from the studio's scene timeline ("cut,dissolve,cut"). globalRender carries scalars only,
@@ -475,6 +484,15 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // (~50MB project cap). Derived per-runtime: a 30s master (~40MB) is barely
     // touched; a 49s/60s master is capped from ~70MB down to ~MASTER_TARGET_MB.
     const masterDurSec = expectedMasterDuration(inputs.length, clipSec, transSec);
+    // The contracted final length, checked against the master it is cut from: refused (the saga refunds) rather than
+    // delivered at another length. `-t` below then stops the master at the final length — frame-exact at this rate.
+    const finalCut = finalRequested !== null ? finalCutForAssemble(masterDurSec, finalRequested) : null;
+    if (finalCut && !finalCut.ok) throw new Error(`final duration refused: ${finalCut.reason} (master ${masterDurSec}s, requested ${finalRequested}s)`);
+    const deliverSec = finalCut?.ok ? finalCut.finalSec : masterDurSec;
+    if (finalCut?.ok) {
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] final cut: master ${masterDurSec}s → final ${deliverSec}s (${finalCut.finalFrames} frames at ${fps} fps, ${finalCut.trimSec}s trimmed)`);
+    }
     const MASTER_TARGET_MB = 42;
     const AUDIO_KBPS = 256;
     const masterMaxrateKbps = Math.max(2_000, Math.round((MASTER_TARGET_MB * 8192) / masterDurSec) - AUDIO_KBPS);
@@ -509,7 +527,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // guarantee on top of the per-clip trim that the master is exactly this long
       // (30s for a full ≥4-clip film). `-t` truncates only if longer, so it can't
       // shorten a correctly-built timeline; it just enforces the contract.
-      '-t', String(masterDurSec),
+      '-t', String(deliverSec),
       '-movflags', '+faststart', out,
     );
 
@@ -622,7 +640,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     const probe = await probeMaster(bin, out);
     const qa = validateMaster({
       sizeBytes: data.byteLength,
-      expectedDurSec: expectedMasterDuration(inputs.length, clipSec, transSec),
+      expectedDurSec: deliverSec,
       actualDurSec: probe.actualDurSec,
       audioExpected: amap !== null,
       audioPresent: probe.audioPresent,

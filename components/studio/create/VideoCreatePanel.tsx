@@ -36,6 +36,7 @@ import { pickerRows, useModelPick } from '@/lib/studio/modelPick';
 import { useCatalogueStatus } from '@/components/studio/ui/useCatalogueStatus';
 import { HiggsfieldGenerate } from './HiggsfieldGenerate';
 import { videoQuote, freeSlotApplies, lipsyncAddOnNote, insertPromptToken, openDuration, videoResolution, type VideoCapabilities } from '@/lib/video/createPanel';
+import { activePlan, describeDurationPlan } from '@/lib/video/durationContract';
 import { planNotices, type VeoPlan, type VeoPlanAction } from '@/lib/video/veoPlan';
 import type { VideoMode } from '@/lib/credits/videoPricing';
 import type { OutputFormat } from '@/lib/veo/types';
@@ -102,6 +103,9 @@ export interface VideoCreatePanelProps {
   generate: VideoCreateGenerate;
   /** The lengths the server can render today (already limited to what the studio can order). */
   caps: VideoCapabilities;
+  /** Video Core v1.0 §4 — the length the user asked for in words when it is off the grid (OmniStudio videoRequestedSec):
+   *  the panel then says requested · rendered · final beside the length instead of the rendered length alone. */
+  requestedSec?: number | null;
   story: ReactNode;
   voice: ReactNode;
   advanced: ReactNode;
@@ -135,6 +139,9 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
 
   const tier = plan.tier;
   const credits = videoQuote({ seconds, tier, mode });
+  // The three lengths of an off-grid request — said only when there IS a trim to say (an on-grid ask is one length, the tile's).
+  const requestPlan = activePlan(p.requestedSec, seconds, caps);
+  const finalPlan = requestPlan && requestPlan.deviation === 'trim' ? requestPlan : null;
 
   // ── the remembered model ────────────────────────────────────────────────────────────────────────────────────────────
   // The film's tier lives in the studio's Veo plan; this browser's pick lives in lib/studio/modelPick. A stored pick is
@@ -204,6 +211,12 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
           {/* No separate „Model ›" row: the hero card above names the model and its „Change" opens the same picker. */}
           <VideoTiles locale={locale} seconds={seconds} format={format} resolution={videoResolution(seconds)}
             onLength={() => setSheet('duration')} onFormat={() => setSheet('format')} onResolution={() => setSheet('model')} />
+          {finalPlan && (
+            <p data-testid="video-duration-plan" data-final={finalPlan.finalSec} data-native={finalPlan.nativeSec} data-frames={finalPlan.finalFrames}
+              className="rounded-2xl bg-app-elevated/70 px-3.5 py-2.5 text-[12.5px] leading-snug tabular-nums text-app-muted">
+              {describeDurationPlan(finalPlan, locale)}
+            </p>
+          )}
           {/* Veo's three tiers ARE Veo models; with a Higgsfield model picked they would be a second, contradicting choice. */}
           {!hf && <VideoQualityRow locale={locale} tier={tier} mode={mode} seconds={seconds} onTier={(t) => dispatch({ type: 'tier', tier: t })} />}
 
@@ -228,7 +241,7 @@ export function VideoCreatePanel(p: VideoCreatePanelProps) {
           </VideoGenerateBar>
         </div>
 
-      <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} />
+      <VideoDurationSheet open={sheet === 'duration'} onClose={() => setSheet(null)} locale={locale} seconds={seconds} onChange={p.onSeconds} caps={caps} tier={tier} mode={mode} requestedSec={p.requestedSec ?? null} />
       <VideoFormatSheet open={sheet === 'format'} onClose={() => setSheet(null)} locale={locale} format={format} onChange={p.onFormat} musicVideo={mode === 'musicvideo'} notes={croppedNotes} />
       <ModelPicker
         service="video"

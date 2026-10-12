@@ -7,7 +7,8 @@
 import { CLOSED_CAPABILITIES } from './createPanel';
 import { snapVideoSeconds } from './duration';
 import {
-  VIDEO_FPS, describeDurationBlock, describeDurationPlan, framesFor, nativeGridSeconds, openMaxSeconds, planFinalDuration, quantizeToFrames,
+  VIDEO_FPS, activePlan, describeDurationBlock, describeDurationPlan, finalCutForAssemble, framesFor, nativeGridSeconds, openMaxSeconds,
+  planFinalDuration, quantizeToFrames,
 } from './durationContract';
 
 const OPEN = { longform: true, maxSeconds: 240 };
@@ -126,5 +127,41 @@ describe('the plan is said before the price (§4.3)', () => {
     const v = planFinalDuration(24, CLOSED_CAPABILITIES);
     if (!v.ok) throw new Error(v.reason);
     expect(describeDurationPlan(v.plan, 'en')).toBe('Length 24s (3 × 8s) · 720 frames');
+  });
+});
+
+describe('activePlan: the panel says the three lengths only while the request still matches its grid', () => {
+  test('60 s asked, panel on 64 → the plan; panel moved to 24 → nothing; no request → nothing', () => {
+    expect(activePlan(60, 64, CLOSED_CAPABILITIES)).toMatchObject({ requestedSec: 60, nativeSec: 64, finalSec: 60 });
+    expect(activePlan(60, 24, CLOSED_CAPABILITIES)).toBeNull();
+    expect(activePlan(null, 64, CLOSED_CAPABILITIES)).toBeNull();
+    expect(activePlan(undefined, 64, CLOSED_CAPABILITIES)).toBeNull();
+  });
+  test('an on-grid request still has a plan (no trim), a refused one has none', () => {
+    expect(activePlan(24, 24, CLOSED_CAPABILITIES)).toMatchObject({ deviation: 'none', finalFrames: 720 });
+    expect(activePlan(240, 96, CLOSED_CAPABILITIES)).toBeNull();
+  });
+});
+
+describe('finalCutForAssemble: the server checks the final against the clips it has (AC-04 · §8)', () => {
+  test('8 × 8 s clips (64 s) cut to 60 s = 1800 frames, 4 s trimmed', () => {
+    expect(finalCutForAssemble(64, 60)).toEqual({ ok: true, finalSec: 60, finalFrames: 1800, trimSec: 4 });
+  });
+  test('4 × 8 s (32 s) cut to 29.7 s = 891 frames; 2.3 s trimmed', () => {
+    expect(finalCutForAssemble(32, 29.7)).toEqual({ ok: true, finalSec: 29.7, finalFrames: 891, trimSec: 2.3 });
+  });
+  test('the final equal to the master is a cut of nothing (it only pins the frame count)', () => {
+    expect(finalCutForAssemble(24, 24)).toEqual({ ok: true, finalSec: 24, finalFrames: 720, trimSec: 0 });
+  });
+  test('refusals: longer than the master (a clip was lost), a whole scene trimmed, off the frame grid, too short, garbage', () => {
+    expect(finalCutForAssemble(24, 29.7)).toMatchObject({ ok: false, reason: 'longer_than_master', masterSec: 24, finalSec: 29.7 });
+    expect(finalCutForAssemble(72, 60)).toMatchObject({ ok: false, reason: 'trim_exceeds_scene' }); // 12 s cut = a scene too many was rendered
+    expect(finalCutForAssemble(32, 29.713)).toMatchObject({ ok: false, reason: 'off_frame_grid' });
+    expect(finalCutForAssemble(8, 2)).toMatchObject({ ok: false, reason: 'too_short' });
+    expect(finalCutForAssemble(8, 'eight')).toMatchObject({ ok: false, reason: 'not_a_number', finalSec: null });
+    expect(finalCutForAssemble(NaN, 8)).toMatchObject({ ok: false, reason: 'not_a_number' });
+  });
+  test('the legacy 30 s pad of a short 4-scene film is cut back to its real length (24 s of 6 s clips)', () => {
+    expect(finalCutForAssemble(30, 24)).toEqual({ ok: true, finalSec: 24, finalFrames: 720, trimSec: 6 });
   });
 });

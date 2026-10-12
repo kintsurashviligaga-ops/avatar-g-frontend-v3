@@ -166,3 +166,44 @@ export function describeDurationBlock(v: Extract<DurationVerdict, { ok: false }>
     : l === 'ru' ? `Фильм ${req} требует длинноформатного конвейера, который ещё не открыт. Самый длинный фильм сегодня — ${max}; более короткий вместо него не создавался.`
       : `${req}-იანი ფილმი გრძელი ფორმის პაიპლაინს სჭირდება, რომელიც ჯერ არ არის ღია. დღეს უგრძესი ფილმი ${max}-ია; მის ნაცვლად უფრო მოკლე არ გაკეთებულა.`;
 }
+
+// ── The plan beside the panel's length, and the server's check of a final cut ──────────────────────────────
+
+/**
+ * The plan the panel says beside its length: only while a request is set, can be made, and the panel still holds the
+ * native length it was planned on (the user picking another length drops the request). Null otherwise — the panel then
+ * says one length, as before.
+ */
+export function activePlan(requestedSec: number | null | undefined, panelSec: number, caps: DurationCapabilities): DurationPlan | null {
+  if (requestedSec === null || requestedSec === undefined) return null;
+  const v = planFinalDuration(requestedSec, caps);
+  if (!v.ok || v.plan.nativeSec !== panelSec) return null;
+  return v.plan;
+}
+
+export type FinalCutRefusal = 'not_a_number' | 'off_frame_grid' | 'too_short' | 'longer_than_master' | 'trim_exceeds_scene';
+
+export type FinalCutVerdict =
+  | { ok: true; finalSec: number; finalFrames: number; trimSec: number }
+  | { ok: false; reason: FinalCutRefusal; masterSec: number; finalSec: number | null };
+
+/**
+ * The server's check of a contracted final length against the master it is about to be cut from (the clips rendered,
+ * added up): a whole number of frames at VIDEO_FPS, not shorter than the shortest clip, never longer than the master,
+ * and a trim shorter than one scene (a trim of a whole scene or more means the wrong number of scenes was rendered —
+ * the answer is this refusal, never a quiet cut). Nothing here changes the request; the caller answers with the reason.
+ */
+export function finalCutForAssemble(masterSec: number, finalDurationSec: unknown): FinalCutVerdict {
+  const master = Number(masterSec);
+  const f = typeof finalDurationSec === 'number' ? finalDurationSec : Number(finalDurationSec);
+  const said = Number.isFinite(f) ? f : null;
+  if (said === null || !Number.isFinite(master) || master <= 0) return { ok: false, reason: 'not_a_number', masterSec: master, finalSec: said };
+  const finalFrames = framesFor(said);
+  const finalSec = finalFrames / VIDEO_FPS;
+  if (Math.abs(finalSec - said) > 1e-6) return { ok: false, reason: 'off_frame_grid', masterSec: master, finalSec: said };
+  if (finalSec < VIDEO_MIN_SEC) return { ok: false, reason: 'too_short', masterSec: master, finalSec: said };
+  if (finalSec > master + 1e-6) return { ok: false, reason: 'longer_than_master', masterSec: master, finalSec: said };
+  const trimSec = Math.max(0, Math.round((master - finalSec) * 1000) / 1000);
+  if (trimSec >= SCENE_SEC) return { ok: false, reason: 'trim_exceeds_scene', masterSec: master, finalSec: said };
+  return { ok: true, finalSec, finalFrames, trimSec };
+}

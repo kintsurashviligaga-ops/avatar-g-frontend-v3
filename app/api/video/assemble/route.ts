@@ -35,6 +35,8 @@ import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { finalCutForAssemble } from '@/lib/video/durationContract';
+import { cutMasterToLength } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
@@ -187,6 +189,11 @@ interface AssembleBody {
    *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.
    *  Validated fail-open inside the assembler; absent/malformed → the master is unchanged. */
   script?: unknown;
+  /** Video Core v1.0 §4 — the contracted FINAL length in seconds (lib/video/durationContract). The clips are the native
+   *  master (what was rendered and is priced); the film delivered is cut to this, frame-exact on the 30 fps timeline.
+   *  Checked before any charge against the clips handed over: a length they cannot be cut to is a 400 with the reason,
+   *  never a film of another length. Absent → the master is delivered at its native length, as before. */
+  finalDurationSec?: number | null;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -261,6 +268,20 @@ async function assembleImpl(req: NextRequest) {
     seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
     mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
   });
+  // Video Core v1.0 §4 — the contracted FINAL length against the clips actually handed over (the native master). Checked
+  // HERE, before any charge or status write: a final this master cannot be cut to (longer than it, a trim of a whole
+  // scene, off the frame grid) is a 400 with the reason — never a film of another length passed off as the request.
+  const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
+  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null ? null : finalCutForAssemble(nativeTotalSec, body.finalDurationSec);
+  if (finalCut && !finalCut.ok) {
+    return NextResponse.json({
+      error: 'final_duration_invalid',
+      reason: finalCut.reason,
+      masterSec: nativeTotalSec,
+      finalSec: finalCut.finalSec,
+      message: `The final length ${String(body.finalDurationSec)}s cannot be cut from the ${nativeTotalSec}s of clips rendered (${finalCut.reason}). Nothing was stitched or charged.`,
+    }, { status: 400 });
+  }
 
   // Anonymous trial renders are allowed. The expensive part — rendering the 5
   // clips — already runs for anonymous callers (dispatch is open), so gating ONLY
@@ -582,6 +603,13 @@ async function assembleImpl(req: NextRequest) {
         const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
         if (captioned) master = captioned;
       }
+      // Video Core v1.0 §4 — the contracted final length: one 6 s clip asked as 5 s is cut to 5 s = 150 frames at 30 fps.
+      // Fail-CLOSED, unlike every step above: a cut that cannot be made throws into the catch below (this attempt is
+      // rolled back), because the uncut clip delivered as "5 s" is the silent length change the contract forbids. A
+      // single clip whose final IS its native length is left as the provider made it (no re-encode, 24 fps).
+      if (finalCut?.ok && finalCut.trimSec > 0) {
+        master = await cutMasterToLength(master, finalCut.finalSec);
+      }
       // ⚠️ NOTHING CHANGED MEANS NOTHING TO CHARGE FOR. This used to commit the reservation
       // unconditionally, and every step above it is fail-open: the conform, the music mux, the
       // voiceover, the overlay, the captions. When they all missed, `master` was still `clipUrl` — the
@@ -703,6 +731,8 @@ async function assembleImpl(req: NextRequest) {
     },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
+    // Video Core v1.0 §4 — the contracted final length rides to the assembler, which cuts the master to it frame-exact.
+    ...(finalCut?.ok ? { finalDurationSec: finalCut.finalSec } : {}),
   };
 
   // Saga: reserve credits (Redis lock + durable ledger debit) → dispatch →
@@ -797,8 +827,9 @@ async function assembleImpl(req: NextRequest) {
           }, effectiveDeadlineMs);
         });
         try {
-          // GPU worker when configured; else stitch on this node with CPU FFmpeg.
-          const work = cfg
+          // GPU worker when configured; else stitch on this node with CPU FFmpeg. A film with a contracted final length
+          // stays on the CPU assembler whatever the config: the GPU worker does not honour the cut (Video Core v1.0 §4).
+          const work = cfg && !finalCut
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
             : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null, ...(resolvedDialogueStems.length ? { dialogueStems: resolvedDialogueStems } : {}) }, ac.signal);
           const res = await Promise.race([work, deadline]);
