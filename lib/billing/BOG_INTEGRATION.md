@@ -64,3 +64,19 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 | `supabase/migrations/20261002a_bog_billing.sql` | tables, functions, VERIFY block |
 
 Stripe code is still present but no longer offered while BOG is configured; it remains the fallback only when BOG credentials are absent.
+
+## Is it working? (admin)
+
+**Admin → Billing → "Bank of Georgia — readiness"** (`GET /api/admin/billing/bog`) shows what the deployment runs with: credentials set or not, `production`/`sandbox`, the last 4 characters of the client id, the callback URL, whether the billing tables exist, whether `CRON_SECRET` is set, and the latest orders with their reject reasons. No secret and no user id ever leaves the server.
+
+**"Test credentials with BOG"** (`POST /api/admin/billing/bog {action:'oauth'}`) sends ONE OAuth token request to BOG — no order, no money — and says what BOG answered: `ok`, `credentials_refused` (wrong pair, or a sandbox pair against production / live pair with `BOG_ENV=sandbox`), `forbidden` (merchant not enabled for the API), `no_answer`, … with the next step in words.
+
+## Testing without BOG
+
+`npm run test:bog-e2e` (needs a local Postgres and a PostgREST v12 binary — see `scripts/bog-e2e.sh`):
+
+1. **SQL scenarios** (`tests/sql/bog/10_scenarios.sql`): the money functions in a real Postgres whose tables are Production's shapes and whose functions are code-identical to Production's (md5 of the comment-stripped source, checked 2026-10-12). Top-up once, plan, renewal, back-off, three declines → `past_due`, upgrade, client roles locked out.
+2. **Races** (`tests/sql/bog/20_concurrency.sh`): 16 parallel settlements of one order, 16 parallel renewal claims → one credit, one charge.
+3. **Route-level end to end** (`__tests__/integration/bog-payments.e2e.test.ts`): the real routes → supabase-js → PostgREST → that Postgres, against a fake BOG that signs callbacks with a throwaway RSA key. Lost callbacks, forged/tampered callbacks, amount/currency mismatch, declines, refused credentials, renewals, cancel.
+
+`scripts/bog-sandbox-smoke.mjs` is the first contact with BOG's real **sandbox** (refuses anything but `BOG_ENV=sandbox`): `oauth`, `order` (1 ₾ sandbox order + payment-page link for a test card), `receipt <id>`.
