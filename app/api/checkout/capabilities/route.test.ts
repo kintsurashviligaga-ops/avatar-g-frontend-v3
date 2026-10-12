@@ -61,6 +61,16 @@ test('off mode, or an unknown value → nobody sees BOG, admins included', async
   }
 });
 
+test('a Vercel Preview / Development deployment (Production database) → no BOG button, admins included', async () => {
+  mockIsAdmin = true;
+  for (const v of ['preview', 'development']) {
+    process.env.VERCEL_ENV = v;
+    expect((await caps()).bog).toBe(false);
+  }
+  process.env.VERCEL_ENV = 'production';
+  expect((await caps()).bog).toBe(true);
+});
+
 test('sandbox credentials on a Vercel deployment (Production database) → no BOG button, admins included', async () => {
   mockIsAdmin = true;
   process.env.BOG_ENV = 'sandbox';

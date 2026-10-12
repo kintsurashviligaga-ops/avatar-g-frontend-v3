@@ -122,9 +122,14 @@ export function bogFullyConfigured(env: NodeJS.ProcessEnv = process.env): boolea
  *   'admin'      admins only: the owner's controlled live test while customers see no BOG button
  *   'off'        nobody: no new BOG orders
  *   anything else → 'off'. A typo must close the rail, never open it.
+ *
+ * A Vercel Preview or Development deployment is always 'off': it writes to the Production database, so the live
+ * pair must never take a payment there, whatever its env scope holds (VERCEL_ENV unset = local / CI, unaffected).
  */
 export type BogCheckoutMode = 'off' | 'admin' | 'public';
 export function bogCheckoutMode(env: NodeJS.ProcessEnv = process.env): BogCheckoutMode {
+  const vercelEnv = (env.VERCEL_ENV || '').trim().toLowerCase();
+  if (vercelEnv && vercelEnv !== 'production') return 'off';
   const raw = (env.BOG_CHECKOUT_MODE || '').trim().toLowerCase();
   if (!raw || raw === 'public') return 'public';
   return raw === 'admin' ? 'admin' : 'off';

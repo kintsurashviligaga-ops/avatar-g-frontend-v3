@@ -214,6 +214,24 @@ describe('BOG_CHECKOUT_MODE', () => {
     expect((await POST(post({ kind: 'topup', amountGel: 5 }))).status).toBe(200);
     expect(mockCreateOrder).toHaveBeenCalledTimes(1);
   });
+
+  test('a Vercel Preview / Development deployment never takes a live payment, admins and public mode included', async () => {
+    mockIsAdmin = true;
+    for (const mode of ['public', 'admin']) {
+      process.env.BOG_CHECKOUT_MODE = mode;
+      for (const v of ['preview', 'development']) {
+        process.env.VERCEL_ENV = v;
+        const res = await POST(post({ kind: 'topup', amountGel: 5 }));
+        expect(res.status).toBe(503);
+        expect(await res.json()).toMatchObject({ error_code: 'BOG_DISABLED' });
+      }
+    }
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    process.env.VERCEL_ENV = 'production';
+    expect((await POST(post({ kind: 'topup', amountGel: 5 }))).status).toBe(200);
+    expect(mockCreateOrder).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sandbox credentials never touch Production', () => {

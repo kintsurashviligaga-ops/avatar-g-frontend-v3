@@ -149,6 +149,8 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
   test('BOG_CHECKOUT_MODE is reported; a typo reads as off', async () => {
     expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admin' })).checkoutMode).toBe('admin');
     expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admim' })).checkoutMode).toBe('off');
+    expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admin', VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv)).checkoutMode).toBe('off');
+    expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admin', VERCEL_ENV: 'production' } as NodeJS.ProcessEnv)).checkoutMode).toBe('admin');
   });
 
   test('paid ₾ against BOG\'s limits: its own query, every status whose money reached the bank, timed by when it was paid', async () => {
