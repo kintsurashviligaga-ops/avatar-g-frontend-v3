@@ -24,6 +24,8 @@ export default defineConfig({
   use: {
     baseURL: playwrightBaseUrl,
     trace: 'on-first-retry',
+    // Opt-in: a sandbox that ships its own Chromium (no `playwright install` possible) names it here; CI leaves it unset.
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } } : {}),
   },
   projects: [
     {

@@ -1,11 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "git": {
-    "deploymentEnabled": {
-      "claude/video-core-v1-6gh97e": false
-    }
-  },
   "buildCommand": "node scripts/gcp/preview-auth-check.cjs; node scripts/gcp/preview-inference-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
