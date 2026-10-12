@@ -146,6 +146,7 @@ jobs:
           echo "guard: isolated stack only"
 
       - name: Apply the Test Schema Baseline (and verify RLS, RPC, triggers, storage, billing)
+        id: baseline
         run: bash e2e/video-core-live/baseline/apply.sh "$E2E_DB_URL"
 
       - name: Anon-key exposure check against the local stack
@@ -166,6 +167,21 @@ jobs:
 
       - name: Playwright — real backend, desktop + iPhone 13
         run: npx playwright test -c playwright.video-core-live.config.ts
+
+      # B3: the storyboard revision tables are a PROPOSAL (not in Production). Applied here, after the E2E ran on the
+      # Production-shaped baseline, only to prove the DDL, constraints and RLS on Supabase's Postgres.
+      - name: B3 proposal check (storyboard revisions) on this throwaway database only
+        if: ${{ !cancelled() && steps.baseline.outcome == 'success' }}
+        run: |
+          mk() {
+            curl -sf -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/users" \
+              -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "{\"email\":\"vc-b3-$1-$(openssl rand -hex 4)@example.com\",\"password\":\"$(openssl rand -hex 16)\",\"email_confirm\":true}" \
+              | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>process.stdout.write(JSON.parse(s).id))'
+          }
+          OWNER=$(mk owner); OTHER=$(mk other)
+          psql "$E2E_DB_URL" -v ON_ERROR_STOP=1 -v owner="$OWNER" -v other="$OTHER" -f e2e/video-core-live/proposals/storyboard_revisions_check.sql
 
       - name: Stack logs on failure (redacted)
         if: ${{ failure() }}
