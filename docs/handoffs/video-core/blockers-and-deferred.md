@@ -15,11 +15,15 @@
 
 ## Deferred (next phase; nothing here is Live Voice or another studio)
 
-1. Video Studio consolidation (§2.3): VFX / Remix / Swap / Motion / Editing under one Video Studio with the canonical IDs kept.
-2. Wire `lib/video/storyboard/revision.ts` into the board mutations; send the approval fingerprint with the render; check it in the route (after B3 or with a signed approval token).
-3. Enforce `masterQa.frame_count_mismatch` as a refusal in `app/api/video/assemble` (today it is reported in `qa`, not enforced).
-4. Remove the legacy 30 s brand pad for films rendered with no contract (today PARTIAL: a contract turns it off).
-5. Montage gaps (AC-23): add clips to a delivered montage; replace music in place; silent export; music timeline start ≠ 0; source audio per clip from the chat.
-6. A single fixture for AC-06 (5 clips + 0:59 + 29.7 s + 9:16 + Georgian end text) measured as one render.
+Round 2 (2026-10-12, GG's seven items) closed 1 (as a plan), 2, 3 and 6; the rest stand, each with its reason.
+
+1. Video Studio consolidation (§2.3): **planned** — `consolidation-plan.md` (stages 0–5, decisions D1–D6); stage 0 (the registry `lib/video/contracts.ts`, the QC gate, the server-side approval check) is in this PR; stages 1–5 are not started (stage 1 needs a Preview run, B2). Other studios untouched.
+2. ~~Wire the revision module~~ **done at code level (2923fa0)**: snapshot per board change, approval at the tap, server re-fingerprint before dispatch (`400 revision_mismatch`). Open: the table (B3) and the director-run path (no approval carried yet).
+3. ~~Enforce `frame_count_mismatch`~~ **done (4812b0a, 71a6ec7)**: `502 qc_rejected` on both the saga and the single-clip path, refund once, FAILED recorded, nothing hosted.
+4. Remove the legacy 30 s brand pad for films rendered with no contract → **decision D6**: every in-tree caller sends the contract, so the pad is reached only by an unknown client; the proposed default (the stitched length, said as such) is a server-default change GG decides, not a silent one.
+5. Montage gaps (AC-23): add clips to a delivered montage; replace music in place; silent export; music timeline start ≠ 0; source audio per clip from the chat — each is a new field in the signed montage quote / manifest (the Media Studio v2 contract PR #57 shipped), i.e. a shared-contract change: **not done in round 2**, named for the next phase (consolidation stage 3/4).
+6. ~~A single fixture for AC-06~~ **done (round 2)**: `lib/agent/media/videoCoreAc06.ffmpeg.test.ts` — the chain the product runs (montage → edit) measured on the final file: 891 frames, 9:16, music from 0:59, five sources, Georgian end text (`evidence/t3-ac06-one-chain.json`).
 7. The 60 s and 240 s encodes measured on decoded frames (AC-03, AC-04 open) once B1/B4 allow.
-8. Run the opt-in film evidence test in CI on a schedule (it takes ~4 min).
+8. Run the opt-in film evidence test in CI on a schedule (it takes ~5 min).
+9. **new** Conform a single clip whose final IS its native length to the 30 fps grid (today left at the provider's 24 fps, length exact): the conform is one more encode and would bill a clip that today goes out unbilled when nothing else was asked — **decision D7** (`consolidation-plan.md`), not done silently.
+10. **new** Carry the storyboard approval on the director-run path (`app/api/video/director`) too.

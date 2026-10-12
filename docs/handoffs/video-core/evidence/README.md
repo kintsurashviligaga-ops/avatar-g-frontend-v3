@@ -19,7 +19,8 @@ Node v22.22.0, Jest 30, 2 threads. Durations below are wall-clock on this sandbo
 | --- | --- | --- | --- |
 | `ac01-intent-before.txt` | T1 | f2f3dae | `npx jest lib/agent/intent.videoCore.test.ts` BEFORE the routing fix (19 failed / 11 passed); the same file passes 30/30 from 36115f2 on |
 | `phase0-probe.test.ts.txt` | T1 | 30be5a2 (main) | the PHASE 0 probe (ran once as `__tests__/videoCore.repro.test.ts`, removed from the tree; kept as text). Its findings are the defect register's BEFORE column |
-| `t3-film-frame-counts.json` | T3 | a1f1ff4 + PHASE 3 tree | `VIDEO_CORE_FFMPEG_IT=1 VIDEO_CORE_EVIDENCE_OUT=<file> npx jest lib/orchestrator/ffmpeg-assembly.ffmpeg.test.ts` (4 passed, ~215 s) |
+| `t3-film-frame-counts.json` | T3 | 71a6ec7 tree (round 2; first measured a1f1ff4 + PHASE 3) | `VIDEO_CORE_FFMPEG_IT=1 VIDEO_CORE_EVIDENCE_OUT=<file> npx jest lib/orchestrator/ffmpeg-assembly.ffmpeg.test.ts` (6 passed, 320 s: cases a_29_7, b_24, c_refusal, d_single_cut, e_withheld, f_single_cut_gate) |
+| `t3-ac06-one-chain.json` | T3 | 71a6ec7 tree (round 2) | `VIDEO_CORE_AC06_OUT=<file> npx jest lib/agent/media/videoCoreAc06.ffmpeg.test.ts` (1 passed, 56 s): AC-06 as one chain — montage (5 clips · music from 0:59 · 29.7 s · 9:16) → edit (Georgian end text, last 3 s), measured on the final file |
 | `t3-montage-media-studio-e2e.json` | T3 | a1f1ff4 + PHASE 3 tree | `MEDIA_STUDIO_E2E_OUT=<file> npx jest lib/agent/media/mediaStudio.ffmpeg.test.ts` (E2E-22 / E2E-23) |
 | `t3-montage-exec-e2e.json` | T3 | a1f1ff4 + PHASE 3 tree | `MONTAGE_E2E_OUT=<file> npx jest lib/agent/media/montageExec.ffmpeg.test.ts` ("three clips + 120 BPM") |
 | `t3-montage-photo-e2e.json` | T3 | a1f1ff4 + PHASE 3 tree | `MONTAGE_PHOTO_OUT=<file> npx jest lib/agent/media/montageExec.ffmpeg.test.ts` (photos + clips) |
@@ -39,6 +40,9 @@ re-measured on that tree before the commit.
 | film, 4×8 s with 1 s crossfades | 29.7 s | 29 s stitched | **refused** `longer_than_master` | nothing encoded, nothing hosted | — |
 | single-clip cut (lib/video/finalCut) | 5 s of a 6 s clip | 6 s | 5 s | **150** | 150 |
 | single-clip cut | 29.7 s of a 32 s clip | 32 s | 29.7 s | **891** | 891 |
+| film, 4×8 s, the master's count forced to 890 (QC gate, §7/§8) | 29.7 s | 32 s | — | **withheld**: `MasterQaRejected` (`frame_count_mismatch`, grade F), nothing hosted | 891 |
+| single-clip cut, the count forced to 149 (QC gate) | 5 s of a 6 s clip | 6 s | — | **withheld**: `FinalCutRejected`, nothing hosted (the unforced cut hosts 150) | 150 |
+| **AC-06 chain**: 5 clips, music from **0:59** of a 130 s track, **29.7 s**, **9:16** (720×1280), Georgian end text in the last 3 s (montage → edit) | 29.7 s | — | 29.7 s | **891** after the montage and **891** after the edit; the 5 sources fill 6.5 / 6 / 6 / 6 / 5.2 s (195 / 180 / 180 / 180 / 156 frames) | 891 (music: the 0:59 marker is the first frame at −6.9 dB, silence at 0.42–0.46 s (−91 dB), the kick at 0.5 s; last second −21.3 dB; the text absent at 26.4 s (diff 1.33) and drawn at 29.4 s (diff 117.42) in the layer QC's box 98,938 524×86) |
 | montage E2E-23: 70 s, music from 0:58 of a 130 s track | 70 s | — | 70 s | **2100** | 2100 (music source offset 58 s, timeline start 0) |
 | montage E2E-23 on a 120 s track | 70 s | 62 s of music left | **refused** `music_too_short` | — | — |
 | montage E2E-22: "მარტო ბოლო ხუთი" of 7 | 10 s | — | 10 s | 300; excluded clips contribute **0** frames | 300 |
@@ -54,5 +58,5 @@ order itself is not wired (`LONGFORM_ORDER_WIRED=false`).
 
 - No Veo / Vertex call was made (paid; not authorized). Every provider path is mocked: T1 only.
 - No Preview, no Production: T4–T6 empty. The frame counts above are from the sandbox's ffmpeg-static, not a Vercel runtime.
-- The film evidence test is opt-in (`VIDEO_CORE_FFMPEG_IT=1`) because of its ~4 min runtime; CI runs the montage suites
-  (ungated, ~6 min) but not this one.
+- The film evidence test is opt-in (`VIDEO_CORE_FFMPEG_IT=1`) because of its ~5 min runtime; CI runs the montage suites
+  (ungated, ~6 min) and the AC-06 chain (ungated, ~1 min) but not this one.

@@ -82,6 +82,8 @@ change or a new flag's public exposure; stage 1 needs a Preview run (B2) to be c
 | D3 | Whether a remix op that changes length must be frame-exact like the film (stage 2) | yes — one contract for the studio |
 | D4 | Whether the remix family must quote before it charges (stage 3) | yes — no charged op without a quote |
 | D5 | The single-clip path answers a failed fetch/cut as `assemble_failed` (500) while the saga path says `assembly_failed` (502): unify the spelling at stage 1 (a wire change clients may read) | keep both until stage 1; the registry names both, the QC refusal (`qc_rejected`) is already one word on both paths |
+| D6 | The legacy 30 s brand pad for a film rendered with **no** length contract (defect #9): every in-tree caller now sends the contract, so the pad is reached only by a client that sends none. Remove it (the server defaults the contract to the stitched length, said as such in the response) or keep it one release | keep it until stage 1 (the change is a server default for unknown callers, GG's call); the contract path is pad-free and measured |
+| D7 | A single clip whose final IS its native length (an 8 s order on an 8 s clip) is delivered as the provider made it (24 fps, length exact, frames not on the 30 fps grid). Conforming it is one more encode and would bill a clip that today goes out unbilled when nothing else was asked (the route's "no work, no charge" rule) | leave as is (length exact, no new charge) until GG says the grid matters more than the free pass |
 
 ## 6. Acceptance for the whole consolidation (maps to AC-26 · AC-27)
 

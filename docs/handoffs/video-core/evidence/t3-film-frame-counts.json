@@ -17,7 +17,7 @@
     "grade": "A",
     "issues": []
    },
-   "encodeMs": 82658,
+   "encodeMs": 90101,
    "countArgv": [
     "-hide_banner",
     "-nostdin",
@@ -70,6 +70,28 @@
    "refused": "longer_than_master",
    "hosted": false
   },
+  "e_withheld": {
+   "requestedSec": 29.7,
+   "expectedFrames": 891,
+   "countedFrames": 890,
+   "thrown": "MasterQaRejected",
+   "codes": [
+    "frame_count_mismatch"
+   ],
+   "hosted": false,
+   "qa": {
+    "pass": false,
+    "score": 50,
+    "grade": "F",
+    "issues": [
+     {
+      "code": "frame_count_mismatch",
+      "severity": "critical",
+      "detail": "master holds 890 frames, the contracted final is 891 (-1)"
+     }
+    ]
+   }
+  },
   "d_single_cut": {
    "fiveFromSix": {
     "argv": [
@@ -110,6 +132,18 @@
      "durationSec": 29.7,
      "fps": 30
     }
+   }
+  },
+  "f_single_cut_gate": {
+   "fiveFromSix": {
+    "hosted": true,
+    "decodedFrames": 150
+   },
+   "forcedOff": {
+    "countedFrames": 149,
+    "expectedFrames": 150,
+    "thrown": true,
+    "hosted": false
    }
   }
  }
