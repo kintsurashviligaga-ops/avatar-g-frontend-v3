@@ -102,8 +102,12 @@ test.describe.serial('Video Core live — the montage journey', () => {
     evidence(`${info.project.name}-montage`, { jobId, quote: q.quote, startResponses: replayed, decoded: d, balanceBefore: before, balanceAfter: await balanceOf(me.id), audit: audit.map((a) => a.props) });
   });
 
-  test('another user cannot read this job, its master or its uploads (RLS, storage, task route)', async ({ request }, info) => {
+  test('another user cannot read this job, its master or its uploads (RLS, storage, task route)', async ({ playwright }, info) => {
     test.skip(!jobId, 'needs the montage from the previous step');
+    // A clean API context: the project's `request` carries the OWNER's session cookies (storageState), and the server
+    // reads the cookie before a bearer token (lib/supabase/server.ts authedClientFromRequest), so every call below would
+    // otherwise be the owner's.
+    const request = await playwright.request.newContext({ baseURL: info.project.use.baseURL, storageState: { cookies: [], origins: [] } });
     const other = liveUser('other');
     const token = await signInToken(other.email);
     expect(await rows(`generation_jobs?id=eq.${jobId}&select=id`, { token })).toEqual([]);
@@ -126,6 +130,7 @@ test.describe.serial('Video Core live — the montage journey', () => {
     const body = (await q.json()) as { ok?: boolean; error?: string };
     expect(body.ok).toBe(false);
     evidence(`${info.project.name}-other-user`, { jobRowsVisible: 0, taskRoute: task.status(), storageAuthenticated: stolen.status, storagePublic: anon.status, foreignQuote: { status: q.status(), error: body.error } });
+    await request.dispose();
   });
 
   test('Stop while it renders → cancelled, nothing charged → Retry → a fresh quote → the full-length master', async ({ page, isMobile }, info) => {
