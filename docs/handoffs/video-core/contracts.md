@@ -125,6 +125,8 @@ QC        qc.av { videoSec, audioSec, videoFrames, plannedFrames }  — videoFra
 
 A master that fails QC is refused and refunded; it is never delivered as "close enough".
 
+**Round 3 (P1, AC-23):** `timelineStartSec` is 0 in this version (the track lies on the master's first frame); a later start asked in words („მუსიკა ვიდეოს მე-5 წამიდან დაიწყოს“, "start the music 5 s into the video", «музыка с 5-й секунды видео», „მოგვიანებით“) is **not** read as the track's own offset and is **not** dropped: the quote carries `unsupported: ['music_delay']` (`MontageQuote.unsupported`, `lib/agent/media/montageExec.ts` → `montageAsk.asksMusicDelay`) and the card says so in the user's language (`montageChat.unsupportedNotes`). „მუსიკა 58-ე წამიდან“ stays the track's 58th second (`musicFromSec`, exact). A follow-up on a delivered montage that asks to add clips or to replace the music (`montageChat.montageFollowUpAsk`) is answered as unsupported in the chat BEFORE any quote (`followUpUnsupportedText`): nothing is sent, nothing is charged; a new set of files is a new quote, said as such. The contract fields themselves (a later timeline start, add-to-manifest, swap-in-place) are a shared quote / manifest change and wait on GG (`blockers-and-deferred.md` item 5).
+
 ## 5. Quote, approval and idempotency (§8.3)
 
 | Lane | Quote | Approval | Idempotency |
