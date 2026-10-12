@@ -265,4 +265,26 @@ describe('the chat: effects on the file attached, or on Agent G\'s last result',
   test('effects off when the edit is off for this user', () => {
     expect(turn('make it brighter', { attachments: ['video'], editOn: false }).kind).not.toBe('edit');
   });
+
+  test('words that describe the file, ask about it or tell a story are the chat\'s, never an edit plan', () => {
+    for (const t of ['this video looks warm', 'I filmed this with a shaky camera, it was an earthquake', 'what should I post with this video, something warm?', 'tell me about the video, is it warm?']) {
+      expect([t, turn(t, { attachments: ['video'] }).kind]).not.toEqual([t, 'edit']);
+    }
+    const V = { previous: { kind: 'video' as const } };
+    const remarks = [
+      'the result is amazing, so colorful', 'I liked the last one better, it was warmer', 'the previous video is upside down',
+      'предыдущее видео лучше, оно было ярче', 'в предыдущем видео шум, без понятия откуда', 'напиши пост про предыдущее видео, чтобы отразить настроение',
+      'წინა ვიდეო უფრო ნათელი იყო', 'ბოლო ვიდეოში ზუმი მომეწონა',
+    ];
+    // Admins (the edit on) and every other user (the edit off): the chat answers, never an edit plan or a canned refusal.
+    for (const t of remarks) {
+      expect([t, turn(t, V).kind]).toEqual([t, 'pass']);
+      expect([t, turn(t, { ...V, editOn: false }).kind]).toEqual([t, 'pass']);
+    }
+    // An ask still is one, as a request, a question that asks, or a command.
+    expect(turn('make this video warmer', { attachments: ['video'] })).toMatchObject({ kind: 'edit' });
+    expect(turn('can you make the last video warmer?', V)).toMatchObject({ kind: 'edit', source: 'previous' });
+    expect(turn('წინა ვიდეო უფრო ნათელი გახადე', V)).toMatchObject({ kind: 'edit', source: 'previous' });
+    expect(turn('отзеркаль предыдущее видео', V)).toMatchObject({ kind: 'edit', source: 'previous' });
+  });
 });

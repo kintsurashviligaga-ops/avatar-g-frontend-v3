@@ -146,6 +146,8 @@ export type MontageErrorCode =
   | 'clip_too_short' | 'music_too_short' | 'target_too_short'
   // An asked length is binding (Media Studio v2.0 §D): the clips cannot fill it, or one edit cannot be that long.
   | 'footage_too_short' | 'target_too_long'
+  // Twelve pictures or fewer, but clips so long that, kept whole, they need more shots than one edit takes (./joinPlan).
+  | 'clips_too_long'
   // The list of files a run or a worker holds is not the quoted one, or misses a clip:
   | 'manifest_invalid'
   // The finished master does not show every clip (per-clip QC): not delivered.
@@ -277,6 +279,11 @@ export interface QuoteInput {
   targetSec?: unknown;
   /** Where the music starts, in seconds into the track; read from the prompt when absent (lib/agent/params). */
   musicFromSec?: unknown;
+  /**
+   * The longest edit the next step can take (a run's montage → zoom: lib/agent/media/editPlan MAX_MOTION_SEC). The plan
+   * fits under it, and a length asked past it is refused here, before anything renders.
+   */
+  maxSec?: unknown;
   /** The files' original names, parallel to `files` (optional; a name falls back to the file reference's base name). */
   names?: unknown;
 }
@@ -316,6 +323,12 @@ function refusalOf(problem: CutProblem | undefined, error: string | undefined, c
         files: [...clips], detail: { clips: problem.clips, targetSec: problem.targetSec, neededSec: problem.neededSec },
       });
     case 'too_many_clips':
+      // A long clip plays as several shots (at most MAX_SHOT_SEC each): the pictures fit, their shots do not.
+      if (problem.clips > clips.length) {
+        return err('clips_too_long', `Kept whole, the clips need ${problem.clips} shots of at most ${MAX_SHOT_SEC}s; one edit takes at most ${problem.maxShots}. Ask for a shorter edit or trim the longest clips.`, {
+          detail: { clips: problem.clips },
+        });
+      }
       return err('too_many_clips', `At most ${problem.maxShots} clips in one edit.`);
     default:
       return err('plan_failed', error ?? 'No edit fits these files.');
@@ -436,6 +449,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const musicFromSec = music ? (positive(input.musicFromSec) ?? said.musicStartSec) : undefined;
   // „ააჩქარე … შეანელე" on a montage: single shots change speed where the music calls for it; the cuts stay on the beat.
   const rampMode = prompt ? rampOf(prompt) : null;
+  const limits = { ...LIMITS, maxTotalSec: Math.min(MAX_TOTAL_SEC, positive(input.maxSec) ?? MAX_TOTAL_SEC) };
   const stillOf = sorted.clips.map((i) => sorted.stills.includes(i));
   // With the music alone the cuts follow its beat (the montage as it always was). Where the clips' own sound plays, a
   // clip is one stretch in the order sent (./joinPlan: a beat-long slice of speech is noise), unless the words ask
@@ -456,13 +470,13 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
       ...(musicFromSec ? { musicFromSec } : {}),
       ...(rampMode ? { ramp: { mode: rampMode, energy: music.energy ?? null } } : {}),
       ...(rollSec && withRolls ? { rollSec } : {}),
-      ...LIMITS,
+      ...limits,
     })
     : planJoin({
       clipDurationsSec: clipProbes.map((p) => p.durationSec),
       ...(sorted.stills.length ? { stills: stillOf } : {}),
       ...(targetSec ? { targetSec } : {}),
-      ...LIMITS,
+      ...limits,
     }));
   // The rolls never cost the edit what was asked: a length the footage meets only without them is planned without them
   // (the transitions then take what footage there is, and the card says where they could not).
@@ -476,7 +490,7 @@ export async function quoteMontage(deps: MontageExecDeps, input: QuoteInput): Pr
   const voiceEnd = voice ? voice.probe.durationSec : 0;
   let heldForVoice = false;
   if (plan.ok && voice && !target && plan.totalSec + 0.25 < voiceEnd) {
-    const longer = planned(Math.min(voiceEnd, MAX_TOTAL_SEC));
+    const longer = planned(Math.min(voiceEnd, limits.maxTotalSec));
     if (longer.ok) { plan = longer; heldForVoice = true; }
   }
   // Every clip gets a shot, or there is no plan: the refusal names the files and the cause (beatPlan CutProblem).

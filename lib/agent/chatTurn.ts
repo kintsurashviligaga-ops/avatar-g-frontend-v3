@@ -24,7 +24,7 @@
  */
 import { classifyAgentIntent, type IntentInput } from './intent';
 import type { AgentIntent, CapabilityId } from './contracts';
-import { mineEdits, type EditAsk } from './media/editWords';
+import { asksForEdit, mineEdits, onlyDescribing, type EditAsk } from './media/editWords';
 import { mineComposition } from './media/layerWords';
 import { editErrorText } from './media/editChat';
 import { runChainAsk, type RunChain } from './run/runChat';
@@ -213,6 +213,8 @@ function effectStep(text: string, intent: AgentIntent, s: ChatSnapshot): ChatSte
   const effect = mined.edits.some((e) => EFFECT_OPS.has(e.op) || (e.op === 'aspect' && e.fit === 'blur'));
   const reverse = kind === 'video' && mined.unsupported.includes('reverse');
   if (!effect && !reverse) return null;
+  // „this video looks warm", "I filmed this with a shaky camera", "is it warm?": words that describe, not an ask.
+  if (onlyDescribing(mined) && !asksForEdit(text)) return null;
   const locale = intent.lang;
   if (reverse) return { kind: 'say', text: editErrorText('reverse', locale), intent };
   if (mined.unsupported.includes('cut_middle')) return { kind: 'say', text: editErrorText('cut_middle', locale), intent };
@@ -238,6 +240,8 @@ const PICTURE_OPS: ReadonlySet<string> = new Set(['erase', 'rotate', 'flip', 'as
  */
 function compositionStep(text: string, intent: AgentIntent, s: ChatSnapshot): ChatStep | null {
   if (s.mode !== 'chat' || !s.editOn) return null;
+  // A question about the file („what text should I put on it?") is the chat's; „can you add a title?" asks for one.
+  if (/[?？]\s*$/u.test(text.trim()) && !asksForEdit(text)) return null;
   const comp = mineComposition(text);
   if (!comp.hit) return null;
   const kinds = s.attachments ?? [];

@@ -68,13 +68,35 @@ export const mineMusicStartSec = (text: string): number | undefined => mineMusic
 /** „each shot 2 seconds", „თითო კადრი 2 წამი", „каждый кадр 2 секунды": a shot length, not the length of the edit. */
 const PER_SHOT = new RegExp(`${B0}(?:each|every|per|თითო|ყოველი|каждый|каждая|каждое|по)${B1}`, 'iu');
 
+/** A time as typed: „0:05", „5", „7.5". */
+const T = '(?:\\d{1,2}:\\d{2}|\\d{1,4}(?:[.,]\\d{1,2})?)';
+const UNIT = `(?:s|secs?|seconds?|წმ\\.?|წამ\\p{L}*|сек\\p{L}*|с)${B1}`;
+/**
+ * Where in the result something happens, never how long the result is: „ბოლო 5 წამში დაწერე …", "in the first 3 s",
+ * „2-დან 5 წამამდე", "from 2 to 5 s", «с 2 до 5 секунды», „3 წამის შემდეგ", "after 3 s", «через 3 секунды». "Between 20
+ * and 30 seconds" and «от 20 до 30 секунд» stay: those name a length.
+ */
+const TIME_WINDOWS: ReadonlyArray<RegExp> = [
+  new RegExp(`${B0}(?:ბოლო|პირველ\\p{L}*|last|final|first|opening|последн\\p{L}*|первы\\p{L}*)\\s+${T}\\s*-?\\s*${UNIT}`, 'giu'),
+  new RegExp(`${T}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|დან)\\s+${T}\\s*-?\\s*(?:წამამდე|წმ\\.?\\s*-?\\s*მდე|მდე)${B1}`, 'giu'),
+  new RegExp(`${B0}from\\s+(?:the\\s+)?${T}\\s*(?:${UNIT})?\\s*(?:to|and|until|till|-|–|—)\\s*(?:the\\s+)?${T}\\s*(?:${UNIT})?`, 'giu'),
+  new RegExp(`${B0}(?:с|со)\\s+${T}\\s*(?:-?\\s*(?:й|ой|ей)\\s*)?(?:${UNIT})?\\s*(?:до|по)\\s+${T}\\s*(?:${UNIT})?`, 'giu'),
+  new RegExp(`${T}\\s*-?\\s*(?:წამის|წმ\\.?)\\s+(?:შემდეგ|მერე|გასვლისას)${B1}`, 'giu'),
+  new RegExp(`${B0}(?:after|через)\\s+${T}\\s*-?\\s*${UNIT}`, 'giu'),
+];
+
+/** The text with every time window blanked, so a window's numbers are never read as the result's length. */
+export function withoutTimeWindows(text: string): string {
+  return TIME_WINDOWS.reduce((t, re) => t.replace(re, ' '), String(text ?? ''));
+}
+
 /**
  * The length of the whole result, when the user named one. A music start („5 წამიდან") is not a length, a per-shot
- * length is not the length of the edit, and neither is a transition's („0.4 წამიანი გადასვლები"): all are taken out
- * before the length is read.
+ * length is not the length of the edit, a transition's is not („0.4 წამიანი გადასვლები"), and neither is a window
+ * („ბოლო 5 წამში დაწერე …"): all are taken out before the length is read.
  */
 export function mineTotalDurationSec(text: string): number | undefined {
-  let t = withoutTransitionLength(String(text ?? ''));
+  let t = withoutTimeWindows(withoutTransitionLength(String(text ?? '')));
   // Every start phrase, not only the first: a changed plan can carry two („from 3 seconds" … „5 წამიდან").
   for (let k = 0; k < 6; k += 1) {
     const start = mineMusicStart(t);

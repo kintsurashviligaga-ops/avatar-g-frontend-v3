@@ -147,6 +147,8 @@ export function aspectFromPrompt(text: string | undefined): MontageAspect | null
 const FASTER = /ააჩქარ|აჩქარ|ჩქარ(?:ად|ი)|სწრაფ|speed\s*(?:it\s+)?up|faster|fast\s*-?\s*motion|ускор|быстре/iu;
 const SLOWER = /შეანელ|შენელ|(?<!\p{L})ანელ|(?<!\p{L})ნელა|ნელ\p{L}*\s+მოძრაობ|სლოუ\s*-?\s*მო|slow\s*-?\s*mo|slow\s+(?:it\s+)?down|slower|замедл|медленн|слоу\s*-?\s*мо/iu;
 const RAMP = /speed\s*-?\s*ramp|სპიდ\s*-?\s*რემპ|рамп\p{L}*\s+скорост|скоростн\p{L}*\s+рамп/iu;
+/** A speed word on a transition („სწრაფი გადასვლები", "faster transitions", «переходы быстрые»): the transition's own. */
+const TRANSITION_SPEED = /(?<!\p{L})(?:სწრაფ|ჩქარ|ნელ|quick|fast|faster|slow|slower|snappy|быстр|медленн)\p{L}*\s*-?\s*(?:transitions?|crossfades?|dissolves?|გადასვლ\p{L}*|ტრანზიშ\p{L}*|переход\p{L}*)|(?:transitions?|გადასვლ\p{L}*|переход\p{L}*)\s+(?:სწრაფ|ჩქარ|ნელ|quick|fast|slow|быстр|медленн)\p{L}*/giu;
 
 /**
  * Speed changes asked of a montage („სადაც საჭიროა ააჩქარე კადრი და სადაც საჭიროა შეანელე", "speed ramps", «замедли»):
@@ -155,7 +157,8 @@ const RAMP = /speed\s*-?\s*ramp|სპიდ\s*-?\s*რემპ|рамп\p{L}*\
  * (lib/services/montage/beatPlan rampSpeeds).
  */
 export function rampOf(text: string | undefined): RampMode | null {
-  const t = typeof text === 'string' ? text : '';
+  // „სწრაფი გადასვლებით", "quick transitions", «быстрые переходы»: how fast a transition is, not the shots' speed.
+  const t = (typeof text === 'string' ? text : '').replace(TRANSITION_SPEED, ' ');
   if (RAMP.test(t)) return 'mixed';
   const fast = FASTER.test(t), slow = SLOWER.test(t);
   return fast && slow ? 'mixed' : slow ? 'slow' : fast ? 'fast' : null;

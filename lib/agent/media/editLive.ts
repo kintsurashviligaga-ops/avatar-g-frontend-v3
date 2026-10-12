@@ -14,7 +14,8 @@ import ffmpegStatic from 'ffmpeg-static';
 import { resolveCallerMedia } from '@/lib/security/callerMedia';
 import { probeMedia } from '@/lib/services/montage/beatAnalysis';
 import { ffmpegExec, type FfmpegIo } from '@/lib/video/ffmpegExec';
-import { parseProbeBanner } from '@/lib/video/probeBanner';
+import { parseProbeBanner, type BannerProbe } from '@/lib/video/probeBanner';
+import { isStillProbe } from './montageAsk';
 import { reSignIfInternal, uploadBufferAndSign } from '@/lib/orchestrator/storage-adapter';
 import { supabaseLeaseStore } from '@/lib/orchestrator/jobLease';
 import { createServiceRoleClient } from '@/lib/supabase/server';
@@ -137,6 +138,32 @@ export async function renderEdit(
   }
 }
 
+/** The size of the first frame as ffmpeg decodes it („Output #0 … Stream #0:0: Video: wrapped_avframe, …, 300x400"). */
+export function decodedSizeOf(stderr: string): { width: number; height: number } | null {
+  const out = stderr.slice(stderr.indexOf('Output #0'));
+  const m = /Stream #0:0[^\n]*?Video:[^\n]*?(?<![\dx])(\d{2,5})x(\d{2,5})(?![\dx])/.exec(out);
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : null;
+}
+
+/**
+ * A photo as ffmpeg will decode it. A phone JPEG is often stored on its side with an EXIF turn (Orientation 6 or 8):
+ * ffmpeg turns it upright when it decodes it, but its banner gives the stored sides with no rotation, so a plan made
+ * from the banner (the frame size, the places to erase, the size QC expects) is for the wrong frame. The first decoded
+ * frame's size wins when its sides are the banner's swapped.
+ */
+export async function probeUpright(url: string): Promise<BannerProbe | null> {
+  const p = await probeMedia(url);
+  const bin = (ffmpegStatic as unknown as string | null) ?? null;
+  if (!p || !bin || !isStillProbe(p) || p.width === p.height) return p;
+  try {
+    const { stderr } = await ffmpegExec(bin, ['-hide_banner', '-i', url, '-frames:v', '1', '-f', 'null', '-'], { maxBuffer: 1 << 22, timeout: 60_000 });
+    const d = decodedSizeOf(stderr);
+    return d && d.width === p.height && d.height === p.width ? { ...p, width: d.width, height: d.height, rotation: 0 } : p;
+  } catch {
+    return p;
+  }
+}
+
 export function liveEditDeps(): EditExecDeps {
   return {
     async resolveFile(ref, userId) {
@@ -144,7 +171,7 @@ export function liveEditDeps(): EditExecDeps {
       if (r.ok) return r.own ? { ok: true, url: r.url } : { ok: false, reason: 'not_yours' };
       return { ok: false, reason: r.reason === 'not_owner' ? 'not_yours' : 'unreadable' };
     },
-    probe: (url) => probeMedia(url),
+    probe: (url) => probeUpright(url),
     render: (url, request, opts) => renderEdit(url, request, opts),
     upload: (jobId, bytes, output, variant) => uploadBufferAndSign(
       'renders', `edits/${jobId}${variant === 'clean' ? '-clean' : ''}.${output}`, bytes, output === 'jpg' ? 'image/jpeg' : 'video/mp4', WEEK_SEC,

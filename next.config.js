@@ -127,6 +127,14 @@ const nextConfig = {
       '/api/agent/media/audio': ['./node_modules/ffmpeg-static/**'],
       // …and the one task route (lib/tasks): reading a lease job that no worker holds starts one there, montage or audio.
       '/api/tasks': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // …and its edits (lib/agent/media/editLive): the quote probes the file with ffmpeg and the worker the route starts
+      // renders with it; text, logos and captions rasterise through @resvg. Without this entry every edit on Vercel read
+      // as „the file can't be read" (the probe ENOENTs inside a catch), while every local and CI run passed.
+      '/api/agent/media/edit': ['./node_modules/ffmpeg-static/**', './node_modules/@resvg/**'],
+      // …and the live agent (lib/agent/react/bindLiveAgent): its montage and edit tools quote, and a quote probes with ffmpeg.
+      '/api/agent/run': ['./node_modules/ffmpeg-static/**'],
+      // …and its look at a file (lib/agent/media/analyzeLive): the probe reads duration and streams with ffmpeg.
+      '/api/agent/media/analyze': ['./node_modules/ffmpeg-static/**'],
       // Presentation: every slide is rasterised SVG→PNG through @resvg. No ffmpeg. Without this entry the
       // deck builds and then renders nothing — Vercel's container has no system fonts, so resvg is the
       // only thing that draws text at all (verified: Georgian renders 12.5k ink pixels with the bundled

@@ -116,6 +116,16 @@ describe('the spec', () => {
     expect(validateRunSpec(spec).ok).toBe(true);
   });
 
+  test('cut-edit with a zoom: the montage is planned to fit what a zoom takes (120 s), never failing after it renders', () => {
+    const text = 'cut these to the music, add a zoom effect';
+    const spec = chainSpec(runChainAsk(text, [V, V, A])!, text, ['u/a.mp4', 'u/b.mp4', 'u/s.mp3']);
+    expect(spec.steps[0]).toMatchObject({ id: 'cut', maxSec: 120 });
+    expect(spec.steps[1]).toMatchObject({ edits: [expect.objectContaining({ op: 'motion' })] });
+    expect(validateRunSpec(spec).ok).toBe(true);
+    const plain = chainSpec(runChainAsk('cut these to the music, black and white', [V, V, A])!, 'cut these to the music, black and white', ['a', 'b', 's']);
+    expect(plain.steps[0]).not.toHaveProperty('maxSec');
+  });
+
   test('a long message is cut to a title the spec takes', () => {
     const text = `${'cut these to the music, black and white '.repeat(8)}`;
     const spec = chainSpec(runChainAsk(text, [V, V, A])!, text, ['a', 'b', 's']);

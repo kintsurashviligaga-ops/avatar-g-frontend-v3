@@ -36,12 +36,16 @@ const CUT = new RegExp([
   'montage|\\bedit\\b|\\bcut\\b|stitch|splice|combine|merge|\\bjoin\\b|\\breel\\b|tiktok|shorts',
   'монтаж|смонтир|склей|соедини|нарежь|нарез|рилс',
 ].join('|'), 'iu');
-/** „ამ ვიდეოებით კლიპი გამიკეთე", „make me a clip", „сделай клип": with clips and a track, a clip is the montage. */
+/**
+ * „ამ ვიდეოებით კლიპი გამიკეთე", „make me a clip", „сделай клип": with clips and a track, a clip is the montage. The clip
+ * is what is made, never a word about the clips: „ამ კლიპების ანალიზი გამიკეთე", "make me a clip description" and
+ * «сделай клипам описание» are questions about the files.
+ */
 const MAKE_CLIP = new RegExp([
-  'კლიპ\\p{L}*\\s+(?:\\p{L}+\\s+)?(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ|ამიწყ|ააწყ)',
-  '(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ)\\p{L}*\\s+(?:\\p{L}+\\s+)?კლიპ',
-  '\\bmake\\s+(?:me\\s+)?an?\\s+(?:music\\s+video|clip)\\b',
-  '(?:сделай|создай|смонтируй)\\s+(?:мне\\s+)?клип',
+  '(?<!\\p{L})კლიპ(?:ი|ს)?\\s+(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ|ამიწყ|ააწყ)',
+  '(?:გამიკეთ|გააკეთ|შემიქმენ|შექმენ)\\p{L}*\\s+(?:\\p{L}+\\s+)?კლიპ(?:ი|ს)?(?!\\p{L})',
+  '\\bmake\\s+(?:me\\s+)?an?\\s+(?:music\\s+video|clip)(?=\\s*(?:$|[.,!;]|from\\b|with\\b|out\\b|of\\b|using\\b|to\\b|for\\b|please\\b))',
+  '(?:сделай|создай|смонтируй)\\s+(?:мне\\s+)?клип(?!\\p{L})',
 ].join('|'), 'iu');
 /** A trim of one clip is the remix's job, never a montage. */
 const TRIM = /\btrim\b|\bcut\s+(?:the\s+)?(?:first|last|off|out|beginning|end)\b|მოჭერ|შემოკლ|обрез|обрежь/iu;
@@ -522,6 +526,7 @@ const ERR: Record<ChatErrorCode, Record<Lang, string>> = {
   no_track: { ka: 'მუსიკა ვერ ვიპოვე. მიამაგრე ერთი აუდიო ფაილი.', en: 'I found no music track. Attach one audio file.', ru: 'Трека нет. Прикрепите один аудиофайл.' },
   several_tracks: { ka: 'ერთზე მეტი მუსიკაა. დატოვე მხოლოდ ერთი.', en: 'There is more than one track. Keep just one.', ru: 'Треков больше одного. Оставьте один.' },
   too_many_clips: { ka: `ერთ მონტაჟში მაქსიმუმ ${MAX_CLIPS} კლიპია.`, en: `One edit takes up to ${MAX_CLIPS} clips.`, ru: `В один монтаж — до ${MAX_CLIPS} клипов.` },
+  clips_too_long: { ka: 'კლიპები ძალიან გრძელია, რომ მთლიანად ერთ მონტაჟში ჩაეტიოს, ამიტომ არ დავიწყე. მთხოვე უფრო მოკლე მონტაჟი (მაგ. „60 წამიანი"), ან შეამოკლე ყველაზე გრძელი კლიპები.', en: 'The clips are too long to fit whole in one edit, so I did not start it. Ask for a shorter edit (for example "60 seconds"), or trim the longest clips.', ru: 'Клипы слишком длинные, чтобы целиком поместиться в один монтаж, поэтому я не начал. Попросите монтаж короче (например, «60 секунд») или укоротите самые длинные клипы.' },
   plan_failed: { ka: 'ამ ფაილებით მონტაჟი არ გამოდის: კლიპები ან მუსიკა ძალიან მოკლეა.', en: 'No edit fits these files: the clips or the track are too short.', ru: 'Из этих файлов монтаж не собрать: клипы или трек слишком короткие.' },
   // Not every clip can get a shot: the plan is refused, never made without a clip. The numbers, when the refusal carries
   // them (MontageRefusalDetail), are added by errorText (see REFUSAL below); these are the words without them.

@@ -57,6 +57,22 @@ describe('mineTotalDurationSec: the length of the result', () => {
     expect(mineTotalDurationSec('a 30-second reel, the music from 5 seconds')).toBe(30);
   });
 
+  test('a window in the result is not its length: „ბოლო 5 წამი", "the first 3 s", „2-დან 5 წამამდე", "after 3 s"', () => {
+    expect(mineTotalDurationSec('დაამონტაჟე, შავ-თეთრი გახადე და ბოლო 5 წამი ჩააქრე')).toBeUndefined();
+    expect(mineTotalDurationSec('fade out the last 3 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('add the text Sale in the last 5 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('ბოლო 5 წამში დააწერე გამოიწერე')).toBeUndefined();
+    expect(mineTotalDurationSec('в последние 4 секунды добавь логотип')).toBeUndefined();
+    expect(mineTotalDurationSec('2-დან 5 წამამდე დაწერე სათაური')).toBeUndefined();
+    expect(mineTotalDurationSec('logo after 3 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('3 წამის შემდეგ ლოგო გამოჩნდეს')).toBeUndefined();
+    // …while the length said beside it is still the length, and a length range still names one.
+    expect(mineTotalDurationSec('30 წამიანი მონტაჟი, ბოლო 5 წამში დაწერე გამოიწერე')).toBe(30);
+    expect(mineTotalDurationSec('a 45 second reel, text in the first 3 seconds')).toBe(45);
+    expect(mineTotalDurationSec('make it between 20 and 30 seconds')).toBe(30);
+    expect(minePlanParams('დაამონტაჟე, ბოლო 5 წამში დააწერე გამოიწერე').durationSec).toBeUndefined();
+  });
+
   test('a per-shot length is not the length of the edit', () => {
     expect(mineTotalDurationSec('each shot 2 seconds')).toBeUndefined();
     expect(mineTotalDurationSec('თითო კადრი 2 წამი')).toBeUndefined();

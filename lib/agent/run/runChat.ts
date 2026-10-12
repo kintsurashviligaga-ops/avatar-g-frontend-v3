@@ -27,6 +27,7 @@ import { mineEdits, type EditAsk } from '@/lib/agent/media/editWords';
 import { mineComposition } from '@/lib/agent/media/layerWords';
 import { unplannedAsks, unplannedText, type Unplanned } from '@/lib/agent/media/askCoverage';
 import { minePlanParams } from '@/lib/agent/params';
+import { MAX_MOTION_SEC, MAX_OVERLAY_SEC, MAX_STABILIZE_SEC } from '@/lib/agent/media/editPlan';
 import type { RunSpec } from './runSpec';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -206,10 +207,14 @@ export function chainSpec(chain: RunChain, text: string, paths: readonly string[
       ],
     };
   }
+  // A zoom, a shake, a glitch, an overlay or steadying takes a video up to a length (lib/agent/media/editPlan): the
+  // montage is planned to fit, so the edit never fails after the montage has rendered.
+  const caps = chain.edits.flatMap((e) => (e.op === 'motion' ? [MAX_MOTION_SEC] : e.op === 'overlay' ? [MAX_OVERLAY_SEC] : e.op === 'stabilize' ? [MAX_STABILIZE_SEC] : []));
+  const maxSec = caps.length ? Math.min(...caps) : undefined;
   return {
     ...(title ? { title } : {}),
     steps: [
-      { id: 'cut', tool: 'montage', files: [...paths], ...(prompt ? { prompt } : {}) },
+      { id: 'cut', tool: 'montage', files: [...paths], ...(prompt ? { prompt } : {}), ...(maxSec ? { maxSec } : {}) },
       { id: 'edit', tool: 'edit', file: { step: 'cut' }, edits: chain.edits },
     ],
   };

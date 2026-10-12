@@ -165,7 +165,9 @@ const numOr0 = (v: unknown): number => (typeof v === 'number' && Number.isFinite
  */
 function stackLook(parent: readonly MediaEdit[], asks: readonly unknown[]): unknown[] | null {
   const ask = (op: string) => asks.find((a) => opOf(a) === op) as Record<string, unknown> | undefined;
-  if (![...STACKED].some((op) => ask(op) && parent.some((e) => e.op === op))) return null;
+  // A turn asked on a mirrored result stacks too: the mirror changes which way it turns (below).
+  const turnOnMirror = Boolean(ask('rotate') && parent.some((e) => e.op === 'flip'));
+  if (!turnOnMirror && ![...STACKED].some((op) => ask(op) && parent.some((e) => e.op === op))) return null;
   const out: unknown[] = [];
   const pa = parent.find((e) => e.op === 'adjust'), aa = ask('adjust');
   if (pa && aa && ADJUST_KEYS.every((k) => aa[k] === undefined || typeof aa[k] === 'number')) {
@@ -185,7 +187,10 @@ function stackLook(parent: readonly MediaEdit[], asks: readonly unknown[]): unkn
   const pr = parent.find((e) => e.op === 'rotate'), ar = ask('rotate');
   if (ar && typeof ar.deg !== 'number') out.push(ar);
   else {
-    const deg = ((((pr?.deg ?? 0) + Math.round(numOr0(ar?.deg)) + turn) % 360) + 360) % 360;
+    // The turn asked is of the result, which the parent's mirror already flipped: a turn after a mirror is the mirror
+    // after the opposite turn (the plan turns first, then mirrors), so on a mirrored result the asked turn is negated.
+    const asked = Math.round(numOr0(ar?.deg)) * (pf ? -1 : 1);
+    const deg = ((((pr?.deg ?? 0) + asked + turn) % 360) + 360) % 360;
     if (deg !== 0) out.push({ op: 'rotate', deg });
   }
   const pm = parent.find((e) => e.op === 'motion'), am = ask('motion');
@@ -203,12 +208,14 @@ function mergeAsks(parent: readonly MediaEdit[], asks: unknown[]): unknown[] {
   const stacked = stackLook(parent, asks);
   if (stacked) asks = [...asks.filter((a) => !STACKED.has(opOf(a) ?? '')), ...stacked];
   const kept = parent.filter((e) => !asked.has(e.op) && e.op !== 'layers' && !(stacked && STACKED.has(e.op))).map((e) => ({ ...e })) as unknown[];
-  // Places erased before stay erased: a new place is added to them („and the logo top left too").
+  // Places erased before stay erased: a new place is added to them („and the logo top left too"). An erase with no
+  // place at all (`boxes: []`, a removal the words did not place) is not given the old places: it would re-render the
+  // parent's erase and call it done; it is asked where instead.
   const parentErase = parent.find((e) => e.op === 'erase');
   if (parentErase && asked.has('erase')) {
     asks = asks.map((a) => {
       const e = a as { op?: string; boxes?: unknown[] } | null;
-      return e?.op === 'erase' && Array.isArray(e.boxes) ? { ...e, boxes: [...parentErase.boxes.map((b) => ({ ...b })), ...e.boxes] } : a;
+      return e?.op === 'erase' && Array.isArray(e.boxes) && e.boxes.length ? { ...e, boxes: [...parentErase.boxes.map((b) => ({ ...b })), ...e.boxes] } : a;
     });
   }
   const layersAsk = asks.find((a) => (a as { op?: string } | null)?.op === 'layers');

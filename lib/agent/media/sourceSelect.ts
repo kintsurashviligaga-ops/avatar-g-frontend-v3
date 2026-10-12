@@ -68,6 +68,8 @@ const EXCEPT_AFTER = /^(?:გარდა|ამოიღე|ამოაგდ�
 function tokens(text: string): string[] {
   return text
     .toLowerCase()
+    // A frame shape or a time („9:16", „16x9", „0:58") is not two picture numbers.
+    .replace(/\d{1,2}\s*[:x×/]\s*\d{1,2}/gu, ' ')
     .replace(/[„“”"«»().!?;:]/gu, ' ')
     .replace(/,/gu, ' , ')
     .split(/\s+/u)
@@ -92,6 +94,23 @@ export function ordinalOf(tok: string): number | null {
   return null;
 }
 
+/** Picture words FILLER does not skip: „მხოლოდ ბოლო სურათი", «только последний кадр». */
+const PICTURE_WORD = /^(?:სურათ\S*|კადრებ\S*|images?|frames?|картинк\S*|кадр\S*|снимк\S*|снимок)$/u;
+/** Words that may close a selection: „მარტო ბოლო შვიდი დატოვე", „ბოლო შვიდით გააკეთე", "only the last 3 in the montage". */
+const CLOSE = /^(?:დატოვე|დამიტოვე|გამოიყენე|აიღე|ჩასვი|გააკეთე|გამიკეთე|დაამონტაჟე|დამიმონტაჟე|მონტაჟ\S*|გთხოვ|keep|use|leave|take|make|do|cut|edit|montage|please|in|into|for|from|оставь|возьми|используй|сделай|смонтируй|монтаж\S*|пожалуйста|в|для)$/u;
+
+/**
+ * Does a picture named by place or count end at `j`? Only before nothing, „and", a picture word, „except" or a word that
+ * closes the ask: „only the last part of the song", „without the last chorus", „only the first verse", „the first 5
+ * ideas" and „the last 3 messages" are about something else, never the pictures.
+ */
+function endsPick(t: string[], j: number): boolean {
+  const nx = t[j];
+  if (nx === undefined) return true;
+  return JOIN.test(nx) || FILLER.test(nx) || PICTURE_WORD.test(nx) || CLOSE.test(nx) || ONLY.test(nx)
+    || EXCEPT_BEFORE.test(nx) || EXCEPT_AFTER.test(t.slice(j, j + 2).join(' '));
+}
+
 /** Read picks starting at `i` („მე-2 და მე-5", „მესამე", „ბოლო"); returns them and where they stopped. */
 function readPicks(t: string[], i: number): { picks: Pick[]; end: number } {
   const picks: Pick[] = [];
@@ -110,6 +129,7 @@ function readPicks(t: string[], i: number): { picks: Pick[]; end: number } {
         continue;
       }
       if (isLast) {
+        if (!endsPick(t, j + 1)) break;
         picks.push({ fromEnd: 1 });
         j += 1;
         continue;
@@ -118,6 +138,7 @@ function readPicks(t: string[], i: number): { picks: Pick[]; end: number } {
     const n = ordinalOf(tok);
     if (n === null) break;
     if (t[j + 1] && TIME_UNIT.test(t[j + 1]!)) return { picks: [], end: j }; // „58-ე წამიდან": a time, not a picture
+    if (!endsPick(t, j + 1)) break;
     picks.push({ at: n });
     j += 1;
   }
@@ -141,7 +162,7 @@ function countAt(t: string[], i: number): number | null {
   if (n === null || n < 1) return null;
   const after = t[j + 1];
   if (after && TIME_UNIT.test(after)) return null;
-  return n;
+  return endsPick(t, j + 1) ? n : null;
 }
 
 /** The selection in the user's words, or null when there is none. */

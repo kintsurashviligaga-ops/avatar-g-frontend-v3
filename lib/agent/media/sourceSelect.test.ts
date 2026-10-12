@@ -48,6 +48,10 @@ describe('the owner’s words (Media Studio v2.0 §C, §H)', () => {
       'მხოლოდ 30 წამი',
       'cut the last 5 seconds',
       'the first 3 seconds are too dark',
+      // A frame shape is not two picture numbers; a part of the song is not a picture; nor are ideas or messages.
+      'მხოლოდ 9:16 ფორმატში', 'only 9:16', 'только 9:16', 'only 1:1 square',
+      'use only the last part of the song', 'მუსიკის მხოლოდ ბოლო ნაწილი', 'without the last chorus', 'only the first verse',
+      'give me the first 5 ideas', 'summarize the last 3 messages', 'translate the last two sentences', 'list the first three steps',
       'remove the captions',
       'დაამონტაჟე მუსიკაზე',
       '',

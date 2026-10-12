@@ -340,6 +340,11 @@ describe('rampOf: the speed changes a montage message asks for', () => {
   test('no speed words, or a word that only contains the letters („პანელი"), asks for nothing', () => {
     expect(rampOf('დაამონტაჟე ეს კლიპები მუსიკაზე 9:16')).toBeNull();
     expect(rampOf('ქვედა პანელი გამიკეთე')).toBeNull();
+    // How fast a transition is, not the shots' speed.
+    for (const t of ['სწრაფი გადასვლებით დაამონტაჟე', 'ჩქარი გადასვლებით', 'faster transitions', 'quick transitions please', 'быстрые переходы']) {
+      expect([t, rampOf(t)]).toEqual([t, null]);
+    }
+    expect(rampOf('სწრაფი გადასვლებით და ზოგი კადრი შეანელე')).toBe('slow');
     expect(rampOf(undefined)).toBeNull();
   });
 });

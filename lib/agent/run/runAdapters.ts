@@ -30,7 +30,7 @@ export function montageAdapter(deps: () => MontageExecDeps): StepAdapter {
     async quote(userId, step) {
       if (step.tool !== 'montage') return { ok: false, error: 'bad_spec' };
       const q = await quoteMontage(deps(), {
-        userId, files: step.files, prompt: step.prompt, aspect: step.aspect, targetSec: step.targetSec, musicFromSec: step.musicFromSec,
+        userId, files: step.files, prompt: step.prompt, aspect: step.aspect, targetSec: step.targetSec, musicFromSec: step.musicFromSec, maxSec: step.maxSec,
       });
       if (!q.ok) return { ok: false, error: q.error };
       const { shots, totalSec, aspect, bpm, musicStartSec, ramp, transitions } = q.quote;

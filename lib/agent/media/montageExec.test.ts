@@ -29,6 +29,24 @@ describe('quote', () => {
     expect(f.audits).toEqual([expect.objectContaining({ phase: 'quote', outcome: 'ok', files: 3 })]);
   });
 
+  test('a cap for the step after it (a run\'s zoom): the plan fits under it, a length asked past it is refused', async () => {
+    const capped = await quoted(fake(), { maxSec: 20 });
+    expect(capped.quote.totalSec).toBeLessThanOrEqual(20);
+    expect(capped.quote.totalSec).toBeGreaterThan(0);
+    const over = await quoteMontage(fake().deps, { userId: USER, files: FILES, prompt: 'a 25 second reel', maxSec: 20 });
+    expect(over.ok).toBe(false);
+    expect((await quoted(fake(), { prompt: 'a 25 second reel' })).quote.totalSec).toBe(25);
+  });
+
+  test('twelve clips or fewer, one too long to keep whole within twelve shots: said as that, not „too many clips"', async () => {
+    const names = Array.from({ length: 11 }, (_, i) => `omni-uploads/${USER}/c${i}.mp4`);
+    const files = Object.fromEntries(names.map((n, i) => [n, clip(i === 0 ? 150 : 10)]));
+    const q = await quoteMontage(fake({ files }).deps, { userId: USER, files: names, prompt: 'დაამონტაჟე' });
+    expect(q).toMatchObject({ ok: false, error: 'clips_too_long' });
+    // …and a length asked that fits is planned.
+    expect(await quoteMontage(fake({ files }).deps, { userId: USER, files: names, prompt: 'დაამონტაჟე, 60 წამიანი' })).toMatchObject({ ok: true });
+  });
+
   test('the frame shape follows the clips when the user names none', async () => {
     const f = fake({ files: { [FILES[0]!]: clip(20, true), [FILES[1]!]: clip(20, true), [FILES[2]!]: TRACK } });
     expect((await quoted(f)).quote.aspect).toBe('9:16');

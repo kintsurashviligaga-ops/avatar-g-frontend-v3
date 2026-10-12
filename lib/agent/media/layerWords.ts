@@ -11,7 +11,7 @@
  * What the words ask for and this edit cannot do is said, not guessed: captions of what is SPOKEN need a transcription
  * (a paid call, the owner's decision), a translation needs a model call (the same). A logo, a watermark or a text in
  * the picture itself is removed by erasing its place (./editExec turns a removal no layer of ours answers into
- * ./editPlan `erase`); a person, an object or the background is not a fixed place: AI inpainting, a paid call, said so.
+ * ./editPlan `erase`); a person or an object is not a fixed place: AI inpainting, a paid call, said so.
  *
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
@@ -89,10 +89,11 @@ const ALL = /ყველა|მთელი|all|every|весь|все|всю/iu
 /** Something written in the picture („ზემოთ რაღაც წერია, მოაშორე"): a text to erase, though no text noun is said. */
 const WRITTEN = /წერია|დაწერილ|написан|написано|is\s+written|written\s+(?:on|in|at)/iu;
 /**
- * A person, an object or the background taken out of the picture: not a fixed place but a thing that moves or fills it,
- * AI inpainting or segmentation (a paid provider call), not something ffmpeg can fill in.
+ * A person or an object taken out of the picture: not a fixed place but a thing that moves, AI inpainting (a paid provider
+ * call), not something ffmpeg can fill in. The background alone („ფონი მოაშორე", "remove the background") is not this: the
+ * studio's own background removal takes it, as it did before.
  */
-const OBJECT = /ადამიან|პიროვნ|კაცი|კაცს|ქალბატონ|ბავშვ|მანქან|საგან|ობიექტ|ცხოველ|ძაღლ|ფონი|ფონს|ფონიდან|(?<![\p{L}])(?:person|people|man|woman|guy|girl|kid|object|car|thing|animal|dog|cat|background)(?![\p{L}])|человек|люд\p{L}*|мужчин|женщин|ребён|ребен|машин|предмет|объект|животн|собак|кошк|(?<![\p{L}])фон(?![\p{L}])/iu;
+const OBJECT = /ადამიან|პიროვნ|კაცი|კაცს|ქალბატონ|ბავშვ|მანქან|საგან|ობიექტ|ცხოველ|ძაღლ|(?<![\p{L}])(?:person|people|man|woman|guy|girl|kid|object|car|thing|animal|dog|cat)(?![\p{L}])|человек|люд\p{L}*|мужчин|женщин|ребён|ребен|машин|предмет|объект|животн|собак|кошк/iu;
 /** Sound words: „ფონის მუსიკა მოაშორე" and "remove the background noise" are the sound's, not the picture's. */
 const SOUND = /მუსიკ|ხმ|სიმღერ|შიშინ|music|sound|audio|song|noise|hiss|(?<!\p{L})hum(?!\p{L})|музык|звук|песн|(?<!\p{L})шум|шипени/iu;
 

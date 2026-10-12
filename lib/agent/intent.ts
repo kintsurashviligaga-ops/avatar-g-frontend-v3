@@ -33,7 +33,7 @@ import { beatMontageAsk, hasMontageWords } from '@/lib/agent/media/montageChat';
 import { asksNarration } from '@/lib/agent/media/montageAsk';
 import { audioExtractAsk, wantsAudioFile } from '@/lib/agent/media/audioChat';
 import { withoutLinks } from '@/lib/agent/media/audioSource';
-import { mineEdits } from '@/lib/agent/media/editWords';
+import { asksForEdit, mineEdits, onlyDescribing } from '@/lib/agent/media/editWords';
 import { hasPlanParams, mineParams } from './params';
 import { parseSelection } from './media/sourceSelect';
 import type {
@@ -319,10 +319,11 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   }
   // „წინა ვიდეო შავ-თეთრი გახადე", "mute the last video", „make the last video 2× faster": an edit the edit's own words
   // (media/editWords) can read, of the last video, and nothing new asked for. Before the generate lanes, which would
-  // otherwise make a new video from „make the last video …".
+  // otherwise make a new video from „make the last video …". Words that also describe a picture („წინა ვიდეო უფრო ნათელი
+  // იყო", "the previous one was warmer") are an edit only when the message asks for one: a remark goes to the chat.
   if (!kinds.length && prev === 'video' && PREVIOUS_REF.test(text) && !NEW_THING.test(text)) {
     const mined = mineEdits(text);
-    if (mined.edits.length || mined.unsupported.length) return act('media.edit', 'previous', params);
+    if ((mined.edits.length || mined.unsupported.length) && (!onlyDescribing(mined) || asksForEdit(text))) return act('media.edit', 'previous', params);
   }
 
   // 11) The other studio services (presentation, 3D, avatar, the editor).

@@ -17,7 +17,7 @@ jest.mock('../../supabase/server', () => ({ createServiceRoleClient: () => null 
 jest.mock('../../observability/report-error', () => ({ reportError: () => {} }));
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
@@ -25,7 +25,7 @@ import { memoryLeaseStore } from '../../orchestrator/testing/memoryLeaseStore';
 import { parseProbeBanner, type BannerProbe } from '../../video/probeBanner';
 import { probeMedia } from '../../services/montage/beatAnalysis';
 import { enqueueEditJob, quoteEdit, type EditExecDeps } from './editExec';
-import { renderEdit } from './editLive';
+import { probeUpright, renderEdit } from './editLive';
 import { qcEdit, resolveEdits, type EditRequest } from './editPlan';
 import { mineEdits } from './editWords';
 import { workEditJob } from './editWorker';
@@ -98,6 +98,35 @@ test('trim + speed + 9:16 + noir + fades: an H.264/AAC MP4 of the planned frame 
   // The fade-in starts from black: the first frame is darker than one in the middle.
   const mean = (b: Buffer) => b.reduce((s, v) => s + v, 0) / b.length;
   expect(mean(greyFrame(r.file, 0, 54, 96))).toBeLessThan(mean(greyFrame(r.file, 2.5, 54, 96)) - 20);
+});
+
+/** A 400×300 JPEG stored on its side with EXIF Orientation 6 (how many phones save a portrait photo). */
+function exifTurnedJpeg(): string {
+  const base = make('flat.jpg', ['-f', 'lavfi', '-i', 'testsrc2=size=400x300:rate=1:duration=1', '-frames:v', '1']);
+  const jpg = readFileSync(base);
+  const tiff = Buffer.from([0x4d, 0x4d, 0, 0x2a, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0]);
+  const payload = Buffer.concat([Buffer.from('Exif\0\0', 'binary'), tiff]);
+  const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, (payload.length + 2) >> 8, (payload.length + 2) & 255]), payload]);
+  const out = join(dir, 'exif6.jpg');
+  writeFileSync(out, Buffer.concat([jpg.subarray(0, 2), app1, jpg.subarray(2)]));
+  return out;
+}
+
+test('a phone photo stored on its side (EXIF Orientation 6): planned, rendered and checked upright', async () => {
+  const photo = exifTurnedJpeg();
+  expect(banner(photo)).toMatchObject({ width: 400, height: 300 }); // the banner gives the stored sides
+  const src = await probeUpright(photo);
+  expect(src).toMatchObject({ width: 300, height: 400 });
+  for (const asks of [[{ op: 'adjust', brightness: 30 }], [{ op: 'rotate', deg: 90 }], [{ op: 'erase', boxes: [{ at: 'bottom-right' }] }]]) {
+    const r = resolveEdits(asks, src!);
+    if (!r.ok) throw new Error(`${r.error}: ${r.message}`);
+    const out = await renderEdit(photo, { edits: r.edits, plan: r.plan }, { signal: new AbortController().signal });
+    if (!out.ok) throw new Error(`${out.error}: ${out.detail}`);
+    expect([asks[0]!.op, qcEdit(out.output, r.plan, out.bytes.byteLength).problems]).toEqual([asks[0]!.op, []]);
+  }
+  // A photo already upright is left as its banner says.
+  const flat = make('flat2.jpg', ['-f', 'lavfi', '-i', 'testsrc2=size=400x300:rate=1:duration=1', '-frames:v', '1']);
+  expect(await probeUpright(flat)).toMatchObject({ width: 400, height: 300 });
 });
 
 /** The video frames a file really has, decoded (not the container's claim). */

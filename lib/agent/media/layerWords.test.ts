@@ -185,12 +185,17 @@ describe('what the words carry', () => {
     ]);
   });
 
-  test('a person, an object or the background out of the picture: said, never smeared over', () => {
-    for (const t of ['ეს ადამიანი ვიდეოდან ამოიღე', 'remove the car from the video', 'убери человека из кадра', 'ფონი მოაშორე', 'remove the background']) {
+  test('a person or an object out of the picture: said, never smeared over', () => {
+    for (const t of ['ეს ადამიანი ვიდეოდან ამოიღე', 'remove the car from the video', 'убери человека из кадра']) {
       const m = mineComposition(t);
       expect(m.hit).toBe(true);
       expect(m.unsupported).toEqual(['remove_object']);
       expect(m.asks).toEqual([]);
+    }
+    // The background alone is the studio's own background removal, as before this edit existed.
+    for (const t of ['ფონი მოაშორე', 'remove the background', 'убери фон']) {
+      expect(mineComposition(t).unsupported).toEqual([]);
+      expect(mineComposition(t).hit).toBe(false);
     }
     // The background MUSIC is sound, not the picture.
     expect(mineComposition('ფონის მუსიკა მოაშორე').unsupported).toEqual([]);

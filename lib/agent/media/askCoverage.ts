@@ -159,9 +159,9 @@ export function unplannedLine(u: Unplanned, locale: string): string {
         : lang === 'ru' ? 'перевод субтитров: пока не включён'
           : 'ქეფშენების თარგმანი: ჯერ ჩართული არ არის';
     case 'remove_object':
-      return lang === 'en' ? 'taking a person, an object or the background out of the picture: that needs AI fill (a paid provider call), not switched on yet'
-        : lang === 'ru' ? 'убрать человека, предмет или фон из кадра: нужно заполнение ИИ (платный вызов провайдера), пока не включено'
-          : 'ადამიანის, საგნის ან ფონის ამოღება კადრიდან: AI-ით შევსება სჭირდება (ფასიანი პროვაიდერის გამოძახება), ჯერ ჩართული არ არის';
+      return lang === 'en' ? 'taking a person or an object out of the picture: that needs AI fill (a paid provider call), not switched on yet'
+        : lang === 'ru' ? 'убрать человека или предмет из кадра: нужно заполнение ИИ (платный вызов провайдера), пока не включено'
+          : 'ადამიანის ან საგნის ამოღება კადრიდან: AI-ით შევსება სჭირდება (ფასიანი პროვაიდერის გამოძახება), ჯერ ჩართული არ არის';
     case 'cut_middle':
       return lang === 'en' ? 'cutting a stretch out of the middle: the montage picks its own shots; ask for it on the finished video'
         : lang === 'ru' ? 'вырезать кусок из середины: монтаж сам выбирает кадры; попросите это на готовом видео'

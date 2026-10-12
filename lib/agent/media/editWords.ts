@@ -160,7 +160,7 @@ const COOLER = /ცივ(?:ი|ად|ო)?\s+(?:ტონ|ფერ|ელფ�
 const WARM_LIGHT = /(?:warm|თბილ(?!ის)\p{L}*|тёпл\p{L}*|тепл\p{L}*)\s+(?:light|სინათლ|светов)/iu;
 
 /** A mirror: „სარკისებრად", "mirror / flip it", «отзеркаль». „ამოაბრუნე" is turning it over, not a quarter turn. */
-const FLIP = /სარკ(?:ე|ის|ულ)\p{L}*|(?<!\p{L})(?:ამოაბრუნ|გადააბრუნ)|mirror|(?<!\p{L})flip|отзеркал|зеркальн|отрази/iu;
+const FLIP = /სარკ(?:ე|ის|ულ)\p{L}*|(?<!\p{L})(?:ამოაბრუნ|გადააბრუნ)|mirror|(?<!\p{L})flip|отзеркал|зеркальн|отрази(?!\p{L})/iu;
 const VERTICAL = /ვერტიკალურად|vertical\p{L}*|upside\s*-?\s*down|თავდაყირა|вертикал\p{L}*|вверх\s+ногами/iu;
 const UPSIDE = /თავდაყირა|upside\s*-?\s*down|вверх\s+ногами/iu;
 /** A turn: the verbs that mean nothing else („მოატრიალე", "rotate", «поверни»); „turn" only with where it turns to. */
@@ -462,6 +462,39 @@ export function editAskOf(x: unknown): EditAsk | null {
   const track = out.track as { source?: unknown } | undefined;
   if (track && track.source !== 'typed' && track.source !== 'file') return null;
   return out as EditAsk;
+}
+
+/**
+ * The ops whose words also describe a picture: „warm", „ნათელი", «ярче», "upside down", „ზუმი". Read alone, they are an
+ * edit only when the message asks for one (asksForEdit): „წინა ვიდეო უფრო ნათელი იყო" is a remark the chat answers.
+ */
+const DESCRIBING_OPS: ReadonlySet<string> = new Set(['adjust', 'flip', 'rotate', 'motion', 'stabilize', 'denoise', 'loudness']);
+
+/** Are these only the describing kind (and „backwards"), so the words alone may be a remark rather than an ask? */
+export function onlyDescribing(mined: MinedEdits): boolean {
+  if (!mined.edits.length && !mined.unsupported.length) return false;
+  return mined.edits.every((e) => DESCRIBING_OPS.has(e.op) || (e.op === 'aspect' && e.fit === 'blur'))
+    && mined.unsupported.every((u) => u === 'reverse');
+}
+
+/** A request: „can you…", „please", „გთხოვ", «можешь…», "I want…". */
+const REQUEST = /(?<![\p{L}])(?:can\s+you|could\s+you|would\s+you|will\s+you|please|let'?s|i\s+want|i'?d\s+like|i\s+need|შეგიძლია|შეძლებ|გთხოვ|მინდა|можешь|можете|можно|пожалуйста|хочу|нужно|давай)(?![\p{L}])/iu;
+/** An English verb that asks for a change, or a phrase that only a change can be: "zoom in", "warm it up", "play it backwards". */
+const EN_VERB = /(?<![\p{L}])(?:make|turn|add|apply|put|give|set|flip|rotate|stabili[sz]e|denoise|normali[sz]e|boost|increase|decrease|reduce|lower|raise|remove|fix|brighten|darken|lighten|sharpen|saturate|desaturate|crop|change|adjust|tweak|edit|enhance|improve|correct|reverse|mute|speed\s+up|slow\s+down|zoom\s+(?:in|out)|warm\s+(?:it\s+|this\s+)?up|cool\s+(?:it\s+|this\s+)?down|clean\s+up|mirror\s+(?:it|this|the)|blur\s+(?:it|this|the)|play\s+(?:it\s+|this\s+)?(?:backwards|in\s+reverse))(?![\p{L}])/iu;
+/** A Georgian command: a preverb, the stem and the imperative -ე („გახადე", „დაამატე", „მოაბრუნე", „გაათბე"); not „-ზე" („შენზე", „ამაზე"). */
+const KA_VERB = /(?<![\p{L}])(?:(?:გადა|შემო|გამო|ჩამო|ამო|წამო|გა|და|მო|შე|ა|ჩა|წა|მი|მიუ|დაუ|შეუ|გაუ)\p{L}{2,}(?<!ზ)ე|ჩასვი|დასვი|ქენი|მიეცი|მიქენი)(?![\p{L}])/iu;
+/** A Russian command. */
+const RU_VERB = /(?<![\p{L}])(?:сделай\p{L}*|добавь\p{L}*|примени\p{L}*|наложи\p{L}*|поверни\p{L}*|переверни\p{L}*|отрази|отзеркаль\p{L}*|приблизь|отдали|убери\p{L}*|почисти\p{L}*|выровняй|стабилизируй|увеличь|уменьши|затемни|осветли|измени|поменяй|исправь|улучши|включи|поставь|ускорь|замедли|обрежь|прокрути|дай)(?![\p{L}])/iu;
+
+/**
+ * Does the message ask for an edit, rather than describe or ask about the picture? A request word or a command verb, and
+ * not a question that only asks: "what should I post with this video, something warm?" and "is it warm?" are not.
+ */
+export function asksForEdit(text: string): boolean {
+  const t = String(text ?? '').slice(0, 2000);
+  const request = REQUEST.test(t);
+  if (!request && /[?？]\s*$/u.test(t.trim())) return false;
+  return request || EN_VERB.test(t) || KA_VERB.test(t) || RU_VERB.test(t);
 }
 
 /** Every edit the message asks for, in the words' own terms (unresolved against any file). */

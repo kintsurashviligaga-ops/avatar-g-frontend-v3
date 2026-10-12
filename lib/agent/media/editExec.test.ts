@@ -129,14 +129,29 @@ describe('a revision of our own result: the look adds to what the result shows (
   });
 
   test('a turn adds to the turn; the same mirror twice is none, a mirror each way a half turn; a glitch keeps the zoom', async () => {
+    const plain = await result([{ op: 'rotate', deg: 90 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(plain, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'motion', zoom: 'in' }]);
+    // On a mirrored result the plan (turn, then mirror) takes the opposite turn: a quarter turn of the picture as seen.
     const r = await result([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
-    expect(await again(r, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    const mirrored = await result([{ op: 'flip', axis: 'horizontal' }]);
+    expect(await again(mirrored, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 270 }, { op: 'flip', axis: 'horizontal' }]);
     expect(await again(r, [{ op: 'flip' }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'motion', zoom: 'in' }]);
     expect(await again(r, [{ op: 'flip', axis: 'vertical' }])).toEqual([{ op: 'rotate', deg: 270 }, { op: 'motion', zoom: 'in' }]);
     expect(await again(r, [{ op: 'motion', glitch: true }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in', glitch: true }]);
     // A turn back to where it started leaves no turn; a turn that is no quarter turn is refused, not rounded.
-    expect(await again(r, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(plain, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
     expect(await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits: [{ op: 'rotate', deg: 45 }] })).toMatchObject({ ok: false, error: 'bad_edits' });
+  });
+
+  test('a removal with no place on an erased result is asked where, not the old erase delivered again', async () => {
+    const r = await result([{ op: 'erase', at: 'top-right' }]);
+    const unplaced = await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits: [{ op: 'layers', remove: [{ kind: 'image' }] }] });
+    expect(unplaced).toMatchObject({ ok: false, error: 'erase_where' });
+    // A new place still adds to the places erased before.
+    const placed = await again(r, [{ op: 'erase', boxes: [{ x: 0.01, y: 0.01, w: 0.3, h: 0.14 }] }]);
+    expect((placed[0] as { op: string; boxes: unknown[] }).boxes).toHaveLength(2);
   });
 });
 
