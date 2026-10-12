@@ -1,16 +1,17 @@
 # BOG გადახდები — რა უნდა გააკეთო შენ (Owner Action Checklist)
 
-2026-10-12 · PR #59 (draft) · დეტალები: [`2026-10-12-bog-payments-v1-ka.md`](2026-10-12-bog-payments-v1-ka.md)
+2026-10-12 · v1.2 · PR #59 (**draft**, merge მხოლოდ შენი ცალკე სიტყვით) · დეტალები: [`2026-10-12-bog-payments-v1-ka.md`](2026-10-12-bog-payments-v1-ka.md)
 
-**ახლანდელი მდგომარეობა (PROVEN):**
-- Production უკვე აჩვენებს BOG-ით გადახდას ყველა შესულ მომხმარებელს: `myavatar.ge/api/checkout/capabilities` → `bog: true`.
-- Vercel-ში რომელი წყვილი წერია, ჩვენ არ ვიცით.
-- ოთხივე წინა მცდელობა ჩავარდა.
-- Credits ფანჯარაში BOG-ის ჩავარდნისას მომხმარებელი ბარათით (Stripe) ვერ იხდის, მხოლოდ შეცდომას ხედავს.
+**ახლანდელი მდგომარეობა:**
+- PROVEN (2026-10-12 18:54Z): Production ყველას აჩვენებს BOG-ით გადახდას: `myavatar.ge/api/checkout/capabilities` → `{"stripe":true,"bog":true}`.
+- Vercel-ში რომელი წყვილი წერია, ჩვენ არ ვიცით. ოთხივე წინა მცდელობა ჩავარდა.
+- PROVEN (კოდი): BOG-ის უარის შემდეგ Credits ფანჯარა Stripe-ზე არ გადადის, მომხმარებელი მხოლოდ შეცდომას ხედავს.
+- BUILT_NOT_PROVEN: Stripe Production-ში კონფიგურირებულია (`stripe:true`), მაგრამ მისით ერთი გადახდაც არ დასრულებულა.
 
 **არასდროს:**
-- Secret Key არ ჩასვა ჩატში, ფოტოში, GitHub-ში, ელფოსტაში და Vercel-ის Preview / Development scope-ში.
-- ჩემთვის საკმარისია HTTP კოდი, შეცდომის ხაზი ან client id-ის ბოლო 4 სიმბოლო.
+- Secret Key არ ჩასვა ჩატში, ფოტოში, GitHub-ში, ელფოსტაში, ბრძანების ხაზში და Vercel-ის Preview / Development scope-ში.
+- Sandbox (სატესტო) წყვილი არ ჩაწერო Vercel-ში არცერთ scope-ში. ყველა Vercel deployment Production-ის ბაზას იყენებს. ახალი კოდი ასეთ შემთხვევაში BOG-ს მთლიანად ბლოკავს (`BOG_SANDBOX_BLOCKED`, ადმინ ბარათზე წითელი ხაზი).
+- ჩემთვის საკმარისია შემოწმების ერთი ხაზი (`✓ ok · HTTP 200 · …`) ან client id-ის ბოლო 4 სიმბოლო.
 
 ---
 
@@ -23,7 +24,7 @@
   - რომელი გადახდის მეთოდებია ჩართული;
   - სად ჩანს ლიმიტები.
 - [ ] თუ სადმე ითხოვს callback / notification URL-ს: `https://myavatar.ge/api/billing/bog/webhook`. Success / fail მისამართი არ სჭირდება, შეკვეთას თან ახლავს.
-- [ ] ბანკს გაუგზავნე ღია კითხვები — ანგარიშის §10 (7 პუნქტი). მთავარი ოთხია:
+- [ ] ბანკს გაუგზავნე ღია კითხვები (ანგარიშის §10). მთავარი ოთხია:
   1. OPAY წყვილი Online Payments API-ისაა თუ არა;
   2. ლიმიტი მერჩანტზეა თუ ბარათზე;
   3. ავტომატური გადახდები ჩართულია თუ არა;
@@ -31,24 +32,46 @@
 
 ## 2. წყვილის შემოწმება შენს Mac-ზე (ერთი OAuth მოთხოვნა, თანხა არ ჩამოიჭრება)
 
-Terminal-ში ჩასვი ეს სამი ხაზი. Secret Key აკრეფისას ეკრანზე არ გამოჩნდება და shell history-ში არ ჩაიწერება:
+### 2-ა. სკრიპტით (რეკომენდებული)
 
-```bash
-read -r -p "OPAY Client ID: " BOG_ID; read -r -s -p "OPAY Secret Key: " BOG_SK; echo
-curl -sS -u "$BOG_ID:$BOG_SK" -d grant_type=client_credentials -w '\nHTTP %{http_code}\n' https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token | sed -E 's/"access_token":"[^"]*"/"access_token":"[hidden]"/'
+Terminal-ში, თითო ხაზი:
+
+```zsh
+node -v
+cd ~/Downloads
+curl -fsSLo bog-oauth-check.mjs https://raw.githubusercontent.com/kintsurashviligaga-ops/avatar-g-frontend-v3/18b2a157da7fc4ca79c52d90a2cc824e64b03c82/scripts/bog-oauth-check.mjs
+shasum -a 256 bog-oauth-check.mjs
+node bog-oauth-check.mjs
+```
+
+- `node -v` უნდა აჩვენოს `v18` ან მეტი. თუ წერს `command not found`, გამოიყენე §2-ბ.
+- `shasum`-ის პასუხი ზუსტად ეს უნდა იყოს: `3be96bb82ab038fbdf3751db5b2d374e7e23061b7da7f450757fabe8a55c93be`. თუ განსხვავდება, **ნუ** გაუშვებ და მომწერე.
+- ფაილი იგივეა, რაც თრედში მიმაგრებული `bog-oauth-check.mjs`; ჩამოტვირთვის მაგივრად ისიც შეგიძლია გამოიყენო (იგივე `shasum` შემოწმებით).
+- სკრიპტი ჯერ Client ID-ს გკითხავს (ჩანს ეკრანზე), მერე Secret Key-ს. Secret Key-ის ჩასმისას (Cmd+V) ეკრანზე **არაფერი გამოჩნდება**, ეს ნორმალურია; დააჭირე Enter.
+- Secret Key არ ჩაიწერება shell history-ში და არ გამოჩნდება პასუხში არცერთი ფორმით, არც token. Ctrl+C ნებისმიერ დროს წყვეტს, მოთხოვნა არ იგზავნება.
+- პასუხი ერთი ხაზია, მაგალითად `✓ ok · HTTP 200 · production · client …1234 · 180 ms`, ქვემოთ ქართული ახსნით. **მომწერე მხოლოდ ეს ხაზი.**
+- **ნუ** გაუშვებ `BOG_SECRET_KEY=… node …` ფორმით: ასე საიდუმლო shell history-ში ჩაიწერება.
+
+### 2-ბ. Node-ის გარეშე (მხოლოდ თუ `node -v` არ მუშაობს)
+
+Mac-ის Terminal-ში (zsh). თუ ფანჯრის სათაურში `bash` წერია, ჯერ აკრიფე `zsh`.
+
+```zsh
+read -r "BOG_ID?OPAY Client ID: "; read -rs "BOG_SK?OPAY Secret Key: "; echo
+printf 'header = "Authorization: Basic %s"\n' "$(printf '%s:%s' "$BOG_ID" "$BOG_SK" | base64 | tr -d '\n')" | curl -sS -K - -o /dev/null -w 'HTTP %{http_code}\n' -d grant_type=client_credentials https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token
 unset BOG_ID BOG_SK
 ```
 
-(ან, თუ რეპო გაქვს ამ branch-ზე: `node scripts/bog-oauth-check.mjs` — იგივე, ქართული ახსნით.)
+- Secret Key აკრეფისას არ ჩანს. პასუხი მხოლოდ `HTTP 200` / `401` / … ხაზია: BOG-ის პასუხის ტექსტი და token საერთოდ არ იბეჭდება, საიდუმლო ბრძანების ხაზშიც არ ხვდება.
+
+**რატომ შეიცვალა წინა ვერსია (v1.1):** ის `read -r -p`-ს იყენებდა. Mac-ის zsh-ში `-p` სხვა რამეს ნიშნავს (`read: -p: no coprocess`), ცვლადები ცარიელი რჩებოდა და შემოწმება ყალბ `401`-ს აჩვენებდა. ამასთან `sed` მხოლოდ `"access_token"` ველს მალავდა, სხვა ფორმით დაბრუნებულ საიდუმლოს არა. ორივე გამოსწორებულია და ტესტებით დადასტურებულია (zsh 5.9, ნამდვილი ტერმინალი).
 
 | შედეგი | რას ნიშნავს | შემდეგი ნაბიჯი |
 |---|---|---|
-| `HTTP 200` | BOG იღებს წყვილს | §3 |
-| `HTTP 400` ან `401` | წყვილი არასწორია ან ეს Online Payments-ის წყვილი არ არის | ხელახლა დააკოპირე ორივე, ზედმეტი ჰარის გარეშე. თუ ისევ ასეა, ბანკს კითხვა №1 |
-| `HTTP 403` | წყვილს იცნობს, მაგრამ API არ არის ჩართული | ბანკი |
-| `HTTP 000` / შეცდომა | ქსელი | სცადე თავიდან |
-
-მომწერე მხოლოდ HTTP კოდი. თუ შეცდომის ხაზს მომწერ, ჯერ შეამოწმე, რომ მასში Secret Key არ ერიოს.
+| `✓ ok · HTTP 200` | BOG იღებს წყვილს | §3 |
+| `credentials_refused · HTTP 400/401` | წყვილი არასწორია ან ეს Online Payments-ის წყვილი არ არის | ხელახლა დააკოპირე ორივე, ზედმეტი ჰარის გარეშე. თუ ისევ ასეა, ბანკს კითხვა №1 |
+| `forbidden · HTTP 403` | წყვილს იცნობს, მაგრამ API არ არის ჩართული | ბანკი |
+| `no_answer · HTTP —` (ან `HTTP 000`) | ქსელი | სცადე თავიდან |
 
 ## 3. Vercel → Environment Variables (მხოლოდ **Production** scope)
 
@@ -56,60 +79,54 @@ https://vercel.com/kintsurashviligaga-ops-projects/avatar-g-frontend-v3/settings
 
 - [ ] `BOG_CLIENT_ID` = OPAY Client ID. თუ უკვე არსებობს: Edit → ჩაანაცვლე.
 - [ ] `BOG_SECRET_KEY` = OPAY Secret Key, მონიშნე **Sensitive**.
-- [ ] `BOG_ENV` — წაშალე, ან ჩაწერე `production`.
+- [ ] `BOG_ENV` — წაშალე (ან `production`). `sandbox` აქ არასდროს.
 - [ ] წაშალე, თუ არსებობს: `BOG_CALLBACK_PUBLIC_KEY`, `BOG_API_BASE`, `BOG_OAUTH_URL`, `BOG_CALLBACK_IP_ALLOWLIST`.
 - [ ] შეამოწმე: `NEXT_PUBLIC_SITE_URL` = `https://myavatar.ge`.
 - [ ] შეამოწმე: `CRON_SECRET` არსებობს.
-- [ ] `BOG_CLIENT_ID` / `BOG_SECRET_KEY` **არ** უნდა იყოს Preview-სა და Development-ში. Preview-ები Production-ის ბაზას იყენებს.
-- [ ] (გზა B-სთვის, §4) `BOG_CHECKOUT_MODE` = `admin`.
+- [ ] `BOG_CLIENT_ID` / `BOG_SECRET_KEY` **არ** უნდა იყოს Preview-სა და Development-ში.
+- [ ] `BOG_CHECKOUT_MODE` = `admin` (შენი არჩევანი „Admin ტესტი", 18:12Z).
 
 სახელების შემოწმება მნიშვნელობების გარეშე (პროექტის ფოლდერში, Mac-ზე):
 
-```bash
+```zsh
 vercel env ls production | grep -E 'BOG_|NEXT_PUBLIC_SITE_URL|CRON_SECRET'
 ```
 
 ამ ბრძანების გამოტანა შეგიძლია მომწერო: მასში მხოლოდ სახელები და scope-ებია.
 
-⚠️ env-ის ცვლილება მოქმედებს **მხოლოდ ახალი deploy-ის შემდეგ**.
+⚠️ env-ის ცვლილება მოქმედებს **მხოლოდ ახალი deploy-ის შემდეგ**. ამჟამინდელ Production კოდს (30be5a2) `BOG_CHECKOUT_MODE` არ ესმის: ის PR #59-შია.
 
-## 4. აირჩიე გზა (შენი გადაწყვეტილება; შენი სიტყვის გარეშე არაფერს ვაკეთებ)
+## 4. Merge = deploy (შენი ცალკე სიტყვით)
 
-**გზა B — რეკომენდებული (კონტროლირებადი):**
-1. Vercel-ში ჩაწერე `BOG_CHECKOUT_MODE=admin`.
-2. მომწერე „PR #59 merge + deploy".
-3. მე PR-ს მზადყოფნაში მოვიყვან (CI მწვანე, draft-იდან გამოყვანა) და შენი სიტყვით შევაერთებ. main-ში შერწყმა = Production deploy.
+შენ აირჩიე გზა B („Admin ტესტი"). 18:23Z-ის შენი შეტყობინებით PR #59 რჩება **draft**, ამიტომ OAuth 200-ის შემდეგაც არ შევაერთებ, სანამ არ მომწერ „PR #59 merge".
 
-შედეგი:
-- BOG ღილაკს მხოლოდ შენ (ადმინი) დაინახავ.
-- მომხმარებლები იმავდროულად ბარათით (Stripe) იყიდიან.
-- ეს გამოასწორებს ამჟამინდელ მდგომარეობას, როცა Credits ფანჯარაში ყიდვა ყველასთვის ჩავარდება.
+როცა მომწერ: შევამოწმებ CI-ს, გამოვიყვან draft-იდან და შევაერთებ main-ში (= Production deploy). შედეგი:
+- BOG ღილაკს მხოლოდ ადმინი დაინახავს (`BOG_CHECKOUT_MODE=admin`).
+- დანარჩენებს Credits ფანჯარა ბარათით (Stripe) გადახდას შესთავაზებს. ეს გზა BUILT_NOT_PROVEN-ია: Production-ში Stripe-ით ჯერ არავის გადაუხდია.
+- დღევანდელთან შედარებით უარესი არაფერი ხდება: ახლა BOG ყველასთვის ჩანს და ჩავარდნის შემდეგ ყიდვა ყველასთვის წყდება.
 
-**გზა A — სწრაფი, კოდის გარეშე:**
-1. Vercel → Deployments → ბოლო Production → **Redeploy**.
-2. ახალი წყვილი მაშინვე ჩაირთვება **ყველასთვის**. ადმინის ცალკე ეტაპი არ არის.
-3. თუ წყვილი არასწორია, მომხმარებლები ისევ შეცდომას ნახავენ.
+მიგრაცია არ სჭირდება (SQL ცვლილება არ არის).
 
 ## 5. ცოცხალი ტესტი (შენი ცალკე სიტყვით: „ცოცხალი ტესტი")
 
 1. შედი https://myavatar.ge-ზე **kintsurashviligaga@gmail.com**-ით (ადმინი).
-2. (გზა B) Admin → Billing → **„Bank of Georgia — readiness"**. შეამოწმე:
-   - Credentials set; PRODUCTION;
+2. Admin → Billing → **„Bank of Georgia — readiness"**. შეამოწმე:
+   - Credentials set; PRODUCTION; წითელი „sandbox" ხაზი **არ** ჩანს;
    - `client …XXXX` = შენი OPAY Client ID-ის ბოლო 4 სიმბოლო;
    - Schema OK; CRON_SECRET;
    - „Checkout: admins only".
-   
+
    შემდეგ დააჭირე **„Test credentials with BOG"** → უნდა იყოს `ok`.
 3. Credits ფანჯარა → **10 ₾ პაკეტი** → BOG-ის გვერდი → გადაიხადე შენი ბარათით → დაბრუნდი საიტზე.
 4. მოსალოდნელი შედეგი:
    - **+100 კრედიტი**;
    - ადმინ ბარათზე შეკვეთა `completed`;
-   - ლიმიტის ხაზი: „24h 10/1000 ₾";
+   - ლიმიტის ხაზი: „24h 10/1000 ₾ · 30d 10/5000 ₾" (მოძრავი ფანჯრები; ითვლის გადახდილს, დაბრუნებულსაც და განსახილველსაც, ამიტომ რეალურზე მეტს თუ აჩვენებს, ნაკლებს არა);
    - Business Manager-ში ჩანს 10 ₾-იანი ტრანზაქცია.
 5. თუ შეცდომა მოხდა: ნუ გაიმეორებ რამდენჯერმე. ადმინ ბარათზე შეკვეთის ქვეშ მიზეზი ეწერება (BOG-ის პასუხი, საიდუმლოს გარეშე). გამომიგზავნე ამ ხაზის ფოტო.
-6. ტესტის დროს Stripe-ის გვერდზე **ნუ** გადაიხდი. თუ BOG-ის ნაცვლად Stripe გაიხსნა, ეს ნიშნავს, რომ BOG ჩავარდა.
+6. ტესტის დროს Stripe-ის გვერდზე **ნუ** გადაიხდი. თუ BOG-ის ნაცვლად Stripe გაიხსნა, მომწერე: ეს ნიშნავს, რომ BOG შენთვის არ ჩაირთო.
 7. გეგმა (54 ₾ ავტომატური განახლებით) ჯერ **ნუ** შეამოწმებ, სანამ ბანკი ავტომატურ გადახდებს არ დაადასტურებს.
-8. დაბრუნება (refund) Business Manager-იდან შესაძლებელია, მაგრამ კრედიტები ავტომატურად არ ჩამოიჭრება (ბლოკერი B4). მომწერე და ერთად გადავწყვეტთ.
+8. დაბრუნება (refund) Business Manager-იდან: შეკვეთა ზუსტად BOG-ის სტატუსს მიჰყვება — `refund_requested` (მოთხოვნილია) → `refunded_partially` (ნაწილობრივ) → `refunded` (სრულად). უკან არ ბრუნდება, და დაბრუნებულ შეკვეთას განმეორებითი „completed" ხელახლა აღარ ჩაურიცხავს. კრედიტები ავტომატურად **არ** ჩამოიჭრება: ეს დაბრუნების წესია და უცვლელია (ბლოკერი B4, შენი გადაწყვეტილება).
 
 ## 6. ყველასთვის გახსნა (ტესტის შემდეგ, შენი სიტყვით)
 

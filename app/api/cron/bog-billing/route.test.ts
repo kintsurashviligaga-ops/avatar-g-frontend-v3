@@ -21,9 +21,10 @@ jest.mock('../../../../lib/supabase/server', () => ({
 }));
 jest.mock('../../../../lib/observability/report-error', () => ({ reportError: jest.fn() }));
 let mockConfigured = true;
+let mockEnvironment: 'production' | 'sandbox' = 'production';
 const mockCharge = jest.fn();
 jest.mock('../../../../lib/billing/bogClient', () => ({
-  bogConfig: () => (mockConfigured ? {} : null),
+  bogConfig: () => (mockConfigured ? { environment: mockEnvironment } : null),
   chargeSavedCard: (...a: unknown[]) => mockCharge(...a),
 }));
 const mockReconcile = jest.fn();
@@ -31,6 +32,10 @@ jest.mock('../../../../lib/billing/bogSettlement', () => ({
   BOG_ORDER_COLUMNS: '*',
   bogCallbackUrl: () => 'https://myavatar.ge/api/billing/bog/webhook',
   reconcileBogOrder: (...a: unknown[]) => mockReconcile(...a),
+  bogSandboxBlocked: (...a: unknown[]) =>
+    (jest.requireActual('../../../../lib/billing/bogSettlement') as typeof import('../../../../lib/billing/bogSettlement')).bogSandboxBlocked(
+      ...(a as Parameters<typeof import('../../../../lib/billing/bogSettlement').bogSandboxBlocked>),
+    ),
 }));
 const mockClaim = jest.fn();
 const mockFail = jest.fn();
@@ -48,7 +53,11 @@ const tick = (auth = 'Bearer cron-secret') => GET(new NextRequest('https://myava
 beforeEach(() => {
   jest.clearAllMocks();
   process.env = { ...ENV, CRON_SECRET: 'cron-secret' };
+  delete process.env.VERCEL;
+  delete process.env.VERCEL_ENV;
   mockConfigured = true;
+  mockEnvironment = 'production';
+  mockLog = [];
   mockDb.pending = [];
   mockDb.due = [];
   mockDb.expired = [];
@@ -68,6 +77,17 @@ test('inert until BOG is configured', async () => {
   expect(await (await tick()).json()).toEqual({ ok: true, skipped: 'bog_unconfigured' });
 });
 
+test('sandbox credentials on a Vercel deployment (Production database): nothing is reconciled, expired or charged', async () => {
+  mockEnvironment = 'sandbox';
+  process.env.VERCEL_ENV = 'preview';
+  mockDb.pending = [{ shop_order_id: 'myavatar-topup-0123456789abcdef', bog_order_id: 'bog-1' }];
+  expect(await (await tick()).json()).toEqual({ ok: true, skipped: 'bog_sandbox_blocked' });
+  expect(mockReconcile).not.toHaveBeenCalled();
+  expect(mockClaim).not.toHaveBeenCalled();
+  expect(mockCharge).not.toHaveBeenCalled();
+  expect(mockLog).toEqual([]);
+});
+
 test('every pending order with a BOG id is reconciled (lost callbacks get credited)', async () => {
   mockDb.pending = [{ shop_order_id: 'a' }, { shop_order_id: 'b' }];
   mockReconcile.mockResolvedValueOnce({ status: 'completed' }).mockResolvedValueOnce({ status: 'rejected' });
@@ -84,7 +104,7 @@ test('a due renewal: claimed, charged on the saved card with OUR id, BOG’s id 
   const body = await (await tick()).json();
   expect(body).toMatchObject({ charged: 1 });
   expect(mockClaim).toHaveBeenCalledWith('sub-1', 525);
-  expect(mockCharge).toHaveBeenCalledWith({}, expect.anything(), { parentOrderId: 'parent-1', externalOrderId: 'myavatar-renew-20261102-1-abc', callbackUrl: 'https://myavatar.ge/api/billing/bog/webhook' });
+  expect(mockCharge).toHaveBeenCalledWith({ environment: 'production' }, expect.anything(), { parentOrderId: 'parent-1', externalOrderId: 'myavatar-renew-20261102-1-abc', callbackUrl: 'https://myavatar.ge/api/billing/bog/webhook' });
   const bind = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'update' && (c.args[0] as { bog_order_id?: string }).bog_order_id === 'bog-ren-1');
   expect(bind?.filters).toEqual(expect.arrayContaining([['eq', 'shop_order_id', 'myavatar-renew-20261102-1-abc'], ['is', 'bog_order_id', null]]));
 });

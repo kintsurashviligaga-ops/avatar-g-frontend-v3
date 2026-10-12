@@ -4,7 +4,9 @@
  * SANDBOX ONLY: it refuses to run unless BOG_ENV=sandbox, and it only ever talks to the *-sandbox.bog.ge hosts, so
  * no real card can be charged. Nothing touches our database.
  *
- *   BOG_ENV=sandbox BOG_CLIENT_ID=… BOG_SECRET_KEY=… node scripts/bog-sandbox-smoke.mjs [oauth|order|receipt <id>]
+ *   node --env-file=.env.sandbox.local scripts/bog-sandbox-smoke.mjs [oauth|order|receipt <id>]
+ *   (.env.sandbox.local: BOG_ENV=sandbox, BOG_CLIENT_ID, BOG_SECRET_KEY = the SANDBOX pair; gitignored. A secret typed on
+ *   the command line lands in shell history.)
  *
  *   oauth    (default) one token request — proves the sandbox credential pair
  *   order    creates a 1.00 ₾ sandbox order and prints the payment-page URL; pay it with a test card from
