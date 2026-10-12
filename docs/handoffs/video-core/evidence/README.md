@@ -60,3 +60,54 @@ order itself is not wired (`LONGFORM_ORDER_WIRED=false`).
 - No Preview, no Production: T4–T6 empty. The frame counts above are from the sandbox's ffmpeg-static, not a Vercel runtime.
 - The film evidence test is opt-in (`VIDEO_CORE_FFMPEG_IT=1`) because of its ~5 min runtime; CI runs the montage suites
   (ungated, ~6 min) and the AC-06 chain (ungated, ~1 min) but not this one.
+
+## Round 3 (2026-10-12) — real media pipeline verification (T3)
+
+New file: `lib/orchestrator/videoCoreRound3.ffmpeg.test.ts` (opt-in, modelled on `ffmpeg-assembly.ffmpeg.test.ts`: same mocks,
+synthetic lavfi clips, local "downloads", temp-dir "uploads", every flag off). Evidence: `t3-round3-film.json` (measured
+numbers, the assembler's encode argv with temp paths redacted, the frame-count argv, the SHA). Exact command:
+
+```
+VIDEO_CORE_FFMPEG_IT=1 VIDEO_CORE_EVIDENCE_OUT=docs/handoffs/video-core/evidence/t3-round3-film.json \
+  npx jest lib/orchestrator/videoCoreRound3.ffmpeg.test.ts --silent=false
+```
+
+8 passed, 658.8 s wall-clock (ffmpeg 7.0.2-static, Node v22.22.0, `-threads 2`), SHA measured **2361153** (HEAD when the run
+started; `ffmpeg-assembly`, `finalCut`, `masterQa`, `frameCount` as committed there). Frames are DECODED frames
+(lib/video/frameCount); duration · fps · W×H · audio are the `ffmpeg -i` banner (the assembler's own probe).
+
+| Case | Input | Contract | Frames (expected) | Duration | fps | W×H | Audio | Hosted | QA |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `film60s` | 8 × 8 s, 24 fps, 640×360, sine, cuts | 60 s (native 64) | **1800** (1800) | 60.00 | 30 | 1920×1080 | yes | yes (12.5 MB, encode 184 s) | A / 100, no issues |
+| `mixedFps24s` | 4 × 6 s at 24 · 25 · 30 · 60 fps (144 · 150 · 180 · 360 source frames) | 24 s | **720** (720) | 24.00 | 30 | 1920×1080 | yes | yes (5.7 MB) | A / 100 |
+| `vertical9x16` | 4 × 8 s, 360×640 portrait, orientation `vertical` | 29.7 s (native 32) | **891** (891) | 29.70 | 30 | **1080×1920** (height > width) | yes | yes (4.6 MB) | A / 100 |
+| `singleClipNative8s` (D7) as delivered | one 8 s clip, 24 fps | 8 s = native | **192** @ 24 fps (not on the 30 fps grid) | 8.00 | 24 | 640×360 | yes | the provider's file, untouched | — (no QC runs: no cut) |
+| `singleClipNative8s` if conformed | the same clip through `cutMasterToLength(url, 8)` | 8 s | **240** (240) | 8.00 | 30 | 640×360 | yes | yes (`films/final-…-240f-…`, 0.55 s) | counted 240 = 240 |
+| `clipWithoutAudio` | 4 × 8 s, clip 3 has **no audio stream**, no soundtrack | 29.7 s | **891** (891) | 29.70 | 30 | 1920×1080 | **yes** (clip 3's lane is `anullsrc`, index 2 in the graph) | **yes** (6.1 MB) | A / 100 — no `silent_master`, no `empty_master` |
+| `invalidMusic` | 4 × 8 s + `musicUrl` → 64 KB of random bytes | 29.7 s | — (no encode) | — | — | — | — | **no** (0 uploads) | **none** — ffmpeg refused input #4 (`music.m4a`: "Invalid data found when processing input", exit 183) in 88 ms; a plain `Error("Command failed: …")`, not `MasterQaRejected` |
+| `qcRejectThenRetry` attempt 1 | 4 × 8 s (320×180), the QC's count forced to 890 | 29.7 s | counted 890 (891) | — | — | — | — | **no** | **withheld**: `MasterQaRejected`, `qc_rejected`, `['frame_count_mismatch']`, grade F (88 s encode discarded) |
+| `qcRejectThenRetry` attempt 2 | the SAME manifest, real counter | 29.7 s | **891** (891) | 29.70 | 30 | 1920×1080 | yes | **yes** (7.4 MB, 87 s) | A / 100 |
+| `audioLevels` (informational) | `-af volumedetect -f null -` | — | film60s master: max **−11.2 dB** · mean −16.3 dB (after the graph's `loudnorm I=-14:TP=-1.5`); plain `sine` clip: max −16.1 · mean −21.1; `aevalsrc` sin at amplitude 1.0 + `volume=20dB`: max **0.0 dB** (clipped) · mean −3.6 | | | | | | |
+
+What the round-3 numbers add to the table above: a 60 s contract is frame-exact (1800), four source frame rates land on one
+30 fps timeline without a frame gained or lost (720), the portrait canvas keeps the count (891 at 1080×1920), and the
+retry-after-rejection path works on the same input (withheld at 890, hosted at 891).
+
+Findings (the product's behaviour, pinned as observed, nothing changed):
+
+- **A clip with no audio stream does not fail the stitch** — `probeHasAudio` marks it, the filtergraph feeds `anullsrc` for its
+  lane, and the master is hosted with sound from the other clips and 8 s of silence; QA grade A. Nothing says so on the
+  QA report (there is no "silent clip" warning).
+- **A garbage soundtrack is not validated before the encode.** The music file is downloaded unchecked (no probe, no content
+  sniff) and handed straight to the one encode command; ffmpeg dies at input open in ~0.1 s, so nothing is wasted and
+  nothing is hosted, but the failure is **not named**: `assembleWithFfmpeg` rejects with execFile's raw `Error` whose message
+  is the full argv plus ffmpeg's stderr (temp paths included). It is not a `MasterQaRejected` and carries no `VIDEO_REFUSALS`
+  code; the route's saga reports it as a generic `assembly_failed` (refunded once), so the user cannot tell "your music file
+  is unreadable" from "the stitch crashed".
+- **D7 measured**: the untouched 8 s clip is 192 frames at 24 fps; one more encode (`cutMasterToLength`) would make it 240
+  frames at 30 fps in ~0.5 s. The decision stands as written (no conform, no new charge).
+- **Test-only aside**: `next.config.js` sets `compiler.removeConsole: { exclude: ['error', 'warn'] }`, and next/jest applies it,
+  so the assembler's `console.log('[assemble] …')` lines (native clip audio count, final cut, frame-exact QC) are compiled
+  out of every Jest run — they cannot be captured or asserted on; only `console.warn` (`[masterQa] master FAILED …`) survives.
+
+Still not measured: no Veo / Vertex call, no Preview, no Production (T4–T6 empty, as above).
