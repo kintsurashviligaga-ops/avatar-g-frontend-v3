@@ -1,6 +1,9 @@
 # Video Core v1.0 — contracts and the working architecture (§3 · §4 · §5 · §7 · §8 · §9)
 
 Everything below is read from the code on `claude/video-core-v1-6gh97e`; a field named here exists in the file named.
+The lanes, their shared contracts and the one refusal vocabulary are also a code registry: `lib/video/contracts.ts`
+(`VIDEO_LANES`, `VIDEO_REFUSALS`), pinned to the tree by `lib/video/contracts.test.ts`; the plan that folds the lanes into
+one Video Studio is `consolidation-plan.md`.
 
 ## 0. The sketch
 
@@ -9,10 +12,11 @@ Everything below is read from the code on `claude/video-core-v1-6gh97e`; a field
         │                 (kind, requested length AS SAID, music source offset, selection, aspect, end text)
         ├─ video.generate / video.music-video ─► chat step `open` the Video tool (OmniStudio) with the plan SAID
         │        └► lib/video/durationContract.planFinalDuration → requested · native · final (30 fps grid) | refusal
-        │              ├─ ok      ► storyboard (app/api/video/storyboard → createStoryboard; miss ⇒ error card + Retry, no render)
-        │              │            ► Start ► scene clips (Veo/Vertex, mocked in tests) ► app/api/video/assemble
+        │              ├─ ok      ► storyboard (app/api/film/storyboard → createStoryboard; miss ⇒ error card + Retry, no render)
+        │              │            ► Generate = approval of the board's REVISION (fingerprint) ► app/api/chat/orchestrate re-checks it (400 revision_mismatch)
+        │              │            ► scene clips (Veo/Vertex, mocked in tests) ► app/api/video/assemble
         │              │               └► finalCutForAssemble(stitchedSeconds, final) BEFORE any charge | 400 final_duration_invalid
-        │              │               └► lib/orchestrator/ffmpeg-assembly: 30 fps, -t final, frame count QC (masterQa)
+        │              │               └► lib/orchestrator/ffmpeg-assembly: 30 fps, -t final, frame count QC (masterQa) ─ critical ⇒ MasterQaRejected (withheld, refund once)
         │              │            ► single clip: lib/video/finalCut.cutMasterToLength (fail-CLOSED)
         │              └─ longform_closed ► refusal said; LONGFORM_ORDER_WIRED=false (lib/video/longform exists, not wired)
         ├─ montage (clips + track) ─► lib/agent/media/montageChat → montageExec quote (free) → quoteToken
@@ -63,20 +67,39 @@ Rules: the plan line always says **requested · native (rendered) · final**; tr
 a final that is longer than the master is refused before any encode or charge; a final is never changed silently; a film
 is never freeze-padded under a contract (the legacy 30 s brand pad applies only to a render with no contract — PARTIAL).
 Frame accuracy is proven on decoded frames (`lib/video/frameCount.ts`), not container metadata (`masterQa frame_count_mismatch`).
+**The QC gate (4812b0a):** a critical issue (`frame_count_mismatch`, `silent_master`, `empty_master`) WITHHOLDS the master —
+`lib/orchestrator/ffmpeg-assembly` throws `MasterQaRejected` before hosting it; `lib/video/finalCut.cutMasterToLength` counts
+its own frames before hosting and throws `FinalCutRejected` on a miss; `/api/video/assemble` fails the attempt (`502 qc_rejected`, codes + report; on the single-clip path codes `['frame_count_mismatch']` with the counted and expected frames),
+compensates once (refund / free slot / billing waiver returned), releases the idempotency claim and records the film FAILED.
+Nothing is stamped as a delivered film. Warnings (`duration_drift`, `bitrate_bloat`, `sub_1080p`, an uncountable master) still
+ride on a delivered master.
 
 ## 3. Storyboard and revision contract (§5) — `lib/video/storyboard/revision.ts`
 
 ```text
-StoryboardRevision { id, n, origin: 'plan'|'caption'|'reroll'|'reorder'|'add'|'remove'|'base'|'regenerate', parentId,
-                     fingerprint (16 hex, FNV-1a × 2 over the canonical board), scenes[], scripts, clipSec, createdAt }
-RevisionApproval   { revisionId, fingerprint, approvedAt }        approvalMatches(approval, board) → boolean
-diffRevisions(a, b) → { changed[], added[], removed[], reordered }
+StoryboardRevision { revision (1-based), parentRevision, origin: 'plan'|'enrich'|'frames'|'edit_caption'|'reroll_frame'|'reorder'|
+                     'add_scene'|'delete_scene'|'base_image'|'regenerate', createdAt, seed, clipSec, sceneCount, nativeSec,
+                     scenes[] { ordinal, beat, prompt, frameUrl, edited, anchored }, sceneScripts, fingerprint (16 hex, FNV-1a × 2 over canonicalBoard) }
+snapshotRevision(board, origin, parent)  → the next revision, or `parent` itself when nothing the render reads changed
+inferOrigin(prev, next)                  → the origin, read off diffRevisions (add_scene · delete_scene · reorder · reroll_frame · frames · edit_caption · enrich)
+RevisionApproval   { revision, fingerprint, sceneCount, nativeSec, approvedAt }
+RenderApprovalWire = RevisionApproval + board (the fingerprinted slice: seed, clipSec, scenes, sceneScripts)   ← approvalForRender(rev, board)
+renderScriptsFor(board) → the scene texts the render reads (an edited scene in its own words, else its script, else its prompt) — ONE function, studio + server
+validateRenderApproval(wire, { sceneFrames, sceneScripts, sceneCount, clipSec })
+   → { ok:true, revision, fingerprint, sceneCount }
+   | { ok:false, reason:'bad_fingerprint'|'board_changed'|'scene_count'|'clip_sec'|'frames_differ'|'scripts_differ', detail, revision, fingerprint }
+describeApprovalRefusal(verdict, locale) → the refusal in the user's words (ka · en · ru)
 ```
 
-Failure safety (built): a plan miss, a timeout or a thrown plan call posts the chat's error card with **Retry** (plans the
-storyboard again) and **Dismiss**; no render, no charge, no silent fallback. Persistence: tables `storyboard_revisions`,
-`storyboard_approvals` are a **proposal** (`proposals/20261012a_storyboard_revisions.sql`, not applied); wiring the module
-into the board mutations and checking the fingerprint at render time is deferred (`storyboard-revisions.md`).
+Wired (2923fa0): OmniStudio snapshots the next revision on every board change (`storyboardRevisionRef`); the Generate tap
+approves FROM the revision current at the tap and the approval rides in the submit snapshot → `driveFilmStudio` →
+`POST /api/chat/orchestrate` as `storyboardApproval`; the route re-fingerprints the board and checks the render's frames,
+scripts, scene count and clip length against it BEFORE the orchestrator is called — a mismatch is `400 revision_mismatch`
+with the reason, nothing dispatched or charged; the approval (number + fingerprint + when) rides in the job metadata.
+Failure safety (built earlier): a plan miss, a timeout or a thrown plan call posts the chat's error card with **Retry** and
+**Dismiss**; no render, no charge, no silent fallback. Persistence: the tables stay a **proposal**
+(`proposals/20261012a_storyboard_revisions.sql`, not applied — B3); the director run path (`VIDEO_DIRECTOR_RUNS`) carries
+no approval yet (PARTIAL).
 
 ## 4. Timeline and montage contract (§7)
 
@@ -98,7 +121,7 @@ A master that fails QC is refused and refunded; it is never delivered as "close 
 | Lane | Quote | Approval | Idempotency |
 | --- | --- | --- | --- |
 | montage / edit | server quote card (credits, length, shots, files used and left out, engine); signed `quoteToken` with expiry | the user presses Start with the token | one job per token; a second Start or a retry finds the job (`montageExec.test:158`, `:287`); a changed plan is a **new** quote |
-| film | the panel's plan line (requested · rendered · final, credits) | Start on the panel | `filmTokenId` / `billingToken` single charge; the assemble route checks `finalDurationSec` against the clips **before** any charge |
+| film | the panel's plan line (requested · rendered · final, credits) | Generate on the storyboard = approval of its revision (fingerprint), re-checked by the orchestrate route | `filmTokenId` / `billingToken` single charge; the assemble route checks `finalDurationSec` against the clips **before** any charge; a master that fails a critical QC check is withheld and the attempt refunded once (`qc_rejected`) |
 
 An expired token or signed URL is refused with the reason (`media_not_yours` 403, token errors); nothing is re-signed on
 the caller's behalf except our own storage paths (`reSignIfInternal`) after the ownership check.
@@ -110,7 +133,7 @@ montage job: queued ─► leased (lease token, fenced writes) ─► running (f
                                                                       ├► failed (qc_failed … → refund once)
                                                                       └► cancelled (ffmpeg killed < 1.5 s, refund once)
              a worker that dies loses the lease; the sweep re-leases and renders the waiting job; a late callback is fenced
-film:        ready ─► assembling (recordFilmAssembling) ─► done | failed (recordFilmFailed); status polled by token
+film:        ready ─► assembling (recordFilmAssembling) ─► done | failed (recordFilmFailed: 'qc_rejected: <codes>' | 'assembly failed' | 'insufficient credits'); status polled by token
 ```
 
 Server-authoritative: the client renders what the job row says; cards are persisted in `chat_messages.metadata`.

@@ -34,6 +34,30 @@ export function finalCutArgs(input: string, out: string, finalSec: number, fps: 
   ];
 }
 
+/**
+ * The single-clip QC gate's refusal: the cut's decoded frame count is not framesFor(finalSec). The assemble route answers it
+ * as `502 qc_rejected` (codes ['frame_count_mismatch']) after rolling the attempt back, the same answer the stitched master's
+ * MasterQaRejected gets — one refusal vocabulary for both paths (lib/video/contracts VIDEO_REFUSALS).
+ */
+export class FinalCutRejected extends Error {
+  readonly code = 'qc_rejected' as const;
+  readonly issueCodes = ['frame_count_mismatch'] as const;
+  readonly expectedFrames: number;
+  readonly actualFrames: number;
+  constructor(actualFrames: number, expectedFrames: number) {
+    const diff = actualFrames - expectedFrames;
+    super(`final cut: frame_count_mismatch — the cut holds ${actualFrames} frames, the contracted final is ${expectedFrames} (${diff > 0 ? '+' : ''}${diff})`);
+    this.name = 'FinalCutRejected';
+    this.expectedFrames = expectedFrames;
+    this.actualFrames = actualFrames;
+  }
+}
+
+export function isFinalCutRejected(err: unknown): err is FinalCutRejected {
+  return err instanceof FinalCutRejected
+    || (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'qc_rejected' && Array.isArray((err as { issueCodes?: unknown }).issueCodes));
+}
+
 /** The master cut to `finalSec`, hosted (7-day signed URL). Throws when the cut cannot be made — never returns the uncut input. */
 export async function cutMasterToLength(videoUrl: string, finalSec: number): Promise<string> {
   const bin = ffmpegStatic as unknown as string | null;
@@ -51,7 +75,7 @@ export async function cutMasterToLength(videoUrl: string, finalSec: number): Pro
     const expectedFrames = framesFor(finalSec);
     const actualFrames = await countDecodedFrames(bin, out).catch(() => null);
     if (typeof actualFrames === 'number' && actualFrames !== expectedFrames) {
-      throw new Error(`final cut: frame_count_mismatch — the cut holds ${actualFrames} frames, the contracted final is ${expectedFrames} (${actualFrames - expectedFrames > 0 ? '+' : ''}${actualFrames - expectedFrames})`);
+      throw new FinalCutRejected(actualFrames, expectedFrames);
     }
     if (actualFrames === null) console.warn(`[finalCut] frames could not be counted (${expectedFrames} expected) — delivering unverified`);
     const path = `films/final-${Date.now()}-${framesFor(finalSec)}f-${Math.random().toString(36).slice(2, 8)}.mp4`;

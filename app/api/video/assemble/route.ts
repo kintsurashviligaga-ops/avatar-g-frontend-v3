@@ -37,7 +37,7 @@ import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
 import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
-import { cutMasterToLength } from '@/lib/video/finalCut';
+import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
@@ -648,6 +648,17 @@ async function assembleImpl(req: NextRequest) {
         else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
       }
       await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
+      // Video Core v1.0 §4/§7 — the single-clip QC gate: a cut whose decoded frames are not the contracted final is
+      // withheld (nothing hosted above), the reservation is rolled back (just done), the attempt is FAILED, and the
+      // client gets the same `qc_rejected` the stitched master gets — never a 200, never a kept charge.
+      if (isFinalCutRejected(err)) {
+        if (filmTokenId) await recordFilmFailed(filmTokenId, `qc_rejected: ${err.issueCodes.join(',')}`).catch(() => {});
+        return NextResponse.json({
+          error: 'qc_rejected', reason: 'qc_rejected', codes: [...err.issueCodes], qa: null, single: true,
+          expectedFrames: err.expectedFrames, actualFrames: err.actualFrames,
+          message: `The finished video failed its quality check (frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}). Nothing was delivered and this attempt was not charged — please try again.`,
+        }, { status: 502 });
+      }
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});
       return NextResponse.json({ error: 'assemble_failed', message: err instanceof Error ? err.message : 'assemble failed' }, { status: 500 });
     }

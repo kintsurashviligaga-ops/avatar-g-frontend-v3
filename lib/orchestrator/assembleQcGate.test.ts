@@ -115,7 +115,22 @@ describe('the route and the assembler, on the source (T2)', () => {
     const host = finalCut.indexOf('const url = await uploadBufferAndSign(RENDER_BUCKET, path, buf');
     expect(count).toBeGreaterThan(0);
     expect(host).toBeGreaterThan(count);
-    expect(finalCut).toMatch(/if \(typeof actualFrames === 'number' && actualFrames !== expectedFrames\) \{\s*throw new Error\(`final cut: frame_count_mismatch/);
+    expect(finalCut).toMatch(/if \(typeof actualFrames === 'number' && actualFrames !== expectedFrames\) \{\s*throw new FinalCutRejected\(actualFrames, expectedFrames\);/);
+    expect(finalCut).toMatch(/super\(`final cut: frame_count_mismatch — the cut holds \$\{actualFrames\} frames, the contracted final is \$\{expectedFrames\}/);
+  });
+
+  test('the single-clip path answers the same qc_rejected after rolling the reservation back, before the assemble_failed fallback', () => {
+    const refund = route.indexOf("else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});");
+    const release = route.indexOf('await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});', refund);
+    const gate = route.indexOf('if (isFinalCutRejected(err)) {', release);
+    const fallback = route.indexOf("return NextResponse.json({ error: 'assemble_failed'", gate);
+    expect(refund).toBeGreaterThan(0);
+    expect(release).toBeGreaterThan(refund);
+    expect(gate).toBeGreaterThan(release);
+    expect(fallback).toBeGreaterThan(gate);
+    expect(route.slice(gate, fallback)).toMatch(/recordFilmFailed\(filmTokenId, `qc_rejected: \$\{err\.issueCodes\.join\(','\)\}`\)/);
+    expect(route.slice(gate, fallback)).toMatch(/error: 'qc_rejected', reason: 'qc_rejected', codes: \[\.\.\.err\.issueCodes\], qa: null, single: true/);
+    expect(route.slice(gate, fallback)).toMatch(/\{ status: 502 \}/);
   });
 
   test('the dispatch step keeps the rejected report on the bag and rethrows', () => {
