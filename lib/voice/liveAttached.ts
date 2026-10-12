@@ -8,7 +8,7 @@
  */
 
 /** /api/agent/run takes at most this many file references (lib/agent/media/montageAsk MAX_FILES). */
-export const LIVE_AGENT_FILES_MAX = 13;
+export const LIVE_AGENT_FILES_MAX = 14;
 
 let reader: () => readonly string[] = () => [];
 

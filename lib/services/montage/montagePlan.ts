@@ -10,7 +10,15 @@
  */
 
 export type MontageAspect = '16:9' | '9:16' | '1:1';
-export type MontageTransition = 'cut' | 'crossfade' | 'fade';
+/**
+ * How one shot gives way to the next. `cut` is a hard cut; every other is an ffmpeg `xfade` the two shots OVERLAP for
+ * (lib/video/surgicalOps runSequence XFADE): a crossfade, a fade through black, a white flash, a wipe, a slide, a
+ * zoom, an opening circle, a pixel dissolve, a blur. The montage editor offers the first three; Agent G all of them
+ * (GG 2026-10-11 17:38Z: „ქაფქათს და სხვა ფუნქციებს").
+ */
+export type MontageTransition = 'cut' | 'crossfade' | 'fade' | 'flash' | 'wipe' | 'slide' | 'zoom' | 'circle' | 'pixelize' | 'blur';
+export type TransitionStyle = Exclude<MontageTransition, 'cut'>;
+export const TRANSITION_STYLES: readonly TransitionStyle[] = ['crossfade', 'fade', 'flash', 'wipe', 'slide', 'zoom', 'circle', 'pixelize', 'blur'];
 /** Where a shot's caption sits: a subtitle along the bottom, or a title in the middle of the frame. */
 export type MontageCaptionPos = 'bottom' | 'center';
 
@@ -35,10 +43,20 @@ export interface MontageShot {
   muted: boolean;
   /** Transition INTO this shot. Ignored on the first shot — there is nothing to transition from. */
   transition: MontageTransition;
+  /**
+   * How long the transition INTO this shot may last, in seconds (MIN_TRANSITION_SEC–MAX_TRANSITION_SEC). Absent =
+   * TRANSITION_MAX_SEC, the editor's length. Either way the overlap is clamped to half of each side (transitionOverlap).
+   */
+  transitionSec?: number;
   /** Optional burned-in caption for this shot. */
   caption?: string;
   /** Where the caption sits. Absent = 'bottom', the subtitle position every montage had before. */
   captionPos?: MontageCaptionPos;
+  /**
+   * Playback speed of a video shot (a speed ramp): the window [startSec, endSec] of the source plays in
+   * (endSec - startSec) / speed seconds of the master. Absent = 1. Never on a still.
+   */
+  speed?: number;
 }
 
 export interface MontageRequest {
@@ -55,6 +73,15 @@ export interface MontageRequest {
   musicDuckDb: number;
   /** Drop every source's own audio and keep only the bed. */
   musicOnly: boolean;
+  /**
+   * The music's level in dB (≤ 0) when Agent G mixes the sound itself (./montageSound): 0 when the track is the only
+   * sound, lower when the clips' own sound leads („თავისი ხმაც და ზემოდან მუსიკა"). Absent = the editor's older mix.
+   */
+  musicGainDb?: number;
+  /** A narration (the user's own recording) laid over the master from `voiceStartSec`; the rest steps back under it. */
+  voiceUrl?: string;
+  /** The master second the narration starts at. Only ever set alongside `voiceUrl`. */
+  voiceStartSec?: number;
   /** Optional colour grade over the whole master. Absent when neutral, so an ungraded edit encodes as before. */
   grade?: MontageGrade;
 }
@@ -84,6 +111,10 @@ export const MIN_SHOTS = 1;
 export const MIN_SHOT_SEC = 0.4;
 export const MAX_SHOT_SEC = 60;
 
+/** A shot's speed bounds (the same as the editor's speed: atempo chains cover them). */
+export const MIN_SHOT_SPEED = 0.25;
+export const MAX_SHOT_SPEED = 4;
+
 /** Total master ceiling, in seconds — the encode budget, not an artistic limit. */
 export const MAX_TOTAL_SEC = 300;
 
@@ -112,6 +143,9 @@ export function coerceMusicStartSec(raw: unknown): { ok: true; value: number } |
  * a wrong total silently mis-sizes the bitrate cap and cuts the music bed at the wrong point.
  */
 export const TRANSITION_MAX_SEC = 0.6;
+/** The bounds of an asked transition length (`transitionSec`): ffmpeg's own floor in the fold, and two seconds. */
+export const MIN_TRANSITION_SEC = 0.1;
+export const MAX_TRANSITION_SEC = 2;
 
 export const ASPECT_DIMS: Record<MontageAspect, { w: number; h: number }> = {
   '16:9': { w: 1280, h: 720 },
@@ -124,7 +158,7 @@ export function isMontageAspect(v: unknown): v is MontageAspect {
 }
 
 export function isMontageTransition(v: unknown): v is MontageTransition {
-  return v === 'cut' || v === 'crossfade' || v === 'fade';
+  return v === 'cut' || (TRANSITION_STYLES as readonly unknown[]).includes(v);
 }
 
 const clampNum = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
@@ -147,20 +181,28 @@ export function coerceGrade(raw: unknown): MontageGrade | undefined {
   return neutral ? undefined : g;
 }
 
-/** Output length of one shot, after trimming. */
+/** A shot's playback speed: its own when set on a video, else 1. */
+export function shotSpeed(shot: Pick<MontageShot, 'kind' | 'speed'>): number {
+  const v = shot.speed;
+  return shot.kind === 'video' && typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 1;
+}
+
+/** Output length of one shot, after trimming (and its speed: a slowed shot lasts longer than its window). */
 export function shotDuration(shot: MontageShot): number {
-  return Math.max(0, shot.endSec - shot.startSec);
+  return Math.max(0, (shot.endSec - shot.startSec) / shotSpeed(shot));
 }
 
 /**
  * How much a transition OVERLAPS the timeline, given the accumulated length so far and the incoming shot.
  *
- * ⚠️ EXACT MIRROR of `dd` in runSequence: `max(0.1, min(0.6, segDur/2, curDur/2))`. Note the 0.1 FLOOR —
- * a transition always eats at least 100ms even between very short shots, so this never returns 0. Note too
- * that the clamp is against the ACCUMULATED timeline, not the previous shot alone.
+ * ⚠️ EXACT MIRROR of `dd` in runSequence: `max(0.1, min(maxSec, segDur/2, curDur/2))`, `maxSec` the shot's own
+ * `transitionSec` or TRANSITION_MAX_SEC. Note the 0.1 FLOOR — a transition always eats at least 100ms even between very
+ * short shots, so this never returns 0. Note too that the clamp is against the ACCUMULATED timeline, not the previous
+ * shot alone.
  */
-export function transitionOverlap(accumulatedSec: number, shotSec: number): number {
-  const dd = Math.max(0.1, Math.min(TRANSITION_MAX_SEC, shotSec / 2, accumulatedSec / 2));
+export function transitionOverlap(accumulatedSec: number, shotSec: number, maxSec: number = TRANSITION_MAX_SEC): number {
+  const max = Number.isFinite(maxSec) ? Math.max(MIN_TRANSITION_SEC, Math.min(MAX_TRANSITION_SEC, maxSec)) : TRANSITION_MAX_SEC;
+  const dd = Math.max(0.1, Math.min(max, shotSec / 2, accumulatedSec / 2));
   return Number(dd.toFixed(3));
 }
 
@@ -176,7 +218,7 @@ export function timelineDuration(shots: readonly MontageShot[]): number {
     const shot = shots[i];
     if (!shot) continue;
     const dur = shotDuration(shot);
-    total += shot.transition === 'cut' ? dur : dur - transitionOverlap(total, dur);
+    total += shot.transition === 'cut' ? dur : dur - transitionOverlap(total, dur, shot.transitionSec);
   }
   return Number(Math.max(0, total).toFixed(3));
 }
@@ -224,12 +266,33 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
   const fallbackEnd = kind === 'image' ? startSec + 3 : startSec + 5;
   const endSec = Number.isFinite(endRaw) && endRaw > startSec ? endRaw : fallbackEnd;
 
-  const dur = endSec - startSec;
+  // A speed is refused, not clamped, when it is out of range: a shot that plays at another speed than asked is a wrong
+  // edit. 1 (or none) is no speed at all, so an unramped request is exactly what it was before ramps.
+  let speed: number | undefined;
+  if (r.speed !== undefined && r.speed !== null) {
+    const v = Number(r.speed);
+    if (typeof r.speed !== 'number' || !Number.isFinite(v) || v < MIN_SHOT_SPEED || v > MAX_SHOT_SPEED) {
+      return { error: `shot ${index + 1} speed must be ${MIN_SHOT_SPEED} to ${MAX_SHOT_SPEED}` };
+    }
+    if (kind === 'video' && Math.abs(v - 1) > 1e-3) speed = Number(v.toFixed(3));
+  }
+
+  const dur = (endSec - startSec) / (speed ?? 1);
   if (dur < MIN_SHOT_SEC) return { error: `shot ${index + 1} is shorter than ${MIN_SHOT_SEC}s` };
   if (dur > MAX_SHOT_SEC) return { error: `shot ${index + 1} is longer than ${MAX_SHOT_SEC}s` };
 
   const caption = typeof r.caption === 'string' ? r.caption.trim().slice(0, 120) : '';
   const captionPos: MontageCaptionPos = r.captionPos === 'center' ? 'center' : 'bottom';
+  const transition: MontageTransition = isMontageTransition(r.transition) ? r.transition : 'cut';
+  // An asked transition length is refused, not clamped, when out of range: a 3 s dissolve played as 2 s is not the edit.
+  let transitionSec: number | undefined;
+  if (r.transitionSec !== undefined && r.transitionSec !== null) {
+    const v = r.transitionSec;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < MIN_TRANSITION_SEC || v > MAX_TRANSITION_SEC) {
+      return { error: `shot ${index + 1} transition length must be ${MIN_TRANSITION_SEC} to ${MAX_TRANSITION_SEC} s` };
+    }
+    if (transition !== 'cut') transitionSec = Number(v.toFixed(3));
+  }
 
   return {
     shot: {
@@ -239,8 +302,10 @@ function coerceShot(raw: unknown, index: number): { shot?: MontageShot; error?: 
       endSec: Number(endSec.toFixed(3)),
       // A still image carries no audio track at all; marking it muted keeps the audio graph honest.
       muted: kind === 'image' ? true : r.muted === true,
-      transition: isMontageTransition(r.transition) ? r.transition : 'cut',
+      transition,
+      ...(transitionSec !== undefined ? { transitionSec } : {}),
       ...(caption ? { caption, ...(captionPos === 'center' ? { captionPos } : {}) } : {}),
+      ...(speed !== undefined ? { speed } : {}),
     },
   };
 }
@@ -268,7 +333,7 @@ export function validateMontageRequest(body: unknown): ValidationResult {
   // The first shot has no predecessor, so a transition on it is meaningless — normalize it away rather
   // than letting the pipeline build a graph that fades in from nothing.
   const first = shots[0];
-  if (first) first.transition = 'cut';
+  if (first) { first.transition = 'cut'; delete first.transitionSec; }
 
   const total = timelineDuration(shots);
   if (total > MAX_TOTAL_SEC) {
@@ -287,6 +352,25 @@ export function validateMontageRequest(body: unknown): ValidationResult {
 
   const duckRaw = Number(b.musicDuckDb);
   const grade = coerceGrade(b.grade);
+
+  // Agent G's own mix (./montageSound): refused, not clamped, when out of range — a bed at another level than quoted
+  // is a different edit than the one the user started.
+  let musicGainDb: number | undefined;
+  if (b.musicGainDb !== undefined && b.musicGainDb !== null) {
+    if (typeof b.musicGainDb !== 'number' || !Number.isFinite(b.musicGainDb) || b.musicGainDb < -30 || b.musicGainDb > 0) {
+      return { ok: false, error: 'musicGainDb must be a number of dB from -30 to 0' };
+    }
+    if (musicUrl) musicGainDb = Number(b.musicGainDb.toFixed(1));
+  }
+  const voiceUrl = typeof b.voiceUrl === 'string' ? b.voiceUrl.trim() : '';
+  if (voiceUrl && !/^https?:\/\//i.test(voiceUrl)) return { ok: false, error: 'voiceUrl must be an http(s) url' };
+  let voiceStartSec = 0;
+  if (b.voiceStartSec !== undefined && b.voiceStartSec !== null) {
+    if (typeof b.voiceStartSec !== 'number' || !Number.isFinite(b.voiceStartSec) || b.voiceStartSec < 0 || b.voiceStartSec >= total) {
+      return { ok: false, error: 'voiceStartSec must be a second inside the montage' };
+    }
+    voiceStartSec = Number(b.voiceStartSec.toFixed(3));
+  }
   return {
     ok: true,
     request: {
@@ -299,6 +383,8 @@ export function validateMontageRequest(body: unknown): ValidationResult {
       // Clamped to a sane duck range; 0 would bury the dialogue, -40 would silence the bed's purpose.
       musicDuckDb: Number.isFinite(duckRaw) ? Math.max(-30, Math.min(0, duckRaw)) : -12,
       musicOnly: b.musicOnly === true,
+      ...(musicGainDb !== undefined ? { musicGainDb } : {}),
+      ...(voiceUrl ? { voiceUrl, ...(voiceStartSec > 0 ? { voiceStartSec } : {}) } : {}),
       ...(grade ? { grade } : {}),
     },
   };
@@ -316,17 +402,20 @@ export function validateMontageRequest(body: unknown): ValidationResult {
  * so this module stays a dependency-free leaf (surgicalOps is `server-only` and shells out to ffmpeg,
  * which would make this untestable). The route asserts the two line up at the call site.
  *
- * `transition` is the bare surgicalOps vocabulary — 'none' | 'crossfade' | 'fade' — NOT this module's
- * user-facing 'cut'. The rename is deliberate: 'cut' is what an editor calls it; 'none' is what the
- * filtergraph calls it, and mapping in one place beats mapping in three.
+ * `transition` is the bare surgicalOps vocabulary — 'none' | a style — NOT this module's user-facing 'cut'. The
+ * rename is deliberate: 'cut' is what an editor calls it; 'none' is what the filtergraph calls it, and mapping in one
+ * place beats mapping in three. `transitionSec` rides along only with a transition, and only when the shot set one.
  */
 export interface ConcatEntryPlan {
   src: number;
   start: number;
   end: number;
   muted: boolean;
-  transition?: 'crossfade' | 'fade';
+  transition?: TransitionStyle;
+  transitionSec?: number;
   textOverlay?: { text: string; position: 'bottom-center' | 'center'; fontSize: number; fontColor: string };
+  /** The shot's playback speed when it is not 1 (a speed ramp). */
+  speed?: number;
 }
 
 /**
@@ -348,6 +437,7 @@ export function buildConcatPlan(
     const dur = shotDuration(shot);
     const start = shot.kind === 'image' ? 0 : shot.startSec;
     const end = shot.kind === 'image' ? dur : shot.endSec;
+    const speed = shotSpeed(shot);
 
     return {
       src: i,
@@ -356,7 +446,8 @@ export function buildConcatPlan(
       // musicOnly silences every source so only the bed survives the mix.
       muted: opts.musicOnly === true ? true : shot.muted,
       // The first shot never carries a transition — validate() already normalized it to 'cut'.
-      ...(shot.transition !== 'cut' ? { transition: shot.transition } : {}),
+      ...(shot.transition !== 'cut' ? { transition: shot.transition, ...(shot.transitionSec !== undefined ? { transitionSec: shot.transitionSec } : {}) } : {}),
+      ...(speed !== 1 ? { speed } : {}),
       ...(shot.caption
         ? {
             textOverlay: {

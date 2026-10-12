@@ -10,9 +10,16 @@ import {
   MIN_SHOT_SEC,
   MAX_TOTAL_SEC,
   TRANSITION_MAX_SEC,
+  TRANSITION_STYLES,
+  MIN_TRANSITION_SEC,
+  MAX_TRANSITION_SEC,
+  isMontageTransition,
   maxrateForTarget,
   coerceMusicStartSec,
   MAX_MUSIC_START_SEC,
+  MIN_SHOT_SPEED,
+  MAX_SHOT_SPEED,
+  shotSpeed,
   type MontageShot,
 } from './montagePlan';
 
@@ -189,6 +196,43 @@ describe('timeline arithmetic — must mirror runSequence, not approximate it', 
   });
 });
 
+describe('transition styles and their own length (GG 2026-10-11 17:38Z)', () => {
+  it('every style folds like a crossfade, and a shot\'s own length replaces the 0.6 s cap', () => {
+    for (const st of TRANSITION_STYLES) {
+      expect(timelineDuration([shot({ endSec: 5 }), shot({ endSec: 4, transition: st })])).toBe(8.4);
+      expect(timelineDuration([shot({ endSec: 5 }), shot({ endSec: 4, transition: st, transitionSec: 1.2 })])).toBe(7.8);
+    }
+    expect(transitionOverlap(10, 10, 1.5)).toBe(1.5);
+    expect(transitionOverlap(10, 2, 1.5)).toBe(1);      // still half of the shot at most
+    expect(transitionOverlap(10, 10, 99)).toBe(MAX_TRANSITION_SEC);
+    expect(transitionOverlap(10, 10, 0.01)).toBe(MIN_TRANSITION_SEC);
+    expect(transitionOverlap(10, 10, Number.NaN)).toBe(TRANSITION_MAX_SEC);
+  });
+
+  it('validation: a style is kept, an unknown one is a cut, a length out of range is refused, the first shot has none', () => {
+    const u = 'https://x.supabase.co/a.mp4';
+    const v = validateMontageRequest({ aspect: '9:16', shots: [
+      { url: u, startSec: 0, endSec: 4, transition: 'zoom', transitionSec: 1 },
+      { url: u, startSec: 0, endSec: 4, transition: 'slide', transitionSec: 0.5 },
+      { url: u, startSec: 0, endSec: 4, transition: 'spin' },
+    ] });
+    expect(v.ok).toBe(true);
+    expect(v.request!.shots.map((x) => [x.transition, x.transitionSec])).toEqual([['cut', undefined], ['slide', 0.5], ['cut', undefined]]);
+    for (const bad of [0.05, 3, '1', Number.NaN]) {
+      expect(validateMontageRequest({ shots: [{ url: u, endSec: 4 }, { url: u, endSec: 4, transition: 'wipe', transitionSec: bad }] }).ok).toBe(false);
+    }
+    expect(isMontageTransition('pixelize')).toBe(true);
+    expect(isMontageTransition('spin')).toBe(false);
+  });
+
+  it('the concat plan carries the length only with a transition', () => {
+    const plan = buildConcatPlan([shot(), shot({ transition: 'flash', transitionSec: 0.4 }), shot({ transition: 'blur' })]);
+    expect(plan[1]).toMatchObject({ transition: 'flash', transitionSec: 0.4 });
+    expect(plan[2]?.transition).toBe('blur');
+    expect(plan[2]?.transitionSec).toBeUndefined();
+  });
+});
+
 describe('concat plan', () => {
   it("maps the studio's 'cut' to surgicalOps' absent transition, and keeps the others", () => {
     const plan = buildConcatPlan([shot(), shot({ transition: 'crossfade' }), shot({ transition: 'fade' })]);
@@ -251,5 +295,51 @@ describe('size cap', () => {
   it('never returns a nonsense cap for a zero or negative duration', () => {
     expect(maxrateForTarget(0)).toBeGreaterThanOrEqual(2000);
     expect(maxrateForTarget(-5)).toBeGreaterThanOrEqual(2000);
+  });
+});
+
+describe('shot speed (a speed ramp of single shots)', () => {
+  const sped = (speed: unknown, kind = 'video') => validateMontageRequest({
+    shots: [
+      { url: 'https://cdn.example.com/a.mp4', startSec: 0, endSec: 3, speed, ...(kind === 'image' ? { kind } : {}) },
+      { url: 'https://cdn.example.com/b.mp4', startSec: 2, endSec: 8 },
+    ],
+  });
+
+  it('a slowed shot lasts its window ÷ its speed; a faster one less', () => {
+    const slow = sped(0.5);
+    expect(slow.ok).toBe(true);
+    expect(slow.request!.shots[0]!.speed).toBe(0.5);
+    expect(shotDuration(slow.request!.shots[0]!)).toBe(6);
+    expect(timelineDuration(slow.request!.shots)).toBe(12);
+    const fast = sped(1.5);
+    expect(shotDuration(fast.request!.shots[0]!)).toBe(2);
+  });
+
+  it('speed 1 is no speed at all: the request is what it was before ramps', () => {
+    const r = sped(1);
+    expect(r.ok).toBe(true);
+    expect(r.request!.shots[0]!.speed).toBeUndefined();
+    expect(sped(undefined).request!.shots[0]!.speed).toBeUndefined();
+  });
+
+  it('out of range or not a number is refused, never clamped', () => {
+    for (const bad of [0, 0.1, 5, Number.NaN, '2', true]) {
+      const r = sped(bad);
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(new RegExp(`speed must be ${MIN_SHOT_SPEED} to ${MAX_SHOT_SPEED}`));
+    }
+  });
+
+  it('a photo never plays at another speed', () => {
+    const r = sped(2, 'image');
+    expect(r.ok).toBe(true);
+    expect(r.request!.shots[0]!.speed).toBeUndefined();
+    expect(shotSpeed({ kind: 'image', speed: 2 })).toBe(1);
+  });
+
+  it('the concat plan carries the speed to the renderer, and only when it is not 1', () => {
+    const plan = buildConcatPlan([shot({ speed: 0.5 }), shot(), shot({ speed: 1.5 })]);
+    expect(plan.map((p) => p.speed)).toEqual([0.5, undefined, 1.5]);
   });
 });

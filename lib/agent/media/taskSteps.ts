@@ -12,8 +12,9 @@
 import type { AgentAudioState } from './audioChat';
 import { formatBytes } from './audioChat';
 import type { AgentMontageState } from './montageChat';
-import { priceLabel } from './montageChat';
+import { priceLabel, rampShort } from './montageChat';
 import { editsLine, outputLine, type AgentEditState } from './editChat';
+import { unplannedAsks, unplannedText } from './askCoverage';
 
 type Lang = 'ka' | 'en' | 'ru';
 const pick = (locale: string): Lang => (locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka');
@@ -56,9 +57,12 @@ export interface TaskCardModel {
   clock: { from: number; to?: number } | null;
   /** What the task works on, in the order sent („3 videos + 1 MP3" and each file by name). */
   inputs?: TaskInputs;
+  /** What the words asked that the plan leaves out, by name and why (./askCoverage); absent when it holds everything. */
+  notice?: string;
 }
 
-export interface TaskInputFile { name: string; kind: 'video' | 'audio' | 'image' }
+/** `audio`: the music track; `voice`: a narration the user recorded (./montageManifest ManifestKind). */
+export interface TaskInputFile { name: string; kind: 'video' | 'audio' | 'image' | 'voice' }
 export interface TaskInputs { text: string; files: TaskInputFile[] }
 
 const T = {
@@ -161,7 +165,8 @@ export function montageInputs(s: Pick<AgentMontageState, 'quote' | 'names'>, loc
   const photos = !ph ? '' : lang === 'en' ? `${ph} photo${ph === 1 ? '' : 's'}` : lang === 'ru' ? `${ph} фото` : `${ph} ფოტო`;
   const audio = !tracks.length ? '' : mp3 ? `${tracks.length} MP3`
     : lang === 'en' ? `${tracks.length} track${tracks.length === 1 ? '' : 's'}` : lang === 'ru' ? `аудио: ${tracks.length}` : `${tracks.length} აუდიო`;
-  return { text: [videos, photos, audio].filter(Boolean).join(' + '), files };
+  const voice = !files.some((f) => f.kind === 'voice') ? '' : lang === 'en' ? 'narration' : lang === 'ru' ? 'озвучка' : 'ნარაცია';
+  return { text: [v ? videos : '', photos, audio, voice].filter(Boolean).join(' + '), files };
 }
 
 /** " · music from 0:58": where in the song the montage starts, in whole seconds as the chat says it. */
@@ -216,6 +221,8 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
     ? (lang === 'en' ? `${q.shots} shots from ${q.clips} clip${q.clips === 1 ? '' : 's'}${stills ? ` and ${stills} photo${stills === 1 ? '' : 's'}` : ''} · ${sec(q.totalSec)} s · ${q.aspect} · ${priceLabel(q.credits, locale)}`
       : lang === 'ru' ? `${q.shots} кадров из клипов (${q.clips})${stills ? ` и фото (${stills})` : ''} · ${sec(q.totalSec)} с · ${q.aspect} · ${priceLabel(q.credits, locale)}`
         : `${q.shots} კადრი ${q.clips} კლიპიდან${stills ? ` და ${stills} ფოტოდან` : ''} · ${sec(q.totalSec)} წმ · ${q.aspect} · ${priceLabel(q.credits, locale)}`)
+      // The speed ramps the words asked for: how many shots slow down and speed up (or that none could).
+      + (q.ramp ? ` · ${rampShort(q.ramp, locale)}` : '')
     : undefined;
 
   const steps: TaskStep[] = MONTAGE_STEPS.map((key, i) => {
@@ -247,7 +254,9 @@ export function montageTask(s: AgentMontageState, locale: string): TaskCardModel
   const clock = clockOf(s.phase, s.t0, s.t1);
   const model = finish(say('agentMontage', lang), steps, status, statusText, s.phase === 'running' ? clamp(s.pct) : null, clock, locale);
   const inputs = montageInputs(s, locale);
-  return inputs ? { ...model, inputs } : model;
+  // Every part of the words is in the plan or named here: an edit the montage does not make itself, a transition, zoom.
+  const notice = unplannedText(unplannedAsks(s.prompt), locale);
+  return { ...model, ...(inputs ? { inputs } : {}), ...(notice ? { notice } : {}) };
 }
 
 // ── The MP3 ──────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -357,7 +366,7 @@ export function editTask(s: AgentEditState, locale: string): TaskCardModel {
   }
   const states = lay(EDIT_STEPS, at, mode);
   const free = lang === 'en' ? 'free' : lang === 'ru' ? 'бесплатно' : 'უფასო';
-  const planDetail = q ? `${editsLine(q.edits, locale)} · ${outputLine(q.plan, locale)} · ${q.credits > 0 ? `✦ ${q.credits}` : free}` : undefined;
+  const planDetail = q ? `${editsLine(q.edits, locale, q.plan.durationSec)} · ${outputLine(q.plan, locale)} · ${q.credits > 0 ? `✦ ${q.credits}` : free}` : undefined;
 
   const steps: TaskStep[] = EDIT_STEPS.map((key, i) => {
     const state = states[i]!;

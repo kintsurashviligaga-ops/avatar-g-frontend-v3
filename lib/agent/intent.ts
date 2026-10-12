@@ -29,11 +29,13 @@ import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { isVideoEditRequest } from '@/lib/chat/videoIntent';
 import { routeAgentIntent } from '@/lib/catalog/agentRoute';
 import { resolveService } from '@/lib/catalog/services';
-import { beatMontageAsk } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, hasMontageWords } from '@/lib/agent/media/montageChat';
+import { asksNarration } from '@/lib/agent/media/montageAsk';
 import { audioExtractAsk, wantsAudioFile } from '@/lib/agent/media/audioChat';
 import { withoutLinks } from '@/lib/agent/media/audioSource';
-import { mineEdits } from '@/lib/agent/media/editWords';
+import { asksForEdit, mineEdits, onlyDescribing } from '@/lib/agent/media/editWords';
 import { hasPlanParams, mineParams } from './params';
+import { parseSelection } from './media/sourceSelect';
 import type {
   ActTarget, AgentIntent, AttachmentKind, CapabilityId, ControlOp, EditOp, IntentParams, Lang, MissingInput,
 } from './contracts';
@@ -240,16 +242,22 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   if (audio) return act('agent.audio-extract', audio.source === 'link' ? 'link' : 'attachment');
   if (wantsAudioFile(withoutLinks(text))) return act('agent.audio-extract', 'new', {}, ['source']);
 
-  // 5) A change to the montage plan on screen: a new frame shape, length or music start, and nothing new asked for.
-  if (input.pending?.capability === 'agent.montage' && !kinds.length && hasPlanParams(params) && words(text).length <= 10
+  // 5) A change to the montage plan on screen: a new frame shape, length, music start or source selection („მარტო ბოლო
+  //    შვიდი", lib/agent/media/sourceSelect), and nothing new asked for. The same files are quoted again.
+  if (input.pending?.capability === 'agent.montage' && !kinds.length && (hasPlanParams(params) || parseSelection(text) !== null) && words(text).length <= 10
     && !NEW_THING.test(text) && !routeAgentIntent(text) && !detectStudioIntent(text)) {
     return act('agent.montage', 'pending', params);
   }
 
-  // 6) Cut the clips to the track (photos ride along as still shots). Clips with no track, or clips named but not
-  //    attached: say what is missing.
+  // 6) A montage of the attached pictures: to a track, under the clips' own sound, or with none sent (GG 2026-10-11
+  //    17:38Z). Words that make the music the point with no track sent, or clips named but not attached: say what is
+  //    missing.
   if (beatMontageAsk(text, kinds)) return act('agent.montage', 'attachment', params);
-  if (nAudio === 0 && nVideo >= 1 && nVideo + nImage === kinds.length && beatMontageAsk(text, [...kinds, 'audio'])) {
+  if (nAudio === 0 && nVideo + nImage >= 2 && nVideo + nImage === kinds.length && asksNarration(text) && hasMontageWords(text)) {
+    return act('agent.montage', 'attachment', params, ['narration']);
+  }
+  // („Озвучь это видео" alone is dubbing, not a montage missing its track.)
+  if (nAudio === 0 && (nVideo >= 1 || nImage >= 2) && nVideo + nImage === kinds.length && !asksNarration(text) && beatMontageAsk(text, [...kinds, 'audio'])) {
     return act('agent.montage', 'attachment', params, ['track']);
   }
   if (!kinds.length && CLIPS_REF.test(text) && beatMontageAsk(text, ['video', 'video', 'audio'])) {
@@ -288,6 +296,11 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   if (params.musicStartSec !== undefined && !generative) {
     return act('media.edit', videoTarget ?? 'new', { ...params, editOp: 'music_offset' }, videoTarget ? [] : ['video']);
   }
+  // „მარტო ბოლო ხუთი" about the last result: the montage's own files planned again with only those pictures (counted
+  // as they were sent; lib/agent/chatTurn remontage). A quote again, nothing runs before Start.
+  if (!kinds.length && prev === 'video' && !generative && parseSelection(text) !== null && words(text).length <= 10 && !NEW_THING.test(text)) {
+    return act('agent.montage', 'previous', params);
+  }
   if (COLOR.test(text) && CHANGE.test(text) && !(generative && NEW_THING.test(text))) {
     const onImage = nImage >= 1 || (!kinds.length && prev === 'image');
     const onVideo = nVideo >= 1 || (!kinds.length && prev === 'video');
@@ -306,10 +319,11 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
   }
   // „წინა ვიდეო შავ-თეთრი გახადე", "mute the last video", „make the last video 2× faster": an edit the edit's own words
   // (media/editWords) can read, of the last video, and nothing new asked for. Before the generate lanes, which would
-  // otherwise make a new video from „make the last video …".
+  // otherwise make a new video from „make the last video …". Words that also describe a picture („წინა ვიდეო უფრო ნათელი
+  // იყო", "the previous one was warmer") are an edit only when the message asks for one: a remark goes to the chat.
   if (!kinds.length && prev === 'video' && PREVIOUS_REF.test(text) && !NEW_THING.test(text)) {
     const mined = mineEdits(text);
-    if (mined.edits.length || mined.unsupported.length) return act('media.edit', 'previous', params);
+    if ((mined.edits.length || mined.unsupported.length) && (!onlyDescribing(mined) || asksForEdit(text))) return act('media.edit', 'previous', params);
   }
 
   // 11) The other studio services (presentation, 3D, avatar, the editor).

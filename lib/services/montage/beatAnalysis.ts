@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { parseFrameCrc, parseProbeBanner, type BannerProbe, type StreamDurations } from '@/lib/video/probeBanner';
-import { ANALYSIS_HOP, ANALYSIS_RATE, MAX_ANALYSIS_SEC, estimateBeatGrid, onsetStrength, type BeatGrid } from './beatPlan';
+import { ANALYSIS_HOP, ANALYSIS_RATE, MAX_ANALYSIS_SEC, energyEnvelope, estimateBeatGrid, onsetStrength, type BeatGrid, type EnergyEnvelope } from './beatPlan';
 
 function bin(): string | null {
   return (ffmpegStatic as unknown as string | null) ?? null;
@@ -47,8 +47,11 @@ export async function probeMedia(url: string, timeoutMs = 90_000): Promise<Banne
   return probe.durationSec > 0 || probe.hasVideo || probe.hasAudio ? probe : null;
 }
 
-/** Decode the track and find its beat. Null when it cannot be decoded; `grid` null when it has no pulse. */
-export async function analyzeTrack(url: string, timeoutMs = 120_000): Promise<{ probe: BannerProbe; grid: BeatGrid | null } | null> {
+/**
+ * Decode the track and find its beat, and how strong the music is along it (the speed ramps choose by it). Null when
+ * it cannot be decoded; `grid` null when it has no pulse.
+ */
+export async function analyzeTrack(url: string, timeoutMs = 120_000): Promise<{ probe: BannerProbe; grid: BeatGrid | null; energy: EnergyEnvelope } | null> {
   const b = bin();
   if (!b) return null;
   const dir = await mkdtemp(join(tmpdir(), 'beat-'));
@@ -66,7 +69,7 @@ export async function analyzeTrack(url: string, timeoutMs = 120_000): Promise<{ 
     const pcm = new Int16Array(buf.byteLength >> 1);
     for (let i = 0; i < pcm.length; i += 1) pcm[i] = buf.readInt16LE(i * 2);
     const grid = estimateBeatGrid(onsetStrength(pcm, ANALYSIS_HOP), ANALYSIS_HOP / ANALYSIS_RATE);
-    return { probe, grid };
+    return { probe, grid, energy: energyEnvelope(pcm) };
   } catch {
     return null;
   } finally {

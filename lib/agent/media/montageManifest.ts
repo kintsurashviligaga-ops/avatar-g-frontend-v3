@@ -5,8 +5,9 @@
  * task." So the quote writes down exactly what the user sent — every file, in their order, what it is (video or the
  * music) and how long it is — and every later step checks against THAT list, never against whatever plan reached it:
  *
- *   quote   builds the manifest from the resolved, probed inputs; files = manifest = videos and photos + exactly one
- *           audio (a photo is a still shot: owner 2026-10-11 11:37Z, a product photo among the clips). The
+ *   quote   builds the manifest from the resolved, probed inputs; files = manifest = videos and photos + at most one
+ *           music track and one narration (a photo is a still shot: owner 2026-10-11 11:37Z, a product photo among
+ *           the clips; no music, or photos alone: GG 2026-10-11 17:38Z). The
  *           manifest rides INSIDE the quoted request (each shot names the manifest file it is cut from, `source`), so
  *           the token's fingerprint binds it: a run cannot add, drop or swap a file without failing the signature.
  *   run     re-reads the request + manifest (parseAgentRequest), checks every video has a shot, verifies the token over
@@ -23,7 +24,11 @@ import { MAX_SHOTS, validateMontageRequest, type MontageRequest, type MontageSho
  * One file the user sent, in the order sent. `index` is its 0-based position; `path` the file reference sent. A photo
  * (`image`) has no length of its own: its `durationSec` is 0 and its one shot sets how long it shows.
  */
-export type MontageManifestItem = { index: number; path: string; name: string; kind: 'video' | 'audio' | 'image'; durationSec: number };
+export type MontageManifestItem = { index: number; path: string; name: string; kind: ManifestKind; durationSec: number };
+/** A picture (video or photo), the music track (`audio`), or a narration the user recorded (`voice`). */
+export type ManifestKind = 'video' | 'audio' | 'image' | 'voice';
+/** Is this file a picture of the edit (it must show in it), or a sound laid under it? */
+export const isPictureKind = (k: ManifestKind): boolean => k === 'video' || k === 'image';
 
 /** A shot of an Agent G montage: the lane's shot, plus the manifest file (`source`, its index) it is cut from. */
 export interface AgentMontageShot extends MontageShot {
@@ -36,8 +41,8 @@ export interface AgentMontageRequest extends MontageRequest {
   manifest: MontageManifestItem[];
 }
 
-/** One track plus at most MAX_SHOTS clips: a clip is used at least once, so more could never all appear. */
-export const MAX_MANIFEST_FILES = MAX_SHOTS + 1;
+/** A track, a narration and at most MAX_SHOTS pictures: a picture is used at least once, so more could never all appear. */
+export const MAX_MANIFEST_FILES = MAX_SHOTS + 2;
 /** A file name longer than this is cut (a name is shown on the card, never used as a path). */
 export const MAX_NAME_CHARS = 200;
 const MAX_PATH_CHARS = 2048;
@@ -78,18 +83,20 @@ export function parseNames(raw: unknown, count: number): { ok: true; names: stri
 }
 
 /**
- * The manifest of a quote: every file sent, in the order sent. `track` is the index of the one audio file, `stills` the
- * photos; every other file is a video (the caller sorted them, ./montageAsk sortInputs, so `probes` are all readable).
+ * The manifest of a quote: every file sent, in the order sent. `track` is the index of the music (null: none), `voice`
+ * the narration's (null: none), `stills` the photos; every other file is a video (the caller sorted them, ./montageAsk
+ * sortInputs, so `probes` are all readable).
  */
 export function buildManifest(
   files: readonly string[],
   names: readonly string[] | null,
   probes: ReadonlyArray<Pick<BannerProbe, 'durationSec'>>,
-  track: number,
+  track: number | null,
   stills: readonly number[] = [],
+  voice: number | null = null,
 ): MontageManifestItem[] {
   return files.map((path, index) => {
-    const kind: MontageManifestItem['kind'] = index === track ? 'audio' : stills.includes(index) ? 'image' : 'video';
+    const kind: ManifestKind = index === track ? 'audio' : index === voice ? 'voice' : stills.includes(index) ? 'image' : 'video';
     return {
       index,
       path: path.trim(),
@@ -101,19 +108,20 @@ export function buildManifest(
 }
 
 export type ManifestCheck =
-  /** `videos` and `stills` (photos): manifest indices; together they are every picture of the edit. */
-  | { ok: true; manifest: MontageManifestItem[]; videos: number[]; stills: number[]; audio: number }
+  /** `videos` and `stills` (photos): manifest indices; together they are every picture of the edit. `audio`: the music's
+   *  index (null: a montage without music); `voice`: the narration's (null: none). */
+  | { ok: true; manifest: MontageManifestItem[]; videos: number[]; stills: number[]; audio: number | null; voice: number | null }
   | { ok: false; error: string };
 
 /**
- * A manifest from untrusted input (a run body, a stored row), checked and copied: 2…MAX_MANIFEST_FILES items, each at
- * its own index, with a path, a clean name, a kind and a length (0 for a photo, positive otherwise); exactly one audio,
- * at least one video, every other item a video or a photo. Nothing is repaired: a manifest that is not exactly what a
- * quote writes is refused.
+ * A manifest from untrusted input (a run body, a stored row), checked and copied: 1…MAX_MANIFEST_FILES items, each at
+ * its own index, with a path, a clean name, a kind and a length (0 for a photo, positive otherwise); at least one
+ * picture (a video or a photo: GG 2026-10-11 17:38Z, a montage of photos alone, or without music), at most one music
+ * track and at most one narration. Nothing is repaired: a manifest that is not exactly what a quote writes is refused.
  */
 export function checkManifest(raw: unknown): ManifestCheck {
   if (!Array.isArray(raw)) return { ok: false, error: 'the manifest is missing' };
-  if (raw.length < 2) return { ok: false, error: `the manifest lists ${raw.length} file(s); a montage needs a clip and the music` };
+  if (raw.length < 1) return { ok: false, error: 'the manifest lists no file; a montage needs a picture' };
   if (raw.length > MAX_MANIFEST_FILES) return { ok: false, error: `the manifest lists ${raw.length} files; at most ${MAX_MANIFEST_FILES}` };
   const manifest: MontageManifestItem[] = [];
   for (let i = 0; i < raw.length; i += 1) {
@@ -124,7 +132,7 @@ export function checkManifest(raw: unknown): ManifestCheck {
     if (!path.trim() || path !== path.trim() || path.length > MAX_PATH_CHARS) return { ok: false, error: `manifest item ${i + 1} has no file reference` };
     const name = typeof it.name === 'string' ? it.name : '';
     if (!name || name.length > MAX_NAME_CHARS || name !== cleanName(name, path)) return { ok: false, error: `manifest item ${i + 1} has no clean name` };
-    if (it.kind !== 'video' && it.kind !== 'audio' && it.kind !== 'image') return { ok: false, error: `manifest item ${i + 1} is neither video, photo nor audio` };
+    if (it.kind !== 'video' && it.kind !== 'audio' && it.kind !== 'image' && it.kind !== 'voice') return { ok: false, error: `manifest item ${i + 1} is neither video, photo, music nor narration` };
     const d = it.durationSec;
     if (it.kind === 'image') {
       if (d !== 0) return { ok: false, error: `manifest item ${i + 1} is a photo with a length` };
@@ -136,9 +144,11 @@ export function checkManifest(raw: unknown): ManifestCheck {
   const videos = manifest.filter((m) => m.kind === 'video').map((m) => m.index);
   const stills = manifest.filter((m) => m.kind === 'image').map((m) => m.index);
   const audios = manifest.filter((m) => m.kind === 'audio').map((m) => m.index);
-  if (audios.length !== 1) return { ok: false, error: `the manifest lists ${audios.length} music tracks; exactly one is required` };
-  if (!videos.length || videos.length + stills.length + 1 !== manifest.length) return { ok: false, error: 'the manifest must list the clips and exactly one track' };
-  return { ok: true, manifest, videos, stills, audio: audios[0]! };
+  const voices = manifest.filter((m) => m.kind === 'voice').map((m) => m.index);
+  if (audios.length > 1) return { ok: false, error: `the manifest lists ${audios.length} music tracks; at most one` };
+  if (voices.length > 1) return { ok: false, error: `the manifest lists ${voices.length} narrations; at most one` };
+  if (!videos.length && !stills.length) return { ok: false, error: 'the manifest lists no picture; a montage needs a clip or a photo' };
+  return { ok: true, manifest, videos, stills, audio: audios[0] ?? null, voice: voices[0] ?? null };
 }
 
 export type Coverage = { ok: true } | { ok: false; error: string; missing: number[] };
@@ -155,13 +165,13 @@ export function checkCoverage(shots: ReadonlyArray<{ source?: unknown; kind?: un
       return { ok: false, error: `shot ${i + 1} does not name a file of the manifest`, missing: [] };
     }
     const kind = manifest[s]!.kind;
-    if (kind === 'audio') return { ok: false, error: `shot ${i + 1} is cut from file ${s + 1}, which is not a video`, missing: [] };
+    if (!isPictureKind(kind)) return { ok: false, error: `shot ${i + 1} is cut from file ${s + 1}, which is not a video`, missing: [] };
     if ((shots[i]?.kind === 'image') !== (kind === 'image')) {
       return { ok: false, error: `shot ${i + 1} does not show file ${s + 1} as the ${kind === 'image' ? 'photo' : 'video'} it is`, missing: [] };
     }
   }
   const used = new Set(shots.map((s) => s.source as number));
-  const missing = manifest.filter((m) => m.kind !== 'audio' && !used.has(m.index)).map((m) => m.index);
+  const missing = manifest.filter((m) => isPictureKind(m.kind) && !used.has(m.index)).map((m) => m.index);
   if (missing.length) {
     return { ok: false, error: `file ${missing.map((m) => m + 1).join(', ')} of ${manifest.length} has no shot`, missing };
   }
@@ -188,7 +198,13 @@ export function parseAgentRequest(raw: unknown): AgentRequestCheck {
   const shots: AgentMontageShot[] = valid.request.shots.map((s, i) => ({ ...s, source: body.shots[i]?.source as number }));
   const cover = checkCoverage(shots, m.manifest);
   if (!cover.ok) return { ok: false, code: 'manifest_invalid', error: cover.error, missing: cover.missing };
-  if (!valid.request.musicUrl) return { ok: false, code: 'manifest_invalid', error: 'the music track of the manifest is not in the edit' };
+  // The sound is the manifest's, no more and no less: its music is in the edit, and an edit has no music it does not list.
+  if ((m.audio !== null) !== Boolean(valid.request.musicUrl)) {
+    return { ok: false, code: 'manifest_invalid', error: m.audio !== null ? 'the music track of the manifest is not in the edit' : 'the edit has music the manifest does not list' };
+  }
+  if ((m.voice !== null) !== Boolean(valid.request.voiceUrl)) {
+    return { ok: false, code: 'manifest_invalid', error: m.voice !== null ? 'the narration of the manifest is not in the edit' : 'the edit has a narration the manifest does not list' };
+  }
   return { ok: true, request: { ...valid.request, shots, manifest: m.manifest }, manifest: m.manifest };
 }
 

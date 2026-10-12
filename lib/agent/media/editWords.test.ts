@@ -50,15 +50,15 @@ describe('mineEdits: ka · en · ru', () => {
     ['ხმა აუწიე', [{ op: 'volume', db: 6 }]],
     ['Make it quieter by 10 dB', [{ op: 'volume', db: -10 }]],
     ['Сделай потише', [{ op: 'volume', db: -6 }]],
-    // caption
-    ['დაადე წარწერა: „ზაფხული 2026"', [{ op: 'caption', text: 'ზაფხული 2026' }]],
-    ['Add a caption "Summer sale"', [{ op: 'caption', text: 'Summer sale' }]],
-    ['Добавь надпись: Привет, мир', [{ op: 'caption', text: 'Привет, мир' }]],
+    // a caption line in words is a text layer (v2.1: it can be moved, restyled and removed later)
+    ['დაადე წარწერა: „ზაფხული 2026"', [{ op: 'layers', add: [{ kind: 'text', text: 'ზაფხული 2026' }] }]],
+    ['Add a caption "Summer sale"', [{ op: 'layers', add: [{ kind: 'text', text: 'Summer sale' }] }]],
+    ['Добавь надпись: Привет, мир', [{ op: 'layers', add: [{ kind: 'text', text: 'Привет, мир' }] }]],
     // thumbnail
     ['ქავერი გამიკეთე 3 წამზე', [{ op: 'thumbnail', atSec: 3 }]],
     ['Make a thumbnail at 0:12', [{ op: 'thumbnail', atSec: 12 }]],
     ['Сделай обложку', [{ op: 'thumbnail' }]],
-    ['Vertical thumbnail with the caption "New episode"', [{ op: 'thumbnail' }, { op: 'aspect', to: '9:16', fit: 'crop' }, { op: 'caption', text: 'New episode' }]],
+    ['Vertical thumbnail with the caption "New episode"', [{ op: 'thumbnail' }, { op: 'aspect', to: '9:16', fit: 'crop' }, { op: 'layers', add: [{ kind: 'text', text: 'New episode' }] }]],
     // several at once
     ['Trim the first 10 seconds, make it vertical and black and white', [{ op: 'trim', toSec: 10 }, { op: 'aspect', to: '9:16', fit: 'crop' }, { op: 'grade', style: 'noir' }]],
     ['პირველი 20 წამი დატოვე, 2-ჯერ გააჩქარე და ხმა მოაშორე', [{ op: 'trim', toSec: 20 }, { op: 'speed', factor: 2 }, { op: 'mute' }]],
@@ -66,9 +66,22 @@ describe('mineEdits: ka · en · ru', () => {
     expect(edits(text)).toEqual(expected);
   });
 
-  test('a caption with no words asks for them', () => {
-    expect(mineEdits('Add subtitles')).toEqual({ edits: [], missing: ['caption_text'], unsupported: [] });
-    expect(mineEdits('დაამატე წარწერა').missing).toEqual(['caption_text']);
+  test('a text with no words asks for them; subtitles with no words are of the speech: said, not guessed', () => {
+    expect(mineEdits('დაამატე წარწერა')).toEqual({ edits: [], missing: ['caption_text'], unsupported: [] });
+    expect(mineEdits('Add subtitles')).toEqual({ edits: [], missing: [], unsupported: ['speech_captions'] });
+  });
+
+  test('v2.1: the words drawn and the layer\'s time are not read as edits of the video', () => {
+    expect(mineEdits('აქ დააწერე: სიჩქარე და ხარისხი').edits).toEqual([{ op: 'layers', add: [{ kind: 'text', text: 'სიჩქარე და ხარისხი' }] }]);
+    expect(mineEdits('Add a CTA in the last 3 seconds: "Order now"').edits)
+      .toEqual([{ op: 'layers', add: [{ kind: 'text', role: 'cta', text: 'Order now', lastSec: 3 }] }]);
+    expect(mineEdits('ტექსტი კინემატოგრაფიული გახადე').edits).toEqual([{ op: 'layers', change: [{ target: { kind: 'text', all: true }, style: 'cinematic' }] }]);
+    expect(mineEdits('Make the title fade in').edits).toEqual([{ op: 'layers', change: [{ target: { kind: 'text', all: true }, motionIn: 'fade' }] }]);
+    expect(mineEdits('ეს დიზაინი 9:16 სტორად გადააკეთე.').edits).toEqual([{ op: 'aspect', to: '9:16', fit: 'pad' }]);
+    expect(mineEdits('Make this design 9:16, crop it').edits).toEqual([{ op: 'aspect', to: '9:16', fit: 'crop' }]);
+    const logo = mineEdits('ლოგო ზედა მარცხენა კუთხეში დაადე და ვიდეო შავ-თეთრი გახადე');
+    expect(logo.logo).toBe(true);
+    expect(logo.edits).toEqual([{ op: 'grade', style: 'noir' }, { op: 'layers', add: [{ kind: 'image', ref: '@attachment', anchor: 'top-left' }] }]);
   });
 
   test('a stretch removed from the middle is not one edit: said, not guessed', () => {
@@ -112,5 +125,40 @@ describe('editAskOf: an ask from a tool call or a run step, rebuilt from its kno
     expect(editAskOf({ op: 'toString' })).toBeNull();
     expect(editAskOf([{ op: 'mute' }])).toBeNull();
     expect(editAskOf(null)).toBeNull();
+  });
+  test('v2.1 layers and caption tracks: plain data only, a track only of the user\'s own words', () => {
+    const layers = { op: 'layers', add: [{ kind: 'text', text: 'მიტანა', anchor: 'bottom', lastSec: 3 }], remove: [{ kind: 'image', where: 'top' }] };
+    expect(editAskOf(layers)).toEqual(layers);
+    const track = { lang: 'ka', source: 'typed', cues: [{ startSec: 0, endSec: 2, text: 'გამარჯობა' }] };
+    expect(editAskOf({ op: 'captions', track, deliver: 'both' })).toEqual({ op: 'captions', track, deliver: 'both' });
+    expect(editAskOf({ op: 'captions', deliver: 'both' })).toEqual({ op: 'captions', deliver: 'both' });
+    expect(editAskOf({ op: 'captions', off: true })).toEqual({ op: 'captions', off: true });
+    // A transcript or a translation is a paid call's output: never taken from a caller.
+    expect(editAskOf({ op: 'captions', track: { ...track, source: 'transcript' } })).toBeNull();
+    expect(editAskOf({ op: 'layers', add: 'text' })).toBeNull();
+    expect(editAskOf({ op: 'layers', add: [{ kind: 'text', text: 'x', fn: () => 1 }] })).toBeNull();
+    expect(editAskOf({ op: 'layers', add: [{ kind: 'text', text: 'x', n: NaN }] })).toBeNull();
+    expect(editAskOf({ op: 'layers', add: Array.from({ length: 25 }, () => ({ kind: 'mask' })) })).toBeNull();
+    expect(editAskOf(JSON.parse('{"op":"layers","add":[{"__proto__":{"x":1}}]}'))).toBeNull();
+    expect(editAskOf({ op: 'captions', off: 'yes' })).toBeNull();
+  });
+});
+
+describe('the overlay (owner 2026-10-11: „ასევე დაადე ოვერლეი")', () => {
+  test.each<[string, EditAsk[]]>([
+    ['ასევე დაადე ოვერლეი', [{ op: 'overlay', look: 'light-leak' }]],
+    ['add a light leak overlay', [{ op: 'overlay', look: 'light-leak' }]],
+    ['add some film grain', [{ op: 'overlay', look: 'grain' }]],
+    ['ფირის მარცვალი დაადე', [{ op: 'overlay', look: 'grain' }]],
+    ['наложи оверлей', [{ op: 'overlay', look: 'light-leak' }]],
+    ['добавь зерно плёнки', [{ op: 'overlay', look: 'grain' }]],
+  ])('%s', (text, want) => {
+    expect(edits(text)).toEqual(want);
+  });
+
+  test('„overlay the text" is a text, not an effect; a stored overlay ask takes its look and nothing else', () => {
+    expect(edits('overlay the text „Summer“').some((e) => e.op === 'overlay')).toBe(false);
+    expect(editAskOf({ op: 'overlay', look: 'grain' })).toEqual({ op: 'overlay', look: 'grain' });
+    expect(editAskOf({ op: 'overlay', look: 'grain', extra: 1 })).toBeNull();
   });
 });

@@ -115,6 +115,13 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
       expect.objectContaining({ index: 0, name: 'a.mp4', diff: 0, ok: true }),
       expect.objectContaining({ index: 1, name: 'b.mp4', diff: 0, ok: true }),
     ]);
+    // Provenance (Media Studio v2.0 §6): the outcome word, each source's share of the master, the audio clocks.
+    const prov = (f.store.rows.get(id)!.result as { qc: { outcome: string; sources: Array<{ index: number; outputSec: number }>; audio: { sourceStartSec: number; targetSec: number; sourceAudio: string } } }).qc;
+    expect(prov.outcome).toBe('PASS');
+    expect(prov.sources.map((x) => x.index)).toEqual([0, 1]);
+    expect(prov.sources.every((x) => x.outputSec > 0)).toBe(true);
+    expect(prov.sources.reduce((sum, x) => sum + x.outputSec, 0)).toBeCloseTo(prov.audio.targetSec, 1);
+    expect(prov.audio).toMatchObject({ timelineStartSec: 0, sourceAudio: 'remove', replacementAudio: 'replace' }); // no asked offset: the track starts on its first beat
     // One read of the master for all clips, one per source (conformed to the master's frame).
     expect(f.grabs.filter((g) => g.url === MASTER_URL)).toHaveLength(1);
     expect(f.grabs.filter((g) => g.url !== MASTER_URL).map((g) => g.fit)).toEqual([true, true]);
@@ -146,6 +153,7 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
     expect(row.error).toMatch(/^clip_missing: clip 2 "b\.mp4" is not in the output at /);
     const qc = (row.result as { qc: { clips: Array<{ index: number; ok: boolean; diff: number }>; ok: boolean } }).qc;
     expect(qc.ok).toBe(false);
+    expect((qc as unknown as { outcome: string }).outcome).toBe('FAIL');
     expect(qc.clips.map((c) => [c.index, c.ok])).toEqual([[0, true], [1, false]]);
     expect(qc.clips[1]!.diff).toBeGreaterThan(12);
     expect(balance(f)).toBe(0); // the priced path still pays back what it charged

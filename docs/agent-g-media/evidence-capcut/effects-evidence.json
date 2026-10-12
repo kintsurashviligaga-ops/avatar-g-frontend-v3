@@ -1,0 +1,250 @@
+{
+  "f1": {
+    "edits": [
+      {
+        "op": "adjust",
+        "brightness": 25,
+        "warmth": 40,
+        "vignette": 50
+      }
+    ],
+    "plain": {
+      "before": {
+        "r": 85.1,
+        "g": 98.1,
+        "b": 107.6,
+        "y": 95.3
+      },
+      "after": {
+        "r": 106.4,
+        "g": 109.5,
+        "b": 110.2,
+        "y": 108.6
+      }
+    },
+    "corner": {
+      "before": {
+        "r": 61.7,
+        "g": 73.2,
+        "b": 91.3,
+        "y": 71.8
+      },
+      "after": {
+        "r": 55,
+        "g": 57.7,
+        "b": 65.4,
+        "y": 57.8
+      }
+    },
+    "ms": 2533
+  },
+  "f2": {
+    "edits": [
+      {
+        "op": "flip",
+        "axis": "horizontal"
+      }
+    ],
+    "red": {
+      "before": {
+        "x": 180,
+        "y": 360
+      },
+      "after": {
+        "x": 1100,
+        "y": 360
+      }
+    },
+    "ms": 606
+  },
+  "f3": {
+    "edits": [
+      {
+        "op": "rotate",
+        "deg": 90
+      }
+    ],
+    "frame": [
+      720,
+      1280
+    ],
+    "red": {
+      "x": 360,
+      "y": 180
+    },
+    "ms": 565
+  },
+  "f4": {
+    "edits": [
+      {
+        "op": "motion",
+        "zoom": "in"
+      }
+    ],
+    "whiteSquarePx": {
+      "first": 120,
+      "last": 137,
+      "ratio": 1.142
+    },
+    "durationSec": 6.01,
+    "ms": 1202
+  },
+  "f5": {
+    "edits": [
+      {
+        "op": "motion",
+        "shake": true
+      }
+    ],
+    "squareJitterPx": {
+      "sdx": 32.1,
+      "sdy": 18.4
+    },
+    "frames": 150,
+    "ms": 1237
+  },
+  "f6": {
+    "edits": [
+      {
+        "op": "motion",
+        "glitch": true
+      }
+    ],
+    "madVsSource": {
+      "calmAt1s": 0.2,
+      "burstAt1_68s": 9.3,
+      "burstAt3_28s": 9.5
+    },
+    "ms": 1326
+  },
+  "f7": {
+    "edits": [
+      {
+        "op": "stabilize"
+      }
+    ],
+    "jitterPx": {
+      "before": 10.6,
+      "after": 4.5,
+      "less": "57 %"
+    },
+    "ms": 2880
+  },
+  "f8": {
+    "edits": [
+      {
+        "op": "aspect",
+        "to": "9:16",
+        "fit": "blur"
+      }
+    ],
+    "frame": [
+      1080,
+      1920
+    ],
+    "band": {
+      "mean": {
+        "r": 172.7,
+        "g": 152.7,
+        "b": 143.7,
+        "y": 157.6
+      },
+      "detail": 0
+    },
+    "pictureDetail": 13.2,
+    "sideMarkers": {
+      "left": {
+        "x": 37,
+        "y": 304
+      },
+      "right": {
+        "x": 1041,
+        "y": 303
+      }
+    },
+    "ms": 1766
+  },
+  "f9": {
+    "edits": [
+      {
+        "op": "denoise"
+      }
+    ],
+    "dBFS": {
+      "hiss": {
+        "before": -35.5,
+        "after": -47.7
+      },
+      "tone": {
+        "before": -20.9,
+        "after": -21.1
+      }
+    },
+    "ms": 83
+  },
+  "f10": {
+    "edits": [
+      {
+        "op": "loudness"
+      }
+    ],
+    "lufs": {
+      "before": -51.8,
+      "after": -14
+    },
+    "ms": 441
+  },
+  "f11": {
+    "edits": [
+      {
+        "op": "rotate",
+        "deg": 90
+      },
+      {
+        "op": "adjust",
+        "brightness": 25
+      }
+    ],
+    "frame": [
+      800,
+      1200
+    ],
+    "luma": {
+      "before": 95.4,
+      "after": 111.6
+    },
+    "ms": 53
+  },
+  "f12": {
+    "edits": [
+      {
+        "op": "aspect",
+        "to": "9:16",
+        "fit": "blur"
+      },
+      {
+        "op": "motion",
+        "zoom": "in"
+      },
+      {
+        "op": "adjust",
+        "warmth": 40
+      }
+    ],
+    "frame": [
+      1080,
+      1920
+    ],
+    "band": {
+      "r": 105.1,
+      "g": 78.8,
+      "b": 108.8,
+      "y": 90.1
+    },
+    "white": {
+      "first": 101,
+      "last": 115
+    },
+    "ms": 11681
+  }
+}

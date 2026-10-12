@@ -10,6 +10,7 @@ import {
 } from './editExec';
 import { EDIT_GAVE_UP, sweepEditJobs, workEditJob } from './editWorker';
 import { EDITED, RESULT_URL, SOURCE, UPLOAD, USER, fakeEdit, type FakeEdit, type RenderOpts } from './testing/fakeEditDeps';
+import type { EditRequest } from './editPlan';
 
 const ASKS = [{ op: 'trim', fromSec: 5, toSec: 15 }, { op: 'speed', factor: 2 }, { op: 'aspect', to: '9:16' }];
 
@@ -59,11 +60,32 @@ describe('quote: the caller\'s own file, the edits resolved against it, a signed
     ['an unreadable file', { file: 'omni-uploads/user-a/missing.mp4' }, 'unreadable'],
     ['no edits', { edits: [] }, 'nothing_to_do'],
     ['an edit past the end', { edits: [{ op: 'trim', fromSec: 40 }] }, 'out_of_range'],
+    // What is in the picture itself is erased at the place said; no place said is asked for. Captions not ours cannot be delivered twice.
+    ['something in the picture itself, with no place', { edits: [{ op: 'layers', remove: [{ kind: 'image' }] }] }, 'erase_where'],
+    ['every text in the picture itself (no place)', { edits: [{ op: 'layers', remove: [{ kind: 'text', all: true }] }] }, 'erase_where'],
+    ['the same video with and without captions it never had', { edits: [{ op: 'captions', deliver: 'both' }] }, 'no_captions'],
   ])('%s is refused and audited', async (_why, over, error) => {
     const f = fakeEdit({ foreign: ['omni-uploads/user-b/x.mp4'] });
     const q = await quoteEdit(f.deps, { userId: USER, file: UPLOAD, edits: ASKS, ...over });
     expect(q).toMatchObject({ ok: false, error });
     expect(f.audits.at(-1)).toMatchObject({ op: 'media_edit', phase: 'quote', outcome: 'refused', detail: error });
+  });
+
+  test('a removal no layer of ours answers is an erase of that place in the source (GG 2026-10-11 17:38Z)', async () => {
+    const f = fakeEdit();
+    const q = await quoted(f, [{ op: 'layers', remove: [{ kind: 'image', where: 'top', at: 'top-right' }, { kind: 'text', where: 'bottom', at: 'bottom', firstSec: 3 }] }]);
+    expect(q.quote.edits).toEqual([{ op: 'erase', boxes: [
+      { x: 0.69, y: 0.01, w: 0.3, h: 0.14, at: 'top-right' },
+      { x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom', fromSec: 0, toSec: 3 },
+    ] }]);
+    expect(q.quote.plan).toMatchObject({ output: 'mp4', durationSec: 30, hasAudio: true, frame: { width: SOURCE.width, height: SOURCE.height } });
+    expect(q.quote.credits).toBe(0);
+    // „Without subtitles" on a file with none of ours: the subtitles' band at the bottom.
+    const subs = await quoted(fakeEdit(), [{ op: 'captions', off: true }]);
+    expect(subs.quote.edits).toEqual([{ op: 'erase', boxes: [{ x: 0.03, y: 0.8, w: 0.94, h: 0.19, at: 'bottom' }] }]);
+    // The signed plan queues like any other.
+    const r = await enqueueEditJob(f.deps, { userId: USER, request: q.request, token: q.token });
+    expect(r).toMatchObject({ ok: true });
   });
 
   test('a file with no picture, or that cannot be probed', async () => {
@@ -73,6 +95,63 @@ describe('quote: the caller\'s own file, the edits resolved against it, a signed
 
   test('no quote key: nothing can be signed', async () => {
     expect(await quoteEdit(fakeEdit({ key: '' }).deps, { userId: USER, file: UPLOAD, edits: ASKS })).toMatchObject({ ok: false, error: 'not_configured' });
+  });
+});
+
+describe('a revision of our own result: the look adds to what the result shows (GG 2026-10-11 17:38Z)', () => {
+  const ID = '0f0e0d0c-0b0a-4908-8706-050403020100';
+  /** A render that delivers what was planned (its frame and length). */
+  const AS_PLANNED = async (_url: string, req: EditRequest) => ({
+    ok: true as const, bytes: Buffer.alloc(2_400_000, 1), input: SOURCE,
+    output: { ...SOURCE, width: req.plan.width, height: req.plan.height, durationSec: req.plan.durationSec },
+  });
+  /** A completed edit of UPLOAD with these edits, and the file a user would send back to change it. */
+  async function result(edits: unknown[]): Promise<{ f: FakeEdit; file: string }> {
+    const f = fakeEdit({ render: AS_PLANNED });
+    f.deps = { ...f.deps, newId: () => ID };
+    const id = await queued(f, edits);
+    expect(await workEditJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
+    return { f, file: `https://x.supabase.co/storage/v1/object/sign/renders/edits/${ID}.mp4?token=t` };
+  }
+  const again = async (r: { f: FakeEdit; file: string }, edits: unknown[]) => {
+    const q = await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits });
+    if (!q.ok) throw new Error(`${q.error}: ${q.message}`);
+    expect(q.request.source.ref).toBe(UPLOAD); // from the source again, never the re-encoded result
+    return q.quote.edits;
+  };
+
+  test('brighter again is brighter still, to the limit; „more contrast" keeps the brightness; less again is as it was', async () => {
+    const r = await result([{ op: 'adjust', brightness: 25, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: 25 }])).toEqual([{ op: 'adjust', brightness: 50, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', contrast: 25 }])).toEqual([{ op: 'adjust', brightness: 25, contrast: 25, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: 90 }])).toEqual([{ op: 'adjust', brightness: 100, warmth: 40 }]);
+    expect(await again(r, [{ op: 'adjust', brightness: -25 }, { op: 'flip' }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'adjust', warmth: 40 }]);
+  });
+
+  test('a turn adds to the turn; the same mirror twice is none, a mirror each way a half turn; a glitch keeps the zoom', async () => {
+    const plain = await result([{ op: 'rotate', deg: 90 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(plain, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'motion', zoom: 'in' }]);
+    // On a mirrored result the plan (turn, then mirror) takes the opposite turn: a quarter turn of the picture as seen.
+    const r = await result([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    const mirrored = await result([{ op: 'flip', axis: 'horizontal' }]);
+    expect(await again(mirrored, [{ op: 'rotate', deg: 90 }])).toEqual([{ op: 'rotate', deg: 270 }, { op: 'flip', axis: 'horizontal' }]);
+    expect(await again(r, [{ op: 'flip' }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'flip', axis: 'vertical' }])).toEqual([{ op: 'rotate', deg: 270 }, { op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'motion', glitch: true }])).toEqual([{ op: 'rotate', deg: 90 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in', glitch: true }]);
+    // A turn back to where it started leaves no turn; a turn that is no quarter turn is refused, not rounded.
+    expect(await again(plain, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'motion', zoom: 'in' }]);
+    expect(await again(r, [{ op: 'rotate', deg: -90 }])).toEqual([{ op: 'rotate', deg: 180 }, { op: 'flip', axis: 'horizontal' }, { op: 'motion', zoom: 'in' }]);
+    expect(await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits: [{ op: 'rotate', deg: 45 }] })).toMatchObject({ ok: false, error: 'bad_edits' });
+  });
+
+  test('a removal with no place on an erased result is asked where, not the old erase delivered again', async () => {
+    const r = await result([{ op: 'erase', at: 'top-right' }]);
+    const unplaced = await quoteEdit(r.f.deps, { userId: USER, file: r.file, edits: [{ op: 'layers', remove: [{ kind: 'image' }] }] });
+    expect(unplaced).toMatchObject({ ok: false, error: 'erase_where' });
+    // A new place still adds to the places erased before.
+    const placed = await again(r, [{ op: 'erase', boxes: [{ x: 0.01, y: 0.01, w: 0.3, h: 0.14 }] }]);
+    expect((placed[0] as { op: string; boxes: unknown[] }).boxes).toHaveLength(2);
   });
 });
 
@@ -205,6 +284,13 @@ describe('what cannot be delivered is failed at once, with its reason', () => {
     expect(f.uploads).toEqual([]);
     expect(f.beating()).toBe(0);
     expect(editCodeOfRow(error)).toBe(error.split(':')[0]);
+  });
+
+  test('an erase on a source whose frame changed since the quote is not delivered (it would erase somewhere else)', async () => {
+    const f = fakeEdit({ render: async () => ({ ok: true, bytes: Buffer.alloc(9e5), input: { ...SOURCE, width: 1280, height: 720 }, output: { ...EDITED, durationSec: 30, width: 1920, height: 1080 } }) });
+    const id = await queued(f, [{ op: 'erase', at: 'top-right' }]);
+    expect(await workEditJob(f.deps, { jobId: id, worker: 'w1' })).toEqual({ ran: true, outcome: 'failed', error: 'source_changed: frame 1280x720 now, 1920x1080 when quoted' });
+    expect(f.uploads).toEqual([]);
   });
 
   test('a render that throws is a failed job, not a crashed worker; storage refusing the file fails it too', async () => {

@@ -9,7 +9,7 @@
  * ⚠️ NO `\b` (ASCII-only; it never matches next to a Georgian or Cyrillic letter). Token edges are Unicode lookarounds.
  */
 import { mineDurationSec, mineTargetLanguage } from '@/lib/chat/studioIntent';
-import { aspectFromPrompt } from '@/lib/agent/media/montageAsk';
+import { aspectFromPrompt, withoutTransitionLength } from '@/lib/agent/media/montageAsk';
 import type { IntentParams } from './contracts';
 
 const B0 = '(?<![\\p{L}\\p{N}])';
@@ -34,8 +34,9 @@ const seconds = (raw: string): number => {
 
 const NUM = '(\\d{1,4}(?:[.,]\\d{1,2})?)';
 const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => number }> = [
-  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „5 წმ-დან", „0.58 წამიდან" (0:58)
-  { re: new RegExp(`(?:მე-?)?${NUM}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  // „5 წამიდან", „5-წამიდან", „მე-5 წამიდან", „58-ე წამიდან" (the owner's Media Studio v2.0 sentence), „5 წმ-დან",
+  // „0.58 წამიდან" (0:58)
+  { re: new RegExp(`(?:მე-?)?${NUM}(?:\\s*-?\\s*ე)?\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|სეკუნდიდან)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
   // „0:05-დან", „0.58-დან", „1,30-დან"
   { re: new RegExp(`(\\d{1,2})[:.,]([0-5]\\d)\\s*-?\\s*დან${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   // "from 5 s", "at 5 seconds", "starting at 0:05", "from the 5th second"
@@ -67,12 +68,35 @@ export const mineMusicStartSec = (text: string): number | undefined => mineMusic
 /** „each shot 2 seconds", „თითო კადრი 2 წამი", „каждый кадр 2 секунды": a shot length, not the length of the edit. */
 const PER_SHOT = new RegExp(`${B0}(?:each|every|per|თითო|ყოველი|каждый|каждая|каждое|по)${B1}`, 'iu');
 
+/** A time as typed: „0:05", „5", „7.5". */
+const T = '(?:\\d{1,2}:\\d{2}|\\d{1,4}(?:[.,]\\d{1,2})?)';
+const UNIT = `(?:s|secs?|seconds?|წმ\\.?|წამ\\p{L}*|сек\\p{L}*|с)${B1}`;
 /**
- * The length of the whole result, when the user named one. A music start („5 წამიდან") is not a length, and a per-shot
- * length is not the length of the edit: both are taken out before the length is read.
+ * Where in the result something happens, never how long the result is: „ბოლო 5 წამში დაწერე …", "in the first 3 s",
+ * „2-დან 5 წამამდე", "from 2 to 5 s", «с 2 до 5 секунды», „3 წამის შემდეგ", "after 3 s", «через 3 секунды». "Between 20
+ * and 30 seconds" and «от 20 до 30 секунд» stay: those name a length.
+ */
+const TIME_WINDOWS: ReadonlyArray<RegExp> = [
+  new RegExp(`${B0}(?:ბოლო|პირველ\\p{L}*|last|final|first|opening|последн\\p{L}*|первы\\p{L}*)\\s+${T}\\s*-?\\s*${UNIT}`, 'giu'),
+  new RegExp(`${T}\\s*-?\\s*(?:წამიდან|წმ\\.?\\s*-?\\s*დან|დან)\\s+${T}\\s*-?\\s*(?:წამამდე|წმ\\.?\\s*-?\\s*მდე|მდე)${B1}`, 'giu'),
+  new RegExp(`${B0}from\\s+(?:the\\s+)?${T}\\s*(?:${UNIT})?\\s*(?:to|and|until|till|-|–|—)\\s*(?:the\\s+)?${T}\\s*(?:${UNIT})?`, 'giu'),
+  new RegExp(`${B0}(?:с|со)\\s+${T}\\s*(?:-?\\s*(?:й|ой|ей)\\s*)?(?:${UNIT})?\\s*(?:до|по)\\s+${T}\\s*(?:${UNIT})?`, 'giu'),
+  new RegExp(`${T}\\s*-?\\s*(?:წამის|წმ\\.?)\\s+(?:შემდეგ|მერე|გასვლისას)${B1}`, 'giu'),
+  new RegExp(`${B0}(?:after|через)\\s+${T}\\s*-?\\s*${UNIT}`, 'giu'),
+];
+
+/** The text with every time window blanked, so a window's numbers are never read as the result's length. */
+export function withoutTimeWindows(text: string): string {
+  return TIME_WINDOWS.reduce((t, re) => t.replace(re, ' '), String(text ?? ''));
+}
+
+/**
+ * The length of the whole result, when the user named one. A music start („5 წამიდან") is not a length, a per-shot
+ * length is not the length of the edit, a transition's is not („0.4 წამიანი გადასვლები"), and neither is a window
+ * („ბოლო 5 წამში დაწერე …"): all are taken out before the length is read.
  */
 export function mineTotalDurationSec(text: string): number | undefined {
-  let t = String(text ?? '');
+  let t = withoutTimeWindows(withoutTransitionLength(String(text ?? '')));
   // Every start phrase, not only the first: a changed plan can carry two („from 3 seconds" … „5 წამიდან").
   for (let k = 0; k < 6; k += 1) {
     const start = mineMusicStart(t);

@@ -188,7 +188,7 @@ describe('files and the media quote', () => {
     expect(await res.json()).toEqual({ answer: 'Here is the plan', steps: [], stopReason: 'final', mediaQuote: q });
   });
 
-  it.each([[['x'].concat(Array(13).fill('y'))], ['u-1/a.mp4'], [[1, 2]], [['']]])('rejects files=%j', async (files) => {
+  it.each([[['x'].concat(Array(14).fill('y'))], ['u-1/a.mp4'], [[1, 2]], [['']]])('rejects files=%j', async (files) => {
     const res = await call({ goal: 'cut', files });
     expect(res.status).toBe(400);
     expect(mockRun).not.toHaveBeenCalled();

@@ -49,11 +49,12 @@ test('an extraction takes exactly one source: a link (http/https) or a file', ()
   expect(validateRunSpec({ steps: [{ id: 'a', tool: 'audio_extract', source: {} }] })).toMatchObject({ ok: false });
 });
 
-test('a montage takes 2 to 13 files and only the frames, lengths and music starts it knows', () => {
+test('a montage takes 2 to 14 files and only the frames, lengths and music starts it knows', () => {
   const m = (extra: Record<string, unknown>) => validateRunSpec({ steps: [{ id: 'm', tool: 'montage', files: CLIPS, ...extra }] });
   expect(m({})).toMatchObject({ ok: true });
   expect(m({ files: [CLIPS[0]] })).toMatchObject({ ok: false });
-  expect(m({ files: Array(14).fill(CLIPS[0]) })).toMatchObject({ ok: false });
+  expect(m({ files: Array(14).fill(CLIPS[0]) })).toMatchObject({ ok: true });
+  expect(m({ files: Array(15).fill(CLIPS[0]) })).toMatchObject({ ok: false });
   expect(m({ aspect: '4:3' })).toMatchObject({ ok: false });
   expect(m({ targetSec: -1 })).toMatchObject({ ok: false });
   expect(m({ musicFromSec: 'five' })).toMatchObject({ ok: false });

@@ -25,6 +25,19 @@
  * shorter than the shortest shot, or a track (or an asked length) too short for one shot per clip — the plan FAILS with
  * a `problem` that names the cause and the clips, instead of leaving any clip out. `unusedClips` is always empty on a
  * plan that is ok.
+ *
+ * SPEED RAMPS („სადაც საჭიროა ააჩქარე, სადაც საჭიროა შეანელე", owner 2026-10-11): with `ramp`, each shot keeps its
+ * length on the master (so every cut stays on its beat) and plays its footage faster or slower, chosen by the music
+ * UNDER that shot: the calmest stretches of the track get slow motion (RAMP_SLOW), the strongest get sped up
+ * (RAMP_FAST). The music's strength is `energyEnvelope` (loudness and how dense the onsets are, per half second). A
+ * sped-up shot reads more of its clip; a clip that has not enough footage for it keeps that shot at normal speed, so
+ * the ramp never costs a clip its place. Stills are never ramped.
+ *
+ * TRANSITIONS (`rollSec`, GG 2026-10-11 17:38Z „ქაფქათს … რაც აკლია"): a transition overlaps two shots, and on the beat
+ * it is paid for with footage the shots do not use (./transitionPlan pre-roll). So when transitions are asked, every
+ * shot leaves that much of its clip free just before it: the clip holds fewer beats, the edit may be shorter, and every
+ * cut is still on its beat. A clip too short for a shot and its roll still gets its shot (the transition into it is
+ * then shorter, or a cut, and the card says so).
  */
 
 /** The rate the track is decoded at for analysis. Beats need no more; it keeps a 5-minute track under 7 MB. */
@@ -48,9 +61,100 @@ export const FALLBACK_UNIT_SEC = 0.5;
 /** Whole beats per shot the planner may choose: a beat, half a bar, a bar, a bar and a half, two bars … */
 export const BEATS_PER_SHOT: readonly number[] = [1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128];
 /** A source is never read up to its very last frame: decoders disagree on it by a frame or two. */
-const TAIL_GUARD_SEC = 0.05;
+export const TAIL_GUARD_SEC = 0.05;
 /** ⚠️ MIRRORS the `fps=30` every segment gets in lib/video/surgicalOps `runSequence`. Change both together. */
 export const OUTPUT_FPS = 30;
+
+/** The music's strength is measured per block of this many seconds. */
+export const ENERGY_BLOCK_SEC = 0.5;
+/** A ramped shot plays at this speed: slow motion on the calm parts, faster on the strong ones. */
+export const RAMP_SLOW = 0.5;
+export const RAMP_FAST = 1.5;
+/** With both ways asked, this share of the shots goes each way (at least one each); with one way, RAMP_ONE_WAY_SHARE. */
+export const RAMP_SHARE = 0.25;
+export const RAMP_ONE_WAY_SHARE = 1 / 3;
+/**
+ * A transition takes at most this share of either shot it joins (./transitionPlan MAX_SHOT_SHARE), so the middle of
+ * every shot is clean picture; the roll a shot reserves is never more than this share of a full shot.
+ */
+export const TRANSITION_SHOT_SHARE = 0.3;
+
+/** Which way the words ask the shots to change speed: both (where it fits), only slower, only faster. */
+export type RampMode = 'mixed' | 'slow' | 'fast';
+
+export interface EnergyEnvelope {
+  blockSec: number;
+  /** One value per block from the track's start: above 0 stronger than the track's average, below 0 calmer. */
+  values: ArrayLike<number>;
+}
+
+/**
+ * How strong the music is, block by block: its loudness and how dense its onsets are (a drum fill, a chorus), each
+ * standardized over the track and averaged. Pure: `pcm` is the analysis decode (mono 16-bit at ANALYSIS_RATE).
+ */
+export function energyEnvelope(pcm: ArrayLike<number>, blockSec = ENERGY_BLOCK_SEC, hop = ANALYSIS_HOP): EnergyEnvelope {
+  const per = Math.max(1, Math.round((blockSec * ANALYSIS_RATE) / hop));
+  const onset = onsetStrength(pcm, hop);
+  const frames = Math.floor(pcm.length / hop);
+  const blocks = Math.floor(frames / per);
+  const loud = new Float64Array(blocks);
+  const dense = new Float64Array(blocks);
+  for (let b = 0; b < blocks; b += 1) {
+    let e = 0;
+    let o = 0;
+    for (let f = b * per; f < (b + 1) * per; f += 1) {
+      const base = f * hop;
+      for (let i = 0; i < hop; i += 1) { const x = (pcm[base + i] ?? 0) / 32768; e += x * x; }
+      o += onset[f] ?? 0;
+    }
+    loud[b] = Math.log1p(1000 * Math.sqrt(e / (per * hop)));
+    dense[b] = o / per;
+  }
+  const z = (a: Float64Array): Float64Array => {
+    if (!a.length) return a;
+    let m = 0;
+    for (const v of a) m += v;
+    m /= a.length;
+    let sd = 0;
+    for (const v of a) sd += (v - m) ** 2;
+    sd = Math.sqrt(sd / a.length);
+    return a.map((v) => (sd > 1e-9 ? (v - m) / sd : 0));
+  };
+  const zl = z(loud), zd = z(dense);
+  const values = new Float32Array(blocks);
+  for (let b = 0; b < blocks; b += 1) values[b] = (zl[b]! + zd[b]!) / 2;
+  return { blockSec: per * hop / ANALYSIS_RATE, values };
+}
+
+/** The music's mean strength between two moments of the track (seconds); 0 where the envelope says nothing. */
+export function energyBetween(env: EnergyEnvelope, fromSec: number, toSec: number): number {
+  const n = env.values.length;
+  if (!n || !(env.blockSec > 0) || !(toSec > fromSec)) return 0;
+  const a = Math.max(0, Math.floor(fromSec / env.blockSec));
+  const b = Math.min(n, Math.ceil(toSec / env.blockSec));
+  if (b <= a) return 0;
+  let s = 0;
+  for (let i = a; i < b; i += 1) s += env.values[i] ?? 0;
+  return s / (b - a);
+}
+
+/**
+ * Each shot's speed from the music under it (`energies`, one per shot in master order): with `mode` mixed, the calmest
+ * RAMP_SHARE of the shots slow down and the strongest RAMP_SHARE speed up (at least one each, never the same shot); with
+ * one way asked, that way only, for RAMP_ONE_WAY_SHARE of them. `eligible` false keeps a shot at 1× (a still).
+ */
+export function rampSpeeds(energies: readonly number[], mode: RampMode, eligible: readonly boolean[] = []): number[] {
+  const speeds = energies.map(() => 1);
+  const idx = energies.map((_, i) => i).filter((i) => eligible[i] !== false);
+  if (idx.length < (mode === 'mixed' ? 2 : 1)) return speeds;
+  // Calmest first; ties keep the master order, so the same track always makes the same edit.
+  const calm = [...idx].sort((x, y) => energies[x]! - energies[y]! || x - y);
+  const strong = [...idx].sort((x, y) => energies[y]! - energies[x]! || x - y);
+  const k = Math.max(1, Math.round(idx.length * (mode === 'mixed' ? RAMP_SHARE : RAMP_ONE_WAY_SHARE)));
+  if (mode !== 'fast') for (const i of calm.slice(0, mode === 'mixed' ? Math.min(k, Math.floor(idx.length / 2)) : k)) speeds[i] = RAMP_SLOW;
+  if (mode !== 'slow') for (const i of strong.slice(0, mode === 'mixed' ? Math.min(k, Math.floor(idx.length / 2)) : k)) if (speeds[i] === 1) speeds[i] = RAMP_FAST;
+  return speeds;
+}
 
 export interface BeatGrid {
   bpm: number;
@@ -206,11 +310,18 @@ export interface CutInput {
   /** The track's length in seconds. */
   musicSec: number;
   grid: BeatGrid | null;
-  /** The length the user asked for; DEFAULT_TARGET_SEC when absent. */
+  /**
+   * The length the user ASKED for, in seconds; DEFAULT_TARGET_SEC when absent. Asked = binding (Media Studio v2.0 §D,
+   * owner 2026-10-11): the plan lasts exactly this long (to the output frame), or it is refused with the reason
+   * (music_too_short, footage_too_short, target_too_long). It is never silently shortened. With no length asked, the
+   * default is only a wish and shrinks to the music and the footage there are, as before.
+   */
   targetSec?: number;
   /**
-   * Where the user asked the music to start („მუსიკა 5 წამიდან დაიწყე"), in seconds into the track. The edit starts on
-   * the first beat at or after it, so the first cut still lands on a beat; with no beat grid, exactly there.
+   * Where the user asked the music to start („მუსიკა 0:58-დან დაიწყე"), in seconds into the track (the audio SOURCE
+   * offset). The master's first frame plays the track from EXACTLY there: the user's offset is never moved. When it
+   * falls between two beats, the first shot is longer by the lead-in to the next beat (`leadInSec`), so every later cut
+   * still lands on a beat.
    */
   musicFromSec?: number;
   maxShots: number;
@@ -225,14 +336,39 @@ export interface CutInput {
    * zoom, lib/services/montage/montagePipeline). Its entry in clipDurationsSec is ignored.
    */
   stills?: readonly boolean[];
+  /**
+   * Speed ramps asked („ააჩქარე და შეანელე სადაც საჭიროა"): which way, and the music's strength to choose by (the
+   * track's envelope from its own start, analysis seconds). Absent = every shot at its own speed, as before.
+   */
+  ramp?: { mode: RampMode; energy: EnergyEnvelope | null };
+  /**
+   * Transitions asked, this long (seconds on the master): each shot leaves this much of its clip unused just before
+   * it (at most TRANSITION_SHOT_SHARE of a full shot), for the transition into it to play from. Absent = hard cuts.
+   */
+  rollSec?: number;
 }
 
 export interface PlannedCut {
   /** Index into the clip list. */
   clip: number;
+  /** The window of the CLIP the shot plays (source seconds): `speed` × its length on the master. */
   startSec: number;
   endSec: number;
   beats: number;
+  /** The shot's playback speed when it is not 1 (a ramp): 0.5 = slow motion, 1.5 = faster. */
+  speed?: number;
+}
+
+/** What the ramp did, in numbers the card says. */
+export interface RampResult {
+  mode: RampMode;
+  /** Shots slowed down / sped up (after a clip short of footage kept one at normal speed). */
+  slow: number;
+  fast: number;
+  /** Chosen by the music's strength (true), or the envelope was missing and nothing was ramped. */
+  byEnergy: boolean;
+  /** Fast shots kept at normal speed because their clip had not enough footage for them. */
+  keptForFootage: number;
 }
 
 /**
@@ -242,10 +378,17 @@ export interface PlannedCut {
 export type CutProblem =
   /** These clips are shorter than the shortest shot this edit can cut (`minShotSec`, the beat unit's whole multiple). */
   | { kind: 'clip_too_short'; clips: number[]; minShotSec: number }
-  /** The music from `fromSec` lasts `musicSec`: less than the `neededSec` one shot per clip takes. */
-  | { kind: 'music_too_short'; clips: number; musicSec: number; fromSec: number; neededSec: number }
+  /**
+   * The music from `fromSec` lasts `musicSec`: less than the `neededSec` one shot per clip takes, or (with `targetSec`)
+   * less than the length the user asked for. The track is never looped or padded to hide it.
+   */
+  | { kind: 'music_too_short'; clips: number; musicSec: number; fromSec: number; neededSec: number; targetSec?: number }
   /** The length asked for (`targetSec`) is less than the `neededSec` one shot per clip takes. */
   | { kind: 'target_too_short'; clips: number; targetSec: number; neededSec: number }
+  /** The clips together (`footageSec`, each used once) are shorter than the length asked for (`targetSec`). */
+  | { kind: 'footage_too_short'; clips: number; footageSec: number; targetSec: number }
+  /** The length asked for is longer than one edit renders (`maxSec`). */
+  | { kind: 'target_too_long'; targetSec: number; maxSec: number }
   /** More clips than the renderer takes shots. */
   | { kind: 'too_many_clips'; clips: number; maxShots: number };
 
@@ -255,8 +398,10 @@ export interface CutPlan {
   /** Set when the plan failed because not every clip could get a shot. */
   problem?: CutProblem;
   cuts: PlannedCut[];
-  /** Where in the track the first frame lands: the first beat (at or after the asked start; 0 with no grid and no start). */
+  /** Where in the track the first frame lands: exactly the asked start; with none, the first beat (0 with no grid). */
   musicStartSec: number;
+  /** Seconds from the asked start to the first beat after it (added to the first shot); 0 when on a beat or no grid. */
+  leadInSec: number;
   totalSec: number;
   beatSynced: boolean;
   bpm: number | null;
@@ -268,6 +413,8 @@ export interface CutPlan {
    * Kept for the callers that still read it.
    */
   unusedClips: number[];
+  /** Present when ramps were asked: how many shots slow down and speed up. */
+  ramp?: RampResult;
 }
 
 const r3 = (n: number) => Number(n.toFixed(3));
@@ -276,7 +423,7 @@ const up1 = (n: number) => Math.ceil(n * 10 - 1e-6) / 10;
 
 function fail(error: string, grid: BeatGrid | null, problem?: CutProblem): CutPlan {
   return {
-    ok: false, error, ...(problem ? { problem } : {}), cuts: [], musicStartSec: 0, totalSec: 0, beatSynced: false, bpm: grid?.bpm ?? null,
+    ok: false, error, ...(problem ? { problem } : {}), cuts: [], musicStartSec: 0, leadInSec: 0, totalSec: 0, beatSynced: false, bpm: grid?.bpm ?? null,
     unitSec: grid?.periodSec ?? FALLBACK_UNIT_SEC, beatsPerShot: 0, unusedClips: [],
   };
 }
@@ -295,7 +442,12 @@ export function planBeatCuts(input: CutInput): CutPlan {
   const { grid } = input;
   const unit = grid && grid.periodSec > 0 ? grid.periodSec : FALLBACK_UNIT_SEC;
   const askedFrom = Number.isFinite(input.musicFromSec) && (input.musicFromSec ?? 0) > 0 ? input.musicFromSec! : 0;
-  const musicStartSec = musicStartOnBeat(grid, askedFrom);
+  // The user's offset is kept exactly; only an edit with no asked start begins on the track's first beat.
+  const musicStartSec = askedFrom > 0 ? askedFrom : musicStartOnBeat(grid, 0);
+  const frameSec = 1 / OUTPUT_FPS;
+  const rawLead = askedFrom > 0 && grid && grid.periodSec > 0 ? musicStartOnBeat(grid, askedFrom) - askedFrom : 0;
+  // A lead-in under half a frame cannot be seen or heard as off the beat: none.
+  const leadInSec = rawLead >= frameSec / 2 ? rawLead : 0;
   const still = (c: number): boolean => input.stills?.[c] === true;
   // A still's "length" is the longest shot it could be: it never runs out, and it holds one shot only (below).
   const durations = input.clipDurationsSec.map((d, c) => (still(c) ? input.maxShotSec : Number.isFinite(d) && d > 0 ? d - TAIL_GUARD_SEC : 0));
@@ -313,7 +465,8 @@ export function planBeatCuts(input: CutInput): CutPlan {
   const neededSec = up1(n * minBeats * unit);
 
   // ── every clip must hold one shot ────────────────────────────────────────────────────────────────────────────────
-  const capacity = durations.map((d, c) => (still(c) ? maxBeats : Math.floor((Math.max(0, d) + 1e-6) / unit)));
+  // In beats, fractional: a shot takes whole beats, a transition's roll (below) need not.
+  const capacity = durations.map((d, c) => (still(c) ? maxBeats : (Math.max(0, d) + 1e-6) / unit));
   const short = capacity.flatMap((cap, c) => (cap < minBeats && !still(c) ? [c] : []));
   if (short.length) {
     const minShotSec = up1(minBeats * unit + TAIL_GUARD_SEC);
@@ -323,18 +476,39 @@ export function planBeatCuts(input: CutInput): CutPlan {
   // ── the music (from where it starts) must hold one shot per clip ─────────────────────────────────────────────────
   const footage = durations.reduce((s, d) => s + Math.max(0, d), 0);
   const music = Number.isFinite(input.musicSec) ? input.musicSec - musicStartSec : 0;
-  const musicProblem = (): CutProblem => ({ kind: 'music_too_short', clips: n, musicSec: r3(Math.max(0, music)), fromSec: r3(musicStartSec), neededSec });
+  const musicProblem = (): Extract<CutProblem, { kind: 'music_too_short' }> => ({ kind: 'music_too_short', clips: n, musicSec: r3(Math.max(0, music)), fromSec: r3(musicStartSec), neededSec });
   if (askedFrom > 0 && !(music > 0)) return fail(`the track ends before ${r3(askedFrom)}s`, grid, musicProblem());
   if (!(music > 0)) return fail('the track has no length', grid, musicProblem());
 
-  const asked = Number.isFinite(input.targetSec) && (input.targetSec ?? 0) > 0 ? input.targetSec! : DEFAULT_TARGET_SEC;
-  const target = Math.min(asked, music, footage, input.maxTotalSec);
+  const explicit = Number.isFinite(input.targetSec) && (input.targetSec ?? 0) > 0;
+  const asked = explicit ? input.targetSec! : DEFAULT_TARGET_SEC;
+  if (explicit) {
+    // An asked length is binding: every reason it cannot be met is said, none is hidden by a shorter master.
+    if (asked > input.maxTotalSec + 1e-6) {
+      return fail(`the length asked (${r3(asked)}s) is longer than one edit (${input.maxTotalSec}s)`, grid, { kind: 'target_too_long', targetSec: r3(asked), maxSec: input.maxTotalSec });
+    }
+    if (music + 1e-6 < asked) {
+      return fail(`the music from ${r3(musicStartSec)}s lasts ${r3(Math.max(0, music))}s, shorter than the ${r3(asked)}s asked`, grid, { ...musicProblem(), targetSec: r3(asked) });
+    }
+    if (footage + 1e-6 < asked) {
+      return fail(`the clips together last ${r3(footage)}s, shorter than the ${r3(asked)}s asked`, grid, { kind: 'footage_too_short', clips: n, footageSec: r3(footage), targetSec: r3(asked) });
+    }
+  }
+  const target = explicit ? asked : Math.min(asked, music, footage, input.maxTotalSec);
 
   const wantSec = Math.max(MIN_CUT_SEC, target / Math.max(1, input.maxShots));
   const k = BEATS_PER_SHOT.find((b) => b >= minBeats && b * unit >= wantSec - 1e-9 && b <= maxBeats)
     ?? Math.min(maxBeats, Math.max(minBeats, Math.ceil(wantSec / unit)));
 
-  let budget = Math.floor((target + 1e-6) / unit);
+  // The footage each shot of a clip leaves free before it for a transition, in beats of source (a ramped shot may read
+  // up to RAMP_FAST of it).
+  const roll = Number.isFinite(input.rollSec) && (input.rollSec ?? 0) > 0 ? Math.min(input.rollSec!, TRANSITION_SHOT_SHARE * k * unit) : 0;
+  const rollBeats = (roll * (input.ramp ? RAMP_FAST : 1)) / unit;
+  /** The whole beats a next shot of clip c can take, with its roll when it has room for one. */
+  const room = (c: number, withRoll: boolean) => (still(c) ? capacity[c]! : Math.floor(capacity[c]! - (withRoll ? rollBeats : 0) + 1e-6));
+
+  // Whole beats after the lead-in (the lead-in rides on the first shot).
+  let budget = Math.floor((target - leadInSec + 1e-6) / unit);
   if (budget < n * minBeats) {
     // Name what is short: the music (from its start), or the length the user asked for. (The footage cannot be: every
     // clip holds a shot, see above; nor can the renderer's ceiling, which is many shots long.)
@@ -352,12 +526,14 @@ export function planBeatCuts(input: CutInput): CutPlan {
   // is fine here (a short clip still appears).
   for (let c = 0; c < n; c += 1) {
     const reserve = (n - c - 1) * minBeats;
-    const take = Math.min(k, capacity[c]!, budget - reserve, maxBeats);
+    // Its roll when the clip has room for one with a shot; else the shot alone (every clip is in the edit).
+    const withRoll = room(c, true) >= minBeats;
+    const take = Math.min(k, room(c, withRoll), budget - reserve, maxBeats);
     // Cannot happen after the checks above; kept so a future change fails loudly instead of dropping a clip.
     if (take < minBeats) return fail(`clip ${c + 1} could not get a shot`, grid, musicProblem());
     shotsOf[c]!.push(take);
     // A photo is shown once: a second shot of the same still reads as a stutter, not as rhythm.
-    capacity[c] = still(c) ? 0 : capacity[c]! - take;
+    capacity[c] = still(c) ? 0 : capacity[c]! - take - (withRoll ? rollBeats : 0);
     budget -= take;
     shots += 1;
   }
@@ -366,12 +542,12 @@ export function planBeatCuts(input: CutInput): CutPlan {
   for (let progressed = true; progressed && budget >= minBeats && shots < input.maxShots;) {
     progressed = false;
     for (let c = 0; c < n && budget >= minBeats && shots < input.maxShots; c += 1) {
-      const left = capacity[c]!;
-      let take = Math.min(k, left, budget);
+      // A later shot always brings its roll: with no room for both, the clip has given what it has.
+      let take = Math.min(k, room(c, true), budget);
       if (take < minBeats || take < Math.ceil(k / 2)) continue;
       take = Math.min(take, maxBeats);
       shotsOf[c]!.push(take);
-      capacity[c] = left - take;
+      capacity[c] = capacity[c]! - take - rollBeats;
       budget -= take;
       shots += 1;
       progressed = true;
@@ -381,13 +557,62 @@ export function planBeatCuts(input: CutInput): CutPlan {
   // Each shot's length comes from where its cut falls in the MASTER, snapped to the output frame grid: the stitch
   // resamples every shot to OUTPUT_FPS, so lengths of raw beats would each round by up to half a frame and the cuts
   // would drift off the beat as they add up. Snapping the cumulative positions keeps every cut within half a frame.
+  // A cut after b beats sits at leadInSec + b·unit (the first shot starts at 0 and carries the lead-in).
   const order = durations.flatMap((_, c) => shotsOf[c]!.map((beats) => ({ c, beats })));
   const lens: number[] = [];
   let beatsSoFar = 0;
   for (const { beats } of order) {
-    const t0 = Math.round(beatsSoFar * unit * OUTPUT_FPS);
+    const t0 = beatsSoFar === 0 ? 0 : Math.round((leadInSec + beatsSoFar * unit) * OUTPUT_FPS);
     beatsSoFar += beats;
-    lens.push((Math.round(beatsSoFar * unit * OUTPUT_FPS) - t0) / OUTPUT_FPS);
+    lens.push((Math.round((leadInSec + beatsSoFar * unit) * OUTPUT_FPS) - t0) / OUTPUT_FPS);
+  }
+  if (explicit) {
+    // An asked length is met to the frame: what the whole beats leave over (less than a shot) is added to the last
+    // shots, last first, within each clip's footage and the renderer's longest shot. Every inner cut stays on its
+    // beat; only the master's end moves, to where the user asked it to be.
+    const want = Math.round(target * OUTPUT_FPS);
+    let rem = want - Math.round(lens.reduce((s, len) => s + len, 0) * OUTPUT_FPS);
+    const usedOf = durations.map((_, c) => order.reduce((s, o, i) => (o.c === c ? s + lens[i]! : s), 0));
+    for (let i = order.length - 1; i >= 0 && rem > 0; i -= 1) {
+      const c = order[i]!.c;
+      const roomClip = still(c) ? Number.POSITIVE_INFINITY : Math.floor((durations[c]! - usedOf[c]! + 1e-6) * OUTPUT_FPS);
+      const roomShot = Math.floor((input.maxShotSec - frameSec - lens[i]! + 1e-6) * OUTPUT_FPS);
+      const add = Math.max(0, Math.min(rem, roomClip, roomShot));
+      if (!add) continue;
+      lens[i] = (Math.round(lens[i]! * OUTPUT_FPS) + add) / OUTPUT_FPS;
+      usedOf[c] = usedOf[c]! + add / OUTPUT_FPS;
+      rem -= add;
+    }
+    if (rem > 0) {
+      return fail(`the clips cannot fill the ${r3(target)}s asked within ${input.maxShots} shots`, grid, { kind: 'footage_too_short', clips: n, footageSec: r3(footage), targetSec: r3(target) });
+    }
+  }
+
+  // ── speed ramps: each shot's speed from the music under it; its length on the master never changes ─────────────────
+  const speeds = lens.map(() => 1);
+  let ramp: RampResult | undefined;
+  if (input.ramp) {
+    const env = input.ramp.energy;
+    const energies: number[] = [];
+    if (env && env.values.length) {
+      let t = 0;
+      for (const len of lens) { energies.push(energyBetween(env, musicStartSec + t, musicStartSec + t + len)); t += len; }
+      const got = rampSpeeds(energies, input.ramp.mode, order.map((o) => !still(o.c)));
+      got.forEach((v, i) => { speeds[i] = v; });
+    }
+    // A faster shot reads more of its clip: a clip without the footage for it keeps its weakest fast shots at 1×.
+    let kept = 0;
+    durations.forEach((d, c) => {
+      if (still(c)) return;
+      const mine = order.map((o, i) => (o.c === c ? i : -1)).filter((i) => i >= 0);
+      const need = () => mine.reduce((s, i) => s + (lens[i]! + roll) * speeds[i]!, 0);
+      const fast = mine.filter((i) => speeds[i]! > 1).sort((x, y) => (energies[x] ?? 0) - (energies[y] ?? 0) || y - x);
+      while (need() > d + 1e-6 && fast.length) { speeds[fast.shift()!] = 1; kept += 1; }
+    });
+    ramp = {
+      mode: input.ramp.mode, slow: speeds.filter((v) => v < 1).length, fast: speeds.filter((v) => v > 1).length,
+      byEnergy: Boolean(env && env.values.length), keptForFootage: kept,
+    };
   }
 
   const cuts: PlannedCut[] = [];
@@ -396,17 +621,20 @@ export function planBeatCuts(input: CutInput): CutPlan {
     const own = shotsOf[c]!;
     if (!own.length) return;
     const mine = lens.slice(next, next + own.length);
+    const sp = speeds.slice(next, next + own.length);
     next += own.length;
     // Spread the clip's shots across it with equal gaps, so a long clip is sampled, not just its opening seconds. A
-    // still's one shot starts at 0 (the lane renders it for exactly the shot's length).
-    const used = mine.reduce((s, len) => s + len, 0);
-    const gap = still(c) ? 0 : Math.max(0, d - used) / (own.length + 1);
+    // still's one shot starts at 0 (the lane renders it for exactly the shot's length). A ramped shot reads its length
+    // × its speed of the clip. With transitions, each shot's roll is kept free right before it, out of the gaps.
+    const used = mine.reduce((s, len, j) => s + len * sp[j]!, 0);
+    const rolls = still(c) ? 0 : sp.reduce((s, v) => s + roll * v, 0);
+    const gap = still(c) ? 0 : Math.max(0, d - used - rolls) / (own.length + 1);
     let at = gap;
     own.forEach((beats, j) => {
-      const len = mine[j]!;
-      const start = Math.max(0, Math.min(at, d - len));
-      cuts.push({ clip: c, startSec: r3(start), endSec: r3(start + len), beats });
-      at = start + len + gap;
+      const src = mine[j]! * sp[j]!;
+      const start = Math.max(0, Math.min(at + (still(c) ? 0 : roll * sp[j]!), d - src));
+      cuts.push({ clip: c, startSec: r3(start), endSec: r3(start + src), beats, ...(sp[j] !== 1 ? { speed: sp[j]! } : {}) });
+      at = start + src + gap;
     });
   });
   const totalSec = r3(lens.reduce((s, len) => s + len, 0));
@@ -417,11 +645,13 @@ export function planBeatCuts(input: CutInput): CutPlan {
     ok: true,
     cuts,
     musicStartSec: r3(musicStartSec),
+    leadInSec: r3(leadInSec),
     totalSec,
     beatSynced: Boolean(grid),
     bpm: grid?.bpm ?? null,
     unitSec: r3(unit),
     beatsPerShot: k,
     unusedClips: [],
+    ...(ramp ? { ramp } : {}),
   };
 }

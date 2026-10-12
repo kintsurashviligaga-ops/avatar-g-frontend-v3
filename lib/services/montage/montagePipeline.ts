@@ -5,7 +5,7 @@
  *   2 bridge    stills → Ken Burns clips (renderConcat needs real video streams, not JPEGs)
  *   3 normalize every source scaled/padded to ONE aspect BEFORE the graph — see ROTATION below
  *   4 stitch    renderConcat, VBV-capped and hosted through a non-base64 sink
- *   5 music     optional bed mixed under the master, from `musicStartSec` into the song
+ *   5 music     optional bed mixed under the master, from `musicStartSec` into the song, and a narration over it
  *
  * ⚠️ ROTATION: `renderConcat` builds a `-filter_complex` graph, and ffmpeg does NOT apply a source's
  * rotation side-data metadata when the stream goes through filter_complex. A phone clip shot in portrait
@@ -19,7 +19,7 @@
  */
 import 'server-only';
 import { renderConcat, type ConcatEntry, type Transition, type TextOverlay } from '@/lib/video/surgicalOps';
-import { fitAspect, kenBurnsClip, muxAudioOntoVideo } from '@/lib/video/remixOps';
+import { fitAspect, kenBurnsClip, mixMontageSound, muxAudioOntoVideo } from '@/lib/video/remixOps';
 import { uploadBufferAndSign, reSignIfInternal } from '@/lib/orchestrator/storage-adapter';
 import { updateJobStage } from '@/lib/orchestrator/jobs';
 import { withFfmpegSignal } from '@/lib/video/ffmpegExec';
@@ -31,6 +31,7 @@ import {
   shotDuration,
   maxrateForTarget,
   type MontageRequest,
+  type TransitionStyle,
 } from './montagePlan';
 
 const WEEK_SEC = 604_800;
@@ -47,6 +48,8 @@ export interface MontageResult {
   /** Shots that had to be bridged from a still. */
   bridged: number;
   hasMusic: boolean;
+  /** The narration was laid over the master (only ever true when the request had one). */
+  hasVoice: boolean;
   stepsRun: MontageStep[];
 }
 
@@ -77,7 +80,7 @@ async function stage(opts: MontageRunOptions, step: MontageStep): Promise<void> 
 }
 
 /** surgicalOps speaks 'none'; the studio speaks 'cut'. Map once, here. */
-function toTransition(t: 'crossfade' | 'fade' | undefined): Transition {
+function toTransition(t: TransitionStyle | undefined): Transition {
   return t ?? 'none';
 }
 
@@ -106,6 +109,7 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
     }
     // The track too: a queued job can start (or be retried) after the link it was quoted with expired.
     const musicUrl = req.musicUrl ? (await reSignIfInternal(req.musicUrl, WEEK_SEC).catch(() => req.musicUrl)) || req.musicUrl : req.musicUrl;
+    const voiceUrl = req.voiceUrl ? (await reSignIfInternal(req.voiceUrl, WEEK_SEC).catch(() => req.voiceUrl)) || req.voiceUrl : req.voiceUrl;
     stepsRun.push('resolve');
 
     // ── LEG 2 · bridge stills ──────────────────────────────────────────────────────────────────────
@@ -148,7 +152,9 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
       end: p.end,
       muted: p.muted,
       transition: toTransition(p.transition),
+      ...(p.transitionSec !== undefined ? { transitionSec: p.transitionSec } : {}),
       ...(p.textOverlay ? { textOverlay: p.textOverlay as TextOverlay } : {}),
+      ...(p.speed !== undefined ? { speed: p.speed } : {}),
     }));
 
     // A window the sequence renderer cannot render is DROPPED there and the rest still stitches (lib/video/
@@ -181,7 +187,21 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
 
     // ── LEG 5 · music ──────────────────────────────────────────────────────────────────────────────
     let videoUrl = master;
-    if (musicUrl) {
+    let hasVoice = false;
+    if (voiceUrl || (musicUrl && req.musicGainDb !== undefined)) {
+      // Agent G's own mix (lib/services/montage/montageSound): music at the quoted level, the narration over it. Unlike
+      // the editor's bed below, a mix that fails fails the job: the user started an edit with this sound.
+      if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
+      await stage(opts, 'music');
+      const mixed = await mixMontageSound(master, {
+        ...(musicUrl ? { musicUrl, musicStartSec: req.musicStartSec ?? 0, musicGainDb: req.musicGainDb ?? 0 } : {}),
+        ...(voiceUrl ? { voiceUrl, voiceStartSec: req.voiceStartSec ?? 0 } : {}),
+      });
+      if (!mixed) return { ok: false, step: 'music', error: voiceUrl ? 'the narration could not be mixed in' : 'the music could not be mixed in' };
+      videoUrl = mixed;
+      hasVoice = Boolean(voiceUrl);
+      stepsRun.push('music');
+    } else if (musicUrl) {
       if (await halted()) return { ok: false, step: 'music', error: 'cancelled' };
       await stage(opts, 'music');
       // 'under' keeps the clips' own audio and ducks the bed beneath it. 'replace' would DELETE it —
@@ -213,7 +233,8 @@ async function renderLegs(req: MontageRequest, opts: MontageRunOptions): Promise
         shots: req.shots.length,
         aspect: req.aspect,
         bridged,
-        hasMusic: stepsRun.includes('music'),
+        hasMusic: Boolean(musicUrl) && stepsRun.includes('music'),
+        hasVoice,
         stepsRun,
       },
     };

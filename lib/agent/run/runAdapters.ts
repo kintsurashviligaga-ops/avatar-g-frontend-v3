@@ -30,10 +30,17 @@ export function montageAdapter(deps: () => MontageExecDeps): StepAdapter {
     async quote(userId, step) {
       if (step.tool !== 'montage') return { ok: false, error: 'bad_spec' };
       const q = await quoteMontage(deps(), {
-        userId, files: step.files, prompt: step.prompt, aspect: step.aspect, targetSec: step.targetSec, musicFromSec: step.musicFromSec,
+        userId, files: step.files, prompt: step.prompt, aspect: step.aspect, targetSec: step.targetSec, musicFromSec: step.musicFromSec, maxSec: step.maxSec,
       });
       if (!q.ok) return { ok: false, error: q.error };
-      return { ok: true, quote: { taskId: q.quote.jobId, credits: q.quote.credits, request: q.request, token: q.token, expiresAt: q.quote.expiresAt } };
+      const { shots, totalSec, aspect, bpm, musicStartSec, ramp, transitions } = q.quote;
+      return {
+        ok: true,
+        quote: {
+          taskId: q.quote.jobId, credits: q.quote.credits, request: q.request, token: q.token, expiresAt: q.quote.expiresAt,
+          summary: { shots, totalSec, aspect, bpm, musicStartSec, ...(ramp ? { ramp } : {}), ...(transitions ? { transitions } : {}) },
+        },
+      };
     },
     async enqueue(userId, quote, ctx) {
       const r = await enqueueMontageJob(deps(), { userId, request: quote.request, token: quote.token, prompt: ctx.prompt, parent: ctx.runId });

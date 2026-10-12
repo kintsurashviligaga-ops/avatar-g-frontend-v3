@@ -125,10 +125,15 @@ export function askReply(i: ActIntent, locale: string): string {
   const lang = pick(locale);
   const m = new Set(i.missing);
   if (i.capability === 'agent.montage') {
-    if (m.has('clips')) {
-      return L(lang, 'დაურთე კლიპები და ერთი მუსიკის ფაილი (MP3 ან WAV) — დავჭრი ბითზე და ჯერ გეგმას გაჩვენებ.', 'Attach the clips and one music file (MP3 or WAV): I will cut them on the beat and show you the plan first.', 'Прикрепите клипы и один музыкальный файл (MP3 или WAV): я нарежу их в бит и сначала покажу план.');
+    if (m.has('narration')) {
+      return L(lang, 'ნარაციის ჩანაწერი აკლია: დაურთე შენი ხმის ფაილი (MP3, M4A ან WAV) კლიპებთან ერთად და იმავე სიტყვებით გამომიგზავნე — ზემოდან დავადებ და დანარჩენ ხმას მის ქვეშ ჩავაჩუმებ. ტექსტიდან ხმის გაკეთება ჯერ ჩართული არ არის.', 'The narration recording is missing: attach your voice file (MP3, M4A or WAV) with the clips and send the same words again. I will lay it on top and turn the rest down under it. Making a voice from text is not on yet.', 'Не хватает записи озвучки: прикрепите файл с вашим голосом (MP3, M4A или WAV) вместе с клипами и отправьте те же слова. Я положу её сверху и приглушу под ней остальной звук. Голос из текста пока не включён.');
     }
-    return L(lang, 'კლიპები მაქვს, მუსიკა აკლია: დაურთე ერთი მუსიკის ფაილი (MP3 ან WAV) და იმავე სიტყვებით გამომიგზავნე.', 'I have the clips; the music is missing. Attach one music file (MP3 or WAV) and send the same words again.', 'Клипы есть, не хватает музыки: прикрепите один музыкальный файл (MP3 или WAV) и отправьте те же слова.');
+    if (m.has('clips')) {
+      return L(lang, 'დაურთე კლიპები ან ფოტოები და, თუ გინდა, მუსიკის ფაილი (MP3 ან WAV) — ჯერ გეგმას გაჩვენებ.', 'Attach the clips or photos and, if you want music, one music file (MP3 or WAV): I will show you the plan first.', 'Прикрепите клипы или фото и, если нужна музыка, один музыкальный файл (MP3 или WAV): сначала покажу план.');
+    }
+    // GG 2026-10-11 17:38Z: a montage never waits on a track it does not need. This is only for words that make the
+    // music the point („მუსიკალური კლიპი"), so the way on without one is said too.
+    return L(lang, 'კლიპები მაქვს, მუსიკა აკლია: დაურთე ერთი მუსიკის ფაილი (MP3 ან WAV) და იმავე სიტყვებით გამომიგზავნე. მუსიკის გარეშეც შემიძლია: დაწერე „დაამონტაჟე მუსიკის გარეშე“ და კლიპებს მათივე ხმით შევაერთებ.', 'I have the clips; the music is missing. Attach one music file (MP3 or WAV) and send the same words again. I can also do it without music: say "edit them without music" and I will join the clips with their own sound.', 'Клипы есть, не хватает музыки: прикрепите один музыкальный файл (MP3 или WAV) и отправьте те же слова. Можно и без музыки: напишите «смонтируй без музыки», и я соединю клипы с их собственным звуком.');
   }
   if (i.capability === 'agent.audio-extract') {
     return L(lang, 'საიდან ამოვიღო? დაურთე ერთი ვიდეო ან აუდიო ფაილი, ან ჩასვი პირდაპირი ბმული მედიაფაილზე.', 'From what? Attach one video or audio file, or paste a direct link to a media file.', 'Откуда извлечь? Прикрепите один видео- или аудиофайл или вставьте прямую ссылку на медиафайл.');

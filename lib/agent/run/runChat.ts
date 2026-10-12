@@ -21,9 +21,13 @@
  */
 import { isVideoQuestion } from '@/lib/chat/videoIntent';
 import { findLinks, withoutLinks } from '@/lib/agent/media/audioSource';
-import { beatMontageAsk, type AttachmentKind } from '@/lib/agent/media/montageChat';
-import { MAX_CLIPS } from '@/lib/agent/media/montageAsk';
+import { beatMontageAsk, montageWordsLine, type AttachmentKind, type MontageWords } from '@/lib/agent/media/montageChat';
+import { MAX_CLIPS, rampOf, transitionAsk } from '@/lib/agent/media/montageAsk';
 import { mineEdits, type EditAsk } from '@/lib/agent/media/editWords';
+import { mineComposition } from '@/lib/agent/media/layerWords';
+import { unplannedAsks, unplannedText, type Unplanned } from '@/lib/agent/media/askCoverage';
+import { minePlanParams } from '@/lib/agent/params';
+import { MAX_MOTION_SEC, MAX_OVERLAY_SEC, MAX_STABILIZE_SEC } from '@/lib/agent/media/editPlan';
 import type { RunSpec } from './runSpec';
 
 type Lang = 'ka' | 'en' | 'ru';
@@ -57,16 +61,69 @@ const NUMBERED = new RegExp(`${L0}(?:video|clip|file|ვიდეო|კლი�
 const ALL = new RegExp(`${L0}(?:all|every|ყველა|ყველ\\p{L}+|все|всех|всё)${L1}`, 'iu');
 const OTHER = /other|rest|remaining|დანარჩენ|სხვა|остальн|другие|других/iu;
 
-/** The edits a montage leaves to an edit step; speed and mute would undo the cut to the beat, a trim or frame it does itself. */
-const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['grade', 'fade', 'volume', 'caption']);
+/**
+ * The edits a montage leaves to an edit step; speed and mute would undo the cut to the beat, a trim or frame it does
+ * itself. Light and colour, a mirror and a zoom, shake or glitch go over the finished montage (a turn, steadying and
+ * the sound cleaned are a clip's own: the montage's sound is the track).
+ */
+const AFTER_MONTAGE: ReadonlySet<EditAsk['op']> = new Set(['adjust', 'flip', 'motion', 'grade', 'fade', 'volume', 'overlay', 'caption', 'layers']);
+/**
+ * On a montage not made yet, layers are only added, and only words and masks: a logo needs its own picture uploaded
+ * (./askCoverage names it), and the texts asked with it are still drawn. Null = nothing of the ask is for this montage.
+ */
+const freshPart = (e: EditAsk): EditAsk | null => {
+  if (e.op !== 'layers') return e;
+  if (e.change?.length || e.remove?.length) return null;
+  const add = (e.add ?? []).filter((l) => l.kind !== 'image');
+  return add.length ? { op: 'layers', add } : null;
+};
 /** A fade „between the clips" is a transition, which a whole-video fade is not. */
 const TRANSITION = /between|transition|გადასვლ|შორის|между|переход/iu;
 
+/**
+ * What every chain carries besides its steps: the montage's own asks as its words name them (music start, length,
+ * frame, speed ramps: the montage step reads the same words), and what the words ask that no step does, by name. The
+ * plan card shows both before Start (2026-10-11: a montage that dropped the owner's speed, overlay and texts unseen).
+ */
+export interface ChainWords {
+  montage?: MontageWords;
+  unplanned?: Unplanned[];
+}
+
 export type RunChain =
   /** The sound of a link, or of the attached video at `index`, then the clips (attachment indexes) cut to it. */
-  | { kind: 'sound-cut'; source: { url: string } | { index: number }; clips: number[] }
+  | ({ kind: 'sound-cut'; source: { url: string } | { index: number }; clips: number[] } & ChainWords)
   /** The montage of every attachment, then an edit of its result. */
-  | { kind: 'cut-edit'; edits: EditAsk[] };
+  | ({ kind: 'cut-edit'; edits: EditAsk[] } & ChainWords);
+
+/**
+ * The montage's words: the message without its links and without the words to be drawn. „დააწერე „20 წამი““ draws a
+ * text; it asks no 20-second montage, and „slow down" inside a caption slows nothing.
+ */
+export function montagePromptOf(text: string): string {
+  return mineComposition(withoutLinks(text || '')).rest.replace(/[ \t]+/g, ' ').trim();
+}
+
+/** What the montage step will read from the words: the music start, the length, the frame, the speed ramps, the transitions. */
+export function montageWordsOf(text: string): MontageWords {
+  const t = montagePromptOf(text);
+  const p = minePlanParams(t);
+  const ramp = rampOf(t);
+  const transitions = transitionAsk(t);
+  return {
+    ...(p.aspect ? { aspect: p.aspect } : {}),
+    ...(p.durationSec !== undefined ? { durationSec: p.durationSec } : {}),
+    ...(p.musicStartSec !== undefined ? { musicStartSec: p.musicStartSec } : {}),
+    ...(ramp ? { ramp } : {}),
+    ...(transitions ? { transitions } : {}),
+  };
+}
+
+const wordsOf = (t: string, planned: readonly EditAsk[]): ChainWords => {
+  const montage = montageWordsOf(t);
+  const unplanned = unplannedAsks(t, planned);
+  return { ...(Object.keys(montage).length ? { montage } : {}), ...(unplanned.length ? { unplanned } : {}) };
+};
 
 /** Which attached video the words name as the sound's source: the ordinal nearest the sound word; 0 when none. Null when it names one that is not there. */
 function sourceIndex(t: string, videos: number): number | null {
@@ -103,22 +160,25 @@ export function runChainAsk(text: string, kinds: readonly AttachmentKind[]): Run
     const all = ALL.test(t) && !OTHER.test(t);
     if (links.length === 1 && videos >= 1 && videos <= MAX_CLIPS) {
       // The montage's own rule for its words, with the extracted sound standing in for the track.
-      if (beatMontageAsk(t, [...kinds, 'audio'])) return { kind: 'sound-cut', source: { url: links[0]! }, clips: kinds.map((_, i) => i) };
+      if (beatMontageAsk(t, [...kinds, 'audio'])) return { kind: 'sound-cut', source: { url: links[0]! }, clips: kinds.map((_, i) => i), ...wordsOf(t, []) };
     }
     if (links.length === 0 && videos >= 2 && videos <= MAX_CLIPS + 1) {
       const src = sourceIndex(t, videos);
       if (src === null) return null;
       const clips = kinds.map((_, i) => i).filter((i) => all || i !== src);
       if (clips.length > MAX_CLIPS) return null;
-      if (beatMontageAsk(t, [...clips.map(() => 'video' as const), 'audio'])) return { kind: 'sound-cut', source: { index: src }, clips };
+      if (beatMontageAsk(t, [...clips.map(() => 'video' as const), 'audio'])) return { kind: 'sound-cut', source: { index: src }, clips, ...wordsOf(t, []) };
     }
     return null;
   }
 
   // ── the montage, then an edit of it ──
   if (links.length === 0 && beatMontageAsk(t, [...kinds])) {
-    const edits = mineEdits(t).edits.filter((e) => AFTER_MONTAGE.has(e.op) && !(e.op === 'fade' && TRANSITION.test(t)));
-    if (edits.length) return { kind: 'cut-edit', edits };
+    const edits = mineEdits(t).edits
+      .filter((e) => AFTER_MONTAGE.has(e.op) && !(e.op === 'fade' && TRANSITION.test(t)))
+      .map(freshPart)
+      .filter((e): e is EditAsk => e !== null);
+    if (edits.length) return { kind: 'cut-edit', edits, ...wordsOf(t, edits) };
   }
   return null;
 }
@@ -131,11 +191,12 @@ const titleOf = (text: string): string | undefined => {
 
 /**
  * The run spec for a chain, with `paths` the attachments' storage paths in the order sent. The montage step keeps the
- * user's words (its frame, its length, a music start are read from them, as on the montage card).
+ * user's words (its frame, its length, a music start and the speed ramps are read from them, as on the montage card),
+ * without the words to be drawn: those are the edit step's.
  */
 export function chainSpec(chain: RunChain, text: string, paths: readonly string[]): RunSpec {
   const title = titleOf(text);
-  const prompt = withoutLinks(text).slice(0, 2000);
+  const prompt = montagePromptOf(text).slice(0, 2000);
   if (chain.kind === 'sound-cut') {
     const source = 'url' in chain.source ? { url: chain.source.url } : { file: paths[chain.source.index]! };
     return {
@@ -146,10 +207,14 @@ export function chainSpec(chain: RunChain, text: string, paths: readonly string[
       ],
     };
   }
+  // A zoom, a shake, a glitch, an overlay or steadying takes a video up to a length (lib/agent/media/editPlan): the
+  // montage is planned to fit, so the edit never fails after the montage has rendered.
+  const caps = chain.edits.flatMap((e) => (e.op === 'motion' ? [MAX_MOTION_SEC] : e.op === 'overlay' ? [MAX_OVERLAY_SEC] : e.op === 'stabilize' ? [MAX_STABILIZE_SEC] : []));
+  const maxSec = caps.length ? Math.min(...caps) : undefined;
   return {
     ...(title ? { title } : {}),
     steps: [
-      { id: 'cut', tool: 'montage', files: [...paths], ...(prompt ? { prompt } : {}) },
+      { id: 'cut', tool: 'montage', files: [...paths], ...(prompt ? { prompt } : {}), ...(maxSec ? { maxSec } : {}) },
       { id: 'edit', tool: 'edit', file: { step: 'cut' }, edits: chain.edits },
     ],
   };
@@ -186,18 +251,23 @@ export function sourceLine(chain: RunChain, names: readonly string[] | undefined
 export function runPlanText(chain: RunChain, opts: { names?: readonly string[]; credits: number; editsText?: string }, locale: string): string {
   const lang = pick(locale);
   const lines: string[] = [];
+  const said = montageWordsLine(chain.montage, locale);
+  const words = said ? ` (${said})` : '';
   if (chain.kind === 'sound-cut') {
     const n = chain.clips.length;
     const src = sourceLine(chain, opts.names, locale);
-    lines.push(lang === 'en' ? `Two steps: 1. take ${src} out as MP3 (its rights are checked first); 2. cut ${n} clip${n === 1 ? '' : 's'} to it.`
-      : lang === 'ru' ? `Два шага: 1. извлечь ${src} в MP3 (сначала проверю права); 2. смонтировать под него клипы (${n}).`
-        : `ორი ნაბიჯი: 1. ${src} MP3-ად ამოვიღებ (ჯერ უფლებას შევამოწმებ); 2. ${n} კლიპს ამ ხმაზე დავამონტაჟებ.`);
+    lines.push(lang === 'en' ? `Two steps: 1. take ${src} out as MP3 (its rights are checked first); 2. cut ${n} clip${n === 1 ? '' : 's'} to it${words}.`
+      : lang === 'ru' ? `Два шага: 1. извлечь ${src} в MP3 (сначала проверю права); 2. смонтировать под него клипы (${n})${words}.`
+        : `ორი ნაბიჯი: 1. ${src} MP3-ად ამოვიღებ (ჯერ უფლებას შევამოწმებ); 2. ${n} კლიპს ამ ხმაზე დავამონტაჟებ${words}.`);
   } else {
     const what = opts.editsText ?? '';
-    lines.push(lang === 'en' ? `Two steps: 1. cut the clips to your track; 2. edit the montage: ${what}.`
-      : lang === 'ru' ? `Два шага: 1. смонтировать клипы под ваш трек; 2. правка монтажа: ${what}.`
-        : `ორი ნაბიჯი: 1. კლიპებს შენს მუსიკაზე დავამონტაჟებ; 2. მონტაჟს დავამუშავებ: ${what}.`);
+    lines.push(lang === 'en' ? `Two steps: 1. cut the clips to your track${words}; 2. edit the montage: ${what}.`
+      : lang === 'ru' ? `Два шага: 1. смонтировать клипы под ваш трек${words}; 2. правка монтажа: ${what}.`
+        : `ორი ნაბიჯი: 1. კლიპებს შენს მუსიკაზე დავამონტაჟებ${words}; 2. მონტაჟს დავამუშავებ: ${what}.`);
   }
+  // What the words ask that neither step does: named before Start, never dropped unseen.
+  const left = unplannedText(chain.unplanned, locale);
+  if (left) lines.push(left);
   const price = opts.credits > 0
     ? (lang === 'en' ? `Price: up to ✦ ${opts.credits}.` : lang === 'ru' ? `Цена: до ✦ ${opts.credits}.` : `ფასი: მაქსიმუმ ✦ ${opts.credits}.`)
     : (lang === 'en' ? 'Free.' : lang === 'ru' ? 'Бесплатно.' : 'უფასოა.');

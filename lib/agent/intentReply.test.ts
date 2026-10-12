@@ -124,9 +124,14 @@ describe('ask and unsupported replies', () => {
   test('a montage with no clips asks for clips and a track; with clips only the track', () => {
     const none = act({ text: 'ამ სამი ვიდეოდან მუსიკალური კლიპი გამიკეთე.' });
     expect(none.missing).toEqual(['clips', 'track']);
-    expect(askReply(none, 'en')).toMatch(/Attach the clips and one music file/);
+    expect(askReply(none, 'en')).toMatch(/Attach the clips or photos and, if you want music, one music file/);
     const clips = act({ text: 'ამ სამი ვიდეოდან მუსიკალური კლიპი გამიკეთე.', attachments: ['video', 'video'] });
     expect(askReply(clips, 'en')).toMatch(/the music is missing/);
+    // GG 2026-10-11 17:38Z: the way on without a track is said too.
+    expect(askReply(clips, 'ka')).toMatch(/მუსიკის გარეშეც შემიძლია/);
+    const voice = act({ text: 'დაამონტაჟე და ჩემი ნარაცია დაადე', attachments: ['video', 'video'] });
+    expect(voice.missing).toEqual(['narration']);
+    expect(askReply(voice, 'en')).toMatch(/narration recording is missing/);
   });
 
   test('every ask names what to send in all three languages and never promises a charge', () => {

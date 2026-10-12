@@ -16,6 +16,7 @@ import { getActiveConfig } from '@/lib/agent/optimizer/activeConfig';
 import { VIDEO_PRIMARY } from '@/lib/video/modelLock';
 import { ffmpegExec } from '@/lib/video/ffmpegExec';
 import { ASPECT_DIMS as SHARED_ASPECT_DIMS, GRADE_VF, atempoChain, type GradeStyle } from '@/lib/video/editFilters';
+import { soundMixGraph } from '@/lib/services/montage/montageSound';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -186,6 +187,44 @@ export async function muxAudioOntoVideo(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn('[remix.mux] failed:', err instanceof Error ? err.message : err);
+    return null;
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Agent G's montage sound in one pass (lib/services/montage/montageSound): the master's own track, a music bed from
+ * `musicStartSec` at `musicGainDb`, and a narration from `voiceStartSec` that the rest steps back under. The picture is
+ * stream-copied whenever it can be (see muxAudioOntoVideo). Null on any failure: the caller fails the job, since a
+ * montage without the sound it was quoted with is not the edit the user started.
+ */
+export async function mixMontageSound(
+  videoUrl: string,
+  o: { musicUrl?: string; musicStartSec?: number; musicGainDb?: number; voiceUrl?: string; voiceStartSec?: number },
+): Promise<string | null> {
+  if (!BIN || !videoUrl || (!o.musicUrl && !o.voiceUrl)) return null;
+  let dir: string | null = null;
+  try {
+    dir = await mkdtemp(join(tmpdir(), 'remix-sound-'));
+    const out = join(dir, 'out.mp4');
+    const { graph, out: label } = soundMixGraph({
+      ...(o.musicUrl ? { music: { gainDb: o.musicGainDb ?? 0 } } : {}),
+      ...(o.voiceUrl ? { voice: { atSec: o.voiceStartSec ?? 0 } } : {}),
+    });
+    const seek = o.musicStartSec && o.musicStartSec > 0 ? ['-ss', String(Number(o.musicStartSec.toFixed(3)))] : [];
+    const vcodec = (await videoStreamIsMp4Copyable(videoUrl)) ? ['-c:v', 'copy'] : X264;
+    await exec(BIN, [
+      '-y', '-i', videoUrl,
+      ...(o.musicUrl ? [...seek, '-i', o.musicUrl] : []),
+      ...(o.voiceUrl ? ['-i', o.voiceUrl] : []),
+      '-filter_complex', graph, '-map', '0:v:0', '-map', `[${label}]`,
+      ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', out,
+    ], { maxBuffer: 1 << 26, timeout: 180_000 });
+    return await hostMp4(await readFile(out), o.voiceUrl ? 'voice' : 'sound');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[remix.sound] failed:', err instanceof Error ? err.message : err);
     return null;
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});

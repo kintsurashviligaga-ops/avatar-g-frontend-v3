@@ -48,12 +48,24 @@ export function atempoChain(factor: number): string {
 export const setptsFor = (factor: number): string =>
   `setpts=${(1 / Math.max(MIN_SPEED, Math.min(MAX_SPEED, Number(factor) || 1))).toFixed(4)}*PTS`;
 
+/** How a picture of another shape fills a new frame: cut to fill, whole with black bars, or whole over its own blur. */
+export type FrameFit = 'crop' | 'pad' | 'blur';
+
 /**
  * A new frame shape. `crop` fills the frame (scaled to cover, the overflow cut: edges may be lost); `pad` keeps the
- * whole picture (scaled to fit, black bars). Both end at the shape's exact canvas, square pixels, yuv420p.
+ * whole picture (scaled to fit, black bars); `blur` keeps the whole picture too, over a blurred, frame-filling copy of
+ * itself instead of the bars (CapCut's „blurred background"). All end at the shape's exact canvas, square pixels,
+ * yuv420p. The blur splits the picture and joins it again inside the one chain: one input, one output, so a simple
+ * `-vf` still (ffmpeg applies a phone clip's rotation only to a simple graph).
  */
-export function aspectVf(aspect: FrameAspect, fit: 'crop' | 'pad'): string {
+export function aspectVf(aspect: FrameAspect, fit: FrameFit): string {
   const [w, h] = ASPECT_DIMS[aspect];
+  if (fit === 'blur') {
+    // A radius of a twentieth of the short side: the copy reads as colour and light, not as a second picture.
+    const r = Math.round(Math.min(w, h) / 20);
+    return `split=2[bg][fg];[bg]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=${r}:2[bgb];`
+      + `[fg]scale=${w}:${h}:force_original_aspect_ratio=decrease,setsar=1[fgs];[bgb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1,format=yuv420p`;
+  }
   return fit === 'crop'
     ? `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,format=yuv420p`
     : `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p`;

@@ -186,3 +186,41 @@ describe('credits, events, reasons', () => {
     expect(stepErrorText('audio_extract', 'input_missing', 'ru')).toBe('У шага не было входного файла');
   });
 });
+
+// ── the montage step's own asks, and what the plan leaves out (owner 2026-10-11) ────────────────────────────────────────
+
+describe('the montage step and the edit step say every part of the ask', () => {
+  const GG_CHAIN: RunChain = {
+    kind: 'cut-edit',
+    edits: [
+      { op: 'overlay', look: 'light-leak' },
+      { op: 'layers', add: [
+        { kind: 'text', text: 'myavatar.ge🚀', style: 'cinematic', motionIn: 'slide-up', beforeLastSec: 3 },
+        { kind: 'text', text: 'გადმოდი საიტზე', role: 'cta', lastSec: 3 },
+      ] },
+    ],
+    montage: { musicStartSec: 59, ramp: 'mixed' },
+  };
+  const P2: RunPlanView = { runId: 'run-1', credits: 0, expiresAt: 9, steps: [{ id: 'cut', tool: 'montage', credits: 0 }, { id: 'edit', tool: 'edit', credits: 0 }] };
+
+  test('before Start: the montage row has the music start and the speed; the edit row the overlay and both texts (a layers ask no longer breaks it)', () => {
+    const m = runTask(base({ phase: 'planned', chain: GG_CHAIN, plan: P2 }), 'ka');
+    expect(m.steps[2]).toMatchObject({ key: 'step:cut', detail: 'მუსიკა 0:59-დან · სიჩქარე მუსიკის მიხედვით: შენელება და აჩქარება' });
+    expect(m.steps[3]!.detail).toBe('ოვერლეი: თბილი სინათლის ანარეკლები · „myavatar.ge🚀“ ქვემოთ, ბოლო 3 წამამდე (კინემატოგრაფიული, ქვემოდან შემოდის) · „გადმოდი საიტზე“ ქვემოთ, ბოლო 3 წამში (ბრენდის ღილაკი, ქვემოდან შემოდის)');
+    expect(m.notice).toBeUndefined();
+  });
+
+  test('once quoted: the montage row shows the plan in numbers; delivered, its result with the ramps', () => {
+    const plan = { shots: 12, totalSec: 29.7, aspect: '9:16', bpm: 95.2, musicStartSec: 59, ramp: { mode: 'mixed' as const, slow: 3, fast: 3, byEnergy: true, keptForFootage: 0 } };
+    const running = runTask(base({ phase: 'running', chain: GG_CHAIN, plan: P2, runId: 'run-1', task: run('running', [step('cut', 'montage', { status: 'running', taskId: 'm1', stage: 'render', plan }), step('edit', 'edit')]) }), 'ka');
+    expect(running.steps[2]!.detail).toBe('12 კადრი · 29.7 წმ · 9:16 · 95 BPM · მუსიკა 0:59-დან · 3 შენელ. 0.5× · 3 აჩქ. 1.5×');
+    const done = runTask(base({ phase: 'running', chain: GG_CHAIN, plan: P2, runId: 'run-1', task: run('running', [step('cut', 'montage', { status: 'completed', taskId: 'm1', plan, result: { url: 'https://x/m.mp4', media: 'video', durationSec: 29.7 } }), step('edit', 'edit', { status: 'running', taskId: 'e1' })]) }), 'en');
+    expect(done.steps[2]!.detail).toBe('0:30 · 3 slowed 0.5× · 3 faster 1.5×');
+  });
+
+  test('what the words asked that neither step does is the card\'s notice', () => {
+    const chain: RunChain = { ...CUT_EDIT, unplanned: [{ kind: 'transition' }, { kind: 'logo' }] };
+    const m = runTask(base({ phase: 'planned', chain }), 'en');
+    expect(m.notice).toBe('Not in this plan: transitions between shots: this edit has no boundary to draw them on · a logo: once the montage is ready, send the logo picture with it and say where it goes.');
+  });
+});

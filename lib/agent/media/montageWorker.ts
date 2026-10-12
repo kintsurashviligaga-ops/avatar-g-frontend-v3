@@ -23,8 +23,8 @@ import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
 import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
 import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
-import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, type ClipVerdict } from './montageAsk';
-import { checkManifest, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
+import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, audioTiming, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, sourceContribution, type ClipVerdict, type QcOutcome } from './montageAsk';
+import { checkManifest, isPictureKind, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
 
 /** How many sources the per-clip QC reads at once. */
 const QC_CONCURRENCY = 3;
@@ -167,7 +167,10 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     await deps.store.progress(jobId, worker, 'qc', 97).catch(() => false);
     const videoUrl = outcome.result.videoUrl;
     const problems: string[] = [];
-    if (!outcome.result.hasMusic) problems.push('the music did not mix');
+    // The sound the user started: the music when the manifest lists one, the narration when it lists one (a montage
+    // without music keeps the clips' own sound, and has no track to check for).
+    if (request.musicUrl && !outcome.result.hasMusic) problems.push('the music did not mix');
+    if (request.voiceUrl && !outcome.result.hasVoice) problems.push('the narration did not mix');
     const qc = qcMaster(await deps.probe(videoUrl), totalSec);
     problems.push(...qc.problems);
     if (ctl.signal.aborted) return halted(beat);
@@ -179,7 +182,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
     const clips = await checkClips(deps, request, videoUrl, ctl.signal);
     if (ctl.signal.aborted) return halted(beat);
     const seen = new Set(clips.clips.map((c) => c.index));
-    const unplaced = manifest.filter((m) => m.kind !== 'audio' && !seen.has(m.index));
+    const unplaced = manifest.filter((m) => isPictureKind(m.kind) && !seen.has(m.index));
     problems.push(...clips.problems, ...unplaced.map((m) => `clip ${m.index + 1} "${m.name}" has no place in the output`));
     const evidence = {
       qc: {
@@ -191,6 +194,11 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
         av: { videoSec: av.videoSec, audioSec: av.audioSec },
         durationSec: qc.durationSec,
         ok: problems.length === 0,
+        outcome: (problems.length === 0 ? 'PASS' : 'FAIL') as QcOutcome,
+        // Provenance (Media Studio v2.0 §6): what each source fills in the master, from the rendered shots, and the
+        // two audio clocks (the track's offset, the master's timeline) the master was made with.
+        sources: sourceContribution(request),
+        audio: audioTiming(request),
       },
     };
     if (problems.length) {

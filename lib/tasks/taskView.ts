@@ -16,7 +16,7 @@ import type { JobView } from '@/lib/agent/media/montageExec';
 import type { AudioJobView, AudioRights } from '@/lib/agent/media/audioExtract';
 import type { EditJobView } from '@/lib/agent/media/editExec';
 import type { CapabilityId } from '@/lib/agent/contracts';
-import type { ChildView, RunEvent, RunState } from '@/lib/agent/run/runEngine';
+import type { ChildView, RunEvent, RunState, StepSummary } from '@/lib/agent/run/runEngine';
 import type { RunTool } from '@/lib/agent/run/runSpec';
 import { isFinalStatus, normalizeStatus, type TaskStatus } from './statusModel';
 
@@ -35,6 +35,12 @@ export interface TaskResult {
   /** An edit's frame (Agent G edits, lib/agent/media/editExec). */
   width?: number;
   height?: number;
+  /** An edit's copy without its captions (Media Studio v2.1, captions delivered `both`). */
+  clean?: { url: string; name: string };
+  /** An edit's caption track as files (UTF-8 text). */
+  subtitles?: { srt: string; vtt: string };
+  /** An edit's QC, measured on the rendered file (lib/agent/media/layerQc): PASS, or PARTIAL with what it could not measure. */
+  qc?: { outcome: string; warnings: string[] };
 }
 
 export interface TaskView {
@@ -85,6 +91,8 @@ export interface TaskStepView {
   approval: { credits: number; quoteId: string; expiresAt: number } | null;
   /** What the step's job is priced at, once quoted (held while it runs, spent when delivered); null before its quote. */
   credits?: number | null;
+  /** What the quoted step will make (a montage: shots, beat, music start, speed ramps); absent before its quote. */
+  plan?: StepSummary;
 }
 
 /** A job row as the route reads it (generation_jobs, the columns in lib/orchestrator/jobs JOB_COLUMNS). */
@@ -200,6 +208,9 @@ export function taskFromEdit(row: TaskRow, kind: string, v: EditJobView): TaskVi
         ? {
           url: v.url, media: v.output === 'jpg' ? 'image' : 'video', name: v.name, width: v.width, height: v.height,
           ...(v.output === 'mp4' ? { durationSec: v.durationSec } : {}),
+          ...(v.clean ? { clean: v.clean } : {}),
+          ...(v.subtitles ? { subtitles: v.subtitles } : {}),
+          ...(v.layerQc ? { qc: { outcome: v.layerQc.outcome, warnings: v.layerQc.warnings } } : {}),
         }
         : null,
     };
@@ -235,6 +246,7 @@ export function taskFromRun(row: TaskRow, run: RunState, children: Readonly<Reco
       reused: !!s.reused,
       approval: s.status === 'awaiting_approval' && s.quote ? { credits: s.quote.credits, quoteId: s.quote.quoteId, expiresAt: s.quote.expiresAt } : null,
       credits: s.quote ? s.quote.credits : null,
+      ...(s.quote?.summary ? { plan: s.quote.summary } : {}),
     };
   });
   const status = runTaskStatus(run);

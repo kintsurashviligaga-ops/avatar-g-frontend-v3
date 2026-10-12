@@ -126,6 +126,12 @@ describe('Agent G PART 1: lengths with a hyphen, and a frame shape is not a tran
     expect(mineDurationSec('30-секундный ролик')).toBe(30);
     expect(mineDurationSec('2-minute reel')).toBe(120);
   });
+  test('a number is read whole: never the digits after its point', () => {
+    expect(mineDurationSec('a 7.5 second clip')).toBe(7.5);
+    expect(mineDurationSec('15,5 წამიანი')).toBe(15.5);
+    expect(mineDurationSec('1.5 minute reel')).toBe(90);
+    expect(mineDurationSec('0.4 წამიანი')).toBe(0.4);
+  });
   test('«Переведи это видео в 9:16» is a conversion; with a language it is still dubbing', () => {
     expect(detectStudioIntent('Переведи это видео в 9:16')).toBeNull();
     expect(detectStudioIntent('ეს ვიდეო ვერტიკალურად გადათარგმნე')).toBeNull();

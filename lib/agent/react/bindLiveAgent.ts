@@ -61,8 +61,13 @@ import { MAX_TOTAL_SEC } from '@/lib/services/montage/montagePlan';
 import type { QuoteResult } from '@/lib/agent/media/montageExec';
 import type { AudioQuoteResult } from '@/lib/agent/media/audioExtract';
 import type { EditQuoteResult } from '@/lib/agent/media/editExec';
-import { ASPECTS, GRADES, MAX_CAPTION_CHARS, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB } from '@/lib/agent/media/editPlan';
-import { editAskOf } from '@/lib/agent/media/editWords';
+import {
+  ASPECTS, FITS, GRADES, MAX_ADJUST, MAX_CAPTION_CHARS, MAX_ERASE_BOXES, MAX_FADE_SEC, MAX_VOLUME_DB, MIN_VOLUME_DB, OVERLAY_LOOKS,
+} from '@/lib/agent/media/editPlan';
+import { editAskOf, type EditAsk } from '@/lib/agent/media/editWords';
+import {
+  ANCHORS, MAX_CUE_TEXT, MAX_CUES, MAX_IMAGE_SIZE, MAX_LAYER_TEXT, MAX_LAYERS, MIN_SIZE, MOTIONS_IN, TEXT_ROLES, TEXT_STYLES,
+} from '@/lib/agent/media/layers';
 import { MAX_SPEED, MIN_SPEED } from '@/lib/video/editFilters';
 
 export interface AgentContext {
@@ -106,10 +111,19 @@ export const AGENT_AUDIO_NOTE =
 
 /** Added when the edit tool is on: the agent plans the edit of an attached video and never claims it ran. */
 export const AGENT_EDIT_NOTE =
-  'When the user wants one of the videos they attached edited (trimmed, sped up or slowed down, reframed to 9:16, 16:9, ' +
-  '1:1 or 4:5, a colour look, fades, louder, quieter or silent, a caption, or a still frame as a thumbnail), call ' +
-  'quote_media_edit with the edits and the file number. It reads the file and returns the plan; it edits nothing. The ' +
-  'edit starts only when the user presses Start on the plan in the MyAvatar chat, and it is free; never say it is done.';
+  'When the user wants one of the videos or pictures they attached edited (trimmed, sped up or slowed down, reframed to ' +
+  '9:16, 16:9, 1:1 or 4:5, cropped, with bars or over a blurred copy of itself, a colour look, brighter, darker, more ' +
+  'contrast, more or less colour, warmer or cooler, sharper, a vignette, mirrored, turned 90°, 180° or 270°, a zoom in ' +
+  'or out, a shake, a glitch, steadied, fades, louder, quieter, silent, background noise taken out, the sound evened ' +
+  'out, a still frame as a thumbnail; text, a CTA, a logo from another attached picture, a blur or mosaic put on it; ' +
+  'caption lines the user gave with their times), ' +
+  'call quote_media_edit with the edits and the file number. Text is drawn exactly as the user said it: never reword, ' +
+  'translate or invent it. Captions of what is spoken, or a translation of them, are not available yet (a paid call ' +
+  'is the owner\'s decision): say so instead of making lines up. A logo, watermark or subtitles that stay in one place ' +
+  'can be erased (op erase); a moving person or object, or the background, cannot (that needs a paid AI call). ' +
+  'Playing a video backwards is not available. ' +
+  'The tool reads the file and returns the plan; it edits nothing. The edit starts only when the user presses Start ' +
+  'on the plan in the MyAvatar chat, and it is free; never say it is done.';
 
 /** Added when the analysis tool is on: what it is for, and that its times are a reading, not a cut. */
 export const AGENT_ANALYZE_NOTE =
@@ -176,24 +190,129 @@ const num = (schema: z.ZodNumber) => z.preprocess((v) => (typeof v === 'string' 
 
 /** A point in a video, in seconds (a 10-hour cap; the quote checks it against the file). */
 const at = () => num(z.number().min(0).max(36_000));
+const ANCHOR = z.enum(ANCHORS as unknown as [string, ...string[]]);
+const TEXT_STYLE = z.enum(TEXT_STYLES as unknown as [string, ...string[]]);
+const MOTION_IN = z.enum(MOTIONS_IN as unknown as [string, ...string[]]);
+/** When a layer shows (Media Studio v2.1): the whole result, its first or last seconds, a range, or all but its last seconds. */
+const layerTime = { fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional(), beforeLastSec: at().optional() };
+/**
+ * A layer to put on (lib/agent/media/layers LayerAsk), flat: `kind` says which. A picture is one of the attached files,
+ * named by its number (`picture`), never a link the model writes.
+ */
+const layerAdd = z.object({
+  kind: z.enum(['text', 'image', 'mask']),
+  text: z.string().trim().min(1).max(MAX_LAYER_TEXT).optional(),
+  role: z.enum(TEXT_ROLES as unknown as [string, ...string[]]).optional(),
+  picture: num(z.number().int().min(1).max(13)).optional(),
+  anchor: ANCHOR.optional(),
+  size: num(z.number().min(MIN_SIZE).max(MAX_IMAGE_SIZE)).optional(),
+  style: TEXT_STYLE.optional(),
+  motionIn: MOTION_IN.optional(),
+  beats: z.boolean().optional(),
+  mode: z.enum(['blur', 'mosaic']).optional(),
+  ...layerTime,
+}).strict();
+/** Which layer of Agent G's own last edit a change or a removal is about. */
+const layerTarget = z.object({
+  kind: z.enum(['text', 'image', 'mask']).optional(),
+  where: z.enum(['top', 'bottom', 'left', 'right', 'center']).optional(),
+  all: z.boolean().optional(),
+}).strict();
+const layerChange = z.object({
+  target: layerTarget.optional(),
+  moveH: z.enum(['left', 'center', 'right']).optional(),
+  moveV: z.enum(['top', 'middle', 'bottom']).optional(),
+  anchor: ANCHOR.optional(),
+  sizeBy: num(z.number().min(0.25).max(4)).optional(),
+  style: TEXT_STYLE.optional(),
+  motionIn: MOTION_IN.optional(),
+  text: z.string().trim().min(1).max(MAX_LAYER_TEXT).optional(),
+  beats: z.boolean().optional(),
+  ...layerTime,
+}).strict();
+/**
+ * Caption lines the user gave (typed or read out), with their times: never a transcript or a translation of ours. The
+ * layer and track shapes are strict: a field the model invents (a picture's link, a track's „transcript" source) is
+ * refused, not dropped.
+ */
+const captionTrack = z.object({
+  lang: z.enum(['ka', 'en', 'ru', 'und']),
+  cues: z.array(z.object({ startSec: at(), endSec: at(), text: z.string().trim().min(1).max(MAX_CUE_TEXT) }).strict()).min(1).max(MAX_CUES),
+  style: TEXT_STYLE.optional(),
+}).strict();
+
+/** A light-and-colour change: -100 (less) to 100 (more), 0 = as it is. */
+const signedAdjust = () => num(z.number().int().min(-MAX_ADJUST).max(MAX_ADJUST));
+
+/** A place of the picture itself to erase (a logo, a watermark, subtitles that stay there), and when. */
+const eraseBox = z.object({
+  at: ANCHOR, fromSec: at().optional(), toSec: at().optional(), firstSec: at().optional(), lastSec: at().optional(),
+}).strict();
+
 /**
  * One edit as the model may ask it (lib/agent/media/editWords EditAsk), every field bounded. One flat object (the
  * function-declaration subset has no tagged union): `op` says which edit, and only that op's own fields may be set
  * (editAskOf); the quote resolves the rest against the file.
  */
 const editAsk = z.object({
-  op: z.enum(['trim', 'speed', 'aspect', 'grade', 'fade', 'volume', 'mute', 'caption', 'thumbnail']),
+  op: z.enum([
+    'trim', 'speed', 'erase', 'aspect', 'grade', 'fade', 'volume', 'mute', 'overlay', 'caption', 'thumbnail', 'layers', 'captions',
+    'adjust', 'flip', 'rotate', 'motion', 'stabilize', 'denoise', 'loudness',
+  ]),
   fromSec: at().optional(), toSec: at().optional(), lastSec: at().optional(), cutEndSec: at().optional(),
   factor: num(z.number().min(MIN_SPEED).max(MAX_SPEED)).optional(),
   to: z.enum(ASPECTS as unknown as [string, ...string[]]).optional(),
-  fit: z.enum(['crop', 'pad']).optional(),
+  fit: z.enum(FITS as unknown as [string, ...string[]]).optional(),
+  brightness: signedAdjust().optional(), contrast: signedAdjust().optional(), saturation: signedAdjust().optional(), warmth: signedAdjust().optional(),
+  sharpen: num(z.number().int().min(0).max(MAX_ADJUST)).optional(), vignette: num(z.number().int().min(0).max(MAX_ADJUST)).optional(),
+  axis: z.enum(['horizontal', 'vertical']).optional(),
+  deg: num(z.number().int().min(-270).max(270)).optional(),
+  zoom: z.enum(['in', 'out']).optional(),
+  shake: z.boolean().optional(),
+  glitch: z.boolean().optional(),
   style: z.enum(GRADES as unknown as [string, ...string[]]).optional(),
+  look: z.enum(OVERLAY_LOOKS as unknown as [string, ...string[]]).optional(),
   inSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
   outSec: num(z.number().min(0).max(MAX_FADE_SEC)).optional(),
   db: num(z.number().min(MIN_VOLUME_DB).max(MAX_VOLUME_DB)).optional(),
   text: z.string().trim().min(1).max(MAX_CAPTION_CHARS).optional(),
   atSec: at().optional(),
-}).refine((a) => editAskOf(a) !== null, { message: 'A field was set that its op does not take.' });
+  add: z.array(layerAdd).min(1).max(MAX_LAYERS).optional(),
+  change: z.array(layerChange).min(1).max(MAX_LAYERS).optional(),
+  remove: z.array(layerTarget).min(1).max(MAX_LAYERS).optional(),
+  track: captionTrack.optional(),
+  deliver: z.enum(['burned', 'both', 'file']).optional(),
+  off: z.boolean().optional(),
+  boxes: z.array(eraseBox).min(1).max(MAX_ERASE_BOXES).optional(),
+}).refine((a) => editAskOf(withSource(a)) !== null, { message: 'A field was set that its op does not take.' });
+
+/** A track the model passes on is the user's own lines: typed (lib/agent/media/editWords editAskOf takes no other). */
+function withSource(a: Record<string, unknown>): Record<string, unknown> {
+  const t = a.track as Record<string, unknown> | undefined;
+  return t ? { ...a, track: { ...t, source: 'typed' } } : a;
+}
+
+/** The model's edits as the quote takes them: a picture layer's file number → that attached file, a track marked typed. */
+export function editsForQuote(edits: ReadonlyArray<Record<string, unknown>>, files: readonly string[]): { ok: true; edits: EditAsk[] } | { ok: false; message: string } {
+  const out: EditAsk[] = [];
+  for (const raw of edits) {
+    const a = withSource(raw);
+    if (a.op === 'layers' && Array.isArray(a.add)) {
+      const add: Record<string, unknown>[] = [];
+      for (const l of a.add as Record<string, unknown>[]) {
+        const { picture, ...rest } = l;
+        if (rest.kind !== 'image') { add.push(rest); continue; }
+        const ref = typeof picture === 'number' ? files[picture - 1] : undefined;
+        if (!ref) return { ok: false, message: `A picture layer needs the number of an attached picture (${files.length} attached).` };
+        add.push({ ...rest, ref });
+      }
+      out.push({ ...a, add } as unknown as EditAsk);
+    } else {
+      out.push(a as unknown as EditAsk);
+    }
+  }
+  return { ok: true, edits: out };
+}
 
 /**
  * The live agent's allowlist (lib/agent/tools/registry): every tool it can call, typed, with its effect. Nothing here
@@ -320,22 +439,29 @@ export const LIVE_TOOL_SPECS: ReadonlyArray<ToolSpec<LiveCtx>> = [
     effect: 'quote',
     confirms: 'media_edit_run',
     description:
-      'PLAN ONLY — edit one video the user attached. Input {file?: number (1 = the first attached file), edits: [{op, ...}]}, ops: ' +
+      'PLAN ONLY — edit one video or picture the user attached. Input {file?: number (1 = the first attached file), edits: [{op, ...}]}, ops: ' +
       "trim {fromSec?, toSec?} or {lastSec} or {cutEndSec}; speed {factor 0.25-4}; aspect {to: '9:16'|'16:9'|'1:1'|'4:5', fit?: 'crop'|'pad'}; " +
-      "grade {style: 'vintage'|'cinematic'|'neon'|'noir'|'dramatic'}; fade {inSec?, outSec?}; volume {db}; mute; caption {text}; thumbnail {atSec?} (a still JPEG). " +
-      'Returns the resolved plan (range kept, frame, length); edits nothing until the user presses Start; free.',
+      "grade {style: 'vintage'|'cinematic'|'neon'|'noir'|'dramatic'}; fade {inSec?, outSec?}; volume {db}; mute; overlay {look?: 'light-leak'|'grain'} (video only); thumbnail {atSec?} (a still JPEG); " +
+      "layers {add?: [{kind: 'text', text, role?: 'title'|'cta'|'price'|'lower-third'|'label', anchor?, style?: 'minimal'|'premium'|'bold'|'brand'|'cinematic', motionIn?, fromSec?, toSec?, lastSec?, beforeLastSec?} " +
+      "| {kind: 'image', picture: number (the attached logo), anchor?, size?} | {kind: 'mask', mode: 'blur'|'mosaic', anchor?}], " +
+      "change?: [{target?: {kind?, where?, all?}, moveH?, moveV?, anchor?, sizeBy?, style?, motionIn?, text?}], remove?: [{kind?, where?, all?}]} (change and remove: only on Agent G's own last edit); " +
+      "captions {track?: {lang, cues: [{startSec, endSec, text}]}, deliver?: 'burned'|'both'|'file', off?: true}; " +
+      "erase {boxes: [{at: anchor, fromSec?, toSec?, firstSec?, lastSec?}]} (a text, logo, watermark or subtitles IN the picture itself that stay in one place, filled in from around it; never a person, an object or the background). " +
+      'Returns the resolved plan (range kept, frame, length, layers); edits nothing until the user presses Start; free.',
     input: z.object({ file: num(z.number().int().min(1).max(13)).optional(), edits: z.array(editAsk).min(1).max(9) }),
     offered: (ctx) => editToolOn(ctx),
     limit: MAX_EDIT_QUOTES_PER_RUN,
     run: async ({ file, edits }, ctx) => {
       const ref = ctx.files?.[(file ?? 1) - 1];
       if (!ref) return { error: 'bad_input', message: `There is no attached file ${file ?? 1}.` };
+      const asks = editsForQuote(edits as ReadonlyArray<Record<string, unknown>>, ctx.files ?? []);
+      if (!asks.ok) return { error: 'bad_input', message: asks.message };
       // Loaded on use: ffmpeg and the storage client stay off the path of every request that has no files.
       const [{ quoteEdit }, { liveEditDeps }] = await Promise.all([
         import('@/lib/agent/media/editExec'),
         import('@/lib/agent/media/editLive'),
       ]);
-      const r = await quoteEdit(liveEditDeps(), { userId: ctx.userId, file: ref, edits });
+      const r = await quoteEdit(liveEditDeps(), { userId: ctx.userId, file: ref, edits: asks.edits });
       if (!r.ok) return { error: r.error, message: r.message };
       ctx.onEditQuote?.(r);
       const q = r.quote;

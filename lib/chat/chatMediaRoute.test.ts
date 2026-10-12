@@ -28,6 +28,15 @@ describe('multiVideoRoute — two or more videos are never a one-video remix', (
     expect(multiVideoRoute('სუბტიტრები დაამატე: გამარჯობა', ['video', 'video', 'video'])).toBe('pick_one_video');
   });
 
+  test('a word ABOUT the clips is not a clip to make: an analysis, a comparison, a description stays a question', () => {
+    for (const t of ['ამ კლიპების ანალიზი გამიკეთე', 'კლიპების შედარება გამიკეთე', 'გამიკეთე ამ კლიპების მოკლე აღწერა', 'сделай клипам описание', 'создай клипу название', 'make me a clip description']) {
+      expect([t, multiVideoRoute(t, ['video', 'video'])]).toEqual([t, 'video_question']);
+    }
+    for (const t of ['ამ ვიდეოებით კლიპი გამიკეთე', 'make me a clip from these', 'сделай клип из этих видео']) {
+      expect([t, multiVideoRoute(t, ['video', 'video'])]).toEqual([t, 'montage_editor']);
+    }
+  });
+
   it('a question, or no words, is a question about all the videos', () => {
     expect(multiVideoRoute('', ['video', 'video'])).toBe('video_question');
     expect(multiVideoRoute('what happens in these videos?', ['video', 'video'])).toBe('video_question');

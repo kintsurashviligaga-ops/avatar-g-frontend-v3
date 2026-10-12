@@ -54,6 +54,18 @@ const STATUS: Partial<Record<EditErrorCode, number>> = {
   no_video: 422,
   media_not_yours: 403,
   unreadable: 422,
+  // Media Studio v2.1: what the layers or captions ask for cannot be done on this file.
+  text_too_long: 422,
+  too_many_layers: 422,
+  layer_not_found: 422,
+  layer_ambiguous: 422,
+  bad_captions: 422,
+  missing_glyphs: 422,
+  layer_picture: 422,
+  // Erasing a place of the picture itself: the place was not said, or it is too large to fill.
+  erase_where: 422,
+  erase_too_large: 422,
+  no_captions: 422,
   invalid_request: 400,
   quote_invalid: 400,
   quote_changed: 400,

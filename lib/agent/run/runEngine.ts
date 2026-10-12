@@ -19,6 +19,7 @@
  *   · Every status change goes the legal way through lib/agent/contracts RUN_TRANSITIONS, and is an event.
  */
 import { TERMINAL_RUN_STATUSES, transitionPath, type AgentApproval, type CapabilityId, type RunStatus } from '../contracts';
+import type { TransitionSummary } from '@/lib/services/montage/transitionPlan';
 import { refsOf, TOOL_CAPABILITY, type RunSpec, type RunTool } from './runSpec';
 
 /** generation_jobs rows of Agent G runs carry this queue kind in params._exec. */
@@ -47,6 +48,23 @@ export interface StepQuote {
   expiresAt: number;
   /** What the user's yes must name: this quote and no other (a re-quote is a new id). */
   quoteId: string;
+  /** What the quoted step will make, in numbers its card shows (absent on a state written before it existed). */
+  summary?: StepSummary;
+}
+
+/**
+ * A montage step's plan in numbers, as its quote fixed it: the run card shows it once the step is quoted, so the music
+ * start and the speed ramps the words asked for are seen on the plan itself (2026-10-11), not only in the words.
+ */
+export interface StepSummary {
+  shots?: number;
+  totalSec?: number;
+  aspect?: string;
+  bpm?: number | null;
+  musicStartSec?: number;
+  ramp?: { mode: 'mixed' | 'slow' | 'fast'; slow: number; fast: number; byEnergy: boolean; keptForFootage: number };
+  /** The transitions between the shots, as the quote planned them (lib/services/montage/transitionPlan). */
+  transitions?: TransitionSummary;
 }
 
 export interface RunStepState {

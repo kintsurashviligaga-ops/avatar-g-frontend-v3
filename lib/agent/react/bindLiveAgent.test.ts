@@ -288,10 +288,63 @@ describe('quote_media_edit (Agent G edit of an attached video, quote only)', () 
     expect(mockEditQuote).not.toHaveBeenCalled();
   });
 
+  test('CapCut\'s effects by voice: light and colour, a mirror, a turn, a movement, steadying, the sound cleaned', async () => {
+    const t = editTool(on())!;
+    const edits = [
+      { op: 'adjust', brightness: 25, warmth: -40, vignette: 50 }, { op: 'flip', axis: 'vertical' }, { op: 'rotate', deg: 90 },
+      { op: 'motion', zoom: 'in', glitch: true }, { op: 'stabilize' }, { op: 'denoise' }, { op: 'aspect', to: '9:16', fit: 'blur' },
+    ];
+    mockEditQuote.mockResolvedValueOnce(QUOTE);
+    await t.run({ file: 1, edits });
+    expect(mockEditQuote).toHaveBeenLastCalledWith({ liveEdit: true }, { userId: CTX.userId, file: FILES[0], edits });
+    mockEditQuote.mockClear();
+    for (const bad of [
+      { op: 'adjust', brightness: 300 }, { op: 'adjust', sharpen: -5 }, { op: 'flip', axis: 'diagonal' }, { op: 'rotate', deg: 720 },
+      { op: 'motion', zoom: 'sideways' }, { op: 'stabilize', factor: 2 }, { op: 'aspect', to: '9:16', fit: 'stretch' }, { op: 'reverse' },
+    ]) {
+      expect(JSON.stringify(await t.run({ edits: [bad] }))).toMatch(/error/i);
+    }
+    expect(mockEditQuote).not.toHaveBeenCalled();
+  });
+
   test('the system note tells the agent the edit starts only on Start', async () => {
     mockLlm.mockResolvedValueOnce('{"final":"ok"}');
     await runLiveAgent('make it 9:16', on());
     expect(mockLlm.mock.calls[0]![0].system).toContain(AGENT_EDIT_NOTE);
+  });
+
+  test('v2.1 by voice: the same typed layers and captions as the chat; a logo is an attached file by number, a track is typed', async () => {
+    mockEditQuote.mockResolvedValueOnce(QUOTE);
+    const t = editTool(on())!;
+    await t.run({
+      file: 1,
+      edits: [
+        { op: 'layers', add: [{ kind: 'text', text: 'მიტანის სერვისი თბილისში', anchor: 'bottom' }, { kind: 'image', picture: 2, anchor: 'top-left' }] },
+        { op: 'captions', track: { lang: 'ka', cues: [{ startSec: 0, endSec: 2, text: 'გამარჯობა' }] }, deliver: 'both' },
+      ],
+    });
+    expect(mockEditQuote).toHaveBeenCalledWith({ liveEdit: true }, {
+      userId: CTX.userId, file: FILES[0], edits: [
+        { op: 'layers', add: [{ kind: 'text', text: 'მიტანის სერვისი თბილისში', anchor: 'bottom' }, { kind: 'image', anchor: 'top-left', ref: FILES[1] }] },
+        { op: 'captions', track: { lang: 'ka', cues: [{ startSec: 0, endSec: 2, text: 'გამარჯობა' }], source: 'typed' }, deliver: 'both' },
+      ],
+    });
+    expect(AGENT_EDIT_NOTE).toMatch(/never reword, translate or invent/);
+  });
+
+  test('v2.1 by voice: a picture that is not attached, a link for a picture, or a model-made transcript is refused before anything is read', async () => {
+    const t = editTool(on())!;
+    for (const input of [
+      { edits: [{ op: 'layers', add: [{ kind: 'image', picture: 7 }] }] },
+      { edits: [{ op: 'layers', add: [{ kind: 'image', ref: 'https://evil.example/x.png' }] }] },
+      { edits: [{ op: 'captions', track: { lang: 'ka', source: 'transcript', cues: [{ startSec: 0, endSec: 2, text: 'x' }] } }] },
+      { edits: [{ op: 'layers', add: [{ kind: 'text', text: 'x'.repeat(500) }] }] },
+      { edits: [{ op: 'captions', off: 'yes' }] },
+    ]) {
+      const out = JSON.stringify(await t.run(input));
+      expect(out).toMatch(/error/i);
+    }
+    expect(mockEditQuote).not.toHaveBeenCalled();
   });
 });
 

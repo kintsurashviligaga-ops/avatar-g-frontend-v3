@@ -8,6 +8,8 @@ describe('mineMusicStart: where the track starts, only when the music is named',
   test.each([
     ['მუსიკა 5 წამიდან დაიწყე', 5],
     ['მუსიკა მე-5 წამიდან დაიწყოს', 5],
+    ['სიმღერა 58-ე წამიდან დაიწყე', 58],
+    ['ამ ცხრა ვიდეოს ეს ორიც დაუმატე, ჯამში 70 წამი გააკეთე, სიმღერა 58-ე წამიდან დაიწყე, ზედმეტი წარწერები მოაშორე', 58],
     ['სიმღერა 12 წმ-დან', 12],
     ['ტრეკი 0:05-დან დაიწყე', 5],
     ['start the music from 5 seconds', 5],
@@ -55,10 +57,37 @@ describe('mineTotalDurationSec: the length of the result', () => {
     expect(mineTotalDurationSec('a 30-second reel, the music from 5 seconds')).toBe(30);
   });
 
+  test('a window in the result is not its length: „ბოლო 5 წამი", "the first 3 s", „2-დან 5 წამამდე", "after 3 s"', () => {
+    expect(mineTotalDurationSec('დაამონტაჟე, შავ-თეთრი გახადე და ბოლო 5 წამი ჩააქრე')).toBeUndefined();
+    expect(mineTotalDurationSec('fade out the last 3 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('add the text Sale in the last 5 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('ბოლო 5 წამში დააწერე გამოიწერე')).toBeUndefined();
+    expect(mineTotalDurationSec('в последние 4 секунды добавь логотип')).toBeUndefined();
+    expect(mineTotalDurationSec('2-დან 5 წამამდე დაწერე სათაური')).toBeUndefined();
+    expect(mineTotalDurationSec('logo after 3 seconds')).toBeUndefined();
+    expect(mineTotalDurationSec('3 წამის შემდეგ ლოგო გამოჩნდეს')).toBeUndefined();
+    // …while the length said beside it is still the length, and a length range still names one.
+    expect(mineTotalDurationSec('30 წამიანი მონტაჟი, ბოლო 5 წამში დაწერე გამოიწერე')).toBe(30);
+    expect(mineTotalDurationSec('a 45 second reel, text in the first 3 seconds')).toBe(45);
+    expect(mineTotalDurationSec('make it between 20 and 30 seconds')).toBe(30);
+    expect(minePlanParams('დაამონტაჟე, ბოლო 5 წამში დააწერე გამოიწერე').durationSec).toBeUndefined();
+  });
+
   test('a per-shot length is not the length of the edit', () => {
     expect(mineTotalDurationSec('each shot 2 seconds')).toBeUndefined();
     expect(mineTotalDurationSec('თითო კადრი 2 წამი')).toBeUndefined();
     expect(mineTotalDurationSec('каждый кадр 2 секунды')).toBeUndefined();
+  });
+
+  test('a transition’s length (or a fade’s) is not the length of the edit', () => {
+    expect(mineTotalDurationSec('დაამონტაჟე მუსიკაზე, 0.4 წამიანი გადასვლები ჩაბნელებით და ფლეშით')).toBeUndefined();
+    expect(mineTotalDurationSec('30 წამიანი ვიდეო, 0.5 წამიანი გადასვლებით')).toBe(30);
+    expect(mineTotalDurationSec('30 წამიანი ვიდეო ზუმ გადასვლებით')).toBe(30);
+    expect(mineTotalDurationSec('make a 20 second edit with 1 second zoom transitions')).toBe(20);
+    expect(mineTotalDurationSec('make a 20 second edit, transitions of 0.5 s')).toBe(20);
+    expect(mineTotalDurationSec('монтаж 15 секунд, переходы по 0,5 с')).toBe(15);
+    expect(mineTotalDurationSec('გადასვლები 0.4 წამი, ვიდეო 25 წამი')).toBe(25);
+    expect(mineTotalDurationSec('fade out 2 s at the end, 30 seconds')).toBe(30);
   });
 });
 

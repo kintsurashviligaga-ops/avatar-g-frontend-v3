@@ -5,7 +5,7 @@
  */
 import type { EditQuote } from './editExec';
 import type { EditAsk } from './editWords';
-import { editCodeOf, type EditChatCode } from './editChat';
+import { editCodeOf, type EditChatCode, type EditOutExtras } from './editChat';
 import type { TaskView } from '@/lib/tasks/taskView';
 import type { RunApproval } from '@/lib/agent/approval';
 import { cancelTask, postJson, readJson, routeEnabled, sendAndFollow, followTask, taskEndedAt, type Fetch, type FollowDeps } from './jobFollow';
@@ -50,7 +50,7 @@ export function quoteEditResult(f: Fetch, url: string, edits: EditAsk[], name?: 
 }
 
 export type EditClientRun =
-  | { ok: true; output: 'mp4' | 'jpg'; url: string; name: string; durationSec: number; width: number; height: number }
+  | { ok: true; output: 'mp4' | 'jpg'; url: string; name: string; durationSec: number; width: number; height: number; out?: EditOutExtras }
   | { ok: false; code: EditChatCode };
 
 const done = (t: TaskView): EditClientRun | null => {
@@ -64,6 +64,7 @@ const done = (t: TaskView): EditClientRun | null => {
       durationSec: Number(r.durationSec) || 0,
       width: Number(r.width) || 0,
       height: Number(r.height) || 0,
+      ...(r.clean || r.subtitles || r.qc ? { out: { ...(r.clean ? { clean: r.clean } : {}), ...(r.subtitles ? { subtitles: r.subtitles } : {}), ...(r.qc ? { qc: r.qc } : {}) } } : {}),
     };
   }
   if (t.status === 'failed' || t.status === 'cancelled') return { ok: false, code: editCodeOf(500, { error: t.error ?? 'render_failed' }) };

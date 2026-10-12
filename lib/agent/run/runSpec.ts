@@ -18,7 +18,7 @@ import type { CapabilityId } from '../contracts';
 /** At most this many steps in one run (the card must stay readable; the sweep must finish a tick quickly). */
 export const MAX_RUN_STEPS = 6;
 /** At most this many files in one montage step (lib/agent/media/montageAsk MAX_FILES). */
-export const MAX_MONTAGE_FILES = 13;
+export const MAX_MONTAGE_FILES = 14;
 /** At most this many edits in one edit step (one of each kind: lib/agent/media/editPlan EDIT_ORDER). */
 export const MAX_STEP_EDITS = 9;
 const MAX_REF = 2048;
@@ -33,6 +33,8 @@ export type RunStepSpec =
   | { id: string; tool: 'audio_extract'; source: { url: string } | { file: FileRef }; name?: string }
   | {
     id: string; tool: 'montage'; files: FileRef[]; prompt?: string; aspect?: '9:16' | '16:9' | '1:1'; targetSec?: number; musicFromSec?: number;
+    /** The longest the montage may be, for the step after it (a zoom, a shake or a glitch is for up to 120 s). */
+    maxSec?: number;
   }
   /** One of the user's videos (or an earlier step's), edited: the asks are resolved against the file at its quote. */
   | { id: string; tool: 'edit'; file: FileRef; edits: EditAsk[]; name?: string };
@@ -110,7 +112,7 @@ export function validateRunSpec(x: unknown): { ok: true; spec: RunSpec } | SpecE
       steps.push({ id, tool: 'audio_extract', source, ...(typeof raw.name === 'string' ? { name: raw.name.trim() } : {}) });
     } else if (raw.tool === 'montage') {
       if (!Array.isArray(raw.files) || raw.files.length < 2 || raw.files.length > MAX_MONTAGE_FILES) {
-        return fail(`A montage takes 2 to ${MAX_MONTAGE_FILES} files: the clips and one track.`, id);
+        return fail(`A montage takes 2 to ${MAX_MONTAGE_FILES} files: the clips or photos, and at most a track and a narration.`, id);
       }
       const files: FileRef[] = [];
       for (const f of raw.files as unknown[]) {
@@ -122,7 +124,9 @@ export function validateRunSpec(x: unknown): { ok: true; spec: RunSpec } | SpecE
       if (raw.aspect !== undefined && raw.aspect !== '9:16' && raw.aspect !== '16:9' && raw.aspect !== '1:1') return fail('The frame is not valid.', id);
       const targetSec = positive(raw.targetSec, 600);
       const musicFromSec = positive(raw.musicFromSec, 3600);
+      const maxSec = positive(raw.maxSec, 600);
       if (raw.targetSec !== undefined && targetSec === undefined) return fail('The length is not valid.', id);
+      if (raw.maxSec !== undefined && maxSec === undefined) return fail('The longest length is not valid.', id);
       if (raw.musicFromSec !== undefined && musicFromSec === undefined) return fail('The music start is not valid.', id);
       steps.push({
         id, tool: 'montage', files,
@@ -130,6 +134,7 @@ export function validateRunSpec(x: unknown): { ok: true; spec: RunSpec } | SpecE
         ...(raw.aspect ? { aspect: raw.aspect as '9:16' | '16:9' | '1:1' } : {}),
         ...(targetSec ? { targetSec } : {}),
         ...(musicFromSec ? { musicFromSec } : {}),
+        ...(maxSec ? { maxSec } : {}),
       });
     } else if (raw.tool === 'edit') {
       const file = fileRef(raw.file, seen);
