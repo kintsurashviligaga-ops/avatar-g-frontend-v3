@@ -67,6 +67,7 @@ import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from
 import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
 import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, openMaxSeconds, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
+import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
@@ -1086,6 +1087,9 @@ interface FilmSnap {
   /** Video Core v1.0 §4 — the contracted FINAL length the assembler cuts the master to (30 fps, frame-exact). Absent when the
    *  board's own cadence set a grid the words did not plan on: the film is then the board's length. */
   finalDurationSec?: number;
+  /** Video Core v1.0 §5 — the storyboard approval this render was started from (revision number + fingerprint + the board):
+   *  the server re-fingerprints the board and refuses a render that is not it. Absent for a render with no storyboard. */
+  storyboardApproval?: RenderApprovalWire;
   /** The video template card the user PICKED, if the panel still matched it at submit (hooks/usePickedTemplate) —
    *  sent as `templateId` so the render gets the card's server-resolved look, like the storyboard did. Absent when no
    *  card was picked, including when the default panel merely lights the Reel. */
@@ -3019,6 +3023,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
+  // Video Core v1.0 §5 — the board as a numbered, fingerprinted REVISION (lib/video/storyboard/revision). Every change on
+  // the board (a caption, a re-rolled frame, a reorder, a scene added or deleted, a regeneration) is the next revision; a
+  // change that changes nothing the render reads is not one. The render is approved FROM the revision current at the tap
+  // (see onGenerate), and the approval rides to the server with the board, so the clips can only be the board that was seen.
+  const storyboardRevisionRef = useRef<StoryboardRevision | null>(null);
+  const storyboardPrevBoardRef = useRef<StoryboardState | null>(null);
+  useEffect(() => {
+    if (!storyboard) { storyboardRevisionRef.current = null; storyboardPrevBoardRef.current = null; return; }
+    storyboardRevisionRef.current = snapshotRevision(storyboard, inferOrigin(storyboardPrevBoardRef.current, storyboard), storyboardRevisionRef.current);
+    storyboardPrevBoardRef.current = storyboard;
+  }, [storyboard]);
   const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard } | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   // Which storyboard scene is currently re-rolling its single frame (null = none).
@@ -3779,7 +3794,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript, motionIntensity,
-      videoTemplateId, finalDurationSec,
+      videoTemplateId, finalDurationSec, storyboardApproval,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -3910,6 +3925,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // Video Core v1.0 §4 — the contracted final length: the server cuts the master to it frame-exact (30 fps), or refuses
         // with the reason; it never delivers another length as this one.
         ...(typeof finalDurationSec === 'number' ? { finalDurationSec } : {}),
+        // Video Core v1.0 §5 — the storyboard approval (revision + fingerprint + board): the server checks this render IS the
+        // approved board — its frames, its scene texts, its grid — and refuses one that is not, before any clip or charge.
+        ...(storyboardApproval ? { storyboardApproval } : {}),
         // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
         videoModel,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
@@ -4221,6 +4239,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     clipSec?: number,
     /** The director's per-scene provenance from the approved storyboard (validated by sceneMetaFromBrief). */
     sceneMeta?: SceneMetaWire[],
+    /** Video Core v1.0 §5 — the approval of the storyboard revision this render was started from (undefined: no storyboard). */
+    storyboardApproval?: RenderApprovalWire,
   ): Promise<string | void> => {
     // SNAPSHOT-AT-SUBMIT (Step 2): capture the WHOLE video panel NOW (the submit millisecond) into one
     // immutable object; renderFilm renders from this exact snapshot, so a queued film never inherits a
@@ -4260,6 +4280,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       ...(filmClipSec ? { clipSec: filmClipSec } : {}),
       ...(finalDurationSec !== undefined ? { finalDurationSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
+      ...(storyboardApproval ? { storyboardApproval } : {}),
       // The PICKED card only (a default panel lights the Reel without anyone choosing it).
       ...(pickedVideoTemplateId ? { videoTemplateId: pickedVideoTemplateId } : {}),
     };
@@ -12223,18 +12244,23 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             const referenceMode = veoPlan.referenceMode === 'reference';
             const sceneFrames = !referenceMode && frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
             const sb = storyboard;
+            // Video Core v1.0 §5 — the render is approved FROM this board's revision. The snapshot is taken on the board the
+            // tap saw (the effect may not have run for a change made this very tick: snapshotRevision returns the current
+            // revision when nothing changed, the next one otherwise), and the approval carries the number, the fingerprint
+            // and the board, so the server can refuse a render that is not this board.
+            const approvedRev = snapshotRevision(sb, inferOrigin(storyboardPrevBoardRef.current, sb), storyboardRevisionRef.current);
+            storyboardRevisionRef.current = approvedRev;
+            const storyboardApproval = approvalForRender(approvedRev, sb);
             setStoryboard(null);
-            // Thread the (possibly EDITED) per-scene descriptions into the render: an
-            // edited scene uses the user's own words; the rest keep the rich LLM script.
-            const anyEdited = sb.scenes.some((s) => s.edited);
-            const scripts = (sb.sceneScripts || anyEdited)
-              ? sb.scenes.map((s, i) => (s.edited && s.prompt.trim() ? s.prompt.trim() : (sb.sceneScripts?.[i] ?? s.prompt)))
-              : undefined;
+            // Thread the (possibly EDITED) per-scene descriptions into the render: an edited scene uses the user's own
+            // words; the rest keep the rich LLM script. ONE derivation, shared with the server's check of the approval
+            // (lib/video/storyboard/revision → renderScriptsFor): what is sent is what is checked.
+            const scripts = renderScriptsFor(sb) ?? undefined;
             // With approved per-scene frames the identity is already baked in, so the
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined);
+            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined, storyboardApproval);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }

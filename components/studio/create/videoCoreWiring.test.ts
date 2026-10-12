@@ -145,3 +145,31 @@ describe('§6 · above the film ceiling it is the long-form route or a refusal w
     expect(createPanel).toMatch(/export function effectiveCapabilities\(server: VideoCapabilities, wired: boolean = LONGFORM_ORDER_WIRED\)/);
   });
 });
+
+describe('the storyboard is approved as a REVISION, and the render is checked against it (§5)', () => {
+  const orchestrateRoute = code(read('app/api/chat/orchestrate/route.ts'));
+  test('the studio snapshots a revision on every board change and approves the render FROM it at the tap', () => {
+    expect(studio).toMatch(/const storyboardRevisionRef = useRef<StoryboardRevision \| null>\(null\);/);
+    expect(studio).toMatch(/storyboardRevisionRef\.current = snapshotRevision\(storyboard, inferOrigin\(storyboardPrevBoardRef\.current, storyboard\), storyboardRevisionRef\.current\);/);
+    expect(studio).toMatch(/const approvedRev = snapshotRevision\(sb, inferOrigin\(storyboardPrevBoardRef\.current, sb\), storyboardRevisionRef\.current\);/);
+    expect(studio).toMatch(/const storyboardApproval = approvalForRender\(approvedRev, sb\);/);
+  });
+  test('the scene texts the render sends are derived by the ONE function the server checks them with', () => {
+    expect(studio).toMatch(/const scripts = renderScriptsFor\(sb\) \?\? undefined;/);
+    expect(studio).not.toMatch(/sb\.scenes\.map\(\(s, i\) => \(s\.edited && s\.prompt\.trim\(\) \? s\.prompt\.trim\(\) : \(sb\.sceneScripts\?\.\[i\] \?\? s\.prompt\)\)\)/);
+  });
+  test('the approval rides in the submit snapshot to the film client, and the client posts it', () => {
+    expect(studio).toMatch(/sb\.sceneMeta\?\.length === sb\.scenes\.length \? sb\.sceneMeta : undefined, storyboardApproval\);/);
+    expect(studio).toMatch(/\.\.\.\(storyboardApproval \? \{ storyboardApproval \} : \{\}\),/);
+    expect(filmClient).toMatch(/storyboardApproval\?: RenderApprovalWire;/);
+    expect(filmClient).toMatch(/\.\.\.\(opts\.storyboardApproval \? \{ storyboardApproval: opts\.storyboardApproval \} : \{\}\),/);
+  });
+  test('the orchestrate route validates the approval BEFORE the orchestrator is called, and refuses with revision_mismatch', () => {
+    const check = orchestrateRoute.indexOf('const verdict = validateRenderApproval(data.storyboardApproval, {');
+    const refuse = orchestrateRoute.indexOf("error: 'revision_mismatch'");
+    const call = orchestrateRoute.indexOf('const response = await orchestrate({');
+    expect(check).toBeGreaterThan(0);
+    expect(refuse).toBeGreaterThan(check);
+    expect(call).toBeGreaterThan(refuse);
+  });
+});

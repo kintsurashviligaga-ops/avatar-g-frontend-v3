@@ -29,6 +29,7 @@ import { GEL_COST } from '@/lib/billing/gel';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import type { VeoRenderOptions } from '@/lib/video/veoPlan';
 import type { SceneScreenwriterMeta } from '@/lib/chat/filmPipeline';
+import type { RenderApprovalWire } from '@/lib/video/storyboard/revision';
 
 /** The director's per-scene provenance as the orchestrate route accepts it (lib/veo/renderOptions SceneMetaSchema). */
 export type SceneMetaWire = Pick<SceneScreenwriterMeta, 'cameraShot' | 'mood' | 'location' | 'lighting' | 'camera'>;
@@ -196,6 +197,11 @@ export interface DriveFilmOptions {
   /** Video Core v1.0 §4 — the contracted FINAL length (lib/video/durationContract): the master is cut to it frame-exact on
    *  the 30 fps timeline by the assembler; the clips rendered stay the native (priced) length. */
   finalDurationSec?: number;
+  /** Video Core v1.0 §5 — the storyboard approval this render was started from (lib/video/storyboard/revision →
+   *  approvalForRender): revision number, fingerprint, and the board it was taken from. The orchestrate route re-fingerprints
+   *  the board and refuses a render whose frames / scripts / grid are not that board's (400 revision_mismatch), before any
+   *  clip is dispatched or charged. */
+  storyboardApproval?: RenderApprovalWire;
   /**
    * The timecoded Master Production Script. ⚠️ IT USED TO BE DROPPED HERE: the studio passed it, but this interface
    * had no such field and the dispatch body never sent it, so the server's master-script casting, dialogue stems
@@ -808,6 +814,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // Google Veo plan + the director's per-scene provenance (docs/VEO_ENGINE.md).
           ...(opts.veo ? { veo: opts.veo } : {}),
           ...(opts.sceneMeta?.length ? { sceneMeta: opts.sceneMeta } : {}),
+          // Video Core v1.0 §5 — the approval, with its board, for the server to check this render against.
+          ...(opts.storyboardApproval ? { storyboardApproval: opts.storyboardApproval } : {}),
         },
         signal,
       );

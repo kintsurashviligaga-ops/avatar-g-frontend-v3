@@ -121,3 +121,96 @@ describe('the diff says what the user did', () => {
     expect(diffRevisions(board(), board())).toMatchObject({ same: true, added: [], removed: [], changedCaption: [], changedFrame: [], reordered: false, scriptsChanged: false });
   });
 });
+
+// ── The approval on the wire and its check (code level, Video Core v1.0 §5) ──────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const wire = require('./revision') as typeof import('./revision');
+
+describe('renderScriptsFor — the one derivation of the scene texts the render reads', () => {
+  test('an edited scene speaks in its own words, the rest keep their script', () => {
+    const b = board({ scenes: [scene(1, 'the sea at dawn'), scene(2, 'MY OWN WORDS', 'https://cdn/f2.jpg', { edited: true }), scene(3, 'the harbour at night')] });
+    expect(wire.renderScriptsFor(b)).toEqual(['Wide shot, dawn.', 'MY OWN WORDS', 'Night harbour.']);
+  });
+  test('no scripts and nothing edited → null (the render writes its own); no scripts but an edit → prompts, the edit in its words', () => {
+    expect(wire.renderScriptsFor(board({ sceneScripts: null }))).toBeNull();
+    const b = board({ sceneScripts: null, scenes: [scene(1, 'a'), scene(2, 'b', null, { edited: true })] });
+    expect(wire.renderScriptsFor(b)).toEqual(['a', 'b']);
+  });
+  test('a missing (null) script falls back to the scene prompt', () => {
+    expect(wire.renderScriptsFor(board({ sceneScripts: ['Wide shot, dawn.', null, 'Night harbour.'] }))).toEqual(['Wide shot, dawn.', 'a boat leaves', 'Night harbour.']);
+  });
+});
+
+describe('inferOrigin — the origin of a change, read off the diff', () => {
+  const b0 = board();
+  test.each<[string, BoardLike | null, BoardLike, string]>([
+    ['first snapshot', null, b0, 'plan'],
+    ['a scene added', b0, board({ scenes: [...b0.scenes, scene(4, 'a new scene')] }), 'add_scene'],
+    ['a scene deleted', b0, board({ scenes: b0.scenes.slice(0, 2) }), 'delete_scene'],
+    ['a reorder', b0, board({ scenes: [b0.scenes[1]!, b0.scenes[0]!, b0.scenes[2]!].map((s, i) => ({ ...s, ordinal: i + 1 })) }), 'reorder'],
+    ['a caption edited', b0, board({ scenes: [scene(1, 'the sea at NOON'), ...b0.scenes.slice(1)] }), 'edit_caption'],
+    ['a frame re-rolled', b0, board({ scenes: [scene(1, 'the sea at dawn', 'https://cdn/f1-v2.jpg'), ...b0.scenes.slice(1)] }), 'reroll_frame'],
+    ['the first frames landing', board({ scenes: b0.scenes.map((s) => ({ ...s, frameUrl: null })) }), b0, 'frames'],
+    ['scripts enriched', b0, board({ sceneScripts: ['Wide shot, dawn, gulls.', 'The boat.', 'Night harbour.'] }), 'enrich'],
+    ['nothing the render reads changed', b0, board(), 'plan'],
+  ])('%s → %s', (_n, prev, next, origin) => {
+    expect(wire.inferOrigin(prev, next)).toBe(origin);
+  });
+});
+
+describe('approvalForRender → validateRenderApproval: the server accepts the approved board and only it', () => {
+  const b = board();
+  const rev = snapshotRevision(b, 'plan', null, T0);
+  const approval = wire.approvalForRender(rev, b, T0 + 60_000);
+  const render = { sceneFrames: b.scenes.map((s) => s.frameUrl as string), sceneScripts: wire.renderScriptsFor(b)!, sceneCount: 3, clipSec: 8 };
+
+  test('the wire carries the approval and only the fingerprinted slice of the board', () => {
+    expect(approval).toMatchObject({ revision: 1, fingerprint: rev.fingerprint, sceneCount: 3, nativeSec: 24, approvedAt: '2026-10-12T06:01:00.000Z' });
+    expect(approval.board).toEqual({ seed: 4242, clipSec: 8, scenes: rev.scenes, sceneScripts: ['Wide shot, dawn.', 'The boat.', 'Night harbour.'] });
+    expect(JSON.stringify(approval.board)).not.toMatch(/uid/);
+  });
+
+  test('the approved board with its own frames, scripts, count and grid → ok', () => {
+    expect(wire.validateRenderApproval(approval, render)).toEqual({ ok: true, revision: 1, fingerprint: rev.fingerprint, sceneCount: 3 });
+    expect(wire.validateRenderApproval(approval, {})).toMatchObject({ ok: true }); // a render that pins nothing is checked on the board alone
+    expect(wire.validateRenderApproval(JSON.parse(JSON.stringify(approval)), render)).toMatchObject({ ok: true }); // after the wire
+  });
+
+  test('the board edited after the approval → board_changed (the approval names another fingerprint)', () => {
+    const edited = { ...approval, board: { ...approval.board, scenes: approval.board.scenes.map((s, i) => (i === 1 ? { ...s, prompt: 'a boat SINKS', edited: true } : s)) } };
+    const v = wire.validateRenderApproval(edited, render);
+    expect(v).toMatchObject({ ok: false, reason: 'board_changed', revision: 1, fingerprint: rev.fingerprint });
+    expect((v as { detail: string }).detail).toMatch(/fingerprints to [0-9a-f]{16}, the approval names/);
+  });
+
+  test("another board's approval, a forged fingerprint, no board → refused", () => {
+    const other = snapshotRevision(board({ seed: 7 }), 'plan', null, T0);
+    expect(wire.validateRenderApproval({ ...approval, fingerprint: other.fingerprint }, render)).toMatchObject({ ok: false, reason: 'board_changed' });
+    expect(wire.validateRenderApproval({ ...approval, fingerprint: 'not-a-fingerprint' }, render)).toMatchObject({ ok: false, reason: 'bad_fingerprint' });
+    expect(wire.validateRenderApproval({ ...approval, board: { ...approval.board, scenes: [] } }, render)).toMatchObject({ ok: false, reason: 'board_changed' });
+  });
+
+  test('a render whose inputs are not the approved board: frames, scripts, scene count, clip length', () => {
+    expect(wire.validateRenderApproval(approval, { ...render, sceneFrames: ['https://cdn/f1.jpg', 'https://cdn/OTHER.jpg', 'https://cdn/f3.jpg'] })).toMatchObject({ ok: false, reason: 'frames_differ' });
+    expect(wire.validateRenderApproval(approval, { ...render, sceneScripts: ['Wide shot, dawn.', 'The boat.', 'A DIFFERENT ENDING.'] })).toMatchObject({ ok: false, reason: 'scripts_differ' });
+    expect(wire.validateRenderApproval(approval, { ...render, sceneScripts: ['Wide shot, dawn.'] })).toMatchObject({ ok: false, reason: 'scripts_differ' });
+    expect(wire.validateRenderApproval(approval, { ...render, sceneCount: 4 })).toMatchObject({ ok: false, reason: 'scene_count' });
+    expect(wire.validateRenderApproval({ ...approval, sceneCount: 2 }, render)).toMatchObject({ ok: false, reason: 'scene_count' });
+    expect(wire.validateRenderApproval(approval, { ...render, clipSec: 6 })).toMatchObject({ ok: false, reason: 'clip_sec' });
+  });
+
+  test('a board with no scripts and no edit accepts a render that sends no scripts, and refuses one that invents them', () => {
+    const bare = board({ sceneScripts: null });
+    const r = snapshotRevision(bare, 'plan', null, T0);
+    const a = wire.approvalForRender(r, bare, T0);
+    expect(wire.validateRenderApproval(a, { sceneCount: 3, clipSec: 8 })).toMatchObject({ ok: true });
+    expect(wire.validateRenderApproval(a, { sceneScripts: ['invented', 'texts', 'here'] })).toMatchObject({ ok: false, reason: 'scripts_differ' });
+  });
+
+  test('the refusal in the user’s words names what changed, the revision, and that nothing was rendered or charged', () => {
+    const v = wire.validateRenderApproval({ ...approval, fingerprint: '0123456789abcdef' }, render) as Extract<ReturnType<typeof wire.validateRenderApproval>, { ok: false }>;
+    expect(wire.describeApprovalRefusal(v, 'ka')).toBe('სთორიბორდი დადასტურების შემდეგ შეიცვალა (რევიზია 1 · 0123456789abcdef. არაფერი არ დარენდერდა და არ ჩამოიჭრა — დაადასტურეთ სთორიბორდი თავიდან.)');
+    expect(wire.describeApprovalRefusal(v, 'en')).toMatch(/^the storyboard changed after it was approved \(revision 1 · 0123456789abcdef\. Nothing was rendered or charged/);
+    expect(wire.describeApprovalRefusal(v, 'ru')).toMatch(/^раскадровка изменилась после подтверждения/);
+  });
+});
