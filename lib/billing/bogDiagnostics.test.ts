@@ -84,6 +84,9 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
       apiBase: 'https://api.bog.ge/payments/v1',
       schemaReady: true,
       cronSecretSet: true,
+      checkoutMode: 'public',
+      limitsGel: { singleTransaction: 500, per24h: 1000, per30d: 5000 },
+      paidGel: { last24h: 0, last30d: 0 },
       ordersByStatus: { init_failed: 2 },
     });
     expect(r.recentOrders[0]).toEqual({ kind: 'subscription', status: 'init_failed', amountGel: 54, createdAt: '2026-10-06T14:02:00Z', rejectReason: 'init (production): oauth HTTP 401 [redacted]' });
@@ -97,5 +100,25 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
     const r = await bogReadiness(db, {} as NodeJS.ProcessEnv);
     expect(r).toMatchObject({ configured: false, environment: null, clientIdTail: null, callbackKey: null, cronSecretSet: false });
     expect(r.recentOrders).toHaveLength(2);
+  });
+
+  test('BOG_CHECKOUT_MODE is reported; a typo reads as off', async () => {
+    expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admin' })).checkoutMode).toBe('admin');
+    expect((await bogReadiness(db, { ...ENV, BOG_CHECKOUT_MODE: 'admim' })).checkoutMode).toBe('off');
+  });
+
+  test('paid ₾ against BOG\'s rolling limits: completed and refunded count, failed and pending do not', async () => {
+    const now = Date.parse('2026-10-20T12:00:00Z');
+    const paid = [
+      { kind: 'topup', status: 'completed', amount_gel: '500', created_at: '2026-10-20T08:00:00Z', reject_reason: null },
+      { kind: 'renewal', status: 'completed', amount_gel: 54, created_at: '2026-10-19T13:00:00Z', reject_reason: null },
+      { kind: 'subscription', status: 'refunded', amount_gel: 108, created_at: '2026-10-10T10:00:00Z', reject_reason: null },
+      { kind: 'topup', status: 'pending', amount_gel: 50, created_at: '2026-10-20T11:00:00Z', reject_reason: null },
+      { kind: 'topup', status: 'init_failed', amount_gel: 20, created_at: '2026-10-20T11:30:00Z', reject_reason: null },
+      { kind: 'topup', status: 'completed', amount_gel: 20, created_at: '2026-09-01T00:00:00Z', reject_reason: null },
+    ];
+    const paidDb = { from: () => ({ select: () => ({ order: () => ({ limit: async () => ({ data: paid, error: null }) }) }) }) } as never;
+    const r = await bogReadiness(paidDb, ENV, now);
+    expect(r.paidGel).toEqual({ last24h: 554, last30d: 662 });
   });
 });

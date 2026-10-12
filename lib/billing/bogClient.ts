@@ -113,6 +113,23 @@ export function bogFullyConfigured(env: NodeJS.ProcessEnv = process.env): boolea
   return bogConfig(env) !== null;
 }
 
+/**
+ * Who may START a BOG checkout on this deployment (BOG_CHECKOUT_MODE). Settling stays on in every mode: callbacks,
+ * the return page and the cron (pending orders, renewals of plans already sold) never look at it.
+ *
+ *   unset / ''   'public'  everyone signed in — what Production did before the switch existed
+ *   'public'     'public'
+ *   'admin'      admins only: the owner's controlled live test while customers see no BOG button
+ *   'off'        nobody: no new BOG orders
+ *   anything else → 'off'. A typo must close the rail, never open it.
+ */
+export type BogCheckoutMode = 'off' | 'admin' | 'public';
+export function bogCheckoutMode(env: NodeJS.ProcessEnv = process.env): BogCheckoutMode {
+  const raw = (env.BOG_CHECKOUT_MODE || '').trim().toLowerCase();
+  if (!raw || raw === 'public') return 'public';
+  return raw === 'admin' ? 'admin' : 'off';
+}
+
 export interface BogFetchDeps {
   readonly fetch: typeof fetch;
   /** Per-request timeout (ms). */

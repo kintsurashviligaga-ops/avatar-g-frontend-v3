@@ -16,6 +16,9 @@ interface Readiness {
   callbackUrl: string;
   schemaReady: boolean;
   cronSecretSet: boolean;
+  checkoutMode?: 'off' | 'admin' | 'public';
+  limitsGel?: { singleTransaction: number; per24h: number; per30d: number };
+  paidGel?: { last24h: number; last30d: number };
   ordersByStatus: Record<string, number>;
   recentOrders: Array<{ kind: string; status: string; amountGel: number; createdAt: string; rejectReason: string | null }>;
 }
@@ -71,7 +74,21 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
             {r.clientIdTail && <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">client …{r.clientIdTail}</span>}
             {flag(r.schemaReady, ka ? 'ცხრილები: OK' : 'Schema OK', ka ? 'ცხრილები არ არის' : 'Schema missing')}
             {flag(r.cronSecretSet, 'CRON_SECRET', ka ? 'CRON_SECRET არ არის' : 'CRON_SECRET missing')}
+            {r.checkoutMode && (
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${r.checkoutMode === 'public' ? 'bg-emerald-500/15 text-emerald-300' : r.checkoutMode === 'admin' ? 'bg-amber-500/15 text-amber-200' : 'bg-rose-500/15 text-rose-300'}`}>
+                {r.checkoutMode === 'public'
+                  ? (ka ? 'გადახდა: ყველასთვის' : 'Checkout: everyone')
+                  : r.checkoutMode === 'admin'
+                    ? (ka ? 'გადახდა: მხოლოდ ადმინი' : 'Checkout: admins only')
+                    : (ka ? 'გადახდა: გამორთული' : 'Checkout: off')}
+              </span>
+            )}
           </div>
+          {r.limitsGel && r.paidGel && (
+            <p className="text-[11px] text-gray-400" data-testid="bog-limits">
+              {ka ? 'ბანკის ლიმიტი' : 'Bank limits'}: {ka ? 'ერთი გადახდა' : 'per payment'} ≤ {r.limitsGel.singleTransaction} ₾ · 24{ka ? 'სთ' : 'h'} {r.paidGel.last24h}/{r.limitsGel.per24h} ₾ · 30{ka ? ' დღე' : 'd'} {r.paidGel.last30d}/{r.limitsGel.per30d} ₾
+            </p>
+          )}
           <p className="break-all text-[11px] text-gray-500">callback: {r.callbackUrl}</p>
           {Object.keys(r.ordersByStatus).length > 0 && (
             <p className="text-[11px] text-gray-500">{Object.entries(r.ordersByStatus).map(([s, n]) => `${s}: ${n}`).join(' · ')}</p>

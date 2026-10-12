@@ -26,18 +26,23 @@ jest.mock('../../../../../lib/supabase/server', () => ({
     return client;
   },
 }));
+let mockIsAdmin = false;
+jest.mock('../../../../../lib/auth/adminGuard', () => ({
+  isAdminIdentity: jest.fn(async () => mockIsAdmin),
+}));
 jest.mock('../../../../../lib/api/rate-limit', () => ({
   checkRateLimit: jest.fn(async () => null),
   checkRateLimitByKey: jest.fn(async () => null),
   RATE_LIMITS: { WRITE: {} },
 }));
 jest.mock('../../../../../lib/billing/pricingConfig.db', () => ({
-  getActiveTiers: jest.fn(async () => [5, 9, 10, 20, 29, 50, 89, 500].map((g) => ({ gelAmount: g, creditsAmount: g * 10, label: null, isActive: true }))),
+  getActiveTiers: jest.fn(async () => [5, 9, 10, 20, 29, 50, 89, 500, 600].map((g) => ({ gelAmount: g, creditsAmount: g * 10, label: null, isActive: true }))),
 }));
 let mockConfigured = true;
 const mockCreateOrder = jest.fn();
 const mockSaveCard = jest.fn();
 jest.mock('../../../../../lib/billing/bogClient', () => ({
+  ...jest.requireActual('../../../../../lib/billing/bogClient'),
   bogConfig: () => (mockConfigured ? { environment: 'production', clientId: 'c', secretKey: 's' } : null),
   createBogOrder: (...a: unknown[]) => mockCreateOrder(...a),
   saveCardForAutomaticPayments: (...a: unknown[]) => mockSaveCard(...a),
@@ -58,6 +63,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockUserId = 'user-1';
   mockConfigured = true;
+  mockIsAdmin = false;
+  mockLog = [];
+  delete process.env.BOG_CHECKOUT_MODE;
   mockDb.live = [];
   mockDb.insertError = null;
   mockDb.liveError = null;
@@ -164,4 +172,42 @@ test('no order row → no BOG order (a payment we could not credit is never star
   mockDb.insertError = { message: 'relation does not exist' };
   expect((await POST(post({ kind: 'topup', amountGel: 20 }))).status).toBe(503);
   expect(mockCreateOrder).not.toHaveBeenCalled();
+});
+
+test('BOG\'s 500 ₾ single-transaction limit: 500 goes ahead, a tier priced above it is refused before any row or order', async () => {
+  expect((await POST(post({ kind: 'topup', amountGel: 500 }))).status).toBe(200);
+  jest.clearAllMocks();
+  const res = await POST(post({ kind: 'topup', amountGel: 600 }));
+  expect(res.status).toBe(400);
+  expect(await res.json()).toMatchObject({ error_code: 'BOG_LIMIT', maxGel: 500 });
+  expect(inserted()).toBeUndefined();
+  expect(mockCreateOrder).not.toHaveBeenCalled();
+});
+
+describe('BOG_CHECKOUT_MODE', () => {
+  test('unset → everyone signed in (unchanged behaviour)', async () => {
+    expect((await POST(post({ kind: 'topup', amountGel: 5 }))).status).toBe(200);
+  });
+
+  test('off (or a typo) → 503 BOG_DISABLED, nothing created', async () => {
+    for (const v of ['off', 'admim']) {
+      process.env.BOG_CHECKOUT_MODE = v;
+      const res = await POST(post({ kind: 'topup', amountGel: 5 }));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error_code: 'BOG_DISABLED' });
+    }
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  test('admin → a customer gets 403 with no row and no order; an admin goes through', async () => {
+    process.env.BOG_CHECKOUT_MODE = 'admin';
+    const res = await POST(post({ kind: 'topup', amountGel: 5 }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error_code: 'BOG_ADMIN_ONLY' });
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    mockIsAdmin = true;
+    expect((await POST(post({ kind: 'topup', amountGel: 5 }))).status).toBe(200);
+    expect(mockCreateOrder).toHaveBeenCalledTimes(1);
+  });
 });

@@ -17,7 +17,8 @@
  */
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { BOG_PUBLISHED_CALLBACK_KEYS, bogConfig, type BogConfig } from './bogClient';
+import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, type BogCheckoutMode, type BogConfig } from './bogClient';
+import { BOG_LIMITS_GEL } from './bogCatalog';
 import { bogCallbackUrl, bogSchemaReady } from './bogSettlement';
 
 type Db = Pick<SupabaseClient, 'from'>;
@@ -42,9 +43,17 @@ export interface BogReadiness {
   apiBase: string | null;
   schemaReady: boolean;
   cronSecretSet: boolean;
+  /** Who may start a BOG checkout (BOG_CHECKOUT_MODE). */
+  checkoutMode: BogCheckoutMode;
+  /** BOG's limits for this merchant, and the paid ₾ that counts against the rolling ones (from the last 200 orders). */
+  limitsGel: typeof BOG_LIMITS_GEL;
+  paidGel: { last24h: number; last30d: number };
   ordersByStatus: Record<string, number>;
   recentOrders: BogRecentOrder[];
 }
+
+/** Statuses whose money reached the bank — what BOG's rolling limits count (a refund does not give the limit back). */
+const PAID_STATUSES = new Set(['completed', 'refunded']);
 
 function callbackKeyKind(cfg: BogConfig): BogReadiness['callbackKey'] {
   if (cfg.callbackPublicKey === BOG_PUBLISHED_CALLBACK_KEYS.production) return 'published-production';
@@ -52,11 +61,12 @@ function callbackKeyKind(cfg: BogConfig): BogReadiness['callbackKey'] {
   return 'override';
 }
 
-export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env): Promise<BogReadiness> {
+export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env, nowMs: number = Date.now()): Promise<BogReadiness> {
   const cfg = bogConfig(env);
   const schemaReady = await bogSchemaReady(db);
   let recentOrders: BogRecentOrder[] = [];
   const ordersByStatus: Record<string, number> = {};
+  const paidGel = { last24h: 0, last30d: 0 };
   if (schemaReady) {
     try {
       const { data } = await db
@@ -65,7 +75,14 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env)
         .order('created_at', { ascending: false })
         .limit(200);
       const rows = (data ?? []) as Array<{ kind: string; status: string; amount_gel: number | string; created_at: string; reject_reason: string | null }>;
-      for (const r of rows) ordersByStatus[r.status] = (ordersByStatus[r.status] ?? 0) + 1;
+      for (const r of rows) {
+        ordersByStatus[r.status] = (ordersByStatus[r.status] ?? 0) + 1;
+        const age = nowMs - Date.parse(r.created_at);
+        const amount = Number(r.amount_gel);
+        if (!PAID_STATUSES.has(r.status) || !Number.isFinite(age) || !Number.isFinite(amount)) continue;
+        if (age <= 30 * 86_400_000) paidGel.last30d += amount;
+        if (age <= 86_400_000) paidGel.last24h += amount;
+      }
       recentOrders = rows.slice(0, 20).map((r) => ({
         kind: r.kind,
         status: r.status,
@@ -87,6 +104,9 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env)
     apiBase: cfg?.apiBase ?? null,
     schemaReady,
     cronSecretSet: Boolean((env.CRON_SECRET || '').trim()),
+    checkoutMode: bogCheckoutMode(env),
+    limitsGel: BOG_LIMITS_GEL,
+    paidGel: { last24h: Math.round(paidGel.last24h * 100) / 100, last30d: Math.round(paidGel.last30d * 100) / 100 },
     ordersByStatus,
     recentOrders,
   };

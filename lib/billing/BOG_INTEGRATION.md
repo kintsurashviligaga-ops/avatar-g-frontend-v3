@@ -11,15 +11,18 @@ Plan prices are the pricing page's `$ × GEL_PER_USD`, rounded (`lib/billing/bog
 
 ## Where to put the credentials (never in code)
 
-BOG's business manager gives you a **client_id** and a **client_secret**. Add them as environment variables:
+BOG's Business Manager (https://manager.bog.ge) shows the Online Payments credentials as **OPAY Client ID** and **OPAY Secret Key** — the OAuth client id and secret of https://api.bog.ge/docs/payments/introduction. Merchant ID and Terminal ID are not used by the API. Add them as environment variables:
 
-**Vercel** → Project → Settings → Environment Variables (Production, and Preview if you want previews to take payments). Mark both **Sensitive**:
+**Vercel** → Project → Settings → Environment Variables, **Production** scope. Mark the secret **Sensitive**. Do not put the live pair on Preview: previews share the Production database, so a preview payment would credit a real account.
 
 | Name | Value |
 |---|---|
-| `BOG_CLIENT_ID` | your client_id |
-| `BOG_SECRET_KEY` | your client_secret |
+| `BOG_CLIENT_ID` | OPAY Client ID |
+| `BOG_SECRET_KEY` | OPAY Secret Key |
 | `BOG_ENV` | `sandbox` while testing with BOG's sandbox credentials; remove it (or `production`) for live |
+| `BOG_CHECKOUT_MODE` | optional: `admin` = only admins can start a BOG payment (the owner's live test), `off` = nobody, unset = everyone. Any other value reads as `off`. Settling (callbacks, return page, cron renewals) is never affected |
+
+Before saving a pair, check it with ONE token request (no order, no money): `node scripts/bog-oauth-check.mjs` (asks for the pair, the secret typed blind; `BOG_ENV=sandbox` for a sandbox pair).
 
 Then **redeploy** (env changes apply on the next deployment). Locally, the same names go into `.env.local` (gitignored).
 
@@ -28,6 +31,8 @@ That is all. You do **not** need `BOG_CALLBACK_PUBLIC_KEY`: BOG's published call
 **Ask BOG for two things:**
 1. **Automatic payments with a saved card** ("ბარათის დამახსოვრება ავტომატური გადახდებისთვის / subscriptions") enabled for your merchant. Without it plans still sell, but as one month that does not renew (the checkout logs a warning).
 2. **Sandbox credentials**, to test the whole flow with the test cards at https://api.bog.ge/docs/en/sandbox/payments/test-cards before going live.
+
+**Limits (bank letter, 2026-10-12):** 500 ₾ per transaction, 1,000 ₾ per 24 hours, 5,000 ₾ per 30 days. The checkout refuses a single order above 500 ₾ with `BOG_LIMIT` before BOG is asked (`BOG_LIMITS_GEL` in `lib/billing/bogCatalog.ts`); the rolling limits are not enforced in code, and the admin card shows the paid ₾ against them. Whether the rolling limits are per merchant or per card is a question for the bank: if per merchant, a busy day's renewals can hit 1,000 ₾ and BOG would decline the rest.
 
 The callback URL is sent with every order: `https://<your site>/api/billing/bog/webhook` (from `NEXT_PUBLIC_SITE_URL`). Nothing to register.
 
@@ -67,7 +72,7 @@ Stripe code is still present but no longer offered while BOG is configured; it r
 
 ## Is it working? (admin)
 
-**Admin → Billing → "Bank of Georgia — readiness"** (`GET /api/admin/billing/bog`) shows what the deployment runs with: credentials set or not, `production`/`sandbox`, the last 4 characters of the client id, the callback URL, whether the billing tables exist, whether `CRON_SECRET` is set, and the latest orders with their reject reasons. No secret and no user id ever leaves the server.
+**Admin → Billing → "Bank of Georgia — readiness"** (`GET /api/admin/billing/bog`) shows what the deployment runs with: credentials set or not, `production`/`sandbox`, the last 4 characters of the client id, the callback URL, whether the billing tables exist, whether `CRON_SECRET` is set, who may start a checkout (`BOG_CHECKOUT_MODE`), the paid ₾ of the last 24 h / 30 days against the bank's limits, and the latest orders with their reject reasons. No secret and no user id ever leaves the server.
 
 **"Test credentials with BOG"** (`POST /api/admin/billing/bog {action:'oauth'}`) sends ONE OAuth token request to BOG — no order, no money — and says what BOG answered: `ok`, `credentials_refused` (wrong pair, or a sandbox pair against production / live pair with `BOG_ENV=sandbox`), `forbidden` (merchant not enabled for the API), `no_answer`, … with the next step in words.
 
