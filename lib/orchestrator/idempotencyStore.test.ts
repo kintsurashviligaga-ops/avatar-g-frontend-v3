@@ -36,7 +36,7 @@ describe('R2: the duplicate guard in the database when Redis cannot answer', () 
     expect(f.calls).toEqual([{ fn: 'release_request_idempotency', args: { p_owner: 'u1', p_key: 'chat-paid-dispatch' } }]);
   });
 
-  test('not provisioned yet (Production before the proposal): fails open, and stops asking for 10 minutes', async () => {
+  test('not provisioned (a database without the migration): fails open, and stops asking for 10 minutes', async () => {
     const f = fakeClient(() => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.claim_request_idempotency' } }));
     __setStoreClientForTests(() => f.client);
     expect(await storeClaim('u1', 'k', 60)).toBe('unavailable');

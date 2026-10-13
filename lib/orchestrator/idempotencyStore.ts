@@ -1,16 +1,17 @@
 /**
  * R2 — the duplicate guard in the database, for when Redis cannot answer.
  *
- * Production has no Upstash, so `claimIdempotencyKey` used to answer "first" to every call and the 60 s guard of the
- * paid film assembly and the per-user paid-dispatch lock were open on every instance. Every instance shares the
- * Supabase database, so the same guard is one row there: `claim_request_idempotency` inserts (owner, key) or takes over
- * an expired row in ONE statement, and the primary key decides between concurrent callers
- * (docs/handoffs/video-core/proposals/20261013a_request_idempotency.sql).
+ * When Upstash cannot answer (Production's old host stopped resolving in 2026-09), `claimIdempotencyKey` used to answer
+ * "first" to every call and the 60 s guard of the paid film assembly and the per-user paid-dispatch lock were open on
+ * every instance. Every instance shares the Supabase database, so the same guard is one row there:
+ * `claim_request_idempotency` inserts (owner, key) or takes over an expired row in ONE statement, and the primary key
+ * decides between concurrent callers (supabase/migrations/20261013a_request_idempotency.sql, in Production since
+ * 2026-10-13).
  *
- * Until that proposal is applied the functions do not exist: the first call learns so, every call answers
- * 'unavailable' for the next 10 minutes without asking again, and the caller fails open — today's behaviour, so this
- * code can ship before the migration and changes nothing until it lands. Any other database error is 'unavailable'
- * too: a guard that cannot be read must never block a paying user (the durable ledger debit is the money guard).
+ * On a database without that migration (a local or older one) the functions do not exist: the first call learns so,
+ * every call answers 'unavailable' for the next 10 minutes without asking again, and the caller fails open, as before
+ * R2. Any other database error is 'unavailable' too: a guard that cannot be read must never block a paying user (the
+ * durable ledger debit is the money guard).
  */
 import 'server-only';
 
@@ -43,7 +44,7 @@ function configured(): boolean {
   return Boolean((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-/** PostgREST's "no such function" (PGRST202) or Postgres' undefined function/table: the proposal is not applied. */
+/** PostgREST's "no such function" (PGRST202) or Postgres' undefined function/table: the migration is not applied. */
 function notProvisioned(error: RpcError): boolean {
   if (!error) return false;
   return error.code === 'PGRST202' || error.code === '42883' || error.code === '42P01' || /could not find the function/i.test(error.message ?? '');

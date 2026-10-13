@@ -1,18 +1,23 @@
--- 20261013a_request_idempotency.sql — PROPOSAL ONLY. NOT a migration, NOT applied, NOT in supabase/migrations.
+-- 20261013a_request_idempotency.sql — APPLIED to Production on 2026-10-13 ~16:12Z.
 --
--- R2 (GO_NO_GO_REPORT_KA.md): Production has no Upstash, so lib/orchestrator/idempotency.ts claimIdempotencyKey answers
--- "first" to every call. The 60 s duplicate guard of the paid film assembly (app/api/video/assemble, `assemble:<hash>`)
--- and the per-user paid-dispatch lock of the chat (lib/chat/providerRouter, `chat-paid-dispatch`, 90 s) are therefore
--- open: a double-pressed Start can build two masters. This table is the same guard in the database every instance
--- already shares. The code (lib/orchestrator/idempotencyStore.ts) uses it only when Redis is absent or erroring, and
--- fails open exactly as today while this file is not applied, so shipping the code first changes nothing.
+-- Applied by the owner in the Supabase SQL Editor (this exact file), on GG's yes of 2026-10-13 15:26Z ("ორივე":
+-- this migration, then the PR #63 merge). Verified read-only right after: table present, RLS on, 0 policies, 0 rows,
+-- table grants only to service_role; both functions SECURITY DEFINER with search_path=public, EXECUTE for service_role
+-- only (anon and authenticated: no). No functional claim/release was run in Production (no test rows there).
 --
--- GG's word is needed to apply it to Production (owner, 2026-10-13 14:01Z: no Production migration without a separate
--- yes). Verified on a throwaway Postgres 16 + PostgREST only (scripts/lease-isolation/run.sh →
--- lib/orchestrator/idempotencyStore.pg.test.ts).
+-- R2 (GO_NO_GO_REPORT_KA.md): when Redis cannot answer, lib/orchestrator/idempotency.ts claimIdempotencyKey used to
+-- answer "first" to every call, so the 60 s duplicate guard of the paid film assembly (app/api/video/assemble,
+-- `assemble:<hash>`) and the per-user paid-dispatch lock of the chat (lib/chat/providerRouter, `chat-paid-dispatch`,
+-- 90 s) were open: a double-pressed Start could build two masters. This table is the same guard in the database every
+-- instance already shares. The code (lib/orchestrator/idempotencyStore.ts) uses it only when Redis is absent or
+-- erroring, and fails open if the functions are missing. Verified on a throwaway Postgres 16 + PostgREST
+-- (scripts/lease-isolation/run.sh → lib/orchestrator/idempotencyStore.pg.test.ts).
 --
 -- Additive only: one table, two functions. Nothing existing is altered. Rollback: drop the two functions and the table
--- (the code then fails open again, i.e. today's behaviour).
+-- (the code then fails open again):
+--   drop function public.claim_request_idempotency(text, text, integer);
+--   drop function public.release_request_idempotency(text, text);
+--   drop table public.request_idempotency;
 
 begin;
 

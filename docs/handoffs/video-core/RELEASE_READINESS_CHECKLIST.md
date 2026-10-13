@@ -15,6 +15,12 @@
 > gone, a paid film's up-front payment marker never reaches `/api/video/assemble` (another Vercel function), so a paying
 > user's film would be charged twice; restoring Upstash or a database home for the marker closes it, and public Video
 > Core stays NO-GO until one of them lands.
+>
+> **GG's 15:26Z decisions, carried out 2026-10-13.** Migration `20261013a_request_idempotency` was applied to Production
+> by GG in the Supabase SQL Editor at ~16:12Z and verified read-only (RLS on, service_role only, both functions
+> SECURITY DEFINER); the SQL now lives in `supabase/migrations/` and the schema-drift snapshot lists its two functions as
+> Production's. On GG's 16:14Z word a new Upstash for Redis store (`myavatar-redis-prod`, Free plan, auto-upgrade off)
+> is connected to Production only; R2 and defect 44 close only once the PR #63 merge deployment is live and verified.
 
 Branch `claude/video-core-v1-6gh97e`, draft PR #58, final code head **ec7f742** (code, tests, CI E2E and Preview E2E rest
 on it; later commits change only these documents), 2026-10-13. Product code last changed in 717231c (every cron route and

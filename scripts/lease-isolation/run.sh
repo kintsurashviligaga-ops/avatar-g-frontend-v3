@@ -63,10 +63,10 @@ node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watch
 node node_modules/.bin/jest lib/agent/run/runIsolation.pg.test.ts --no-watchman --ci --forceExit
 # The delivery outbox's live store: its JSON-path compare-and-set and due list on the same database (Omnichannel G).
 node node_modules/.bin/jest lib/notifications/outboxIsolation.pg.test.ts --no-watchman --ci --forceExit
-# R2: the duplicate guard in the database, first as Production is today (no table: it fails open, as before), then with
-# the proposal applied (docs/handoffs/video-core/proposals/20261013a_request_idempotency.sql; NOT a Production migration).
+# R2: the duplicate guard in the database, first on a database without it (no table: it fails open, as before), then with
+# the migration applied (supabase/migrations/20261013a_request_idempotency.sql; in Production since 2026-10-13).
 IDEM_PHASE=before node node_modules/.bin/jest lib/orchestrator/idempotencyStore.pg.test.ts --no-watchman --ci --forceExit
-psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261013a_request_idempotency.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261013a_request_idempotency.sql
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 IDEM_PHASE=after node node_modules/.bin/jest lib/orchestrator/idempotencyStore.pg.test.ts --no-watchman --ci --forceExit

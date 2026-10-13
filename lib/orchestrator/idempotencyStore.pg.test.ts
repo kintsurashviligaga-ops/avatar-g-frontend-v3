@@ -2,8 +2,8 @@
 /**
  * R2 — the duplicate guard in the database (lib/orchestrator/idempotencyStore.ts) through the REAL PostgREST client
  * against a throwaway Postgres 16 + PostgREST (scripts/lease-isolation/run.sh), in the two states Production can be in:
- *   IDEM_PHASE=before — the proposal is not applied (Production today): every claim fails open, as before R2;
- *   IDEM_PHASE=after  — docs/handoffs/video-core/proposals/20261013a_request_idempotency.sql applied: concurrent
+ *   IDEM_PHASE=before — the migration is not applied (a local or older database): every claim fails open, as before R2;
+ *   IDEM_PHASE=after  — supabase/migrations/20261013a_request_idempotency.sql applied (Production since 2026-10-13): concurrent
  *                       twins get exactly one 'claimed', release frees the key, an expired key can be taken again,
  *                       and neither anon nor a signed-in user can call the functions or read the table.
  *
@@ -49,7 +49,7 @@ afterAll(() => { process.env = ENV; __setStoreClientForTests(null); });
 
 suite(`the R2 duplicate guard on a real PostgREST (${PHASE} 20261013a)`, () => {
   if (PHASE === 'before') {
-    it('not provisioned (Production today): the store answers unavailable and the guard fails open, as before R2', async () => {
+    it('not provisioned (a database without the migration): the store answers unavailable and the guard fails open, as before R2', async () => {
       const { error } = await service.rpc('claim_request_idempotency', { p_owner: 'probe', p_key: 'probe', p_window_sec: 60 });
       expect(error?.message ?? '').toMatch(/Could not find the function/);
       expect(await storeClaim('u-before', 'assemble:k', 60)).toBe('unavailable');
