@@ -54,9 +54,6 @@ async function makeMedia(): Promise<void> {
   // A beat track: 120 BPM clicks over a quiet tone, 8 s, MP3.
   await ffmpeg(['-f', 'lavfi', '-i', "aevalsrc='0.15*sin(2*PI*196*t)+0.8*sin(2*PI*880*t)*lt(mod(t\\,0.5)\\,0.06)':s=44100:d=8",
     '-c:a', 'libmp3lame', '-b:a', '128k', m('beat.mp3')]);
-  // The edits' source: 6 s, 30 fps, 1280x720, with sound.
-  await ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
-    ...h264, '-c:a', 'aac', '-shortest', m('edit-source.mp4')]);
   // A longer clip pair for Stop (enough work that Stop lands while it renders): 1080x1920, 12 s each.
   await ffmpeg(['-f', 'lavfi', '-i', 'smptehdbars=size=1080x1920:rate=30:duration=12', '-f', 'lavfi', '-i', 'sine=frequency=262:duration=12',
     ...h264, '-c:a', 'aac', '-shortest', m('long-a.mp4')]);

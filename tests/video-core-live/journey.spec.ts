@@ -12,7 +12,8 @@ import {
  * paperclip (sign → PUT to local storage → verify's byte sniff) → Agent G reads the sentence → a quote probed by real
  * ffmpeg → Start → a real ffmpeg render, the per-clip QC, the master in the private `renders` bucket → the result plays
  * → Download → the decoded frame count is exact → the Library lists it. Then Stop / Retry, idempotency, error
- * recovery, the edit lane (trim, 2× speed, slow motion) and another user's denied access — all on the same stack.
+ * recovery, the edit lane on Agent G's delivered video (trim, 2× speed, slow motion) and another user's denied access —
+ * all on the same stack.
  *
  * Agent G media is free (MONTAGE/EDIT_PRICE_CREDITS = 0), so the ledger must not move here; the paid paths (film / Veo)
  * have no provider credential in this job and are not part of this suite.
@@ -66,6 +67,20 @@ async function startRun(page: Page, kind: 'montage' | 'edit', isMobile: boolean,
   await press(page, `agent-${kind}-start`, isMobile);
   const r = await run;
   expect(r.status(), `run refused: HTTP ${r.status()} ${await r.text()}`).toBe(200);
+}
+
+/** Agent G's own 5 s montage, delivered in this thread (the "previous video" the edit tests then change). */
+async function deliverMontage(page: Page, isMobile: boolean, userId: string): Promise<void> {
+  await attach(page, isMobile, ['clip-a.mp4', 'clip-b.mp4', 'beat.mp3']);
+  await paced(userId);
+  const quoteRes = page.waitForResponse(isQuote('montage'), { timeout: 90_000 });
+  await say(page, 'Cut these to the music, 5 seconds long');
+  const q = (await (await quoteRes).json()) as { ok: boolean; error?: string; message?: string };
+  expect(q.ok, `montage quote refused: ${q.error} ${q.message}`).toBe(true);
+  await expect(page.getByTestId('agent-montage-card').last()).toHaveAttribute('data-phase', 'quoted');
+  await startRun(page, 'montage', isMobile, userId);
+  await expect(page.getByTestId('agent-montage-result').last().locator('video[src]')).toBeAttached({ timeout: 200_000 });
+  await expect(page.getByTestId('agent-montage-card').last()).toHaveAttribute('data-phase', 'done');
 }
 
 async function downloadResult(page: Page, resultTestId: string, name: string): Promise<string> {
@@ -250,16 +265,24 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
     evidence(`${info.project.name}-error-recovery`, { uploadRefusal: 'chip failed', quoteRefusal: { error: q.error, message: q.message } });
   });
 
-  for (const [sentence, seconds, label] of [
-    ['Trim it from 1 to 4 seconds', 3, 'trim'],
-    ['Make it 2x speed', 3, 'speed-2x'],
-    ['Slow motion please', 12, 'slow-motion'],
+  // THE EDIT LANE on Agent G's own delivered video (AC-11 „edit of a delivered video"): a 5 s montage is delivered first,
+  // then the words name it („the previous video" / „წინა ვიდეო") and Agent G plans the edit on its signed master — no
+  // chat model involved (lib/agent/chatTurn editStep, source 'previous'). Trim / speed words on a freshly ATTACHED file
+  // are not this lane: Media Studio v2 hands them to the chat model's remix, which needs a provider credential this job
+  // does not have (CI run 4 found the old version of these tests waiting for an edit quote that never comes).
+  // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s.
+  for (const { label, en, ka, seconds } of [
+    { label: 'trim', en: 'Trim the previous video from 1 to 4 seconds.', ka: 'წინა ვიდეო 1-დან 4 წამამდე მოჭერი', seconds: 3 },
+    { label: 'speed-2x', en: 'Make the previous video 2x speed.', ka: 'წინა ვიდეო 2-ჯერ ააჩქარე', seconds: 2.5 },
+    { label: 'slow-motion', en: 'Make the previous video slow motion.', ka: 'წინა ვიდეო ნელ მოძრაობაში გადაიყვანე', seconds: 10 },
   ] as const) {
-    test(`edit lane: „${sentence}" → plan → Start → the result has exactly ${seconds * FPS} frames`, async ({ page, isMobile }, info) => {
+    test(`edit lane on Agent G's delivered video: ${label} → plan → Start → exactly ${seconds * FPS} frames`, async ({ page, isMobile }, info) => {
       const me = projectUser(info);
       const before = await balanceOf(me.id);
+      const sentence = isMobile ? ka : en;
       await openSignedInStudio(page);
-      await attach(page, isMobile, ['edit-source.mp4']);
+      await deliverMontage(page, isMobile, me.id);
+
       await paced(me.id);
       const quoteRes = page.waitForResponse(isQuote('edit'), { timeout: 90_000 });
       await say(page, sentence);
@@ -269,9 +292,11 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       expect(q.quote!.credits).toBe(0);
       const card = page.getByTestId('agent-edit-card').last();
       await expect(card).toHaveAttribute('data-phase', 'quoted');
+      await shot(page, `${info.project.name}-edit-${label}-quoted`);
       await startRun(page, 'edit', isMobile, me.id);
       const result = page.getByTestId('agent-edit-result').last();
       await expect(result.locator('video[src]')).toBeAttached({ timeout: 200_000 });
+      await expect(card).toHaveAttribute('data-phase', 'done');
       const src = await result.locator('video[src]').getAttribute('src');
       const res = await page.request.get(src!);
       expect(res.status()).toBe(200);
@@ -280,9 +305,11 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       writeFileSync(file, await res.body());
       const d = await decodedFrames(file);
       expect(d.frames).toBe(seconds * FPS);
+      expect(d.fps).toBe(FPS);
       expect(d.hasAudio).toBe(true);
       expect(await balanceOf(me.id)).toBe(before);
-      evidence(`${info.project.name}-edit-${label}`, { sentence, plan: q.quote!.plan, decoded: d });
+      await shot(page, `${info.project.name}-edit-${label}-done`);
+      evidence(`${info.project.name}-edit-${label}`, { sentence, edits: q.quote!.plan, decoded: d, balance: before });
     });
   }
 });
