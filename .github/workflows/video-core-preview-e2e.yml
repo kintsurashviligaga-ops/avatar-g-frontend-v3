@@ -272,6 +272,12 @@ jobs:
           for c in $(docker ps -a --format '{{.Names}}' | grep -i supabase); do
             docker logs --tail 400 "$c" 2>&1 | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#https://[a-z0-9-]+\.trycloudflare\.com#https://<tunnel>#g' >"test-results/video-core-live/stack-logs/$c.txt" || true
           done
+          # Artifacts cannot always be fetched by whoever reads the run: each failure's page snapshot goes to the log too.
+          for f in $(find test-results/video-core-live -name error-context.md | head -n 6); do
+            echo "::group::$f"
+            head -c 8000 "$f" | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#https://[a-z0-9-]+\.trycloudflare\.com#https://<tunnel>#g'
+            echo "::endgroup::"
+          done
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
