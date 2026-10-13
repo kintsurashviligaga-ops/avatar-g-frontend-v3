@@ -1,3 +1,5 @@
+> Final continuation (2026-10-13): checkpoint and cleanup are committed; see [FINAL_HANDOFF_REPORT.md](FINAL_HANDOFF_REPORT.md) and [FINAL_ACCEPTANCE_MATRIX.md](FINAL_ACCEPTANCE_MATRIX.md). The historical recovery record below is preserved. Real Phase 6 remains BLOCKED.
+
 # Image Studio v1.0 — Recovery Handoff Report
 
 Date: 2026-10-13 (Asia/Tbilisi)

@@ -1,0 +1,10 @@
+{
+  "comparedTrackedFiles": 3745,
+  "mismatches": 0,
+  "snapshot": "/private/tmp/image-studio-final-validation-20261013",
+  "separatelyTested": [
+    "scripts/image-studio/live-e2e.mjs",
+    "scripts/image-studio/live-e2e.test.mjs"
+  ],
+  "sourceCommit": "a7b34014961ce8a46ff1ed2a500c92a3babd4142"
+}
