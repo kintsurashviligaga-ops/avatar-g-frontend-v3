@@ -335,8 +335,9 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
         measured.editMeanDb = await meanVolumeDb(file);
         measured.sourcePeakDb = await peakDb(sourceFile);
         measured.editPeakDb = await peakDb(file);
-        // Louder, and never clipped (defect 43): the limiter after +6 dB holds the peaks near -1 dBFS, so the mean rises
-        // less than 6 dB on a beat whose peaks were already high (3.7 dB on this montage in CI run 38419237985).
+        // Louder, and never clipped (defect 43): the limiter after +6 dB holds the peaks at -2 dBFS, so the mean rises
+        // less than 6 dB on a beat whose peaks were already high (about 3.2 dB here; 3.7 dB with the old -1 dBFS ceiling
+        // in CI run 38419237985, whose AAC still overshot it to +0.27 dBFS in run 38425457743).
         expect(measured.editMeanDb - measured.sourceMeanDb, 'louder by more than 3 dB').toBeGreaterThan(3);
         expect(measured.editPeakDb, 'the louder sound never clips').toBeLessThan(0);
       }

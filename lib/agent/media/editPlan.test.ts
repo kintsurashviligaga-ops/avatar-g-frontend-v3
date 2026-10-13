@@ -203,7 +203,8 @@ describe('the ffmpeg arguments', () => {
   test('louder holds the peak under full scale; quieter needs no limiter (Production 2026-10-13: +6 dB peaked at +2.4 dBFS)', () => {
     expect(audioFilters(request([{ op: 'volume', db: 6 }]))).toEqual(['volume=6dB', `alimiter=limit=${LOUDER_PEAK_LIMIT}:level=disabled`]);
     expect(audioFilters(request([{ op: 'volume', db: -6 }]))).toEqual(['volume=-6dB']);
-    expect(LOUDER_PEAK_LIMIT).toBeLessThan(1);
+    // 2 dB under full scale: the AAC encoder after the limiter overshoots by up to ~1.3 dB (CI 2026-10-13).
+    expect(20 * Math.log10(LOUDER_PEAK_LIMIT)).toBeLessThanOrEqual(-2);
   });
 
   test('a silent source: no sound map, -an', () => {

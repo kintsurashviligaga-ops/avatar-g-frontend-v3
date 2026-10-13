@@ -660,10 +660,12 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
 }
 
 /**
- * Peak ceiling after a louder volume (-1 dBFS, linear). Production 2026-10-13: „louder" (+6 dB) on a montage whose peak
- * was -3.4 dBFS delivered a peak of +2.4 dBFS — clipped sound on every device. AAC adds a little overshoot, hence 1 dB.
+ * Peak ceiling after a louder volume (-2 dBFS, linear). Production 2026-10-13: „louder" (+6 dB) on a montage whose peak
+ * was -3.4 dBFS delivered a peak of +2.4 dBFS — clipped sound on every device. The limiter holds the samples it is
+ * given, but the AAC encoder after it adds its own overshoot: with a -1 dBFS ceiling the decoded file still peaked at
+ * +0.27 dBFS in CI (live E2E run 38425457743, the beat montage) and -0.4 dBFS here, so the ceiling leaves 2 dB.
  */
-export const LOUDER_PEAK_LIMIT = 0.89;
+export const LOUDER_PEAK_LIMIT = 0.794;
 
 /** The sound chain (`-af`) of the first pass; empty when the sound passes through as it is (still re-encoded to AAC). */
 export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[] {
