@@ -244,7 +244,11 @@
   },
   "proposed": {
     "note": "Functions the code calls before their proposal is applied: each is created by a reviewed SQL file under docs/handoffs/**/proposals/, and its caller treats 'not provisioned' as an answer (fails open, as before) instead of failing silently. Applying a proposal to Production is the owner's word; then the SQL moves to supabase/migrations/ and the name moves to production (as 20261013a did on 2026-10-13).",
-    "functions": []
+    "functions": [
+      "consume_film_waiver",
+      "record_film_waiver",
+      "restore_film_waiver"
+    ]
   },
   "dynamic": [
     "app/api/account/delete/route.ts",

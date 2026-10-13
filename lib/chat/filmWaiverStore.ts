@@ -55,10 +55,11 @@ export function filmChargeRefFor(tokenId: string): string {
 
 const claimKey = (tokenId: string) => `film-waiver:${tokenId}`;
 
-async function call(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; ok: boolean; missing: boolean }> {
+// The RPC name is written out at each call site (not passed in): the schema-drift scanner reads literal names.
+async function call(run: (c: RpcClient) => PromiseLike<{ data: unknown; error: RpcError }>): Promise<{ data: unknown; ok: boolean; missing: boolean }> {
   if (!configured() || Date.now() < missingUntil) return { data: null, ok: false, missing: Date.now() < missingUntil };
   try {
-    const { data, error } = await (await clientFactory()).rpc(fn, args);
+    const { data, error } = await run(await clientFactory());
     if (error) {
       const missing = notProvisioned(error);
       if (missing) missingUntil = Date.now() + MISSING_RECHECK_MS;
@@ -76,13 +77,15 @@ export async function recordFilmWaiver(
   userId: string,
   waiver: { kind: 'paid'; credits: number; ref: string } | { kind: 'free' },
 ): Promise<boolean> {
-  const r = await call('record_film_waiver', {
-    p_token: tokenId,
-    p_user: userId,
-    p_kind: waiver.kind,
-    p_credits: waiver.kind === 'paid' ? Math.round(waiver.credits) : 0,
-    p_ref: waiver.kind === 'paid' ? waiver.ref : null,
-  });
+  const r = await call((c) =>
+    c.rpc('record_film_waiver', {
+      p_token: tokenId,
+      p_user: userId,
+      p_kind: waiver.kind,
+      p_credits: waiver.kind === 'paid' ? Math.round(waiver.credits) : 0,
+      p_ref: waiver.kind === 'paid' ? waiver.ref : null,
+    }),
+  );
   return r.ok;
 }
 
@@ -92,7 +95,7 @@ export async function recordFilmWaiver(
  * markers.
  */
 export async function consumeFilmWaiver(tokenId: string, userId: string): Promise<WaiverAnswer> {
-  const r = await call('consume_film_waiver', { p_token: tokenId, p_user: userId });
+  const r = await call((c) => c.rpc('consume_film_waiver', { p_token: tokenId, p_user: userId }));
   if (r.ok) {
     return r.data === 'paid' || r.data === 'free' || r.data === 'spent' || r.data === 'void' || r.data === 'none' ? r.data : 'unavailable';
   }
@@ -108,7 +111,7 @@ export async function consumeFilmWaiver(tokenId: string, userId: string): Promis
 
 /** Hand a spent waiver back — the stitch that spent it failed. Never throws. */
 export async function restoreFilmWaiver(tokenId: string, userId: string): Promise<void> {
-  const r = await call('restore_film_waiver', { p_token: tokenId, p_user: userId });
+  const r = await call((c) => c.rpc('restore_film_waiver', { p_token: tokenId, p_user: userId }));
   if (r.ok) return;
   if (r.missing) await storeRelease(userId, claimKey(tokenId));
 }
