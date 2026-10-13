@@ -341,6 +341,33 @@ describe('crash: a worker that dies is replaced once; then the job is given up a
     held.calls[1]!.finish();
     expect(await other).toMatchObject({ outcome: 'delivered' });
   });
+
+  test('the last attempt keeps rendering through a heartbeat whose reads fail, and delivers (CI E2E 38375527645)', async () => {
+    // The live run: the sweep's attempt 2 was killed by its own heartbeat after a failed read of the row, and with no
+    // attempt left the job stayed `processing` with nobody to finish it. A read that fails is no evidence of anything.
+    const f = fake();
+    const id = await queued(f);
+    const held = heldRender();
+    f.deps.render = held.render;
+    const first = workMontageJob(f.deps, { jobId: id, worker: 'w1' });
+    await flush();
+    f.clock.now += LEASE_MS;
+    const retry = workMontageJob(f.deps, { jobId: id, worker: 'w2' });
+    await flush();
+    await f.beat(); // w1 hears the takeover and stops
+    expect(await first).toEqual({ ran: true, outcome: 'lost' });
+    expect(f.store.rows.get(id)!.exec).toMatchObject({ attempt: 2, maxAttempts: 2, owner: 'w2' });
+
+    f.store.dropReads = 3; // this beat cannot read the row at all
+    await f.beat();
+    expect(held.calls[1]!.opts.signal.aborted).toBe(false);
+    await f.beat(); // the next one gets through and renews the lease
+    expect(f.store.rows.get(id)!.exec!.leaseUntil).toBe(f.clock.now + LEASE_MS);
+    held.calls[1]!.finish();
+    expect(await retry).toMatchObject({ ran: true, outcome: 'delivered' });
+    expect(f.store.rows.get(id)).toMatchObject({ status: 'completed', exec: { attempt: 2, owner: null } });
+    expect(trail(f).filter((t) => t.includes('lost'))).toHaveLength(1); // w1's, not w2's
+  });
 });
 
 describe('sweep', () => {

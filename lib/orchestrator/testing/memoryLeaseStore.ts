@@ -1,7 +1,8 @@
 /**
  * An in-memory LeaseStore with the live store's semantics (lib/orchestrator/jobLease supabaseLeaseStore): an insert of
  * a taken id answers 'exists'; a compare-and-set lands only when the status and _exec.v still match; a progress write
- * only while the row is processing under that owner. `crash` makes the next writes fail like a dropped connection.
+ * only while the row is processing under that owner. `down` makes every write fail like a dropped connection, and
+ * `dropReads` the next N reads (the live store answers a failed read as null).
  */
 import { execOf, type LeaseRow, type LeaseStore, type LeaseWrite } from '../jobLease';
 
@@ -11,6 +12,8 @@ export interface MemoryLeaseStore extends LeaseStore {
   writes: { cas: number; progress: number };
   /** While true every write answers "did not happen". */
   down: boolean;
+  /** The next this-many reads answer null, as the live store answers a read that failed. */
+  dropReads: number;
   /** Called before every compare-and-set; a test interleaves a competing write here. */
   beforeCas?: (id: string) => Promise<void> | void;
 }
@@ -22,6 +25,7 @@ export function memoryLeaseStore(now: () => number = () => Date.now()): MemoryLe
     rows,
     writes: { cas: 0, progress: 0 },
     down: false,
+    dropReads: 0,
     async insert(row) {
       if (store.down) return 'error';
       if (rows.has(row.id)) return 'exists';
@@ -32,6 +36,10 @@ export function memoryLeaseStore(now: () => number = () => Date.now()): MemoryLe
       return 'inserted';
     },
     async read(id) {
+      if (store.dropReads > 0) {
+        store.dropReads -= 1;
+        return null;
+      }
       const r = rows.get(id);
       return r ? copy(r) : null;
     },

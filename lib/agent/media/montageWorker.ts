@@ -21,7 +21,7 @@
 import { OUTPUT_FPS } from '@/lib/services/montage/beatPlan';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 import { ASPECT_DIMS, timelineDuration } from '@/lib/services/montage/montagePlan';
-import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
+import { HEARTBEAT_MS, claim, complete, fail, heartbeat, mustStop, reap, type Beat, type LeaseRow } from '@/lib/orchestrator/jobLease';
 import { MONTAGE_KIND, payDebt, reserveOf, runIdOf, type MontageExecDeps } from './montageExec';
 import { CLIP_QC_MAX_DIFF, CLIP_QC_SIZE, audioTiming, clipCheckPoints, frameDiff, qcAvSync, qcClips, qcMaster, sourceContribution, type ClipVerdict, type QcOutcome } from './montageAsk';
 import { checkManifest, isPictureKind, parseAgentRequest, sameManifest, type AgentMontageRequest } from './montageManifest';
@@ -143,7 +143,7 @@ export async function workMontageJob(deps: MontageExecDeps, input: { jobId: stri
   const stopBeating = deps.every(HEARTBEAT_MS, async () => {
     if (ctl.signal.aborted) return;
     const b = await heartbeat(deps.store, jobId, worker, deps.now());
-    if (b !== 'held') {
+    if (mustStop(b)) {
       beat = b;
       ctl.abort();
     }

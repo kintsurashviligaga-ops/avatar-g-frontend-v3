@@ -187,27 +187,49 @@ export async function claim(store: LeaseStore, id: string, owner: string, now: n
   return ok ? { ok: true, row: { ...row, status: 'processing', exec, params: withExec(row, exec) } } : { ok: false, reason: 'raced' };
 }
 
-export type Beat = 'held' | 'lost' | 'stopped';
+export type Beat = 'held' | 'lost' | 'stopped' | 'unsure';
+
+/** Must the worker stop now? Only on what the row says ('lost', 'stopped'); a row that could not be read is no reason. */
+export const mustStop = (b: Beat): b is 'lost' | 'stopped' => b === 'lost' || b === 'stopped';
+
+/** Between two tries of a read or write that did not answer: a dropped connection is usually back a moment later. */
+const RETRY_PAUSE_MS = [250, 1_000];
+const pause = (i: number) => new Promise((r) => setTimeout(r, RETRY_PAUSE_MS[Math.min(i, RETRY_PAUSE_MS.length - 1)]));
 
 /**
  * Renew the lease. 'stopped' = the row was failed under the worker (the owner cancelled, or the sweep gave it up);
  * 'lost' = another worker holds it now, or already delivered it (this one stalled past its lease). Either way the
  * worker must stop at once.
+ *
+ * 'unsure' = the row could not be read, or the renewal could not be written (a dropped connection, the database away
+ * for a moment): no evidence of anything, so the worker carries on and the next beat tries again. A worker that took a
+ * failed read for a lost lease walked away from a healthy render, and on its last attempt left the row `processing`
+ * with nobody to finish it (CI E2E run 38375527645, job recovery). The lease, renewed by the last beat that got
+ * through, lasts LEASE_MS (six beats); if the database stays away longer, another worker may take the job over, and
+ * this one hears it from the first beat that gets through ('lost'), or its completion is refused (fenced by owner).
  */
 export async function heartbeat(store: LeaseStore, id: string, owner: string, now: number): Promise<Beat> {
   for (let i = 0; i < 3; i += 1) {
     const row = await store.read(id);
-    if (!row || !row.exec) return 'lost';
+    if (!row) {
+      if (i < 2) await pause(i);
+      continue;
+    }
+    if (!row.exec) return 'lost';
     if (row.status === 'failed') return 'stopped';
     if (row.status !== 'processing' || row.exec.owner !== owner) return 'lost';
     const exec = bump(row.exec, { leaseUntil: now + LEASE_MS });
     if (await store.cas(id, { v: row.exec.v, from: ['processing'] }, { params: withExec(row, exec) })) return 'held';
-    // Lost the compare-and-set: something else changed _exec in between. Read again and decide.
+    // The compare-and-set did not land: something else changed _exec in between, or the write did not get through.
+    // Read again and decide.
   }
-  return 'lost';
+  return 'unsure';
 }
 
-/** Move the row to a final state, only while `owner` still holds its lease. True when it moved. */
+/**
+ * Move the row to a final state, only while `owner` still holds its lease. True when it moved. A read or write that
+ * does not answer is tried again after a pause: a finished render is not thrown away for one dropped connection.
+ */
 async function finish(
   store: LeaseStore,
   id: string,
@@ -216,8 +238,10 @@ async function finish(
   change: Partial<ExecState>,
 ): Promise<boolean> {
   for (let i = 0; i < 3; i += 1) {
+    if (i > 0) await pause(i - 1);
     const row = await store.read(id);
-    if (!row || !row.exec || row.status !== 'processing' || row.exec.owner !== owner) return false;
+    if (!row) continue;
+    if (!row.exec || row.status !== 'processing' || row.exec.owner !== owner) return false;
     const exec = bump(row.exec, { owner: null, leaseUntil: null, ...change });
     if (await store.cas(id, { v: row.exec.v, from: ['processing'] }, { ...write, params: withExec(row, exec) })) return true;
   }
@@ -389,9 +413,12 @@ export function supabaseLeaseStore(client: () => Sb | null, report: (e: unknown,
       if (!c || !id) return null;
       try {
         const { data, error } = await c.from(TABLE).select(COLS).eq('id', id).maybeSingle();
-        if (error || !data) return null;
+        // A read that failed is reported (a worker's heartbeat rides on it); a row that is not there is not.
+        if (error) { report(new Error(error.message), { fn: 'lease.read', id }); return null; }
+        if (!data) return null;
         return leaseRowOf(data as Record<string, unknown>);
-      } catch {
+      } catch (e) {
+        report(e, { fn: 'lease.read', id });
         return null;
       }
     },
