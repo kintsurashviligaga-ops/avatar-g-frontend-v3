@@ -1,40 +1,42 @@
 # BOG Payments — Handoff (v1.3)
 
-2026-10-13 · ვერდიქტი: **NOT READY — merge Owner-ის ერთ მოქმედებას ელოდება**: OAuth 200 Mac-ზე და OPAY წყვილის ჩაწერა Vercel Production-ში. კოდი, ტესტები, Production ბაზის თავსებადობა და rollback მზადაა.
+2026-10-13 09:15Z · ვერდიქტი: **ADMIN-ONLY BOG PROVEN — საჯარო გახსნა NO-GO ცალკე gate-ებამდე.** PR #59 Production-შია (`883a013`), BOG მხოლოდ ადმინისთვისაა, OAuth ცოცხალი წყვილით 200-ს აბრუნებს. Owner-ის ცოცხალი 10 ₾ გადახდა (მცდელობა 2, 09:09:27Z) `completed`-ია და ზუსტად +100 კრედიტი ერთხელ ჩაირიცხა; მცდელობა 1-ის ბანკის უარი სწორად ჩაიწერა. ერთი რამ ცალკე დაუმტკიცებელია: ჩარიცხვა ხელმოწერილმა callback-მა გააკეთა თუ დაბრუნების გვერდმა ([E2E Report](BOG_PRODUCTION_E2E_REPORT.md), კრიტერიუმი 7).
 
 ## სად რა არის
 
 | | |
 |---|---|
-| ბრენჩი / PR | `claude/bog-payments-master-task-yjxq59` → PR #59 (draft) → `main` |
-| კოდი | `lib/billing/bogClient.ts` (OAuth, შეკვეთა, receipt, ხელმოწერა, `bogCheckoutMode`), `bogSettlement.ts` (ჩარიცხვა, refund-ის მდგომარეობები, sandbox-ის დაცვა), `bogCatalog.ts` (ფასები, 500 ₾), `bogDiagnostics.ts` + `components/admin/BogReadiness.tsx` (ადმინ ბარათი); route-ები `app/api/billing/bog/*`, `app/api/checkout/capabilities`, `app/api/cron/bog-billing`, `app/api/admin/billing/bog` |
+| კოდი | `main` (`883a013`, PR #59 merged 2026-10-13 05:51Z). `lib/billing/bogClient.ts` (OAuth, შეკვეთა, receipt, ხელმოწერა, `bogCheckoutMode`), `bogSettlement.ts` (ჩარიცხვა, refund-ის მდგომარეობები, sandbox-ის დაცვა), `bogCatalog.ts` (ფასები, 500 ₾), `bogDiagnostics.ts` + `components/admin/BogReadiness.tsx` (ადმინ ბარათი); route-ები `app/api/billing/bog/*`, `app/api/checkout/capabilities`, `app/api/cron/bog-billing`, `app/api/admin/billing/bog` |
+| Production | `dpl_Gduf2SkotvazFoQp3qX1TeBQCX6M` (`883a013`), READY 06:28:39Z |
 | ტესტები | route / unit ტესტები ფაილების გვერდით; `tests/sql/bog/` (Production-ის ასლი); `__tests__/integration/bog-payments.e2e.test.ts` (`npm run test:bog-e2e`) |
 | ინტეგრაციის აღწერა | `lib/billing/BOG_INTEGRATION.md` |
-| Production smoke | `scripts/bog-production-smoke.mjs` (ანონიმური მოთხოვნები, ჩაწერის გარეშე); GitHub → Actions → „BOG Production smoke (read-only)" |
-| v1.3 დოკუმენტები | [E2E Report](BOG_PRODUCTION_E2E_REPORT.md) · [Security](BOG_SECURITY_VERIFICATION.md) · [Release Checklist](BOG_PAYMENT_RELEASE_CHECKLIST.md) · [Rollback](BOG_ROLLBACK_PLAN.md) · [Owner Actions](BOG_OWNER_ACTIONS.md) |
+| Production smoke | `scripts/bog-production-smoke.mjs`; GitHub → Actions → „BOG Production smoke (read-only)“ (`expect_bog=false`) |
+| v1.3 დოკუმენტები | [E2E Report](BOG_PRODUCTION_E2E_REPORT.md) · [Security](BOG_SECURITY_VERIFICATION.md) · [Release Checklist](BOG_PAYMENT_RELEASE_CHECKLIST.md) · [Rollback](BOG_ROLLBACK_PLAN.md) · [Owner Actions](BOG_OWNER_ACTIONS.md) · [2026-10-13 მტკიცებულება](evidence/production-2026-10-13.md) |
 | ისტორია | [v1.2 ანგარიში](2026-10-12-bog-payments-v1-ka.md), `evidence/` |
 
 ## რა გაკეთდა v1.3-ში
 
-- Phase 0 აუდიტი მიმდინარე HEAD-ზე: 15 პუნქტი, კრიტიკული დეფექტი არ არის.
-- გამკაცრება `93ec307`: Preview / Development deployment-ზე BOG checkout ყოველთვის დახურულია (+3 ტესტი, რომლებიც გამოსწორების გარეშე ვარდება).
-- Production ბაზა (read-only): 6 ფულის ფუნქცია, `bog_orders`-ის სვეტები, constraint-ები და ინდექსები, ledger-ის იდემპოტენტობის ინდექსები ემთხვევა. მიგრაცია არ სჭირდება.
-- ტესტები: 438/438, SQL 39/39, E2E 14/14, სრული jest 13 326 ✓ (16 ✕ მხოლოდ sandbox-ის ffmpeg-ის გამო, CI-ში მწვანე).
-- PR #58-თან (head `4620ac5`, 2026-10-13) და Image Studio-ს ბრენჩებთან საერთო ფაილი 0.
-- Production smoke-ის სკრიპტი და ხელით გასაშვები GitHub Actions workflow (+7 ტესტი): ჩემი sandbox-იდან myavatar.ge 2026-10-13-დან აღარ იხსნება, ამიტომ deploy-ის შემდეგ smoke GitHub-ის runner-ზე ეშვება.
+- Phase 0 აუდიტი: 15 პუნქტი, კრიტიკული დეფექტი არ არის. გამკაცრება `93ec307`: Preview / Development-ზე BOG checkout ყოველთვის დახურულია.
+- Production ბაზის თავსებადობა (read-only): მიგრაცია არ სჭირდება; 6 ფულის ფუნქცია merge-ის შემდეგაც უცვლელია.
+- Vercel Production env (Claude, 03:20Z): `BOG_CHECKOUT_MODE=admin`, `BOG_ENV=production`; override-ები არ არის.
+- Merge Owner-ის 05:50:55Z-ის დადასტურებით, OAuth-ის შედეგამდე: Owner-ის 05:43Z-ის Redeploy-მ ძველი `30be5a2` ააშენა და BOG ყველა შესულ მომხმარებელს აჩვენა ≈10 წუთით (შეკვეთა არ შექმნილა). merge-მა ეს დახურა 05:57Z-ზე.
+- OAuth: 06:10Z 400 (Client ID / Secret შეუსაბამობა) → Owner-მა ორივე ხელახლა ჩაწერა 06:23Z → 06:37Z **200**.
+- Smoke GitHub-ის runner-ზე: 9/9 (05:5xZ) და ✓ (06:37Z).
+- ცოცხალი მცდელობა 1 (06:44Z): BOG-მა შეკვეთა შექმნა, ბანკმა უარყო („insufficient funds“), კრედიტი არ ჩარიცხულა.
+- Phase 7–8 (07:21Z, read-only): refund, გამოწერა, allowance, BOG ledger, ღია შეკვეთა — ყველა 0; პოლიტიკა უცვლელი.
+- ცოცხალი მცდელობა 2 (09:08Z → `completed` 09:09:27Z): ერთი `wallet_topups` რიგი, ერთი ledger ჩანაწერი +100, ბალანსი baseline + 100, ღია შეკვეთა 0, 6 ფულის ფუნქციის md5 უცვლელი (read-only, 09:11Z).
 
 ## შემდეგი ნაბიჯები (თანმიმდევრობით)
 
-1. ✓ **Owner:** Vercel კონექტორი ხელახლა დაკავშირდა (2026-10-13 03:16Z).
-2. ✓ **Claude:** `BOG_CHECKOUT_MODE=admin`, `BOG_ENV=production` (03:20Z); override-ები არ არსებობდა; `CRON_SECRET` და scope-ები შემოწმდა ([Security](BOG_SECURITY_VERIFICATION.md), „Vercel Production env“).
-3. **Owner:** `bog-oauth-check.mjs` → `✓ ok · HTTP 200`, შემდეგ OPAY წყვილი Vercel Production-ში (Sensitive).
-4. **Claude:** env metadata → Release Checklist-ის 10 პირობა → PR #59 ready → merge → deployment ID / SHA → smoke (GitHub Actions) + read-only SQL.
-5. **Owner (ცალკე სიტყვით):** ცოცხალი 10 ₾ → **Claude:** შეკვეთა, ზუსტად +100 კრედიტი, ერთი ledger ჩანაწერი (read-only SQL) → E2E Report-ის განახლება.
-6. შემდეგი gate-ები (ცალკე): საჯარო checkout, ავტომატური განახლებები, refund-ის კრედიტ-პოლიტიკა, ლიმიტების გაზრდა.
+1. ~~Owner: მცდელობა 2~~ ✓ 09:09Z. ~~Claude: ერთჯერადი read-only შემოწმება~~ ✓ 09:11Z.
+2. **Owner:** ამ დოკუმენტების PR #61-ის merge (მხოლოდ დოკუმენტებია, კოდი არ იცვლება).
+3. შემდეგი gate-ები (ცალკე, Owner-ის სიტყვით): საჯარო checkout (`BOG_CHECKOUT_MODE`-ის წაშლა; ამ დროს გეგმის ღილაკიც იხსნება, ამიტომ ჯერ ბანკის პასუხი ავტომატურ გადახდებზე ან გეგმის ცალკე ჩამკეტი), ავტომატური განახლებები, refund-ის კრედიტ-პოლიტიკა, ლიმიტების გაზრდა. ცოცხალი გადახდა ამაზე მეტად Owner-ის ახალი სიტყვის გარეშე არ კეთდება.
+4. ბანკი: კითხვები 2–5 ([Owner Actions](BOG_OWNER_ACTIONS.md)).
 
 ## წესები, რომლებიც არ უნდა დაირღვეს
 
 - საიდუმლოს არ ვითხოვთ, არ ვბეჭდავთ და არ ვწერთ; OPAY წყვილს მხოლოდ Owner წერს Vercel-ში.
+- env-ის შეცვლის შემდეგ Redeploy მხოლოდ მიმდინარე Production deployment-ზე (`883a013`), არასდროს ძველზე.
 - Production ბაზა მხოლოდ read-only-ა; მიგრაცია მხოლოდ Owner-ის ცალკე სიტყვით.
 - ცოცხალი გადახდა მხოლოდ Owner-ის სიტყვით და მხოლოდ Owner-ის მიერ; გაურკვეველ მდგომარეობაში ხელახლა ცდა არ ხდება.
 - ფასები, კრედიტის კურსი და refund-ის პოლიტიკა უცვლელია.

@@ -1,12 +1,12 @@
 # BOG Payments — უსაფრთხოების გადამოწმება (v1.3, Phase 0)
 
-2026-10-12 · ბრენჩი `claude/bog-payments-master-task-yjxq59` · PR #59 (draft) · კოდი `93ec307` · main `30be5a2` (= Production)
+2026-10-12, განახლდა 2026-10-13 09:15Z · PR #59 merged (`883a013` = Production, `dpl_Gduf2SkotvazFoQp3qX1TeBQCX6M`) · აუდიტის კოდი `93ec307`
 
 სტატუსები: **PROVEN** (ტესტით ან read-only შემოწმებით დადასტურდა) · **PARTIAL** · **BLOCKED** · **NOT RUN**. Unit/E2E ტესტები ყალბი BOG-ით მუშაობს. ისინი კოდის ქცევას ადასტურებს, რეალურ საბანკო ტრანზაქციას არა.
 
 ## შედეგი
 
-კრიტიკული დეფექტი არ აღმოჩნდა. ერთი გამკაცრება დაემატა: Preview / Development deployment-ზე ცოცხალი BOG გადახდა ყოველთვის დახურულია (`93ec307`, პუნქტი 14). Vercel-ის კონფიგურაციის შემოწმება **BLOCKED**-ია, სანამ Vercel კონექტორი გუნდზე წვდომას არ მიიღებს.
+კრიტიკული დეფექტი არ აღმოჩნდა. ერთი გამკაცრება დაემატა: Preview / Development deployment-ზე ცოცხალი BOG გადახდა ყოველთვის დახურულია (`93ec307`, პუნქტი 14). Vercel-ის კონფიგურაცია შემოწმდა (metadata, ქვემოთ). merge-მდე ერთი ოპერაციული ინციდენტი მოხდა (ძველი კოდის Redeploy, ქვემოთ): შეკვეთა არ შექმნილა, ფული არ ჩამოჭრილა.
 
 | # | საკითხი | სტატუსი | მტკიცება |
 |---|---|---|---|
@@ -17,7 +17,7 @@
 | 5 | Refund Requested / Partial / Completed | **PROVEN (ყალბი BOG)** | `refund_requested` → `refunded_partially` → `refunded`, მხოლოდ წინ (E12). რეალური refund BOG-ში ჯერ **NOT RUN** |
 | 6 | Completed Receipt Replay refund-ის შემდეგ | **PROVEN** | E12: კრედიტი ხელახლა არ ირიცხება. E13: გაუქმებული გეგმის ავტო-განახლება არ აღდგება და თვე ხელახლა არ ირიცხება |
 | 7 | Double Settlement | **PROVEN** | `bog_fulfill_order`: ერთი ტრანზაქცია, row lock. SQL C1: 16 პარალელური ჩარიცხვა → ერთხელ. C3: 16 პარალელური renewal ჩარიცხვა → ერთხელ. E1: callback ზუსტად ერთხელ არიცხავს |
-| 8 | Credit Ledger Idempotency | **PROVEN (Production read-only)** | Production-ში (19:45Z) არის `credit_ledger_user_ref_positive_uniq` / `_negative_uniq` (user_id + `metadata->>'ref'`) და `wallet_topups_pkey(ref)`, ლოკალური ასლის იდენტური |
+| 8 | Credit Ledger Idempotency | **PROVEN (Production read-only)** | ცოცხალი გადახდა (09:09Z): ერთი topup, ერთი ledger ჩანაწერი. Production-ში (19:45Z) არის `credit_ledger_user_ref_positive_uniq` / `_negative_uniq` (user_id + `metadata->>'ref'`) და `wallet_topups_pkey(ref)`, ლოკალური ასლის იდენტური |
 | 9 | Recurring Billing Safety | **PROVEN (კოდი)** / ბანკი **UNCONFIRMED** | ერთ პერიოდზე ერთი claim (C2, `bog_orders_renewal_period_uniq` Production-შიც არის); backoff (T8); 3 უარი → `past_due`, მეოთხე ჩამოჭრა არ ხდება (T7, E10); გაუქმება აჩერებს (E9). ავტომატურ გადახდებს ბანკი არ ადასტურებს, ამიტომ გეგმა მხოლოდ ადმინისთვისაა (admin რეჟიმი) |
 | 10 | 500 ₾ ერთ ტრანზაქციაზე | **PROVEN** | 500 ₾-ზე მეტი → 400 `BOG_LIMIT`, რიგი და BOG შეკვეთა არ იქმნება (checkout route ტესტი) |
 | 11 | Stripe-ის ალტერნატიული გზა | **PARTIAL** | `bog:false`-ისას Credits ფანჯარა და საფულე Stripe-ს სთავაზობს. BOG-ის უარის შემდეგ Stripe-ზე გადასვლა არ ხდება. Stripe-ით Production-ში გადახდა ჯერ არ დასრულებულა. PR #59 Stripe-ის კოდს არ ცვლის, ანუ დღევანდელზე უარესი არ ხდება |
@@ -30,20 +30,30 @@
 
 | ცვლადი | ტიპი · scope | მდგომარეობა |
 |---|---|---|
-| `BOG_CLIENT_ID`, `BOG_SECRET_KEY` | Sensitive · მხოლოდ Production | არის, 2026-10-02-დან. OAuth-ით ჯერ შემოწმებული არ არის; Owner ჩაანაცვლებს OPAY წყვილით OAuth 200-ის შემდეგ |
-| `BOG_ENV` | Sensitive · მხოლოდ Production | 03:20Z → `production` (Claude). ძველი მნიშვნელობა უცნობია (Sensitive) |
-| `BOG_CHECKOUT_MODE` | Plain · მხოლოდ Production | 03:20Z შექმნა Claude-მა: `admin` |
-| `BOG_CALLBACK_PUBLIC_KEY`, `BOG_API_BASE`, `BOG_OAUTH_URL`, `BOG_CALLBACK_IP_ALLOWLIST` | — | არ არსებობს. სიაში ჩანს 2026-02-18-ის შემდეგ შექმნილი ყველა ცვლადი, ეს სახელები კი repo-ში 2026-09-29-დან ჩნდება |
+| `BOG_CLIENT_ID` | Sensitive · მხოლოდ Production | Owner 06:23:14Z |
+| `BOG_SECRET_KEY` | Sensitive · მხოლოდ Production | Owner 05:42Z, შემდეგ 06:23:42Z |
+| `BOG_ENV` | Sensitive · მხოლოდ Production | 03:20Z → `production` (Claude) |
+| `BOG_CHECKOUT_MODE` | Plain · მხოლოდ Production | 03:20Z → `admin` (Claude) |
+| `BOG_CALLBACK_PUBLIC_KEY`, `BOG_API_BASE`, `BOG_OAUTH_URL`, `BOG_CALLBACK_IP_ALLOWLIST` | — | არ არსებობს |
 | `CRON_SECRET` | Sensitive · Production + Preview | არის |
-| `NEXT_PUBLIC_SITE_URL` | — | ხილულ სიაში არ არის (Vercel-ის პასუხი 12 უძველეს ცვლადს ჭრის). callback URL ასეთ შემთხვევაში `NEXT_PUBLIC_APP_URL`-იდან იგება (Sensitive, Production); deploy-ის შემდეგ ადმინ ბარათზე უნდა ჩანდეს `callback: https://myavatar.ge/api/billing/bog/webhook` |
+| callback URL | — | ადმინ ბარათი: `https://myavatar.ge/api/billing/bog/webhook` |
 
-რა გავლენა აქვს: მიმდინარე Production კოდი (`30be5a2`) `BOG_CHECKOUT_MODE`-ს არ კითხულობს, `BOG_ENV`-ს კი მხოლოდ ჰოსტის ასარჩევად იყენებს. env მხოლოდ ახალ deploy-ზე მოქმედებს, ამიტომ საიტი ამ ცვლილებით არ შეცვლილა. შემდეგი deploy PR #59 უნდა იყოს ([Release Checklist](BOG_PAYMENT_RELEASE_CHECKLIST.md)).
+`BOG_*` Preview / Development-ში არ არის. OAuth (ადმინ ბარათი, Production, 06:37Z): `ok · HTTP 200 · production · 1073 ms`. ბარათის პასუხში საიდუმლო და token არ ჩანს (`scrub`), მხოლოდ Client ID-ის ბოლო 4 სიმბოლო.
 
-## Production ბაზა (read-only, 2026-10-12 19:45Z)
+## ინციდენტი 2026-10-13 05:43–05:57Z (ძველი კოდის Redeploy)
+
+- **რა მოხდა:** Owner-მა 05:42Z-ზე განაახლა `BOG_SECRET_KEY` და 05:43Z-ზე Redeploy დააჭირა. Vercel-მა ააშენა მიმდინარე Production commit, ანუ **ძველი** `30be5a2` (`dpl_9oAMEXe73byKnwiie2sPijLDVsyZ`). ძველი კოდი `BOG_CHECKOUT_MODE`-ს არ კითხულობს, ამიტომ ≈05:47Z-დან BOG ყველა შესულ მომხმარებელს გამოუჩნდა (05:50Z ანონიმური capabilities → `bog:true`).
+- **გავლენა:** `bog_orders`-ში ახალი რიგი არ გაჩნდა (05:5xZ და 06:3xZ: მხოლოდ 4 ძველი `init_failed`). იმ deployment-ის წყვილი შეუსაბამო იყო (ახალი Secret + ძველი Client ID; იგივე env-იან `dpl_9m6Up…`-ზე OAuth 06:10Z-ზე 400-ით ჩავარდა), ამიტომ წარმატებული გადახდა შეუძლებელი იყო. საიდუმლო არსად გამოჩენილა: Redeploy მას მხოლოდ სერვერზე იყენებს.
+- **დახურვა:** Owner-მა 05:50:55Z-ზე დაადასტურა merge; `883a013` 05:57Z-დან Production-შია (admin-only), smoke 9/9.
+- **გაკვეთილი:** env-ის შეცვლის შემდეგ Redeploy მხოლოდ მიმდინარე, სწორ deployment-ზე; Owner-ს env-ის ჩაწერას ვთხოვთ, merge-ს და deploy-ს Claude აკეთებს. Claude-ის `cancel_deployment` მცდელობა ავტომატურმა რეჟიმმა უარყო (Owner-ის ცალკე სიტყვა სჭირდებოდა).
+
+## Production ბაზა (read-only, 2026-10-12 19:45Z; ხელახლა 2026-10-13 07:21Z და 09:11Z)
 
 - 6 ფულის ფუნქცია (`bog_fulfill_order`, `bog_claim_renewal`, `bog_record_renewal_failure`, `credit_wallet_gel`, `grant_subscription_allowance`, `update_credits_balance`) md5-ით ემთხვევა ლოკალურ ასლს (`tests/sql/bog/build.sh`). პირველი ხუთი SECURITY DEFINER-ია; `anon`/`authenticated`-ს მათი გამოძახება არ შეუძლია.
 - `bog_orders`: 19 სვეტი, 8 constraint და 7 ინდექსი იდენტურია. `status`-ზე CHECK არ არის, ამიტომ ახალი refund სტატუსები მიგრაციის გარეშე ჩაიწერება. Refund-ის თანხა ბაზაში არ ინახება.
-- `bog_orders`-ში 4 რიგია, ოთხივე `init_failed` (ბოლო: 2026-10-06 14:02Z). გადახდილი შეკვეთა არ არის.
+- `bog_orders`: merge-ისას 4 რიგი, ოთხივე `init_failed` (ბოლო: 2026-10-06 14:02Z). 2026-10-13 07:24Z: + Owner-ის ტესტის შეკვეთა `rejected` (ბანკი: თანხის უკმარისობა). გადახდილი შეკვეთა არ არის; BOG-ის ledger / topup / allowance ჩანაწერი 0.
+- 2026-10-13 09:11Z: + Owner-ის მეორე ტესტის შეკვეთა `completed` (09:09:27Z). ამ შეკვეთაზე ერთი `wallet_topups` რიგი და ერთი ledger ჩანაწერი (+100); ღია შეკვეთა 0.
+- 6 ფულის ფუნქციის md5 2026-10-13 07:2xZ-ზე და 09:11Z-ზეც უცვლელია.
 - **მიგრაცია არ სჭირდება.**
 
 ## ტესტები (`93ec307`, ლოკალურად)
