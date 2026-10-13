@@ -66,6 +66,22 @@ file).
 | 41 | (test harness, Preview E2E run 38386454944, 1c2012f) the run stopped at its fifth step: supabase/setup-cli answered "Failed to resolve latest Supabase CLI release: rate limit exceeded" | FIXED (environment): with `version: latest` the action looks the release up with an anonymous API call, which a shared runner's address can exhaust | ec7f742: both E2E workflows ask for the latest release with the job's own token (`gh release view`) and hand setup-cli that version | Preview E2E run 5 (38388633377) and the CI E2E on ec7f742 got through the step | CI | none for the product |
 | 42 | (test harness, Preview E2E runs 38369812054, 38375578275, 38388633377) the free-film stitch sent through Playwright's request client was cut with `read ETIMEDOUT` at 38.1 s, 37.9 s and 38.2 s; the transport check failed the run, while the server delivered the film and settled the money every time and Node's client got answers after 30.6–71.2 s on the same route | FIXED (test client) · not a product defect: Playwright's request client (playwright-core `happyEyeballs` agent, `keepAlive: true`) sends a TCP keepalive probe every idle second (measured from `/proc/net/tcp`) and libuv drops a socket after 10 unanswered probes 1 s apart; on the runner → Vercel path the probes on a silent connection stop being answered after about 27 s (inferred from the identical cut time). A browser keeps its own, slower keepalive; every browser test passed on the Preview | f1e3358: every stitch that runs ffmpeg goes through `_live` `longCall` (a fresh connection without keepalive), like the paid film and the double press already did; the transport check is unchanged and still fails a run on any cut | `tests/video-core-live/transport.spec.ts` (unchanged): Preview run 6 38394841616 on f1e3358 `cuts: []`, the free film 200 after 51.0 s through Node's client, 35 / 35; CI E2E 38394813999 on f1e3358 35 / 35 | T4 | none for the product |
 
+## Live Production E2E (2026-10-13, GG's 14:01Z brief)
+
+GG's admin account on myavatar.ge (e46c35c), driven from GG's Mac by a Playwright runner in GG's own signed-in
+session, 14:49–14:52Z: upload → montage → trim → volume → brightness → 2× → playback and download → Library → credits →
+job status. Every result was measured on the delivered MP4 with ffprobe / ffmpeg (job ids and files are in the
+owner's report, outside the repo).
+
+- Row 39 is now **PROVEN in Production (T6)**: the trim of the delivered montage delivered 90 frames, 3.000 s, 30 fps,
+  with sound; volume, brightness and 2× of the same master delivered (90, 90 and 45 frames); 0 credits charged
+  (balance unchanged); one Start double-click sent one request and made one job.
+- Row 43 is new.
+
+| # | Trigger | Final state | Fix (commit) | Regression test | Highest tier measured | Remaining limitation |
+| --- | --- | --- | --- | --- | --- | --- |
+| 43 | (Production E2E, 2026-10-13 ~14:50Z) „louder" (+6 dB) on a montage whose peak was −3.4 dBFS delivered a peak of **+2.4 dBFS**, so the sound clips on every device; the mean rose as asked (−16.5 → −12.0 dB) | FIXED in PR #63 (reaches Production with its merge): `audioFilters` applied `volume=+N dB` with no ceiling | PR #63: a peak limiter after every positive volume (`alimiter=limit=0.89:level=disabled`, about −1 dBFS, `LOUDER_PEAK_LIMIT`); a quieter or unchanged volume keeps its single filter | `editPlan.test` (the chain for +6 dB and −6 dB); `effects.ffmpeg.test` F13 on real ffmpeg: a tone peaking at −2.8 dBFS made 6 dB louder peaks at −0.69 dBFS and its mean still rises (−6.1 → −4.0 dB); without the limiter +2.94 dBFS (red) | T3 (the defect itself: T6) | until the merge, „louder" in Production can clip a loud source; nothing is charged (the lane is free) |
+
 Not defects, recorded as findings (behaviour by design, said in `evidence/t2-round3/findings.json`): a reload opens a fresh
 conversation (History reopens it); `?tool=video` is taken off the URL after opening, so Back/Forward carry no tool; the Video
 mode pick is not persisted across a reload; a director `revision_mismatch` offers "Edit storyboard", not Retry; the montage

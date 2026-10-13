@@ -659,6 +659,12 @@ export function videoFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   return vf;
 }
 
+/**
+ * Peak ceiling after a louder volume (-1 dBFS, linear). Production 2026-10-13: „louder" (+6 dB) on a montage whose peak
+ * was -3.4 dBFS delivered a peak of +2.4 dBFS — clipped sound on every device. AAC adds a little overshoot, hence 1 dB.
+ */
+export const LOUDER_PEAK_LIMIT = 0.89;
+
 /** The sound chain (`-af`) of the first pass; empty when the sound passes through as it is (still re-encoded to AAC). */
 export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[] {
   const { edits, plan } = req;
@@ -669,6 +675,7 @@ export function audioFilters(req: Pick<EditRequest, 'edits' | 'plan'>): string[]
   if (edit(edits, 'denoise')) af.push(DENOISE_AF);
   if (edit(edits, 'loudness')) af.push(LOUDNESS_AF);
   if (volume) af.push(`volume=${volume.db}dB`);
+  if (volume && volume.db > 0) af.push(`alimiter=limit=${LOUDER_PEAK_LIMIT}:level=disabled`);
   if (fade && fade.inSec > 0) af.push(`afade=t=in:st=0:d=${secArg(fade.inSec)}`);
   if (fade && fade.outSec > 0) af.push(`afade=t=out:st=${secArg(Math.max(0, plan.durationSec - fade.outSec))}:d=${secArg(fade.outSec)}`);
   return af;
