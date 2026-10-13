@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { assertIsolatedSupabase, assertResolvesToThisMachine, NotIsolatedError, PRODUCTION_SUPABASE_REF } from './guard';
+import { assertIsolatedSupabase, assertPreviewTargets, assertResolvesToThisMachine, NotIsolatedError, PRODUCTION_SUPABASE_REF } from './guard';
 
 const ok = { VIDEO_CORE_LIVE_E2E: '1', NEXT_PUBLIC_SUPABASE_URL: 'http://supabase.video-core-e2e.test:54321' } as unknown as NodeJS.ProcessEnv;
 
@@ -35,6 +35,25 @@ describe('the real-backend E2E refuses anything but a local Supabase (fail-close
   test('a missing or malformed URL is refused, never defaulted', () => {
     expect(() => assertIsolatedSupabase({ VIDEO_CORE_LIVE_E2E: '1' } as unknown as NodeJS.ProcessEnv)).toThrow(/missing or not a URL/);
     expect(() => assertIsolatedSupabase({ ...ok, NEXT_PUBLIC_SUPABASE_URL: '127.0.0.1:54321' })).toThrow(NotIsolatedError);
+  });
+
+  test('Preview mode: only a vcore-e2e alias, only with a quick tunnel of this run, never the site or Production', () => {
+    const tunnel = 'https://calm-river-1234.trycloudflare.com';
+    const base = 'https://vcore-e2e-0123456789ab.vercel.app';
+    expect(assertPreviewTargets({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: tunnel })).toEqual({ preview: true });
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: tunnel })).not.toThrow();
+    expect(assertPreviewTargets({ ...ok, PLAYWRIGHT_BASE_URL: 'http://localhost:3000' })).toEqual({ preview: false });
+    expect(assertPreviewTargets(ok)).toEqual({ preview: false });
+    // The site, the main project's Previews, any other host: refused.
+    for (const b of ['https://myavatar.ge', 'https://avatar-g-frontend-v3-git-450092-kintsurashviligaga-ops-projects.vercel.app', 'http://vcore-e2e-0123456789ab.vercel.app', 'https://vcore-e2e-0123456789ab.vercel.app.evil.com']) {
+      expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: b, E2E_APP_SUPABASE_URL: tunnel })).toThrow(NotIsolatedError);
+    }
+    // A Preview without its tunnel, a tunnel that is not one, Production or a hosted project as the app's database: refused.
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base })).toThrow(/needs E2E_APP_SUPABASE_URL/);
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: `https://${PRODUCTION_SUPABASE_REF}.supabase.co` })).toThrow(/Production/);
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: 'https://abcdefghijklmnopqrst.supabase.co' })).toThrow(/hosted Supabase/);
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: 'http://calm-river-1234.trycloudflare.com' })).toThrow(/https/);
+    expect(() => assertIsolatedSupabase({ ...ok, PLAYWRIGHT_BASE_URL: base, E2E_APP_SUPABASE_URL: 'https://example.com' })).toThrow(/quick tunnel/);
   });
 
   test('the stack name must resolve only to this machine', async () => {

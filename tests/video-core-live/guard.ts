@@ -77,7 +77,47 @@ export function assertIsolatedSupabase(env: NodeJS.ProcessEnv = process.env): { 
     if (host && HOSTED_SUPABASE.test(host)) throw new NotIsolatedError(`${name} points at a hosted Supabase host "${host}"`);
     if (host && !isLocalName(host)) throw new NotIsolatedError(`${name} host "${host}" is neither a loopback host nor a reserved .test name`);
   }
+  assertPreviewTargets(env);
   return { supabaseUrl, host: appHost };
+}
+
+/** A quick tunnel of this run (cloudflared, no account): the only way a Vercel Preview reaches this run's stack. */
+const TUNNEL_HOST = /^[a-z0-9-]+\.trycloudflare\.com$/i;
+/** The per-run alias of the Preview deployment in the separate test project (never the site, never another project). */
+const PREVIEW_HOST = /^vcore-e2e-[0-9a-f]{12}\.vercel\.app$/i;
+
+/**
+ * Preview mode (.github/workflows/video-core-preview-e2e.yml): the app under test is a Vercel Preview of this branch, and
+ * it reaches the stack on this runner through a quick tunnel. Two more variables then point somewhere, and both are held
+ * to the same rule: PLAYWRIGHT_BASE_URL is this machine or a `vcore-e2e-<nonce>.vercel.app` alias (never myavatar.ge or
+ * any other host), E2E_APP_SUPABASE_URL is an https quick tunnel (never Production, never a hosted Supabase), and a
+ * remote app comes with its tunnel or the run is refused.
+ */
+export function assertPreviewTargets(env: NodeJS.ProcessEnv = process.env): { preview: boolean } {
+  const base = env.PLAYWRIGHT_BASE_URL ?? '';
+  const tunnel = env.E2E_APP_SUPABASE_URL ?? '';
+  for (const [name, value] of [['PLAYWRIGHT_BASE_URL', base], ['E2E_APP_SUPABASE_URL', tunnel]] as const) {
+    if (value.toLowerCase().includes(PRODUCTION_SUPABASE_REF)) throw new NotIsolatedError(`${name} names the Production project`);
+  }
+  let preview = false;
+  if (base) {
+    const host = hostOf(base);
+    if (!host) throw new NotIsolatedError('PLAYWRIGHT_BASE_URL is not a URL');
+    if (!LOOPBACK_HOSTS.has(host)) {
+      if (!base.startsWith('https://') || !PREVIEW_HOST.test(host)) {
+        throw new NotIsolatedError(`PLAYWRIGHT_BASE_URL host "${host}" is neither this machine nor a vcore-e2e-<nonce>.vercel.app Preview`);
+      }
+      preview = true;
+    }
+  }
+  if (tunnel) {
+    const host = hostOf(tunnel);
+    if (!host || !tunnel.startsWith('https://')) throw new NotIsolatedError('E2E_APP_SUPABASE_URL is not an https URL');
+    if (HOSTED_SUPABASE.test(host)) throw new NotIsolatedError(`E2E_APP_SUPABASE_URL points at a hosted Supabase host "${host}"`);
+    if (!TUNNEL_HOST.test(host)) throw new NotIsolatedError(`E2E_APP_SUPABASE_URL host "${host}" is not a quick tunnel of this run`);
+  }
+  if (preview && !tunnel) throw new NotIsolatedError('a Preview app needs E2E_APP_SUPABASE_URL (the tunnel to this run\'s stack)');
+  return { preview };
 }
 
 /** Every address of this machine's own interfaces (lo first), lower-cased. */

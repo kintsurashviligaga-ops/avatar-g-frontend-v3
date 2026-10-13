@@ -1,9 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Video Core v1.0 — the REAL-BACKEND browser E2E (tests/video-core-live/*), for the isolated GitHub Actions job
- * (.github/workflows/video-core-e2e-local.yml) only: `next start` of this branch against a throwaway local Supabase
- * stack (auth, storage, PostgREST, Postgres with the Test Schema Baseline from e2e/video-core-live/baseline), real
+ * Video Core v1.0 — the REAL-BACKEND browser E2E (tests/video-core-live/*), for the isolated GitHub Actions jobs only
+ * (.github/workflows/video-core-e2e-local.yml; and video-core-preview-e2e.yml, where PLAYWRIGHT_BASE_URL is a Vercel
+ * Preview of this branch in a test project of its own that reaches the same kind of stack through a quick tunnel):
+ * `next start` of this branch against a throwaway local Supabase stack (auth, storage, PostgREST, Postgres with the Test Schema Baseline from e2e/video-core-live/baseline), real
  * uploads, real ffmpeg renders, real ledger. Nothing is mocked except what is said in each spec, and no paid provider
  * is ever called (no provider credential exists in the job).
  *
