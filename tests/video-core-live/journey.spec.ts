@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import {
   OUT_DIR, attach, balanceOf, decodedFrames, evidence, isQuote, isRun, jobsOf, ledgerOf, liveUser, logExpensive, logPage, meanLuma,
-  meanVolumeDb, openSignedInStudio, paced, press, projectUser, rows, say, shot, signInToken, startRun,
+  meanVolumeDb, openSignedInStudio, peakDb, paced, press, projectUser, rows, say, shot, signInToken, startRun,
 } from './_live';
 
 /**
@@ -266,8 +266,8 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
   // does not have (CI run 4 found the old version of these tests waiting for an edit quote that never comes).
   // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s; the sound
   // (volume, +6 dB) and the light (adjust, brightness +25) keep its 5 s and are measured against the master they changed:
-  // louder by more than 4 dB of mean loudness, brighter by more than 6 levels of mean luma (GG 2026-10-13 06:34Z: „Trim,
-  // Volume, Adjust"; both are stored edits that defect 39 refused).
+  // louder by more than 3 dB of mean loudness with no peak above 0 dBFS, brighter by more than 6 levels of mean luma
+  // (GG 2026-10-13 06:34Z: „Trim, Volume, Adjust"; both are stored edits that defect 39 refused).
   // CI run 6 (c09dbe4): the trim, then the first edit on each viewport, waited 200 s for a result that never came, while
   // 2× and slow motion passed. Run 7 (1b2b40f) put the trim last and printed its job (jobDiagnosis): still the trim, and
   // the worker had refused it 20 ms after it was queued, `invalid_request: the stored plan is not valid`, because JSONB
@@ -333,7 +333,12 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       if (op === 'volume') {
         measured.sourceMeanDb = await meanVolumeDb(sourceFile);
         measured.editMeanDb = await meanVolumeDb(file);
-        expect(measured.editMeanDb - measured.sourceMeanDb, 'louder by more than 4 dB').toBeGreaterThan(4);
+        measured.sourcePeakDb = await peakDb(sourceFile);
+        measured.editPeakDb = await peakDb(file);
+        // Louder, and never clipped (defect 43): the limiter after +6 dB holds the peaks near -1 dBFS, so the mean rises
+        // less than 6 dB on a beat whose peaks were already high (3.7 dB on this montage in CI run 38419237985).
+        expect(measured.editMeanDb - measured.sourceMeanDb, 'louder by more than 3 dB').toBeGreaterThan(3);
+        expect(measured.editPeakDb, 'the louder sound never clips').toBeLessThan(0);
       }
       if (op === 'adjust') {
         measured.sourceLuma = await meanLuma(sourceFile);
