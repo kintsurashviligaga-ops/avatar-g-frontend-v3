@@ -30,9 +30,38 @@ else); the one production-target attempt of the setup day (07:31Z, no database, 
 | [38369812054](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38369812054) | 9faec08 | **26 passed, 1 failed, 3 not run** (17.4 min) | desktop + iPhone 13: montage journey, Stop/Retry on both viewports, error recovery, Trim / Volume / Adjust / 2× / slow motion with exact frame counts, another user locked out; RLS / RPC / storage contracts. Failed: the first film stitch's HTTP connection (Playwright's client) was cut; the serial billing tests after it did not run |
 | [38375578275](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38375578275) | e5db160 | **32 passed, 3 failed** (32.5 min) | the table below. Failed: job recovery (defect 40, fixed since), the transport check (a 37.9 s cut on the free-film call by Playwright's client; the server settled correctly), desktop Stop/Retry (no quote answer within 90 s; the phone's passed in the same run, the desktop's in run 2) |
 | [38386454944](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38386454944) | 1c2012f | stopped at setup, no Preview built | the Supabase CLI install hit GitHub's anonymous API rate limit (defect 41, fixed in ec7f742) |
-| [38388633377](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38388633377) | ec7f742 | **blocked at the alias step** | stack, guard, key gate, tunnel and handshake all up; the Preview was built (target preview); then the Vercel connector of the operator session lost its team (0 teams, 403), so the alias could not be assigned (the runner waits 45 min for it). Needs GG to reconnect the connector to the team |
+| [38388633377](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38388633377) | ec7f742 | **34 passed, 1 failed** (23.7 min) | the table below: every desktop and iPhone test, job recovery through the sweep (defect 40 fix, first time on Vercel), billing, RLS / RPC / access. The alias step waited 20 min while GG reconnected the Vercel connector to the team (11:35Z). Failed: only the transport check, the free-film stitch's Playwright client cut at 38.2 s again (finding 2); the server delivered the film and settled the money |
+⟪RUN6ROW⟫
 
-## Run 3 (e5db160) on the Vercel runtime, test by test
+## Run 5 (ec7f742, the final product code) on the Vercel runtime, test by test
+
+Log: https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38388633377/job/115266555651 (Playwright
+11:36:11Z → 11:59:51Z). Every balance below is read back from this run's own ledger with the service role.
+
+| Area | Desktop (Chrome) | Mobile (iPhone 13) | Evidence (redacted log line, abridged) |
+| --- | --- | --- | --- |
+| sign in through the real sheet | PASS | PASS | session in a cookie |
+| upload → Agent G → quote → Start pressed twice → real ffmpeg → Download → Library | PASS (36.9 s) | PASS | one job, one start response; quote 0 credits, 5 s, beat-synced; **150 frames, 5.00 s**, 720×1280, 30 fps, audio; balance 50 → 50 |
+| another user | PASS | PASS | 0 job rows, task route 404, storage 400 / 400, foreign quote 403 `media_not_yours` |
+| **Stop → Retry** | **PASS (2.6 min)** | PASS | stopped `cancelled by the user`; retried **600 frames, 20.00 s**, 30 fps, audio; balance 50 |
+| error recovery | PASS | PASS | upload chip `failed`; quote `unreadable` |
+| **Trim 1 → 4 s** („Trim the previous video from 1 to 4 seconds." / „წინა ვიდეო 1-დან 4 წამამდე მოჭერი") | PASS | PASS | `trim 1 → 4`; **90 frames, 3.00 s**, audio; delivered 15.6 s / 7.5 s |
+| **Volume** („louder" / „წინა ვიდეოს ხმა აუწიე") | PASS | PASS | `volume +6 dB`; **150 frames**; measured mean **−16.6 dB → −11.2 dB**; delivered 7.5 s / 10.4 s |
+| **Adjust** („brighter" / „წინა ვიდეო გაანათე") | PASS | PASS | `adjust brightness 25`; **150 frames**; measured luma **117.1 → 131.1**; delivered 17.5 s / 22.7 s |
+| 2× speed / slow motion | PASS / PASS | PASS / PASS | **75** / **300 frames** |
+| music from the named second | PASS (Russian) | PASS (Georgian) | `musicStartSec 10`, 150 frames; high band: master −19.2 dB, the track's first 5 s −48.6 dB, the track from 0:10 −16.2 dB |
+
+Every edit kept the balance at 50 with one ledger row (the starter grant): the edit lane is free.
+
+| Area (API, runs once) | Result | Evidence |
+| --- | --- | --- |
+| **Credits / billing** on the film stitch | 4 / 4 money checks PASS | free film first: 1 master, ledger `[]`, `freeFilms 0`, balance 50 (the server settled 5.1 s after the client's cut, below); paid film: 200 after 55.9 s (Node client), one `-25 assemble:saga_…` row, balance 25; failed stitch: 502 `assembly_failed`, `-25` then `+25 assemble-rollback`, balance 25 → 25; two presses at once: both 200 (31.3 s / 30.6 s), 2 delivered, each paid once, 75 → 25 (`duplicateGuard: absent`, no Redis in the test project) |
+| starter grant, **RLS**, RPC, access, buckets | PASS | own rows only (`creditInsert`, `balancePatch`, `jobInsert` 403); money RPCs anon 401 / user 403, `debitOnce` charged once then `charged:false`, six concurrent twins one debit, refund once; ordinary user `enabled:false`, quote / edit 404, anonymous 401, sweep without secret 403, admin `enabled:true`; `uploads`, `renders`, `twins` private |
+| storyboard approval | PASS | edited shot 400 `scripts_differ` (RU text), stale revision 400 `board_changed` |
+| **job recovery** (defect 40's path, on Vercel) | **PASS (2.3 min)** | the lease lapses mid-render; sweep without secret 403, wrong secret 403; the sweep (Vercel function) answered 200 after 131.4 s, `outcome: delivered`; progress normalize (attempt 1) → resolve / normalize … (attempt 2) → completed; job `attempt 2, maxAttempts 2, lease released`; decoded **600 frames, 20.00 s**, 720×1280, 30 fps, audio; balance 50 → 50 |
+| every long call got its answer | **FAIL** (test client) | `cuts`: the free-film stitch through Playwright's request client, `read ETIMEDOUT` after 38.2 s; server settled (1 master, ledger `[]`, free film spent once). Cause and fix: finding 2 |
+
+## Run 3 (e5db160) on the Vercel runtime, test by test (history)
 
 Product code on e5db160 differs from the final head only in the cron routes' read mode (717231c, defect 40) and the
 heartbeat hardening (329c50d); every row below except recovery runs through code that is unchanged since.
@@ -59,13 +88,21 @@ heartbeat hardening (329c50d); every row below except recovery runs through code
 
 ## Findings from the Preview runs
 
-1. **Defect 40** (job recovery) was found here first and is fixed (717231c); it is Production-relevant.
-2. **Transport cuts belong to the test client, not the server.** In runs 2 and 3 a long synchronous call (the free film
-   stitch, 37.9–38.1 s) sent through Playwright's request client was cut with `read ETIMEDOUT`; in run 3 the node
-   client's calls of 67.9 s and 71.2 s on the same route, the same network path and the same server completed. The
-   server finished and settled every cut call correctly (1 master, nothing charged, the free film spent once). In CI E2E
-   (no tunnel) no call was cut. The film is delivered to the Library whether or not the caller's connection survives.
-3. **Desktop Stop/Retry on the Preview: 1 of 2.** Run 3's desktop quote did not answer within the test's 90 s, after the
-   three uploads were ready; nothing ran or was charged. The Preview's media calls go through the tunnel (the paid film
-   took 67.9 s here, 16.3 s in CI), so the quote's file probes are slow; whether it was slowness or a lost request is not
-   proven (the run's trace is in its artifact; 1c2012f now prints the page's state on any failure).
+1. **Defect 40** (job recovery) was found here first (run 3) and is fixed (717231c); it is Production-relevant. Run 5
+   proved the fix on the Vercel runtime itself: the sweep, running as a Vercel function, took the stalled render as
+   attempt 2 and delivered 600 frames with nothing charged.
+2. **Transport cuts belong to the test client, not the server; root cause found and fixed in the harness (f1e3358).**
+   In runs 2, 3 and 5 the free-film stitch sent through Playwright's request client was cut with `read ETIMEDOUT` at
+   38.1 s, 37.9 s and 38.2 s; Node's own client (`_live` `longCall`, no keepalive) got answers after 30.6–71.2 s on the
+   same route, network path and server, and the server finished and settled every cut call correctly (1 master,
+   nothing charged, the free film spent once). Cause: Playwright's request client keeps its sockets alive with TCP
+   keepalive from the first idle second (playwright-core's `happyEyeballs` agent, `keepAlive: true`; measured from
+   `/proc/net/tcp`: a probe every second while the request waits, against 60 s for Node's `fetch` and none for
+   `longCall`), and libuv gives a socket up after 10 unanswered probes 1 s apart. On the runner → Vercel path the
+   probes on a silent connection stop being answered after about 27 s; that part is inferred from the identical cut
+   time, not observed. A browser uses Chromium's own network stack (every browser test passed) and the product makes no
+   such call. Fix: every stitch that runs ffmpeg goes through `longCall`; the transport check stays and still fails a
+   run on any cut. ⟪RUN6FINDING⟫
+3. **Desktop Stop/Retry on the Preview: ⟪STOPRETRY⟫.** Run 3's desktop quote did not answer within the test's 90 s, after
+   the three uploads were ready; nothing ran or was charged. It passed in runs 2 and 5⟪STOPRETRY6⟫; the phone passed
+   every time. The run-3 miss is not explained (slowness through the tunnel or a lost request); it did not recur.
