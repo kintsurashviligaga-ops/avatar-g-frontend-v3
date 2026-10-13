@@ -1,8 +1,10 @@
 # Video Core v1.0 — release readiness checklist (final, release candidate)
 
 Branch `claude/video-core-v1-6gh97e`, draft PR #58, final head **⟨HEAD⟩** (2026-10-13). Product code last changed in
-38a6167 (a storage URL on this deployment's own Supabase host is recognised, defect 38; with Production's env the accepted
-hosts are exactly the same); every other commit since be10500 is tests, the CI E2E workflow or docs. main and Production
+c130532 (a stored edit plan read back from JSONB is checked whatever its key order, defect 39, which Production has too, for
+admins) and before that in 38a6167 (a storage URL on this deployment's own Supabase host is recognised, defect 38; with
+Production's env the accepted hosts are exactly the same); every other commit since be10500 is tests, the CI E2E workflow
+or docs. main and Production
 are unchanged (Production serves 30be5a2). Nothing here was merged, deployed, migrated on a shared database, or paid for.
 
 **Verdict: ⟨VERDICT⟩**
