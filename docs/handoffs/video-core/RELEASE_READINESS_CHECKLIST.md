@@ -4,7 +4,9 @@ Branch `claude/video-core-v1-6gh97e`, draft PR #58, final head **df7eaa9** (code
 c130532 (a stored edit plan read back from JSONB is checked whatever its key order, defect 39, which Production has too, for
 admins) and before that in 38a6167 (a storage URL on this deployment's own Supabase host is recognised, defect 38; with
 Production's env the accepted hosts are exactly the same); every other commit since be10500 is tests, the CI E2E workflow
-or docs. main and Production are unchanged (Production serves 30be5a2). Nothing here was merged, deployed, migrated on a shared database, or paid for.
+or docs. Nothing here was merged, deployed, migrated on a shared database, or paid for. main moved on 2026-10-13 to
+883a013 (PR #59, BOG, another thread; Production serves it since 05:57Z): PR #58 shares no file with it and merges cleanly
+(`git merge-tree`), and every CI run after that merge tests PR #58 merged onto 883a013. Defect 39 is still in 883a013.
 
 **Verdict: CONDITIONALLY READY — EXTERNAL GATES REMAIN**
 
@@ -49,7 +51,8 @@ T5 paid provider · T6 Production.
 Not a blocker any more, but GG's to see: a Vercel runtime check (T4) needs a new Preview, which needs GG's word; the
 existing Preview binds Production Supabase, so only read-only checks are allowed there.
 
-Rollback if PR #58 is ever deployed: revert the merge commit, or Vercel Instant Rollback to the deployment serving 30be5a2.
+Rollback if PR #58 is ever deployed: revert the merge commit, or Vercel Instant Rollback to the deployment serving 883a013
+(not to 30be5a2: that build predates BOG's admin mode, see the BOG thread).
 No migration ships in this PR, so rollback is code-only.
 
 ## 3. Owner decisions (product / financial / contract) — current behaviour stays until GG answers
@@ -82,4 +85,4 @@ No migration ships in this PR, so rollback is code-only.
 | No paid Veo / provider call | none; B1 |
 | No merge, no Production deploy, no force push | PR #58 stays a draft; main untouched; every push fast-forward |
 | A mock is never reported as a live provider check | the four layers are kept apart in `FINAL_ACCEPTANCE_MATRIX.md` and `FINAL_E2E_REPORT_KA.md` |
-| PR #59 (BOG) and Image Studio untouched | `git diff 30be5a2..HEAD --stat` touches neither |
+| PR #59 (BOG) and Image Studio untouched | `git diff 30be5a2..HEAD --stat` touches neither, and no file is shared with PR #59's merge (883a013) |

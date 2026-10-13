@@ -1,7 +1,8 @@
 # Video Core v1.0 — handoff (final, release candidate)
 
 For whoever picks Video Core up next: what is built, where it lives, how to re-run every check, and what is still open.
-Branch `claude/video-core-v1-6gh97e` from main 30be5a2, draft PR #58 → main. Nothing here is merged or deployed.
+Branch `claude/video-core-v1-6gh97e` from main 30be5a2, draft PR #58 → main (now 883a013 after PR #59; no shared file,
+merges cleanly). Nothing here is merged or deployed.
 Status of each acceptance criterion: `FINAL_ACCEPTANCE_MATRIX.md`. Gates, blockers and owner decisions:
 `RELEASE_READINESS_CHECKLIST.md`. Georgian summary for GG: `FINAL_E2E_REPORT_KA.md`.
 
