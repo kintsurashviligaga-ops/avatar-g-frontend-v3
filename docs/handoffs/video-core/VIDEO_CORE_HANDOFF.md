@@ -61,7 +61,7 @@ Evidence lands in `docs/handoffs/video-core/evidence/` (`round3-final/`, `t2-rou
 
 ## 3. What is open, and who owns it
 
-- **GG's decisions D1–D11** and **blockers B1–B8**: `RELEASE_READINESS_CHECKLIST.md` §2–§3. B2 (an isolated Supabase
+- **GG's decisions D1–D12** and **blockers B1–B8**: `RELEASE_READINESS_CHECKLIST.md` §2–§3. B2 (an isolated Supabase
   for a full-backend browser E2E) is closed: it runs in CI without anything from GG. The one that unlocks the most
   evidence now is B1 (live Veo L1–L3), then a Vercel runtime check (a new Preview needs GG's word).
 - **Migrations do not rebuild the schema** on a fresh database (35 / 114 fail; `evidence/round3-final/migration-replay-fresh-db.tsv`).

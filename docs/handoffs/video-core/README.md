@@ -9,7 +9,7 @@ shared-database migration, no paid provider call. Rounds: master task (2026-10-1
 | File | What it is |
 | --- | --- |
 | `FINAL_E2E_REPORT_KA.md` | Georgian report for GG: verdict, the four layers (CI E2E / Vercel runtime / Veo live / Production), what is left (copy: `/mnt/project-files/reports/`) |
-| `RELEASE_READINESS_CHECKLIST.md` | test gate on the final head, blockers B1–B8, owner decisions D1–D11, safety rules kept |
+| `RELEASE_READINESS_CHECKLIST.md` | test gate on the final head, blockers B1–B8, owner decisions D1–D12, safety rules kept |
 | `FINAL_ACCEPTANCE_MATRIX.md` | AC-01…AC-28: PROVEN / PARTIAL / BLOCKED, the tiers each ran at, and what is not proven |
 | `DEFECT_REGISTER_FINAL.md` | every defect's final state, fix commit, regression test and highest tier measured |
 | `VIDEO_CORE_HANDOFF.md` | what changed where, how to re-run every check (incl. the CI E2E), what is open |

@@ -36,8 +36,9 @@ Tiers: T1 mocked · T2 local browser · T3 real ffmpeg · DB throwaway Postgres 
 
 Found by the real-browser run (`tests/video-core`, desktop Chrome + iPhone 13, every server route mocked at the page;
 `evidence/t2-round3/`), by re-running the real-Postgres suites, by measuring speed edits on real ffmpeg, and by the
-real-backend E2E in GitHub Actions (rows 35–36; `evidence/ci-e2e/`). The CI E2E found no product defect: both of its
-failures were in the tests, and each is fixed with the root cause written down.
+real-backend E2E in GitHub Actions (rows 35–37; `evidence/ci-e2e/`). The CI E2E found no product defect: its three
+failures (runs 1, 3, 4) were in the tests, each fixed with the root cause written down; two of them surfaced owner
+decisions (D11 the rate limit, D12 the routing of trim / speed words on an attached file).
 
 | # | Trigger | Final state | Fix (commit) | Regression test | Highest tier measured | Remaining limitation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -54,6 +55,7 @@ failures were in the tests, and each is fixed with the root cause written down.
 | 34 | Phone (390×664): the floating job tray covered the newest montage card's Start even with the thread scrolled to its end; the thread kept no room for the tray (`components/studio/JobTray.tsx` fixed z-60) | PROVEN | be10500: the tray publishes `--job-tray-h`, the thread ends with a spacer of that height (`job-tray-spacer`) | `tests/video-core/flows.spec.ts` „[phone] a job already running elsewhere…“ — a plain assertion now, PASS on mobile (rerun 2026-10-12 19:50Z: 92 pass / 6 skip / 0 fail) | T2 | — |
 | 35 | (CI E2E run 3, ebc3444) Stop → Retry → Start on the real server was refused **429** on desktop and phone: it was the user's 6th quote/run call inside one minute, and `RATE_LIMITS.EXPENSIVE` (5 a minute per user and client, shared by the montage and edit routes) answered as shipped. The card said „Too many requests at once. Try again in a minute." (`rate_limited`) | TEST FIXED (the suite paces itself like a person; the limiter is untouched) · product behaviour **as designed**, recorded as owner decision D11 | 4620ac5 | `tests/video-core-live/journey.spec.ts` (pacing log per user, each Start must answer 200) | CI-E2E | a user who starts, stops and retries twice within a minute gets the „try again in a minute" card; proposal D11: count one plan's quote and run once, or give Agent G media its own bucket |
 | 36 | (CI E2E run 1, d7872e0) the other-user denial test answered HTTP 200 on `/api/tasks?id=<owner's job>` | TEST FIXED, not a product leak: the project's API context carried the OWNER's session cookies, and the server reads the cookie before a bearer token (`lib/supabase/server.ts` `authedClientFromRequest`); the same test's RLS read already returned `[]` | 5d52b1b | the other-user test runs on a cookie-free API context: task route 404, storage 400/400, foreign quote 403 `media_not_yours`, 0 job rows | CI-E2E | — |
+| 37 | (CI E2E run 4, 4620ac5) the six edit-lane tests (trim, 2× speed, slow motion × desktop/phone) waited 90 s for an edit quote that never came | TEST FIXED, not a product defect: the tests attached a fresh file and said „Trim it from 1 to 4 seconds"; on an ATTACHED file the product hands trim / speed words to the chat model's remix (`lib/agent/chatTurn` `editStep`, Media Studio v2), and the CI job has no model credential (`Gemini chat failed: auth`). Agent G's own edit lane takes those words on the video it delivered (AC-11), with no model | 9d7e95b | each edit test delivers a 5 s montage, then asks for the edit of „the previous video" (EN desktop, KA phone) and decodes 90 / 75 / 300 frames | CI-E2E | trim / speed on a freshly attached file still needs the chat model (not run here: provider); proposal D12 |
 
 Not defects, recorded as findings (behaviour by design, said in `evidence/t2-round3/findings.json`): a reload opens a fresh
 conversation (History reopens it); `?tool=video` is taken off the URL after opening, so Back/Forward carry no tool; the Video
@@ -62,6 +64,6 @@ lane names an unreadable soundtrack with the generic QC wording, not `music_unre
 
 ## What is not in this register on purpose
 
-- Owner decisions D1–D11 (`RELEASE_READINESS_CHECKLIST.md` §3): not defects, choices.
+- Owner decisions D1–D12 (`RELEASE_READINESS_CHECKLIST.md` §3): not defects, choices.
 - Blockers B1–B8: resources or permissions, each with its cost and next action in `RELEASE_READINESS_CHECKLIST.md`.
 - Anything in Image Studio or Payments: out of this task's ownership (not touched: `git diff 30be5a2..HEAD -- lib/billing lib/credits` is empty; no `components/studio/create/Image*` change).
