@@ -11,15 +11,18 @@ Plan prices are the pricing page's `$ × GEL_PER_USD`, rounded (`lib/billing/bog
 
 ## Where to put the credentials (never in code)
 
-BOG's business manager gives you a **client_id** and a **client_secret**. Add them as environment variables:
+BOG's Business Manager (https://manager.bog.ge) shows the Online Payments credentials as **OPAY Client ID** and **OPAY Secret Key** — the OAuth client id and secret of https://api.bog.ge/docs/payments/introduction. Merchant ID and Terminal ID are not used by the API. Add them as environment variables:
 
-**Vercel** → Project → Settings → Environment Variables (Production, and Preview if you want previews to take payments). Mark both **Sensitive**:
+**Vercel** → Project → Settings → Environment Variables, **Production** scope. Mark the secret **Sensitive**. Do not put the live pair on Preview: previews share the Production database, so a preview payment would credit a real account. The code enforces it too: on a Vercel Preview or Development deployment (`VERCEL_ENV` ≠ `production`) the checkout mode is always `off`, whatever the env holds.
 
 | Name | Value |
 |---|---|
-| `BOG_CLIENT_ID` | your client_id |
-| `BOG_SECRET_KEY` | your client_secret |
-| `BOG_ENV` | `sandbox` while testing with BOG's sandbox credentials; remove it (or `production`) for live |
+| `BOG_CLIENT_ID` | OPAY Client ID |
+| `BOG_SECRET_KEY` | OPAY Secret Key |
+| `BOG_ENV` | leave it unset (= `production`) on Vercel. A **sandbox** pair never goes into Vercel: every deployment (Preview too) writes to the Production database, so with `BOG_ENV=sandbox` on any Vercel deployment checkout, callbacks and the cron refuse with `BOG_SANDBOX_BLOCKED` and the button is hidden (`bogSandboxBlocked`). Sandbox runs only locally or in CI |
+| `BOG_CHECKOUT_MODE` | optional: `admin` = only admins can start a BOG payment (the owner's live test), `off` = nobody, unset = everyone. Any other value reads as `off`, and so does any Preview / Development deployment. Settling (callbacks, return page, cron renewals) is never affected |
+
+Before saving a pair, check it with ONE token request (no order, no money): `node scripts/bog-oauth-check.mjs`. The file is self-contained (Node 18+, no packages), so it also runs alone from any folder. It asks for the pair in the terminal with the Secret Key typed blind (nothing echoed, nothing in shell history), prints one verdict line (`✓ ok · HTTP 200 · production · client …1234`) and never prints the secret in any form (verbatim, JSON-escaped, URL-encoded, base64) or a token; `BOG_ENV=sandbox` for a sandbox pair. Exit 0 accepted, 1 refused, 2 usage, 130 Ctrl+C. Never put the secret on a command line.
 
 Then **redeploy** (env changes apply on the next deployment). Locally, the same names go into `.env.local` (gitignored).
 
@@ -29,7 +32,9 @@ That is all. You do **not** need `BOG_CALLBACK_PUBLIC_KEY`: BOG's published call
 1. **Automatic payments with a saved card** ("ბარათის დამახსოვრება ავტომატური გადახდებისთვის / subscriptions") enabled for your merchant. Without it plans still sell, but as one month that does not renew (the checkout logs a warning).
 2. **Sandbox credentials**, to test the whole flow with the test cards at https://api.bog.ge/docs/en/sandbox/payments/test-cards before going live.
 
-The callback URL is sent with every order: `https://<your site>/api/billing/bog/webhook` (from `NEXT_PUBLIC_SITE_URL`). Nothing to register.
+**Limits (bank letter, 2026-10-12):** 500 ₾ per transaction, 1,000 ₾ per 24 hours, 5,000 ₾ per 30 days. The checkout refuses a single order above 500 ₾ with `BOG_LIMIT` before BOG is asked (`BOG_LIMITS_GEL` in `lib/billing/bogCatalog.ts`); the rolling limits are not enforced in code, and the admin card shows the paid ₾ against them. Whether the rolling limits are per merchant or per card is a question for the bank: if per merchant, a busy day's renewals can hit 1,000 ₾ and BOG would decline the rest.
+
+The callback URL is sent with every order: `https://<your site>/api/billing/bog/webhook` (from `NEXT_PUBLIC_SITE_URL`). Nothing to register. A sandbox order (local or CI only) carries the callback of the deployment that created it, never the Production site.
 
 ## How it works
 
@@ -48,7 +53,7 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 - **Renewals.** `bog_claim_renewal` inserts one order per subscription period (unique index), so overlapping cron ticks cannot double-charge; the charge's `Idempotency-Key` is derived from that order id, so a retried request is not a second charge. Declined → retry after 24 h; three declines in a row → `past_due` (entitlement already ended at `current_period_end` — `resolveUserTier` gates on it).
 - **Cancel.** `DELETE /api/billing/bog/subscription` (the "Cancel auto-renewal" link in the credits modal): the plan stays active until its period ends, the saved card is deleted at BOG, nothing is charged again.
 - **Upgrade / downgrade.** Buying a different plan starts it now; older plans stop renewing (their paid period runs out).
-- **Refunds** are made in BOG's business manager. The order is marked `refunded`; credits already granted are **not** taken back automatically (adjust by hand if needed).
+- **Refunds** are made in BOG's business manager. The order follows BOG's own status, one way only: `completed` → `refund_requested` (asked, not yet done) → `refunded_partially` (`refund_amount` < paid) → `refunded`; it never moves back, and a replayed or late `completed` receipt for an order already in a refund state is ignored (no second credit, and a cancelled plan stays cancelled). Bookkeeping only: credits already granted are **not** taken back automatically (that is the refund policy, unchanged; adjust by hand if needed). A refund on an order we never credited is logged for review and not recorded. The return page shows each refund state in ka/en/ru.
 
 ## Files
 
@@ -63,4 +68,22 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 | `app/api/cron/bog-billing` | reconcile + renew (vercel.json, every 10 min) |
 | `supabase/migrations/20261002a_bog_billing.sql` | tables, functions, VERIFY block |
 
-Stripe code is still present but no longer offered while BOG is configured; it remains the fallback only when BOG credentials are absent.
+Stripe: the credits window offers the older card checkout whenever `/api/checkout/capabilities` answers `bog:false` for this visitor (BOG not configured, `BOG_CHECKOUT_MODE=off`, `admin` for a non-admin, a Preview / Development deployment, a sandbox pair on Vercel, billing tables missing) and Stripe is configured. A BOG refusal after the click does **not** fall back to Stripe. No Stripe payment has been completed in Production yet.
+
+## Is it working? (admin)
+
+**Admin → Billing → "Bank of Georgia — readiness"** (`GET /api/admin/billing/bog`) shows what the deployment runs with: credentials set or not, `production`/`sandbox`, the last 4 characters of the client id, the callback URL, whether the billing tables exist, whether `CRON_SECRET` is set, who may start a checkout (`BOG_CHECKOUT_MODE`), a red line when a sandbox pair sits on a Vercel deployment, the paid ₾ of the last 24 h / 30 days against the bank's limits (rolling windows from the credit time; counts every order BOG took money for: completed, refund states and `amount_mismatch`, so it errs high; its own query, not the recent-orders list; says so when it hits 1,000 orders), and the latest orders with their reject reasons. No secret and no user id ever leaves the server.
+
+**"Test credentials with BOG"** (`POST /api/admin/billing/bog {action:'oauth'}`) sends ONE OAuth token request to BOG — no order, no money — and says what BOG answered: `ok`, `credentials_refused` (wrong pair, or a sandbox pair against production / live pair with `BOG_ENV=sandbox`), `forbidden` (merchant not enabled for the API), `no_answer`, … with the next step in words.
+
+## Testing without BOG
+
+`npm run test:bog-e2e` (needs a local Postgres and a PostgREST v12 binary — see `scripts/bog-e2e.sh`):
+
+1. **SQL scenarios** (`tests/sql/bog/10_scenarios.sql`): the money functions in a real Postgres whose tables are Production's shapes and whose functions are code-identical to Production's (md5 of the comment-stripped source, checked 2026-10-12). Top-up once, plan, renewal, back-off, three declines → `past_due`, upgrade, client roles locked out.
+2. **Races** (`tests/sql/bog/20_concurrency.sh`): 16 parallel settlements of one order, 16 parallel renewal claims → one credit, one charge.
+3. **Route-level end to end** (`__tests__/integration/bog-payments.e2e.test.ts`): the real routes → supabase-js → PostgREST → that Postgres, against a fake BOG that signs callbacks with a throwaway RSA key. Lost callbacks, forged/tampered callbacks, amount/currency mismatch, declines, refused credentials, renewals, cancel.
+
+`scripts/bog-sandbox-smoke.mjs` is the first contact with BOG's real **sandbox** (refuses anything but `BOG_ENV=sandbox`): `oauth`, `order` (1 ₾ sandbox order + payment-page link for a test card), `receipt <id>`. A sandbox order never points at Production: its callback and return links go to `https://bog-sandbox-smoke.invalid` (a name that never resolves) unless `BOG_SANDBOX_RETURN_BASE` names another https host, and that host may not be myavatar.ge, any `*.vercel.app`, or the site the environment names; the order id is `sandbox-smoke-…`, which our webhook never treats as ours. Every check runs before the first request (`scripts/bog-sandbox-smoke.test.ts`).
+
+After a deploy, `scripts/bog-production-smoke.mjs` checks the live BOG surface with anonymous requests only (no cookie, no credential, no callback signature, an empty checkout body): pages KA/EN/RU 200, anonymous capabilities `bog:false` while `BOG_CHECKOUT_MODE=admin` (`--expect-bog=true` once public), checkout 401, unsigned callback 401 (503 = no credentials on the deployment), order status 401, admin readiness 401/403, cron 401/403. It only talks to https on myavatar.ge or `*.vercel.app`. GitHub Actions runs it by hand: "BOG Production smoke (read-only)" (`.github/workflows/bog-production-smoke.yml`, no secrets).

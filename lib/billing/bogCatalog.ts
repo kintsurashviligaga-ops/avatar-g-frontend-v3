@@ -22,6 +22,15 @@ export const BOG_CREDITS_PER_GEL = 10;
  */
 export const BOG_TOPUP_PACKS_GEL = [10, 20, 50] as const;
 
+/**
+ * Bank of Georgia's limits for this merchant, from the bank's activation letter (2026-10-12): 500 ₾ per transaction,
+ * 1,000 ₾ per 24 hours, 5,000 ₾ per 30 days. BOG refuses anything above them, so the checkout refuses a single order
+ * over BOG_SINGLE_TRANSACTION_LIMIT_GEL before BOG is asked (a tier the admin prices above it stays sellable through
+ * the other rail). The 24 h / 30 day limits are not enforced here: the admin BOG card shows how much of them is used.
+ */
+export const BOG_LIMITS_GEL = { singleTransaction: 500, per24h: 1_000, per30d: 5_000 } as const;
+export const BOG_SINGLE_TRANSACTION_LIMIT_GEL = BOG_LIMITS_GEL.singleTransaction;
+
 /** Credits a top-up of `amountGel` books. */
 export function topupCredits(amountGel: number): number {
   return Number.isFinite(amountGel) && amountGel > 0 ? Math.floor(amountGel * BOG_CREDITS_PER_GEL) : 0;

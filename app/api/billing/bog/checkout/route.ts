@@ -18,9 +18,10 @@ import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { checkRateLimit, checkRateLimitByKey, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { getActiveTiers } from '@/lib/billing/pricingConfig.db';
-import { bogConfig, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
-import { bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
-import { bogCallbackUrl, newBogOrderId } from '@/lib/billing/bogSettlement';
+import { isAdminIdentity } from '@/lib/auth/adminGuard';
+import { bogCheckoutMode, bogConfig, createBogOrder, saveCardForAutomaticPayments } from '@/lib/billing/bogClient';
+import { BOG_SINGLE_TRANSACTION_LIMIT_GEL, bogPlanOffer, topupCredits } from '@/lib/billing/bogCatalog';
+import { bogCallbackUrl, bogSandboxBlocked, newBogOrderId } from '@/lib/billing/bogSettlement';
 import { TIERS } from '@/lib/billing/tiers';
 
 export const dynamic = 'force-dynamic';
@@ -41,12 +42,23 @@ const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(
 export async function POST(request: NextRequest) {
   const cfg = bogConfig();
   if (!cfg) return json({ error: 'Bank of Georgia payments are not configured', error_code: 'BOG_UNCONFIGURED' }, 503);
+  // A sandbox order on a deployment that writes to the Production database would turn a test card into real credits.
+  if (bogSandboxBlocked(cfg)) {
+    return json({ error: 'Sandbox credentials cannot take orders on this deployment', error_code: 'BOG_SANDBOX_BLOCKED' }, 503);
+  }
+  const mode = bogCheckoutMode();
+  if (mode === 'off') return json({ error: 'Bank of Georgia payments are switched off', error_code: 'BOG_DISABLED' }, 503);
 
-  let userId: string;
+  let user: Awaited<ReturnType<typeof requireAuthenticatedUser>>;
   try {
-    userId = (await requireAuthenticatedUser(request)).id;
+    user = await requireAuthenticatedUser(request);
   } catch {
     return json({ error: 'Unauthorized', error_code: 'AUTH_REQUIRED' }, 401);
+  }
+  const userId = user.id;
+  // BOG_CHECKOUT_MODE=admin: the owner tests the live rail while customers cannot start a BOG order.
+  if (mode === 'admin' && !(await isAdminIdentity(user).catch(() => false))) {
+    return json({ error: 'Bank of Georgia payments are not open yet', error_code: 'BOG_ADMIN_ONLY' }, 403);
   }
   const ipLimited = await checkRateLimit(request, RATE_LIMITS.WRITE);
   if (ipLimited) return ipLimited;
@@ -103,6 +115,13 @@ export async function POST(request: NextRequest) {
   } else {
     return json({ error: "kind must be 'topup' or 'plan'", error_code: 'BAD_KIND' }, 400);
   }
+  // BOG refuses a single payment above the merchant's limit — say so here instead of minting an order it rejects.
+  if (Number(row.amount_gel) > BOG_SINGLE_TRANSACTION_LIMIT_GEL) {
+    return json(
+      { error: `Bank of Georgia accepts at most ${BOG_SINGLE_TRANSACTION_LIMIT_GEL} ₾ per payment`, error_code: 'BOG_LIMIT', maxGel: BOG_SINGLE_TRANSACTION_LIMIT_GEL },
+      400,
+    );
+  }
 
   const shopOrderId = newBogOrderId(isPlan ? 'plan' : 'topup');
   const { error: insertErr } = await svc
@@ -133,7 +152,7 @@ export async function POST(request: NextRequest) {
     amountGel: Number(row.amount_gel),
     productId,
     description,
-    callbackUrl: bogCallbackUrl(origin),
+    callbackUrl: bogCallbackUrl(origin, cfg.environment),
     successUrl: back('success'),
     failUrl: back('failed'),
     locale,

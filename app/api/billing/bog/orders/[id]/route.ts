@@ -5,15 +5,25 @@
  * (GET /receipt) through the same idempotent settlement the callback uses, so the credits land even when the callback
  * is late or lost — the customer is looking at the screen right now, and BOG does not retry callbacks.
  *
- * → { orderId, kind, status: completed | pending | failed | refunded | review, credits, tier, periodEnd, autoRenew }
+ * → { orderId, kind, status: completed | pending | failed | refund_requested | refunded_partially | refunded | review,
+ *     credits, tier, periodEnd, autoRenew }
  *   `review` = paid but the amount did not match the order; nothing was credited and it needs a human.
+ *   The three refund statuses are BOG's own (requested, part returned, all returned) — see BOG_REFUND_STATUSES.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/supabase/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { checkRateLimitByKey } from '@/lib/api/rate-limit';
 import { bogConfig } from '@/lib/billing/bogClient';
-import { isBogOrderId, loadBogOrder, reconcileBogOrder, type BogOrderRow } from '@/lib/billing/bogSettlement';
+import {
+  bogSandboxBlocked,
+  isBogOrderId,
+  isBogRefundStatus,
+  loadBogOrder,
+  reconcileBogOrder,
+  type BogOrderRow,
+  type BogRefundStatus,
+} from '@/lib/billing/bogSettlement';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,12 +34,12 @@ const STATUS_USER_LIMIT: Parameters<typeof checkRateLimitByKey>[1] = {
   keyPrefix: 'rl:bog:status:user',
 };
 
-type PublicStatus = 'completed' | 'pending' | 'failed' | 'refunded' | 'review';
+type PublicStatus = 'completed' | 'pending' | 'failed' | BogRefundStatus | 'review';
 
 function publicStatus(s: string): PublicStatus {
   if (s === 'completed') return 'completed';
   if (s === 'pending') return 'pending';
-  if (s === 'refunded') return 'refunded';
+  if (isBogRefundStatus(s)) return s;
   if (s === 'amount_mismatch') return 'review';
   return 'failed'; // rejected, expired, init_failed
 }
@@ -58,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   if (!order || order.user_id !== userId) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const cfg = bogConfig();
-  if (order.status === 'pending' && cfg && order.bog_order_id) {
+  if (order.status === 'pending' && cfg && !bogSandboxBlocked(cfg) && order.bog_order_id) {
     const outcome = await reconcileBogOrder(svc, cfg, { fetch }, order);
     if (outcome.status !== 'pending' && outcome.status !== 'error') {
       order = (await loadBogOrder(svc, { shopOrderId: id })) ?? order;

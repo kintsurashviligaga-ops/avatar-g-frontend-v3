@@ -11,6 +11,8 @@ import { createSign, generateKeyPairSync } from 'node:crypto';
 const mockLoad = jest.fn();
 const mockSettle = jest.fn();
 jest.mock('../../../../../lib/billing/bogSettlement', () => ({
+  bogSandboxBlocked: (cfg: { environment?: string } | null, env: NodeJS.ProcessEnv = process.env) =>
+    cfg?.environment === 'sandbox' && Boolean(env.VERCEL_ENV || env.VERCEL),
   loadBogOrder: (...a: unknown[]) => mockLoad(...a),
   settleBogOrder: (...a: unknown[]) => mockSettle(...a),
 }));
@@ -67,6 +69,14 @@ afterEach(() => {
 test('503 when BOG is not configured', async () => {
   delete process.env.BOG_CLIENT_ID;
   expect((await call(BODY, { 'Callback-Signature': sign(BODY) })).status).toBe(503);
+});
+
+test('sandbox credentials on a Vercel deployment (Production database) settle nothing → 503, nothing looked up', async () => {
+  process.env.BOG_ENV = 'sandbox';
+  process.env.VERCEL_ENV = 'preview';
+  expect((await call(BODY, { 'Callback-Signature': sign(BODY) })).status).toBe(503);
+  expect(mockLoad).not.toHaveBeenCalled();
+  expect(mockSettle).not.toHaveBeenCalled();
 });
 
 test('unsigned, wrongly signed or tampered → 401 and nothing is looked up', async () => {
