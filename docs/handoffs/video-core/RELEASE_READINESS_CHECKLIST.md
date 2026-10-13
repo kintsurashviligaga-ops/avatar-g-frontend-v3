@@ -1,13 +1,12 @@
 # Video Core v1.0 — release readiness checklist (final, release candidate)
 
-Branch `claude/video-core-v1-6gh97e`, draft PR #58, final head **⟨HEAD⟩** (2026-10-13). Product code last changed in
+Branch `claude/video-core-v1-6gh97e`, draft PR #58, final head **df7eaa9** (code, tests and CI E2E run 8 rest on it; later commits change only these documents), 2026-10-13. Product code last changed in
 c130532 (a stored edit plan read back from JSONB is checked whatever its key order, defect 39, which Production has too, for
 admins) and before that in 38a6167 (a storage URL on this deployment's own Supabase host is recognised, defect 38; with
 Production's env the accepted hosts are exactly the same); every other commit since be10500 is tests, the CI E2E workflow
-or docs. main and Production
-are unchanged (Production serves 30be5a2). Nothing here was merged, deployed, migrated on a shared database, or paid for.
+or docs. main and Production are unchanged (Production serves 30be5a2). Nothing here was merged, deployed, migrated on a shared database, or paid for.
 
-**Verdict: ⟨VERDICT⟩**
+**Verdict: CONDITIONALLY READY — EXTERNAL GATES REMAIN**
 
 Tiers: T1 mocked · T2 local browser (Playwright, server routes mocked at the page) · T3 real ffmpeg · DB = throwaway
 Postgres + PostgREST · **CI-E2E** = real browser + `next start` + throwaway Supabase in GitHub Actions · T4 Vercel runtime ·
@@ -17,21 +16,21 @@ T5 paid provider · T6 Production.
 
 | Gate | Command | Result | Evidence |
 | --- | --- | --- | --- |
-| TypeScript | `npx tsc --noEmit -p tsconfig.json` (+ the live specs with a spec-including tsconfig) | **PASS**, 0 errors | sandbox on 4620ac5; CI "verify" `npm run typecheck` green on every head since cc0657f |
-| ESLint | `npx next lint` | **PASS**, 0 errors, 34 warnings (none new: OmniStudio's 15 are on main too) | sandbox on 4620ac5 |
-| Jest (unit + integration) | `npm test` | **PASS**: 884 / 889 suites, 13,650 passed, 44 skipped, 0 failed | CI "verify" run 38300060430 (ebc3444, same product code as the final head) ⟨VERIFY⟩ |
-| Build | `npm run build` | **PASS** | CI "verify" + the live E2E job builds and serves it (`next start`) |
-| Playwright, mocked routes (T2) | `playwright.video-core.config.ts`, desktop + iPhone 13 | **PASS**: 92 passed, 6 skipped, 0 failed, 0 flaky | `evidence/t2-round3-final/summary.md` (rerun 19:50–20:07Z on be10500 product code) |
-| **Playwright, real backend (CI-E2E)** | `.github/workflows/video-core-e2e-local.yml` job "live E2E" | ⟨R4LIVE⟩ | `evidence/ci-e2e/live-e2e-⟨R4RUN⟩.md` |
+| TypeScript | `npx tsc --noEmit -p tsconfig.json` (+ the live specs with a spec-including tsconfig) | **PASS**, 0 errors | sandbox on 2e8787e (same code as df7eaa9); CI "verify" typecheck green on df7eaa9 (run 38353387843) and on every head since cc0657f |
+| ESLint | `npx next lint` | **PASS**, 0 errors, 34 warnings (none new: OmniStudio's 15 are on main too) | sandbox on 2e8787e |
+| Jest (unit + integration) | `npm test` | **PASS**: 884 / 889 suites, 13,658 passed, 45 skipped, 0 failed | CI "verify" run 38353387843 on df7eaa9 |
+| Build | `npm run build` | **PASS**, 207 / 207 pages | CI "verify" + the live E2E job builds and serves it (`next start`) |
+| Playwright, mocked routes (T2) | `playwright.video-core.config.ts`, desktop + iPhone 13 | **PASS**: 92 passed, 6 skipped, 0 failed, 0 flaky | `evidence/t2-round3-final/summary.md` (rerun 19:50–20:07Z on be10500 product code; T2 mocks the server routes at the page, so the later server-side fixes 38a6167 and c130532 do not change what it exercises) |
+| **Playwright, real backend (CI-E2E)** | `.github/workflows/video-core-e2e-local.yml` job "live E2E" | **PASS**: 21 passed, 0 failed, 0 flaky (desktop + iPhone 13, 9.1 min) | `evidence/ci-e2e/live-e2e-38353387827.md` (run 8, df7eaa9) |
 | Test Schema Baseline | `e2e/video-core-live/baseline` + `900_verify.sql` | **PASS** every CI run (RLS, RPCs, auth triggers, storage policies, billing dependencies asserted before any test) | live E2E job log, step "Apply the Test Schema Baseline" |
-| Real FFmpeg (decoded frames) | opt-in ffmpeg suites | **PASS**: 29.7 s = 891, 60 s = 1800, 70 s = 2100 frames; AC-06 one chain; speed edits on the 30 fps grid with sound in sync | `FFMPEG_EVIDENCE.md`, `evidence/round3-final/`; in CI-E2E the real montage master is decoded again: ⟨R4FRAMES⟩ |
-| Billing / security on real Postgres | `scripts/lease-isolation/run.sh` | **PASS**: 38 passed, 2 skipped by design | CI job "billing on real Postgres" (`evidence/ci-e2e/billing-pg-38298797641.md`; green again in run ⟨R4RUN⟩) |
-| Live stack contracts | `tests/video-core-live/contracts.spec.ts` | ⟨R4CONTRACTS⟩ | `[evidence] rls-contract`, `rpc-contract`, `access-contract`, `buckets` |
-| Job recovery | DB tier + browser Stop → Retry | DB **PASS** (lease takeover, refund once, stop kills ffmpeg); browser ⟨R4STOP⟩ | billing-pg job; live E2E "Stop and Retry" |
+| Real FFmpeg (decoded frames) | opt-in ffmpeg suites | **PASS**: 29.7 s = 891, 60 s = 1800, 70 s = 2100 frames; AC-06 one chain; speed edits on the 30 fps grid with sound in sync | `FFMPEG_EVIDENCE.md`, `evidence/round3-final/`; in CI-E2E every master is decoded again on both viewports: montage 150, Stop → Retry 600, trim 90, 2× 75, slow motion 300 frames |
+| Billing / security on real Postgres | `scripts/lease-isolation/run.sh` | **PASS**: 40 passed, 2 skipped by design (38 + the defect-39 JSONB regression in both passes) | CI job "billing on real Postgres" (`evidence/ci-e2e/billing-pg-38298797641.md`; green again in run 38353387827) |
+| Live stack contracts | `tests/video-core-live/contracts.spec.ts` | **PASS** ×5 (starter grant, RLS, RPC, access, buckets) | `[evidence] rls-contract`, `rpc-contract`, `access-contract`, `buckets` |
+| Job recovery | DB tier + browser Stop → Retry | DB **PASS** (lease takeover, refund once, stop kills ffmpeg); browser **PASS** on desktop + iPhone 13 (stopped `cancelled by the user`, 0 charged; retried 600 frames) | billing-pg job; live E2E "Stop and Retry" |
 | Anon-key exposure | workflow step "exposure check" | **PASS**: no service-role key in the client bundle | live E2E job log |
 | B3 proposal (storyboard revisions) | workflow step on the throwaway DB only | **PASS** | live E2E job log |
-| Preview contract workflow | "E2E - Preview Contract" | **PASS** on 4620ac5 (run 38339224003) | GitHub Actions |
-| AC-01…AC-28 | `FINAL_ACCEPTANCE_MATRIX.md` | ⟨ACTOTALS⟩ | — |
+| Preview contract workflow | "E2E - Preview Contract" | **PASS** on df7eaa9 (run 38353387835) | GitHub Actions |
+| AC-01…AC-28 | `FINAL_ACCEPTANCE_MATRIX.md` | **19 PROVEN · 8 PARTIAL · 1 BLOCKED** (of 28) | — |
 | DAST (HawkScan) | — | **NOT RUN** (B7) | — |
 
 ## 2. Blockers — what only GG can unlock
