@@ -1,7 +1,9 @@
 # Video Core v1.0 — handoff index
 
-Branch `claude/video-core-v1-6gh97e` from main 30be5a2, draft PR #58 → main. No merge, no deploy, no shared-database
-migration, no paid provider call. Rounds: master task (2026-10-12 05:01Z), round 2 (09:00Z), round 3 (10:17Z), final
+**Merged and deployed 2026-10-13** (merge commit e46c35c, Production deployment `dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ`, READY
+13:25:44Z) on GG's word of 13:18:10Z; Production checks, defects 39/40 and what is still open: `PRODUCTION_DEPLOY_REPORT_KA.md`.
+Video Core stays admin-only. Until that merge: branch `claude/video-core-v1-6gh97e` from main 30be5a2, PR #58 → main, no
+merge, no deploy, no shared-database migration, no paid provider call. Rounds: master task (2026-10-12 05:01Z), round 2 (09:00Z), round 3 (10:17Z), final
 completion + isolated CI E2E (18:17Z, 19:05Z, 19:07Z), final review + isolated Preview E2E + GO/NO-GO (2026-10-13 06:34Z,
 08:52Z, 09:48Z).
 
