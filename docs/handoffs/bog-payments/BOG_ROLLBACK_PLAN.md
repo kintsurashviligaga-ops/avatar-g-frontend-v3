@@ -1,6 +1,8 @@
 # BOG Payments — Rollback Plan (v1.3)
 
-2026-10-12 · PR #59 · ამჟამინდელი Production: commit `30be5a2` (PR #57), deployment https://avatar-g-frontend-v3-ki5jp6998-kintsurashviligaga-ops-projects.vercel.app (GitHub deployment `7005663769`, 2026-10-12 03:12Z). წინა: `5481987`.
+2026-10-12, განახლდა 2026-10-13 07:25Z · ამჟამინდელი Production: commit `883a013` (PR #59), deployment `dpl_Gduf2SkotvazFoQp3qX1TeBQCX6M` https://avatar-g-frontend-v3-7b4c2tmix-kintsurashviligaga-ops-projects.vercel.app (READY 06:28:39Z, ცოცხალი BOG წყვილით). იგივე კოდი წყვილის განახლებამდე: `dpl_9m6Up2f5bMJQDav6Vsz6JjU5wkGJ` (`lo0mlcifz`). ძველი კოდი `30be5a2` (PR #57): `ki5jp6998` და `n50i7vipo` (`dpl_9oAMEXe73byKnwiie2sPijLDVsyZ`).
+
+> ⚠️ Vercel env-ის შეცვლის შემდეგ **Redeploy მხოლოდ მიმდინარე Production deployment-ზე** (`883a013`). ძველ deployment-ზე Redeploy ძველ კოდს ააშენებს: 2026-10-13 05:43Z-ზე სწორედ ასე გამოჩნდა BOG ყველასთვის ≈10 წუთით.
 
 PR #59 ბაზას არ ცვლის (მიგრაცია არ არის). ამიტომ ნებისმიერი უკან დაბრუნება ბაზისთვის ნეიტრალურია: ახალი კოდით შექმნილი შეკვეთები იმავე `bog_orders` ცხრილშია და ძველი კოდიც კითხულობს.
 
@@ -21,15 +23,23 @@ PR #59 ბაზას არ ცვლის (მიგრაცია არ �
 
 შედეგი: ახალი BOG შეკვეთა აღარ იქმნება. უკვე გადახდილის ჩარიცხვა გრძელდება (callback, დაბრუნების გვერდი, cron), რადგან ის რეჟიმს არ კითხულობს. Stripe ხელმისაწვდომი რჩება.
 
-## B. კოდის დაბრუნება (Instant Rollback)
+## B. კოდის დაბრუნება
 
-1. Vercel → Deployments → `30be5a2`-ის deployment (`ki5jp6998`) → **Instant Rollback**. ალტერნატივა: `git revert -m 1 <PR #59-ის merge commit>` main-ზე, რაც ახალ deploy-ს გამოიწვევს.
-2. **ყურადღება:** ძველ კოდს `BOG_CHECKOUT_MODE` არ ესმის. სწორი წყვილით Vercel-ში BOG ღილაკი **ყველასთვის** გამოჩნდება, როგორც დღეს.
-3. თუ BOG ყველასთვის არ გვინდა: ჯერ შეამოწმე, რომ `pending` შეკვეთა 0-ია (ადმინ ბარათი ან read-only query), მერე წაშალე `BOG_SECRET_KEY` და კვლავ Redeploy. ძველი კოდი წყვილის გარეშე callback-ს 503-ით პასუხობს, ამიტომ `pending` შეკვეთის დროს ამის გაკეთება ჩარიცხვას შეაჩერებს.
-4. ძველ კოდში v1.2-ის შესწორებები აღარ მუშაობს: `refund_requested` ისევ `refunded`-ად ჩაიწერება, Preview-ს დაცვა და 500 ₾-ის შემოწმებაც აღარ იქნება.
+ძველ კოდს (`30be5a2`) `BOG_CHECKOUT_MODE` არ ესმის: BOG-ს აჩვენებს ყველა შესულ მომხმარებელს, თუ deployment-ს BOG წყვილი აქვს. Vercel-ში env-ის ცვლილება ძველ deployment-ზე არ მოქმედებს, ამიტომ შედეგი დამოკიდებულია იმაზე, **როგორ** ვბრუნდებით:
+
+| გზა | რა env-ით მუშაობს | შედეგი BOG-ისთვის |
+|---|---|---|
+| **Instant Rollback** → `n50i7vipo` (`dpl_9oAMEXe73byKnwiie2sPijLDVsyZ`, 05:43Z) | 05:43Z-ის env: ახალი Secret + ძველი Client ID | BOG ყველას ჩანს, მაგრამ OAuth უარს ამბობს (იგივე წყვილმა 06:10Z-ზე 400 დააბრუნა) → შეკვეთა `init_failed`, ფული არ ჩამოიჭრება. **ამ სამიდან ყველაზე უსაფრთხო** |
+| **Instant Rollback** → `ki5jp6998` (2026-10-12) | 2026-10-12-ის env: ძველი წყვილი, OAuth-ით არასდროს შემოწმებული | BOG ყველას ჩანს; მუშაობს თუ არა, უცნობია. ნუ აირჩევ |
+| `git revert -m 1 883a013` ან ძველ deployment-ზე **Redeploy** | **მიმდინარე** env: მოქმედი წყვილი (OAuth 200, 06:37Z) | **მუშა** BOG checkout ყველა შესულ მომხმარებელს, ნამდვილი ფულით. არ გააკეთო, სანამ ჯერ პუნქტი 2 არ შესრულდება |
+
+1. Vercel → Deployments → `n50i7vipo` → **Instant Rollback**.
+2. BOG-ის სრული დახურვა ძველ კოდზე: ჯერ შეამოწმე, რომ `pending` შეკვეთა 0-ია (ადმინ ბარათი ან read-only query), მერე წაშალე `BOG_SECRET_KEY` და Redeploy მიმდინარე (ძველი) Production deployment-ზე. წყვილის გარეშე ძველი კოდი BOG-ს აღარ აჩვენებს და callback-ს 503-ით პასუხობს, ამიტომ `pending` შეკვეთის დროს ამის გაკეთება ჩარიცხვას შეაჩერებს.
+3. ძველ კოდში v1.2-ის შესწორებები აღარ მუშაობს: `refund_requested` ისევ `refunded`-ად ჩაიწერება, Preview-ს დაცვა და 500 ₾-ის შემოწმებაც აღარ იქნება.
+4. დაბრუნება წინ: Instant Rollback → `dpl_Gduf2SkotvazFoQp3qX1TeBQCX6M` (`883a013`, მოქმედი წყვილით) ან Promote.
 
 ## დაბრუნების შემდეგ
 
-- `/api/checkout/capabilities` და მთავარი გვერდი (KA/EN/RU) იხსნება: GitHub → Actions → „BOG Production smoke (read-only)" (A-ს შემდეგ `expect_bog=false`; B-ს შემდეგ ძველი კოდი წყვილით BOG-ს ყველას აჩვენებს, ამიტომ `bog` ველი იქ მოსალოდნელად ვარდება, დანარჩენი შემოწმებები უნდა გავიდეს).
+- `/api/checkout/capabilities` და მთავარი გვერდი (KA/EN/RU) იხსნება: GitHub → Actions → „BOG Production smoke (read-only)" (A-ს შემდეგ `expect_bog=false`; B-ს შემდეგ, პუნქტ 2-მდე, ძველი კოდი BOG-ს ყველას აჩვენებს, ამიტომ `bog` ველი მოსალოდნელად ვარდება, დანარჩენი შემოწმებები უნდა გავიდეს).
 - ადმინ ბარათზე `pending` შეკვეთების რაოდენობა არ იზრდება.
 - თრედში ჩაწერე, რომელი გზა (A/B) და რომელ deployment-ზე დაბრუნდა.
