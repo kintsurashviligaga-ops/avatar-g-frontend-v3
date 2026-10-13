@@ -1,6 +1,6 @@
 # Video Core v1.0 — final acceptance matrix AC-01…AC-28
 
-Branch `claude/video-core-v1-6gh97e`, draft PR #58, head **df7eaa9** (code, tests and CI E2E run 8 rest on it; later commits change only these documents) (2026-10-13). Round 2's matrix with its SHAs stays in
+Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **ec7f742** (product code last changed in 717231c, defect 40; later commits change only workflows and these documents), main ba2e0a4 merged in at 179e10e (2026-10-13). Round 2's matrix with its SHAs stays in
 `acceptance-matrix.md`; this file is the release-candidate state after round 3 and the isolated CI E2E.
 
 ## Tiers (a row is only PROVEN at the tiers it actually ran at)
@@ -12,11 +12,11 @@ Branch `claude/video-core-v1-6gh97e`, draft PR #58, head **df7eaa9** (code, test
 | T3 | real ffmpeg, decoded frame counts | sandbox (`FFMPEG_EVIDENCE.md`) |
 | DB | real Postgres + PostgREST + real ffmpeg, local and throwaway | sandbox and CI job "billing on real Postgres" |
 | **CI-E2E** | real browser + `next start` of this branch + throwaway Supabase (Auth, Storage, PostgREST, Postgres 17) + real ffmpeg, synthetic users and media | GitHub Actions job "live E2E" (`SUPABASE_TEST_ENV.md`) |
-| T4 | Vercel runtime (Preview) | **NOT RUN** — a new Preview needs GG's approval |
+| **T4** | Vercel runtime: a Preview of this branch in the separate Vercel project `avatar-g-video-core-e2e`, on a throwaway Supabase that lives only on the GitHub runner (GG's word 06:34Z / 08:52Z / 09:48Z) | ⟪T4TIER⟫ |
 | T5 | paid provider (Veo / Vertex) | **NOT RUN** — needs GG's budget word (B1) |
 | T6 | Production | **NOT RUN** — Production is never a test environment |
 
-CI-E2E run: **38353387827 (run 8, head df7eaa9): 21 / 21 passed** on desktop + iPhone 13 (`evidence/ci-e2e/live-e2e-38353387827.md`). Runs 4–7 are kept in the same folder with their failures and root causes (defects 37–39).
+CI-E2E run: **38388562682 (head ec7f742): 35 / 35 passed** on desktop + iPhone 13 (`evidence/ci-e2e/live-e2e-38388562682.md`); every CI-E2E cell below passed again in it. The suite grew from 21 to 35 tests in this round (job recovery through the sweep, Trim / Volume / Adjust on both viewports, the track offset, the free film and the paid film on the real database). Earlier runs (4–8, 38386271150) are kept in the same folder with their failures and root causes (defects 37–40).
 
 ## Matrix
 
@@ -38,7 +38,7 @@ CI-E2E run: **38353387827 (run 8, head df7eaa9): 21 / 21 passed** on desktop + i
 | AC-14 | change / move / delete a scene; approval of the revision on screen | **PARTIAL** — code + browser PROVEN; the revision table is a proposal (B3) | T1, T2 | `revision.test` 36/36, `storyboardApproval.test`, director path; T2 `storyboard.spec` (approval sent, `revision_mismatch` refused, nothing runs) | the `storyboard_revisions` table proposal applied and verified on the CI throwaway database only (RLS, owner-only reads) | the table in Production (B3, GG) |
 | AC-15 | switching projects / conversations | **PROVEN** | T1, T2 | T2 `navigation.spec`: a new session shows none of the first one's results, reopening shows them once, attachments stay with their conversation (defect 6 fixed) | — | observation: the open tool and the Video mode are not kept across a reload (recorded, by design) |
 | AC-16 | double click / concurrent retry / duplicate event | **PROVEN** | T1, DB, **CI-E2E** | 8 workers race → 1 job; 8 concurrent twins → 1 debit (CI, after 20261002d) | **PROVEN**: Start pressed twice (dblclick / two taps) → exactly one montage job, one run response; six concurrent `deduct_credits_once` twins → one debit (run 4 (38339223896) and run 8 (38353387827)) | T4 |
-| AC-17 | cancel / late callback / worker crash / retry | **PROVEN** | T1, T3, DB, **CI-E2E** | lease takeover after a dead worker, refund once after two deaths, stop kills ffmpeg and pays back once (CI) | **PROVEN**, desktop + phone: Stop while it renders → `cancelled by the user`, 0 charged → Retry → fresh quote → **600 frames** (20 s) (run 4 (38339223896) and run 8 (38353387827)) | T4 (function timeouts on Vercel) |
+| AC-17 | cancel / late callback / worker crash / retry | **PROVEN** | T1, T3, DB, **CI-E2E** | lease takeover after a dead worker, refund once after two deaths, stop kills ffmpeg and pays back once (CI) | **PROVEN**, desktop + phone: Stop while it renders → `cancelled by the user`, 0 charged → Retry → fresh quote → **600 frames** (20 s) (run 4 (38339223896) and run 8 (38353387827)); worker crash: the lease lapses mid-render, the every-minute sweep takes the job as attempt 2 and delivers **600 frames**, nothing charged (38386271150 and 38388562682, after the defect 40 fix) | T4 (function timeouts on Vercel) |
 | AC-18 | reload / language / reconnect / other session | **PARTIAL** | T1, T2 | T2: /en /ka /ru load; a running job is in the tray exactly once after a reload; History reopens a conversation | sign-in through the real sheet on both viewports | another device / session sees no server project record (none exists) |
 | AC-19 | expired quote / signed URL / lost or bad source | **PARTIAL** | T1, **CI-E2E** | refusals by name (`VIDEO_REFUSALS`), `media_not_yours`, `final_duration_invalid` | bad source refused by name on the real server: a non-audio file never becomes an attachment (byte sniff), an undecodable clip → quote `unreadable`, a foreign file → 403 `media_not_yours`, nothing runs (run 4 (38339223896) and run 8 (38353387827)) | a signed URL expiring mid-render, end to end |
 | AC-20 | another user's file / job / quote / approval / artifact | **PROVEN** | T1, DB, **CI-E2E** | `runIsolation` H (CI); contracts: RLS on profiles/ledger/jobs, no client writes, RPCs refused to anon/users | **PROVEN**, desktop + phone: another user sees 0 job rows, task route 404, storage 400 (signed in and public), foreign quote 403 `media_not_yours`; RLS, RPC and no-client-write contracts on the live stack (run 4 (38339223896) and run 8 (38353387827)) | T4 |
@@ -61,7 +61,7 @@ were not run.
 
 | Layer | Status | Evidence / reason |
 | --- | --- | --- |
-| CI E2E (isolated local Supabase, real backend, real ffmpeg, desktop + phone) | **PROVEN**: 21 / 21 on head df7eaa9 | run 38353387827 (run 8): desktop + iPhone 13 journeys and the stack contracts; job "billing on real Postgres" 40 passed, 2 skipped by design; `evidence/ci-e2e/` |
-| Vercel Runtime E2E | **NOT RUN** | a new Preview needs GG's approval (18:17Z); the existing Preview binds Production Supabase, so only read-only checks are allowed there |
+| CI E2E (isolated local Supabase, real backend, real ffmpeg, desktop + phone) | **PROVEN**: 35 / 35 on head ec7f742 | run 38388562682: desktop + iPhone 13 journeys, job recovery, billing and the stack contracts; job "billing on real Postgres" green in the same run; `evidence/ci-e2e/` |
+| Vercel Runtime E2E | ⟪T4LAYER⟫ |
 | Vertex / Veo live | **NOT RUN** | no paid call authorized; 980/980 Veo/director unit tests and the config review (`VERTEX_LIVE_TEST_PLAN.md`) are mocked-provider evidence only |
 | Production E2E | **NOT RUN** | Production is never a test environment; nothing merged or deployed |

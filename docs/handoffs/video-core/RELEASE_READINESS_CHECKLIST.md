@@ -1,12 +1,12 @@
 # Video Core v1.0 — release readiness checklist (final, release candidate)
 
-Branch `claude/video-core-v1-6gh97e`, draft PR #58, final head **df7eaa9** (code, tests and CI E2E run 8 rest on it; later commits change only these documents), 2026-10-13. Product code last changed in
-c130532 (a stored edit plan read back from JSONB is checked whatever its key order, defect 39, which Production has too, for
-admins) and before that in 38a6167 (a storage URL on this deployment's own Supabase host is recognised, defect 38; with
-Production's env the accepted hosts are exactly the same); every other commit since be10500 is tests, the CI E2E workflow
-or docs. Nothing here was merged, deployed, migrated on a shared database, or paid for. main moved on 2026-10-13 to
-883a013 (PR #59, BOG, another thread; Production serves it since 05:57Z): PR #58 shares no file with it and merges cleanly
-(`git merge-tree`), and every CI run after that merge tests PR #58 merged onto 883a013. Defect 39 is still in 883a013.
+Branch `claude/video-core-v1-6gh97e`, draft PR #58, final code head **ec7f742** (code, tests, CI E2E and Preview E2E rest
+on it; later commits change only these documents), 2026-10-13. Product code last changed in 717231c (every cron route and
+the media sweep read live instead of from Next's Data Cache, defect 40, which Production has too) and 329c50d (heartbeat
+hardening); before that c130532 (defect 39) and 38a6167 (defect 38). Every commit after 717231c is the CI workflows or docs.
+Nothing here was merged, deployed, migrated on a shared database, or paid for. main is **ba2e0a4** (PR #61, BOG docs, on
+883a013's code; Production serves it since 09:31Z): PR #58 shares no file with PR #59 or #61, main is merged into the branch
+(179e10e) without a conflict, and every CI run tests PR #58 on top of it. Defects 39 and 40 are still in Production.
 
 **Verdict: CONDITIONALLY READY — EXTERNAL GATES REMAIN**
 
@@ -18,20 +18,21 @@ T5 paid provider · T6 Production.
 
 | Gate | Command | Result | Evidence |
 | --- | --- | --- | --- |
-| TypeScript | `npx tsc --noEmit -p tsconfig.json` (+ the live specs with a spec-including tsconfig) | **PASS**, 0 errors | sandbox on 2e8787e (same code as df7eaa9); CI "verify" typecheck green on df7eaa9 (run 38353387843) and on every head since cc0657f |
-| ESLint | `npx next lint` | **PASS**, 0 errors, 34 warnings (none new: OmniStudio's 15 are on main too) | sandbox on 2e8787e |
-| Jest (unit + integration) | `npm test` | **PASS**: 884 / 889 suites, 13,658 passed, 45 skipped, 0 failed | CI "verify" run 38353387843 on df7eaa9 |
-| Build | `npm run build` | **PASS**, 207 / 207 pages | CI "verify" + the live E2E job builds and serves it (`next start`) |
+| TypeScript | `npx tsc --noEmit -p tsconfig.json` (+ the live specs with a spec-including tsconfig) | **PASS**, 0 errors | sandbox on 717231c (same code and tests as ec7f742); CI "verify" typecheck green on ec7f742 (run 38388562769) |
+| ESLint | `npx next lint` | **PASS**, 0 errors, 34 warnings (none new: OmniStudio's 15 are on main too) | sandbox on 717231c |
+| Jest (unit + integration) | `npm test` | **PASS**: 894 / 900 suites (6 skipped), 13,814 passed, 60 skipped, 0 failed | CI "verify" run 38388562769 on ec7f742; the same numbers in the sandbox on 717231c |
+| Build | `npm run build` | **PASS**, 207 / 207 pages | CI "verify" on ec7f742 + the live E2E job builds and serves it (`next start`) + the Vercel Preview build of ec7f742 |
 | Playwright, mocked routes (T2) | `playwright.video-core.config.ts`, desktop + iPhone 13 | **PASS**: 92 passed, 6 skipped, 0 failed, 0 flaky | `evidence/t2-round3-final/summary.md` (rerun 19:50–20:07Z on be10500 product code; T2 mocks the server routes at the page, so the later server-side fixes 38a6167 and c130532 do not change what it exercises) |
-| **Playwright, real backend (CI-E2E)** | `.github/workflows/video-core-e2e-local.yml` job "live E2E" | **PASS**: 21 passed, 0 failed, 0 flaky (desktop + iPhone 13, 9.1 min) | `evidence/ci-e2e/live-e2e-38353387827.md` (run 8, df7eaa9) |
+| **Playwright, real backend (CI-E2E)** | `.github/workflows/video-core-e2e-local.yml` job "live E2E" | **PASS**: 35 passed, 0 failed, 0 flaky (desktop + iPhone 13 + API, 16.5 min) | `evidence/ci-e2e/live-e2e-38388562682.md` (ec7f742) |
+| **Playwright, Vercel runtime (T4)** | `.github/workflows/video-core-preview-e2e.yml`, separate Vercel project, isolated Supabase | ⟪T4GATE⟫ | `PREVIEW_E2E_VERIFICATION.md` |
 | Test Schema Baseline | `e2e/video-core-live/baseline` + `900_verify.sql` | **PASS** every CI run (RLS, RPCs, auth triggers, storage policies, billing dependencies asserted before any test) | live E2E job log, step "Apply the Test Schema Baseline" |
 | Real FFmpeg (decoded frames) | opt-in ffmpeg suites | **PASS**: 29.7 s = 891, 60 s = 1800, 70 s = 2100 frames; AC-06 one chain; speed edits on the 30 fps grid with sound in sync | `FFMPEG_EVIDENCE.md`, `evidence/round3-final/`; in CI-E2E every master is decoded again on both viewports: montage 150, Stop → Retry 600, trim 90, 2× 75, slow motion 300 frames |
 | Billing / security on real Postgres | `scripts/lease-isolation/run.sh` | **PASS**: 40 passed, 2 skipped by design (38 + the defect-39 JSONB regression in both passes) | CI job "billing on real Postgres" (`evidence/ci-e2e/billing-pg-38298797641.md`; green again in run 38353387827) |
 | Live stack contracts | `tests/video-core-live/contracts.spec.ts` | **PASS** ×5 (starter grant, RLS, RPC, access, buckets) | `[evidence] rls-contract`, `rpc-contract`, `access-contract`, `buckets` |
-| Job recovery | DB tier + browser Stop → Retry | DB **PASS** (lease takeover, refund once, stop kills ffmpeg); browser **PASS** on desktop + iPhone 13 (stopped `cancelled by the user`, 0 charged; retried 600 frames) | billing-pg job; live E2E "Stop and Retry" |
+| Job recovery | DB tier + live sweep + browser Stop → Retry | DB **PASS** (lease takeover, refund once, stop kills ffmpeg); live **PASS**: a render whose lease lapses is taken by the cron sweep as attempt 2 and delivered (600 frames, 0 charged; defect 40 fixed); browser **PASS** on desktop + iPhone 13 (stopped `cancelled by the user`, 0 charged; retried 600 frames) | billing-pg job; live E2E `recovery.spec` and "Stop and Retry" |
 | Anon-key exposure | workflow step "exposure check" | **PASS**: no service-role key in the client bundle | live E2E job log |
 | B3 proposal (storyboard revisions) | workflow step on the throwaway DB only | **PASS** | live E2E job log |
-| Preview contract workflow | "E2E - Preview Contract" | **PASS** on df7eaa9 (run 38353387835) | GitHub Actions |
+| Preview contract workflow | "E2E - Preview Contract" | **PASS** on ec7f742 (run 38388562696) | GitHub Actions |
 | AC-01…AC-28 | `FINAL_ACCEPTANCE_MATRIX.md` | **19 PROVEN · 8 PARTIAL · 1 BLOCKED** (of 28) | — |
 | DAST (HawkScan) | — | **NOT RUN** (B7) | — |
 
@@ -48,11 +49,12 @@ T5 paid provider · T6 Production.
 | B7 | DAST (HawkScan) | `HAWK_API_KEY` unset, no `stackhawk.yml` | no dynamic scan of the changed routes | key + `stackhawk.yml`; it could then scan the CI job's `next start` (no deployment needed) | GG | StackHawk plan | GG adds the key |
 | B8 | Merge / deploy of PR #58 | NO MERGE, NO DEPLOY | nothing reaches Production | review → merge → deploy with the rollback below | GG, explicitly | $0 | GG's review |
 
-Not a blocker any more, but GG's to see: a Vercel runtime check (T4) needs a new Preview, which needs GG's word; the
-existing Preview binds Production Supabase, so only read-only checks are allowed there.
+The Vercel runtime check (T4) ran on GG's word (06:34Z) in a separate Vercel project on an isolated Supabase
+(`PREVIEW_E2E_VERIFICATION.md`); the shared Preview binds Production Supabase and was not used.
 
-Rollback if PR #58 is ever deployed: revert the merge commit, or Vercel Instant Rollback to the deployment serving 883a013
-(not to 30be5a2: that build predates BOG's admin mode, see the BOG thread).
+Rollback if PR #58 is ever deployed: Vercel **Instant Rollback** to the deployment serving Production before the merge
+(today `dpl_EhS6Jvgm7uKdrMudSsDTChvxuGmy`, ba2e0a4), never "Redeploy" (it rebuilds the current commit), then a revert PR
+of the merge commit. Not to 30be5a2: that build predates BOG's admin mode (see the BOG thread).
 No migration ships in this PR, so rollback is code-only.
 
 ## 3. Owner decisions (product / financial / contract) — current behaviour stays until GG answers
@@ -81,8 +83,8 @@ No migration ships in this PR, so rollback is code-only.
 | No Production schema dump, no Production SQL, secrets or user data in GitHub or CI artifacts | none was asked for or used: the Test Schema Baseline is built from repo files; evidence in the public CI log is redacted |
 | Temporary CI-only secrets; no long-lived GitHub Secrets; no Production credentials | the stack's keys come from `supabase status` on the runner and are masked; the other secrets are made by `openssl rand` in the job and die with it; no GitHub Secret was added |
 | No shared-DB / Production migration | none applied; B3 was applied only on the CI throwaway DB |
-| New Vercel Preview needs owner approval | `vercel.json` `git.deploymentEnabled` false for this branch (f3f8acb); no new Preview was built by any push |
+| New Vercel Preview needs owner approval | `vercel.json` `git.deploymentEnabled` false for this branch (f3f8acb), so no push builds a Preview of the main project; the T4 Previews were built on GG's word (06:34Z) only in the separate project `avatar-g-video-core-e2e`, each with target preview, paused and reset after the run |
 | No paid Veo / provider call | none; B1 |
 | No merge, no Production deploy, no force push | PR #58 stays a draft; main untouched; every push fast-forward |
 | A mock is never reported as a live provider check | the four layers are kept apart in `FINAL_ACCEPTANCE_MATRIX.md` and `FINAL_E2E_REPORT_KA.md` |
-| PR #59 (BOG) and Image Studio untouched | `git diff 30be5a2..HEAD --stat` touches neither, and no file is shared with PR #59's merge (883a013) |
+| PR #59 / #62 (BOG) and Image Studio untouched | neither branch was written to; no file is shared with PR #59's merge (883a013) or PR #61 (ba2e0a4); Image Studio (PR #60) shares 2 files and merges cleanly (`GO_NO_GO_REPORT_KA.md` §2) |

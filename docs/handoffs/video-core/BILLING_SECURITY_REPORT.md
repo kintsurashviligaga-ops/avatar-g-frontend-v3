@@ -190,3 +190,39 @@ since per-clip QC.
 
 **What this still does not prove:** the same rules through the browser on a deployed build with a real Supabase Auth and
 Storage (blocked: no isolated Supabase yet, `SUPABASE_TEST_ENV.md`), and anything on a real customer balance (never, by rule).
+
+## 9. Final review and live verification (2026-10-13, head ec7f742)
+
+The "does not prove" above is now covered by two live layers, both on synthetic users and a throwaway Supabase (Auth,
+Storage, PostgREST, Postgres) made for each run; Production was not read or written.
+
+**Review fixes** (each with its regression test; detail in `GO_NO_GO_REPORT_KA.md` §3):
+
+| # | Area | Finding | Fix |
+| --- | --- | --- | --- |
+| 1 | Billing | a salvaged film (one clip dropped) was checked against the planned length and refused | salvaged cut no longer held to the contract; the answer names the dropped clips (9810f7a, `assembleQcGate.test`) |
+| 2 | Billing | a single-clip film that finally failed did not give the free film back | the free film is returned; the message says what was and was not charged (9810f7a, `assembleQcGate.test`, `billing.spec`) |
+| 3 | Security | ffmpeg could be handed `concat:`, `subfile:`, `data:`, `file:` and similar protocol inputs from a caller's URL | assemble takes https only (`invalid_media_url` before any work); `ffmpegExec` refuses those protocols on every input (9810f7a, `ffmpegExec.test`) |
+| 4 | Security | `/api/video/assemble` probed clip URLs before it checked who was calling (an anonymous caller could make the server request up to 24 chosen hosts) | sign-in is checked before the probe (04a512a, `videoCoreWiring.test`) |
+| 5 | Security | the same probe used a plain `fetch`: a signed-in caller could make the server look at a private or local address, directly or by redirect | the probe goes through `lib/web/publicFetch` (private hosts refused, every redirect re-checked) (003b672, `qaAgent.test`) |
+| 6 | Reliability, Production-relevant | defect 40: the cron sweep and cron routes read the database through Next's Data Cache, so a recovered job died at its first heartbeat | `fetchCache = 'force-no-store'` on every cron route (717231c, `cronFetchCache.test`, `leaseIsolation.pg.test`, live `recovery.spec`); nothing was ever charged by it: the lane is free |
+
+`lib/billing`, `lib/credits` and `supabase/migrations` are unchanged against main; no price changed.
+
+**Live, CI E2E on ec7f742** (run 38388562682, `evidence/ci-e2e/live-e2e-38388562682.md`), all PASS:
+
+- film stitch: the first film spends the free film (ledger empty); a different composition is debited 25 once; a stitch
+  that cannot decode a clip answers 502 and nets to zero (`assemble:` −25, `assemble-rollback:` +25); two presses at once
+  deliver two films, each paid once;
+- free lanes (montage, edits, recovery, Stop/Retry, music offset): balance 50 → 50 on every test, one ledger row (the
+  starter grant);
+- RLS: a user reads only their own profile, ledger and jobs and writes none of them (403); money RPCs refuse anon (401) and
+  users (403), the service role debits once, six concurrent twins debit once, refund once;
+- access: an ordinary user gets `enabled:false` and 404 on the media quotes, anonymous 401, the sweep without its secret 403
+  and with a wrong one 403; another user sees 0 job rows, 404 on the task route, 400 on storage, 403 `media_not_yours`;
+  buckets private.
+
+**Live, Vercel runtime (T4)**: ⟪T4BILL⟫
+
+**Still not proven:** a payment by a real customer (never by rule; the BOG thread owns payments), and a paid provider call
+(B1).

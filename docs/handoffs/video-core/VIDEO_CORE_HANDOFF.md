@@ -1,10 +1,10 @@
 # Video Core v1.0 — handoff (final, release candidate)
 
 For whoever picks Video Core up next: what is built, where it lives, how to re-run every check, and what is still open.
-Branch `claude/video-core-v1-6gh97e` from main 30be5a2, draft PR #58 → main (now 883a013 after PR #59; no shared file,
-merges cleanly). Nothing here is merged or deployed.
+Branch `claude/video-core-v1-6gh97e` from main 30be5a2, draft PR #58 → main (now ba2e0a4 after PR #59 and #61, merged into
+the branch at 179e10e; no shared file). Nothing here is merged or deployed.
 Status of each acceptance criterion: `FINAL_ACCEPTANCE_MATRIX.md`. Gates, blockers and owner decisions:
-`RELEASE_READINESS_CHECKLIST.md`. Georgian summary for GG: `FINAL_E2E_REPORT_KA.md`.
+`RELEASE_READINESS_CHECKLIST.md`. Georgian GO/NO-GO for GG: `GO_NO_GO_REPORT_KA.md` (round 4's `FINAL_E2E_REPORT_KA.md` is history).
 
 ## 1. What Video Core v1.0 changes (by area)
 
@@ -18,6 +18,7 @@ Status of each acceptance criterion: `FINAL_ACCEPTANCE_MATRIX.md`. Gates, blocke
 | Montage | frame-exact lane, music from a given second of the track, selection, own sound / silent export; what it cannot do (music delay on the timeline, add clips / replace music after delivery) is said on the quote, never applied as something else | `lib/agent/media/montage*.ts`, `lib/services/montage/beatPlan.ts` |
 | Edits | speed changes land on the 30 fps grid with sound in sync (round 3); the worker checks a stored plan whatever key order JSONB gives it back in (defect 39, also in Production); Agent G's own delivered master is accepted on this deployment's own storage host (defect 38) | `lib/agent/media/editPlan.ts`, `lib/orchestrator/storage-adapter.ts` |
 | One window | chat → Video tool with the plan said; progress cards show only measured progress; error cards carry the route's own reason; attachments stay with their conversation | `OmniStudio.tsx`, `JobTray.tsx`, `ui/GenerationProgress.tsx`, `ui/ResultCard.tsx` |
+| Cron reads | the media sweep and every cron route read the database live (`fetchCache = 'force-no-store'`); before, Next 14 served a GET-only route's reads from its Data Cache, so a sweep's heartbeat saw the row as it was before its own claim and a recovered job died (defect 40, also in Production); a guard test fails if a cron route drops it | `app/api/agent/media/sweep/route.ts`, `app/api/cron/*` (not `bog-billing`), `app/api/app/worker/tick/route.ts`, `lib/api/cronFetchCache.test.ts` |
 | Contracts registry | every video refusal and lane in one place (`VIDEO_REFUSALS`), pinned by tests | `lib/video/contracts.ts` |
 | Real-backend E2E | a throwaway Supabase in GitHub Actions with a Production-shaped Test Schema Baseline, a fail-closed Production guard, and Playwright on desktop + iPhone 13 against `next start` of the branch (no secret, no dump, no paid call) | `.github/workflows/video-core-e2e-local.yml`, `e2e/video-core-live/`, `tests/video-core-live/` |
 
@@ -58,13 +59,25 @@ steps as the workflow; the guard (`tests/video-core-live/guard.ts`) refuses any 
 The live suite paces itself under the shipped limiter (5 quote/run calls a minute per user), so a run takes ~10–15 min
 of Playwright; do not "speed it up" by switching the limiter off.
 
-Evidence lands in `docs/handoffs/video-core/evidence/` (`round3-final/`, `t2-round3-final/`, older rounds beside them).
+**The Vercel-runtime E2E (T4)** is `.github/workflows/video-core-preview-e2e.yml`: adding the label `preview-e2e` to PR #58
+starts it. The runner starts the same throwaway stack, opens a quick tunnel behind a key gate, posts the Preview's values
+encrypted to `e2e/video-core-live/preview/handshake.pub.pem` as the check run `preview-e2e-handshake`, and waits up to 45 min
+for `https://vcore-e2e-<nonce>.vercel.app`. The operator (who holds the private key) decrypts it, sets the six per-run
+values on the separate Vercel project `avatar-g-video-core-e2e` (Preview target only), unpauses it, turns its Vercel
+Authentication off, creates a deployment of the PR head (checking `target` is preview, cancelling at once otherwise),
+aliases it, and after the run pauses the project, puts the values back to placeholders, turns the protection back on and
+removes the label. `e2e/video-core-live/scripts/preview-check.mjs` proves the isolation before any test. Details and runs:
+`PREVIEW_E2E_VERIFICATION.md`.
+
+Evidence lands in `docs/handoffs/video-core/evidence/` (`ci-e2e/`, `round3-final/`, `t2-round3-final/`, older rounds beside them).
 
 ## 3. What is open, and who owns it
 
 - **GG's decisions D1–D12** and **blockers B1–B8**: `RELEASE_READINESS_CHECKLIST.md` §2–§3. B2 (an isolated Supabase
   for a full-backend browser E2E) is closed: it runs in CI without anything from GG. The one that unlocks the most
-  evidence now is B1 (live Veo L1–L3), then a Vercel runtime check (a new Preview needs GG's word).
+  evidence now is B1 (live Veo L1–L3); the Vercel runtime check ran (`PREVIEW_E2E_VERIFICATION.md`).
+- **cron/bog-billing** (BOG thread's file) was left without `fetchCache`: it exports POST, so its authorized reads are not
+  cached; the BOG thread can add the line for symmetry.
 - **Migrations do not rebuild the schema** on a fresh database (35 / 114 fail; `evidence/round3-final/migration-replay-fresh-db.tsv`).
   The CI baseline works around it for what Video Core touches; a full fix (a squashed baseline + forward-only
   migrations) rewrites shared history and is a proposal for GG (`SUPABASE_TEST_ENV.md`). Outside Video Core.
@@ -74,6 +87,6 @@ Evidence lands in `docs/handoffs/video-core/evidence/` (`round3-final/`, `t2-rou
 
 ## 4. Rules this work kept (keep them)
 
-No merge, no deploy, no new Preview without GG's word; Production Supabase is never a test database; no shared-DB migration;
+No merge, no deploy, no new Preview of the main project without GG's word (the T4 project is separate and stays paused); Production Supabase is never a test database; no shared-DB migration;
 no paid provider call without a per-test approval; no secret in chat, commits or docs; Image Studio and BOG Payments (PR #59)
 are other threads' files; never force-push; a mocked test is never reported as a live one.
