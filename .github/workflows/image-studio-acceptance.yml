@@ -19,6 +19,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Prove the PR branch itself; the separate verify job checks GitHub merge context.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -62,6 +65,9 @@ jobs:
       LEASE_PG_JWT_SECRET: isolated-ci-only-jwt-secret-not-a-real-environment-key
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Prove the PR branch itself; the separate verify job checks GitHub merge context.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
