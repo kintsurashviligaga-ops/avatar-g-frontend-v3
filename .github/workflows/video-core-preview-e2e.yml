@@ -96,15 +96,16 @@ jobs:
           QUOTE=$(openssl rand -hex 32); CRON=$(openssl rand -hex 32)
           for v in "$ANON" "$SERVICE" "$DB" "$QUOTE" "$CRON"; do echo "::add-mask::$v"; done
           # The CLI's documented default secret would make these keys public knowledge; the gate below relies on them
-          # being new, so each one must verify against this run's secret.
+          # being new, so each one must verify against this run's secret. (No apostrophe inside the single-quoted node
+          # script below: one ended the quote early in the first run, 38367198306.)
           ANON="$ANON" SERVICE="$SERVICE" node -e '
             const c = require("node:crypto");
             for (const k of ["ANON", "SERVICE"]) {
               const [h, p, s] = String(process.env[k]).split(".");
               const ok = s && c.createHmac("sha256", process.env.E2E_JWT_SECRET).update(`${h}.${p}`).digest("base64url") === s;
-              if (!ok) { console.error(`${k} is not signed with this run's secret`); process.exit(1); }
+              if (!ok) { console.error(`${k} is not signed with the secret of this run`); process.exit(1); }
             }
-            console.log("anon and service keys are signed with this run's secret");'
+            console.log("anon and service keys are signed with the secret of this run");'
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=https://$E2E_HOST:54443"
             echo "SUPABASE_URL=https://$E2E_HOST:54443"
