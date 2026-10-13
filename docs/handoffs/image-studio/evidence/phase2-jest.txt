@@ -1,0 +1,11 @@
+PASS lib/image/studio/engine.test.ts
+PASS lib/image/studio/provider.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS lib/image/studio/contracts.test.ts
+
+Test Suites: 4 passed, 4 total
+Tests:       50 passed, 50 total
+Snapshots:   0 total
+Time:        0.739 s, estimated 1 s
+Ran all test suites matching lib/image/studio.
+Test results written to: docs/handoffs/image-studio/evidence/phase2-jest.json

@@ -29,7 +29,7 @@ describe('the Create screen is mounted in the studio\'s settings, in place of th
   test('the panel is imported and rendered for the image tool', () => {
     expect(src).toMatch(/import \{ ImageCreatePanel \} from '@\/components\/studio\/create\/ImageCreatePanel'/);
     expect(mounted).not.toBe('');
-    expect(src).toMatch(/\{mode === 'image' && \(\s*<ImageCreatePanel/);
+    expect(src).toMatch(/\{mode === 'image' && !imageWorkspace && \(\s*<ImageCreatePanel/);
   });
 
   test('the old inline controls are GONE (no second set of ratios, sizes or style chips beside the new one)', () => {
@@ -125,7 +125,7 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
   });
 
   test('the Result pane + Models & prices stand where the thread would, fed by the same messages and handlers', () => {
-    expect(src).toMatch(/const imageDesk = imageCreate && isDesktop;/);
+    expect(src).toMatch(/const imageDesk = imageCreate && isDesktop && !imageWorkspace;/);
     expect(src).toMatch(/const imageDeskResults = imageDesk \? deriveImageResults\(messages, \{ busy \}\) : \[\];/);
     expect(src).toMatch(/\{imageDesk && imageDeskActions && \(\s*<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">\s*<ImageDesk/);
     for (const handler of ['regenerate(spec)', 'cancelBubbleJob(m)', 'runImageBatch(b.spec', 'startImageEdit', 'sendImageToVideo', "saveLibButton(u, 'image'", "editButton(u, 'image')", 'void upscale(u)', "dl(u, 'myavatar-image.png')"]) {
@@ -135,9 +135,9 @@ describe('the desktop: the centre is the Result pane, the right column is the sa
   });
 
   test('the thread is hidden, never mounted twice: the feed keeps its node, renders nothing, and the jump button waits', () => {
-    expect(src).toContain("${imageDesk ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
-    expect(src).toContain(') : imageDesk ? null : messages.length === 0 && !musicPane ? (');
-    expect(src).toContain('{showJump && !imageDesk && messages.length > 0 && (');
+    expect(src).toContain("${imageDesk || imageWorkspace ? 'hidden ' : ''}min-h-0 overflow-y-auto overscroll-contain touch-pan-y");
+    expect(src).toContain(') : imageDesk || imageWorkspace ? null : messages.length === 0 && !musicPane ? (');
+    expect(src).toContain('{showJump && !imageDesk && !imageWorkspace && messages.length > 0 && (');
   });
 });
 

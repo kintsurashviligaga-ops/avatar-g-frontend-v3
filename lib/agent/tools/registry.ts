@@ -34,6 +34,12 @@ const EFFECTS: readonly string[] = ['read', 'prepare', 'quote', 'inspect'];
  * on a card, and only their press reaches the route (with their session and the quote's signed token).
  */
 export const CONFIRMED_ACTIONS = {
+  image_run: {
+    route: '/api/image/jobs',
+    action: 'confirmed',
+    access: 'AGENT_G_MEDIA_EXEC',
+    does: 'reserves the central image credits once for the signed quote; the existing lease queue runs the private image job',
+  },
   montage_run: {
     route: '/api/agent/media/montage',
     action: 'run',

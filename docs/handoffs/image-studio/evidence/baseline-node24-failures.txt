@@ -1,0 +1,361 @@
+FAIL lib/agent/media/effects.ffmpeg.test.ts (15.219 s)
+  ● F10 the sound evened out: -14 LUFS from a quiet clip
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+    -   "outcome": "delivered",
+    +   "outcome": "failed",
+        "ran": true,
+      }
+
+      180 |   const t0 = Date.now();
+      181 |   const worked = await workEditJob(deps, { jobId: q.quote.jobId, worker: 'w1' });
+    > 182 |   expect(worked).toMatchObject({ ran: true, outcome: 'delivered' });
+          |                  ^
+      183 |   const file = join(dir, `result-${source.split('/').pop()!.replace(/\.\w+$/, '')}-${Object.keys(evidence).length}.${output}`);
+      184 |   writeFileSync(file, stored[0]!);
+      185 |   return { file, edits: q.quote.edits, plan: q.quote.plan, ms: Date.now() - t0 };
+
+      at toMatchObject (lib/agent/media/effects.ffmpeg.test.ts:182:18)
+      at Object.<anonymous> (lib/agent/media/effects.ffmpeg.test.ts:345:13)
+
+[Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+[Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+FAIL lib/agent/media/composition.ffmpeg.test.ts
+  ● pictures › TX-01 exact Georgian text on a picture: the very words, drawn whole, where asked
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● pictures › TX-07 the same design re-laid as a 9:16 story: a revision, the words kept, inside the tall safe area
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › the first result: our logo top-left, a line at the bottom, the package untouched
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-04 „ზედა ლოგო მოხსენი, პაკეტის ლოგო შეინარჩუნე": our logo gone without a trace, the package logo kept
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a logo and a line, revised › TX-06 + TX-09 two revisions of the same result at once: a premium restyle (same words) and the logo moved right
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-05 „ბოლო სამ წამში ანიმაციური CTA ჩასვი": absent before 5 s, slides up into place, held to the end
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● TX-10 several layers: each in its own time, the later one drawn above the logo, all editable later
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-02 + TX-03 a Georgian track burned in on its times, and the same video without it
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › reload: the stored job answers with both copies, the files and the QC; a repeated Start replays, never re-runs
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › a revision in words: „ქეფშენები ფაილად მომეცი" keeps the same lines (the parent's track), only delivered anew
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● caption tracks › TX-08 an English track (typed lines), timed, burned in and as SRT/VTT
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● words a font cannot draw are refused at the quote, named, and nothing is queued
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● long Georgian text: 150 letters are laid out to fit a 9:16 frame; 161 are refused
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● masks hide a region where and when asked (mosaic and blur), and only there
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● a cancel during a layered edit kills ffmpeg and delivers nothing
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+  ● what a phone plays: H.264 4:2:0, the index before the data (faststart), the sound kept as AAC
+
+    Command failed: /Users/giorgikintsurashvili/avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/ffmpeg-static/ffmpeg -hide_banner -loglevel error -y -f lavfi -i gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0 -vf drawbox=x=1180:y=500:w=280:h=320:color=0x1E50FF:t=fill -frames:v 1 /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/agent-v21-RxtJci/packshot.png
+    [Parsed_gradients_0 @ 0x154e1a3a0] Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]
+    [Parsed_gradients_0 @ 0x154e1a3a0] Error setting option speed to value 0.
+    gradients=s=1600x900:c0=0x1d2b3a:c1=0x9db0c4:nb_colors=2:duration=1:speed=0: Result too large
+
+      52 | function make(name: string, args: string[]): string {
+      53 |   const out = join(dir, name);
+    > 54 |   execFileSync(bin, ['-hide_banner', '-loglevel', 'error', '-y', ...args, out]);
+         |               ^
+      55 |   return out;
+      56 | }
+      57 |
+
+      at make (lib/agent/media/composition.ffmpeg.test.ts:54:15)
+      at Object.make (lib/agent/media/composition.ffmpeg.test.ts:68:14)
+
+FAIL lib/video/ffmpegExec.test.ts
+  ● ffmpegExec › a playlist is not media: refused by type, and by demuxer when it lies about its type
+
+    expect(received).rejects.toMatchObject(expected)
+
+    - Expected  -  1
+    + Received  + 14
+
+      Object {
+    -   "stderr": StringMatching /Invalid data found/,
+    +   "stderr": "ffmpeg version 6.0 Copyright (c) 2000-2023 the FFmpeg developers
+    +   built with Apple clang version 13.1.6 (clang-1316.0.21.2.5)
+    +   configuration: --prefix=/Volumes/tempdisk/sw --extra-cflags=-fno-stack-check --arch=arm64 --cc=/usr/bin/clang --enable-gpl --enable-libvmaf --enable-libbluray --enable-libopenjpeg --enable-libopus --enable-libmp3lame --enable-libx264 --enable-libx265 --enable-libvpx --enable-libwebp --enable-libass --enable-libfreetype --enable-fontconfig --enable-libtheora --enable-libvorbis --enable-libsnappy --enable-libaom --enable-libvidstab --enable-libzimg --enable-libsvtav1 --enable-libkvazaar --enable-version3 --pkg-config-flags=--static --enable-ffplay --enable-postproc --enable-nonfree --enable-neon --enable-runtime-cpudetect --disable-indev=qtkit --disable-indev=x11grab_xcb
+    +   libavutil      58.  2.100 / 58.  2.100
+    +   libavcodec     60.  3.100 / 60.  3.100
+    +   libavformat    60.  3.100 / 60.  3.100
+    +   libavdevice    60.  1.100 / 60.  1.100
+    +   libavfilter     9.  3.100 /  9.  3.100
+    +   libswscale      7.  1.100 /  7.  1.100
+    +   libswresample   4. 10.100 /  4. 10.100
+    +   libpostproc    57.  1.100 / 57.  1.100
+    + [hls @ 0x14c704080] Format not on whitelist 'mov,matroska,mpegts,avi,flv,mpeg,mp3,wav,aac,ogg,flac,image2,png_pipe,jpeg_pipe,webp_pipe,gif'
+    + /var/folders/7f/v1904f3s68z1_pgsyfrh0qx80000gn/T/ffin-RpioVz/in0.mp4: Invalid argument
+    + ",
+      }
+
+      53 |       .rejects.toThrow('ffmpeg input refused (wrong_type)');
+      54 |     await expect(ffmpegExec(bin, ['-i', 'https://cdn.example/a.mp4', '-f', 'null', '-'], {}, { fetchImpl: serve(m3u8, 'video/mp4'), lookupImpl: PUBLIC }))
+    > 55 |       .rejects.toMatchObject({ stderr: expect.stringMatching(/Invalid data found/) });
+         |                ^
+      56 |   });
+      57 |
+      58 |   test('local inputs and lavfi sources pass through untouched', async () => {
+
+      at Object.toMatchObject (../../../../avatar-g-frontend-v3/.claude/worktrees/beautiful-moser-50e6af/node_modules/expect/build/index.js:2155:20)
+      at Object.toMatchObject (lib/video/ffmpegExec.test.ts:55:16)
+
+Test Suites: 3 failed, 3 total
+Tests:       18 failed, 21 passed, 39 total
+Snapshots:   0 total
+Time:        16.397 s, estimated 17 s
+Ran all test suites within paths "lib/agent/media/composition.ffmpeg.test.ts", "lib/agent/media/effects.ffmpeg.test.ts", "lib/video/ffmpegExec.test.ts".
+Test results written to: docs/handoffs/image-studio/evidence/baseline-node24-failures.json
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

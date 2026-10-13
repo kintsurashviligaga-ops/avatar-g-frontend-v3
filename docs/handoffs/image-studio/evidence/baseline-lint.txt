@@ -1,0 +1,66 @@
+
+./app/[locale]/calendar-lab/page.tsx
+84:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./app/share/[token]/SharePageClient.tsx
+69:11  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+77:5  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/auth/AuthScreen.tsx
+636:6  Warning: React Hook useCallback has a missing dependency: 'locale'. Either include it or remove the dependency array. If 'setError' needs the current value of 'locale', you can also switch to useReducer instead of useState and read 'locale' in the reducer.  react-hooks/exhaustive-deps
+
+./components/brand/Wordmark.tsx
+72:11  Warning: This element does not support ARIA roles, states and properties. Try removing the prop 'aria-hidden'.  jsx-a11y/aria-unsupported-elements
+
+./components/chat/grok/GrokComposer.tsx
+65:6  Warning: React Hook useCallback has a missing dependency: 'locale'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./components/dashboard/command-center/CommandCenter.tsx
+940:6  Warning: React Hook useCallback has missing dependencies: 'musicPreset', 'selectedVoiceId', 'videoAspect', and 'videoDuration'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+1486:47  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1525:19  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1723:21  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1734:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/dashboard/command-center/ExportPackModal.tsx
+238:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/dashboard/command-center/MediaActions.tsx
+240:13  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/service-chat/ServiceChatShell.tsx
+528:6  Warning: React Hook useCallback has a missing dependency: 'attachments'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./components/studio/OmniStudio.tsx
+3493:6  Warning: React Hook useEffect has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+3537:6  Warning: React Hook useEffect has missing dependencies: 'initialTool', 'selectTool', and 'setMode'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+4946:6  Warning: React Hook useCallback has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+5039:6  Warning: React Hook useCallback has a missing dependency: 'locale'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+5113:6  Warning: React Hook useCallback has missing dependencies: 'locale' and 't.imageFailed'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+5615:6  Warning: React Hook useCallback has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+5856:6  Warning: React Hook useCallback has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+6201:6  Warning: React Hook useCallback has a missing dependency: 'setPanelService'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+7129:6  Warning: React Hook useCallback has missing dependencies: 'extractScriptText', 'runImageJob', 'runMusicJob', 'setMode', 'setPanelService', and 'tryAgentGRoute'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+7180:6  Warning: React Hook useCallback has missing dependencies: 'REMIX_OP_LABELS' and 'autoSaveToLibrary'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+7237:6  Warning: React Hook useCallback has a missing dependency: 'autoSaveToLibrary'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+8276:6  Warning: React Hook useCallback has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+8291:6  Warning: React Hook useCallback has a missing dependency: 'setMode'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+9795:6  Warning: React Hook useMemo has missing dependencies: 'agentEditOn', 'cancelBubbleJob', 'cancelQueueJob', 'dl', 'lipFormat', 'saveText', 'scrollToBottom', 'sendImageToVideo', 'sendMusicToMusicVideo', and 'videoOrientation'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+
+./components/studio/ServiceParamsPanel.tsx
+439:6  Warning: React Hook useCallback has a missing dependency: 'lang'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+867:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./components/studio/StudioLibraryGrid.tsx
+239:6  Warning: React Hook useCallback has a missing dependency: 'locale'. Either include it or remove the dependency array. If 'setDeleteErr' needs the current value of 'locale', you can also switch to useReducer instead of useState and read 'locale' in the reducer.  react-hooks/exhaustive-deps
+
+./components/studio/create/newtools/TemplateCarousel.tsx
+107:13  Warning: The attribute aria-description is not supported by the role radio.  jsx-a11y/role-supports-aria-props
+
+./components/studio/genjutsu/PresetCarousel.tsx
+101:13  Warning: The attribute aria-description is not supported by the role radio.  jsx-a11y/role-supports-aria-props
+
+./components/studio/ui/TemplateGallery.tsx
+110:13  Warning: The attribute aria-description is not supported by the role radio.  jsx-a11y/role-supports-aria-props
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/basic-features/eslint#disabling-rules

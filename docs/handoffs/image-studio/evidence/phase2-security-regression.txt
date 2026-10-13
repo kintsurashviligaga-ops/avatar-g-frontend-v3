@@ -1,0 +1,8 @@
+PASS __tests__/api-lockdown.test.ts
+PASS lib/image/studio/http.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       24 passed, 24 total
+Snapshots:   0 total
+Time:        2.049 s, estimated 3 s
+Ran all test suites within paths "__tests__/api-lockdown.test.ts", "lib/image/studio/http.test.ts".

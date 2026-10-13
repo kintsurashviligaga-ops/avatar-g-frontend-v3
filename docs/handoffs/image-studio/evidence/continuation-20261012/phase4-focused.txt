@@ -1,0 +1,27 @@
+PASS components/studio/image/ImageWorkspace.test.tsx
+PASS __tests__/api-lockdown.test.ts
+PASS lib/image/studio/history.test.ts
+PASS lib/agent/capabilities.test.ts
+PASS lib/image/studio/engine.test.ts
+PASS lib/image/studio/http.test.ts
+PASS lib/image/studio/quality.test.ts
+PASS app/api/agent/media/sweep/route.test.ts
+PASS lib/agent/tools/declarations.test.ts
+PASS lib/image/studio/commands.test.ts
+PASS lib/agent/tools/googleSearch.test.ts
+PASS lib/image/studio/live.test.ts
+PASS lib/image/studio/contracts.test.ts
+PASS lib/agent/react/bindLiveAgent.test.ts
+PASS lib/image/studio/task.test.ts
+PASS lib/agent/tools/registry.test.ts
+PASS lib/image/studio/provider.test.ts
+PASS lib/agent/tools/scrapeWebpage.test.ts
+PASS lib/image/studio/client.test.ts
+PASS lib/agent/tools/prepareInstagramPost.test.ts
+
+Test Suites: 20 passed, 20 total
+Tests:       179 passed, 179 total
+Snapshots:   0 total
+Time:        3.223 s, estimated 4 s
+Ran all test suites matching components/studio/image|lib/image/studio|lib/agent/tools|lib/agent/react/bindLiveAgent.test.ts|lib/agent/capabilities.test.ts|__tests__/api-lockdown.test.ts|app/api/agent/media/sweep/route.test.ts.
+Test results written to: docs/handoffs/image-studio/evidence/continuation-20261012/phase4-focused.json
