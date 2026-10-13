@@ -284,6 +284,20 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json({ error: 'invalid_media_url', message: 'Every clip and audio file must be a web (https) link.' }, { status: 400 });
     }
   }
+  const { user } = await authedClientFromRequest(req);
+  const uid = user?.id ?? null;
+  // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
+  // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
+  // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
+  // capped. Rate limits do not help: they bound requests per key, and an anonymous caller has no key.
+  // Every guest render was pure external cost. The gate is now the first thing this route does.
+  // ⚠️ AND IT COMES BEFORE THE CLIP PROBE BELOW (final review 2026-10-13): keepLiveClips sends a HEAD request to every
+  // clip URL, so with the gate after it anyone, signed in or not, could have this server knock on up to 24 hosts of
+  // their choosing per call. Only a signed-in caller gets that far now.
+  {
+    const gate = requireAuthForGeneration(uid);
+    if (gate.response) return gate.response;
+  }
   // QA pass: drop any clip whose URL is DEFINITIVELY dead (hard 403/404/410) so a single
   // expired/missing clip can't make ffmpeg fail the whole stitch — the survivors still
   // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
@@ -314,17 +328,6 @@ async function assembleImpl(req: NextRequest) {
   // "could not host the final master" dead-end. Anonymous renders skip the credit
   // / free-film saga entirely (there is no wallet to charge); the full billing
   // saga still runs unchanged for signed-in users.
-  const { user } = await authedClientFromRequest(req);
-  const uid = user?.id ?? null;
-  // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
-  // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
-  // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
-  // capped. Rate limits do not help: they bound requests per key, and an anonymous caller has no key.
-  // Every guest render was pure external cost. The gate is now the first thing this route does.
-  {
-    const gate = requireAuthForGeneration(uid);
-    if (gate.response) return gate.response;
-  }
   // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
   // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
   // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).

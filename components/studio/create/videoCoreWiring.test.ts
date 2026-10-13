@@ -97,6 +97,17 @@ describe('the final length reaches the render and the server cuts to it, or refu
     expect(route).toMatch(/\.\.\.\(clipsDropped > 0 \? \{ clipsDropped \} : \{\}\)/);
     expect(filmClient).toMatch(/scenesRendered: clips\.length - \(assembledRes && 'clipsDropped' in assembledRes \? \(assembledRes\.clipsDropped \?\? 0\) : 0\),/);
   });
+  it('the film stitch asks for a signed-in caller before it probes any clip URL (final review 2026-10-13)', () => {
+    const gate = route.indexOf('const gate = requireAuthForGeneration(uid);');
+    const probe = route.indexOf('const segments = await keepLiveClips(handedOver);');
+    const links = route.indexOf("error: 'invalid_media_url'");
+    expect(gate).toBeGreaterThan(-1);
+    expect(probe).toBeGreaterThan(-1);
+    expect(links).toBeGreaterThan(-1);
+    expect(links).toBeLessThan(probe);
+    expect(gate).toBeLessThan(probe);
+    expect(route.split('requireAuthForGeneration(uid)').length - 1).toBe(1);
+  });
   test('the route checks it against the clips BEFORE any charge, and answers 400 with the reason', () => {
     const check = route.indexOf('finalCutForAssemble(stitchSec, body.finalDurationSec)');
     expect(route).toMatch(/const stitchSec = stitchedSeconds\(segments\.length, clipSecOfRender, \{ \.\.\.\(filmTokenId \? \{ transition: 'cut' \} : \{\}\), \.\.\.\(body\.globalRender \?\? \{\}\) \}, VIDEO_FPS\);/);
