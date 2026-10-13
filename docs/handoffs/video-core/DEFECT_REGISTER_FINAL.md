@@ -1,19 +1,19 @@
-# Video Core v1.0 — defect register, final state (round 3)
+# Video Core v1.0 — defect register, final state (release candidate)
 
 The full register with the BEFORE column, root causes and file lines is `defect-register.md` (rows 1–22). This file is the
 state of every row on the release-candidate head, in the owner's vocabulary: **PROVEN** (fixed, regression test green,
 measured where a measurement exists) · **DOES NOT REPRODUCE** (pinned so it cannot return) · **OPEN — GG** (the fix is a
 decision or a resource only the owner can give) · **UNSUPPORTED, SAID** (this version cannot do it and tells the user so).
-Tiers: T1 mocked · T2 local browser · T3 real ffmpeg · T4 Preview · T5 paid provider · T6 Production.
+Tiers: T1 mocked · T2 local browser · T3 real ffmpeg · DB throwaway Postgres · CI-E2E real browser + `next start` + throwaway Supabase in GitHub Actions · T4 Preview · T5 paid provider · T6 Production.
 
 | # | Trigger (GG's register / found in this task) | Final state | Fix (commit) | Regression test | Highest tier measured | Remaining limitation |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | „29.7 წამი“ / „29,7 წამი“ → 7 s | DOES NOT REPRODUCE on 30be5a2; the chain is pinned 29.7 → 891 frames | — (kept) | `durationWords.test`, `durationContract.test`, `ffmpeg-assembly.ffmpeg.test` | T3 | — |
 | 2 | „ერთწუთიანი“ / „ოთხწუთიანი“ / "one-minute" / «одноминутное» not recognised | PROVEN | `lib/video/durationWords.ts` (f2f3dae) | `intent.videoCore.test` 30/30 (before: 19 failed) | T1 (+T3 for 60 s = 1800) | — |
-| 3 | 60 → 64, 29.7 → 32, 70 → 72 silent snap | PROVEN: Requested · Native · Final said, final trimmed exactly | `lib/video/durationContract.ts`, OmniStudio (8a04807, 2a2f8b7) | `durationContract.test`, `VideoCreatePanel.test` (`video-duration-plan`), T3 `t3-film-frame-counts.json` | T3 | T4 (a deployed browser) not run — B2 |
+| 3 | 60 → 64, 29.7 → 32, 70 → 72 silent snap | PROVEN: Requested · Native · Final said, final trimmed exactly | `lib/video/durationContract.ts`, OmniStudio (8a04807, 2a2f8b7) | `durationContract.test`, `VideoCreatePanel.test` (`video-duration-plan`), T3 `t3-film-frame-counts.json` | T3 | T4 (a deployed build) not run: a new Preview needs GG's word |
 | 4 | 240 s → 96 s silent cut | PROVEN on the closed path: `longform_closed` refusal before the board; the open path (7200 frames) needs B4 + B1 | 5434df7 | `durationContract.test`, `longform/route.test` | T1 | OPEN — GG: `LONGFORM_ORDER_WIRED` + a Veo budget |
 | 5 | storyboard plan miss / timeout / malformed → no card, or an auto-render | PROVEN: error card with Retry / Dismiss, nothing rendered | df5c8e9 | `OmniStudio` storyboard tests, `videoCoreWiring.test` | T1 | T2 Retry card asserted locally only (`evidence/t2-round3`) |
-| 6 | a new project inherits the last project's length | PROVEN | 5434df7 | `videoCoreWiring.test` | T1 | project switching on a deployed build: B2 |
+| 6 | a new project inherits the last project's length | PROVEN | 5434df7 | `videoCoreWiring.test` | T1 | project switching on a deployed build (T4) not run |
 | 7 | music source offset drifts | DOES NOT REPRODUCE; pinned exact (`musicStartSec = musicFromSec`) | — (kept) | `beatPlan.test`, T3 AC-06 chain (0:59 marker on the first frame) | T3 | — |
 | 8 | „მარტო ბოლო ხუთი“ of 7 uses all 7 | DOES NOT REPRODUCE; excluded clips contribute 0 frames in `qc.sources` | — (kept) | `sourceSelect.test`, T3 E2E-22 | T3 | — |
 | 9 | a source shorter than asked is padded with a frozen tail | PROVEN: under a contract the pad is off; longer-than-master is **refused** | 2a2f8b7 | `ffmpeg-assembly.ffmpeg.test` c_refusal (`longer_than_master`) | T3 | legacy pad without a contract stays (D6, OPEN — GG) |
@@ -32,10 +32,12 @@ Tiers: T1 mocked · T2 local browser · T3 real ffmpeg · T4 Preview · T5 paid 
 | 22 | **round 3 P1 (AC-23)**: a later music start on the timeline was read as a track offset; add-clips / replace-music follow-ups became a silent new quote | UNSUPPORTED, SAID: quote `unsupported: ['music_delay']` + card note; follow-up answered as unsupported before any quote; nothing charged | 261a261 | `montageAsk.test:382`, `montageExec.test:431`, `montageChat.test:221`, `videoCoreWiring.test:186` | T1 (+T2 note rendering, `evidence/t2-round3`) | the contract fields (timeline start ≠ 0, add-to-manifest, swap-in-place) are GG's shared-contract decision (`blockers-and-deferred.md` item 5) |
 | 23 | **round 3 (CI)**: `DirectorRunOverlay.test` expected the pre-round-3 body → CI red on fc1971b | PROVEN: test pinned to the new body (locale; approval beside the storyboard) | 7078648 | `DirectorRunOverlay.test` (7/7) | T1 | — |
 
-## Round-3 final pass (2026-10-12, GG 18:17Z brief): browser, billing harness, speed edits
+## Final pass (2026-10-12, GG 18:17Z / 19:05Z / 19:07Z briefs): browser, billing harness, speed edits, isolated CI E2E
 
 Found by the real-browser run (`tests/video-core`, desktop Chrome + iPhone 13, every server route mocked at the page;
-`evidence/t2-round3/`), by re-running the real-Postgres suites, and by measuring speed edits on real ffmpeg.
+`evidence/t2-round3/`), by re-running the real-Postgres suites, by measuring speed edits on real ffmpeg, and by the
+real-backend E2E in GitHub Actions (rows 35–36; `evidence/ci-e2e/`). The CI E2E found no product defect: both of its
+failures were in the tests, and each is fixed with the root cause written down.
 
 | # | Trigger | Final state | Fix (commit) | Regression test | Highest tier measured | Remaining limitation |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -47,9 +49,11 @@ Found by the real-browser run (`tests/video-core`, desktop Chrome + iPhone 13, e
 | 29 | composer attachments followed the user into another conversation | PROVEN: History pick / New chat parks the composer's files with the chat being left | a9ec305 | `navigation.spec.ts` (`attachmentFollowed` must be false) | T2 | — |
 | 30 | a speed edit (2× / 0.5×) produced a **25 fps** file: 2× = 3.04 s / 76 frames, flash 40 ms late, sound 52 ms early | PROVEN: `setpts=…,fps=30`; 2× = 3.01 s / **90** frames, flash at 1.000 s, sound −10 ms; 0.5× = 8.00 s / **240** frames, −35 ms; both inside ITU-R BT.1359 | 357926b | `editPlan.test`, `videoCoreSpeedSync.ffmpeg.test` | T3 | — |
 | 31 | (test harness) the real-Postgres isolation suites had stopped passing: Docker Hub 429, a throwaway twin race blocking 20261002d's preflight, per-clip QC sampling the wrong store | PROVEN: `POSTGREST_BIN`, throwaway twins deleted before the migration, live-store sampling; lease 7/7 ×2, ledgerOnce 7+1 skip ×2, run 6/6 (real ffmpeg), outbox 4/4 | 954e385 | `scripts/lease-isolation/run.sh` | T1 + real Postgres 16 + PostgREST 12.2.3 | — |
-| 32 | (environment) the repo's 114 migrations do not rebuild the schema on a fresh database: 35 fail, among them the one that creates `credit_ledger`; 14 version prefixes are shared by several files | OPEN — GG: a Production **schema-only** dump seeds any test database (`SUPABASE_TEST_ENV.md`); migration hygiene is out of Video Core's scope | — | `evidence/round3-final/migration-replay-fresh-db.tsv` | local Postgres 16 | blocks a full-backend browser E2E until the dump exists |
-| 33 | CI `verify` red on a9ec305…357926b: three source pins in `components/studio/create/videoCoreWiring.test.ts` still expected the old `createStoryboard` call and signature after the music-video fix | P1 (CI gate) | FIXED cc0657f: pins match the new call; 23/23 locally; CI re-run on cc0657f |
-| 34 | Phone (390×664): the floating job tray covered the newest montage card's Start even with the thread scrolled to its end; the thread kept no room for the tray (`components/studio/JobTray.tsx` fixed z-60) | P2 (UX, phone) | FIXED: the tray publishes `--job-tray-h`, the thread ends with a spacer of that height (`job-tray-spacer`); `tests/video-core/flows.spec.ts` "[phone] a job already running elsewhere…" is now a plain assertion, PASS on mobile |
+| 32 | (environment) the repo's 114 migrations do not rebuild the schema on a fresh database: 35 fail, among them the one that creates `credit_ledger`; 14 version prefixes are shared by several files | WORKED AROUND for Video Core; the migration history itself is OPEN — GG (proposal) | d7872e0: a Test Schema Baseline from repo files (`scripts/lease-isolation/schema.sql` read SELECT-only from Production on 2026-10-10 + 8 verbatim migrations + RLS/storage/trigger contract) builds a Production-shaped schema on a throwaway Supabase in CI — no dump, no secret (`SUPABASE_TEST_ENV.md`) | `e2e/video-core-live/baseline/900_verify.sql` (RLS on 5 tables, policies, RPC grants, triggers, private buckets, ledger indexes) — green in every CI run | CI (Supabase CLI stack, Postgres 17) | re-baselining the migrations rewrites shared history: a proposal for GG, not done |
+| 33 | CI `verify` red on a9ec305…357926b: three source pins in `components/studio/create/videoCoreWiring.test.ts` still expected the old `createStoryboard` call and signature after the music-video fix | PROVEN (CI gate) | cc0657f | `videoCoreWiring.test` 23/23; CI `verify` green from cc0657f on | T1 + CI | — |
+| 34 | Phone (390×664): the floating job tray covered the newest montage card's Start even with the thread scrolled to its end; the thread kept no room for the tray (`components/studio/JobTray.tsx` fixed z-60) | PROVEN | be10500: the tray publishes `--job-tray-h`, the thread ends with a spacer of that height (`job-tray-spacer`) | `tests/video-core/flows.spec.ts` „[phone] a job already running elsewhere…“ — a plain assertion now, PASS on mobile (rerun 2026-10-12 19:50Z: 92 pass / 6 skip / 0 fail) | T2 | — |
+| 35 | (CI E2E run 3, ebc3444) Stop → Retry → Start on the real server was refused **429** on desktop and phone: it was the user's 6th quote/run call inside one minute, and `RATE_LIMITS.EXPENSIVE` (5 a minute per user and client, shared by the montage and edit routes) answered as shipped. The card said „Too many requests at once. Try again in a minute." (`rate_limited`) | TEST FIXED (the suite paces itself like a person; the limiter is untouched) · product behaviour **as designed**, recorded as owner decision D11 | 4620ac5 | `tests/video-core-live/journey.spec.ts` (pacing log per user, each Start must answer 200) | CI-E2E | a user who starts, stops and retries twice within a minute gets the „try again in a minute" card; proposal D11: count one plan's quote and run once, or give Agent G media its own bucket |
+| 36 | (CI E2E run 1, d7872e0) the other-user denial test answered HTTP 200 on `/api/tasks?id=<owner's job>` | TEST FIXED, not a product leak: the project's API context carried the OWNER's session cookies, and the server reads the cookie before a bearer token (`lib/supabase/server.ts` `authedClientFromRequest`); the same test's RLS read already returned `[]` | 5d52b1b | the other-user test runs on a cookie-free API context: task route 404, storage 400/400, foreign quote 403 `media_not_yours`, 0 job rows | CI-E2E | — |
 
 Not defects, recorded as findings (behaviour by design, said in `evidence/t2-round3/findings.json`): a reload opens a fresh
 conversation (History reopens it); `?tool=video` is taken off the URL after opening, so Back/Forward carry no tool; the Video
@@ -58,6 +62,6 @@ lane names an unreadable soundtrack with the generic QC wording, not `music_unre
 
 ## What is not in this register on purpose
 
-- Owner decisions D1–D8 (`consolidation-plan.md` §5, `blockers-and-deferred.md`): not defects, choices.
+- Owner decisions D1–D11 (`RELEASE_READINESS_CHECKLIST.md` §3): not defects, choices.
 - Blockers B1–B8: resources or permissions, each with its cost and next action in `RELEASE_READINESS_CHECKLIST.md`.
 - Anything in Image Studio or Payments: out of this task's ownership (not touched: `git diff 30be5a2..HEAD -- lib/billing lib/credits` is empty; no `components/studio/create/Image*` change).

@@ -114,7 +114,8 @@ export async function decodedFrames(file: string): Promise<Decoded> {
 /** Keys and values that must never reach a file or the (public) CI log, even though every one here is local and throwaway. */
 const SECRETISH_KEY = /token|secret|signature|password|apikey|authorization/i;
 function redact(_key: string, value: unknown): unknown {
-  if (SECRETISH_KEY.test(_key)) return '***';
+  // a number or a boolean under such a key is a status, not a secret (e.g. `sweepWithoutSecret: 401`)
+  if (SECRETISH_KEY.test(_key) && typeof value !== 'number' && typeof value !== 'boolean') return '***';
   if (typeof value === 'string') return value.replace(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '***').replace(/([?&](?:token|sig|signature)=)[^&"\s]+/gi, '$1***');
   return value;
 }

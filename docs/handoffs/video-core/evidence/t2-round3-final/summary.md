@@ -1,6 +1,6 @@
 # Video Core v1.0 — round 3 FINAL (T2) · real-browser Playwright evidence
 
-Branch `claude/video-core-v1-6gh97e` (HEAD cc0657f (product code as of 357926b; cc0657f only changes a unit test), product fixes of a9ec305 included), Playwright 1.58.2, bundled Chromium (`/opt/pw-browsers/chromium`), the already-running `next dev -p 3000` (dummy Supabase env), every server route mocked at the page. Two projects: **desktop** (Desktop Chrome) and **mobile** (iPhone 13 descriptor, run in Chromium — WebKit is not installed here). The earlier run stays as it was in `../t2-round3/`.
+Branch `claude/video-core-v1-6gh97e`, re-run 2026-10-12 19:50–20:07Z on the release-candidate code (product code as of be10500 — the phone tray fix; later commits change only tests, CI and docs), product fixes of a9ec305 included, Playwright 1.58.2, bundled Chromium (`/opt/pw-browsers/chromium`), the already-running `next dev -p 3000` (dummy Supabase env), every server route mocked at the page. Two projects: **desktop** (Desktop Chrome) and **mobile** (iPhone 13 descriptor, run in Chromium — WebKit is not installed here). The earlier run stays as it was in `../t2-round3/`.
 
 Command (no `--reporter` flag — the config writes `list` + this folder's `playwright-results.json`):
 
@@ -8,12 +8,12 @@ Command (no `--reporter` flag — the config writes `list` + this folder's `play
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/opt/pw-browsers/chromium npx playwright test -c playwright.video-core.config.ts
 ```
 
-Run time 16.9 min. `npx tsc --noEmit -p tsconfig.json` → exit 0 (no errors).
+Run time 16.3 min (92 expected, 6 skipped, 0 unexpected, 0 flaky — `playwright-results.json` stats). The previous run on cc0657f (16.9 min) had the phone tray test as a declared failure; it is a plain PASS now.
 
 ## Totals
 
 - **desktop**: 49 tests → 42 PASS, 0 FAIL, 4 SKIP, 3 declared-FAIL
-- **mobile**: 49 tests → 43 PASS, 0 FAIL, 2 SKIP, 4 declared-FAIL
+- **mobile**: 49 tests → 44 PASS, 0 FAIL, 2 SKIP, 3 declared-FAIL
 
 PASS = passed as written; declared-FAIL = a `test.fail()` that failed as declared (a known defect or owner judgement — Playwright counts it as passed); SKIP = not applicable to that project (reason in the table) ; FAIL = a real failure of this run.
 
@@ -28,7 +28,7 @@ PASS = passed as written; declared-FAIL = a `test.fail()` that failed as declare
 | editing.spec.ts | desktop | 4 | 2 | 0 | 2 | 0 |
 | editing.spec.ts | mobile | 4 | 4 | 0 | 0 | 0 |
 | flows.spec.ts | desktop | 12 | 10 | 0 | 2 | 0 |
-| flows.spec.ts | mobile | 12 | 9 | 0 | 2 | 1 |
+| flows.spec.ts | mobile | 12 | 10 | 0 | 2 | 0 |
 | navigation.spec.ts | desktop | 5 | 5 | 0 | 0 | 0 |
 | navigation.spec.ts | mobile | 5 | 5 | 0 | 0 | 0 |
 | storyboard.spec.ts | desktop | 2 | 2 | 0 | 0 | 0 |
@@ -77,7 +77,7 @@ PASS = passed as written; declared-FAIL = a `test.fail()` that failed as declare
 | flows.spec.ts | download + library: the film's final video offers Download and Save to library (one POST, then Saved) | PASS | PASS |
 | flows.spec.ts | library: the sidebar Library row opens /library and lists the finished montage from GET /api/studio/library | PASS | PASS |
 | flows.spec.ts | [phone] Start, Stop and Retry by touch; Retry plans again exactly once and runs nothing | SKIP (touch flow: the iPhone 13 project) | PASS |
-| flows.spec.ts | [phone] a job already running elsewhere (in the tray) does not cover the new card's Start | SKIP (the tray floats over the thread only on a phone-width layout) | declared-FAIL (DEFECT components/studio/JobTray.tsx:178-192 — the job tray is position:fixed z-[60] at bottom calc(var(--composer-h)+var(--kb-inset)+1.25re…) |
+| flows.spec.ts | [phone] a job already running elsewhere (in the tray) does not cover the new card's Start | SKIP (the tray floats over the thread only on a phone-width layout) | PASS (defect 7 fixed in be10500: the thread ends with a `job-tray-spacer` as tall as the tray) |
 | flows.spec.ts | keyboard: Tab reaches the composer; Start and Stop are named buttons that work with Enter | PASS | SKIP (keyboard navigation: the desktop project) |
 | flows.spec.ts | keyboard: the film error card's Try again is reachable by Tab and plans again with Enter | PASS | SKIP (keyboard navigation: the desktop project) |
 | navigation.spec.ts | the dashboard loads at /en, /ka and /ru with the composer ready | PASS | PASS |
@@ -103,7 +103,7 @@ Every flow is driven the way a user does it: the paperclip opens the real OS fil
 | c2 | download + library: the film's final video offers Download and Save to library | Assemble returns `{url: …/final-master.mp4}` → Download gives `myavatar-video-<n>.*`. „Save to library“ sends exactly **one** `POST /api/studio/library {url, kind:'film'}`, then reads „Saved to library“ and is disabled. |
 | d1 | library: the sidebar Library row opens /library and lists the finished montage | `GET /api/studio/library?kind=film,…` is read. The item (`id: JOB_ID`, `url: MASTER_URL`) renders as a `<video>` with its Download. |
 | e1 | [phone] Start, Stop and Retry by touch; Retry plans again exactly once and runs nothing | Taps only: Start → running → Stop → cancelled → Retry → one new quote, run stays 1, cancel stays 1. |
-| e2 | [phone] a job already running elsewhere (in the tray) does not cover the new card's Start | `GET /api/tasks?active=1` lists another running job. Quote a montage, scroll the thread to its end, then check that `elementFromPoint(centre of Start)` is the Start. **Declared failure: it hits `job-tray`** (new defect 7). |
+| e2 | [phone] a job already running elsewhere (in the tray) does not cover the new card's Start | `GET /api/tasks?active=1` lists another running job. Quote a montage, scroll the thread to its end, then check that `elementFromPoint(centre of Start)` is the Start. On cc0657f it hit `job-tray` (defect 7, declared failure); since be10500 it is the Start (PASS). |
 | f1 | keyboard: Tab reaches the composer; Start and Stop are named buttons that work with Enter | Starting from the page body, Tab focuses `composer-input` within 60 presses. The quoted card's Start is a button named „Start — Free“ (free plan in the mock). Focused programmatically, Enter on it starts the run (run 1). The card's „Stop“ button and the composer's „Stop the task“ are named buttons, and Enter on the focused card Stop sends exactly one cancel and ends the card `cancelled`. |
 | f2 | keyboard: the film error card's Try again is reachable by Tab and plans again with Enter | Assemble 502 → error card → Shift+Tab from the composer reaches „Try again“. Enter sends one more planOnly storyboard, and orchestrate stays 1. |
 
@@ -113,7 +113,7 @@ Phone-only tests (e1, e2) are `test.skip` on desktop, and keyboard tests (f1, f2
 
 The cause was in the TEST's mock, not the product. `live:true` listed the job in `GET /api/tasks?active=1` from page load, before Start was posted, so on the phone the tray (fixed, z-60) sat over the card's Start and `montageRunning()` could not tap it. The mock now lists a job as live only once a run was posted and until it is cancelled, which is how the server lists it. The `page.route` mocks and their counters survive `page.reload()`, so after the reload the job is still listed. The two tests are cards.spec.ts „after a reload the running job is in the tray exactly once (live), no card in the fresh chat“ and „the tray row prints no "%" for a job whose server sends no percent“; in this run **both PASS on mobile** (and on desktop), so they are VERIFIED, no longer NOT VERIFIED. The product side of the same overlap, a job that really is running elsewhere, is defect 7 below.
 
-## New defect (product code NOT modified; pinned with `test.fail()`)
+## Defect 7 (found by the cc0657f run, FIXED in be10500 — `DEFECT_REGISTER_FINAL.md` row 34)
 
 7. **On a phone, the job tray covers the newest card's Start.**
    - **Repro:** use an iPhone-13 viewport (390×664) with some other job running, so that `GET /api/tasks?active=1` lists it and the tray shows. Attach two clips and a track, then say „cut these to the music“ to get a quoted montage card. Scroll the thread to its end. The centre of `agent-montage-start` is under `[data-testid=job-tray]` (`elementFromPoint`), so a tap lands on the tray.
