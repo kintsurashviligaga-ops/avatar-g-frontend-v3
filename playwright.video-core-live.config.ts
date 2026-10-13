@@ -10,8 +10,9 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * The global setup refuses to run (tests/video-core-live/guard.ts) unless every database-pointing variable names this
  * machine. Projects run one at a time (one worker): one shared server and one rate limiter. Two browser projects — a desktop and an iPhone-13 viewport — each signed in through the real sign-in sheet
- * by its own setup project, as its own synthetic user; one API project for RLS, RPC and access checks and the film
- * stitch's charges (billing.spec).
+ * by its own setup project, as its own synthetic user (the journey, and the music from a named second in Russian and
+ * Georgian: sync.spec); one API project for RLS, RPC and access checks, the film stitch's charges (billing.spec), job
+ * recovery by the sweep and the storyboard approval (recovery.spec), and the long calls' answers (transport.spec).
  */
 const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000';
 const STATE_DIR = 'test-results/video-core-live/state';
@@ -50,13 +51,13 @@ export default defineConfig({
   projects: [
     { name: 'setup-desktop', testMatch: /auth\.setup\.ts$/, use: { ...devices['Desktop Chrome'], ...common } },
     { name: 'setup-mobile', testMatch: /auth\.setup\.ts$/, use: { ...phone, ...common } },
-    { name: 'api', testMatch: /(contracts|billing)\.spec\.ts$/, use: { ...common } },
+    { name: 'api', testMatch: /(billing|contracts|recovery|transport)\.spec\.ts$/, use: { ...common } },
     {
-      name: 'desktop', testMatch: /journey\.spec\.ts$/, dependencies: ['setup-desktop'],
+      name: 'desktop', testMatch: /(journey|sync)\.spec\.ts$/, dependencies: ['setup-desktop'],
       use: { ...devices['Desktop Chrome'], ...common, storageState: `${STATE_DIR}/desktop.json` },
     },
     {
-      name: 'mobile', testMatch: /journey\.spec\.ts$/, dependencies: ['setup-mobile'],
+      name: 'mobile', testMatch: /(journey|sync)\.spec\.ts$/, dependencies: ['setup-mobile'],
       use: { ...phone, ...common, storageState: `${STATE_DIR}/mobile.json` },
     },
   ],

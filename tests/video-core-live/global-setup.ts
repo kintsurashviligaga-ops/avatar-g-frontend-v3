@@ -5,8 +5,9 @@
  *   2. synthetic users through the local auth server's admin API (service role of the LOCAL stack): two admins (one per
  *      browser project), one ordinary user for the access-denial checks and one for the credits spec, all with one password generated here, for
  *      this run only (handed to the workers through the environment, never printed or written to disk);
- *   3. synthetic media rendered by ffmpeg-static: two clips, a beat track, a clip with sound for the edits, a file that
- *      is not audio, and a truncated clip that passes the upload's byte sniff but cannot be decoded.
+ *   3. synthetic media rendered by ffmpeg-static: two clips, a beat track, a clip with sound for the edits, a track whose
+ *      second half sounds different (the music-offset test), a file that is not audio, and a truncated clip that passes
+ *      the upload's byte sniff but cannot be decoded.
  */
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -61,6 +62,11 @@ async function makeMedia(): Promise<void> {
     ...h264, '-c:a', 'aac', '-shortest', m('long-b.mp4')]);
   await ffmpeg(['-f', 'lavfi', '-i', "aevalsrc='0.15*sin(2*PI*196*t)+0.8*sin(2*PI*880*t)*lt(mod(t\\,0.5)\\,0.06)':s=44100:d=24",
     '-c:a', 'libmp3lame', '-b:a', '128k', m('long-beat.mp3')]);
+  // A track whose two halves sound different, for a montage that starts the music at its 10th second (sync.spec): a
+  // low hum with clicks before 10 s, a 3 kHz tone with the same clicks after it. Which half a master plays is then read
+  // from its sound above 2 kHz (_live highBandVolumeDb), whatever the clips' own sound or the mix does below it.
+  await ffmpeg(['-f', 'lavfi', '-i', "aevalsrc='if(lt(t\\,10)\\,0.15*sin(2*PI*196*t)\\,0.3*sin(2*PI*3000*t))+0.6*sin(2*PI*880*t)*lt(mod(t\\,0.5)\\,0.06)':s=44100:d=24",
+    '-c:a', 'libmp3lame', '-b:a', '128k', m('late-beat.mp3')]);
   // Not audio at all, named like a song.
   writeFileSync(m('not-a-song.mp3'), 'this is a text file, not an mp3\n'.repeat(64));
   // A clip cut off at 40 %: the upload's sniff sees an MP4 header, but there is no index (moov) to decode it with.

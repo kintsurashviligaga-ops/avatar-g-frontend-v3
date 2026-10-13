@@ -117,6 +117,7 @@ jobs:
             echo "AGENT_G_QUOTE_SECRET=$QUOTE"
             echo "CRON_SECRET=$CRON"
             echo "AGENT_G_MEDIA_EXEC=admin"
+            echo "VIDEO_DIRECTOR_RUNS=admin"
             echo "VIDEO_CORE_LIVE_E2E=1"
           } >>"$GITHUB_ENV"
           rm -f sb-status.env sb-start.log

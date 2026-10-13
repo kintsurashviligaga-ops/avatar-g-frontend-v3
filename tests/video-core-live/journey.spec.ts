@@ -1,9 +1,9 @@
-import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Response } from '@playwright/test';
 import { join } from 'node:path';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import {
-  OUT_DIR, STATE_DIR, attach, balanceOf, decodedFrames, evidence, jobsOf, ledgerOf, liveUser, meanLuma, meanVolumeDb, openSignedInStudio,
-  projectUser, rows, say, shot, signInToken,
+  OUT_DIR, attach, balanceOf, decodedFrames, evidence, isQuote, isRun, jobsOf, ledgerOf, liveUser, logExpensive, logPage, meanLuma,
+  meanVolumeDb, openSignedInStudio, paced, press, projectUser, rows, say, shot, signInToken, startRun,
 } from './_live';
 
 /**
@@ -20,55 +20,6 @@ import {
  */
 
 const FPS = 30;
-const isQuote = (kind: 'montage' | 'edit') => (r: Response) =>
-  r.url().endsWith(`/api/agent/media/${kind}`) && r.request().method() === 'POST' && (r.request().postDataJSON() as { action?: string } | null)?.action === 'quote';
-const isRun = (kind: 'montage' | 'edit') => (r: Response) =>
-  r.url().endsWith(`/api/agent/media/${kind}`) && r.request().method() === 'POST' && (r.request().postDataJSON() as { action?: string } | null)?.action === 'run';
-const press = async (page: Page, testId: string, isMobile: boolean) => {
-  const el = page.getByTestId(testId).last();
-  if (isMobile) await el.tap(); else await el.click();
-};
-
-/**
- * PACING. The server's limiter stays exactly as shipped (lib/api/rate-limit RATE_LIMITS.EXPENSIVE: 5 quote/run calls a
- * minute per user and client, shared by the montage and the edit routes), so the suite paces itself the way a person
- * would instead of switching it off: before a step that quotes or runs, it waits until this user has made at most
- * 5 − n such calls in the last 61 s (n = the calls the step can make). The limiter's fixed 60 s window then never holds
- * more than 5. Every call is logged from the page's own requests, across tests and projects (state/expensive-<user>.json).
- * CI run 3 (ebc3444) found why: Stop → Retry → Start within a minute of the first montage is the 6th call, and the
- * real server answers 429 „Too many requests… try again in a minute" (recorded in DEFECT_REGISTER_FINAL.md).
- */
-const EXPENSIVE_PER_MIN = 5;
-const callLog = (userId: string) => join(STATE_DIR, `expensive-${userId}.json`);
-function expensiveCalls(userId: string): number[] {
-  try { return JSON.parse(readFileSync(callLog(userId), 'utf8')) as number[]; } catch { return []; }
-}
-function logExpensive(userId: string): void {
-  mkdirSync(STATE_DIR, { recursive: true });
-  writeFileSync(callLog(userId), JSON.stringify([...expensiveCalls(userId), Date.now()]));
-}
-async function paced(userId: string, n = 1): Promise<number> {
-  const t0 = Date.now();
-  while (expensiveCalls(userId).filter((t) => Date.now() - t < 61_000).length > EXPENSIVE_PER_MIN - n) {
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  return Date.now() - t0;
-}
-const isExpensive = (r: Request) =>
-  r.method() === 'POST' && /\/api\/agent\/media\/(montage|edit)$/.test(r.url()) && ['quote', 'run'].includes(String((r.postDataJSON() as { action?: string } | null)?.action));
-/** Every quote/run the page sends is logged for this user. */
-function logPage(page: Page, userId: string): void {
-  page.on('request', (r) => { if (isExpensive(r)) logExpensive(userId); });
-}
-/** Start the card's plan once, paced; the run must be queued (a 429 here would be a pacing bug, said so by name). */
-async function startRun(page: Page, kind: 'montage' | 'edit', isMobile: boolean, userId: string): Promise<{ jobId?: string; status?: string; replay?: boolean }> {
-  await paced(userId);
-  const run = page.waitForResponse(isRun(kind), { timeout: 60_000 });
-  await press(page, `agent-${kind}-start`, isMobile);
-  const r = await run;
-  expect(r.status(), `run refused: HTTP ${r.status()} ${await r.text()}`).toBe(200);
-  return (await r.json().catch(() => ({}))) as { jobId?: string; status?: string; replay?: boolean };
-}
 
 /**
  * Every read of a task the page makes (/api/tasks?id=…, every 3 s while a card runs): how many per HTTP status, and the
