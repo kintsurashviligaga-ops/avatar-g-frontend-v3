@@ -15,6 +15,7 @@ import 'server-only';
 
 import type { Redis } from '@upstash/redis';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 
 // The per-pipeline prices live in ./produceCost (isomorphic, so a button can quote the SAME number a route charges);
 // re-exported here so every existing importer keeps working.
@@ -32,10 +33,9 @@ export const RATE_PER_DAY = 120;
 export const GLOBAL_DAILY_CAP = Number(process.env.PRODUCE_GLOBAL_DAILY_CAP ?? 2000);
 
 function redis(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
-  try { return createUpstashRedis(url, token); } catch { return null; }
+  const env = upstashRestEnv();
+  if (!env) return null;
+  try { return createUpstashRedis(env.url, env.token); } catch { return null; }
 }
 
 /**
@@ -73,7 +73,7 @@ export async function checkProduceRate(userId: string, now: number = Date.now(),
     if (process.env.NODE_ENV === 'production' && !warnedRedisAbsent) {
       warnedRedisAbsent = true;
       // eslint-disable-next-line no-console
-      console.warn('[rate-limit] Upstash not configured in production — per-user + global produce caps are INERT (fail-open). Set UPSTASH_REDIS_REST_URL/TOKEN to enforce.');
+      console.warn('[rate-limit] Upstash not configured in production — per-user + global produce caps are INERT (fail-open). Connect an Upstash store (KV_REST_API_URL/TOKEN, or UPSTASH_REDIS_REST_URL/TOKEN) to enforce.');
     }
     return { ok: true };
   }

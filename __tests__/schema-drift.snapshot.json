@@ -1,5 +1,5 @@
 {
-  "note": "Production public schema of Supabase project zwksnayknzggdcenqqxy, read 2026-10-09 08:25Z, read-only. Tables: select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r','v','m','p','f'). Functions: select distinct proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and no pg_depend row with deptype 'e' (extension functions such as pgvector left out). missing = names the code calls that Production lacks; it may only shrink. dynamic = files whose Supabase name is built at run time. See __tests__/schema-drift.test.ts.",
+  "note": "Production public schema of Supabase project zwksnayknzggdcenqqxy, read 2026-10-09 08:25Z, read-only; plus claim_request_idempotency and release_request_idempotency, created by supabase/migrations/20261013a (applied 2026-10-13 ~16:12Z, verified read-only). Tables: select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('r','v','m','p','f'). Functions: select distinct proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.prokind = 'f' and no pg_depend row with deptype 'e' (extension functions such as pgvector left out). missing = names the code calls that Production lacks; it may only shrink. proposed = see its own note. dynamic = files whose Supabase name is built at run time. See __tests__/schema-drift.test.ts.",
   "project": "zwksnayknzggdcenqqxy",
   "production": {
     "tables": [
@@ -68,6 +68,7 @@
       "claim_next_music_job_debug",
       "claim_next_render_job",
       "claim_render_job",
+      "claim_request_idempotency",
       "consume_free_avatar_chat",
       "consume_free_film",
       "credit_wallet_gel",
@@ -86,6 +87,7 @@
       "prune_active_visitors",
       "purge_expired_trashed_chats",
       "refund_credits",
+      "release_request_idempotency",
       "requeue_stale_jobs",
       "restore_free_avatar_chat",
       "restore_free_film",
@@ -239,6 +241,10 @@
       "match_rag_documents",
       "reset_user_credits_if_due"
     ]
+  },
+  "proposed": {
+    "note": "Functions the code calls before their proposal is applied: each is created by a reviewed SQL file under docs/handoffs/**/proposals/, and its caller treats 'not provisioned' as an answer (fails open, as before) instead of failing silently. Applying a proposal to Production is the owner's word; then the SQL moves to supabase/migrations/ and the name moves to production (as 20261013a did on 2026-10-13).",
+    "functions": []
   },
   "dynamic": [
     "app/api/account/delete/route.ts",

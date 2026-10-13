@@ -1,5 +1,9 @@
 # Video Core v1.0 — PR #58: საბოლოო Code Review და GO/NO-GO (2026-10-13)
 
+> **განახლება 2026-10-13 13:25Z:** შენი სიტყვით (13:18:10Z) PR #58 merge-ულია (**e46c35c**) და Production-შია
+> (`dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ`). შემოწმებები და დარჩენილი სამუშაოები: `PRODUCTION_DEPLOY_REPORT_KA.md`. ქვემოთ
+> merge-მდე მდგომარეობაა; Rollback-ის წერტილი (§6) იგივეა: `dpl_EhS6Jvgm7uKdrMudSsDTChvxuGmy`.
+
 **Branch** `claude/video-core-v1-6gh97e` · **Draft PR #58** → main (draft რჩება, merge არ ყოფილა) · კოდის head **f1e3358** (ამის შემდეგ მხოლოდ დოკუმენტები) ·
 უახლესი main **ba2e0a4** (PR #61, BOG-ის დოკუმენტები; Production ემსახურება მას 09:31Z-დან, კოდი = 883a013) branch-შია
 შერწყმული (179e10e; მანამდე 883a013 → 121c390), კონფლიქტის გარეშე.

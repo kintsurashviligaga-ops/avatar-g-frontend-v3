@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 import { opsCallerAllowed } from '@/lib/security/opsAccess';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
@@ -102,11 +103,10 @@ async function verifyRedis(): Promise<
   Pick<HealthResponse, 'redis' | 'message'>
 > {
   try {
-    const url = process.env.UPSTASH_REDIS_REST_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const env = upstashRestEnv();
 
     // Check if credentials configured
-    if (!url || !token) {
+    if (!env) {
       return {
         redis: 'unconfigured',
         message: 'Redis credentials not set',
@@ -114,7 +114,7 @@ async function verifyRedis(): Promise<
     }
 
     // Initialize Redis client (REST-based for serverless)
-    const redis = createUpstashRedis(url, token);
+    const redis = createUpstashRedis(env.url, env.token);
 
     // Test with unique key (prevents cache pollution)
     const testKey = `health:${Date.now()}:${Math.random()

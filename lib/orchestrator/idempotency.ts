@@ -1,10 +1,10 @@
 /**
  * Idempotency + token-lock layer (server-side only).
  *
- * Uses the already-installed @upstash/redis REST client. Every helper
- * degrades to a safe no-op when Redis env is not configured, so the app
- * keeps working in local/dev without Redis — it simply loses the dedup /
- * lock guarantees until the operator wires Upstash.
+ * Uses the already-installed @upstash/redis REST client. Without Redis the
+ * duplicate guard (claim / release) asks the shared database instead
+ * (./idempotencyStore, R2); every other helper degrades to a safe no-op, so
+ * the app keeps working in local/dev without either.
  *
  * Three guarantees, matching Modules 3 + 6 of the architecture brief:
  *   1. Idempotency — block duplicate multi-click submissions inside a
@@ -18,6 +18,8 @@
 import 'server-only';
 import type { Redis } from '@upstash/redis';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
+import { storeClaim, storeRelease } from './idempotencyStore';
 
 let client: Redis | null = null;
 let resolved = false;
@@ -25,10 +27,9 @@ let resolved = false;
 function redis(): Redis | null {
   if (resolved) return client;
   resolved = true;
-  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  if (url && token) {
-    client = createUpstashRedis(url, token);
+  const env = upstashRestEnv();
+  if (env) {
+    client = createUpstashRedis(env.url, env.token);
   }
   return client;
 }
@@ -56,21 +57,23 @@ export async function hashPayload(payload: unknown): Promise<string> {
 
 /**
  * Returns true the FIRST time a given key is seen within `windowSec`,
- * false on subsequent duplicate submissions. No-op (always allows) when
- * Redis is unconfigured.
+ * false on subsequent duplicate submissions. Redis answers when it is
+ * configured and reachable; otherwise the shared database does (R2,
+ * ./idempotencyStore). Fails open — allows — only when neither can answer.
  */
 export async function claimIdempotencyKey(userId: string, key: string, windowSec = 60): Promise<boolean> {
   const r = redis();
-  if (!r) return true;
-  const k = `idem:${userId}:${key}`;
-  try {
-    // SET NX EX — atomic "first writer wins" with TTL.
-    const res = await r.set(k, '1', { nx: true, ex: windowSec });
-    return res === 'OK';
-  } catch {
-    // Live-but-erroring Redis must never crash the route — fail open.
-    return true;
+  if (r) {
+    const k = `idem:${userId}:${key}`;
+    try {
+      // SET NX EX — atomic "first writer wins" with TTL.
+      const res = await r.set(k, '1', { nx: true, ex: windowSec });
+      return res === 'OK';
+    } catch {
+      // Live-but-erroring Redis must never crash the route — ask the database instead.
+    }
   }
+  return (await storeClaim(userId, key, windowSec)) !== 'held';
 }
 
 /**
@@ -81,16 +84,18 @@ export async function claimIdempotencyKey(userId: string, key: string, windowSec
  * would otherwise lock the user out of an honest retry for the full window —
  * a paid render that errored once should be immediately re-runnable. The
  * assemble Saga calls this on rollback so the key is freed the instant the
- * job fails. No-op when Redis is unconfigured.
+ * job fails. Frees the key in Redis and in the database store alike.
  */
 export async function releaseIdempotencyKey(userId: string, key: string): Promise<void> {
   const r = redis();
-  if (!r) return;
-  try {
-    await r.del(`idem:${userId}:${key}`);
-  } catch {
-    // Fail open — a stuck key merely expires on its own TTL.
+  if (r) {
+    try {
+      await r.del(`idem:${userId}:${key}`);
+    } catch {
+      // Fail open — a stuck key merely expires on its own TTL.
+    }
   }
+  await storeRelease(userId, key);
 }
 
 // ─── Token lock (Saga-aware) ──────────────────────────────────────────────────

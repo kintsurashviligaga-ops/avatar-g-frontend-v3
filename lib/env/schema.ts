@@ -10,6 +10,7 @@
  */
 
 import { createEnv } from '@t3-oss/env-nextjs';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 import { z } from 'zod';
 
 export const env = createEnv({
@@ -175,7 +176,6 @@ export function getEnvWarnings(): string[] {
   const warnings: string[] = [];
   const optionalKeys = [
     'STRIPE_WEBHOOK_SECRET',
-    'UPSTASH_REDIS_REST_URL',
     'SENTRY_DSN',
     'ALLOWED_ORIGINS',
   ];
@@ -184,6 +184,8 @@ export function getEnvWarnings(): string[] {
       warnings.push(`Optional env var ${key} is not set`);
     }
   }
+  // Either pair names the Upstash database (lib/platform/upstashEnv): the Vercel Marketplace KV_REST_API_* or UPSTASH_REDIS_REST_*.
+  if (!upstashRestEnv()) warnings.push('Optional Upstash Redis is not set (KV_REST_API_URL/TOKEN or UPSTASH_REDIS_REST_URL/TOKEN)');
   return warnings;
 }
 

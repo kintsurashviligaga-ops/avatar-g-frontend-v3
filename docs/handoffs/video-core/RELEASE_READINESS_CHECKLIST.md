@@ -1,5 +1,27 @@
 # Video Core v1.0 — release readiness checklist (final, release candidate)
 
+> **Merged and deployed 2026-10-13** on GG's word of 13:18:10Z ("PR #58 merge."): merge commit **e46c35c**, Production
+> deployment `dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ` READY 13:25:44Z, myavatar.ge serves it. Post-deploy checks and the open
+> gates: `PRODUCTION_DEPLOY_REPORT_KA.md`. The text below is the pre-merge state it was reviewed in; B8 is closed, every
+> other gate (B1, B3, R2, R3, D1–D12) is still open and Video Core stays admin-only.
+>
+> **Live Production E2E 2026-10-13, 14:49–14:55Z (GG's 14:01Z brief).** The ten admin media operations on myavatar.ge
+> passed on the delivered files (`DEFECT_REGISTER_FINAL.md`, "Live Production E2E"): defect 39 is PROVEN in Production,
+> and a new defect 43 (louder volume clipped the sound) is fixed in PR #63. B1: L1 ran once on the existing Preview
+> through Vertex (veo-3.1-fast, 4 s, 720p, with sound, quoted $0.40) and delivered 96 frames at 24 fps, 4.01 s; the
+> billed amount is not confirmed yet. Production has no Vertex transport (`/api/admin/veo-smoke` answers ready:false), so
+> Veo in Production stays with GG. R2: the database duplicate guard is in PR #63 and fails open until GG approves
+> `proposals/20261013a_request_idempotency.sql` for Production. Defect 44 (OPEN — GG): with Production's Upstash host
+> gone, a paid film's up-front payment marker never reaches `/api/video/assemble` (another Vercel function), so a paying
+> user's film would be charged twice; restoring Upstash or a database home for the marker closes it, and public Video
+> Core stays NO-GO until one of them lands.
+>
+> **GG's 15:26Z decisions, carried out 2026-10-13.** Migration `20261013a_request_idempotency` was applied to Production
+> by GG in the Supabase SQL Editor at ~16:12Z and verified read-only (RLS on, service_role only, both functions
+> SECURITY DEFINER); the SQL now lives in `supabase/migrations/` and the schema-drift snapshot lists its two functions as
+> Production's. On GG's 16:14Z word a new Upstash for Redis store (`myavatar-redis-prod`, Free plan, auto-upgrade off)
+> is connected to Production only; R2 and defect 44 close only once the PR #63 merge deployment is live and verified.
+
 Branch `claude/video-core-v1-6gh97e`, draft PR #58, final code head **ec7f742** (code, tests, CI E2E and Preview E2E rest
 on it; later commits change only these documents), 2026-10-13. Product code last changed in 717231c (every cron route and
 the media sweep read live instead of from Next's Data Cache, defect 40, which Production has too) and 329c50d (heartbeat
@@ -40,14 +62,14 @@ T5 paid provider · T6 Production.
 
 | # | Blocker | Exact cause | Impact | Solution | Approval needed | Cost | Next action |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| B1 | Live Veo / Vertex never run in this task | no paid call is authorized; the sandbox and CI have no Google credentials (by design) | V1–V6, real clip durations (Native vs Requested), provider error wording, long-form scenes are proven on a fake engine only | L1 → L2 → L3 in `VERTEX_LIVE_TEST_PLAN.md` §3, one approval each | GG, per test | ≈ $0.40 · $1.92 · $3.84 (+ ≈ $0.27), total ≈ $6.2–6.5 on Fast | GG names the level(s) and confirms the budget |
+| B1 | Live Veo / Vertex: **L1 PASS on Preview** (2026-10-13, one call); Production has no Vertex transport | L2 / L3 not authorized; Production's Veo path uses the Gemini API key, and `veo-smoke` answers ready:false there; the sandbox and CI have no Google credentials (by design) | V1–V6, real clip durations (Native vs Requested), provider error wording, long-form scenes are proven on a fake engine only | L1 → L2 → L3 in `VERTEX_LIVE_TEST_PLAN.md` §3, one approval each | GG, per test | ≈ $0.40 · $1.92 · $3.84 (+ ≈ $0.27), total ≈ $6.2–6.5 on Fast | GG names the level(s) and confirms the budget |
 | B2 | ~~No isolated Supabase for a full-backend browser E2E~~ | — | — | built: a throwaway Supabase stack in GitHub Actions with a Test Schema Baseline from repo files (`SUPABASE_TEST_ENV.md`); no dump, no secret, nothing from GG | — (GG chose this path at 19:01Z / 19:05Z) | $0 (CI minutes) | **CLOSED** |
 | B3 | Storyboard revision table | `proposals/20261012a_storyboard_revisions.sql` is a proposal | the approval binding lives in the request, fingerprint and job metadata, not a DB row; Library cannot show "revision N" | verified on the CI throwaway DB (applies, RLS, owner-only reads); next is Production | GG (Production migration) | $0 | GG's word for the Production migration |
 | B4 | Long-form (> 96 s) open path | `LONGFORM_ORDER_WIRED=false` + B1 | 240 s is refused by name (`longform_closed`), never cut to 96 s | flip the switch on Preview, then one paid long-form run | GG | ≈ $28.80 for 240 s on Fast 1080p (30 × 8 s) | only after L3 |
 | B5 | 29+ assets in one montage | chat 8 / quote 13 files; one 600 s function | refused by count, never dropped silently | segmented ingestion + a longer-running worker host | GG (paid infra) | depends on host | design note when GG asks |
 | B6 | Provider policy for remix / avatar legs | `MEDIA_GOOGLE_ONLY` off; Replicate / HeyGen still called there | `video.remix` cannot be certified Google-only | GG's provider decision (memory: provider strip) | GG | — | none until GG decides |
 | B7 | DAST (HawkScan) | `HAWK_API_KEY` unset, no `stackhawk.yml` | no dynamic scan of the changed routes | key + `stackhawk.yml`; it could then scan the CI job's `next start` (no deployment needed) | GG | StackHawk plan | GG adds the key |
-| B8 | Merge / deploy of PR #58 | NO MERGE, NO DEPLOY | nothing reaches Production | review → merge → deploy with the rollback below | GG, explicitly | $0 | GG's review |
+| B8 | Merge / deploy of PR #58 | DONE 2026-10-13 (e46c35c, `dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ`) | — | merged on GG's word (13:18:10Z); smoke after deploy green (`PRODUCTION_DEPLOY_REPORT_KA.md`) | GG, explicitly | $0 | — |
 
 The Vercel runtime check (T4) ran on GG's word (06:34Z) in a separate Vercel project on an isolated Supabase
 (`PREVIEW_E2E_VERIFICATION.md`); the shared Preview binds Production Supabase and was not used.
@@ -85,6 +107,6 @@ No migration ships in this PR, so rollback is code-only.
 | No shared-DB / Production migration | none applied; B3 was applied only on the CI throwaway DB |
 | New Vercel Preview needs owner approval | `vercel.json` `git.deploymentEnabled` false for this branch (f3f8acb), so no push builds a Preview of the main project; the T4 Previews were built on GG's word (06:34Z) only in the separate project `avatar-g-video-core-e2e`, each with target preview; after every run the six per-run values went back to placeholders, Vercel Authentication back on and the label off PR #58, and the stack and tunnel stopped with the runner. The project cannot be paused (Vercel answers `400 Active production deployment does not exist`; its only production deployment is the static placeholder allowed at 07:49Z) and its ignored-build step refuses production builds |
 | No paid Veo / provider call | none; B1 |
-| No merge, no Production deploy, no force push | PR #58 stays a draft; main untouched; every push fast-forward |
+| No merge, no Production deploy, no force push | held until GG's word of 13:18:10Z; then merged (merge commit, no force push) and deployed by Vercel from main |
 | A mock is never reported as a live provider check | the four layers are kept apart in `FINAL_ACCEPTANCE_MATRIX.md` and `FINAL_E2E_REPORT_KA.md` |
 | PR #59 / #62 (BOG) and Image Studio untouched | neither branch was written to; no file is shared with PR #59's merge (883a013) or PR #61 (ba2e0a4); Image Studio (PR #60) shares 2 files and merges cleanly (`GO_NO_GO_REPORT_KA.md` §2) |

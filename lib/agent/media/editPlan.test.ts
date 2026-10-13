@@ -1,5 +1,5 @@
 import {
-  MAX_EDIT_OUTPUT_SEC, audioFilters, canonicalJson, cleanCaption, displayDims, editNameFor, qcEdit,
+  LOUDER_PEAK_LIMIT, MAX_EDIT_OUTPUT_SEC, audioFilters, canonicalJson, cleanCaption, displayDims, editNameFor, qcEdit,
   eraseVf, renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
 } from './editPlan';
 import type { BannerProbe } from '@/lib/video/probeBanner';
@@ -198,6 +198,13 @@ describe('the ffmpeg arguments', () => {
     expect(mute).not.toContain('0:a:0');
     const vol = renderArgs(request([{ op: 'volume', db: -6 }]), 'in', 'out');
     expect(vol).toEqual(expect.arrayContaining(['-c:v', 'copy', '-af', 'volume=-6dB', '-c:a', 'aac']));
+  });
+
+  test('louder holds the peak under full scale; quieter needs no limiter (Production 2026-10-13: +6 dB peaked at +2.4 dBFS)', () => {
+    expect(audioFilters(request([{ op: 'volume', db: 6 }]))).toEqual(['volume=6dB', `alimiter=limit=${LOUDER_PEAK_LIMIT}:level=disabled`]);
+    expect(audioFilters(request([{ op: 'volume', db: -6 }]))).toEqual(['volume=-6dB']);
+    // 2 dB under full scale: the AAC encoder after the limiter overshoots by up to ~1.3 dB (CI 2026-10-13).
+    expect(20 * Math.log10(LOUDER_PEAK_LIMIT)).toBeLessThanOrEqual(-2);
   });
 
   test('a silent source: no sound map, -an', () => {

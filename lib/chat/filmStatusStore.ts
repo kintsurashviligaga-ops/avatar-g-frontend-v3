@@ -26,6 +26,7 @@
 import 'server-only';
 import type { Redis } from '@upstash/redis';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 
 // ─── Pure model (no I/O — unit-testable in isolation) ────────────────────────
 
@@ -203,10 +204,9 @@ let resolved = false;
 function redis(): Redis | null {
   if (resolved) return client;
   resolved = true;
-  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  if (url && token) {
-    client = createUpstashRedis(url, token);
+  const env = upstashRestEnv();
+  if (env) {
+    client = createUpstashRedis(env.url, env.token);
   }
   return client;
 }

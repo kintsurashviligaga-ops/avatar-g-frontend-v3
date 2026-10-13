@@ -125,6 +125,17 @@ export async function meanVolumeDb(file: string, sec = 5): Promise<number> {
 }
 
 /**
+ * The highest sample of the first `sec` seconds of `file`'s decoded sound, in dBFS (ffmpeg's astats). Above 0 the sound
+ * clips once it is played as integers: defect 43, where „louder" took a montage peaking at -3.4 dBFS to +2.4 dBFS.
+ */
+export async function peakDb(file: string, sec = 5): Promise<number> {
+  const { stderr } = await run(FFMPEG, ['-hide_banner', '-nostats', '-i', file, '-t', String(sec), '-vn', '-af', 'astats=measure_overall=Peak_level:measure_perchannel=none', '-f', 'null', '-'], { maxBuffer: 16 * 1024 * 1024 })
+    .catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
+  const m = /Peak level dB:\s*(-?\d+(?:\.\d+)?|-inf)/.exec(stderr);
+  return m ? (m[1] === '-inf' ? Number.NEGATIVE_INFINITY : Number(m[1])) : Number.NaN;
+}
+
+/**
  * The mean loudness of `file`'s sound above ~2 kHz, in dB: three stacked high-pass filters (36 dB an octave) leave a
  * 3 kHz tone almost whole and take the 196–880 Hz tones of the synthetic clips and tracks down by 40 dB or more. Used to
  * tell WHICH part of a track a montage played (late-beat.mp3 is quiet low hum before 10 s and a 3 kHz tone after);
