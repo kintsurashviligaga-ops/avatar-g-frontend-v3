@@ -122,7 +122,21 @@ test.describe('Video Core live — a dead worker\'s render is finished by the sw
     for (;;) {
       const t = await readTask();
       if (t && /^(completed|failed)$/.test(t.status)) break;
-      expect(Date.now() - stolenAt, 'attempt 2 never finished').toBeLessThan(620_000);
+      if (Date.now() - stolenAt >= 620_000) {
+        // What the queue and the workers left behind, so a stall is diagnosed from the log (artifacts are not readable).
+        const stuck = await readRow(jobId);
+        const trail = await rows<{ created_at: string; props: Record<string, unknown> }>(
+          `analytics_events?event_name=eq.audit.agent_g.media&props->>jobId=eq.${encodeURIComponent(jobId)}&select=created_at,props&order=created_at.asc`,
+        );
+        const sw = settled ? await sweep : null;
+        console.log('[recovery-stall]', JSON.stringify({
+          row: stuck && { status: stuck.status, stage: stuck.current_stage, pct: stuck.pct, exec: stuck.params._exec, error: stuck.error },
+          audit: trail.map((a) => ({ at: a.created_at, ...a.props })),
+          progress: seen.slice(-15).map((s) => ({ ms: s.t - t1, status: s.status, stage: s.stage, pct: s.pct, attempt: s.attempt })),
+          sweep: sw && { status: sw.status, ms: sw.ms, transport: sw.transport ?? null, body: JSON.stringify(sw.body).slice(0, 600) },
+        }));
+        throw new Error('attempt 2 never finished (see [recovery-stall] above)');
+      }
       await sleep(settled ? 250 : 1_000);
     }
     const sw = await sweep;
