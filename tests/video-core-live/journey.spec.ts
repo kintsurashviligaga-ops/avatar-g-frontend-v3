@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Request, type Response } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Request, type Response } from '@playwright/test';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -61,12 +61,55 @@ function logPage(page: Page, userId: string): void {
   page.on('request', (r) => { if (isExpensive(r)) logExpensive(userId); });
 }
 /** Start the card's plan once, paced; the run must be queued (a 429 here would be a pacing bug, said so by name). */
-async function startRun(page: Page, kind: 'montage' | 'edit', isMobile: boolean, userId: string): Promise<void> {
+async function startRun(page: Page, kind: 'montage' | 'edit', isMobile: boolean, userId: string): Promise<{ jobId?: string; status?: string; replay?: boolean }> {
   await paced(userId);
   const run = page.waitForResponse(isRun(kind), { timeout: 60_000 });
   await press(page, `agent-${kind}-start`, isMobile);
   const r = await run;
   expect(r.status(), `run refused: HTTP ${r.status()} ${await r.text()}`).toBe(200);
+  return (await r.json().catch(() => ({}))) as { jobId?: string; status?: string; replay?: boolean };
+}
+
+/**
+ * Every read of a task the page makes (/api/tasks?id=…, every 3 s while a card runs): how many per HTTP status, and the
+ * last task it was told about. A card that never settles then says whether the page was refused, or read a job that
+ * did not move.
+ */
+function watchTaskReads(page: Page): { byStatus: Record<string, number>; last: unknown } {
+  const seen: { byStatus: Record<string, number>; last: unknown } = { byStatus: {}, last: null };
+  page.on('response', (r) => {
+    if (!r.url().includes('/api/tasks?id=')) return;
+    seen.byStatus[r.status()] = (seen.byStatus[r.status()] ?? 0) + 1;
+    void r.json().then((b) => {
+      const t = (b as { task?: Record<string, unknown> } | null)?.task;
+      if (t) seen.last = { status: t.status, stage: t.stage, pct: t.pct, attempt: t.attempt, error: t.error };
+    }).catch(() => undefined);
+  });
+  return seen;
+}
+
+/**
+ * What a job says about itself when its card did not deliver: its row (status, stage, percent, error, lease), the
+ * audit trail the route and the worker wrote, the task route's answer to this page, and the card. All of it synthetic,
+ * from this throwaway stack; evidence() redacts any signed link's token before it reaches the public log.
+ */
+async function jobDiagnosis(page: Page, jobId: string, card: Locator): Promise<Record<string, unknown>> {
+  const id = encodeURIComponent(jobId);
+  const [row] = await rows<Record<string, unknown>>(
+    `generation_jobs?id=eq.${id}&select=status,current_stage,pct,error,created_at,updated_at,exec:params->_exec,plan:params->_job->request->plan,edits:params->_job->request->edits`,
+  ).catch((e: unknown) => [{ readError: String(e) }]);
+  const audit = await rows<{ props: Record<string, unknown>; created_at: string }>(
+    `analytics_events?event_name=eq.audit.agent_g.media&props->>jobId=eq.${id}&select=props,created_at&order=created_at.asc`,
+  ).catch(() => []);
+  const task = await page.request.get(`/api/tasks?id=${id}`)
+    .then(async (r) => ({ http: r.status(), body: await r.json().catch(() => null) }))
+    .catch((e: unknown) => ({ readError: String(e) }));
+  return {
+    row: row ?? null,
+    audit: audit.map((a) => ({ at: a.created_at, ...a.props })),
+    task,
+    card: { phase: await card.getAttribute('data-phase'), text: (await card.innerText().catch(() => '')).slice(0, 400) },
+  };
 }
 
 /** Agent G's own 5 s montage, delivered in this thread (the "previous video" the edit tests then change). */
@@ -271,10 +314,13 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
   // are not this lane: Media Studio v2 hands them to the chat model's remix, which needs a provider credential this job
   // does not have (CI run 4 found the old version of these tests waiting for an edit quote that never comes).
   // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s.
+  // CI run 6 (c09dbe4): the trim, then the first edit on each viewport, waited 200 s for a result that never came, while
+  // 2× and slow motion right after it passed. The order is now 2×, slow motion, trim, and a card that does not deliver
+  // prints what its job says (jobDiagnosis): which of the two (the trim, or the first edit after Stop/Retry) it was.
   for (const { label, en, ka, seconds } of [
-    { label: 'trim', en: 'Trim the previous video from 1 to 4 seconds.', ka: 'წინა ვიდეო 1-დან 4 წამამდე მოჭერი', seconds: 3 },
     { label: 'speed-2x', en: 'Make the previous video 2x speed.', ka: 'წინა ვიდეო 2-ჯერ ააჩქარე', seconds: 2.5 },
     { label: 'slow-motion', en: 'Make the previous video slow motion.', ka: 'წინა ვიდეო ნელ მოძრაობაში გადაიყვანე', seconds: 10 },
+    { label: 'trim', en: 'Trim the previous video from 1 to 4 seconds.', ka: 'წინა ვიდეო 1-დან 4 წამამდე მოჭერი', seconds: 3 },
   ] as const) {
     test(`edit lane on Agent G's delivered video: ${label} → plan → Start → exactly ${seconds * FPS} frames`, async ({ page, isMobile }, info) => {
       const me = projectUser(info);
@@ -293,10 +339,20 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       const card = page.getByTestId('agent-edit-card').last();
       await expect(card).toHaveAttribute('data-phase', 'quoted');
       await shot(page, `${info.project.name}-edit-${label}-quoted`);
-      await startRun(page, 'edit', isMobile, me.id);
+      const reads = watchTaskReads(page);
+      const ran = Date.now();
+      const runBody = await startRun(page, 'edit', isMobile, me.id);
+      // The card ends delivered, failed or stopped; anything but delivered prints what the job says, then fails.
+      await expect(card).toHaveAttribute('data-phase', /^(done|failed|cancelled)$/, { timeout: 200_000 }).catch(() => undefined);
+      const phase = await card.getAttribute('data-phase');
+      if (phase !== 'done') {
+        const why = runBody.jobId ? await jobDiagnosis(page, runBody.jobId, card) : { noJobId: true };
+        evidence(`${info.project.name}-edit-${label}-not-delivered`, { sentence, run: runBody, waitedMs: Date.now() - ran, taskReads: reads, ...why });
+      }
+      expect(phase, `the ${label} card ended '${phase}' (the job's own account is in the evidence line above)`).toBe('done');
+      const deliveredMs = Date.now() - ran;
       const result = page.getByTestId('agent-edit-result').last();
-      await expect(result.locator('video[src]')).toBeAttached({ timeout: 200_000 });
-      await expect(card).toHaveAttribute('data-phase', 'done');
+      await expect(result.locator('video[src]')).toBeAttached();
       const src = await result.locator('video[src]').getAttribute('src');
       const res = await page.request.get(src!);
       expect(res.status()).toBe(200);
@@ -309,7 +365,7 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       expect(d.hasAudio).toBe(true);
       expect(await balanceOf(me.id)).toBe(before);
       await shot(page, `${info.project.name}-edit-${label}-done`);
-      evidence(`${info.project.name}-edit-${label}`, { sentence, edits: q.quote!.plan, decoded: d, balance: before });
+      evidence(`${info.project.name}-edit-${label}`, { sentence, jobId: runBody.jobId, edits: q.quote!.plan, deliveredMs, decoded: d, balance: before });
     });
   }
 });
