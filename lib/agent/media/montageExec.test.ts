@@ -427,6 +427,25 @@ describe('the user\'s words set the length and the music start (Agent G PART 1)'
     const back = await quoted(fake(), { prompt: 'cut these to the song 16:9\n9:16' });
     expect(back.quote.aspect).toBe('9:16');
   });
+
+  test('a later start ON THE TIMELINE („ვიდეოს მე-5 წამიდან") is NOT read as a track offset: the quote names it unsupported, the track starts at 0 (round 3, AC-23)', async () => {
+    // The same ask without the delay clause: a music-only montage is cut on the beat, so the planner picks the beat start.
+    const base = await quoted(fake(), { prompt: 'ამ ვიდეოებიდან კლიპი გამიკეთე' });
+    expect(base.quote.unsupported).toBeUndefined();
+    const q = await quoted(fake(), { prompt: 'ამ ვიდეოებიდან კლიპი გამიკეთე, მუსიკა ვიდეოს მე-5 წამიდან დაიწყოს' });
+    expect(q.quote.unsupported).toEqual(['music_delay']);
+    // „მე-5 წამიდან" is not read as the track's 5th second: the start is the beat planner's, as without the clause.
+    expect(q.quote.musicStartSec).toBe(base.quote.musicStartSec);
+    expect(q.quote.musicStartSec).toBeLessThan(1);
+    expect(q.request.musicStartSec).toBe(base.request.musicStartSec);
+    // An explicit offset from the client still rules (the panel's own field), and the ask is still said.
+    const explicit = await quoted(fake(), { prompt: 'start the music 5 seconds into the video', musicFromSec: 10 });
+    expect(explicit.quote).toMatchObject({ unsupported: ['music_delay'], musicStartSec: 10 });
+    // The track's own second stays what it was: no note, the offset applied.
+    const into = await quoted(fake(), { prompt: 'ამ ვიდეოებიდან კლიპი გამიკეთე, მუსიკა 5 წამიდან დაიწყე' });
+    expect(into.quote.unsupported).toBeUndefined();
+    expect(into.quote.musicStartSec).toBe(5);
+  });
 });
 
 

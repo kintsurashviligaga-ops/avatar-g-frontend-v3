@@ -12,6 +12,8 @@ import { runAgentOptimizer } from '@/lib/agent/optimizer/runOptimizer';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;

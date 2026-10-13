@@ -99,6 +99,8 @@ function JobRow({ job, locale, onCancel }: { job: Job; locale: Lang; onCancel: (
       kind={kind}
       locale={locale}
       compact
+      // A server-observed job prints only the server's percent: with pct null there is no "<n>%" estimate.
+      measuredOnly={job.observed === true}
       elapsed={elapsed}
       title={job.label}
       state={state}
@@ -167,7 +169,30 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
   // with no card anywhere — a closed panel, another tab, a reload — stayed hidden precisely when this tray
   // was the only thing that could have shown it. Ownership, not arithmetic: `jobs` above is already only
   // the unowned work, so the tray shows whatever is left and disappears when nothing is.
-  if (visible.length === 0) return null;
+  // ⚠️ THE TRAY COVERED THE NEWEST CARD'S START ON A PHONE (Video Core round-3 browser defect 7). The tray floats over
+  // the thread (fixed, above the composer), and the thread kept no room for it, so on a 390×664 screen the last card's
+  // buttons sat under it even scrolled to the end. The tray publishes its height (plus its gap) as --job-tray-h and the
+  // thread ends with a spacer of that height (OmniStudio), so the end of the thread scrolls clear of it. 0 when hidden.
+  const trayRef = useRef<HTMLDivElement>(null);
+  const shown = visible.length > 0;
+  useEffect(() => {
+    const root = document.documentElement;
+    const el = trayRef.current;
+    if (!shown || !el) {
+      root.style.setProperty('--job-tray-h', '0px');
+      return;
+    }
+    const publish = () => root.style.setProperty('--job-tray-h', `${el.offsetHeight + 20}px`);
+    publish();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish);
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      root.style.setProperty('--job-tray-h', '0px');
+    };
+  }, [shown]);
+
+  if (!shown) return null;
 
   const anyFinished = visible.some((j) => j.status === 'done' || j.status === 'failed' || j.status === 'canceled');
   const activeCount = visible.filter((j) => j.status === 'rendering').length;
@@ -175,6 +200,7 @@ export function JobTray({ locale = 'ka' }: { locale?: Lang }) {
 
   return (
     <div
+      ref={trayRef}
       data-testid="job-tray"
       className="pointer-events-auto fixed z-[60] w-[300px] max-w-[calc(100vw-24px)] rounded-2xl border border-app-border/15 bg-app-surface/95 p-2.5 shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md"
       // ⚠️ ABOVE THE COMPOSER, NOT ON IT. This used to be `bottom-3`, which is precisely where the

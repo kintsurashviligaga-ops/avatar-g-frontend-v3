@@ -16,8 +16,8 @@ Branch `claude/agent-g-media-studio-v2-ekxxzp` from `main` 5481987. Phases follo
 | 2 | 5 s trim = 150 frames at 30 fps | VERIFIED (no code change needed) | deed8ed (test) | T3 |
 | 2 | Revisions with CAS, compare / restore | MISSING | — | BLOCKED_OWNER (migration) |
 | 3 | QC outcome word + source-contribution manifest + audio clocks | DONE | 6acc865 | T3 |
-| 3 | Keep the clips' own sound on chosen clips | MISSING | — | lane supports it; chat wiring + QC for mixed audio needed |
-| 3 | Silent export / track starting later on the timeline | MISSING | — | |
+| 3 | Keep the clips' own sound on chosen clips | PARTIAL | — | whole-montage own sound DONE (`sound: 'own'`, T3 soundMontage); per-clip choice from the chat MISSING |
+| 3 | Silent export / track starting later on the timeline | silent export DONE · later start UNSUPPORTED, said | 2026-10-12 round 3 | `sound: 'silent'`; `unsupported: ['music_delay']` on the quote (Video Core AC-23) |
 | 3 | Motion-aware matching, colour balance, selective speed | MISSING | — | |
 | 4 | Targeted caption/logo removal, branded image editing | MISSING (UNSUPPORTED) | — | no approved provider |
 | 5 | Veo reference flow | BLOCKED_OWNER | — | paid tests need a budget |

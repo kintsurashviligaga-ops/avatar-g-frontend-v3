@@ -8,6 +8,8 @@ import { processTelegramUpdateInBackground } from '@/lib/agent-g/channels/telegr
 import { recordRouteMetric } from '@/lib/platform/request-metrics';
 
 export const dynamic = 'force-dynamic';
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 // ⚠️ VERCEL CRON CALLS GET. vercel.json has scheduled this path every 2 minutes for months, and every run answered 405
 // because only POST was exported — the `webhooks_ingest` queue (WhatsApp, Telegram) was never drained by the cron.

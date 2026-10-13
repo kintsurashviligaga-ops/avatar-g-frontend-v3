@@ -16,6 +16,8 @@ import { opsMarker } from '@/lib/observability/reliability';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 function authorized(req: NextRequest): boolean {
   const secret = (process.env.CRON_SECRET || '').trim();

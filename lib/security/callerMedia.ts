@@ -107,7 +107,7 @@ async function recordedForCaller(userId: string, bucket: string, path: string, e
       for (const row of (Array.isArray(data) ? data : []) as JobRow[]) {
         if (row.user_id !== userId || !rowMayVouch(row)) continue;
         for (const url of rowUrls(row)) {
-          const ref = describeSupabaseObjectUrl(url);
+          const ref = describeSupabaseObjectUrl(url, env);
           if (ref && hosts.has(ref.host) && ref.bucket === bucket && ref.path === path) return true;
         }
       }
@@ -166,7 +166,7 @@ export async function resolveCallerMedia(
   const sign = deps.sign ?? createSignedAssetUrl;
 
   if (/^https:\/\//i.test(s)) {
-    const ref = describeSupabaseObjectUrl(s);
+    const ref = describeSupabaseObjectUrl(s, env);
     if (!ref || !ownStorageHosts(env).has(ref.host)) return { ok: true, url: s, own: false };
     // A public URL is readable only on a public bucket, by anyone, and nothing new is minted for it.
     if (ref.access === 'public') return { ok: true, url: s, own: true };
@@ -192,11 +192,12 @@ export async function firstUnreadableOwnUrl(
   userId: string | null | undefined,
   deps: CallerMediaDeps = {},
 ): Promise<number> {
-  const hosts = ownStorageHosts(deps.env ?? process.env);
+  const env = deps.env ?? process.env;
+  const hosts = ownStorageHosts(env);
   for (let i = 0; i < values.length; i += 1) {
     const v = values[i];
     if (typeof v !== 'string') continue;
-    const ref = describeSupabaseObjectUrl(v);
+    const ref = describeSupabaseObjectUrl(v, env);
     if (!ref || ref.access !== 'sign' || !hosts.has(ref.host)) continue;
     if (!(await callerMayRead(v, ref, userId, deps))) return i;
   }

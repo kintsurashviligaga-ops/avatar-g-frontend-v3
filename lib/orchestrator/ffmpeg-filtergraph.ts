@@ -28,6 +28,9 @@ export interface FilterGraphOpts {
    *  when absent. When undefined the single-`transition` path is byte-identical (so the
    *  filtergraph snapshot tests are unaffected). Ignored for the hard-`cut` master. */
   transitions?: string[];
+  /** Video Core v1.0 §4 — false under a contracted final length: the master is the stitched length itself, never held to the
+   *  30 s brand target with a cloned (frozen) last frame. Default true: the legacy ≥4-clip pad, byte-identical. */
+  padToTarget?: boolean;
   /** Output orientation. landscape 16:9 · vertical 9:16 · square 1:1 · portrait 4:5. */
   orientation?: 'landscape' | 'vertical' | 'square' | 'portrait';
   /** Absolute path to a .cube 3D LUT. When set, a `lut3d=file=…` pass is applied
@@ -131,6 +134,36 @@ export function sceneAwareTransitions(nClips: number): string[] {
     out.push(isFinalJoin || isArcReveal ? 'dissolve' : 'crossfade');
   }
   return out;
+}
+
+/** The join names the assembler accepts from globalRender.transitions (unknown names are dropped, never passed to ffmpeg). */
+export const JOIN_NAMES: ReadonlySet<string> = new Set(['cut', 'crossfade', 'dissolve', 'fade_black', 'fade_to_black', 'zoom', 'slide', 'wipe']);
+
+/**
+ * The joins a render makes, resolved from its globalRender exactly as assembleWithFfmpeg does — the ONE reading the route's
+ * pre-check (app/api/video/assemble), the studio's render-time check and the assembler share: the caller's per-join list wins;
+ * else the whole-film transition applies to every join; only the default crossfade gets the beat-aware softening.
+ */
+export function resolveJoins(nClips: number, globalRender: Record<string, unknown> | undefined): { transition: string; transitions: string[] | undefined } {
+  const g = globalRender ?? {};
+  const transition = String(g.transition ?? 'crossfade');
+  const callerJoins = String(g.transitions ?? '').split(',').map((t) => t.trim()).filter((t) => JOIN_NAMES.has(t));
+  const n = Math.max(1, Math.floor(nClips));
+  const transitions = transition === 'cut' ? undefined
+    : callerJoins.length ? callerJoins
+      : transition === 'crossfade' ? sceneAwareTransitions(n) : undefined;
+  return { transition, transitions: transitions ? transitions.slice(0, Math.max(0, n - 1)) : undefined };
+}
+
+/**
+ * The stitched length of N clips under these joins — N × clipSec less every join's overlap, NO pad (Video Core v1.0 §4): the
+ * master a contracted final is cut from. 8 × 8 s with crossfades = 57 s; with cuts = 64 s; 'cut,dissolve,cut' at 30 fps on
+ * four clips = 32 − 1 − 2/30.
+ */
+export function stitchedSeconds(nClips: number, clipSec: number, globalRender: Record<string, unknown> | undefined, fps: number): number {
+  const n = Math.max(1, Math.floor(nClips));
+  const { transition, transitions } = resolveJoins(n, globalRender);
+  return n * clipSec - joinOverlaps(n, transition, transitions, fps).reduce((a, b) => a + b, 0);
 }
 
 /**
@@ -260,7 +293,7 @@ export function buildFilterComplex(opts: FilterGraphOpts): {
   // tail be a cinematic slow fade-to-black (a graceful outro, never a frozen
   // hold). Short test renders (<4 clips) keep their natural length untouched.
   const MASTER_TARGET_SEC = 30;
-  const targetDur = nClips >= 4 && totalDur < MASTER_TARGET_SEC ? MASTER_TARGET_SEC : totalDur;
+  const targetDur = opts.padToTarget !== false && nClips >= 4 && totalDur < MASTER_TARGET_SEC ? MASTER_TARGET_SEC : totalDur;
   const padSec = Math.max(0, targetDur - totalDur);
   const fadeOutStart = padSec > 0 ? Math.max(0, totalDur - 0.3) : Math.max(0, targetDur - FADE_SEC);
   const fadeOutDur = padSec > 0 ? padSec + 0.3 : FADE_SEC;

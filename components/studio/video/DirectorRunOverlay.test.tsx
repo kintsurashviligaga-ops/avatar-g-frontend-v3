@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { DirectorRunView } from '@/lib/video/director/run';
 import type { Storyboard } from '@/lib/video/director/types';
 import { DirectorRunOverlay } from './DirectorRunOverlay';
+import { approvalForRender, snapshotRevision } from '@/lib/video/storyboard/revision';
 
 const RUN_ID = '0f8fad5b-d9cb-469f-a165-70867728950e';
 
@@ -83,7 +84,8 @@ it('starts the run once with the approved board and steps it while it runs', asy
 
   render(<DirectorRunOverlay storyboard={board} locale="en" onEdit={jest.fn()} onClose={jest.fn()} />);
   await flush();
-  expect(calls[0]).toEqual({ url: '/api/video/director/runs', body: { storyboard: board } });
+  // Round 3: the locale rides along (the server words a revision_mismatch refusal in it); no approval → none is sent.
+  expect(calls[0]).toEqual({ url: '/api/video/director/runs', body: { storyboard: board, locale: 'en' } });
   expect(screen.getAllByTestId('director-shot').map((el) => el.getAttribute('data-status'))).toEqual(['pending', 'pending']);
   expect(screen.getByText(/0\/2 · 38 credits/)).toBeTruthy();
 
@@ -95,6 +97,16 @@ it('starts the run once with the approved board and steps it while it runs', asy
   expect(screen.getAllByTestId('director-shot')[0]!.getAttribute('data-status')).toBe('done');
   expect(document.querySelector('video')?.getAttribute('src')).toBe('https://example.test/clip-1.mp4');
   expect(calls.filter((c) => c.url === '/api/video/director/runs')).toHaveLength(1);
+});
+
+test('a run started from the studio board posts the board approval beside the storyboard, untouched (round 3, P1)', async () => {
+  const like = { seed: 7, scenes: board.shots.map((sh, i) => ({ ordinal: i + 1, beat: sh.description, prompt: sh.prompt, frameUrl: `https://cdn.example.com/f${i + 1}.png` })), sceneScripts: null };
+  const approval = approvalForRender(snapshotRevision(like, 'plan', null, Date.parse('2026-10-12T10:00:00Z')), like, Date.parse('2026-10-12T10:00:01Z'));
+  reply(201, { run: view() });
+  render(<DirectorRunOverlay storyboard={board} approval={approval} locale="ka" onEdit={jest.fn()} onClose={jest.fn()} />);
+  await flush();
+  expect(calls[0]).toEqual({ url: '/api/video/director/runs', body: { storyboard: board, storyboardApproval: approval, locale: 'ka' } });
+  expect((calls[0]!.body as { storyboardApproval: { fingerprint: string } }).storyboardApproval.fingerprint).toMatch(/^[0-9a-f]{16}$/);
 });
 
 it('stops on a failed shot, steps nothing more, and sends the chosen answer', async () => {

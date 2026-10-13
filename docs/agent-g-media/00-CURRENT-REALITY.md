@@ -63,11 +63,11 @@ is not bounded by one 600 s function; both are owner decisions (migration, paid 
 |---|---|---|
 | B. Durable media project, revisions, CAS between concurrent revisions, compare/restore | MISSING | No table exists; a migration on the shared Production database is GG's decision. Contract proposed in `01-CANONICAL-CONTRACTS.md` §4 |
 | A. Asset record (assetId, content hash, verification status) | PARTIAL | Files are storage paths verified on upload; no asset table (same migration) |
-| „ეს ორიც დაამატე" (add files to a delivered montage) | MISSING | The re-plan reuses the same files; new files mean a new montage |
-| Music replacement on a delivered montage (E2E-05) | PARTIAL | A new montage with the new track works; swap-in-place does not exist |
-| Silent export, „ჯერ ვიდეო უხმოდ" (E2E-06) | MISSING | Agent G's montage always needs one track (`montageExec.ts`, `no_track`); QC requires sound |
-| Keep source audio on chosen clips | MISSING in the chat; the lane supports it | `montageAsk.ts:98` always `musicOnly: true`; `montagePipeline` has per-shot `muted` + `under` |
-| Audio timeline start ≠ 0 | MISSING | the track always starts on the master's first frame (`audioTiming().timelineStartSec = 0`) |
+| „ეს ორიც დაამატე" (add files to a delivered montage) | UNSUPPORTED, **said** (2026-10-12 round 3) | New files mean a new montage; since round 3 the follow-up is answered as unsupported in the chat before any quote (`montageChat.montageFollowUpAsk`, nothing sent, nothing charged) |
+| Music replacement on a delivered montage (E2E-05) | PARTIAL | A new montage with the new track works; swap-in-place does not exist and is **said** since 2026-10-12 round 3 (`followUpUnsupportedText('replace_music')`) |
+| Silent export, „ჯერ ვიდეო უხმოდ" (E2E-06) | BUILT (2026-10-11 17:38Z; this row was stale) | `soundOf` → `'silent'` („უხმოდ", "without sound", «без звука»): every shot muted, no track needed (`montageExec.test:475`, `montageAsk.test:375-377`) |
+| Keep source audio on chosen clips | PARTIAL: the whole montage's own sound BUILT (`sound: 'own'` / `'own+music'`, 2026-10-11 17:38Z; T3 `soundMontage.ffmpeg.test` S1/S3); **per clip** from the chat MISSING | `montagePipeline` has per-shot `muted` + `under`; no chat vocabulary picks clips |
+| Audio timeline start ≠ 0 | UNSUPPORTED, **said** (2026-10-12 round 3) | the track always starts on the master's first frame (`audioTiming().timelineStartSec = 0`); a later start asked in words is named on the quote (`unsupported: ['music_delay']`) and is never read as the track's own offset (`montageAsk.asksMusicDelay`) |
 | E. Caption / logo removal over time | MISSING (UNSUPPORTED) for what is printed in the source | No approved temporal inpainting provider; Replicate inpaint is refused under Google-only (`lib/providers/mediaPolicy.ts:68`). Since v2.1, removing a text, logo or caption **we added** works by re-rendering from the original (07, TX-04); asking to remove something printed in the source is refused with `remove_from_source` |
 | F. Branded image editing (SiRniKi) | MISSING | Imagen 4 is 404 on Vertex; image engine choice is GG's action 6 |
 | G. Veo reference flow (refrigerator, 3 roles) | BLOCKED_OWNER | Paid Veo calls need a per-test budget; durations snap to the model's supported values (`lib/veo/engine.test.ts:274`) |

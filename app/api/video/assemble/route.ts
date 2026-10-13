@@ -35,10 +35,14 @@ import { muxAudioOntoVideo, fitAspect } from '@/lib/video/remixOps';
 import { probeDimensions } from '@/lib/video/surgicalOps';
 import { needsAspectConform, ORIENTATION_ASPECT, type Orientation } from '@/lib/video/aspectConform';
 import { assembleWithFfmpeg } from '@/lib/orchestrator/ffmpeg-assembly';
+import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
+import { cutMasterToLength, isFinalCutRejected } from '@/lib/video/finalCut';
 import { type ElevenAlignment } from '@/lib/pipeline/compositing/word-synced-captions';
 import { overlayCaptionsOnUrl } from '@/lib/pipeline/compositing/caption-burn';
 import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt } from '@/lib/elevenlabs/music';
-import { type QaReport } from '@/lib/orchestrator/masterQa';
+import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
+import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
@@ -68,6 +72,25 @@ export const maxDuration = 600; // CPU FFmpeg stitch of a 30s master needs headr
 // change, a direct API caller): the stitch is billed at the same quote, by the seconds of the clips it was handed, below.
 
 /** True when the brief reads as a music video — drives the branded lower-third. */
+/** A clip or audio link the route may hand to a fetch or ffmpeg: an absolute http(s) URL, nothing else. */
+function isWebLink(v: string): boolean {
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a failed attempt cost, said truthfully. A film whose quote was taken when it started (or whose free slot was spent
+ * on its clips) reaches here with billing waived: this attempt charged nothing more, but the film's own payment stands, so
+ * "this attempt was not charged" would read as "you were not charged" for a film that was.
+ */
+function attemptChargeNote(paidUpstream: boolean): string {
+  return paidUpstream ? 'no extra charge was made for this attempt' : 'this attempt was not charged';
+}
+
 function isMusicVideoBrief(brief: string | null | undefined): boolean {
   const b = (brief ?? '').toLowerCase();
   if (!b) return false;
@@ -187,6 +210,11 @@ interface AssembleBody {
    *  (under FILM_AUDIO_MIX_ENABLED) its explicit muteWindows drive the hard-mute post-pass.
    *  Validated fail-open inside the assembler; absent/malformed → the master is unchanged. */
   script?: unknown;
+  /** Video Core v1.0 §4 — the contracted FINAL length in seconds (lib/video/durationContract). The clips are the native
+   *  master (what was rendered and is priced); the film delivered is cut to this, frame-exact on the 30 fps timeline.
+   *  Checked before any charge against the clips handed over: a length they cannot be cut to is a 400 with the reason,
+   *  never a film of another length. Absent → the master is delivered at its native length, as before. */
+  finalDurationSec?: number | null;
 }
 
 // FIX 3/4 — HARD GUARANTEE: this route never surfaces an unhandled 500. The real
@@ -242,6 +270,34 @@ async function assembleImpl(req: NextRequest) {
     seenUrls.add(s.url);
     return true;
   });
+  // ⚠️ A MEDIA LINK HERE IS A WEB LINK. Every clip and audio URL below reaches a fetch or ffmpeg, and ffmpeg opens more than
+  // http(s): a local path (`/var/task/…`), `file:`, or a protocol wrapped around http (`cache:http://…`, `async:http://…`)
+  // would have it read what the caller named, past the public-host guard (lib/web/publicFetch). Refused here, before any
+  // probe, charge or status write. (lib/video/ffmpegExec refuses the protocols too, for every other caller.)
+  {
+    const links: unknown[] = [
+      ...dedupedSegments.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.map((s) => s?.url) : []),
+    ];
+    if (links.some((v) => typeof v === 'string' && v.length > 0 && !isWebLink(v))) {
+      return NextResponse.json({ error: 'invalid_media_url', message: 'Every clip and audio file must be a web (https) link.' }, { status: 400 });
+    }
+  }
+  const { user } = await authedClientFromRequest(req);
+  const uid = user?.id ?? null;
+  // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
+  // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
+  // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
+  // capped. Rate limits do not help: they bound requests per key, and an anonymous caller has no key.
+  // Every guest render was pure external cost. The gate is now the first thing this route does.
+  // ⚠️ AND IT COMES BEFORE THE CLIP PROBE BELOW (final review 2026-10-13): keepLiveClips sends a HEAD request to every
+  // clip URL, so with the gate after it anyone, signed in or not, could have this server knock on up to 24 hosts of
+  // their choosing per call. Only a signed-in caller gets that far now.
+  {
+    const gate = requireAuthForGeneration(uid);
+    if (gate.response) return gate.response;
+  }
   // QA pass: drop any clip whose URL is DEFINITIVELY dead (hard 403/404/410) so a single
   // expired/missing clip can't make ffmpeg fail the whole stitch — the survivors still
   // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
@@ -249,7 +305,12 @@ async function assembleImpl(req: NextRequest) {
   // async and only have URLs by assemble time; see lib/pipeline/qaAgent.ts.)
   // Bound the clip count (2× the 12-scene pipeline max = generous headroom, no real film is clamped) so a
   // pathological payload can't make keepLiveClips HEAD-probe an unbounded list or ffmpeg stitch thousands.
-  const segments = await keepLiveClips(dedupedSegments.slice(0, 24));
+  const handedOver = dedupedSegments.slice(0, 24);
+  const segments = await keepLiveClips(handedOver);
+  // A clip dropped here leaves a salvaged cut, shorter than the board by whole scenes: the final-length contract below was
+  // planned on every scene, so it does not apply to the survivors (they are stitched at their own length, as before the
+  // contract existed), and the response says how many were dropped so the client's "N of M scenes" note stays true.
+  const clipsDropped = handedOver.length - segments.length;
   // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
   // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
   // full filtergraph stitch. Zero segments is still a hard error.
@@ -261,24 +322,12 @@ async function assembleImpl(req: NextRequest) {
     seconds: filmSecondsFromClips(segments.map((s) => ({ durationSec: s.durationSec }))),
     mode: body.musicVideoMode === true ? 'musicvideo' : 'documentary',
   });
-
   // Anonymous trial renders are allowed. The expensive part — rendering the 5
   // clips — already runs for anonymous callers (dispatch is open), so gating ONLY
   // the cheap final stitch left users with rendered-but-unusable clips and the
   // "could not host the final master" dead-end. Anonymous renders skip the credit
   // / free-film saga entirely (there is no wallet to charge); the full billing
   // saga still runs unchanged for signed-in users.
-  const { user } = await authedClientFromRequest(req);
-  const uid = user?.id ?? null;
-  // ⚠️ ANONYMOUS CALLERS USED TO REACH THE PAID RENDER AND BE BILLED NOTHING. Both billing branches
-  // below carried `uid === null ? true` as "skip billing" — commented "anon trial" — so a caller with no
-  // account consumed real Veo / Replicate / ElevenLabs spend that could never be charged, attributed or
-  // capped. Rate limits do not help: they bound requests per key, and an anonymous caller has no key.
-  // Every guest render was pure external cost. The gate is now the first thing this route does.
-  {
-    const gate = requireAuthForGeneration(uid);
-    if (gate.response) return gate.response;
-  }
   // ⚠️ EVERY URL BELOW IS RE-SIGNED WITH THE SERVICE ROLE (reSignIfInternal) and stitched into a master the caller
   // gets back, so a signed URL of ours that is not the caller's (another account's upload, an expired link someone
   // kept) would come back readable inside the film. Refused here, before any charge (lib/security/callerMedia).
@@ -296,6 +345,26 @@ async function assembleImpl(req: NextRequest) {
   // PHASE 47 §1 — flip the unified tracker to 'assembling' so a polling client
   // (or a reload) sees the editor working, not a stalled 'ready'. Fail-open.
   const filmTokenId = typeof body.filmTokenId === 'string' && body.filmTokenId.trim() ? body.filmTokenId.trim() : null;
+  // Video Core v1.0 §4 — the contracted FINAL length against the clips actually handed over AND the joins this render makes:
+  // the stitched master is the clips laid end to end less every join's overlap (a soft join 1 s, a cut inside a mixed chain one
+  // frame — lib/orchestrator/ffmpeg-filtergraph stitchedSeconds, the assembler's own reading), so a 60 s final from 8 × 8 s
+  // with crossfades (57 s) is refused HERE, before any charge or status write, with the reason — never a film of another
+  // length passed off as the request. The joins are resolved exactly as the manifest below composes them: a film hard-cuts
+  // unless the caller's globalRender says otherwise.
+  const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
+  const clipSecOfRender = Math.max(1, Math.round(nativeTotalSec / segments.length));
+  const stitchSec = stitchedSeconds(segments.length, clipSecOfRender, { ...(filmTokenId ? { transition: 'cut' } : {}), ...(body.globalRender ?? {}) }, VIDEO_FPS);
+  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null || clipsDropped > 0 ? null : finalCutForAssemble(stitchSec, body.finalDurationSec);
+  if (finalCut && !finalCut.ok) {
+    return NextResponse.json({
+      error: 'final_duration_invalid',
+      reason: finalCut.reason,
+      masterSec: stitchSec,
+      nativeSec: nativeTotalSec,
+      finalSec: finalCut.finalSec,
+      message: `The final length ${String(body.finalDurationSec)}s cannot be cut from the ${Math.round(stitchSec * 1000) / 1000}s this film stitches to (${nativeTotalSec}s of clips; ${finalCut.reason}). Nothing was stitched or charged.`,
+    }, { status: 400 });
+  }
   // PRODUCT-AD single-charge token (rank 2): the client jobId that /api/video/remix already billed
   // (full video tier) for a Product-Ad. Separate from filmTokenId so it drives the billing SKIP
   // below WITHOUT any film-specific side-effects (no recordFilmAssembling / recordFilmFailed / 'cut').
@@ -582,6 +651,13 @@ async function assembleImpl(req: NextRequest) {
         const captioned = await overlayCaptionsOnUrl(master, body.captionAlignment).catch(() => null);
         if (captioned) master = captioned;
       }
+      // Video Core v1.0 §4 — the contracted final length: one 6 s clip asked as 5 s is cut to 5 s = 150 frames at 30 fps.
+      // Fail-CLOSED, unlike every step above: a cut that cannot be made throws into the catch below (this attempt is
+      // rolled back), because the uncut clip delivered as "5 s" is the silent length change the contract forbids. A
+      // single clip whose final IS its native length is left as the provider made it (no re-encode, 24 fps).
+      if (finalCut?.ok && finalCut.trimSec > 0) {
+        master = await cutMasterToLength(master, finalCut.finalSec);
+      }
       // ⚠️ NOTHING CHANGED MEANS NOTHING TO CHARGE FOR. This used to commit the reservation
       // unconditionally, and every step above it is fail-open: the conform, the music mux, the
       // voiceover, the overlay, the captions. When they all missed, `master` was still `clipUrl` — the
@@ -607,6 +683,10 @@ async function assembleImpl(req: NextRequest) {
       // back above, so saying true here would tell the client their one free video is gone when it is not.
       return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
     } catch (err) {
+      // The waiver of a film paid upstream was spent above (consumeFilmBilling) so a replay cannot reuse it; this attempt
+      // delivered nothing, so it goes back — exactly as the multi-clip saga's compensate hands it back. Without this a
+      // retry of the same film was charged the stitch for a film the product had told the user was paid (or free).
+      if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
@@ -614,6 +694,19 @@ async function assembleImpl(req: NextRequest) {
         else if (scDebited) await refundCredits(uid, assembleCost, `${scRef}:refund`).catch(() => {});
       }
       await releaseIdempotencyKey(idemOwner, `assemble:${idemKey}`).catch(() => {});
+      // Video Core v1.0 §4/§7 — the single-clip QC gate: a cut whose decoded frames are not the contracted final is
+      // withheld (nothing hosted above), the reservation is rolled back (just done), the attempt is FAILED, and the
+      // client gets the same `qc_rejected` the stitched master gets — never a 200, never a kept charge.
+      if (isFinalCutRejected(err)) {
+        if (filmTokenId) await recordFilmFailed(filmTokenId, `qc_rejected: ${err.issueCodes.join(',')}`).catch(() => {});
+        return NextResponse.json({
+          error: 'qc_rejected', reason: 'qc_rejected', codes: [...err.issueCodes], qa: null, single: true,
+          expectedFrames: err.expectedFrames, actualFrames: err.actualFrames,
+          message: `The finished video failed its quality check (${err.actualFrames === null
+            ? `frame_count_unverified: its frames could not be counted, ${err.expectedFrames} were contracted`
+            : `frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}`}). Nothing was delivered and ${attemptChargeNote(filmAlreadyBilled)} — please try again.`,
+        }, { status: 502 });
+      }
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});
       return NextResponse.json({ error: 'assemble_failed', message: err instanceof Error ? err.message : 'assemble failed' }, { status: 500 });
     }
@@ -703,6 +796,8 @@ async function assembleImpl(req: NextRequest) {
     },
     pipelineId: '',
     callbackUrl: new URL('/api/video/assemble/callback', req.url).toString(),
+    // Video Core v1.0 §4 — the contracted final length rides to the assembler, which cuts the master to it frame-exact.
+    ...(finalCut?.ok ? { finalDurationSec: finalCut.finalSec } : {}),
   };
 
   // Saga: reserve credits (Redis lock + durable ledger debit) → dispatch →
@@ -797,11 +892,28 @@ async function assembleImpl(req: NextRequest) {
           }, effectiveDeadlineMs);
         });
         try {
-          // GPU worker when configured; else stitch on this node with CPU FFmpeg.
-          const work = cfg
+          // GPU worker when configured; else stitch on this node with CPU FFmpeg. A film with a contracted final length
+          // stays on the CPU assembler whatever the config: the GPU worker does not honour the cut (Video Core v1.0 §4).
+          const work = cfg && !finalCut
             ? dispatchRunPod(cfg, { ...manifest, pipelineId: ctx.sagaId }, { signal: ac.signal })
             : assembleWithFfmpeg({ ...manifest, pipelineId: ctx.sagaId, captionAlignment: body.captionAlignment ?? null, script: body.script ?? null, ...(resolvedDialogueStems.length ? { dialogueStems: resolvedDialogueStems } : {}) }, ac.signal);
-          const res = await Promise.race([work, deadline]);
+          let res: { url: string; qa?: QaReport };
+          try {
+            res = await Promise.race([work, deadline]);
+          } catch (err) {
+            // Video Core v1.0 §7/§8 — the assembler WITHHELD the master (a critical QC issue: frame_count_mismatch,
+            // silent_master, empty_master). Keep its report for the response, then fail this step like any other
+            // dispatch failure: the saga compensates reserve-credits (the attempt's one refund / the free slot / the
+            // billing waiver handed back), nothing is stamped as a delivered film, and the idempotency claim is released.
+            // Round 3 (P1) — an audio lane with no readable audio stream: the assembler refused BEFORE any encode; the saga
+            // compensates like any dispatch failure and the response below names the lane (422 music_unreadable).
+            if (isSoundtrackUnreadable(err)) ctx.bag.soundtrackUnreadable = err.lane;
+            if (isMasterQaRejected(err)) {
+              ctx.bag.qa = err.qa;
+              ctx.bag.qcRejected = err.issueCodes;
+            }
+            throw err;
+          }
           ctx.bag.tempUrl = res.url;
           // Supervisor QA verdict (CPU path only; RunPod path returns no qa).
           ctx.bag.qa = (res as { qa?: QaReport }).qa ?? null;
@@ -858,6 +970,31 @@ async function assembleImpl(req: NextRequest) {
       return NextResponse.json(
         { error: 'insufficient_credits', reason: 'insufficient_credits', message: topUp, failedStep: saga.failedStep },
         { status: 402 },
+      );
+    }
+    // Round 3 (P1) — the soundtrack, the narration or the sfx file had no readable audio stream: the assembler refused
+    // before any encode (SoundtrackUnreadable), the saga compensated above, and the attempt is named for what it is —
+    // a bad input file, not a failed stitch — so the client can say "attach another track", with a Retry.
+    const badLane = bag.soundtrackUnreadable === 'music' || bag.soundtrackUnreadable === 'voice' || bag.soundtrackUnreadable === 'sfx' ? (bag.soundtrackUnreadable as SoundtrackLane) : null;
+    if (badLane) {
+      if (filmTokenId) await recordFilmFailed(filmTokenId, `music_unreadable: ${badLane}`);
+      return NextResponse.json(
+        { error: 'music_unreadable', reason: 'music_unreadable', lane: badLane, failedStep: saga.failedStep, message: describeSoundtrackRefusal(badLane, filmAlreadyBilled), compensated: saga.compensatedSteps },
+        { status: 422 },
+      );
+    }
+    // Video Core v1.0 §7/§8 — the master failed a CRITICAL quality check and was withheld (never hosted). This is a
+    // terminal failure of the attempt, said with the check that failed: the charge was compensated above (once, by
+    // the saga), the film is recorded as failed (not as a master), and the client shows the message with a Retry.
+    const qcRejected = Array.isArray(bag.qcRejected) ? (bag.qcRejected as string[]) : null;
+    if (qcRejected) {
+      const qcReport = (bag.qa as QaReport | null | undefined) ?? null;
+      const detail = qcReport ? qcReport.issues.filter((i) => i.severity === 'critical').map((i) => `${i.code}: ${i.detail}`).join('; ') : qcRejected.join(', ');
+      const message = `The finished video failed its quality check (${detail}). Nothing was delivered and ${attemptChargeNote(filmAlreadyBilled)} — please try again.`;
+      if (filmTokenId) await recordFilmFailed(filmTokenId, `qc_rejected: ${qcRejected.join(',')}`);
+      return NextResponse.json(
+        { error: 'qc_rejected', reason: 'qc_rejected', codes: qcRejected, qa: qcReport, failedStep: saga.failedStep, message, compensated: saga.compensatedSteps },
+        { status: 502 },
       );
     }
     // PHASE 47 §1 — record the terminal failure so the tracker stops claiming
@@ -969,5 +1106,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

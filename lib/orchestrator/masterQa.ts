@@ -12,10 +12,17 @@
  *                      timeline (a dropped clip, or a mis-stitched xfade chain)
  *   • bitrate_bloat  — the encode ballooned (the film-grain 5× / ~27 Mbps bug)
  *   • sub_1080p      — the master fell below the 1920×1080 delivery target
+ *   • frame_count_mismatch — a film with a contracted final length (Video Core v1.0 §4) does not hold exactly
+ *                      framesFor(final) decoded frames (29.7 s at 30 fps = 891): the contract was not delivered
+ *   • frame_count_unverified — the same contract, but the master's frames could NOT be counted: the frame-exact
+ *                      check did not run, and a check that did not run is not a pass (round 3, P0)
  *
  * This file is PURE (no IO, no ffmpeg) so it is trivially unit-testable and
  * client-safe; the caller gathers the facts (size on disk + a best-effort
  * `ffmpeg -i` probe) and feeds them in.
+ *
+ * A CRITICAL issue is not a grade, it is a refusal: see MasterQaRejected / qcBlockingIssues at the end of this file — the
+ * assembler withholds such a master, and /api/video/assemble records the attempt as failed and returns the charge.
  */
 
 export interface MasterFacts {
@@ -32,6 +39,12 @@ export interface MasterFacts {
   /** Probed pixel dimensions, or null when the probe was unavailable. */
   width: number | null;
   height: number | null;
+  /**
+   * Video Core v1.0 §4 — under a contracted final length: the frames the final must hold (framesFor(finalSec, fps)) and
+   * the frames the master really decodes to (lib/video/frameCount). Both absent/null → no frame check (a legacy master).
+   */
+  expectedFrames?: number | null;
+  actualFrames?: number | null;
 }
 
 export type QaSeverity = 'critical' | 'warn';
@@ -42,7 +55,9 @@ export interface QaIssue {
     | 'silent_master'
     | 'duration_drift'
     | 'bitrate_bloat'
-    | 'sub_1080p';
+    | 'sub_1080p'
+    | 'frame_count_mismatch'
+    | 'frame_count_unverified';
   severity: QaSeverity;
   detail: string;
 }
@@ -92,6 +107,23 @@ export function validateMaster(f: MasterFacts): QaReport {
     });
   }
 
+  // 2b — Video Core v1.0 §4: a contracted final is FRAME-exact. The duration drift below tolerates ±15 %; a film
+  //      the user asked at 29.7 s is 891 frames at 30 fps, not "about 29.7 s". A count that could not be read is a
+  //      refusal too (round 3, P0): the mandatory check did not run, so the master is NOT frame-accurate as far as
+  //      anyone can tell — it used to ride out as a warning on a delivered film, which sold an unverified master as
+  //      a verified one.
+  if (typeof f.expectedFrames === 'number' && f.expectedFrames > 0) {
+    if (typeof f.actualFrames !== 'number') {
+      issues.push({ code: 'frame_count_unverified', severity: 'critical', detail: `the master's frames could not be counted (${f.expectedFrames} expected): the frame-exact check did not run, so the contract is unverified` });
+    } else if (f.actualFrames !== f.expectedFrames) {
+      issues.push({
+        code: 'frame_count_mismatch',
+        severity: 'critical',
+        detail: `master holds ${f.actualFrames} frames, the contracted final is ${f.expectedFrames} (${f.actualFrames - f.expectedFrames > 0 ? '+' : ''}${f.actualFrames - f.expectedFrames})`,
+      });
+    }
+  }
+
   // 3 — duration tracks the compiled timeline within ±15% (a dropped clip or a
   //     broken xfade chain shows up here).
   if (f.actualDurSec !== null && f.expectedDurSec > 0) {
@@ -137,4 +169,43 @@ export function validateMaster(f: MasterFacts): QaReport {
   const grade: QaReport['grade'] = critical > 0 ? 'F' : score >= 90 ? 'A' : score >= 75 ? 'B' : 'C';
 
   return { pass: critical === 0, score, grade, issues };
+}
+
+// ── The gate (Video Core v1.0 §7 / §8) ───────────────────────────────────────────────────────────────────────────────
+// `pass: false` used to be a label on a delivered film: the route stamped the master, settled the charge and handed the
+// grade F back beside the URL. A critical issue is the film NOT being what was paid for (no frames of it, no sound it
+// was mixed with, not the length that was contracted), so it now WITHHOLDS the master: the assembler throws
+// MasterQaRejected before hosting anything, the route's saga fails on its dispatch step and compensates (the one refund
+// per attempt, the free slot or the billing waiver handed back), and the attempt is recorded as failed — never as a
+// delivered film. Warnings still ride along on a delivered master.
+
+/** The issues that withhold a master: every critical one (pure; the policy in one place). */
+export function qcBlockingIssues(qa: QaReport | null | undefined): QaIssue[] {
+  return qa ? qa.issues.filter((i) => i.severity === 'critical') : [];
+}
+
+/** One line a user can read: which checks failed and how (the first critical issue's own words). */
+export function describeQcRejection(qa: QaReport): string {
+  const blocking = qcBlockingIssues(qa);
+  if (!blocking.length) return 'the master passed every critical check';
+  return blocking.map((i) => `${i.code}: ${i.detail}`).join('; ');
+}
+
+/** Thrown by the assembler in place of a master that failed a critical check; carries the report for the route. */
+export class MasterQaRejected extends Error {
+  readonly code = 'qc_rejected' as const;
+  readonly qa: QaReport;
+  readonly issueCodes: QaIssue['code'][];
+  constructor(qa: QaReport) {
+    super(`master rejected by QC (grade ${qa.grade}, score ${qa.score}) — ${describeQcRejection(qa)}`);
+    this.name = 'MasterQaRejected';
+    this.qa = qa;
+    this.issueCodes = qcBlockingIssues(qa).map((i) => i.code);
+  }
+}
+
+/** `err` is the assembler's QC rejection (instanceof-safe across module copies: the code and the report are checked). */
+export function isMasterQaRejected(err: unknown): err is MasterQaRejected {
+  return err instanceof MasterQaRejected
+    || (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'qc_rejected' && typeof (err as { qa?: unknown }).qa === 'object');
 }

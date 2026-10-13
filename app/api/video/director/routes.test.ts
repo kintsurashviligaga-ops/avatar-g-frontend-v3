@@ -89,6 +89,8 @@ import { authedClientFromRequest } from '../../../../lib/supabase/server';
 import { deductCredits } from '../../../../lib/orchestrator/ledger';
 import { liveVeoEngine } from '../../../../lib/video/director/server';
 import { makeStoryboard, threeShots } from '../../../../lib/video/director/testing/fixtures';
+import { studioToDirectorStoryboard, type StudioBoard } from '../../../../lib/video/director/fromStudio';
+import { approvalForRender, snapshotRevision, type BoardLike } from '../../../../lib/video/storyboard/revision';
 import type { FakeVeoEngine } from '../../../../lib/video/director/testing/fakeVeoEngine';
 import { POST as plan } from './plan/route';
 import { POST as start } from './runs/route';
@@ -184,6 +186,57 @@ describe('runs', () => {
     expect(broken.status).toBe(400);
     expect(((await broken.json()) as { error: string }).error).toBe('invalid_storyboard');
     expect(mockRows.size).toBe(0);
+  });
+
+  describe('with the board approval (round 3, P1)', () => {
+    const studioBoard: StudioBoard = {
+      filmPrompt: 'A lighthouse keeper',
+      refs: [],
+      orientation: 'landscape',
+      scenes: [
+        { ordinal: 1, beat: 'Climb', prompt: 'scene one' },
+        { ordinal: 2, beat: 'Lamp', prompt: 'ლამპა', edited: true },
+        { ordinal: 3, beat: 'Door', prompt: 'scene three' },
+      ],
+      sceneScripts: ['Script one.', 'Script two.', null],
+      clipSec: 8,
+    };
+    const boardLike: BoardLike = { seed: 3, clipSec: 8, scenes: studioBoard.scenes.map((sc) => ({ ...sc, frameUrl: null })), sceneScripts: studioBoard.sceneScripts };
+    const approval = approvalForRender(snapshotRevision(boardLike, 'plan', null, 1_760_000_000_000), boardLike, 1_760_000_001_000);
+    const fromBoard = () => studioToDirectorStoryboard(studioBoard, { id: 'board-1', quality: 'fast', clipSec: 8 });
+
+    it('starts the run when the storyboard is the approved revision', async () => {
+      const res = await start(req('/api/video/director/runs', { storyboard: fromBoard(), storyboardApproval: approval, locale: 'ka' }));
+      expect(res.status).toBe(201);
+      expect(mockRows.size).toBe(1);
+    });
+
+    it('refuses a storyboard that is not the approved revision: 400 revision_mismatch, nothing stored, nothing charged', async () => {
+      const edited = fromBoard();
+      edited.shots[1]!.prompt = 'a different lamp';
+      const res = await start(req('/api/video/director/runs', { storyboard: edited, storyboardApproval: approval, locale: 'en' }));
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string; reason: string; revision: number; message: string; problems: string[] };
+      expect(body.error).toBe('revision_mismatch');
+      expect(body.reason).toBe('scripts_differ');
+      expect(body.revision).toBe(1);
+      expect(body.message).toMatch(/approv|board|storyboard/i);
+      expect(body.problems).toEqual(["shot 2's text is not the approved board's scene 2"]);
+      expect(mockRows.size).toBe(0);
+      expect(deductCredits).not.toHaveBeenCalled();
+      expect(engine.calls).toHaveLength(0);
+    });
+
+    it('refuses a stale approval replayed on a changed board (board_changed) and a malformed one (invalid_input)', async () => {
+      const stale = { ...approval, fingerprint: '0123456789abcdef' };
+      const res = await start(req('/api/video/director/runs', { storyboard: fromBoard(), storyboardApproval: stale }));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { error: string; reason: string }).reason).toBe('board_changed');
+      const bad = await start(req('/api/video/director/runs', { storyboard: fromBoard(), storyboardApproval: 'yes' }));
+      expect(bad.status).toBe(400);
+      expect(((await bad.json()) as { error: string }).error).toBe('invalid_input');
+      expect(mockRows.size).toBe(0);
+    });
   });
 
   it('starts with nothing charged, then renders every shot in order, each under its own charge', async () => {

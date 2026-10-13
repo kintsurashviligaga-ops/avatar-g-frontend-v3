@@ -23,6 +23,8 @@ import { getResearchRuntime } from '@/lib/research/runtime';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 async function handle(req: NextRequest) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

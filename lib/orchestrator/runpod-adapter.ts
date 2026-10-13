@@ -28,6 +28,9 @@ export interface RunPodManifest {
   pipelineId: string;
   /** URL the render node calls with intermediate + final lifecycle events. */
   callbackUrl?: string;
+  /** Video Core v1.0 §4 — the contracted final length. The GPU worker does not honour it, so the assemble route keeps a
+   *  film that carries one on the CPU assembler (lib/orchestrator/ffmpeg-assembly), which does. */
+  finalDurationSec?: number | null;
 }
 
 export interface RunPodConfig {

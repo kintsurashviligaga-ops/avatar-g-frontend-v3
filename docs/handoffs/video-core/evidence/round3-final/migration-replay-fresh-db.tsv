@@ -1,0 +1,118 @@
+# Fresh-database replay of supabase/migrations (2026-10-12, head 357926b)
+# Postgres 16.x local throwaway cluster on 127.0.0.1:54351 + test-only Supabase stand-ins (prelude below). Production untouched.
+# Each file: psql -v ON_ERROR_STOP=1 --single-transaction -f <file>; first ERROR line kept. pgvector is not installed locally (2 rows: environment, not repo).
+# result: 79 ok / 35 FAIL of 114
+ok	001_avatar_builder_schema.sql
+ok	001_core_tables.sql
+ok	001_stripe_subscriptions.sql
+FAIL	002_music_video_schema.sql	relation "tracks" already exists
+ok	003_jobs_queue_v2.sql
+FAIL	004_saas_billing_credits.sql	column "plan" does not exist
+FAIL	005_stripe_events_idempotency.sql	relation "public.credit_transactions" does not exist
+FAIL	006_commerce_phase1.sql	syntax error at or near "========================================"
+FAIL	007_shipping_margin.sql	relation "public.shop_stores" does not exist
+FAIL	008_business_finance_layer.sql	relation "public.shop_stores" does not exist
+FAIL	009_stripe_connect.sql	relation "seller_profiles" does not exist
+ok	010_stripe_connect_accounts.sql
+ok	011_affiliate_growth_engine.sql
+ok	012_finance_core.sql
+ok	013_georgia_tax_invoicing.sql
+FAIL	014_shipping_and_tracking.sql	syntax error at or near "========================================"
+FAIL	015_post_purchase_ops.sql	syntax error at or near "========================================"
+FAIL	016_automated_fulfillment.sql	relation "products" does not exist
+FAIL	20260214_avatar_g_saas.sql	column "cost_credits" does not exist
+ok	20260214_seller_growth_system.sql
+ok	20260216_auth_profiles.sql
+ok	20260216_service_jobs_outputs.sql
+FAIL	20260220_agent_g_calls_voice.sql	relation "public.agent_g_tasks" does not exist
+ok	20260220_agent_g_channels_telegram.sql
+ok	20260220_agent_g_orchestrator.sql
+ok	20260220_business_agent_service.sql
+FAIL	20260220_marketplace.sql	column "buyer_id" does not exist
+ok	20260220_smm_social_media_manager.sql
+FAIL	20260220_voice_lab_service.sql	column "owner_id" does not exist
+ok	20260221_agent_g_memory.sql
+ok	20260221_agent_g_memory_engine_phase2.sql
+ok	20260223_monetization_multitenant_growth.sql
+ok	20260223_unified_workflow_engine.sql
+ok	20260224_avatar_builder_assets_wave1.sql
+ok	20260226_create_error_logs.sql
+ok	20260228100001_jobs_system_v3.sql
+ok	20260228100002_job_logs.sql
+ok	20260228100003_worker_heartbeat.sql
+FAIL	20260228100004_claim_fn_and_realtime.sql	relation "public.agent_definitions" does not exist
+FAIL	20260228200001_agent_definitions_enhance.sql	relation "public.agent_definitions" does not exist
+FAIL	20260228200002_projects_conversations.sql	column "service_id" does not exist
+FAIL	20260228200003_realtime_enable.sql	relation "public.messages" does not exist
+ok	20260228300001_business_hub.sql
+ok	20260228300002_business_realtime.sql
+FAIL	20260228300003_business_agent_seed.sql	relation "public.agent_definitions" does not exist
+ok	20260228400001_credits_billing.sql
+ok	20260228400002_executive_tasks.sql
+ok	20260228400003_profiles_phone.sql
+ok	20260228400004_executive_realtime.sql
+ok	20260228_agent_definitions.sql
+ok	20260228_avatar_storage_buckets.sql
+ok	20260301_chat_sessions_messages.sql
+ok	20260430_voice_calls_vapi.sql
+ok	20260516_character_references_creations.sql
+ok	20260516_referral_system.sql
+ok	20260517_avatars_onboarding.sql
+FAIL	20260517_memories.sql	extension "vector" is not available
+ok	20260517_voice_samples.sql
+FAIL	20260521_credits_rpc_ledger.sql	relation "public.credit_ledger" does not exist
+ok	20260523_generation_jobs.sql
+ok	20260523_wallet_and_onboarding.sql
+FAIL	20260528_credit_wallet_gel_and_agent_traces.sql	relation "public.credits" does not exist
+ok	20260528b_debit_wallet_gel_and_starter_balance.sql
+FAIL	20260601_rag_corpus.sql	extension "vector" is not available
+ok	20260602_free_film_promo.sql
+ok	20260623_free_films_starter_3.sql
+ok	20260625_credit_transactions.sql
+ok	20260626_notifications.sql
+ok	20260626b_analytics_events.sql
+ok	20260626c_add_credits.sql
+ok	20260627_pipeline_checkpoints.sql
+FAIL	20260702_agent_configs.sql	relation "public.prompt_optimization_proposals" does not exist
+ok	20260702_agent_execution_feedback.sql
+ok	20260702_prompt_optimization_proposals.sql
+ok	20260704_generation_jobs_position.sql
+ok	20260705_bog_orders.sql
+ok	20260705_fix_credit_wallet_gel_reason.sql
+ok	20260706_feature_flags.sql
+ok	20260706_pricing_config.sql
+ok	20260711_hot_path_indexes.sql
+ok	20260801_durable_chat_history.sql
+FAIL	20260802_credit_denomination_and_starter.sql	relation "public.credit_ledger" does not exist
+ok	20260802_support_live_chat.sql
+ok	20260802b_fix_double_credit.sql
+ok	20260802c_unified_free_trial.sql
+FAIL	20260802d_fix_starter_trigger_name.sql	relation "public.credit_ledger" does not exist
+ok	20260802e_admin_emails.sql
+ok	20260802f_active_visitors.sql
+ok	20260802g_agent_video_queue.sql
+ok	20260807a_payout_requests.sql
+FAIL	20260807b_voice_calls.sql	VERIFY FAILED — 1 policy(ies) exist; transcripts must not be client-readable
+FAIL	20260929a_p0_lockdown_public_access.sql	relation "public.credit_ledger" does not exist
+ok	20260929b_studio_jobs.sql
+FAIL	20261001a_subscription_tiers.sql	relation "public.credit_ledger" does not exist
+ok	20261001b_longform_jobs.sql
+ok	20261001c_starter_grant_on_confirm.sql
+ok	20261001e_signup_frees_orphan_profile_email.sql
+ok	20261001f_generation_jobs_server_writes_twins_bucket.sql
+FAIL	20261002a_bog_billing.sql	VERIFY FAILED — credit_wallet_gel must have exactly one overload (bog_fulfill_order calls it)
+ok	20261002c_debit_wallet_gel.sql
+FAIL	20261002d_ledger_ref_race_hardening.sql	relation "public.credit_ledger" does not exist
+ok	20261002e_revoke_client_writes_policyless_tables.sql
+ok	20261002f_error_logs_service_only.sql
+FAIL	20261003b_research_jobs.sql	VERIFY FAILED — the owner cannot read their own research jobs
+ok	20261003c_agent_g_whatsapp.sql
+FAIL	20261003d_push_subscriptions.sql	VERIFY FAILED — the owner cannot read or delete their own push subscriptions
+FAIL	20261003e_user_plugin_settings.sql	VERIFY FAILED — the owner cannot read their own plugin settings
+ok	20261003f_auth_account_status.sql
+ok	20261008a_rls_internal_tables.sql
+ok	20261008b_director_runs.sql
+ok	20261008c_uploads_bucket_limits.sql
+ok	20261008d_storage_read_scope.sql
+FAIL	20261009a_function_hardening.sql	20261009a: agent_g_set_updated_at() still has a mutable search_path
+ok	20261009b_renders_private.sql

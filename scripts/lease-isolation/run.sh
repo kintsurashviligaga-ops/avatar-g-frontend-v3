@@ -6,6 +6,8 @@
 # lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
 #   needs: Postgres 16 server binaries (PG_BIN, default /usr/lib/postgresql/16/bin), Docker, node_modules.
+#          Without Docker (or with Docker Hub refusing the pull): POSTGREST_BIN=<path to a postgrest v12.2.3 binary,
+#          e.g. the static build from github.com/PostgREST/postgrest/releases> runs the same PostgREST as a process.
 #   usage: scripts/lease-isolation/run.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -15,9 +17,10 @@ REST_PORT=${REST_PORT:-54330}
 DIR=$(mktemp -d /tmp/lease-isolation.XXXXXX)
 SECRET=$(head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48)
 NAME=lease-isolation-rest-$$
+REST_PID=
 as_pg() { if [ "$(id -u)" = 0 ]; then chown -R postgres "$DIR"; su postgres -s /bin/bash -c "$*"; else bash -c "$*"; fi; }
 cleanup() {
-  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  if [ -n "$REST_PID" ]; then kill "$REST_PID" >/dev/null 2>&1 || true; else docker rm -f "$NAME" >/dev/null 2>&1 || true; fi
   as_pg "$PG_BIN/pg_ctl -D $DIR/data -m immediate stop" >/dev/null 2>&1 || true
   rm -rf "$DIR"
 }
@@ -27,10 +30,17 @@ as_pg "$PG_BIN/initdb -D $DIR/data -U postgres --auth=trust >/dev/null"
 as_pg "$PG_BIN/pg_ctl -D $DIR/data -o '-p $PG_PORT -k $DIR -c listen_addresses=127.0.0.1' -l $DIR/pg.log -w start >/dev/null"
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f scripts/lease-isolation/schema.sql
 
-docker run -d --name "$NAME" --network host \
-  -e PGRST_DB_URI="postgres://authenticator:local-only@127.0.0.1:$PG_PORT/postgres" -e PGRST_DB_SCHEMAS=public \
-  -e PGRST_DB_ANON_ROLE=anon -e PGRST_JWT_SECRET="$SECRET" -e PGRST_SERVER_PORT="$REST_PORT" \
-  postgrest/postgrest:v12.2.3 >/dev/null
+if [ -n "${POSTGREST_BIN:-}" ]; then
+  PGRST_DB_URI="postgres://authenticator:local-only@127.0.0.1:$PG_PORT/postgres" PGRST_DB_SCHEMAS=public \
+  PGRST_DB_ANON_ROLE=anon PGRST_JWT_SECRET="$SECRET" PGRST_SERVER_PORT="$REST_PORT" PGRST_SERVER_HOST=127.0.0.1 \
+    "$POSTGREST_BIN" >"$DIR/rest.log" 2>&1 &
+  REST_PID=$!
+else
+  docker run -d --name "$NAME" --network host \
+    -e PGRST_DB_URI="postgres://authenticator:local-only@127.0.0.1:$PG_PORT/postgres" -e PGRST_DB_SCHEMAS=public \
+    -e PGRST_DB_ANON_ROLE=anon -e PGRST_JWT_SECRET="$SECRET" -e PGRST_SERVER_PORT="$REST_PORT" \
+    postgrest/postgrest:v12.2.3 >/dev/null
+fi
 for _ in $(seq 1 30); do curl -sf -o /dev/null "http://127.0.0.1:$REST_PORT/" && break; sleep 1; done
 
 export LEASE_PG_REST_URL="http://127.0.0.1:$REST_PORT" LEASE_PG_JWT_SECRET="$SECRET"
@@ -39,6 +49,9 @@ node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watch
 # The ledger's replay refusal through the real client: first on Production's functions as they are, then with
 # supabase/migrations/20261002d applied (PostgREST reloads its schema cache on the NOTIFY).
 LEDGER_PHASE=before node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.test.ts --no-watchman --ci --forceExit
+# The 'before' suite's twins race on purpose and may leave more than one debit for their throwaway (user, 'twins') pair;
+# 20261002d's preflight rightly refuses a ledger holding such a group, so those throwaway rows go before it is applied.
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -c "delete from public.credit_ledger where metadata->>'ref' = 'twins'"
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261002d_ledger_ref_race_hardening.sql
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
