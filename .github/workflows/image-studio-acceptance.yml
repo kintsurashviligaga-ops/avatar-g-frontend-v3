@@ -85,6 +85,7 @@ jobs:
       - name: Lease before ledger hardening
         run: bash scripts/image-studio/ci-db-suite.sh lease-before lib/agent/media/leaseIsolation.pg.test.ts
       - name: Ledger before hardening
+        if: ${{ !cancelled() }}
         env:
           LEDGER_PHASE: before
         run: bash scripts/image-studio/ci-db-suite.sh ledger-before lib/orchestrator/ledgerOnce.pg.test.ts
@@ -109,6 +110,19 @@ jobs:
       - name: Outbox store (delivery outlets mocked)
         if: ${{ !cancelled() }}
         run: bash scripts/image-studio/ci-db-suite.sh outbox lib/notifications/outboxIsolation.pg.test.ts
+      - name: Image Studio real queue and ledger (provider and Storage injected)
+        if: ${{ !cancelled() }}
+        run: bash scripts/image-studio/ci-db-suite.sh image lib/image/studio/imageIsolation.pg.test.ts
+      - name: Compare failing legacy lease scenario with clean baseline
+        if: ${{ !cancelled() }}
+        run: |
+          git fetch --no-tags origin 30be5a2d96495f67134cad34796ce724a744bd28
+          mkdir -p "$RUNNER_TEMP/image-baseline"
+          git archive 30be5a2d96495f67134cad34796ce724a744bd28 | tar -x -C "$RUNNER_TEMP/image-baseline"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/image-baseline/node_modules"
+          cd "$RUNNER_TEMP/image-baseline"
+          trap 'cp -R evidence/. "$GITHUB_WORKSPACE/evidence/"' EXIT
+          bash "$GITHUB_WORKSPACE/scripts/image-studio/ci-db-suite.sh" lease-baseline lib/agent/media/leaseIsolation.pg.test.ts
       - name: Save local service logs and stop owned container
         if: always()
         run: |

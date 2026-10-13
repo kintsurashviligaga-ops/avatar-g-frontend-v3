@@ -6,7 +6,7 @@ case "${LEASE_PG_REST_URL:-}" in
   *) echo "BLOCKED: expected the isolated CI loopback endpoint" >&2; exit 2 ;;
 esac
 case "${1:-}" in
-  lease-before|ledger-before|ledger-after|lease-after|runs|outbox) ;;
+  lease-before|ledger-before|ledger-after|lease-after|runs|outbox|image|lease-baseline) ;;
   *) echo "Unknown evidence label" >&2; exit 2 ;;
 esac
 mkdir -p evidence
