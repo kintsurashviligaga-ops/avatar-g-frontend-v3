@@ -1,3 +1,5 @@
+> Historical recovery record. Current verified results and remaining gates: [FINAL_ENGINEERING_REPORT_KA.md](FINAL_ENGINEERING_REPORT_KA.md) and [FINAL_E2E_MATRIX.md](FINAL_E2E_MATRIX.md). The original record below is preserved.
+
 # Image Studio v1.0 — final continuation handoff
 
 Date: 2026-10-13. **Preserved and locally verified; Phase 6 real acceptance remains BLOCKED.**

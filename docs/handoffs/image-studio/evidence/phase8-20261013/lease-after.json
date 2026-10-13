@@ -1,0 +1,44 @@
+{
+  "numPassedTests": 7,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTotalTests": 7,
+  "success": true,
+  "startTime": 1791901665323,
+  "tests": [
+    {
+      "file": "leaseIsolation.pg.test.ts",
+      "status": "passed",
+      "assertions": [
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) E: a worker dies mid-render; once its lease lapses the sweep takes the job over as attempt 2 and delivers it, charged once",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) F: the job dies twice; the sweep gives it up, refunds the charge once, and a second sweep pays nothing more",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) a debt left on a failed row (the refund did not land) is paid by the next sweep, once",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) the owner stops a running job: the worker hears it on its heartbeat, delivers nothing, and the charge comes back once",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) a charge whose request died before it lifted the hold is failed after HOLD_MS and paid back",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) eight workers race for one queued job through PostgREST: exactly one gets it",
+          "status": "passed"
+        },
+        {
+          "name": "lease queue on a real Postgres + PostgREST (local, isolated) E/F for the URL-to-Audio worker: a dead extraction is retried once and delivered; two deaths are given up",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

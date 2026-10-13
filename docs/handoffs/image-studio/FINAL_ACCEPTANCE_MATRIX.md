@@ -1,3 +1,5 @@
+> Historical recovery record. Current verified results and remaining gates: [FINAL_ENGINEERING_REPORT_KA.md](FINAL_ENGINEERING_REPORT_KA.md) and [FINAL_E2E_MATRIX.md](FINAL_E2E_MATRIX.md). The original record below is preserved.
+
 # Image Studio v1.0 — final acceptance matrix
 
 Date: 2026-10-13. Branch: `codex/image-studio-v1`. Recovery checkpoint: `ed0dd85339b710219ca62eccad2b14dcdc3a4293`.

@@ -51,3 +51,6 @@ Do not invoke another user's pending Image Studio approvals. Do not provision pr
 ## Verification already available
 
 `node --test scripts/image-studio/live-e2e.test.mjs` passes five offline harness tests: default no-network behavior, missing approval/config refusal, GET-only preflight, real-response-shape 202/200 idempotent flow, and budget rejection before confirmation. These tests do not contact Google, Storage or a database.
+
+## Free local acceptance evidence (2026-10-13)
+PR head09333d7a: Image Auth/RLS/private Storage/Versions/Library3/3 PASS in the existing isolated Video Core workflow; total38/38 PASS. Outputs are synthetic seeded PNGs, not Google results. Credit balance and ledger remained unchanged. No quote/confirm/provider call. This closes only local free boundaries; hosted preflight and paid lifecycle remain unexecuted. Run38413376597; see current matrix.

@@ -1,0 +1,8 @@
+{
+  "videoHead": "aa0de1f732fa8f43172b88c0c66b92aff018a987",
+  "imageHead": "84764dca6682abe2ca481879fe2fe71aefaeec16",
+  "patchCheckExit": 0,
+  "stderr": "",
+  "excludedSharedTests": "two fixture files already contain upstream fix and additional Video tests",
+  "environment": "/private/tmp/image-studio-pr58-aa0de1f7"
+}

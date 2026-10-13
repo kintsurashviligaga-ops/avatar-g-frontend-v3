@@ -1,3 +1,5 @@
+> Historical recovery record. Current verified results and remaining gates: [FINAL_ENGINEERING_REPORT_KA.md](FINAL_ENGINEERING_REPORT_KA.md) and [FINAL_E2E_MATRIX.md](FINAL_E2E_MATRIX.md). The original record below is preserved.
+
 # Draft PR: Image Studio v1.0 — explicit quotes, owned edits and recoverable image jobs
 
 Status: local PR description prepared; no GitHub PR opened or branch pushed. The owner's condition for final PR readiness is not met while real Phase 6 gates are blocked. Recheck PR #58 before opening a separate Image Studio PR; do not merge or deploy.

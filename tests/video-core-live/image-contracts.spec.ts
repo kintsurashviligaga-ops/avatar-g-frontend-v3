@@ -9,6 +9,8 @@ import { IMAGE_KIND, type ImagePlan } from '../../lib/image/studio/contracts';
 // Picked up by the existing Video Core "api" project (contracts.spec.ts suffix).
 // Real local Auth/PostgREST/Storage, synthetic seeded images. No quote, confirm or provider call.
 test.describe('Image Studio free boundaries on the existing isolated Supabase stack', () => {
+  // This suite certifies only the local stack. The shared config also serves an opt-in remote Preview.
+  test.skip(process.env.VIDEO_CORE_PREVIEW_E2E === '1', 'Local Supabase Image boundaries only; hosted Preview acceptance remains separate.');
   test.setTimeout(60_000);
   let service: SupabaseClient, a: SupabaseClient, b: SupabaseClient;
   let aToken: string, bToken: string, aId: string, bId: string, origin: string;

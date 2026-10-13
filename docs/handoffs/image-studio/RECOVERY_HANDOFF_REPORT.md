@@ -1,3 +1,5 @@
+> Historical recovery record. Current verified results and remaining gates: [FINAL_ENGINEERING_REPORT_KA.md](FINAL_ENGINEERING_REPORT_KA.md) and [FINAL_E2E_MATRIX.md](FINAL_E2E_MATRIX.md). The original record below is preserved.
+
 > Final continuation (2026-10-13): checkpoint and cleanup are committed; see [FINAL_HANDOFF_REPORT.md](FINAL_HANDOFF_REPORT.md) and [FINAL_ACCEPTANCE_MATRIX.md](FINAL_ACCEPTANCE_MATRIX.md). The historical recovery record below is preserved. Real Phase 6 remains BLOCKED.
 
 # Image Studio v1.0 — Recovery Handoff Report

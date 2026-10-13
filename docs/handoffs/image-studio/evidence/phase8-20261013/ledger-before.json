@@ -1,0 +1,48 @@
+{
+  "numPassedTests": 7,
+  "numFailedTests": 0,
+  "numPendingTests": 1,
+  "numTotalTests": 8,
+  "success": true,
+  "startTime": 1791901660598,
+  "tests": [
+    {
+      "file": "ledgerOnce.pg.test.ts",
+      "status": "focused",
+      "assertions": [
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) deduct_credits_once is not provisioned (Production today)",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) first call charges; a sequential replay is refused and charges nothing",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) reserveProduce({ refuseReplay }) turns the replay into duplicate_request, not a free render",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) without refuseReplay (a worker re-reserving its own ref) the idempotent success is unchanged",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) insufficient credits is still insufficient",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) a user with no profile row is not charged",
+          "status": "passed"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) eight concurrent twins: one debit, exactly one may render",
+          "status": "pending"
+        },
+        {
+          "name": "deductCreditsOnce on a real PostgREST (before 20261002d) concurrent twins before 20261002d: the known window (documented, not hidden)",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}
