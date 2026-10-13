@@ -23,8 +23,21 @@
 | 11 | Stripe-ის ალტერნატიული გზა | **PARTIAL** | `bog:false`-ისას Credits ფანჯარა და საფულე Stripe-ს სთავაზობს. BOG-ის უარის შემდეგ Stripe-ზე გადასვლა არ ხდება. Stripe-ით Production-ში გადახდა ჯერ არ დასრულებულა. PR #59 Stripe-ის კოდს არ ცვლის, ანუ დღევანდელზე უარესი არ ხდება |
 | 12 | Admin Authorization | **PROVEN** | checkout, capabilities და `/api/admin/billing/bog` ერთ წესს იყენებს (`isAdminIdentity`); არა-ადმინს 403. `__tests__/api-lockdown`, `__tests__/api-security` მწვანეა |
 | 13 | Sensitive Data in Logs | **PROVEN** | BOG-ის 9 `console.*` ხაზი ბეჭდავს მხოლოდ შეკვეთის id-ს, სტატუსს და მიზეზს. საიდუმლოს, token-ს და header-ს არცერთი არ ბეჭდავს. E7: შეკვეთის მიზეზში საიდუმლო არ ხვდება. ადმინ დიაგნოსტიკა ასუფთავებს ყველა ფორმას (`scrub`) |
-| 14 | Vercel Environment Scope Isolation | კოდი **PROVEN** · კონფიგურაცია **BLOCKED** | ახალი (`93ec307`): `VERCEL_ENV` ≠ `production` → რეჟიმი ყოველთვის `off`, ადმინისთვისაც. 3 ახალი ტესტი გამოსწორების გარეშე ვარდება, გამოსწორებით გადის. Vercel-ში რომელ scope-ში რა წერია, ვერ ვხედავ (კონექტორი 0 გუნდს ხედავს → 403) |
+| 14 | Vercel Environment Scope Isolation | კოდი **PROVEN** · კონფიგურაცია **PROVEN** (metadata) | ახალი (`93ec307`): `VERCEL_ENV` ≠ `production` → რეჟიმი ყოველთვის `off`, ადმინისთვისაც. 3 ახალი ტესტი გამოსწორების გარეშე ვარდება, გამოსწორებით გადის. Vercel (2026-10-13 03:21Z, მხოლოდ metadata): ყველა `BOG_*` მხოლოდ Production-შია, Preview / Development-ში არცერთი; ქვემოთ „Vercel Production env“ |
 | 15 | PR #58-თან გადაკვეთა | **PROVEN: 0** | PR #58 head `ebc3444` (19:48Z): 164 ფაილი; PR #59: 45 ფაილი; საერთო 0. Image Studio-ს აქტიური ბრენჩი არ არის; ძველ `claude/design-pass-imagery` და `claude/fix-image-google-redis-voice`-თან საერთოც 0-ია |
+
+## Vercel Production env (2026-10-13, მხოლოდ metadata, მნიშვნელობები არ წამიკითხავს)
+
+| ცვლადი | ტიპი · scope | მდგომარეობა |
+|---|---|---|
+| `BOG_CLIENT_ID`, `BOG_SECRET_KEY` | Sensitive · მხოლოდ Production | არის, 2026-10-02-დან. OAuth-ით ჯერ შემოწმებული არ არის; Owner ჩაანაცვლებს OPAY წყვილით OAuth 200-ის შემდეგ |
+| `BOG_ENV` | Sensitive · მხოლოდ Production | 03:20Z → `production` (Claude). ძველი მნიშვნელობა უცნობია (Sensitive) |
+| `BOG_CHECKOUT_MODE` | Plain · მხოლოდ Production | 03:20Z შექმნა Claude-მა: `admin` |
+| `BOG_CALLBACK_PUBLIC_KEY`, `BOG_API_BASE`, `BOG_OAUTH_URL`, `BOG_CALLBACK_IP_ALLOWLIST` | — | არ არსებობს. სიაში ჩანს 2026-02-18-ის შემდეგ შექმნილი ყველა ცვლადი, ეს სახელები კი repo-ში 2026-09-29-დან ჩნდება |
+| `CRON_SECRET` | Sensitive · Production + Preview | არის |
+| `NEXT_PUBLIC_SITE_URL` | — | ხილულ სიაში არ არის (Vercel-ის პასუხი 12 უძველეს ცვლადს ჭრის). callback URL ასეთ შემთხვევაში `NEXT_PUBLIC_APP_URL`-იდან იგება (Sensitive, Production); deploy-ის შემდეგ ადმინ ბარათზე უნდა ჩანდეს `callback: https://myavatar.ge/api/billing/bog/webhook` |
+
+რა გავლენა აქვს: მიმდინარე Production კოდი (`30be5a2`) `BOG_CHECKOUT_MODE`-ს არ კითხულობს, `BOG_ENV`-ს კი მხოლოდ ჰოსტის ასარჩევად იყენებს. env მხოლოდ ახალ deploy-ზე მოქმედებს, ამიტომ საიტი ამ ცვლილებით არ შეცვლილა. შემდეგი deploy PR #59 უნდა იყოს ([Release Checklist](BOG_PAYMENT_RELEASE_CHECKLIST.md)).
 
 ## Production ბაზა (read-only, 2026-10-12 19:45Z)
 

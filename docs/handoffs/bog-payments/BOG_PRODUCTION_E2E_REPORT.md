@@ -18,11 +18,11 @@
 
 | # | კრიტერიუმი | სტატუსი | მტკიცება / რას ველოდებით |
 |---|---|---|---|
-| 1 | Production Credentials სწორად არის კონფიგურირებული | **BLOCKED** | Vercel კონექტორი 0 გუნდს ხედავს (403). Owner: კონექტორის ხელახლა დაკავშირება + OPAY წყვილი ([BOG_OWNER_ACTIONS.md](BOG_OWNER_ACTIONS.md)) |
+| 1 | Production Credentials სწორად არის კონფიგურირებული | **PARTIAL** | 2026-10-13 03:21Z (metadata): `BOG_CHECKOUT_MODE=admin`, `BOG_ENV=production`, override-ები არ არის, BOG მხოლოდ Production-ში. წყვილი 2026-10-02-ისაა, შემოწმებული არ არის: Owner-ის OAuth + OPAY წყვილი ([BOG_OWNER_ACTIONS.md](BOG_OWNER_ACTIONS.md)) |
 | 2 | OAuth რეალურად აბრუნებს HTTP 200-ს | **NOT RUN** | Owner-ის `bog-oauth-check.mjs` ხაზი |
 | 3 | PR #59-ის კრიტიკული ტესტები გავლილია | **PROVEN** (ლოკალურად `93ec307`); CI `93ec307`-ზე მიმდინარეობს | 438/438, SQL 39/39, E2E 14/14, tsc/eslint 0; CI `fb29913`-ზე მწვანე |
 | 4 | Production Deploy წარმატებით დასრულებულია | **NOT RUN** | merge-ის პირობები 3–5 ჯერ არ შესრულებულა |
-| 5 | `BOG_CHECKOUT_MODE=admin` მუშაობს | **PARTIAL** | კოდი და ტესტები PROVEN; Production-ში NOT RUN |
+| 5 | `BOG_CHECKOUT_MODE=admin` მუშაობს | **PARTIAL** | კოდი და ტესტები PROVEN; Vercel Production env-ში ჩაწერილია (03:20Z); deploy-ის შემდეგ smoke NOT RUN |
 | 6 | არა-ადმინის checkout შეზღუდულია | **PARTIAL** | ტესტები PROVEN (403 `BOG_ADMIN_ONLY`, `bog:false`); Production-ში NOT RUN. დღეს Production BOG-ს ყველას აჩვენებს (`{"stripe":true,"bog":true}`, 18:54Z) |
 | 7 | Webhook / Settlement / Idempotency შემოწმებულია | **PARTIAL** | ლოკალურად PROVEN (E1–E5, E12–E13, C1–C3). Production ბაზაში ფუნქციები და იდემპოტენტობის ინდექსები იდენტურია (read-only). ნამდვილი callback Production-ში NOT RUN |
 | 8 | Owner-ის 10 ₾ გადახდა წარმატებულია | **NOT RUN** | deploy-ის შემდეგ, Owner-ის ცალკე სიტყვით |

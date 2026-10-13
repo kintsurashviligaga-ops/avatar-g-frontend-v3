@@ -1,6 +1,6 @@
 # BOG Payments — Handoff (v1.3)
 
-2026-10-12 · ვერდიქტი: **NOT READY — merge Owner-ის ორ მოქმედებას ელოდება** (Vercel კონექტორი / env და OAuth 200). კოდი, ტესტები, Production ბაზის თავსებადობა და rollback მზადაა.
+2026-10-13 · ვერდიქტი: **NOT READY — merge Owner-ის ერთ მოქმედებას ელოდება**: OAuth 200 Mac-ზე და OPAY წყვილის ჩაწერა Vercel Production-ში. კოდი, ტესტები, Production ბაზის თავსებადობა და rollback მზადაა.
 
 ## სად რა არის
 
@@ -25,8 +25,8 @@
 
 ## შემდეგი ნაბიჯები (თანმიმდევრობით)
 
-1. **Owner:** Vercel კონექტორის ხელახლა დაკავშირება გუნდით `kintsurashviligaga-ops-projects` (ან env-ის ხელით შეცვლა + ფოტო).
-2. **Claude:** override-ების წაშლა, `BOG_CHECKOUT_MODE=admin`, `BOG_ENV=production`, `CRON_SECRET` / `NEXT_PUBLIC_SITE_URL` / scope-ების შემოწმება.
+1. ✓ **Owner:** Vercel კონექტორი ხელახლა დაკავშირდა (2026-10-13 03:16Z).
+2. ✓ **Claude:** `BOG_CHECKOUT_MODE=admin`, `BOG_ENV=production` (03:20Z); override-ები არ არსებობდა; `CRON_SECRET` და scope-ები შემოწმდა ([Security](BOG_SECURITY_VERIFICATION.md), „Vercel Production env“).
 3. **Owner:** `bog-oauth-check.mjs` → `✓ ok · HTTP 200`, შემდეგ OPAY წყვილი Vercel Production-ში (Sensitive).
 4. **Claude:** env metadata → Release Checklist-ის 10 პირობა → PR #59 ready → merge → deployment ID / SHA → smoke (GitHub Actions) + read-only SQL.
 5. **Owner (ცალკე სიტყვით):** ცოცხალი 10 ₾ → **Claude:** შეკვეთა, ზუსტად +100 კრედიტი, ერთი ledger ჩანაწერი (read-only SQL) → E2E Report-ის განახლება.

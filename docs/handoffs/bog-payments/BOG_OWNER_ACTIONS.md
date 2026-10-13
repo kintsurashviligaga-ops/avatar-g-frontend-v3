@@ -4,7 +4,12 @@
 
 **არასდროს:** Secret Key არ ჩასვა ჩატში, ფოტოში, GitHub-ში, ელფოსტაში, ბრძანების ხაზში ან Vercel-ის Preview / Development scope-ში. Sandbox წყვილი Vercel-ში არცერთ scope-ში არ ჩაწერო. ჩემთვის საკმარისია შედეგის ერთი ხაზი (`✓ ok · HTTP 200 · …`).
 
-## ახლა: ნაბიჯი 1 — Vercel კონექტორი (რომ Vercel-ის დანარჩენი ცვლილებები მე გავაკეთო)
+## ნაბიჯი 1 — Vercel კონექტორი ✓ (2026-10-13 03:16Z)
+
+Owner-მა კონექტორი ხელახლა დააკავშირა. 03:20Z-ზე ჩავწერე `BOG_CHECKOUT_MODE=admin` და `BOG_ENV=production` (Production); override-ები არ არსებობდა; `CRON_SECRET` არის; Preview / Development-ში BOG ცვლადი არ არის.
+
+<details><summary>ძველი ინსტრუქცია</summary>
+
 
 1. https://claude.ai/customize/connectors → **Vercel** → გათიშე და თავიდან დააკავშირე. Vercel-ის ფანჯარაში აირჩიე გუნდი **kintsurashviligaga-ops-projects**.
 2. პროექტის Project settings → Connectors: Vercel ჩართულია.
@@ -14,7 +19,9 @@
 
 თუ კონექტორს ვერ დააკავშირებ: ეს ყველაფერი ხელით გააკეთე Vercel-ში და გამომიგზავნე env გვერდის ფოტო, ძებნაში „BOG" ჩაწერილი (მნიშვნელობები დამალულია).
 
-## ნაბიჯი 2 — OPAY წყვილი (მხოლოდ შენ)
+</details>
+
+## ახლა: ნაბიჯი 2 — OPAY წყვილი (მხოლოდ შენ)
 
 ### 2-ა. წყვილის შემოწმება Mac-ზე (ერთი OAuth მოთხოვნა, თანხა არ ჩამოიჭრება)
 
@@ -42,7 +49,7 @@ node bog-oauth-check.mjs
 
 https://vercel.com/kintsurashviligaga-ops-projects/avatar-g-frontend-v3/settings/environment-variables
 
-- `BOG_CLIENT_ID` = OPAY Client ID (თუ არსებობს: Edit → ჩაანაცვლე).
+- `BOG_CLIENT_ID` → ⋯ → Edit → OPAY Client ID → Save (ცვლადი უკვე არსებობს, 2026-10-02-დან).
 - `BOG_SECRET_KEY` = OPAY Secret Key, მონიშნე **Sensitive**.
 - Environment: **მხოლოდ Production**.
 

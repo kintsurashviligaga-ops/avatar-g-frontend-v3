@@ -9,8 +9,8 @@
 | 1 | Security Audit | **PASS** | [BOG_SECURITY_VERIFICATION.md](BOG_SECURITY_VERIFICATION.md) |
 | 2 | Billing-ის კრიტიკული ტესტები | **PASS** ლოკალურად (`93ec307`); CI საბოლოო head-ზე უნდა იყოს მწვანე | 438/438, SQL 39/39, E2E 14/14; CI `verify` + `preview-e2e` |
 | 3 | OAuth — HTTP 200 | **BLOCKED (Owner)** | Owner-ის Mac-ზე `bog-oauth-check.mjs` → `✓ ok · HTTP 200` |
-| 4 | Vercel Production credentials, სწორი scope | **BLOCKED** | Vercel კონექტორი გუნდს ვერ ხედავს (403). კონექტორის შემდეგ: env-ის metadata (სახელები, scope-ები, განახლების დრო, მნიშვნელობების გარეშე) |
-| 5 | `BOG_CHECKOUT_MODE=admin` | **BLOCKED** | env metadata merge-მდე; deploy-ის შემდეგ ანონიმური capabilities → `bog:false` |
+| 4 | Vercel Production credentials, სწორი scope | **PARTIAL** | scope სწორია: `BOG_CLIENT_ID` / `BOG_SECRET_KEY` Sensitive, მხოლოდ Production (2026-10-13 03:21Z metadata). წყვილი 2026-10-02-ისაა და შემოწმებული არ არის: Owner OAuth 200-ის შემდეგ ჩაწერს OPAY წყვილს, მე `updatedAt`-ით გადავამოწმებ |
+| 5 | `BOG_CHECKOUT_MODE=admin` | **PASS** (env) | 2026-10-13 03:20Z: `admin`, Plain, მხოლოდ Production. deploy-ის შემდეგ ანონიმური capabilities → `bog:false` |
 | 6 | არა-ადმინის შეზღუდვა | **PASS** (ტესტები) | checkout 403 `BOG_ADMIN_ONLY`, capabilities `bog:false`; deploy-ის შემდეგ Production-ზეც |
 | 7 | Stripe-ის გზა არ უარესდება | **PASS** | PR #59 Stripe-ის კოდს არ ეხება; `bog:false` → Stripe შეთავაზებულია |
 | 8 | PR #58-თან კონფლიქტი | **PASS** | 0 საერთო ფაილი (`ebc3444`); main = `30be5a2`, PR #59 ზედ დგას |
@@ -42,7 +42,7 @@
 | ანონიმური `GET /api/admin/billing/bog` | 401 / 403 |
 | `GET /api/cron/bog-billing` `CRON_SECRET`-ის გარეშე | 403 (401 / 403) |
 | Production ბაზა (read-only SQL) | ფუნქციების md5 უცვლელი; `bog_orders` უცვლელი (4 `init_failed`) |
-| Owner: ადმინ ბარათი | Credentials set · PRODUCTION · `client …XXXX` · Schema OK · CRON_SECRET · Checkout: admins only · „Test credentials with BOG" → `ok` |
+| Owner: ადმინ ბარათი | Credentials set · PRODUCTION · `client …XXXX` · Schema OK · CRON_SECRET · Checkout: admins only · `callback: https://myavatar.ge/api/billing/bog/webhook` · „Test credentials with BOG" → `ok` |
 
 ## ცალკე Release Gate-ები (ამ release-ში **არ** იხსნება)
 
