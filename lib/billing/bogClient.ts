@@ -135,6 +135,29 @@ export function bogCheckoutMode(env: NodeJS.ProcessEnv = process.env): BogChecko
   return raw === 'admin' ? 'admin' : 'off';
 }
 
+/**
+ * Who may BUY A PLAN through BOG (BOG_SUBSCRIPTION_MODE) — on top of bogCheckoutMode, which still decides who may
+ * start any BOG checkout. A plan saves the card for monthly automatic charges, and whether the bank has enabled
+ * automatic payments for this merchant is not confirmed (bank question 3). So opening BOG checkout to everyone must
+ * not open plans with it:
+ *
+ *   unset / ''   'admin'   admins only — the safe default: plans open only when the owner says so
+ *   'admin'      'admin'
+ *   'public'     'public'  everyone bogCheckoutMode lets in
+ *   'off'        nobody
+ *   anything else → 'off'.
+ *
+ * Plans already sold keep renewing and can always be cancelled; this gates new plan checkouts only.
+ */
+export function bogSubscriptionMode(env: NodeJS.ProcessEnv = process.env): BogCheckoutMode {
+  const checkout = bogCheckoutMode(env);
+  if (checkout === 'off') return 'off';
+  const raw = (env.BOG_SUBSCRIPTION_MODE || '').trim().toLowerCase();
+  const plans: BogCheckoutMode = !raw || raw === 'admin' ? 'admin' : raw === 'public' ? 'public' : 'off';
+  // Never wider than the checkout itself: checkout=admin keeps plans admin-only whatever this says.
+  return checkout === 'admin' && plans === 'public' ? 'admin' : plans;
+}
+
 export interface BogFetchDeps {
   readonly fetch: typeof fetch;
   /** Per-request timeout (ms). */

@@ -8,8 +8,10 @@ jest.mock('server-only', () => ({}));
 import { createPublicKey, createSign, generateKeyPairSync } from 'node:crypto';
 import {
   BOG_PUBLISHED_CALLBACK_KEYS,
+  bogCheckoutMode,
   bogConfig,
   bogFullyConfigured,
+  bogSubscriptionMode,
   bogIdempotencyKey,
   callbackSourceIp,
   chargeSavedCard,
@@ -373,5 +375,25 @@ describe('helpers', () => {
     expect(isAllowedBogCallbackIp(null, [])).toBe(true);
     expect(isAllowedBogCallbackIp('1.1.1.1', ['1.1.1.1'])).toBe(true);
     expect(isAllowedBogCallbackIp('2.2.2.2', ['1.1.1.1'])).toBe(false);
+  });
+});
+
+describe('bogSubscriptionMode — plans stay closed until the owner opens them (automatic payments unconfirmed)', () => {
+  const mode = (env: Record<string, string>) => bogSubscriptionMode(env as NodeJS.ProcessEnv);
+  test('unset → admin, whatever the checkout mode (public or admin)', () => {
+    expect(mode({})).toBe('admin');
+    expect(mode({ BOG_CHECKOUT_MODE: 'public' })).toBe('admin');
+    expect(mode({ BOG_CHECKOUT_MODE: 'admin' })).toBe('admin');
+  });
+  test('public opens plans only as wide as the checkout; off or a typo closes them', () => {
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'public' })).toBe('public');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: ' Public ', BOG_CHECKOUT_MODE: 'admin' })).toBe('admin');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'off' })).toBe('off');
+    expect(mode({ BOG_SUBSCRIPTION_MODE: 'yes' })).toBe('off');
+  });
+  test('checkout off (or a Preview / Development deployment) → plans off too', () => {
+    expect(mode({ BOG_CHECKOUT_MODE: 'off', BOG_SUBSCRIPTION_MODE: 'public' })).toBe('off');
+    expect(mode({ VERCEL_ENV: 'preview', BOG_SUBSCRIPTION_MODE: 'public' })).toBe('off');
+    expect(bogCheckoutMode({ VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv)).toBe('off');
   });
 });

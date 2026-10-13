@@ -212,6 +212,9 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
       // and the limit scenarios (E17–E19) set their own limits.
       BOG_LIMIT_24H_GEL: '100000',
       BOG_LIMIT_30D_GEL: '1000000',
+      // Plans are admin-only by default (automatic payments unconfirmed); the plan scenarios run with plans open, E20
+      // checks the default.
+      BOG_SUBSCRIPTION_MODE: 'public',
     });
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -694,6 +697,25 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     } finally {
       process.env.BOG_LIMIT_24H_GEL = '100000';
       delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E20 ──
+  test('E20 BOG open to everyone, plans not yet: a customer tops up, a plan is refused before any row, order or saved card', async () => {
+    try {
+      delete process.env.BOG_SUBSCRIPTION_MODE;
+      const u = await newUser();
+      const before = bank.calls.length;
+      const plan = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
+      expect(plan.status).toBe(403);
+      expect(plan.json).toMatchObject({ error_code: 'BOG_PLANS_ADMIN_ONLY' });
+      expect(bank.calls.length).toBe(before);
+      const { data: rows } = await svc.from('bog_orders').select('kind').eq('user_id', u);
+      expect(rows).toEqual([]);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+      expect(bank.calls.some((x) => x.startsWith('PUT /orders/'))).toBe(false);
+    } finally {
+      process.env.BOG_SUBSCRIPTION_MODE = 'public';
     }
   });
 });

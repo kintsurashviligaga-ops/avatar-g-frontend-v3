@@ -14,6 +14,8 @@
  *            (the owner's controlled live test), unset/'public' → everyone (lib/billing/bogClient bogCheckoutMode).
  *            Sandbox credentials never open it on a Vercel deployment: those write to the Production database
  *            (lib/billing/bogSettlement bogSandboxBlocked).
+ *   bogPlans → this viewer may also buy a monthly plan through BOG (BOG_SUBSCRIPTION_MODE, admins only by default:
+ *            automatic payments are not confirmed by the bank). When false the plans keep their card rail.
  *
  * Public + fail-open: never throws, defaults every rail to false on any error so the UI degrades to
  * "no rail available" rather than showing a button that can't complete.
@@ -21,7 +23,7 @@
 import { NextResponse } from 'next/server';
 import { getBillingProvider } from '@/lib/monetization/provider';
 import { isAdmin } from '@/lib/auth/adminGuard';
-import { bogCheckoutMode, bogConfig } from '@/lib/billing/bogClient';
+import { bogCheckoutMode, bogConfig, bogSubscriptionMode } from '@/lib/billing/bogClient';
 import { bogSandboxBlocked, bogSchemaReady } from '@/lib/billing/bogSettlement';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
@@ -31,6 +33,7 @@ export const runtime = 'nodejs';
 export async function GET() {
   let stripe = false;
   let bog = false;
+  let bogPlans = false;
   try {
     stripe = getBillingProvider().kind === 'stripe';
   } catch {
@@ -41,14 +44,18 @@ export async function GET() {
     // AND this viewer may start a BOG checkout (BOG_CHECKOUT_MODE).
     const mode = bogCheckoutMode();
     const cfg = bogConfig();
+    let admin: boolean | null = null;
+    const viewerIsAdmin = async () => (admin ??= await isAdmin());
     bog =
       mode !== 'off' &&
       cfg !== null &&
       !bogSandboxBlocked(cfg) &&
-      (mode === 'public' || (await isAdmin())) &&
+      (mode === 'public' || (await viewerIsAdmin())) &&
       (await bogSchemaReady(createServiceRoleClient()));
+    const planMode = bogSubscriptionMode();
+    bogPlans = bog && planMode !== 'off' && (planMode === 'public' || (await viewerIsAdmin()));
   } catch {
     /* fail-open: rail stays false */
   }
-  return NextResponse.json({ stripe, bog }, { headers: { 'Cache-Control': 'private, max-age=30' } });
+  return NextResponse.json({ stripe, bog, bogPlans }, { headers: { 'Cache-Control': 'private, max-age=30' } });
 }

@@ -4,7 +4,7 @@ import BogReadiness from './BogReadiness';
 const readiness = {
   configured: true, environment: 'production', clientIdTail: '1234', callbackKey: 'published-production',
   callbackUrl: 'https://myavatar.ge/api/billing/bog/webhook', schemaReady: true, cronSecretSet: true,
-  checkoutMode: 'admin', limitsGel: { singleTransaction: 500, per24h: 1000, per30d: 5000 }, limitScope: 'merchant', paidGel: { last24h: 5, last30d: 59 },
+  checkoutMode: 'admin', subscriptionMode: 'admin', limitsGel: { singleTransaction: 500, per24h: 1000, per30d: 5000 }, limitScope: 'merchant', paidGel: { last24h: 5, last30d: 59 },
   ordersByStatus: { init_failed: 4 },
   recentOrders: [{ kind: 'topup', status: 'init_failed', amountGel: 10, createdAt: '2026-10-03T07:38:18Z', rejectReason: 'init (production): oauth HTTP 401 invalid_client' }],
 };
@@ -21,6 +21,7 @@ test('shows the deployment state and runs the credential check on request only',
   expect(await screen.findByText(/client …1234/)).toBeTruthy();
   expect(screen.getByText(/oauth HTTP 401 invalid_client/)).toBeTruthy();
   expect(screen.getByText('Checkout: admins only')).toBeTruthy();
+  expect(screen.getByText('Plans: admins only')).toBeTruthy();
   expect(screen.getByTestId('bog-limits').textContent).toContain('24h 5/1000 ₾ · 30d 59/5000 ₾');
   expect(screen.getByTestId('bog-limits').textContent).toMatch(/rolling windows; counts paid, refunded and under-review orders/);
   expect(screen.getByTestId('bog-limits').textContent).toContain('checkout and renewals refuse above them, merchant-wide');

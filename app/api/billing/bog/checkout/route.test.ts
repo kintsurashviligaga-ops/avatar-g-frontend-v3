@@ -22,13 +22,16 @@ const mockDb: {
   open: unknown[];
   openAfterInsert: unknown[] | null;
   ordersError: unknown;
-} = { live: [], insertError: null, liveError: null, paid: [], open: [], openAfterInsert: null, ordersError: null };
+  /** the update that records BOG's order id on our row fails */
+  bindError: unknown;
+} = { live: [], insertError: null, liveError: null, paid: [], open: [], openAfterInsert: null, ordersError: null, bindError: null };
 let mockLog: FakeCall[] = [];
 jest.mock('../../../../../lib/supabase/server', () => ({
   createServiceRoleClient: () => {
     const { client, log } = fakeSupabase((c) => {
       if (c.table === 'subscriptions' && c.op === 'select') return { data: mockDb.live, error: mockDb.liveError };
       if (c.table === 'bog_orders' && c.op === 'insert') return { error: mockDb.insertError };
+      if (c.table === 'bog_orders' && c.op === 'update' && 'bog_order_id' in (c.args[0] as object)) return { error: mockDb.bindError };
       if (c.table === 'bog_orders' && c.op === 'select') {
         if (mockDb.ordersError) return { error: mockDb.ordersError };
         const openQuery = c.filters.some((f) => f[0] === 'eq' && f[1] === 'status' && f[2] === 'pending');
@@ -93,10 +96,12 @@ beforeEach(() => {
   mockDb.open = [];
   mockDb.openAfterInsert = null;
   mockDb.ordersError = null;
+  mockDb.bindError = null;
   delete process.env.BOG_LIMIT_24H_GEL;
   delete process.env.BOG_LIMIT_30D_GEL;
   delete process.env.BOG_LIMIT_PER_PAYMENT_GEL;
   delete process.env.BOG_LIMIT_SCOPE;
+  process.env.BOG_SUBSCRIPTION_MODE = 'public'; // plan tests below run with plans open; the lock has its own tests
   mockCreateOrder.mockResolvedValue({ orderId: 'bog-ord-1', redirectUrl: 'https://payment.bog.ge/?order_id=bog-ord-1' });
   mockSaveCard.mockResolvedValue(true);
   process.env.NEXT_PUBLIC_SITE_URL = 'https://myavatar.ge';
@@ -202,6 +207,22 @@ test('no order row → no BOG order (a payment we could not credit is never star
   expect(mockCreateOrder).not.toHaveBeenCalled();
 });
 
+test('BOG\'s order id cannot be recorded → 503, no redirect: an order only a callback could settle is never paid', async () => {
+  const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  mockDb.bindError = { message: 'connection reset' };
+  const res = await POST(post({ kind: 'plan', tierId: 'starter' }));
+  expect(res.status).toBe(503);
+  const body = await res.json();
+  expect(body).toMatchObject({ error_code: 'BOG_ORDER_ROW' });
+  expect(body.redirectUrl).toBeUndefined();
+  expect(updatesTo()).toEqual([
+    expect.objectContaining({ bog_order_id: 'bog-ord-1' }),
+    expect.objectContaining({ status: 'init_failed', reject_reason: 'init (production): bog_order_id not recorded' }),
+  ]);
+  expect(mockSaveCard).not.toHaveBeenCalled();
+  expect(err).toHaveBeenCalled();
+});
+
 test('BOG\'s 500 ₾ single-transaction limit: 500 goes ahead, a tier priced above it is refused before any row or order', async () => {
   expect((await POST(post({ kind: 'topup', amountGel: 500 }))).status).toBe(200);
   jest.clearAllMocks();
@@ -282,6 +303,35 @@ describe("BOG's 24 h / 30 day limits (lib/billing/bogLimits)", () => {
     expect(await (await POST(post({ kind: 'topup', amountGel: 20 }))).json()).toMatchObject({ error_code: 'BOG_LIMIT', maxGel: 15 });
     process.env.BOG_LIMIT_PER_PAYMENT_GEL = '5OO';
     expect((await POST(post({ kind: 'topup', amountGel: 500 }))).status).toBe(200);
+  });
+});
+
+describe('BOG_SUBSCRIPTION_MODE (plans stay closed when checkout opens)', () => {
+  test('unset → a customer may top up but not buy a plan (403, no row, no order); an admin may', async () => {
+    delete process.env.BOG_SUBSCRIPTION_MODE;
+    expect((await POST(post({ kind: 'topup', amountGel: 10 }))).status).toBe(200);
+    jest.clearAllMocks();
+    mockLog = [];
+    const res = await POST(post({ kind: 'plan', tierId: 'starter' }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error_code: 'BOG_PLANS_ADMIN_ONLY' });
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    expect(mockSaveCard).not.toHaveBeenCalled();
+    mockIsAdmin = true;
+    expect((await POST(post({ kind: 'plan', tierId: 'starter' }))).status).toBe(200);
+  });
+
+  test('off (or a typo) → 503 BOG_PLANS_DISABLED for everyone, admins included; top-ups unaffected', async () => {
+    mockIsAdmin = true;
+    for (const v of ['off', 'publik']) {
+      process.env.BOG_SUBSCRIPTION_MODE = v;
+      const res = await POST(post({ kind: 'plan', tierId: 'creator' }));
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error_code: 'BOG_PLANS_DISABLED' });
+    }
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    expect((await POST(post({ kind: 'topup', amountGel: 10 }))).status).toBe(200);
   });
 });
 

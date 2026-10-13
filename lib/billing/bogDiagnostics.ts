@@ -17,7 +17,7 @@
  */
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, type BogCheckoutMode, type BogConfig } from './bogClient';
+import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, bogSubscriptionMode, type BogCheckoutMode, type BogConfig } from './bogClient';
 import { BOG_PAID_STATUSES, bogLimits, type BogLimitScope } from './bogLimits';
 import { bogCallbackUrl, bogSandboxBlocked, bogSchemaReady } from './bogSettlement';
 
@@ -45,6 +45,8 @@ export interface BogReadiness {
   cronSecretSet: boolean;
   /** Who may start a BOG checkout (BOG_CHECKOUT_MODE). */
   checkoutMode: BogCheckoutMode;
+  /** Who may buy a plan through BOG (BOG_SUBSCRIPTION_MODE; admins only by default — automatic payments unconfirmed). */
+  subscriptionMode: BogCheckoutMode;
   /** Sandbox credentials on a Vercel deployment (Production database): checkout is closed (bogSandboxBlocked). */
   sandboxBlocked: boolean;
   /** BOG's limits in force (lib/billing/bogLimits — checkout and renewals refuse above them), and the paid ₾ counted. */
@@ -137,6 +139,7 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env,
     schemaReady,
     cronSecretSet: Boolean((env.CRON_SECRET || '').trim()),
     checkoutMode: bogCheckoutMode(env),
+    subscriptionMode: bogSubscriptionMode(env),
     sandboxBlocked: bogSandboxBlocked(cfg, env),
     limitsGel: { singleTransaction: limits.singleTransaction, per24h: limits.per24h, per30d: limits.per30d },
     limitScope: limits.scope,

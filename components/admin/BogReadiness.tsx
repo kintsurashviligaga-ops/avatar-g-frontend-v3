@@ -17,6 +17,7 @@ interface Readiness {
   schemaReady: boolean;
   cronSecretSet: boolean;
   checkoutMode?: 'off' | 'admin' | 'public';
+  subscriptionMode?: 'off' | 'admin' | 'public';
   limitsGel?: { singleTransaction: number; per24h: number; per30d: number };
   limitScope?: 'merchant' | 'customer';
   paidGel?: { last24h: number; last30d: number; capped?: boolean };
@@ -83,6 +84,15 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
                   : r.checkoutMode === 'admin'
                     ? (ka ? 'გადახდა: მხოლოდ ადმინი' : 'Checkout: admins only')
                     : (ka ? 'გადახდა: გამორთული' : 'Checkout: off')}
+              </span>
+            )}
+            {r.subscriptionMode && (
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${r.subscriptionMode === 'public' ? 'bg-emerald-500/15 text-emerald-300' : r.subscriptionMode === 'admin' ? 'bg-amber-500/15 text-amber-200' : 'bg-rose-500/15 text-rose-300'}`}>
+                {r.subscriptionMode === 'public'
+                  ? (ka ? 'გეგმები: ყველასთვის' : 'Plans: everyone')
+                  : r.subscriptionMode === 'admin'
+                    ? (ka ? 'გეგმები: მხოლოდ ადმინი' : 'Plans: admins only')
+                    : (ka ? 'გეგმები: გამორთული' : 'Plans: off')}
               </span>
             )}
           </div>
