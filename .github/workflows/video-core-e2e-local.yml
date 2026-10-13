@@ -75,9 +75,19 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # The action's own "latest" lookup is an anonymous API call, which a shared runner's address can exhaust (Preview
+      # run 38386454944 stopped there: "rate limit exceeded"). The job's token asks instead; the version is then pinned.
+      - name: Resolve the Supabase CLI's latest release (with this job's token)
+        id: supabase-cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(gh release view --repo supabase/cli --json tagName -q .tagName)"
+          echo "version=${v#v}" >> "$GITHUB_OUTPUT"
+          echo "Supabase CLI ${v}"
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ steps.supabase-cli.outputs.version }}
 
       - name: Map the reserved test host to this runner's loopback
         run: |
