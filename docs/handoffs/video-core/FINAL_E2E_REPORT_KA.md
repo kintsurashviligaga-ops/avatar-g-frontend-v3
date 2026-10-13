@@ -86,7 +86,7 @@ CI E2E-ის ჩავარდნებიდან სამი ტესტ�
 Production-ის storage host `*.supabase.co`-ზეა, მაგრამ custom domain-ზე ან self-hosted Supabase-ზე Agent G-ის საკუთარი ვიდეოს
 რედაქტირება ჩავარდებოდა; რეგრესიის ტესტი Production-ის ფორმის env-ზე ამტკიცებს, რომ მიღებული host-ები ზუსტად იგივე დარჩა.
 **39 Production-შიც ცოცხალია** (admin-ებისთვის, რადგან Agent G media Production-ში მხოლოდ admin-ზეა ჩართული): Trim და კიდევ
-ოთხი სახის edit worker-თან ვარდება, ბარათი წერს „Did not finish", კრედიტი არ იჭრება (ხაზი უფასოა). Production-ში ის მხოლოდ
+ოთხი სახის edit worker-თან ვარდება, ბარათი „failed"-ს და Retry-ს აჩვენებს, კრედიტი არ იჭრება (ხაზი უფასოა). Production-ში ის მხოლოდ
 PR #58-ის merge-ით გასწორდება. ორმა ჩავარდნამ შენი გადაწყვეტილება გამოაჩინა და ჩუმად **არ** შემიცვლია: **D11** — ლიმიტი (abuse/cost პოლიტიკა); **D12** — Trim/Speed სიტყვები ახლად მიმაგრებულ
 ვიდეოზე მოდელზეა დამოკიდებული, Agent G-ის საკუთარ შედეგზე კი არა (წინადადება: ორივე Agent G-ის edit-მა მიიღოს).
 წინადადებები `RELEASE_READINESS_CHECKLIST.md` §3-შია. evidence-ის redaction-მა რიცხვითი სტატუსიც დაფარა (`sweepWithoutSecret`) — გასწორდა
