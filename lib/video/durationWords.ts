@@ -28,47 +28,88 @@ const B1 = `(?![${L}\\p{N}])`;
 export const MAX_DURATION_SEC = 3600;
 
 /**
- * Number words and stems, LONGEST FIRST inside each language so „ოცდაათ" wins over „ოც" and „ათ", "fifteen" over
- * "five"… Georgian and Russian stems double as the prefix of a compound („ოთხ|წუთიანი", «четырёх|минутный»).
+ * Georgian counts in twenties: „ოცდახუთი" is 20 + 5, „ორმოცდათხუთმეტი" 40 + 15, one word each. Every word and its stem
+ * („ოცდახუთ|წამიანი") is in the table; review 2026-10-13 found „ოცდახუთი წამი" read as nothing at all.
+ */
+const KA_ONES: ReadonlyArray<readonly [string, number]> = [
+  ['ერთი', 1], ['ორი', 2], ['სამი', 3], ['ოთხი', 4], ['ხუთი', 5], ['ექვსი', 6], ['შვიდი', 7], ['რვა', 8], ['ცხრა', 9], ['ათი', 10],
+  ['თერთმეტი', 11], ['თორმეტი', 12], ['ცამეტი', 13], ['თოთხმეტი', 14], ['თხუთმეტი', 15], ['თექვსმეტი', 16], ['ჩვიდმეტი', 17],
+  ['თვრამეტი', 18], ['ცხრამეტი', 19],
+];
+const KA_TWENTIES: ReadonlyArray<readonly [string, number]> = [['ოცი', 20], ['ორმოცი', 40], ['სამოცი', 60], ['ოთხმოცი', 80], ['ასი', 100]];
+const kaStem = (w: string): string => (w.endsWith('ი') ? w.slice(0, -1) : w);
+const KA_WORDS: Array<readonly [string, number]> = [];
+for (const [w, n] of [...KA_ONES, ...KA_TWENTIES]) KA_WORDS.push([w, n], [kaStem(w), n]);
+for (const [tens, t] of KA_TWENTIES.slice(0, 4)) {
+  for (const [one, o] of KA_ONES) KA_WORDS.push([`${kaStem(tens)}და${one}`, t + o], [`${kaStem(tens)}და${kaStem(one)}`, t + o]);
+}
+
+/**
+ * Number words and stems. Georgian and Russian stems double as the prefix of a compound („ოთხ|წუთიანი",
+ * «четырёх|минутный»). The alternation is built LONGEST FIRST so „ოცდაათ" wins over „ოც" and „ათ", "fifteen" over "five".
  */
 const NUMBER_WORDS: ReadonlyArray<readonly [string, number]> = [
-  // ka — words („ერთი"), then stems („ერთ") for compounds
-  ['ორმოცდაათი', 50], ['ორმოცდაათ', 50], ['ოცდაათი', 30], ['ოცდაათ', 30], ['ორმოცი', 40], ['ორმოც', 40], ['სამოცი', 60], ['სამოც', 60],
-  ['თერთმეტი', 11], ['თერთმეტ', 11], ['თორმეტი', 12], ['თორმეტ', 12], ['თხუთმეტი', 15], ['თხუთმეტ', 15], ['ოცი', 20], ['ოც', 20],
-  ['ერთი', 1], ['ერთ', 1], ['ორი', 2], ['ორ', 2], ['სამი', 3], ['სამ', 3], ['ოთხი', 4], ['ოთხ', 4], ['ხუთი', 5], ['ხუთ', 5],
-  ['ექვსი', 6], ['ექვს', 6], ['შვიდი', 7], ['შვიდ', 7], ['რვა', 8], ['ცხრა', 9], ['ათი', 10], ['ათ', 10], ['ნახევარი', 0.5], ['ნახევარ', 0.5],
+  ...KA_WORDS, ['ნახევარი', 0.5], ['ნახევარ', 0.5],
   // en
-  ['fifteen', 15], ['twenty', 20], ['thirty', 30], ['forty', 40], ['fifty', 50], ['sixty', 60], ['ninety', 90],
-  ['eleven', 11], ['twelve', 12], ['one', 1], ['two', 2], ['three', 3], ['four', 4], ['five', 5], ['six', 6], ['seven', 7],
+  ['eleven', 11], ['twelve', 12], ['thirteen', 13], ['fourteen', 14], ['fifteen', 15], ['sixteen', 16], ['seventeen', 17],
+  ['eighteen', 18], ['nineteen', 19], ['twenty', 20], ['thirty', 30], ['forty', 40], ['fifty', 50], ['sixty', 60], ['seventy', 70],
+  ['eighty', 80], ['ninety', 90], ['one', 1], ['two', 2], ['three', 3], ['four', 4], ['five', 5], ['six', 6], ['seven', 7],
   ['eight', 8], ['nine', 9], ['ten', 10], ['half', 0.5],
   // ru — words in their cases, then the compound stems («двух|минутный»)
-  ['пятнадцать', 15], ['пятнадцати', 15], ['двадцать', 20], ['двадцати', 20], ['тридцать', 30], ['тридцати', 30], ['сорок', 40], ['сорока', 40],
-  ['пятьдесят', 50], ['пятидесяти', 50], ['шестьдесят', 60], ['шестидесяти', 60], ['одиннадцать', 11], ['двенадцать', 12],
+  ['одиннадцать', 11], ['одиннадцати', 11], ['двенадцать', 12], ['двенадцати', 12], ['тринадцать', 13], ['тринадцати', 13],
+  ['четырнадцать', 14], ['четырнадцати', 14], ['пятнадцать', 15], ['пятнадцати', 15], ['шестнадцать', 16], ['шестнадцати', 16],
+  ['семнадцать', 17], ['семнадцати', 17], ['восемнадцать', 18], ['восемнадцати', 18], ['девятнадцать', 19], ['девятнадцати', 19],
+  ['двадцать', 20], ['двадцати', 20], ['тридцать', 30], ['тридцати', 30], ['сорок', 40], ['сорока', 40],
+  ['пятьдесят', 50], ['пятидесяти', 50], ['шестьдесят', 60], ['шестидесяти', 60], ['семьдесят', 70], ['семидесяти', 70],
+  ['восемьдесят', 80], ['восьмидесяти', 80], ['девяносто', 90], ['девяноста', 90], ['сто', 100],
   ['одна', 1], ['одну', 1], ['одной', 1], ['один', 1], ['одно', 1], ['две', 2], ['два', 2], ['двух', 2], ['три', 3], ['трёх', 3], ['трех', 3],
   ['четыре', 4], ['четырёх', 4], ['четырех', 4], ['пять', 5], ['пяти', 5], ['шесть', 6], ['шести', 6], ['семь', 7], ['семи', 7],
   ['восемь', 8], ['восьми', 8], ['девять', 9], ['девяти', 9], ['десять', 10], ['десяти', 10], ['полторы', 1.5], ['полутора', 1.5], ['полу', 0.5], ['пол', 0.5],
 ];
+const WORD_VALUE = new Map(NUMBER_WORDS.map(([w, n]) => [w, n] as const));
 
-const WORD_ALTERNATION = NUMBER_WORDS.map(([w]) => w).join('|');
+const WORD_ALTERNATION = [...WORD_VALUE.keys()].sort((a, b) => b.length - a.length).join('|');
+/** "twenty five", "twenty-five", «двадцать пять», «тридцати двух»: tens and ones as two words (review 2026-10-13: read as 5). */
+const TENS_ONES = [
+  '(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\\s-]+(?:one|two|three|four|five|six|seven|eight|nine)',
+  '(?:двадцат[ьи]|тридцат[ьи]|сорока?|пятьдесят|пятидесяти|шестьдесят|шестидесяти|семьдесят|семидесяти|восемьдесят|восьмидесяти|девяност[оа])\\s+'
+    + '(?:одну|одна|одной|один|одно|две|два|двух|три|трёх|трех|четыре|четырёх|четырех|пять|пяти|шесть|шести|семь|семи|восемь|восьми|девять|девяти)',
+].join('|');
 /** A number as typed: digits (read whole: the guard refuses a digit that is the tail of „7.5") or one of the words. */
-const NUM = `(?:(?<![\\d.,])\\d{1,4}(?:[.,]\\d{1,2})?|${WORD_ALTERNATION})`;
+const NUM = `(?:(?<![\\d.,])\\d{1,4}(?:[.,]\\d{1,2})?|${TENS_ONES}|${WORD_ALTERNATION})`;
 
-/** The unit words. Georgian and Russian units take their endings („წუთიანი", «минутный»); "s" and "m" alone are a unit only at a token end. */
-const MIN_UNIT = `(?:minutes?|mins?|m${B1}|წუთ${L}*|წთ\\.?${B1}|мин(?:${L}+|\\.?${B1}))`;
-const SEC_UNIT = `(?:seconds?|secs?|s${B1}|წამ${L}*|წმ\\.?${B1}|სეკუნდ${L}*|сек(?:${L}+|\\.?${B1}))`;
+/**
+ * The unit words, each ending at a token edge. Georgian and Russian units take their endings („წუთიანი", «минутный»), but
+ * only a unit's own: „2 წამყვანი" (two hosts), "5 minimalist shots", «5 секретов», «3 минималистичных» name no length
+ * (review 2026-10-13: they read as 2 s, 300 s, 5 s, 180 s). "s" and "m" alone are a unit only at a token end.
+ */
+const KA_UNIT_END = `(?:ი|ია|იც|ის|ით|ს|ში|ზე|ამდე|იდან|იან${L}*|ებ${L}*)?${B1}`;
+const MIN_UNIT = `(?:(?:minutes?|mins?|m)${B1}|წუთ${KA_UNIT_END}|წთ\\.?${B1}|минут${L}*|мин\\.?${B1})`;
+const SEC_UNIT = `(?:(?:seconds?|secs?|s)${B1}|წამ${KA_UNIT_END}|წმ\\.?${B1}|სეკუნდ${L}*|секунд${L}*|сек\\.?${B1})`;
 /** „და ნახევარი", "and a half", «с половиной»: a half more than the number before the unit. */
-const AND_A_HALF = `(?:\\s+(?:და\\s+ნახევარი|and\\s+a\\s+half|с\\s+половиной))?`;
+const HALF_WORDS = `(?:და\\s+ნახევარი|and\\s+a\\s+half|с\\s+половиной)`;
+const AND_A_HALF = `(?:\\s+${HALF_WORDS})?`;
+/** The same half said after the unit: „ერთი წუთი და ნახევარი", "one minute and a half", «одна минута с половиной». */
+const UNIT_AND_A_HALF = `(?:\\s+${HALF_WORDS}${B1})?`;
 
 /** The words that say a clock is a LENGTH, not a place in a song: „ხანგრძლივობა 1:30", "1:30 long", «длиной 1:30». */
 const LENGTH_CUE = `(?:ხანგრძლივობ${L}*|სიგრძ${L}*|length|long|duration|lasting|runtime|длин${L}*|продолжительност${L}*|хронометраж${L}*)`;
-const CLOCK = '(\\d{1,2}):([0-5]\\d)';
+/** „9:16" and „9:21" are a frame's shape, never a length (review 2026-10-13: "a 30 second long 9:16 video" read as 556 s). */
+const CLOCK = `(?!9:(?:16|21)${B1})(\\d{1,2}):([0-5]\\d)`;
+/**
+ * Between a length word and its clock: a colon, an "is", an "about", nothing else. A clock further on is another number
+ * („30 seconds long, music from 0:45" is 30 s with the song starting at 0:45, never a 45-second film).
+ */
+const CUE_GAP = `\\s*(?:[:=–—-]\\s*)?(?:(?:is|of|about|around|exactly|approximately|არის|დაახლოებით|ზუსტად|около|примерно|ровно)\\s+)?`;
 
 const RE = {
   minSec: new RegExp(`${B0}(${NUM})\\s*-?\\s*${MIN_UNIT}\\s*(?:and|და|и|,|\\+)?\\s*(${NUM})\\s*-?\\s*${SEC_UNIT}`, 'iu'),
-  clockAfterCue: new RegExp(`${B0}${LENGTH_CUE}[^.\\n]{0,24}?${B0}${CLOCK}${B1}`, 'iu'),
+  clockAfterCue: new RegExp(`${B0}${LENGTH_CUE}${CUE_GAP}${B0}${CLOCK}${B1}`, 'iu'),
   clockBeforeCue: new RegExp(`${B0}${CLOCK}(?:\\s+(?:in|of|по|на|საერთო|სრული|წამ${L}*|წუთ${L}*))?\\s*-?\\s*${LENGTH_CUE}`, 'iu'),
-  sec: new RegExp(`${B0}(${NUM})${AND_A_HALF}\\s*-?\\s*${SEC_UNIT}`, 'iu'),
-  min: new RegExp(`${B0}(${NUM})${AND_A_HALF}\\s*-?\\s*${MIN_UNIT}(?:\\s+and\\s+a\\s+half${B1})?`, 'iu'),
+  sec: new RegExp(`${B0}(${NUM})${AND_A_HALF}\\s*-?\\s*${SEC_UNIT}${UNIT_AND_A_HALF}`, 'iu'),
+  min: new RegExp(`${B0}(${NUM})${AND_A_HALF}\\s*-?\\s*${MIN_UNIT}${UNIT_AND_A_HALF}`, 'iu'),
+  /** „წუთი და ნახევარი", «минута с половиной», "minute and a half" with no number: 90 s. */
+  bareMinuteAndHalf: new RegExp(`${B0}(?:წუთი|минут[ауы]?|minute)\\s+${HALF_WORDS}${B1}`, 'iu'),
   /** A minute with no number before it: „წუთიანი ვიდეო", "a minute-long clip", «минутное видео». */
   oneMinute: new RegExp(`${B0}(?:წუთიან${L}*|minute[\\s-]long|минутн${L}*)`, 'iu'),
   /** „წუთნახევარი", „წუთნახევრიანი": a minute and a half as one Georgian word. */
@@ -80,8 +121,13 @@ const RE = {
 export function readNumber(token: string): number {
   const t = token.trim().toLowerCase();
   if (/^\d/.test(t)) return Number(t.replace(',', '.'));
-  const hit = NUMBER_WORDS.find(([w]) => w === t);
-  return hit ? hit[1] : NaN;
+  const hit = WORD_VALUE.get(t);
+  if (hit !== undefined) return hit;
+  // tens and ones as two words ("twenty-five", «двадцать пять»)
+  const parts = t.split(/[\s-]+/u);
+  if (parts.length !== 2) return NaN;
+  const [tens, ones] = parts.map((p) => WORD_VALUE.get(p));
+  return tens !== undefined && ones !== undefined && tens >= 20 && tens % 10 === 0 && ones < 10 ? tens + ones : NaN;
 }
 
 const bounded = (sec: number): number | undefined => (Number.isFinite(sec) && sec > 0 ? Math.min(MAX_DURATION_SEC, Math.round(sec * 1000) / 1000) : undefined);
@@ -120,7 +166,7 @@ export function mineDurationWords(text: string): number | undefined {
   const article = new RegExp(`${B0}(half\\s+)?an?\\s+(?:minute(?:[\\s-]long)?|min)${B1}(?:\\s+and\\s+a\\s+half${B1})?`, 'iu').exec(t);
   if (article) return bounded(article[1] ? 30 : /and\s+a\s+half/iu.test(article[0]) ? 90 : 60);
 
-  if (RE.minuteAndHalf.test(t)) return 90;
+  if (RE.minuteAndHalf.test(t) || RE.bareMinuteAndHalf.test(t)) return 90;
   if (RE.oneMinute.test(t)) return 60;
   return undefined;
 }

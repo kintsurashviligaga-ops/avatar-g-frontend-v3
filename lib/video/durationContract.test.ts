@@ -9,7 +9,7 @@ import { snapVideoSeconds } from './duration';
 import { joinOverlaps } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import {
   JOIN_OVERLAP_SEC, VIDEO_FPS, activePlan, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, framesFor,
-  joinOverlapFor, nativeGridSeconds, openMaxSeconds, planFinalDuration, quantizeToFrames,
+  joinOverlapFor, nativeGridSeconds, openMaxSeconds, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames,
 } from './durationContract';
 
 const OPEN = { longform: true, maxSeconds: 240 };
@@ -237,5 +237,30 @@ describe('soft joins shorten the stitched master, so the plan counts scenes from
     const w = finalCutForAssemble(72, 60);
     if (w.ok) throw new Error('expected a refusal');
     expect(describeFinalCutRefusal(w, 'ru')).toMatch(/целую сцену/);
+  });
+});
+
+describe('review 2026-10-13 (finding G): the grid reads the length in whole frames', () => {
+  test('8.01 s is 240 frames = 8 s: one 8 s clip, no trim (the PR head rendered 16 s, priced 16 s, trimmed 8 s)', () => {
+    const v = planFinalDuration(8.01, CLOSED_CAPABILITIES);
+    if (!v.ok) throw new Error(v.reason);
+    expect(v.plan).toMatchObject({ nativeSec: 8, sceneCount: 1, finalFrames: 240, trimSec: 0 });
+  });
+
+  test('16.01 s is 16 s (two scenes), 96.01 s is 96 s (not the long-form route), 3.99 s is 4 s (not too short)', () => {
+    expect(planFinalDuration(16.01, CLOSED_CAPABILITIES)).toMatchObject({ ok: true, plan: { nativeSec: 16, sceneCount: 2, trimSec: 0 } });
+    expect(planFinalDuration(96.01, CLOSED_CAPABILITIES)).toMatchObject({ ok: true, plan: { nativeSec: 96, route: 'film', trimSec: 0 } });
+    expect(planFinalDuration(3.99, CLOSED_CAPABILITIES)).toMatchObject({ ok: true, plan: { nativeSec: 4, finalFrames: 120 } });
+    // a real fraction of a frame more still moves up: 8.02 s is 241 frames
+    expect(planFinalDuration(8.02, CLOSED_CAPABILITIES)).toMatchObject({ ok: true, plan: { nativeSec: 16, finalFrames: 241 } });
+  });
+
+  test('after a refusal the panel holds the shortest clip for a length under it, the longest open length otherwise', () => {
+    const short = planFinalDuration(2, CLOSED_CAPABILITIES);
+    const long = planFinalDuration(240, CLOSED_CAPABILITIES);
+    if (short.ok || long.ok) throw new Error('expected refusals');
+    // the PR head set the panel to 96 s for a 2 s ask: sending again ordered the longest film
+    expect(panelSecondsAfterBlock(short, CLOSED_CAPABILITIES)).toBe(4);
+    expect(panelSecondsAfterBlock(long, CLOSED_CAPABILITIES)).toBe(96);
   });
 });

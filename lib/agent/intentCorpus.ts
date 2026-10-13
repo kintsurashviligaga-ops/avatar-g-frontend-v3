@@ -123,4 +123,16 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი', attachments: [...V3, ...V3, 'video'], expect: { kind: 'act', capability: 'agent.montage', missing: ['track'] }, source: 'video-core' },
   { text: 'what is a music video?', expect: { kind: 'question' }, source: 'video-core' },
   { text: 'my client asked for a music video', expect: { kind: 'chat' }, source: 'video-core' },
+  // …and only when the music video is what is made: a thing FOR one, talk about one or a text for one keep the route
+  // they had before the lane existed (PR #58 final review).
+  { text: 'create a presentation about music videos', expect: { kind: 'act', capability: 'design.presentation' }, source: 'video-core' },
+  { text: 'make an avatar for my music video', expect: { kind: 'act', capability: 'avatar.talking' }, source: 'video-core' },
+  { text: 'make a song for my music video', expect: { kind: 'act', capability: 'music.generate' }, source: 'video-core' },
+  { text: 'write lyrics for my music video', expect: { kind: 'act', capability: 'music.generate' }, source: 'video-core' },
+  { text: 'I want to discuss my music video idea', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'давай обсудим музыкальный клип', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'მჭირდება რჩევა მუსიკალური კლიპისთვის', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'make me a music video about the sea', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'მინდა მუსიკალური კლიპი ზღვაზე', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'хочу музыкальный клип', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
 ];

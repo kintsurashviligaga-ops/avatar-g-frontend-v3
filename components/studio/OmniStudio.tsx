@@ -25,7 +25,7 @@ import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/vide
 import { describeAspect } from '@/lib/video/aspectConform';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
-import { describeOpFailure, opFailureReason } from '@/lib/ui/opFailure';
+import { describeOpFailure, filmFailureText } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -66,7 +66,7 @@ import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
-import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, openMaxSeconds, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
+import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
 import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
@@ -3745,7 +3745,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // never a shorter film passed off as the board's length.
       const sbPlan = planFinalDuration(Number(sb.duration), videoCaps, videoPlanOpts);
       if (sbPlan.ok) { setVideoDuration(sbPlan.plan.nativeSec); setVideoRequestedSec(sbPlan.plan.deviation === 'trim' ? sbPlan.plan.requestedSec : null); }
-      else { setVideoDuration(openMaxSeconds(videoCaps)); setVideoRequestedSec(null); }
+      else { setVideoDuration(panelSecondsAfterBlock(sbPlan, videoCaps)); setVideoRequestedSec(null); }
       setVideoOrientation(sb.orientation);
       if (sb.musicVideoMode) setVideoMode('musicvideo');
       // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
@@ -4051,9 +4051,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
-            // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) — alone, so it is what the
-            // error card shows; "the service may be busy" only when the route said nothing a person can read.
-            : { role: 'assistant', text: `⚠️ ${opFailureReason(res) ?? t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
+            // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) after a short headline in the
+            // user's language; "the service may be busy" only when the route said nothing a person can read.
+            : { role: 'assistant', text: `⚠️ ${filmFailureText(res, locale, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
       if (mine() && res.ok && res.masterUrl) {
@@ -8987,7 +8987,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
           if (!v.ok) {
             setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
-            setVideoDuration(openMaxSeconds(videoCaps)); setVideoRequestedSec(null);
+            setVideoDuration(panelSecondsAfterBlock(v, videoCaps)); setVideoRequestedSec(null);
             // The words stay in the box: the refusal names the longest length that can be made, and the user decides.
             say(`${describeDurationBlock(v, locale)} ${tr('სიგრძე პანელში შეცვალე და ისევ გამომიგზავნე.', 'Change the length on the panel and send again.', 'Измените длину на панели и отправьте снова.')}`);
             return true;

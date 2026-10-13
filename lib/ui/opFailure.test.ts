@@ -1,5 +1,5 @@
 /** @jest-environment node */
-import { describeOpFailure, opFailureReason } from './opFailure';
+import { describeOpFailure, filmFailureText, opFailureReason } from './opFailure';
 
 const FB = 'Failed';
 
@@ -55,5 +55,18 @@ describe('opFailureReason: the route\'s sentence alone (Video Core round 3)', ()
     expect(opFailureReason({ error: 'music_unreadable' })).toBeNull();
     expect(opFailureReason(null)).toBeNull();
     expect(opFailureReason({})).toBeNull();
+  });
+});
+
+describe('filmFailureText: a headline in the user\'s language, then the route\'s sentence (review 2026-10-13, finding F)', () => {
+  const body = { error: 'qc_rejected', message: 'The finished video failed its quality check.' };
+  test('ka · en · ru each lead with their own short headline and keep the whole reason', () => {
+    expect(filmFailureText(body, 'ka', 'generic')).toBe('ვიდეო ვერ შეიქმნა: The finished video failed its quality check.');
+    expect(filmFailureText(body, 'en', 'generic')).toBe('The video was not made: The finished video failed its quality check.');
+    expect(filmFailureText(body, 'ru', 'generic')).toBe('Видео не создано: The finished video failed its quality check.');
+  });
+  test('only a code, or nothing: the caller\'s translated line', () => {
+    expect(filmFailureText({ error: 'music_unreadable' }, 'ka', 'ქართული ზოგადი')).toBe('ქართული ზოგადი');
+    expect(filmFailureText(null, 'ru', 'общий')).toBe('общий');
   });
 });

@@ -36,3 +36,19 @@ describe('music source offset, with a noun between the clock and „-დან" 
     expect(mineMusicStartSec('ვიდეო 0:58 პოზიციიდან')).toBeUndefined();
   });
 });
+
+describe('review 2026-10-13 (finding H): seconds said to be the track\'s own are the music start, not a later start', () => {
+  test.each<[string, number]>([
+    ['music starts after 30 seconds of the song', 30],
+    ['the track kicks in after 20 seconds into the song', 20],
+    ['use the song from 45 seconds into the track', 45],
+    ['მუსიკა სიმღერის 30 წამის შემდეგ დაიწყოს', 30],
+    ['музыка после 30 секунд песни', 30],
+  ])('%s → %s s (the PR head: no start, and the quote said a later start is not supported)', (text, sec) => {
+    expect(mineMusicStartSec(text)).toBe(sec);
+  });
+  test('the video\'s own seconds are still not a track offset', () => {
+    expect(mineMusicStartSec('no music for the first 5 seconds of the video')).toBeUndefined();
+    expect(mineMusicStartSec('start the music 5 seconds into the video')).toBeUndefined();
+  });
+});

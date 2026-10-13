@@ -86,7 +86,16 @@ describe('the final length reaches the render and the server cuts to it, or refu
   test('the film client posts it to the assembler', () => {
     expect(filmClient).toMatch(/finalDurationSec\?: number;/);
     expect(filmClient).toMatch(/\.\.\.\(typeof finalDurationSec === 'number' && finalDurationSec > 0 \? \{ finalDurationSec \} : \{\}\),/);
-    expect(filmClient).toMatch(/opts\.joinTransitions \?\? null, opts\.finalDurationSec \?\? null\);/);
+    // …only for a cut of every planned scene: a salvaged cut goes without it (finalContractForCut, unit-tested beside it).
+    expect(filmClient).toMatch(/const finalContract = finalContractForCut\(opts\.finalDurationSec, clips\.length, scenesPlanned\);/);
+    expect(filmClient).toMatch(/opts\.joinTransitions \?\? null, finalContract\);/);
+    expect(filmClient).not.toMatch(/opts\.joinTransitions \?\? null, opts\.finalDurationSec \?\? null\);/);
+  });
+  test('a clip the route drops as dead leaves a salvaged cut: no contract, and the response says how many were dropped', () => {
+    expect(route).toMatch(/const clipsDropped = handedOver\.length - segments\.length;/);
+    expect(route).toMatch(/body\.finalDurationSec === null \|\| clipsDropped > 0 \? null : finalCutForAssemble\(stitchSec, body\.finalDurationSec\)/);
+    expect(route).toMatch(/\.\.\.\(clipsDropped > 0 \? \{ clipsDropped \} : \{\}\)/);
+    expect(filmClient).toMatch(/scenesRendered: clips\.length - \(assembledRes && 'clipsDropped' in assembledRes \? \(assembledRes\.clipsDropped \?\? 0\) : 0\),/);
   });
   test('the route checks it against the clips BEFORE any charge, and answers 400 with the reason', () => {
     const check = route.indexOf('finalCutForAssemble(stitchSec, body.finalDurationSec)');

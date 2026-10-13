@@ -52,6 +52,12 @@ const START_PATTERNS: ReadonlyArray<{ re: RegExp; read: (m: RegExpExecArray) => 
   // „с 5 секунды", „с 5-й секунды", „с 0:05", «с позиции 0:58», «с отметки 1:05»
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+(?:(?:позиции|отметки|момента|места)\\s+)?(\\d{1,2}):(\\d{2})${B1}`, 'iu'), read: (m) => clock(m[1]!, m[2]!) },
   { re: new RegExp(`${B0}(?:с|со|начиная\\s+с)\\s+${NUM}\\s*-?\\s*(?:й|ой|ей)?\\s*(?:секунд\\p{L}*|сек\\p{L}*)`, 'iu'), read: (m) => seconds(m[1]!) },
+  // Seconds said to be the TRACK's own (review 2026-10-13, with lib/agent/media/montageAsk asksMusicDelay): "30 seconds
+  // into the song", "after 30 seconds of the song", „სიმღერის 30 წამის შემდეგ", «после 30 секунд песни»
+  { re: new RegExp(`${B0}${NUM}\\s*-?\\s*(?:s|secs?|seconds?)\\s+(?:into|in)\\s+(?:the|this|my)\\s+(?:song|track|music|soundtrack|audio)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}after\\s+(?:the\\s+first\\s+)?${NUM}\\s*-?\\s*(?:s|secs?|seconds?)\\s+of\\s+(?:the|this|my)\\s+(?:song|track|music|soundtrack|audio)${B1}`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`(?:სიმღერ|ტრეკ|მუსიკ|საუნდტრეკ)\\p{L}*\\s+(?:მე-?)?${NUM}(?:\\s*-?\\s*ე)?\\s*-?\\s*წამის\\s+(?:შემდეგ|მერე)`, 'iu'), read: (m) => seconds(m[1]!) },
+  { re: new RegExp(`${B0}после\\s+(?:первых\\s+)?${NUM}\\s*-?\\s*(?:секунд\\p{L}*|сек\\p{L}*)\\s+(?:песни|трека|музыки|саундтрека)(?!\\p{L})`, 'iu'), read: (m) => seconds(m[1]!) },
 ];
 
 /** The longest track offset anyone needs (an hour) — a pasted number is never a three-day seek. */

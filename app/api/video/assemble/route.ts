@@ -72,6 +72,25 @@ export const maxDuration = 600; // CPU FFmpeg stitch of a 30s master needs headr
 // change, a direct API caller): the stitch is billed at the same quote, by the seconds of the clips it was handed, below.
 
 /** True when the brief reads as a music video — drives the branded lower-third. */
+/** A clip or audio link the route may hand to a fetch or ffmpeg: an absolute http(s) URL, nothing else. */
+function isWebLink(v: string): boolean {
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What a failed attempt cost, said truthfully. A film whose quote was taken when it started (or whose free slot was spent
+ * on its clips) reaches here with billing waived: this attempt charged nothing more, but the film's own payment stands, so
+ * "this attempt was not charged" would read as "you were not charged" for a film that was.
+ */
+function attemptChargeNote(paidUpstream: boolean): string {
+  return paidUpstream ? 'no extra charge was made for this attempt' : 'this attempt was not charged';
+}
+
 function isMusicVideoBrief(brief: string | null | undefined): boolean {
   const b = (brief ?? '').toLowerCase();
   if (!b) return false;
@@ -251,6 +270,20 @@ async function assembleImpl(req: NextRequest) {
     seenUrls.add(s.url);
     return true;
   });
+  // ⚠️ A MEDIA LINK HERE IS A WEB LINK. Every clip and audio URL below reaches a fetch or ffmpeg, and ffmpeg opens more than
+  // http(s): a local path (`/var/task/…`), `file:`, or a protocol wrapped around http (`cache:http://…`, `async:http://…`)
+  // would have it read what the caller named, past the public-host guard (lib/web/publicFetch). Refused here, before any
+  // probe, charge or status write. (lib/video/ffmpegExec refuses the protocols too, for every other caller.)
+  {
+    const links: unknown[] = [
+      ...dedupedSegments.map((s) => s.url),
+      body.customAudioUrl, body.musicUrl, body.voiceoverUrl, body.sfxUrl,
+      ...(Array.isArray(body.dialogueStems) ? body.dialogueStems.map((s) => s?.url) : []),
+    ];
+    if (links.some((v) => typeof v === 'string' && v.length > 0 && !isWebLink(v))) {
+      return NextResponse.json({ error: 'invalid_media_url', message: 'Every clip and audio file must be a web (https) link.' }, { status: 400 });
+    }
+  }
   // QA pass: drop any clip whose URL is DEFINITIVELY dead (hard 403/404/410) so a single
   // expired/missing clip can't make ffmpeg fail the whole stitch — the survivors still
   // assemble (partial salvage). STRICTLY fail-open: keeps clips on 200/timeout/5xx/error
@@ -258,7 +291,12 @@ async function assembleImpl(req: NextRequest) {
   // async and only have URLs by assemble time; see lib/pipeline/qaAgent.ts.)
   // Bound the clip count (2× the 12-scene pipeline max = generous headroom, no real film is clamped) so a
   // pathological payload can't make keepLiveClips HEAD-probe an unbounded list or ffmpeg stitch thousands.
-  const segments = await keepLiveClips(dedupedSegments.slice(0, 24));
+  const handedOver = dedupedSegments.slice(0, 24);
+  const segments = await keepLiveClips(handedOver);
+  // A clip dropped here leaves a salvaged cut, shorter than the board by whole scenes: the final-length contract below was
+  // planned on every scene, so it does not apply to the survivors (they are stitched at their own length, as before the
+  // contract existed), and the response says how many were dropped so the client's "N of M scenes" note stays true.
+  const clipsDropped = handedOver.length - segments.length;
   // ≥1 segment. A SINGLE segment (6s film, sceneCount=1) takes the lightweight
   // single-clip path below (mux music, no multi-clip xfade stitch); ≥2 keeps the
   // full filtergraph stitch. Zero segments is still a hard error.
@@ -313,7 +351,7 @@ async function assembleImpl(req: NextRequest) {
   const nativeTotalSec = segments.reduce((sum, s) => sum + (Number(s.durationSec) || 6), 0);
   const clipSecOfRender = Math.max(1, Math.round(nativeTotalSec / segments.length));
   const stitchSec = stitchedSeconds(segments.length, clipSecOfRender, { ...(filmTokenId ? { transition: 'cut' } : {}), ...(body.globalRender ?? {}) }, VIDEO_FPS);
-  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null ? null : finalCutForAssemble(stitchSec, body.finalDurationSec);
+  const finalCut = body.finalDurationSec === undefined || body.finalDurationSec === null || clipsDropped > 0 ? null : finalCutForAssemble(stitchSec, body.finalDurationSec);
   if (finalCut && !finalCut.ok) {
     return NextResponse.json({
       error: 'final_duration_invalid',
@@ -642,6 +680,10 @@ async function assembleImpl(req: NextRequest) {
       // back above, so saying true here would tell the client their one free video is gone when it is not.
       return NextResponse.json({ url: master, qa: null, sagaId: null, filmTokenId, scoreFallback: fallback, musicUrl, freeFilm: scFreeFilm && producedSomething, single: true });
     } catch (err) {
+      // The waiver of a film paid upstream was spent above (consumeFilmBilling) so a replay cannot reuse it; this attempt
+      // delivered nothing, so it goes back — exactly as the multi-clip saga's compensate hands it back. Without this a
+      // retry of the same film was charged the stitch for a film the product had told the user was paid (or free).
+      if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
@@ -659,7 +701,7 @@ async function assembleImpl(req: NextRequest) {
           expectedFrames: err.expectedFrames, actualFrames: err.actualFrames,
           message: `The finished video failed its quality check (${err.actualFrames === null
             ? `frame_count_unverified: its frames could not be counted, ${err.expectedFrames} were contracted`
-            : `frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}`}). Nothing was delivered and this attempt was not charged — please try again.`,
+            : `frame_count_mismatch: ${err.actualFrames} frames instead of ${err.expectedFrames}`}). Nothing was delivered and ${attemptChargeNote(filmAlreadyBilled)} — please try again.`,
         }, { status: 502 });
       }
       if (filmTokenId) await recordFilmFailed(filmTokenId, 'assemble failed').catch(() => {});
@@ -934,7 +976,7 @@ async function assembleImpl(req: NextRequest) {
     if (badLane) {
       if (filmTokenId) await recordFilmFailed(filmTokenId, `music_unreadable: ${badLane}`);
       return NextResponse.json(
-        { error: 'music_unreadable', reason: 'music_unreadable', lane: badLane, failedStep: saga.failedStep, message: describeSoundtrackRefusal(badLane), compensated: saga.compensatedSteps },
+        { error: 'music_unreadable', reason: 'music_unreadable', lane: badLane, failedStep: saga.failedStep, message: describeSoundtrackRefusal(badLane, filmAlreadyBilled), compensated: saga.compensatedSteps },
         { status: 422 },
       );
     }
@@ -945,7 +987,7 @@ async function assembleImpl(req: NextRequest) {
     if (qcRejected) {
       const qcReport = (bag.qa as QaReport | null | undefined) ?? null;
       const detail = qcReport ? qcReport.issues.filter((i) => i.severity === 'critical').map((i) => `${i.code}: ${i.detail}`).join('; ') : qcRejected.join(', ');
-      const message = `The finished video failed its quality check (${detail}). Nothing was delivered and this attempt was not charged — please try again.`;
+      const message = `The finished video failed its quality check (${detail}). Nothing was delivered and ${attemptChargeNote(filmAlreadyBilled)} — please try again.`;
       if (filmTokenId) await recordFilmFailed(filmTokenId, `qc_rejected: ${qcRejected.join(',')}`);
       return NextResponse.json(
         { error: 'qc_rejected', reason: 'qc_rejected', codes: qcRejected, qa: qcReport, failedStep: saga.failedStep, message, compensated: saga.compensatedSteps },
@@ -1061,5 +1103,5 @@ async function assembleImpl(req: NextRequest) {
 
   // Return the resolved song URL so the client can drive a HeyGen singer-performance
   // lip-sync (face frame + this vocal) instead of the destructive whole-master relip.
-  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm) });
+  return NextResponse.json({ url: resultUrl, qa, ...(visionQa?.ran ? { visionQa } : {}), sagaId: saga.sagaId, filmTokenId, scoreFallback, musicUrl: resolvedMusicUrl, freeFilm: Boolean(bag.freeFilm), ...(clipsDropped > 0 ? { clipsDropped } : {}) });
 }

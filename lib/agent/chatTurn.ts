@@ -370,7 +370,11 @@ export function planChatTurn(text: string, s: ChatSnapshot): ChatStep {
     if (how === 'unsupported') return { kind: 'say', text: unsupportedReply(intent, locale), intent };
     // A video or a music video asked in words, in the chat: the Video tool in that mode, at that length (Video Core v1.0
     // AC-01). A photo brought to life and „the same character" keep their own path; the edits were answered above.
+    // Only with nothing attached but pictures (the board's references) and tracks (kept for the soundtrack): an attached
+    // video or document ("make a video from this script", "a video like this one") is material the legacy flow reads,
+    // and the Video tool would plan the board from the words alone and clear the file from the box.
     if (s.mode === 'chat' && !intent.missing.length && intent.target !== 'previous'
+      && (s.attachments ?? []).every((k) => k === 'image' || k === 'audio')
       && (intent.capability === 'video.music-video' || (intent.capability === 'video.generate' && !intent.params.fromImage && !intent.params.sameCharacter && !intent.params.editOp))) {
       return {
         kind: 'open', tool: 'video', videoMode: intent.capability === 'video.music-video' ? 'musicvideo' : 'documentary',

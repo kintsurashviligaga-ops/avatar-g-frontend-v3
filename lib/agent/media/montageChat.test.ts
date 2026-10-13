@@ -249,6 +249,31 @@ describe('round 3 (AC-23): what this version cannot do is SAID, never applied as
     expect(montageFollowUpAsk('take the mp3 out of this', [A])).toBeNull();
   });
 
+  test('another job on the files sent is never "add clips" or "replace music" (review 2026-10-13, finding C)', () => {
+    // Asked of a video or a photo in a thread that has a montage card: subtitles, a translation, a filter are other services.
+    const otherJobs: Array<[string, AttachmentKind[]]> = [
+      ['add subtitles to this video', [V]],
+      ['ამ ვიდეოს სუბტიტრები დაამატე', [V]],
+      ['добавь субтитры к этому видео', [V]],
+      ['translate this video to Russian too', [V]],
+      ['make this image black and white too', ['image']],
+      ['ეს ფოტოც შავ-თეთრი გახადე', ['image']],
+      ['add my logo to this one too', [V]],
+      ['добавь текст на это видео тоже', [V]],
+      ['add music to this video too', [V]],
+      ['ამ ვიდეოსაც დაამატე მუსიკა', [V]],
+    ];
+    for (const [text, kinds] of otherJobs) expect({ text, ask: montageFollowUpAsk(text, kinds) }).toEqual({ text, ask: null });
+    // A lone track merely named is another job too (lyrics, a translation, a new song written), not a swap.
+    const namedTrack = ['ამ სიმღერის ტექსტი დამიწერე', 'ახალი სიმღერა დამიწერე', 'переведи эту песню', 'что это за новый трек?', 'ამ მუსიკას რა ჰქვია?'];
+    for (const text of namedTrack) expect({ text, ask: montageFollowUpAsk(text, [A]) }).toEqual({ text, ask: null });
+    // The follow-ups this answer is for still are.
+    expect(montageFollowUpAsk('ამ მუსიკით გააკეთე', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('эту песню поставь вместо той', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('add these clips to the previous montage', [V, V])).toBe('add_clips');
+    expect(montageFollowUpAsk('ეს სამიც დაამატე', [V, V, 'image'])).toBe('add_clips');
+  });
+
   test('the answer says it is not supported in this version, the way out, and that nothing was sent or charged (ka · en · ru)', () => {
     for (const kind of ['add_clips', 'replace_music'] as const) {
       expect(followUpUnsupportedText(kind, 'ka')).toMatch(/ამ ვერსიაში არ არის მხარდაჭერილი/);

@@ -19,7 +19,7 @@ export const STATE_DIR = join(OUT_DIR, 'state');
 export const EVIDENCE_DIR = join(OUT_DIR, 'evidence');
 export const FFMPEG = (ffmpegStatic as unknown as string | null) ?? 'ffmpeg';
 
-export type UserKey = 'desktop' | 'mobile' | 'other';
+export type UserKey = 'desktop' | 'mobile' | 'other' | 'payer';
 export interface LiveUser { key: UserKey; email: string; id: string; admin: boolean }
 
 export function liveUser(key: UserKey): LiveUser {
@@ -34,6 +34,12 @@ export const projectUser = (info: TestInfo): LiveUser => liveUser(info.project.n
 export const password = (): string => process.env.E2E_PASSWORD ?? '';
 
 const url = (): string => (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/$/, '');
+/**
+ * The Supabase address the APP under test was built with. In the CI job it is the same stack under the same name; in the
+ * Preview job (video-core-preview-e2e.yml) the deployment reaches this runner's stack through a tunnel, so a storage
+ * link the app must recognise as its own is written on the tunnel's host, while the tests themselves stay on loopback.
+ */
+export const appSupabaseUrl = (): string => (process.env.E2E_APP_SUPABASE_URL || url()).replace(/\/$/, '');
 const anonKey = (): string => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const serviceKey = (): string => process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 
@@ -108,6 +114,47 @@ export async function decodedFrames(file: string): Promise<Decoded> {
     fps: v ? Number(v[3]) : 0,
     hasAudio: /Stream #\d+:\d+[^:]*: Audio:/.test(stderr),
   };
+}
+
+/** The mean loudness of the first `sec` seconds of `file`'s sound, in dB (ffmpeg's volumedetect). */
+export async function meanVolumeDb(file: string, sec = 5): Promise<number> {
+  const { stderr } = await run(FFMPEG, ['-hide_banner', '-nostats', '-i', file, '-t', String(sec), '-vn', '-af', 'volumedetect', '-f', 'null', '-'], { maxBuffer: 16 * 1024 * 1024 })
+    .catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
+  const m = /mean_volume: (-?\d+(?:\.\d+)?) dB/.exec(stderr);
+  return m ? Number(m[1]) : Number.NaN;
+}
+
+/** The mean luma (Y, 0–255) over every decoded frame of `file` (ffmpeg's signalstats), for "brighter" / "darker". */
+export async function meanLuma(file: string): Promise<number> {
+  const { stderr } = await run(FFMPEG, ['-hide_banner', '-nostats', '-i', file, '-map', '0:v:0', '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG', '-f', 'null', '-'], { maxBuffer: 64 * 1024 * 1024 })
+    .catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
+  const ys = [...stderr.matchAll(/lavfi\.signalstats\.YAVG=(\d+(?:\.\d+)?)/g)].map((m) => Number(m[1]));
+  return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Number.NaN;
+}
+
+/**
+ * A synthetic file put into `userId`'s own upload folder (`uploads/<uid>/…`, the prefix lib/security/callerMedia
+ * accepts as the caller's) with the service role of this run's stack, and a signed link to it written on the APP's
+ * Supabase address, as the app hands such links back to the browser.
+ */
+export async function putOwnUpload(userId: string, file: string, name: string): Promise<{ path: string; url: string }> {
+  const path = `${userId}/vc-billing/${name}`;
+  const { readFile } = await import('node:fs/promises');
+  const body = await readFile(join(MEDIA_DIR, file));
+  const put = await fetch(`${url()}/storage/v1/object/uploads/${path}`, {
+    method: 'POST',
+    headers: { ...headers('service'), 'Content-Type': file.endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4', 'x-upsert': 'true' },
+    body,
+  });
+  if (!put.ok) throw new Error(`upload ${path} → ${put.status} ${(await put.text()).slice(0, 200)}`);
+  const sign = await fetch(`${url()}/storage/v1/object/sign/uploads/${path}`, {
+    method: 'POST',
+    headers: { ...headers('service'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn: 3600 }),
+  });
+  const j = (await sign.json().catch(() => ({}))) as { signedURL?: string };
+  if (!sign.ok || !j.signedURL) throw new Error(`sign ${path} → ${sign.status}`);
+  return { path, url: `${appSupabaseUrl()}/storage/v1${j.signedURL.startsWith('/') ? '' : '/'}${j.signedURL}` };
 }
 
 /** Evidence the job uploads (JSON next to the report), one file per name. */

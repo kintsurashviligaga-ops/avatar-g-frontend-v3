@@ -406,7 +406,15 @@ describe('the sound of a montage, in the user\'s words', () => {
       'музыка с 5 секунды',
       'cut these to the music',
       'ვიდეოს მე-5 წამიდან გაჭერი', // a cut point, no music word
+      // review 2026-10-13 (finding H): seconds of the TRACK are an offset into it, not a later start (the PR head said true)
+      'music starts after 30 seconds of the song',
+      'the track kicks in after 20 seconds into the song',
+      'მუსიკა სიმღერის 30 წამის შემდეგ დაიწყოს',
     ])('%s → false', (t) => expect(asksMusicDelay(t)).toBe(false));
+    test('a start anchored to the video stays a delay even with the track offset in the same message', () => {
+      expect(asksMusicDelay('start the music 5 seconds into the video, from 0:30 of the song')).toBe(true);
+      expect(asksMusicDelay('მუსიკა ვიდეოს მე-5 წამიდან, სიმღერის 30 წამიდან')).toBe(true);
+    });
   });
 
   test('pickTracks: the recording named as one is the narration; else the one with a beat is the music', () => {

@@ -145,4 +145,13 @@ describe('the chat step: the Video tool opens in the mode and at the length the 
   test('clips and a track: the montage, never the Video tool', () => {
     expect(planChatTurn('შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი', snap({ attachments: [...V7, A] })).kind).toBe('pass');
   });
+
+  test('an attached video or document is material for the legacy flow: the Video tool never opens over it and drops it', () => {
+    expect(planChatTurn('make a video from this script', snap({ locale: 'en', attachments: ['document'] })).kind).toBe('pass');
+    expect(planChatTurn('make a video like this one', snap({ locale: 'en', attachments: [V] })).kind).toBe('pass');
+    expect(planChatTurn('сделай видео как это', snap({ locale: 'ru', attachments: [V] })).kind).toBe('pass');
+    // pictures (the board's references) and a track (kept for the soundtrack) still open it
+    expect(planChatTurn('make a video about the sea', snap({ locale: 'en', attachments: [I] })).kind).toBe('open');
+    expect(planChatTurn('24-წამიანი მუსიკალური კლიპი გამიკეთე', snap({ attachments: [A] })).kind).toBe('open');
+  });
 });

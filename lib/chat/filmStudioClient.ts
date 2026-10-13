@@ -355,6 +355,17 @@ export function canSalvagePartialCut(matrix: FilmStudioMatrix | null): boolean {
 }
 
 /**
+ * Video Core v1.0 §4 — the final-length contract a stitch carries. It was planned on EVERY scene of the board, so it holds
+ * only when every one of them landed. A salvaged cut (a scene failed and the survivors are stitched) is shorter by whole
+ * scenes: it goes without a contract and is stitched at its own length — the "N of M scenes" note says so — instead of
+ * being refused for a length the board can no longer reach (a film paid when it started would then deliver nothing).
+ */
+export function finalContractForCut(finalDurationSec: number | null | undefined, clipsLanded: number, scenesPlanned: number): number | null {
+  if (typeof finalDurationSec !== 'number' || !(finalDurationSec > 0)) return null;
+  return clipsLanded === scenesPlanned ? finalDurationSec : null;
+}
+
+/**
  * True once every clip leg has reached a TERMINAL state — none is still
  * `queued`/`pending`. At that point no further clip will ever land, so idling
  * until the poll deadline is pure dead time. (The server union only flips
@@ -586,7 +597,7 @@ async function assembleMaster(
   joinTransitions?: string[] | null,
   /** Video Core v1.0 §4 — the contracted final length the assembler cuts the master to. */
   finalDurationSec?: number | null,
-): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null } | { url: null; error: string } | null> {
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = voiceUrl ?? null;
@@ -657,7 +668,7 @@ async function assembleMaster(
   // ⚠️ `scoreFallback` WAS MISSING FROM THIS CAST, so the route's own report that every music provider
   // missed — it literally logs "SILENT (all music providers missed — proceeding silent, not 500)" —
   // was dropped right here at the door, and a film with no soundtrack was handed back as a clean one.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -676,6 +687,8 @@ async function assembleMaster(
     // null is MEANINGFUL here (every provider missed) and must survive as null, not collapse to
     // undefined — undefined means "the route did not report", which is a different thing entirely.
     scoreFallback: json.scoreFallback === null ? null : (typeof json.scoreFallback === 'string' ? json.scoreFallback : undefined),
+    // Clips the route found dead (hard 403/404/410) and left out of the cut — the delivered film is that many scenes short.
+    ...(typeof json.clipsDropped === 'number' && json.clipsDropped > 0 ? { clipsDropped: json.clipsDropped } : {}),
   };
 }
 
@@ -987,7 +1000,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, opts.finalDurationSec ?? null);
+    const scenesPlanned = matrix.sceneCount || matrix.clips.length;
+    const finalContract = finalContractForCut(opts.finalDurationSec, clips.length, scenesPlanned);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, finalContract);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
@@ -1023,9 +1038,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     return {
       ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl,
       previewUrl: firstPreviewUrl(matrix), matrix, filmTokenId: matrix.statusTokenId ?? null,
-      // Reached both by a clean render AND by the salvage path; the counts are what tell them apart.
-      scenesRendered: clips.length,
-      scenesRequested: matrix.sceneCount || matrix.clips.length,
+      // Reached both by a clean render AND by the salvage path; the counts are what tell them apart. A clip the route
+      // dropped as dead is a scene missing from the cut too.
+      scenesRendered: clips.length - (assembledRes && 'clipsDropped' in assembledRes ? (assembledRes.clipsDropped ?? 0) : 0),
+      scenesRequested: scenesPlanned,
       // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.

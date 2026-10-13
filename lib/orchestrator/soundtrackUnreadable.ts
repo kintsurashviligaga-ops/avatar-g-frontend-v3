@@ -27,7 +27,12 @@ export function isSoundtrackUnreadable(err: unknown): err is SoundtrackUnreadabl
     || (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'music_unreadable' && typeof (err as { lane?: unknown }).lane === 'string');
 }
 
-/** What the client shows: which file, that nothing was rendered or charged, and the way out. */
-export function describeSoundtrackRefusal(lane: SoundtrackLane): string {
-  return `The ${LANE_LABEL[lane]} file could not be read as audio, so the video was not assembled. Nothing was rendered and this attempt was not charged — attach another ${LANE_LABEL[lane]} file, or render without it.`;
+/**
+ * What the client shows: which file, that nothing was rendered or charged, and the way out. `paidUpstream`: the film's
+ * quote was taken when it started (assemble ran with billing waived), so this attempt charged nothing MORE — saying it
+ * "was not charged" would read as the film being free.
+ */
+export function describeSoundtrackRefusal(lane: SoundtrackLane, paidUpstream = false): string {
+  const charge = paidUpstream ? 'no extra charge was made for this attempt' : 'this attempt was not charged';
+  return `The ${LANE_LABEL[lane]} file could not be read as audio, so the video was not assembled. Nothing was rendered and ${charge} — attach another ${LANE_LABEL[lane]} file, or render without it.`;
 }

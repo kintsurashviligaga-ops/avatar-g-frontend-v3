@@ -395,12 +395,29 @@ export function unsupportedNotes(q: Pick<MontageQuote, 'unsupported'>, lang: Lan
 export type MontageFollowUp = 'add_clips' | 'replace_music';
 const ADD_WORDS = /დაამატ|დავამატ|დაუმატ|ჩაამატ|კიდევ|ესეც|ამასაც|ეს\s+(?:ორიც|სამიც|ოთხიც)|ამ\s+(?:ორსაც|სამსაც)|ისიც|\badd\b|\balso\b|\btoo\b|as\s+well|\bappend\b|\binclude\b|добав|ещё|еще|тоже|также/iu;
 const REFERS_PREVIOUS = /მონტაჟ\p{L}*(?:ს|ში|ზე)(?!\p{L})|წინა|ძველ|იმავე|იმას|(?:to|into|onto)\s+(?:the|that|my|previous|last|existing)\s+(?:montage|edit|video|clip|cut|reel)|\bprevious\b|\bexisting\b|к\s+(?:монтажу|тому|прошлому|предыдущему)|в\s+(?:тот|прошлый|предыдущий)|предыдущ|прошл/iu;
+/**
+ * A swap needs a swap or placing verb („შეცვალე", „დაადე", "replace", «поставь») or „-ით" / "instead" / «вместо»: a track
+ * merely named („ამ სიმღერის ტექსტი დამიწერე", «переведи эту песню», „ახალი სიმღერა დამიწერე") is another job.
+ */
 const REPLACE_MUSIC = new RegExp([
-  String.raw`(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|სხვა|ახალ|ამ)\p{L}*\s+(?:\S+\s+){0,2}?(?:მუსიკ|სიმღერ|ტრეკ)`,
-  String.raw`(?:მუსიკ|სიმღერ|ტრეკ)\p{L}*\s+(?:\S+\s+){0,2}?(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|დაადე|დაუდე|ჩაუსვ|ჩაანაცვლ)`,
+  String.raw`(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|ჩაანაცვლ)\p{L}*\s+(?:\S+\s+){0,2}?(?:მუსიკ|სიმღერ|ტრეკ)`,
+  String.raw`(?:მუსიკ|სიმღერ|ტრეკ)\p{L}*\s+(?:\S+\s+){0,2}?(?:შეცვალ|შეუცვალ|გამოცვალ|გადაცვალ|დაადე|დაუდე|ჩაუსვ|ჩასვ|ჩადე|ჩაანაცვლ|გამოიყენ)`,
+  String.raw`(?:სხვა|ახალ\p{L}*|ამ)\s+(?:მუსიკ|სიმღერ|ტრეკ)\p{L}*ით(?!\p{L})`,
   String.raw`(?:replace|change|swap|switch|use|put)\s+(?:the\s+|this\s+|a\s+)?(?:(?:new|other|different)\s+)?(?:music|track|song|soundtrack)`, String.raw`(?:music|track|song|soundtrack)\s+instead`,
-  String.raw`(?:замени|поменяй|смени|поставь|другую|другой|новую|новый|эту|этот)\s+(?:\S+\s+)?(?:музык|трек|песн)`,
+  String.raw`(?:замени|заменить|поменяй|смени|поставь|вставь|используй|наложи|подставь)\s+(?:\S+\s+)?(?:музык|трек|песн)`,
+  String.raw`(?:музык|трек|песн)\p{L}*\s+(?:\S+\s+){0,2}?(?:поставь|вставь|используй|наложи|подставь|вместо)`,
 ].join('|'), 'iu');
+/**
+ * Another job on the files sent, not more clips for the edit: subtitles, a translation, a dub, text or a logo, a filter
+ * or a colour change, a background („ამ ვიდეოს სუბტიტრები დაამატე", "make this image black and white too", «добавь
+ * субтитры к этому видео»). Music is another job only with no sound file sent ("add music too": the montage lane's).
+ */
+const OTHER_JOB = new RegExp([
+  String.raw`subtitl|caption|translat|\bdub|voice|narrat|\btext\b|\btitles?\b|\blogo|watermark|filter|effect|colou?r|black\s*(?:and|&|-)\s*white|gr[ae]yscale|background|sticker|emoji|transition|zoom|speed|slow|faster|louder|quieter|volume|brightness|contrast`,
+  String.raw`სუბტიტრ|(?<!\p{L})ტიტრ|თარგმ|გახმოვან|დუბლ|ნარაცი|ტექსტ|წარწერ|ლოგო|ფილტრ|ეფექტ|(?<!\p{L})ფერ|შავ\s*-?\s*თეთრ|(?<!\p{L})ფონ|სტიკერ|ემოჯი|გადასვლ|ზუმ|სიჩქარ|ხმამაღლ|სიკაშკაშ|კონტრასტ`,
+  String.raw`субтитр|(?<!\p{L})титр|перев[её]?[дл]|переведи|озвуч|дубл|текст|надпис|логотип|водян|фильтр|эффект|цвет|ч[её]рно\s*-?\s*бел|(?<!\p{L})фон|стикер|эмодзи|переход|зум|скорост|громч|ярк|контраст`,
+].join('|'), 'iu');
+const MUSIC_JOB = /music|song|track|soundtrack|მუსიკ|სიმღერ|ტრეკ|музык|песн|трек/iu;
 export function montageFollowUpAsk(text: string, kinds: AttachmentKind[]): MontageFollowUp | null {
   const t = (text || '').trim();
   if (!t || !kinds.length) return null;
@@ -408,6 +425,7 @@ export function montageFollowUpAsk(text: string, kinds: AttachmentKind[]): Monta
   const audios = kinds.filter((k) => k === 'audio').length;
   if (pictures + audios !== kinds.length) return null;
   if (!pictures && audios === 1) return REPLACE_MUSIC.test(t) ? 'replace_music' : null;
+  if (OTHER_JOB.test(t) || (!audios && MUSIC_JOB.test(t))) return null;
   if (pictures >= 1 && audios <= 1 && ADD_WORDS.test(t) && (!hasMontageWords(t) || REFERS_PREVIOUS.test(t))) return 'add_clips';
   return null;
 }

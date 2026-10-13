@@ -114,16 +114,19 @@ export type DurationVerdict =
  */
 export function planFinalDuration(requestedSec: number, caps: DurationCapabilities, opts: PlanOptions = {}): DurationVerdict {
   const r = Number(requestedSec);
-  if (!Number.isFinite(r) || r < VIDEO_MIN_SEC) return { ok: false, reason: 'too_short', requestedSec: Number.isFinite(r) ? r : 0, maxSec: openMaxSeconds(caps) };
-  if (r > VIDEO_MAX_SEC) return { ok: false, reason: 'too_long', requestedSec: r, maxSec: openMaxSeconds(caps) };
-  const gridSec = nativeGridSeconds(r); // the cut grid decides the route
+  // The grid and the limits read the length as the timeline holds it (whole frames): 8.01 s is 240 frames = 8 s, one clip,
+  // never two scenes trimmed by 8 s and priced at 16 (review 2026-10-13); 3.99 s is 120 frames = 4 s, not a refusal.
+  const q = Number.isFinite(r) ? quantizeToFrames(r) : r;
+  if (!Number.isFinite(q) || q < VIDEO_MIN_SEC) return { ok: false, reason: 'too_short', requestedSec: Number.isFinite(r) ? r : 0, maxSec: openMaxSeconds(caps) };
+  if (q > VIDEO_MAX_SEC) return { ok: false, reason: 'too_long', requestedSec: r, maxSec: openMaxSeconds(caps) };
+  const gridSec = nativeGridSeconds(q); // the cut grid decides the route
   const route = videoRoute(gridSec);
   if (route === 'longform' && (!caps.longform || gridSec > caps.maxSeconds)) {
     return { ok: false, reason: 'longform_closed', requestedSec: r, maxSec: openMaxSeconds(caps) };
   }
   // Joins overlap only inside a film: a single clip has none, and the long-form stitch is a straight concat.
   const ov = route === 'film' ? overlapSeconds(opts.joinOverlapSec) : 0;
-  const nativeSec = ov > 0 ? nativeGridSeconds(r, ov) : gridSec;
+  const nativeSec = ov > 0 ? nativeGridSeconds(q, ov) : gridSec;
   if (route === 'film' && nativeSec > FILM_MAX_SEC) {
     // With these joins the request needs more scenes than the film pipeline makes; with cuts it would fit.
     return { ok: false, reason: 'joins_exceed_film', requestedSec: r, maxSec: FILM_MAX_SEC - (FILM_MAX_SCENES - 1) * ov, joinOverlapSec: ov };
@@ -156,6 +159,14 @@ export function planFinalDuration(requestedSec: number, caps: DurationCapabiliti
 /** The longest length the studio can order today. */
 export function openMaxSeconds(caps: DurationCapabilities): number {
   return caps.longform ? Math.min(VIDEO_MAX_SEC, caps.maxSeconds) : FILM_MAX_SEC;
+}
+
+/**
+ * The panel's length after a refusal: the shortest clip for a length under it, the longest open length otherwise. Review
+ * 2026-10-13: „2 წამიანი ვიდეო" set the panel to the LONGEST length, so sending again ordered a 96 s film for a 2 s ask.
+ */
+export function panelSecondsAfterBlock(v: Extract<DurationVerdict, { ok: false }>, caps: DurationCapabilities): number {
+  return v.reason === 'too_short' ? VIDEO_MIN_SEC : openMaxSeconds(caps);
 }
 
 type Lang = 'ka' | 'en' | 'ru';

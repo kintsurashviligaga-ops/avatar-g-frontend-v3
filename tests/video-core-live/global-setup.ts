@@ -3,7 +3,7 @@
  *   1. the fail-closed guard (./guard): an explicit opt-in, every database variable naming this machine, and the stack's
  *      host resolving only to this machine's own addresses — the Production project can never be reached from here;
  *   2. synthetic users through the local auth server's admin API (service role of the LOCAL stack): two admins (one per
- *      browser project) and one ordinary user for the access-denial checks, all with one password generated here, for
+ *      browser project), one ordinary user for the access-denial checks and one for the credits spec, all with one password generated here, for
  *      this run only (handed to the workers through the environment, never printed or written to disk);
  *   3. synthetic media rendered by ffmpeg-static: two clips, a beat track, a clip with sound for the edits, a file that
  *      is not audio, and a truncated clip that passes the upload's byte sniff but cannot be decoded.
@@ -83,6 +83,8 @@ export default async function globalSetup(): Promise<void> {
     desktop: await makeUser(base, serviceKey, 'desktop', true, pw, tag),
     mobile: await makeUser(base, serviceKey, 'mobile', true, pw, tag),
     other: await makeUser(base, serviceKey, 'other', false, pw, tag),
+    // An ordinary (paying) account for the credits spec: admins are never charged, so only this one shows a debit.
+    payer: await makeUser(base, serviceKey, 'payer', false, pw, tag),
   };
   process.env.E2E_PASSWORD = pw;
   process.env.E2E_USERS = JSON.stringify(users);

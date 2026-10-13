@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runSaga, type SagaStep } from './saga';
 import { validateMaster, MasterQaRejected, isMasterQaRejected, type QaReport } from './masterQa';
-import { SoundtrackUnreadable, isSoundtrackUnreadable } from './soundtrackUnreadable';
+import { SoundtrackUnreadable, describeSoundtrackRefusal, isSoundtrackUnreadable } from './soundtrackUnreadable';
 
 const rejected: QaReport = validateMaster({
   sizeBytes: 6_000_000, expectedDurSec: 29.7, actualDurSec: 29.7, audioExpected: true, audioPresent: true, width: 1920, height: 1080,
@@ -189,5 +189,35 @@ describe('the route and the assembler, on the source (T2)', () => {
 
   test('the idempotency claim is released on every saga failure (a rejected attempt can be retried at once)', () => {
     expect(route).toMatch(/if \(!saga\.ok\) \{\s*await releaseIdempotencyKey\(idemOwner, `assemble:\$\{idemKey\}`\);/);
+  });
+
+  test('a failed single clip hands back the waiver of a film paid upstream, as the multi-clip saga does', () => {
+    const catchAt = route.indexOf('} catch (err) {', route.indexOf('const scRef = `assemble-single:'));
+    const restore = route.indexOf('if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});', catchAt);
+    const gate = route.indexOf('if (isFinalCutRejected(err)) {', catchAt);
+    expect(catchAt).toBeGreaterThan(0);
+    expect(restore).toBeGreaterThan(catchAt);
+    expect(restore).toBeLessThan(gate); // before every answer of the catch
+    // the saga's compensate still does the same for the multi-clip path
+    expect(route).toMatch(/if \(filmAlreadyBilled && billedTokenForCheck\) \{\s*await restoreFilmBilling\(billedTokenForCheck\)\.catch\(\(\) => \{\}\);/);
+  });
+
+  test('a film paid upstream is never told "not charged": the failure messages say no EXTRA charge was made', () => {
+    expect(route).toMatch(/Nothing was delivered and \$\{attemptChargeNote\(filmAlreadyBilled\)\} — please try again\./);
+    expect(route).not.toMatch(/Nothing was delivered and this attempt was not charged/);
+    expect(route).toMatch(/describeSoundtrackRefusal\(badLane, filmAlreadyBilled\)/);
+    expect(describeSoundtrackRefusal('music')).toMatch(/this attempt was not charged/);
+    expect(describeSoundtrackRefusal('music', true)).toMatch(/no extra charge was made for this attempt/);
+    expect(describeSoundtrackRefusal('music', true)).not.toMatch(/was not charged/);
+  });
+
+  test('every clip and audio link must be an http(s) URL, refused before any probe, charge or status write', () => {
+    const check = route.indexOf("error: 'invalid_media_url'");
+    expect(check).toBeGreaterThan(0);
+    for (const later of ['await keepLiveClips(handedOver)', 'await lockTokens(uid, assembleCost, 900)', 'await recordFilmAssembling(filmTokenId)', 'await probeDimensions(clipUrl)']) {
+      expect(route.indexOf(later)).toBeGreaterThan(check);
+    }
+    expect(route).toMatch(/body\.customAudioUrl, body\.musicUrl, body\.voiceoverUrl, body\.sfxUrl,\s*\.\.\.\(Array\.isArray\(body\.dialogueStems\) \? body\.dialogueStems\.map\(\(s\) => s\?\.url\) : \[\]\),\s*\];\s*if \(links\.some\(\(v\) => typeof v === 'string' && v\.length > 0 && !isWebLink\(v\)\)\)/);
+    expect(route).toMatch(/return u\.protocol === 'https:' \|\| u\.protocol === 'http:';/);
   });
 });

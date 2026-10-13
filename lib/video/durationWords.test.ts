@@ -107,3 +107,46 @@ describe('AC-04: the length as typed → seconds (ka · en · ru)', () => {
     expect(mineTotalDurationSec('ბოლო 5 წამში დაწერე myavatar.ge')).toBeUndefined();
   });
 });
+
+describe('review 2026-10-13 (finding D): what the head of PR #58 misread, each as it read it there', () => {
+  test.each<[string, number | undefined, string]>([
+    // a frame shape or a song position is never the length
+    ['a 30 second long 9:16 video', 30, 'read 556 (9:16 as 9 min 16 s)'],
+    ['make it 30 seconds long, music from 0:45', 30, 'read 45 (the song start)'],
+    // tens and ones in words
+    ['twenty five seconds', 25, 'read 5'],
+    ['twenty-five-second spot', 25, 'read 5'],
+    ['двадцать пять секунд', 25, 'read 5'],
+    ['ოცდახუთი წამი', 25, 'read nothing'],
+    ['ოცდახუთწამიანი კლიპი', 25, 'read nothing'],
+    ['ორმოცდათხუთმეტი წამი', 55, 'read nothing'],
+    ['seventeen seconds', 17, 'read nothing'],
+    ['восемнадцать секунд', 18, 'read nothing'],
+    ['ცამეტი წამი', 13, 'read nothing'],
+    // a half said after the unit
+    ['ერთი წუთი და ნახევარი', 90, 'read 60'],
+    ['одна минута с половиной', 90, 'read 60'],
+    ['минута с половиной', 90, 'read nothing'],
+    ['წუთი და ნახევარი', 90, 'read nothing'],
+    ['ხუთი წამი და ნახევარი', 5.5, 'read 5'],
+    // a word that only starts like a unit names no length
+    ['2 წამყვანი ილაპარაკებს', undefined, 'read 2 (two hosts)'],
+    ['5 minimalist shots', undefined, 'read 300'],
+    ['20 secret tips', undefined, 'read 20'],
+    ['5 секретов успеха', undefined, 'read 5'],
+    ['3 минималистичных кадра', undefined, 'read 180'],
+  ])('%s → %s s (the PR head %s)', (text, sec) => {
+    expect(mineDurationSec(text)).toBe(sec);
+  });
+
+  test('the unit forms people do type still read', () => {
+    for (const [text, sec] of [['ვიდეო 30 წამია', 30], ['5 min', 300], ['5 мин.', 300], ['10 сек', 10], ['30s', 30], ['2 წთ', 120], ['duration: 1:30', 90]] as const) {
+      expect({ text, sec: mineDurationSec(text) }).toEqual({ text, sec });
+    }
+    // the song start in the same message is still read as the song start
+    expect(mineParams('make it 30 seconds long, music from 0:45')).toMatchObject({ durationSec: 30, musicStartSec: 45 });
+    expect(readNumber('twenty-five')).toBe(25);
+    expect(readNumber('двадцать пять')).toBe(25);
+    expect(readNumber('five twenty')).toBeNaN();
+  });
+});

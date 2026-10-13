@@ -2,8 +2,8 @@ import { test, expect, type Locator, type Page, type Request, type Response } fr
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
-  OUT_DIR, STATE_DIR, attach, balanceOf, decodedFrames, evidence, jobsOf, ledgerOf, liveUser, openSignedInStudio, projectUser,
-  rows, say, shot, signInToken,
+  OUT_DIR, STATE_DIR, attach, balanceOf, decodedFrames, evidence, jobsOf, ledgerOf, liveUser, meanLuma, meanVolumeDb, openSignedInStudio,
+  projectUser, rows, say, shot, signInToken,
 } from './_live';
 
 /**
@@ -12,7 +12,7 @@ import {
  * paperclip (sign → PUT to local storage → verify's byte sniff) → Agent G reads the sentence → a quote probed by real
  * ffmpeg → Start → a real ffmpeg render, the per-clip QC, the master in the private `renders` bucket → the result plays
  * → Download → the decoded frame count is exact → the Library lists it. Then Stop / Retry, idempotency, error
- * recovery, the edit lane on Agent G's delivered video (trim, 2× speed, slow motion) and another user's denied access —
+ * recovery, the edit lane on Agent G's delivered video (trim, 2× speed, slow motion, volume, brightness) and another user's denied access —
  * all on the same stack.
  *
  * Agent G media is free (MONTAGE/EDIT_PRICE_CREDITS = 0), so the ledger must not move here; the paid paths (film / Veo)
@@ -313,30 +313,44 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
   // chat model involved (lib/agent/chatTurn editStep, source 'previous'). Trim / speed words on a freshly ATTACHED file
   // are not this lane: Media Studio v2 hands them to the chat model's remix, which needs a provider credential this job
   // does not have (CI run 4 found the old version of these tests waiting for an edit quote that never comes).
-  // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s.
+  // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s; the sound
+  // (volume, +6 dB) and the light (adjust, brightness +25) keep its 5 s and are measured against the master they changed:
+  // louder by more than 4 dB of mean loudness, brighter by more than 6 levels of mean luma (GG 2026-10-13 06:34Z: „Trim,
+  // Volume, Adjust"; both are stored edits that defect 39 refused).
   // CI run 6 (c09dbe4): the trim, then the first edit on each viewport, waited 200 s for a result that never came, while
   // 2× and slow motion passed. Run 7 (1b2b40f) put the trim last and printed its job (jobDiagnosis): still the trim, and
   // the worker had refused it 20 ms after it was queued, `invalid_request: the stored plan is not valid`, because JSONB
   // hands `{ op, fromSec, toSec }` back as `{ op, toSec, fromSec }` (DEFECT_REGISTER_FINAL row 39, a product defect).
-  for (const { label, en, ka, seconds } of [
-    { label: 'speed-2x', en: 'Make the previous video 2x speed.', ka: 'წინა ვიდეო 2-ჯერ ააჩქარე', seconds: 2.5 },
-    { label: 'slow-motion', en: 'Make the previous video slow motion.', ka: 'წინა ვიდეო ნელ მოძრაობაში გადაიყვანე', seconds: 10 },
-    { label: 'trim', en: 'Trim the previous video from 1 to 4 seconds.', ka: 'წინა ვიდეო 1-დან 4 წამამდე მოჭერი', seconds: 3 },
+  for (const { label, en, ka, seconds, op } of [
+    { label: 'speed-2x', en: 'Make the previous video 2x speed.', ka: 'წინა ვიდეო 2-ჯერ ააჩქარე', seconds: 2.5, op: 'speed' },
+    { label: 'slow-motion', en: 'Make the previous video slow motion.', ka: 'წინა ვიდეო ნელ მოძრაობაში გადაიყვანე', seconds: 10, op: 'speed' },
+    { label: 'volume', en: 'Make the previous video louder.', ka: 'წინა ვიდეოს ხმა აუწიე', seconds: 5, op: 'volume' },
+    { label: 'adjust', en: 'Make the previous video brighter.', ka: 'წინა ვიდეო გაანათე', seconds: 5, op: 'adjust' },
+    { label: 'trim', en: 'Trim the previous video from 1 to 4 seconds.', ka: 'წინა ვიდეო 1-დან 4 წამამდე მოჭერი', seconds: 3, op: 'trim' },
   ] as const) {
     test(`edit lane on Agent G's delivered video: ${label} → plan → Start → exactly ${seconds * FPS} frames`, async ({ page, isMobile }, info) => {
       const me = projectUser(info);
       const before = await balanceOf(me.id);
+      const ledgerBefore = (await ledgerOf(me.id)).length;
       const sentence = isMobile ? ka : en;
       await openSignedInStudio(page);
       await deliverMontage(page, isMobile, me.id);
+      // The master the edit changes, kept to measure the change against.
+      mkdirSync(join(OUT_DIR, 'downloads'), { recursive: true });
+      const sourceSrc = await page.getByTestId('agent-montage-result').last().locator('video[src]').getAttribute('src');
+      const source = await page.request.get(sourceSrc!);
+      expect(source.status()).toBe(200);
+      const sourceFile = join(OUT_DIR, 'downloads', `${info.project.name}-${label}-source.mp4`);
+      writeFileSync(sourceFile, await source.body());
 
       await paced(me.id);
       const quoteRes = page.waitForResponse(isQuote('edit'), { timeout: 90_000 });
       await say(page, sentence);
-      const q = (await (await quoteRes).json()) as { ok: boolean; quote?: { plan: { durationSec: number }; credits: number }; error?: string; message?: string };
+      const q = (await (await quoteRes).json()) as { ok: boolean; quote?: { plan: { durationSec: number }; edits: { op: string }[]; credits: number }; error?: string; message?: string };
       expect(q.ok, `edit quote refused: ${q.error} ${q.message}`).toBe(true);
       expect(q.quote!.plan.durationSec).toBe(seconds);
       expect(q.quote!.credits).toBe(0);
+      expect(q.quote!.edits.map((e) => e.op), 'the edit Agent G read from the words').toEqual([op]);
       const card = page.getByTestId('agent-edit-card').last();
       await expect(card).toHaveAttribute('data-phase', 'quoted');
       await shot(page, `${info.project.name}-edit-${label}-quoted`);
@@ -358,15 +372,28 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
       const res = await page.request.get(src!);
       expect(res.status()).toBe(200);
       const file = join(OUT_DIR, 'downloads', `${info.project.name}-${label}.mp4`);
-      mkdirSync(join(OUT_DIR, 'downloads'), { recursive: true });
       writeFileSync(file, await res.body());
       const d = await decodedFrames(file);
       expect(d.frames).toBe(seconds * FPS);
       expect(d.fps).toBe(FPS);
       expect(d.hasAudio).toBe(true);
+      // What the edit did to the sound or the light, measured on the decoded files (not on the plan).
+      const measured: Record<string, number> = {};
+      if (op === 'volume') {
+        measured.sourceMeanDb = await meanVolumeDb(sourceFile);
+        measured.editMeanDb = await meanVolumeDb(file);
+        expect(measured.editMeanDb - measured.sourceMeanDb, 'louder by more than 4 dB').toBeGreaterThan(4);
+      }
+      if (op === 'adjust') {
+        measured.sourceLuma = await meanLuma(sourceFile);
+        measured.editLuma = await meanLuma(file);
+        expect(measured.editLuma - measured.sourceLuma, 'brighter by more than 6 levels of mean luma').toBeGreaterThan(6);
+      }
+      // Free lane: the balance does not move and no ledger row is written for it.
       expect(await balanceOf(me.id)).toBe(before);
+      expect((await ledgerOf(me.id)).length).toBe(ledgerBefore);
       await shot(page, `${info.project.name}-edit-${label}-done`);
-      evidence(`${info.project.name}-edit-${label}`, { sentence, jobId: runBody.jobId, edits: q.quote!.plan, deliveredMs, decoded: d, balance: before });
+      evidence(`${info.project.name}-edit-${label}`, { sentence, jobId: runBody.jobId, edits: q.quote!.edits, plan: q.quote!.plan, deliveredMs, decoded: d, measured, balance: before, ledgerRows: ledgerBefore });
     });
   }
 });

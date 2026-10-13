@@ -23,7 +23,8 @@ begin
 
   -- The money functions and the account lookup run for the service role only (20260929a, 20261002d, 20261003f).
   foreach f in array array['public.deduct_credits(uuid,integer,text)','public.refund_credits(uuid,integer,text)',
-                           'public.deduct_credits_once(uuid,integer,text)','public.auth_account_status(text,text)'] loop
+                           'public.deduct_credits_once(uuid,integer,text)','public.auth_account_status(text,text)',
+                           'public.consume_free_film(uuid)','public.restore_free_film(uuid)'] loop
     if has_function_privilege('anon', f, 'execute') or has_function_privilege('authenticated', f, 'execute') then
       raise exception 'baseline: % is executable by anon or authenticated', f;
     end if;

@@ -5,6 +5,7 @@ import {
   firstPreviewUrl,
   summarizeProgress,
   canSalvagePartialCut,
+  finalContractForCut,
   clipsSettled,
   everyClipLanded,
   filmProgressKey,
@@ -102,6 +103,23 @@ describe('firstPreviewUrl — graceful fallback while the editor stitches', () =
   it('returns null when no clip has landed', () => {
     expect(firstPreviewUrl(matrix({ clips: [{ ordinal: 1, status: 'pending', url: null }] }))).toBeNull();
     expect(firstPreviewUrl(null)).toBeNull();
+  });
+});
+
+describe('finalContractForCut — the final-length contract holds only for a cut of every planned scene', () => {
+  it('a complete cut carries the contract (a 24 s film of 3 × 8 s)', () => {
+    expect(finalContractForCut(24, 3, 3)).toBe(24);
+    expect(finalContractForCut(5, 1, 1)).toBe(5); // a single-scene film asked off the grid
+  });
+  it('a salvaged cut goes without one: 2 of 3 scenes stitch to 16 s, never refused for the 24 s the board can no longer reach', () => {
+    expect(finalContractForCut(24, 2, 3)).toBeNull();
+    expect(finalContractForCut(57, 7, 8)).toBeNull();
+  });
+  it('no contract asked → none sent', () => {
+    expect(finalContractForCut(undefined, 3, 3)).toBeNull();
+    expect(finalContractForCut(null, 3, 3)).toBeNull();
+    expect(finalContractForCut(0, 3, 3)).toBeNull();
+    expect(finalContractForCut(Number.NaN, 3, 3)).toBeNull();
   });
 });
 

@@ -95,27 +95,44 @@ export function wantsBeatCuts(text: string | undefined): boolean { return BEAT_C
  * AC-23) and does not read the number as a track offset — never applied as something else, never dropped without a word.
  */
 const MUSIC_WORD = /მუსიკ|სიმღერ|ტრეკ|საუნდტრეკ|music|track|song|soundtrack|музык|трек|песн|саундтрек/iu;
-const MUSIC_DELAY = new RegExp([
+/** A later start anchored to the VIDEO (its second N, its first N seconds without music): a delay whatever else is said. */
+const MUSIC_DELAY_ON_VIDEO = new RegExp([
   // a point in the VIDEO, not in the track: „ვიდეოს მე-5 წამიდან", „მონტაჟის 3 წამიდან", „ტაიმლაინზე 5 წამიდან", „კლიპის მე-2 წამზე"
   String.raw`(?:ვიდეოს|კლიპის|მონტაჟის|რგოლის|ტაიმლაინ\p{L}*)\s+(?:მე-?)?\d[\d.,:]*\s*-?\s*(?:ე\s*)?(?:წამიდან|წმ\.?\s*-?\s*დან|წამზე|წამთან)`,
-  // „მოგვიანებით", „დააგვიანე", „N წამის შემდეგ დაიწყოს / ჩაირთოს / შემოვიდეს", „პირველი N წამი მუსიკის გარეშე / უმუსიკოდ"
-  String.raw`მოგვიანებით|დააგვიან|დაგვიანებით`, String.raw`\d+\s*-?\s*წამის\s+(?:შემდეგ|მერე)\s+(?:დაიწყ|ჩაირთ|ჩართ|შემო)`,
+  // „პირველი N წამი მუსიკის გარეშე / უმუსიკოდ"
   String.raw`პირველ\p{L}*\s+\d+\s*-?\s*წამ\p{L}*\s+(?:მუსიკის\s+გარეშე|უმუსიკო|უხმო)`,
-  // "5 seconds into the video", "delay the music", "the track comes in later / after 3 s", "from the 5th second of the video",
-  // "no music for the first 5 seconds"
+  // "5 seconds into the video", "from the 5th second of the video", "no music for the first 5 seconds"
   String.raw`\d[\d.:]*\s*-?\s*(?:s|secs?|seconds?)\s+into\s+the\s+(?:video|clip|edit|montage|film|timeline|reel)`,
-  String.raw`(?:delay|postpone|hold\s+back)\s+(?:the\s+)?(?:music|track|song|soundtrack)`,
-  String.raw`(?:music|track|song|soundtrack)\s+(?:should\s+)?(?:comes?\s+in|kicks?\s+in|starts?|begins?)\s+(?:later|after\s+\d|only\s+(?:at|from|after)\s+\d)`,
   String.raw`(?:music|track|song|soundtrack)\s+(?:only\s+)?(?:from|after|at)\s+(?:the\s+)?\d[\d.:]*(?:st|nd|rd|th)?\s*-?\s*(?:s|secs?|seconds?)\s+(?:of|into)\s+the\s+(?:video|clip|edit|montage|film|timeline|reel)`,
   String.raw`(?:no\s+music|silence|silent)\s+(?:for\s+|during\s+)?(?:the\s+)?first\s+\d+\s*(?:s|secs?|seconds?)`,
-  // «с 5-й секунды видео», «музыку позже / не сразу / с задержкой», «задержи музыку», «первые 5 секунд без музыки»
+  // «с 5-й секунды видео», «первые 5 секунд без музыки»
   String.raw`(?:с|со|на)\s+\d[\d.:]*\s*-?\s*(?:й|ой|ей)?\s*секунд\p{L}*\s+(?:видео|клипа|монтажа|ролика|таймлайна)`,
-  String.raw`(?:музык|трек|песн|саундтрек)\p{L}*\s+(?:\S+\s+){0,2}?(?:позже|попозже|не\s+сразу|с\s+задержкой)`, String.raw`задерж\p{L}*\s+(?:музык|трек|песн)`,
   String.raw`первы\p{L}*\s+\d+\s*секунд\p{L}*\s+без\s+музык`,
+].join('|'), 'iu');
+/** "later", "after N seconds", "delay the track": a delay unless the seconds are the TRACK's own (below). */
+const MUSIC_DELAY_LOOSE = new RegExp([
+  // „მოგვიანებით", „დააგვიანე", „N წამის შემდეგ დაიწყოს / ჩაირთოს / შემოვიდეს"
+  String.raw`მოგვიანებით|დააგვიან|დაგვიანებით`, String.raw`\d+\s*-?\s*წამის\s+(?:შემდეგ|მერე)\s+(?:დაიწყ|ჩაირთ|ჩართ|შემო)`,
+  // "delay the music", "the track comes in later / after 3 s"
+  String.raw`(?:delay|postpone|hold\s+back)\s+(?:the\s+)?(?:music|track|song|soundtrack)`,
+  String.raw`(?:music|track|song|soundtrack)\s+(?:should\s+)?(?:comes?\s+in|kicks?\s+in|starts?|begins?)\s+(?:later|after\s+\d|only\s+(?:at|from|after)\s+\d)`,
+  // «музыку позже / не сразу / с задержкой», «задержи музыку»
+  String.raw`(?:музык|трек|песн|саундтрек)\p{L}*\s+(?:\S+\s+){0,2}?(?:позже|попозже|не\s+сразу|с\s+задержкой)`, String.raw`задерж\p{L}*\s+(?:музык|трек|песн)`,
+].join('|'), 'iu');
+/**
+ * Seconds said to be the TRACK's own: "after 30 seconds of the song", "20 s into the track", „სიმღერის 30 წამის შემდეგ",
+ * «с 30-й секунды песни» — an offset INTO the track (musicFromSec), never a later start on the timeline (review
+ * 2026-10-13: "music starts after 30 seconds of the song" was told it is not supported and the offset was dropped).
+ */
+const SECONDS_OF_TRACK = new RegExp([
+  String.raw`\d[\d.:]*\s*-?\s*(?:s|secs?|seconds?)?\s+(?:of|into|in)\s+the\s+(?:song|track|music|soundtrack)`,
+  String.raw`(?:სიმღერის|ტრეკის|მუსიკის|საუნდტრეკის)\s+(?:მე-?)?\d`,
+  String.raw`\d[\d.:]*\s*-?\s*(?:й|ой|ей)?\s*секунд\p{L}*\s+(?:песни|трека|музыки|саундтрека)(?!\p{L})`,
 ].join('|'), 'iu');
 export function asksMusicDelay(text: string | undefined): boolean {
   const t = text ?? '';
-  return MUSIC_WORD.test(t) && MUSIC_DELAY.test(t);
+  if (!MUSIC_WORD.test(t)) return false;
+  return MUSIC_DELAY_ON_VIDEO.test(t) || (MUSIC_DELAY_LOOSE.test(t) && !SECONDS_OF_TRACK.test(t));
 }
 
 /**

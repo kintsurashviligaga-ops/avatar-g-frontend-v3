@@ -48,3 +48,15 @@ export function opFailureReason(body: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * The film's error card: a short headline in the user's language, then the route's own sentence (which the routes write in
+ * English). Review 2026-10-13: the round-3 card showed the sentence alone, so a Georgian or Russian user read only English;
+ * the long generic line stays the fallback for a route that said nothing a person can read.
+ */
+export function filmFailureText(body: unknown, locale: string, fallback: string): string {
+  const why = opFailureReason(body);
+  if (!why) return fallback;
+  const head = locale === 'en' ? 'The video was not made' : locale === 'ru' ? 'Видео не создано' : 'ვიდეო ვერ შეიქმნა';
+  return `${head}: ${why}`;
+}
