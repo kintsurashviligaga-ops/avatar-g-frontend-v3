@@ -1,6 +1,6 @@
 # BOG Payments — Production E2E Report (v1.3)
 
-2026-10-13 07:25Z · მდგომარეობა: **merge და deploy დასრულდა; OAuth დადასტურდა; წარმატებული ცოცხალი გადახდა ჯერ არ არის** (მცდელობა 1 ბანკმა უარყო თანხის უკმარისობის გამო; მცდელობა 2 Owner-ის ბარათის შევსებას ელოდება)
+2026-10-13 09:15Z · მდგომარეობა: **merge, deploy, OAuth და ერთი წარმატებული ცოცხალი 10 ₾ გადახდა დადასტურდა** (მცდელობა 1: ბანკის უარი, თანხის უკმარისობა; მცდელობა 2: `completed`, +100 კრედიტი ერთხელ). BOG ისევ მხოლოდ ადმინისთვისაა.
 
 | | |
 |---|---|
@@ -23,10 +23,10 @@
 | 4 | Production Deploy წარმატებით დასრულებულია | **PROVEN** | `883a013` READY 05:57Z, შემდეგ env-ით 06:28:39Z. Smoke `38354130571` 9/9, `38357706277` ✓ |
 | 5 | `BOG_CHECKOUT_MODE=admin` მუშაობს | **PROVEN** | ადმინ ბარათი: „Checkout: admins only“; Owner-მა (ადმინმა) შეკვეთა შექმნა 06:44Z |
 | 6 | არა-ადმინის checkout შეზღუდულია | **PROVEN** (ანონიმურად) | smoke: capabilities `bog:false`, checkout 401. ჩვეულებრივი შესული ანგარიშით Production-ში არ შემიმოწმებია (Production-ში სატესტო ანგარიშს არ ვქმნით); იგივე წესი ტესტებით PROVEN (403 `BOG_ADMIN_ONLY`) |
-| 7 | Webhook / Settlement / Idempotency შემოწმებულია | **PARTIAL** | Production-ში: BOG-მა შეკვეთა შექმნა, უარი სწორად ჩაიწერა (`rejected` + მიზეზი), კრედიტი არ ჩაირიცხა; ხელმოუწერელი callback → 401. ვერ ვარჩევ, უარი callback-მა ჩაწერა თუ დაბრუნების გვერდმა (ორივე BOG-თან ამოწმებს). წარმატებული ჩარიცხვა Production-ში NOT RUN |
-| 8 | Owner-ის 10 ₾ გადახდა წარმატებულია | **NOT RUN** | მცდელობა 1 (06:44Z, `myavatar-topup-26dd83920675af9c`): ბანკის უარი, „insufficient funds“, ფული არ ჩამოჭრილა. მცდელობა 2 Owner-ის ნებართვით (06:48Z), ბარათის შევსების შემდეგ; მესამე მცდელობა არ არის |
-| 9 | ზუსტად 100 კრედიტი ერთხელ | **NOT RUN** (Production) | ლოკალურად PROVEN (E1, C1). Production-ში BOG-ის ledger ჩანაწერი 0 |
-| 10 | საბოლოო E2E Report მტკიცებულებებით | **PARTIAL** | ეს ფაილი + evidence; წარმატებული გადახდის ნაწილი ცარიელია |
+| 7 | Webhook / Settlement / Idempotency შემოწმებულია | Settlement, Idempotency **PROVEN** · callback-ის გზა **PARTIAL** | მცდელობა 2: შეკვეთა `completed`, `credited_at` 09:09:27Z; ამ შეკვეთაზე ერთი `wallet_topups` რიგი (`bog:<shop_order_id>`) და ერთი ledger ჩანაწერი, ორმაგი ჩარიცხვა არ არის. მცდელობა 1: უარი სწორად ჩაიწერა (`rejected` + მიზეზი), კრედიტი არ ჩაირიცხა. ხელმოუწერელი callback → 401 (smoke). ვერ ვარჩევ, ორივე განახლება callback-მა გააკეთა თუ დაბრუნების გვერდმა (ორივე ჯერ BOG-თან ამოწმებს, ერთსა და იმავე ჩარიცხვის ფუნქციას იძახებს; Vercel-ის runtime ლოგები ჩემთვის დახურულია, 403, 09:11Z ხელახლა). ხელმოწერილი callback-ის მიღება Production-ში ცალკე დაუმტკიცებელია |
+| 8 | Owner-ის 10 ₾ გადახდა წარმატებულია | **PROVEN** | მცდელობა 2 (Owner-ის ნებართვა 06:48Z): `myavatar-topup-8fee32aa69421a65`, 10.00 ₾, შეიქმნა 09:08:08Z, `completed` 09:09:27Z, BOG-ის order id ჩაწერილია. Owner 09:09:54Z: „გადახდა გავაკეთე 10ლ“. მცდელობა 1 (06:44Z, `myavatar-topup-26dd83920675af9c`): ბანკის უარი, „insufficient funds“, ფული არ ჩამოჭრილა. მესამე მცდელობა არ ყოფილა |
+| 9 | ზუსტად 100 კრედიტი ერთხელ | **PROVEN** | 09:11Z read-only: Owner-ის ledger-ში 09:00Z-ის შემდეგ ერთადერთი ჩანაწერი: +100, `purchase`, `source: wallet_topup`, `rate: 10`, `amount_gel: 10`, `ref: bog:myavatar-topup-8fee32aa69421a65`; ledger-ის რიგები baseline + 1, ბალანსი baseline + 100 (რიცხვები თრედშია); `wallet_topups` `bog:%` = 1. ლოკალურად იგივე PROVEN (E1, C1) |
+| 10 | საბოლოო E2E Report მტკიცებულებებით | **PROVEN** | ეს ფაილი + [evidence/production-2026-10-13.md](evidence/production-2026-10-13.md) |
 
 ## დეტალები
 
@@ -34,9 +34,9 @@
 
 **Webhook.** callback URL: `https://myavatar.ge/api/billing/bog/webhook` (ადმინ ბარათზე დადასტურდა). ხელმოუწერელი POST → 401, body არ მუშავდება (smoke). ხელმოწერილი callback Production-ში: იხ. კრიტერიუმი 7.
 
-**კრედიტები.** 07:24Z: `wallet_topups` `bog:%` 0, BOG ledger 0, `pending` შეკვეთა 0; Owner-ის ბალანსი 06:38Z-ის baseline-ის ტოლია. ჩარიცხვა `bog_fulfill_order` → `credit_wallet_gel` (md5 = repo, 07:2xZ ხელახლა შემოწმდა).
+**კრედიტები.** 09:11Z: `wallet_topups` `bog:%` 1, BOG ledger 1 (+100), ღია შეკვეთა 0; Owner-ის ბალანსი = 06:38Z-ის baseline + 100. ჩარიცხვა `bog_fulfill_order` → `credit_wallet_gel` (6 ფულის ფუნქციის md5 = repo, 09:11Z ხელახლა შემოწმდა).
 
-**მცდელობა 2-ის შემოწმება (ერთხელ, read-only):** ახალი `bog_orders` რიგი `completed` + `credited_at`; `wallet_topups.ref = 'bog:<shop_order_id>'`; Owner-ის ledger +1 რიგი, +100 კრედიტი; ბალანსი baseline + 100. თუ შედეგი გაურკვეველია, ხელახლა ცდა არ ხდება.
+**მცდელობა 2-ის შედეგი (ერთხელ, read-only, 09:11Z):** ოთხივე მოლოდინი შესრულდა: ახალი `bog_orders` რიგი `completed` + `credited_at`; `wallet_topups.ref = 'bog:myavatar-topup-8fee32aa69421a65'`; Owner-ის ledger +1 რიგი, +100 კრედიტი; ბალანსი baseline + 100. `bog_orders` სულ 6. ცოცხალი გადახდა ამაზე მეტად არ კეთდება Owner-ის ახალი სიტყვის გარეშე.
 
 **ბანკზე დამოკიდებული:** ლიმიტის ფორმა (კითხვა 2); ავტომატური გადახდები (3); sandbox წყვილი (4); 4 ძველი მცდელობის ლოგი (5). კითხვა 1 (წყვილის ტიპი) დაიხურა: OAuth 200 `oauth2.bog.ge`-ზე.
 
@@ -45,6 +45,7 @@
 **Recurring:** ბანკის მხრიდან **UNCONFIRMED**. კოდი ლოკალურად PROVEN. საჯაროდ არ იხსნება; BOG გამოწერა Production-ში 0.
 
 **დარჩენილი რისკები:**
+- ხელმოწერილი callback-ის მიღება Production-ში ცალკე დაუმტკიცებელია (იხ. კრიტერიუმი 7). თუ callback არ მოდის, ჩარიცხვას დაბრუნების გვერდი და cron აკეთებს; მომხმარებელი, რომელიც გვერდს გადახდის შემდეგ ხურავს, კრედიტს cron-ის მომდევნო გაშვებისას მიიღებს (`/api/cron/bog-billing`, განრიგი `vercel.json`-შია).
 - ძველ კოდზე (`30be5a2`) დაბრუნება ახალი build-ით (`git revert` ან ძველი deployment-ის Redeploy) **მუშა** BOG-ს ყველა შესულ მომხმარებელს აჩვენებს, რადგან წყვილი ახლა მოქმედია. BOG-ის პრობლემაზე Rollback A; კოდის დაბრუნება მხოლოდ Instant Rollback-ით `n50i7vipo`-ზე ([BOG_ROLLBACK_PLAN.md](BOG_ROLLBACK_PLAN.md), B).
 - Vercel-ის UI-დან „Redeploy“ ძველ deployment-ზე ძველ კოდს აშენებს (05:43Z-ის ინციდენტი). env-ის შეცვლის შემდეგ Redeploy მხოლოდ მიმდინარე Production deployment-ზე (`883a013`).
 - BOG-ის უარის შემდეგ Stripe-ზე გადასვლა არ ხდება; Stripe Production-ში დაუმტკიცებელია.

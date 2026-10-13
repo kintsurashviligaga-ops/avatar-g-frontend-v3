@@ -24,6 +24,10 @@
 | 06:45:33 | `rejected`, `reject_reason` = „Payment declined due to insufficient funds in the account“; კრედიტი არ ჩარიცხულა | `bog_orders`, `wallet_topups`, `credit_ledger` |
 | 06:48:25 | Owner: „თავიდან ვცდი“ — **ერთი** მეორე მცდელობა შევსებული ბარათით, მესამე არა | thread |
 | 07:19 | Owner: ჯერ ბარათს შეავსებს, მერე მოწერს | thread |
+| 09:08:08 | მცდელობა 2: `myavatar-topup-8fee32aa69421a65`, 10 ₾, BOG-მა შეკვეთა შექმნა (`bog_order_id` ჩაწერილია) | `bog_orders` |
+| 09:09:27.550 | `completed` + `credited_at`; იმავე მომენტში `wallet_topups` `bog:myavatar-topup-8fee32aa69421a65` (10 ₾) და ledger +100 | `bog_orders`, `wallet_topups`, `credit_ledger` |
+| 09:09:54 | Owner: „გადახდა გავაკეთე 10ლ“ | thread |
+| 09:11 | Claude: ერთჯერადი read-only შემოწმება (ქვემოთ); Vercel runtime ლოგები ისევ 403 | Supabase SQL, Vercel API |
 
 PR #59-ის merge Owner-მა OAuth-ის შედეგამდე დაადასტურა (05:50:55). ეს 19:39Z-ის პირობა №3-ის განზრახ გამოტოვება იყო, რადგან ძველი კოდი BOG-ს ყველას აჩვენებდა. OAuth მოგვიანებით (06:37) დადასტურდა.
 
@@ -31,7 +35,7 @@ PR #59-ის merge Owner-მა OAuth-ის შედეგამდე და
 
 ბარათი აჩვენებს `client …XXXX` = `BOG_CLIENT_ID`-ის ბოლო 4 სიმბოლოს (`lib/billing/bogDiagnostics.ts`, `clientIdTail`). 05:42-ზე მხოლოდ Secret შეიცვალა, Client ID ძველი დარჩა (2026-10-02). 06:23-ზე ორივე ერთად ჩაიწერა და OAuth 200 დაბრუნდა, იმავე `client …XXXX`-ით. დასკვნა: 400 = Client ID-ისა და Secret-ის შეუსაბამობა.
 
-## Production ბაზა (07:21 და 07:24, read-only)
+## Production ბაზა (07:21 და 07:24, read-only; მცდელობა 2-მდე)
 
 | | შედეგი |
 |---|---|
@@ -43,11 +47,21 @@ PR #59-ის merge Owner-მა OAuth-ის შედეგამდე და
 | Owner-ის ბალანსი / ledger-ის რიგები | უცვლელი 06:38-ის baseline-თან (თრედში) |
 | 6 ფულის ფუნქციის md5 | უცვლელი ([production-parity-v1.3](production-parity-v1.3-2026-10-12.md)): `bog_fulfill_order` 05cb3dc8…, `bog_claim_renewal` ec2d5510…, `bog_record_renewal_failure` 713af6ab…, `credit_wallet_gel` 87a4aaea…, `grant_subscription_allowance` a44bc3ef…, `update_credits_balance` 45e2665e… |
 
+## Production ბაზა (09:11, read-only; მცდელობა 2-ის შემდეგ)
+
+| | შედეგი |
+|---|---|
+| `bog_orders` | 6: + topup `completed` 1 (მცდელობა 2, 10.00 ₾, `credited_at` 09:09:27); `pending` / ღია 0 |
+| `wallet_topups` ref `bog:%` | 1: `bog:myavatar-topup-8fee32aa69421a65`, 10 ₾ |
+| Owner-ის ledger 09:00-ის შემდეგ | 1 ჩანაწერი: +100, `purchase`, metadata `source: wallet_topup`, `rate: 10`, `amount_gel: 10`, `ref: bog:myavatar-topup-8fee32aa69421a65` |
+| Owner-ის ბალანსი / ledger-ის რიგები | baseline + 100 / baseline + 1 (რიცხვები თრედშია) |
+| 6 ფულის ფუნქციის md5 | უცვლელი (იგივე 6 მნიშვნელობა) |
+
 ## რა დადასტურდა Production-ში და რა არა
 
-- **PROVEN:** OAuth ცოცხალი წყვილით; BOG-ში შეკვეთის შექმნა (ძველი 4 მცდელობა `init_failed` იყო); გადახდის გვერდზე გადასვლა; ბანკის უარის სწორად ჩაწერა (`rejected` + მიზეზი) და კრედიტის არ-ჩარიცხვა; არა-ადმინის შეზღუდვა (smoke); ხელმოუწერელი callback → 401 (smoke).
-- **არ განვასხვავე:** 06:45:33-ის განახლება callback-მა გააკეთა თუ დაბრუნების გვერდმა (`/api/billing/bog/orders/[id]` BOG-ის receipt-ს თავად კითხულობს). ორივე გზა BOG-თან ამოწმებს და ერთსა და იმავე ჩარიცხვის ფუნქციას იყენებს. Vercel-ის runtime ლოგები ჩემთვის დახურულია (403).
-- **NOT RUN:** წარმატებული გადახდა, +100 კრედიტი, ერთი ledger ჩანაწერი, `completed` შეკვეთა. ელოდება მცდელობა 2-ს.
+- **PROVEN:** OAuth ცოცხალი წყვილით; BOG-ში შეკვეთის შექმნა (ძველი 4 მცდელობა `init_failed` იყო); გადახდის გვერდზე გადასვლა; ბანკის უარის სწორად ჩაწერა (`rejected` + მიზეზი) და კრედიტის არ-ჩარიცხვა; **წარმატებული ცოცხალი 10 ₾ გადახდა: `completed`, ზუსტად +100 კრედიტი ერთხელ, ერთი ledger ჩანაწერი, ერთი `wallet_topups` რიგი**; არა-ადმინის შეზღუდვა (smoke); ხელმოუწერელი callback → 401 (smoke).
+- **არ განვასხვავე:** 06:45:33-ის და 09:09:27-ის განახლება callback-მა გააკეთა თუ დაბრუნების გვერდმა (`/api/billing/bog/orders/[id]` BOG-ის receipt-ს თავად კითხულობს). ორივე გზა BOG-თან ამოწმებს და ერთსა და იმავე ჩარიცხვის ფუნქციას იყენებს. Vercel-ის runtime ლოგები ჩემთვის დახურულია (403).
+- **NOT RUN:** რეალური refund; BOG გამოწერა / ავტომატური განახლება; არა-ადმინის შესული ანგარიშით checkout Production-ში (სატესტო ანგარიშს Production-ში არ ვქმნით).
 
 ## Refund / გამოწერები / ლიმიტები (Phase 7–8, ცვლილების გარეშე)
 
