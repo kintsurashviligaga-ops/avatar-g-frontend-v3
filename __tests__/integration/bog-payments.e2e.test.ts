@@ -208,6 +208,10 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
       BOG_CALLBACK_PUBLIC_KEY: PUBLIC_PEM,
       NEXT_PUBLIC_SITE_URL: 'https://e2e.myavatar.test',
       CRON_SECRET,
+      // Every test shares one database, so merchant-wide payments add up across them: E1…E14 run with room to spare,
+      // and the limit scenarios (E17–E19) set their own limits.
+      BOG_LIMIT_24H_GEL: '100000',
+      BOG_LIMIT_30D_GEL: '1000000',
     });
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -543,5 +547,153 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const p = await startCheckout(u, { kind: 'plan', tierId: 'enterprise-free' });
     expect(p.status).toBe(400);
     expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders')).toHaveLength(0);
+  });
+
+  // ── E15 ──
+  test('E15 lost callback behind 120 abandoned checkouts: the cron still reaches and credits it (least recently checked first)', async () => {
+    const owner = await newUser();
+    const old = new Date(Date.now() - 10 * 60_000).toISOString();
+    const abandoned = Array.from({ length: 120 }, (_, i) => {
+      const id = randomUUID();
+      const shop = `myavatar-topup-e15${String(i).padStart(12, '0')}`;
+      bank.orders.set(id, { id, external: shop, amount: 10, status: 'created', saveCard: false, parent: null, currency: 'GEL' });
+      return { shop_order_id: shop, bog_order_id: id, user_id: owner, amount_gel: 10, credits: 100, kind: 'topup', status: 'pending', created_at: old, updated_at: old };
+    });
+    expect((await svc.from('bog_orders').insert(abandoned)).error).toBeNull();
+    try {
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+      customerPays((await row(c.json.orderId)).bog_order_id); // paid; BOG's callback never arrives; the customer never returns
+      await svc.from('bog_orders').update({ created_at: new Date(Date.now() - 5 * 60_000).toISOString() }).eq('shop_order_id', c.json.orderId);
+      // Created after all 120, so ordering by age would re-check the same 50 abandoned ones on every tick, forever.
+      let ticks = 0;
+      while ((await balance(u)) === 0 && ticks < 4) {
+        await cronTick();
+        ticks += 1;
+      }
+      expect(await balance(u)).toBe(200);
+      expect(ticks).toBeGreaterThanOrEqual(2);
+      expect((await row(c.json.orderId)).status).toBe('completed');
+    } finally {
+      await svc.from('bog_orders').update({ status: 'expired' }).eq('user_id', owner);
+    }
+  });
+
+  // ── E16 ──
+  test('E16 callback, return page and cron settle the same paid order at the same moment → credited exactly once', async () => {
+    const u = await newUser();
+    const c = await startCheckout(u, { kind: 'topup', amountGel: 50 });
+    const bogId = (await row(c.json.orderId)).bog_order_id;
+    customerPays(bogId);
+    await svc.from('bog_orders').update({ created_at: new Date(Date.now() - 5 * 60_000).toISOString() }).eq('shop_order_id', c.json.orderId);
+    const receipt = receiptOf(bank.orders.get(bogId)!);
+    const results = await Promise.all([
+      webhook.POST(signedCallback(receipt)),
+      status(u, c.json.orderId),
+      cronTick(),
+      webhook.POST(signedCallback(receipt)),
+      status(u, c.json.orderId),
+    ]);
+    expect(results[0].status).toBe(200);
+    expect(await balance(u)).toBe(500);
+    const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
+    expect(ledger).toEqual([{ delta: 500 }]);
+    const { data: topups } = await svc.from('wallet_topups').select('ref').eq('ref', `bog:${c.json.orderId}`);
+    expect(topups).toHaveLength(1);
+  });
+
+  // ── E17 ──
+  test('E17 limits: merchant-wide counts every customer’s payments; per customer counts paid + still-payable checkouts; nothing over reaches BOG', async () => {
+    try {
+      // merchant scope: what everyone paid in the last 24 h (E1…E16) leaves 15 ₾ of room
+      const { data: paid } = await svc.from('bog_orders').select('amount_gel').in('status', ['completed', 'refund_requested', 'refunded_partially', 'refunded', 'amount_mismatch']);
+      const total = (paid as Array<{ amount_gel: string }>).reduce((sum, r) => sum + Number(r.amount_gel), 0);
+      process.env.BOG_LIMIT_24H_GEL = String(total + 15);
+      const stranger = await newUser();
+      const before = bank.calls.filter((x) => x === 'POST /ecommerce/orders').length;
+      const refused = await startCheckout(stranger, { kind: 'topup', amountGel: 20 });
+      expect(refused.status).toBe(429);
+      expect(refused.json).toMatchObject({ error_code: 'BOG_LIMIT_24H', availableAt: expect.any(String) });
+      expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders').length).toBe(before);
+      const { data: none } = await svc.from('bog_orders').select('shop_order_id').eq('user_id', stranger);
+      expect(none).toEqual([]);
+      expect((await startCheckout(stranger, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+
+      // customer scope, 60 ₾ / 24 h: 50 paid → 20 refused, 10 fits; that 10 is still payable on BOG's page → another 10 refused
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '60';
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'topup', amountGel: 50 });
+      const bogId = (await row(c.json.orderId)).bog_order_id;
+      customerPays(bogId);
+      await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)));
+      const creditedAt = (await row(c.json.orderId)).credited_at as string;
+      const over = await startCheckout(u, { kind: 'topup', amountGel: 20 });
+      expect(over.status).toBe(429);
+      expect(Date.parse(over.json.availableAt)).toBe(Date.parse(creditedAt) + 86_400_000);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(200);
+      expect((await startCheckout(u, { kind: 'topup', amountGel: 10 })).status).toBe(429);
+      // the 50 ₾ customer's spending does not touch another customer in this scope
+      expect((await startCheckout(await newUser(), { kind: 'topup', amountGel: 50 })).status).toBe(200);
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E18 ──
+  test('E18 four checkouts at once against 30 ₾ of room: at most one reaches BOG; the others never become orders', async () => {
+    try {
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '30';
+      const u = await newUser();
+      const before = bank.calls.filter((x) => x === 'POST /ecommerce/orders').length;
+      const results = await Promise.all(Array.from({ length: 4 }, () => startCheckout(u, { kind: 'topup', amountGel: 20 })));
+      const ok = results.filter((r) => r.status === 200);
+      expect(ok.length).toBeLessThanOrEqual(1);
+      expect(results.filter((r) => r.status !== 200).every((r) => r.status === 429 && r.json.error_code === 'BOG_LIMIT_24H')).toBe(true);
+      expect(bank.calls.filter((x) => x === 'POST /ecommerce/orders').length - before).toBe(ok.length);
+      const { data: rows } = await svc.from('bog_orders').select('status,reject_reason').eq('user_id', u);
+      expect((rows as Array<{ status: string }>).filter((r) => r.status === 'pending')).toHaveLength(ok.length);
+      for (const r of (rows as Array<{ status: string; reject_reason: string | null }>).filter((x) => x.status !== 'pending')) {
+        expect(r).toEqual({ status: 'init_failed', reject_reason: 'limit: customer 24h' });
+      }
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
+  });
+
+  // ── E19 ──
+  test('E19 a renewal with no room under the limits waits — not claimed, not charged, no strike — and goes through once there is room', async () => {
+    try {
+      process.env.BOG_LIMIT_SCOPE = 'customer';
+      process.env.BOG_LIMIT_24H_GEL = '100';
+      const u = await newUser();
+      const c = await startCheckout(u, { kind: 'plan', tierId: 'starter' });
+      const bogId = (await row(c.json.orderId)).bog_order_id;
+      customerPays(bogId);
+      await webhook.POST(signedCallback(receiptOf(bank.orders.get(bogId)!)));
+      expect(await balance(u)).toBe(230);
+      await svc.from('subscriptions').update({ current_period_end: new Date(Date.now() + 20 * 60_000).toISOString() }).eq('user_id', u);
+
+      const subscribes = () => bank.calls.filter((x) => x.endsWith('/subscribe')).length;
+      const before = subscribes();
+      const t = await cronTick(); // 54 paid today + 54 more > 100
+      expect(t.limitDeferred).toBeGreaterThanOrEqual(1);
+      expect(subscribes()).toBe(before);
+      const { data: renewals } = await svc.from('bog_orders').select('shop_order_id').eq('user_id', u).eq('kind', 'renewal');
+      expect(renewals).toEqual([]);
+      const { data: sub } = await svc.from('subscriptions').select('status,renewal_failures').eq('user_id', u).single();
+      expect(sub).toEqual({ status: 'active', renewal_failures: 0 });
+
+      process.env.BOG_LIMIT_24H_GEL = '200';
+      const t2 = await cronTick();
+      expect(t2.charged).toBe(1);
+      expect(subscribes()).toBe(before + 1);
+    } finally {
+      process.env.BOG_LIMIT_24H_GEL = '100000';
+      delete process.env.BOG_LIMIT_SCOPE;
+    }
   });
 });

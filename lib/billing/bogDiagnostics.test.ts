@@ -130,6 +130,7 @@ describe('bogReadiness — what is deployed, no secrets, no user ids', () => {
       checkoutMode: 'public',
       sandboxBlocked: false,
       limitsGel: { singleTransaction: 500, per24h: 1000, per30d: 5000 },
+      limitScope: 'merchant',
       paidGel: { last24h: 0, last30d: 0, window: 'rolling', capped: false },
       ordersByStatus: { init_failed: 2 },
     });

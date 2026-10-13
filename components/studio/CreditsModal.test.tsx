@@ -93,6 +93,15 @@ test('the same plan already live → a friendly toast, no navigation', async () 
   expect(mockNavigate).not.toHaveBeenCalled();
 });
 
+test('BOG’s payment limit reached → the customer is told so, no navigation', async () => {
+  routes['/api/billing/bog/checkout'] = () => ({ status: 429, body: { error_code: 'BOG_LIMIT_24H', availableAt: '2026-10-14T09:09:27.000Z' } });
+  renderModal();
+  await screen.findByText('Secure payment by Bank of Georgia (₾)');
+  fireEvent.click(screen.getByLabelText('50 ₾ — 500 credits'));
+  expect(await screen.findByText('Bank of Georgia’s payment limit has been reached — please try again later.')).toBeTruthy();
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
 test('a live plan: shown with its renewal date and card; its card is "current"; cancelling takes a confirmation', async () => {
   let deleted = false;
   routes['/api/billing/bog/subscription'] = (init) => {

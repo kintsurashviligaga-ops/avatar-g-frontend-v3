@@ -18,8 +18,8 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BOG_PUBLISHED_CALLBACK_KEYS, bogCheckoutMode, bogConfig, type BogCheckoutMode, type BogConfig } from './bogClient';
-import { BOG_LIMITS_GEL } from './bogCatalog';
-import { BOG_REFUND_STATUSES, bogCallbackUrl, bogSandboxBlocked, bogSchemaReady } from './bogSettlement';
+import { BOG_PAID_STATUSES, bogLimits, type BogLimitScope } from './bogLimits';
+import { bogCallbackUrl, bogSandboxBlocked, bogSchemaReady } from './bogSettlement';
 
 type Db = Pick<SupabaseClient, 'from'>;
 
@@ -47,20 +47,20 @@ export interface BogReadiness {
   checkoutMode: BogCheckoutMode;
   /** Sandbox credentials on a Vercel deployment (Production database): checkout is closed (bogSandboxBlocked). */
   sandboxBlocked: boolean;
-  /** BOG's limits for this merchant, and the paid ₾ counted against the 24 h / 30 day ones (see paidAgainstLimits). */
-  limitsGel: typeof BOG_LIMITS_GEL;
+  /** BOG's limits in force (lib/billing/bogLimits — checkout and renewals refuse above them), and the paid ₾ counted. */
+  limitsGel: { singleTransaction: number; per24h: number; per30d: number };
+  /** merchant: everyone's payments together; customer: each customer separately (BOG_LIMIT_SCOPE). */
+  limitScope: BogLimitScope;
   paidGel: { last24h: number; last30d: number; window: 'rolling'; capped: boolean };
   ordersByStatus: Record<string, number>;
   recentOrders: BogRecentOrder[];
 }
 
 /**
- * Statuses whose money reached the bank, counted against BOG's 24 h / 30 day limits. Deliberately on the high side:
- * whether a refund gives the limit back is not confirmed by the bank, and an amount_mismatch order was paid but not
- * credited — both count. The windows are rolling (the last 24 h / 30 days from now), timed by when the payment was
- * credited, else when the order was made; whether BOG counts calendar days is not confirmed either.
+ * Paid ₾ against BOG's 24 h / 30 day limits, merchant-wide (BOG_PAID_STATUSES). The windows are rolling (the last
+ * 24 h / 30 days from now), timed by when the payment was credited, else when the order was made; whether BOG counts
+ * calendar days is not confirmed.
  */
-const PAID_STATUSES = ['completed', ...BOG_REFUND_STATUSES, 'amount_mismatch'] as const;
 /** 5,000 ₾ / 30 days at our smallest order (5 ₾) is 1,000 orders; reading more could not change the verdict. */
 const PAID_ROWS_MAX = 1_000;
 const DAY_MS = 86_400_000;
@@ -71,7 +71,7 @@ async function paidAgainstLimits(db: Db, nowMs: number): Promise<BogReadiness['p
     const { data } = await db
       .from('bog_orders')
       .select('amount_gel,created_at,credited_at')
-      .in('status', [...PAID_STATUSES])
+      .in('status', [...BOG_PAID_STATUSES])
       // Orders settle within 48 h of being made (the cron expires the rest), so 31 days of orders covers 30 of payments.
       .gte('created_at', new Date(nowMs - 31 * DAY_MS).toISOString())
       .order('created_at', { ascending: false })
@@ -99,6 +99,7 @@ function callbackKeyKind(cfg: BogConfig): BogReadiness['callbackKey'] {
 
 export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env, nowMs: number = Date.now()): Promise<BogReadiness> {
   const cfg = bogConfig(env);
+  const limits = bogLimits(env);
   const schemaReady = await bogSchemaReady(db);
   let recentOrders: BogRecentOrder[] = [];
   const ordersByStatus: Record<string, number> = {};
@@ -137,7 +138,8 @@ export async function bogReadiness(db: Db, env: NodeJS.ProcessEnv = process.env,
     cronSecretSet: Boolean((env.CRON_SECRET || '').trim()),
     checkoutMode: bogCheckoutMode(env),
     sandboxBlocked: bogSandboxBlocked(cfg, env),
-    limitsGel: BOG_LIMITS_GEL,
+    limitsGel: { singleTransaction: limits.singleTransaction, per24h: limits.per24h, per30d: limits.per30d },
+    limitScope: limits.scope,
     paidGel,
     ordersByStatus,
     recentOrders,

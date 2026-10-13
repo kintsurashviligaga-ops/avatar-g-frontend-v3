@@ -13,13 +13,29 @@ jest.mock('../../../../../lib/supabase/auth', () => ({
   }),
 }));
 import { fakeSupabase, type FakeCall } from '../../../../../lib/billing/__testing__/fakeSupabase';
-const mockDb: { live: unknown[]; insertError: unknown; liveError: unknown } = { live: [], insertError: null, liveError: null };
+const mockDb: {
+  live: unknown[];
+  insertError: unknown;
+  liveError: unknown;
+  /** bog_orders rows the limit check reads: paid ones (any user), and this customer's open checkouts before/after our insert. */
+  paid: unknown[];
+  open: unknown[];
+  openAfterInsert: unknown[] | null;
+  ordersError: unknown;
+} = { live: [], insertError: null, liveError: null, paid: [], open: [], openAfterInsert: null, ordersError: null };
 let mockLog: FakeCall[] = [];
 jest.mock('../../../../../lib/supabase/server', () => ({
   createServiceRoleClient: () => {
     const { client, log } = fakeSupabase((c) => {
       if (c.table === 'subscriptions' && c.op === 'select') return { data: mockDb.live, error: mockDb.liveError };
       if (c.table === 'bog_orders' && c.op === 'insert') return { error: mockDb.insertError };
+      if (c.table === 'bog_orders' && c.op === 'select') {
+        if (mockDb.ordersError) return { error: mockDb.ordersError };
+        const openQuery = c.filters.some((f) => f[0] === 'eq' && f[1] === 'status' && f[2] === 'pending');
+        if (!openQuery) return { data: mockDb.paid };
+        const afterInsert = log.some((x) => x.table === 'bog_orders' && x.op === 'insert');
+        return { data: afterInsert && mockDb.openAfterInsert ? mockDb.openAfterInsert : mockDb.open };
+      }
       return {};
     });
     mockLog = log;
@@ -73,6 +89,14 @@ beforeEach(() => {
   mockDb.live = [];
   mockDb.insertError = null;
   mockDb.liveError = null;
+  mockDb.paid = [];
+  mockDb.open = [];
+  mockDb.openAfterInsert = null;
+  mockDb.ordersError = null;
+  delete process.env.BOG_LIMIT_24H_GEL;
+  delete process.env.BOG_LIMIT_30D_GEL;
+  delete process.env.BOG_LIMIT_PER_PAYMENT_GEL;
+  delete process.env.BOG_LIMIT_SCOPE;
   mockCreateOrder.mockResolvedValue({ orderId: 'bog-ord-1', redirectUrl: 'https://payment.bog.ge/?order_id=bog-ord-1' });
   mockSaveCard.mockResolvedValue(true);
   process.env.NEXT_PUBLIC_SITE_URL = 'https://myavatar.ge';
@@ -186,6 +210,79 @@ test('BOG\'s 500 ₾ single-transaction limit: 500 goes ahead, a tier priced abo
   expect(await res.json()).toMatchObject({ error_code: 'BOG_LIMIT', maxGel: 500 });
   expect(inserted()).toBeUndefined();
   expect(mockCreateOrder).not.toHaveBeenCalled();
+});
+
+describe("BOG's 24 h / 30 day limits (lib/billing/bogLimits)", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const H = 3600_000;
+
+  test('24 h full: 429 BOG_LIMIT_24H with when there is room again — no row, no BOG order, nobody’s turnover revealed', async () => {
+    const paidAt = ago(2 * H);
+    mockDb.paid = [{ amount_gel: 990, created_at: paidAt, credited_at: paidAt }];
+    const res = await POST(post({ kind: 'topup', amountGel: 20 }));
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body).toEqual({ error: expect.any(String), error_code: 'BOG_LIMIT_24H', availableAt: new Date(Date.parse(paidAt) + 24 * H).toISOString() });
+    expect(JSON.stringify(body)).not.toContain('990');
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    // 10 ₾ still fits (990 + 10 = 1000, the limit is "at most")
+    expect((await POST(post({ kind: 'topup', amountGel: 10 }))).status).toBe(200);
+  });
+
+  test('30 days full while every single day is under 1,000 ₾: 429 BOG_LIMIT_30D', async () => {
+    mockDb.paid = Array.from({ length: 10 }, (_, i) => ({ amount_gel: 499.5, created_at: ago((i + 1) * 2 * 24 * H), credited_at: null }));
+    const res = await POST(post({ kind: 'topup', amountGel: 10 }));
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error_code: 'BOG_LIMIT_30D', availableAt: expect.any(String) });
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  test('two checkouts racing past the first check: the re-check with our row counted refuses, the row is init_failed, BOG never hears of it', async () => {
+    const err = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockDb.paid = [{ amount_gel: 970, created_at: ago(H), credited_at: ago(H) }]; // 970 + 20 fits; 970 + 20 + 20 does not
+    mockDb.openAfterInsert = [
+      { amount_gel: 20, created_at: ago(1000) },
+      { amount_gel: 20, created_at: ago(500) },
+    ];
+    const res = await POST(post({ kind: 'topup', amountGel: 20 }));
+    expect(res.status).toBe(429);
+    expect(await res.json()).toMatchObject({ error_code: 'BOG_LIMIT_24H' });
+    expect(inserted()).toMatchObject({ status: 'pending', amount_gel: 20 });
+    expect(updatesTo()).toEqual([expect.objectContaining({ status: 'init_failed', reject_reason: 'limit: merchant 24h' })]);
+    const mark = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'update');
+    expect(mark?.filters).toEqual(expect.arrayContaining([['eq', 'status', 'pending']]));
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+    err.mockRestore();
+  });
+
+  test('the limits cannot be read → 503 BOG_LIMIT_UNKNOWN (fail closed), nothing created', async () => {
+    mockDb.ordersError = { message: 'timeout' };
+    const res = await POST(post({ kind: 'topup', amountGel: 10 }));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error_code: 'BOG_LIMIT_UNKNOWN' });
+    expect(inserted()).toBeUndefined();
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  test('BOG_LIMIT_24H_GEL raises the 24 h limit without a code change; BOG_LIMIT_SCOPE=customer counts only this customer', async () => {
+    mockDb.paid = [{ amount_gel: 990, created_at: ago(H), credited_at: ago(H) }];
+    process.env.BOG_LIMIT_24H_GEL = '2000';
+    expect((await POST(post({ kind: 'topup', amountGel: 50 }))).status).toBe(200);
+    delete process.env.BOG_LIMIT_24H_GEL;
+    process.env.BOG_LIMIT_SCOPE = 'customer';
+    mockLog = [];
+    await POST(post({ kind: 'topup', amountGel: 5 }));
+    const paidQ = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'select' && !c.filters.some((f) => f[0] === 'eq' && f[2] === 'pending'));
+    expect(paidQ?.filters).toEqual(expect.arrayContaining([['eq', 'user_id', 'user-1']]));
+  });
+
+  test('BOG_LIMIT_PER_PAYMENT_GEL lowers the per-payment limit; an unreadable value keeps the bank letter\'s 500', async () => {
+    process.env.BOG_LIMIT_PER_PAYMENT_GEL = '15';
+    expect(await (await POST(post({ kind: 'topup', amountGel: 20 }))).json()).toMatchObject({ error_code: 'BOG_LIMIT', maxGel: 15 });
+    process.env.BOG_LIMIT_PER_PAYMENT_GEL = '5OO';
+    expect((await POST(post({ kind: 'topup', amountGel: 500 }))).status).toBe(200);
+  });
 });
 
 describe('BOG_CHECKOUT_MODE', () => {

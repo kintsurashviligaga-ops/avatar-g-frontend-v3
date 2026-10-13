@@ -18,6 +18,7 @@ interface Readiness {
   cronSecretSet: boolean;
   checkoutMode?: 'off' | 'admin' | 'public';
   limitsGel?: { singleTransaction: number; per24h: number; per30d: number };
+  limitScope?: 'merchant' | 'customer';
   paidGel?: { last24h: number; last30d: number; capped?: boolean };
   sandboxBlocked?: boolean;
   ordersByStatus: Record<string, number>;
@@ -98,6 +99,11 @@ export default function BogReadiness({ ka }: { ka: boolean }) {
               {' '}
               <span className="text-gray-500">
                 ({ka ? 'მოძრავი ფანჯარა; ითვლის გადახდილ, დაბრუნებულ და შესამოწმებელ შეკვეთებს' : 'rolling windows; counts paid, refunded and under-review orders'}
+                {r.limitScope
+                  ? ka
+                    ? `; checkout და განახლება ზღვარს ზემოთ უარს ამბობს, ${r.limitScope === 'customer' ? 'თითო მომხმარებელზე' : 'მთელ მერჩანტზე'}`
+                    : `; checkout and renewals refuse above them, ${r.limitScope === 'customer' ? 'per customer' : 'merchant-wide'}`
+                  : ''}
                 {r.paidGel.capped ? (ka ? '; 1000+ შეკვეთა' : '; 1000+ orders') : ''})
               </span>
             </p>

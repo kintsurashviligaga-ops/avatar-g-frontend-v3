@@ -57,7 +57,7 @@ interface Copy {
   close: string; viewAllPlans: string; plansTitle: string; topupTitle: string; subscribe: string; perMonth: string;
   monthlyCredits: (n: number) => string; yourPlan: string; currentPlan: string; renewsOn: (d: string) => string;
   activeUntil: (d: string) => string; cancelRenewal: string; cancelConfirm: (d: string) => string; yesCancel: string;
-  keep: string; renewalCanceled: string; cancelError: string; alreadySubscribed: string; popular: string;
+  keep: string; renewalCanceled: string; cancelError: string; alreadySubscribed: string; popular: string; limitReached: string;
 }
 
 const COPY: Record<Lang, Copy> = {
@@ -76,6 +76,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `გეგმა აქტიური დარჩება ${d}-მდე და თანხა აღარ ჩამოგეჭრებათ. გავაუქმოთ განახლება?`,
     yesCancel: 'დიახ, გაუქმება', keep: 'დატოვება', renewalCanceled: 'ავტომატური განახლება გაუქმდა.',
     cancelError: 'გაუქმება ვერ მოხერხდა — სცადეთ თავიდან.', alreadySubscribed: 'ეს გეგმა უკვე აქტიურია.', popular: 'პოპულარული',
+    limitReached: 'საქართველოს ბანკის გადახდების ლიმიტი ამოიწურა — სცადეთ მოგვიანებით.',
   },
   en: {
     title: 'Credits', balance: 'Balance', freeVideos: 'Free videos', pay: 'Pay',
@@ -92,6 +93,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `Your plan stays active until ${d} and you won’t be charged again. Cancel renewal?`,
     yesCancel: 'Yes, cancel', keep: 'Keep plan', renewalCanceled: 'Auto-renewal cancelled.',
     cancelError: 'Could not cancel — please try again.', alreadySubscribed: 'This plan is already active.', popular: 'Popular',
+    limitReached: 'Bank of Georgia’s payment limit has been reached — please try again later.',
   },
   ru: {
     title: 'Кредиты', balance: 'Баланс', freeVideos: 'Бесплатные видео', pay: 'Оплатить',
@@ -108,6 +110,7 @@ const COPY: Record<Lang, Copy> = {
     cancelConfirm: (d) => `Тариф останется активным до ${d}, повторных списаний не будет. Отменить продление?`,
     yesCancel: 'Да, отменить', keep: 'Оставить', renewalCanceled: 'Автопродление отменено.',
     cancelError: 'Не удалось отменить — попробуйте снова.', alreadySubscribed: 'Этот тариф уже активен.', popular: 'Популярный',
+    limitReached: 'Достигнут лимит платежей Bank of Georgia — попробуйте позже.',
   },
 };
 
@@ -255,7 +258,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         if (r.ok) { navigateToPayment(r.redirectUrl); return; } // keep the spinner through the navigation
         setBusyId(null);
         if (r.reason === 'auth') { onClose(); onSignIn(); return; }
-        showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : t.payError);
+        showToast(r.reason === 'already_subscribed' ? t.alreadySubscribed : r.reason === 'limit' ? t.limitReached : t.payError);
         return;
       }
       if (await legacyCardCheckout('/api/billing/tier-checkout', { tierId: pkg.id })) return;
@@ -265,7 +268,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       setBusyId(null);
       showToast(t.payError);
     }
-  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.alreadySubscribed, t.payError, legacyCardCheckout]);
+  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.alreadySubscribed, t.limitReached, t.payError, legacyCardCheckout]);
 
   const startTopup = useCallback(async (amountGel: number) => {
     if (busyId || noRail) return;
@@ -277,7 +280,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
         if (r.ok) { navigateToPayment(r.redirectUrl); return; }
         setBusyId(null);
         if (r.reason === 'auth') { onClose(); onSignIn(); return; }
-        showToast(t.payError);
+        showToast(r.reason === 'limit' ? t.limitReached : t.payError);
         return;
       }
       if (await legacyCardCheckout('/api/billing/wallet-topup', { amountGel })) return;
@@ -287,7 +290,7 @@ export function CreditsModal({ open, locale, balanceGel, authed, onClose, onSign
       setBusyId(null);
       showToast(t.payError);
     }
-  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.payError, legacyCardCheckout]);
+  }, [busyId, noRail, bog, lang, onClose, onSignIn, showToast, t.limitReached, t.payError, legacyCardCheckout]);
 
   const doCancelRenewal = useCallback(async () => {
     if (canceling) return;

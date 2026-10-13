@@ -37,6 +37,12 @@ jest.mock('../../../../lib/billing/bogSettlement', () => ({
       ...(a as Parameters<typeof import('../../../../lib/billing/bogSettlement').bogSandboxBlocked>),
     ),
 }));
+const mockLimits = jest.fn();
+let mockScope: 'merchant' | 'customer' = 'merchant';
+jest.mock('../../../../lib/billing/bogLimits', () => ({
+  bogLimits: () => ({ singleTransaction: 500, per24h: 1000, per30d: 5000, scope: mockScope }),
+  checkBogLimits: (...a: unknown[]) => mockLimits(...a),
+}));
 const mockClaim = jest.fn();
 const mockFail = jest.fn();
 jest.mock('../../../../lib/billing/wallet-ledger', () => ({
@@ -61,6 +67,8 @@ beforeEach(() => {
   mockDb.pending = [];
   mockDb.due = [];
   mockDb.expired = [];
+  mockScope = 'merchant';
+  mockLimits.mockResolvedValue({ ok: true, used24hGel: 0, used30dGel: 0 });
 });
 afterEach(() => {
   process.env = { ...ENV };
@@ -95,6 +103,48 @@ test('every pending order with a BOG id is reconciled (lost callbacks get credit
   expect(body).toMatchObject({ ok: true, reconciled: 2, completed: 1, rejected: 1 });
   const q = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'select');
   expect(q?.filters).toEqual(expect.arrayContaining([['eq', 'status', 'pending'], ['not', 'bog_order_id', 'is', null]]));
+});
+
+test('least recently checked first; a still-pending order goes to the back of the queue (abandoned checkouts cannot starve a paid one)', async () => {
+  mockDb.pending = [{ shop_order_id: 'old-abandoned' }, { shop_order_id: 'paid-but-callback-lost' }];
+  mockReconcile.mockResolvedValueOnce({ status: 'pending' }).mockResolvedValueOnce({ status: 'completed' });
+  await tick();
+  const q = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'select');
+  expect(q?.filters).toEqual(expect.arrayContaining([['order', 'updated_at', { ascending: true }], ['limit', 50]]));
+  const touched = mockLog.filter((c) => c.table === 'bog_orders' && c.op === 'update' && Object.keys(c.args[0] as object).join() === 'updated_at');
+  expect(touched).toHaveLength(1);
+  expect(touched[0]?.filters).toEqual([['eq', 'shop_order_id', 'old-abandoned'], ['eq', 'status', 'pending']]);
+});
+
+test('one order failing (a throw) does not stop the rest of the batch', async () => {
+  mockDb.pending = [{ shop_order_id: 'a' }, { shop_order_id: 'b' }];
+  mockReconcile.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ status: 'completed' });
+  const body = await (await tick()).json();
+  expect(body).toMatchObject({ ok: true, reconciled: 2, completed: 1, errors: 1 });
+});
+
+test('a renewal BOG’s limits have no room for is not claimed or charged — it waits (three limit declines would end a paying plan)', async () => {
+  mockDb.due = [{ id: 'sub-1', tier: 'creator', user_id: 'u1', amount_gel: 108 }];
+  mockLimits.mockResolvedValueOnce({ ok: false, window: '24h', limitGel: 1000, usedGel: 950, availableAt: null });
+  const body = await (await tick()).json();
+  expect(body).toMatchObject({ limitDeferred: 1, charged: 0 });
+  expect(mockLimits).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ userId: 'u1', amountGel: 108 }));
+  expect(mockClaim).not.toHaveBeenCalled();
+  expect(mockCharge).not.toHaveBeenCalled();
+  expect(mockFail).not.toHaveBeenCalled();
+});
+
+test('merchant scope: renewals charged earlier in the same tick count toward the next one’s limit check', async () => {
+  mockDb.due = [
+    { id: 'sub-1', tier: 'starter', user_id: 'u1', amount_gel: 54 },
+    { id: 'sub-2', tier: 'starter', user_id: 'u2', amount_gel: 54 },
+  ];
+  mockClaim
+    .mockResolvedValueOnce({ claimed: true, shopOrderId: 'r1', parentOrderId: 'p1', bogOrderId: null, status: 'pending', reason: null })
+    .mockResolvedValueOnce({ claimed: true, shopOrderId: 'r2', parentOrderId: 'p2', bogOrderId: null, status: 'pending', reason: null });
+  mockCharge.mockResolvedValue({ ok: true, orderId: 'bog-r' });
+  await tick();
+  expect(mockLimits.mock.calls.map((c) => (c[1] as { amountGel: number }).amountGel)).toEqual([54, 108]);
 });
 
 test('a due renewal: claimed, charged on the saved card with OUR id, BOG’s id bound to the order', async () => {
