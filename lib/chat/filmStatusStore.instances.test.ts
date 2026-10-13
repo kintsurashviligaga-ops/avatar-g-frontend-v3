@@ -12,7 +12,8 @@
  *
  * Two module registries stand in for the two functions; fetch rejects the way an unresolvable host does. Declared with
  * `it.failing` until the marker has a durable home (Upstash restored, or a database fallback): the day it does, these turn
- * red and `.failing` comes off.
+ * red and `.failing` comes off. The fix GG chose (2026-10-13 15:26Z) is a new Upstash store from Vercel → Storage, whose
+ * KV_REST_API_* pair the code now prefers (lib/platform/upstashEnv); the passing test below pins that path.
  */
 jest.mock('server-only', () => ({}));
 
@@ -51,6 +52,38 @@ describe('defect 44: the film payment marker across two serverless functions', (
     const assemble = freshInstance();
     await chat.recordFilmPaid(TOKEN, { uid: PAYER, credits: 40, ref: 'film-start:1' });
     expect(assemble.isFilmPaidUpstream(null, await assemble.getFilmPaid(TOKEN), PAYER)).toBe(true);
+  });
+
+  it('Upstash replaced through Vercel → Storage: the new KV_REST_API pair answers and the dead pair is ignored', async () => {
+    // Production after the owner's 2026-10-13 choice: the dead hand-entered pair is still set, the Marketplace store adds
+    // KV_REST_API_URL/TOKEN. One shared fake database stands in for the store both functions reach (lib/platform/upstashEnv).
+    process.env.UPSTASH_REDIS_REST_URL = 'https://unresolvable-upstash-host.invalid';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'not-a-real-token';
+    process.env.KV_REST_API_URL = 'https://new-store.upstash.test';
+    process.env.KV_REST_API_TOKEN = 'kv-test-token';
+    const db = new Map<string, string>();
+    const hosts: string[] = [];
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      hosts.push(new URL(url).host);
+      if (!url.startsWith('https://new-store.upstash.test')) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } });
+      // The client batches commands (POST /pipeline, an array of commands, an array of { result }) and asks for base64.
+      const base64 = new Headers(init?.headers).get('upstash-encoding') === 'base64';
+      const exec = ([cmd, key, value]: string[]) => {
+        let result: string | null = 'OK';
+        if (cmd.toLowerCase() === 'set') db.set(key, String(value));
+        else if (cmd.toLowerCase() === 'get') result = db.get(key) ?? null;
+        return { result: base64 && result !== null ? Buffer.from(result).toString('base64') : result };
+      };
+      const sent = JSON.parse(String(init?.body)) as string[] | string[][];
+      const body = Array.isArray(sent[0]) ? (sent as string[][]).map(exec) : exec(sent as string[]);
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    const chat = freshInstance();
+    const assemble = freshInstance();
+    await chat.recordFilmPaid(TOKEN, { uid: PAYER, credits: 40, ref: 'film-start:1' });
+    expect(assemble.isFilmPaidUpstream(null, await assemble.getFilmPaid(TOKEN), PAYER)).toBe(true);
+    expect(new Set(hosts)).toEqual(new Set(['new-store.upstash.test']));
   });
 
   it.failing('no Redis configured at all — assemble must still see the payment', async () => {
