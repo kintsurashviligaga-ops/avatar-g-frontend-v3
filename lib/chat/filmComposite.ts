@@ -45,6 +45,7 @@ import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid } from './filmStatusStore';
+import { recordFilmWaiver, filmChargeRefFor } from './filmWaiverStore';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
 import { enrichSfxBrief } from './sfxTriggers';
@@ -876,7 +877,13 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // platform ~$5.76 of Veo and the customer 20 credits. `filmCharged` is what is currently held against this film (net of any
   // dispatch-time refund); the ref makes every debit/refund of it idempotent.
   let filmCharged = 0;
-  const filmChargeRef = `${compositeId}:charge`;
+  // ⚠️ THE CHARGE'S REF IS DERIVED FROM THE FILM'S TOKEN ID, not from compositeId: /api/video/assemble (another function)
+  // knows only the token, and with Redis unreachable the ledger itself is the proof it reads (lib/chat/filmWaiverStore).
+  // Hoisted: deriveFilmTokenId() must hash the SAME createdAt the film token carries, or /assemble would look up a
+  // different record and bill a film that was already paid for.
+  const filmCreatedAt = Date.now();
+  const filmTokenId = deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed });
+  const filmChargeRef = filmChargeRefFor(filmTokenId);
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
     // gate entirely — otherwise a 0.00 ₾ wallet would block the very first free
@@ -1365,9 +1372,6 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // PHASE 43 §1 — Mint the Union Poll token. Every clip taskRef + the audio
   // workId rides in ONE predictionId; `pollFilmTask` decodes it and polls the
   // full matrix in lock-step instead of tracking a single clip.
-  // Hoisted: deriveFilmTokenId() must hash the SAME createdAt the token carries, or /assemble would
-  // look up a different record and bill a free film.
-  const filmCreatedAt = Date.now();
   const filmToken = encodeFilmRef({
     sessionId: input.sessionId,
     createdAt: filmCreatedAt,
@@ -1391,18 +1395,15 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // — never into `filmToken`, which the client holds and could forge into unlimited free assembles.
   // Owner-bound and single-use on the assemble side. Fail-open: a store miss just bills normally.
   if (freeFilmConsumed && input.userId) {
-    await recordFreeFilmWaiver(
-      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
-      input.userId,
-    ).catch(() => {});
+    await recordFreeFilmWaiver(filmTokenId, input.userId).catch(() => {});
+    // …and in the database, which every instance shares (Redis may be unreachable: defect 44). A missing table is a no-op.
+    await recordFilmWaiver(filmTokenId, input.userId, { kind: 'free' }).catch(() => false);
   }
   // The same for a PAID film: the whole price is already taken, so the stitch must not charge it again (its own key — see
   // recordFilmPaid). Fail-open: a store miss makes /assemble bill the stitch by the film's length, the safe direction.
   if (filmCharged > 0 && input.userId) {
-    await recordFilmPaid(
-      deriveFilmTokenId({ sessionId: input.sessionId, createdAt: filmCreatedAt, seed: plan.shared.seed }),
-      { uid: input.userId, credits: filmCharged, ref: filmChargeRef },
-    ).catch(() => {});
+    await recordFilmPaid(filmTokenId, { uid: input.userId, credits: filmCharged, ref: filmChargeRef }).catch(() => {});
+    await recordFilmWaiver(filmTokenId, input.userId, { kind: 'paid', credits: filmCharged, ref: filmChargeRef }).catch(() => false);
   }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so

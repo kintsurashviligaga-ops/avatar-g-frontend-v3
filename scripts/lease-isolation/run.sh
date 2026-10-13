@@ -59,8 +59,6 @@ sleep 2
 LEDGER_PHASE=after node node_modules/.bin/jest lib/orchestrator/ledgerOnce.pg.test.ts --no-watchman --ci --forceExit
 # …and the lease queue's crash recovery and refunds still hold on the hardened functions.
 node node_modules/.bin/jest lib/agent/media/leaseIsolation.pg.test.ts --no-watchman --ci --forceExit
-# Multi-step runs end to end on the same database, every step on the real bundled ffmpeg (PART 7: I, E, F, G, H).
-node node_modules/.bin/jest lib/agent/run/runIsolation.pg.test.ts --no-watchman --ci --forceExit
 # The delivery outbox's live store: its JSON-path compare-and-set and due list on the same database (Omnichannel G).
 node node_modules/.bin/jest lib/notifications/outboxIsolation.pg.test.ts --no-watchman --ci --forceExit
 # R2: the duplicate guard in the database, first on a database without it (no table: it fails open, as before), then with
@@ -70,3 +68,15 @@ psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/mi
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 IDEM_PHASE=after node node_modules/.bin/jest lib/orchestrator/idempotencyStore.pg.test.ts --no-watchman --ci --forceExit
+
+# Defect 44: the film's payment waiver. First on Production's database as it is (no waiver table: the ledger's own debit proves
+# a paid film, request_idempotency makes the spend single-use), then with the proposal applied
+# (docs/handoffs/video-core/proposals/20261014a_film_payment_waivers.sql — NOT in Production; GG's word is needed for that).
+WAIVER_PHASE=before node node_modules/.bin/jest lib/chat/filmWaiver.pg.test.ts --no-watchman --ci --forceExit
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_payment_waivers.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
+sleep 2
+WAIVER_PHASE=after node node_modules/.bin/jest lib/chat/filmWaiver.pg.test.ts --no-watchman --ci --forceExit
+
+# Multi-step runs end to end on the same database, every step on the real bundled ffmpeg (PART 7: I, E, F, G, H).
+node node_modules/.bin/jest lib/agent/run/runIsolation.pg.test.ts --no-watchman --ci --forceExit

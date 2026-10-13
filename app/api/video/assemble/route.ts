@@ -44,6 +44,7 @@ import { composeElevenLabsMusic, hasElevenLabsMusicKey, buildElevenMusicPrompt }
 import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
+import { consumeFilmWaiver, restoreFilmWaiver } from '@/lib/chat/filmWaiverStore';
 import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
@@ -383,6 +384,7 @@ async function assembleImpl(req: NextRequest) {
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
   const billedTokenForCheck = filmTokenId ?? billingToken;
   let filmAlreadyBilled = false;
+  let waiverSpentDurably = false;
   if (billedTokenForCheck && uid) {
     const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
     // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
@@ -392,8 +394,14 @@ async function assembleImpl(req: NextRequest) {
     //     the stitch — for a film the product told the user is free.
     //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
     // All markers live in the server-side store, never in the client-held `film:` token.
-    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid);
-    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it.
+    // ⚠️ THE DURABLE WAIVER DECIDES FIRST (lib/chat/filmWaiverStore: the database table, or the ledger's own debit where the table
+    // is not applied yet). Redis is where the markers used to live alone, and with it unreachable a paid film was charged twice
+    // (defect 44). One UPDATE hands the waiver to exactly one of N concurrent assembles.
+    const durable = await consumeFilmWaiver(billedTokenForCheck, uid);
+    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid, durable);
+    waiverSpentDurably = durable === 'paid' || durable === 'free';
+    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it — in Redis too, so a store that
+    // answers later cannot waive the same film again.
     if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
   }
   if (filmTokenId) await recordFilmAssembling(filmTokenId);
@@ -687,6 +695,7 @@ async function assembleImpl(req: NextRequest) {
       // delivered nothing, so it goes back — exactly as the multi-clip saga's compensate hands it back. Without this a
       // retry of the same film was charged the stitch for a film the product had told the user was paid (or free).
       if (filmAlreadyBilled && billedTokenForCheck) await restoreFilmBilling(billedTokenForCheck).catch(() => {});
+      if (waiverSpentDurably && billedTokenForCheck && uid) await restoreFilmWaiver(billedTokenForCheck, uid).catch(() => {});
       // A failed 6s render must never strand the user's credits / free slot — roll the reservation back.
       if (!scSkipBilling && uid) {
         if (scLock) await releaseTokenLock(scLock).catch(() => {});
@@ -852,6 +861,7 @@ async function assembleImpl(req: NextRequest) {
         if (filmAlreadyBilled && billedTokenForCheck) {
           await restoreFilmBilling(billedTokenForCheck).catch(() => {});
         }
+        if (waiverSpentDurably && billedTokenForCheck && uid) await restoreFilmWaiver(billedTokenForCheck, uid).catch(() => {});
         if (skipBilling || uid === null) return; // anon / founder reserved nothing to roll back
         const lock = ctx.bag.lock as TokenLock | null | undefined;
         if (lock) await releaseTokenLock(lock);

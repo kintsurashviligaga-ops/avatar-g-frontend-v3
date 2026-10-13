@@ -20,7 +20,10 @@ test('the fallback stitch is the film quote for the seconds actually handed over
 
 test('"already paid" is decided by the shared predicate over the status record AND the payment record', () => {
   expect(code).toMatch(/Promise\.all\(\[getFilmStatus\(billedTokenForCheck\), getFilmPaid\(billedTokenForCheck\)\]\)/);
-  expect(code).toMatch(/filmAlreadyBilled = isFilmPaidUpstream\(prior, paid, uid\)/);
+  // …and the DURABLE waiver (database / ledger) is consulted first, handed to the predicate, and handed back on a failed stitch.
+  expect(code).toMatch(/const durable = await consumeFilmWaiver\(billedTokenForCheck, uid\)/);
+  expect(code).toMatch(/filmAlreadyBilled = isFilmPaidUpstream\(prior, paid, uid, durable\)/);
+  expect((code.match(/restoreFilmWaiver\(billedTokenForCheck, uid\)/g) ?? []).length).toBe(2);
 });
 
 test('every charge and refund in the route uses that one amount', () => {
