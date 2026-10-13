@@ -113,6 +113,28 @@ export function bogFullyConfigured(env: NodeJS.ProcessEnv = process.env): boolea
   return bogConfig(env) !== null;
 }
 
+/**
+ * Who may START a BOG checkout on this deployment (BOG_CHECKOUT_MODE). Settling stays on in every mode: callbacks,
+ * the return page and the cron (pending orders, renewals of plans already sold) never look at it.
+ *
+ *   unset / ''   'public'  everyone signed in — what Production did before the switch existed
+ *   'public'     'public'
+ *   'admin'      admins only: the owner's controlled live test while customers see no BOG button
+ *   'off'        nobody: no new BOG orders
+ *   anything else → 'off'. A typo must close the rail, never open it.
+ *
+ * A Vercel Preview or Development deployment is always 'off': it writes to the Production database, so the live
+ * pair must never take a payment there, whatever its env scope holds (VERCEL_ENV unset = local / CI, unaffected).
+ */
+export type BogCheckoutMode = 'off' | 'admin' | 'public';
+export function bogCheckoutMode(env: NodeJS.ProcessEnv = process.env): BogCheckoutMode {
+  const vercelEnv = (env.VERCEL_ENV || '').trim().toLowerCase();
+  if (vercelEnv && vercelEnv !== 'production') return 'off';
+  const raw = (env.BOG_CHECKOUT_MODE || '').trim().toLowerCase();
+  if (!raw || raw === 'public') return 'public';
+  return raw === 'admin' ? 'admin' : 'off';
+}
+
 export interface BogFetchDeps {
   readonly fetch: typeof fetch;
   /** Per-request timeout (ms). */
@@ -386,8 +408,13 @@ export async function deleteSavedCard(cfg: BogConfig, deps: BogFetchDeps, parent
 
 // ─── Receipts + callbacks ────────────────────────────────────────────────────────────────────────────────────
 
-/** Our reading of an order's state. */
-export type BogOrderState = 'completed' | 'rejected' | 'pending' | 'refunded' | 'other';
+/**
+ * Our reading of an order's state. BOG's three refund statuses stay apart (docs, "order_status.key"):
+ *   refund_requested    a refund was asked for and is not done yet — the money has not moved back
+ *   refunded_partially  part of the payment went back (purchase_units.refund_amount says how much)
+ *   refunded            all of it went back
+ */
+export type BogOrderState = 'completed' | 'rejected' | 'pending' | 'refund_requested' | 'refunded_partially' | 'refunded' | 'other';
 
 export interface BogReceipt {
   readonly orderId: string;
@@ -397,6 +424,8 @@ export interface BogReceipt {
   readonly state: BogOrderState;
   readonly requestAmount: number | null;
   readonly transferAmount: number | null;
+  /** GEL already returned to the payer (purchase_units.refund_amount); null when BOG does not say. */
+  readonly refundAmount: number | null;
   readonly currency: string | null;
   /** card | google_pay | apple_pay | bog_p2p | bog_loyalty | bnpl | bog_loan … */
   readonly transferMethod: string | null;
@@ -421,9 +450,9 @@ const num = (v: unknown): number | null => {
 const STATE_BY_KEY: Readonly<Record<string, BogOrderState>> = {
   completed: 'completed',
   rejected: 'rejected',
-  refund_requested: 'refunded',
+  refund_requested: 'refund_requested',
+  refunded_partially: 'refunded_partially',
   refunded: 'refunded',
-  refunded_partially: 'refunded',
   created: 'pending',
   processing: 'pending',
   auth_requested: 'pending',
@@ -449,6 +478,7 @@ export function parseBogReceipt(json: unknown): BogReceipt | null {
     state: statusKey ? (STATE_BY_KEY[statusKey] ?? 'other') : 'other',
     requestAmount: num(pu.request_amount),
     transferAmount: num(pu.transfer_amount),
+    refundAmount: num(pu.refund_amount),
     currency: str(pu.currency_code ?? pu.currency)?.toUpperCase() ?? null,
     transferMethod,
     savedCardType: str(pd.saved_card_type)?.toLowerCase() ?? null,

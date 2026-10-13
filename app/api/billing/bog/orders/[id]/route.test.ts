@@ -79,6 +79,14 @@ test('statuses are translated for the customer: expired/rejected → failed, amo
   expect((await (await get(ID)).json()).status).toBe('review');
 });
 
+test('BOG’s three refund statuses reach the customer apart: requested, part refunded, refunded', async () => {
+  for (const status of ['refund_requested', 'refunded_partially', 'refunded']) {
+    mockLoad.mockResolvedValueOnce(row({ status }));
+    expect((await (await get(ID)).json()).status).toBe(status);
+  }
+  expect(mockReconcile).not.toHaveBeenCalled();
+});
+
 test('a paid plan reports its tier, period end and whether it renews', async () => {
   mockLoad.mockResolvedValueOnce(row({ shop_order_id: 'myavatar-plan-0123456789abcdef', kind: 'subscription', status: 'completed', tier: 'creator', credits: 525, subscription_id: 'sub-1', period_end: '2026-11-02T10:00:00Z' }));
   mockSub = { cancel_at_period_end: false, bog_parent_order_id: 'bog-1' };

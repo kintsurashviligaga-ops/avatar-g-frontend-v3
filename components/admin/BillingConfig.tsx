@@ -7,6 +7,7 @@
  * /api/admin/credits/adjust routes; this component only renders + calls them.
  */
 import { useCallback, useEffect, useState } from 'react';
+import BogReadiness from './BogReadiness';
 
 interface Tier { gelAmount: number; creditsAmount: number; label: string | null; isActive: boolean }
 interface TierConfig { configured: Tier[]; effective: Tier[]; usingDefaults: boolean; defaults: Tier[] }
@@ -89,6 +90,8 @@ export default function BillingConfig({ ka }: { ka: boolean }) {
   return (
     <div className="space-y-5">
       {err && <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-[12px] text-rose-300">{err}</p>}
+
+      <BogReadiness ka={ka} />
 
       {/* ── Refill tiers ── */}
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">

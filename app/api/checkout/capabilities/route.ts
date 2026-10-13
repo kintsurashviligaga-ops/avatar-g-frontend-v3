@@ -10,14 +10,19 @@
  *            whole condition — there is no "creds set, key missing → money in, never credited" state any
  *            more — plus the billing migration being present (bogSchemaReady), so credentials set before
  *            20261002a is applied never show a button that cannot record an order. Checkout's 503 backstops.
+ *            BOG_CHECKOUT_MODE narrows it: 'off' → false for everyone, 'admin' → true only for an admin's session
+ *            (the owner's controlled live test), unset/'public' → everyone (lib/billing/bogClient bogCheckoutMode).
+ *            Sandbox credentials never open it on a Vercel deployment: those write to the Production database
+ *            (lib/billing/bogSettlement bogSandboxBlocked).
  *
  * Public + fail-open: never throws, defaults every rail to false on any error so the UI degrades to
  * "no rail available" rather than showing a button that can't complete.
  */
 import { NextResponse } from 'next/server';
 import { getBillingProvider } from '@/lib/monetization/provider';
-import { bogFullyConfigured } from '@/lib/billing/bogClient';
-import { bogSchemaReady } from '@/lib/billing/bogSettlement';
+import { isAdmin } from '@/lib/auth/adminGuard';
+import { bogCheckoutMode, bogConfig } from '@/lib/billing/bogClient';
+import { bogSandboxBlocked, bogSchemaReady } from '@/lib/billing/bogSettlement';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -32,8 +37,16 @@ export async function GET() {
     /* fail-open: rail stays false */
   }
   try {
-    // Creds AND the billing migration (20261002a) — never offer a rail whose checkout cannot record the order.
-    bog = bogFullyConfigured() && (await bogSchemaReady(createServiceRoleClient()));
+    // Creds AND the billing migration (20261002a) — never offer a rail whose checkout cannot record the order —
+    // AND this viewer may start a BOG checkout (BOG_CHECKOUT_MODE).
+    const mode = bogCheckoutMode();
+    const cfg = bogConfig();
+    bog =
+      mode !== 'off' &&
+      cfg !== null &&
+      !bogSandboxBlocked(cfg) &&
+      (mode === 'public' || (await isAdmin())) &&
+      (await bogSchemaReady(createServiceRoleClient()));
   } catch {
     /* fail-open: rail stays false */
   }

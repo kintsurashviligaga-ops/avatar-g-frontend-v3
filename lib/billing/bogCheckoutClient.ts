@@ -76,7 +76,7 @@ export async function cancelBogRenewal(f: typeof fetch = fetch): Promise<boolean
   }
 }
 
-export type BogOrderPublicStatus = 'completed' | 'pending' | 'failed' | 'refunded' | 'review';
+export type BogOrderPublicStatus = 'completed' | 'pending' | 'failed' | 'refund_requested' | 'refunded_partially' | 'refunded' | 'review';
 
 export interface BogOrderStatus {
   orderId: string;
@@ -203,6 +203,24 @@ export function paymentReturnMessage(status: BogOrderStatus | null, pay: string 
   }
   if (s === 'refunded') {
     return { ok: true, reopenPricing: false, text: { ka: 'ეს გადახდა დაბრუნებულია.', en: 'This payment was refunded.', ru: 'Этот платёж возвращён.' }[l] };
+  }
+  if (s === 'refunded_partially') {
+    return {
+      ok: true,
+      reopenPricing: false,
+      text: { ka: 'ამ გადახდის ნაწილი დაბრუნებულია.', en: 'Part of this payment was refunded.', ru: 'Часть этого платежа возвращена.' }[l],
+    };
+  }
+  if (s === 'refund_requested') {
+    return {
+      ok: true,
+      reopenPricing: false,
+      text: {
+        ka: 'ამ გადახდის დაბრუნება მოთხოვნილია და მუშავდება.',
+        en: 'A refund of this payment was requested and is being processed.',
+        ru: 'Возврат этого платежа запрошен и обрабатывается.',
+      }[l],
+    };
   }
   return {
     ok: true,
