@@ -54,9 +54,18 @@ export function frameOf(url: string, size: number): Uint8Array {
  */
 function masterSourceAt(store: MemoryLeaseStore, t: number, omit: readonly number[]): string | null {
   // The montage row being rendered (a run row or another executor's job in the same store holds no montage request).
-  type Job = { request?: { shots?: Array<{ url: string; source: number; startSec: number; endSec: number }> } } | undefined;
-  const row = [...store.rows.values()].find((r) => r.status === 'processing' && Array.isArray((r.params._job as Job)?.request?.shots));
-  const shots = (row?.params._job as Job)?.request?.shots ?? [];
+  const row = [...store.rows.values()].find((r) => r.status === 'processing' && Array.isArray((r.params._job as FakeJob)?.request?.shots));
+  return shotSourceAt((row?.params._job as FakeJob)?.request?.shots ?? [], t, omit);
+}
+
+type FakeShot = { url: string; source: number; startSec: number; endSec: number };
+type FakeJob = { request?: { shots?: FakeShot[] } } | undefined;
+
+/**
+ * The source a montage's shot list shows at `t` (the walk masterSourceAt does on the in-memory store). Exported for a
+ * suite that keeps its jobs in a REAL database (leaseIsolation.pg): its fake master is sampled from that row instead.
+ */
+export function shotSourceAt(shots: readonly FakeShot[], t: number, omit: readonly number[] = []): string | null {
   let at = 0;
   for (let i = 0; i < shots.length; i += 1) {
     const s = shots[i]!;

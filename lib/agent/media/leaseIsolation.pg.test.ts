@@ -43,7 +43,7 @@ import { GAVE_UP, HOLD_ABANDONED, sweepMontageJobs, workMontageJob } from './mon
 import { enqueueAudioJob, quoteAudioExtract } from './audioExtract';
 import { AUDIO_GAVE_UP, sweepAudioJobs, workAudioJob } from './audioWorker';
 import { signQuote } from './quoteToken';
-import { FILES, MASTER_URL, fake, type Fake } from './testing/fakeMontageDeps';
+import { FILES, MASTER_URL, fake, frameOf, shotSourceAt, type Fake } from './testing/fakeMontageDeps';
 import { AUDIO_URL, LINK, fakeAudio, type FakeAudio } from './testing/fakeAudioDeps';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 
@@ -59,6 +59,16 @@ function liveQueue(): Fake {
   f.deps.store = live.store;
   f.deps.billing = live.billing;
   f.deps.newId = () => randomUUID();
+  // Per-clip QC samples the master (5d32689). The fake reads the montage being rendered from its in-memory store, which
+  // this suite replaced with the live one — so the master is sampled from the processing row in the REAL database.
+  const grab = f.deps.grabFrames;
+  f.deps.grabFrames = async (url, timesSec, o) => {
+    if (url !== MASTER_URL) return grab(url, timesSec, o);
+    const { data } = await db.from('generation_jobs').select('params').eq('status', 'processing');
+    type Row = { params?: { _job?: { request?: { shots?: Array<{ url: string; source: number; startSec: number; endSec: number }> } } } };
+    const shots = ((data ?? []) as Row[]).map((r) => r.params?._job?.request?.shots).find(Array.isArray) ?? [];
+    return timesSec.map((t) => { const src = shotSourceAt(shots, t); return src ? frameOf(src, o.size) : null; });
+  };
   return f;
 }
 function liveAudioQueue(): FakeAudio {
