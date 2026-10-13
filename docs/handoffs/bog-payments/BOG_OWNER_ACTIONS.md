@@ -1,6 +1,6 @@
 # BOG Payments — რა უნდა გააკეთოს Owner-მა (v1.3)
 
-2026-10-12, განახლდა 2026-10-13 10:15Z · PR #59 (merged, `883a013`), post-launch PR (draft) · ეს ფაილი ცვლის [`OWNER_ACTION_CHECKLIST_ka.md`](OWNER_ACTION_CHECKLIST_ka.md)-ს (v1.2). OAuth-ის შემოწმების ნაბიჯი იგივე დარჩა.
+2026-10-12, განახლდა 2026-10-13 10:15Z · PR #59 (merged, `883a013`), PR #62 (draft) · ეს ფაილი ცვლის [`OWNER_ACTION_CHECKLIST_ka.md`](OWNER_ACTION_CHECKLIST_ka.md)-ს (v1.2). OAuth-ის შემოწმების ნაბიჯი იგივე დარჩა.
 
 **არასდროს:** Secret Key არ ჩასვა ჩატში, ფოტოში, GitHub-ში, ელფოსტაში, ბრძანების ხაზში ან Vercel-ის Preview / Development scope-ში. Sandbox წყვილი Vercel-ში არცერთ scope-ში არ ჩაწერო. ჩემთვის საკმარისია შედეგის ერთი ხაზი (`✓ ok · HTTP 200 · …`).
 
@@ -87,7 +87,7 @@ https://vercel.com/kintsurashviligaga-ops-projects/avatar-g-frontend-v3/settings
 
 ## ახლა
 
-1. **post-launch PR-ის merge + Production deploy** — შენი ცალკე სიტყვით. მოაქვს: ლიმიტების სერვერული კონტროლი, cron-ის რიგის გასწორება, გეგმის ჩამკეტი, BOG id-ის ჩაწერის დაცვა. მიგრაცია არ სჭირდება. merge-ს და deploy-ს მე ვაკეთებ.
+1. **PR #62-ის merge + Production deploy** — შენი ცალკე სიტყვით. მოაქვს: ლიმიტების სერვერული კონტროლი, cron-ის რიგის გასწორება, გეგმის ჩამკეტი, BOG id-ის ჩაწერის დაცვა. მიგრაცია არ სჭირდება. merge-ს და deploy-ს მე ვაკეთებ.
 2. **წერილი ბანკს** — მზა ტექსტი: [BOG_PUBLIC_LAUNCH_PLAN.md](BOG_PUBLIC_LAUNCH_PLAN.md) §7 (Merchant ID და Terminal ID შენ ჩაწერე; Client ID / Secret არა).
 3. **B4** — refund-ისას კრედიტების კორექციის წესი (პირველ refund-მდე).
 4. **BOG ყველასთვის** — ცალკე სიტყვით, 1–3-ის შემდეგ ([გეგმა](BOG_PUBLIC_LAUNCH_PLAN.md) §1–3). გეგმები მაშინაც მხოლოდ ადმინისთვის დარჩება.

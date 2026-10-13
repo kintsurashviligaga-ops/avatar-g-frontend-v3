@@ -1,6 +1,6 @@
 # BOG Payments — Post-Launch Finalization Report (v1.4)
 
-2026-10-13 · Owner-ის დავალება 09:38Z · branch `claude/bog-payments-master-task-yjxq59` (main `ba2e0a4`-ზე) · Production-ში არაფერი შეცვლილა: ახალი გადახდა, refund, env, credential, მიგრაცია, merge ან deploy არ ყოფილა. `BOG_CHECKOUT_MODE=admin` რჩება.
+2026-10-13 · Owner-ის დავალება 09:38Z · PR #62 (draft), branch `claude/bog-payments-master-task-yjxq59` (main `ba2e0a4`-ზე) · Production-ში არაფერი შეცვლილა: ახალი გადახდა, refund, env, credential, მიგრაცია, merge ან deploy არ ყოფილა. `BOG_CHECKOUT_MODE=admin` რჩება.
 
 სტატუსები: **PROVEN** (რეალური მტკიცება) · **PARTIAL** · **BLOCKED** (ბანკი ან Owner) · **NOT RUN**. იზოლირებული / mock ტესტი რეალური საბანკო ოპერაციის მტკიცება არ არის; ასეთი სტრიქონი ცალკეა მონიშნული.
 
@@ -43,7 +43,7 @@
 
 ## Owner-ისგან
 
-1. ამ PR-ის merge + Production deploy — შენი ცალკე სიტყვით (G1).
+1. PR #62-ის merge + Production deploy — შენი ცალკე სიტყვით (G1).
 2. წერილი ბანკს ([BOG_PUBLIC_LAUNCH_PLAN.md](BOG_PUBLIC_LAUNCH_PLAN.md) §7): სახელი, ლიმიტები, ავტომატური გადახდები, refund და ლიმიტი, callback-ის გამეორება, sandbox.
 3. B4: refund-ისას კრედიტების კორექციის წესი (პირველ refund-მდე).
 4. BOG ყველასთვის — ცალკე სიტყვით, G1–G4-ის შემდეგ.

@@ -45,12 +45,12 @@
 **Recurring:** ბანკის მხრიდან **UNCONFIRMED**. კოდი ლოკალურად PROVEN. საჯაროდ არ იხსნება; BOG გამოწერა Production-ში 0.
 
 **დარჩენილი რისკები:**
-- ~~ხელმოწერილი callback-ის მიღება დაუმტკიცებელია~~ დამტკიცდა (კრიტერიუმი 7). თუ callback მაინც დაიკარგება, ჩარიცხვას დაბრუნების გვერდი და cron აკეთებს (cron Production-ში ყოველ 10 წუთში მუშაობს, 40/40); Production-ში დაკარგული callback ჯერ არ ყოფილა, cron-ის ჩარიცხვა იზოლირებულადაა დამტკიცებული. cron-ის რიგის დეფექტი (50+ მიტოვებული checkout ბლოკავდა გადახდილს) გასწორებულია post-launch PR-ში, Production-ში merge-ის შემდეგ.
+- ~~ხელმოწერილი callback-ის მიღება დაუმტკიცებელია~~ დამტკიცდა (კრიტერიუმი 7). თუ callback მაინც დაიკარგება, ჩარიცხვას დაბრუნების გვერდი და cron აკეთებს (cron Production-ში ყოველ 10 წუთში მუშაობს, 40/40); Production-ში დაკარგული callback ჯერ არ ყოფილა, cron-ის ჩარიცხვა იზოლირებულადაა დამტკიცებული. cron-ის რიგის დეფექტი (50+ მიტოვებული checkout ბლოკავდა გადახდილს) გასწორებულია PR #62-ში, Production-ში merge-ის შემდეგ.
 - ძველ კოდზე (`30be5a2`) დაბრუნება ახალი build-ით (`git revert` ან ძველი deployment-ის Redeploy) **მუშა** BOG-ს ყველა შესულ მომხმარებელს აჩვენებს, რადგან წყვილი ახლა მოქმედია. BOG-ის პრობლემაზე Rollback A; კოდის დაბრუნება მხოლოდ Instant Rollback-ით `n50i7vipo`-ზე ([BOG_ROLLBACK_PLAN.md](BOG_ROLLBACK_PLAN.md), B).
 - Vercel-ის UI-დან „Redeploy“ ძველ deployment-ზე ძველ კოდს აშენებს (05:43Z-ის ინციდენტი). env-ის შეცვლის შემდეგ Redeploy მხოლოდ მიმდინარე Production deployment-ზე (`883a013`).
 - BOG-ის უარის შემდეგ Stripe-ზე გადასვლა არ ხდება; Stripe Production-ში დაუმტკიცებელია.
 - admin/off რეჟიმში BOG-ის გამომწერი ავტო-განახლების გაუქმებას Credits ფანჯარაში ვერ ხედავს (დღეს 0 გამომწერია).
 - Refund-ის „მხოლოდ წინ“ დაცვა TypeScript-შია, SQL-ში არა (მიგრაცია = Owner-ის სიტყვა).
-- 24სთ / 30 დღის ლიმიტს Production-ის კოდი (`883a013`) არ ზღუდავს, მხოლოდ აჩვენებს. სერვერული კონტროლი აშენებულია post-launch PR-ში და Production-ში merge-ის შემდეგ შევა.
+- 24სთ / 30 დღის ლიმიტს Production-ის კოდი (`883a013`) არ ზღუდავს, მხოლოდ აჩვენებს. სერვერული კონტროლი აშენებულია PR #62-ში და Production-ში merge-ის შემდეგ შევა.
 
 დეტალური უსაფრთხოება: [BOG_SECURITY_VERIFICATION.md](BOG_SECURITY_VERIFICATION.md) · Rollback: [BOG_ROLLBACK_PLAN.md](BOG_ROLLBACK_PLAN.md) · Owner: [BOG_OWNER_ACTIONS.md](BOG_OWNER_ACTIONS.md).

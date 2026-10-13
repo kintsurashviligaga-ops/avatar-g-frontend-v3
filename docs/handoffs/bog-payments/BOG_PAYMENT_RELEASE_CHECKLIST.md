@@ -51,7 +51,7 @@
 | Gate | რა სჭირდება გახსნას |
 |---|---|
 | ცოცხალი 10 ₾ გადახდა | ✓ **შესრულდა.** Owner-ის სიტყვა 06:39Z და 06:48Z. მცდელობა 1: ბანკის უარი (თანხის უკმარისობა). მცდელობა 2: `completed` 09:09:27Z, +100 კრედიტი ერთხელ ([E2E Report](BOG_PRODUCTION_E2E_REPORT.md)). შემდეგი ცოცხალი გადახდა მხოლოდ Owner-ის ახალი სიტყვით; ავტომატური retry არ ხდება |
-| საჯარო BOG checkout (`BOG_CHECKOUT_MODE=public`) | წარმატებული 10 ₾ ტესტი ✓ (09:09Z); ხელმოწერილი callback ✓ (Production, 09:09:27Z); **გეგმის ჩამკეტი** (`BOG_SUBSCRIPTION_MODE`, ნაგულისხმევად მხოლოდ ადმინი) და **სერვერული ლიმიტები** აშენებულია post-launch PR-ში, Production-ში merge-ის შემდეგ; მერე Owner-ის სიტყვა. სრული გეგმა: [BOG_PUBLIC_LAUNCH_PLAN.md](BOG_PUBLIC_LAUNCH_PLAN.md) |
+| საჯარო BOG checkout (`BOG_CHECKOUT_MODE=public`) | წარმატებული 10 ₾ ტესტი ✓ (09:09Z); ხელმოწერილი callback ✓ (Production, 09:09:27Z); **გეგმის ჩამკეტი** (`BOG_SUBSCRIPTION_MODE`, ნაგულისხმევად მხოლოდ ადმინი) და **სერვერული ლიმიტები** აშენებულია PR #62-ში, Production-ში merge-ის შემდეგ; მერე Owner-ის სიტყვა. სრული გეგმა: [BOG_PUBLIC_LAUNCH_PLAN.md](BOG_PUBLIC_LAUNCH_PLAN.md) |
 | ავტომატური Subscription Renewals (`BOG_SUBSCRIPTION_MODE=public`) | ბანკის დადასტურება (კითხვა 3) + sandbox-ში სრული განახლება + ადმინის ერთი რეალური გეგმა Owner-ის სიტყვით ([გეგმა](BOG_PUBLIC_LAUNCH_PLAN.md) §5) |
 | Refund-ზე კრედიტების ავტომატური კორექცია | Owner-ის გადაწყვეტილება (B4). პოლიტიკა უცვლელია: კრედიტები ავტომატურად არ იკლებს |
-| 1 000 ₾ / 24სთ, 5 000 ₾ / 30 დღე | სერვერული კონტროლი აშენებულია (post-launch PR, ნაგულისხმევად მთელ მერჩანტზე, მოძრავი ფანჯრები). ბანკის განმარტება (მერჩანტზე / ბარათზე) env-ით ერთვება: `BOG_LIMIT_SCOPE`, `BOG_LIMIT_24H_GEL`, `BOG_LIMIT_30D_GEL` |
+| 1 000 ₾ / 24სთ, 5 000 ₾ / 30 დღე | სერვერული კონტროლი აშენებულია (PR #62, ნაგულისხმევად მთელ მერჩანტზე, მოძრავი ფანჯრები). ბანკის განმარტება (მერჩანტზე / ბარათზე) env-ით ერთვება: `BOG_LIMIT_SCOPE`, `BOG_LIMIT_24H_GEL`, `BOG_LIMIT_30D_GEL` |
