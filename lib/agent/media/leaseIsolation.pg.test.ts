@@ -7,6 +7,7 @@
  * Everything the workers write goes through the live code: supabaseLeaseStore (the compare-and-set is a filtered PATCH
  * on params->_exec->>v), the ledger (lib/orchestrator/ledger: deduct_credits, refund_credits, netDebitedForRef) and
  * the live montage / audio billing. Only the render, the probe, the clock and the heartbeat timer are the test's.
+ * Agent G's edit too: its stored request read back from the real JSONB column (DEFECT_REGISTER_FINAL row 39).
  *
  * Opt-in: runs only when LEASE_PG_REST_URL and LEASE_PG_JWT_SECRET are set (scripts/lease-isolation/run.sh sets
  * them up). It never points at Production: the run script refuses any URL that is not on this machine.
@@ -45,6 +46,9 @@ import { AUDIO_GAVE_UP, sweepAudioJobs, workAudioJob } from './audioWorker';
 import { signQuote } from './quoteToken';
 import { FILES, MASTER_URL, fake, frameOf, shotSourceAt, type Fake } from './testing/fakeMontageDeps';
 import { AUDIO_URL, LINK, fakeAudio, type FakeAudio } from './testing/fakeAudioDeps';
+import { enqueueEditJob, quoteEdit } from './editExec';
+import { workEditJob } from './editWorker';
+import { SOURCE as EDIT_SOURCE, UPLOAD as EDIT_UPLOAD, fakeEdit } from './testing/fakeEditDeps';
 import type { MontageOutcome } from '@/lib/services/montage/montagePipeline';
 
 const A = '0e000000-0000-4000-8000-00000000000a';
@@ -281,5 +285,33 @@ suite('lease queue on a real Postgres + PostgREST (local, isolated)', () => {
     expect(await sweepAudioJobs(f.deps, { worker: 'sweep', work: true })).toMatchObject({ gaveUp: [q2.quote.jobId] });
     expect(await row(q2.quote.jobId)).toMatchObject({ status: 'failed', error: AUDIO_GAVE_UP });
     expect(await ledger(A)).toEqual([]); // URL-to-Audio is free: nothing charged, nothing to pay back
+  });
+
+  // DEFECT_REGISTER_FINAL row 39 (CI E2E): the worker reads the edit's request back from params, a JSONB column, which
+  // returns an object's keys shorter-first. The stored-plan check compared the edits as strings in the order written,
+  // so a trim (`{ op, fromSec, toSec }` → `{ op, toSec, fromSec }`), a volume, an adjust, an erase or a layer was
+  // refused at the worker as `invalid_request`; 2× (`{ op, factor }`) kept its order and passed.
+  test('an edit read back from the real JSONB column is the worker\'s to run: trim, volume and adjust are delivered', async () => {
+    for (const edits of [[{ op: 'trim', fromSec: 1, toSec: 4 }], [{ op: 'volume', db: 3 }], [{ op: 'adjust', brightness: 25, warmth: 40 }]]) {
+      const f = fakeEdit({
+        render: async (_url, request) => ({
+          ok: true, bytes: Buffer.alloc(2_400_000, 1), input: EDIT_SOURCE,
+          output: { ...EDIT_SOURCE, durationSec: request.plan.durationSec, width: request.plan.width, height: request.plan.height },
+        }),
+      });
+      f.clock.now = Date.now();
+      f.deps.store = liveMontageDeps().store;
+      f.deps.newId = () => randomUUID();
+      const q = await quoteEdit(f.deps, { userId: A, file: EDIT_UPLOAD, edits });
+      if (!q.ok) throw new Error(`${q.error}: ${q.message}`);
+      const queuedEdit = await enqueueEditJob(f.deps, { userId: A, request: q.request, token: q.token });
+      if (!queuedEdit.ok) throw new Error(`${queuedEdit.error}: ${queuedEdit.message}`);
+      const stored = (await row(queuedEdit.jobId)).params as unknown as { _job: { request: { edits: Array<Record<string, unknown>> } } };
+      if (edits[0]!.op === 'trim') expect(Object.keys(stored._job.request.edits[0]!)).toEqual(['op', 'toSec', 'fromSec']); // JSONB's order
+      expect({ edits, out: await workEditJob(f.deps, { jobId: queuedEdit.jobId, worker: 'w-edit' }) }).toEqual({ edits, out: expect.objectContaining({ ran: true, outcome: 'delivered' }) });
+      expect(await row(queuedEdit.jobId)).toMatchObject({ status: 'completed', error: null });
+      expect(f.renders).toHaveLength(1);
+    }
+    expect(await ledger(A)).toEqual([]); // Agent G's edit is free
   });
 });

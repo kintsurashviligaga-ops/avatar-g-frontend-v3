@@ -315,8 +315,9 @@ test.describe('Video Core live — Stop and Retry, error recovery, the edit lane
   // does not have (CI run 4 found the old version of these tests waiting for an edit quote that never comes).
   // Desktop asks in English, the phone in Georgian. Expected lengths are the 5 s master edited: 3 s, 2.5 s, 10 s.
   // CI run 6 (c09dbe4): the trim, then the first edit on each viewport, waited 200 s for a result that never came, while
-  // 2× and slow motion right after it passed. The order is now 2×, slow motion, trim, and a card that does not deliver
-  // prints what its job says (jobDiagnosis): which of the two (the trim, or the first edit after Stop/Retry) it was.
+  // 2× and slow motion passed. Run 7 (1b2b40f) put the trim last and printed its job (jobDiagnosis): still the trim, and
+  // the worker had refused it 20 ms after it was queued, `invalid_request: the stored plan is not valid`, because JSONB
+  // hands `{ op, fromSec, toSec }` back as `{ op, toSec, fromSec }` (DEFECT_REGISTER_FINAL row 39, a product defect).
   for (const { label, en, ka, seconds } of [
     { label: 'speed-2x', en: 'Make the previous video 2x speed.', ka: 'წინა ვიდეო 2-ჯერ ააჩქარე', seconds: 2.5 },
     { label: 'slow-motion', en: 'Make the previous video slow motion.', ka: 'წინა ვიდეო ნელ მოძრაობაში გადაიყვანე', seconds: 10 },

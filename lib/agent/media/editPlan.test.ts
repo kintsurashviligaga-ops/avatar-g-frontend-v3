@@ -1,5 +1,5 @@
 import {
-  MAX_EDIT_OUTPUT_SEC, audioFilters, cleanCaption, displayDims, editNameFor, qcEdit,
+  MAX_EDIT_OUTPUT_SEC, audioFilters, canonicalJson, cleanCaption, displayDims, editNameFor, qcEdit,
   eraseVf, renderArgs, resolveEdits, validateEditRequest, videoFilters, type EditRequest,
 } from './editPlan';
 import type { BannerProbe } from '@/lib/video/probeBanner';
@@ -108,6 +108,46 @@ describe('validateEditRequest: the stored request passes the quote\'s own checks
       const req = request(asks);
       expect(validateEditRequest(JSON.parse(JSON.stringify(req)))).not.toBeNull();
     }
+  });
+
+  // DEFECT_REGISTER_FINAL row 39, found by the CI E2E on a real Supabase stack: the worker reads the request back from
+  // generation_jobs.params (JSONB), which returns an object's keys shorter-first, and the old check compared the
+  // edits as strings in the order written: every stored trim was refused as `invalid_request`, while 2× passed
+  // (`{ op, factor }` keeps its order). JSON.parse(JSON.stringify()) above keeps the order, so it never showed here.
+  test('a request read back from JSONB, keys in JSONB\'s own order, passes too', () => {
+    // Postgres orders a jsonb object's keys by length, then bytewise (jsonb's uniqueifyJsonbObject).
+    const jsonbOrder = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(jsonbOrder);
+      if (!v || typeof v !== 'object') return v;
+      const keys = Object.keys(v).sort((a, b) => Buffer.byteLength(a) - Buffer.byteLength(b) || Buffer.compare(Buffer.from(a), Buffer.from(b)));
+      return Object.fromEntries(keys.map((k) => [k, jsonbOrder((v as Record<string, unknown>)[k])]));
+    };
+    const trim = jsonbOrder(JSON.parse(JSON.stringify(request([{ op: 'trim', fromSec: 1, toSec: 4 }])))) as EditRequest;
+    expect(Object.keys(trim.edits[0]!)).toEqual(['op', 'toSec', 'fromSec']); // the premise: JSONB does reorder a trim
+    expect(validateEditRequest(trim)).not.toBeNull();
+    for (const asks of [
+      [{ op: 'trim', fromSec: 1.234, toSec: 9.999 }, { op: 'fade', inSec: 0.5, outSec: 0.5 }],
+      [{ op: 'speed', factor: 2 }],
+      [{ op: 'thumbnail', atSec: 29.994 }],
+      [{ op: 'aspect', to: '4:5', fit: 'pad' }, { op: 'caption', text: 'Hello' }, { op: 'volume', db: 3.33 }],
+      [{ op: 'adjust', brightness: 25, warmth: 40 }],
+      [{ op: 'motion', zoom: 'in', shake: true }],
+      [{ op: 'overlay', look: 'grain' }, { op: 'grade', style: 'noir' }],
+      [{ op: 'trim', fromSec: 2, toSec: 12 }, { op: 'erase', boxes: [{ at: 'bottom', lastSec: 4 }] }, { op: 'aspect', to: '1:1' }],
+      [{ op: 'layers', add: [{ kind: 'text', role: 'cta', text: 'Order now', lastSec: 3 }] }],
+    ]) {
+      const stored = jsonbOrder(JSON.parse(JSON.stringify(request(asks)))) as EditRequest;
+      expect({ asks, ok: validateEditRequest(stored) !== null }).toEqual({ asks, ok: true });
+    }
+    // Key order is all it forgives: a changed value is still refused.
+    expect(validateEditRequest({ ...trim, edits: [{ op: 'trim', toSec: 5, fromSec: 1 }] } as unknown as EditRequest)).toBeNull();
+  });
+
+  test('canonicalJson: one string whatever the key order, arrays kept in theirs', () => {
+    expect(canonicalJson({ op: 'trim', toSec: 4, fromSec: 1 })).toBe(canonicalJson({ fromSec: 1, op: 'trim', toSec: 4 }));
+    expect(canonicalJson([{ b: 1, a: { d: 2, c: 3 } }])).toBe('[{"a":{"c":3,"d":2},"b":1}]');
+    expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]));
+    expect(canonicalJson(null)).toBe('null');
   });
 
   test('a changed edit, plan or name is refused', () => {
