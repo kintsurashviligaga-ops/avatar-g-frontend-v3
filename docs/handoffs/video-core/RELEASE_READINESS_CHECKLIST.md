@@ -11,7 +11,10 @@
 > through Vertex (veo-3.1-fast, 4 s, 720p, with sound, quoted $0.40) and delivered 96 frames at 24 fps, 4.01 s; the
 > billed amount is not confirmed yet. Production has no Vertex transport (`/api/admin/veo-smoke` answers ready:false), so
 > Veo in Production stays with GG. R2: the database duplicate guard is in PR #63 and fails open until GG approves
-> `proposals/20261013a_request_idempotency.sql` for Production.
+> `proposals/20261013a_request_idempotency.sql` for Production. Defect 44 (OPEN — GG): with Production's Upstash host
+> gone, a paid film's up-front payment marker never reaches `/api/video/assemble` (another Vercel function), so a paying
+> user's film would be charged twice; restoring Upstash or a database home for the marker closes it, and public Video
+> Core stays NO-GO until one of them lands.
 
 Branch `claude/video-core-v1-6gh97e`, draft PR #58, final code head **ec7f742** (code, tests, CI E2E and Preview E2E rest
 on it; later commits change only these documents), 2026-10-13. Product code last changed in 717231c (every cron route and
