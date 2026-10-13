@@ -40,7 +40,8 @@ export function ImageWorkspace({ access, locale, initialPrompt = '', onClose }: 
   }, [locale]);
   useEffect(() => {
     alive.current = true;
-    return () => { alive.current = false; previewUrls.current.forEach(url => URL.revokeObjectURL(url)); };
+    const urls = previewUrls.current;
+    return () => { alive.current = false; urls.splice(0).forEach(url => URL.revokeObjectURL(url)); };
   }, []);
   useEffect(() => { if (!saveBatch(access.userId, batch)) setLocalWarning(true); }, [access.userId, batch]);
   const updateJob = useCallback((job: ClientJob) => {

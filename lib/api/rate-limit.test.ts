@@ -2,14 +2,7 @@
 import { NextRequest } from 'next/server';
 import type { RateLimitConfig } from './rate-limit';
 
-// ⚠️ rate-limit.ts starts its in-memory cleanup setInterval (never unref'd) the moment it is imported,
-// and that live handle kept Jest running after the suite had passed ("Jest did not exit one second
-// after the test run has completed"), which looks exactly like a hung test. Loading the module on the
-// fake clock puts that interval on the fake clock, and it is discarded when the real one comes back.
-jest.useFakeTimers();
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { checkRateLimit, checkRateLimitByKey, refundRateLimitByKey } = require('./rate-limit') as typeof import('./rate-limit');
-jest.useRealTimers();
+import { checkRateLimit, checkRateLimitByKey, refundRateLimitByKey } from './rate-limit';
 
 /**
  * These drive the REAL limiter (in-memory path — Upstash env is cleared) with a 1-request window, so
@@ -276,5 +269,41 @@ describe('refundRateLimitByKey (Upstash path, fetch mocked)', () => {
     await expect(refundRateLimitByKey('user-9', { maxRequests: 1, windowMs: 60_000 })).resolves.toBeUndefined();
     fetchMock.mockResolvedValueOnce(json({ error: 'nope' }, false));
     await expect(refundRateLimitByKey('user-9', { maxRequests: 1, windowMs: 60_000 })).resolves.toBeUndefined();
+  });
+});
+
+
+describe('in-memory expiry without an idle background timer', () => {
+  it('imports and handles requests without scheduling housekeeping timers', async () => {
+    jest.useFakeTimers();
+    try {
+      let isolated!: typeof import('./rate-limit');
+      await jest.isolateModulesAsync(async () => { isolated = await import('./rate-limit'); });
+      await isolated.checkRateLimitByKey('timer-regression', oneShot());
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('after a long idle period expires short windows but preserves live limits and refunds', async () => {
+    const start = Date.now();
+    const now = jest.spyOn(Date, 'now').mockReturnValue(start);
+    const short = oneShot();
+    const long = { ...oneShot(), windowMs: 60 * 60_000 };
+    try {
+      expect(await checkRateLimitByKey('idle', short)).toBeNull();
+      expect(await checkRateLimitByKey('idle', long)).toBeNull();
+      now.mockReturnValue(start + 6 * 60_000);
+      expect(await checkRateLimitByKey('idle', short)).toBeNull();
+      expect(await checkRateLimitByKey('idle', short)).not.toBeNull();
+      expect(await checkRateLimitByKey('idle', long)).not.toBeNull();
+      await refundRateLimitByKey('idle', long);
+      await refundRateLimitByKey('idle', long);
+      expect(await checkRateLimitByKey('idle', long)).toBeNull();
+      expect(await checkRateLimitByKey('idle', long)).not.toBeNull();
+    } finally {
+      now.mockRestore();
+    }
   });
 });

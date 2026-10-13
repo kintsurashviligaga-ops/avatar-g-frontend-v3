@@ -397,11 +397,20 @@ export async function uploadBufferAndSign(
   const type = storageContentType(contentType, path);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { error } = await Promise.race([
-        sb.storage.from(bucket).upload(path, buffer, { contentType: type, upsert: true }),
-        new Promise<{ error: { message: string } }>((resolve) =>
-          setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS)),
-      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const result = await (async () => {
+        try {
+          return await Promise.race([
+            sb.storage.from(bucket).upload(path, buffer, { contentType: type, upsert: true }),
+            new Promise<{ error: { message: string } }>((resolve) => {
+              timer = setTimeout(() => resolve({ error: { message: `upload timed out after ${UPLOAD_TIMEOUT_MS}ms` } }), UPLOAD_TIMEOUT_MS);
+            }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      })();
+      const { error } = result;
       if (!error) return createSignedAssetUrl(bucket, path, expiresSec);
       // eslint-disable-next-line no-console
       console.warn(`[storage] buffer upload to ${bucket}/${path} failed (attempt ${attempt + 1}/2):`, error.message);

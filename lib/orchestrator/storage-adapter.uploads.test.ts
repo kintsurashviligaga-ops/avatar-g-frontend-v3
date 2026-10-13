@@ -9,6 +9,7 @@ jest.mock('server-only', () => ({}));
 const mockUploads: Array<{ bucket: string; path: string; contentType: string }> = [];
 const mockUpdates: Array<{ bucket: string; opts: unknown }> = [];
 let mockUploadError: string | null = null;
+let mockUploadMode: 'normal' | 'reject' | 'hang' = 'normal';
 jest.mock('../supabase/server', () => ({
   createServiceRoleClient: () => ({
     storage: {
@@ -17,6 +18,8 @@ jest.mock('../supabase/server', () => ({
       from: (bucket: string) => ({
         upload: async (path: string, _b: unknown, o: { contentType: string }) => {
           mockUploads.push({ bucket, path, contentType: o.contentType });
+          if (mockUploadMode === 'reject') throw new Error('network unavailable');
+          if (mockUploadMode === 'hang') return new Promise(() => {});
           return { error: mockUploadError ? { message: mockUploadError } : null };
         },
         createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://p.supabase.co/storage/v1/object/sign/${bucket}/${path}?token=t` }, error: null }),
@@ -31,6 +34,7 @@ beforeEach(() => {
   mockUploads.length = 0;
   mockUpdates.length = 0;
   mockUploadError = null;
+  mockUploadMode = 'normal';
   __resetKnownBuckets();
   jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
@@ -61,4 +65,28 @@ test('the renders bucket still self-heals a too-small limit', async () => {
   await uploadBufferAndSign('renders', 'x/big.mp4', Buffer.from('x'), 'video/mp4');
   expect(mockUpdates.length).toBeGreaterThan(0);
   expect(mockUpdates.every((u) => u.bucket === 'renders')).toBe(true);
+});
+
+
+describe('upload deadlines are disposed when their attempt ends', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  test.each(['success', 'error', 'reject'] as const)('%s leaves no pending deadline', async mode => {
+    if (mode === 'error') mockUploadError = 'storage unavailable';
+    if (mode === 'reject') mockUploadMode = 'reject';
+    const result = await uploadBufferAndSign('uploads', 'timer/image.png', Buffer.from('x'), 'image/png');
+    expect(result === null).toBe(mode !== 'success');
+    expect(mockUploads).toHaveLength(mode === 'success' ? 1 : 2);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  test('a stalled upload still times out twice and stops without leaving a timer', async () => {
+    mockUploadMode = 'hang';
+    const pending = uploadBufferAndSign('uploads', 'timer/image.png', Buffer.from('x'), 'image/png');
+    await jest.advanceTimersByTimeAsync(180_001);
+    await expect(pending).resolves.toBeNull();
+    expect(mockUploads).toHaveLength(2);
+    expect(jest.getTimerCount()).toBe(0);
+  });
 });
