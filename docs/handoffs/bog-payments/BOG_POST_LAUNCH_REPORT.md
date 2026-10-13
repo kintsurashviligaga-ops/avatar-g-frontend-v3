@@ -25,8 +25,8 @@
 
 | შემოწმება | სტატუსი |
 |---|---|
-| იზოლირებული E2E (Postgres 16 + PostgREST, ყალბი BOG, ქსელი და credential არ არის): SQL T1–T11, concurrency C1–C3, route-level E1–E20 | **PROVEN** 20/20 |
-| unit / route / UI | **PROVEN** — რიცხვები PR-შია |
+| იზოლირებული E2E (Postgres 16 + PostgREST, ყალბი BOG, ქსელი და credential არ არის): SQL T1–T11, concurrency C1–C3, route-level E1–E20 | **PROVEN** 20/20, ორჯერ ზედიზედ |
+| unit / route / UI, მთელი repo | **PROVEN** BOG-ისთვის: 13 367 გავიდა; 16 ჩავარდა ერთ სუიტაში (`composition.ffmpeg.test.ts`, ffmpeg-ის fixture, ამ branch-ში შეუცვლელი, BOG-ს არ ეხება; [evidence](evidence/post-launch-2026-10-13.md) §4) |
 | `tsc --noEmit`, eslint | 0 / 0 |
 | HawkScan (DAST) | **NOT RUN**: `HAWK_API_KEY` sandbox-ში არ არის |
 | Vercel runtime ლოგები | **BLOCKED**: 403 ჩემი კონექტორიდან; callback-ის გზა Supabase-ის gateway ლოგებით დამტკიცდა |
