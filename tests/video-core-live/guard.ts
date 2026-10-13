@@ -4,7 +4,7 @@
  * Database არ გამოიყენო ტესტებისთვის … დაამატე Fail-Closed შემოწმება, რომელიც Production Supabase URL-ზე ტესტების
  * გაშვებას დაბლოკავს."
  *
- * The stack is reached as http://supabase.video-core-e2e.test:54321, a name under the reserved `.test` top-level
+ * The stack is reached as https://supabase.video-core-e2e.test:54443, a name under the reserved `.test` top-level
  * domain (RFC 6761: it never resolves on the public internet) that the workflow maps, in /etc/hosts, onto an address
  * it binds to this runner's loopback interface. That is the only way to give the server's media fetcher
  * (lib/web/publicFetch — it refuses loopback and private hosts, by design) a storage host it accepts without changing

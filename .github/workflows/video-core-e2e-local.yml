@@ -14,10 +14,13 @@
 # if any database-pointing variable names the Production project, a hosted *.supabase.co, or a host that is not this
 # machine. No AI provider credential exists in the job, so no paid call can happen.
 #
-# Why the stack is reached as http://supabase.video-core-e2e.test:54321: the app's server-side fetch of user media
+# Why the stack is reached as https://supabase.video-core-e2e.test:54443: the app's server-side fetch of user media
 # (lib/web/publicFetch.ts) rightly refuses loopback and private addresses, and this job does not weaken it. The reserved
 # `.test` name (RFC 6761) maps in /etc/hosts to 1.2.3.4, an address added to this runner's own loopback device, so every
-# connection stays on the runner while the production SSRF rule stays exactly as shipped.
+# connection stays on the runner while the production SSRF rule stays exactly as shipped. And the app takes a storage
+# URL of ours only over https, as Production serves it (lib/security/callerMedia), so a TLS front
+# (e2e/video-core-live/scripts/tls-front.mjs) serves the stack's gateway on :54443 with a certificate from a CA made in
+# this job for this run only (its key deleted at once); the app and the tests trust that CA through NODE_EXTRA_CA_CERTS.
 name: Video Core E2E (isolated local Supabase)
 
 on:
@@ -106,8 +109,8 @@ jobs:
           for v in "$ANON" "$SERVICE" "$DB" "$QUOTE" "$CRON"; do echo "::add-mask::$v"; done
           echo "local API_URL host: ${API#*://}"
           {
-            echo "NEXT_PUBLIC_SUPABASE_URL=http://$E2E_HOST:54321"
-            echo "SUPABASE_URL=http://$E2E_HOST:54321"
+            echo "NEXT_PUBLIC_SUPABASE_URL=https://$E2E_HOST:54443"
+            echo "SUPABASE_URL=https://$E2E_HOST:54443"
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON"
             echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE"
             echo "E2E_DB_URL=$DB"
@@ -128,6 +131,21 @@ jobs:
             sleep 2; code=$(probe)
           fi
           echo "auth health via $E2E_HOST: HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Serve the stack over https (a CA made for this run only)
+        run: |
+          tls="$RUNNER_TEMP/video-core-e2e-tls"
+          bash e2e/video-core-live/scripts/make-tls.sh "$E2E_HOST" "$tls"
+          nohup node e2e/video-core-live/scripts/tls-front.mjs "$E2E_IP" 54443 "$E2E_IP" 54321 "$tls/leaf.pem" "$tls/leaf.key" >tls-front.log 2>&1 &
+          echo "NODE_EXTRA_CA_CERTS=$tls/ca.pem" >>"$GITHUB_ENV"
+          code=000
+          for _ in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$tls/ca.pem" "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true)
+            [ "$code" = "200" ] && break; sleep 1
+          done
+          cat tls-front.log
+          echo "auth health via $NEXT_PUBLIC_SUPABASE_URL (certificate verified): HTTP $code"
           [ "$code" = "200" ]
 
       - name: Fail-closed guard (never Production, never hosted, only this machine)
@@ -174,7 +192,7 @@ jobs:
         if: ${{ !cancelled() && steps.baseline.outcome == 'success' }}
         run: |
           mk() {
-            curl -sf -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/users" \
+            curl -sf --cacert "$NODE_EXTRA_CA_CERTS" -X POST "$NEXT_PUBLIC_SUPABASE_URL/auth/v1/admin/users" \
               -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
               -H 'Content-Type: application/json' \
               -d "{\"email\":\"vc-b3-$1-$(openssl rand -hex 4)@example.com\",\"password\":\"$(openssl rand -hex 16)\",\"email_confirm\":true}" \

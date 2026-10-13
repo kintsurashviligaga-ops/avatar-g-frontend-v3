@@ -16,8 +16,10 @@ const STATE_DIR = 'test-results/video-core-live/state';
 const executable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } } : {};
 // The page's CSP names the hosted Supabase (https://*.supabase.co, lib/security/csp.js); the local stack is another
 // origin, so the browser would block sign-in, the storage PUT and the master's playback. The CSP itself is covered by
-// its own unit tests; here it is bypassed, and only here.
-const common = { bypassCSP: true, ...executable };
+// its own unit tests; here it is bypassed, and only here. The stack is served over https with a certificate from a CA
+// the workflow made for this run only (Node trusts it through NODE_EXTRA_CA_CERTS); the browser is told to accept it,
+// and only in this config: its host is a reserved `.test` name that resolves to this runner's own loopback.
+const common = { bypassCSP: true, ignoreHTTPSErrors: true, ...executable };
 const phone = { ...devices['iPhone 13'], browserName: 'chromium' as const };
 
 export default defineConfig({

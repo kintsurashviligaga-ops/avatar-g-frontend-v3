@@ -7,6 +7,8 @@ describe('the real-backend E2E refuses anything but a local Supabase (fail-close
   test('the .test stack name or a loopback stack, with the explicit opt-in, passes', () => {
     expect(assertIsolatedSupabase(ok)).toEqual({ supabaseUrl: 'http://supabase.video-core-e2e.test:54321', host: 'supabase.video-core-e2e.test' });
     expect(() => assertIsolatedSupabase({ ...ok, NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321' })).not.toThrow();
+    // the workflow's TLS front (a CA made for the run only) on the same reserved name
+    expect(() => assertIsolatedSupabase({ ...ok, NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.video-core-e2e.test:54443', SUPABASE_URL: 'https://supabase.video-core-e2e.test:54443' })).not.toThrow();
     expect(() => assertIsolatedSupabase({ ...ok, E2E_DB_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres' })).not.toThrow();
   });
 
