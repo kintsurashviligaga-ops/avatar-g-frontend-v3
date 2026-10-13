@@ -1,8 +1,8 @@
-import { test, expect, type Page, type Response } from '@playwright/test';
+import { test, expect, type Page, type Request, type Response } from '@playwright/test';
 import { join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
-  OUT_DIR, attach, balanceOf, decodedFrames, evidence, jobsOf, ledgerOf, liveUser, openSignedInStudio, projectUser,
+  OUT_DIR, STATE_DIR, attach, balanceOf, decodedFrames, evidence, jobsOf, ledgerOf, liveUser, openSignedInStudio, projectUser,
   rows, say, shot, signInToken,
 } from './_live';
 
@@ -28,6 +28,46 @@ const press = async (page: Page, testId: string, isMobile: boolean) => {
   if (isMobile) await el.tap(); else await el.click();
 };
 
+/**
+ * PACING. The server's limiter stays exactly as shipped (lib/api/rate-limit RATE_LIMITS.EXPENSIVE: 5 quote/run calls a
+ * minute per user and client, shared by the montage and the edit routes), so the suite paces itself the way a person
+ * would instead of switching it off: before a step that quotes or runs, it waits until this user has made at most
+ * 5 − n such calls in the last 61 s (n = the calls the step can make). The limiter's fixed 60 s window then never holds
+ * more than 5. Every call is logged from the page's own requests, across tests and projects (state/expensive-<user>.json).
+ * CI run 3 (ebc3444) found why: Stop → Retry → Start within a minute of the first montage is the 6th call, and the
+ * real server answers 429 „Too many requests… try again in a minute" (recorded in DEFECT_REGISTER_FINAL.md).
+ */
+const EXPENSIVE_PER_MIN = 5;
+const callLog = (userId: string) => join(STATE_DIR, `expensive-${userId}.json`);
+function expensiveCalls(userId: string): number[] {
+  try { return JSON.parse(readFileSync(callLog(userId), 'utf8')) as number[]; } catch { return []; }
+}
+function logExpensive(userId: string): void {
+  mkdirSync(STATE_DIR, { recursive: true });
+  writeFileSync(callLog(userId), JSON.stringify([...expensiveCalls(userId), Date.now()]));
+}
+async function paced(userId: string, n = 1): Promise<number> {
+  const t0 = Date.now();
+  while (expensiveCalls(userId).filter((t) => Date.now() - t < 61_000).length > EXPENSIVE_PER_MIN - n) {
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  return Date.now() - t0;
+}
+const isExpensive = (r: Request) =>
+  r.method() === 'POST' && /\/api\/agent\/media\/(montage|edit)$/.test(r.url()) && ['quote', 'run'].includes(String((r.postDataJSON() as { action?: string } | null)?.action));
+/** Every quote/run the page sends is logged for this user. */
+function logPage(page: Page, userId: string): void {
+  page.on('request', (r) => { if (isExpensive(r)) logExpensive(userId); });
+}
+/** Start the card's plan once, paced; the run must be queued (a 429 here would be a pacing bug, said so by name). */
+async function startRun(page: Page, kind: 'montage' | 'edit', isMobile: boolean, userId: string): Promise<void> {
+  await paced(userId);
+  const run = page.waitForResponse(isRun(kind), { timeout: 60_000 });
+  await press(page, `agent-${kind}-start`, isMobile);
+  const r = await run;
+  expect(r.status(), `run refused: HTTP ${r.status()} ${await r.text()}`).toBe(200);
+}
+
 async function downloadResult(page: Page, resultTestId: string, name: string): Promise<string> {
   const result = page.getByTestId(resultTestId).last();
   const download = page.waitForEvent('download', { timeout: 60_000 });
@@ -46,10 +86,12 @@ test.describe.serial('Video Core live — the montage journey', () => {
 
   test('upload → Agent G → quote → Start (double-pressed) → real ffmpeg master → exact frames → Download → Library', async ({ page, isMobile }, info) => {
     const me = projectUser(info);
+    logPage(page, me.id);
     const before = await balanceOf(me.id);
     await openSignedInStudio(page);
     await attach(page, isMobile, ['clip-a.mp4', 'clip-b.mp4', 'beat.mp3']);
 
+    await paced(me.id);
     const quoteRes = page.waitForResponse(isQuote('montage'), { timeout: 90_000 });
     await say(page, 'Cut these to the music, 5 seconds long');
     const q = (await (await quoteRes).json()) as { ok: boolean; quote?: { jobId: string; totalSec: number; credits: number }; error?: string; message?: string };
@@ -64,6 +106,7 @@ test.describe.serial('Video Core live — the montage journey', () => {
     const runs: Response[] = [];
     page.on('response', (r) => { if (isRun('montage')(r)) runs.push(r); });
     const start = page.getByTestId('agent-montage-start').last();
+    await paced(me.id, 2);
     if (isMobile) { await start.tap(); await start.tap({ force: true, timeout: 2_000 }).catch(() => undefined); }
     else { await start.dblclick(); }
 
@@ -126,6 +169,8 @@ test.describe.serial('Video Core live — the montage journey', () => {
     // Quoting with the owner's file is refused as not theirs (the lane is open only to admins, so ask as the other admin).
     const otherAdmin = liveUser(owner.key === 'desktop' ? 'mobile' : 'desktop');
     const adminToken = await signInToken(otherAdmin.email);
+    await paced(otherAdmin.id);
+    logExpensive(otherAdmin.id);
     const q = await request.post('/api/agent/media/montage', { headers: { Authorization: `Bearer ${adminToken}` }, data: { action: 'quote', files: [ref, ref], names: ['a.mp4', 'b.mp4'] } });
     const body = (await q.json()) as { ok?: boolean; error?: string };
     expect(body.ok).toBe(false);
@@ -133,19 +178,27 @@ test.describe.serial('Video Core live — the montage journey', () => {
     await request.dispose();
   });
 
+});
+
+test.describe('Video Core live — Stop and Retry, error recovery, the edit lane', () => {
+  // Each one stands alone (its own uploads), so one failing does not hide the others. Pacing can add up to a minute
+  // before a step, so each has room for that plus a full render.
+  test.beforeEach(({ page }, info) => { test.setTimeout(480_000); logPage(page, projectUser(info).id); });
+
   test('Stop while it renders → cancelled, nothing charged → Retry → a fresh quote → the full-length master', async ({ page, isMobile }, info) => {
     const me = projectUser(info);
     const before = await balanceOf(me.id);
     const t0 = new Date(Date.now() - 1_000).toISOString();
     await openSignedInStudio(page);
     await attach(page, isMobile, ['long-a.mp4', 'long-b.mp4', 'long-beat.mp3']);
+    await paced(me.id);
     const quoteRes = page.waitForResponse(isQuote('montage'), { timeout: 90_000 });
     await say(page, 'Cut these to the music, 20 seconds long');
     const q = (await (await quoteRes).json()) as { ok: boolean; quote?: { totalSec: number } };
     expect(q.ok).toBe(true);
     const card = page.getByTestId('agent-montage-card').last();
     await expect(card).toHaveAttribute('data-phase', 'quoted');
-    await press(page, 'agent-montage-start', isMobile);
+    await startRun(page, 'montage', isMobile, me.id);
     await expect(card).toHaveAttribute('data-phase', 'running', { timeout: 30_000 });
     await expect(page.getByTestId('agent-montage-stop').last()).toBeEnabled();
     await press(page, 'agent-montage-stop', isMobile);
@@ -157,12 +210,13 @@ test.describe.serial('Video Core live — the montage journey', () => {
     await shot(page, `${info.project.name}-stopped`);
 
     // Retry: a new quote, then a full render.
+    await paced(me.id);
     const requote = page.waitForResponse(isQuote('montage'), { timeout: 90_000 });
     await press(page, 'agent-montage-retry', isMobile);
     expect(((await (await requote).json()) as { ok: boolean }).ok).toBe(true);
     const again = page.getByTestId('agent-montage-card').last();
     await expect(again).toHaveAttribute('data-phase', 'quoted', { timeout: 30_000 });
-    await press(page, 'agent-montage-start', isMobile);
+    await startRun(page, 'montage', isMobile, me.id);
     await expect(page.getByTestId('agent-montage-result').last().locator('video[src]')).toBeAttached({ timeout: 300_000 });
     const file = await downloadResult(page, 'agent-montage-result', `${info.project.name}-retry`);
     const d = await decodedFrames(file);
@@ -185,6 +239,7 @@ test.describe.serial('Video Core live — the montage journey', () => {
     // 2 — an MP4 header with no index: the upload passes, the quote's probe cannot read it, and says so.
     await openSignedInStudio(page);
     await attach(page, isMobile, ['truncated.mp4', 'clip-b.mp4', 'beat.mp3']);
+    await paced(me.id);
     const quoteRes = page.waitForResponse(isQuote('montage'), { timeout: 90_000 });
     await say(page, 'Cut these to the music, 5 seconds long');
     const q = (await (await quoteRes).json()) as { ok: boolean; error?: string; message?: string };
@@ -205,6 +260,7 @@ test.describe.serial('Video Core live — the montage journey', () => {
       const before = await balanceOf(me.id);
       await openSignedInStudio(page);
       await attach(page, isMobile, ['edit-source.mp4']);
+      await paced(me.id);
       const quoteRes = page.waitForResponse(isQuote('edit'), { timeout: 90_000 });
       await say(page, sentence);
       const q = (await (await quoteRes).json()) as { ok: boolean; quote?: { plan: { durationSec: number }; credits: number }; error?: string; message?: string };
@@ -213,7 +269,7 @@ test.describe.serial('Video Core live — the montage journey', () => {
       expect(q.quote!.credits).toBe(0);
       const card = page.getByTestId('agent-edit-card').last();
       await expect(card).toHaveAttribute('data-phase', 'quoted');
-      await press(page, 'agent-edit-start', isMobile);
+      await startRun(page, 'edit', isMobile, me.id);
       const result = page.getByTestId('agent-edit-result').last();
       await expect(result.locator('video[src]')).toBeAttached({ timeout: 200_000 });
       const src = await result.locator('video[src]').getAttribute('src');
