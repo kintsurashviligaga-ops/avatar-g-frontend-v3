@@ -1,5 +1,7 @@
 # BOG გადახდები — რა უნდა გააკეთო შენ (Owner Action Checklist)
 
+> **v1.3-დან მოქმედი სია: [BOG_OWNER_ACTIONS.md](BOG_OWNER_ACTIONS.md).** ეს ფაილი v1.2-ის ისტორიაა; §2-ბ (zsh, Node-ის გარეშე) კვლავ ვალიდურია.
+
 2026-10-12 · v1.2 · PR #59 (**draft**, merge მხოლოდ შენი ცალკე სიტყვით) · დეტალები: [`2026-10-12-bog-payments-v1-ka.md`](2026-10-12-bog-payments-v1-ka.md)
 
 **ახლანდელი მდგომარეობა:**

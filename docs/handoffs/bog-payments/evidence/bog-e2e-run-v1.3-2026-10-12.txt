@@ -1,0 +1,57 @@
+# BOG E2E + SQL — v1.3 (2026-10-12 ~19:55Z), commit 93ec307, local Postgres 16 + PostgREST v12, fake BOG
+# PGURL=postgres://postgres@localhost:54329/postgres POSTGREST_BIN=… npm run test:bog-e2e
+ok  T1 first settlement grants
+ok  T1 balance = 20 GEL x 10 = 200
+ok  T1 re-settlement (callback redelivery) grants nothing
+ok  T1 re-settlement without BOG id (cron) grants nothing
+ok  T1 balance still 200
+ok  T1 exactly one ledger row
+ok  T1 order completed, card mask kept
+ok  T2 mismatched BOG order id raises order_id_mismatch
+ok  T2 unknown order raises unknown_order
+ok  T3 profile-less user credited 100
+ok  T4 plan with saved card auto-renews
+ok  T4 allowance 230 granted (200 + 230)
+ok  T4 subscription row: bog/starter/active/parent=bog-3/54 GEL/1 month
+ok  T4 plan re-settlement grants nothing
+ok  T4 still one subscription row
+ok  T5 plan without saved card does not auto-renew
+ok  T5 subscription ends at period end, no parent card
+ok  T5 renewal refused (canceled)
+ok  T6 renewal before the last hour refused (not_due)
+ok  T6 due renewal claimed, parent card bog-3
+ok  T6 second tick sees in_flight (no double charge)
+ok  T6 exactly one renewal order
+ok  T6 renewal id passes the app's isBogOrderId shape
+ok  T6 renewal grants the month (430 + 230)
+ok  T6 period extended a month, parent card unchanged
+ok  T6 renewal re-settlement grants nothing
+ok  T7 three declines recorded, one order each
+ok  T7 subscription past_due after 3 declines
+ok  T7 fourth claim refused (exhausted)
+ok  T7 declines granted nothing
+ok  T8 claim right after a decline refused (backoff)
+ok  T9 upgrade returns the old card (bog-6) for deletion
+ok  T9 old plan stops renewing
+ok  T9 new plan renews
+ok  T10 renewal without subscription/period rejected by the table
+ok  T11 client roles locked out
+ok  C1 16 parallel settlements of one 50 GEL top-up → granted once, balance 500
+ok  C2 16 parallel renewal claims of one period → one claim, one order (one charge)
+ok  C3 16 parallel settlements of one renewal → granted once (500 + 230 + 230 = 960)
+    ✓ E1 top-up: checkout writes the priced row first, the signed callback credits 20 ₾ → 200 credits, exactly once (372 ms)
+    ✓ E2 lost callback: the customer returns, the status route reconciles from the receipt and credits (125 ms)
+    ✓ E3 lost callback, customer never returns: the cron reconciles it (106 ms)
+    ✓ E4 forged or tampered callback → 401, nothing credited (113 ms)
+    ✓ E5 a paid receipt for a different amount or currency credits nothing and is held for review (67 ms)
+    ✓ E6 declined payment: rejected, nothing credited, the customer is told it failed (42 ms)
+    ✓ E7 BOG refuses our credentials: 502, the row says why (env + BOG answer), and never contains the secret (22 ms)
+    ✓ E8 another user cannot read my order; a malformed id is 404 (36 ms)
+    ✓ E9 plan: Starter 54 ₾ → card saved → 230 credits + renewing plan; the cron renews once on the saved card; cancel stops it (183 ms)
+    ✓ E10 renewal declined three times → past_due, never charged a fourth time (301 ms)
+    ✓ E12 refund of a top-up: requested → part back → all back, recorded step by step; credits never move; a replayed "completed" changes nothing (207 ms)
+    ✓ E13 refund of a cancelled plan: a replayed "completed" can no longer revive auto-renewal or grant the month again (127 ms)
+    ✓ E14 sandbox credentials on a Vercel deployment (Production database): no order, no settlement, no cron (47 ms)
+    ✓ E11 the amount cannot be chosen by the browser: an off-catalogue top-up is refused before BOG hears of it (17 ms)
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total

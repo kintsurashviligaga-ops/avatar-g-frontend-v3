@@ -1,5 +1,7 @@
 # BOG Payments v1.2 — ანგარიში (2026-10-12: ბანკის პასუხი + საბოლოო უსაფრთხოების შესწორებები)
 
+> **v1.3 (2026-10-12 19:39Z-დან):** მიმდინარე მდგომარეობა და შემდეგი ნაბიჯები — [BOG_FINAL_HANDOFF.md](BOG_FINAL_HANDOFF.md), [BOG_PRODUCTION_E2E_REPORT.md](BOG_PRODUCTION_E2E_REPORT.md), [BOG_OWNER_ACTIONS.md](BOG_OWNER_ACTIONS.md). ეს ფაილი v1.0–v1.2-ის ისტორიაა.
+
 **Branch:** `claude/bog-payments-master-task-yjxq59` (main `30be5a2`-დან) · **PR:** #59, **draft** → main (შენი 18:23Z მითითებით draft რჩება) · Merge / Deploy / Migration / რეალური ტრანზაქცია **არ** გაკეთებულა. Production-ის credentials არ შემიცვლია და არ წამიკითხავს.
 
 > v1.0 (დილით) იყო Phase 0 აუდიტი და ტესტები; v1.1 დაამატა ბანკის პასუხი (§0–§6), კოდი (§7) და ბლოკერები (§11); **v1.2 (18:23Z code review) — სამი შესწორება და დამატებითი შემოწმებები: §A**, ტესტები §8, ბლოკერები §11. Owner-ის ნაბიჯები ცალკე ფაილშია: [`OWNER_ACTION_CHECKLIST_ka.md`](OWNER_ACTION_CHECKLIST_ka.md).

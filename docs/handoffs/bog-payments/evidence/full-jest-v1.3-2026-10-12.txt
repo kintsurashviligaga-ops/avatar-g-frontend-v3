@@ -1,0 +1,6 @@
+# Full jest — v1.3 (2026-10-12 19:43–19:51Z), npx jest --silent, branch head fb29913 (+ the 93ec307 guard landed mid-run; its 3 suites re-run green separately: 438/438)
+# Only failure: lib/agent/media/composition.ffmpeg.test.ts — node_modules/ffmpeg-static/ffmpeg is a symlink to this sandbox's /usr/bin/ffmpeg 6.1.1
+# (ffmpeg-static's own download is blocked by the proxy); ffmpeg 6.1 rejects the fixture's gradients speed=0 (range 1e-05..1). CI uses ffmpeg-static's binary and is green.
+FAIL lib/agent/media/composition.ffmpeg.test.ts (16 tests, all: "Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]")
+Test Suites: 1 failed, 6 skipped, 872 passed, 873 of 879 total
+Tests:       16 failed, 44 skipped, 13326 passed, 13386 total

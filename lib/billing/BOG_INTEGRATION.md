@@ -13,14 +13,14 @@ Plan prices are the pricing page's `$ × GEL_PER_USD`, rounded (`lib/billing/bog
 
 BOG's Business Manager (https://manager.bog.ge) shows the Online Payments credentials as **OPAY Client ID** and **OPAY Secret Key** — the OAuth client id and secret of https://api.bog.ge/docs/payments/introduction. Merchant ID and Terminal ID are not used by the API. Add them as environment variables:
 
-**Vercel** → Project → Settings → Environment Variables, **Production** scope. Mark the secret **Sensitive**. Do not put the live pair on Preview: previews share the Production database, so a preview payment would credit a real account.
+**Vercel** → Project → Settings → Environment Variables, **Production** scope. Mark the secret **Sensitive**. Do not put the live pair on Preview: previews share the Production database, so a preview payment would credit a real account. The code enforces it too: on a Vercel Preview or Development deployment (`VERCEL_ENV` ≠ `production`) the checkout mode is always `off`, whatever the env holds.
 
 | Name | Value |
 |---|---|
 | `BOG_CLIENT_ID` | OPAY Client ID |
 | `BOG_SECRET_KEY` | OPAY Secret Key |
 | `BOG_ENV` | leave it unset (= `production`) on Vercel. A **sandbox** pair never goes into Vercel: every deployment (Preview too) writes to the Production database, so with `BOG_ENV=sandbox` on any Vercel deployment checkout, callbacks and the cron refuse with `BOG_SANDBOX_BLOCKED` and the button is hidden (`bogSandboxBlocked`). Sandbox runs only locally or in CI |
-| `BOG_CHECKOUT_MODE` | optional: `admin` = only admins can start a BOG payment (the owner's live test), `off` = nobody, unset = everyone. Any other value reads as `off`. Settling (callbacks, return page, cron renewals) is never affected |
+| `BOG_CHECKOUT_MODE` | optional: `admin` = only admins can start a BOG payment (the owner's live test), `off` = nobody, unset = everyone. Any other value reads as `off`, and so does any Preview / Development deployment. Settling (callbacks, return page, cron renewals) is never affected |
 
 Before saving a pair, check it with ONE token request (no order, no money): `node scripts/bog-oauth-check.mjs`. The file is self-contained (Node 18+, no packages), so it also runs alone from any folder. It asks for the pair in the terminal with the Secret Key typed blind (nothing echoed, nothing in shell history), prints one verdict line (`✓ ok · HTTP 200 · production · client …1234`) and never prints the secret in any form (verbatim, JSON-escaped, URL-encoded, base64) or a token; `BOG_ENV=sandbox` for a sandbox pair. Exit 0 accepted, 1 refused, 2 usage, 130 Ctrl+C. Never put the secret on a command line.
 
@@ -68,7 +68,7 @@ cron every 10 min ─▶ /api/cron/bog-billing: reconcile pending orders · expi
 | `app/api/cron/bog-billing` | reconcile + renew (vercel.json, every 10 min) |
 | `supabase/migrations/20261002a_bog_billing.sql` | tables, functions, VERIFY block |
 
-Stripe: the credits window offers the older card checkout whenever `/api/checkout/capabilities` answers `bog:false` for this visitor (BOG not configured, `BOG_CHECKOUT_MODE=off`, `admin` for a non-admin, a sandbox pair on Vercel, billing tables missing) and Stripe is configured. A BOG refusal after the click does **not** fall back to Stripe. No Stripe payment has been completed in Production yet.
+Stripe: the credits window offers the older card checkout whenever `/api/checkout/capabilities` answers `bog:false` for this visitor (BOG not configured, `BOG_CHECKOUT_MODE=off`, `admin` for a non-admin, a Preview / Development deployment, a sandbox pair on Vercel, billing tables missing) and Stripe is configured. A BOG refusal after the click does **not** fall back to Stripe. No Stripe payment has been completed in Production yet.
 
 ## Is it working? (admin)
 
