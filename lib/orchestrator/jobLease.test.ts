@@ -126,7 +126,7 @@ describe('heartbeat, progress and the end of a run are fenced by the lease', () 
     expect(await heartbeat(s, 'j1', 'A', now())).toBe('held');
   });
 
-  test('a read that fails is no lost lease (CI E2E 38375527645): one dropped read → read again, held; none → unsure', async () => {
+  test('a read that fails is no lost lease: one dropped read → read again, held; none → unsure', async () => {
     const s = memoryLeaseStore(now);
     await put(s);
     await claim(s, 'j1', 'A', now());

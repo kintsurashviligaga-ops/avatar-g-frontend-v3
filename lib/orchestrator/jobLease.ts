@@ -203,10 +203,14 @@ const pause = (i: number) => new Promise((r) => setTimeout(r, RETRY_PAUSE_MS[Mat
  *
  * 'unsure' = the row could not be read, or the renewal could not be written (a dropped connection, the database away
  * for a moment): no evidence of anything, so the worker carries on and the next beat tries again. A worker that took a
- * failed read for a lost lease walked away from a healthy render, and on its last attempt left the row `processing`
- * with nobody to finish it (CI E2E run 38375527645, job recovery). The lease, renewed by the last beat that got
- * through, lasts LEASE_MS (six beats); if the database stays away longer, another worker may take the job over, and
- * this one hears it from the first beat that gets through ('lost'), or its completion is refused (fenced by owner).
+ * failed read for a lost lease would walk away from a healthy render, and on its last attempt leave the row
+ * `processing` with nobody to finish it. The lease, renewed by the last beat that got through, lasts LEASE_MS (six
+ * beats); if the database stays away longer, another worker may take the job over, and this one hears it from the
+ * first beat that gets through ('lost'), or its completion is refused (fenced by owner).
+ *
+ * A read must be live: a cached answer shows the row as it was before this worker's claim, so the first beat would
+ * say 'lost'. A GET route that runs a worker must opt out of Next's fetch cache, as the sweep does
+ * (app/api/agent/media/sweep/route.ts).
  */
 export async function heartbeat(store: LeaseStore, id: string, owner: string, now: number): Promise<Beat> {
   for (let i = 0; i < 3; i += 1) {

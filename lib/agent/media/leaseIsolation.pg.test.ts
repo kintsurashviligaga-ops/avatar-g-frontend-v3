@@ -227,6 +227,40 @@ suite('lease queue on a real Postgres + PostgREST (local, isolated)', () => {
     expect((await ledger(A)).filter((l) => l.startsWith('7 refund'))).toHaveLength(1);
   });
 
+  test('the CI E2E recovery path on the real JSONB column: heartbeats renew, a stolen lease is heard, the sweep\'s attempt 2 keeps its lease and delivers', async () => {
+    const f = liveQueue();
+    const id = await queued(f);
+    const finish = deadRender(f);
+    const first = workMontageJob(f.deps, { jobId: id, worker: 'w1' });
+    await flush();
+    const v1 = (await row(id)).params._exec.v as number;
+    await f.beat();
+    expect((await row(id)).params._exec).toMatchObject({ owner: 'w1', attempt: 1, v: v1 + 1 });
+
+    // tests/video-core-live/recovery.spec.ts: the whole params written back with the lease taken and lapsed.
+    const before = await row(id);
+    const exec = before.params._exec as { v: number };
+    const stolen = await db.from('generation_jobs')
+      .update({ params: { ...before.params, _exec: { ...exec, owner: 'dead', leaseUntil: f.clock.now - 1_000, v: exec.v + 1 } } })
+      .eq('id', id).eq('status', 'processing').eq('params->_exec->>v', String(exec.v)).select('id');
+    expect(stolen.data).toHaveLength(1);
+
+    const swept = sweepMontageJobs(f.deps, { worker: 'sweep', work: true });
+    for (let i = 0; i < 40 && (await row(id)).params._exec.attempt !== 2; i++) await flush();
+    const v2 = (await row(id)).params._exec.v as number;
+    expect((await row(id)).params._exec).toMatchObject({ owner: 'sweep', attempt: 2 });
+
+    await f.beat(); // both workers beat: w1 hears it lost the lease, the sweep's renews
+    expect(await first).toEqual({ ran: true, outcome: 'lost' });
+    expect((await row(id)).params._exec).toMatchObject({ owner: 'sweep', attempt: 2, v: v2 + 1 });
+    await f.beat();
+    expect((await row(id)).params._exec).toMatchObject({ owner: 'sweep', v: v2 + 2 });
+
+    finish[1]!(OK);
+    expect(await swept).toMatchObject({ worked: { jobId: id, result: { ran: true, outcome: 'delivered' } } });
+    expect(await row(id)).toMatchObject({ status: 'completed', signed_url: MASTER_URL });
+  });
+
   test('a charge whose request died before it lifted the hold is failed after HOLD_MS and paid back', async () => {
     const f = liveQueue();
     const jobId = randomUUID();

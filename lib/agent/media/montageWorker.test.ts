@@ -342,7 +342,7 @@ describe('crash: a worker that dies is replaced once; then the job is given up a
     expect(await other).toMatchObject({ outcome: 'delivered' });
   });
 
-  test('the last attempt keeps rendering through a heartbeat whose reads fail, and delivers (CI E2E 38375527645)', async () => {
+  test('the last attempt keeps rendering through a heartbeat whose reads fail, and delivers', async () => {
     // The live run: the sweep's attempt 2 was killed by its own heartbeat after a failed read of the row, and with no
     // attempt left the job stayed `processing` with nobody to finish it. A read that fails is no evidence of anything.
     const f = fake();
