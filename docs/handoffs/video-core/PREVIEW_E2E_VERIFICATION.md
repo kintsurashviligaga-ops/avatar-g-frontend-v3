@@ -14,7 +14,7 @@ Workflow: `.github/workflows/video-core-preview-e2e.yml` (label `preview-e2e` on
 | --- | --- | --- |
 | Database | the Supabase CLI stack on the GitHub runner, started with a JWT secret made for that run (`openssl rand`), so its anon and service keys are new and die with the runner; Test Schema Baseline, synthetic users and media only | `tests/video-core-live/guard.ts` refuses any database host but this machine's own; the job refuses keys signed with the CLI's documented default secret |
 | Link | a Cloudflare quick tunnel (no account) to `e2e/video-core-live/scripts/key-gate.mjs`, which admits only that run's two keys and storage URLs the stack itself signed | anything else gets 403; the tunnel and the gate stop with the runner |
-| App | a Vercel **Preview** of the PR head in a separate Vercel project, `avatar-g-video-core-e2e` (`prj_vqpOU2rCUkqNHyVQRIBALw6lUSf3`), aliased to `https://vcore-e2e-<nonce>.vercel.app` | its Preview environment holds nine values and nothing else: six set per run (the tunnel URL twice, the stack's anon and service keys, a quote secret and a cron secret made by the runner) and three fixed (`AGENT_G_MEDIA_EXEC=admin`, `VIDEO_DIRECTOR_RUNS=admin`, `NEXT_TELEMETRY_DISABLED=1`); Vercel shows 0 Production variables. No Production Supabase value, no AI, payment, Google or BOG credential: it cannot reach Production data and cannot make a paid call. The project has no domain and refuses production builds |
+| App | a Vercel **Preview** of the PR head in a separate Vercel project, `avatar-g-video-core-e2e` (`prj_vqpOU2rCUkqNHyVQRIBALw6lUSf3`), aliased to `https://vcore-e2e-<nonce>.vercel.app` | its Preview environment holds nine values and nothing else: six set per run (the tunnel URL twice, the stack's anon and service keys, a quote secret and a cron secret made by the runner) and three fixed (`AGENT_G_MEDIA_EXEC=admin`, `VIDEO_DIRECTOR_RUNS=admin`, `NEXT_TELEMETRY_DISABLED=1`); Vercel shows 0 Production variables. No Production Supabase value, no AI, payment, Google or BOG credential: it cannot reach Production data and cannot make a paid call. The project has no custom domain (its only domain is `avatar-g-video-core-e2e.vercel.app`; `myavatar.ge` resolves to the main project's Production deployment, checked 12:45Z) and its ignored-build step refuses production builds |
 | Handshake | the runner encrypts {tunnel, keys, nonce} (AES-256 + RSA-OAEP to `e2e/video-core-live/preview/handshake.pub.pem`) and posts it as a check-run output; only the operator session holds the private key; the job replaces the text with `consumed` when it ends | no value is printed in a log, a commit or a chat |
 | Proof before any write | `e2e/video-core-live/scripts/preview-check.mjs` (fail-closed): the alias is served by Vercel; its browser code names this run's tunnel and never the Production project ref; `/api/credits/balance` answers 401 without a token and 200 with a token only this run's stack could sign | if any check fails, no test runs |
 
@@ -31,9 +31,40 @@ else); the one production-target attempt of the setup day (07:31Z, no database, 
 | [38375578275](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38375578275) | e5db160 | **32 passed, 3 failed** (32.5 min) | the table below. Failed: job recovery (defect 40, fixed since), the transport check (a 37.9 s cut on the free-film call by Playwright's client; the server settled correctly), desktop Stop/Retry (no quote answer within 90 s; the phone's passed in the same run, the desktop's in run 2) |
 | [38386454944](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38386454944) | 1c2012f | stopped at setup, no Preview built | the Supabase CLI install hit GitHub's anonymous API rate limit (defect 41, fixed in ec7f742) |
 | [38388633377](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38388633377) | ec7f742 | **34 passed, 1 failed** (23.7 min) | the table below: every desktop and iPhone test, job recovery through the sweep (defect 40 fix, first time on Vercel), billing, RLS / RPC / access. The alias step waited 20 min while GG reconnected the Vercel connector to the team (11:35Z). Failed: only the transport check, the free-film stitch's Playwright client cut at 38.2 s again (finding 2); the server delivered the film and settled the money |
-⟪RUN6ROW⟫
+| [38394841616](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38394841616) | f1e3358 | **35 passed, 0 failed** (24.5 min) | **the final run**, the table below: every desktop and iPhone test, job recovery through the sweep, billing, RLS / RPC / access, and the transport check (`cuts: []`) with the free-film stitch through Node's client (finding 2's fix). f1e3358 changes only the test client after ec7f742; the product code is the same as run 5 |
 
-## Run 5 (ec7f742, the final product code) on the Vercel runtime, test by test
+## Run 6 (f1e3358, the final head) on the Vercel runtime, test by test
+
+Log: https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38394841616/job/115287313644. Deployment
+`dpl_5DFbYuE3Do8tZMmsfHjuKgwHsoeg` (target preview, `target: null` checked), alias `vcore-e2e-67a0c9825ba0.vercel.app`
+from 12:14:52Z; the fail-closed isolation check passed at 12:15:14Z (served by Vercel, 2 pages and 44 chunks read, the
+tunnel named in the browser code, the Production project ref absent, balance 401 without a token); Playwright 12:15:39Z →
+12:40:07Z. Every balance below is read back from this run's own ledger with the service role.
+
+| Area | Desktop (Chrome) | Mobile (iPhone 13) | Evidence (redacted log line, abridged) |
+| --- | --- | --- | --- |
+| sign in through the real sheet | PASS | PASS | session in a cookie |
+| upload → Agent G → quote → Start pressed twice → real ffmpeg → Download → Library | PASS (46.2 s) | PASS (37.3 s) | one job, one start response; quote 0 credits, 5 s, beat-synced; **150 frames, 5.00 s**, 720×1280, 30 fps, audio; balance 50 → 50 |
+| another user | PASS | PASS | 0 job rows, task route 404, storage 400 / 400, foreign quote 403 `media_not_yours` |
+| **Stop → Retry** | **PASS (2.5 min)** | **PASS (2.7 min)** | stopped `cancelled by the user`; retried **600 frames, 20.00 s**, 720×1280, 30 fps, audio; balance 50 |
+| error recovery | PASS | PASS | upload chip `failed`; quote `unreadable` |
+| **Trim 1 → 4 s** („Trim the previous video from 1 to 4 seconds." / „წინა ვიდეო 1-დან 4 წამამდე მოჭერი") | PASS | PASS | `trim 1 → 4`; **90 frames, 3.00 s**, audio; delivered 9.7 s / 8.7 s |
+| **Volume** („louder" / „წინა ვიდეოს ხმა აუწიე") | PASS | PASS | `volume +6 dB`; **150 frames**; measured mean **−16.6 dB → −11.2 dB**; delivered 11.7 s / 9.7 s |
+| **Adjust** („brighter" / „წინა ვიდეო გაანათე") | PASS | PASS | `adjust brightness 25`; **150 frames**; measured luma **117.1 → 131.1**; delivered 18.7 s / 16.9 s |
+| 2× speed / slow motion | PASS / PASS | PASS / PASS | **75** / **300 frames** |
+| music from the named second | PASS (Russian) | PASS (Georgian) | `musicStartSec 10`, 150 frames; high band: master −19.2 dB, the track's first 5 s −48.6 dB, the track from 0:10 −16.2 dB |
+
+Every edit kept the balance at 50 with one ledger row (the starter grant): the edit lane is free.
+
+| Area (API, runs once) | Result | Evidence |
+| --- | --- | --- |
+| **Credits / billing** on the film stitch | 4 / 4 money checks PASS | free film first: Node client, 200 after 51.0 s, `freeFilm:true`, 1 master, ledger `[]`, `freeFilmsLeft 0`, balance 50; paid film: 200 after 50.3 s, 1 master, one `-25 assemble:saga_…` row, balance 25; failed stitch: 502 `assembly_failed` after 1.5 s, `-25` then `+25 assemble-rollback`, balance 25 → 25; two presses at once: both 200 (33.1 s / 31.4 s), 2 delivered, each paid once, 75 → 25 (`duplicateGuard: absent`, no Redis in the test project) |
+| starter grant, **RLS**, RPC, access, buckets | PASS | own rows only (`creditInsert`, `balancePatch`, `jobInsert` 403); money RPCs anon 401 / user 403, `debitOnce` charged once then `charged:false`, six concurrent twins one debit, refund once; ordinary user `enabled:false`, quote / edit 404, anonymous 401, sweep without secret 403, admin `enabled:true`; `uploads`, `renders`, `twins` private |
+| storyboard approval | PASS | edited shot 400 `scripts_differ` (RU text), stale revision 400 `board_changed` |
+| **job recovery** (defect 40's path, on Vercel) | **PASS (2.4 min)** | the lease lapses mid-render; sweep without secret 403, wrong secret 403; the sweep (Vercel function) answered 200 after 137.8 s, `outcome: delivered`; progress starting / normalize (attempt 1) → resolve / normalize … (attempt 2) → completed; job `attempt 2, maxAttempts 2, lease released`; decoded **600 frames, 20.00 s**, 720×1280, 30 fps, audio; balance 50 → 50 |
+| every long call got its answer | **PASS** | `cuts: []` |
+
+## Run 5 (ec7f742, the same product code) on the Vercel runtime, test by test (history)
 
 Log: https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38388633377/job/115266555651 (Playwright
 11:36:11Z → 11:59:51Z). Every balance below is read back from this run's own ledger with the service role.
@@ -102,7 +133,22 @@ heartbeat hardening (329c50d); every row below except recovery runs through code
    probes on a silent connection stop being answered after about 27 s; that part is inferred from the identical cut
    time, not observed. A browser uses Chromium's own network stack (every browser test passed) and the product makes no
    such call. Fix: every stitch that runs ffmpeg goes through `longCall`; the transport check stays and still fails a
-   run on any cut. ⟪RUN6FINDING⟫
-3. **Desktop Stop/Retry on the Preview: ⟪STOPRETRY⟫.** Run 3's desktop quote did not answer within the test's 90 s, after
-   the three uploads were ready; nothing ran or was charged. It passed in runs 2 and 5⟪STOPRETRY6⟫; the phone passed
+   run on any cut. Run 6 on f1e3358 confirmed it: the free film went through Node's client and got its 200 after 51.0 s, and the check passed with `cuts: []`; the same change is green in CI E2E 38394813999 (35 / 35).
+3. **Desktop Stop/Retry on the Preview: passed in 3 of 4 runs that reached it.** Run 3's desktop quote did not answer within the test's 90 s, after
+   the three uploads were ready; nothing ran or was charged. It passed in runs 2, 5 and 6; the phone passed
    every time. The run-3 miss is not explained (slowness through the tunnel or a lost request); it did not recur.
+
+## After every run (state left behind, checked after run 6 at 12:45Z)
+
+- The six per-run values in the test project are back to placeholders (`https://not-configured.invalid` for both URLs,
+  `not-configured` for the anon key, empty for the service key, quote secret and cron secret); the stack those values
+  named, its keys and the tunnel stopped with the runner, so the run's Preview URL can no longer reach any database.
+- Vercel Authentication is back on for the project's Previews (`ssoProtection: preview`); the label `preview-e2e` is
+  removed from PR #58, so nothing starts another run until the operator adds it again.
+- The project is **not paused**: Vercel refuses to pause it (`400 Active production deployment does not exist`) because
+  its only production deployment is the static placeholder page allowed at 07:49Z. Its ignored-build step refuses any
+  production build, and it holds no Production value.
+- `myavatar.ge` resolves to the main project's Production deployment `dpl_EhS6Jvgm7uKdrMudSsDTChvxuGmy` (ba2e0a4), not to
+  the test project; the test project's only domain is `avatar-g-video-core-e2e.vercel.app`. (Its project summary still
+  lists `myavatar.ge` among "domains"; most likely that is the alias named in the `vercel.json` of the cancelled 07:31Z
+  production build (inferred). It is not an assignment: the project-domain list and the alias itself both say otherwise.)

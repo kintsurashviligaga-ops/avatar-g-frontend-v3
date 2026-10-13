@@ -222,7 +222,12 @@ Storage, PostgREST, Postgres) made for each run; Production was not read or writ
   and with a wrong one 403; another user sees 0 job rows, 404 on the task route, 400 on storage, 403 `media_not_yours`;
   buckets private.
 
-**Live, Vercel runtime (T4)**: ⟪T4BILL⟫
+**Live, Vercel runtime (T4)**: the same checks passed against a Vercel Preview in the separate project, on a throwaway
+Supabase on the runner (Preview run 6, 38394841616, head f1e3358, 35 / 35): free film first (200 after 51.0 s, ledger
+`[]`, balance 50); paid film one `-25` row, balance 25; failed stitch 502, `-25` then `+25 assemble-rollback`, 25 → 25; two
+presses both 200, 2 delivered, each paid once, 75 → 25; every free lane 50 → 50; RLS, RPC, access and buckets as above;
+the sweep refused without its secret and with a wrong one (403) and, as a Vercel function, delivered a stalled job as
+attempt 2 with nothing charged. No Production value, payment or provider credential was in that project.
 
 **Still not proven:** a payment by a real customer (never by rule; the BOG thread owns payments), and a paid provider call
 (B1).

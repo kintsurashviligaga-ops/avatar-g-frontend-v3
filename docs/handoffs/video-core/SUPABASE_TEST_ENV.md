@@ -87,6 +87,7 @@ done here.
 
 ## Still outside this environment
 
-- Vercel runtime (functions, `after()` timing, file tracing): NOT RUN — needs a Preview, which needs GG's approval.
+- Vercel runtime (functions, `after()` timing, file tracing): run since 2026-10-13 on GG's word (06:34Z) in a separate Vercel
+  project against this same stack through a tunnel: 35 / 35 on f1e3358 (`PREVIEW_E2E_VERIFICATION.md`).
 - Live Veo/Vertex: NOT RUN — needs GG's budget word (`VERTEX_LIVE_TEST_PLAN.md`).
 - Production E2E: NOT RUN — Production is never a test database.

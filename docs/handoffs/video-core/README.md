@@ -11,7 +11,7 @@ completion + isolated CI E2E (18:17Z, 19:05Z, 19:07Z), final review + isolated P
 | --- | --- | --- |
 | 1 | Engineering Report | `GO_NO_GO_REPORT_KA.md` §2–§3 (code review, fixes) and `VIDEO_CORE_HANDOFF.md` (what changed where, how to re-run) |
 | 2 | E2E Results | `evidence/ci-e2e/` (CI E2E per run) and `PREVIEW_E2E_VERIFICATION.md` (Vercel runtime) |
-| 3 | Defect Register | `DEFECT_REGISTER_FINAL.md` (rows 1–41) |
+| 3 | Defect Register | `DEFECT_REGISTER_FINAL.md` (rows 1–42) |
 | 4 | Acceptance Matrix | `FINAL_ACCEPTANCE_MATRIX.md` (AC-01…AC-28, by tier) |
 | 5 | Preview Verification | `PREVIEW_E2E_VERIFICATION.md` |
 | 6 | Security / Billing Verification | `BILLING_SECURITY_REPORT.md` and `GO_NO_GO_REPORT_KA.md` §2–§4 (billing and RLS live on both E2E layers) |
@@ -32,7 +32,7 @@ completion + isolated CI E2E (18:17Z, 19:05Z, 19:07Z), final review + isolated P
 | `DEFECT_REGISTER_FINAL.md` | every defect's final state, fix commit, regression test and highest tier measured |
 | `VIDEO_CORE_HANDOFF.md` | what changed where, how to re-run every check (incl. the CI E2E), what is open |
 | `SUPABASE_TEST_ENV.md` | the isolated Supabase in GitHub Actions, the Test Schema Baseline, the 114 / 35 migration finding |
-| `evidence/ci-e2e/` | the GitHub Actions runs this release candidate rests on (latest: `live-e2e-38388562682.md`, ec7f742, 35 / 35) |
+| `evidence/ci-e2e/` | the GitHub Actions runs this release candidate rests on (latest: `live-e2e-38394813999.md`, f1e3358, 35 / 35; `live-e2e-38388562682.md`, ec7f742, 35 / 35) |
 
 ## Supporting documents
 

@@ -1,6 +1,6 @@
 # Video Core v1.0 — final acceptance matrix AC-01…AC-28
 
-Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **ec7f742** (product code last changed in 717231c, defect 40; later commits change only workflows and these documents), main ba2e0a4 merged in at 179e10e (2026-10-13). Round 2's matrix with its SHAs stays in
+Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **f1e3358** (product code last changed in 717231c, defect 40; later commits change only workflows, the live-test client (f1e3358, defect 42) and these documents), main ba2e0a4 merged in at 179e10e (2026-10-13). Round 2's matrix with its SHAs stays in
 `acceptance-matrix.md`; this file is the release-candidate state after round 3 and the isolated CI E2E.
 
 ## Tiers (a row is only PROVEN at the tiers it actually ran at)
@@ -12,11 +12,11 @@ Branch `claude/video-core-v1-6gh97e`, draft PR #58, code head **ec7f742** (produ
 | T3 | real ffmpeg, decoded frame counts | sandbox (`FFMPEG_EVIDENCE.md`) |
 | DB | real Postgres + PostgREST + real ffmpeg, local and throwaway | sandbox and CI job "billing on real Postgres" |
 | **CI-E2E** | real browser + `next start` of this branch + throwaway Supabase (Auth, Storage, PostgREST, Postgres 17) + real ffmpeg, synthetic users and media | GitHub Actions job "live E2E" (`SUPABASE_TEST_ENV.md`) |
-| **T4** | Vercel runtime: a Preview of this branch in the separate Vercel project `avatar-g-video-core-e2e`, on a throwaway Supabase that lives only on the GitHub runner (GG's word 06:34Z / 08:52Z / 09:48Z) | ⟪T4TIER⟫ |
+| **T4** | Vercel runtime: a Preview of this branch in the separate Vercel project `avatar-g-video-core-e2e`, on a throwaway Supabase that lives only on the GitHub runner (GG's word 06:34Z / 08:52Z / 09:48Z) | **PROVEN 35 / 35**: Preview run 6, 38394841616 on f1e3358 (`PREVIEW_E2E_VERIFICATION.md`) |
 | T5 | paid provider (Veo / Vertex) | **NOT RUN** — needs GG's budget word (B1) |
 | T6 | Production | **NOT RUN** — Production is never a test environment |
 
-CI-E2E run: **38388562682 (head ec7f742): 35 / 35 passed** on desktop + iPhone 13 (`evidence/ci-e2e/live-e2e-38388562682.md`); every CI-E2E cell below passed again in it. The suite grew from 21 to 35 tests in this round (job recovery through the sweep, Trim / Volume / Adjust on both viewports, the track offset, the free film and the paid film on the real database). Earlier runs (4–8, 38386271150) are kept in the same folder with their failures and root causes (defects 37–40).
+CI-E2E runs: **38388562682 (head ec7f742): 35 / 35 passed** on desktop + iPhone 13 (`evidence/ci-e2e/live-e2e-38388562682.md`), and **38394813999 (head f1e3358): 35 / 35 passed** (`evidence/ci-e2e/live-e2e-38394813999.md`); every CI-E2E cell below passed again in both. The suite grew from 21 to 35 tests in this round (job recovery through the sweep, Trim / Volume / Adjust on both viewports, the track offset, the free film and the paid film on the real database). Earlier runs (4–8, 38386271150) are kept in the same folder with their failures and root causes (defects 37–40).
 
 ## Matrix
 
@@ -61,7 +61,10 @@ runtime (T4, below). No row is proven at T5 or T6: those tiers were not run.
 
 The same `tests/video-core-live/` suite against a Vercel Preview of this branch in the separate project
 `avatar-g-video-core-e2e`, on a throwaway Supabase that lived only on the GitHub runner (`PREVIEW_E2E_VERIFICATION.md`).
-⟪T4RUNS⟫
+Six runs. The final one, **run 6 (38394841616, head f1e3358), passed 35 / 35** on desktop Chrome + iPhone 13 in 24.5 min.
+Run 5 (38388633377, ec7f742, the same product code) passed 34 / 35; its one failure was the test client's connection
+cut (defect 42, fixed in the harness only, f1e3358). Runs 1–4, with their failures and root causes (defects 40–42), are in
+that file.
 
 | ID | What passed on the Vercel runtime (desktop Chrome + iPhone 13 unless named) |
 | --- | --- |
@@ -79,7 +82,7 @@ The same `tests/video-core-live/` suite against a Vercel Preview of this branch 
 
 | Layer | Status | Evidence / reason |
 | --- | --- | --- |
-| CI E2E (isolated local Supabase, real backend, real ffmpeg, desktop + phone) | **PROVEN**: 35 / 35 on head ec7f742 | run 38388562682: desktop + iPhone 13 journeys, job recovery, billing and the stack contracts; job "billing on real Postgres" green in the same run; `evidence/ci-e2e/` |
-| Vercel Runtime E2E | ⟪T4LAYER⟫ |
+| CI E2E (isolated local Supabase, real backend, real ffmpeg, desktop + phone) | **PROVEN**: 35 / 35 on head ec7f742 and again on f1e3358 | runs 38388562682 and 38394813999: desktop + iPhone 13 journeys, job recovery, billing and the stack contracts; job "billing on real Postgres" green in the same run; `evidence/ci-e2e/` |
+| Vercel Runtime E2E | **PROVEN**: 35 / 35 on head f1e3358 | Preview run 38394841616: the same suite against a Vercel Preview in the separate project `avatar-g-video-core-e2e`, on a throwaway Supabase on the runner; every desktop and iPhone 13 test, job recovery through the sweep running as a Vercel function, billing, RLS / RPC / access, `cuts: []`; `PREVIEW_E2E_VERIFICATION.md` |
 | Vertex / Veo live | **NOT RUN** | no paid call authorized; 980/980 Veo/director unit tests and the config review (`VERTEX_LIVE_TEST_PLAN.md`) are mocked-provider evidence only |
 | Production E2E | **NOT RUN** | Production is never a test environment; nothing merged or deployed |

@@ -63,10 +63,11 @@ of Playwright; do not "speed it up" by switching the limiter off.
 starts it. The runner starts the same throwaway stack, opens a quick tunnel behind a key gate, posts the Preview's values
 encrypted to `e2e/video-core-live/preview/handshake.pub.pem` as the check run `preview-e2e-handshake`, and waits up to 45 min
 for `https://vcore-e2e-<nonce>.vercel.app`. The operator (who holds the private key) decrypts it, sets the six per-run
-values on the separate Vercel project `avatar-g-video-core-e2e` (Preview target only), unpauses it, turns its Vercel
+values on the separate Vercel project `avatar-g-video-core-e2e` (Preview target only), turns its Vercel
 Authentication off, creates a deployment of the PR head (checking `target` is preview, cancelling at once otherwise),
-aliases it, and after the run pauses the project, puts the values back to placeholders, turns the protection back on and
-removes the label. `e2e/video-core-live/scripts/preview-check.mjs` proves the isolation before any test. Details and runs:
+aliases it, and after the run puts the values back to placeholders, turns the protection back on and removes the label.
+The project cannot be paused (Vercel answers 400 while its only production deployment is the static placeholder page); its
+ignored-build step refuses production builds and it holds no Production value. `e2e/video-core-live/scripts/preview-check.mjs` proves the isolation before any test. Details and runs:
 `PREVIEW_E2E_VERIFICATION.md`.
 
 Evidence lands in `docs/handoffs/video-core/evidence/` (`ci-e2e/`, `round3-final/`, `t2-round3-final/`, older rounds beside them).
@@ -87,6 +88,6 @@ Evidence lands in `docs/handoffs/video-core/evidence/` (`ci-e2e/`, `round3-final
 
 ## 4. Rules this work kept (keep them)
 
-No merge, no deploy, no new Preview of the main project without GG's word (the T4 project is separate and stays paused); Production Supabase is never a test database; no shared-DB migration;
+No merge, no deploy, no new Preview of the main project without GG's word (the T4 project is separate, holds placeholders between runs and refuses production builds); Production Supabase is never a test database; no shared-DB migration;
 no paid provider call without a per-test approval; no secret in chat, commits or docs; Image Studio and BOG Payments (PR #59)
 are other threads' files; never force-push; a mocked test is never reported as a live one.
