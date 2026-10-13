@@ -60,7 +60,6 @@ jobs:
     env:
       LEASE_PG_REST_URL: http://127.0.0.1:54330
       LEASE_PG_JWT_SECRET: isolated-ci-only-jwt-secret-not-a-real-environment-key
-      PG_CONTAINER: ${{ job.services.postgres.id }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,6 +69,7 @@ jobs:
       - run: npm ci
       - name: Create disposable fixture and loopback PostgREST
         run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
           mkdir -p evidence
           docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < scripts/lease-isolation/schema.sql > evidence/schema.log 2>&1
           docker run -d --name image-studio-rest --network host \
@@ -91,6 +91,7 @@ jobs:
       - name: Apply hardening only to disposable CI database
         if: ${{ !cancelled() }}
         run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
           docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261002d_ledger_ref_race_hardening.sql > evidence/hardening.log 2>&1
           docker exec "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c "notify pgrst, 'reload schema'"
           sleep 2
@@ -111,6 +112,7 @@ jobs:
       - name: Save local service logs and stop owned container
         if: always()
         run: |
+          PG_CONTAINER="${{ job.services.postgres.id }}"
           docker logs image-studio-rest > evidence/postgrest.log 2>&1 || true
           docker logs "$PG_CONTAINER" > evidence/postgres.log 2>&1 || true
           docker rm -f image-studio-rest || true
