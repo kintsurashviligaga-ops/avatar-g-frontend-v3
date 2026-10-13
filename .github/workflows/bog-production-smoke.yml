@@ -1,0 +1,37 @@
+name: BOG Production smoke (read-only)
+
+# Manual run after a deploy (docs/handoffs/bog-payments/BOG_PAYMENT_RELEASE_CHECKLIST.md, "Production Smoke").
+# Anonymous requests only: no secrets, no cookies, no callback signature, so nothing is bought or written.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Site to check (https on myavatar.ge or *.vercel.app)'
+        required: true
+        default: 'https://myavatar.ge'
+      expect_bog:
+        description: 'Anonymous /api/checkout/capabilities bog value: false while BOG_CHECKOUT_MODE=admin, true once public'
+        required: true
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Smoke the BOG surface
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          EXPECT_BOG: ${{ inputs.expect_bog }}
+        run: node scripts/bog-production-smoke.mjs "$BASE_URL" "--expect-bog=$EXPECT_BOG"

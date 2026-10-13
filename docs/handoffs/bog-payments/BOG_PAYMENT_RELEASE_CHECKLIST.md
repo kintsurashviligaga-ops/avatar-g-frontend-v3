@@ -23,22 +23,24 @@
 
 1. Production env-ის საბოლოო შემოწმება (metadata): `BOG_CLIENT_ID`, `BOG_SECRET_KEY` (Sensitive), `BOG_CHECKOUT_MODE=admin`, `BOG_ENV` = `production` ან არ არის; override-ები (`BOG_CALLBACK_PUBLIC_KEY`, `BOG_API_BASE`, `BOG_OAUTH_URL`, `BOG_CALLBACK_IP_ALLOWLIST`) არ არის; `CRON_SECRET` და `NEXT_PUBLIC_SITE_URL` არის; `BOG_*` არ არის Preview / Development-ში.
 2. main-ის HEAD ისევ `30be5a2`-ა, ან ახალი main შერწყმულია და CI მწვანეა.
-3. Baseline: ანონიმური `GET https://myavatar.ge/api/checkout/capabilities`.
+3. Baseline: ანონიმური `GET https://myavatar.ge/api/checkout/capabilities` (merge-მდე workflow main-ზე ჯერ არ არის, ამიტომ ერთი გარე GET-ით).
 4. PR #59 → Ready for review → merge (merge commit, head SHA-ს შემოწმებით).
 5. Vercel Production deployment → READY; ჩავწერო deployment ID, commit SHA და დრო.
-6. Smoke (ქვემოთ). თუ რომელიმე ვარდება → [Rollback](BOG_ROLLBACK_PLAN.md) A ან B.
+6. Smoke (ქვემოთ, GitHub Actions). თუ რომელიმე ვარდება → [Rollback](BOG_ROLLBACK_PLAN.md) A ან B.
 
 ## Production Smoke (deploy-ის შემდეგ; read-only, თანხა არ ჩამოიჭრება)
+
+გაშვება: GitHub → Actions → **BOG Production smoke (read-only)** → Run workflow (`base_url` = `https://myavatar.ge`, `expect_bog` = `false`). merge-ის შემდეგ workflow main-ზეა და მე თავად ვუშვებ. ლოკალურად: `node scripts/bog-production-smoke.mjs`. ყველა მოთხოვნა ანონიმურია (cookie, credential, ხელმოწერა არ იგზავნება), ამიტომ არაფერი იყიდება და ბაზაში არაფერი იწერება. ჩემი sandbox-იდან myavatar.ge 2026-10-13-დან აღარ იხსნება (ქსელის პოლიტიკა), ამიტომ smoke GitHub-ის runner-ზე ეშვება.
 
 | შემოწმება | მოსალოდნელი |
 |---|---|
 | მთავარი გვერდი KA / EN / RU | 200 |
 | ანონიმური `GET /api/checkout/capabilities` | `{"stripe":true,"bog":false}` |
-| ანონიმური `POST /api/billing/bog/checkout` | 401, რიგი არ იქმნება |
-| `POST /api/billing/bog/webhook` ხელმოწერის გარეშე | 401, body არ იკითხება, ბაზაში არაფერი იწერება |
-| `GET /api/billing/bog/orders/<არასწორი id>` | 401 / 404 |
+| ანონიმური `POST /api/billing/bog/checkout` (ცარიელი body) | 401 `AUTH_REQUIRED`, რიგი არ იქმნება |
+| `POST /api/billing/bog/webhook` ხელმოწერის გარეშე | 401 (503 = deployment-ს BOG წყვილი არ აქვს); ხელმოწერის შემოწმებამდე body არ მუშავდება, ბაზაში არაფერი იწერება |
+| ანონიმური `GET /api/billing/bog/orders/<ნულოვანი id>` | 401 |
 | ანონიმური `GET /api/admin/billing/bog` | 401 / 403 |
-| `GET /api/cron/bog-billing` `CRON_SECRET`-ის გარეშე | 401 |
+| `GET /api/cron/bog-billing` `CRON_SECRET`-ის გარეშე | 403 (401 / 403) |
 | Production ბაზა (read-only SQL) | ფუნქციების md5 უცვლელი; `bog_orders` უცვლელი (4 `init_failed`) |
 | Owner: ადმინ ბარათი | Credentials set · PRODUCTION · `client …XXXX` · Schema OK · CRON_SECRET · Checkout: admins only · „Test credentials with BOG" → `ok` |
 

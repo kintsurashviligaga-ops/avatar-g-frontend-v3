@@ -31,7 +31,7 @@
 
 ## დეტალები
 
-**Checkout-ზე წვდომა.** კოდი: `bogCheckoutMode()` (`lib/billing/bogClient.ts`). `admin` რეჟიმში არა-ადმინს 403, capabilities `bog:false`; Preview / Development-ზე ყოველთვის `off` (`93ec307`). Production: NOT RUN.
+**Checkout-ზე წვდომა.** კოდი: `bogCheckoutMode()` (`lib/billing/bogClient.ts`). `admin` რეჟიმში არა-ადმინს 403, capabilities `bog:false`; Preview / Development-ზე ყოველთვის `off` (`93ec307`). PR #59-ის Preview (`ec790f1`, https://avatar-g-frontend-v3-mqub9c6fz-kintsurashviligaga-ops-projects.vercel.app, 2026-10-13 ~03:02Z): ანონიმური capabilities → `{"stripe":false,"bog":false}`. ეს თანხვედრაა და არა დაცვის ცალკე მტკიცება: Preview-ს არცერთი გადახდის წყვილი არ აქვს. Production: NOT RUN.
 
 **Webhook.** ლოკალურად: ხელმოწერილი callback არიცხავს (E1), ყალბი ან შეცვლილი → 401 და არაფერი (E4), სხვა თანხა → `amount_mismatch` (E5), უარყოფილი → `rejected` (E6). Production: NOT RUN. callback URL: `https://myavatar.ge/api/billing/bog/webhook` (`NEXT_PUBLIC_SITE_URL`-იდან).
 
@@ -49,5 +49,7 @@
 - admin/off რეჟიმში BOG-ის არსებული გამომწერი ავტო-განახლების გაუქმებას Credits ფანჯარაში ვერ ხედავს (დღეს 0 გამომწერია).
 - Refund-ის „მხოლოდ წინ" დაცვა TypeScript-შია, SQL-ში არა (მიგრაცია = Owner-ის სიტყვა).
 - 24სთ / 30 დღის ლიმიტს კოდი არ ზღუდავს, მხოლოდ აჩვენებს.
+
+**Smoke-ის გზა.** ჩემი sandbox-იდან myavatar.ge, vercel.com და api.bog.ge 2026-10-13-დან აღარ იხსნება (ქსელის პოლიტიკა, 403 proxy-ზე). deploy-ის შემდეგ smoke ეშვება GitHub Actions-ში: `scripts/bog-production-smoke.mjs` / „BOG Production smoke (read-only)" (ანონიმური მოთხოვნები, ჩაწერის გარეშე, 7 ტესტი).
 
 დეტალური უსაფრთხოება: [BOG_SECURITY_VERIFICATION.md](BOG_SECURITY_VERIFICATION.md) · Rollback: [BOG_ROLLBACK_PLAN.md](BOG_ROLLBACK_PLAN.md).
