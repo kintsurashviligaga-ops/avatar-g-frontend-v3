@@ -36,3 +36,10 @@ gh run view 38413376597 --repo kintsurashviligaga-ops/avatar-g-frontend-v3 --log
 რეალური Google generation/edit/cost/call-count, მთელი paid lifecycle, real Redis admission, worker restart/cancel/refund outage, ordinary-user rollout policy, Production bucket/RLS/config state და rollback drill. Synthetic seeded assets არ ითვლება provider outputs-ად. Hosted Preview რეჟიმში ახალი local-only Image suite გამოტოვებულია აშკარა მიზეზით; hosted acceptance ცალკე BLOCKED-ია.
 ძველი sessions-ის lifecycle და მიმდინარე Production configuration არც tools-ის არარსებობით და არც mocked tests-ით არ დასტურდება.
 **Production NO-GO** რჩება, სანამ live gates და owner approvals არ დაიხურება.
+
+## Current-main compatibility update — 2026-10-13 19:22 UTC
+Checked main: `fef867a6ebad67a2a0a56a24e0b15c683a353d79` (PR58+PR63). A disposable archive with the Image changes applies cleanly; no branch merge was performed. One Window browser5/5 PASS (54.2s), targeted integration156 PASS/3 DB-environment skips, TypeScript PASS.
+
+A real Image-specific integration defect was found: admission preferred legacy Redis variables and could mix incomplete pairs. Image now reuses main's exact `upstashRestEnv` helper: complete Marketplace pair wins; complete legacy pair is fallback; crossed incomplete pairs fail closed. The helper and its tests are byte-identical to main, not a second implementation. Regression before:6 PASS/2 FAIL; after:30/30 PASS across Image adapter/engine/shared helper. Current-main TypeScript PASS17.15s; ESLint0 warnings/errors. No live Redis or provider call occurred.
+
+The earlier09333d7a full CI/E2E results remain pinned historical evidence. The final PR description reports CI for the newer engineering commit; results must not be inferred from these local checks. Branch-history synchronization remains pending the No Merge clarification. Source review and GitHub integration-snapshot CI do not update the branch's ancestry.

@@ -24,6 +24,7 @@ jest.mock('../../orchestrator/storage-adapter', () => ({
 jest.mock('../../ai/google/transport', () => ({ googleTransportKind: () => 'vertex', googleTransports: { selectFixed: jest.fn() } }));
 jest.mock('../../platform/upstash', () => ({ createUpstashRedis: jest.fn() }));
 import { liveImageDeps } from './live';
+import { createUpstashRedis } from '../../platform/upstash';
 import { fakeImage } from './testing';
 beforeEach(() => {
   jest.clearAllMocks();
@@ -61,4 +62,37 @@ test('storage write failure cannot be returned as a saved image URL', async () =
   mockUpload.mockResolvedValue({ error: { message: 'disk unavailable' } });
   await expect(liveImageDeps().persistPayload('job', 'me', {} as never)).rejects.toMatchObject({ code: 'storage_error' });
   expect(mockSign).not.toHaveBeenCalled();
+});
+
+
+describe('Image admission follows the shared Redis environment contract', () => {
+  const keys = ['KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const;
+  let saved: Record<string, string | undefined>;
+  beforeEach(() => {
+    saved = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    jest.mocked(createUpstashRedis).mockReturnValue({ eval: jest.fn().mockResolvedValue(1) } as never);
+  });
+  afterEach(() => {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+    }
+  });
+  test('Marketplace pair wins when a complete legacy pair is still present', async () => {
+    Object.assign(process.env, { KV_REST_API_URL: 'https://market.test', KV_REST_API_TOKEN: 'market-token',
+      UPSTASH_REDIS_REST_URL: 'https://legacy.test', UPSTASH_REDIS_REST_TOKEN: 'legacy-token' });
+    await expect(liveImageDeps().admit('job', 'owner')).resolves.toBe(true);
+    expect(createUpstashRedis).toHaveBeenCalledWith('https://market.test', 'market-token');
+  });
+  test('an incomplete Marketplace pair falls back to the complete legacy pair without mixing', async () => {
+    Object.assign(process.env, { KV_REST_API_TOKEN: 'market-token',
+      UPSTASH_REDIS_REST_URL: 'https://legacy.test', UPSTASH_REDIS_REST_TOKEN: 'legacy-token' });
+    await expect(liveImageDeps().admit('job', 'owner')).resolves.toBe(true);
+    expect(createUpstashRedis).toHaveBeenCalledWith('https://legacy.test', 'legacy-token');
+  });
+  test('crossed incomplete pairs fail closed before constructing a Redis client', async () => {
+    Object.assign(process.env, { KV_REST_API_TOKEN: 'market-token', UPSTASH_REDIS_REST_URL: 'https://legacy.test' });
+    await expect(liveImageDeps().admit('job', 'owner')).rejects.toMatchObject({ code: 'not_configured' });
+    expect(createUpstashRedis).not.toHaveBeenCalled();
+  });
 });

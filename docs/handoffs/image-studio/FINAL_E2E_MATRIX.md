@@ -29,3 +29,10 @@
 
 რეალური უფასო სცენარები შესრულდა run38413376597-ში: Image3/3, სრული Video+Image38/38,15.8წთ. ეს ამოწმებს PR-ის იმდროინდელ integration snapshot-ს; ახალ main fef867a6-ზე შემოწმება ჯერ მიმდინარეობს.
 ყველა ძველი25DB სცენარი და დამატებით Image3DB სცენარი დაფარულია; phase executions არ ითვლება ახალ უნიკალურ ტესტებად. Synthetic completed rows მხოლოდ fixture-ია, არა შესრულებული Google jobs. Free suite არ იძახებს quote/confirm/provider-ს და არ ცვლის RLS policies-ს.
+
+## Current-main compatibility update — 2026-10-13 19:22 UTC
+Checked main: `fef867a6ebad67a2a0a56a24e0b15c683a353d79` (PR58+PR63). A disposable archive with the Image changes applies cleanly; no branch merge was performed. One Window browser5/5 PASS (54.2s), targeted integration156 PASS/3 DB-environment skips, TypeScript PASS.
+
+A real Image-specific integration defect was found: admission preferred legacy Redis variables and could mix incomplete pairs. Image now reuses main's exact `upstashRestEnv` helper: complete Marketplace pair wins; complete legacy pair is fallback; crossed incomplete pairs fail closed. The helper and its tests are byte-identical to main, not a second implementation. Regression before:6 PASS/2 FAIL; after:30/30 PASS across Image adapter/engine/shared helper. Current-main TypeScript PASS17.15s; ESLint0 warnings/errors. No live Redis or provider call occurred.
+
+The earlier09333d7a full CI/E2E results remain pinned historical evidence. The final PR description reports CI for the newer engineering commit; results must not be inferred from these local checks. Branch-history synchronization remains pending the No Merge clarification. Source review and GitHub integration-snapshot CI do not update the branch's ancestry.

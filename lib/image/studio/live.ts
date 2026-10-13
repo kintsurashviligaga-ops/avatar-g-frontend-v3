@@ -7,6 +7,7 @@ import { createSignedAssetUrl, describeSupabaseObjectUrl, ownStorageHosts } from
 import { ownsUploadObject, uploadBucket } from '@/lib/security/callerMedia';
 import { googleTransports, googleTransportKind } from '@/lib/ai/google/transport';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 import { ACQUIRE_LUA } from '@/lib/studio/semaphore';
 import { fetchPublicBytes } from '@/lib/web/publicFetch';
 import { reportError } from '@/lib/observability/report-error';
@@ -69,10 +70,9 @@ const assetIO: ImageAssetIO = {
   },
 };
 function slotRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (!url || !token) throw new ImageError('not_configured', 'The image concurrency guard is unavailable.', 503);
-  return createUpstashRedis(url, token);
+  const env = upstashRestEnv();
+  if (!env) throw new ImageError('not_configured', 'The image concurrency guard is unavailable.', 503);
+  return createUpstashRedis(env.url, env.token);
 }
 const userKey = (userId: string) => 'image-studio:v1:inflight:' + userId;
 const globalKey = 'image-studio:v1:inflight';

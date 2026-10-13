@@ -21,7 +21,7 @@
 
 ## Environment names — მნიშვნელობები არ ჩაიწეროს Git-ში
 - App/Auth: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`; quote: `AGENT_G_QUOTE_SECRET`; access policy: `AGENT_G_MEDIA_EXEC`.
-- Concurrency: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` ან არსებული `KV_REST_API_URL`, `KV_REST_API_TOKEN`. ცალკე test instance; შეცდომისას paid lane fail-closed.
+- Concurrency (complete Marketplace KV pair wins; URL/token are never mixed): `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` ან არსებული `KV_REST_API_URL`, `KV_REST_API_TOKEN`. ცალკე test instance; შეცდომისას paid lane fail-closed.
 - Google: ფიქსირებული `GEMINI_TRANSPORT=gemini_api|vertex`. Gemini key: `GEMINI_API_KEY` (არსებული aliases `GOOGLE_GENERATIVE_AI_API_KEY`, `GEMINI_API_KEYS`). Vertex: `GCP_PROJECT_ID`, საჭიროებისამებრ `GCP_GEMINI_LOCATION`/`GCP_PREDICT_LOCATION`; auth: `GCP_PROJECT_NUMBER`, `GCP_SERVICE_ACCOUNT_EMAIL`, `GCP_WORKLOAD_IDENTITY_POOL_ID`, `GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID` და OIDC federation, ან არსებული `GCP_SERVICE_ACCOUNT_KEY`. Google secret მხოლოდ server-ზე.
 - Hosted harness: `IMAGE_E2E_ENVIRONMENT=isolated`, `IMAGE_E2E_APP_ORIGIN`, `IMAGE_E2E_SUPABASE_ORIGIN`, `IMAGE_E2E_PROJECT_REF`, `IMAGE_E2E_ANON_KEY`, `IMAGE_E2E_SERVICE_KEY`, `IMAGE_E2E_USER_A_TOKEN`, `IMAGE_E2E_USER_B_TOKEN`, `IMAGE_E2E_REPORT`.
 - მხოლოდ explicit owner approval-ის შემდეგ: `IMAGE_E2E_PAID_APPROVAL=explicit-owner-approval`, `IMAGE_E2E_MAX_CREDITS`. Flag თავისთავად თანხმობა არ არის.
