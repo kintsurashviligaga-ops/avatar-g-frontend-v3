@@ -17,10 +17,16 @@ import {
  *     can make a film and be charged for it; the evidence says which happened.
  * Every stitch is judged twice: by its answer, and by what the server left behind — the ledger, the free film and the
  * masters in the `renders` bucket (one folder per saga, renders/<saga>/<ms>.mp4, lib/orchestrator/ffmpeg-assembly). A
- * call whose connection breaks before its answer (Preview run 38369812054 on 9faec08: `read ETIMEDOUT` 38 s into the
- * first stitch, through Playwright's request client) is judged by the second alone, waited out up to the route's own
- * 600 s, and recorded for transport.spec, which fails the run on it by name. Two calls go through Playwright's client
- * and two through Node's own (_live longCall: a fresh connection, no TCP keepalive), so a cut also names its client.
+ * call whose connection breaks before its answer is judged by the second alone, waited out up to the route's own 600 s,
+ * and recorded for transport.spec, which fails the run on it by name.
+ * Every stitch that runs ffmpeg goes through Node's own client (_live longCall: a fresh connection, no TCP keepalive);
+ * only the stitch refused in about a second uses Playwright's. Playwright's request client keeps its sockets alive with
+ * TCP keepalive probes from the first idle second (playwright-core happyEyeballs agent, `keepAlive: true`; measured
+ * from /proc/net/tcp: a probe every second while a request waits), and libuv gives a socket up after 10 unanswered
+ * probes 1 s apart. On the GitHub runner → Vercel Preview path the probes on a silent connection stop being answered,
+ * so that client lost the free-film stitch with `read ETIMEDOUT` at 37.9–38.2 s in Preview runs 38369812054,
+ * 38375578275 and 38388633377, while the server delivered the film and settled the money every time and Node's client
+ * got answers after 56–71 s on the same route. A browser (Chromium's own keepalive) and the product are not affected.
  * The route's EXPENSIVE limiter is 5 calls a minute per address; a 429 is waited out, never counted as a result.
  */
 const ASSEMBLE = '/api/video/assemble';
@@ -130,7 +136,7 @@ test.describe('Video Core live — the film stitch charges once, refunds a failu
   test('the first film spends the free film, not credits', async ({ request }) => {
     const before = await sagaFolders();
     const since = new Date().toISOString();
-    const r = await assemble(request, token, { segments: [{ url: clipA, durationSec: 4 }, { url: clipB, durationSec: 4 }], noMusic: true, orientation: 'vertical' }, 'playwright');
+    const r = await assemble(request, token, { segments: [{ url: clipA, durationSec: 4 }, { url: clipB, durationSec: 4 }], noMusic: true, orientation: 'vertical' }, 'node');
     // Settled: a master is hosted, or the free film is back (the saga handed it back on a failure).
     const server = await judge([r], 'free-film', payer().id, since, before, (s) => s.masters.length > 0 || s.freeFilms === 1);
     if (!r.transport) {
