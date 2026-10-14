@@ -283,6 +283,24 @@ test('keyboard and accessibility: labelled controls, 44 px targets, focus reache
   await expect(card).toHaveAttribute('aria-busy', 'false');
 });
 
+/** Every conversation archive in this page's localStorage (lib/chat/historyKeys `…conversations::<uid>`): key, title, turns, music cards. */
+async function archive(page: Page): Promise<Array<{ key: string; uid: string | null; title: string; turns: number; music: number }>> {
+  return page.evaluate(() => {
+    const out: Array<{ key: string; uid: string | null; title: string; turns: number; music: number }> = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i) ?? '';
+      if (!key.includes('conversations')) continue;
+      try {
+        const list = JSON.parse(localStorage.getItem(key) ?? '[]') as Array<{ title?: string; messages?: Array<{ musicDraft?: unknown }> }>;
+        for (const c of Array.isArray(list) ? list : []) {
+          out.push({ key, uid: document.documentElement.dataset.uid ?? null, title: String(c.title ?? ''), turns: c.messages?.length ?? 0, music: (c.messages ?? []).filter((m) => m && m.musicDraft).length });
+        }
+      } catch { out.push({ key, uid: document.documentElement.dataset.uid ?? null, title: '(unreadable)', turns: 0, music: 0 }); }
+    }
+    return out;
+  });
+}
+
 // The product rule (components/studio/OmniStudio currentConversationId): every open and every reload lands on a FRESH,
 // EMPTY chat; past threads are in History and come back only when the user opens one. So a reload mid-render shows an
 // empty chat, and opening the thread from History re-mounts the card, which finds its job by the id it remembered
@@ -297,8 +315,14 @@ test('reload while it composes → fresh chat; the thread opened from History re
   await waitPhase(card, 'quoted', 30_000);
   const { jobId } = await confirm(page, card, user.id, 'keyboard'); // Create by keyboard: focus + Enter
   await waitPhase(card, 'running', 30_000);
+  // The thread is in this browser's History (the uid-scoped archive OmniStudio autosaves) BEFORE the reload.
+  await expect.poll(async () => (await archive(page)).some((c) => c.title.includes(prompt)), { timeout: 15_000 }).toBe(true);
+  const savedBefore = await archive(page);
   await page.reload();
   await studioReady(page);
+  const savedAfter = await archive(page);
+  evidence(`music-reload-archive-${tag(info)}`, { jobId, savedBefore, savedAfter });
+  expect(savedAfter.some((c) => c.title.includes(prompt))).toBe(true);
   await expect(cards(page)).toHaveCount(0);
   // Open the thread from History the way the user does (on the phone the menu opens first).
   const menu = page.getByRole('button', { name: 'Menu', exact: true });
