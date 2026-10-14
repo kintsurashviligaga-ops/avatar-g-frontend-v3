@@ -6,6 +6,17 @@
 - [ ] Owner sign-off on rate-limit change: every Music Studio route is now limited **per user** (start 5/min, edit 20/min, quote/commands/cancel 20/min, status 100/min).
 - [ ] PR #65 Draft → Ready → merge by the owner (never force, never by an agent).
 
+- [ ] Chat owner decides on the History uid race patch (PHASE2_STATE.md → OPEN DEFECT). Not a Music Studio blocker; affects the first turn of any thread.
+
+## Paid Lyria procedure (BLOCKED — needs written owner approval)
+1. Owner writes an approval reference, e.g. `GG-2026-10-xx $5`.
+2. Re-check the live Vertex price of `lyria-3-clip-preview` (planned basis $0.04/track; 2 cases × ≤2 attempts ≈ $0.16).
+3. `MUSIC_PAID_E2E_APPROVED="<ref>" MUSIC_PAID_E2E_CAP_USD=5 GEMINI_TRANSPORT=vertex npx tsx scripts/music-studio/paid-e2e.ts`
+   (refuses without the reference or above the cap; writes `docs/handoffs/music-studio/evidence/paid-e2e.json`).
+4. Listen to each output; record spend from the Google Cloud billing report, not the estimate.
+5. This proves the PROVIDER only. The full pipeline (quote → debit → worker → QC → Storage → Library → refund) on real Lyria needs an
+   isolated Preview database + `MUSIC_STUDIO_ENABLED=1` there.
+
 ## ⚠️ Changes on merge even with every flag OFF
 - Provider boundary: Udio / ElevenLabs Music / MusicGen picks, covers, sampled/trained voice, chat music, `/api/udio/generate`, `/api/orchestrator/music/produce`, Demucs stems → `400 unsupported`, nothing charged. Lyria on `/api/ai/music` keeps working.
 - New Live Voice tool `music_studio` is declared to every Gemini Live session; with `NEXT_PUBLIC_MUSIC_STUDIO_V1` off the studio answers `not_enabled` and the model is told to use `prepare_generation`.

@@ -34,3 +34,17 @@ and the journey/voice specs. Real Postgres 16 + PostgREST suite from Phase 1 (`m
 ## Not proven
 - Preview / Production Storage, ledger and RLS: BLOCKED (Preview uses the Production Supabase project).
 - Redis-backed limiter (no Upstash in the job → in-memory limiter exercised).
+
+## Final session (2026-10-14) additions
+4. **Stand-in provider gate tightened**: `e2eFakeLyriaEnabled` now requires EVERY configured Supabase address (`SUPABASE_URL` and
+   `NEXT_PUBLIC_SUPABASE_URL`) to be localhost / 127.0.0.1 / `*.test`, besides `MUSIC_STUDIO_E2E_FAKE_PROVIDER=1` and no `VERCEL`/`VERCEL_ENV`.
+   Before, one local address was enough, so a mixed config could bill a hosted project for a synthetic track. Unit test covers both mixes.
+   On Vercel (Preview or Production) the stand-in can never answer → `not_configured`, nothing charged. Class: BUILT + unit; PROVEN_ISOLATED
+   that CI (both URLs on the `.test` host) still enables it.
+- **Preview configuration (read-only `vercel env ls preview`)**: `NEXT_PUBLIC_SUPABASE_URL`, anon and service-role keys are single rows for
+  Production + Preview + Development → Preview writes to the Production database. No `MUSIC_*` / fake-provider variables on Preview.
+  Preview mutation tests (Library, credits, refunds, RLS on live data): **BLOCKED**. Nothing was written to Production.
+- RLS, private Storage, signed-URL expiry, session ownership, ledger exactly-once, refund idempotency (sweep ×2), cancel refund, 402,
+  SSRF, rate limits per user: re-proven on the final run (PHASE2_E2E_MATRIX.md). Worker restart / ambiguous dispatch / budget guard:
+  real-Postgres suite + unit (unchanged, green in CI "billing on real Postgres").
+- Spend this session: **$0.00** (no Google call of any kind).

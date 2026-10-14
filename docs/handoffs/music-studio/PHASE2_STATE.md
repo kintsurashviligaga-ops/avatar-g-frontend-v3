@@ -1,28 +1,45 @@
 # Music Studio v1 — Phase 2 state (live file; updated after each phase)
 
-Branch `claude/music-studio-v1-20261014` · PR #65 (Draft) · Phase 1 head was `18ac9c28`.
-Worktree `/Users/giorgikintsurashvili/music-studio-wt` (the main checkout belongs to Video Core).
+Branch `claude/music-studio-v1-20261014` · PR #65 (Draft) · worktree `/Users/giorgikintsurashvili/music-studio-wt`
+(the main checkout belongs to Video Core). Final-session start head `da292939`; see PHASE2_E2E_MATRIX.md for the final SHA and run.
 
 ## DONE
-- Phase 0 recovery: handoffs read; PR #65 open, Draft, CI green on 18ac9c28; nothing uncommitted; #60/#64 untouched.
-- Phase 2 Live Voice: `music_studio` live tool (plan/edit/join/status/cancel/download/save), no start/confirm path;
-  bridge + card registration; unit tests (liveTools 88, liveActions 72, bridge/card 13) — commit b59a2c82.
-- Phase 1 Playwright suite + CI workflow + fail-closed stand-in provider — commit 199ee7e6 (pushed).
-- Defects found and fixed: duplicate edit in the same tick (sync busy guard), cross-origin Download navigating away
-  (`download=` on signed links), voice download picked the original, tracked `node_modules` symlink from Phase 1.
-- Phase 5 docs check (Vertex + Gemini API, 2026-10-14); paid script refuses without approval (verified).
-- Phase 6: merge-tree #65×#60, #65×#64, #60×#64 clean; 3-way integration tree tsc 0, 234 suites pass.
+- Phase 0 recovery (2026-10-14, second session): head = remote `da292939`; one untracked doc (this folder's matrix) kept; CI / Preview
+  Contract / Postgres billing green on `da292939`; Music E2E run 38550746462 = 15 passed / 4 failed / 6 not run.
+- Phase 2 Live Voice (`music_studio` tool, no start/confirm path) — b59a2c82. Phase 1 Playwright suite + CI workflow — 199ee7e6.
+- **Defects fixed this session**
+  1. *Vocal refusal copy* — the card localizes refusals by code, so a refused SONG showed the generic "This option is not verified…".
+     Now a song refused as `unsupported` says why (vocals unverified), that it was not turned into an instrumental, and that nothing was
+     charged — KA/EN/RU (`musicCardCopy.songRefused`). The spec additionally asserts the server's `400 unsupported` on `/quote` (no price).
+  2. *KA/RU card "not found"* — not a card bug: after `goto('/ru/…')` the plan was dispatched 4 ms after `data-authed`, before OmniStudio's
+     live-action listener mounted (trace: `took:false, reply:null`). Specs now wait for a read-only `status` probe to be taken.
+  3. *Reload recovery* — OmniStudio deliberately opens every reload on a FRESH empty chat (owner rule, `currentConversationId()`); past
+     threads return only from History. The spec now follows that path: reload → empty chat → open the thread from History → the card finds
+     its job (`recall`) → completes; one debit, one job row. Desktop proved it on run 38557521565.
+  4. *Stand-in provider gate* — required only ONE of `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` to be local; a mixed config could bill a
+     hosted project for a synthetic track. Now every configured address must be local (unit-tested). Stricter, never weaker.
+- Phase 3 isolation: no edits to `liveTools.ts`, `liveActions.ts`, `GeminiLiveConversation.tsx`, `OmniStudio.tsx` this session. Astra's
+  branch `astra/agent-g-voice-experience-v2-20261014` (local only, `01457c3c`) has not touched those four files vs main; `git merge-tree` with
+  #65 is clean.
+- Phase 4: Preview env checked read-only — `NEXT_PUBLIC_SUPABASE_URL`, anon and service-role keys are single rows targeting
+  Production + Preview + Development → Preview = Production database. No `MUSIC_*` / fake-provider variables on Preview.
+- Phase 6: merge-tree #65×#60 (`be9edee3`), #65×#64 (`bcb724a1`), #60×#64, #65×main (`fef867a6`) all clean. Disposable 3-way tree
+  (`/private/tmp/ms-integration`, #65 `0ea8aadf` + #60 + #64): tsc 0; Jest 912 suites pass / 5 fail (20 tests) — the same 5 ffmpeg suites and
+  20 tests fail on clean `origin/main` `fef867a6` on this Mac (ffmpeg-static baseline), so not a regression.
 
-## PENDING
-- Music Studio live E2E run on the pushed head (CI job music-live-e2e) → fix and re-run until green or
-  record exact failures.
-- Final docs set + CI on the exact final SHA.
+## OPEN DEFECT (shared chat infrastructure — NOT patched here)
+**History uid race.** `components/studio/ChatChrome.tsx` publishes `<html data-authed="1">` as soon as a session is seen, but `data-uid`
+only after `getUser()` resolves. `OmniStudio`'s autosave keys the archive with `currentUid()` (`lib/chat/historyKeys`), so a turn made in
+that gap is saved to `myavatar-archive::conversations::anon` and never shows in the user's History (run 38557521565, phone). Affects any
+first turn, not only music; the music job itself is unaffected (it completes, one debit, Library row).
+Proposed isolated patch (for the chat owner, not applied): in OmniStudio's autosave effect, skip the write while
+`dataset.authed === '1' && !currentUid()`, and have ChatChrome dispatch `myavatar:uid-ready` after publishing `data-uid` so OmniStudio
+re-runs the upsert once. No migration of the `anon` slot (it may hold another guest's chats). OmniStudio is a contested file (Astra).
 
 ## BLOCKED (owner)
-- Paid Lyria E2E (no approval; $0 spent). Vocals stay off.
-- Preview Library/credits: Vercel Preview of this repo uses the Production Supabase project, so any credit/Library
-  test there mutates Production users → not run. Needs an isolated Preview project or explicit approval.
-- Real microphone E2E: needs a human with a microphone in a browser (+ Gemini Live key on the target).
+- Paid Lyria E2E (no approval; $0 spent this session and in total). Vocals stay off.
+- Preview Library/credits tests: Preview uses the Production Supabase project → not run. Needs an isolated Preview project or approval.
+- Real-microphone E2E: needs a person with a microphone (+ Gemini Live key on the target).
 
 ## NEXT ACTION
 See PHASE2_CONTINUATION.md.
