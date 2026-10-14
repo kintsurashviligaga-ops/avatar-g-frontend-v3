@@ -79,9 +79,9 @@ suite(`the film payment waiver on a real PostgREST (${PHASE} 20261014a)`, () => 
     it('a paid film is proven by the ledger alone: Redis absent, the first assemble is waived, a replay and a twin are not', async () => {
       const f = await paidFilm();
       expect(await recordFilmWaiver(f.token, f.user, { kind: 'paid', credits: f.credits, ref: f.ref })).toBe(false); // no table: a no-op, never a throw
-      const answers = await Promise.all(Array.from({ length: 6 }, () => consumeFilmWaiver(f.token, f.user)));
+      const answers = await Promise.all(Array.from({ length: 24 }, () => consumeFilmWaiver(f.token, f.user)));
       expect(answers.filter((a) => a === 'paid')).toHaveLength(1);
-      expect(answers.filter((a) => a === 'spent')).toHaveLength(5);
+      expect(answers.filter((a) => a === 'spent')).toHaveLength(23);
       expect(isFilmPaidUpstream(null, null, f.user, 'paid')).toBe(true);
       expect(isFilmPaidUpstream(null, null, f.user, 'spent')).toBe(false);
       expect(await balance(f.user)).toBe(1000 - f.credits); // nothing was charged a second time
@@ -93,6 +93,15 @@ suite(`the film payment waiver on a real PostgREST (${PHASE} 20261014a)`, () => 
       await restoreFilmWaiver(f.token, f.user);
       expect(await consumeFilmWaiver(f.token, f.user)).toBe('paid');
       expect(await consumeFilmWaiver(f.token, f.user)).toBe('spent');
+    });
+
+    it('a charge older than the 1 h claim window is not vouched for by the ledger (an expired claim would be taken over)', async () => {
+      const f = await paidFilm();
+      const old = new Date(Date.now() - 2 * 3600_000).toISOString();
+      const { error } = await db.from('credit_ledger').update({ created_at: old }).eq('user_id', f.user).lt('delta', 0);
+      expect(error).toBeNull();
+      expect(await consumeFilmWaiver(f.token, f.user)).toBe('unavailable');
+      expect(await consumeFilmWaiver(f.token, f.user)).toBe('unavailable'); // never 'paid', however often it is asked
     });
 
     it('another user, an unpaid token and a fully refunded film are never waived', async () => {
@@ -121,12 +130,12 @@ suite(`the film payment waiver on a real PostgREST (${PHASE} 20261014a)`, () => 
     expect(await recordFilmWaiver(f.token, f.user, { kind: 'paid', credits: f.credits, ref: f.ref })).toBe(true);
   });
 
-  it('twelve concurrent assembles of one paid film: exactly one is waived, the rest are spent, nothing is charged twice', async () => {
+  it('twenty-four concurrent assembles of one paid film: exactly one is waived, the rest are spent, nothing is charged twice', async () => {
     const f = await paidFilm();
     expect(await recordFilmWaiver(f.token, f.user, { kind: 'paid', credits: f.credits, ref: f.ref })).toBe(true);
-    const answers = await Promise.all(Array.from({ length: 12 }, () => consumeFilmWaiver(f.token, f.user)));
+    const answers = await Promise.all(Array.from({ length: 24 }, () => consumeFilmWaiver(f.token, f.user)));
     expect(answers.filter((a) => a === 'paid')).toHaveLength(1);
-    expect(answers.filter((a) => a === 'spent')).toHaveLength(11);
+    expect(answers.filter((a) => a === 'spent')).toHaveLength(23);
     expect(await balance(f.user)).toBe(1000 - f.credits);
   });
 

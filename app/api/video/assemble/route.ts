@@ -382,29 +382,6 @@ async function assembleImpl(req: NextRequest) {
   // token the first time its waiver is honored (a paid token maps 1:1 to one downstream assemble).
   // Read the PRIOR status BEFORE recordFilmAssembling (which preserves masterUrl). Fail-open on the
   // STATUS/TRACKING side only — a store miss must fall back to billing normally (default false here).
-  const billedTokenForCheck = filmTokenId ?? billingToken;
-  let filmAlreadyBilled = false;
-  let waiverSpentDurably = false;
-  if (billedTokenForCheck && uid) {
-    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
-    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
-    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
-    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
-    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
-    //     the stitch — for a film the product told the user is free.
-    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
-    // All markers live in the server-side store, never in the client-held `film:` token.
-    // ⚠️ THE DURABLE WAIVER DECIDES FIRST (lib/chat/filmWaiverStore: the database table, or the ledger's own debit where the table
-    // is not applied yet). Redis is where the markers used to live alone, and with it unreachable a paid film was charged twice
-    // (defect 44). One UPDATE hands the waiver to exactly one of N concurrent assembles.
-    const durable = await consumeFilmWaiver(billedTokenForCheck, uid);
-    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid, durable);
-    waiverSpentDurably = durable === 'paid' || durable === 'free';
-    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it — in Redis too, so a store that
-    // answers later cannot waive the same film again.
-    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
-  }
-  if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Resolve the output orientation from the explicit key OR the aspect/format
   // aliases (the assembler accepts `orientation`; callers sometimes send
@@ -451,6 +428,32 @@ async function assembleImpl(req: NextRequest) {
   if (!fresh) {
     return NextResponse.json({ error: 'duplicate_request', message: 'This composition is already being assembled.' }, { status: 409 });
   }
+
+  // ⚠️ THE WAIVER IS SPENT ONLY AFTER THE DUPLICATE CLAIM ABOVE IS WON. Spent before it, a double-click let the request that
+  // then lost the claim (409) walk away holding the waiver while the winner — told 'spent' — billed a film already paid for.
+  const billedTokenForCheck = filmTokenId ?? billingToken;
+  let filmAlreadyBilled = false;
+  let waiverSpentDurably = false;
+  if (billedTokenForCheck && uid) {
+    const [prior, paid] = await Promise.all([getFilmStatus(billedTokenForCheck), getFilmPaid(billedTokenForCheck)]);
+    // ⚠️ THREE WAYS A FILM CAN ARRIVE ALREADY PAID FOR, ALL OWNER-BOUND + SINGLE-USE (isFilmPaidUpstream is the one predicate):
+    //   · masterUrl      — a Product-Ad / re-stitch whose render was billed upstream
+    //   · freeFilmWaived — the film pipeline already spent this user's free-video SLOT on the clips.
+    //     Without honouring it, the free film would either consume a SECOND slot here or be charged
+    //     the stitch — for a film the product told the user is free.
+    //   · the up-front payment — the film's whole quote was taken when it started (filmComposite → recordFilmPaid).
+    // All markers live in the server-side store, never in the client-held `film:` token.
+    // ⚠️ THE DURABLE WAIVER DECIDES FIRST (lib/chat/filmWaiverStore: the database table, or the ledger's own debit where the table
+    // is not applied yet). Redis is where the markers used to live alone, and with it unreachable a paid film was charged twice
+    // (defect 44). One UPDATE hands the waiver to exactly one of N concurrent assembles.
+    const durable = await consumeFilmWaiver(billedTokenForCheck, uid);
+    filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid, durable);
+    waiverSpentDurably = durable === 'paid' || durable === 'free';
+    // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it — in Redis too, so a store that
+    // answers later cannot waive the same film again.
+    if (filmAlreadyBilled) await consumeFilmBilling(billedTokenForCheck);
+  }
+  if (filmTokenId) await recordFilmAssembling(filmTokenId);
 
   // Render-path selection: GPU RunPod worker when provisioned, otherwise the
   // bundled CPU FFmpeg assembler (Option B). Either way the request completes —

@@ -6,7 +6,11 @@
  */
 jest.mock('server-only', () => ({}));
 const netDebitedForRef = jest.fn();
-jest.mock('../orchestrator/ledger', () => ({ netDebitedForRef: (...a: unknown[]) => netDebitedForRef(...a) }));
+const firstDebitAtForRef = jest.fn();
+jest.mock('../orchestrator/ledger', () => ({
+  netDebitedForRef: (...a: unknown[]) => netDebitedForRef(...a),
+  firstDebitAtForRef: (...a: unknown[]) => firstDebitAtForRef(...a),
+}));
 const storeClaim = jest.fn();
 const storeRelease = jest.fn();
 jest.mock('../orchestrator/idempotencyStore', () => ({
@@ -27,6 +31,7 @@ const MISSING = { data: null, error: { code: 'PGRST202', message: 'Could not fin
 beforeEach(() => {
   process.env = { ...ENV, SUPABASE_URL: 'http://127.0.0.1:1', SUPABASE_SERVICE_ROLE_KEY: 'x' };
   netDebitedForRef.mockReset();
+  firstDebitAtForRef.mockReset().mockResolvedValue(Date.now() - 60_000); // charged a minute ago
   storeClaim.mockReset();
   storeRelease.mockReset();
 });
@@ -55,6 +60,22 @@ describe('consumeFilmWaiver', () => {
     expect(await consumeFilmWaiver('fabc', 'u1')).toBe('paid');
     expect(netDebitedForRef).toHaveBeenCalledWith('u1', filmChargeRefFor('fabc'));
     expect(await consumeFilmWaiver('fabc', 'u1')).toBe('spent');
+  });
+
+  it('with the table not applied: a charge older than the claim window is not vouched for (an expired claim is taken over, not held)', async () => {
+    stubRpc(() => MISSING);
+    netDebitedForRef.mockResolvedValue(240);
+    storeClaim.mockResolvedValue('claimed'); // what claim_request_idempotency answers once the first claim's row expired
+    firstDebitAtForRef.mockResolvedValue(Date.now() - 61 * 60_000);
+    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    firstDebitAtForRef.mockResolvedValue(Date.now() - 56 * 60_000); // inside the clock-skew margin: also not vouched for
+    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    firstDebitAtForRef.mockResolvedValue(null); // unreadable
+    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(storeClaim).not.toHaveBeenCalled();
+    firstDebitAtForRef.mockResolvedValue(Date.now() - 50 * 60_000);
+    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('paid');
+    expect(storeClaim).toHaveBeenCalledWith('u1', 'film-waiver:fabc', 3600);
   });
 
   it('with the table not applied: no debit (or one refunded away) is none; an unreadable ledger or claim is unavailable', async () => {

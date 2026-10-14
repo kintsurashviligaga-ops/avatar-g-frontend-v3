@@ -8,13 +8,15 @@
  *      spends the waiver, and the paid kind is only recorded against a real ledger debit;
  *   2. with the table not yet applied: the ledger itself. The up-front debit is under `${tokenId}:charge`
  *      (lib/chat/filmComposite), so `netDebitedForRef(user, ref) > 0` proves the payment, and the ONE spend is a claim in
- *      request_idempotency (in Production since 2026-10-13, 1 h window: a replay later than that is billed, the safe side);
+ *      request_idempotency (in Production since 2026-10-13, 1 h window). ⚠️ An expired claim row is TAKEN OVER, not held,
+ *      so the ledger only vouches while the charge itself is younger than the window: every earlier claim was made after
+ *      the charge and is provably still alive. Older than that → 'unavailable' (Redis decides; failing it, billed);
  *   3. nothing answers: 'unavailable' — the caller keeps its Redis markers, and failing everything it bills the stitch.
  *
  * Every error is 'unavailable', never a waiver: a store that cannot be read must not give a film away.
  */
 import 'server-only';
-import { netDebitedForRef } from '@/lib/orchestrator/ledger';
+import { firstDebitAtForRef, netDebitedForRef } from '@/lib/orchestrator/ledger';
 import { storeClaim, storeRelease } from '@/lib/orchestrator/idempotencyStore';
 
 export type WaiverAnswer = 'paid' | 'free' | 'spent' | 'void' | 'none' | 'unavailable';
@@ -25,6 +27,9 @@ interface RpcClient {
 }
 
 const MISSING_RECHECK_MS = 10 * 60_000;
+const CLAIM_WINDOW_SEC = 3600;
+/** Margin for the app server's clock against the database's `now()`. */
+const CLAIM_SKEW_MS = 5 * 60_000;
 let missingUntil = 0;
 
 async function serviceRoleClient(): Promise<RpcClient> {
@@ -104,7 +109,9 @@ export async function consumeFilmWaiver(tokenId: string, userId: string): Promis
   const net = await netDebitedForRef(userId, filmChargeRefFor(tokenId)).catch(() => null);
   if (net === null) return 'unavailable';
   if (net <= 0) return 'none';
-  const claim = await storeClaim(userId, claimKey(tokenId), 3600);
+  const chargedAt = await firstDebitAtForRef(userId, filmChargeRefFor(tokenId)).catch(() => null);
+  if (!chargedAt || Date.now() - chargedAt >= CLAIM_WINDOW_SEC * 1000 - CLAIM_SKEW_MS) return 'unavailable';
+  const claim = await storeClaim(userId, claimKey(tokenId), CLAIM_WINDOW_SEC);
   if (claim === 'claimed') return 'paid';
   return claim === 'held' ? 'spent' : 'unavailable';
 }

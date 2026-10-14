@@ -26,6 +26,15 @@ test('"already paid" is decided by the shared predicate over the status record A
   expect((code.match(/restoreFilmWaiver\(billedTokenForCheck, uid\)/g) ?? []).length).toBe(2);
 });
 
+test('the waiver is spent only by the request that won the duplicate claim (a 409 loser must not hold it)', () => {
+  const claim = code.indexOf("claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60)");
+  const conflict = code.indexOf("error: 'duplicate_request'");
+  expect(claim).toBeGreaterThan(0);
+  expect(conflict).toBeGreaterThan(claim);
+  expect(code.indexOf('await consumeFilmWaiver(')).toBeGreaterThan(conflict);
+  expect(code.indexOf('await consumeFilmBilling(')).toBeGreaterThan(conflict);
+});
+
 test('every charge and refund in the route uses that one amount', () => {
   const uses = code.match(/assembleCost/g) ?? [];
   expect(uses.length).toBeGreaterThanOrEqual(7);
