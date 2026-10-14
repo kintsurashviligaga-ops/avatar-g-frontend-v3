@@ -27,6 +27,7 @@ describe('e2eProvider guard (the stand-in for Lyria never reaches a real deploym
     expect(e2eFault('calm [e2e:fail]')).toBe('fail');
     expect(e2eFault('[e2e:silent] x')).toBe('silent');
     expect(e2eFault('x [e2e:slow]')).toBe('slow');
+    expect(e2eFault('x [e2e:replay]')).toBe('replay');
     expect(e2eFault('calm piano')).toBeNull();
   });
 });
