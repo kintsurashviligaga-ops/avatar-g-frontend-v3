@@ -1,0 +1,9 @@
+PASS components/voice/experience/VoiceSettingsPanel.test.tsx
+PASS lib/voice/experience/experience.test.ts
+PASS lib/voice/experience/readAloud.test.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       49 passed, 49 total
+Snapshots:   0 total
+Time:        0.621 s, estimated 1 s
+Ran all test suites matching components/voice/experience|lib/voice/experience.

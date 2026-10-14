@@ -1,0 +1,13 @@
+PASS components/voice/GeminiLiveConversation.test.tsx
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+(node:54346) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS app/api/voice/live/route.test.ts
+PASS lib/voice/experience/experience.test.ts
+PASS lib/voice/experience/readAloud.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       156 passed, 156 total
+Snapshots:   0 total
+Time:        2.072 s
+Ran all test suites matching lib/voice/experience|components/voice/live/useGeminiLiveSession.test.tsx|components/voice/GeminiLiveConversation.test.tsx|app/api/voice/live/route.test.ts.
