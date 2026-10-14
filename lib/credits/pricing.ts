@@ -64,6 +64,11 @@ export const CREDIT_COSTS = {
   // advertise. Wholesale is ~$0.10 per TRELLIS mesh (costModel) plus ~$0.04 for the Imagen reference on
   // the text path. Owner-tunable: change this one number.
   model3d: 5,
+  // Global E2E 2026-10-14 (S2): dubbing and presentation spent ElevenLabs / Gemini + Imagen with NO credit charge.
+  // PROPOSED prices, owner to confirm before merge — sized at provider cost plus margin at 1 cr ≈ $0.037:
+  // a dubbed minute ≈ STT + translation + ~15 TTS lines ≈ $0.30 → 10 cr; a deck = outline + up to 12 images ≈ $0.50 → 15 cr.
+  dubbing_per_minute: 10, // 1.00 GEL per started minute
+  presentation_deck: 15, // 1.50 GEL
 } as const;
 
 export type CreditAction = keyof typeof CREDIT_COSTS;
@@ -153,7 +158,7 @@ export function creditsToUsd(credits: number): number {
  * image jobs (×2/×4 grids). Unknown kinds → 0 (never over-charge on a guess).
  */
 export function creditCostFor(
-  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'chat',
+  kind: 'image' | 'music' | 'video' | 'avatar' | 'remix' | 'model3d' | 'dubbing' | 'presentation' | 'chat',
   opts: { seconds?: number; count?: number } = {},
 ): number {
   const C = CREDIT_COSTS;
@@ -174,6 +179,11 @@ export function creditCostFor(
       return C.remix_video;
     case 'model3d':
       return C.model3d;
+    case 'dubbing':
+      // per STARTED minute of source, at least one
+      return C.dubbing_per_minute * Math.max(1, Math.ceil((opts.seconds ?? 60) / 60));
+    case 'presentation':
+      return C.presentation_deck;
     case 'chat':
     default:
       return C.chat_message;

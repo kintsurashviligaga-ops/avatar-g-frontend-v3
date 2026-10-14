@@ -22,8 +22,8 @@ import { checkRateLimit } from '../../../../../lib/api/rate-limit';
 import { parseMusicEnginesStatus } from '../../../../../lib/studio/musicEngines';
 
 const req = () => new NextRequest('https://myavatar.ge/api/ai/music/engines');
-const ENV: NodeJS.ProcessEnv = {};
-const KEYS = { UDIO_API_KEY: 'udio-secret-key', ELEVENLABS_API_KEY: 'el-secret-key', REPLICATE_API_TOKEN: 'r8-secret-token' };
+const ENV: NodeJS.ProcessEnv = { MEDIA_GOOGLE_ONLY: '0' }; // explicit opt-out: an empty env is fail-closed ON
+const KEYS = { MEDIA_GOOGLE_ONLY: '0', UDIO_API_KEY: 'udio-secret-key', ELEVENLABS_API_KEY: 'el-secret-key', REPLICATE_API_TOKEN: 'r8-secret-token' };
 
 beforeEach(() => {
   jest.clearAllMocks();

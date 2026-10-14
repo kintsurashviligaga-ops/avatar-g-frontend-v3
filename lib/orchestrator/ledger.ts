@@ -13,6 +13,7 @@ import 'server-only';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { ensureProfileRow, isMissingProfileError } from '@/lib/orchestrator/ensureProfile';
 import { reportError } from '@/lib/observability/report-error';
+import { paidWritesBlockedOnPreview } from '@/lib/env/previewIsolation';
 
 export type LedgerReason = 'insufficient' | 'skipped' | 'error';
 
@@ -61,6 +62,9 @@ function client(): ReturnType<typeof createServiceRoleClient> | null {
  *   ok:false reason:'skipped'      → RPC not provisioned (Saga proceeds).
  */
 export async function deductCredits(userId: string, amount: number, ref: string): Promise<LedgerResult> {
+  // A Preview shares Production's database until it proves otherwise (lib/env/previewIsolation): no debit from here,
+  // so every paid route refuses before its provider call. 'error', not 'skipped' — skipped would let dev bypasses run.
+  if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' };
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
@@ -111,6 +115,7 @@ export type OnceResult = Omit<LedgerResult, 'reason'> & { reason?: LedgerReason 
  * produce rate limit bound that).
  */
 export async function deductCreditsOnce(userId: string, amount: number, ref: string): Promise<OnceResult> {
+  if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' }; // see deductCredits
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   const call = () => sb.rpc('deduct_credits_once', { p_user_id: userId, p_amount: amount, p_ref: ref });

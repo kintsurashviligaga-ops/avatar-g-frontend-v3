@@ -1,7 +1,7 @@
 /** @jest-environment node */
 // Dubbing: who may start one, what source it may read, and how it is filed. The pipeline itself (ffmpeg, STT, TTS) is
-// lib/services/dubbing's own suites; here it is a stub. Dubbing does not charge the user's credits yet (an open pricing
-// decision), so the only spend gate is the platform provider budget, which runs for real through guardedCall.
+// lib/services/dubbing's own suites; here it is a stub. Dubbing reserves credits per started minute before
+// the pipeline (stubbed reservation below); the platform provider budget runs for real through guardedCall.
 
 jest.mock('server-only', () => ({}));
 
@@ -38,6 +38,18 @@ const createSignedAssetUrl = jest.fn();
 jest.mock('../../../../../lib/orchestrator/storage-adapter', () => ({
   ...jest.requireActual('../../../../../lib/orchestrator/storage-adapter'),
   createSignedAssetUrl: (...a: unknown[]) => createSignedAssetUrl(...a),
+}));
+const reserveProduce = jest.fn(async (..._a: unknown[]) => ({ proceed: true, charged: false, reason: 'skipped' as string }));
+const refundProduce = jest.fn(async (..._a: unknown[]) => undefined);
+jest.mock('../../../../../lib/orchestrator/produceBilling', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/produceBilling'),
+  reserveProduce: (...a: unknown[]) => reserveProduce(...a),
+  refundProduce: (...a: unknown[]) => refundProduce(...a),
+}));
+const deductCredits = jest.fn(async (..._a: unknown[]) => ({ ok: true }));
+jest.mock('../../../../../lib/orchestrator/ledger', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/ledger'),
+  deductCredits: (...a: unknown[]) => deductCredits(...a),
 }));
 import { NextRequest } from 'next/server';
 import { POST } from './route';
@@ -206,5 +218,60 @@ describe('POST /api/v2/dubbing/start', () => {
       expect(res.status).toBe(400);
       expect(checkRateLimitByKey).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('credits (global E2E S2: dubbing used to be free)', () => {
+  it('reserves 10 credits per started minute before the pipeline runs, and reports the charge', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: true, charged: true, reason: 'ok' });
+    runDubbing.mockResolvedValueOnce({ ok: true, result: { ...RESULT, minutes: 2 } });
+    const { res, json } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 90 });
+    expect(res.status).toBe(200);
+    expect(reserveProduce).toHaveBeenCalledWith(mockUser.id, 20, expect.stringMatching(/^dubbing:/), { refuseReplay: true });
+    expect(reserveProduce.mock.invocationCallOrder[0]).toBeLessThan(runDubbing.mock.invocationCallOrder[0]);
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(json.creditsCharged).toBe(20);
+    expect(refundProduce).not.toHaveBeenCalled();
+  });
+
+  it('a short balance answers 402 and no provider is touched', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: false, charged: false, reason: 'insufficient' });
+    const { res, json } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 60 });
+    expect(res.status).toBe(402);
+    expect(json.error).toBe('insufficient_credits');
+    expect(canProceed).not.toHaveBeenCalled();
+    expect(runDubbing).not.toHaveBeenCalled();
+  });
+
+  it('a ledger it cannot charge refuses (503), never dubs for free', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: false, charged: false, reason: 'billing_unavailable' });
+    const { res } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka' });
+    expect(res.status).toBe(503);
+    expect(runDubbing).not.toHaveBeenCalled();
+  });
+
+  it('a failed dub refunds the reservation once', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: true, charged: true, reason: 'ok' });
+    runDubbing.mockResolvedValueOnce({ ok: false, step: 'transcribe', error: 'x' });
+    const { res } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 60 });
+    expect(res.status).toBe(502);
+    expect(refundProduce).toHaveBeenCalledTimes(1);
+    expect(refundProduce).toHaveBeenCalledWith(mockUser.id, 10, expect.stringMatching(/^dubbing:/), true);
+  });
+
+  it('an exhausted platform budget refunds the reservation', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: true, charged: true, reason: 'ok' });
+    canProceed.mockResolvedValueOnce({ allowed: false, reason: 'daily_cap' });
+    const { res } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 60 });
+    expect(res.status).toBe(429);
+    expect(refundProduce).toHaveBeenCalledTimes(1);
+  });
+
+  it('under-declaring the length buys nothing: the measured minutes are charged as an extra', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: true, charged: true, reason: 'ok' });
+    runDubbing.mockResolvedValueOnce({ ok: true, result: { ...RESULT, minutes: 4 } });
+    const { json } = await post({ sourceVideoUrl: SRC, targetLanguage: 'ka', durationSec: 30 });
+    expect(deductCredits).toHaveBeenCalledWith(mockUser.id, 30, expect.stringMatching(/^dubbing:.*:extra$/));
+    expect(json.creditsCharged).toBe(40);
   });
 });

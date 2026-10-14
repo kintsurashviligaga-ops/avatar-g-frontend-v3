@@ -42,10 +42,10 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
   },
   {
     slug: 'workflow', title: 'Workflow Builder', href: '/services/workflow', id: 'workflow',
-    name: 'Workflow Builder', description: 'Design chained automation pipelines across services.',
+    name: 'Workflow Builder', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).',
     icon: '🧭', route: '/services/workflow', enabled: true,
     localized: {
-      en: { name: 'Workflow Builder', description: 'Design chained automation pipelines across services.' },
+      en: { name: 'Workflow Builder', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).' },
       ka: { name: 'პროცესების კონსტრუქტორი', description: 'დაგეგმე მრავალსაფეხურიანი ავტომატიზაციები.' },
       ru: { name: 'Конструктор процессов', description: 'Проектируйте автоматизации в едином потоке.' },
     },

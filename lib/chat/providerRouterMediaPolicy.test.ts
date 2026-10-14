@@ -84,6 +84,7 @@ beforeEach(() => {
     saved[k] = process.env[k];
     delete process.env[k];
   }
+  process.env.MEDIA_GOOGLE_ONLY = '0'; // explicit opt-out: unset is fail-closed ON
   (isMusicVideoComposite as jest.Mock).mockReturnValue(false);
   (startUdioGeneration as jest.Mock).mockResolvedValue({ workId: 'w1', model: 'udio-test' });
   fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network is not allowed in this test'));

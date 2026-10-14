@@ -6,3 +6,8 @@ if (process.env.CI) {
   // eslint-disable-next-line no-undef
   jest.retryTimes(2, { logErrorsBeforeRetry: true });
 }
+
+// MEDIA_GOOGLE_ONLY is fail-closed (default ON) since the global E2E provider-boundary fix. Most route suites exercise
+// the outside-engine paths that only run with the explicit opt-out, so the opt-out is the test baseline; a suite that
+// tests the boundary sets '1' itself, and lib/providers/mediaPolicy.test.ts pins the real default with explicit envs.
+if (process.env.MEDIA_GOOGLE_ONLY === undefined) process.env.MEDIA_GOOGLE_ONLY = '0';

@@ -8,6 +8,9 @@ import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guarded
 import { isPublicHttpUrl } from '@/lib/security/allowlistedAudioFetch';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
 import { resolveUploadRef } from '@/lib/services/resolveUpload';
+import { reserveProduce, refundProduce, reservationErrorCode } from '@/lib/orchestrator/produceBilling';
+import { deductCredits } from '@/lib/orchestrator/ledger';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,9 +33,9 @@ const MAX_SOURCE_SEC = 300;
  * request is the worker. Progress is still published to the `generation_jobs` row, so the existing job tray
  * can show the leg-by-leg stage while this request is in flight.
  *
- * BILLING: `guardedCall` prices the job, checks the PLATFORM provider-spend budget before any provider is
- * touched, and records actual usage afterwards. That is the platform's own API spend — distinct from the
- * user's credit wallet, which dubbing does not yet charge against.
+ * BILLING: the user's credits are reserved per started minute BEFORE any provider is touched (ref `dubbing:<jobId>`,
+ * replay-refusing), refunded once (`…:refund`) when the dub fails, and topped up (`…:extra`) when the measured length
+ * runs past the declared one. `guardedCall` separately checks the PLATFORM provider-spend budget.
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const limited = await checkRateLimit(req, RATE_LIMITS.AI);
@@ -83,8 +86,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
   const minutes = dubbingMinutes(durationSec);
-  // Dubbing bills no credits yet (gap C3, the price is the owner's call), so the per-account daily ceiling is what
-  // bounds one person's spend; counted only for a request that passed validation.
+  // The per-account daily ceiling still bounds one person's provider spend; counted only for a request that passed
+  // validation.
   const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.DUBBING_USER);
   if (capped) return capped;
 
@@ -106,6 +109,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // which would otherwise let this request stamp progress onto a row it does not own.
   if (!created) jobId = fallbackId;
 
+  // ⚠️ DUBBING WAS FREE (global E2E S2): ElevenLabs STT + one TTS call per line, and the wallet never moved.
+  const cost = creditCostFor('dubbing', { seconds: durationSec });
+  const chargeRef = `dubbing:${jobId}`;
+  const reservation = await reserveProduce(user.id, cost, chargeRef, { refuseReplay: true })
+    .catch(() => ({ proceed: false, charged: false, reason: 'error' as const }));
+  if (!reservation.proceed) {
+    await failJob(jobId, reservationErrorCode(reservation)).catch(() => {});
+    return reservation.reason === 'insufficient'
+      ? NextResponse.json({ error: 'insufficient_credits', message: 'Not enough credits — please top up.', needed: cost, jobId }, { status: 402 })
+      : NextResponse.json({ error: reservationErrorCode(reservation), jobId }, { status: reservation.reason === 'replay' ? 409 : 503 });
+  }
+  const refund = () => refundProduce(user.id, cost, chargeRef, reservation.charged);
+
   try {
     const outcome = await guardedCall(
       { service: 'dubbing', model: 'eleven-multilingual-v2', units: minutes },
@@ -113,6 +129,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (!outcome.ok) {
+      await refund();
       await failJob(jobId, `${outcome.step}: ${outcome.error}`).catch(() => {});
       return NextResponse.json(
         { error: 'dubbing_failed', step: outcome.step, message: outcome.error, jobId },
@@ -121,6 +138,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const r = outcome.result;
+    // The pipeline re-measures the source; a declared length below the real one does not buy a cheaper dub.
+    const extra = reservation.charged ? creditCostFor('dubbing', { seconds: r.minutes * 60 }) - cost : 0;
+    if (extra > 0) await deductCredits(user.id, extra, `${chargeRef}:extra`).catch(() => undefined);
     await completeJob(jobId, {
       signedUrl: r.videoUrl,
       result: { videoUrl: r.videoUrl, audioUrl: r.audioUrl, subtitlesUrl: r.subtitlesUrl, subtype: 'dubbing' },
@@ -135,6 +155,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       targetLanguage: request.targetLanguage,
       speakers: r.speakers,
       minutes: r.minutes,
+      creditsCharged: reservation.charged ? cost + Math.max(0, extra) : 0,
       segments: r.segments.length,
       steps: { planned: plannedSteps({ lipSync: request.lipSync }), run: r.stepsRun },
       // Surfaced, not buried: a dub with dropped or untranslated lines is a partial result and the caller
@@ -146,6 +167,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (err) {
+    await refund();
     if (err instanceof BudgetExceededError) {
       await failJob(jobId, 'budget_exceeded').catch(() => {});
       return NextResponse.json(

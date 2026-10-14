@@ -1,8 +1,8 @@
 /** @jest-environment node */
 // Presentation: who may build a deck, what is checked first, and that the whole deck (not just its count) is filed to
 // the Library. The build itself (outline, Imagen, resvg) is lib/services/presentation's own suites; here it is a stub.
-// A deck does not charge the user's credits yet (an open pricing decision); the platform provider budget is the gate,
-// and it runs for real through guardedCall.
+// A deck reserves credits before the build (stubbed reservation below; the ledger itself is covered by the billing
+// suites); the platform provider budget runs for real through guardedCall.
 
 jest.mock('server-only', () => ({}));
 
@@ -33,6 +33,18 @@ jest.mock('../../../../../lib/orchestrator/jobs', () => ({
   createJob: (...a: unknown[]) => createJob(...a),
   completeJob: (...a: unknown[]) => completeJob(...a),
   failJob: (...a: unknown[]) => failJob(...a),
+}));
+const reserveProduce = jest.fn(async (..._a: unknown[]) => ({ proceed: true, charged: false, reason: 'skipped' as string }));
+const refundProduce = jest.fn(async (..._a: unknown[]) => undefined);
+jest.mock('../../../../../lib/orchestrator/produceBilling', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/produceBilling'),
+  reserveProduce: (...a: unknown[]) => reserveProduce(...a),
+  refundProduce: (...a: unknown[]) => refundProduce(...a),
+}));
+const deductCredits = jest.fn(async (..._a: unknown[]) => ({ ok: true }));
+jest.mock('../../../../../lib/orchestrator/ledger', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/ledger'),
+  deductCredits: (...a: unknown[]) => deductCredits(...a),
 }));
 import { NextRequest } from 'next/server';
 import { POST } from './route';
@@ -182,5 +194,35 @@ describe('POST /api/v2/presentation/build', () => {
       expect(res.status).toBe(400);
       expect(checkRateLimitByKey).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('credits (global E2E S2: decks used to be free)', () => {
+  it('reserves 15 credits before the build runs, and reports the charge', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: true, charged: true, reason: 'ok' });
+    const { res, json } = await post({ topic: 'Tbilisi tourism' });
+    expect(res.status).toBe(200);
+    expect(reserveProduce).toHaveBeenCalledWith(mockUser.id, 15, expect.stringMatching(/^presentation:/), { refuseReplay: true });
+    expect(reserveProduce.mock.invocationCallOrder[0]).toBeLessThan(runDeckBuild.mock.invocationCallOrder[0]);
+    expect(json.creditsCharged).toBe(15);
+    expect(refundProduce).not.toHaveBeenCalled();
+  });
+
+  it('a short balance answers 402 and nothing is built', async () => {
+    reserveProduce.mockResolvedValueOnce({ proceed: false, charged: false, reason: 'insufficient' });
+    const { res } = await post({ topic: 'Tbilisi tourism' });
+    expect(res.status).toBe(402);
+    expect(runDeckBuild).not.toHaveBeenCalled();
+  });
+
+  it('a failed build refunds once; a thrown build refunds once', async () => {
+    reserveProduce.mockResolvedValue({ proceed: true, charged: true, reason: 'ok' });
+    runDeckBuild.mockResolvedValueOnce({ ok: false, step: 'outline', error: 'x' });
+    expect((await post({ topic: 'Tbilisi tourism' })).res.status).toBe(502);
+    expect(refundProduce).toHaveBeenCalledTimes(1);
+    runDeckBuild.mockRejectedValueOnce(new Error('boom'));
+    expect((await post({ topic: 'Tbilisi tourism' })).res.status).toBe(500);
+    expect(refundProduce).toHaveBeenCalledTimes(2);
+    reserveProduce.mockImplementation(async () => ({ proceed: true, charged: false, reason: 'skipped' }));
   });
 });

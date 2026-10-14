@@ -6,6 +6,8 @@ import { validateDeckRequest, deckUnits } from '@/lib/services/presentation/deck
 import { runDeckBuild } from '@/lib/services/presentation/deckPipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
 import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
+import { reserveProduce, refundProduce, reservationErrorCode } from '@/lib/orchestrator/produceBilling';
+import { creditCostFor } from '@/lib/credits/pricing';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,7 +34,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });
   }
   const request = parsed.request;
-  // A deck bills no credits yet (gap C3): the per-account daily ceiling bounds one person's Gemini and image spend.
+  // The per-account daily ceiling still bounds one person's Gemini and image spend.
   const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.PRESENTATION_USER);
   if (capped) return capped;
 
@@ -50,6 +52,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // which would otherwise let this request stamp progress onto a row it does not own.
   if (!created) jobId = fallbackId;
 
+  // ⚠️ DECKS WERE FREE (global E2E S2): an outline plus up to 12 Imagen calls, and the wallet never moved. Reserved
+  // before any provider call, refunded once when the build fails.
+  const cost = creditCostFor('presentation');
+  const chargeRef = `presentation:${jobId}`;
+  const reservation = await reserveProduce(user.id, cost, chargeRef, { refuseReplay: true })
+    .catch(() => ({ proceed: false, charged: false, reason: 'error' as const }));
+  if (!reservation.proceed) {
+    await failJob(jobId, reservationErrorCode(reservation)).catch(() => {});
+    return reservation.reason === 'insufficient'
+      ? NextResponse.json({ error: 'insufficient_credits', message: 'Not enough credits — please top up.', needed: cost, jobId }, { status: 402 })
+      : NextResponse.json({ error: reservationErrorCode(reservation), jobId }, { status: reservation.reason === 'replay' ? 409 : 503 });
+  }
+  const refund = () => refundProduce(user.id, cost, chargeRef, reservation.charged);
+
   try {
     const outcome = await guardedCall(
       // NOTE: the outline call books its own spend inside llmText. This guard covers the Imagen fan-out
@@ -59,6 +75,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (!outcome.ok) {
+      await refund();
       await failJob(jobId, `${outcome.step}: ${outcome.error}`).catch(() => {});
       return NextResponse.json(
         { error: 'deck_failed', step: outcome.step, message: outcome.error, jobId },
@@ -92,6 +109,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       coverUrl: r.coverUrl,
       slides: r.slides,
       steps: r.stepsRun,
+      creditsCharged: reservation.charged ? cost : 0,
       // Both degradations are stated rather than passed off as a clean deck.
       warnings: {
         usedFallbackOutline: r.usedFallbackOutline,
@@ -100,6 +118,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (err) {
+    await refund();
     if (err instanceof BudgetExceededError) {
       await failJob(jobId, 'budget_exceeded').catch(() => {});
       return NextResponse.json(

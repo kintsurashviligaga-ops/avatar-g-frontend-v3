@@ -36,7 +36,7 @@ const VERTEX_ENV: Record<string, string> = {
 };
 
 function setEnv(vars: Record<string, string>): void {
-  process.env = { ...vars } as NodeJS.ProcessEnv;
+  process.env = { MEDIA_GOOGLE_ONLY: '0', ...vars } as NodeJS.ProcessEnv;
 }
 
 function row(h: PipelineHealth, service: string): ServiceStatus {

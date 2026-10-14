@@ -1,8 +1,8 @@
 /** @jest-environment node */
 /**
- * MEDIA_GOOGLE_ONLY — the opt-in switch that keeps every user-facing media tool on Google / ElevenLabs.
+ * MEDIA_GOOGLE_ONLY — the opt-out switch that keeps every user-facing media tool on Google / ElevenLabs.
  *
- * Pinned here: off by default (Production unchanged until the owner flips it), the refusal shape and its three
+ * Pinned here: ON by default (fail closed — an outside engine needs an explicit MEDIA_GOOGLE_ONLY=0), the refusal shape and its three
  * languages, and that every entry GATED_ENTRIES lists really calls the guard, so the list cannot drift from the code.
  */
 import { readFileSync } from 'node:fs';
@@ -14,17 +14,19 @@ const req = (cookie?: string) =>
   new Request('https://myavatar.ge/api/x', { method: 'POST', headers: cookie ? { cookie } : {} });
 
 describe('the switch', () => {
-  it('is OFF unless set to a truthy value', () => {
-    expect(isMediaGoogleOnly({} as NodeJS.ProcessEnv)).toBe(false);
-    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '' } as NodeJS.ProcessEnv)).toBe(false);
+  it('is ON unless set to an explicit falsy value', () => {
+    expect(isMediaGoogleOnly({} as NodeJS.ProcessEnv)).toBe(true);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'off' } as NodeJS.ProcessEnv)).toBe(false);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).toBe(false);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'false' } as NodeJS.ProcessEnv)).toBe(false);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '1' } as NodeJS.ProcessEnv)).toBe(true);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'true' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
-  it('off → no refusal: the route runs as it does today', () => {
-    expect(refuseOutsideEngine(req(), {} as NodeJS.ProcessEnv)).toBeNull();
+  it('unset → refusal (fail closed); explicit off → no refusal', () => {
+    expect(refuseOutsideEngine(req(), {} as NodeJS.ProcessEnv)?.status).toBe(503);
+    expect(refuseOutsideEngine(req(), { MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).toBeNull();
   });
 
   it('on → 503 google_only, with every field the studio readers look at', async () => {

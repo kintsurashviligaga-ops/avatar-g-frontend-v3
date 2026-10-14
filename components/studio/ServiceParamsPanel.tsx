@@ -255,7 +255,7 @@ export function ServiceParamsPanel({
    * Parameters mined from the chat sentence that opened this panel (lib/chat/studioIntent).
    *
    * Applied as INITIAL VALUES only — the user still reviews and presses the button, so a mis-parse costs
-   * a correction rather than a charge. Deliberately NOT auto-submitted: these services all spend credits,
+   * a correction rather than a charge. Deliberately NOT auto-submitted: dubbing and decks spend credits,
    * and "it started rendering because of something I typed in chat" is not a recoverable surprise.
    */
   prefill?: { targetLanguage?: string; slideCount?: number; durationSec?: number; topic?: string };
