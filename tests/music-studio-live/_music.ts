@@ -53,6 +53,10 @@ export async function openStudio(page: Page, locale: 'en' | 'ka' | 'ru' = 'en', 
  */
 export async function studioReady(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });
+  // History is uid-scoped (lib/chat/historyKeys): ChatChrome publishes data-authed BEFORE data-uid, and a turn made in that
+  // gap is filed in the guest archive (run 38557521565, phone: `conversations::anon`). That shared-chat race is recorded in
+  // docs/handoffs/music-studio/PHASE2_STATE.md (patch proposal, not applied); the specs start once the uid is known.
+  await expect(page.locator('html')).toHaveAttribute('data-uid', /^[0-9a-f-]{36}$/, { timeout: 30_000 });
   await expect.poll(async () => (await voice(page, { action: 'status' })).took, { timeout: 60_000 }).toBe(true);
 }
 
