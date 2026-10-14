@@ -59,6 +59,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Keep provider details in server logs only; the response intentionally exposes just channel states.
+    if (!wa.ready || !tg.ready) console.warn('[agent-g/channels] runtime', { whatsapp: wa.note, telegram: tg.note });
     const connections = buildConnections({
       signedIn: Boolean(user),
       whatsapp: { ready: wa.ready, storage: waStorage, linkedMasked: waLinked },
