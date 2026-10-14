@@ -234,23 +234,6 @@ test('provider failure and QC failure: no track delivered, the reservation refun
   evidence(`music-failures-${tag(info)}`, out);
 });
 
-test('reload while it composes → the card returns to the same job and delivers it, one debit', async ({ page }, info) => {
-  const user = projectUser(info);
-  await openStudio(page);
-  const before = await balanceOf(user.id);
-  await voice(page, { action: 'plan', prompt: `reload check guitar ${tag(info)}` });
-  const card = newestCard(page);
-  await waitPhase(card, 'quoted', 30_000);
-  const { jobId } = await confirm(page, card, user.id, 'keyboard'); // Create by keyboard: focus + Enter
-  await waitPhase(card, 'running', 30_000);
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });
-  const back = page.locator(`[data-testid="music-card"][data-job-id="${jobId}"]`);
-  await expect(back).toHaveAttribute('data-phase', 'completed', { timeout: 120_000 });
-  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5]);
-  expect(await balanceOf(user.id)).toBe(before - 5);
-});
-
 test('a sung song is refused before any price (vocals not verified) — never turned into an instrumental', async ({ page }, info) => {
   const user = projectUser(info);
   await openStudio(page);
@@ -289,4 +272,23 @@ test('keyboard and accessibility: labelled controls, 44 px targets, focus reache
   expect(box!.height).toBeGreaterThanOrEqual(44);
   await expect(create).toHaveAccessibleName(/credits will be charged/);
   await expect(card).toHaveAttribute('aria-busy', 'false');
+});
+
+// Last on purpose (serial mode): KNOWN OPEN DEFECT on 2026-10-14 — after a reload the chat thread does not come back,
+// so the card is not re-mounted (the job still completes server-side: one debit, a Library row). Kept failing, not skipped.
+test('reload while it composes → the card returns to the same job and delivers it, one debit', async ({ page }, info) => {
+  const user = projectUser(info);
+  await openStudio(page);
+  const before = await balanceOf(user.id);
+  await voice(page, { action: 'plan', prompt: `reload check guitar ${tag(info)}` });
+  const card = newestCard(page);
+  await waitPhase(card, 'quoted', 30_000);
+  const { jobId } = await confirm(page, card, user.id, 'keyboard'); // Create by keyboard: focus + Enter
+  await waitPhase(card, 'running', 30_000);
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });
+  const back = page.locator(`[data-testid="music-card"][data-job-id="${jobId}"]`);
+  await expect(back).toHaveAttribute('data-phase', 'completed', { timeout: 120_000 });
+  expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5]);
+  expect(await balanceOf(user.id)).toBe(before - 5);
 });
