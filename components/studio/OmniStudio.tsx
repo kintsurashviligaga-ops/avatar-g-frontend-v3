@@ -144,6 +144,8 @@ const COMPLETED_SERVICE: Readonly<Record<'image' | 'music' | 'video' | 'avatar' 
 };
 import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
+import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
+import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
@@ -1098,7 +1100,7 @@ interface FilmSnap {
 
 /** A chat-attached video edit, classified and checked, waiting to run (or for Agent G's Create when it is charged). */
 interface ChatRemixJob { op: string; params: Record<string, unknown>; text: string; caption: string | null; videoAtt: Media; audioAtt: Media | null; attachments: Media[] }
-interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
+interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds of the files this turn carried (persisted; the bytes are not). */ attached?: string[]; /** Each file this turn carried — name, size, length, checked storage path (lib/chat/attachedFiles). Persisted; the bytes are not. */ files?: AttachedFile[]; /** A UI notice in the thread (an error, „Stopped", a routing note) — shown to the user, NEVER sent to the model as something it said. */ notice?: boolean; /** A Deep Research job this bubble's card follows (components/studio/research) - the server owns the job; the card reads it by id. */ researchId?: string; /** Music Studio v1 (components/studio/music): the plan card's draft — quote, Confirm, the job, edits. Persisted; the card follows its job by the id it remembers. */ musicDraft?: MusicDraft; /** Google Search grounding citations of a chat reply. */ sources?: ChatSource[]; /** Render a top-up action on this bubble — set when a route refused for want of credits. */ topUp?: boolean; /** Agent G's confirm / clarify card (lib/chat/focusGate) — buttons under the reply. Never persisted. */ agentG?: AgentGCardState; /** Agent G's question before a CHARGED edit of a video attached in the chat (lib/video/remixCharge): its price; Create runs it. Never persisted. */ remixAsk?: { credits: number; done?: boolean }; /** Agent G's montage plan and its run (lib/agent/media): Start / Cancel / Stop under the reply. Persisted lean (lib/agent/media/cardPersist): a running card is taken back to its job after a reload. */ montage?: AgentMontageState; /** Agent G's audio extraction (lib/agent/media/audioExtract): its plan, run and upload offer under the reply. Persisted lean, like `montage`. */ audioJob?: AgentAudioState; /** Agent G's own edit of a video (lib/agent/media/editExec): its plan, run and result under the reply; `editName` is the result's file name. Persisted lean, like `montage`. */ editJob?: AgentEditState; editName?: string; /** Agent G's multi-step run (lib/agent/run): its plan, its steps as the server reads them, Start / Stop / Retry under the reply. Persisted lean, like `montage`: a running run is followed again by its id. */ runJob?: AgentRunState; /** Agent G's whole-file answer to „what is in my video?" (lib/agent/media/analyzeChat): its steps, scenes, moments, transcript under the reply. Never persisted (the answer text is). */ analyzeJob?: AgentAnalyzeState; /** An extracted MP3's own file name (the player's label, the download's name) and its facts (length · size · bitrate). */ audioName?: string; audioInfo?: string; medias?: Media[]; /** What the MODEL gets for this turn when it differs from what the bubble shows (a video travels as frames + soundtrack). Never persisted. */ modelMedias?: Media[]; imageUrl?: string; audioUrl?: string; coverUrl?: string; engine?: string;
   /** How a track's Weirdness / Style influence reached its engine — the music route's `controls.mode` ('prompt' = approximate).
    *  Kept only when the route says a slider reached the engine at all (`controls.applied` — musicControlsModeOf). */
   musicControlsMode?: MusicControlMode;
@@ -1486,6 +1488,7 @@ function leanMessages(messages: Msg[]): Msg[] {
       ...(m.filmQa ? { filmQa: m.filmQa } : {}),
       ...(m.glbUrl ? { glbUrl: m.glbUrl } : {}),
       ...(m.researchId ? { researchId: m.researchId } : {}),
+      ...(m.musicDraft ? { musicDraft: m.musicDraft } : {}),
       ...(m.notice ? { notice: true } : {}),
       ...(m.errorTail ? { errorTail: true } : {}),
       // A reply's sources are a few short links — kept, so its source chips survive a reload like the reply itself.
@@ -5296,6 +5299,17 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     /** Weirdness / Style influence (lib/ai/musicControls); absent → neutral. `genre` is the style line, `voiceType` the 4-stop singer. */
     sliders?: { weirdness: number; styleInfluence: number };
   }) => {
+    // Music Studio v1 (NEXT_PUBLIC_MUSIC_STUDIO_V1=1): a plain composition becomes the plan card — quote, explicit Confirm,
+    // the durable job, edits, Library — on Google Lyria only. A cover or a voice request has no approved engine and keeps
+    // its old path, which the server now refuses before any charge.
+    if (musicStudioV1OnClient() && !m.audioRef && !m.useTrained) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', text: m.userBubble, ...(m.medias?.length ? { medias: m.medias } : {}) },
+        { role: 'assistant', text: musicStudioIntro(locale), musicDraft: musicDraftFromPanel(m, locale) },
+      ]);
+      return;
+    }
     const sliders = m.sliders ?? { weirdness: SLIDER_DEFAULT, styleInfluence: SLIDER_DEFAULT };
     const bubbleId = `music_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     setMessages((prev) => [
@@ -9603,6 +9617,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         <SourcesChips sources={m.sources} locale={locale === 'en' ? 'en' : locale === 'ru' ? 'ru' : 'ka'} className="mt-2" />
                       )}
                       {m.researchId && <ResearchCard id={m.researchId} locale={locale} />}
+                      {m.musicDraft && <MusicStudioCard draft={m.musicDraft} locale={locale} onRegenerate={(d) => setMessages((prev) => [...prev, { role: 'assistant', text: musicStudioIntro(locale), musicDraft: d }])} />}
                       {routingChip && routingPrompt && (
                         <div className="mt-2 flex items-center gap-2 rounded-xl border border-app-border/15 bg-app-elevated/40 p-2.5">
                           {routingChip === 'music' ? <Music2 size={16} className="shrink-0 text-app-accent" /> : routingChip === 'video' ? <Film size={16} className="shrink-0 text-app-accent" /> : routingChip === 'avatar' ? <ScanFace size={16} className="shrink-0 text-app-accent" /> : <ImageIcon size={16} className="shrink-0 text-app-accent" />}
