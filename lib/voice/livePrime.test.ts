@@ -75,10 +75,12 @@ test('a stale prime is disposed on take; an unclaimed one is released after the 
   expect(takePrimed()).toBeNull();
 });
 
-test('priming twice drops the first prime', async () => {
+test('double tap adopts one pending prime without interrupting the first syllable', async () => {
   primeLive();
   primeLive();
   await Promise.resolve(); await Promise.resolve();
-  expect(Ctx.all[0]!.closed).toBe(true);
-  expect(takePrimed()?.playCtx).toBe(Ctx.all[1]);
+  expect(Ctx.all).toHaveLength(1);
+  expect(gum).toHaveBeenCalledTimes(1);
+  expect(Ctx.all[0]!.closed).toBe(false);
+  expect(takePrimed()?.playCtx).toBe(Ctx.all[0]);
 });
