@@ -1,6 +1,12 @@
 # 14 — Continuation
 
-## Next exact actions
+## Second run (2026-10-14) — see 15 and 16
+
+Code fixes pushed (e8c7cbe1, 025e65ce): provider boundary fail-closed, dubbing/deck credits, Preview debit guard,
+truthful catalogue. Next: owner approves prices + boundary + Preview DB; then merge order in 12. Throwaway integration
+worktree `/tmp/global-int2` (never pushed) is safe to delete; `/tmp/global-int` holds the node_modules this worktree links to.
+
+## Next exact actions (first run)
 
 1. DONE: CI green on #67 95c3ee7a and #65 9d25c7a4 (11); 95c3ee7a Preview build log shows only `[gcp-auth-check]` (no paid step).
 2. Rebase nothing: #67 is docs + an unhooked script + a skipped-by-default test.

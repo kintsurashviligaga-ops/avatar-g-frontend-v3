@@ -21,4 +21,6 @@ Approval used: **GG-20261014-GLOBAL-E2E-EXTRA-USD5** (cap $5) — estimated spen
 4. Defects found, owner decision needed: paid-but-uncharged routes (dubbing, presentation, voice), misleading catalogue pages, Preview = Production DB (blocks every deployed E2E), third-party providers live by default.
 5. **Overall Production GO/NO-GO: NO-GO for enabling the new Studios; GO to keep Production as is.** Merge order in 12.
 
+**Second run:** P0/P1 fixed in code (15); Georgian report 16.
+
 Index: 01 inventory · 02 integration · 03 video · 04 image · 05 music · 06 agent/voice · 07 matrix · 08 security · 09 ledger · 10 preview · 11 CI · 12 release · 13 KA report · 14 continuation. Evidence in `evidence/` (large media git-ignored; hashes in `SHA256SUMS.txt`).
