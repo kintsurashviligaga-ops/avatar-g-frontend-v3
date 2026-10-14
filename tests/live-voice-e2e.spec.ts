@@ -13,7 +13,7 @@ import { FakeLive, openLiveCall } from './fixtures/liveVoice';
  * Every UI piece in between — useGeminiLiveSession, liveActions, the dock, OmniStudio's live listener, the chat
  * stream — is the production code.
  *
- * Nothing here can spend: `start_generation` is cancelled during its countdown, and the test asserts that no
+ * Nothing here can spend: `start_generation` is denied before its legacy countdown, and the test asserts that no
  * generation request ever left the browser.
  */
 
@@ -27,7 +27,7 @@ const toolOnScreen = async (live: FakeLive) => {
 test.describe('voice mode, end to end', () => {
   test.setTimeout(120_000);
 
-  test('the agent reads the screen, opens a studio, prepares an image with its price, writes in the chat, and a confirmed start can still be cancelled — nothing is spent', async ({ page, baseURL }) => {
+  test('the agent reads the screen, opens a studio, prepares an image with its price, writes in the chat, and a spoken start requires UI confirmation — nothing is spent', async ({ page, baseURL }) => {
     const live = new FakeLive();
     await page.route('**/api/chat/gemini', (r) => r.fulfill({
       status: 200,
@@ -73,13 +73,8 @@ test.describe('voice mode, end to end', () => {
 
     // 4 — the user says yes: a 3-second countdown with Cancel; Cancel stops it before anything runs.
     const started = await live.call('start_generation', { confirmed: 'yes' });
-    expect(started.ok).toBe(true);
-    const banner = page.getByTestId('live-run-banner');
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveAttribute('data-state', 'counting');
-    await page.getByTestId('live-run-cancel').click();
-    await expect(banner).toHaveAttribute('data-state', 'cancelled');
-    await page.waitForTimeout(3_500); // past the countdown: still nothing may run
+    expect(started).toMatchObject({ok:false,error:'ui_confirmation_required'});
+    await expect(page.getByTestId('live-run-banner')).toHaveCount(0);
     expect(spend).toEqual([]);
 
     // 5 — something long goes to the chat: the chat opens and the answer is written there.
@@ -186,7 +181,7 @@ test.describe('voice mode, end to end', () => {
     expect(spend).toEqual([]);
   });
 
-  test('a chain by voice: the confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
+  test('a chain by voice: the UI-confirmed image is made, the app tells the agent, which downloads it and carries it into Video — one paid call, the confirmed one', async ({ page, baseURL }) => {
     const live = new FakeLive();
     // Results are served from our storage's domain (*.supabase.co), the only one a production build's CSP lets the download path fetch.
     const FOX = 'https://e2e-media.supabase.co/fox.png';
@@ -202,9 +197,11 @@ test.describe('voice mode, end to end', () => {
     expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში', aspectRatio: '9:16' })).toMatchObject({ ok: true });
     await expect.poll(() => toolOnScreen(live)).toBe('image');
     live.hear('კი, დაიწყე');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok:false,error:'ui_confirmation_required' });
+    expect(spend).toEqual([]);
+    await page.getByTestId('create-generate').click(); // authenticated human UI confirmation
     await expect.poll(() => spend, { timeout: 15_000 }).toEqual(['/api/nanobanana/image']);
-    expect(approvals).toEqual([expect.objectContaining({ channel: 'voice-transcript', said: 'კი, დაიწყე', tool: 'image' })]);
+    expect(approvals).toEqual([]); // no speech-derived approval record
 
     // 2 — nobody asked, yet the agent hears it: the app's note says the image is ready, so a plan of steps goes on.
     await expect.poll(() => live.notes().some((n) => /new image is ready/.test(n)), { timeout: 15_000 }).toBe(true);
@@ -231,20 +228,14 @@ test.describe('voice mode, end to end', () => {
     expect(await live.call('prepare_generation', { tool: 'image', prompt: 'წითელი მელია თოვლში' })).toMatchObject({ ok: true });
     await expect.poll(() => toolOnScreen(live)).toBe('image');
 
-    // The model calls start with "confirmed: yes", but the user only asked the price: an unclear answer still counts
-    // down (the transcript can lag behind the call), and at its end nothing runs, nothing is recorded, the agent hears so.
     live.hear('რა ღირს?');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: true });
-    const banner = page.getByTestId('live-run-banner');
-    await expect(banner).toHaveAttribute('data-state', 'not_heard', { timeout: 10_000 });
-    await expect.poll(() => live.notes().some((n) => /Nothing was started/.test(n)), { timeout: 10_000 }).toBe(true);
-    await page.waitForTimeout(500);
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ok:false,error:'ui_confirmation_required'});
     expect(spend).toEqual([]);
     expect(approvals).toEqual([]);
 
     // The user says no: the start is refused at once, no countdown.
     live.hear('არა, მოიცადე');
-    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: false, error: 'user_said_no' });
+    expect(await live.call('start_generation', { confirmed: 'yes' })).toMatchObject({ ok: false, error: 'ui_confirmation_required' });
     await page.waitForTimeout(3_500);
     expect(spend).toEqual([]);
     expect(approvals).toEqual([]);
