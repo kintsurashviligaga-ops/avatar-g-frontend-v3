@@ -27,6 +27,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:preview": "playwright test tests/preview-e2e.spec.ts",
     "health:providers": "node scripts/provider-health-check.mjs",
+    "voice:preflight": "node scripts/phone-voice-preflight.mjs",
+    "voice:preflight:strict": "node scripts/phone-voice-preflight.mjs --strict",
     "hf:smoke": "node --experimental-strip-types scripts/hf-smoke.ts",
     "hf:credentials": "bash scripts/higgsfield/credentials.sh",
     "hf:example": "node --experimental-strip-types --no-warnings scripts/higgsfield/index.ts",

@@ -29,6 +29,9 @@ test('call readiness stays false until the real-call proof flag is set', () => {
     PHONE_AGENT_ENABLED: '1',
     PHONE_VOICE_PROVIDER: 'didww',
     DIDWW_API_KEY: 'key',
+    DIDWW_SIP_USERNAME: 'sip-user',
+    DIDWW_SIP_PASSWORD: 'sip-password',
+    DIDWW_SIP_DID: '+995322000000',
     PHONE_BRIDGE_URL: 'https://bridge.example',
     PHONE_BRIDGE_SHARED_SECRET: 'secret',
   } as NodeJS.ProcessEnv;

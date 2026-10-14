@@ -35,6 +35,9 @@ export function phoneCallsReady(env: NodeJS.ProcessEnv = process.env): boolean {
   return isEnabled(env.PHONE_AGENT_ENABLED)
     && String(env.PHONE_VOICE_PROVIDER ?? '').trim().toLowerCase() === 'didww'
     && Boolean(String(env.DIDWW_API_KEY ?? '').trim())
+    && Boolean(String(env.DIDWW_SIP_USERNAME ?? '').trim())
+    && Boolean(String(env.DIDWW_SIP_PASSWORD ?? '').trim())
+    && Boolean(String(env.DIDWW_SIP_DID ?? '').trim())
     && Boolean(String(env.PHONE_BRIDGE_URL ?? '').trim())
     && Boolean(String(env.PHONE_BRIDGE_SHARED_SECRET ?? '').trim())
     && isEnabled(env.PHONE_REAL_CALL_PROVEN);
