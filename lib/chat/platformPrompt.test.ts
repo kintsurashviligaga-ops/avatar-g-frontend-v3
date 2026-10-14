@@ -78,9 +78,9 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./platformPrompt') as typeof import('./platformPrompt');
       const p = mod.buildPlatformPrompt({ locale: 'en', now: NOW });
-      expect(p).toContain('video 31 cr (3.10 ₾) under 60 s');
+      expect(p).toContain('video 31 cr (3.10 ₾) <60 s');
       expect(p).toContain('remix 17 cr (1.70 ₾)');
-      expect(p).not.toContain(cr(CREDIT_COSTS.video_30s) + ' under 60 s');
+      expect(p).not.toContain(cr(CREDIT_COSTS.video_30s) + ' <60 s');
     });
     jest.dontMock('../credits/pricing');
   });
@@ -99,8 +99,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
   it('states the duration bands creditCostFor actually charges (what the clip and product-ad routes bill through)', () => {
     const p = build('en');
     const C = CREDIT_COSTS;
-    expect(p).toContain(`video ${cr(C.video_30s)} under 60 s, ${cr(C.video_60s)} for 60 s or more`);
-    expect(p).toContain(`music ${cr(C.music_30s)} under 60 s, ${cr(C.music_60s)} for 60–89 s, ${cr(C.music_90s)} for 90 s or more`);
+    expect(p).toContain(`video ${cr(C.video_30s)} <60 s, ${cr(C.video_60s)} ≥60 s`);
+    expect(p).toContain(`music ${cr(C.music_30s)} <60 s, ${cr(C.music_60s)} 60–89 s, ${cr(C.music_90s)} ≥90 s`);
     // The bands in the sentence above are literals; these pin them to pricing.ts so a moved threshold fails here.
     for (const s of [8, 24, 48, 59]) expect(creditCostFor('video', { seconds: s })).toBe(C.video_30s);
     for (const s of [60, 120]) expect(creditCostFor('video', { seconds: s })).toBe(C.video_60s);
