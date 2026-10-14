@@ -67,8 +67,8 @@ test('panel → plan → quote → explicit Create → stages → player → dow
   await noHorizontalScroll(page);
 
   // Explicit Create (a tap on the phone) → the named stages, never a percentage.
-  const { jobId, status } = await confirm(page, card, isMobile ? 'tap' : 'click');
-  expect(status).toBe(200);
+  const { jobId, status } = await confirm(page, card, user.id, isMobile ? 'tap' : 'click');
+  expect(status).toBe(202);
   expect(jobId).toMatch(/^[0-9a-f-]{36}$/);
   await expect(card.getByTestId('music-stage')).toHaveText(/Queued|Reserving credits|Starting|Lyria is composing|Checking quality/);
   expect(await card.textContent()).not.toMatch(/\d\s?%/);
@@ -187,7 +187,7 @@ test('Cancel mid-render returns the credits exactly once; Try again makes a NEW 
   expect(planned.took).toBe(true);
   const card = newestCard(page);
   await waitPhase(card, 'quoted', 30_000);
-  const { jobId } = await confirm(page, card);
+  const { jobId } = await confirm(page, card, user.id);
   await expect(card.getByTestId('music-cancel')).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => balanceOf(user.id), { timeout: 30_000 }).toBe(before - 5);
   await card.getByTestId('music-cancel').click();
@@ -212,7 +212,7 @@ test('provider failure and QC failure: no track delivered, the reservation refun
     await voice(page, { action: 'plan', prompt: `broken take [e2e:${fault}] ${tag(info)}` });
     const card = newestCard(page);
     await waitPhase(card, 'quoted', 30_000);
-    const { jobId } = await confirm(page, card);
+    const { jobId } = await confirm(page, card, user.id);
     await waitPhase(card, 'failed', 120_000);
     await expect(card).toContainText('The reserved credits were returned');
     await expect(card.getByTestId('music-player')).toHaveCount(0);
@@ -240,7 +240,7 @@ test('reload while it composes → the card returns to the same job and delivers
   await voice(page, { action: 'plan', prompt: `reload check guitar ${tag(info)}` });
   const card = newestCard(page);
   await waitPhase(card, 'quoted', 30_000);
-  const { jobId } = await confirm(page, card, 'keyboard'); // Create by keyboard: focus + Enter
+  const { jobId } = await confirm(page, card, user.id, 'keyboard'); // Create by keyboard: focus + Enter
   await waitPhase(card, 'running', 30_000);
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });

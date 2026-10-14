@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { balanceOf, evidence, liveUser, rest, rows, signInToken } from '../video-core-live/_live';
-import { jobRow, ledgerForJob } from './_music';
+import { balanceOf, evidence, liveUser, logExpensive, paced, rest, rows, signInToken } from '../video-core-live/_live';
+import { STARTED, jobRow, ledgerForJob } from './_music';
 
 /**
  * Music Studio v1 — access, ownership, Storage/RLS and billing integrity through the app's real HTTP routes and the
@@ -29,6 +29,13 @@ async function app(request: import('@playwright/test').APIRequestContext, method
   let json: Record<string, unknown> = {};
   try { json = JSON.parse(text) as Record<string, unknown>; } catch { /* not json */ }
   return { status: res.status(), json, text };
+}
+
+/** POST /api/music/studio/jobs, counted against the user's 5-a-minute start allowance (paced like a person would be). */
+async function start(request: import('@playwright/test').APIRequestContext, userId: string, token: string, body: unknown) {
+  await paced(userId);
+  logExpensive(userId);
+  return app(request, 'POST', '/api/music/studio/jobs', token, body);
 }
 
 async function waitFinal(request: import('@playwright/test').APIRequestContext, token: string, jobId: string) {
@@ -70,7 +77,7 @@ test('quote → confirm: exact price, replay = same job, 4 concurrent confirms =
   const { plan, token } = q.json as { plan: Record<string, unknown> & { request: Record<string, unknown> }; token: string };
 
   // Without the explicit confirmation flag: refused, nothing charged.
-  expect((await app(request, 'POST', '/api/music/studio/jobs', payerToken, { plan, token })).status).toBeGreaterThanOrEqual(400);
+  expect((await start(request, payer.id, payerToken, { plan, token })).status).toBe(400);
   // A changed plan under the old token (prompt, or a cheaper length): refused before any charge.
   const tampered = [
     { plan: { ...plan, request: { ...plan.request, prompt: 'something else' } }, token, confirmed: true },
@@ -78,25 +85,30 @@ test('quote → confirm: exact price, replay = same job, 4 concurrent confirms =
     { plan, token: `${token.slice(0, -4)}AAAA`, confirmed: true },
   ];
   for (const t of tampered) {
-    const r = await app(request, 'POST', '/api/music/studio/jobs', payerToken, t);
+    const r = await start(request, payer.id, payerToken, t);
     expect(r.status, JSON.stringify(r.json)).toBeGreaterThanOrEqual(400);
     expect(r.status).toBeLessThan(500);
   }
   // Another user replaying the payer's quote: refused.
   const other = liveUser('other');
   otherToken = await signInToken(other.email);
-  const stolen = await app(request, 'POST', '/api/music/studio/jobs', otherToken, { plan, token, confirmed: true });
+  const stolen = await start(request, other.id, otherToken, { plan, token, confirmed: true });
   expect(stolen.status).toBeGreaterThanOrEqual(400);
   expect(stolen.status).toBeLessThan(500);
   expect(await balanceOf(payer.id)).toBe(before);
 
   // Four confirms at once → one job, one debit.
+  await paced(payer.id, 5); // room for all five calls below in one window
+  for (let i = 0; i < 5; i++) logExpensive(payer.id);
   const starts = await Promise.all(Array.from({ length: 4 }, () => app(request, 'POST', '/api/music/studio/jobs', payerToken, { plan, token, confirmed: true })));
-  const ids = new Set(starts.filter((s) => s.status === 200).map((s) => String(s.json.jobId)));
+  // Each answer is the job (202 new / 200 the same job again) or a 409 "quote already used" — never a second job.
+  expect(starts.every((s) => STARTED.includes(s.status) || (s.status === 409 && s.json.code === 'quote_used')), JSON.stringify(starts.map((s) => [s.status, s.json.code]))).toBe(true);
+  const ids = new Set(starts.filter((s) => STARTED.includes(s.status)).map((s) => String(s.json.jobId)));
   expect(ids.size).toBe(1);
   ownedJob = [...ids][0]!;
   // A later replay of the same quote returns the same job.
   const replay = await app(request, 'POST', '/api/music/studio/jobs', payerToken, { plan, token, confirmed: true });
+  expect([200, 409]).toContain(replay.status);
   if (replay.status === 200) expect(replay.json.jobId).toBe(ownedJob);
   const done = await waitFinal(request, payerToken, ownedJob);
   expect(done.json.status).toBe('completed');
@@ -177,7 +189,7 @@ test('insufficient credits: refused with 402 before any job, nothing owed', asyn
   test.skip(spend.status >= 300 || (await balanceOf(other.id)) !== 2, `could not set up a 2-credit balance (deduct_credits → ${spend.status})`);
   const q = await app(request, 'POST', '/api/music/studio/quote', otherToken, req({ prompt: 'too expensive' }));
   expect(q.status).toBe(200);
-  const r = await app(request, 'POST', '/api/music/studio/jobs', otherToken, { plan: q.json.plan, token: q.json.token, confirmed: true });
+  const r = await start(request, other.id, otherToken, { plan: q.json.plan, token: q.json.token, confirmed: true });
   expect(r.status).toBe(402);
   expect(await balanceOf(other.id)).toBe(2);
   const mine = await rows<{ id: string }>(`generation_jobs?user_id=eq.${other.id}&service_type=eq.music&select=id`);

@@ -52,7 +52,7 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
   expect((await voice(page, { action: 'edit', command: 'fade out 3s' })).reply).toMatchObject({ ok: false });
 
   // The user's own tap starts it (one debit); voice reads progress meanwhile.
-  const { jobId } = await confirm(page, card);
+  const { jobId } = await confirm(page, card, user.id);
   const progress = await voice(page, { action: 'status' });
   expect(['starting', 'running', 'completed']).toContain((progress.reply!.state as { cards: Array<{ phase: string }> }).cards[0]!.phase);
   await waitPhase(card, 'completed', 120_000);
@@ -91,7 +91,7 @@ test('voice plans, never spends; the user\'s tap starts it; voice edits, joins, 
   await voice(page, { action: 'plan', prompt: `voice cancel check [e2e:slow] ${info.project.name}` });
   const slow = newestCard(page);
   await waitPhase(slow, 'quoted', 30_000);
-  const { jobId: slowId } = await confirm(page, slow);
+  const { jobId: slowId } = await confirm(page, slow, user.id);
   await expect(slow.getByTestId('music-cancel')).toBeVisible({ timeout: 30_000 });
   expect((await voice(page, { action: 'cancel' })).reply).toMatchObject({ ok: true });
   await waitPhase(slow, 'cancelled', 60_000);

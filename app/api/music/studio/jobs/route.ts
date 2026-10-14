@@ -16,10 +16,12 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
-  if (rl) return rl;
+  // Who first, then the limit PER USER: keyed by IP alone, everyone behind one NAT (an office, a mobile carrier) shared
+  // five starts a minute — and the free edits drew from the same bucket.
   const who = await musicUser(req);
   if ('response' in who) return who.response;
+  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE, who.userId);
+  if (rl) return rl;
   try {
     const body = await readJson(req);
     const deps = liveMusicDeps();

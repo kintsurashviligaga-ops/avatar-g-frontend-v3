@@ -15,10 +15,12 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 
 export async function POST(req: NextRequest) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.EXPENSIVE);
-  if (rl) return rl;
+  // Per user, and its own bucket: an edit is free ffmpeg work, and a user trimming, fading and converting in a row must
+  // not spend the five-a-minute allowance of paid starts (nor share one bucket with everyone behind the same NAT).
   const who = await musicUser(req);
   if ('response' in who) return who.response;
+  const rl = await checkRateLimit(req, RATE_LIMITS.MUSIC_EDIT, who.userId);
+  if (rl) return rl;
   try {
     return NextResponse.json(await editMusic(liveEditDeps(), who.userId, await readJson(req), req.signal));
   } catch (e) {

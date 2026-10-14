@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { expect, type Locator, type Page } from '@playwright/test';
-import { FFMPEG, rows } from '../video-core-live/_live';
+import { FFMPEG, logExpensive, paced, rows } from '../video-core-live/_live';
 
 const run = promisify(execFile);
 
@@ -69,10 +69,16 @@ export async function waitPhase(card: Locator, phase: string | RegExp, timeout =
   await expect(card).toHaveAttribute('data-phase', phase, { timeout });
 }
 
+/** A new job answers 202 (queued); a replay of the same quote answers 200 with the same job. */
+export const STARTED = [200, 202];
+
 /** Press the card's Create (the user's own tap) and return the job id the server answered with. */
-export async function confirm(page: Page, card: Locator, how: 'click' | 'tap' | 'keyboard' = 'click'): Promise<{ jobId: string; status: number }> {
+export async function confirm(page: Page, card: Locator, userId: string, how: 'click' | 'tap' | 'keyboard' = 'click'): Promise<{ jobId: string; status: number }> {
   const btn = card.getByTestId('music-confirm');
   await expect(btn).toBeEnabled();
+  // Starts are limited to 5 a minute per user (RATE_LIMITS.EXPENSIVE): wait for room, as a person would be told to.
+  await paced(userId);
+  logExpensive(userId);
   const started = page.waitForResponse((r) => r.url().endsWith('/api/music/studio/jobs') && r.request().method() === 'POST');
   if (how === 'tap') await btn.tap();
   else if (how === 'keyboard') { await btn.focus(); await page.keyboard.press('Enter'); }
