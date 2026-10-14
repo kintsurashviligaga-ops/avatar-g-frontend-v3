@@ -33,3 +33,11 @@
 
 ## 6. GO / NO-GO
 იხ. GO_NO_GO_KA.md (განახლებულია ამ სესიაში).
+
+## საბოლოო სესია (2026-10-14, GG-20261014-MUSIC-LYRIA-E2E-USD5)
+- Lyria live Vertex-ზე: 3 ზარი, 3×HTTP 200 (Preview build `c4c8792e`), ≈ $0.12 შეფასება; ინსტრუმენტული/ინგლისური/ქართული — ვალიდური
+  30.77 წმ MP3, QC PASS; ვოკალი = საჭიროა მოსმენა, გამორთული რჩება.
+- ნამდვილი Lyria ბაიტები იზოლირებულ E2E-ში (`[e2e:replay]`) — quote→Create→debit→QC→Storage→Library→play→download.
+- დამატებითი deterministic ტესტები: 429/404/503/safety/timeout/network, Storage failure → refund 1×.
+- Shared-chat uid პატჩი — ცალკე ბრენჩზე, BUILT, ღია.
+- სრული დასკვნა: FINAL_RELEASE_CERTIFICATION_KA.md.

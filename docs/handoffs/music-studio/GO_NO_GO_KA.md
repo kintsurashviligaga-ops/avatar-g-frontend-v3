@@ -43,3 +43,6 @@ Production Ready-ს ვერ ვაცხადებ: ცოცხალი P
 
 ## საჭირო თანხმობები (05_RELEASE_ROLLBACK_APPROVALS.md)
 მერჯი · პროვაიდერის საზღვარი · ფასიანი ტესტი ($5) · Preview env · Production env და გაშვება · ვოკალის ჩართვა · პროდუქტის გადაწყვეტილებები (რედაქტირების ფასი, ქავერ-არტი, ElevenLabs Voice Isolator).
+
+## განახლება 2026-10-14 (საბოლოო)
+Lyria live დადასტურდა (3×200). ინსტრუმენტული — GO მფლობელის გადაწყვეტილებით; ვოკალი — NO-GO მოსმენამდე. იხ. FINAL_RELEASE_CERTIFICATION_KA.md.

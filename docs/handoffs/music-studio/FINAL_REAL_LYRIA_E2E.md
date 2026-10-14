@@ -56,7 +56,7 @@ unchanged, so a user download can clip on some DACs. Follow-up (not done, not a 
 quote (5 cr) → explicit Create → one debit → worker → **real ffmpeg QC** → private Storage (stored digest = Lyria digest) → Library row →
 signed expiring link (JWT `exp`, scoped to the object; the public URL is refused) → inline player (30.77 s) → download (digest = Lyria
 digest) → row survives reload. This is a **replay of real output**, not a live dispatch; the live dispatch is the table above.
-Result: see PHASE2_E2E_MATRIX.md (final run).
+Result: **PASS desktop + phone**, run 38569894358 on `134c4f33` (27/0/0); jobs `e8c7b3a3…`, `3635e554…`; debit 40→35; signed TTL 3600 s.
 
 ## Classification
 | Item | Class |
@@ -64,6 +64,6 @@ Result: see PHASE2_E2E_MATRIX.md (final run).
 | Lyria 3 Clip instrumental on Vertex (HTTP 200, valid 30.8 s MP3, QC pass) | **PROVEN_PREVIEW** (Preview build identity; no app/DB) |
 | Lyria 3 Clip with English lyrics: request accepted, audio returned, lyrics echoed time-aligned | **PROVEN_PREVIEW**; *sung vocals* = LISTENING REVIEW REQUIRED |
 | Georgian lyrics | **PARTIAL / EXPERIMENTAL** — accepted + echoed; language not officially supported; listening required |
-| Real Lyria bytes → QC → Storage → Library → play → download | **PROVEN_ISOLATED** (replay; see matrix for the run) |
+| Real Lyria bytes → QC → Storage → Library → play → download | **PROVEN_ISOLATED** (replay; run 38569894358) |
 | Live Lyria dispatch from the studio worker itself (quote → debit → Vertex → Library) | **BLOCKED** — Vertex works only on Preview, and Preview = Production Supabase |
 | Production | NOT_TESTED (not authorised) |
