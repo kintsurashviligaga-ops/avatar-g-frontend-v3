@@ -1,7 +1,7 @@
 # Music Studio v1 — handoff index
 
 Run: 2026-10-14 (Claude Opus 5.5) · Branch `claude/music-studio-v1-20261014` · Base `origin/main` fef867a
-Draft PR: PR_URL_PLACEHOLDER
+Draft PR: https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/pull/65
 
 | # | Deliverable | File |
 |---|---|---|
