@@ -101,26 +101,30 @@ function extractAudio(j: unknown): LyriaTrack | null {
 }
 
 /**
- * Ask the budget guard whether one more track fits. Isolated + fail-open so a guard fault can never make
- * music generation unavailable — the same contract the rest of this module keeps.
+ * Ask the budget guard whether one more track fits.
+ *
+ * ⚠️ FAILS CLOSED (Music Studio v1, Phase 2). This used to answer `true` when the guard threw, and accepted a verdict the
+ * guard reached without a readable spend ledger (`degraded`, which BillingGuard defaults to "allowed"), so a broken
+ * budget check silently authorized a paid Lyria call. Now a guard that throws or cannot read the spend refuses; the
+ * caller's failure path refunds the reserved credits (the request is never charged for a track it did not get).
  */
-async function musicWithinBudget(): Promise<boolean> {
+export async function musicWithinBudget(model: string = lyriaModel()): Promise<boolean> {
   try {
     const { canProceed } = await import('@/lib/services/billing/BillingGuard');
     const { estimateCost } = await import('@/lib/services/billing/costModel');
-    const decision = await canProceed(estimateCost({ service: 'music', model: lyriaModel(), units: 1 }));
-    return decision.allowed;
+    const decision = await canProceed(estimateCost({ service: 'music', model, units: 1 }));
+    return decision.allowed && !decision.degraded;
   } catch {
-    return true; // guard unavailable → do not block the product
+    return false;
   }
 }
 
 /** Book one generated track against the platform budget. Best-effort: the audio is already in hand. */
-async function recordMusicUsage(): Promise<void> {
+export async function recordMusicUsage(model: string = lyriaModel()): Promise<void> {
   try {
     const { recordUsage } = await import('@/lib/services/billing/BillingGuard');
     const { estimateCost } = await import('@/lib/services/billing/costModel');
-    await recordUsage(estimateCost({ service: 'music', model: lyriaModel(), units: 1 }));
+    await recordUsage(estimateCost({ service: 'music', model, units: 1 }));
   } catch {
     /* bookkeeping only — never surfaces to the caller */
   }
@@ -183,5 +187,66 @@ export async function generateLyriaTrack(args: { prompt: string; lyrics?: string
   } catch (e) {
     reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: e instanceof Error ? e.message : String(e), model: lyriaModel() });
     return null;
+  }
+}
+
+/** Every text part of a response (Lyria returns a caption / lyric sheet beside the audio). */
+function extractText(j: unknown): string | null {
+  const out: string[] = [];
+  const stack: unknown[] = [j];
+  while (stack.length && out.length < 20) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== 'object') continue;
+    if (Array.isArray(cur)) { for (const v of cur) stack.push(v); continue; }
+    for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
+      if (k === 'text' && typeof v === 'string' && v.trim() && v.length < 8000) out.push(v.trim());
+      else if (v && typeof v === 'object') stack.push(v);
+    }
+  }
+  return out.length ? out.reverse().join('\n').slice(0, 8000) : null;
+}
+
+export type LyriaResult =
+  | { ok: true; track: LyriaTrack; caption: string | null }
+  | { ok: false; reason: 'not_configured' | 'http' | 'no_audio' | 'timeout' | 'network'; status?: number };
+
+/**
+ * ONE Lyria request with an exact input and model, for Music Studio v1 (lib/music/studio). No budget gate and no
+ * bookkeeping here: the studio checks the budget before it charges and books the spend itself. The caller's signal
+ * aborts it. Never throws; the provider's body is reported, never returned.
+ */
+export async function lyriaRequest(input: string, model: string, signal: AbortSignal): Promise<LyriaResult> {
+  const key = resolveGeminiKey();
+  if (googleTransportBlocker(key) || !input.trim()) return { ok: false, reason: 'not_configured' };
+  const timeout = AbortSignal.timeout(GEN_TIMEOUT_MS);
+  const both = typeof (AbortSignal as unknown as { any?: unknown }).any === 'function'
+    ? (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any([signal, timeout])
+    : signal;
+  try {
+    const res = googleTransportKind() === 'vertex'
+      ? await googleModelFetch(model, 'generateContent', { method: 'POST', cache: 'no-store', body: JSON.stringify(buildLyriaVertexBody(input)), signal: both })
+      : await fetch(INTERACTIONS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          cache: 'no-store',
+          body: JSON.stringify({ model, input, response_format: { type: 'audio' } }),
+          signal: both,
+        });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, status: res.status, detail: body, model });
+      return { ok: false, reason: 'http', status: res.status };
+    }
+    const j = await res.json().catch(() => null);
+    const track = extractAudio(j);
+    if (!track) {
+      reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: 'response carried no audio', model });
+      return { ok: false, reason: 'no_audio' };
+    }
+    return { ok: true, track, caption: extractText(j) };
+  } catch (e) {
+    const name = e instanceof Error ? e.name : '';
+    reportGeminiFallback({ leg: 'lyria', fallbackTo: LYRIA_FALLBACK, detail: e instanceof Error ? e.message : String(e), model });
+    return { ok: false, reason: name === 'AbortError' || name === 'TimeoutError' ? 'timeout' : 'network' };
   }
 }

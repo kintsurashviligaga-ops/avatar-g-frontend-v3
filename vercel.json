@@ -229,6 +229,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/music/studio/sweep",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/deliveries",
       "schedule": "* * * * *"
     }

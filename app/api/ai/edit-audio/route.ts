@@ -10,6 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { refuseOutsideEngine } from '@/lib/providers/mediaPolicy';
+import { musicUnsupportedResponse } from '@/lib/music/studio/boundary';
 import { guardGeneration, insufficientCreditsMessage } from '@/lib/api/generationGuard';
 import { checkRateLimit, RATE_LIMITS } from '@/lib/api/rate-limit';
 import { deductCredits, refundCredits } from '@/lib/orchestrator/ledger';
@@ -75,6 +76,10 @@ export async function POST(req: NextRequest) {
   if (!['vocal_isolation', 'splitter', 'process'].includes(action)) {
     return NextResponse.json({ url: null, error: 'unknown action' }, { status: 400 });
   }
+
+  // Stem separation / vocal removal ran on Replicate Demucs — outside the approved provider boundary (Music Studio v1,
+  // Phase 2). Refused always, before any charge; the free deterministic `process` op (ffmpeg) is unaffected.
+  if (action === 'vocal_isolation' || action === 'splitter') return musicUnsupportedResponse(req);
 
   // Throttle ONLY the paid provider actions (Demucs/ElevenLabs) at 5/min; the free deterministic
   // 'process' action (interactive pitch/speed/trim) stays unthrottled so rapid slider edits never 429.
