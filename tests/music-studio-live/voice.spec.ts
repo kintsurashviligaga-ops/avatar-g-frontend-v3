@@ -110,9 +110,11 @@ test('voice in Georgian and Russian: a plan in the page language; a song stays a
   const song = await voice(page, { action: 'plan', prompt: 'სიმღერა თბილისზე', mode: 'song', lyrics: 'თბილისო, მზის და ვარდების მხარეო', lyricsLanguage: 'ka' });
   expect(song.reply!.message).toMatch(/never offer an instrumental/);
   await waitPhase(newestCard(page), 'refused', 30_000);
+  await expect(newestCard(page)).toContainText('ნამღერი ვოკალი ამ მოდელზე ჯერ დადასტურებული არ არის');
+  await expect(newestCard(page).getByTestId('music-confirm')).toHaveCount(0);
 
   await openStudio(page, 'ru');
-  await voice(page, { action: 'plan', prompt: 'энергичный электронный трек', tempo: 'fast' });
+  expect((await voice(page, { action: 'plan', prompt: 'энергичный электронный трек', tempo: 'fast' })).reply).toMatchObject({ ok: true });
   await waitPhase(newestCard(page), 'quoted', 30_000);
   await expect(newestCard(page).getByTestId('music-confirm')).toHaveText('Создать · 5 кредитов');
 });

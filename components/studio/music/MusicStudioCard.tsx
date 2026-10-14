@@ -178,7 +178,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   if (phase.k === 'refused') {
     return (
       <div className={shell} role="alert" data-testid="music-card" data-phase="refused" ref={rootRef}>
-        <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{phase.r.message ?? c.genericError}</p>
+        <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{/* A song refused as unsupported says WHY (vocals unverified) and that it was not swapped for an instrumental. */}{r.mode === 'song' && phase.r.code === 'unsupported' ? c.songRefused : phase.r.message ?? c.genericError}</p>
       </div>
     );
   }

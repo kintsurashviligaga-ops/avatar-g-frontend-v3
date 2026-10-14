@@ -74,10 +74,19 @@ test('a reload follows the remembered job instead of quoting again; Cancel stops
   await screen.findByText(/Cancelled\. The reserved credits were returned\./);
 });
 
-test('a refusal (vocals unverified) shows the server sentence and offers no button', async () => {
+test('a refused song (vocals unverified) says so — never an instrumental — and offers no button', async () => {
   handler = () => ({ status: 400, body: { ok: false, code: 'unsupported', message: 'ეს შესაძლებლობა ამ მოდელზე ჯერ დადასტურებული არ არის. თანხა არ ჩამოგეჭრა.' } });
   render(<MusicStudioCard draft={{ ...DRAFT, request: { ...DRAFT.request, mode: 'song' } }} locale="ka" />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('თანხა არ ჩამოგეჭრა');
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('ნამღერი ვოკალი');
+  expect(alert).toHaveTextContent('თანხა არ ჩამოგეჭრა');
+  expect(screen.queryByRole('button')).toBeNull();
+});
+
+test('another refusal keeps the server sentence (localized by code)', async () => {
+  handler = () => ({ status: 400, body: { ok: false, code: 'unsupported', message: 'This option is not verified on this model yet. You were not charged.' } });
+  render(<MusicStudioCard draft={DRAFT} locale="en" />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('This option is not verified on this model yet. You were not charged.');
   expect(screen.queryByRole('button')).toBeNull();
 });
 

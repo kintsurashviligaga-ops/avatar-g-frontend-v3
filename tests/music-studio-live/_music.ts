@@ -43,7 +43,17 @@ export async function openStudio(page: Page, locale: 'en' | 'ka' | 'ru' = 'en', 
     } catch { /* private mode */ }
   });
   await page.goto(`/${locale}/dashboard?tool=${tool}`);
+  await studioReady(page);
+}
+
+/**
+ * Signed in AND the studio's live-action listener mounted. `data-authed` is set by the identity provider, before
+ * OmniStudio's code has mounted: a call dispatched in that gap is not taken (run 38550746462: the RU plan, 4 ms after
+ * `data-authed`, answered took=false / reply=null, so no card). The probe is `status` — read-only, never a card or a charge.
+ */
+export async function studioReady(page: Page): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });
+  await expect.poll(async () => (await voice(page, { action: 'status' })).took, { timeout: 60_000 }).toBe(true);
 }
 
 export interface VoiceAnswer { took: boolean; reply: { ok?: boolean; error?: string; message?: string; state?: Record<string, unknown> } | null }

@@ -2,8 +2,9 @@ import { test, expect, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { balanceOf, evidence, projectUser, shot } from '../video-core-live/_live';
 import {
-  MUSIC_PRICE, audioFacts, cards, confirm, jobRow, ledgerForJob, newestCard, openStudio, storedBytes, voice, waitPhase,
+  MUSIC_PRICE, audioFacts, cards, confirm, jobRow, ledgerForJob, newestCard, openStudio, storedBytes, studioReady, voice, waitPhase,
 } from './_music';
+import { rows } from '../video-core-live/_live';
 
 /**
  * Music Studio v1 — the One Window journey in a real browser (desktop Chrome and an iPhone 13 viewport, each its own
@@ -239,12 +240,20 @@ test('a sung song is refused before any price (vocals not verified) — never tu
   await openStudio(page);
   const before = await balanceOf(user.id);
   const n = await cards(page).count();
+  const quoted = page.waitForResponse((res) => res.url().endsWith('/api/music/studio/quote') && res.request().method() === 'POST');
   const r = await voice(page, { action: 'plan', prompt: `a georgian love song ${tag(info)}`, mode: 'song', vocalGender: 'female' });
   expect(r.reply?.message).toMatch(/never offer an instrumental as if it were the song/);
+  // The server refuses the SONG itself (no quote, no price) — it is not repriced as an instrumental.
+  const q = await quoted;
+  expect(q.status()).toBe(400);
+  expect(await q.json()).toMatchObject({ ok: false, code: 'unsupported' });
   await expect(cards(page)).toHaveCount(n + 1);
   const card = newestCard(page);
   await waitPhase(card, 'refused', 30_000);
-  await expect(card).toContainText(/vocals are not verified/i);
+  // The card says why, that nothing was swapped, and that nothing was charged (components/studio/music/musicCardCopy songRefused).
+  await expect(card).toContainText(/Sung vocals are not verified on this model yet/);
+  await expect(card).toContainText(/not turned into an instrumental/);
+  await expect(card).toContainText(/You were not charged/);
   await expect(card.getByTestId('music-confirm')).toHaveCount(0);
   expect(await balanceOf(user.id)).toBe(before);
 });
@@ -274,21 +283,33 @@ test('keyboard and accessibility: labelled controls, 44 px targets, focus reache
   await expect(card).toHaveAttribute('aria-busy', 'false');
 });
 
-// Last on purpose (serial mode): KNOWN OPEN DEFECT on 2026-10-14 — after a reload the chat thread does not come back,
-// so the card is not re-mounted (the job still completes server-side: one debit, a Library row). Kept failing, not skipped.
-test('reload while it composes → the card returns to the same job and delivers it, one debit', async ({ page }, info) => {
+// The product rule (components/studio/OmniStudio currentConversationId): every open and every reload lands on a FRESH,
+// EMPTY chat; past threads are in History and come back only when the user opens one. So a reload mid-render shows an
+// empty chat, and opening the thread from History re-mounts the card, which finds its job by the id it remembered
+// (MusicStudioCard recall) and follows it to the end — no second job, no second debit.
+test('reload while it composes → fresh chat; the thread opened from History returns the card to the SAME job, one debit', async ({ page }, info) => {
   const user = projectUser(info);
   await openStudio(page);
   const before = await balanceOf(user.id);
-  await voice(page, { action: 'plan', prompt: `reload check guitar ${tag(info)}` });
+  const prompt = `reload check guitar ${tag(info)}`;
+  await voice(page, { action: 'plan', prompt });
   const card = newestCard(page);
   await waitPhase(card, 'quoted', 30_000);
   const { jobId } = await confirm(page, card, user.id, 'keyboard'); // Create by keyboard: focus + Enter
   await waitPhase(card, 'running', 30_000);
   await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-authed', '1', { timeout: 90_000 });
+  await studioReady(page);
+  await expect(cards(page)).toHaveCount(0);
+  // Open the thread from History the way the user does (on the phone the menu opens first).
+  const menu = page.getByRole('button', { name: 'Menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('button', { name: prompt }).first().click();
   const back = page.locator(`[data-testid="music-card"][data-job-id="${jobId}"]`);
   await expect(back).toHaveAttribute('data-phase', 'completed', { timeout: 120_000 });
+  await expect(back.locator('audio')).toHaveCount(1);
   expect((await ledgerForJob(user.id, jobId)).map((r) => r.delta)).toEqual([-5]);
   expect(await balanceOf(user.id)).toBe(before - 5);
+  const jobs = await rows<{ id: string }>(`generation_jobs?user_id=eq.${user.id}&service_type=eq.music&params->>prompt=eq.${encodeURIComponent(prompt)}&select=id`);
+  expect(jobs.map((j) => j.id)).toEqual([jobId]);
+  await shot(page, `music-reload-recovered-${tag(info)}`);
 });
