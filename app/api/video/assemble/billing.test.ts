@@ -35,6 +35,19 @@ test('the waiver is spent only by the request that won the duplicate claim (a 40
   expect(code.indexOf('await consumeFilmBilling(')).toBeGreaterThan(conflict);
 });
 
+test("a film token whose status names another payer is refused before any claim, charge or stamp", () => {
+  const guard = code.indexOf('isFilmOwnedByAnother(');
+  expect(guard).toBeGreaterThan(0);
+  expect(guard).toBeLessThan(code.indexOf("claimIdempotencyKey(idemOwner, `assemble:${idemKey}`, 60)"));
+  expect(code).toMatch(/error: 'film_not_owned'[^]*status: 403/);
+});
+
+test('a twin arriving after the 60 s claim, while the first stitch still runs, is refused rather than billed', () => {
+  const inFlight = code.indexOf("durable === 'spent' && filmTokenId && isStitchInFlight(prior)");
+  expect(inFlight).toBeGreaterThan(code.indexOf('await consumeFilmWaiver('));
+  expect(inFlight).toBeLessThan(code.indexOf('await consumeFilmBilling('));
+});
+
 test('every charge and refund in the route uses that one amount', () => {
   const uses = code.match(/assembleCost/g) ?? [];
   expect(uses.length).toBeGreaterThanOrEqual(7);

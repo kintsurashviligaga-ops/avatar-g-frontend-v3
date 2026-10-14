@@ -45,7 +45,7 @@ import { isMasterQaRejected, type QaReport } from '@/lib/orchestrator/masterQa';
 import { describeSoundtrackRefusal, isSoundtrackUnreadable, type SoundtrackLane } from '@/lib/orchestrator/soundtrackUnreadable';
 import { evaluateRenderQuality, visionQaEnabled } from '@/lib/ai/visionQualityGate';
 import { consumeFilmWaiver, restoreFilmWaiver } from '@/lib/chat/filmWaiverStore';
-import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
+import { recordFilmAssembling, recordFilmMaster, recordFilmFailed, getFilmStatus, getFilmPaid, isFilmPaidUpstream, isFilmOwnedByAnother, isStitchInFlight, consumeFilmBilling, restoreFilmBilling } from '@/lib/chat/filmStatusStore';
 import { videoCredits, filmSecondsFromClips } from '@/lib/credits/videoPricing';
 import { overlayMasterUrl, hasOverlayContent, type MarketingOverlay } from '@/lib/pipeline/compositing/ffmpeg-overlay';
 import { keepLiveClips } from '@/lib/pipeline/qaAgent';
@@ -405,6 +405,13 @@ async function assembleImpl(req: NextRequest) {
   // (canvas size), music-video mode (audio mix + brand overlay) and the brief
   // (drives the LUT grade) — otherwise re-submitting the SAME segments with a new
   // orientation returns the cached wrong-size master (the 9:16→16:9 bug).
+  // ⚠️ `filmTokenId` is CLIENT-SUPPLIED. A token whose status record names another payer is someone else's film: stamping
+  // it would hand them this master, take over its Library row and its re-stitch waiver. Refused before any claim or charge.
+  // (Store unreachable → null → allowed; recordCompletedFilm still refuses to touch a row another user owns.)
+  if (filmTokenId && isFilmOwnedByAnother(await getFilmStatus(filmTokenId), uid)) {
+    return NextResponse.json({ error: 'film_not_owned', message: 'This film belongs to another account.' }, { status: 403 });
+  }
+
   const idemOwner = uid ?? `anon:${filmTokenId ?? 'session'}`;
   const idemKey = await hashPayload({
     u: idemOwner,
@@ -447,6 +454,12 @@ async function assembleImpl(req: NextRequest) {
     // is not applied yet). Redis is where the markers used to live alone, and with it unreachable a paid film was charged twice
     // (defect 44). One UPDATE hands the waiver to exactly one of N concurrent assembles.
     const durable = await consumeFilmWaiver(billedTokenForCheck, uid);
+    // ⚠️ The duplicate claim above lives 60 s; a stitch runs up to 600 s. A twin of a paid film arriving after the claim lapsed
+    // finds the waiver spent BY THE STITCH STILL RUNNING and would be billed the whole stitch again. Refuse it instead; a
+    // stitch that died stops counting as in flight after STITCH_IN_FLIGHT_MS, so Retry is never blocked for long.
+    if (durable === 'spent' && filmTokenId && isStitchInFlight(prior)) {
+      return NextResponse.json({ error: 'duplicate_request', message: 'This film is already being assembled.' }, { status: 409 });
+    }
     filmAlreadyBilled = isFilmPaidUpstream(prior, paid, uid, durable);
     waiverSpentDurably = durable === 'paid' || durable === 'free';
     // Spend the one waiver up front so a concurrent/replayed assemble can't reuse it — in Redis too, so a store that
