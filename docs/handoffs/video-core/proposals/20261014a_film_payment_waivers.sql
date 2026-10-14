@@ -24,6 +24,7 @@
 --   drop function public.record_film_waiver(text, uuid, text, integer, text);
 --   drop function public.consume_film_waiver(text, uuid);
 --   drop function public.restore_film_waiver(text, uuid);
+--   drop function public.film_net_debit(uuid, text);
 --   drop table public.film_payment_waivers;
 
 begin;
