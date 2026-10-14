@@ -16,10 +16,10 @@ export const maxDuration = 300;
 export const fetchCache = 'force-no-store';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const rl = await checkRateLimit(req, RATE_LIMITS.READ);
-  if (rl) return rl;
   const who = await musicUser(req);
   if ('response' in who) return who.response;
+  const rl = await checkRateLimit(req, RATE_LIMITS.READ, who.userId); // per user, not per shared IP
+  if (rl) return rl;
   try {
     const deps = liveMusicDeps();
     const { view, needsWorker } = await musicStatus(deps, who.userId, params.id);

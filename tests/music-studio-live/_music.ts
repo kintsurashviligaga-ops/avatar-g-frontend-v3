@@ -96,9 +96,9 @@ export async function ledgerForJob(userId: string, jobId: string): Promise<Music
   return all.filter((r) => JSON.stringify(r).includes(ref)).map(({ delta, reason, metadata }) => ({ delta, reason, metadata }));
 }
 
-export interface StudioJobRow { id: string; user_id: string; service_type: string; status: string; result: Record<string, unknown> | null; params: Record<string, unknown> | null }
+export interface StudioJobRow { id: string; user_id: string; service_type: string; status: string; error: string | null; result: Record<string, unknown> | null; params: Record<string, unknown> | null }
 export async function jobRow(id: string): Promise<StudioJobRow | null> {
-  const [r] = await rows<StudioJobRow>(`generation_jobs?id=eq.${id}&select=id,user_id,service_type,status,result,params`);
+  const [r] = await rows<StudioJobRow>(`generation_jobs?id=eq.${id}&select=id,user_id,service_type,status,error,result,params`);
   return r ?? null;
 }
 

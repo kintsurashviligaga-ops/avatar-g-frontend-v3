@@ -195,7 +195,8 @@ test('Cancel mid-render returns the credits exactly once; Try again makes a NEW 
   await expect(card).toContainText('Cancelled. The reserved credits were returned.');
   await expect.poll(async () => (await ledgerForJob(user.id, jobId)).map((r) => r.delta), { timeout: 60_000 }).toEqual([-5, 5]);
   expect(await balanceOf(user.id)).toBe(before);
-  expect((await jobRow(jobId))?.status).toBe('cancelled');
+  // Stored as a failed lease with the cancel reason (the view reports it as „cancelled").
+  expect(await jobRow(jobId)).toMatchObject({ status: 'failed', error: expect.stringMatching(/^cancelled/) });
   // Try again → a new price, nothing charged until Create.
   await card.getByTestId('music-retry').click();
   await waitPhase(card, 'quoted', 30_000);
