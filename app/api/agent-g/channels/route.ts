@@ -1,13 +1,6 @@
 /**
  * /api/agent-g/channels — Settings → Connections.
- *
- *   GET   one honest state per channel (phone, WhatsApp, Telegram, notifications), decided on the server
- *         (lib/connections/model.ts). Nothing technical reaches the browser: no env names, no table names, no full
- *         numbers. The reasons stay in the server logs.
- *   POST  the web channel's own settings row (unchanged). A browser may never name a WhatsApp number or a Telegram chat.
- *
- * ⚠️ Until 2026-10-10 GET returned `runtime_status` notes such as "Token set, missing TELEGRAM_WEBHOOK_SECRET" to anyone,
- * guests included, and the raw link rows (the full WhatsApp number). Both are gone (Omnichannel A3 / B).
+ * Every state is decided on the server; technical provider details never reach the browser.
  */
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
@@ -18,7 +11,7 @@ import { getTelegramChannelStatus, TELEGRAM_BINDING_LIVE } from '@/lib/agent-g/c
 import { getWhatsappChannelStatus } from '@/lib/agent-g/channels/whatsapp';
 import { findLinkByUser } from '@/lib/agent-g/channels/whatsapp-link';
 import { maskNumber } from '@/lib/agent-g/channels/whatsapp-text';
-import { phoneCallsReady } from '@/lib/calls/availability';
+import { phoneOtpReady, phoneCallsReady } from '@/lib/phone/connection';
 import { buildConnections } from '@/lib/connections/model';
 
 export const dynamic = 'force-dynamic';
@@ -43,20 +36,34 @@ export async function GET(request: NextRequest) {
       const lookup = await findLinkByUser(createServiceRoleClient(), user.id);
       if (lookup.state === 'unavailable') {
         waStorage = false;
-        console.warn('[agent-g/channels] WhatsApp links unavailable (tables missing or unreadable)');
+        console.warn('[agent-g/channels] WhatsApp links unavailable');
       } else if (lookup.state === 'linked') {
         waLinked = maskNumber(lookup.link.waId);
       }
     }
-    // warn, not info: next.config strips console.info/log from builds (compiler.removeConsole keeps error and warn).
-    if (!wa.ready || !tg.ready) console.warn('[agent-g/channels] runtime', { whatsapp: wa.note, telegram: tg.note });
+
+    const phoneReady = phoneOtpReady();
+    let phoneLinked: string | null = null;
+    let phoneEnabled = false;
+    if (user && phoneReady) {
+      const prefs = await createServiceRoleClient()
+        .from('agent_g_user_prefs')
+        .select('phone_number,phone_verified,phone_agent_enabled')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (prefs.error) {
+        console.warn('[agent-g/channels] Phone prefs unavailable');
+      } else if (prefs.data?.phone_verified && prefs.data.phone_number) {
+        phoneLinked = maskNumber(String(prefs.data.phone_number));
+        phoneEnabled = Boolean(prefs.data.phone_agent_enabled);
+      }
+    }
 
     const connections = buildConnections({
       signedIn: Boolean(user),
       whatsapp: { ready: wa.ready, storage: waStorage, linkedMasked: waLinked },
-      // Not queried while the binding is not built: nothing can be linked, so nothing is read.
       telegram: { ready: tg.ready, bindingLive: TELEGRAM_BINDING_LIVE, storage: true, linked: false },
-      phone: { ready: phoneCallsReady() },
+      phone: { ready: phoneReady, linkedMasked: phoneLinked, enabled: phoneEnabled && phoneCallsReady() },
     });
     return apiSuccess({ guest: !user, connections });
   } catch (error) {
@@ -68,33 +75,13 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser(request);
     if (!user) return apiError(new Error('Unauthorized'), 401, 'Login required');
-
     const payload = saveSchema.safeParse(await request.json());
     if (!payload.success) return apiError(payload.error, 400, 'Invalid channel payload');
-    // ⚠️ A browser may not name a WhatsApp number or a Telegram chat: that let anyone attach someone else's number to
-    // their own account and read that person's conversation with Agent G. Those links are made only by a message FROM
-    // the number (a one-time code — /api/agent-g/whatsapp/link); this route keeps the web channel's own settings.
-    if (payload.data.type !== 'web') {
-      return apiError(new Error('Channel links are made from the channel'), 400, 'Link this channel with a one-time code');
-    }
+    if (payload.data.type !== 'web') return apiError(new Error('Channel links are made from the channel'), 400, 'Link this channel with a one-time code');
 
     const supabase = createServiceRoleClient();
-
-    const { data, error } = await supabase
-      .from('agent_g_channels')
-      .insert({
-        user_id: user.id,
-        type: payload.data.type,
-        status: payload.data.status,
-        external_id: payload.data.external_id ?? null,
-        username: payload.data.username ?? null,
-        meta: payload.data.meta,
-      })
-      .select('*')
-      .single();
-
+    const { data, error } = await supabase.from('agent_g_channels').insert({ user_id: user.id, type: payload.data.type, status: payload.data.status, external_id: payload.data.external_id ?? null, username: payload.data.username ?? null, meta: payload.data.meta }).select('*').single();
     if (error || !data) return apiError(error ?? new Error('Insert failed'), 500, 'Failed to save channel config');
-
     return apiSuccess({ channel: data }, 201);
   } catch (error) {
     return apiError(error, 500, 'Failed to save channel config');
