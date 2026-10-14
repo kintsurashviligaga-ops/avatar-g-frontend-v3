@@ -9,7 +9,12 @@ export function useVoicePreferences(userId?: string | null) {
   const preferences = state.userId === userId ? state.value : validateVoicePreferences(null);
   useEffect(() => {
     const read = () => { let value = validateVoicePreferences(null); try { value = loadVoicePreferences(userId, localStorage); } catch { /* denied */ } setState({ userId, value }); };
-    const changed = (e: Event) => { if ((e as CustomEvent).detail === userId) read(); };
+    const changed = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.userId !== userId) return;
+      setState({ userId, value: validateVoicePreferences(detail.value) });
+      setSaved(detail.saved === true);
+    };
     const storage = (e: StorageEvent) => { if (e.key === preferenceKey(userId) || e.key === null) read(); };
     read(); window.addEventListener(VOICE_PREFERENCES_EVENT, changed); window.addEventListener('storage', storage);
     return () => { window.removeEventListener(VOICE_PREFERENCES_EVENT, changed); window.removeEventListener('storage', storage); };
@@ -18,13 +23,13 @@ export function useVoicePreferences(userId?: string | null) {
     const value = validateVoicePreferences(raw); setState({ userId, value });
     let ok = false; try { ok = saveVoicePreferences(userId, value, localStorage); } catch { /* denied */ }
     setSaved(ok);
-    // Do not announce a failed persistence write: another mounted reader would replace the unsaved value.
-    if (ok) window.dispatchEvent(new CustomEvent(VOICE_PREFERENCES_EVENT, { detail: userId }));
+    // Same-account controls and the active call share the current value even when device storage is denied.
+    window.dispatchEvent(new CustomEvent(VOICE_PREFERENCES_EVENT, { detail: { userId, value, saved: ok } }));
   }, [userId]);
   const reset = useCallback(() => {
     let ok = false; try { ok = clearVoicePreferences(userId, localStorage); } catch { /* denied */ }
     setSaved(ok); setState({ userId, value: validateVoicePreferences(null) });
-    if (ok) window.dispatchEvent(new CustomEvent(VOICE_PREFERENCES_EVENT, { detail: userId }));
+    window.dispatchEvent(new CustomEvent(VOICE_PREFERENCES_EVENT, { detail: { userId, value: validateVoicePreferences(null), saved: ok } }));
   }, [userId]);
   return { preferences, update, reset, saved };
 }

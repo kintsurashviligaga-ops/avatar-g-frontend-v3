@@ -19,3 +19,5 @@ Production deploy, main merge, Production მიგრაცია და ფა
 
 საბოლოო ლოკალური ბრაუზერის შედეგი: **13/13 PASS**, 0 FAIL, 0 SKIP. CI-ის Voice Jest: **49 ნაკრები / 1,030 PASS**. ოთხი მიმართულების დროებითი კომბინირებული ასლი: TypeScript 0, 1,135 PASS, 9 DB ტესტი SKIP; პატჩის გამოყენების შემდეგაც TypeScript 0.
 ტესტების ბოლო checkpoint: 044dca4ec4581c89730d7e72dec72606c099c551. [PR-ის მიმდინარე CI](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/pull/68/checks) ცალკე შეამოწმეთ.
+
+2026-10-15: e6dfab9d-ზე ყველა CI წარმატებით დასრულდა: 13,888 Jest PASS / 67 SKIP, build PASS; Voice 1,030 PASS + 13/13 browser; იზოლირებული Video E2E 35/35; Preview contract 5/5; PostgreSQL billing PASS. ეს შედეგები რეალურ Google/მიკროფონის ხარისხს არ ამტკიცებს. დამატებით გამოსწორდა ლოკალური შენახვის აკრძალვისას მიმდინარე ზარზე სტილის გადაცემა; სხვა ანგარიშის იზოლაცია და ცარიელი მოვლენები დაცულია. შესაბამისი 64/64 ტესტი, TypeScript და ESLint წარმატებულია. საბოლოო CI ცალკე ახალი commit-ისთვის შემოწმდება.

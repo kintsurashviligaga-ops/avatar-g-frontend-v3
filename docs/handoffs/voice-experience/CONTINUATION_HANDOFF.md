@@ -17,3 +17,8 @@ Use existing dummy Supabase settings for local build; never copy Production cred
 5. Review current GitHub Actions on the latest code SHA and follow the release checklist. Do not merge/deploy automatically.
 
 Final local acceptance at 044dca4e: 13/13 browser scenarios PASS. CI initially proved 1,030/1,030 Voice Jest; its one cold-dev startup failure is diagnosed in the ledger and fixed with bounded 45s startup allowance. Protected integration proposal typechecks in a disposable combined tree. The only untracked runtime item is the existing node_modules symlink.
+
+## Resumed verification — 2026-10-15
+CI on e6dfab9d is fully green: verify (900 suites / 13,888 tests PASS, 7 suites / 67 tests SKIP, build PASS); Voice acceptance (49 suites / 1,030 tests PASS and 13/13 browser PASS); isolated Video browser 35/35 PASS; preview contract 5/5 PASS; real-Postgres billing job PASS (individual counts retained in evidence/ci-e6dfab9d-green.json). Skipped cases are not certified by that run. This is a baseline before the following final correction.
+Final storage-denial correction: same-account settings now send validated in-memory updates to the active call even when localStorage writes fail; other accounts do not receive them. Reset also propagates. Empty events are ignored. Two affected suites: **64/64 PASS**, TypeScript 0, scoped ESLint 0. The earlier 1,030-test CI result predates this one added regression; consult final PR checks for the new total. Evidence: storage-sync-*.log.
+The prior checkpoint command was not executed when automatic approval review hit its usage limit. It was retried through the same approval mechanism after the user's continuation; no bypass was used.

@@ -1,7 +1,8 @@
+import { VoicePreferencesProvider, useVoicePreferencesContext } from './VoicePreferencesProvider';
 import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
-import { loadVoicePreferences } from '@/lib/voice/experience/preferences';
+import { loadVoicePreferences, VOICE_PREFERENCES_EVENT } from '@/lib/voice/experience/preferences';
 
 beforeEach(()=>localStorage.clear());
 test.each([['ka','ხასიათი','მწვრთნელი'],['en','Personality','Coach'],['ru','Характер','Наставник']] as const)('%s accessible controls persist only for the signed-in account',async(locale,label,coach)=>{
@@ -26,6 +27,20 @@ test('voice and personality are independent; sarcasm is opt-in; reset deletes de
 });
 test('guests cannot write another account preference',()=>{
  render(<VoiceSettingsPanel locale="en"/>);
+ window.dispatchEvent(new CustomEvent(VOICE_PREFERENCES_EVENT));
  expect(screen.getByLabelText('Personality')).toBeDisabled();
  expect(screen.getByText('Sign in to save preferences.')).toBeVisible();
+});
+
+function ActiveCallStyle() { const p=useVoicePreferencesContext(); return <output data-testid="active-style">{p?.preferences.personality}</output>; }
+test('denied persistence still updates the active same-account call and reports unsaved state',()=>{
+ const denied=jest.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('denied');});
+ try {
+  render(<><VoiceSettingsPanel userId="alice" locale="en"/><VoicePreferencesProvider userId="alice"><ActiveCallStyle/></VoicePreferencesProvider><VoicePreferencesProvider userId="bob"><ActiveCallStyle/></VoicePreferencesProvider></>);
+  fireEvent.change(screen.getByLabelText('Personality'),{target:{value:'coach'}});
+  expect(screen.getAllByTestId('active-style').map(el=>el.textContent)).toEqual(['coach','friendly']);
+  expect(screen.getByText('Could not save settings; changes apply only here.')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Delete settings on this device'}));
+  expect(screen.getAllByTestId('active-style').map(el=>el.textContent)).toEqual(['friendly','friendly']);
+ } finally { denied.mockRestore(); }
 });

@@ -1,0 +1,8 @@
+PASS components/voice/live/useGeminiLiveSession.test.tsx
+PASS components/voice/experience/VoiceSettingsPanel.test.tsx
+
+Test Suites: 2 passed, 2 total
+Tests:       64 passed, 64 total
+Snapshots:   0 total
+Time:        1.672 s, estimated 2 s
+Ran all test suites within paths "components/voice/experience/VoiceSettingsPanel.test.tsx", "components/voice/live/useGeminiLiveSession.test.tsx".
