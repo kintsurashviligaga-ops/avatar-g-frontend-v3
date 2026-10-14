@@ -229,6 +229,31 @@ describe('failures refund exactly once', () => {
     expect(h.refunds).toHaveLength(1);
   });
 
+  test('a Storage write failure is not delivered and is refunded once, however often settlement runs', async () => {
+    const h = harness({ save: async () => { throw new MusicError('storage_failed', 'The track could not be stored.', 503); } });
+    const q = await quoted(h);
+    await startMusic(h.deps, USER, q.plan, q.token, true);
+    const w = await workMusic(h.deps, q.jobId, 'w1');
+    expect(w).toMatchObject({ outcome: 'failed', error: 'storage_failed' });
+    await settleMusic(h.deps, q.jobId);
+    await sweepMusic(h.deps, 'w9');
+    expect(h.store.rows.get(q.jobId)!.signedUrl).toBeNull();
+    expect(h.generated).toHaveLength(1);
+    expect(h.refunds).toEqual([`music-studio-v1:${q.jobId}`]);
+  });
+
+  test('a quota rejection fails once with one provider call and one refund', async () => {
+    let calls = 0;
+    const h = harness({ generate: async () => { calls += 1; throw new MusicError('provider_failed', 'quota', 502); } });
+    const q = await quoted(h);
+    await startMusic(h.deps, USER, q.plan, q.token, true);
+    await workMusic(h.deps, q.jobId, 'w1');
+    await workMusic(h.deps, q.jobId, 'w2');
+    await sweepMusic(h.deps, 'w9');
+    expect(calls).toBe(1);
+    expect(h.refunds).toEqual([`music-studio-v1:${q.jobId}`]);
+  });
+
   test('cancel while queued refunds once; the worker then cannot run it', async () => {
     const h = harness();
     const q = await quoted(h);
