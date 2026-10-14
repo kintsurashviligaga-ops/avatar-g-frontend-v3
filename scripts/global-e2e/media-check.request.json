@@ -1,0 +1,7 @@
+{
+  "approval": "GG-20261014-GLOBAL-E2E-EXTRA-USD5",
+  "capUsd": 5,
+  "spentBeforeUsd": 0,
+  "notAfter": "2026-10-14T17:28:27Z",
+  "note": "ONE build only; deleted in the next commit. Rebuilds after notAfter are no-ops."
+}
