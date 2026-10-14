@@ -9,8 +9,11 @@
 | be9edee3 | #60 Image Studio | verify ✅, preview-e2e ✅, isolated-db ✅, image-browser ✅, live E2E ✅, billing pg ✅ (38527016338/-375/-387/-388) |
 | 54532ff8 | #65 Music Studio | verify ✅, preview-e2e ✅, Music live E2E desktop+phone ✅ (38572860496), live E2E ✅, billing pg ✅ (38572860799) |
 
-URLs: `https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/<id>`. New heads pushed in this task
-(#65 9d25c7a4, this branch) have CI pending at writing time — see 14.
+| 9d25c7a4 | #65 after limiter fix | verify ✅ (38582716876), preview-e2e ✅ (38582717019), Music live E2E desktop+phone ✅ (38582716955), live E2E ✅ + billing pg ✅ (38582716914) |
+| 95c3ee7a | #67 this branch | verify ✅ (38583532761), preview-e2e ✅ (38583532824), live E2E desktop+phone ✅ + billing pg ✅ (38583532613), Vercel ✅ (build ran only the free auth check) |
+
+URLs: `https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/<id>`. a31b7205's Vercel build failed in
+`npm ci` (transient ffmpeg-static download error, before any build step — no paid call); superseded by 95c3ee7a.
 
 ## Local regression (macOS, Node 24, integration candidate)
 

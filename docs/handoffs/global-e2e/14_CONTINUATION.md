@@ -2,9 +2,8 @@
 
 ## Next exact actions
 
-1. Watch CI on this branch's head and on #65 9d25c7a4 (`gh pr checks 65`; the Draft PR of this branch). If a Linux ffmpeg job fails on the
-   limiter test, look at `lib/music/studio/audio.ffmpeg.test.ts` "stacked +12 dB boosts never clip" first.
-2. Confirm the a31b7205 Preview build log shows no `[media-check]` line (`vercel inspect <url> --logs | grep media-check` → nothing).
+1. DONE: CI green on #67 95c3ee7a and #65 9d25c7a4 (11); 95c3ee7a Preview build log shows only `[gcp-auth-check]` (no paid step).
+2. Rebase nothing: #67 is docs + an unhooked script + a skipped-by-default test.
 3. Owner: GCP billing check for 2026-10-14 vs 09; decide 10 (isolation), 08 S2 (pricing), 01 §B (copy), provider boundary.
 4. After isolation exists: run the deployed E2E per studio (video director, image job, music job with the real Lyria worker), admin-only.
 5. Hand the uid-race proposal to the shared-chat owner; Astra to push their branch.
