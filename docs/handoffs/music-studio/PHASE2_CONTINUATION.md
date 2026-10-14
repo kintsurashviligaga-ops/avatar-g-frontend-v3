@@ -20,8 +20,11 @@
   over Astra's work. After it lands, the `data-uid` wait in `tests/music-studio-live/_music.ts studioReady` can stay (harmless).
 
 ## Remaining work (owner)
-- Paid Lyria run: procedure in PHASE2_RELEASE_CHECKLIST.md (cap $5, planned ≈ $0.16). Provider-only; the full delivery pipeline on real
-  Lyria needs an isolated Preview database as well.
+- Paid Lyria provider run: DONE 2026-10-14 (3 calls, FINAL_REAL_LYRIA_E2E.md). Record the actual billed amount from Cloud Billing in
+  FINAL_SPEND_REPORT.md. Listen to `evidence/lyria-live/B-vocal-en.mp3` and `C-vocal-ka-experimental.mp3` (singing? lyrics? Georgian
+  pronunciation?) before any vocal decision.
+- To run another live call: commit `scripts/music-studio/lyria-check.request.json` (approval, `capUsd`, `spentBeforeUsd` = spent so far),
+  push, read `/preview-checks/lyria/result.json` on that Preview, then delete the file in the next commit. Never leave it committed.
 - Isolated Preview Supabase project (or written approval to use Production data) for Preview Library/credit tests.
 - Sign-off: provider boundary on merge; per-user rate limits; vocals stay off until a heard vocal.
 

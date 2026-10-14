@@ -49,11 +49,11 @@ export default defineConfig({
     { name: 'setup-mobile', testMatch: /video-core-live\/auth\.setup\.ts$/, use: { ...phone, ...common } },
     { name: 'api', testMatch: /music-studio-live\/api\.spec\.ts$/, use: { ...common } },
     {
-      name: 'desktop', testMatch: /music-studio-live\/(journey|voice)\.spec\.ts$/, dependencies: ['setup-desktop'],
+      name: 'desktop', testMatch: /music-studio-live\/(journey|voice|real-lyria-replay)\.spec\.ts$/, dependencies: ['setup-desktop'],
       use: { ...devices['Desktop Chrome'], ...common, storageState: `${STATE_DIR}/desktop.json` },
     },
     {
-      name: 'mobile', testMatch: /music-studio-live\/(journey|voice)\.spec\.ts$/, dependencies: ['setup-mobile'],
+      name: 'mobile', testMatch: /music-studio-live\/(journey|voice|real-lyria-replay)\.spec\.ts$/, dependencies: ['setup-mobile'],
       use: { ...phone, ...common, storageState: `${STATE_DIR}/mobile.json` },
     },
   ],

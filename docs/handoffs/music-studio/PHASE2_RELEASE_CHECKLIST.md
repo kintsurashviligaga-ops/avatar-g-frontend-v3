@@ -6,9 +6,9 @@
 - [ ] Owner sign-off on rate-limit change: every Music Studio route is now limited **per user** (start 5/min, edit 20/min, quote/commands/cancel 20/min, status 100/min).
 - [ ] PR #65 Draft → Ready → merge by the owner (never force, never by an agent).
 
-- [ ] Chat owner decides on the History uid race patch (PHASE2_STATE.md → OPEN DEFECT). Not a Music Studio blocker; affects the first turn of any thread.
+- [ ] Chat owner decides on the History uid race patch — proposal branch `claude/shared-chat-uid-race-proposal-20261014` (`7fe06fb5`) (PHASE2_STATE.md → OPEN DEFECT). Not a Music Studio blocker; affects the first turn of any thread.
 
-## Paid Lyria procedure (BLOCKED — needs written owner approval)
+## Paid Lyria procedure — DONE 2026-10-14 via the Preview build step (see FINAL_REAL_LYRIA_E2E.md); the local script below cannot reach Vertex
 1. Owner writes an approval reference, e.g. `GG-2026-10-xx $5`.
 2. Re-check the live Vertex price of `lyria-3-clip-preview` (planned basis $0.04/track; 2 cases × ≤2 attempts ≈ $0.16).
 3. `MUSIC_PAID_E2E_APPROVED="<ref>" MUSIC_PAID_E2E_CAP_USD=5 GEMINI_TRANSPORT=vertex npx tsx scripts/music-studio/paid-e2e.ts`
@@ -25,7 +25,7 @@
 
 ## Preview (needs an ISOLATED Supabase project, or explicit approval to use Production data)
 - [ ] `MUSIC_STUDIO_ENABLED=1`, `NEXT_PUBLIC_MUSIC_STUDIO_V1=1`, `GEMINI_TRANSPORT=vertex` on Preview only.
-- [ ] Owner-approved paid run (`scripts/music-studio/paid-e2e.ts`, cap $5, planned ≈ $0.16).
+- [x] Owner-approved paid provider run (3 calls, ≈ $0.12, Preview build `c4c8792e`). - [ ] Owner: actual billed amount. - [ ] Owner: listening review of B/C.
 - [ ] Library row, ledger `music-studio-v1:<id>` −5, refund once on a forced failure.
 - [ ] Real microphone check: "make a calm piano track" → card with price; Create by tap; "fade out 3 seconds" → version.
 

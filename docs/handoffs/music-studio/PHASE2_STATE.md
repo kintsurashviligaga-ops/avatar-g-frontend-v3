@@ -36,8 +36,20 @@ Proposed isolated patch (for the chat owner, not applied): in OmniStudio's autos
 `dataset.authed === '1' && !currentUid()`, and have ChatChrome dispatch `myavatar:uid-ready` after publishing `data-uid` so OmniStudio
 re-runs the upsert once. No migration of the `anon` slot (it may hold another guest's chats). OmniStudio is a contested file (Astra).
 
+## FINAL SESSION (2026-10-14, approval GG-20261014-MUSIC-LYRIA-E2E-USD5)
+- **Live Lyria on Vertex: 3 calls, 3 × HTTP 200** from the Preview build of `c4c8792e` (gated build step
+  `scripts/music-studio/preview-lyria-check.cjs`; request file deleted in `abe8b234`; later builds skip). ≈ $0.12 estimate; actual billing
+  not readable by the agent. Instrumental / English-lyrics / Georgian-lyrics (experimental) — all valid 30.77 s MP3 44.1 kHz stereo,
+  0 decode errors, studio QC PASS. Sung vocals = LISTENING REVIEW REQUIRED; vocals stay OFF. → FINAL_REAL_LYRIA_E2E.md, FINAL_SPEND_REPORT.md.
+- `[e2e:replay]`: the isolated E2E pushes the real Lyria file through quote → Create → debit → QC → Storage → Library → play → download
+  (`tests/music-studio-live/real-lyria-replay.spec.ts`).
+- Deterministic fault tests added: quota 429, unsupported model 404, unavailable 503, safety block, timeout, network (one provider call, no
+  retry); Storage write failure and quota → refund once.
+- Shared-chat uid race: proposal patch on a SEPARATE branch `claude/shared-chat-uid-race-proposal-20261014` (`7fe06fb5`, off main, unit
+  tested 12/12, tsc clean). Not merged, not in #65; OPEN until a real E2E proves it and the chat owner / Astra accept it.
+
 ## BLOCKED (owner)
-- Paid Lyria E2E (no approval; $0 spent this session and in total). Vocals stay off.
+- ~~Paid Lyria E2E~~ DONE at provider level (above). The studio worker's own live dispatch needs an isolated Preview DB (below).
 - Preview Library/credits tests: Preview uses the Production Supabase project → not run. Needs an isolated Preview project or approval.
 - Real-microphone E2E: needs a person with a microphone (+ Gemini Live key on the target).
 
