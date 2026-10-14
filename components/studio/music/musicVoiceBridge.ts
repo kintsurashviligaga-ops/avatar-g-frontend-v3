@@ -48,6 +48,8 @@ export interface MusicCardHandle {
 
 const cards = new Map<string, MusicCardHandle>();
 let seq = 0;
+/** A join is running (set synchronously, so a repeated call in the same tick is refused). */
+let joining = false;
 
 export function registerMusicCard(h: Omit<MusicCardHandle, 'mountedAt'>): () => void {
   const handle: MusicCardHandle = { ...h, mountedAt: ++seq };
@@ -82,9 +84,16 @@ export async function joinNewestTracks(
   const tracks = newestTracks();
   const unique = tracks.filter((t, i) => tracks.findIndex((x) => x.jobId === t.jobId) === i);
   if (unique.length < 2) return { ok: false, code: 'need_two_tracks', message: 'Joining needs two finished tracks on screen.' };
+  if (joining) return { ok: false, code: 'busy', message: 'A join is already running.' };
   const picked = unique.slice(0, count).reverse();
   const crossfadeSec = Math.min(10, Math.max(0, opts.crossfadeSec ?? 0));
-  const r = await (io.edit ?? editCall)({ v: 1, sources: picked.map((t) => t.jobId), ops: [], crossfadeSec, format: opts.format ?? 'mp3', locale: opts.locale });
+  joining = true;
+  let r: MusicEditResult | Refusal;
+  try {
+    r = await (io.edit ?? editCall)({ v: 1, sources: picked.map((t) => t.jobId), ops: [], crossfadeSec, format: opts.format ?? 'mp3', locale: opts.locale });
+  } finally {
+    joining = false;
+  }
   if (!r.ok) return { ok: false, code: r.code, message: r.message ?? 'The join failed. The tracks are unchanged.' };
   const host = cards.get(unique[0]!.draftId);
   host?.addVersion({ jobId: r.jobId, url: r.url, durationSec: r.durationSec, label: r.label });
@@ -123,6 +132,7 @@ let lastPlan: { key: string; at: number; draftId: string } | null = null;
 export function resetMusicVoiceForTests(): void {
   cards.clear();
   lastPlan = null;
+  joining = false;
   seq = 0;
 }
 
@@ -195,7 +205,7 @@ export function handleMusicVoice(
     }
     case 'join': {
       if (newestTracks().length < 2) return { ok: false, error: 'need_two_tracks', message: 'Joining needs two finished tracks on screen.' };
-      if (list.some((c) => c.snapshot().busy)) return { ok: false, error: 'busy', message: 'An edit is already running; wait for it.' };
+      if (joining || list.some((c) => c.snapshot().busy)) return { ok: false, error: 'busy', message: 'An edit or join is already running; wait for it.' };
       void joinNewestTracks({ count: a.count, crossfadeSec: a.crossfadeSec, format: a.format, locale: ctx.locale })
         .then((r) => ctx.note?.(r.ok ? `The joined track is ready (${Math.round(r.version.durationSec)} s, free).` : `The join was not made: ${r.message}`));
       return { ok: true, message: `Joining the ${Math.min(6, Math.max(2, a.count ?? 2))} newest tracks${a.crossfadeSec ? ` with a ${a.crossfadeSec} s crossfade` : ''} (free). You will get an [App] note.` };

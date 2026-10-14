@@ -109,3 +109,16 @@ describe('musicVoiceBridge — Music Studio by voice never spends', () => {
     expect(r).toEqual({ ok: false, code: 'validation_failed', message: 'The crossfade must be 0–10 s and shorter than every track.' });
   });
 });
+
+import { downloadHref, mimeOfUrl, trackFileName } from './musicDraft';
+describe('Download links of signed Storage URLs', () => {
+  it('ask Storage for an attachment (a cross-origin link ignores the download attribute), once, with a safe name', () => {
+    const u = 'https://x.supabase.co/storage/v1/object/sign/renders/music-studio/u/j.wav?token=abc';
+    expect(downloadHref(u, 'myavatar music/1.wav')).toBe(`${u}&download=myavatar-music-1.wav`);
+    expect(downloadHref(`${u}&download=a.wav`, 'b.wav')).toBe(`${u}&download=a.wav`);
+    expect(downloadHref('https://cdn.example.com/a.mp3', 'a.mp3')).toBe('https://cdn.example.com/a.mp3');
+    expect(mimeOfUrl(u)).toBe('audio/wav');
+    expect(trackFileName('0123456789abcdef', 'audio/mp4', 'trim + fade_out → m4a')).toBe('myavatar-music-01234567-trim-fade-out.m4a');
+    expect(trackFileName('0123456789abcdef', 'audio/mpeg', 'join ×2 · crossfade 2s → mp3')).toBe('myavatar-music-01234567-join-2-crossfade-2s.mp3');
+  });
+});

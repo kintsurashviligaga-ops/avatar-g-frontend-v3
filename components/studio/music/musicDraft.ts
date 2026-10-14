@@ -41,3 +41,28 @@ export function musicStudioIntro(locale: string): string {
     : locale === 'ru' ? 'Вот план и точная цена. Ничего не списывается, пока вы не подтвердите.'
       : 'აი გეგმა და ზუსტი ფასი. სანამ არ დაადასტურებ, არაფერი ჩამოგეჭრება.';
 }
+
+/**
+ * A Download link that downloads. A signed Storage link is another origin, where the browser ignores the `download`
+ * attribute and OPENS the file instead (the app page is replaced by a bare player). Supabase Storage answers a signed
+ * link with `download=<name>` as an attachment, so the page stays and the file is saved under that name.
+ */
+export function downloadHref(url: string, name: string): string {
+  if (!/\/storage\/v1\/object\/sign\//.test(url) || /[?&]download=/.test(url)) return url;
+  const safe = name.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'track';
+  return `${url}${url.includes('?') ? '&' : '?'}download=${encodeURIComponent(safe)}`;
+}
+
+/** The file name a track downloads as: myavatar-music-<id8>[-<label>].<ext>. */
+export function trackFileName(jobId: string, mime: string | undefined, label?: string): string {
+  const ext = /wav/.test(mime ?? '') ? 'wav' : /mp4|m4a|aac/.test(mime ?? '') ? 'm4a' : 'mp3';
+  const words = label ? label.replace(/→.*$/, '').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) : '';
+  const tail = words ? `-${words}` : '';
+  return `myavatar-music-${jobId.slice(0, 8)}${tail}.${ext}`;
+}
+
+/** A stored track's type from its path (`….wav?token=…`). */
+export function mimeOfUrl(url: string): string {
+  const ext = /\.(wav|m4a|mp3)(?:\?|#|$)/i.exec(url)?.[1]?.toLowerCase();
+  return ext === 'wav' ? 'audio/wav' : ext === 'm4a' ? 'audio/mp4' : 'audio/mpeg';
+}

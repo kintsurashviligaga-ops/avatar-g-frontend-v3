@@ -20,6 +20,7 @@ import { musicCapabilities } from './capabilities';
 import { MUSIC_KIND, type SavedTrack } from './contracts';
 import { measureAudio, assertDeliverable, formatOfMime, FORMAT_MIME } from './audio';
 import { MusicError } from './errors';
+import { e2eFakeLyriaEnabled, e2eFakeTrack } from './e2eProvider';
 import type { MusicDeps } from './engine';
 import type { EditDeps } from './edit';
 
@@ -50,7 +51,9 @@ export function liveMusicDeps(): MusicDeps {
   const store = musicStore();
   return {
     store,
-    caps: () => musicCapabilities(),
+    // The isolated browser E2E's stand-in provider (./e2eProvider — fail-closed: never on Vercel, never with a hosted
+    // Supabase) reports the engine as configured; nothing else about the capability matrix changes.
+    caps: () => { const c = musicCapabilities(); return e2eFakeLyriaEnabled() ? { ...c, configured: true, transport: c.transport ?? 'gemini_api' } : c; },
     key: quoteKey,
     now: () => Date.now(),
     newId: () => randomUUID(),
@@ -73,6 +76,7 @@ export function liveMusicDeps(): MusicDeps {
       return r.ok ? 'refunded' : 'error';
     },
     async generate(plan, input, signal) {
+      if (e2eFakeLyriaEnabled()) return e2eFakeTrack(plan.request.prompt, signal);
       const r = await lyriaRequest(input, plan.request.modelId, signal);
       if (!r.ok) {
         if (r.reason === 'not_configured') throw new MusicError('not_configured', 'The Google music engine is not configured.', 503);

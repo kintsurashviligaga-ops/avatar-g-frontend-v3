@@ -13,6 +13,7 @@ import type { MusicRequest } from '@/lib/music/studio/contracts';
 import { cancelCall, editCall, isFinal, pollDelayMs, quoteCall, startCall, statusCall, commandCall, type MusicJobView, type MusicQuote, type Refusal } from '@/lib/music/studio/client';
 import { LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
 import { musicCardCopy, stageText } from './musicCardCopy';
+import { downloadHref, mimeOfUrl, trackFileName } from './musicDraft';
 import { joinNewestTracks, registerMusicCard, type MusicCardPhase } from './musicVoiceBridge';
 
 export interface MusicDraft { id: string; request: MusicRequest }
@@ -42,6 +43,8 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const cur = useRef({ phase, edit });
   cur.current = { phase, edit };
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /** Set synchronously when an edit starts: a second tap or call in the same tick sees it (state would not yet). */
+  const busyRef = useRef(false);
 
   // Quote once (the server prices it; nothing is charged).
   useEffect(() => {
@@ -93,31 +96,40 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
     if (v.ok) setPhase({ k: 'job', jobId: phase.jobId, view: v });
   }, [phase]);
 
-  /** Edit words (typed in the box, or spoken in a call) on this card's newest track. Free; the original is kept. */
-  const runEdit = useCallback(async (words?: string): Promise<{ ok: boolean; message?: string }> => {
-    const { phase: ph, edit: ed } = cur.current;
-    const text = (words ?? ed.text).trim();
-    if (ph.k !== 'job' || !ph.view?.result || !text || ed.busy) return { ok: false, message: c.editFailed };
+  const editNow = useCallback(async (jobId: string, text: string, newest: string | undefined, spoken: boolean): Promise<{ ok: boolean; message?: string }> => {
     setEdit((e) => ({ ...e, busy: true, note: null }));
     const done = (note: string | null, ok: boolean) => { setEdit((e) => ({ ...e, busy: false, note })); return { ok, ...(note ? { message: note } : {}) }; };
     const parsed = await commandCall(text);
     const cmd = parsed.ok ? (parsed.command as { kind?: string; ops?: unknown[]; format?: string | null; op?: string; crossfadeSec?: number } | null) : null;
     if (!cmd || cmd.kind === 'create') return done(c.editNotUnderstood, false);
     if (cmd.kind === 'unsupported') return done(c.unsupportedOp, false);
-    if (cmd.kind === 'regenerate') { done(null, true); onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: ph.jobId } }); return { ok: true }; }
+    if (cmd.kind === 'regenerate') { done(null, true); onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: jobId } }); return { ok: true }; }
     if (cmd.kind === 'join') {
       const j = await joinNewestTracks({ crossfadeSec: cmd.crossfadeSec ?? 0, locale: draft.request.locale });
       if (!j.ok) return done(j.code === 'need_two_tracks' ? c.joinNeedsTwo : j.message, false);
       setEdit((e) => ({ ...e, busy: false, text: '', note: null }));
       return { ok: true };
     }
-    const sourceId = ed.versions[0]?.jobId ?? ph.jobId;
-    const r = await editCall({ v: 1, sources: [sourceId], ops: cmd.ops ?? [], format: cmd.format ?? 'mp3', locale: draft.request.locale });
+    const r = await editCall({ v: 1, sources: [newest ?? jobId], ops: cmd.ops ?? [], format: cmd.format ?? 'mp3', locale: draft.request.locale });
     setEdit((e) => (r.ok
-      ? { busy: false, text: words ? e.text : '', note: null, versions: [{ url: r.url, label: r.label, durationSec: r.durationSec, jobId: r.jobId }, ...e.versions] }
+      ? { busy: false, text: spoken ? e.text : '', note: null, versions: [{ url: r.url, label: r.label, durationSec: r.durationSec, jobId: r.jobId }, ...e.versions] }
       : { ...e, busy: false, note: r.message ?? c.editFailed }));
     return r.ok ? { ok: true } : { ok: false, message: r.message ?? c.editFailed };
   }, [c, draft, onRegenerate]);
+
+  /** Edit words (typed in the box, or spoken in a call) on this card's newest track. Free; the original is kept. */
+  const runEdit = useCallback(async (words?: string): Promise<{ ok: boolean; message?: string }> => {
+    const { phase: ph, edit: ed } = cur.current;
+    const text = (words ?? ed.text).trim();
+    if (ph.k !== 'job' || !ph.view?.result || !text || busyRef.current) return { ok: false, message: c.editFailed };
+    busyRef.current = true;
+    try {
+      return await editNow(ph.jobId, text, ed.versions[0]?.jobId, !!words);
+    } finally {
+      busyRef.current = false;
+    }
+  }, [c.editFailed, editNow]);
+
 
   // Agent G and Live Voice reach this card through the bridge (components/studio/music/musicVoiceBridge).
   const cancelRef = useRef(cancel);
@@ -139,7 +151,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
         ...(ph.k === 'job' ? { jobId: ph.jobId } : {}),
         ...(ph.k === 'refused' ? { message: ph.r.message ?? ph.r.code } : v?.error ? { message: v.error } : {}),
         tracks: [...original, ...[...ed.versions].reverse()],
-        busy: ed.busy,
+        busy: busyRef.current || ed.busy,
       };
     },
     async cancel() {
@@ -151,7 +163,9 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
     edit: (text) => editRef.current(text),
     addVersion: (ver) => setEdit((e) => (e.versions.some((x) => x.jobId === ver.jobId) ? e : { ...e, versions: [ver, ...e.versions] })),
     download() {
-      const a = rootRef.current?.querySelector<HTMLAnchorElement>('a[download]');
+      // The newest track: the newest version (listed first under the original), else the original.
+      const a = rootRef.current?.querySelector<HTMLAnchorElement>('[data-testid="music-version-download"]')
+        ?? rootRef.current?.querySelector<HTMLAnchorElement>('[data-testid="music-download"]');
       if (!a) return false;
       a.click();
       return true;
@@ -223,7 +237,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
       </audio>
       <p className="mt-1.5 text-[11.5px] text-app-text/60">{c.delivered(Math.round(res.durationSec), res.credits, res.modelId)}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <a data-testid="music-download" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} href={res.url} download><Download className="h-4 w-4" aria-hidden />{c.download}</a>
+        <a data-testid="music-download" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} href={downloadHref(res.url, trackFileName(v.jobId, res.mime))} download={trackFileName(v.jobId, res.mime)}><Download className="h-4 w-4" aria-hidden />{c.download}</a>
         <button type="button" data-testid="music-regenerate" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: v.jobId } })}><RotateCcw className="h-4 w-4" aria-hidden />{c.regenerate}</button>
       </div>
       <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void runEdit(); }}>
@@ -237,7 +251,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
         <div key={ver.jobId} className="mt-2 rounded-xl border border-app-border/10 p-2" data-testid="music-version" data-job-id={ver.jobId} data-duration={ver.durationSec}>
           <p className="text-[11.5px] text-app-text/70">{c.version(ver.label, Math.round(ver.durationSec))}</p>
           <audio controls preload="metadata" src={ver.url} className="mt-1 w-full" aria-label={c.version(ver.label, Math.round(ver.durationSec))}><track kind="captions" /></audio>
-          <a data-testid="music-version-download" className="mt-1 inline-flex min-h-[44px] items-center text-[12px] text-app-accent underline" href={ver.url} download>{c.download}</a>
+          <a data-testid="music-version-download" className="mt-1 inline-flex min-h-[44px] items-center text-[12px] text-app-accent underline" href={downloadHref(ver.url, trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label))} download={trackFileName(ver.jobId, mimeOfUrl(ver.url), ver.label)}>{c.download}</a>
         </div>
       ))}
       <p className="mt-2 text-[11px] text-app-text/50">{c.savedToLibrary}</p>
