@@ -41,13 +41,14 @@ export const SERVICE_REGISTRY: ServiceDefinition[] = [
     },
   },
   {
-    slug: 'workflow', title: 'Workflow Builder', href: '/services/workflow', id: 'workflow',
-    name: 'Workflow Builder', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).',
+    slug: 'workflow', title: 'Workflow Planner', href: '/services/workflow', id: 'workflow',
+    name: 'Workflow Planner', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).',
     icon: '🧭', route: '/services/workflow', enabled: true,
     localized: {
-      en: { name: 'Workflow Builder', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).' },
-      ka: { name: 'პროცესების კონსტრუქტორი', description: 'დაგეგმე მრავალსაფეხურიანი ავტომატიზაციები.' },
-      ru: { name: 'Конструктор процессов', description: 'Проектируйте автоматизации в едином потоке.' },
+      // Same names as lib/services/catalog: a planner in the chat, not a builder — nothing runs automations yet.
+      en: { name: 'Workflow Planner', description: 'Plan multi-step work across studios with Agent G (no automation runner yet).' },
+      ka: { name: 'ვორქფლოუს დაგეგმვა', description: 'დაგეგმე მრავალსაფეხურიანი სამუშაო Agent G-სთან (ავტომატური გაშვება ჯერ არ არის).' },
+      ru: { name: 'Планировщик воркфлоу', description: 'Планируйте многошаговую работу с Agent G (автоматического запуска пока нет).' },
     },
   },
   {
