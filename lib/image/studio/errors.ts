@@ -4,7 +4,7 @@ export type ImageErrorCode =
   | 'confirmation_required' | 'insufficient_credits' | 'billing_unavailable' | 'jobs_unavailable'
   | 'prompt_safety' | 'provider_rate_limit' | 'provider_timeout' | 'provider_failed'
   | 'provider_outcome_unknown' | 'storage_error' | 'qc_failed' | 'cancelled' | 'not_running'
-  | 'queue_full' | 'unknown_error';
+  | 'queue_full' | 'quote_used' | 'unknown_error';
 
 export class ImageError extends Error {
   constructor(readonly code: ImageErrorCode, message: string, readonly status = 422) {

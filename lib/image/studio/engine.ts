@@ -2,7 +2,7 @@ import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { quoteCredits } from '@/lib/credits/quote';
 import { signQuote, verifyQuote, QUOTE_TTL_MS } from '@/lib/agent/media/quoteToken';
 import {
-  enqueue, release, cancel, claim, heartbeat, complete, fail, settled, reap, claimable, HEARTBEAT_MS,
+  enqueue, release, cancel, claim, heartbeat, mustStop, complete, fail, settled, reap, claimable, HEARTBEAT_MS,
   type LeaseRow, type LeaseStore,
 } from '@/lib/orchestrator/jobLease';
 import {
@@ -104,6 +104,9 @@ export function imageView(row: LeaseRow) {
     cancellable: !['failed', 'completed'].includes(row.status),
   };
 }
+/** How long an unknown reservation outcome may still turn into a debit. */
+const AMBIGUOUS_DEBIT_MS = 24 * 60 * 60_000;
+
 export async function settleImage(deps: ImageDeps, id: string) {
   const row = await deps.store.read(id);
   if (!isImage(row) || !row.exec?.owe) return;
@@ -111,8 +114,11 @@ export async function settleImage(deps: ImageDeps, id: string) {
   if (!state || !reservation) return; // corrupt state must not mint a refund
   if (state.billing === 'rejected') { await settled(deps.store, id); return; }
   const paid = await deps.refund(row.userId, reservation.ref, reservation.credits);
-  // A late debit can still land after cancel or an ambiguous RPC; a zero read is NOT settlement evidence.
-  if (paid === 'error' || (paid === 'nothing' && state.billing !== 'reserved')) return;
+  // A late debit can still land after cancel or an ambiguous RPC; a zero read is NOT settlement evidence — until a day has
+  // passed: no reservation RPC is still in flight by then, so a ledger that shows nothing taken means nothing is owed.
+  // (Owed forever, the row locked the user's workspace and crowded real refunds out of the sweep.)
+  const ambiguityOver = deps.now() - row.createdAt > AMBIGUOUS_DEBIT_MS;
+  if (paid === 'error' || (paid === 'nothing' && state.billing !== 'reserved' && !ambiguityOver)) return;
   await settled(deps.store, id);
   await deps.audit({ userId: row.userId, jobId: id, phase: 'settlement', code: paid, credits: reservation.credits });
 }
@@ -172,10 +178,17 @@ export async function startImage(deps: ImageDeps, userId: string, value: unknown
     }
     reservationAttempted = true;
     const charge = await deps.reserve(userId, credits, ref);
-    const billing = charge.charged ? 'reserved' : charge.reason === 'insufficient' || charge.reason === 'skipped' ? 'rejected' : 'uncertain';
+    // ⚠️ 'replay' = this quote's ref was charged by an EARLIER job (its row since deleted — a twin of this one is stopped
+    // by enqueue above). Treating it as uncertain made the row owe a refund, and settlement paid back the image already
+    // delivered. It is a used quote: no debit was taken here, nothing is owed.
+    const billing = charge.charged ? 'reserved' : charge.reason === 'insufficient' || charge.reason === 'skipped' || charge.reason === 'replay' ? 'rejected' : 'uncertain';
     if (!await patchState(deps, id, { billing })) throw new ImageError('jobs_unavailable', 'Billing is being reconciled before generation can start.', 503);
     if (!charge.charged) {
       const row = await deps.store.read(id);
+      if (charge.reason === 'replay') {
+        if (row) await refusePending(deps, row, 'quote_used', false);
+        throw new ImageError('quote_used', 'This quote was already used. Request a new quote.', 409);
+      }
       if (row) await refusePending(deps, row, charge.reason === 'insufficient' ? 'insufficient_credits' : 'billing_unavailable', billing === 'uncertain');
       throw new ImageError(charge.reason === 'insufficient' ? 'insufficient_credits' : 'billing_unavailable', 'The image was not started; billing could not confirm the reservation.', 503);
     }
@@ -236,11 +249,13 @@ export async function workImage(deps: ImageDeps, id: string, worker: string) {
   const row = claimed.row;
   const ctl = new AbortController();
   const stop = deps.every(HEARTBEAT_MS, async () => {
-    try { if (await heartbeat(deps.store, id, worker, deps.now()) !== 'held') ctl.abort(); }
-    catch { ctl.abort(); }
+    // Only what the row SAYS stops the worker ('lost', 'stopped'); a beat that could not read it ('unsure') carries on —
+    // the lease the last beat renewed still holds, and complete()/fail() are owner-fenced anyway.
+    try { if (mustStop(await heartbeat(deps.store, id, worker, deps.now()))) ctl.abort(); }
+    catch { /* no evidence either way: the next beat tries again */ }
   });
   const fence = async () => {
-    if (ctl.signal.aborted || await heartbeat(deps.store, id, worker, deps.now()) !== 'held') throw new ImageError('cancelled', 'The worker no longer owns this image job.');
+    if (ctl.signal.aborted || mustStop(await heartbeat(deps.store, id, worker, deps.now()))) throw new ImageError('cancelled', 'The worker no longer owns this image job.');
   };
   try {
     const plan = parseImagePlan(row.params._job);

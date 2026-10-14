@@ -196,3 +196,43 @@ test('QC and storage errors never produce a completed Library row', async () => 
     expect(f.net()).toBe(0);
   }
 });
+test('a delivered image whose row was deleted cannot be re-submitted with its quote for a refund', async () => {
+  const f = await queued();
+  await workImage(f.deps, f.q.jobId, 'w');
+  expect((await imageStatus(f.deps, USER, f.q.jobId)).view).toMatchObject({ status: 'completed' });
+  const charged = f.net();
+  expect(charged).toBeGreaterThan(0);
+  f.store.rows.delete(f.q.jobId); // the owner deleted it from the Library, the quote is still within its TTL
+  await expect(startImage(f.deps, USER, f.q.plan, f.q.token, true)).rejects.toMatchObject({ code: 'quote_used' });
+  await sweepImages(f.deps, 'sweep');
+  expect(f.deps.refund).not.toHaveBeenCalled();
+  expect(f.net()).toBe(charged);
+  expect(f.deps.generate).toHaveBeenCalledTimes(1);
+});
+test('a heartbeat that cannot read the row is no reason to abandon a healthy generation', async () => {
+  const f = await queued(), entered = deferred<void>(), output = deferred<Awaited<ReturnType<typeof f.deps.generate>>>();
+  f.deps.generate = jest.fn(async () => { entered.resolve(); return output.promise; });
+  const working = workImage(f.deps, f.q.jobId, 'w');
+  await entered.promise;
+  const read = f.store.read.bind(f.store);
+  f.store.read = jest.fn(async () => null) as typeof f.store.read; // the database away for one beat
+  for (const tick of [...f.ticks]) await tick();
+  f.store.read = read;
+  output.resolve({ bytes: f.png, mime: 'image/png', providerRequestId: null, usage: null });
+  await working;
+  expect((await imageStatus(f.deps, USER, f.q.jobId)).view).toMatchObject({ status: 'completed' });
+  expect(f.deps.generate).toHaveBeenCalledTimes(1);
+});
+test('an ambiguous reservation that never debited is settled as nothing after a day, not owed forever', async () => {
+  const f = await fakeImage();
+  f.deps.reserve = jest.fn(async () => ({ charged: false, reason: 'error' }));
+  const q = await quoteImage(f.deps, USER, imageRequest());
+  await expect(startImage(f.deps, USER, q.plan, q.token, true)).rejects.toMatchObject({ code: 'billing_unavailable' });
+  await sweepImages(f.deps, 'sweep');
+  expect((await imageStatus(f.deps, USER, q.jobId)).view.settlementPending).toBe(true); // a late debit may still land
+  f.clock.now += 24 * 60 * 60_000 + 1;
+  await sweepImages(f.deps, 'sweep');
+  expect((await imageStatus(f.deps, USER, q.jobId)).view.settlementPending).toBe(false);
+  expect(f.net()).toBe(0);
+  expect(f.deps.audit).toHaveBeenCalledWith(expect.objectContaining({ jobId: q.jobId, phase: 'settlement', code: 'nothing' }));
+});

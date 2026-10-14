@@ -40,6 +40,12 @@ const words = {
   empty: ['ჯერ სურათი არ არის.', 'No images yet.', 'Пока нет изображений.'],
   loading: ['იტვირთება…', 'Loading…', 'Загрузка…'],
   failure: ['მოქმედება ვერ შესრულდა. მონაცემები შენარჩუნებულია; სცადე ხელახლა.', 'The action could not finish. Your draft is preserved; try again.', 'Не удалось завершить действие. Черновик сохранён; повторите попытку.'],
+  insufficient: ['კრედიტი არ არის საკმარისი. შეავსე ბალანსი და სცადე ხელახლა.', 'Not enough credits. Top up your balance and try again.', 'Недостаточно кредитов. Пополните баланс и повторите попытку.'],
+  queueFull: ['რიგი სავსეა. არაფერი ჩამოგეჭრა — სცადე ცოტა ხანში.', 'The queue is full. Nothing was charged — try again shortly.', 'Очередь заполнена. Ничего не списано — попробуйте чуть позже.'],
+  safety: ['მოთხოვნა უსაფრთხოების წესებმა შეაჩერა. შეცვალე აღწერა.', 'The request was stopped by safety rules. Change the description.', 'Запрос остановлен правилами безопасности. Измените описание.'],
+  quoteUsed: ['ეს ფასი უკვე გამოყენებულია. მოითხოვე ახალი ფასი.', 'This quote was already used. Request a new quote.', 'Эта цена уже использована. Запросите новую.'],
+  cancelledJob: ['დავალება გაუქმდა.', 'The job was cancelled.', 'Задача отменена.'],
+  notFound: ['სურათი ვერ მოიძებნა.', 'The image was not found.', 'Изображение не найдено.'],
   unsupported: ['ეს შესაძლებლობა ამ სამუშაო ფანჯარაში ხელმისაწვდომი არ არის.', 'This capability is unavailable in this workspace.', 'Эта возможность недоступна в этой студии.'],
   config: ['გენერაციისთვის საჭირო სერვისი გამართული არ არის.', 'A required generation service is not configured.', 'Не настроен необходимый сервис генерации.'],
   size: ['აირჩიე PNG, JPEG ან WebP, მაქსიმუმ 12 MB; სულ 4 რეფერენსი.', 'Use PNG, JPEG or WebP, up to 12 MB each; at most 4 references.', 'PNG, JPEG или WebP, до 12 МБ каждый; максимум 4 референса.'],
@@ -74,7 +80,7 @@ const roles = {
  product: ['პროდუქტი', 'Product', 'Товар'], background: ['ფონი', 'Background', 'Фон'], color: ['ფერი', 'Color', 'Цвет'],
 } as const;
 const stages = {
- queued: ['რიგშია', 'Queued', 'В очереди'], reserving: ['კრედიტები მოწმდება', 'Checking credits', 'Проверка кредитов'],
+ queued: ['რიგშია', 'Queued', 'В очереди'], starting: ['იწყება', 'Starting', 'Запуск'], retrying: ['ხელახალი ცდა', 'Retrying', 'Повторная попытка'], reserving: ['კრედიტები მოწმდება', 'Checking credits', 'Проверка кредитов'],
  preparing: ['რეფერენსები მოწმდება', 'Checking references', 'Проверка референсов'],
  generating: ['სურათი იქმნება', 'Generating image', 'Создание изображения'],
  quality_checking: ['ხარისხი მოწმდება', 'Checking quality', 'Проверка качества'],
@@ -91,6 +97,8 @@ export function imageCopy(locale: string) {
 export function imageErrorCopy(code: string, locale: string) {
  const c = imageCopy(locale);
  return c.t(code === 'unauthenticated' ? 'auth' : code === 'quote_expired' ? 'expired'
-   : code === 'unsupported_capability' || code === 'not_found' ? 'unsupported'
+   : code === 'insufficient_credits' ? 'insufficient' : code === 'queue_full' ? 'queueFull' : code === 'prompt_safety' ? 'safety'
+   : code === 'quote_used' ? 'quoteUsed' : code === 'cancelled' ? 'cancelledJob' : code === 'not_found' ? 'notFound'
+   : code === 'unsupported_capability' ? 'unsupported'
    : code === 'not_configured' ? 'config' : code === 'provider_timeout' || code === 'provider_outcome_unknown' ? 'unknown' : 'failure');
 }
