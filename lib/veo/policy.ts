@@ -9,8 +9,9 @@
  * on Gemini. `VIDEO_GOOGLE_ONLY=0` (or false/no/off) restores the old multi-vendor fallbacks — the kill switch
  * for when the Google project cannot serve (e.g. its prepaid credits are depleted: every call answers 402).
  */
-import { isEnabledByDefault } from '@/lib/env/flag';
+import { googleOnlySwitch } from '@/lib/env/providerBoundary';
 
 export function isGoogleOnly(): boolean {
-  return isEnabledByDefault(process.env.VIDEO_GOOGLE_ONLY);
+  // A falsy value re-opens the fallbacks only with OUTSIDE_ENGINES_APPROVED on record (lib/env/providerBoundary).
+  return googleOnlySwitch(process.env.VIDEO_GOOGLE_ONLY);
 }

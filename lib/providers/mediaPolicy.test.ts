@@ -17,16 +17,20 @@ describe('the switch', () => {
   it('is ON unless set to an explicit falsy value', () => {
     expect(isMediaGoogleOnly({} as NodeJS.ProcessEnv)).toBe(true);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '' } as NodeJS.ProcessEnv)).toBe(true);
-    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'off' } as NodeJS.ProcessEnv)).toBe(false);
-    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).toBe(false);
-    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'false' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'off', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-14-test' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'off' } as NodeJS.ProcessEnv)).toBe(true); // no approval ⇒ ignored
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-14-test' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).toBe(true); // no approval ⇒ ignored
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'false', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-14-test' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'false' } as NodeJS.ProcessEnv)).toBe(true); // no approval ⇒ ignored
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: '1' } as NodeJS.ProcessEnv)).toBe(true);
     expect(isMediaGoogleOnly({ MEDIA_GOOGLE_ONLY: 'true' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('unset → refusal (fail closed); explicit off → no refusal', () => {
     expect(refuseOutsideEngine(req(), {} as NodeJS.ProcessEnv)?.status).toBe(503);
-    expect(refuseOutsideEngine(req(), { MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).toBeNull();
+    expect(refuseOutsideEngine(req(), { MEDIA_GOOGLE_ONLY: '0', OUTSIDE_ENGINES_APPROVED: 'owner-2026-10-14-test' } as NodeJS.ProcessEnv)).toBeNull();
+    expect(refuseOutsideEngine(req(), { MEDIA_GOOGLE_ONLY: '0' } as NodeJS.ProcessEnv)).not.toBeNull();
   });
 
   it('on → 503 google_only, with every field the studio readers look at', async () => {
