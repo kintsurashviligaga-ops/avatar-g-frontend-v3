@@ -87,3 +87,19 @@ describe('adopting the pre-uid archive', () => {
     expect(store[conversationsKey('user-a')]).toBeUndefined();
   });
 });
+
+describe('archiveWriteDeferred (authed-before-uid race)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { archiveWriteDeferred } = require('./historyKeys') as typeof import('./historyKeys');
+  afterEach(() => { delete document.documentElement.dataset.authed; delete document.documentElement.dataset.uid; });
+  it('defers while signed in but the uid is not yet published', () => {
+    document.documentElement.dataset.authed = '1';
+    expect(archiveWriteDeferred()).toBe(true);
+    document.documentElement.dataset.uid = 'u-1';
+    expect(archiveWriteDeferred()).toBe(false);
+  });
+  it('never defers a guest (their archive IS anon)', () => {
+    document.documentElement.dataset.authed = '0';
+    expect(archiveWriteDeferred()).toBe(false);
+  });
+});

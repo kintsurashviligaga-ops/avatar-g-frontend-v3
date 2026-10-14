@@ -46,6 +46,19 @@ export function currentUid(): string | null {
 }
 
 /**
+ * True while a signed-in session is known (`<html data-authed="1">`) but WHO is not yet (`data-uid` unset): a write now
+ * would land in the `anon` archive and never appear in this user's History. Callers skip the write and retry on
+ * UID_READY_EVENT. Pure on the document.
+ */
+export function archiveWriteDeferred(): boolean {
+  if (typeof document === 'undefined') return false;
+  return document.documentElement.dataset.authed === '1' && !currentUid();
+}
+
+/** Dispatched on window by the uid publisher (ChatChrome) right after `data-uid` is set. */
+export const UID_READY_EVENT = 'myavatar:uid-ready';
+
+/**
  * Move a pre-existing global archive into this user's scoped key, once.
  *
  * Only ever fills an EMPTY destination, so it can never clobber a real archive, and it is safe to call

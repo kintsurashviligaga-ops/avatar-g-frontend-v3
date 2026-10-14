@@ -81,7 +81,7 @@ import { useTheme } from '@/lib/theme/ThemeContext';
 import { useKeyboardResilience } from '@/hooks/useKeyboardResilience';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
 import { signOutAndClear } from '@/lib/auth/sessionCleanup';
-import { adoptLegacyArchive, conversationsKey } from '@/lib/chat/historyKeys';
+import { UID_READY_EVENT, adoptLegacyArchive, conversationsKey } from '@/lib/chat/historyKeys';
 import { Wordmark } from '@/components/brand/Wordmark';
 import { ModelSwitcher, OPEN_PERSONA_EVENT, PERSONA_CHANGED_EVENT, announcePersona } from '@/components/chat/ModelSwitcher';
 import { requestMicRelease } from '@/lib/voice/micBus';
@@ -462,8 +462,11 @@ export function ChatChrome({ locale = 'ka', onBack, onNewChat, title, scrollBody
     // Published for the same reason as `authed`: the conversation archive is keyed by uid and is touched
     // from two components that share no provider. A stale uid in either would split one user's history
     // across two storage keys — exactly the loss lib/chat/historyKeys.ts exists to prevent.
-    if (userId) document.documentElement.dataset.uid = userId;
-    else delete document.documentElement.dataset.uid;
+    if (userId) {
+      document.documentElement.dataset.uid = userId;
+      // A turn saved in the authed-but-no-uid gap was deferred (archiveWriteDeferred); this lets it land under the user.
+      window.dispatchEvent(new Event(UID_READY_EVENT));
+    } else delete document.documentElement.dataset.uid;
     adoptLegacyArchive(userId);
   }, [authed, userId]);
   // The first name, for the chat's personal greeting in OmniStudio — published like `authed` and `uid`, because the

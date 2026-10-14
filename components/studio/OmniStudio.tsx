@@ -24,7 +24,7 @@ import { isChargedRemixOp, remixAskText, remixOpCredits } from '@/lib/video/remi
 import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/video/sceneGrid';
 import { describeAspect } from '@/lib/video/aspectConform';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
-import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
+import { UID_READY_EVENT, archiveWriteDeferred, conversationsKey, currentUid } from '@/lib/chat/historyKeys';
 import { describeOpFailure, filmFailureText } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
@@ -3085,6 +3085,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     return () => cancelAnimationFrame(id);
   }, [keyboardOffset, scrollToBottom]);
 
+  const [uidReadyTick, setUidReadyTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setUidReadyTick((n) => n + 1);
+    window.addEventListener(UID_READY_EVENT, bump);
+    return () => window.removeEventListener(UID_READY_EVENT, bump);
+  }, []);
+
   // Persist the active conversation once a generation settles (never per token).
   // Resumed on next mount; listed/resumable in the history panel.
   useEffect(() => {
@@ -3092,12 +3099,15 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // row — an empty conversation is removed — so it came back without its server session and the next sync imported it
     // again: one more History row per open. Nothing is saved for it until the transcript is in.
     if (hydratingRef.current === conversationId && messages.length === 0) return;
+    // ⚠️ SIGNED IN BUT NOT YET IDENTIFIED: `data-authed` is published before `data-uid`, and a turn saved in that gap went to
+    // the `anon` archive — invisible in this user's History. Skip it; `uidReadyTick` re-runs this once the uid is out.
+    if (archiveWriteDeferred()) return;
     if (!busy) {
       upsertConversation(conversationId, messages, activeToolRef.current);
       // Notify the left sidebar's history list (ChatChrome) to refresh.
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('myavatar:conversations-updated'));
     }
-  }, [messages, busy, conversationId]);
+  }, [messages, busy, conversationId, uidReadyTick]);
 
   const resumeConversation = useCallback(async (id: string) => {
     // A reply still streaming belongs to the thread that asked it: end that turn and save its partial text THERE,
