@@ -66,6 +66,14 @@ describe('edits (real ffmpeg)', () => {
     expect(src.equals(copy)).toBe(true); // non-destructive
   });
 
+  test('stacked +12 dB boosts never clip: the edit ends in the −1 dBFS limiter (real Lyria masters peak at ~0 dBTP)', async () => {
+    const src = await tone(6, 'wav');
+    const out = await renderEdit({ bytes: src, format: 'wav' }, [{ op: 'volume', db: 12 }, { op: 'volume', db: 12 }], 6, 'wav'); // +24 dB: far past 0 dBFS
+    const qc = await measureAudio(out.bytes, 'wav');
+    expect(qc.maxVolumeDb!).toBeLessThanOrEqual(-0.5);
+    expect(qc.maxVolumeDb!).toBeGreaterThan(-3); // limited, not attenuated away
+  });
+
   test('mute makes a silent track of the same length; convert to m4a keeps the length', async () => {
     const src = await tone(8, 'wav');
     const muted = await renderEdit({ bytes: src, format: 'wav' }, [{ op: 'mute' }], 8, 'mp3');

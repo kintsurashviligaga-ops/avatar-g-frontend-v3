@@ -134,8 +134,14 @@ export function editFilters(ops: EditOp[], sourceSec: number): { filters: string
       filters.push(o.op === 'fade_in' ? `afade=t=in:st=0:d=${n2(o.sec)}` : `afade=t=out:st=${n2(outSec - o.sec)}:d=${n2(o.sec)}`);
     }
   }
+  // Lyria masters arrive hot (measured 2026-10-14: about −12 LUFS, true peak −0.2 … +0.1 dBTP), so a +dB edit would clip
+  // (+6 dB measured +5.6 dBTP). Every re-encoded edit ends in a −1 dBFS limiter; it does nothing to a quieter signal.
+  if (filters.length) filters.push(LIMITER);
   return { filters, outSec };
 }
+
+/** −1 dBFS brick-wall limiter, no auto make-up gain (`level` off). */
+export const LIMITER = 'alimiter=limit=0.891:level=disabled';
 
 const ENCODE: Record<AudioFormat, string[]> = {
   mp3: ['-c:a', 'libmp3lame', '-b:a', '192k'],
