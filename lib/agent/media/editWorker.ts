@@ -9,7 +9,7 @@
  *           lease lapses and the next worker retries the job once.
  *   sweep   fail the rows whose last attempt died, and hand one waiting job to a worker (app/api/agent/media/sweep).
  */
-import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat } from '@/lib/orchestrator/jobLease';
+import { HEARTBEAT_MS, claim, complete, fail, heartbeat, mustStop, reap, type Beat } from '@/lib/orchestrator/jobLease';
 import { EDIT_KIND, type EditExecDeps } from './editExec';
 import { displayDims, qcEdit, validateEditRequest } from './editPlan';
 import { runIdOf } from './montageExec';
@@ -76,7 +76,7 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
   const stopBeating = deps.every(HEARTBEAT_MS, async () => {
     if (ctl.signal.aborted) return;
     const b = await heartbeat(deps.store, jobId, worker, deps.now());
-    if (b !== 'held') {
+    if (mustStop(b)) {
       beat = b;
       ctl.abort();
     }
@@ -113,7 +113,7 @@ export async function workEditJob(deps: EditExecDeps, input: { jobId: string; wo
 
     // Still ours? A worker that stalled past its lease (the job retried elsewhere, or given up) stores nothing.
     const still = await heartbeat(deps.store, jobId, worker, deps.now());
-    if (still !== 'held') return halted(still);
+    if (mustStop(still)) return halted(still);
     await deps.store.progress(jobId, worker, 'upload', 90);
     const url = await deps.upload(jobId, out.bytes, request.plan.output).catch(() => null);
     if (ctl.signal.aborted) return halted(beat);

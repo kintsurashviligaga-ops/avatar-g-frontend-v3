@@ -126,10 +126,10 @@ export function fmtClock(sec: number): string {
 }
 
 /** Terminal + queued wording, so this card can own EVERY state a job can be in, not just "running". */
-const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; failed: string; canceled: string; cancel: string }> = {
-  ka: { queued: (n) => `რიგში: #${n}`, done: 'მზადაა', failed: 'ვერ მოხერხდა', canceled: 'შეჩერდა', cancel: 'გაუქმება' },
-  en: { queued: (n) => `In queue: #${n}`, done: 'Ready', failed: 'Failed', canceled: 'Stopped', cancel: 'Cancel' },
-  ru: { queued: (n) => `В очереди: #${n}`, done: 'Готово', failed: 'Не удалось', canceled: 'Остановлено', cancel: 'Отмена' },
+const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; failed: string; canceled: string; cancel: string; running: string }> = {
+  ka: { queued: (n) => `რიგში: #${n}`, done: 'მზადაა', failed: 'ვერ მოხერხდა', canceled: 'შეჩერდა', cancel: 'გაუქმება', running: 'მიმდინარეობს' },
+  en: { queued: (n) => `In queue: #${n}`, done: 'Ready', failed: 'Failed', canceled: 'Stopped', cancel: 'Cancel', running: 'In progress' },
+  ru: { queued: (n) => `В очереди: #${n}`, done: 'Готово', failed: 'Не удалось', canceled: 'Остановлено', cancel: 'Отмена', running: 'В процессе' },
 };
 
 /**
@@ -146,7 +146,7 @@ const STATE_COPY: Record<Lang, { queued: (n: number) => string; done: string; fa
 export type ProgressState = 'running' | 'queued' | 'done' | 'failed' | 'canceled';
 
 export function GenerationProgress({
-  kind, elapsed, status, locale, targetSec, pct: pctOverride, compact,
+  kind, elapsed, status, locale, targetSec, pct: pctOverride, compact, measuredOnly = false,
   title, subtitle, state = 'running', queuePosition, error, onCancel, cancelLabel, children,
 }: {
   kind: ProgressKind;
@@ -185,14 +185,22 @@ export function GenerationProgress({
   pct?: number;
   /** Drops the stage checklist — for tight surfaces like an in-chat panel. */
   compact?: boolean;
+  /**
+   * Print only what the server measured. A job the server runs and reports on (the tray's observed rows) has
+   * no local clock worth easing: with no server percent the card shows no number, no remaining-time guess
+   * and an indeterminate bar, and the headline is the server's stage or a plain "in progress". Off by
+   * default, so every studio that runs its own work keeps the eased estimate it was designed with.
+   */
+  measuredOnly?: boolean;
 }) {
   const stages = STAGES[locale][kind];
   const target = targetSec ?? PROGRESS_TARGET[kind];
   // Eased growth: fast at first, asymptotic toward 95%, so it never "finishes" ahead of the asset.
   const eased = easedPct(elapsed, target);
-  const pct = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0
-    ? Math.min(99, Math.round(pctOverride))
-    : eased;
+  const measured = typeof pctOverride === 'number' && Number.isFinite(pctOverride) && pctOverride > 0;
+  const pct = measured ? Math.min(99, Math.round(pctOverride as number)) : eased;
+  // No server percent on a measured-only card: nothing to print while it runs (Video Core round 3, no fake %).
+  const unmeasured = measuredOnly && !measured && state === 'running';
   // Video's bands are deliberately uneven — clip generation dominates 50–85% of the real time, so an
   // even split would park the label on the wrong stage for minutes.
   const stageIdx = kind === 'video'
@@ -207,7 +215,7 @@ export function GenerationProgress({
       : state === 'done' ? sc.done
       : state === 'failed' ? (error?.trim() ? error.trim().slice(0, 90) : sc.failed)
       : sc.canceled)
-    : (status && status.trim() ? status.trim() : stages[stageIdx]);
+    : (status && status.trim() ? status.trim() : unmeasured ? sc.running : stages[stageIdx]);
   const remaining = Math.max(0, Math.round(target - elapsed));
   const remLabel = locale === 'en' ? 'remaining' : locale === 'ru' ? 'осталось' : 'დარჩა';
   const tone = state === 'failed' ? 'text-red-500'
@@ -238,10 +246,12 @@ export function GenerationProgress({
             </div>
           )}
           <div className="min-w-0">
-            <div className="flex items-baseline gap-1">
-              <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
-              <span className="text-[17px] font-semibold text-app-muted">%</span>
-            </div>
+            {!unmeasured && (
+              <div className="flex items-baseline gap-1">
+                <span className="text-[34px] font-bold leading-none tabular-nums text-app-text">{shownPct}</span>
+                <span className="text-[17px] font-semibold text-app-muted">%</span>
+              </div>
+            )}
             <span className={`mt-1.5 inline-flex min-w-0 max-w-full items-center gap-1.5 text-[12.5px] font-medium ${tone}`}>
               {running ? <Loader2 size={13} className="shrink-0 animate-spin" />
                 : state === 'queued' ? <Clock size={13} className="shrink-0" />
@@ -253,7 +263,7 @@ export function GenerationProgress({
           </div>
         </div>
         <div className="flex shrink-0 items-end gap-2">
-          {running && (
+          {running && !unmeasured && (
             <div className="text-right">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted/70">{remLabel}</p>
               <p className="text-[15px] font-semibold tabular-nums text-app-text">{remaining > 0 ? `~${fmtClock(remaining)}` : '…'}</p>
@@ -274,10 +284,15 @@ export function GenerationProgress({
       </div>
 
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-app-border/15">
-        <div
-          className={`h-full rounded-full transition-[width] duration-700 ease-out ${bar}`}
-          style={{ width: `${state === 'queued' ? 8 : Math.max(6, shownPct)}%` }}
-        />
+        {unmeasured ? (
+          // Indeterminate: it moves, it measures nothing, and assistive tech is not handed a number either.
+          <div data-progress="indeterminate" className={`h-full w-1/3 animate-pulse rounded-full ${bar}`} />
+        ) : (
+          <div
+            className={`h-full rounded-full transition-[width] duration-700 ease-out ${bar}`}
+            style={{ width: `${state === 'queued' ? 8 : Math.max(6, shownPct)}%` }}
+          />
+        )}
       </div>
 
       {children}

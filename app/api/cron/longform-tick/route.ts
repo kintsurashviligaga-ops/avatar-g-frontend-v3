@@ -23,6 +23,8 @@ import { runLongformTick, type LongformTickDeps } from '@/lib/video/longform/tic
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 function envMs(name: string, fallback: number, min: number, max: number): number {
   const n = Number(process.env[name]);

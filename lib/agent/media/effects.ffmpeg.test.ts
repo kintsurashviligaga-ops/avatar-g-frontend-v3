@@ -14,6 +14,8 @@
  *   F10 the sound evened out: -14 LUFS from a quiet clip
  *   F11 a photo turned and brightened: a tall JPEG, brighter
  *   F12 several at once, in English: 9:16 over its own blur, warmer, a slow zoom
+ *   F13 louder never clips: a tone peaking at -3 dBFS made 6 dB louder stays under full scale (Production 2026-10-13)
+ *   F14 louder on a beat like Agent G's montage: 3 dB louder or more, and at least 1 dB of headroom left after AAC
  * Each runs quote → queue → worker → QC → stored file through the lease queue (in memory), like a user's job.
  * EFFECTS_DIR=<dir> keeps frames and evidence.json there.
  */
@@ -147,6 +149,13 @@ function lufs(path: string): number {
   if (!m) throw new Error('no loudness');
   return Number(m[1]);
 }
+/** The highest sample of the decoded sound, in dBFS (above 0 = clipped once it is played as integers). */
+function peak(path: string): number {
+  const r = spawnSync(bin, ['-hide_banner', '-i', path, '-vn', '-af', 'astats=measure_overall=Peak_level:measure_perchannel=none', '-f', 'null', '-'], { encoding: 'utf8' });
+  const m = /Peak level dB:\s*(-?[\d.]+)/.exec(r.stderr);
+  if (!m) throw new Error('no peak');
+  return Number(m[1]);
+}
 
 function snapshot(name: string, path: string, atSec: number): void {
   if (!KEEP) return;
@@ -185,7 +194,7 @@ async function job(source: string, words: string, output: 'mp4' | 'jpg'): Promis
   return { file, edits: q.quote.edits, plan: q.quote.plan, ms: Date.now() - t0 };
 }
 
-let SRC = '', SHAKY = '', NOISY = '', QUIET = '', PHOTO = '', STRIPES = '';
+let SRC = '', SHAKY = '', NOISY = '', QUIET = '', LOUD = '', BEAT = '', PHOTO = '', STRIPES = '';
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'agent-effects-'));
@@ -202,6 +211,12 @@ beforeAll(() => {
     ...ENC, '-c:a', 'aac', '-b:a', '192k', '-shortest']);
   // A quiet clip (-30 dB tone).
   QUIET = make('quiet.mp4', ['-f', 'lavfi', '-i', `color=gray:s=640x360:d=${SEC}`, '-f', 'lavfi', '-i', `sine=f=440:d=${SEC},volume=-30dB`, ...ENC, '-c:a', 'aac', '-shortest']);
+  // A loud clip: the sine source is -18 dBFS, +15 dB puts its peak at -3 dBFS (the Production montage peaked at -3.4).
+  LOUD = make('loud.mp4', ['-f', 'lavfi', '-i', `color=gray:s=640x360:d=${SEC}`, '-f', 'lavfi', '-i', `sine=f=440:d=${SEC},volume=15dB`, ...ENC, '-c:a', 'aac', '-b:a', '192k', '-shortest']);
+  // Agent G's beat montage as the live E2E makes it (a clip's tone, a low hum, 120 BPM clicks): peak about -2.7 dBFS,
+  // mean about -15.6 dB, close to the master whose louder edit peaked at +0.27 dBFS in CI run 38425457743.
+  BEAT = make('beat.mp4', ['-f', 'lavfi', '-i', `color=gray:s=640x360:d=${SEC}`, '-f', 'lavfi', '-i',
+    `aevalsrc='0.125*sin(2*PI*330*t)+0.1*sin(2*PI*196*t)+0.5*sin(2*PI*880*t)*lt(mod(t\\,0.5)\\,0.06)':s=44100:d=${SEC}`, ...ENC, '-c:a', 'aac', '-b:a', '192k', '-shortest']);
   // Fine stripes everywhere (detail a blur takes away), a red marker at each side edge (what a crop would cut).
   const stripes = make('stripes.png', ['-f', 'lavfi', '-i', "color=black:s=1280x720,format=rgb24,geq=r='128+90*gt(sin(X/3),0)':g='110+90*gt(sin(X/3),0)':b='100+90*gt(sin(X/3),0)'",
     '-vf', 'drawbox=x=10:y=300:w=70:h=120:c=0xe02020:t=fill,drawbox=x=1200:y=300:w=70:h=120:c=0xe02020:t=fill', '-frames:v', '1', '-update', '1']);
@@ -379,4 +394,28 @@ test('F12 several at once, in English: 9:16 over its own blur, warmer, a slow zo
   expect(whiteWidth(last, 1080, 1920) / whiteWidth(first, 1080, 1920)).toBeGreaterThan(1.1);
   snapshot('f12-combo-start.png', r.file, 0.05); snapshot('f12-combo-end.png', r.file, SEC - 0.1);
   evidence.f12 = { edits: r.edits, frame: [1080, 1920], band, white: { first: whiteWidth(first, 1080, 1920), last: whiteWidth(last, 1080, 1920) }, ms: r.ms };
+});
+
+test('F13 louder never clips: a tone peaking at -3 dBFS made 6 dB louder stays under full scale, and is louder', async () => {
+  const r = await job(LOUD, 'Make it louder', 'mp4');
+  expect(r.edits).toEqual([{ op: 'volume', db: 6 }]);
+  const before = { peak: peak(LOUD), mean: level(LOUD, 0.5, 4) }, after = { peak: peak(r.file), mean: level(r.file, 0.5, 4) };
+  expect(before.peak).toBeGreaterThan(-4);
+  // Without the limiter: about +3 dBFS. A steady tone this close to full scale can only rise to the ceiling (-2 dBFS),
+  // so it is a little louder and no more; the beat below (F14) is the case a user hears.
+  expect(after.peak).toBeLessThanOrEqual(-1);
+  expect(after.mean - before.mean).toBeGreaterThanOrEqual(0.75);
+  evidence.f13 = { edits: r.edits, dBFS: { before, after }, ms: r.ms };
+});
+
+test('F14 louder on a beat like Agent G\'s montage: 3 dB louder or more, at least 1 dB of headroom after AAC', async () => {
+  const r = await job(BEAT, 'Make it louder', 'mp4');
+  expect(r.edits).toEqual([{ op: 'volume', db: 6 }]);
+  const before = { peak: peak(BEAT), mean: level(BEAT, 0.5, 4) }, after = { peak: peak(r.file), mean: level(r.file, 0.5, 4) };
+  expect(before.peak).toBeGreaterThan(-4);
+  expect(before.peak).toBeLessThan(-2);
+  // The AAC encoder overshoots the limiter by 0.4 dB here and 1.3 dB in CI: with the old -1 dBFS ceiling this was -0.4.
+  expect(after.peak).toBeLessThanOrEqual(-1);
+  expect(after.mean - before.mean).toBeGreaterThanOrEqual(3);
+  evidence.f14 = { edits: r.edits, dBFS: { before, after }, ms: r.ms };
 });

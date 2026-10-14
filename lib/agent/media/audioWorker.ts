@@ -13,7 +13,7 @@
  * every redirect hop is held to it while it downloads, inside the live `extract`), and a file must still be the
  * caller's own upload. Every write is fenced by the lease, as in ./montageWorker.
  */
-import { HEARTBEAT_MS, claim, complete, fail, heartbeat, reap, type Beat } from '@/lib/orchestrator/jobLease';
+import { HEARTBEAT_MS, claim, complete, fail, heartbeat, mustStop, reap, type Beat } from '@/lib/orchestrator/jobLease';
 import { AUDIO_KIND, qcMp3, validateAudioRequest, type AudioExecDeps } from './audioExtract';
 import { runIdOf } from './montageExec';
 import { classifySource } from './audioSource';
@@ -71,7 +71,7 @@ export async function workAudioJob(deps: AudioExecDeps, input: { jobId: string; 
   const stopBeating = deps.every(HEARTBEAT_MS, async () => {
     if (ctl.signal.aborted) return;
     const b = await heartbeat(deps.store, jobId, worker, deps.now());
-    if (b !== 'held') {
+    if (mustStop(b)) {
       beat = b;
       ctl.abort();
     }
@@ -98,7 +98,7 @@ export async function workAudioJob(deps: AudioExecDeps, input: { jobId: string; 
 
     // Still ours? A worker that stalled past its lease (the job retried elsewhere, or given up) stores nothing.
     const still = await heartbeat(deps.store, jobId, worker, deps.now());
-    if (still !== 'held') return halted(still);
+    if (mustStop(still)) return halted(still);
     await deps.store.progress(jobId, worker, 'upload', 90);
     const audioUrl = await deps.upload(jobId, out.mp3).catch(() => null);
     if (ctl.signal.aborted) return halted(beat);

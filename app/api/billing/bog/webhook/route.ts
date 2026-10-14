@@ -22,7 +22,7 @@ import {
   parseBogCallback,
   verifyBogCallbackSignature,
 } from '@/lib/billing/bogClient';
-import { loadBogOrder, settleBogOrder } from '@/lib/billing/bogSettlement';
+import { bogSandboxBlocked, loadBogOrder, settleBogOrder } from '@/lib/billing/bogSettlement';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,6 +30,8 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   const cfg = bogConfig();
   if (!cfg) return NextResponse.json({ error: 'BOG gateway unconfigured', error_code: 'BOG_UNCONFIGURED' }, { status: 503 });
+  // Sandbox credentials on a deployment that writes to the Production database settle nothing.
+  if (bogSandboxBlocked(cfg)) return NextResponse.json({ error: 'sandbox credentials on this deployment', error_code: 'BOG_SANDBOX_BLOCKED' }, { status: 503 });
 
   // The exact bytes BOG signed — never re-serialise before verifying (BOG: field order matters).
   const rawBody = await request.text();

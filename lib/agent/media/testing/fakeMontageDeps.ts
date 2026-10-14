@@ -150,7 +150,8 @@ export function fake(opts: {
       if (url !== MASTER_URL) return null;
       if (opts.streams !== undefined) return opts.streams;
       const m = opts.master === undefined ? { ...clip(30), durationSec: 30 } : opts.master;
-      return m ? { videoSec: m.hasVideo ? m.durationSec : null, audioSec: m.hasAudio ? m.durationSec : null } : null;
+      // The live reader counts the picture's packets (lib/video/probeBanner parseFrameCrc); the fake counts them at 30 fps.
+      return m ? { videoSec: m.hasVideo ? m.durationSec : null, audioSec: m.hasAudio ? m.durationSec : null, videoFrames: m.hasVideo ? Math.round(m.durationSec * 30) : null } : null;
     },
     store,
     billing: {

@@ -91,13 +91,18 @@ export interface ResultCardProps {
   onUseAsRef?: () => void;
   /** 'feed' = a card in the conversation (width follows the shape); 'tile' = fills a grid cell. */
   size?: 'feed' | 'tile';
+  /**
+   * Print the whole failure sentence instead of two clamped lines — for a caller whose error IS the explanation
+   * (the film's QC / soundtrack refusals). Off by default: every other card keeps its one-glance line.
+   */
+  errorFull?: boolean;
   /** A service's own detail (the film crew console), tucked under the tile. */
   children?: React.ReactNode;
 }
 
 export function ResultCard({
   kind, aspect, state, locale, pct, elapsedSec, capSec, stage, poster, media, error,
-  onCancel, onRetry, onDismiss, onOpen, onUseAsRef, size = 'feed', children,
+  onCancel, onRetry, onDismiss, onOpen, onUseAsRef, size = 'feed', errorFull = false, children,
 }: ResultCardProps) {
   const lang: Lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
   const c = COPY[lang];
@@ -189,7 +194,7 @@ export function ResultCard({
         {state === 'error' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
             <AlertTriangle aria-hidden="true" size={size === 'tile' ? 16 : 20} className="text-app-warning" />
-            <p className={`line-clamp-2 text-app-text/85 ${size === 'tile' ? 'text-[11px]' : 'text-[12.5px]'}`} title={oneLineError}>{oneLineError}</p>
+            <p className={`${errorFull ? '' : 'line-clamp-2 '}text-app-text/85 ${size === 'tile' ? 'text-[11px]' : 'text-[12.5px]'}`} title={oneLineError}>{oneLineError}</p>
             <div className="flex items-center gap-1.5">
               {onRetry && (
                 <button type="button" onClick={onRetry} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-app-text px-3.5 text-[12.5px] font-semibold text-app-bg transition-opacity hover:opacity-90">

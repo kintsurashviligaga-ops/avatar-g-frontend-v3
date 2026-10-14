@@ -1,0 +1,48 @@
+Video Core v1.0 — AC-01 regression test BEFORE the fix (T1, mocked, no provider)
+SHA: f2f3dae (branch claude/video-core-v1-6gh97e; the duration parser is already in, the routing is not)
+Command: npx jest lib/agent/intent.videoCore.test.ts
+Date: 2026-10-12
+
+Tests: 19 failed, 11 passed, 30 total
+
+FAILED (the defects, as the code read them on 30be5a2 + f2f3dae):
+  ✕ 24-წამიანი მუსიკალური კლიპი გამიკეთე → video.music-video, new, 24 s            (got: chat)
+  ✕ გამიკეთე 24-წამიანი მუსიკალური კლიპი → video.music-video, new, 24 s            (got: music.generate / chat)
+  ✕ ერთწუთიანი მუსიკალური ვიდეო მინდა → video.music-video, new, 60 s
+  ✕ 24-second music video please → video.music-video, new, 24 s                    (got: chat)
+  ✕ make me a 24-second music video → video.music-video, new, 24 s                 (got: music.generate)
+  ✕ I want a one-minute music video → video.music-video, new, 60 s
+  ✕ сделай 24-секундный музыкальный клип → video.music-video, new, 24 s            (got: music.generate)
+  ✕ музыкальный клип на 24 секунды → video.music-video, new, 24 s
+  ✕ with the track attached, the job is about that track
+  ✕ ერთწუთიანი ვიდეო გამიკეთე ზღვაზე → video.generate, new, 60 s                   (got: chat)
+  ✕ ოთხწუთიანი ფილმი გამიკეთე თბილისზე → video.generate, new, 240 s                (got: chat)
+  ✕ ზღვაზე 24-წამიანი ვიდეო გამიკეთე → video.generate, new, 24 s                   (got: chat)
+  ✕ შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი + 7 clips + track → agent.montage    (got: chat)
+  ✕ use only the last five of the seven clips + 7 clips + track → agent.montage
+  ✕ из семи клипов используй только последние пять + 7 clips + track → agent.montage
+  ✕ the same words with the clips but no track ask for the track
+  ✕ chat step: a music video → open the Video tool in music-video mode, 24 s         (got: pass → legacy dispatch → chat)
+  ✕ chat step: a film → documentary mode, 60 s / 240 s
+  ✕ chat step: no length in the words → the step carries none
+
+PASSED (guards that must keep passing):
+  ✓ with clips attached it is the montage, as before (§3.3)
+  ✓ a question or a remark about music videos is not a job
+  ✓ make a one-minute video of the sea → video.generate 60 s (lead verb: already worked)
+  ✓ сделай одноминутное видео о море → 60 s · сделай четырёхминутное видео о Тбилиси → 240 s
+  ✓ an analysis asked with the same verb is not a render
+  ✓ an edit of the attached video keeps its reading
+  ✓ the owner's five-clip sentence → agent.montage {9:16, 0:59, 29.7 s}
+  ✓ a photo brought to life / the same character keep their own paths
+  ✓ inside the Video tool the words are the tool's own prompt
+  ✓ clips and a track: the montage, never the Video tool
+
+PHASE 0 raw probe on 30be5a2 (__tests__/videoCore.repro.test.ts → /tmp/claude-0/repro.json), intents:
+  „24-წამიანი მუსიკალური კლიპი გამიკეთე"            → { kind: chat }
+  "24-second music video please"                     → { kind: chat }
+  «сделай 24-секундный музыкальный клип»             → act music.generate { durationSec: 24 }
+  „ერთწუთიანი ვიდეო გამიკეთე ზღვაზე"                → { kind: chat }
+  „ოთხწუთიანი ფილმი გამიკეთე თბილისზე"              → { kind: chat }
+  GG's five-clip sentence [V×5, A, I]                → act agent.montage { aspect 9:16, musicStartSec 59, durationSec 29.7 }
+  „შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი" [V×7, A] → { kind: chat }

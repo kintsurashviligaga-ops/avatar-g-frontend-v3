@@ -534,3 +534,31 @@ describe('the other languages', () => {
     expect(screen.getByTestId('video-prompt-input').getAttribute('placeholder')).not.toMatch(/Describe the shot/);
   });
 });
+
+describe('Video Core v1.0 §4 — the panel says requested · rendered · final for an off-grid ask', () => {
+  test('60 s asked, 64 s rendered: the line names the three lengths and the trim; its data pins the frames', () => {
+    setup({ seconds: 64, requestedSec: 60 });
+    const line = screen.getByTestId('video-duration-plan');
+    expect(line.textContent).toBe('Requested 1:00 · Rendered 1:04 (8 × 8s) · Final 1:00 (1800 frames, 4s trimmed; priced at 1:04)');
+    expect(line.getAttribute('data-final')).toBe('60');
+    expect(line.getAttribute('data-native')).toBe('64');
+    expect(line.getAttribute('data-frames')).toBe('1800');
+    // the price on Generate stays the RENDERED length's — the trim is not a discount
+    expect(price()).toBe(String(quoteCredits({ tool: 'video', seconds: 64, quality: 'fast', mode: 'documentary' })));
+  });
+
+  test('no request, or a request the panel\'s length no longer matches: no line', () => {
+    const { rerender } = setup({ seconds: 24 });
+    expect(screen.queryByTestId('video-duration-plan')).toBeNull();
+    rerender({ seconds: 24, requestedSec: 60 }); // stale: 60 s plans on 64, the panel holds 24
+    expect(screen.queryByTestId('video-duration-plan')).toBeNull();
+    rerender({ seconds: 24, requestedSec: 24 }); // on the grid: one length, no trim to say
+    expect(screen.queryByTestId('video-duration-plan')).toBeNull();
+  });
+
+  test('the length sheet repeats the plan under its clock, in the panel\'s language', () => {
+    setup({ seconds: 32, requestedSec: 29.7, locale: 'ka' });
+    fireEvent.click(screen.getByTestId('video-tile-length'));
+    expect(screen.getByTestId('video-duration-plan-sheet').textContent).toBe('მოთხოვნილი 29.7წმ · რენდერი 32წმ (4 × 8წმ) · საბოლოო 29.7წმ (891 კადრი, 2.3წმ მოიჭრება; ფასი 32წმ-ზე)');
+  });
+});

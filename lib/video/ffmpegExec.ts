@@ -10,6 +10,11 @@
  *   • ffmpeg reads that local file with `-protocol_whitelist file` and `-format_whitelist` naming only the demuxers
  *     our media uses, so the file cannot turn out to be a playlist that reaches anything else.
  *
+ * Every OTHER protocol ffmpeg speaks is refused outright as an input: `cache:http://…` and `async:http://…` wrap http in
+ * a prefix the http(s) test above never saw, and tcp:, unix:, gopher:, ftp:, rtmp:, concat:, subfile:, data:, file: …
+ * each open a connection or a file of the caller's choosing. Our own inputs are http(s) links, local paths and lavfi
+ * graphs (`sine=…`, `color=c=…:s=…`: a name and then `=`, never a `name:` prefix), so nothing legitimate is lost.
+ *
  * Same call shape as `promisify(execFile)`, so a module swaps its `exec` for this one. Inputs that are local paths or
  * lavfi sources pass through untouched. A refused or failed download rejects before ffmpeg runs.
  *
@@ -37,6 +42,14 @@ export const SAFE_INPUT_FLAGS: readonly string[] = [
 /** One input's cap. Input and output both sit in the function's /tmp (512 MB on Vercel). */
 export const MAX_INPUT_BYTES = 200 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
+/**
+ * An input ffmpeg would open through a protocol, http(s) links aside: refused before ffmpeg runs. Read the way ffmpeg's
+ * own url_find_protocol reads it — a run of scheme characters (letters, digits, `+ - .`) ending in `:`, or the
+ * `subfile,<options>:` form it special-cases.
+ */
+const REMOTE_INPUT = /^https?:\/\//i;
+const PROTOCOL_INPUT = /^(?:[a-z0-9+.-]+:|subfile,)/i;
+export const isSmuggledProtocol = (input: string): boolean => PROTOCOL_INPUT.test(input) && !REMOTE_INPUT.test(input);
 const KNOWN_EXT = /\.(mp4|m4v|mov|webm|mkv|ts|mp3|m4a|aac|wav|ogg|oga|opus|flac|png|jpe?g|webp|gif)$/i;
 
 function localName(url: string, n: number): string {
@@ -96,7 +109,9 @@ export async function ffmpegExec(
   const signal = own ?? ambient.getStore();
   options = rest;
   if (signal?.aborted) throw abortError();
-  const remote = [...new Set(args.filter((a, i) => i > 0 && args[i - 1] === '-i' && /^https?:\/\//i.test(a)))];
+  const inputs = args.filter((a, i) => i > 0 && args[i - 1] === '-i');
+  if (inputs.some(isSmuggledProtocol)) throw new Error('ffmpeg input refused (protocol)');
+  const remote = [...new Set(inputs.filter((a) => REMOTE_INPUT.test(a)))];
   if (remote.length === 0) return runUntil(bin, [...args], options, signal);
 
   const dir = await mkdtemp(join(tmpdir(), 'ffin-'));

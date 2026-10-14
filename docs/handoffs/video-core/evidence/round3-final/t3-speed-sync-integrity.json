@@ -1,0 +1,83 @@
+{
+  "ffmpeg": "ffmpeg version 7.0.2-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2000-2024 the FFmpeg developers",
+  "measured": {
+    "source30": {
+      "plannedSec": 6,
+      "containerSec": 6,
+      "size": "320x180",
+      "hasAudio": true,
+      "decodedFrames": 180,
+      "flashSec": 2,
+      "beepSec": 2,
+      "avOffsetMs": 0,
+      "integrity": {
+        "exit": 0,
+        "errors": ""
+      }
+    },
+    "speed2x": {
+      "plannedSec": 3,
+      "containerSec": 3.01,
+      "size": "320x180",
+      "hasAudio": true,
+      "decodedFrames": 90,
+      "flashSec": 1,
+      "beepSec": 0.99,
+      "avOffsetMs": -10,
+      "integrity": {
+        "exit": 0,
+        "errors": ""
+      }
+    },
+    "speed0_5x": {
+      "plannedSec": 8,
+      "containerSec": 8,
+      "size": "320x180",
+      "hasAudio": true,
+      "decodedFrames": 240,
+      "flashSec": 4,
+      "beepSec": 3.965,
+      "avOffsetMs": -35,
+      "integrity": {
+        "exit": 0,
+        "errors": ""
+      }
+    },
+    "vertical24fps": {
+      "plannedSec": 5,
+      "containerSec": 5.01,
+      "size": "1080x1920",
+      "hasAudio": true,
+      "decodedFrames": 120,
+      "flashSec": 2,
+      "beepSec": 2,
+      "avOffsetMs": 0,
+      "integrity": {
+        "exit": 0,
+        "errors": ""
+      }
+    },
+    "truncatedMaster": {
+      "bytesKept": 1905978,
+      "bytesWhole": 3176631,
+      "goodFrames": 891,
+      "goodIntegrity": {
+        "exit": 0,
+        "errors": ""
+      },
+      "cutIntegrity": {
+        "exit": 183,
+        "errors": "[h264] Invalid NAL unit size (2314 > 2133).\n[h264 @ 0x3c75d340] missing picture in access unit with size 2137\n[in#0/mov,mp4,m4a,3gp,3g2,mj2 @ 0x3c6b2c40] corrupt input packet in stream 0\n[in#0/mov,mp4,m4a,3gp,3g2,mj2 @ 0x3c6b2c40] Task finished with error code: -1094995529 (Invalid data"
+      },
+      "cutFrames": 531,
+      "verdict": {
+        "ok": false,
+        "reason": "count_mismatch",
+        "expected": 891,
+        "actual": 531,
+        "offBy": -360,
+        "fps": 30
+      }
+    }
+  }
+}

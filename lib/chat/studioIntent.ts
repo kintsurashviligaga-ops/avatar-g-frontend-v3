@@ -50,6 +50,8 @@ export interface StudioIntent {
  * ones passed, which is exactly the shape of bug that ships. Boundaries here are Unicode-aware
  * lookarounds with the `u` flag instead, and `\w*` suffixes are `\p{L}*`.
  */
+import { mineDurationWords } from '@/lib/video/durationWords';
+
 const L = '\\p{L}';
 const B0 = `(?<![${L}\\p{N}])`; // start-of-token, any script
 const B1 = `(?![${L}\\p{N}])`;  // end-of-token, any script
@@ -154,20 +156,13 @@ function mineSlideCount(text: string): number | undefined {
  * A length the user named, in seconds. „20-წამიანი" and "20-second" carry a hyphen between the number and the unit: the
  * miner used to want only spaces there, so the commonest way to write a length in Georgian named none. A number is read
  * whole: „7.5 seconds" is 7.5, never the 5 after its point (and „0.4 წამიანი" never 4).
+ *
+ * Video Core v1.0 (2026-10-12): the number may be a WORD or a compound („ერთი წუთი", „ოთხწუთიანი", "one-minute",
+ * «четырёхминутный»), minutes and seconds may come together ("2 min 30 s" is 150, not 30), and a clock next to a length
+ * word is a length („ხანგრძლივობა 1:30"). The table and its order live in lib/video/durationWords.
  */
 export function mineDurationSec(text: string): number | undefined {
-  const num = (raw: string) => Number(raw.replace(',', '.'));
-  const sec = new RegExp(`(?<![\\d.,])(\\d{1,4}(?:[.,]\\d{1,2})?)\\s*-?\\s*(?:s${B1}|sec${B1}|secs${B1}|second|seconds|წამ${L}*|сек${L}*)`, 'iu').exec(text);
-  if (sec?.[1]) {
-    const n = num(sec[1]);
-    if (Number.isFinite(n) && n > 0) return Math.min(3600, n);
-  }
-  const min = new RegExp(`(?<![\\d.,])(\\d{1,3}(?:[.,]\\d{1,2})?)\\s*-?\\s*(?:m${B1}|min${B1}|mins${B1}|minute|minutes|წუთ${L}*|минут${L}*)`, 'iu').exec(text);
-  if (min?.[1]) {
-    const n = num(min[1]);
-    if (Number.isFinite(n) && n > 0) return Math.min(3600, Math.round(n * 60));
-  }
-  return undefined;
+  return mineDurationWords(String(text ?? ''));
 }
 
 /** The language a video should be dubbed INTO, as a DubbingLanguage code, when the user named one as a destination. */

@@ -282,6 +282,7 @@ describe('receipts + callbacks', () => {
       state: 'completed',
       requestAmount: 100.5,
       transferAmount: 100.5,
+      refundAmount: 0,
       currency: 'GEL',
       transferMethod: 'card',
       savedCardType: 'subscription',
@@ -298,8 +299,21 @@ describe('receipts + callbacks', () => {
     const st = (key: string) => parseBogReceipt({ ...DOC_RECEIPT, order_status: { key } })?.state;
     expect([st('created'), st('processing'), st('auth_requested')]).toEqual(['pending', 'pending', 'pending']);
     expect(st('rejected')).toBe('rejected');
-    expect([st('refund_requested'), st('refunded'), st('refunded_partially')]).toEqual(['refunded', 'refunded', 'refunded']);
+    // BOG's three refund statuses stay apart: asked for (money not back yet), part back, all back.
+    expect([st('refund_requested'), st('refunded_partially'), st('refunded')]).toEqual(['refund_requested', 'refunded_partially', 'refunded']);
     expect([st('blocked'), st('partial_completed'), st('mystery')]).toEqual(['other', 'other', 'other']);
+  });
+
+  test('the refunded amount is read from purchase_units.refund_amount (BOG docs: a full refund zeroes transfer_amount)', () => {
+    const r = parseBogReceipt({
+      ...DOC_RECEIPT,
+      order_status: { key: 'refunded' },
+      purchase_units: { request_amount: '100.5', transfer_amount: '0.0', refund_amount: '100.5', currency_code: 'GEL' },
+    });
+    expect(r).toMatchObject({ state: 'refunded', requestAmount: 100.5, transferAmount: 0, refundAmount: 100.5 });
+    const part = parseBogReceipt({ ...DOC_RECEIPT, order_status: { key: 'refunded_partially' }, purchase_units: { request_amount: '20', refund_amount: '5', currency_code: 'GEL' } });
+    expect(part).toMatchObject({ state: 'refunded_partially', refundAmount: 5 });
+    expect(parseBogReceipt({ ...DOC_RECEIPT, purchase_units: { request_amount: '20' } })?.refundAmount).toBeNull();
   });
 
   test('a rejected receipt carries its reason; a non-card payment has no card mask; no id → null', () => {

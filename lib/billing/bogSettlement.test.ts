@@ -20,6 +20,7 @@ jest.mock('./bogClient', () => ({
 
 import {
   bogCallbackUrl,
+  bogSandboxBlocked,
   cardSavedForRenewals,
   isBogOrderId,
   newBogOrderId,
@@ -38,6 +39,10 @@ const db = {
       const chain = {
         eq: (col: string, val: unknown) => {
           entry.filters.push([col, val]);
+          return chain;
+        },
+        in: (col: string, vals: unknown[]) => {
+          entry.filters.push([`${col} in`, vals]);
           return chain;
         },
         then: (res: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(res),
@@ -67,6 +72,7 @@ const receipt = (r: Partial<BogReceipt> = {}): BogReceipt => ({
   state: 'completed',
   requestAmount: 20,
   transferAmount: 20,
+  refundAmount: null,
   currency: 'GEL',
   transferMethod: 'card',
   savedCardType: null,
@@ -167,9 +173,10 @@ describe('a declined or refunded payment', () => {
   });
 
   test('a refund made in BOG’s business manager is recorded, credits are not clawed back automatically', async () => {
-    const out = await settleBogOrder(db, order({ status: 'completed' }), receipt({ state: 'refunded', statusKey: 'refunded' }));
-    expect(out).toEqual({ status: 'refunded' });
+    const out = await settleBogOrder(db, order({ status: 'completed' }), receipt({ state: 'refunded', statusKey: 'refunded', refundAmount: 20 }));
+    expect(out).toEqual({ status: 'refunded', refundAmountGel: 20 });
     expect(updates[0].patch).toMatchObject({ status: 'refunded' });
+    expect(updates[0].filters).toEqual(expect.arrayContaining([['status in', ['completed', 'refund_requested', 'refunded_partially']]]));
     expect(mockFulfill).not.toHaveBeenCalled();
   });
 
@@ -177,6 +184,74 @@ describe('a declined or refunded payment', () => {
     const out = await settleBogOrder(db, order({ bog_order_id: null }), receipt({ state: 'pending', statusKey: 'processing' }));
     expect(out).toEqual({ status: 'pending' });
     expect(updates[0].patch).toMatchObject({ bog_order_id: 'bog-1' });
+  });
+});
+
+describe('refund statuses — BOG’s own three, bookkeeping only, never backwards', () => {
+  const refund = (state: 'refund_requested' | 'refunded_partially' | 'refunded', refundAmount: number | null = null) =>
+    receipt({ state, statusKey: state, refundAmount });
+
+  test('requested → part back → all back, each step only from an earlier one; credits never move', async () => {
+    expect(await settleBogOrder(db, order({ status: 'completed' }), refund('refund_requested'))).toEqual({ status: 'refund_requested', refundAmountGel: null });
+    expect(updates[0]).toMatchObject({ patch: { status: 'refund_requested' } });
+    expect(updates[0].filters).toEqual(expect.arrayContaining([['status in', ['completed']]]));
+
+    expect(await settleBogOrder(db, order({ status: 'refund_requested' }), refund('refunded_partially', 5))).toEqual({ status: 'refunded_partially', refundAmountGel: 5 });
+    expect(updates[1]).toMatchObject({ patch: { status: 'refunded_partially' } });
+    expect(updates[1].filters).toEqual(expect.arrayContaining([['status in', ['completed', 'refund_requested']]]));
+
+    expect(await settleBogOrder(db, order({ status: 'refunded_partially' }), refund('refunded', 20))).toEqual({ status: 'refunded', refundAmountGel: 20 });
+    expect(updates[2]).toMatchObject({ patch: { status: 'refunded' } });
+    expect(mockFulfill).not.toHaveBeenCalled();
+    expect(mockRecordFailure).not.toHaveBeenCalled();
+  });
+
+  test('a later message never pulls the row back (refunded stays refunded; part back stays part back)', async () => {
+    await settleBogOrder(db, order({ status: 'refunded' }), refund('refund_requested'));
+    await settleBogOrder(db, order({ status: 'refunded' }), refund('refunded_partially', 5));
+    await settleBogOrder(db, order({ status: 'refunded_partially' }), refund('refund_requested'));
+    await settleBogOrder(db, order({ status: 'refunded' }), refund('refunded', 20));
+    expect(updates).toHaveLength(0);
+  });
+
+  test('a late or replayed "completed" after a refund began is ignored: nothing re-fulfilled, nothing re-credited', async () => {
+    for (const status of ['refund_requested', 'refunded_partially', 'refunded'] as const) {
+      const out = await settleBogOrder(db, order({ status }), receipt());
+      expect(out).toEqual({ status, refundAmountGel: null });
+    }
+    expect(mockFulfill).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+
+  test('a refund for an order we never credited changes nothing and grants nothing (it needs a human)', async () => {
+    for (const status of ['pending', 'amount_mismatch', 'rejected', 'expired']) {
+      await settleBogOrder(db, order({ status }), refund('refunded', 20));
+      await settleBogOrder(db, order({ status }), refund('refund_requested'));
+    }
+    expect(updates).toHaveLength(0);
+    expect(mockFulfill).not.toHaveBeenCalled();
+  });
+});
+
+describe('sandbox never touches the Production database or the live site', () => {
+  test('sandbox credentials are blocked on every Vercel deployment, allowed locally / in CI; live credentials never', () => {
+    const sandbox = { environment: 'sandbox' as const };
+    const live = { environment: 'production' as const };
+    expect(bogSandboxBlocked(sandbox, { VERCEL_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(bogSandboxBlocked(sandbox, { VERCEL_ENV: 'preview' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(bogSandboxBlocked(sandbox, { VERCEL: '1' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(bogSandboxBlocked(sandbox, {} as NodeJS.ProcessEnv)).toBe(false);
+    expect(bogSandboxBlocked(live, { VERCEL_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(bogSandboxBlocked(null, { VERCEL_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(false);
+  });
+
+  test('a sandbox order’s callback is the request’s own origin, never the canonical live site', () => {
+    const before = process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://myavatar.ge';
+    expect(bogCallbackUrl('http://localhost:3000', 'sandbox')).toBe('http://localhost:3000/api/billing/bog/webhook');
+    expect(bogCallbackUrl('http://localhost:3000', 'production')).toBe('https://myavatar.ge/api/billing/bog/webhook');
+    if (before === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = before;
   });
 });
 

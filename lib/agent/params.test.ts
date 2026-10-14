@@ -121,3 +121,17 @@ test('hasPlanParams: a frame shape, a length or a music start', () => {
   expect(hasPlanParams({ targetLanguage: 'ru' })).toBe(false);
   expect(hasPlanParams({})).toBe(false);
 });
+
+describe('mineMusicStart: the brief\'s EN sentence "at second N" (Video Core round 3, browser defect 4)', () => {
+  test.each([
+    ['Start the music at second 58.', 58],
+    ['start the song from second 12', 12],
+    ['the track starting at sec 7', 7],
+    ['start the music at the 58-second mark', 58],
+  ])('%s → %s s', (text, sec) => {
+    expect(mineMusicStartSec(text)).toBe(sec);
+  });
+  test('no music named, no start mined', () => {
+    expect(mineMusicStartSec('cut it at second 58')).toBeUndefined();
+  });
+});

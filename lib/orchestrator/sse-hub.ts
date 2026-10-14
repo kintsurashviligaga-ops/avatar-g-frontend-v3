@@ -16,6 +16,7 @@
 
 import type { Redis } from '@upstash/redis';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 import type { PipelineTopic } from './events';
 
 export interface BridgeEvent {
@@ -30,10 +31,9 @@ const EVENT_TTL_SEC = 1800; // a pipeline's event log lives 30 min
 const keyFor = (pipelineId: string) => `sse:ev:${pipelineId}`;
 
 function redis(): Redis | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
-  try { return createUpstashRedis(url, token); } catch { return null; }
+  const env = upstashRestEnv();
+  if (!env) return null;
+  try { return createUpstashRedis(env.url, env.token); } catch { return null; }
 }
 
 // Survive Next.js dev hot-reloads by parking the registry on globalThis.

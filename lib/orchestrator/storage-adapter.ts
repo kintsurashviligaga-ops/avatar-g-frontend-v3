@@ -189,11 +189,16 @@ export async function createSignedAssetUrls(
  * at OUR storage; returns null for external (provider) URLs. Handles both
  * public (`/object/public/<bucket>/<path>`) and signed
  * (`/object/sign/<bucket>/<path>?token=…`) shapes.
+ *
+ * The host is a hosted project's (`*.supabase.co`) or this deployment's own Supabase host when that is another name
+ * (a custom domain, a self-hosted or local stack: until 2026-10-13 a URL of ours there parsed as external, so the
+ * edit of Agent G's own delivered video was refused as unreadable). Production's own host is a `*.supabase.co` name,
+ * so there the accepted hosts are exactly what they were.
  */
-export function parseSupabaseObjectUrl(url: string): { bucket: string; path: string } | null {
+export function parseSupabaseObjectUrl(url: string, env: NodeJS.ProcessEnv = process.env): { bucket: string; path: string } | null {
   try {
     const u = new URL(url);
-    if (!u.hostname.endsWith('.supabase.co')) return null;
+    if (!u.hostname.endsWith('.supabase.co') && !ownStorageHosts(env).has(u.hostname.toLowerCase())) return null;
     const m = u.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+)$/);
     if (!m || !m[1] || !m[2]) return null;
     return { bucket: decodeURIComponent(m[1]), path: decodeURIComponent(m[2]) };
@@ -214,8 +219,8 @@ export interface StorageObjectRef {
 }
 
 /** parseSupabaseObjectUrl plus the access shape, token and host. Null for anything that is not a storage object URL. */
-export function describeSupabaseObjectUrl(url: string): StorageObjectRef | null {
-  const ref = parseSupabaseObjectUrl(url);
+export function describeSupabaseObjectUrl(url: string, env: NodeJS.ProcessEnv = process.env): StorageObjectRef | null {
+  const ref = parseSupabaseObjectUrl(url, env);
   if (!ref) return null;
   try {
     const u = new URL(url);
@@ -283,7 +288,7 @@ export async function verifyFileableUrl(
   try { parsed = new URL(url); } catch { return { ok: false, reason: 'invalid_url' }; }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return { ok: false, reason: 'invalid_url' };
 
-  const ref = describeSupabaseObjectUrl(url);
+  const ref = describeSupabaseObjectUrl(url, env);
   if (!ref || !ownStorageHosts(env).has(ref.host)) {
     return opts.isPublicUrl(url) ? { ok: true, kind: 'external' } : { ok: false, reason: 'invalid_url' };
   }

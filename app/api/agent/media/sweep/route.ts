@@ -41,6 +41,14 @@ import { sweepAlerts } from '@/lib/agent/media/sweepAlerts';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 600;
+/**
+ * Every read live. Next 14 keeps a GET route's fetches in its Data Cache: `force-dynamic` does not opt out, and the
+ * Bearer check reads req.headers, which does not either. Without this, a read by the same URL answered what the first
+ * call saw: a job's row read again by its heartbeat came back as it was before the sweep claimed it, so the worker
+ * heard 'lost' 15 s into every retry (job recovery, CI E2E and Preview E2E), and every later sweep saw the first
+ * sweep's queue. Every cron route says the same (lib/api/cronFetchCache.test.ts).
+ */
+export const fetchCache = 'force-no-store';
 
 export async function GET(req: Request): Promise<NextResponse> {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

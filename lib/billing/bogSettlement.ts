@@ -15,7 +15,7 @@
 import 'server-only';
 import { randomBytes } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { deleteSavedCard, getBogReceipt, type BogConfig, type BogFetchDeps, type BogReceipt } from './bogClient';
+import { deleteSavedCard, getBogReceipt, type BogConfig, type BogEnvironment, type BogFetchDeps, type BogReceipt } from './bogClient';
 import { fulfillBogOrder, recordBogRenewalFailure } from './wallet-ledger';
 
 export type BogOrderKind = 'topup' | 'subscription' | 'renewal';
@@ -50,11 +50,27 @@ export type SettleOutcome =
     }
   | { status: 'pending' }
   | { status: 'rejected'; reason: string | null }
-  | { status: 'refunded' }
+  | { status: BogRefundStatus; refundAmountGel: number | null }
   | { status: 'mismatch'; reason: string }
   | { status: 'error'; reason: string };
 
 type Db = Pick<SupabaseClient, 'from'>;
+
+/**
+ * BOG's refund statuses, in the order a refund moves through them; each is also what we write on our row. They are
+ * bookkeeping only: the refund policy is unchanged — credits already granted are NOT clawed back (they may be spent),
+ * the owner adjusts a balance by hand. Our row only ever moves forward along completed → … → refunded, so a late or
+ * repeated message can never pull it back.
+ */
+export const BOG_REFUND_STATUSES = ['refund_requested', 'refunded_partially', 'refunded'] as const;
+export type BogRefundStatus = (typeof BOG_REFUND_STATUSES)[number];
+const REFUND_PATH = ['completed', ...BOG_REFUND_STATUSES] as const;
+/** Where a status sits on completed → refund_requested → refunded_partially → refunded; -1 when not on it. */
+const refundStep = (status: string): number => (REFUND_PATH as readonly string[]).indexOf(status);
+
+export function isBogRefundStatus(status: unknown): status is BogRefundStatus {
+  return typeof status === 'string' && (BOG_REFUND_STATUSES as readonly string[]).includes(status);
+}
 
 /** Amounts are GEL with tetri — a cent of float noise must not read as a mismatch. */
 const AMOUNT_EPSILON = 0.01;
@@ -76,10 +92,11 @@ export async function loadBogOrder(db: Db, ref: { shopOrderId?: string | null; b
   return null;
 }
 
-async function markOrder(db: Db, order: BogOrderRow, patch: Record<string, unknown>, onlyIfStatus?: string): Promise<void> {
+async function markOrder(db: Db, order: BogOrderRow, patch: Record<string, unknown>, onlyIfStatus?: string | readonly string[]): Promise<void> {
   try {
     let q = db.from('bog_orders').update({ ...patch, updated_at: new Date().toISOString() }).eq('shop_order_id', order.shop_order_id);
-    if (onlyIfStatus) q = q.eq('status', onlyIfStatus);
+    if (typeof onlyIfStatus === 'string') q = q.eq('status', onlyIfStatus);
+    else if (onlyIfStatus) q = q.in('status', [...onlyIfStatus]);
     await q;
   } catch {
     /* bookkeeping only — money never depends on this write */
@@ -117,6 +134,13 @@ export async function settleBogOrder(
 
   switch (receipt.state) {
     case 'completed': {
+      if (isBogRefundStatus(order.status)) {
+        // We already heard of a refund, so this "completed" is older news (a late or replayed callback). The order was
+        // credited once before the refund began; never fulfil it again or pull the row back to completed.
+        // eslint-disable-next-line no-console
+        console.warn(`[bog] order ${order.shop_order_id} is ${order.status} here but BOG sent completed — ignored, nothing re-credited`);
+        return { status: order.status, refundAmountGel: null };
+      }
       const amount = Number(order.amount_gel);
       const wrongCurrency = receipt.currency !== null && receipt.currency !== 'GEL';
       const wrongAmount = receipt.requestAmount !== null && Math.abs(receipt.requestAmount - amount) > AMOUNT_EPSILON;
@@ -155,15 +179,27 @@ export async function settleBogOrder(
       return { status: 'rejected', reason };
     }
 
+    case 'refund_requested':
+    case 'refunded_partially':
     case 'refunded': {
-      // Refunds are made by the owner in BOG's business manager. Bookkeeping only — credits already granted are not
-      // clawed back automatically (they may be spent); the log line is the cue to adjust the balance by hand.
-      if (order.status === 'completed') {
+      // Refunds are made by the owner in BOG's business manager. Bookkeeping only (see BOG_REFUND_STATUSES): credits
+      // already granted are not reversed; the log line is the cue to adjust the balance by hand.
+      const next = receipt.state;
+      const amount = receipt.refundAmount;
+      const step = refundStep(order.status);
+      if (step < 0) {
+        // Never credited here (pending, rejected, expired, amount_mismatch…): nothing to reverse, nothing to grant.
         // eslint-disable-next-line no-console
-        console.warn(`[bog] order ${order.shop_order_id} was REFUNDED at BOG (${receipt.statusKey}) — credits were not reversed`);
-        await markOrder(db, order, { status: 'refunded' }, 'completed');
+        console.warn(`[bog] order ${order.shop_order_id} (${order.status}, never credited) is ${next} at BOG — nothing changed, review in Business Manager`);
+      } else if (step < refundStep(next)) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[bog] order ${order.shop_order_id} is ${next} at BOG (refund ${amount ?? '?'} of ${order.amount_gel} GEL) — ` +
+            'credits were NOT reversed (refund policy unchanged)',
+        );
+        await markOrder(db, order, { status: next }, REFUND_PATH.slice(0, refundStep(next)));
       }
-      return { status: 'refunded' };
+      return { status: next, refundAmountGel: amount };
     }
 
     default: {
@@ -183,11 +219,25 @@ export async function reconcileBogOrder(db: Db, cfg: BogConfig, deps: BogFetchDe
   return settleBogOrder(db, order, receipt, { cfg, deps });
 }
 
-/** Where BOG sends callbacks: the canonical site, else the request's own origin. Always https in production. */
-export function bogCallbackUrl(origin?: string | null): string {
+/**
+ * Where BOG sends callbacks: the canonical site, else the request's own origin. Always https in production.
+ * A SANDBOX order's callback goes to the request's own origin only — never the canonical (live) site.
+ */
+export function bogCallbackUrl(origin?: string | null, environment: BogEnvironment = 'production'): string {
+  if (environment === 'sandbox') return `${(origin || '').replace(/\/+$/, '')}/api/billing/bog/webhook`;
   const site = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || '').trim();
   const base = site || origin || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '');
   return `${base.replace(/\/+$/, '')}/api/billing/bog/webhook`;
+}
+
+/**
+ * ⚠️ A SANDBOX ORDER NEVER TOUCHES THE PRODUCTION DATABASE. Every hosted deployment — Production and every Preview —
+ * writes to it, and a paid sandbox order settles like a real one: a test card would mint real credits. So sandbox
+ * credentials only take orders where the database is not Production's (a local dev server, CI); on any Vercel
+ * deployment BOG_ENV=sandbox closes the checkout (capabilities bog:false, checkout 503 BOG_SANDBOX_BLOCKED).
+ */
+export function bogSandboxBlocked(cfg: Pick<BogConfig, 'environment'> | null, env: NodeJS.ProcessEnv = process.env): boolean {
+  return cfg?.environment === 'sandbox' && Boolean((env.VERCEL_ENV || env.VERCEL || '').trim());
 }
 
 /**

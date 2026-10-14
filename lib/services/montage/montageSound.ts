@@ -30,8 +30,11 @@ export interface SoundMix {
 export const VOICE_DUCK = { threshold: 0.03, ratio: 9, attackMs: 15, releaseMs: 450, makeup: 1 } as const;
 /** The music's level under the clips' own sound when both play („თავისი ხმაც და ზემოდან მუსიკა"). */
 export const MUSIC_UNDER_OWN_DB = -10;
-/** The limiter's ceiling (linear): the sum of three lanes never clips. */
-export const LIMIT = 0.95;
+/**
+ * The limiter's ceiling (linear, -2 dBFS): the sum of three lanes never clips. Not 0.95: the AAC encoder after the
+ * limiter adds its own overshoot, and a hot track mixed at 0 dB came out at +0.17 dBFS once decoded (2026-10-13).
+ */
+export const LIMIT = 0.794;
 
 const FMT = 'aresample=44100,aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
 const db = (x: number) => (Number.isFinite(x) ? Math.max(-60, Math.min(12, x)) : 0);

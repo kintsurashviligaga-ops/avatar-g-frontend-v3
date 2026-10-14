@@ -1,0 +1,11 @@
+# Full jest — v1.2 (2026-10-12 ~19:00Z), npx jest --ci, branch claude/bog-payments-master-task-yjxq59
+# Run 1 (after 18b2a15): 2 failed suites — app/api/cron/bog-billing/route.test.ts (5 tests: its settlement mock lacked
+#   bogSandboxBlocked; fixed in the test, +1 sandbox test, 8/8) and the FFmpeg suite below.
+# Run 2 (after the fix):
+FAIL lib/agent/media/composition.ffmpeg.test.ts
+Test Suites: 1 failed, 6 skipped, 872 passed, 873 of 879 total
+Tests:       16 failed, 44 skipped, 13324 passed, 13384 total
+# The one failing suite is not billing and not touched by this PR (unchanged since main 932be95): this sandbox's ffmpeg
+# (/usr/bin/ffmpeg via a node_modules/ffmpeg-static symlink) rejects the fixture's lavfi "gradients=...:speed=0"
+# ("Value 0.000000 for parameter 'speed' out of range [1e-05 - 1]").
+# Billing / BOG / admin / checkout / scripts / api-lockdown / api-security gate: 35 suites, 436/436 passed.

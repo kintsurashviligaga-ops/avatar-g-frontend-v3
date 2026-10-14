@@ -25,7 +25,7 @@ import { sceneCountForDuration, SCENE_SEC as PRODUCT_CLIP_SEC } from '@/lib/vide
 import { describeAspect } from '@/lib/video/aspectConform';
 import { detectStudioIntent } from '@/lib/chat/studioIntent';
 import { conversationsKey, currentUid } from '@/lib/chat/historyKeys';
-import { describeOpFailure } from '@/lib/ui/opFailure';
+import { describeOpFailure, filmFailureText } from '@/lib/ui/opFailure';
 import { describeFilmDelivery } from '@/lib/chat/filmDelivery';
 import { TAP_MIN_PX } from './ui/tokens';
 import { useDialogA11y } from '@/hooks/useDialogA11y';
@@ -48,7 +48,8 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
 import { MusicVideoLook, type MusicVideoLookValue } from './create/MusicVideoLook';
@@ -64,7 +65,9 @@ import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
 import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
-import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds, snapVideoSeconds } from '@/lib/video/duration';
+import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
+import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
+import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
 import { useChatStream } from '@/hooks/chat/useChatStream';
 import { StreamingBubble } from '@/components/chat/StreamingBubble';
 import { ArtifactCanvas } from '@/components/chat/artifacts/ArtifactCanvas';
@@ -151,7 +154,7 @@ import { ChatVideoPlayer } from '@/components/studio/ChatVideoPlayer';
 import { ChatAudioPlayer } from '@/components/studio/ChatAudioPlayer';
 import { cardOwnsJob } from '@/lib/agent/media/taskSteps';
 import type { RunApproval } from '@/lib/agent/approval';
-import { beatMontageAsk, doneText, errorText, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
+import { beatMontageAsk, doneText, errorText, followUpUnsupportedText, montageFollowUpAsk, orientationOf, quoteText, readingText, stageText, trackTooBigText, type AgentMontageState, type AttachmentKind } from '@/lib/agent/media/montageChat';
 import { cancelAgentMontage, montageEnabled, quoteAgentMontage, resumeAgentMontage, runAgentMontage, type ClientRun as MontageRun } from '@/lib/agent/media/montageClient';
 import { AgentAudioCard } from '@/components/studio/AgentAudioCard';
 import { AgentEditCard } from '@/components/studio/AgentEditCard';
@@ -1084,6 +1087,12 @@ interface FilmSnap {
   /** Per-scene length (4-8s) the storyboard derived from the script's own timecodes; undefined = the
    *  default 8s grid. Rides in the snapshot so a QUEUED film keeps the grid it was planned on. */
   clipSec?: number;
+  /** Video Core v1.0 §4 — the contracted FINAL length the assembler cuts the master to (30 fps, frame-exact). Absent when the
+   *  board's own cadence set a grid the words did not plan on: the film is then the board's length. */
+  finalDurationSec?: number;
+  /** Video Core v1.0 §5 — the storyboard approval this render was started from (revision number + fingerprint + the board):
+   *  the server re-fingerprints the board and refuses a render that is not it. Absent for a render with no storyboard. */
+  storyboardApproval?: RenderApprovalWire;
   /** The video template card the user PICKED, if the panel still matched it at submit (hooks/usePickedTemplate) —
    *  sent as `templateId` so the render gets the card's server-resolved look, like the storyboard did. Absent when no
    *  card was picked, including when the default panel merely lights the Reel. */
@@ -2105,6 +2114,19 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const [input, setInput] = useState('');
   // Up to MAX_ATTACHMENTS files (images / video / audio / pdf) ride with a message.
   const [attachments, setAttachments] = useState<Media[]>([]);
+  // The composer's files belong to the conversation they were attached in (Video Core round 3, browser finding
+  // nav-attachments-on-switch): a History pick or a New Chat from the sidebar parks them under the chat being left and
+  // brings back the opened chat's own. A tool pick inside a flow keeps them (switchToolSession is not touched).
+  const attachmentsNowRef = useRef<Media[]>([]);
+  attachmentsNowRef.current = attachments;
+  const attachmentDraftsRef = useRef<Map<string, Media[]>>(new Map());
+  const swapAttachmentDraft = useCallback((leaving: string, opening: string) => {
+    if (leaving === opening) return;
+    const drafts = attachmentDraftsRef.current;
+    if (attachmentsNowRef.current.length) drafts.set(leaving, attachmentsNowRef.current); else drafts.delete(leaving);
+    setAttachments(drafts.get(opening) ?? []);
+    drafts.delete(opening);
+  }, []);
   const [busy, setBusy] = useState(false);
   // AGENT G's MEDIA EXECUTION (slice 1, lib/agent/media): is „cut my clips to my track" open to this user? The route
   // decides (AGENT_G_MEDIA_EXEC: off in Production unless the owner turns it on, admins on a Preview); while it says no,
@@ -2571,6 +2593,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // the singer performance, for a full music-video edit.
   // PHASE 2 — 6s (single-clip path) · 30s · 60s. 6s → sceneCount 1 → no multi-clip stitch.
   const [videoDuration, setVideoDuration] = useState<number>(VIDEO_PANEL_DEFAULTS.duration);
+  // Video Core v1.0 §4 — the length the user ASKED for, as said („29.7 წამი", „ერთი წუთი"), when it is off the grid:
+  // videoDuration holds what is RENDERED (the grid), this holds what is DELIVERED (lib/video/durationContract). Null when
+  // the request is on the grid or the user picked a length on the panel. The render sends it as finalDurationSec.
+  const [videoRequestedSec, setVideoRequestedSec] = useState<number | null>(null);
   // Background score on/off (off → voice-only film). Documentary mode only.
   const [videoMusic, setVideoMusic] = useState(true);
   // v330 — explicit master AUDIO MODE (the voice-overlap fix as a first-class toggle).
@@ -2605,6 +2631,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // negative prompt, and each scene's camera + join. Format and length stay OWNED by videoOrientation / videoDuration
   // (the composer pills and the presets write those) and are mirrored in below, so each value has one source.
   const [veoPlan, dispatchVeo] = useReducer(veoPlanReducer, undefined, () => initialVeoPlan({ format: '9:16', lengthSec: 24, tier: 'fast' }));
+  // Video Core v1.0 §4 — the plan's join model: the scene timeline's default join. A cut takes nothing off the stitched master; a
+  // soft join (crossfade · dissolve · fade) 1 s, so a 60 s film with crossfades is planned as 9 scenes, not 8. The exact per-join
+  // stitch of the board that renders is checked in startFilmRender from the joins it will make.
+  const videoPlanOpts = useMemo(() => ({ joinOverlapSec: joinOverlapFor(veoPlan.transitionDefault) }), [veoPlan.transitionDefault]);
   // What the live Veo route honours (sound off and prompt rewriting are Vertex-only) — the panel offers only those.
   const veoEngine = useVeoEngineInfo();
   // V1–V6 director runs (VIDEO_DIRECTOR_RUNS): when on for this user, an approved board renders shot by shot through
@@ -2698,6 +2728,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     pickVideoTemplate(id);
     setVideoMode(v.mode);
     setVideoDuration(v.duration);
+    setVideoRequestedSec(null);
     setVideoStyle(v.style);
     // Music-Video mode is 9:16-locked in this panel (the Format buttons are disabled for it), so
     // writing any other orientation here would put the UI in a state its own controls forbid.
@@ -3013,7 +3044,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // Storyboard preview gate (Video mode): the planned scenes + frames the user
   // reviews BEFORE committing to the full render. null = no storyboard pending.
   const [storyboard, setStoryboard] = useState<StoryboardState | null>(null);
-  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard } | null>(null);
+  // Video Core v1.0 §5 — the board as a numbered, fingerprinted REVISION (lib/video/storyboard/revision). Every change on
+  // the board (a caption, a re-rolled frame, a reorder, a scene added or deleted, a regeneration) is the next revision; a
+  // change that changes nothing the render reads is not one. The render is approved FROM the revision current at the tap
+  // (see onGenerate), and the approval rides to the server with the board, so the clips can only be the board that was seen.
+  const storyboardRevisionRef = useRef<StoryboardRevision | null>(null);
+  const storyboardPrevBoardRef = useRef<StoryboardState | null>(null);
+  useEffect(() => {
+    if (!storyboard) { storyboardRevisionRef.current = null; storyboardPrevBoardRef.current = null; return; }
+    storyboardRevisionRef.current = snapshotRevision(storyboard, inferOrigin(storyboardPrevBoardRef.current, storyboard), storyboardRevisionRef.current);
+    storyboardPrevBoardRef.current = storyboard;
+  }, [storyboard]);
+  const [directorBoard, setDirectorBoard] = useState<{ studio: StoryboardState; director: DirectorStoryboard; approval: RenderApprovalWire } | null>(null);
   const [storyboardBusy, setStoryboardBusy] = useState(false);
   // Which storyboard scene is currently re-rolling its single frame (null = none).
   const [regenningOrdinal, setRegenningOrdinal] = useState<number | null>(null);
@@ -3181,8 +3223,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   // via window events — so the sidebar works without prop-threading through the chrome.
   useEffect(() => {
     // preventDefault tells the sidebar the pick was taken (ChatChrome hands it over at mount otherwise).
-    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) { e.preventDefault(); resumeConversation(id); } };
-    const onNew = () => startNewConversation();
+    const onResume = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) { e.preventDefault(); swapAttachmentDraft(conversationIdRef.current, id); resumeConversation(id); } };
+    const onNew = () => { const leaving = conversationIdRef.current; swapAttachmentDraft(leaving, startNewConversation()); };
     const onDelete = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) removeConversation(id); };
     const onClear = () => clearAllConversations();
     window.addEventListener('myavatar:resume-conversation', onResume as EventListener);
@@ -3195,7 +3237,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       window.removeEventListener('myavatar:delete-conversation', onDelete as EventListener);
       window.removeEventListener('myavatar:clear-conversations', onClear);
     };
-  }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations]);
+  }, [resumeConversation, startNewConversation, removeConversation, clearAllConversations, swapAttachmentDraft]);
   // A LANGUAGE SWITCH KEEPS THE CHAT (lib/chat/keepOpenChat). The switch mounts this studio afresh, and a fresh mount
   // opens an empty chat; the switcher announces it first, so the chat on screen is saved as it is and handed to the next
   // mount, exactly as a pick from History is. An empty chat hands nothing over: the next mount opens a fresh one anyway.
@@ -3672,6 +3714,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // that mismatch is why a bridged image "generated something completely different". User can bump
       // the duration to 24/48s for a full film.
       setVideoDuration(8);
+      setVideoRequestedSec(null);
       clearCharacter();
       setShareToast(locale === 'en' ? '🎬 Image sent to Video — press send to animate it' : locale === 'ru' ? '🎬 Изображение в Видео — нажмите «Отправить», чтобы оживить' : '🎬 სურათი ვიდეოშია — დააჭირე გაგზავნას რომ გააცოცხლო');
       setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2600);
@@ -3705,7 +3748,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setMode('video');
       setOptionsOpen(true);
       // Duration FIRST so the videoCharacterRefs/scenePrompts clamp effect settles to the right count.
-      setVideoDuration(snapVideoSeconds(Number(sb.duration)));
+      // …through the duration contract (Video Core v1.0 §4 · §6): off the grid → rendered on the grid above it and delivered
+      // as asked; a long-form length while that pipeline is closed → the longest open length AND the reason on screen,
+      // never a shorter film passed off as the board's length.
+      const sbPlan = planFinalDuration(Number(sb.duration), videoCaps, videoPlanOpts);
+      if (sbPlan.ok) { setVideoDuration(sbPlan.plan.nativeSec); setVideoRequestedSec(sbPlan.plan.deviation === 'trim' ? sbPlan.plan.requestedSec : null); }
+      else { setVideoDuration(panelSecondsAfterBlock(sbPlan, videoCaps)); setVideoRequestedSec(null); }
       setVideoOrientation(sb.orientation);
       if (sb.musicVideoMode) setVideoMode('musicvideo');
       // PHASE 36 — the "Scene frames" lanes ARE videoCharacterRefs. Fill them with the FULL positional
@@ -3716,11 +3764,13 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       if (sb.scenePrompts.length) setScenePrompts(sb.scenePrompts);
       if (sb.masterScript.trim()) setVideoMasterScript(sb.masterScript);
       clearStoryboard();
-      setShareToast(locale === 'en' ? '🎬 Storyboard sent to Video — review & generate' : locale === 'ru' ? '🎬 Раскадровка в Видео — проверьте и создайте' : '🎬 სცენარი ვიდეოშია — გადახედე და შექმენი');
-      setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), 2800);
+      setShareToast(sbPlan.ok
+        ? (locale === 'en' ? '🎬 Storyboard sent to Video — review & generate' : locale === 'ru' ? '🎬 Раскадровка в Видео — проверьте и создайте' : '🎬 სცენარი ვიდეოშია — გადახედე და შექმენი')
+        : `🎬 ${describeDurationBlock(sbPlan, locale)}`);
+      setTimeout(() => setShareToast((s) => (/🎬/.test(s ?? '') ? null : s)), sbPlan.ok ? 2800 : 7000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transitCharacterUrl, transitAudioUrl, transitStoryboard]);
+  }, [transitCharacterUrl, transitAudioUrl, transitStoryboard, videoPlanOpts]);
 
   // Track the composer's live height so anything floating at the bottom clears it.
   //
@@ -3765,7 +3815,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
       videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona,
       voiceTone, videoModel, hasTrainedVoice, clipSec, veo, sceneMeta, videoMasterScript, motionIntensity,
-      videoTemplateId,
+      videoTemplateId, finalDurationSec, storyboardApproval,
     } = snap;
     // PER-JOB ISOLATION (Task 4) — when driven by the Cap-3 queue (`jobCtx` set) the render
     // tracks its own AbortSignal + a STABLE bubble id (=== jobId) instead of the shared
@@ -3893,6 +3943,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         motionIntensity,
         // The director's per-scene camera / lighting / shot / mood / location from the approved storyboard.
         ...(sceneMeta?.length ? { sceneMeta } : {}),
+        // Video Core v1.0 §4 — the contracted final length: the server cuts the master to it frame-exact (30 fps), or refuses
+        // with the reason; it never delivers another length as this one.
+        ...(typeof finalDurationSec === 'number' ? { finalDurationSec } : {}),
+        // Video Core v1.0 §5 — the storyboard approval (revision + fingerprint + board): the server checks this render IS the
+        // approved board — its frames, its scene texts, its grid — and refuses one that is not, before any clip or charge.
+        ...(storyboardApproval ? { storyboardApproval } : {}),
         // PHASE 2 L5 — per-render i2v model (Kling/Hailuo).
         videoModel,
         // Multi-character dialogue → split per speaker, each line in its gendered voice.
@@ -4003,7 +4059,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
             ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
-            : { role: 'assistant', text: `⚠️ ${describeOpFailure(res, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
+            // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) after a short headline in the
+            // user's language; "the service may be busy" only when the route said nothing a person can read.
+            : { role: 'assistant', text: `⚠️ ${filmFailureText(res, locale, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
       if (mine() && res.ok && res.masterUrl) {
@@ -4204,6 +4262,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     clipSec?: number,
     /** The director's per-scene provenance from the approved storyboard (validated by sceneMetaFromBrief). */
     sceneMeta?: SceneMetaWire[],
+    /** Video Core v1.0 §5 — the approval of the storyboard revision this render was started from (undefined: no storyboard). */
+    storyboardApproval?: RenderApprovalWire,
   ): Promise<string | void> => {
     // SNAPSHOT-AT-SUBMIT (Step 2): capture the WHOLE video panel NOW (the submit millisecond) into one
     // immutable object; renderFilm renders from this exact snapshot, so a queued film never inherits a
@@ -4213,6 +4273,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     const renderSceneCount = storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(videoDuration);
     // ⚠️ A 4 s or 6 s film is ONE shorter Veo clip. Without its real length the render (and its price) would be the 8 s default.
     const filmClipSec = clipSec ?? (videoDuration < FILM_CLIP_SEC ? clipSecForSeconds(videoDuration) : undefined);
+    // Video Core v1.0 §4 — the contracted FINAL length. The native master is what renders (renderSceneCount × clip); the
+    // final is what is delivered: the length asked in words when it is off the grid AND was planned on this very grid, else
+    // the native length itself (the cut then only pins the frame count at 30 fps). A board whose script set its own cadence
+    // is a grid the words did not plan on: no contract is sent, and the film is the board's length.
+    const veoRender = toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount);
+    // The joins THIS render makes (the scene timeline's list, else the panel's transition), composed as the film client posts
+    // them and read as the assembler reads them: the stitched master is the clips end to end less every join's overlap (a soft
+    // join 1 s, a cut inside a mixed chain one frame). The request is checked against THAT, so the server's answer is known
+    // here — a request this board cannot be cut to is refused on screen, with a Retry that plans the board again; never a film
+    // of another length. No request: the stitched length itself is the contract (it pins the frame count at 30 fps).
+    const renderJoins = veoRender.scenes.length > 1 ? veoRender.scenes.slice(0, -1).map((sc) => sc.transitionOut) : [];
+    const stitchOfRender = stitchedSeconds(renderSceneCount, filmClipSec ?? FILM_CLIP_SEC, composeTransitionRender(videoTransition, renderJoins), VIDEO_FPS);
+    const requestedCut = videoRequestedSec !== null ? finalCutForAssemble(stitchOfRender, videoRequestedSec) : null;
+    if (requestedCut && !requestedCut.ok) {
+      setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${describeFinalCutRefusal(requestedCut, locale)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation } }]);
+      return Promise.resolve();
+    }
+    const finalDurationSec = requestedCut ? requestedCut.finalSec : quantizeToFrames(stitchOfRender);
     const snap: FilmSnap = {
       videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync,
       videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender,
@@ -4220,10 +4298,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       voiceTone, videoModel, hasTrainedVoice, videoMasterScript,
       // The format follows THIS request's orientation (a retry replays the orientation it was planned with, whatever
       // the panel holds now); a music video is 9:16 whatever either says.
-      veo: toRenderOptions({ ...veoPlan, format: videoMode === 'musicvideo' ? '9:16' : formatForOrientation(orientation) }, renderSceneCount),
+      veo: veoRender,
       motionIntensity: veoPlan.cameraDefault.intensity,
       ...(filmClipSec ? { clipSec: filmClipSec } : {}),
+      ...(finalDurationSec !== undefined ? { finalDurationSec } : {}),
       ...(sceneMeta?.length ? { sceneMeta } : {}),
+      ...(storyboardApproval ? { storyboardApproval } : {}),
       // The PICKED card only (a default panel lights the Reel without anyone choosing it).
       ...(pickedVideoTemplateId ? { videoTemplateId: pickedVideoTemplateId } : {}),
     };
@@ -4250,7 +4330,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // film still happens (this is exactly the "safe fail-open" guarantee behind the flag).
       return renderFilm(filmPrompt, refs, orientation, sceneFrames, sceneScripts, storyboardScenes, characterLock, characterPortrait, null, snap);
     }
-  }, [renderFilm, submitJob, trackJobSettle, locale, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
+  }, [renderFilm, submitJob, trackJobSettle, locale, videoRequestedSec, videoTransition, videoMode, videoStyle, videoDuration, videoVocalGender, videoLipsync, videoSoundtrack, videoMyVoiceNarration, videoSpeech, videoMusic, videoNarratorGender, videoMultiChar, videoDialogue, videoSmartDuck, videoDuckDb, voiceLanguage, voicePersona, voiceTone, videoModel, veoPlan, hasTrainedVoice, videoMasterScript, pickedVideoTemplateId]);
 
   // PHASE 2 L1 — Product-Ad: read the chosen product photo as a data URL (passed
   // straight to Kling i2v as the locked start_image; no auth-gated upload needed).
@@ -4551,17 +4631,31 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   }, [messages, remixDrafts, remixBusyIdx, t.remixGenerating, t.videoFailed, locale]);
 
   // Plan the storyboard (6 scenes + a frame each) and open the review overlay.
-  // Fail-open: a storyboard miss falls back to a direct render so the user is
-  // never blocked. A user Cancel (abort) stops quietly without rendering.
-  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait') => {
+  // Video Core §5 — a storyboard miss is SAID, with a Retry, and renders nothing. The old reading was fail-OPEN: the
+  // moment the plan call missed (or threw), the full film render started unreviewed and, with it, the charge — a
+  // provider outage became a paid film nobody approved. A user Cancel (abort) still stops quietly.
+  const createStoryboard = useCallback(async (filmPrompt: string, refs: string[], orientation: 'landscape' | 'vertical' | 'square' | 'portrait', opts?: { nativeSec?: number; musicVideoMode?: boolean }) => {
+    // The mode the caller decided, when it decided one in this same tick: the chat's `open` step sets the panel's mode AND
+    // plans the board at once, and `videoMode` here is still the render's value from BEFORE that set (Video Core round 3,
+    // browser defect 1 — a music-video sentence was planned as a film). The panel's own Generate passes nothing.
+    const musicVideoMode = opts?.musicVideoMode ?? videoMode === 'musicvideo';
     // FIX 4 — remember this request so a failed render can be retried in one click.
     lastVideoReqRef.current = { filmPrompt, refs, orientation };
     const ac = new AbortController();
     storyboardAbortRef.current = ac;
     setStoryboardBusy(true);
+    // The failure, visible: the route's own sentence when it gave one (describeOpFailure keeps machine codes out of a
+    // Georgian interface), the translated line otherwise — as the chat's error card, whose Retry plans the storyboard
+    // again (never a render) and whose Dismiss puts it away. Nothing after a user cancel.
+    const failVisible = (body?: unknown) => {
+      if (ac.signal.aborted) return;
+      setMessages((prev) => [...prev, { role: 'assistant', text: `⚠️ ${describeOpFailure(body, t.sbFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation } }]);
+    };
     // 10s→2 · 30s→6 · 60s→12 scenes (5s each). The 60s music video opens with a few
     // establishing/intro beats then moves to the performance.
-    const sceneCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(videoDuration));
+    // The grid the board is planned on: the length just set by the chat step (state has not settled yet) or the panel's.
+    const planSec = opts?.nativeSec ?? videoDuration;
+    const sceneCount = Math.min(FILM_MAX_SCENES, sceneCountForSeconds(planSec));
     // The PICKED template card's id on every storyboard call, so the board is planned with the look the render will use.
     const templateRef = pickedVideoTemplateId ? { templateId: pickedVideoTemplateId } : {};
     try {
@@ -4577,7 +4671,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // returns null → brief-driven plan untouched), so a music video with a written treatment gets its
         // scenes honoured while a freeform brief is unaffected. (Spoken multi-voice casting stays doc-only
         // at the RENDER path above — a music video's audio is the song, not TTS dialogue.)
-        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, ...templateRef, locale, sceneCount, planOnly: true, musicVideoMode: videoMode === 'musicvideo', ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
+        body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: refs, style: videoStyle, ...templateRef, locale, sceneCount, planOnly: true, musicVideoMode, ...(videoMasterScript.trim() ? { masterScript: videoMasterScript.trim() } : {}) }),
       });
       const j = (await res.json().catch(() => ({}))) as { success?: boolean; seed?: number; clipSec?: number; scenes?: (StoryboardScene & { framePrompt?: string })[]; sceneScripts?: string[] | null; hostedRefs?: string[] | null };
       // The plan call above already hosted every attached photo to a signed Supabase URL. Reuse THOSE
@@ -4591,7 +4685,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ? j.hostedRefs
         : refs;
       if (!(j.success && Array.isArray(j.scenes) && j.scenes.length > 0)) {
-        await startFilmRender(filmPrompt, refs, orientation, undefined); // plan miss → direct render (or queue when flag ON)
+        failVisible(j); // plan miss → the error card with Retry; NO render, NO charge
         return;
       }
       const planned = j.scenes;
@@ -4621,7 +4715,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // The grid the route derived from the script's timecodes (4-8s) - forwarded to the render. The route plans on 8 s
         // unless the script has its own cadence: a 4 s / 6 s pick is ONE shorter clip, and the board must say so.
         ...(() => {
-          const picked = clipSecForSeconds(videoDuration);
+          const picked = clipSecForSeconds(planSec);
           const routeClip = typeof j.clipSec === 'number' && j.clipSec > 0 ? j.clipSec : undefined;
           const clip = picked < FILM_CLIP_SEC && (routeClip ?? FILM_CLIP_SEC) === FILM_CLIP_SEC ? picked : routeClip;
           return clip ? { clipSec: clip } : {};
@@ -4653,7 +4747,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // INVENTS a persona (the "30-year-old man in a skydiver suit" drift). With refs it locks the real subject
             // and the route vision-extracts the actual character from the photo.
             method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', signal: ac.signal,
-            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, ...templateRef, locale, sceneCount, scriptsOnly: true, musicVideoMode: videoMode === 'musicvideo' }),
+            body: JSON.stringify({ prompt: filmPrompt, orientation, referenceImages: postedRefs, style: videoStyle, ...templateRef, locale, sceneCount, scriptsOnly: true, musicVideoMode }),
           });
           const sj = (await sr.json().catch(() => ({}))) as { sceneScripts?: string[] | null; character?: string | null; masterBrief?: { scenes?: unknown } | null };
           if (Array.isArray(sj.sceneScripts) && sj.sceneScripts.length) scripts = sj.sceneScripts;
@@ -4760,11 +4854,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }));
     } catch {
       if (ac.signal.aborted) return; // user cancelled — do nothing
-      await startFilmRender(filmPrompt, refs, orientation, undefined);
+      failVisible(); // the plan call itself failed (network, a 5xx with no body) → the error card with Retry; NO render
     } finally {
       setStoryboardBusy(false);
     }
-  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, startFilmRender, scenePrompts, pickedVideoTemplateId]);
+  }, [videoStyle, locale, videoDuration, videoMode, videoMasterScript, scenePrompts, pickedVideoTemplateId, t.sbFailed]);
 
   // Re-roll a SINGLE storyboard frame (the others are untouched) and swap it in —
   // a hot-reload of just this one scene's agent thread, never the master loop. An
@@ -6495,6 +6589,18 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // a question about a service never opens its form.
     // Agent G cuts the attached clips to the attached track (see startAgentMontage): only when the route opened it to this
     // user and the message asks for exactly that (lib/agent/media/montageChat.beatMontageAsk); everything else is untouched.
+    // Round 3 (AC-23) — a follow-up on a montage already in this thread that this version cannot do IN PLACE (new clips to add
+    // to a delivered edit, a new track to swap in): said plainly with the way out (lib/agent/media/montageChat
+    // followUpUnsupportedText), instead of a new edit of the new files alone or a model reply that improvises. Nothing is
+    // sent and nothing is dropped: the words and the files stay in the composer.
+    if (mode === 'chat' && agentMontageOn && attachments.length > 0 && messages.some((m) => m.montage)) {
+      const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
+      const follow = montageFollowUpAsk(text, kinds);
+      if (follow) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: followUpUnsupportedText(follow, locale), notice: true }]);
+        return;
+      }
+    }
     if (mode === 'chat' && agentMontageOn && attachments.length > 1) {
       const kinds: AttachmentKind[] = attachments.map((a) => (isVideo(a.mimeType) ? 'video' : isAudio(a.mimeType) ? 'audio' : isImage(a.mimeType) ? 'image' : 'other'));
       if (beatMontageAsk(text, kinds)) {
@@ -7752,7 +7858,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     } else if (tool === 'video') {
       const o = a.aspectRatio ? videoOrientationFor(a.aspectRatio) : null;
       if (o) { setVideoOrientation(o); applied.aspectRatio = aspectForOrientation(o); }
-      if (typeof a.durationSec === 'number') { const d = snapVideoSeconds(a.durationSec); setVideoDuration(d); applied.durationSec = d; }
+      if (typeof a.durationSec === 'number') {
+        // Video Core v1.0 §4 — the duration contract, not the nearest stop: rendered on the grid above the request, delivered as
+        // asked (60 → rendered 64, final 60); a length the open pipelines cannot make is refused with the reason (240 while
+        // long-form is closed), and the panel is left as it was.
+        const v = planFinalDuration(a.durationSec, videoCaps, videoPlanOpts);
+        if (v.ok) {
+          setVideoDuration(v.plan.nativeSec);
+          setVideoRequestedSec(v.plan.deviation === 'trim' ? v.plan.requestedSec : null);
+          applied.durationSec = v.plan.finalSec;
+          if (v.plan.deviation === 'trim') { applied.renderedSec = v.plan.nativeSec; applied.trimmedSec = v.plan.trimSec; applied.frames = v.plan.finalFrames; }
+        } else {
+          applied.durationRefused = v.reason;
+          applied.durationNote = describeDurationBlock(v, 'en');
+        }
+      }
       if (a.style) { const st = matchStyle(a.style, VIDEO_STYLES); if (st) { setVideoStyle(st); applied.style = st; } }
     } else if (tool === 'music') {
       if (typeof a.durationSec === 'number') { const d = snapMusicSeconds(a.durationSec); setMusicDuration(d); applied.durationSec = d; musicSec = d; }
@@ -7900,10 +8020,12 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         reply({ ok: true });
         return true;
       }
-      case 'new_chat':
-        startNewConversation();
+      case 'new_chat': {
+        const leaving = conversationIdRef.current;
+        swapAttachmentDraft(leaving, startNewConversation());
         reply({ ok: true, message: 'Started a new, empty chat on screen.' });
         return true;
+      }
       case 'stop': {
         const done: string[] = [];
         if ((d.what === 'reply' || d.what === 'all') && (busy || genActiveRef.current)) { stop(); done.push('stopped the answer in progress'); }
@@ -8860,6 +8982,51 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (!step.keepComposer) { setInput(''); inputSourceRef.current = 'text'; stopDictationEcho(); }
         say(step.text);
         return true;
+      case 'open': {
+        // Chat → the Video tool, with the plan SAID (Video Core v1.0 §3–§4): the mode the words name; the length through the
+        // duration contract (requested · rendered · final — never the nearest stop sold as the request); a long-form length
+        // while that pipeline is closed refused with the reason (never a 96 s film for a 240 s ask); no length said → the
+        // panel's default, named, not the last project's. The storyboard is planned (free); nothing renders before Start.
+        const tr = (ka: string, en: string, ru: string) => (locale === 'en' ? en : locale === 'ru' ? ru : ka);
+        const o = step.aspect ? videoOrientationFor(step.aspect) : null;
+        let nativeSec: number;
+        let lengthNote: string;
+        if (step.durationSec !== undefined) {
+          const v = planFinalDuration(step.durationSec, videoCaps, videoPlanOpts);
+          if (!v.ok) {
+            setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+            setVideoDuration(panelSecondsAfterBlock(v, videoCaps)); setVideoRequestedSec(null);
+            // The words stay in the box: the refusal names the longest length that can be made, and the user decides.
+            say(`${describeDurationBlock(v, locale)} ${tr('სიგრძე პანელში შეცვალე და ისევ გამომიგზავნე.', 'Change the length on the panel and send again.', 'Измените длину на панели и отправьте снова.')}`);
+            return true;
+          }
+          nativeSec = v.plan.nativeSec;
+          setVideoDuration(nativeSec);
+          setVideoRequestedSec(v.plan.deviation === 'trim' ? v.plan.requestedSec : null);
+          lengthNote = describeDurationPlan(v.plan, locale);
+        } else {
+          nativeSec = VIDEO_PANEL_DEFAULTS.duration;
+          setVideoDuration(nativeSec);
+          setVideoRequestedSec(null);
+          const len = formatVideoDuration(nativeSec, locale);
+          lengthNote = tr(`სიგრძე ნათქვამი არ იყო — ${len} (შეცვალე პანელში).`, `No length was given — ${len} (change it on the panel).`, `Длина не указана — ${len} (измените на панели).`);
+        }
+        setMode('video'); setVideoMode(step.videoMode); if (o) setVideoOrientation(o);
+        const routeOrientation = step.videoMode === 'musicvideo' ? 'vertical' : (o ?? videoOrientation);
+        const routeRefs = [...videoCharacterRefs, ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl)];
+        // An attached track is not dropped: it stays in the box for the soundtrack slot (the board is planned without it).
+        const tracks = attachments.filter((a) => isAudio(a.mimeType));
+        const routeNote = tr('🎬 ვხსნი ვიდეო სტუდიას და ვგეგმავ სცენებს — გადახედე სტორიბორდს და დააჭირე „ვიდეოს გენერაციას“.',
+          '🎬 Opening Video Studio and planning your scenes — review the storyboard, then tap Generate Video.',
+          '🎬 Открываю Видеостудию и планирую сцены — проверьте раскадровку и нажмите «Сгенерировать видео».');
+        const trackNote = tracks.length ? ` ${tr('ტრეკი ყუთში დარჩა — საუნდტრეკად პანელიდან დაამატე.', 'The track stays in the box — add it as the soundtrack from the panel.', 'Трек остался в поле — добавьте его как саундтрек на панели.')}` : '';
+        setMessages((prev) => [...prev, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text', ...(attachments.length ? { medias: attachments } : {}) }, { role: 'assistant', text: `${routeNote}\n${lengthNote}${trackNote}`, notice: true }]);
+        persistChatTurn('user', text, attachments);
+        setInput(''); setAttachments(tracks); inputSourceRef.current = 'text'; stopDictationEcho();
+        if (!isDesktop) setOptionsOpen(false);
+        void createStoryboard(text, routeRefs, routeOrientation, { nativeSec, musicVideoMode: step.videoMode === 'musicvideo' });
+        return true;
+      }
       case 'stop':
         clearComposer(); // first: stop() hands a parked follow-up back to the box, and that must survive
         for (const id of step.cards) {
@@ -9254,6 +9421,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         state="error"
                         locale={locale}
                         error={m.text}
+                        errorFull
                         onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
                         onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
                       />
@@ -10225,7 +10393,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               mode={videoMode}
               onMode={setVideoMode}
               seconds={videoDuration}
-              onSeconds={setVideoDuration}
+              onSeconds={(s) => { setVideoDuration(s); setVideoRequestedSec(null); }}
               format={videoMode === 'musicvideo' ? '9:16' : formatForOrientation(videoOrientation)}
               onFormat={(f) => { const o = ASPECT_ORIENT[f]; if (o) setVideoOrientation(o); }}
               prompt={input}
@@ -10250,6 +10418,8 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                 lipsyncCredits: filmLipsyncCredits,
               }}
               caps={videoCaps}
+              requestedSec={videoRequestedSec}
+              joinOverlapSec={videoPlanOpts.joinOverlapSec}
               storySummary={styleLabel(videoStyle, locale)}
               voiceSummary={videoSoundtrack?.name}
               storyOpenWhen={!!videoScriptDoc || !!videoMasterScript.trim()}
@@ -11311,6 +11481,9 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             </div>
           </div>
         )) : messageList}
+        {/* Room for the floating job tray (JobTray publishes --job-tray-h, 0 when it is hidden), so the newest card's
+            buttons scroll clear of it on a phone (round-3 browser defect 7). No margin of its own from space-y-*. */}
+        <div aria-hidden="true" data-testid="job-tray-spacer" className="shrink-0" style={{ height: 'var(--job-tray-h, 0px)', marginTop: 0 }} />
       </div>
       {/* The Image tool on a desktop: the Result pane + Models & prices stand where the thread would (the thread is inside it,
           one tap away). ⚠️ The feed above is HIDDEN, not unmounted, and renders nothing meanwhile — its ref, scroll handlers and the
@@ -12110,37 +12283,44 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Stop any still-streaming frame fetches — the user has approved; we
             // don't need (or want to pay for) the remaining preview frames.
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
+            const sb = storyboard;
+            // Video Core v1.0 §5 — the render is approved FROM this board's revision. The snapshot is taken on the board the
+            // tap saw (the effect may not have run for a change made this very tick: snapshotRevision returns the current
+            // revision when nothing changed, the next one otherwise), and the approval carries the number, the fingerprint
+            // and the board, so the server can refuse a render that is not this board — on the film path (orchestrate) and
+            // on the director path (POST /api/video/director/runs, round 3 P1) alike.
+            const approvedRev = snapshotRevision(sb, inferOrigin(storyboardPrevBoardRef.current, sb), storyboardRevisionRef.current);
+            storyboardRevisionRef.current = approvedRev;
+            const storyboardApproval = approvalForRender(approvedRev, sb);
             if (directorRunsOn) {
               // The director renders exactly this board (V2/V3/V6): its scenes' text, frame, length and tier, nothing
               // added — the music bed, narration and colour pass of the film render are not part of a director run.
-              const board = storyboard;
+              const board = sb;
               const seed = veoPlan.seedLock && Number.isInteger(board.seed) && board.seed >= 0 && board.seed <= 0xffff_ffff ? board.seed : undefined;
               setStoryboard(null);
               setDirectorBoard({
                 studio: board,
                 director: studioToDirectorStoryboard(board, { id: `board-${Date.now().toString(36)}`, quality: veoPlan.tier, clipSec: FILM_CLIP_SEC, ...(seed !== undefined ? { seed } : {}) }),
+                approval: storyboardApproval,
               });
               return;
             }
-            const frameUrls = storyboard.scenes.map((s) => s.frameUrl);
+            const frameUrls = sb.scenes.map((s) => s.frameUrl);
             // REFERENCE MODE — the photos ride as Veo asset references and Veo composes every scene itself, so the
             // board's frames are only the plan: sending them would make each clip animate FROM a frame (Veo cannot
             // take a first frame and references together) and would drop the refs below.
             const referenceMode = veoPlan.referenceMode === 'reference';
             const sceneFrames = !referenceMode && frameUrls.every((f): f is string => typeof f === 'string') ? frameUrls : undefined;
-            const sb = storyboard;
             setStoryboard(null);
-            // Thread the (possibly EDITED) per-scene descriptions into the render: an
-            // edited scene uses the user's own words; the rest keep the rich LLM script.
-            const anyEdited = sb.scenes.some((s) => s.edited);
-            const scripts = (sb.sceneScripts || anyEdited)
-              ? sb.scenes.map((s, i) => (s.edited && s.prompt.trim() ? s.prompt.trim() : (sb.sceneScripts?.[i] ?? s.prompt)))
-              : undefined;
+            // Thread the (possibly EDITED) per-scene descriptions into the render: an edited scene uses the user's own
+            // words; the rest keep the rich LLM script. ONE derivation, shared with the server's check of the approval
+            // (lib/video/storyboard/revision → renderScriptsFor): what is sent is what is checked.
+            const scripts = renderScriptsFor(sb) ?? undefined;
             // With approved per-scene frames the identity is already baked in, so the
             // original (possibly multi-MB data-URL) refs are redundant — dropping them
             // avoids a 413 body-overflow on the render dispatch when a photo was attached.
             // The (possibly edited) story scenes ride along so the clips render the SAME story.
-            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined);
+            void startFilmRender(sb.filmPrompt, sceneFrames ? [] : sb.refs, sb.orientation, sceneFrames, scripts, sb.scenes.map((s) => ({ ordinal: s.ordinal, beat: s.beat, frameUrl: s.frameUrl })), sb.character ?? undefined, sb.refs?.[0], sb.clipSec, sb.sceneMeta?.length === sb.scenes.length ? sb.sceneMeta : undefined, storyboardApproval);
           }}
           onRegenerate={() => {
             try { storyboardAbortRef.current?.abort(); } catch { /* noop */ }
@@ -12155,6 +12335,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       {directorBoard && (
         <DirectorRunOverlay
           storyboard={directorBoard.director}
+          approval={directorBoard.approval}
           locale={locale}
           onEdit={() => { const back = directorBoard.studio; setDirectorBoard(null); setStoryboard(back); }}
           onClose={() => setDirectorBoard(null)}

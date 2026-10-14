@@ -12,7 +12,7 @@ export default defineConfig({
   // The live production smoke (smoke-live.spec.ts) runs ONLY via
   // playwright.smoke.config.ts against the deployed site — never against the local
   // `next dev` server this config boots.
-  testIgnore: /smoke-live\.spec\.ts/,
+  testIgnore: [/smoke-live\.spec\.ts/, /video-core\//, /video-core-live\//], // tests/video-core runs only via playwright.video-core.config.ts (two projects, its own reporter)
   // Per-test budget generous enough to absorb a cold `next dev` first-compile of a route on a slow CI
   // runner (default 30s was shorter than the cold compile → the preview-e2e first navigation flaked).
   timeout: 60_000,
@@ -24,6 +24,8 @@ export default defineConfig({
   use: {
     baseURL: playwrightBaseUrl,
     trace: 'on-first-retry',
+    // Opt-in: a sandbox that ships its own Chromium (no `playwright install` possible) names it here; CI leaves it unset.
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } } : {}),
   },
   projects: [
     {

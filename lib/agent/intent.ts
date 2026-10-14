@@ -172,6 +172,42 @@ const CLIPS_REF = new RegExp(
 );
 /** A message that asks for something NEW („a", "another", „ახალი") is not a change to the plan on screen. */
 const NEW_THING = new RegExp(`${B0}(?:a|an|another|new|ახალი|სხვა|новый|новое|новую|другой|другое)${B1}`, 'iu');
+/**
+ * „მუსიკალური კლიპი", "music video", «музыкальный клип»: the Video tool's music-video mode when no clips are attached (with
+ * clips it is the montage). Video Core v1.0 AC-01: on 30be5a2 these words reached nothing — the catalog leaves the Video
+ * tool to the generate gate, that gate wants the verb FIRST (Georgian never puts it there), and in Russian the music rule
+ * outweighed the video rule, so «сделай … музыкальный клип» asked for a SONG.
+ */
+const MUSIC_VIDEO = new RegExp(`მუსიკალურ\\p{L}*\\s+(?:კლიპ|ვიდეო)\\p{L}*|${B0}ვიდეო\\s*კლიპ\\p{L}*|${B0}music\\s+video|музыкальн\\p{L}*\\s+(?:клип|видео)|${B0}видеоклип`, 'iu');
+/**
+ * The music video is the thing ASKED FOR only when it is the object of the ask. "a song for my music video", "a presentation
+ * about music videos", „რჩევა მუსიკალური კლიპისთვის", «обсудим музыкальный клип» ask for something else, or for talk:
+ * they keep the route they had before this lane existed (a song, the presentation tool, the avatar, the chat).
+ */
+const MUSIC_VIDEO_NOT_OBJECT = new RegExp([
+  `${B0}(?:for|about|on|into)\\s+(?:(?:my|the|a|an|our|your|this|that|his|her|their)\\s+)?(?:new\\s+|next\\s+)?music\\s+videos?${B1}`,
+  `${B0}(?:для|о|об|про)\\s+(?:(?:моего|моей|моему|нашего|нашей|этого|этой|своего|своей|мой|наш|нового|новой)\\s+)?(?:музыкальн\\p{L}*\\s+(?:клип|видео)|видеоклип)\\p{L}*`,
+  `(?:მუსიკალურ\\p{L}*\\s+(?:კლიპ|ვიდეო)|ვიდეო\\s*კლიპ)\\p{L}*?(?:ისთვის|თვის|ის\\s+შესახებ|ზე)${B1}`,
+].join('|'), 'iu');
+/** Talk about a music video (an idea, advice, a discussion) is the chat's, not a render. */
+const TALK_ABOUT = new RegExp(`${B0}(?:discuss\\p{L}*|talk\\s+about|advice|advise|tips|brainstorm\\p{L}*|ideas?\\s+for|обсуд\\p{L}*|поговор\\p{L}*|совет\\p{L}*|посовету\\p{L}*|иде[яию]\\s+для|რჩევ\\p{L}*|მირჩი\\p{L}*|ვისაუბრ\\p{L}*|განვიხილ\\p{L}*|იდეებ\\p{L}*)`, 'iu');
+/** „მინდა", "I want", «хочу»: a wish is a request. */
+const WANT = new RegExp(`${B0}(?:i\\s+want|i\\s+need|i'd\\s+like|let's\\s+make|მინდა|მჭირდება|გავაკეთო|хочу|нужен|нужно|давай)${B1}`, 'iu');
+/**
+ * A Georgian make-verb ANYWHERE („ერთწუთიანი ვიდეო გამიკეთე ზღვაზე"): the verb comes last, so the lead-verb gate
+ * (lib/chat/intentDetector isGenerativeCommand) never sees it. Never with an analysis noun: „ვიდეოს ანალიზი გამიკეთე" is
+ * a question about the file, not a render.
+ */
+const KA_MAKE = /გამიკეთ|გააკეთ|შემიქმენ|შექმენ|დამიგენერირ|დააგენერირ|დაგენერირ|დამიმზად|გადამიღ|გადაიღ/u;
+const KA_ANALYSIS = /ანალიზ|აღწერ/u;
+/**
+ * A writing verb leads („დაწერე", "write", «напиши»): the result is TEXT about a video («напиши пост про предыдущее
+ * видео», "write a script for the video"), never the video. A song stays the music lane's ("write me a song").
+ */
+const WRITING_LEAD = new RegExp(
+  `^\\s*(?:please\\s+|გთხოვ\\s+|пожалуйста\\s+)?(?:write|rewrite|draft|translate|summari[sz]e|explain|paraphrase|proofread|დაწერ|დამიწერ|მომწერ|გადაწერ|გადამიწერ|თარგმნ|მითარგმნ|ახსენ|ამიხსენ|შეაჯამ|напиши|перепиши|переведи|объясни|перескажи)`,
+  'iu',
+);
 
 const REMIX_OPS: ReadonlyArray<{ op: EditOp; re: RegExp }> = [
   { op: 'stabilize', re: /სტაბილ|stabili[sz]|стабилиз|shaky|jitter/iu },
@@ -326,6 +362,17 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
     if ((mined.edits.length || mined.unsupported.length) && (!onlyDescribing(mined) || asksForEdit(text))) return act('media.edit', 'previous', params);
   }
 
+  // 11b) „24-წამიანი მუსიკალური კლიპი გამიკეთე", "a 24-second music video", «музыкальный клип на 24 секунды» with no
+  //      clips attached: the Video tool in music-video mode, at that length (with clips it is the montage, step 6). A
+  //      request is an imperative or a make-verb, a wish („მინდა", "I want"), or a length or frame shape named for it.
+  //      Only when the music video is what is made: not "a song FOR my music video", not talk about one, not a text
+  //      written for one ("write lyrics for my music video") — those keep their routes (MUSIC_VIDEO_NOT_OBJECT, TALK_ABOUT).
+  if (MUSIC_VIDEO.test(text) && nVideo + nImage === 0
+    && !MUSIC_VIDEO_NOT_OBJECT.test(text) && !TALK_ABOUT.test(text) && !WRITING_LEAD.test(text)
+    && (generative || KA_MAKE.test(text) || WANT.test(text) || params.durationSec !== undefined || params.aspect !== undefined)) {
+    return act('video.music-video', nAudio ? 'attachment' : 'new', params);
+  }
+
   // 11) The other studio services (presentation, 3D, avatar, the editor).
   if (studio) return act(STUDIO[studio.service]!, 'new', { ...params, ...(studio.params.durationSec ? { durationSec: studio.params.durationSec } : {}) });
 
@@ -340,10 +387,14 @@ export function classifyAgentIntent(input: IntentInput): AgentIntent {
     return act(id, nImage >= 1 ? 'attachment' : 'new', params, needsPhoto ? ['photo'] : []);
   }
 
-  // 13) „Make me …": the generate lanes.
-  if (generative) {
-    const lane = resolveGenerativeLane(text, detectIntent(text));
-    if (lane) {
+  // 13) „Make me …": the generate lanes. A Georgian make-verb at the END of a video ask („ერთწუთიანი ვიდეო გამიკეთე
+  //     ზღვაზე") counts too, when the words read as a video and name no analysis (Video Core v1.0 AC-01).
+  const detected = detectIntent(text);
+  const kaVideo = !generative && nVideo === 0 && KA_MAKE.test(text) && !KA_ANALYSIS.test(text) && detected.intent === 'video_generation' && detected.confidence >= 0.7;
+  if (generative || kaVideo) {
+    const lane = resolveGenerativeLane(text, detected);
+    // «напиши пост про видео», "write a script for the video": text about a video is the chat's, not a render.
+    if (lane && !(lane === 'video_generation' && WRITING_LEAD.test(text))) {
       const svc = resolveService(text);
       const id = svc && svc.status !== 'coming-soon' && svc.tool && LANE[lane]!.split('.')[0] === svc.id.split('.')[0] ? (svc.id as CapabilityId) : LANE[lane]!;
       return act(id, kinds.length ? 'attachment' : 'new', params);

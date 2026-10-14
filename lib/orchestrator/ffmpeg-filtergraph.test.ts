@@ -1,4 +1,4 @@
-import { buildFilterComplex, duckRatio } from './ffmpeg-filtergraph';
+import { buildFilterComplex, duckRatio, resolveJoins, stitchedSeconds } from './ffmpeg-filtergraph';
 
 describe('buildFilterComplex', () => {
   test('single clip → no xfade, routed through the cinematic master', () => {
@@ -298,5 +298,29 @@ describe('native audio follows the picture join by join (Veo in-clip dialogue st
   test('a uniform soft chain still crossfades every join by the full second', () => {
     const audio = [...graph(['dissolve', 'dissolve']).filter.matchAll(/acrossfade=d=([\d.]+)/g)].map((m) => Number(m[1]));
     expect(audio).toEqual([1, 1]);
+  });
+});
+
+describe('Video Core v1.0 §4 — the stitched length under the joins, and no pad under a contract', () => {
+  test('resolveJoins reads globalRender as the assembler does', () => {
+    expect(resolveJoins(5, { transition: 'cut' })).toEqual({ transition: 'cut', transitions: undefined });
+    expect(resolveJoins(5, undefined)).toEqual({ transition: 'crossfade', transitions: ['crossfade', 'crossfade', 'dissolve', 'dissolve'] });
+    expect(resolveJoins(4, { transition: 'crossfade', transitions: 'cut,dissolve,cut,bogus' })).toEqual({ transition: 'crossfade', transitions: ['cut', 'dissolve', 'cut'] });
+    expect(resolveJoins(3, { transition: 'zoom' })).toEqual({ transition: 'zoom', transitions: undefined });
+  });
+  test('8 × 8 s: crossfades stitch to 57 s, cuts to 64 s, an all-cut per-join list to 64 s, a mixed list loses one frame per cut', () => {
+    expect(stitchedSeconds(8, 8, { transition: 'crossfade' }, 30)).toBe(57);
+    expect(stitchedSeconds(8, 8, { transition: 'cut' }, 30)).toBe(64);
+    expect(stitchedSeconds(8, 8, { transition: 'crossfade', transitions: 'cut,cut,cut,cut,cut,cut,cut' }, 30)).toBe(64);
+    expect(stitchedSeconds(4, 8, { transition: 'crossfade', transitions: 'cut,dissolve,cut' }, 30)).toBeCloseTo(32 - 1 - 2 / 30, 9);
+    expect(stitchedSeconds(1, 6, { transition: 'crossfade' }, 30)).toBe(6);
+  });
+  test('padToTarget false: a 4-clip xfade film is NOT held to 30 s — no clone-pad, the bed trimmed to the 21 s stitch', () => {
+    const g = buildFilterComplex({ nClips: 4, hasVoice: false, hasMusic: true, hasSfx: false, fps: 30, duckPct: 30, clipSec: 6, padToTarget: false });
+    expect(g.filter).not.toContain('tpad');
+    expect(g.filter).toContain('atrim=0:21.00');
+    const legacy = buildFilterComplex({ nClips: 4, hasVoice: false, hasMusic: true, hasSfx: false, fps: 24, duckPct: 30, clipSec: 6 });
+    expect(legacy.filter).toContain('tpad=stop_mode=clone');
+    expect(legacy.filter).toContain('atrim=0:30.00');
   });
 });

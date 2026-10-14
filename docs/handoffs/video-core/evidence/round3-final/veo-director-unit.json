@@ -1,0 +1,151 @@
+{
+  "command": "npx jest lib/veo lib/video/director app/api/video/director --silent --maxWorkers=2 --json",
+  "head": "357926b",
+  "ranAt": "2026-10-12T18:49:09.851Z",
+  "suites": {
+    "total": 22,
+    "passed": 22,
+    "failed": 0
+  },
+  "tests": {
+    "total": 980,
+    "passed": 980,
+    "failed": 0,
+    "skipped": 0
+  },
+  "perSuite": [
+    {
+      "file": "lib/veo/vertexClient.test.ts",
+      "status": "passed",
+      "tests": 82,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/gcs.test.ts",
+      "status": "passed",
+      "tests": 78,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/promptCompiler.test.ts",
+      "status": "passed",
+      "tests": 86,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/vertexAuth.test.ts",
+      "status": "passed",
+      "tests": 70,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/run.test.ts",
+      "status": "passed",
+      "tests": 21,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/engine.test.ts",
+      "status": "passed",
+      "tests": 88,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/geminiTransport.test.ts",
+      "status": "passed",
+      "tests": 64,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/storyboard.test.ts",
+      "status": "passed",
+      "tests": 33,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/cinematography.test.ts",
+      "status": "passed",
+      "tests": 101,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/payload.test.ts",
+      "status": "passed",
+      "tests": 119,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/capabilities.test.ts",
+      "status": "passed",
+      "tests": 93,
+      "failed": 0
+    },
+    {
+      "file": "app/api/video/director/routes.test.ts",
+      "status": "passed",
+      "tests": 15,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/googleVeoProvider.test.ts",
+      "status": "passed",
+      "tests": 56,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/server.test.ts",
+      "status": "passed",
+      "tests": 8,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/director.test.ts",
+      "status": "passed",
+      "tests": 20,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/authCheck.test.ts",
+      "status": "passed",
+      "tests": 6,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/smoke.test.ts",
+      "status": "passed",
+      "tests": 9,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/fromStudio.test.ts",
+      "status": "passed",
+      "tests": 6,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/planner.test.ts",
+      "status": "passed",
+      "tests": 7,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/deliver.test.ts",
+      "status": "passed",
+      "tests": 6,
+      "failed": 0
+    },
+    {
+      "file": "lib/video/director/migration.test.ts",
+      "status": "passed",
+      "tests": 3,
+      "failed": 0
+    },
+    {
+      "file": "lib/veo/contract.test.ts",
+      "status": "passed",
+      "tests": 9,
+      "failed": 0
+    }
+  ],
+  "live": "NOT RUN — OWNER/PROVIDER BLOCKED (no paid Veo call approved; every provider call in these suites is a fake engine or mocked fetch)"
+}

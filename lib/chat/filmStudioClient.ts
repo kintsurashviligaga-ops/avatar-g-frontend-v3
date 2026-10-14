@@ -29,6 +29,7 @@ import { GEL_COST } from '@/lib/billing/gel';
 import { StallDetector } from '@/lib/jobs/stallDetector';
 import type { VeoRenderOptions } from '@/lib/video/veoPlan';
 import type { SceneScreenwriterMeta } from '@/lib/chat/filmPipeline';
+import type { RenderApprovalWire } from '@/lib/video/storyboard/revision';
 
 /** The director's per-scene provenance as the orchestrate route accepts it (lib/veo/renderOptions SceneMetaSchema). */
 export type SceneMetaWire = Pick<SceneScreenwriterMeta, 'cameraShot' | 'mood' | 'location' | 'lighting' | 'camera'>;
@@ -193,6 +194,14 @@ export interface DriveFilmOptions {
   transition?: 'crossfade' | 'cut' | 'dissolve' | 'zoom' | 'slide' | 'fade_black';
   /** Per-join transitions from the studio's scene timeline (length = scenes − 1). Wins over `transition`. */
   joinTransitions?: Array<'cut' | 'crossfade' | 'dissolve' | 'fade_black'>;
+  /** Video Core v1.0 §4 — the contracted FINAL length (lib/video/durationContract): the master is cut to it frame-exact on
+   *  the 30 fps timeline by the assembler; the clips rendered stay the native (priced) length. */
+  finalDurationSec?: number;
+  /** Video Core v1.0 §5 — the storyboard approval this render was started from (lib/video/storyboard/revision →
+   *  approvalForRender): revision number, fingerprint, and the board it was taken from. The orchestrate route re-fingerprints
+   *  the board and refuses a render whose frames / scripts / grid are not that board's (400 revision_mismatch), before any
+   *  clip is dispatched or charged. */
+  storyboardApproval?: RenderApprovalWire;
   /**
    * The timecoded Master Production Script. ⚠️ IT USED TO BE DROPPED HERE: the studio passed it, but this interface
    * had no such field and the dispatch body never sent it, so the server's master-script casting, dialogue stems
@@ -343,6 +352,17 @@ export const MIN_SALVAGE_CLIPS = 2;
  */
 export function canSalvagePartialCut(matrix: FilmStudioMatrix | null): boolean {
   return readyClipUrls(matrix).length >= MIN_SALVAGE_CLIPS;
+}
+
+/**
+ * Video Core v1.0 §4 — the final-length contract a stitch carries. It was planned on EVERY scene of the board, so it holds
+ * only when every one of them landed. A salvaged cut (a scene failed and the survivors are stitched) is shorter by whole
+ * scenes: it goes without a contract and is stitched at its own length — the "N of M scenes" note says so — instead of
+ * being refused for a length the board can no longer reach (a film paid when it started would then deliver nothing).
+ */
+export function finalContractForCut(finalDurationSec: number | null | undefined, clipsLanded: number, scenesPlanned: number): number | null {
+  if (typeof finalDurationSec !== 'number' || !(finalDurationSec > 0)) return null;
+  return clipsLanded === scenesPlanned ? finalDurationSec : null;
 }
 
 /**
@@ -535,6 +555,23 @@ async function postOrchestrate(body: Record<string, unknown>, signal?: AbortSign
   return json;
 }
 
+/**
+ * The transition fields of a film's globalRender: the whole-film transition, and the per-join list from the scene timeline
+ * (comma-separated — globalRender carries scalars only). A mixed list needs the soft (xfade) chain, so the whole-film field
+ * then says 'crossfade' unless every join is a cut; the assembler renders each 'cut' inside a mixed chain as a one-frame join.
+ * Pure: the studio's render-time length check (Video Core v1.0 §4) composes the joins through this same function, so the
+ * stitched length it predicts is the one the route and the assembler read (ffmpeg-filtergraph resolveJoins).
+ */
+export function composeTransitionRender(transition: string | null | undefined, joinTransitions: readonly string[] | null | undefined): Record<string, string> {
+  const g: Record<string, string> = {};
+  if (transition) g.transition = transition;
+  if (joinTransitions && joinTransitions.length) {
+    g.transitions = joinTransitions.join(',');
+    if (!transition || transition === 'cut') g.transition = joinTransitions.every((t) => t === 'cut') ? 'cut' : 'crossfade';
+  }
+  return g;
+}
+
 /** Mirror of MyAvatarChatV2.assembleFilm — hand the landed clips to the authed stitch. */
 async function assembleMaster(
   clipUrls: string[],
@@ -558,7 +595,9 @@ async function assembleMaster(
   clipSec?: number | null,
   /** Per-join transitions (the studio's scene timeline). */
   joinTransitions?: string[] | null,
-): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null } | { url: null; error: string } | null> {
+  /** Video Core v1.0 §4 — the contracted final length the assembler cuts the master to. */
+  finalDurationSec?: number | null,
+): Promise<{ url: string; qa: FilmQaSummary | null; musicUrl: string | null; scoreFallback?: string | null; clipsDropped?: number } | { url: null; error: string } | null> {
   // Optionally re-voice the narration in the user's TRAINED voice before the stitch
   // (done here, not in the budget-tight assemble route). Fail-open keeps the original.
   let finalVoiceUrl = voiceUrl ?? null;
@@ -575,14 +614,7 @@ async function assembleMaster(
   // PHASE 2 L2/L6 — assemble the transition + 3-track-audio / smart-ducking knobs into
   // ONE globalRender object. Each key is opt-in; an empty object is omitted entirely so
   // the route keeps its defaults (and the existing documentary mix) when nothing is set.
-  const globalRender: Record<string, string | number | boolean> = {};
-  if (transition) globalRender.transition = transition;
-  // globalRender carries scalars only: the per-join list travels comma-separated ("cut,dissolve,cut").
-  if (joinTransitions && joinTransitions.length) {
-    globalRender.transitions = joinTransitions.join(',');
-    // A mixed list needs the soft (xfade) chain; the assembler renders each 'cut' in it as a one-frame join.
-    if (!transition || transition === 'cut') globalRender.transition = joinTransitions.every((t) => t === 'cut') ? 'cut' : 'crossfade';
-  }
+  const globalRender: Record<string, string | number | boolean> = { ...composeTransitionRender(transition, joinTransitions) };
   if (audioMix?.threeTrack) globalRender.three_track_mix = true;
   if (typeof audioMix?.musicVolume === 'number') globalRender.music_volume = audioMix.musicVolume;
   if (typeof audioMix?.sfxVolume === 'number') globalRender.sfx_volume = audioMix.sfxVolume;
@@ -610,6 +642,8 @@ async function assembleMaster(
       ...(sfxUrl ? { sfxUrl } : {}),
       ...(scorePrompt.trim() ? { scorePrompt: scorePrompt.trim() } : {}),
       ...(statusTokenId ? { filmTokenId: statusTokenId } : {}),
+      // Video Core v1.0 §4 — the final length the master is cut to (the route refuses one these clips cannot be cut to).
+      ...(typeof finalDurationSec === 'number' && finalDurationSec > 0 ? { finalDurationSec } : {}),
       // Pass any non-landscape canvas (vertical · 1:1 · 4:5) to the assembler;
       // landscape is the route default.
       ...(orientation && orientation !== 'landscape' ? { orientation } : {}),
@@ -634,7 +668,7 @@ async function assembleMaster(
   // ⚠️ `scoreFallback` WAS MISSING FROM THIS CAST, so the route's own report that every music provider
   // missed — it literally logs "SILENT (all music providers missed — proceeding silent, not 500)" —
   // was dropped right here at the door, and a film with no soundtrack was handed back as a clean one.
-  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { url?: unknown; qa?: unknown; message?: unknown; error?: unknown; musicUrl?: unknown; scoreFallback?: unknown; clipsDropped?: unknown } | null;
   if (!res.ok) {
     const msg = typeof json?.message === 'string' && json.message.trim()
       ? json.message.trim()
@@ -653,6 +687,8 @@ async function assembleMaster(
     // null is MEANINGFUL here (every provider missed) and must survive as null, not collapse to
     // undefined — undefined means "the route did not report", which is a different thing entirely.
     scoreFallback: json.scoreFallback === null ? null : (typeof json.scoreFallback === 'string' ? json.scoreFallback : undefined),
+    // Clips the route found dead (hard 403/404/410) and left out of the cut — the delivered film is that many scenes short.
+    ...(typeof json.clipsDropped === 'number' && json.clipsDropped > 0 ? { clipsDropped: json.clipsDropped } : {}),
   };
 }
 
@@ -791,6 +827,8 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
           // Google Veo plan + the director's per-scene provenance (docs/VEO_ENGINE.md).
           ...(opts.veo ? { veo: opts.veo } : {}),
           ...(opts.sceneMeta?.length ? { sceneMeta: opts.sceneMeta } : {}),
+          // Video Core v1.0 §5 — the approval, with its board, for the server to check this render against.
+          ...(opts.storyboardApproval ? { storyboardApproval: opts.storyboardApproval } : {}),
         },
         signal,
       );
@@ -962,7 +1000,9 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     // aerial shots of a multi-scene montage — see OmniStudio's singer-performance /
     // compositeDocumentary path, which lip-syncs a clean close-up face and composites
     // it back in-place instead).
-    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null);
+    const scenesPlanned = matrix.sceneCount || matrix.clips.length;
+    const finalContract = finalContractForCut(opts.finalDurationSec, clips.length, scenesPlanned);
+    const assembledRes = await assembleMaster(clips, musicBed, matrix.statusTokenId, message, signal, opts.orientation, voiceBed, sfxBed, opts.transition, opts.myVoiceNarration, opts.noMusic, musicVideoMode, opts.soundtrackUrl ?? null, captionLang, opts.vocalGender, opts.audioMix, dialogueStemsBed, matrix.clipSec ?? null, opts.joinTransitions ?? null, finalContract);
     let assembled: { url: string; qa: FilmQaSummary | null } | null =
       assembledRes && typeof assembledRes.url === 'string' && assembledRes.url.length > 0
         ? { url: assembledRes.url, qa: 'qa' in assembledRes ? assembledRes.qa : null }
@@ -998,9 +1038,10 @@ export async function driveFilmStudio(opts: DriveFilmOptions): Promise<FilmStudi
     return {
       ok: true, phase: 'assembled', masterUrl: master, qa: assembled.qa, musicUrl: assembledMusicUrl,
       previewUrl: firstPreviewUrl(matrix), matrix, filmTokenId: matrix.statusTokenId ?? null,
-      // Reached both by a clean render AND by the salvage path; the counts are what tell them apart.
-      scenesRendered: clips.length,
-      scenesRequested: matrix.sceneCount || matrix.clips.length,
+      // Reached both by a clean render AND by the salvage path; the counts are what tell them apart. A clip the route
+      // dropped as dead is a scene missing from the cut too.
+      scenesRendered: clips.length - (assembledRes && 'clipsDropped' in assembledRes ? (assembledRes.clipsDropped ?? 0) : 0),
+      scenesRequested: scenesPlanned,
       // A master RECOVERED from the durable tracker carries no score report, and `undefined` is the
       // honest value for that — it means "not reported", which the delivery notice treats differently
       // from null ("every provider missed"). Inventing null here would warn about a film that is fine.

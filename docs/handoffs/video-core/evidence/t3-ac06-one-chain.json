@@ -1,0 +1,195 @@
+{
+ "ac06": {
+  "ask": {
+   "prompt": "ამ ხუთი ვიდეოთი 29.7 წამიანი ვერტიკალური 9:16 კლიპი გააკეთე, სიმღერა 59-ე წამიდან დაიწყე",
+   "targetSec": 29.7,
+   "musicFromSec": 59,
+   "clips": 5,
+   "aspect": "9:16",
+   "endText": "გაიგე მეტი MyAvatar.ge",
+   "endTextLastSec": 3
+  },
+  "montage": {
+   "frames": 891,
+   "expectedFrames": 891,
+   "durationSec": 29.7,
+   "width": 720,
+   "height": 1280,
+   "audio": {
+    "sourceStartSec": 59,
+    "timelineStartSec": 0,
+    "targetSec": 29.7,
+    "endPolicy": "stop",
+    "sourceAudio": "remove",
+    "replacementAudio": "replace"
+   },
+   "avAudioSec": 29.698,
+   "sources": [
+    [
+     "red.mp4",
+     6.5
+    ],
+    [
+     "lime.mp4",
+     6
+    ],
+    [
+     "blue.mp4",
+     6
+    ],
+    [
+     "yellow.mp4",
+     6
+    ],
+    [
+     "magenta.mp4",
+     5.2
+    ]
+   ],
+   "framesPerClip": {
+    "red": 195,
+    "lime": 180,
+    "blue": 180,
+    "yellow": 180,
+    "magenta": 156
+   },
+   "markerEnvelopeDb": [
+    [
+     0,
+     -6.9
+    ],
+    [
+     0.02,
+     -7
+    ],
+    [
+     0.04,
+     -7
+    ],
+    [
+     0.06,
+     -6.9
+    ],
+    [
+     0.08,
+     -6.9
+    ],
+    [
+     0.1,
+     -7
+    ],
+    [
+     0.12,
+     -6.9
+    ],
+    [
+     0.14,
+     -6.9
+    ],
+    [
+     0.16,
+     -6.9
+    ],
+    [
+     0.18,
+     -6.9
+    ],
+    [
+     0.2,
+     -6.9
+    ],
+    [
+     0.22,
+     -6.9
+    ],
+    [
+     0.24,
+     -6.9
+    ],
+    [
+     0.26,
+     -6.9
+    ],
+    [
+     0.28,
+     -6.9
+    ],
+    [
+     0.3,
+     -6.9
+    ],
+    [
+     0.32,
+     -6.9
+    ],
+    [
+     0.34,
+     -6.9
+    ],
+    [
+     0.36,
+     -6.9
+    ],
+    [
+     0.38,
+     -7
+    ],
+    [
+     0.4,
+     -60.4
+    ],
+    [
+     0.42,
+     -91
+    ],
+    [
+     0.44,
+     -91
+    ],
+    [
+     0.46,
+     -91
+    ],
+    [
+     0.48,
+     -74
+    ],
+    [
+     0.5,
+     -9.6
+    ]
+   ],
+   "lastSecondDb": -21.3
+  },
+  "endText": {
+   "layer": {
+    "id": "t1",
+    "anchor": "bottom",
+    "startSec": 26.7,
+    "endSec": 29.7,
+    "z": 1,
+    "kind": "text",
+    "role": "cta",
+    "text": "გაიგე მეტი MyAvatar.ge",
+    "size": 58,
+    "style": "brand",
+    "motionIn": "slide-up",
+    "motionOut": "none",
+    "motionSec": 0.5
+   },
+   "box": {
+    "x": 98,
+    "y": 938,
+    "w": 524,
+    "h": 86
+   },
+   "absentBeforeDiff": 1.33,
+   "drawnAtEndDiff": 117.42,
+   "finalFrames": 891,
+   "width": 720,
+   "height": 1280,
+   "parentFramesAfter": 891,
+   "layerQc": "PASS"
+  }
+ }
+}

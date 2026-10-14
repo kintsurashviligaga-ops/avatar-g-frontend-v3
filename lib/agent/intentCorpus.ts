@@ -20,8 +20,8 @@ export interface CorpusCase {
     | { kind: 'talk' | 'question' | 'feedback' | 'chat' }
     | { kind: 'act'; capability: CapabilityId; missing?: string[] }
     | { kind: 'unavailable'; capability: CapabilityId };
-  /** Where the case comes from: the Master Task's 13 sentences, a production report, or coverage. */
-  source: 'master-task' | 'report' | 'coverage';
+  /** Where the case comes from: the Master Task's 13 sentences, a production report, coverage, or Video Core v1.0 (AC-01). */
+  source: 'master-task' | 'report' | 'coverage' | 'video-core';
 }
 
 const V3: AttachmentKind[] = ['video', 'video', 'video'];
@@ -109,4 +109,30 @@ export const INTENT_CORPUS: readonly CorpusCase[] = [
   { text: 'tell me a story about a dragon', expect: { kind: 'chat' }, source: 'coverage' },
   { text: 'დაწერე ლექსი შემოდგომაზე', expect: { kind: 'chat' }, source: 'coverage' },
   { text: 'напиши стихотворение про осень', expect: { kind: 'chat' }, source: 'coverage' },
+
+  // ── Video Core v1.0 (AC-01): a video or a music video asked in words, the verb last, a choice among the clips ──────
+  { text: '24-წამიანი მუსიკალური კლიპი გამიკეთე', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: '24-second music video please', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'сделай 24-секундный музыкальный клип', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: '24-წამიანი მუსიკალური კლიპი გამიკეთე', attachments: ['audio'], expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'ერთწუთიანი ვიდეო გამიკეთე ზღვაზე', expect: { kind: 'act', capability: 'video.generate' }, source: 'video-core' },
+  { text: 'ოთხწუთიანი ფილმი გამიკეთე თბილისზე', expect: { kind: 'act', capability: 'video.generate' }, source: 'video-core' },
+  { text: 'ვიდეოს ანალიზი გამიკეთე', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი', attachments: [...V3, ...V3, 'video', 'audio'], expect: { kind: 'act', capability: 'agent.montage' }, source: 'video-core' },
+  { text: 'use only the last five of the seven clips', attachments: [...V3, ...V3, 'video', 'audio'], expect: { kind: 'act', capability: 'agent.montage' }, source: 'video-core' },
+  { text: 'შვიდი კლიპიდან გამოიყენე მხოლოდ ბოლო ხუთი', attachments: [...V3, ...V3, 'video'], expect: { kind: 'act', capability: 'agent.montage', missing: ['track'] }, source: 'video-core' },
+  { text: 'what is a music video?', expect: { kind: 'question' }, source: 'video-core' },
+  { text: 'my client asked for a music video', expect: { kind: 'chat' }, source: 'video-core' },
+  // …and only when the music video is what is made: a thing FOR one, talk about one or a text for one keep the route
+  // they had before the lane existed (PR #58 final review).
+  { text: 'create a presentation about music videos', expect: { kind: 'act', capability: 'design.presentation' }, source: 'video-core' },
+  { text: 'make an avatar for my music video', expect: { kind: 'act', capability: 'avatar.talking' }, source: 'video-core' },
+  { text: 'make a song for my music video', expect: { kind: 'act', capability: 'music.generate' }, source: 'video-core' },
+  { text: 'write lyrics for my music video', expect: { kind: 'act', capability: 'music.generate' }, source: 'video-core' },
+  { text: 'I want to discuss my music video idea', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'давай обсудим музыкальный клип', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'მჭირდება რჩევა მუსიკალური კლიპისთვის', expect: { kind: 'chat' }, source: 'video-core' },
+  { text: 'make me a music video about the sea', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'მინდა მუსიკალური კლიპი ზღვაზე', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
+  { text: 'хочу музыкальный клип', expect: { kind: 'act', capability: 'video.music-video' }, source: 'video-core' },
 ];

@@ -1,0 +1,13 @@
+Full jest run on claude/bog-payments-master-task-yjxq59, 2026-10-12, sandbox container (npm ci --ignore-scripts).
+
+Test Suites: 12 failed, 6 skipped, 858 passed, 870 of 876 total
+Tests:       86 failed, 41 skipped, 13198 passed, 13325 total
+
+All 12 failing suites are FFmpeg render tests (lib/agent/media/*.ffmpeg.test.ts, lib/video/ffmpegExec.test.ts,
+lib/pipeline/photoMusicVideo.test.ts): `spawnSync node_modules/ffmpeg-static/ffmpeg ENOENT` — the ffmpeg-static
+binary is downloaded by an install script, which --ignore-scripts skipped. With the system ffmpeg 6.1.1 linked in,
+11 of 12 pass; lib/agent/media/composition.ffmpeg.test.ts still fails (16 tests) on the `gradients … speed=0` filter
+option that ffmpeg 6.1 rejects — it fails identically on main 30be5a2 without this branch's changes (git stash
+check). None touches billing; this branch changes no media code.
+
+BOG / billing / admin suites: all pass (29 existing suites 346 tests + 4 new suites).

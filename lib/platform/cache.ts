@@ -1,5 +1,6 @@
 import type { Redis } from '@upstash/redis';
 import { createUpstashRedis } from '@/lib/platform/upstash';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 
 type CacheEntry = {
   value: unknown;
@@ -12,10 +13,9 @@ let redisClient: Redis | null = null;
 
 function getRedisClient(): Redis | null {
   if (redisClient) return redisClient;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  redisClient = createUpstashRedis(url, token);
+  const env = upstashRestEnv();
+  if (!env) return null;
+  redisClient = createUpstashRedis(env.url, env.token);
   return redisClient;
 }
 

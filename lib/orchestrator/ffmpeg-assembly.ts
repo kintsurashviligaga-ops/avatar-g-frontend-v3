@@ -17,10 +17,13 @@ import { mkdtemp, writeFile, readFile, rm, stat, rename } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
-import { buildFilterComplex, joinOverlaps, sceneAwareTransitions } from './ffmpeg-filtergraph';
+import { buildFilterComplex, joinOverlaps, resolveJoins } from './ffmpeg-filtergraph';
 import { buildCubeFile, pickLutLook, LUT_FILENAME, type LutLook } from './cinematic-lut';
 import { renderOverlayPng, renderMusicBugPng, type MarketingOverlay, type MusicBug } from '@/lib/pipeline/compositing/ffmpeg-overlay';
-import { validateMaster, expectedMasterDuration, type QaReport } from './masterQa';
+import { validateMaster, expectedMasterDuration, MasterQaRejected, type QaReport } from './masterQa';
+import { SoundtrackUnreadable } from './soundtrackUnreadable';
+import { VIDEO_FPS, finalCutForAssemble } from '@/lib/video/durationContract';
+import { countDecodedFrames } from '@/lib/video/frameCount';
 import { uploadBufferAndSign, removeStorageObjects } from './storage-adapter';
 import { readBodyWithCap } from '@/lib/security/allowlistedAudioFetch';
 import { fetchPublic } from '@/lib/web/publicFetch';
@@ -113,6 +116,11 @@ export interface FfmpegManifest {
    *  existing voice-keyed sidechain. Anything else (absent, one speaker, an untimed/dropped turn) → the
    *  single-voice `voiceoverUrl` path runs UNCHANGED (fail-open fallback). */
   dialogueStems?: { url: string; speaker: string; startSec?: number | null }[];
+  /** Video Core v1.0 §4 — the contracted FINAL length (lib/video/durationContract). The clips are the native master; the
+   *  delivered film is this long, by a frame-exact `-t` on the 30 fps timeline (29.7 s = 891 frames). Checked against the
+   *  master it is cut from: a length that cannot be cut from it is a thrown refusal (the saga refunds), never another
+   *  length delivered. Absent → the master is N × clipSec at 24 fps, as before. */
+  finalDurationSec?: number | null;
 }
 
 /** True when the CPU assembler can run (binary bundled). */
@@ -218,15 +226,24 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     ]);
     // eslint-disable-next-line no-console
     console.log(`[assemble] downloaded ${segs.length} clips + ${[voice, music, sfx].filter(Boolean).length} audio lanes in ${Date.now() - tDl}ms`);
+    // Round 3 (P1) — every audio lane is checked for an audio stream BEFORE the one encode command is built. A file ffmpeg
+    // cannot read as audio used to die inside the encode as execFile's raw "Command failed" (unnamed: the route said
+    // assembly_failed); it is a named refusal now, SoundtrackUnreadable (music_unreadable), with nothing encoded or hosted.
+    for (const [lane, file] of [['music', music], ['voice', voice], ['sfx', sfx]] as const) {
+      if (file && !(await probeHasAudio(bin, file))) throw new SoundtrackUnreadable(lane);
+    }
 
     const g = m.globalRender ?? {};
-    const fps = String(g.fps) === '60' ? 60 : 24;
+    // Video Core v1.0 §4 — a film with a contracted final length renders on the 30 fps timeline, so the delivered length is a
+    // whole number of frames (24 s = 720, 29.7 s = 891). Without one: 24 fps, as before.
+    const finalRequested = typeof m.finalDurationSec === 'number' && Number.isFinite(m.finalDurationSec) ? m.finalDurationSec : null;
+    const fps = String(g.fps) === '60' ? 60 : finalRequested !== null ? VIDEO_FPS : 24;
     const duckPct = typeof g.vocal_ducking_pct === 'number' ? g.vocal_ducking_pct : 30;
-    const transition = String(g.transition ?? 'crossfade');
-    // Per-join transitions from the studio's scene timeline ("cut,dissolve,cut"). globalRender carries scalars only,
-    // so the list travels as a comma-separated string. Unknown names are dropped, never passed to ffmpeg.
-    const JOIN_NAMES = new Set(['cut', 'crossfade', 'dissolve', 'fade_black', 'fade_to_black', 'zoom', 'slide', 'wipe']);
-    const callerJoins = String(g.transitions ?? '').split(',').map((t) => t.trim()).filter((t) => JOIN_NAMES.has(t));
+    // The whole-film transition and the per-join list from the studio's scene timeline ("cut,dissolve,cut" — globalRender
+    // carries scalars only, so the list travels comma-separated; unknown names are dropped). Resolved by the ONE reading the
+    // assemble route's pre-check and the studio's render-time check also use (ffmpeg-filtergraph resolveJoins), so the
+    // stitched length they predict is the one encoded here.
+    const { transition, transitions: joinTransitions } = resolveJoins(segs.length, g);
     // PHASE 2 L2/L6 — opt-in 3-track audio master + smart-ducking knobs (all default
     // OFF/undefined → the existing 2-lane documentary mix is unchanged). The client
     // sets these via globalRender (three_track_mix / music_volume / sfx_volume /
@@ -309,9 +326,6 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // pattern replaced the chosen join, so Zoom and Slide never rendered on a multi-clip film. Now: the caller's
     // per-join list wins; else an explicit choice applies to every join; only the default crossfade gets the
     // beat-aware softening.
-    const joinTransitions: string[] | undefined = transition === 'cut' ? undefined
-      : callerJoins.length ? callerJoins
-        : transition === 'crossfade' ? sceneAwareTransitions(segs.length) : undefined;
     const overlapSec = joinOverlaps(segs.length, transition, joinTransitions, fps);
     // Mean overlap per join — expectedMasterDuration's model (n·clip − (n−1)·trans) then matches the graph exactly.
     const transSec = overlapSec.length ? overlapSec.reduce((a, b) => a + b, 0) / overlapSec.length : 0;
@@ -439,6 +453,9 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       fps,
       duckPct,
       transition,
+      // Video Core v1.0 §4 — under a contracted final length the master is the stitched footage, never padded to 30 s with a
+      // cloned (frozen) last frame: the final is cut from real frames or refused.
+      ...(finalRequested !== null ? { padToTarget: false } : {}),
       // PHASE 5A — beat-aware per-join transitions for the xfade master (soften the
       // arc-reveal + closing joins to a dissolve). Skipped for the hard-cut music-video
       // master and single-clip films, where it's a no-op.
@@ -474,7 +491,19 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // Target byte budget for the master so it fits under the storage upload limit
     // (~50MB project cap). Derived per-runtime: a 30s master (~40MB) is barely
     // touched; a 49s/60s master is capped from ~70MB down to ~MASTER_TARGET_MB.
-    const masterDurSec = expectedMasterDuration(inputs.length, clipSec, transSec);
+    // The stitched length: N clips less every join's overlap. Under the contract that IS the master (padToTarget false above);
+    // without one, the legacy model — the ≥4-clip pad to the 30 s brand target included.
+    const stitchSec = inputs.length * clipSec - overlapSec.reduce((a, b) => a + b, 0);
+    const masterDurSec = finalRequested !== null ? stitchSec : expectedMasterDuration(inputs.length, clipSec, transSec);
+    // The contracted final length, checked against the master it is cut from: refused (the saga refunds) rather than
+    // delivered at another length. `-t` below then stops the master at the final length — frame-exact at this rate.
+    const finalCut = finalRequested !== null ? finalCutForAssemble(masterDurSec, finalRequested) : null;
+    if (finalCut && !finalCut.ok) throw new Error(`final duration refused: ${finalCut.reason} (master ${masterDurSec}s, requested ${finalRequested}s)`);
+    const deliverSec = finalCut?.ok ? finalCut.finalSec : masterDurSec;
+    if (finalCut?.ok) {
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] final cut: master ${masterDurSec}s → final ${deliverSec}s (${finalCut.finalFrames} frames at ${fps} fps, ${finalCut.trimSec}s trimmed)`);
+    }
     const MASTER_TARGET_MB = 42;
     const AUDIO_KBPS = 256;
     const masterMaxrateKbps = Math.max(2_000, Math.round((MASTER_TARGET_MB * 8192) / masterDurSec) - AUDIO_KBPS);
@@ -509,7 +538,7 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
       // guarantee on top of the per-clip trim that the master is exactly this long
       // (30s for a full ≥4-clip film). `-t` truncates only if longer, so it can't
       // shorten a correctly-built timeline; it just enforces the contract.
-      '-t', String(masterDurSec),
+      '-t', String(deliverSec),
       '-movflags', '+faststart', out,
     );
 
@@ -620,17 +649,30 @@ export async function assembleWithFfmpeg(m: FfmpegManifest, signal?: AbortSignal
     // The verdict rides back on the response so the orchestrator/UI never
     // silently delivers a broken film.
     const probe = await probeMaster(bin, out);
+    // Video Core v1.0 §4 — a contracted final is checked on its DECODED frames (lib/video/frameCount), not on the
+    // container's duration: 29.7 s at 30 fps is 891 frames. The count rides on the QA report (frame_count_mismatch when
+    // it is off or unreadable); a legacy master (no contract) is not counted.
+    const actualFrames = finalCut?.ok ? await countDecodedFrames(bin, out, { ...(signal ? { signal } : {}) }).catch(() => null) : null;
+    if (finalCut?.ok) {
+      // eslint-disable-next-line no-console
+      console.log(`[assemble] frame-exact QC: ${actualFrames ?? 'unreadable'} / ${finalCut.finalFrames} frames at ${fps} fps`);
+    }
     const qa = validateMaster({
       sizeBytes: data.byteLength,
-      expectedDurSec: expectedMasterDuration(inputs.length, clipSec, transSec),
+      expectedDurSec: deliverSec,
       actualDurSec: probe.actualDurSec,
       audioExpected: amap !== null,
       audioPresent: probe.audioPresent,
       width: probe.width,
       height: probe.height,
+      ...(finalCut?.ok ? { expectedFrames: finalCut.finalFrames, actualFrames } : {}),
     });
     if (!qa.pass) {
       console.warn(`[masterQa] master FAILED quality gate (grade ${qa.grade}, score ${qa.score}):`, qa.issues.map((i) => i.code).join(', '));
+      // Video Core v1.0 §7/§8 — a critical defect WITHHOLDS the master. It is not hosted, not returned, not stamped:
+      // the route's saga fails on this throw, compensates the charge once, and records the attempt as failed. A
+      // 29.7 s film that decodes to 890 frames is not "a film with a note", it is not the film that was paid for.
+      throw new MasterQaRejected(qa);
     }
 
     const objectPath = `${m.pipelineId || 'render'}/${Date.now()}.mp4`;

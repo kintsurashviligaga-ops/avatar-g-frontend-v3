@@ -1,0 +1,305 @@
+# Video Core v1.0 — the real-backend E2E against a VERCEL PREVIEW of this branch, on an ISOLATED, throwaway Supabase.
+# Owner word 2026-10-13 06:34Z: "ნებადართულია ახალი Vercel Preview-ის შექმნა მხოლოდ იზოლირებული სატესტო Supabase-ით,
+# Production მონაცემებსა და საიდუმლო გასაღებებზე წვდომის გარეშე."
+#
+# Where everything runs:
+#   · the database: the Supabase CLI's local stack on THIS runner (as in video-core-e2e-local.yml), started with a JWT secret
+#     made here for this run, so its anon and service keys are new and die with the runner. Test Schema Baseline, synthetic
+#     users and media only;
+#   · the app: a Vercel PREVIEW deployment of the PR head in a Vercel project of its own (avatar-g-video-core-e2e). Its
+#     environment holds this run's stack URL and keys and nothing else: no Production Supabase, no AI provider, payment or
+#     Google credential, so it cannot reach Production data and cannot make a paid call. That project refuses production
+#     builds (its ignored-build-step) and has no domain;
+#   · the link: a Cloudflare quick tunnel (no account, gone with the runner) to a key gate
+#     (e2e/video-core-live/scripts/key-gate.mjs) that admits only this run's two keys and storage URLs the stack signed.
+#
+# Handshake: GitHub cannot deploy to Vercel here (no token is stored in this repository, by design), so the operator, the
+# Claude session that owns PR #58, deploys. This job encrypts {tunnel, keys, nonce} with the public key in
+# e2e/video-core-live/preview/ (only the operator holds the private key) and posts it as the output of the check run
+# `preview-e2e-handshake` on the PR head. The operator sets the test project's Preview environment, deploys the PR head as
+# a Preview and aliases it to https://vcore-e2e-<nonce>.vercel.app. This job waits for that alias, proves the deployment
+# talks only to this run's stack (e2e/video-core-live/scripts/preview-check.mjs), and runs the same Playwright suite
+# (desktop, iPhone 13, API) against it. tests/video-core-live/guard.ts refuses any other app or database host.
+#
+# Started only by adding the `preview-e2e` label to the PR.
+name: Video Core Preview E2E (Vercel Preview, isolated Supabase)
+
+on:
+  pull_request:
+    types: [labeled]
+    branches: [main]
+
+concurrency:
+  group: video-core-preview-e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  preview-e2e:
+    name: Preview E2E (Vercel Preview, local Supabase via tunnel, desktop + phone)
+    if: ${{ github.event.label.name == 'preview-e2e' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      E2E_HOST: supabase.video-core-e2e.test
+      E2E_IP: 1.2.3.4
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      NEXT_TELEMETRY_DISABLED: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # The action's own "latest" lookup is an anonymous API call, which a shared runner's address can exhaust (Preview
+      # run 38386454944 stopped there: "rate limit exceeded"). The job's token asks instead; the version is then pinned.
+      - name: Resolve the Supabase CLI's latest release (with this job's token)
+        id: supabase-cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="$(gh release view --repo supabase/cli --json tagName -q .tagName)"
+          echo "version=${v#v}" >> "$GITHUB_OUTPUT"
+          echo "Supabase CLI ${v}"
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ steps.supabase-cli.outputs.version }}
+
+      - name: Map the reserved test host to this runner's loopback
+        run: |
+          sudo ip addr add "$E2E_IP/32" dev lo
+          echo "$E2E_IP $E2E_HOST" | sudo tee -a /etc/hosts >/dev/null
+          getent ahosts "$E2E_HOST"
+
+      - name: A stack config with a JWT secret made for this run only
+        run: |
+          work="$RUNNER_TEMP/vc-preview"
+          mkdir -p "$work"
+          cp -r e2e/video-core-live/supabase "$work/"
+          JWT=$(openssl rand -hex 32)
+          echo "::add-mask::$JWT"
+          # Written into the runner's temporary copy only; the repository config keeps no secret.
+          sed -i "/^\[auth\]$/a jwt_secret = \"$JWT\"" "$work/supabase/config.toml"
+          grep -c '^jwt_secret = ' "$work/supabase/config.toml"
+          { echo "SB_WORKDIR=$work"; echo "E2E_JWT_SECRET=$JWT"; } >>"$GITHUB_ENV"
+
+      - name: Start the throwaway Supabase stack
+        run: |
+          supabase --version
+          if ! supabase start --workdir "$SB_WORKDIR" >sb-start.log 2>&1; then
+            sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#postgres(ql)?://[^ ]+#postgresql://***#g' sb-start.log
+            exit 1
+          fi
+          sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#postgres(ql)?://[^ ]+#postgresql://***#g' sb-start.log | tail -n 30
+
+      - name: Export the stack's own keys (masked); they must be signed with this run's secret
+        run: |
+          supabase status --workdir "$SB_WORKDIR" -o env >sb-status.env 2>/dev/null
+          get() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" sb-status.env | head -n1; }
+          ANON=$(get ANON_KEY); SERVICE=$(get SERVICE_ROLE_KEY); DB=$(get DB_URL)
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ] || [ -z "$DB" ]; then echo "::error::supabase status gave no JWT keys"; exit 1; fi
+          QUOTE=$(openssl rand -hex 32); CRON=$(openssl rand -hex 32)
+          for v in "$ANON" "$SERVICE" "$DB" "$QUOTE" "$CRON"; do echo "::add-mask::$v"; done
+          # The CLI's documented default secret would make these keys public knowledge; the gate below relies on them
+          # being new, so each one must verify against this run's secret. (No apostrophe inside the single-quoted node
+          # script below: one ended the quote early in the first run, 38367198306.)
+          ANON="$ANON" SERVICE="$SERVICE" node -e '
+            const c = require("node:crypto");
+            for (const k of ["ANON", "SERVICE"]) {
+              const [h, p, s] = String(process.env[k]).split(".");
+              const ok = s && c.createHmac("sha256", process.env.E2E_JWT_SECRET).update(`${h}.${p}`).digest("base64url") === s;
+              if (!ok) { console.error(`${k} is not signed with the secret of this run`); process.exit(1); }
+            }
+            console.log("anon and service keys are signed with the secret of this run");'
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=https://$E2E_HOST:54443"
+            echo "SUPABASE_URL=https://$E2E_HOST:54443"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE"
+            echo "E2E_DB_URL=$DB"
+            echo "AGENT_G_QUOTE_SECRET=$QUOTE"
+            echo "CRON_SECRET=$CRON"
+            echo "VIDEO_CORE_LIVE_E2E=1"
+          } >>"$GITHUB_ENV"
+          rm -f sb-status.env sb-start.log
+
+      - name: Reach the stack through the test host (forward if Docker bound loopback only)
+        run: |
+          probe() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$E2E_HOST:54321/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true; }
+          code=$(probe)
+          if [ "$code" != "200" ]; then
+            nohup node e2e/video-core-live/scripts/forward.mjs "$E2E_IP" 54321 127.0.0.1 54321 >forward.log 2>&1 &
+            sleep 2; code=$(probe)
+          fi
+          echo "auth health via $E2E_HOST: HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Serve the stack over https for the tests (a CA made for this run only)
+        run: |
+          tls="$RUNNER_TEMP/video-core-e2e-tls"
+          bash e2e/video-core-live/scripts/make-tls.sh "$E2E_HOST" "$tls"
+          nohup node e2e/video-core-live/scripts/tls-front.mjs "$E2E_IP" 54443 "$E2E_IP" 54321 "$tls/leaf.pem" "$tls/leaf.key" >tls-front.log 2>&1 &
+          echo "NODE_EXTRA_CA_CERTS=$tls/ca.pem" >>"$GITHUB_ENV"
+          code=000
+          for _ in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$tls/ca.pem" "https://$E2E_HOST:54443/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true)
+            [ "$code" = "200" ] && break; sleep 1
+          done
+          echo "auth health over https: HTTP $code"
+          [ "$code" = "200" ]
+
+      - name: Fail-closed guard (never Production, never hosted, only this machine)
+        run: |
+          for v in NEXT_PUBLIC_SUPABASE_URL SUPABASE_URL E2E_DB_URL; do
+            case "${!v}" in
+              *zwksnayknzggdcenqqxy*|*supabase.co*|*supabase.com*|*supabase.in*|*supabase.net*|*pooler.supabase*)
+                echo "::error::$v points at a hosted Supabase project; refusing"; exit 64 ;;
+            esac
+          done
+          case "$E2E_DB_URL" in *@127.0.0.1:*|*@localhost:*) ;; *) echo "::error::E2E_DB_URL is not on this machine"; exit 64 ;; esac
+          [ "$(getent ahostsv4 "$E2E_HOST" | awk '{print $1}' | sort -u)" = "$E2E_IP" ] || { echo "::error::$E2E_HOST does not resolve to $E2E_IP"; exit 64; }
+          echo "guard: isolated stack only"
+
+      - name: Apply the Test Schema Baseline (and verify RLS, RPC, triggers, storage, billing)
+        run: bash e2e/video-core-live/baseline/apply.sh "$E2E_DB_URL"
+
+      - name: Anon-key exposure check against the local stack
+        run: node scripts/check-db-exposure.mjs
+
+      - name: Key gate and quick tunnel (only this run's keys get through)
+        run: |
+          GATE_KEYS="$NEXT_PUBLIC_SUPABASE_ANON_KEY,$SUPABASE_SERVICE_ROLE_KEY" nohup node e2e/video-core-live/scripts/key-gate.mjs 127.0.0.1 54480 127.0.0.1 54321 >key-gate.log 2>&1 &
+          sleep 1; cat key-gate.log
+          curl -sSfL -o "$RUNNER_TEMP/cloudflared" https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x "$RUNNER_TEMP/cloudflared"; "$RUNNER_TEMP/cloudflared" --version
+          TUNNEL=""
+          for attempt in 1 2 3; do
+            nohup "$RUNNER_TEMP/cloudflared" tunnel --no-autoupdate --url http://127.0.0.1:54480 >tunnel.log 2>&1 &
+            echo $! >tunnel.pid
+            for _ in $(seq 1 60); do
+              TUNNEL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -n1 || true)
+              [ -n "$TUNNEL" ] && break; sleep 1
+            done
+            [ -n "$TUNNEL" ] && break
+            echo "tunnel attempt $attempt gave no address"; kill "$(cat tunnel.pid)" 2>/dev/null || true; sleep 5
+          done
+          [ -n "$TUNNEL" ] || { echo "::error::no quick tunnel"; exit 1; }
+          echo "::add-mask::$TUNNEL"; echo "::add-mask::${TUNNEL#https://}"
+          echo "E2E_APP_SUPABASE_URL=$TUNNEL" >>"$GITHUB_ENV"
+          code=000
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TUNNEL/auth/v1/health" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" || true)
+            [ "$code" = "200" ] && break; sleep 3
+          done
+          echo "auth health through the tunnel with this run's key: HTTP $code"; [ "$code" = "200" ]
+          nokey=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TUNNEL/rest/v1/profiles?select=id&limit=1")
+          other=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$TUNNEL/rest/v1/profiles?select=id&limit=1" -H "apikey: sb_publishable_not_this_run")
+          echo "through the tunnel without a key: HTTP $nokey; with another key: HTTP $other"
+          [ "$nokey" = "403" ] && [ "$other" = "403" ]
+
+      - name: The tunnel reaches this run's stack (a user made locally is read back through it)
+        run: |
+          EMAIL="vc-preview-probe-$(openssl rand -hex 4)@example.com"; PW=$(openssl rand -hex 16); echo "::add-mask::$PW"
+          ID=$(curl -sf -X POST "http://127.0.0.1:54321/auth/v1/admin/users" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+                 -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PW\",\"email_confirm\":true}" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).id')
+          SEEN=$(curl -sf "$E2E_APP_SUPABASE_URL/auth/v1/admin/users/$ID" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).email')
+          [ "$SEEN" = "$EMAIL" ] || { echo "::error::the tunnel does not reach this run's stack"; exit 1; }
+          TOKEN=$(curl -sf -X POST "http://127.0.0.1:54321/auth/v1/token?grant_type=password" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+                    -d "{\"email\":\"$EMAIL\",\"password\":\"$PW\"}" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).access_token')
+          echo "::add-mask::$TOKEN"
+          echo "PROBE_TOKEN=$TOKEN" >>"$GITHUB_ENV"
+          echo "probe user made locally and read back through the tunnel"
+
+      - name: Hand the Preview's environment to the operator (encrypted) and wait for the Preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NONCE=$(openssl rand -hex 6)
+          PREVIEW_URL="https://vcore-e2e-$NONCE.vercel.app"
+          echo "PREVIEW_URL=$PREVIEW_URL" >>"$GITHUB_ENV"
+          K=$(openssl rand -hex 32); echo "::add-mask::$K"
+          printf '%s\n' "$K" >"$RUNNER_TEMP/k.txt"
+          node -e 'process.stdout.write(JSON.stringify({ v: 1, nonce: process.argv[1], sha: process.env.HEAD_SHA, run: process.env.GITHUB_RUN_ID,
+            supabaseUrl: process.env.E2E_APP_SUPABASE_URL, anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+            quoteSecret: process.env.AGENT_G_QUOTE_SECRET, cronSecret: process.env.CRON_SECRET }))' "$NONCE" \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass "file:$RUNNER_TEMP/k.txt" -out "$RUNNER_TEMP/p.enc"
+          printf '%s' "$K" | openssl pkeyutl -encrypt -pubin -inkey e2e/video-core-live/preview/handshake.pub.pem \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -out "$RUNNER_TEMP/k.enc"
+          BLOB="$(base64 -w0 "$RUNNER_TEMP/k.enc").$(base64 -w0 "$RUNNER_TEMP/p.enc")"
+          rm -f "$RUNNER_TEMP/k.txt" "$RUNNER_TEMP/k.enc" "$RUNNER_TEMP/p.enc"
+          jq -n --arg sha "$HEAD_SHA" --arg blob "$BLOB" --arg nonce "$NONCE" --arg run "$GITHUB_RUN_ID" \
+            '{name: "preview-e2e-handshake", head_sha: $sha, status: "in_progress",
+              output: {title: "Video Core Preview E2E handshake", summary: ("run " + $run + ", nonce " + $nonce + ": encrypted for the operator; waiting for the Preview"), text: $blob}}' \
+            | curl -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" -d @- | jq -r '.id' >check-run.id
+          echo "CHECK_RUN_ID=$(cat check-run.id)" >>"$GITHUB_ENV"
+          echo "handshake posted (check run $(cat check-run.id)); waiting for $PREVIEW_URL"
+          code=000
+          for i in $(seq 1 180); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$PREVIEW_URL/en" || true)
+            [ "$code" = "200" ] && break
+            [ $((i % 8)) -eq 0 ] && echo "still waiting ($((i * 15 / 60)) min): HTTP $code"
+            sleep 15
+          done
+          echo "Preview: HTTP $code"; [ "$code" = "200" ]
+
+      - name: Prove the Preview runs on this run's stack only (fail-closed)
+        env:
+          TUNNEL_URL: ${{ env.E2E_APP_SUPABASE_URL }}
+          EVIDENCE_FILE: test-results/video-core-live/evidence/preview-isolation.json
+        run: node e2e/video-core-live/scripts/preview-check.mjs
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright — the Vercel Preview, desktop + iPhone 13 + API
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.PREVIEW_URL }}
+          VIDEO_CORE_PREVIEW_E2E: "1"
+        run: npx playwright test -c playwright.video-core-live.config.ts
+
+      - name: Close the handshake (the encrypted text is removed)
+        if: ${{ always() && env.CHECK_RUN_ID != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          conclusion=$([ "$OUTCOME" = "success" ] && echo success || echo failure)
+          jq -n --arg c "$conclusion" '{status: "completed", conclusion: $c, output: {title: "Video Core Preview E2E handshake", summary: ("closed: " + $c), text: "consumed"}}' \
+            | curl -sf -X PATCH -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs/$CHECK_RUN_ID" -d @- >/dev/null || true
+
+      - name: Gate and stack logs on failure (redacted)
+        if: ${{ failure() }}
+        run: |
+          mkdir -p test-results/video-core-live/stack-logs
+          cp key-gate.log test-results/video-core-live/stack-logs/ 2>/dev/null || true
+          for c in $(docker ps -a --format '{{.Names}}' | grep -i supabase); do
+            docker logs --tail 400 "$c" 2>&1 | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#https://[a-z0-9-]+\.trycloudflare\.com#https://<tunnel>#g' >"test-results/video-core-live/stack-logs/$c.txt" || true
+          done
+          # Artifacts cannot always be fetched by whoever reads the run: each failure's page snapshot goes to the log too.
+          for f in $(find test-results/video-core-live -name error-context.md | head -n 6); do
+            echo "::group::$f"
+            head -c 8000 "$f" | sed -E 's/(eyJ|sb_(publishable|secret)_)[A-Za-z0-9._-]+/***/g; s#https://[a-z0-9-]+\.trycloudflare\.com#https://<tunnel>#g'
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: video-core-preview-e2e
+          path: |
+            test-results/video-core-live/
+            !test-results/video-core-live/state/
+          retention-days: 14
+
+      - name: Stop the tunnel and the stack
+        if: ${{ always() }}
+        run: |
+          kill "$(cat tunnel.pid 2>/dev/null)" 2>/dev/null || true
+          supabase stop --no-backup --workdir "$SB_WORKDIR" || true

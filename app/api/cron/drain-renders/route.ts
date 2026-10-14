@@ -26,6 +26,8 @@ import { createSettleDeps } from '@/lib/orchestrator/unpolledSettleRuntime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// Every read live: Next 14 caches a GET route's fetches otherwise (app/api/agent/media/sweep/route.ts).
+export const fetchCache = 'force-no-store';
 
 const MAX_REAP_PER_TICK = 25;
 

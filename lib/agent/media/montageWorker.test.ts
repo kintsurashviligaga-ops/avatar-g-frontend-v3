@@ -195,14 +195,15 @@ describe('every clip of the manifest, before and after the render (owner, 2026-1
   });
 
   test('A/V: a soundtrack missing or ending away from the picture is not delivered', async () => {
-    for (const streams of [{ videoSec: 30, audioSec: null }, { videoSec: 30, audioSec: 29.5 }, null]) {
+    // Round 3 (P0): a reader that did not count the frames is a failure of its own (the frame-exact check did not run).
+    for (const streams of [{ videoSec: 30, audioSec: null, videoFrames: 900 }, { videoSec: 30, audioSec: 29.5, videoFrames: 900 }, { videoSec: 30, audioSec: 30 }, null]) {
       const f = fake({ streams });
       const id = await queued(f);
       await workMontageJob(f.deps, { jobId: id, worker: 'w1' });
       expect(f.store.rows.get(id)).toMatchObject({ status: 'failed', signedUrl: null });
       expect(f.store.rows.get(id)!.error).toMatch(/^qc_failed: /);
     }
-    const f = fake({ streams: { videoSec: 30, audioSec: 30.1 } });
+    const f = fake({ streams: { videoSec: 30, audioSec: 30.1, videoFrames: 900 } });
     const id = await queued(f);
     expect(await workMontageJob(f.deps, { jobId: id, worker: 'w1' })).toMatchObject({ outcome: 'delivered' });
   });
@@ -339,6 +340,33 @@ describe('crash: a worker that dies is replaced once; then the job is given up a
     expect(await slow).toEqual({ ran: true, outcome: 'lost' });
     held.calls[1]!.finish();
     expect(await other).toMatchObject({ outcome: 'delivered' });
+  });
+
+  test('the last attempt keeps rendering through a heartbeat whose reads fail, and delivers', async () => {
+    // The live run: the sweep's attempt 2 was killed by its own heartbeat after a failed read of the row, and with no
+    // attempt left the job stayed `processing` with nobody to finish it. A read that fails is no evidence of anything.
+    const f = fake();
+    const id = await queued(f);
+    const held = heldRender();
+    f.deps.render = held.render;
+    const first = workMontageJob(f.deps, { jobId: id, worker: 'w1' });
+    await flush();
+    f.clock.now += LEASE_MS;
+    const retry = workMontageJob(f.deps, { jobId: id, worker: 'w2' });
+    await flush();
+    await f.beat(); // w1 hears the takeover and stops
+    expect(await first).toEqual({ ran: true, outcome: 'lost' });
+    expect(f.store.rows.get(id)!.exec).toMatchObject({ attempt: 2, maxAttempts: 2, owner: 'w2' });
+
+    f.store.dropReads = 3; // this beat cannot read the row at all
+    await f.beat();
+    expect(held.calls[1]!.opts.signal.aborted).toBe(false);
+    await f.beat(); // the next one gets through and renews the lease
+    expect(f.store.rows.get(id)!.exec!.leaseUntil).toBe(f.clock.now + LEASE_MS);
+    held.calls[1]!.finish();
+    expect(await retry).toMatchObject({ ran: true, outcome: 'delivered' });
+    expect(f.store.rows.get(id)).toMatchObject({ status: 'completed', exec: { attempt: 2, owner: null } });
+    expect(trail(f).filter((t) => t.includes('lost'))).toHaveLength(1); // w1's, not w2's
   });
 });
 

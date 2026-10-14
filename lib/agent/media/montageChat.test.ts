@@ -1,6 +1,6 @@
 /** The studio chat's side of Agent G's montage: which messages it claims, and what it says (ka · en · ru). */
 import type { MontageQuote } from './montageExec';
-import { beatMontageAsk, codeOf, errorText, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, type AttachmentKind } from './montageChat';
+import { beatMontageAsk, codeOf, errorText, followUpUnsupportedText, montageFollowUpAsk, montagePlanLine, montageWordsLine, orientationOf, priceLabel, quoteText, rampShort, rampText, stageText, trackTooBigText, transitionAskText, transitionsText, unsupportedNotes, type AttachmentKind } from './montageChat';
 import { MIXED_STYLES, type TransitionSummary } from '@/lib/services/montage/transitionPlan';
 
 const V: AttachmentKind = 'video';
@@ -215,5 +215,74 @@ describe('transitions on the card, in ka · en · ru', () => {
     expect(transitionAskText({ styles: ['flash', 'slide'], sec: 0.3 }, 'ka')).toBe('გადასვლები: თეთრი ციმციმი, გასრიალება (slide), 0.3 წმ');
     expect(montageWordsLine({ transitions: { styles: [...MIXED_STYLES], mixed: true } }, 'en')).toBe('transitions: different each time');
     expect(montagePlanLine({ shots: 10, totalSec: 30, transitions: { ...T, applied: 8 } }, 'en')).toBe('10 shots · 30 s · transitions zoom 8/9');
+  });
+});
+
+describe('round 3 (AC-23): what this version cannot do is SAID, never applied as something else or dropped', () => {
+  test('a later music start on the timeline is named on the card in ka · en · ru, with the way to ask for the track’s own second', () => {
+    const q = { unsupported: ['music_delay' as const] };
+    expect(unsupportedNotes(q, 'ka')[0]).toMatch(/^ამ ვერსიაში არ არის მხარდაჭერილი: მუსიკის მოგვიანებით ჩართვა ტაიმლაინზე\./);
+    expect(unsupportedNotes(q, 'ka')[0]).toContain('„მუსიკა 5 წამიდან“');
+    expect(unsupportedNotes(q, 'en')[0]).toMatch(/^Not supported in this version: starting the music later on the timeline\./);
+    expect(unsupportedNotes(q, 'ru')[0]).toMatch(/^В этой версии не поддерживается: более поздний старт музыки на таймлайне\./);
+    expect(unsupportedNotes({}, 'ka')).toEqual([]);
+  });
+
+  test('a follow-up on a delivered montage: new clips to add, or a new track to swap in — and what is NOT one', () => {
+    expect(montageFollowUpAsk('ეს ორიც დაამატე', [V, V])).toBe('add_clips');
+    expect(montageFollowUpAsk('ამასაც დაამატე მონტაჟს', [V])).toBe('add_clips');
+    expect(montageFollowUpAsk('add these two as well', [V, V])).toBe('add_clips');
+    expect(montageFollowUpAsk('add this photo too', ['image'])).toBe('add_clips');
+    expect(montageFollowUpAsk('добавь ещё эти', [V, V, V])).toBe('add_clips');
+    expect(montageFollowUpAsk('სხვა მუსიკა დაადე', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('ეს მუსიკა ჩაუსვი ნაცვლად', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('replace the music with this one', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('use this track instead', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('замени музыку на эту', [A])).toBe('replace_music');
+    // A fresh montage of the files sent is the montage lane's, not a follow-up: montage words with no reference to the previous edit.
+    expect(montageFollowUpAsk('დაამონტაჟე ეს კლიპები მუსიკაზე', [V, V, A])).toBeNull();
+    expect(montageFollowUpAsk('cut these to the music, add some zoom transitions', [V, V, A])).toBeNull();
+    // A question, an unrelated file, no files, a lone track with no music words: not this.
+    expect(montageFollowUpAsk('what is in this video?', [V])).toBeNull();
+    expect(montageFollowUpAsk('add these', [V, 'other'])).toBeNull();
+    expect(montageFollowUpAsk('add these', [])).toBeNull();
+    expect(montageFollowUpAsk('take the mp3 out of this', [A])).toBeNull();
+  });
+
+  test('another job on the files sent is never "add clips" or "replace music" (review 2026-10-13, finding C)', () => {
+    // Asked of a video or a photo in a thread that has a montage card: subtitles, a translation, a filter are other services.
+    const otherJobs: Array<[string, AttachmentKind[]]> = [
+      ['add subtitles to this video', [V]],
+      ['ამ ვიდეოს სუბტიტრები დაამატე', [V]],
+      ['добавь субтитры к этому видео', [V]],
+      ['translate this video to Russian too', [V]],
+      ['make this image black and white too', ['image']],
+      ['ეს ფოტოც შავ-თეთრი გახადე', ['image']],
+      ['add my logo to this one too', [V]],
+      ['добавь текст на это видео тоже', [V]],
+      ['add music to this video too', [V]],
+      ['ამ ვიდეოსაც დაამატე მუსიკა', [V]],
+    ];
+    for (const [text, kinds] of otherJobs) expect({ text, ask: montageFollowUpAsk(text, kinds) }).toEqual({ text, ask: null });
+    // A lone track merely named is another job too (lyrics, a translation, a new song written), not a swap.
+    const namedTrack = ['ამ სიმღერის ტექსტი დამიწერე', 'ახალი სიმღერა დამიწერე', 'переведи эту песню', 'что это за новый трек?', 'ამ მუსიკას რა ჰქვია?'];
+    for (const text of namedTrack) expect({ text, ask: montageFollowUpAsk(text, [A]) }).toEqual({ text, ask: null });
+    // The follow-ups this answer is for still are.
+    expect(montageFollowUpAsk('ამ მუსიკით გააკეთე', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('эту песню поставь вместо той', [A])).toBe('replace_music');
+    expect(montageFollowUpAsk('add these clips to the previous montage', [V, V])).toBe('add_clips');
+    expect(montageFollowUpAsk('ეს სამიც დაამატე', [V, V, 'image'])).toBe('add_clips');
+  });
+
+  test('the answer says it is not supported in this version, the way out, and that nothing was sent or charged (ka · en · ru)', () => {
+    for (const kind of ['add_clips', 'replace_music'] as const) {
+      expect(followUpUnsupportedText(kind, 'ka')).toMatch(/ამ ვერსიაში არ არის მხარდაჭერილი/);
+      expect(followUpUnsupportedText(kind, 'ka')).toMatch(/არაფერი გაგზავნილა და არაფერი ჩამოგეჭრა\.$/);
+      expect(followUpUnsupportedText(kind, 'en')).toMatch(/is not supported in this version/);
+      expect(followUpUnsupportedText(kind, 'en')).toMatch(/Nothing was sent and nothing was charged\.$/);
+      expect(followUpUnsupportedText(kind, 'ru')).toMatch(/в этой версии не поддерживается/);
+    }
+    expect(followUpUnsupportedText('add_clips', 'en')).toMatch(/^Adding clips to a finished edit/);
+    expect(followUpUnsupportedText('replace_music', 'en')).toMatch(/^Replacing the music in a finished edit/);
   });
 });

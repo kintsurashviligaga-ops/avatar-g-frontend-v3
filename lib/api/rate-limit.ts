@@ -4,12 +4,13 @@
  * Uses a sliding window counter stored in Upstash Redis via the INCR + EXPIRE
  * pattern. Each key is namespaced by route prefix so limits are isolated.
  *
- * Falls back to in-memory when UPSTASH_REDIS_REST_URL is not set (local dev).
+ * Falls back to in-memory when no Upstash database is configured (lib/platform/upstashEnv; local dev).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { PlanTier } from '@/lib/billing/plans';
 import { isTruthyFlag } from '@/lib/env/flag';
+import { upstashRestEnv } from '@/lib/platform/upstashEnv';
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -72,9 +73,9 @@ async function redisRateLimit(
   key: string,
   config: RateLimitConfig
 ): Promise<{ allowed: boolean; remaining: number; resetTime: number } | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  const env = upstashRestEnv();
+  if (!env) return null;
+  const { url, token } = env;
 
   const windowSec = Math.ceil(config.windowMs / 1000);
 
@@ -123,9 +124,9 @@ async function redisRateLimit(
  * or the call failed — the caller then tries the in-memory store, the one `limitByKey` fell back to.
  */
 async function redisRefund(key: string): Promise<true | null> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  const env = upstashRestEnv();
+  if (!env) return null;
+  const { url, token } = env;
   try {
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const res = await fetch(`${url}/pipeline`, { method: 'POST', headers, body: JSON.stringify([['DECR', key]]), cache: 'no-store' });

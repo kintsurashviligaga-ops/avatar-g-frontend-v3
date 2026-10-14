@@ -588,7 +588,16 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
     const durOut = ((e.end - e.start) / f).toFixed(3); // per-segment OUTPUT length (for the silence fallback)
     // fps + yuv420p make every segment concat/xfade-compatible (uniform timebase + pixel format).
     const setptsV = sped ? `setpts=(PTS-STARTPTS)/${f.toFixed(4)}` : 'setpts=PTS-STARTPTS';
-    const vchain = `[${e.src}:v]trim=start=${st}:end=${en},${setptsV},${scale}fps=30,format=yuv420p`;
+    // Video Core v1.0 §4 — EXACTLY the segment's frames. `fps=30` on a 24/25 fps window lands a frame over or under
+    // (measured on ffmpeg-static 7.0.2: a 25 fps window [1.234, 4.567] gave 101 frames for 100; a 10.000 s three-clip
+    // montage came out at 301 frames, another at 299), and the frame-exact QC (lib/agent/media/montageAsk qcAvSync)
+    // then refuses the master. So each segment is conformed to its planned frame count: one cloned frame appended (in
+    // case fps= ran one short), cut at exactly round(length × 30) frames, and `fps=30` ONCE MORE — trim and tpad drop
+    // the stream's frame-rate tag, and an untagged stream is muxed at ffmpeg's default 25 fps, frames dropped (measured:
+    // 172 of 206). The audio is trimmed to the same seconds, so A and V of every segment agree to the frame.
+    const framesOut = Math.max(1, Math.round(((e.end - e.start) / f) * 30));
+    const exactV = `tpad=stop=1:stop_mode=clone,trim=end_frame=${framesOut},setpts=PTS-STARTPTS,fps=30`;
+    const vchain = `[${e.src}:v]trim=start=${st}:end=${en},${setptsV},${scale}fps=30,${exactV},format=yuv420p`;
     const ovIdx = overlayInputIdx[i];
     if (ovIdx !== null) {
       parts.push(`${vchain}[vpre${i}]`);
@@ -606,6 +615,11 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
       const af = [`atrim=start=${st}:end=${en}`, 'asetpts=PTS-STARTPTS', 'aresample=44100', 'aformat=sample_fmts=fltp:channel_layouts=stereo'];
       if (sped) af.push(...atempoChainV(f));
       if (e.muted) af.push('volume=0');
+      // Video Core v1.0 §4 — the segment's sound lasts EXACTLY its picture (`durOut`): a source whose audio track ends
+      // before its picture (a Ken Burns clip's silence came out 90 ms short of its 4 s, three of them 0.27 s short of a
+      // 12.00 s master) is padded with silence to the window and cut there, so A and V of every segment agree and the
+      // master's sound ends with its last frame (qcAvSync's 0.25 s).
+      af.push('apad', `atrim=0:${durOut}`, 'asetpts=PTS-STARTPTS');
       parts.push(`[${e.src}:a]${af.join(',')}[a${i}]`);
     } else {
       // SILENT-CLIP FALLBACK — synthesise stereo silence of the exact segment OUTPUT length.
@@ -638,6 +652,10 @@ async function runSequence(inputs: string[], rawEntries: SeqEntry[], d: RenderDr
   const fi = Math.max(0, numFinite(d.fadeInSec, 0));
   const fo = Math.max(0, numFinite(d.fadeOutSec, 0));
   const post: string[] = [];
+  // Video Core v1.0 §4 — the whole master, too, is exactly round(length × 30) frames: an xfade's own rounding of its two
+  // sides (seconds, not frames) cannot leave a frame over or under. Same one-frame clone + cut as per segment.
+  const framesTotal = Math.max(1, Math.round(curDur * 30));
+  post.push(`tpad=stop=1:stop_mode=clone,trim=end_frame=${framesTotal},setpts=PTS-STARTPTS,fps=30`);
   const cropF = buildCropFilter(d.crop);
   if (cropF) post.push(cropF);
   post.push(...buildGradeFilters(d.grade));
