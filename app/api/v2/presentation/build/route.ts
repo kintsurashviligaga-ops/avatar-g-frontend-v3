@@ -5,9 +5,9 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { validateDeckRequest, deckUnits } from '@/lib/services/presentation/deckPlan';
 import { runDeckBuild } from '@/lib/services/presentation/deckPipeline';
 import { guardedCall, BudgetExceededError } from '@/lib/services/billing/guardedCall';
-import { createJob, completeJob, failJob, safeJobId } from '@/lib/orchestrator/jobs';
-import { reserveProduce, refundProduce, reservationErrorCode } from '@/lib/orchestrator/produceBilling';
-import { creditCostFor } from '@/lib/credits/pricing';
+import { creditCostFor, CREDIT_COSTS } from '@/lib/credits/pricing';
+import { ownerApprovedPrice, issueServiceQuote, wantsToConfirm } from '@/lib/billing/paidServiceGate';
+import { startConfirmedJob, persistCompletion } from '@/lib/orchestrator/confirmedJob';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +19,10 @@ export const maxDuration = 300;
  *
  * STORYBOARD rate limit (30/min), not EXPENSIVE (5/min): this is the same shape as the storyboard route —
  * one outline plus a per-item image fan-out — and at 5/min a 12-slide deck would 429 itself mid-build.
+ *
+ * BILLING (final P0/P1 repair run): OFF until the owner approves the price (`OWNER_APPROVED_PRICING=presentation:15`);
+ * a POST without a token is a signed QUOTE (nothing charged); `{ quoteToken, confirm: true }` builds at most once per
+ * quote, reserving before any provider call and refunding once on failure (lib/orchestrator/confirmedJob).
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const limited = await checkRateLimit(req, RATE_LIMITS.STORYBOARD);
@@ -34,37 +38,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'invalid_request', message: parsed.error }, { status: 400 });
   }
   const request = parsed.request;
+  if (!ownerApprovedPrice('presentation', CREDIT_COSTS.presentation_deck)) {
+    return NextResponse.json(
+      { error: 'service_unavailable', reason: 'pricing_not_approved', message: 'Presentations are not available yet.' },
+      { status: 503 },
+    );
+  }
   // The per-account daily ceiling still bounds one person's Gemini and image spend.
   const capped = await checkRateLimitByKey(user.id, RATE_LIMITS.PRESENTATION_USER);
   if (capped) return capped;
 
   // No SSRF surface here: every input is text, and the only URLs fetched are ones this server generated.
-  // See the note in the montage route.
-  const fallbackId = randomUUID();
-  let jobId = safeJobId((body as { clientJobId?: unknown } | null)?.clientJobId, fallbackId);
-  const created = await createJob({
-    id: jobId,
+  const cost = creditCostFor('presentation');
+  if (!wantsToConfirm(body)) {
+    const quote = issueServiceQuote({ service: 'presentation', userId: user.id, raw: body, credits: cost, jobId: randomUUID(), now: Date.now() });
+    if (!quote) return NextResponse.json({ error: 'billing_unavailable' }, { status: 503 });
+    return NextResponse.json({ requiresConfirm: true, quote });
+  }
+  const started = await startConfirmedJob({
+    service: 'presentation',
     userId: user.id,
+    raw: body,
+    credits: cost,
     serviceType: 'image',
     params: { subtype: 'presentation', slides: request.slideCount, language: request.language },
-  }).catch(() => false);
-  // A false result means the INSERT did not land — most likely the client-supplied id already exists,
-  // which would otherwise let this request stamp progress onto a row it does not own.
-  if (!created) jobId = fallbackId;
-
-  // ⚠️ DECKS WERE FREE (global E2E S2): an outline plus up to 12 Imagen calls, and the wallet never moved. Reserved
-  // before any provider call, refunded once when the build fails.
-  const cost = creditCostFor('presentation');
-  const chargeRef = `presentation:${jobId}`;
-  const reservation = await reserveProduce(user.id, cost, chargeRef, { refuseReplay: true })
-    .catch(() => ({ proceed: false, charged: false, reason: 'error' as const }));
-  if (!reservation.proceed) {
-    await failJob(jobId, reservationErrorCode(reservation)).catch(() => {});
-    return reservation.reason === 'insufficient'
-      ? NextResponse.json({ error: 'insufficient_credits', message: 'Not enough credits — please top up.', needed: cost, jobId }, { status: 402 })
-      : NextResponse.json({ error: reservationErrorCode(reservation), jobId }, { status: reservation.reason === 'replay' ? 409 : 503 });
-  }
-  const refund = () => refundProduce(user.id, cost, chargeRef, reservation.charged);
+  });
+  if (!started.ok) return started.response;
+  const { jobId, reservation, refundAndFail } = started.job;
 
   try {
     const outcome = await guardedCall(
@@ -75,16 +75,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
 
     if (!outcome.ok) {
-      await refund();
-      await failJob(jobId, `${outcome.step}: ${outcome.error}`).catch(() => {});
+      const { refunded } = await refundAndFail(`${outcome.step}: ${outcome.error}`);
       return NextResponse.json(
-        { error: 'deck_failed', step: outcome.step, message: outcome.error, jobId },
+        { error: 'deck_failed', step: outcome.step, message: outcome.error, jobId, refunded, refundPending: !refunded },
         { status: 502 },
       );
     }
 
     const r = outcome.result;
-    await completeJob(jobId, {
+    const persisted = await persistCompletion(jobId, {
       signedUrl: r.coverUrl ?? r.slides[0]?.pngUrl ?? null,
       // ⚠️ ONLY THE COUNT WAS STORED, SO THE DECK WAS UNRECOVERABLE. `slides: r.slides.length` persisted
       // the NUMBER of slides and threw the slides away; SlidesStudio held them in component state. After
@@ -99,10 +98,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         url: r.coverUrl ?? r.slides[0]?.pngUrl ?? null,
         slides: r.slides.map((sl) => ({ index: sl.index, pngUrl: sl.pngUrl })),
       },
-    }).catch(() => {});
+    });
 
     return NextResponse.json({
       jobId,
+      // Not durably recorded ⇒ not reported as a completed job (the Library could not rebuild it): save it now.
+      status: persisted ? 'completed' : 'unpersisted',
+      persisted,
       title: r.deck.title,
       language: r.deck.language,
       theme: r.deck.theme,
@@ -118,15 +120,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       },
     });
   } catch (err) {
-    await refund();
     if (err instanceof BudgetExceededError) {
-      await failJob(jobId, 'budget_exceeded').catch(() => {});
+      const { refunded } = await refundAndFail('budget_exceeded');
       return NextResponse.json(
-        { error: 'budget_exceeded', reason: err.reason, message: 'The platform budget for this period is exhausted. Please try again later.' },
+        { error: 'budget_exceeded', reason: err.reason, message: 'The platform budget for this period is exhausted. Please try again later.', refunded },
         { status: 429 },
       );
     }
-    await failJob(jobId, err instanceof Error ? err.message : 'deck build failed').catch(() => {});
-    return NextResponse.json({ error: 'deck_failed', jobId }, { status: 500 });
+    const { refunded } = await refundAndFail(err instanceof Error ? err.message : 'deck build failed');
+    return NextResponse.json({ error: 'deck_failed', jobId, refunded, refundPending: !refunded }, { status: 500 });
   }
 }

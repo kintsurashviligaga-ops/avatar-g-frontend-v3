@@ -76,9 +76,14 @@ export async function reserveProduce(
 /**
  * Compensate a reservation when the render did NOT succeed. No-op unless credits were actually charged.
  * Idempotent ref `${ref}:refund` (the refund_credits RPC dedupes, so a re-run can't double-refund).
- * Best-effort — never throws (a failed refund is logged by the RPC layer, not raised).
+ * Never throws. Resolves TRUE when nothing is owed any more (refunded now, deduped, or nothing was charged) and FALSE
+ * when the refund did not land — the caller must then NOT tell the user they were refunded, and should leave the job
+ * live with its `_reserve` stamp so the drainer's idempotent refundDebitByRef can retry it.
  */
-export async function refundProduce(userId: string, amount: number, ref: string, charged: boolean): Promise<void> {
-  if (!charged) return;
-  await refundCredits(userId, amount, `${ref}:refund`).catch(() => undefined);
+export async function refundProduce(userId: string, amount: number, ref: string, charged: boolean): Promise<boolean> {
+  if (!charged) return true;
+  const r = await refundCredits(userId, amount, `${ref}:refund`).catch(() => null);
+  if (r?.ok) return true;
+  reportError(new Error('refund did not land — credits still held'), { fn: 'refundProduce', userId, amount, ref, reason: r?.reason ?? 'threw' });
+  return false;
 }

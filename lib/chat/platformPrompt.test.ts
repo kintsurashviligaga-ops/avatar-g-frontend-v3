@@ -52,6 +52,8 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     const p = build(locale);
     for (const [action, credits] of Object.entries(CREDIT_COSTS)) {
       if (credits === 0) continue;
+      // Not owner-approved yet (lib/billing/paidServiceGate): never quoted — see the test below.
+      if (action === 'dubbing_per_minute' || action === 'presentation_deck') continue;
       expect({ action, present: p.includes(cr(credits)) }).toEqual({ action, present: true });
     }
     expect(p).toContain(`1 credit = ${CREDIT_VALUE_GEL.toFixed(2)} ₾`);
@@ -59,6 +61,19 @@ describe('buildPlatformPrompt — prices come from lib/credits/pricing.ts', () =
     for (const g of BOG_TOPUP_PACKS_GEL) expect(p).toContain(`${g} ₾ = ${topupCredits(g)} cr`);
     for (const pkg of CREDIT_PACKAGES) expect(p).not.toContain(`${pkg.gel} ₾ = ${pkg.credits} cr`);
     if (CREDIT_COSTS.chat_message === 0) expect(p).toContain('chat is free');
+  });
+
+  it('quotes dubbing and decks only once the owner approved their exact price', () => {
+    const saved = process.env.OWNER_APPROVED_PRICING;
+    delete process.env.OWNER_APPROVED_PRICING;
+    const off = build('en');
+    expect(off).toContain('dubbing and decks: not yet available');
+    expect(off).not.toContain(`dub ${cr(CREDIT_COSTS.dubbing_per_minute)}`);
+    process.env.OWNER_APPROVED_PRICING = `dubbing:${CREDIT_COSTS.dubbing_per_minute},presentation:${CREDIT_COSTS.presentation_deck}`;
+    const on = build('en');
+    expect(on).toContain(`dub ${cr(CREDIT_COSTS.dubbing_per_minute)}/min; deck ${cr(CREDIT_COSTS.presentation_deck)}`);
+    expect(on).not.toContain('not yet available');
+    if (saved === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = saved;
   });
 
   it.each(LOCALES)('never quotes dollars or the retired USD tiers (%s)', (locale) => {

@@ -89,7 +89,12 @@ async function stage(jobId: string | null, step: DubbingStep): Promise<void> {
 
 export async function runDubbing(
   req: DubbingRequest,
-  opts: { jobId?: string | null; voiceId?: string | null } = {},
+  opts: {
+    jobId?: string | null;
+    voiceId?: string | null;
+    /** The track the route already extracted to MEASURE the source before pricing it; reused, not fetched twice. */
+    extracted?: { buffer: Buffer; durationSec: number | null } | null;
+  } = {},
 ): Promise<DubbingOutcome> {
   const jobId = opts.jobId ?? null;
   const stepsRun: DubbingStep[] = [];
@@ -98,7 +103,7 @@ export async function runDubbing(
   try {
     // ── LEG 1 · extract ────────────────────────────────────────────────────────────────────────────
     await stage(jobId, 'extract_audio');
-    const extracted = await extractAudioTrack(req.sourceVideoUrl);
+    const extracted = opts.extracted ?? await extractAudioTrack(req.sourceVideoUrl);
     if (!extracted) return { ok: false, step: 'extract_audio', error: 'could not read audio from the video' };
     stepsRun.push('extract_audio');
 
