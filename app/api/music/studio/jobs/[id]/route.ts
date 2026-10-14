@@ -23,7 +23,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const deps = liveMusicDeps();
     const { view, needsWorker } = await musicStatus(deps, who.userId, params.id);
-    if (needsWorker) runAfterResponse(() => workMusic(deps, params.id, newWorkerId()), 'music-studio.takeover');
+    if (needsWorker) {
+      const work = () => workMusic(deps, params.id, newWorkerId());
+      if (!runAfterResponse(work, 'music-studio.takeover')) void work().catch(() => undefined);
+    }
     return NextResponse.json(view, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     return musicErrorResponse(e, req);

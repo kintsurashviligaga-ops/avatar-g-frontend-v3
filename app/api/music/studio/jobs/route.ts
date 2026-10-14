@@ -26,7 +26,11 @@ export async function POST(req: NextRequest) {
     const body = await readJson(req);
     const deps = liveMusicDeps();
     const view = await startMusic(deps, who.userId, body.plan, body.token, body.confirmed);
-    if (view.status === 'queued') runAfterResponse(() => workMusic(deps, view.jobId, newWorkerId()), 'music-studio.work');
+    if (view.status === 'queued') {
+      // Off Vercel there is no waitUntil (runAfterResponse → false): run it in this process, as the Agent G media routes do.
+      const work = () => workMusic(deps, view.jobId, newWorkerId());
+      if (!runAfterResponse(work, 'music-studio.work')) void work().catch(() => undefined);
+    }
     return NextResponse.json(view, { status: view.replay ? 200 : 202 });
   } catch (e) {
     return musicErrorResponse(e, req);
