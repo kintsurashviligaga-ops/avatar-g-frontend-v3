@@ -39,7 +39,6 @@ import ffmpegStatic from 'ffmpeg-static';
 import { googleAiConfigured, googleTransportKind, googleTransportProblems } from '@/lib/ai/google/transport';
 import { geminiFrameModel } from '@/lib/ai/geminiImage';
 import { hasLyriaProvider, lyriaModel } from '@/lib/ai/lyriaMusic';
-import { engineConfigured } from '@/lib/ai/musicEnginesStatus';
 import { hasVideoProvider } from '@/lib/chat/videoProvider';
 import { STUDIO_DEFAULT_VEO_TIER } from '@/lib/credits/videoPricing';
 import { isEnabledByDefault } from '@/lib/env/flag';
@@ -191,7 +190,7 @@ export async function checkPipelineHealth(): Promise<PipelineHealth> {
       provider: `Lyria 3 (${lyriaModel()})`,
       available: lyriaOn,
       tier: lyriaOn ? 'high' : 'unavailable',
-      note: `${lyriaOn ? 'Auto = Lyria 3 only, no failover (R7)' : `Auto fails — ${lyriaWhy}`} · explicit pick only: ElevenLabs Music${mark(engineConfigured('elevenlabs-music', env))} Udio${mark(engineConfigured('udio', env))} MusicGen${mark(engineConfigured('musicgen', env))}`,
+      note: `${lyriaOn ? 'Auto = Lyria 3 only, no failover (R7)' : `Auto fails — ${lyriaWhy}`} · Udio / ElevenLabs Music / MusicGen removed (Google-only music boundary)`,
       icon: dot(lyriaOn, lyriaOn ? 'high' : 'unavailable'),
     });
 

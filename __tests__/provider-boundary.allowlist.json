@@ -133,9 +133,7 @@
       "lib/system/provider-health.ts",
       "lib/udio/client.ts"
     ],
-    "pollinations": [
-      "app/api/ai/music/route.ts"
-    ],
+    "pollinations": [],
     "tavily": [
       "lib/ai/webSearch.ts"
     ]
