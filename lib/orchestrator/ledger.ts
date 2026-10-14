@@ -178,6 +178,8 @@ export async function hasSufficientBalance(userId: string, cost: number): Promis
  * so the rollback chain always completes.
  */
 export async function refundCredits(userId: string, amount: number, ref: string): Promise<LedgerResult> {
+  // No debit can come from an unisolated Preview, so no refund may leave one either (it would credit Production).
+  if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' };
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   try {
@@ -298,6 +300,7 @@ export async function refundDebitByRef(
  * referral bonus it paid is a balance the ledger cannot explain (5 accounts on 2026-09-29).
  */
 export async function grantCredits(userId: string, amount: number, ref: string, source: string): Promise<LedgerResult> {
+  if (paidWritesBlockedOnPreview()) return { ok: false, reason: 'error' }; // see refundCredits
   const sb = client();
   if (!sb) return { ok: false, reason: 'skipped' };
   const credits = Math.round(amount);

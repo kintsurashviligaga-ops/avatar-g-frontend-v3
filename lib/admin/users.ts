@@ -8,6 +8,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { paidWritesBlockedOnPreview, PREVIEW_NOT_ISOLATED } from '@/lib/env/previewIsolation';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Client = SupabaseClient<any, any, any>;
@@ -98,6 +99,8 @@ export const MAX_GRANT = 100_000;
  * delta. Returns the new balance. Validates the amount server-side (positive integer, capped).
  */
 export async function grantCredits(client: Client, userId: string, amount: number, actorId: string): Promise<GrantResult> {
+  // An admin panel opened on an unisolated Preview would move Production balances (lib/env/previewIsolation).
+  if (paidWritesBlockedOnPreview()) return { ok: false, newBalance: null, error: PREVIEW_NOT_ISOLATED };
   const amt = Math.floor(Number(amount));
   if (!userId || !Number.isFinite(amt) || amt <= 0 || amt > MAX_GRANT) {
     return { ok: false, newBalance: null, error: 'invalid_amount' };
@@ -131,6 +134,8 @@ export async function grantCredits(client: Client, userId: string, amount: numbe
  * metacharacters ESCAPED, so a % / _ in the address can never wildcard-match a different account.
  */
 export async function adjustCreditsByEmail(client: Client, email: string, amount: number, actorId: string): Promise<GrantResult> {
+  // An admin panel opened on an unisolated Preview would move Production balances (lib/env/previewIsolation).
+  if (paidWritesBlockedOnPreview()) return { ok: false, newBalance: null, error: PREVIEW_NOT_ISOLATED };
   const em = (email ?? '').trim().toLowerCase();
   const amt = Math.trunc(Number(amount));
   if (!em || !Number.isFinite(amt) || amt === 0 || Math.abs(amt) > MAX_GRANT) {
