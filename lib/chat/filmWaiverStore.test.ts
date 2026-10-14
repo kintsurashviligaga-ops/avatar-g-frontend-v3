@@ -57,9 +57,19 @@ describe('consumeFilmWaiver', () => {
     stubRpc(() => MISSING);
     netDebitedForRef.mockResolvedValue(240);
     storeClaim.mockResolvedValueOnce('claimed').mockResolvedValueOnce('held');
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('paid');
-    expect(netDebitedForRef).toHaveBeenCalledWith('u1', filmChargeRefFor('fabc'));
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('spent');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('paid');
+    expect(netDebitedForRef).toHaveBeenCalledWith('u1', filmChargeRefFor('f0123456789abcdef'));
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('spent');
+  });
+
+  it('with the table not applied: only a film token is vouched for (a music video\'s composite:…:charge debit waives nothing)', async () => {
+    stubRpc(() => MISSING);
+    netDebitedForRef.mockResolvedValue(240);
+    storeClaim.mockResolvedValue('claimed');
+    expect(await consumeFilmWaiver('composite:s1:1791960000000', 'u1')).toBe('none');
+    expect(await consumeFilmWaiver('fABC', 'u1')).toBe('none');
+    expect(netDebitedForRef).not.toHaveBeenCalled();
+    expect(storeClaim).not.toHaveBeenCalled();
   });
 
   it('with the table not applied: a charge older than the claim window is not vouched for (an expired claim is taken over, not held)', async () => {
@@ -67,27 +77,27 @@ describe('consumeFilmWaiver', () => {
     netDebitedForRef.mockResolvedValue(240);
     storeClaim.mockResolvedValue('claimed'); // what claim_request_idempotency answers once the first claim's row expired
     firstDebitAtForRef.mockResolvedValue(Date.now() - 61 * 60_000);
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('unavailable');
     firstDebitAtForRef.mockResolvedValue(Date.now() - 56 * 60_000); // inside the clock-skew margin: also not vouched for
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('unavailable');
     firstDebitAtForRef.mockResolvedValue(null); // unreadable
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('unavailable');
     expect(storeClaim).not.toHaveBeenCalled();
     firstDebitAtForRef.mockResolvedValue(Date.now() - 50 * 60_000);
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('paid');
-    expect(storeClaim).toHaveBeenCalledWith('u1', 'film-waiver:fabc', 3600);
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('paid');
+    expect(storeClaim).toHaveBeenCalledWith('u1', 'film-waiver:f0123456789abcdef', 3600);
   });
 
   it('with the table not applied: no debit (or one refunded away) is none; an unreadable ledger or claim is unavailable', async () => {
     stubRpc(() => MISSING);
     netDebitedForRef.mockResolvedValue(0);
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('none');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('none');
     expect(storeClaim).not.toHaveBeenCalled();
     netDebitedForRef.mockResolvedValue(null);
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('unavailable');
     netDebitedForRef.mockResolvedValue(10);
     storeClaim.mockResolvedValue('unavailable');
-    expect(await consumeFilmWaiver('fabc', 'u1')).toBe('unavailable');
+    expect(await consumeFilmWaiver('f0123456789abcdef', 'u1')).toBe('unavailable');
   });
 
   it('is unavailable with no service-role configuration', async () => {

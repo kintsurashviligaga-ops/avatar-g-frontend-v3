@@ -27,6 +27,8 @@ interface RpcClient {
 }
 
 const MISSING_RECHECK_MS = 10 * 60_000;
+/** deriveFilmTokenId's shape. */
+const FILM_TOKEN = /^f[0-9a-f]{16}$/;
 const CLAIM_WINDOW_SEC = 3600;
 /** Margin for the app server's clock against the database's `now()`. */
 const CLAIM_SKEW_MS = 5 * 60_000;
@@ -105,7 +107,9 @@ export async function consumeFilmWaiver(tokenId: string, userId: string): Promis
     return r.data === 'paid' || r.data === 'free' || r.data === 'spent' || r.data === 'void' || r.data === 'none' ? r.data : 'unavailable';
   }
   if (!r.missing) return 'unavailable';
-  // No table: the ledger proves a paid film; request_idempotency makes the spend single-use.
+  // No table: the ledger proves a paid film; request_idempotency makes the spend single-use. Only a real film token
+  // (deriveFilmTokenId) — the token is client-supplied, and other products' debits share the `:charge` suffix.
+  if (!FILM_TOKEN.test(tokenId)) return 'none';
   const net = await netDebitedForRef(userId, filmChargeRefFor(tokenId)).catch(() => null);
   if (net === null) return 'unavailable';
   if (net <= 0) return 'none';
