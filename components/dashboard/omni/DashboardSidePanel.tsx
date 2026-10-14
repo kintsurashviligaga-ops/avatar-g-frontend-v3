@@ -16,6 +16,7 @@ import { getLocalizedService, normalizeOmniLocale, type OmniLocale } from './i18
 import { useOmniDashboardStore } from './store';
 import type { ServiceId } from './types';
 import Link from 'next/link';
+import { ConnectionsSection } from '@/components/settings/ConnectionsSection';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -662,6 +663,10 @@ function renderSettings({ c, loc, settingsHaptics, setSettingsHaptics, settingsA
             <span className="font-medium mt-0.5">{lang.name}</span>
           </Link>
         ))}
+      </div>
+
+      <div className="mt-4">
+        <ConnectionsSection locale={loc} />
       </div>
 
       <SectionTitle title={c.appearance} />
