@@ -17,6 +17,10 @@ describe('e2eProvider guard (the stand-in for Lyria never reaches a real deploym
     expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co' })).toBe(false);
     expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'https://evil.test.example.com' })).toBe(false);
     expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'not a url' })).toBe(false);
+    // A mixed configuration (one address local, the other hosted) is refused.
+    expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'http://localhost:54321', NEXT_PUBLIC_SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co' })).toBe(false);
+    expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'https://zwksnayknzggdcenqqxy.supabase.co', NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:54321' })).toBe(false);
+    expect(e2eFakeLyriaEnabled({ ...on, SUPABASE_URL: 'https://supabase.video-core-e2e.test:54443', NEXT_PUBLIC_SUPABASE_URL: 'https://supabase.video-core-e2e.test:54443' })).toBe(true);
     expect(e2eFakeLyriaEnabled({ ...on })).toBe(false);
   });
   it('reads the fault switch from the prompt', () => {

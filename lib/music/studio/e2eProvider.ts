@@ -27,17 +27,22 @@ import { MusicError } from './errors';
 
 type Env = NodeJS.ProcessEnv;
 
-function supabaseHost(env: Env): string {
-  const raw = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '';
-  try { return new URL(raw).hostname.toLowerCase(); } catch { return ''; }
+function isLocalHost(raw: string): boolean {
+  let host = '';
+  try { host = new URL(raw).hostname.toLowerCase(); } catch { return false; }
+  return host === 'localhost' || host === '127.0.0.1' || /^[a-z0-9.-]+\.test$/.test(host);
 }
 
-/** True only on an isolated test machine that asked for it (see the header). Pure. */
+/**
+ * True only on an isolated test machine that asked for it (see the header). Pure.
+ * EVERY Supabase address set must be local: the service client reads SUPABASE_URL, the user's client
+ * NEXT_PUBLIC_SUPABASE_URL — one local and one hosted would bill a hosted project for a synthetic track.
+ */
 export function e2eFakeLyriaEnabled(env: Env = process.env): boolean {
   if (env.MUSIC_STUDIO_E2E_FAKE_PROVIDER !== '1') return false;
   if (env.VERCEL || env.VERCEL_ENV) return false;
-  const host = supabaseHost(env);
-  return host === 'localhost' || host === '127.0.0.1' || /^[a-z0-9.-]+\.test$/.test(host);
+  const urls = [env.SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_URL].filter((u): u is string => !!u);
+  return urls.length > 0 && urls.every(isLocalHost);
 }
 
 /** The fault a prompt asks for. Pure. */
