@@ -1,0 +1,15 @@
+{
+  "main": "fef867a6ebad67a2a0a56a24e0b15c683a353d79",
+  "image": "09333d7ab9a93922c1a39ea685d396cda508bc3f",
+  "patchCheckExit": 0,
+  "excluded": [
+    "docs/handoffs",
+    "IMAGE_STUDIO_AUDIT.md",
+    ".github",
+    "lib/agent/media/leaseIsolation.pg.test.ts",
+    "lib/agent/media/testing/fakeMontageDeps.ts"
+  ],
+  "uncommittedDelta": "local-only Preview skip",
+  "environment": "/private/tmp/image-studio-main-fef867a6",
+  "method": "archive plus patch; no Git branch merge or history rewrite"
+}

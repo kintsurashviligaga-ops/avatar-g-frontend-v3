@@ -1,0 +1,57 @@
+{
+  "isolatedCollection": [
+    {
+      "file": "runIsolation.pg.test.ts",
+      "passed": 0,
+      "pending": 6
+    },
+    {
+      "file": "videoCoreRound3.ffmpeg.test.ts",
+      "passed": 1,
+      "pending": 8
+    },
+    {
+      "file": "leaseIsolation.pg.test.ts",
+      "passed": 0,
+      "pending": 9
+    },
+    {
+      "file": "ffmpeg-assembly.ffmpeg.test.ts",
+      "passed": 1,
+      "pending": 6
+    },
+    {
+      "file": "outboxIsolation.pg.test.ts",
+      "passed": 0,
+      "pending": 4
+    },
+    {
+      "file": "idempotencyStore.pg.test.ts",
+      "passed": 0,
+      "pending": 7
+    },
+    {
+      "file": "ledgerOnce.pg.test.ts",
+      "passed": 0,
+      "pending": 8
+    },
+    {
+      "file": "imageIsolation.pg.test.ts",
+      "passed": 0,
+      "pending": 3
+    },
+    {
+      "file": "audioLive.e2e.test.ts",
+      "passed": 0,
+      "pending": 2
+    },
+    {
+      "file": "stitch.ffmpeg.test.ts",
+      "passed": 1,
+      "pending": 3
+    }
+  ],
+  "bogIntegration": 14,
+  "plainCiSkipped": 70,
+  "note": "Separate DB jobs cover DB cases; conditional before cases are not identical to default inventory."
+}

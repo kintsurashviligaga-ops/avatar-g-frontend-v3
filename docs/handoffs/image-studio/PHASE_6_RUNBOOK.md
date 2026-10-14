@@ -1,6 +1,6 @@
 # Image Studio Phase 6 — isolated real E2E
 
-Status: PREPARED, NOT EXECUTED. No live Google generation, production migration, deployment, or production write was authorized or performed during recovery. Offline harness tests are not live evidence.
+Paid Google lifecycle status: PREPARED, NOT EXECUTED. Free local Auth/RLS/Storage/Library: 3/3 PASS; current-main Video+Image suite: 38/38 PASS (run38454305911, attempt2). These synthetic-fixture checks do not prove paid generation. No live Google generation, production migration, deployment, or production write was authorized or performed during recovery. Offline harness tests are not live evidence.
 
 ## Prerequisites
 

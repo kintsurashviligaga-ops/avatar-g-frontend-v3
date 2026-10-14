@@ -21,6 +21,7 @@ components/studio/image/useImageStudioAccess.ts
 docs/handoffs/image-studio-phase-0.md
 docs/handoffs/image-studio-phase-1.md
 docs/handoffs/image-studio/CHANGED_FILES.txt
+docs/handoffs/image-studio/EVIDENCE_LEDGER.md
 docs/handoffs/image-studio/FINAL_ACCEPTANCE_MATRIX.md
 docs/handoffs/image-studio/FINAL_E2E_MATRIX.md
 docs/handoffs/image-studio/FINAL_ENGINEERING_REPORT_KA.md
@@ -41,6 +42,11 @@ docs/handoffs/image-studio/evidence/baseline-node24-failures.txt
 docs/handoffs/image-studio/evidence/baseline-typecheck.txt
 docs/handoffs/image-studio/evidence/browser-results.json
 docs/handoffs/image-studio/evidence/browser-results/.last-run.json
+docs/handoffs/image-studio/evidence/certification-20261014/font-diagnostic.json
+docs/handoffs/image-studio/evidence/certification-20261014/live-093-compact.json
+docs/handoffs/image-studio/evidence/certification-20261014/main-compatibility-source.json
+docs/handoffs/image-studio/evidence/certification-20261014/skipped-inventory.json
+docs/handoffs/image-studio/evidence/certification-20261014/tree-equivalence.json
 docs/handoffs/image-studio/evidence/continuation-20261012/browser-results.json
 docs/handoffs/image-studio/evidence/continuation-20261012/browser-results/.last-run.json
 docs/handoffs/image-studio/evidence/continuation-20261012/image-library-edit-mobile.png
@@ -113,8 +119,6 @@ docs/image-studio/ARCHITECTURE.md
 docs/image-studio/IMPLEMENTATION_PLAN.md
 docs/image-studio/SHARED_INTERFACE_PROPOSAL.md
 lib/agent/capabilities.ts
-lib/agent/media/leaseIsolation.pg.test.ts
-lib/agent/media/testing/fakeMontageDeps.ts
 lib/agent/react/bindLiveAgent.ts
 lib/agent/tools/registry.test.ts
 lib/agent/tools/registry.ts
@@ -151,8 +155,6 @@ lib/image/studio/task.ts
 lib/image/studio/testing.ts
 lib/orchestrator/storage-adapter.ts
 lib/orchestrator/storage-adapter.uploads.test.ts
-lib/platform/upstashEnv.test.ts
-lib/platform/upstashEnv.ts
 lib/tasks/taskLive.ts
 playwright.image-studio.config.ts
 scripts/image-studio/check-baseline-diagnostic.mjs

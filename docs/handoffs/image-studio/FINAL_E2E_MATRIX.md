@@ -1,38 +1,31 @@
-# Image Studio v1.0 — Final E2E Matrix
-2026-10-13. PASS ეხება მხოლოდ დასახელებულ გარემოს. Code source compatibility და mocked UI არ უდრის provider-backed E2E-ს.
+# Image Studio — Final E2E Matrix
+2026-10-14. PASS ეხება მხოლოდ დასახელებულ გარემოს. Source tree: `5305d0c4`; engineering commit: `ed9ebfda`.
 
-| Scenario | Expected result | Actual result | Evidence | Verified environment | Status |
+| Scenario | Expected | Actual | Evidence | Verified environment | Status |
 |---|---|---|---|---|---|
-| Quote/Confirm | quote0ხარჯი; explicit confirm; signature/expiry checks | კონტრაქტები შესრულებულია | engine/http/client Jest | injected provider/ledger | PASS |
-| References/character/outfit/product | role/order/digest, უცვლელი ტექსტი | კონტრაქტები/უარყოფები შესრულებულია | assets/prompt/provider tests | fixture images | PASS |
-| Editing/Versions | owner source, parent/child isolation, immutable original | კონტრაქტები და UI edit/compare გავიდა | history/ImageWorkspace tests | mocked backend | PASS |
-| Agent G/Georgian | trusted draft→quote; no model confirmation | registry/commands და ქართული ტექსტი გავიდა | Agent tests | injected dependencies | PASS |
-| One Window EN/KA/RU | quote→confirm→refresh→cancel |3locale სცენარი გავიდა | browser-results.json | Chromium/intercepted API | PASS |
-| Variants/mobile Library | sequential4variants; preview/edit/compare; keyboard |2სცენარი გავიდა | browser-results.json | Chromium390×844/intercepted API | PASS |
-| Timer cleanup | ბუნებრივი exit | limiter28/storage8 და DB suites ბუნებრივად სრულდება | bounded logs | Node24; no forceExit | PASS |
-| Image DB concurrency |8confirms/workers→1debit/job/render | შესრულებულია; fresh deps reads persisted row | image.json | PG/PostgREST; Google/Redis/Storage injected | PASS |
-| Image DB refund/cancel/ownership | refund ერთხელ; foreign404; no late dispatch | შესრულებულია | image.json | real ledger/CAS; injected failure | PASS |
-| Lease Before/After | retry deliver და fencing |7/7 ორივეჯერ, existing PR58 fixture fix | lease-before/after.json | real isolated DB | PASS |
-| Ledger Before/After | ძველი race ხილულია; hardening შემდეგ once |7PASS+1phase-skip ორივეჯერ | ledger-before/after.json | real isolated DB | PASS |
-| Multi-step runs / Outbox | persisted recovery/local FFmpeg/atomic delivery store |6/6 და4/4 | runs/outbox.json | real PG/FFmpeg; delivery mocked | PASS |
-| Historical baseline diagnostic | ზუსტად ცნობილი წინა failure/interval გამოვლინდეს |6PASS/1knownFAIL +timeout; strict comparison matches | lease-baseline.json/log, baseline-verdict | clean30be5a2d | PASS (comparison only) |
-| Real Auth identity / anonymous denial | owner identity; anonymous401 | owner identity და anonymous401 შესრულებულია | free E2E results | local Supabase Auth; synthetic admin users | PASS |
-| Real DB RLS/Versions/Library | Aხედავს საკუთარ rows/assets/lineage; Bვერ ხედავს | A/B RLS, asset signing, Versions და Library შესრულებულია | free E2E results | local Postgres/RLS; seeded synthetic images | PASS |
-| Private Storage | private bucket; signed PNG digest; foreign/public refusal | signed PNG digest და foreign/public denial შესრულებულია | free E2E results | real local Storage; synthetic PNG | PASS |
-| Credits during free checks | balance/ledger unchanged | afterAll balance/ledger invariance შესრულებულია | afterAll assertions | real local DB; no quote/confirm | PASS |
-| PR58 coexistence | Image runs beside finalVideo source | typecheckPASS;5ChromiumPASS | pr58-aa0-* | aa0de1f7 disposable combined snapshot | PASS |
-| Hosted preflight |2users/private bucket/catalog verified | missing isolated origins/tokens;0requests | config/runbook | hosted environment absent | BLOCKED |
-| Google generate/edit | actual output/edit/cost | არ შესრულებულა; no paid approval | Phase6 runbook | real Google required | BLOCKED |
-| Full paid lifecycle |1provider request/debit, stored actual output | DB და Storage ნაწილები ცალ-ცალკეა | runbook AC06/15 | app+Redis+Google+DB+Storage required | BLOCKED |
-| Distributed recovery | restart/cancel/refund outage safely settled | injected coverage მხოლოდ | runbook AC07–09 | isolated live worker/Redis required | BLOCKED |
-| Visual references | identity/outfit/product/edit adherence | actual generated samples არ არსებობს | owner visual review | paid outputs required | BLOCKED |
+| Quote/Confirm | quote0charge; explicit signed confirmation; replay once | შესრულებულია | engine/http/client Jest; Image PG | injected Google; real PG ledger/CAS ცალკე | PASS |
+| Generate/Edit | რეალური Google output და სწორი edit | provider არ გამოძახებულა | Phase6 plan | verified isolated Google env/approval აკლია | BLOCKED |
+| References/roles | owner inputs, role/order/digest | კონტრაქტები და უარყოფა შესრულებულია | assets/prompt/provider tests | synthetic references | PASS |
+| Visual fidelity | character/outfit/product და უცვლელი საწყისი სურათი | actual generated samples არ არსებობს | owner visual review plan | real Google required | BLOCKED |
+| Versions/edit UI | owner source, child lineage, comparison | UI და რეალური seeded lineage შესრულებულია | browser5; free E2E3 | Chromium mocks + real local DB/Storage | PASS |
+| Auth | anonymous401, authenticated identity | შესრულებულია | image-contracts.spec.ts | real local Supabase Auth | PASS |
+| RLS | Aხედავს საკუთარ rows-ს; Bვერ ხედავს | შესრულებულია | free E2E | authenticated user clients, real DB RLS | PASS |
+| Private Storage | signed PNG digest; foreign/public refusal | შესრულებულია | free E2E | real local Storage, synthetic PNG | PASS |
+| Library | owner-only images and versions | შესრულებულია | free E2E | real local API/DB; seeded rows | PASS |
+| Credits | duplicate confirms→1debit; quote0; free checks0 | ImageDB3/3; free afterAll invariant | image.json; E2E logs | real PG; provider injected | PASS |
+| Refund/cancel | one refund; foreign cancel denial; no late dispatch | შესრულებულია | ImageDB+engine tests | real ledger/CAS; injected failures | PASS |
+| Provider outage settlement | actual remote outcome, debt reconciliation | live drill არ შესრულებულა | runbook AC07–09 | isolated real worker/Redis/provider required | BLOCKED |
+| Job Recovery | leases/retry/fencing/idempotent persisted state | headLease7/7; mainLease9/9, before+after | Image Acceptance / billing jobs | real PostgreSQL/PostgREST; synthetic provider | PASS |
+| Full Image recovery lifecycle | real Google in-flight cancel/restart, no double inference | არ შესრულებულა | Phase6 plan | real distributed environment | BLOCKED |
+| Redis configuration | Marketplace wins, no credential-pair mixing, fail-closed | before2FAIL; after30/30PASS | main-redis-before/after | mocked Redis; exact main helper | PASS |
+| Real Redis admission | distributed user/global limits/release | real instance არ გამოყენებულა | isolated Redis gate | credentials/isolated instance absent | BLOCKED |
+| One Window KA/EN/RU | quote→confirm→refresh→cancel |3locale scenarios PASS | browser results | Chromium intercepted API | PASS |
+| Mobile Library/variants/keyboard | sequential variants; edit/compare; explicit confirmation |2additional scenarios PASS | browser results |390×844 Chromium, not physical iOS | PASS |
+| Agent G | trusted draft→quote; no model spend authorization | registry/commands tests PASS | focused Jest | injected agent dependencies | PASS |
+| Agent G live conversation | real session uses Image tools with correct scope | live model session არ გაშვებულა | runbook AC12 | separate isolated session required | BLOCKED |
+| Video coexistence | existing Video and Image share main safely | tree-identical integration;38/38 live suite | tree-equivalence.json; run38454305911/attempt2 | real local Supabase desktop/mobile emulation | PASS |
+| Hosted Preview | real hosted Image lifecycle | only Preview Contract/mocked Image UX validated | separate hosted gate | verified hosted env absent | BLOCKED |
+| TypeScript/ESLint/Jest/Build | no in-scope failures | PASS;13,928Jest pass/70skip; first font failure retained | CI+local lint | main+Image tested tree | PASS |
+| Google paid lifecycle |1inference/debit, actual output→private Storage | separate components only verified | Phase6 plan | Google/app/Redis/DB/Storage together | BLOCKED |
 
-რეალური უფასო სცენარები შესრულდა run38413376597-ში: Image3/3, სრული Video+Image38/38,15.8წთ. ეს ამოწმებს PR-ის იმდროინდელ integration snapshot-ს; ახალ main fef867a6-ზე შემოწმება ჯერ მიმდინარეობს.
-ყველა ძველი25DB სცენარი და დამატებით Image3DB სცენარი დაფარულია; phase executions არ ითვლება ახალ უნიკალურ ტესტებად. Synthetic completed rows მხოლოდ fixture-ია, არა შესრულებული Google jobs. Free suite არ იძახებს quote/confirm/provider-ს და არ ცვლის RLS policies-ს.
-
-## Current-main compatibility update — 2026-10-13 19:22 UTC
-Checked main: `fef867a6ebad67a2a0a56a24e0b15c683a353d79` (PR58+PR63). A disposable archive with the Image changes applies cleanly; no branch merge was performed. One Window browser5/5 PASS (54.2s), targeted integration156 PASS/3 DB-environment skips, TypeScript PASS.
-
-A real Image-specific integration defect was found: admission preferred legacy Redis variables and could mix incomplete pairs. Image now reuses main's exact `upstashRestEnv` helper: complete Marketplace pair wins; complete legacy pair is fallback; crossed incomplete pairs fail closed. The helper and its tests are byte-identical to main, not a second implementation. Regression before:6 PASS/2 FAIL; after:30/30 PASS across Image adapter/engine/shared helper. Current-main TypeScript PASS17.15s; ESLint0 warnings/errors. No live Redis or provider call occurred.
-
-The earlier09333d7a full CI/E2E results remain pinned historical evidence. The final PR description reports CI for the newer engineering commit; results must not be inferred from these local checks. Branch-history synchronization remains pending the No Merge clarification. Source review and GitHub integration-snapshot CI do not update the branch's ancestry.
+Synthetic completed rows are fixtures, not generated jobs. Real-service3/3 proves Auth/RLS/Storage/Library boundaries only. Existing final capability flags remain unverified. See [Evidence Ledger](EVIDENCE_LEDGER.md) for exact runs/skips and first-attempt failure.
