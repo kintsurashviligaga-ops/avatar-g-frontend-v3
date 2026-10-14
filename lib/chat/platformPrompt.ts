@@ -24,7 +24,7 @@
  *
  * Pure (no I/O, no env); the date line is computed per call so a cached prompt can never serve yesterday's date.
  */
-import { ownerApprovedPrice } from '@/lib/billing/paidServiceGate';
+import { ownerApprovedPrice } from '@/lib/billing/pricingApproval';
 import { TOOL_META, type ToolId } from '@/lib/studio/tools';
 import { NAV_GROUP_LABEL, toolGroups } from '@/lib/catalog/nav';
 import { SERVICE_CATALOG } from '@/lib/catalog/services';

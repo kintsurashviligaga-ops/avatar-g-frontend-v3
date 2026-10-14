@@ -20,21 +20,11 @@ import { createHash } from 'node:crypto';
 import { bodyFingerprint } from '@/lib/orchestrator/idemRef';
 import { signQuote, verifyQuote, QUOTE_TTL_MS, type QuoteCheck } from '@/lib/agent/media/quoteToken';
 
-export type GatedService = 'dubbing' | 'presentation';
+import type { GatedService } from './pricingApproval';
+export { ownerApprovedPrice, type GatedService } from './pricingApproval';
 
 /** Fields that are part of the confirmation, not of what is being bought. */
 const CONTROL_KEYS = new Set(['quoteToken', 'confirm', 'clientJobId', 'idempotencyKey', 'jobId', 'durationSec']);
-
-/** Is `service` at exactly `price` credits approved by the owner? Pure: reads only `env`. */
-export function ownerApprovedPrice(service: GatedService, price: number, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (!(price > 0) || !Number.isInteger(price)) return false;
-  const raw = (env.OWNER_APPROVED_PRICING ?? '').trim().toLowerCase();
-  if (!raw) return false;
-  return raw.split(',').some((entry) => {
-    const [name, value, extra] = entry.trim().split(':');
-    return extra === undefined && name === service && /^\d+$/.test(value ?? '') && Number(value) === price;
-  });
-}
 
 /** The fingerprint a quote binds: the service plus the bought request, control fields stripped. */
 export function quoteFingerprint(service: GatedService, raw: unknown): string {
