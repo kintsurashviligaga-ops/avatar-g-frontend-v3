@@ -11,7 +11,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Download, Loader2, Music2, RotateCcw, Scissors, X } from 'lucide-react';
 import type { MusicRequest } from '@/lib/music/studio/contracts';
 import { cancelCall, editCall, isFinal, pollDelayMs, quoteCall, startCall, statusCall, commandCall, type MusicJobView, type MusicQuote, type Refusal } from '@/lib/music/studio/client';
+import { LIVE_RESULT_EVENT, type LiveResultNote } from '@/lib/voice/liveTools';
 import { musicCardCopy, stageText } from './musicCardCopy';
+import { joinNewestTracks, registerMusicCard, type MusicCardPhase } from './musicVoiceBridge';
 
 export interface MusicDraft { id: string; request: MusicRequest }
 
@@ -19,6 +21,11 @@ const btn = 'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-
 const jobKey = (draftId: string) => `music-studio:job:${draftId}`;
 const remember = (draftId: string, jobId: string | null) => { try { if (jobId) localStorage.setItem(jobKey(draftId), jobId); else localStorage.removeItem(jobKey(draftId)); } catch { /* private mode */ } };
 const recall = (draftId: string): string | null => { try { return localStorage.getItem(jobKey(draftId)); } catch { return null; } };
+/** An [App] note for a Live Voice call (only a call listens; without one it goes nowhere). */
+const tellCall = (what: string) => {
+  if (typeof window === 'undefined' || typeof CustomEvent !== 'function') return;
+  try { window.dispatchEvent(new CustomEvent<LiveResultNote>(LIVE_RESULT_EVENT, { detail: { kind: 'music', what } })); } catch { /* old engines */ }
+};
 
 type Phase =
   | { k: 'quoting' }
@@ -32,12 +39,19 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const [phase, setPhase] = useState<Phase>(() => { const j = recall(draft.id); return j ? { k: 'job', jobId: j, view: null } : { k: 'quoting' }; });
   const [edit, setEdit] = useState<{ busy: boolean; text: string; note: string | null; versions: Array<{ url: string; label: string; durationSec: number; jobId: string }> }>({ busy: false, text: '', note: null, versions: [] });
   const polls = useRef(0);
+  const cur = useRef({ phase, edit });
+  cur.current = { phase, edit };
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   // Quote once (the server prices it; nothing is charged).
   useEffect(() => {
     if (phase.k !== 'quoting') return;
     let live = true;
-    void quoteCall(draft.request).then((q) => { if (live) setPhase(q.ok ? { k: 'quoted', q } : { k: 'refused', r: q }); });
+    void quoteCall(draft.request).then((q) => {
+      if (!live) return;
+      setPhase(q.ok ? { k: 'quoted', q } : { k: 'refused', r: q });
+      tellCall(q.ok ? `The music plan card shows ${q.credits} credits. Only the user's tap on Create starts it.` : `The music plan was refused: ${q.message ?? q.code}`);
+    });
     return () => { live = false; };
   }, [phase.k, draft.request]);
 
@@ -49,7 +63,14 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
       const v = await statusCall(phase.jobId);
       if (!live) return;
       polls.current += 1;
-      if (v.ok) setPhase({ k: 'job', jobId: phase.jobId, view: v });
+      if (v.ok) {
+        setPhase({ k: 'job', jobId: phase.jobId, view: v });
+        if (isFinal(v) && phase.view) {
+          tellCall(v.status === 'completed' ? 'The music track is ready on screen (saved to the Library).'
+            : v.status === 'cancelled' ? 'The music job was cancelled; reserved credits were returned.'
+              : `The music job failed${v.error ? ` (${v.error})` : ''}; reserved credits are returned.`);
+        }
+      }
       else if (v.code === 'not_found') { remember(draft.id, null); setPhase({ k: 'refused', r: v }); }
       else setPhase({ ...phase }); // a dropped poll: try again
     }, phase.view ? pollDelayMs(polls.current) : 0);
@@ -72,27 +93,77 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
     if (v.ok) setPhase({ k: 'job', jobId: phase.jobId, view: v });
   }, [phase]);
 
-  const runEdit = useCallback(async () => {
-    if (phase.k !== 'job' || !phase.view?.result || !edit.text.trim()) return;
+  /** Edit words (typed in the box, or spoken in a call) on this card's newest track. Free; the original is kept. */
+  const runEdit = useCallback(async (words?: string): Promise<{ ok: boolean; message?: string }> => {
+    const { phase: ph, edit: ed } = cur.current;
+    const text = (words ?? ed.text).trim();
+    if (ph.k !== 'job' || !ph.view?.result || !text || ed.busy) return { ok: false, message: c.editFailed };
     setEdit((e) => ({ ...e, busy: true, note: null }));
-    const parsed = await commandCall(edit.text);
-    const cmd = parsed.ok ? (parsed.command as { kind?: string; ops?: unknown[]; format?: string | null; op?: string } | null) : null;
-    if (!cmd || cmd.kind === 'create' || cmd.kind === 'join') { setEdit((e) => ({ ...e, busy: false, note: c.editNotUnderstood })); return; }
-    if (cmd.kind === 'unsupported') { setEdit((e) => ({ ...e, busy: false, note: c.unsupportedOp })); return; }
-    if (cmd.kind === 'regenerate') { setEdit((e) => ({ ...e, busy: false })); onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: phase.jobId } }); return; }
-    const sourceId = edit.versions[0]?.jobId ?? phase.jobId;
+    const done = (note: string | null, ok: boolean) => { setEdit((e) => ({ ...e, busy: false, note })); return { ok, ...(note ? { message: note } : {}) }; };
+    const parsed = await commandCall(text);
+    const cmd = parsed.ok ? (parsed.command as { kind?: string; ops?: unknown[]; format?: string | null; op?: string; crossfadeSec?: number } | null) : null;
+    if (!cmd || cmd.kind === 'create') return done(c.editNotUnderstood, false);
+    if (cmd.kind === 'unsupported') return done(c.unsupportedOp, false);
+    if (cmd.kind === 'regenerate') { done(null, true); onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: ph.jobId } }); return { ok: true }; }
+    if (cmd.kind === 'join') {
+      const j = await joinNewestTracks({ crossfadeSec: cmd.crossfadeSec ?? 0, locale: draft.request.locale });
+      if (!j.ok) return done(j.code === 'need_two_tracks' ? c.joinNeedsTwo : j.message, false);
+      setEdit((e) => ({ ...e, busy: false, text: '', note: null }));
+      return { ok: true };
+    }
+    const sourceId = ed.versions[0]?.jobId ?? ph.jobId;
     const r = await editCall({ v: 1, sources: [sourceId], ops: cmd.ops ?? [], format: cmd.format ?? 'mp3', locale: draft.request.locale });
     setEdit((e) => (r.ok
-      ? { busy: false, text: '', note: null, versions: [{ url: r.url, label: r.label, durationSec: r.durationSec, jobId: r.jobId }, ...e.versions] }
+      ? { busy: false, text: words ? e.text : '', note: null, versions: [{ url: r.url, label: r.label, durationSec: r.durationSec, jobId: r.jobId }, ...e.versions] }
       : { ...e, busy: false, note: r.message ?? c.editFailed }));
-  }, [phase, edit.text, edit.versions, c, draft, onRegenerate]);
+    return r.ok ? { ok: true } : { ok: false, message: r.message ?? c.editFailed };
+  }, [c, draft, onRegenerate]);
+
+  // Agent G and Live Voice reach this card through the bridge (components/studio/music/musicVoiceBridge).
+  const cancelRef = useRef(cancel);
+  cancelRef.current = cancel;
+  const editRef = useRef(runEdit);
+  editRef.current = runEdit;
+  useEffect(() => registerMusicCard({
+    draftId: draft.id,
+    snapshot() {
+      const { phase: ph, edit: ed } = cur.current;
+      const v = ph.k === 'job' ? ph.view : null;
+      const status: MusicCardPhase = ph.k === 'quoting' ? 'pricing' : ph.k === 'quoted' ? 'quoted' : ph.k === 'starting' ? 'starting' : ph.k === 'refused' ? 'refused'
+        : !v || !isFinal(v) ? 'running' : v.status === 'completed' && v.result ? 'completed' : v.status === 'cancelled' ? 'cancelled' : 'failed';
+      const original = v?.status === 'completed' && v.result ? [{ jobId: v.jobId, url: v.result.url, durationSec: v.result.durationSec, label: 'original' }] : [];
+      return {
+        draftId: draft.id, phase: status, prompt: draft.request.prompt, mode: draft.request.mode,
+        ...(ph.k === 'quoted' || ph.k === 'starting' ? { credits: ph.q.credits } : {}),
+        ...(v && !isFinal(v) ? { stage: v.stage } : {}),
+        ...(ph.k === 'job' ? { jobId: ph.jobId } : {}),
+        ...(ph.k === 'refused' ? { message: ph.r.message ?? ph.r.code } : v?.error ? { message: v.error } : {}),
+        tracks: [...original, ...[...ed.versions].reverse()],
+        busy: ed.busy,
+      };
+    },
+    async cancel() {
+      const ph = cur.current.phase;
+      if (ph.k !== 'job' || !ph.view?.cancellable) return false;
+      await cancelRef.current();
+      return true;
+    },
+    edit: (text) => editRef.current(text),
+    addVersion: (ver) => setEdit((e) => (e.versions.some((x) => x.jobId === ver.jobId) ? e : { ...e, versions: [ver, ...e.versions] })),
+    download() {
+      const a = rootRef.current?.querySelector<HTMLAnchorElement>('a[download]');
+      if (!a) return false;
+      a.click();
+      return true;
+    },
+  }), [draft.id, draft.request.prompt, draft.request.mode]);
 
   const shell = 'mt-2 w-full max-w-[480px] rounded-2xl border border-app-border/15 bg-app-elevated/40 p-3.5';
   const r = draft.request;
 
   if (phase.k === 'refused') {
     return (
-      <div className={shell} role="alert">
+      <div className={shell} role="alert" data-testid="music-card" data-phase="refused" ref={rootRef}>
         <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{phase.r.message ?? c.genericError}</p>
       </div>
     );
@@ -101,7 +172,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   if (phase.k === 'quoting' || phase.k === 'quoted' || phase.k === 'starting') {
     const q = phase.k === 'quoting' ? null : phase.q;
     return (
-      <div className={shell} aria-busy={phase.k !== 'quoted'}>
+      <div className={shell} aria-busy={phase.k !== 'quoted'} data-testid="music-card" data-phase={phase.k === 'quoting' ? 'pricing' : phase.k} ref={rootRef}>
         <p className="flex items-center gap-2 text-[13px] font-semibold text-app-text"><Music2 className="h-4 w-4 text-app-accent" aria-hidden />{c.planTitle}</p>
         <p className="mt-1.5 line-clamp-3 text-[13px] text-app-text/85">{r.prompt}</p>
         <ul className="mt-2 flex flex-wrap gap-1.5 text-[11.5px] text-app-text/70">
@@ -116,7 +187,7 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
           <p className="mt-3 flex items-center gap-2 text-[12.5px] text-app-text/70"><Loader2 className="h-4 w-4 animate-spin" aria-hidden />{c.pricing}</p>
         ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button type="button" className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} onClick={confirm} disabled={phase.k === 'starting'} aria-label={c.confirmAria(q.credits)}>
+            <button type="button" data-testid="music-confirm" data-credits={q.credits} data-live-guard="spend" className={`${btn} bg-app-accent text-white hover:bg-app-accent/90`} onClick={confirm} disabled={phase.k === 'starting'} aria-label={c.confirmAria(q.credits)}>
               {phase.k === 'starting' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}{c.confirm(q.credits)}
             </button>
             <span className="text-[11.5px] text-app-text/60">{c.lengthNote}</span>
@@ -129,44 +200,44 @@ export function MusicStudioCard({ draft, locale, onRegenerate }: { draft: MusicD
   const v = phase.view;
   if (!v || !isFinal(v)) {
     return (
-      <div className={shell} aria-live="polite" aria-busy="true">
-        <p className="flex items-center gap-2 text-[13px] text-app-text"><Loader2 className="h-4 w-4 animate-spin text-app-accent" aria-hidden />{stageText(v?.stage ?? 'queued', locale)}</p>
-        {v?.cancellable && <button type="button" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
+      <div className={shell} aria-live="polite" aria-busy="true" data-testid="music-card" data-phase="running" data-stage={v?.stage ?? 'queued'} ref={rootRef}>
+        <p className="flex items-center gap-2 text-[13px] text-app-text" data-testid="music-stage"><Loader2 className="h-4 w-4 animate-spin text-app-accent" aria-hidden />{stageText(v?.stage ?? 'queued', locale)}</p>
+        {v?.cancellable && <button type="button" data-testid="music-cancel" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={cancel}><X className="h-4 w-4" aria-hidden />{c.cancel}</button>}
       </div>
     );
   }
   if (v.status !== 'completed' || !v.result) {
     return (
-      <div className={shell} role="status">
+      <div className={shell} role="status" data-testid="music-card" data-phase={v.status === 'cancelled' ? 'cancelled' : 'failed'} ref={rootRef}>
         <p className="flex items-start gap-2 text-[13px] text-app-text"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden />{c.failed(v.status === 'cancelled', v.error)}</p>
         {v.settlementPending && <p className="mt-1 text-[11.5px] text-app-text/60">{c.refundPending}</p>}
-        <button type="button" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => { remember(draft.id, null); setPhase({ k: 'quoting' }); }}><RotateCcw className="h-4 w-4" aria-hidden />{c.retry}</button>
+        <button type="button" data-testid="music-retry" className={`${btn} mt-2 border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => { remember(draft.id, null); setPhase({ k: 'quoting' }); }}><RotateCcw className="h-4 w-4" aria-hidden />{c.retry}</button>
       </div>
     );
   }
   const res = v.result;
   return (
-    <div className={shell}>
-      <audio controls preload="metadata" src={res.url} className="w-full" aria-label={c.playerAria}>
+    <div className={shell} data-testid="music-card" data-phase="completed" data-job-id={v.jobId} ref={rootRef}>
+      <audio controls preload="metadata" src={res.url} className="w-full" aria-label={c.playerAria} data-testid="music-player">
         <track kind="captions" />
       </audio>
       <p className="mt-1.5 text-[11.5px] text-app-text/60">{c.delivered(Math.round(res.durationSec), res.credits, res.modelId)}</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <a className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} href={res.url} download><Download className="h-4 w-4" aria-hidden />{c.download}</a>
-        <button type="button" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: v.jobId } })}><RotateCcw className="h-4 w-4" aria-hidden />{c.regenerate}</button>
+        <a data-testid="music-download" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} href={res.url} download><Download className="h-4 w-4" aria-hidden />{c.download}</a>
+        <button type="button" data-testid="music-regenerate" className={`${btn} border border-app-border/25 text-app-text hover:bg-app-border/10`} onClick={() => onRegenerate?.({ id: `${draft.id}-r${Date.now().toString(36)}`, request: { ...draft.request, parentJobId: v.jobId } })}><RotateCcw className="h-4 w-4" aria-hidden />{c.regenerate}</button>
       </div>
       <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void runEdit(); }}>
         <label className="sr-only" htmlFor={`ms-edit-${draft.id}`}>{c.editLabel}</label>
-        <input id={`ms-edit-${draft.id}`} value={edit.text} onChange={(e) => setEdit((s) => ({ ...s, text: e.target.value }))} placeholder={c.editPlaceholder}
+        <input id={`ms-edit-${draft.id}`} data-testid="music-edit-input" value={edit.text} onChange={(e) => setEdit((s) => ({ ...s, text: e.target.value }))} placeholder={c.editPlaceholder}
           className="min-h-[44px] flex-1 rounded-full border border-app-border/20 bg-transparent px-3 text-[13px] text-app-text placeholder:text-app-text/40" />
-        <button type="submit" className={`${btn} bg-app-accent/90 text-white`} disabled={edit.busy || !edit.text.trim()}>{edit.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Scissors className="h-4 w-4" aria-hidden />}{c.apply}</button>
+        <button type="submit" data-testid="music-edit-apply" className={`${btn} bg-app-accent/90 text-white`} disabled={edit.busy || !edit.text.trim()}>{edit.busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Scissors className="h-4 w-4" aria-hidden />}{c.apply}</button>
       </form>
-      {edit.note && <p className="mt-1.5 text-[12px] text-amber-300" role="status">{edit.note}</p>}
+      {edit.note && <p className="mt-1.5 text-[12px] text-amber-300" role="status" data-testid="music-edit-note">{edit.note}</p>}
       {edit.versions.map((ver) => (
-        <div key={ver.jobId} className="mt-2 rounded-xl border border-app-border/10 p-2">
+        <div key={ver.jobId} className="mt-2 rounded-xl border border-app-border/10 p-2" data-testid="music-version" data-job-id={ver.jobId} data-duration={ver.durationSec}>
           <p className="text-[11.5px] text-app-text/70">{c.version(ver.label, Math.round(ver.durationSec))}</p>
-          <audio controls preload="metadata" src={ver.url} className="mt-1 w-full"><track kind="captions" /></audio>
-          <a className="mt-1 inline-block text-[12px] text-app-accent underline" href={ver.url} download>{c.download}</a>
+          <audio controls preload="metadata" src={ver.url} className="mt-1 w-full" aria-label={c.version(ver.label, Math.round(ver.durationSec))}><track kind="captions" /></audio>
+          <a data-testid="music-version-download" className="mt-1 inline-flex min-h-[44px] items-center text-[12px] text-app-accent underline" href={ver.url} download>{c.download}</a>
         </div>
       ))}
       <p className="mt-2 text-[11px] text-app-text/50">{c.savedToLibrary}</p>

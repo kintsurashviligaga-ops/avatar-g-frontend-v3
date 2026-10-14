@@ -19,6 +19,7 @@ const COPY = {
     delivered: (s: number, cr: number, m: string) => `${s} წმ · ${cr} კრედიტი · ${m}`,
     version: (label: string, s: number) => `ახალი ვერსია: ${label} · ${s} წმ`,
     savedToLibrary: 'შენახულია ბიბლიოთეკაში. ორიგინალი არასდროს იცვლება.',
+    joinNeedsTwo: 'გასაერთიანებლად ეკრანზე ორი მზა ტრეკი უნდა იყოს.',
   },
   en: {
     planTitle: 'Music plan', song: 'Song', instrumental: 'Instrumental', pricing: 'Getting the price…',
@@ -36,6 +37,7 @@ const COPY = {
     delivered: (s: number, cr: number, m: string) => `${s} s · ${cr} credits · ${m}`,
     version: (label: string, s: number) => `New version: ${label} · ${s} s`,
     savedToLibrary: 'Saved to your Library. The original is never changed.',
+    joinNeedsTwo: 'Joining needs two finished tracks on screen.',
   },
   ru: {
     planTitle: 'План трека', song: 'Песня', instrumental: 'Инструментал', pricing: 'Считаю цену…',
@@ -53,6 +55,7 @@ const COPY = {
     delivered: (s: number, cr: number, m: string) => `${s} с · ${cr} кредитов · ${m}`,
     version: (label: string, s: number) => `Новая версия: ${label} · ${s} с`,
     savedToLibrary: 'Сохранено в библиотеке. Оригинал никогда не меняется.',
+    joinNeedsTwo: 'Для склейки нужны два готовых трека на экране.',
   },
 } as const;
 

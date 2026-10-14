@@ -592,6 +592,23 @@ describe('the hands: click · type_text · download · use_result · montage · 
       .toMatchObject({ ok: false, error: 'studio_unavailable' });
   });
 
+  test('music_studio goes to the studio and back; it never counts down, never runs, and a refusal is said as it is', () => {
+    const ok = handsEnv({ reply: { ok: true, message: 'The plan card is on screen and is being priced.' } });
+    const out = executeLiveToolCall(call('ms1', 'music_studio', { action: 'plan', prompt: 'calm piano', confirmed: 'yes' }), ok.env);
+    expect(ok.actions[0]).toEqual({ type: 'music_studio', action: 'plan', prompt: 'calm piano', reply: { ok: true, message: 'The plan card is on screen and is being priced.' } });
+    expect(out).toMatchObject({ response: { response: { ok: true, summary: 'The plan card is on screen and is being priced.' } }, screen: true });
+    expect(out.run).toBeUndefined(); // no countdown, no start: only the card's Create starts a Music Studio job
+    expect(out.pending).toBeUndefined();
+    const status = handsEnv({ reply: { ok: true, message: 'cards', state: { cards: [{ phase: 'quoted', credits: 5 }] } } });
+    expect(executeLiveToolCall(call('ms2', 'music_studio', { action: 'status' }), status.env))
+      .toMatchObject({ response: { response: { ok: true, state: { cards: [{ phase: 'quoted', credits: 5 }] } } } });
+    const no = handsEnv({ reply: { ok: false, error: 'no_track', message: 'There is no finished track to edit yet.' } });
+    expect(executeLiveToolCall(call('ms3', 'music_studio', { action: 'edit', command: 'fade out 3s' }), no.env).response.response)
+      .toEqual({ ok: false, error: 'no_track', message: 'There is no finished track to edit yet.' });
+    expect(executeLiveToolCall(call('ms4', 'music_studio', { action: 'cancel' }), handsEnv({ studio: false }).env).response.response)
+      .toMatchObject({ ok: false, error: 'studio_unavailable' });
+  });
+
   test('read_webpage answers after the page is read: the text, the links, the page\'s date, and a link on screen', async () => {
     const page: WebReadAnswer = { ok: true, page: { url: 'https://example.ge/', title: 'Example', description: 'd', text: 'Hello', links: [{ text: 'More', url: 'https://example.ge/more' }], published: '2026-10-01' } };
     const h = handsEnv({ page });

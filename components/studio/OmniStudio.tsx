@@ -146,6 +146,7 @@ import { ToolSheet, type ToolEntry } from './ui/ToolSheet';
 import { ResearchCard, researchStartedNote, useResearchToolExtras } from './research';
 import { MusicStudioCard, type MusicDraft } from './music/MusicStudioCard';
 import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './music/musicDraft';
+import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
@@ -8212,6 +8213,24 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
           message: `Agent G is checking ${url ? (() => { try { return new URL(url).host; } catch { return 'the link'; } })() : 'the user\'s file'} now (nothing is downloaded yet). `
             + 'Its plan card appears in the chat in a moment and you get an [App] note with it; tell the user you are on it.',
         });
+        return true;
+      }
+      case 'music_studio': {
+        // Music Studio v1 by voice (components/studio/music/musicVoiceBridge): plan puts a PRICED card in the thread —
+        // nothing is charged, and only the card's Create (the user's own tap) starts the job. Edits, joins, downloads free.
+        if (!musicStudioV1OnClient()) { reply({ ok: false, error: 'not_enabled', message: 'Music Studio is not switched on here. Use prepare_generation with tool music instead.' }); return true; }
+        if (signedOut && d.action === 'plan') { reply({ ok: false, error: 'signed_out', message: 'The user must sign in before making music.' }); return true; }
+        const lang = locale === 'en' || locale === 'ru' ? locale : 'ka';
+        const r = handleMusicVoice(d, {
+          locale: lang,
+          addDraft: (request) => {
+            const id = `md_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+            setMessages((prev) => [...prev, { role: 'user', text: request.prompt }, { role: 'assistant', text: musicStudioIntro(locale), musicDraft: { id, request } }]);
+            return id;
+          },
+          note: (what) => { try { window.dispatchEvent(new CustomEvent(LIVE_RESULT_EVENT, { detail: { kind: 'music', what } })); } catch { /* old engines */ } },
+        });
+        reply({ ok: r.ok, message: r.message, ...(r.error ? { error: r.error } : {}), ...(r.state ? { state: r.state } : {}) });
         return true;
       }
       case 'agent_task': {

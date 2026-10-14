@@ -54,6 +54,7 @@ describe('LIVE_FUNCTION_DECLARATIONS', () => {
       'get_screen_state', 'prepare_generation', 'update_settings', 'start_generation', 'open_studio', 'chat_send', 'new_chat',
       'set_chat_model', 'stop', 'scroll_chat', 'open_panel', 'call_view', 'show_code', 'open_url', 'end_call',
       'click', 'type_text', 'download', 'use_result', 'montage', 'read_webpage', 'ask_agent_g', 'extract_audio', 'agent_task',
+      'music_studio',
     ]);
     for (const d of LIVE_FUNCTION_DECLARATIONS) {
       expect(d.name).toMatch(/^[a-z_]{1,64}$/); // Gemini: a-z, 0-9, _ ; ≤ 64
@@ -523,7 +524,7 @@ describe('ask_agent_g', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'ask_agent_g')!;
 
   it('is declared after the older ones (they keep their order) with one required STRING `task`', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 3]!.name).toBe('ask_agent_g');
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 4]!.name).toBe('ask_agent_g');
     const p = decl().parameters!;
     expect(p.type).toBe('OBJECT');
     expect(Object.keys(p.properties!)).toEqual(['task']);
@@ -584,7 +585,7 @@ describe('extract_audio', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'extract_audio')!;
 
   it('is declared after ask_agent_g with a required action (plan · start · stop), an optional url and the start confirmation', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('extract_audio');
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 3]!.name).toBe('extract_audio');
     const p = decl().parameters!;
     expect(Object.keys(p.properties!)).toEqual(['action', 'url', 'confirmed']);
     expect(p.properties!.action!.enum).toEqual(['plan', 'start', 'stop']);
@@ -631,8 +632,8 @@ function isObjArgs(v: unknown): boolean {
 describe('agent_task', () => {
   const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'agent_task')!;
 
-  it('is declared LAST with a required action (start · stop · status) and an optional INTEGER plan', () => {
-    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('agent_task');
+  it('is declared after extract_audio (music_studio follows it) with a required action (start · stop · status) and an optional INTEGER plan', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 2]!.name).toBe('agent_task');
     const p = decl().parameters!;
     expect(Object.keys(p.properties!)).toEqual(['action', 'plan']);
     expect(p.properties!.action!.enum).toEqual(['start', 'stop', 'status']);
@@ -666,5 +667,47 @@ describe('agent_task', () => {
     // planId / planKind are set by the browser executor from its own ledger, never taken from the model's args.
     expect(ok('agent_task', { action: 'start', plan: 1, planId: 'someone-elses-card', planKind: 'montage' }))
       .toEqual({ type: 'agent_task', action: 'start', plan: 1 });
+  });
+});
+
+describe('music_studio (Music Studio v1 by voice)', () => {
+  const decl = () => LIVE_FUNCTION_DECLARATIONS.find((d) => d.name === 'music_studio')!;
+
+  it('is declared LAST with a required action and NO start / confirmation field: voice can never start a Music Studio job', () => {
+    expect(LIVE_FUNCTION_DECLARATIONS[LIVE_FUNCTION_DECLARATIONS.length - 1]!.name).toBe('music_studio');
+    const p = decl().parameters!;
+    expect(p.required).toEqual(['action']);
+    expect(p.properties!.action!.enum).toEqual(['plan', 'edit', 'join', 'status', 'cancel', 'download', 'save']);
+    expect(Object.keys(p.properties!)).not.toContain('confirmed');
+    expect(p.properties!.action!.enum).not.toContain('start');
+    expect(decl().description).toMatch(/you can NEVER start it/);
+    expect(decl().description).toMatch(/never offer an instrumental as if it were the song/);
+    expect(LIVE_ACTIONS_RULE).toMatch(/you can never start it or charge for it/);
+  });
+
+  it('plan: prompt required; genre / mood cleaned to the contract alphabet; bpm clamped; tempo / mode enums', () => {
+    expect(err('music_studio', { action: 'plan' })).toMatchObject({ field: 'prompt' });
+    expect(ok('music_studio', { action: 'plan', prompt: ' calm piano ', genre: 'jazz!!', mood: 'calm', bpm: 400, tempo: 'SLOW' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'calm piano', genre: 'jazz', mood: 'calm', bpm: 220, tempo: 'slow' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', mode: 'rap' })).toMatchObject({ field: 'mode' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', tempo: 'warp' })).toMatchObject({ field: 'tempo' });
+    expect(err('music_studio', { action: 'plan', prompt: 'x', bpm: 'fast' })).toMatchObject({ field: 'bpm' });
+  });
+
+  it('plan: lyrics, their language and the voice only travel with a song; a language without lyrics is dropped', () => {
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', lyrics: 'la la', vocalGender: 'female' })).toEqual({ type: 'music_studio', action: 'plan', prompt: 'x' });
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', mode: 'song', lyricsLanguage: 'ka', vocalGender: 'female' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'x', mode: 'song', vocalGender: 'female' });
+    expect(ok('music_studio', { action: 'plan', prompt: 'x', mode: 'song', lyrics: 'გამარჯობა', lyricsLanguage: 'ka' }))
+      .toEqual({ type: 'music_studio', action: 'plan', prompt: 'x', mode: 'song', lyrics: 'გამარჯობა', lyricsLanguage: 'ka' });
+  });
+
+  it('edit needs the words; join clamps count 2-6 and crossfade 0-10 and checks the format; the rest take no fields', () => {
+    expect(err('music_studio', { action: 'edit' })).toMatchObject({ field: 'command' });
+    expect(ok('music_studio', { action: 'edit', command: 'fade out 3 seconds' })).toEqual({ type: 'music_studio', action: 'edit', command: 'fade out 3 seconds' });
+    expect(ok('music_studio', { action: 'join', count: 9, crossfadeSec: 30, format: 'wav' })).toEqual({ type: 'music_studio', action: 'join', count: 6, crossfadeSec: 10, format: 'wav' });
+    expect(err('music_studio', { action: 'join', format: 'flac' })).toMatchObject({ field: 'format' });
+    for (const a of ['status', 'cancel', 'download', 'save']) expect(ok('music_studio', { action: a, prompt: 'ignored' })).toEqual({ type: 'music_studio', action: a });
+    expect(err('music_studio', { action: 'start' })).toMatchObject({ field: 'action' });
   });
 });

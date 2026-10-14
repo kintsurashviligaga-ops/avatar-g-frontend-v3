@@ -966,6 +966,17 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
           : action.action === 'set_music_start' ? `The music now starts ${action.musicStartSec ?? 0} s into the song.` : 'Here is the edit.');
       return { response: answer({ ok: true, summary, ...(r.state ? { state: r.state } : {}) }), ...(action.action !== 'state' ? { screen: true as const } : {}) };
     }
+    case 'music_studio': {
+      // Music Studio's cards (components/studio/music/musicVoiceBridge). Never a start, never a countdown: `plan` only
+      // puts a priced card on screen, and its Create — the user's own tap — is the one way a paid job begins.
+      const detail: LiveActionEventDetail = { ...action };
+      if (!env.dispatchAction(detail)) return { response: answer({ ok: false, error: 'studio_unavailable', message: NO_STUDIO_SHORT }) };
+      if (detail.reply?.ok === false) return refused(answer, detail.reply, 'Music Studio could not do that here.');
+      return {
+        response: answer({ ok: true, summary: detail.reply?.message ?? 'Done.', ...(detail.reply?.state ? { state: detail.reply.state } : {}) }),
+        ...(action.action !== 'status' ? { screen: true as const } : {}),
+      };
+    }
     case 'read_webpage': {
       const read = env.readPage ?? fetchWebRead;
       const host = liveUrlHost(action.url) || 'the website';

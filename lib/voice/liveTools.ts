@@ -70,6 +70,10 @@ export const LIVE_ACTION_NAMES = [
   // started, stopped and read by voice with the same cards a tap uses. A start runs only on the user's OWN words — the
   // call's transcript of what they said after the plan was told — never on the model's word (lib/voice/spokenYes).
   'agent_task',
+  // 2026-10-14 (Music Studio v1, Phase 2): the Music Studio plan card by voice — plan (a card is put on screen and priced;
+  // NOTHING is charged), free edits / joins of the tracks on screen, status, cancel (returns credits), download. There is
+  // no start: a Music Studio job starts only on the user's own tap on the card's Create (components/studio/music).
+  'music_studio',
 ] as const;
 export type LiveActionName = (typeof LIVE_ACTION_NAMES)[number];
 
@@ -163,6 +167,18 @@ export type LivePlanKind = (typeof LIVE_PLAN_KINDS)[number];
 /** A call numbers Agent G's plans 1, 2, 3 … as it hears of them; never more than this in one call. */
 export const LIVE_PLAN_MAX = 99;
 
+/** music_studio: plan a card (priced, never started) · edit / join tracks (free) · status · cancel · download · save. */
+export const LIVE_MUSIC_ACTIONS = ['plan', 'edit', 'join', 'status', 'cancel', 'download', 'save'] as const;
+export type LiveMusicAction = (typeof LIVE_MUSIC_ACTIONS)[number];
+export const LIVE_MUSIC_MODES = ['instrumental', 'song'] as const;
+export const LIVE_MUSIC_TEMPOS = ['slow', 'medium', 'fast'] as const;
+export const LIVE_MUSIC_FORMATS = ['mp3', 'wav', 'm4a'] as const;
+export const LIVE_MUSIC_LANGS = ['ka', 'en', 'ru'] as const;
+export const LIVE_MUSIC_VOCALS = ['female', 'male', 'duet'] as const;
+/** music_studio edit: the user's edit words, as they said them. */
+export const LIVE_MUSIC_COMMAND_MAX_CHARS = 300;
+export const LIVE_MUSIC_LYRICS_MAX_CHARS = 3000;
+
 /** montage: what to do with the Montage editor (free — no credits). */
 export const LIVE_MONTAGE_ACTIONS = ['open', 'set_music_start', 'export', 'state'] as const;
 export type LiveMontageAction = (typeof LIVE_MONTAGE_ACTIONS)[number];
@@ -186,8 +202,9 @@ export interface LiveResultNote {
   /**
    * `plan`: Agent G put a plan card in the chat that waits for the user's yes. `not_started`: a voice start ran out its
    * countdown without starting anything (no clear yes in the user's own words, a wait, a refusal) — the model is told.
+   * `music`: a Music Studio card's news (priced, refused, ready, an edit made) — `what` is the whole sentence.
    */
-  kind: LiveResultKind | 'failed' | 'plan' | 'not_started';
+  kind: LiveResultKind | 'failed' | 'plan' | 'not_started' | 'music';
   /** The prompt / title, short. For a failure: what the screen says. For a plan: its facts. */
   what?: string;
   /** plan: the card's id and kind — the call gives it a number agent_task can start it by. */
@@ -583,6 +600,39 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       required: ['action'],
     },
   },
+  {
+    name: 'music_studio',
+    description:
+      'Music Studio (Google Lyria) in the chat. action "plan": put a music plan card on screen from the user\'s words (prompt, '
+      + 'and genre / mood / tempo or bpm when they said them; mode "song" only when they want singing). The card is priced by '
+      + 'the server; you can NEVER start it — only the user\'s tap on the card\'s Create starts it and charges the credits it '
+      + 'shows. To change genre, mood or tempo, make a new plan. A song may be refused (vocals not verified yet): then say '
+      + 'so, never offer an instrumental as if it were the song. "edit": free edit of the newest track in the user\'s words '
+      + '(command, e.g. "first 20 seconds", "fade in 2 seconds", "fade out 3 seconds", "quieter by 6 dB", "as WAV"); a new '
+      + 'version, the original kept. "join": join the newest `count` tracks (2-6) with an optional crossfadeSec. "status": '
+      + 'the cards, their price and progress. "cancel": cancel the music being made (credits return). "download": download '
+      + 'the newest track. "save": tracks are saved to the Library automatically — say so.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: [...LIVE_MUSIC_ACTIONS], description: 'plan · edit · join · status · cancel · download · save.' },
+        prompt: { type: 'STRING', description: `plan: what the music is, in the user's words (at most ${LIVE_PROMPT_MAX_CHARS} characters).` },
+        mode: { type: 'STRING', enum: [...LIVE_MUSIC_MODES], description: 'plan: instrumental (default) or song (singing).' },
+        genre: { type: 'STRING', description: 'plan: genre, e.g. "jazz".' },
+        mood: { type: 'STRING', description: 'plan: mood, e.g. "calm".' },
+        tempo: { type: 'STRING', enum: [...LIVE_MUSIC_TEMPOS], description: 'plan: slow, medium or fast.' },
+        bpm: { type: 'INTEGER', description: 'plan: beats per minute (40-220), when the user said a number.' },
+        lyrics: { type: 'STRING', description: 'plan, song: the user\'s own lyrics, word for word.' },
+        lyricsLanguage: { type: 'STRING', enum: [...LIVE_MUSIC_LANGS], description: 'plan, song with lyrics: their language.' },
+        vocalGender: { type: 'STRING', enum: [...LIVE_MUSIC_VOCALS], description: 'plan, song: the voice.' },
+        command: { type: 'STRING', description: `edit: the edit in the user's words (at most ${LIVE_MUSIC_COMMAND_MAX_CHARS} characters).` },
+        count: { type: 'INTEGER', description: 'join: how many of the newest tracks (2-6, default 2).' },
+        crossfadeSec: { type: 'INTEGER', description: 'join: crossfade in seconds (0-10).' },
+        format: { type: 'STRING', enum: [...LIVE_MUSIC_FORMATS], description: 'join: the file type (default mp3).' },
+      },
+      required: ['action'],
+    },
+  },
 ] as LiveFunctionDeclaration[]);
 
 /**
@@ -628,6 +678,9 @@ export const LIVE_ACTIONS_RULE = [
   'Every start — start_generation, extract_audio start, agent_task start — runs only when the user\'s OWN words after',
   'the price or plan were a clear yes: the app checks its transcript of the user, never your word. If an [App] note says',
   'nothing was started, ask the user again plainly; never say it started.',
+  'For music made with Music Studio use music_studio: "plan" puts a priced card on screen — tell the user the price from',
+  'the card (status) and that they start it by tapping Create; you can never start it or charge for it. Edits, joins and',
+  'downloads of the tracks are free; "cancel" stops the music being made and returns the credits.',
   'After a function answers, say in one short sentence what you did; if it answers ok:false, say so plainly and never',
   'pretend it worked.',
 ].join(' ');
@@ -697,12 +750,30 @@ export interface AgentTaskAction {
   planId?: string;
   planKind?: LivePlanKind;
 }
+/** Music Studio by voice (components/studio/music/musicVoiceBridge). Never starts a job: plan only shows a priced card. */
+export interface MusicStudioAction {
+  type: 'music_studio';
+  action: LiveMusicAction;
+  prompt?: string;
+  mode?: (typeof LIVE_MUSIC_MODES)[number];
+  genre?: string;
+  mood?: string;
+  tempo?: (typeof LIVE_MUSIC_TEMPOS)[number];
+  bpm?: number;
+  lyrics?: string;
+  lyricsLanguage?: (typeof LIVE_MUSIC_LANGS)[number];
+  vocalGender?: (typeof LIVE_MUSIC_VOCALS)[number];
+  command?: string;
+  count?: number;
+  crossfadeSec?: number;
+  format?: (typeof LIVE_MUSIC_FORMATS)[number];
+}
 export type LiveAction =
   | GetScreenStateAction | PrepareGenerationAction | UpdateSettingsAction | StartGenerationAction | OpenStudioAction
   | ChatSendAction | NewChatAction | SetChatModelAction | StopAction | ScrollChatAction | OpenPanelAction | CallViewAction
   | ShowCodeAction | OpenUrlAction | EndCallAction
   | ClickAction | TypeTextAction | DownloadAction | UseResultAction | MontageAction | ReadWebpageAction | AskAgentGAction
-  | ExtractAudioAction | AgentTaskAction;
+  | ExtractAudioAction | AgentTaskAction | MusicStudioAction;
 
 /**
  * What the studio writes back onto the event detail (`detail.reply`) while it handles an action — synchronously, inside
@@ -1315,6 +1386,75 @@ export const LIVE_ACTION_VALIDATORS: Readonly<Record<LiveActionName, (args: unkn
     const checked = validateLiveUrl(own(args, 'url'));
     if (!checked.ok) return fail(checked.code, checked.message, 'url');
     return { ok: true, action: { type: 'read_webpage', url: checked.url } };
+  },
+
+  music_studio(args) {
+    if (!isObj(args)) return fail('invalid_args', 'Arguments must be an object with action.');
+    const what = asEnum(own(args, 'action'), LIVE_MUSIC_ACTIONS);
+    if (!what) return fail('invalid_args', 'Say what to do in Music Studio.', 'action', LIVE_MUSIC_ACTIONS);
+    const action: MusicStudioAction = { type: 'music_studio', action: what };
+    const opt = <T extends string>(field: string, allowed: readonly T[]): T | undefined | false => {
+      const raw = own(args, field);
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      return asEnum(raw, allowed) ?? false;
+    };
+    const int = (field: string, min: number, max: number): number | undefined | false => {
+      const raw = own(args, field);
+      if (raw === undefined || raw === null || raw === '') return undefined;
+      const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+      return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : false;
+    };
+    if (what === 'plan') {
+      const rawPrompt = own(args, 'prompt');
+      const prompt = typeof rawPrompt === 'string' ? cleanText(rawPrompt, LIVE_PROMPT_MAX_CHARS) : '';
+      if (!prompt) return fail('invalid_args', 'A non-empty prompt is required: what the music is.', 'prompt');
+      action.prompt = prompt;
+      const mode = opt('mode', LIVE_MUSIC_MODES);
+      if (mode === false) return fail('invalid_args', 'Unknown mode.', 'mode', LIVE_MUSIC_MODES);
+      if (mode) action.mode = mode;
+      const tempo = opt('tempo', LIVE_MUSIC_TEMPOS);
+      if (tempo === false) return fail('invalid_args', 'Unknown tempo.', 'tempo', LIVE_MUSIC_TEMPOS);
+      if (tempo) action.tempo = tempo;
+      const bpm = int('bpm', 40, 220);
+      if (bpm === false) return fail('invalid_args', 'bpm must be a number (40-220).', 'bpm');
+      if (bpm !== undefined) action.bpm = bpm;
+      for (const field of ['genre', 'mood'] as const) {
+        const raw = own(args, field);
+        if (typeof raw === 'string') {
+          // The contract's label alphabet: letters, digits, spaces and & / ' + - only.
+          const v = cleanLine(raw, LIVE_STYLE_MAX_CHARS).replace(/[^\p{L}\p{N} &/'+-]/gu, ' ').replace(/\s+/g, ' ').trim();
+          if (v) action[field] = v;
+        }
+      }
+      if (action.mode === 'song') {
+        const rawLyrics = own(args, 'lyrics');
+        if (typeof rawLyrics === 'string') { const l = cleanText(rawLyrics, LIVE_MUSIC_LYRICS_MAX_CHARS); if (l) action.lyrics = l; }
+        const lang = opt('lyricsLanguage', LIVE_MUSIC_LANGS);
+        if (lang === false) return fail('invalid_args', 'Unknown lyrics language.', 'lyricsLanguage', LIVE_MUSIC_LANGS);
+        if (lang && action.lyrics) action.lyricsLanguage = lang;
+        const voice = opt('vocalGender', LIVE_MUSIC_VOCALS);
+        if (voice === false) return fail('invalid_args', 'Unknown voice.', 'vocalGender', LIVE_MUSIC_VOCALS);
+        if (voice) action.vocalGender = voice;
+      }
+    }
+    if (what === 'edit') {
+      const raw = own(args, 'command');
+      const command = typeof raw === 'string' ? cleanLine(raw, LIVE_MUSIC_COMMAND_MAX_CHARS) : '';
+      if (!command) return fail('invalid_args', 'Say the edit in the user\'s words, e.g. "fade out 3 seconds".', 'command');
+      action.command = command;
+    }
+    if (what === 'join') {
+      const count = int('count', 2, 6);
+      if (count === false) return fail('invalid_args', 'count must be a number (2-6).', 'count');
+      if (count !== undefined) action.count = count;
+      const xf = int('crossfadeSec', 0, 10);
+      if (xf === false) return fail('invalid_args', 'crossfadeSec must be a number of seconds (0-10).', 'crossfadeSec');
+      if (xf) action.crossfadeSec = xf;
+      const format = opt('format', LIVE_MUSIC_FORMATS);
+      if (format === false) return fail('invalid_args', 'Unknown file type.', 'format', LIVE_MUSIC_FORMATS);
+      if (format) action.format = format;
+    }
+    return { ok: true, action };
   },
 
   ask_agent_g(args) {

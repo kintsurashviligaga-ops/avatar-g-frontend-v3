@@ -219,12 +219,13 @@ export default function GeminiLiveConversation({
     const onResult = (e: Event) => {
       const n = (e as CustomEvent<LiveResultNote>).detail;
       if (!n || typeof n !== 'object') return;
-      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, n.kind === 'plan' ? 240 : 160) : '';
+      const what = typeof n.what === 'string' && n.what.trim() ? n.what.trim().slice(0, n.kind === 'plan' || n.kind === 'music' ? 240 : 160) : '';
       const planKind: LivePlanKind | null = n.kind === 'plan'
         ? ((LIVE_PLAN_KINDS as readonly string[]).includes(n.planKind ?? '') ? n.planKind as LivePlanKind : 'audio') : null;
       const planNo = planKind && typeof n.planId === 'string' && n.planId ? registerPlan(n.planId, planKind, what) : 0;
       const note = n.kind === 'plan' ? planNote(planNo, planKind ?? 'audio', what)
         : n.kind === 'not_started' ? notStartedNote(n.reason, what)
+        : n.kind === 'music' ? `[App] Music Studio: ${what || 'the music card changed'}`
         : n.kind === 'failed'
         ? `[App] A generation failed${what ? `: "${what}"` : ''}. Tell the user plainly and offer to try again.`
         : `[App] A new ${n.kind === 'audio' ? 'music track' : n.kind} is ready on screen${what ? `: "${what}"` : ''} — it is now result 1. `
