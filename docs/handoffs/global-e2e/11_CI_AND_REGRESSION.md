@@ -8,7 +8,6 @@
 | bcb724a1 | #64 Video Core | verify ✅, preview-e2e ✅, live E2E local Supabase desktop+phone ✅, billing on real Postgres ✅ (38527010610/-510/-611) |
 | be9edee3 | #60 Image Studio | verify ✅, preview-e2e ✅, isolated-db ✅, image-browser ✅, live E2E ✅, billing pg ✅ (38527016338/-375/-387/-388) |
 | 54532ff8 | #65 Music Studio | verify ✅, preview-e2e ✅, Music live E2E desktop+phone ✅ (38572860496), live E2E ✅, billing pg ✅ (38572860799) |
-
 | 9d25c7a4 | #65 after limiter fix | verify ✅ (38582716876), preview-e2e ✅ (38582717019), Music live E2E desktop+phone ✅ (38582716955), live E2E ✅ + billing pg ✅ (38582716914) |
 | 95c3ee7a | #67 this branch | verify ✅ (38583532761), preview-e2e ✅ (38583532824), live E2E desktop+phone ✅ + billing pg ✅ (38583532613), Vercel ✅ (build ran only the free auth check) |
 
