@@ -6,7 +6,7 @@
       "claude/video-core-v1-6gh97e": false
     }
   },
-  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; node scripts/gcp/preview-inference-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
+  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; node scripts/gcp/preview-inference-check.cjs; node scripts/music-studio/preview-lyria-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",

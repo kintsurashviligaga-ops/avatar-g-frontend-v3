@@ -1,0 +1,8 @@
+{
+  "approval": "GG-20261014-MUSIC-LYRIA-E2E-USD5",
+  "approvedBy": "MyAvatar.ge project owner (session brief 2026-10-14)",
+  "capUsd": 5,
+  "spentBeforeUsd": 0,
+  "cases": ["A-instrumental", "B-vocal-en", "C-vocal-ka-experimental"],
+  "note": "ONE build only. Delete this file in the next commit after reading public/preview-checks/lyria/result.json."
+}
