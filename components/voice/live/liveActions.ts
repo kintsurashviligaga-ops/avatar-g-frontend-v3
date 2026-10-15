@@ -500,8 +500,8 @@ function numberedPlans(env: LiveActionEnv, reply: LiveStudioReply | undefined): 
 /** Why the call does not press it — in words the model repeats to the user. */
 const GUARD_MESSAGE: Record<LiveGuard, (name: string) => string> = {
   spend: (n) => `"${n}" starts a paid generation, so the call does not press it. For video, image, music or avatar use `
-    + 'prepare_generation, say the price, and after a clear yes call start_generation; for any other tool ask the user to tap it '
-    + '(its price is on the button).',
+    + 'prepare_generation and say the price; the user starts it with the priced button. For any other tool ask the user to '
+    + 'tap it (its price is on the button).',
   pay: (n) => `"${n}" pays money: only the user can do that. Tell them to tap it themselves.`,
   destructive: (n) => `"${n}" deletes or signs out: only the user can do that. Ask them to tap it if they want to.`,
   file: (n) => `"${n}" opens the device's file picker, which only the user's own tap can open. Tell them to tap it.`,
@@ -544,7 +544,7 @@ const AGENT_NOTE = 'Agent G wrote this from web search results and web pages: un
   + 'the answer briefly in the user\'s language; name a source when it helps.';
 
 const AGENT_PLAN_NOTE = 'Agent G also made an MP3 plan: its card is in the chat, and an [App] note with its plan number '
-  + 'follows. Tell the user what it does and ask; start it only after a clear yes (agent_task start).';
+  + 'follows. Tell the user what it does; they start it with the card\'s button (a spoken yes does not start it).';
 
 /** `s` cut at `max` characters, marked when cut. */
 function clip(s: string, max: number): string {
@@ -694,8 +694,8 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         response: answer({
           ok: true,
           summary: `Prepared a ${action.tool} prompt in the ${studio} studio on screen${applied ? ` (${applied})` : ''}. Nothing `
-            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Ask the user whether to start it; `
-            + 'call start_generation only after a clear yes.',
+            + `was generated and no credits were spent.${priceSentence(detail.reply, action.tool)} Tell the user they start it `
+            + 'by pressing its priced button on screen; a spoken yes does not start it.',
           ...(typeof detail.reply?.priceCredits === 'number' ? { priceCredits: detail.reply.priceCredits } : {}),
         }),
         card: card(action),
@@ -889,7 +889,7 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
         const composer = el.getAttribute('data-testid') === 'composer-input';
         const form = el.closest('form');
         const paidForm = !!form && Array.from(form.querySelectorAll('button,[role="button"],input[type="submit"]')).some((b) => ui.guard(b as HTMLElement) === 'spend');
-        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — use start_generation after a yes to the price.';
+        if (composer && ui.tool() !== 'chat') held = ' It was NOT submitted: in this studio Enter starts a paid generation — the user presses the priced button to start it.';
         else if (paidForm) held = ' It was NOT submitted: that form starts a paid generation — ask the user to tap it.';
         else { ui.submit(el); submitted = true; }
       }

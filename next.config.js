@@ -389,6 +389,9 @@ const nextConfig = {
       ['services/workflow', '/:locale/dashboard'], ['services/workflow/:path*', '/:locale/dashboard'],
       ['account/invoices', '/:locale/account/billing'], ['account/invoices/:path*', '/:locale/account/billing'],
       ['admin/disputes', '/:locale/admin'],
+      // /create and /app were never routes but are typed and linked from outside as "the studio" (final-release master
+      // task §7.1: /ka/create answered 404). The one canonical runtime is /{lang} (ServiceHub → ChatChrome + OmniStudio).
+      ['create', home], ['create/:path*', home], ['app', home], ['app/:path*', home],
     ].map(([from, to]) => ({ source: `${L}/${from}`, destination: to, permanent: false }));
     // /{lang}/studio — the „Studio Beta" second studio — is RETIRED everywhere, whatever STUDIO_V2 says (the owner,
     // 2026-10-09 18:25Z: „too confusing"; it was a second set of Video / Image / Avatar / Music tabs beside the studio's own

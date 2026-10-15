@@ -80,6 +80,8 @@ export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
   { file: 'app/api/app/jobs/[id]/route.ts', when: 'image-creator jobs (Stability) are not auto-processed' },
   { file: 'app/api/heygen/presenter/route.ts', when: 'Avatar presenter (HeyGen) → refused' },
   { file: 'app/api/heygen/avatar/route.ts', when: 'HeyGen avatar video → refused' },
+  { file: 'app/api/video/voice-narration/route.ts', when: 'film narration in the trained voice (RVC on Replicate, uncharged) → refused; the film keeps its original narration' },
+  { file: 'app/api/avatar/live/session/route.ts', when: 'live avatar session (HeyGen LiveAvatar, uncharged) → refused' },
   { file: 'app/api/video/lipsync/route.ts', when: 'talking photo / film lip-sync (HeyGen, SadTalker, sync) → refused' },
   // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts left this list: since Music Studio v1 (Phase 2) they refuse /
   // show off every non-Google music engine ALWAYS, not only under this switch (lib/music/studio/boundary).

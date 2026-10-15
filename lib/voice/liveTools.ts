@@ -316,10 +316,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
   {
     name: 'start_generation',
     description:
-      'Start the generation prepared in the studio on screen. It SPENDS CREDITS. Call it ONLY after you told the user the '
-      + 'price and they clearly said yes in this conversation. The screen shows a 3-second countdown the user can cancel; '
-      + 'it runs only if the user\'s own words after the price were a clear yes (the app checks what it heard, not your '
-      + 'word), and a "wait" or "no" stops it. A video first gets a storyboard the user approves.',
+      'A paid generation never starts by voice: this answers ui_confirmation_required and starts nothing. The user '
+      + 'starts it by pressing the priced button on screen, so after prepare_generation tell them the price and that they '
+      + 'press its button to start. A video first gets a storyboard the user approves.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -566,9 +565,9 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       + 'the chat (nothing is downloaded yet): give url when the user said or pasted the link; without url it uses the video '
       + 'or audio file attached in the composer, else the newest link the user sent in the chat. Links from video platforms '
       + '(YouTube, TikTok, Instagram, Facebook, Vimeo and the like) are refused by their terms: never look for a way around '
-      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start": start the newest MP3 '
-      + 'plan, only after the user clearly says yes (the same as agent_task start); when the plan says the rights are '
-      + 'unverified, first tell them that starting confirms the file is theirs or licensed to them. "stop": cancel the '
+      + 'that; tell the user to upload their own or a licensed file (the card has the button). "start" never starts it by voice '
+      + '(it answers ui_confirmation_required, the same as agent_task start): the user presses the card\'s button; when the '
+      + 'plan says the rights are unverified, tell them that starting confirms the file is theirs or licensed to them. "stop": cancel the '
       + 'extraction that is running.',
     parameters: {
       type: 'OBJECT',
@@ -586,10 +585,8 @@ export const LIVE_FUNCTION_DECLARATIONS: readonly LiveFunctionDeclaration[] = de
       'Agent G\'s plans and tasks in the chat: an MP3 out of a file or link, a montage (clips cut to music into one video), '
       + 'an edit of the user\'s video (trim, reframe, colour, sound, caption). A plan is made by extract_audio plan or by '
       + 'asking in the chat (chat_send); each plan reaches you as an [App] note with its number and facts, and waits as a '
-      + 'card in the chat. action "start": start plan number `plan` (the newest when omitted) — only after you told the '
-      + 'user what it does (and its price, if any) and they clearly said yes. The screen counts down 3 seconds first, and '
-      + 'it starts only if the user\'s own words after the plan were a clear yes: the app checks what it heard, not your '
-      + 'word. "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
+      + 'card in the chat. action "start" never starts anything by voice: it answers ui_confirmation_required, and the user '
+      + 'starts the plan with its card\'s button after you told them what it does. "stop": stop plan `plan` while it runs, or every running Agent G task when omitted. "status": what each plan '
       + 'and task is doing now (call it when the user asks, or before you start a plan you have no note for).',
     parameters: {
       type: 'OBJECT',
@@ -644,8 +641,8 @@ export const LIVE_ACTIONS_RULE = [
   'ACTIONS: you can operate the MyAvatar app on the user\'s screen through your functions while you talk.',
   'Call get_screen_state whenever the user refers to the screen, a result, a price or "this", before you answer.',
   'prepare_generation and update_settings fill and tune a studio; they never spend credits. Their answer gives the price:',
-  'say it and ask whether to start. Call start_generation ONLY after the user clearly says yes to that price; it shows a',
-  '3-second countdown they can cancel. Never start a generation on your own initiative.',
+  'say it and tell the user they start it by pressing its button on screen. A spoken yes never starts or charges anything:',
+  'start_generation and every "start" action answer ui_confirmation_required. Never start a generation on your own initiative.',
   'Use chat_send for anything long or written (documents, lists, plans, code explanations) and then say it is on the',
   'screen instead of reading it aloud; show_code for code.',
   'To open a website, a video or search results in the browser, call open_url, e.g. with',
@@ -654,11 +651,11 @@ export const LIVE_ACTIONS_RULE = [
   'open_panel and call_view do exactly what they say. end_call only when the user says goodbye.',
   'You also have hands on the screen: when the user says click, press, open, choose, switch or type, do it with click and',
   'type_text, using the control ids get_screen_state lists (call it first; ids change when the screen changes). They never',
-  'spend credits, pay, delete or sign out — those are refused, and a generation always goes through prepare_generation and',
-  'start_generation. download saves a result to the device. use_result moves a result into another tool, and montage',
+  'spend credits, pay, delete or sign out — those are refused, and a generation is prepared with prepare_generation and',
+  'started by the user\'s own tap on its priced button. download saves a result to the device. use_result moves a result into another tool, and montage',
   'combines videos and music and trims the music, for free. Carry out multi-step requests step by step, e.g. "make music,',
-  'then a video, then put the music on it from 0:30": prepare and (after a yes to each price) start the music, then the',
-  'video; when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
+  'then a video, then put the music on it from 0:30": prepare the music and the video and tell each price (the user taps',
+  'each one\'s button to start it); when both are ready, montage open with videos "latest", music "latest", musicStartSec 30, then montage export.',
   'Files the user ATTACHED (get_screen_state lists them under attachments, by number and name) are theirs to use: to cut',
   'them together call montage open with source "attached" — all of them, in their order; never say you cannot see them.',
   'Messages that start with [App] come from the app, not the user: they say when a generation finished or failed —',
@@ -670,14 +667,13 @@ export const LIVE_ACTIONS_RULE = [
   'answer briefly in their language.',
   'When the user wants the sound or an MP3 out of a video or audio link or file, call extract_audio with action "plan";',
   'say what the plan card says (and, for unverified rights, that starting confirms the file is theirs or licensed), and',
-  'call extract_audio with action "start" only after a clear yes. It is free. A video platform link is refused: offer the',
+  'that they start it with the card\'s button. It is free. A video platform link is refused: offer the',
   'upload instead, never a workaround.',
   'Agent G\'s plans (an MP3, a montage of clips to music, an edit of the user\'s video) come to you as [App] notes with a',
-  'plan number: tell the user what the plan does and ask; after a clear yes call agent_task with action "start" and that',
-  'plan. agent_task "stop" stops a running one, "status" says what each is doing.',
-  'Every start — start_generation, extract_audio start, agent_task start — runs only when the user\'s OWN words after',
-  'the price or plan were a clear yes: the app checks its transcript of the user, never your word. If an [App] note says',
-  'nothing was started, ask the user again plainly; never say it started.',
+  'plan number: tell the user what the plan does and that they start it with the card\'s button. agent_task "stop" stops a',
+  'running one, "status" says what each is doing.',
+  'No start is ever made by voice — start_generation, extract_audio start and agent_task start answer',
+  'ui_confirmation_required: the user presses the button on screen. Never say something started unless the screen shows it.',
   'For music made with Music Studio use music_studio: "plan" puts a priced card on screen — tell the user the price from',
   'the card (status) and that they start it by tapping Create; you can never start it or charge for it. Edits, joins and',
   'downloads of the tracks are free; "cancel" stops the music being made and returns the credits.',

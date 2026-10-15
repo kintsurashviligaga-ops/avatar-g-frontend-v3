@@ -150,6 +150,7 @@ import { musicStudioV1OnClient, musicDraftFromPanel, musicStudioIntro } from './
 import { handleMusicVoice } from './music/musicVoiceBridge';
 import { Segmented } from './ui/Segmented';
 import { creditsLabel, quoteCredits } from '@/lib/credits/quote';
+import { musicQuote } from '@/lib/studio/musicQuote';
 import { classifyFocusInput, gateMessage, isAffirmation, isConversational, mergePrompt, type GateMode } from '@/lib/chat/focusGate';
 import { AgentGCard, type AgentGCardState } from '@/components/studio/AgentGCard';
 import { AgentGNote } from '@/components/studio/AgentGNote';
@@ -6507,7 +6508,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
         // The price on the card is the panel's own: a picture / a track. A film is charged at its storyboard (which prints it).
         const credits = gateMode === 'image' ? quoteCredits({ tool: 'image', count: imgCount })
-          : gateMode === 'music' ? quoteCredits({ tool: 'music', seconds: musicDuration || undefined })
+          : gateMode === 'music' ? musicQuote({ duration: musicDuration }) /* "Full song" (0) bills the 90 s tier, as the route does */
             : gateMode === 'avatar' ? quoteCredits({ tool: 'avatar' })
               : 0;
         gatePendingRef.current = verdict.kind === 'clarify' ? { mode: gateMode, base: promptText, at: Date.now(), inChat } : null;
@@ -7838,7 +7839,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   /** The price the studio's own Generate button shows (lib/credits/quote). A video is priced at its storyboard: undefined. */
   const livePrice = (tool: ToolId, over: { musicSec?: number } = {}): number | undefined => {
     if (tool === 'image') return quoteCredits({ tool: 'image', count: imgCount }) || undefined;
-    if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return quoteCredits({ tool: 'music', seconds: sec || undefined }) || undefined; }
+    if (tool === 'music') { const sec = over.musicSec ?? musicDuration; return musicQuote({ duration: sec || 0 }) || undefined; }
     if (tool === 'avatar') return quoteCredits({ tool: 'avatar' }) || undefined;
     return undefined;
   };
@@ -8308,9 +8309,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     if (target.tool !== activeTool || (target.fingerprint && target.fingerprint !== liveFp(activeTool))) {
       return refuse('changed', 'What is on screen changed after the price was told (the studio, the prompt or the price), so nothing was started.');
     }
-    runTool(true, 'voice');
-    detail.reply = { ok: true };
-    return true;
+    // A studio render is PAID (it debits on start). Spoken words alone never spend credits (final-release master task
+    // §8.D: a spoken „კი", a model's tool flag or a transcript may never debit): the price stays on screen and the run
+    // starts only from its visible button. Agent G's free montage / audio / edit plans above still take the spoken yes.
+    return refuse('ui_confirmation_required', 'The price is on screen; press its button to start. Nothing was started or charged.');
   };
 
   const runLabel = activeTool === 'video' ? (locale === 'en' ? 'Create video' : locale === 'ru' ? 'Создать видео' : 'ვიდეოს შექმნა')
