@@ -22,15 +22,15 @@ States: DONE · PENDING · BLOCKED · N/A.
 
 | # | Gate | Owner | Proof | State |
 |---|---|---|---|---|
-| P1 | CI green on the PR head: "verify" (typecheck, lint, Jest, build), Video Core E2E (billing on real Postgres + live E2E desktop and phone), E2E Preview Contract | Claude | GitHub check runs on the head commit | PENDING |
-| P2 | GCP G1: the WIF provider also accepts this project's Production tokens (ids, not names) | Claude on the owner's Mac | `providers describe` shows `environment in ['preview', 'production']` | PENDING |
-| P3 | GCP G2: the Production subject may impersonate `myavatar-veo` (no key created) | Claude on the owner's Mac | `get-iam-policy` lists exactly the Preview and Production principals; `keys list --managed-by=user` empty | PENDING |
+| P1 | CI green on the PR head: "verify" (typecheck, lint, Jest, build), Video Core E2E (billing on real Postgres + live E2E desktop and phone), E2E Preview Contract | Claude | GitHub check runs on the head commit | DONE on 979141f6 (all green, 11:01Z); re-run on the release head PENDING |
+| P2 | GCP G1: the WIF provider also accepts this project's Production tokens (ids, not names) | Claude on the owner's Mac | `providers describe` shows `environment in ['preview', 'production']` | DONE 2026-10-15 ~11:01Z: provider ACTIVE, condition `… assertion.environment in ['preview', 'production']` (VERIFIED FACT) |
+| P3 | GCP G2: the Production subject may impersonate `myavatar-veo` (no key created) | Claude on the owner's Mac | `get-iam-policy` lists exactly the Preview and Production principals; `keys list --managed-by=user` empty | DONE 2026-10-15 ~11:02Z: exactly those two principals, 0 user-managed keys (VERIFIED FACT) |
 | P4 | Migration 20261014a preflight | in the script | the script refuses unless `credit_ledger` (jsonb metadata) and `refund_credits(uuid, integer, text)` exist and no film table or function does | PENDING (script drilled on a throwaway Postgres: applies once, refused on a second run) |
 | P5 | Backup / recovery | Claude | the migration is additive (2 tables, 6 functions, nothing existing altered); recovery = its drop list, drilled (`ROLLBACK_AND_RECOVERY_PLAN.md` R4). Supabase's own backup list was not read from here | DONE (recovery); backup list NOT VERIFIED |
 | P6 | Migration 20261014a applied | Claude opens the SQL Editor; **GG presses Run** | the verify row: both tables, RLS on, 0 policies, 0 rows, 6 SECURITY DEFINER functions, tables and functions closed to anon/authenticated | PENDING — **OWNER ACTION REQUIRED** (one press) |
 | P7 | The migration recorded in the repo | Claude | `supabase/migrations/20261014a_film_billing.sql`; schema-drift snapshot lists the six functions as Production's; harness path updated | PENDING |
 | P8 | V1: 8 Production env vars (plain, Production only), right before the merge | Claude (Vercel CLI on the owner's Mac) | `vercel env ls production` names them; `GEMINI_TRANSPORT` still absent | PENDING |
-| P9 | Rollback point written down | Claude | the deployment id serving myavatar.ge right before the merge | PENDING |
+| P9 | Rollback point written down | Claude | the deployment id serving myavatar.ge right before the merge | DONE: `dpl_jQrS5XWa2xm7zVLAnAUizS4B6ToD` (3516a61, PR #62), `vercel inspect myavatar.ge` ~11:08Z |
 
 Nobody presses Redeploy between P8 and the merge (a Redeploy would build the current Production commit with Vertex on).
 

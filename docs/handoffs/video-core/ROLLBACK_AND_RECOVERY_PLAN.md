@@ -18,8 +18,8 @@ Labels: **VERIFIED FACT** · **INFERENCE** · **NOT TESTED** · **BLOCKED** · *
 
 | Point | Value | Label |
 |---|---|---|
-| Production before the release | the deployment serving myavatar.ge right before the PR #69 deploy; today `dpl_8zEzADSXaMXc7uxs5ECBZZipVNpi` (fef867a, PR #63). Re-read and written here at deploy time, because the BOG thread may deploy first | VERIFIED FACT for today (memory + Vercel, 2026-10-13 17:14Z) |
-| One step further back | `dpl_HDqsJfbyHEoEB5QM87j4UgVwLjQJ` (e46c35c, PR #58) | VERIFIED FACT |
+| Production before the release | `dpl_jQrS5XWa2xm7zVLAnAUizS4B6ToD` (3516a61, PR #62, created 2026-10-15 10:33Z), the deployment serving myavatar.ge right before the PR #69 deploy | VERIFIED FACT (`vercel inspect myavatar.ge`, 2026-10-15 ~11:08Z) |
+| One step further back | `dpl_53vwsPFRs9cppPcvxjhUviH8hSwd` (fef867a, PR #63); BOG's own rollback plan points here too | VERIFIED FACT (memory, BOG release report 2026-10-15) |
 | Never | a Redeploy of any deployment, or a git revert pushed to main as the first action (it builds a new deployment with today's env) | rule (brief 2026-10-13 17:34Z) |
 
 ## 2. Triggers and actions
