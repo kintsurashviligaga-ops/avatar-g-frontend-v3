@@ -11,7 +11,7 @@
 | Per-scene frame failure → "no frame" tile with Re-roll (pre-existing) | PROVEN before | unchanged |
 | Revision numbering wired into the studio's board mutations (`setStoryboard` sites) | MISSING (deferred) | the module is called by nothing yet |
 | Approval fingerprint sent with the render and checked by the route | MISSING (deferred) | needs the tables below or a signed approval token |
-| Tables `storyboard_revisions`, `storyboard_approvals` | PROPOSAL, NOT APPLIED | `proposals/20261012a_storyboard_revisions.sql` |
+| Tables `storyboard_revisions`, `storyboard_approvals` | PROPOSAL, NOT APPLIED (revised 2026-10-15, see below) | `proposals/20261012a_storyboard_revisions.sql`; real Postgres B1–B8 in `scripts/lease-isolation/b3-storyboard-revisions.check.sql` |
 
 ## What the fingerprint is of
 
@@ -37,3 +37,24 @@ Drop the two tables (the SQL's footer). The client works without them exactly as
 
 - No automatic render, no automatic charge, no silent fallback anywhere in the storyboard flow (§5).
 - No migration file under `supabase/migrations/` (§11).
+
+## Phase 3 preflight (Video Core final hardening, 2026-10-15)
+
+**ქართულად.** ცხრილს დღეს არც ერთი კოდი არ წერს და არ კითხულობს: დამტკიცება (revision + fingerprint) უკვე კოდის დონეზე
+მოწმდება (`lib/video/contracts.ts:118`, `app/api/chat/orchestrate/storyboardApproval.test.ts`). წინადადებაში 3 ხარვეზი
+ვიპოვე და გავასწორე; ახლა რეალურ Postgres-ზე ყველა შემოწმება გადის. რეკომენდაცია: **ჯერ არ გავუშვათ Production-ში** —
+ცხრილს მნიშვნელობა მხოლოდ მისი ჩამწერი კოდის (§ Activation plan 2–4) გამოჩენისას ექნება; მანამდე ის მხოლოდ ცარიელი ზედაპირია.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Name collision in Production | none: neither table is in Production's `public` schema (snapshot 2026-10-09 + 20261013a) | `__tests__/schema-drift.snapshot.json`; re-check `select to_regclass('public.storyboard_revisions'), to_regclass('public.storyboard_approvals')` in the same SQL Editor session right before any apply |
+| Consumers | **none** (no `.from('storyboard_*')` anywhere; the schema-drift ratchet would list one) | `grep -rn storyboard_revisions lib app components` |
+| Defect 1 — `unique (board_id, revision)` across users with a client-minted `board_id` | another user reusing a board id blocked the owner's next revision (`duplicate key … storyboard_revisions_board_id_revision_key`) | old file on real PG16: fails B2 |
+| Defect 2 — approval FK on `(board_id, revision)` only | an approval under user 2 naming user 1's revision was stored; an approval could carry another revision's fingerprint | old file: fails B3 (B4 by construction) |
+| Defect 3 — `parent_revision` unchecked | a revision naming a parent that never existed was stored | old file: fails B1 |
+| Fixed file | B1–B8 pass, applied twice (re-runnable), rolled back with its footer, re-applied, passed again | `scripts/lease-isolation/run.sh` (CI: `video-core-e2e-local.yml`) |
+| Locks / data | additive only: `create table` on two new names takes no lock on any existing table; nothing existing is altered or read | the SQL |
+| Backup / recovery | not needed for rollback (drop the two empty tables); a backup check stays a precondition of any apply | §Rollback |
+
+Recommendation (one): keep `20261012a` unapplied until the write path (Activation plan 2–4) is built and reviewed; then apply
+both in one release on the owner's word. Cost of waiting: none — the approval check already runs in code.

@@ -345,7 +345,7 @@ describe('classification helpers', () => {
   });
 
   it('finishedOperationOutcome never reports success without a video', () => {
-    expect(finishedOperationOutcome({ videos: [] })).toStrictEqual({ state: 'failed', reason: 'Veo finished without returning a video' });
+    expect(finishedOperationOutcome({ videos: [] })).toStrictEqual({ state: 'failed', reason: 'Veo finished without returning a video', finished: true });
     expect(finishedOperationOutcome({ videos: [], raiMediaFilteredCount: '2' })).toMatchObject({ state: 'filtered', supportCodes: [] });
   });
 });
@@ -423,7 +423,7 @@ describe('pollVertexVeo', () => {
 
   it('done + any other error → failed with the gRPC code', async () => {
     fetchMock.mockResolvedValueOnce(json(200, { done: true, error: { code: 13, message: 'Internal error' } }));
-    expect(await pollVertexVeo(OP)).toStrictEqual({ state: 'failed', reason: 'Internal error', code: 13 });
+    expect(await pollVertexVeo(OP)).toStrictEqual({ state: 'failed', reason: 'Internal error', code: 13, finished: true });
   });
 
   it('done, no video, raiMediaFilteredCount > 0 → filtered with the reasons and their codes', async () => {

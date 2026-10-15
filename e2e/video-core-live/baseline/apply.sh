@@ -4,7 +4,7 @@
 #
 #   1. scripts/lease-isolation/schema.sql — the Production shape of profiles, generation_jobs, credit_ledger, their
 #      triggers and the money functions, read SELECT-only from Production on 2026-10-10 — minus the lines that stand
-#      in for Supabase itself (roles, the stub auth.users, its two test rows) and its minimal trace table;
+#      in for Supabase itself (roles, the stub auth.users and auth.uid(), its test rows) and its minimal trace table;
 #   2. 010_supabase_contract.sql — profile columns, the trace ledger, RLS as Production has it, the renders bucket;
 #   3. repo migrations applied VERBATIM, in Production's order: the one free film (consume / restore), analytics_events,
 #      the starter grant on confirmation,
@@ -34,6 +34,7 @@ run() { psql "$DB_URL" -v ON_ERROR_STOP=1 -q -X "$@"; }
 sed -e '/^create role /d' \
     -e '/^grant anon, authenticated, service_role to authenticator;$/d' \
     -e '/^create schema auth; create table auth.users/d' \
+    -e '/^-- auth.uid() as Supabase defines it/,/^grant usage on schema auth to anon, authenticated;/d' \
     -e '/^insert into auth.users/d' \
     -e '/^create table public.agent_evolution_traces (/,/created_at timestamptz not null default now());$/d' \
     scripts/lease-isolation/schema.sql | run -f -

@@ -18,9 +18,27 @@ test('the fallback stitch is the film quote for the seconds actually handed over
   expect(code).toMatch(/const assembleCost = videoCredits\(\{\s*seconds: filmSecondsFromClips\(segments\.map/);
 });
 
-test('"already paid" is decided by the shared predicate over the status record AND the payment record', () => {
-  expect(code).toMatch(/Promise\.all\(\[getFilmStatus\(billedTokenForCheck\), getFilmPaid\(billedTokenForCheck\)\]\)/);
+test('a FILM\'s "already paid" is decided from durable storage (decideFilmWaiver), a product ad\'s by the shared predicate', () => {
+  expect(code).toMatch(/const decision = await decideFilmWaiver\(uid, filmTokenId, crypto\.randomUUID\(\)\)/);
+  // busy → 409 and unknown → 503, both before anything is charged or rendered.
+  expect(code).toMatch(/decision\.action === 'busy'[\s\S]{0,400}status: 409/);
+  expect(code).toMatch(/decision\.action === 'stop'[\s\S]{0,500}status: 503/);
+  expect(code).toMatch(/Promise\.all\(\[getFilmStatus\(billingToken\), getFilmPaid\(billingToken\)\]\)/);
   expect(code).toMatch(/filmAlreadyBilled = isFilmPaidUpstream\(prior, paid, uid\)/);
+});
+
+test('the leased waiver is settled on every exit: spent by a delivered master, handed back otherwise', () => {
+  expect(code).toMatch(/await settleWaiver\(producedSomething\)/);
+  expect(code).toMatch(/await settleWaiver\(Boolean\(resultUrl\)\)/);
+  // the duplicate refusal, the single-clip catch and the saga compensate all hand it back
+  expect((code.match(/await settleWaiver\(false\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  // and nothing restores the cache waiver behind settleWaiver's back any more
+  expect((code.match(/restoreFilmBilling\(/g) ?? []).length).toBe(1);
+});
+
+test('the duplicate claim outlives the render (600 s maxDuration), not 60 s', () => {
+  expect(code).toMatch(/claimIdempotencyKey\(idemOwner, `assemble:\$\{idemKey\}`, FILM_WAIVER_LEASE_SEC\)/);
+  expect(code).toMatch(/export const maxDuration = 600/);
 });
 
 test('every charge and refund in the route uses that one amount', () => {
