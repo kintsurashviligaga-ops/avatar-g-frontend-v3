@@ -176,3 +176,20 @@ describe('the callers keep working on null', () => {
     expectNoOtherVendor();
   });
 });
+
+describe('a miss says why in the logs', () => {
+  test('an empty reply logs its finishReason (MAX_TOKENS used to look like a dead key)', async () => {
+    mockGemini.mockResolvedValue({ text: '', model: 'gemini-3.8-flash', finishReason: 'MAX_TOKENS' });
+    await expect(llmText({ user: 'brief', json: true, maxTokens: 20 })).resolves.toBeNull();
+    expect(console.warn).toHaveBeenCalledWith('[llmText] Gemini returned no text', { model: 'gemini-3.8-flash', finishReason: 'MAX_TOKENS', maxTokens: 20 });
+  });
+
+  test('a thrown call logs its message, cut to 300 characters', async () => {
+    mockGemini.mockRejectedValue(new Error(`Gemini API error 400: ${'x'.repeat(1000)}`));
+    await expect(llmText({ user: 'brief' })).resolves.toBeNull();
+    const call = (console.warn as jest.Mock).mock.calls.find((c) => c[0] === '[llmText] Gemini call failed');
+    expect(call?.[1].message).toMatch(/^Gemini API error 400: x+$/);
+    expect(call?.[1].message.length).toBe(300);
+    expectNoOtherVendor();
+  });
+});

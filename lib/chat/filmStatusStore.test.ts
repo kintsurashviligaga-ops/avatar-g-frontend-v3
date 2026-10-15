@@ -24,6 +24,7 @@ import {
   consumeFilmBilling,
   filmStatusPersistenceEnabled,
   type FilmStatusRecord,
+  isFilmOwnedByAnother,
 } from './filmStatusStore';
 
 describe('deriveFilmTokenId — stable, namespaced identity hash', () => {
@@ -133,6 +134,15 @@ describe('mergeMaster — stamp a finished master', () => {
     expect(rec.billingConsumed).toBe(true); // spent stays spent
   });
 
+  test("another caller's uid never replaces the payer already on the record", () => {
+    const prev: FilmStatusRecord = {
+      tokenId: 't9', phase: 'assembled', clips: [], audioReady: false, masterUrl: 'https://cdn/a.mp4', payerUid: 'user-abc', billingConsumed: false, updatedAt: 1, error: null,
+    };
+    expect(mergeMaster(prev, 't9', 'https://cdn/b.mp4', null, 9, 'user-other').payerUid).toBe('user-abc');
+    const unowned: FilmStatusRecord = { ...prev, payerUid: null };
+    expect(mergeMaster(unowned, 't9', 'https://cdn/b.mp4', null, 9, 'user-first').payerUid).toBe('user-first');
+  });
+
   test('preserves prior clips while promoting to assembled', () => {
     const prev: FilmStatusRecord = {
       tokenId: 't9', phase: 'ready', clips: [{ ordinal: 1, status: 'succeeded', hasUrl: true }], audioReady: true, masterUrl: null, updatedAt: 1, error: null,
@@ -216,5 +226,19 @@ describe('store helpers — fail-open in the default no-Redis state', () => {
     const rec = await getFilmStatus('mem-5');
     expect(rec?.phase).toBe('failed');
     expect(rec?.error).toBe('no clips landed');
+  });
+});
+
+describe('assemble guard over the status record', () => {
+  const rec = (over: Partial<FilmStatusRecord>): FilmStatusRecord => ({
+    tokenId: 't9', phase: 'assembling', clips: [], audioReady: false, masterUrl: null, updatedAt: 1_000_000, error: null, ...over,
+  });
+
+  test('a film is owned by another only when the record names a different payer', () => {
+    expect(isFilmOwnedByAnother(rec({ payerUid: 'uA' }), 'uB')).toBe(true);
+    expect(isFilmOwnedByAnother(rec({ payerUid: 'uA' }), null)).toBe(true); // an anonymous caller cannot stamp a paid film
+    expect(isFilmOwnedByAnother(rec({ payerUid: 'uA' }), 'uA')).toBe(false);
+    expect(isFilmOwnedByAnother(rec({ payerUid: null }), 'uB')).toBe(false);
+    expect(isFilmOwnedByAnother(null, 'uB')).toBe(false); // store down: the database guard still holds
   });
 });
