@@ -1,80 +1,10 @@
 [
   {
-    "id": "intent-mv24-plan-mode-ka",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"შექმენი 24-წამიანი მუსიკალური კლიპი.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
-  },
-  {
-    "id": "intent-exact-297-ka",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ka] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
-  },
-  {
-    "id": "intent-exact-297-files-ka",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ka] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
-    "text": "\"ვიდეო ზუსტად 29.7 წამი უნდა იყოს.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
-  },
-  {
-    "id": "intent-mv24-plan-mode-en",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"Make a 24-second music video.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
-  },
-  {
-    "id": "intent-exact-297-en",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[en] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"The video must be exactly 29.7 seconds.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
-  },
-  {
-    "id": "intent-exact-297-files-en",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[en] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
-    "text": "\"The video must be exactly 29.7 seconds.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
-  },
-  {
-    "id": "intent-mv24-plan-mode-ru",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"Сделай 24-секундный музыкальный клип.\" opened the Video tool in music-video mode and the storyboard plan POST /api/film/storyboard carried musicVideoMode=true."
-  },
-  {
-    "id": "intent-exact-297-ru",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ru] the five sentences alone: which open the Video tool with the plan said, which are chat",
-    "text": "\"Видео должно быть ровно 29.7 секунды.\" alone is a chat message (the model answered; no Video tool, no plan). lib/agent/intent.ts needs a make-verb before a length opens the tool; the bare constraint sentence has none."
-  },
-  {
-    "id": "intent-exact-297-files-ru",
-    "project": "desktop",
-    "spec": "agent-g-intents.spec.ts",
-    "test": "[ru] with clips and a track „make a 24-second music video\" is a montage quote, not the Video tool",
-    "text": "\"Видео должно быть ровно 29.7 секунды.\" with two clips and a track attached: chat calls +1, quote calls +0, storyboard calls +0; cards+plans on screen: 1; composer now \"\"."
-  },
-  {
-    "id": "card-progressbar-no-pct",
-    "project": "desktop",
-    "spec": "cards.spec.ts",
-    "test": "a running montage shows its stage and no \"%\" when the server sends no percent; Stop is offered",
-    "text": "With pct null from the server the running montage card prints no \"%\" (stage \"Joining the shots\" on the active step); its progressbar reports aria-valuenow=0 (seeded 0 by confirmAgentMontage, never advanced without a server pct)."
-  },
-  {
     "id": "montage-no-save-to-library",
     "project": "desktop",
     "spec": "flows.spec.ts",
     "test": "download: a finished montage's Download fetches the master and hands the browser a file",
-    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1791885135466.webm."
+    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1792080327447.webm."
   },
   {
     "id": "nav-reload-tool",
@@ -200,7 +130,7 @@
     "project": "mobile",
     "spec": "flows.spec.ts",
     "test": "download: a finished montage's Download fetches the master and hands the browser a file",
-    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1791885648379.webm."
+    "text": "The montage result offers Download, Share and Edit but no \"Save to library\" — by design (components/studio/OmniStudio.tsx ~9686: \"the montage job is already a Library item\"); the client posts nothing to /api/studio/library (0 saves). The server-side filing itself cannot be seen with mocks. Download file name: myavatar-montage-1792080844808.webm."
   },
   {
     "id": "nav-reload-tool",
