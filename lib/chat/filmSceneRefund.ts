@@ -6,7 +6,7 @@
  * its task refs can be forged — and a transient 429 used to read as 'failed'. Refunding on that would let anyone mint
  * credits. So the decision never rests on the token:
  *
- *   · AT START the server records, next to the film's durable payment (film_scenes, proposal 20261014a), the Veo
+ *   · AT START the server records, next to the film's durable payment (film_scenes, migration 20261014a), the Veo
  *     operation each queued scene was dispatched as and that scene's share of the price (the dispatch refund's share).
  *   · WHEN A POLL SEES A DEAD SCENE, that is only a hint of which scenes to look at. The server asks Google about the
  *     operation IT recorded, and only Google's terminal verdict counts: a DONE operation that returned an error, a safety

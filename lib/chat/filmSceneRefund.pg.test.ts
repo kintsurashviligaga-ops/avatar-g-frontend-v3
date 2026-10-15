@@ -1,7 +1,7 @@
 /** @jest-environment node */
 /**
  * R3-A on a REAL ledger, through the real PostgREST client, against the throwaway Postgres 16 + PostgREST of
- * scripts/lease-isolation/run.sh with proposal 20261014a applied (FILM_PHASE=after): a scene Google failed is given back
+ * scripts/lease-isolation/run.sh with migration 20261014a applied (FILM_PHASE=after): a scene Google failed is given back
  * once, capped by what the film still holds, only to its payer, and only by the service role. Google itself is not called:
  * the verdict is injected (its classification: lib/chat/filmSceneRefund.test.ts).
  *

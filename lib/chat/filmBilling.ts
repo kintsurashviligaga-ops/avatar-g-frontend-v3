@@ -11,7 +11,7 @@
  *     — durable, owner-bound, never expiring — says whether this user paid for this film and how much of it is still held
  *     (net of any dispatch refund).
  *   · THE WAIVERS (what the payment still covers: the stitch + one re-stitch for a paid film, the stitch for a free one) live
- *     in `film_billing` (proposal 20261014a). A stitch LEASES a waiver for longer than the route can run, SPENDS it only when
+ *     in `film_billing` (migration 20261014a). A stitch LEASES a waiver for longer than the route can run, SPENDS it only when
  *     it delivered a master, and hands it back otherwise; a crashed stitch's lease simply expires.
  *   · REDIS is a cache: consulted only when the durable table cannot answer (a database without 20261014a, a free film whose
  *     row could not be written, a film started before this change).

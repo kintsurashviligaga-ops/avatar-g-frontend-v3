@@ -2,9 +2,9 @@
 /**
  * Video Core v1.0 final hardening, Phase 1 — a film's payment and its stitches on a REAL ledger, through the real PostgREST
  * client, against a throwaway Postgres 16 + PostgREST (scripts/lease-isolation/run.sh), in the two states Production can be in:
- *   FILM_PHASE=before — proposal 20261014a not applied (Production today): the ledger is the payment's durable witness and
+ *   FILM_PHASE=before — migration 20261014a not applied (Production before 2026-10-15): the ledger is the payment's durable witness and
  *                       the Redis/memory cache the waiver's; a paid film whose cache is gone is STOPPED, never billed again.
- *   FILM_PHASE=after  — docs/handoffs/video-core/proposals/20261014a_film_billing.sql applied: one charge per film, the
+ *   FILM_PHASE=after  — supabase/migrations/20261014a_film_billing.sql applied: one charge per film, the
  *                       stitch and one re-stitch free, concurrent stitches serialised on a lease that outlives the route,
  *                       crash recovery by lease expiry, owner-bound, locked to the service role.
  * No Redis anywhere in this suite: everything durable is in the database, and the process memory is the only cache.

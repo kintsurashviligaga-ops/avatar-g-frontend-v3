@@ -1464,7 +1464,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // — never into `filmToken`, which the client holds and could forge into unlimited free assembles.
   // Owner-bound and single-use on the assemble side. Fail-open: a store miss just bills normally.
   if (freeFilmConsumed && input.userId) {
-    // Durable first (film_billing, proposal 20261014a); the Redis marker stays as the cache /assemble falls back to.
+    // Durable first (film_billing, migration 20261014a); the Redis marker stays as the cache /assemble falls back to.
     await recordFilmBilling({ uid: input.userId, tokenId: filmTokenId, kind: 'free', credits: 0, ref: null }).catch(() => 'unavailable');
     await recordFreeFilmWaiver(filmTokenId, input.userId).catch(() => {});
   }

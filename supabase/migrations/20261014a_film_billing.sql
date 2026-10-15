@@ -1,4 +1,11 @@
--- 20261014a_film_billing.sql — PROPOSAL. NOT applied anywhere but throwaway test databases; waits for GG's separate word.
+-- 20261014a_film_billing.sql — APPLIED to Production on 2026-10-15 ~11:32Z.
+--
+-- Applied in the Supabase SQL Editor on the owner's written word of 2026-10-15 10:43:26Z (and 11:11Z, 11:23Z). The editor
+-- ran this file's statements from `begin;` to `commit;` wrapped in a read-only PREFLIGHT (refuses unless credit_ledger with
+-- jsonb metadata and refund_credits(uuid, integer, text) exist and no film table or function does) and followed by a
+-- read-only VERIFY row: both tables present, RLS on, 0 policies, 0 rows, the six functions SECURITY DEFINER with
+-- search_path=public, tables and functions closed to anon/authenticated (docs/handoffs/video-core/PRODUCTION_RELEASE_CHECKLIST.md P4–P6).
+-- The owner pressed Run; Claude read the verify row from the owner's screen.
 --
 -- Video Core v1.0 final hardening, Phase 1 (financial safety): the film's paid status in DURABLE storage.
 --

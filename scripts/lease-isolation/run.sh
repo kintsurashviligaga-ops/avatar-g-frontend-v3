@@ -3,7 +3,7 @@
 # (lib/orchestrator/ledgerOnce.pg.test.ts, before and after 20261002d) and multi-step runs on real ffmpeg
 # (lib/agent/run/runIsolation.pg.test.ts), the delivery outbox's store (lib/notifications/outboxIsolation.pg.test.ts) and
 # the R2 duplicate guard (lib/orchestrator/idempotencyStore.pg.test.ts, before and after its proposal) and a film's payment and
-# stitches (lib/chat/filmBilling.pg.test.ts, before and after proposal 20261014a), against a REAL but throwaway database: a local Postgres 16 with the
+# stitches (lib/chat/filmBilling.pg.test.ts, before and after migration 20261014a), against a REAL but throwaway database: a local Postgres 16 with the
 # Production shape (./schema.sql) behind a real PostgREST (Docker). Nothing here can reach Production: the database
 # lives in a temp dir on this machine, PostgREST listens on 127.0.0.1, and every suite refuses any non-local URL.
 #
@@ -72,16 +72,16 @@ psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'
 sleep 2
 IDEM_PHASE=after node node_modules/.bin/jest lib/orchestrator/idempotencyStore.pg.test.ts --no-watchman --ci --forceExit
 # Video Core final hardening, Phase 1: a film's payment and its stitches on the real ledger, first as Production is today
-# (no film_billing: the ledger + cache, a paid film without its cache STOPS), then with the proposal applied
-# (docs/handoffs/video-core/proposals/20261014a_film_billing.sql; NOT applied anywhere else — it waits for the owner's word).
+# before 20261014a (no film_billing: the ledger + cache, a paid film without its cache STOPS), then with the migration applied
+# (supabase/migrations/20261014a_film_billing.sql; applied to Production 2026-10-15 on the owner's word).
 FILM_PHASE=before node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
-# Applied twice: the proposal must be re-runnable.
-psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_billing.sql
-psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_billing.sql
+# Applied twice: the migration must be re-runnable.
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261014a_film_billing.sql
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261014a_film_billing.sql
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
-# R3-A (the same proposal): a scene Google failed is given back once, capped, owner-bound, service role only.
+# R3-A (the same migration): a scene Google failed is given back once, capped, owner-bound, service role only.
 FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmSceneRefund.pg.test.ts --no-watchman --ci --forceExit
 # Phase 3 (B3) preflight: the storyboard revision proposal (docs/handoffs/video-core/proposals/20261012a_storyboard_revisions.sql)
 # on the same database — applied twice (it must be re-runnable), checked, rolled back with its own footer, re-applied and
