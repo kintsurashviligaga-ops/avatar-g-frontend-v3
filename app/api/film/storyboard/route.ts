@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { planFilmScenes, normalizeReferenceImages, splitStructuredScript, splitStructuredScriptScenes, planFilmGrid, FILM_SCENE_COUNT, FILM_CLIP_SEC } from '@/lib/chat/filmPipeline';
 import { parseMasterScript } from '@/lib/pipeline/script/masterScript';
-import { runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
+import { promptAgentModel, runPromptAgent, type MasterFilmBrief } from '@/lib/chat/promptAgent';
 import { describeCharacterFromImage } from '@/lib/gemini/image-analysis';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
@@ -45,11 +45,6 @@ import { resolveFilmTemplate } from '@/lib/studio/templateContext';
  *  Opt-in via FAST_IMAGE_MODEL (1 | true | flux | flux-schnell | on); OFF → no behavior change. */
 const FAST_IMAGE_MODEL = /^(1|true|on|flux|flux-schnell)$/i.test((process.env.FAST_IMAGE_MODEL || '').trim());
 
-/** Prompt-Agent model for the STORYBOARD PREVIEW only (haiku ≈ 5–10s vs sonnet ≈ 80s for a
- *  6-scene brief). The actual film render (filmComposite) is untouched → keeps sonnet for the
- *  character-lock reasoning. Override with STORYBOARD_PROMPT_MODEL=claude-sonnet-4-6 for max
- *  preview quality. */
-const STORYBOARD_PROMPT_MODEL = process.env.STORYBOARD_PROMPT_MODEL ?? 'claude-haiku-4-5-20251001';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -541,20 +536,20 @@ export async function POST(req: NextRequest) {
     const brief = await runPromptAgent({
       brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
       length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-      model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+      hasReferenceImage: refList.length > 0,
       ...(characterVisualId ? { characterVisualId } : {}),
       ...templateDirection,
     });
     const promptAgentMs = Date.now() - tPA;
     // eslint-disable-next-line no-console
-    console.log(`[storyboard] scriptsOnly prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms`);
+    console.log(`[storyboard] scriptsOnly prompt-agent (${promptAgentModel()}): ${promptAgentMs}ms`);
     if (brief) {
       return NextResponse.json({
         success: true,
         sceneScripts: brief.scenes.map((s) => s.imagePrompt),
         character: brief.character.imagePromptFragment,
         masterBrief: brief,
-        scriptModel: STORYBOARD_PROMPT_MODEL,
+        scriptModel: promptAgentModel(),
         timings: { promptAgentMs },
       });
     }
@@ -617,7 +612,7 @@ export async function POST(req: NextRequest) {
   const masterBrief: MasterFilmBrief | null = await runPromptAgent({
     brief: prompt, mode: musicVideo ? 'music_video' : 'documentary', sceneCount,
     length: sceneTotalSec, effect: style ?? 'Cinematic', language: locale,
-    model: STORYBOARD_PROMPT_MODEL, hasReferenceImage: refList.length > 0,
+    hasReferenceImage: refList.length > 0,
     ...(characterVisualIdFull ? { characterVisualId: characterVisualIdFull } : {}),
     ...templateDirection,
   });
@@ -655,7 +650,7 @@ export async function POST(req: NextRequest) {
   }
   const framesMs = Date.now() - tFrames;
   // eslint-disable-next-line no-console
-  console.log(`[storyboard] prompt-agent (${STORYBOARD_PROMPT_MODEL}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
+  console.log(`[storyboard] prompt-agent (${promptAgentModel()}): ${promptAgentMs}ms · frames: ${framesMs}ms · sources ${JSON.stringify(frameSourceTally)}`);
 
   // ANCHOR MODE (full path) — ≥2 uploaded images override the generated frames as the
   // ordered per-scene anchors, mirroring the planOnly path.
@@ -691,9 +686,9 @@ export async function POST(req: NextRequest) {
     // Diagnostic — provider that produced each frame (confirms flux-schnell vs the
     // NanoBanana/Replicate-FLUX fallback; the re-host hides it from the frame URLs).
     frameSources: frameSourceTally,
-    // Diagnostic — the Prompt-Agent model used + the script/frames time split (the script
-    // step was the dominant cost; haiku cuts it from ~80s to ~5-10s).
-    scriptModel: STORYBOARD_PROMPT_MODEL,
+    // Diagnostic — the Prompt-Agent model used (always Gemini: llmText has no other provider) + the
+    // script/frames time split.
+    scriptModel: promptAgentModel(),
     timings: { promptAgentMs, framesMs },
   });
 }

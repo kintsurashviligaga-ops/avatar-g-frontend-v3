@@ -20,6 +20,7 @@
 import 'server-only';
 import { extractJson } from '@/lib/orchestrator/script-breakdown';
 import { llmText } from '@/lib/ai/llmText';
+import { geminiTierModel, isRetiredModel, normalizeModelId } from '@/lib/ai/google/models';
 import { isGoogleOnly } from '@/lib/veo/policy';
 import { stripNegativeTail } from './filmPipeline';
 import type { CameraAngle, CameraMove, LensLook, ShotSize } from '@/lib/veo/types';
@@ -125,8 +126,8 @@ export interface PromptAgentInput {
   effect: string;
   language: string;
   dialogue?: string | null;
-  /** Optional primary-model override. The storyboard PREVIEW passes haiku (fast); the
-   *  actual film render (filmComposite) omits it → keeps the sonnet default for quality. */
+  /** No effect: the agent is Gemini only (llmText, R7); promptAgentModel() names the model it uses. Kept so
+   *  existing callers compile. */
   model?: string;
   /** True when the session has an ACTIVE reference/source image driving the character (a bridged
    *  photo or an uploaded selfie). When set, the agent is FORBIDDEN from inventing a persona — the
@@ -502,6 +503,16 @@ export function buildDirectorUserContent(input: PromptAgentInput, sceneCount: nu
  * routes that call this declare maxDuration=300, and the call is off the user's
  * board-open hot-path (it runs in the background scriptsOnly step).
  */
+/**
+ * The model that writes the director's brief, for labels (the storyboard's `scriptModel`), never sent anywhere. Mirrors
+ * runPromptAgent's llmText call: VEO_DIRECTOR_MODEL under Google-only when it is a usable id (generateWithGemini's
+ * guard: well-formed, not retired), else the flash tier. llmText has no other provider, so this is always a Gemini id.
+ */
+export function promptAgentModel(): string {
+  const director = isGoogleOnly() ? normalizeModelId(process.env.VEO_DIRECTOR_MODEL) : null;
+  return director && !isRetiredModel(director) ? director : geminiTierModel('flash');
+}
+
 export async function runPromptAgent(input: PromptAgentInput): Promise<MasterFilmBrief | null> {
   // Floor 1 (was 2) so a 6s single-scene Cinema clip can be planned. NOTE: the
   // /api/video/assemble stitch requires ≥2 segments, so a true 1-scene film must use

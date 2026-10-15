@@ -20,7 +20,7 @@ jest.mock('../../../../lib/ai/llmText', () => ({ llmText: jest.fn(async () => nu
 jest.mock('../../../../lib/ai/promptToEnglish', () => ({ promptToEnglish: jest.fn(async (p: string) => p) }));
 jest.mock('../../../../lib/ai/geminiImage', () => ({ generateGeminiImage: jest.fn(async () => null) }));
 jest.mock('../../../../lib/gemini/image-analysis', () => ({ describeCharacterFromImage: jest.fn(async () => null) }));
-jest.mock('../../../../lib/chat/promptAgent', () => ({ runPromptAgent: jest.fn(async () => null) }));
+jest.mock('../../../../lib/chat/promptAgent', () => ({ runPromptAgent: jest.fn(async () => null), promptAgentModel: () => 'gemini-test-flash' }));
 jest.mock('../../../../lib/chat/ServiceManager', () => ({
   ServiceManager: jest.fn().mockImplementation(() => ({ execute: jest.fn(), poll: jest.fn() })),
 }));
