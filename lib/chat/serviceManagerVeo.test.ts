@@ -375,6 +375,40 @@ describe('poll() → deliver a finished Veo clip', () => {
     expect(downloadMock).not.toHaveBeenCalled();
   });
 
+  it('a declined scene keeps Google\'s rule: logged with its codes, and the category (not the raw text) goes to the film', async () => {
+    // The ad film of 2026-10-15: scene 2 came back filtered under support code 15236754 and the old branch kept nothing.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ref = await taskRefFor(GEMINI_OP);
+    pollVeoClipMock.mockResolvedValue({
+      state: 'filtered',
+      reason: "1 videos were filtered out because they violated Vertex AI's usage guidelines. Support codes: 15236754",
+      supportCodes: ['15236754'],
+    });
+    const res = await new ServiceManager().poll(ref, SESSION);
+    expect(res).toMatchObject({ success: false, predictionStatus: 'failed' });
+    expect(res.metadata).toMatchObject({ veoFiltered: true, veoSafetyCategory: 'celebrity', veoSupportCodes: ['15236754'] });
+    expect(res.message).toContain('well-known public figure');
+    expect(JSON.stringify(res.metadata)).not.toContain('usage guidelines');
+    const line = warn.mock.calls.map((c) => String(c[0])).find((l) => l.startsWith('[veo] scene declined'));
+    expect(line).toContain('celebrity');
+    expect(line).toContain('codes=15236754');
+    expect(line).toContain('usage guidelines');
+    warn.mockRestore();
+  });
+
+  it('a failed operation logs Google\'s reason instead of dropping it', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const ref = await taskRefFor(GEMINI_OP);
+    pollVeoClipMock.mockResolvedValue({ state: 'failed', reason: 'Internal error encountered.', code: 13, finished: true });
+    const res = await new ServiceManager().poll(ref, SESSION);
+    expect(res).toMatchObject({ success: false, predictionStatus: 'failed' });
+    expect(res.metadata.veoFiltered).toBeUndefined();
+    const line = warn.mock.calls.map((c) => String(c[0])).find((l) => l.startsWith('[veo] scene failed'));
+    expect(line).toContain('code=13');
+    expect(line).toContain('Internal error encountered.');
+    warn.mockRestore();
+  });
+
   it('a still-rendering operation keeps polling (processing, not failed)', async () => {
     const ref = await taskRefFor(GEMINI_OP);
     pollVeoClipMock.mockResolvedValue({ state: 'processing' });

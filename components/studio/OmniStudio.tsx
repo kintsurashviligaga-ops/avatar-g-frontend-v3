@@ -48,7 +48,7 @@ import { classifyIntent, isImperativeCommand } from '@/lib/ai/agentG';
 import { parseImageBlocks, hasImageBlocks } from '@/lib/chat/imageBlocks';
 import { inferCameraMove } from '@/lib/chat/cameraCue';
 import { parseServiceBlock, hasServiceBlock, stripDanglingServiceBlock, type ChatService } from '@/lib/chat/serviceBlocks';
-import { composeTransitionRender, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
+import { composeTransitionRender, describeDeclinedScenes, driveFilmStudio, type FilmQaSummary, type FilmStudioMatrix, type SceneMetaWire } from '@/lib/chat/filmStudioClient';
 import { stitchedSeconds } from '@/lib/orchestrator/ffmpeg-filtergraph';
 import { composeMusicVideoPrompt } from '@/lib/chat/musicVideoPresets';
 import { FilmQaBadge } from './FilmQaBadge';
@@ -1047,6 +1047,12 @@ interface ImageBatch { spec: ImageRegenSpec; tiles: BatchTile[] }
 // render at once. Default OFF via env → production is byte-identical to the legacy single-
 // render path until `NEXT_PUBLIC_PARALLEL_CINEMA=1` is set (safe to deploy + type/Jest verify).
 const ENABLE_PARALLEL_CINEMA = process.env.NEXT_PUBLIC_PARALLEL_CINEMA === '1';
+/**
+ * A film that already wrote its own failure on its bubble. The queued job must still settle as failed, so renderFilm
+ * throws — and its catch used to paint the generic "the service may be busy" line over the real reason. In Production
+ * (parallel cinema on) the ad film of 2026-10-15 lost "Google declined scene 2" exactly that way.
+ */
+class FilmFailureShown extends Error {}
 
 // STEP 2 — immutable per-job snapshot of the ENTIRE video panel, captured at the millisecond of
 // submit (startFilmRender) so a QUEUED cinema render uses the settings from its submit moment and
@@ -1119,7 +1125,7 @@ interface Msg { role: 'user' | 'assistant'; text: string; id?: string; /** Kinds
   errorTail?: boolean;
   /** This card's row in the account's history (lib/chat/turnMeta): rewritten as the card moves, read by another device. */
   cloudRowId?: string;
-  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; remixOpKind?: string;
+  inputMethod?: 'text' | 'voice'; videoUrl?: string; videoProgress?: number; storyboard?: { ordinal: number; beat?: string; frameUrl: string | null }[]; filmRoster?: FilmAgentVM[]; filmLog?: FilmLogLine[]; genKind?: 'image' | 'music' | 'video' | 'lipsync'; /** The shape and tier an in-flight image job was started with — the result pane draws its card in that shape. */ genAspect?: string; genQuality?: string; regen?: RegenSpec; batch?: ImageBatch; retryVideo?: boolean; retryReq?: { filmPrompt: string; refs: string[]; orientation: 'landscape' | 'vertical' | 'square' | 'portrait' }; /** A failed film's scenes that DID render (paid and kept, R3 matrix) — handed over under the error card. */ sceneClips?: { ordinal: number; url: string }[]; remixOpKind?: string;
   /** Completed-film remix anchors: the per-scene landed clips + original brief, so the
    *  film bubble can offer a "remix" box (re-render only the edited scenes). */
   filmClips?: { ordinal: number; url: string }[]; filmPrompt?: string; filmClipSec?: number;
@@ -4053,6 +4059,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
               ? `⚠️ Отрендерено ${res.scenesRendered} из ${res.scenesRequested} сцен — ${shortBy} не удалось, они не вошли в монтаж.`
               : `⚠️ ${res.scenesRequested}-დან ${res.scenesRendered} სცენა დარენდერდა — ${shortBy} ვერ მოხერხდა და მონტაჟში ვერ მოხვდა.`)
         : '';
+      const declinedNote = res.ok && res.masterUrl && shortBy > 0 ? (describeDeclinedScenes(res.matrix, locale) ?? '') : '';
 
       // MUSIC VIDEO — the cinematic LTX montage is the PRIMARY result. We no longer relip the
       // whole master (sync/lipsync-2 warped the wide/aerial shots — "terrible"). Show the
@@ -4063,10 +4070,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
             // Keep the Director's Console (filmRoster/filmLog) alongside the video so the
             // post-assemble Lip-Sync + Graphics cards keep updating after the master lands.
             // Preserve the stable id/genKind when queued so later in-place upgrades hit THIS bubble.
-            ? { role: 'assistant', text: [partialNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
+            ? { role: 'assistant', text: [partialNote, declinedNote, ...deliveryNotes].filter(Boolean).join('\n'), videoUrl: res.masterUrl, orientation, filmRoster: last.filmRoster, filmLog: last.filmLog, ...(res.qa ? { filmQa: res.qa } : {}), ...(bubbleId ? { id: bubbleId, genKind: 'video' as const } : {}), ...remixCarry }
             // The route's own reason when it gave one (a QC refusal, an unreadable soundtrack) after a short headline in the
             // user's language; "the service may be busy" only when the route said nothing a person can read.
-            : { role: 'assistant', text: `⚠️ ${filmFailureText(res, locale, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) })
+            : { role: 'assistant', text: `⚠️ ${filmFailureText(res, locale, t.videoFailed)}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(landed.length > 0 ? { sceneClips: landed } : {}), ...(bubbleId ? { id: bubbleId } : {}) })
         : null);
       if (mine() && !(res.ok && res.masterUrl)) trackGenerationFailed(serviceForTool('video', { videoMode }), res.error ?? null);
       if (mine() && res.ok && res.masterUrl) {
@@ -4076,7 +4083,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       }
       // Queued mode: a failed master must REJECT the job so the tray shows failed + the durable
       // row flips to failed (the legacy path just leaves the ⚠️ bubble in place).
-      if (jobCtx && !(res.ok && res.masterUrl)) throw new Error(res.error || 'video failed');
+      if (jobCtx && !(res.ok && res.masterUrl)) throw new FilmFailureShown(res.error || 'video failed');
 
       // Upgrade the result bubble's video IN PLACE (base master → lip-synced → graphics),
       // so the chain progressively replaces the shown video without spawning new bubbles.
@@ -4231,8 +4238,11 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // Canceled render (own signal aborted / superseded genId): leave it — when queued the
       // engine has already settled this job as canceled via its own cancel path.
       if (!mine()) return;
-      trackGenerationFailed(serviceForTool('video', { videoMode }), 'exception');
-      patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) } : null);
+      // The film's own reason is already on the bubble (and already tracked): only settle the queued job.
+      if (!(err instanceof FilmFailureShown)) {
+        trackGenerationFailed(serviceForTool('video', { videoMode }), 'exception');
+        patchFilmBubble((last) => last.role === 'assistant' ? { role: 'assistant', text: `⚠️ ${t.videoFailed}`, retryVideo: true, retryReq: { filmPrompt, refs, orientation }, ...(bubbleId ? { id: bubbleId } : {}) } : null);
+      }
       // Queued mode: propagate so the job settles FAILED (tray + durable row) via onSettle.
       if (jobCtx) throw err instanceof Error ? err : new Error('video failed');
     } finally {
@@ -9427,16 +9437,38 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                   if (m.role === 'assistant' && m.retryVideo && !m.videoUrl) {
                     const r = m.retryReq ?? lastVideoReqRef.current;
                     return (
-                      <ResultCard
-                        kind="video"
-                        aspect={ORIENT_ASPECT[m.retryReq?.orientation ?? m.orientation ?? videoOrientation]}
-                        state="error"
-                        locale={locale}
-                        error={m.text}
-                        errorFull
-                        onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
-                        onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
-                      />
+                      <>
+                        <ResultCard
+                          kind="video"
+                          aspect={ORIENT_ASPECT[m.retryReq?.orientation ?? m.orientation ?? videoOrientation]}
+                          state="error"
+                          locale={locale}
+                          error={m.text}
+                          errorFull
+                          onRetry={!busy && r ? () => void createStoryboard(r.filmPrompt, r.refs, r.orientation) : undefined}
+                          onDismiss={() => setMessages((prev) => prev.filter((pm) => (m.id ? pm.id !== m.id : pm !== m)))}
+                        />
+                        {/* The scenes that rendered stay paid (R3 matrix rows 6-7), so they are handed over, not lost with the cut. */}
+                        {m.sceneClips && m.sceneClips.length > 0 && (
+                          <div data-testid="film-scene-clips" className="mt-2 space-y-1.5 text-[12px] text-app-muted">
+                            <p>{locale === 'en' ? 'Rendered before the film stopped:' : locale === 'ru' ? 'Успели отрендериться до остановки фильма:' : 'ფილმის შეჩერებამდე დარენდერდა:'}</p>
+                            <ul className="flex flex-wrap gap-1.5">
+                              {m.sceneClips.map((c) => (
+                                <li key={c.ordinal}>
+                                  <a
+                                    href={c.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex min-h-[40px] sm:min-h-0 items-center gap-1.5 rounded-full bg-app-elevated px-3.5 py-1.5 font-semibold text-app-text ring-1 ring-app-border/15 transition-opacity hover:opacity-90"
+                                  >
+                                    ▶ {locale === 'en' ? `Scene ${c.ordinal}` : locale === 'ru' ? `Сцена ${c.ordinal}` : `სცენა ${c.ordinal}`}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
                     );
                   }
                   const pending = busy && m.role === 'assistant' && i === messages.length - 1 && !m.imageUrl && !m.audioUrl && !m.videoUrl && !m.batch;

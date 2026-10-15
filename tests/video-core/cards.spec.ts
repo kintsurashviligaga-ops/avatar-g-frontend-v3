@@ -168,6 +168,45 @@ test.describe('Video Core — job cards', () => {
     expect(clipped, 'the reason is clipped out of view').toBe(false);
   });
 
+  test('film: Google declines scenes → the card names the scenes, the rule and the code, and hands over the scene that rendered', async ({ page, isMobile }) => {
+    // The ad film of 2026-10-15 (Production, parallel cinema ON): scene 1 rendered, scene 2 was declined by Google's
+    // likeness filter (support code 15236754) and the card said "the service may be busy" with nothing to show. This
+    // runs in both modes: `NEXT_PUBLIC_PARALLEL_CINEMA=1 next dev` takes the queued-job path that painted over the reason.
+    const declined = { category: 'celebrity', codes: ['15236754'] };
+    const film = {
+      sceneCount: 3, clipSec: 8, seed: 4242, storyboard: 'succeeded', stitch: 'failed', audio: 'skipped', audioUrl: null,
+      clips: [
+        { ordinal: 1, status: 'succeeded', url: 'https://e2e-media.supabase.co/clips/1.mp4' },
+        { ordinal: 2, status: 'failed', url: '', declined },
+        { ordinal: 3, status: 'failed', url: '', declined },
+      ],
+      readyToStitch: false, statusTokenId: 'tok-declined',
+    };
+    const calls = await openStudio(page, {
+      orchestrate: (body) => body.predictionId
+        ? { status: 200, body: { success: false, predictionId: 'pred-1', predictionStatus: 'failed', message: '⚠️ ვერ აეწყო — ძალიან ცოტა კლიპი დარჩა', metadata: { film } } }
+        : { status: 200, body: { success: true, predictionId: 'pred-1', predictionStatus: 'processing', metadata: { film: { ...film, stitch: 'queued' } } } },
+    });
+    await page.waitForTimeout(ROUTE_CHECK_MS);
+    await filmToAssemble(page, isMobile);
+    const card = page.locator('[data-testid="result-card"][data-state="error"]');
+    await expect(card).toBeVisible({ timeout: 30_000 });
+    await expect(card).toContainText('Google declined scenes 2, 3');
+    await expect(card).toContainText('well-known public figure');
+    await expect(card).toContainText('15236754');
+    await expect(card).not.toContainText('may be busy');
+    // A paid scene that rendered is handed over, not lost with the cut.
+    const scenes = page.getByTestId('film-scene-clips');
+    await expect(scenes).toBeVisible();
+    await expect(scenes.getByRole('link', { name: /Scene 1/ })).toHaveAttribute('href', 'https://e2e-media.supabase.co/clips/1.mp4');
+    await expect(scenes.getByRole('link')).toHaveCount(1);
+    expect(calls.assemble).toHaveLength(0);
+    await page.waitForTimeout(2_000); // the queued job settles after the bubble: it must not repaint it
+    await expect(card).toContainText('Google declined scenes 2, 3');
+    await expect(card).not.toContainText('may be busy');
+    if (!isMobile) await shot(page, 'film-declined-scenes-card');
+  });
+
   test('a finished 9:16 montage is shown in a vertical frame', async ({ page, isMobile }) => {
     const calls = await openStudio(page, {
       quote: { ...QUOTE, aspect: '9:16' },

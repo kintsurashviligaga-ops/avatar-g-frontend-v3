@@ -84,3 +84,30 @@ test('a store that throws never breaks the poll', async () => {
   expect(res.predictionId).toBe(filmToken());
   expect(res.message).not.toContain('💳');
 });
+
+test('a scene Google\'s safety filter declined is named on its clip with the rule and codes; an ordinary failure is not', async () => {
+  sm.poll.mockImplementation(async (taskRef: string) => taskRef === 'job-2'
+    ? { success: false, predictionStatus: 'failed', message: 'declined', metadata: { veoFiltered: true, veoSafetyCategory: 'celebrity', veoSupportCodes: ['15236754', 'x<script>'] } }
+    : { success: true, predictionStatus: 'succeeded', assetUrl: 'https://media.local.test/1.mp4', metadata: {} });
+  const res = await pollOrchestrationTask(filmToken(), 's1', 'user-9');
+  const clips = (res.metadata?.film as { clips: Array<Record<string, unknown>> }).clips;
+  expect(clips.find((c) => c.ordinal === 2)?.declined).toEqual({ category: 'celebrity', codes: ['15236754'] });
+  expect(clips.find((c) => c.ordinal === 1)?.declined).toBeUndefined();
+  expect(clips.find((c) => c.ordinal === 3)?.declined).toBeUndefined();
+
+  // A failure that is not a safety refusal carries no `declined` (the film keeps its own sentence).
+  sm.poll.mockImplementation(async (taskRef: string) => taskRef === 'job-2'
+    ? { success: false, predictionStatus: 'failed', message: 'generation failed', metadata: {} }
+    : { success: true, predictionStatus: 'succeeded', assetUrl: 'https://media.local.test/1.mp4', metadata: {} });
+  const plain = await pollOrchestrationTask(filmToken(), 's1', 'user-9');
+  expect((plain.metadata?.film as { clips: Array<Record<string, unknown>> }).clips.find((c) => c.ordinal === 2)?.declined).toBeUndefined();
+});
+
+test('an unknown category from the wire is not passed through', async () => {
+  sm.poll.mockImplementation(async (taskRef: string) => taskRef === 'job-2'
+    ? { success: false, predictionStatus: 'failed', message: 'declined', metadata: { veoFiltered: true, veoSafetyCategory: '<img>', veoSupportCodes: [] } }
+    : { success: true, predictionStatus: 'succeeded', assetUrl: 'https://media.local.test/1.mp4', metadata: {} });
+  const res = await pollOrchestrationTask(filmToken(), 's1', 'user-9');
+  const clips = (res.metadata?.film as { clips: Array<Record<string, unknown>> }).clips;
+  expect(clips.find((c) => c.ordinal === 2)?.declined).toEqual({ category: null, codes: [] });
+});
