@@ -97,7 +97,8 @@ test('every /api/orchestrator/*/produce route reports the refusal via reservatio
   const fs = jest.requireActual('fs') as typeof import('fs');
   const path = jest.requireActual('path') as typeof import('path');
   const root = path.join(__dirname, '..', '..', 'app', 'api', 'orchestrator');
-  const routes = ['produce', 'voice/produce', 'image/produce', 'avatar/produce', 'music/produce', 'interior/produce'];
+  // music/produce is retired (Music Studio v1, Phase 2: it dispatched to Udio) and refuses before any reservation.
+  const routes = ['produce', 'voice/produce', 'image/produce', 'avatar/produce', 'interior/produce'];
   for (const r of routes) {
     const src = fs.readFileSync(path.join(root, r, 'route.ts'), 'utf8');
     expect(src).toContain("error: reservationErrorCode(reservation)");

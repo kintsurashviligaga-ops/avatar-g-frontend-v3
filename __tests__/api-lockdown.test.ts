@@ -116,6 +116,9 @@ const GATE_SIGNALS: RegExp[] = [
   /\b(requireUser|requireAuthenticatedUser|getAuthenticatedUser|authedClientFromRequest|guardGeneration|getAuthContext|requireAuthContext|sessionUserId|resolveTwinCaller)\s*\(/,
   /auth\.getUser\s*\(/,
   /\b(mustSignInToGenerate|mustSignInToChat|requireAuthForGeneration)\s*\(/,
+  // Music Studio v1 (lib/music/studio/http.ts): musicUser() is authedClientFromRequest + refusal of anonymous and of the
+  // studio switch being off, before any quote, charge or provider call.
+  /\bmusicUser\s*\(/,
   /\b(isAdmin|requireAdmin|isAdminUser|assertAdminAccess|hasValidAdminKey|effectiveAdminAllowlist|adminKeyHeaderMatches|opsCallerAllowed|isCronAuthorized|secretMatches)\s*\(/,
   /\b(constructEvent|verifyWebhookSignature|verifyBogCallbackSignature|verifyVapiWebhookSignature|verifyTwilioRequest|verifyJobSignature|verifyHandoffToken|consumeHandoffToken|verifyRealtimeSessionToken|verifyMetaSignature|verifyTicket)\s*\(/,
   /timingSafeEqual\s*\(/,
@@ -127,6 +130,8 @@ const GATE_SIGNALS: RegExp[] = [
  * A new entry is a reviewed decision; shrinking this list is the goal.
  */
 const PROVIDER_ROUTE_ALLOWLIST: Record<string, string> = {
+  'app/api/music/studio/capabilities/route.ts':
+    'Music Studio capability matrix — booleans, model ids and lengths only (it imports the transport to read whether it is configured); never calls a provider, IP rate-limited',
   'app/api/agent-g/telegram/route.ts':
     'Telegram webhook — the secret header is checked FAIL-CLOSED inside lib/agent-g/channels/telegram-webhook-handler (guarded below)',
   'app/api/agent-g/telegram/webhook/route.ts': 're-export of the canonical Telegram webhook (/api/agent-g/telegram)',

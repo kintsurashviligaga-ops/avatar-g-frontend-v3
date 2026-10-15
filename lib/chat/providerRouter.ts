@@ -17,12 +17,10 @@ import { generateNanoBananaImage } from '@/lib/nanobanana/client';
 import { reportError } from '@/lib/observability/report-error';
 import { getNanoBananaCreditCost, resolveNanoBananaEndpoint } from '@/lib/nanobanana/endpoints';
 import { ServiceManager, type ServiceManagerResponse } from './ServiceManager';
-import { getUdioGenerationStatus, startUdioGeneration } from '@/lib/udio/client';
-import { hasUdioApiKey } from './mediaKeys';
+import { getUdioGenerationStatus } from '@/lib/udio/client';
 import { buildInteriorDesignBrief } from '@/lib/interior/smart-intake';
 import { generateWorldLabsInterior } from '@/lib/worldlabs/client';
 import { buildIterativePrompt } from './iteration-store';
-import { buildEnforcedMusicStyle } from './outputEnforcement';
 import { generateWithGemini } from '@/lib/gemini/client';
 import { getGeminiSystemPrompt, type GeminiServiceContext } from '@/lib/gemini/prompts';
 import { extractMediaArtifact, type MediaKind } from '@/lib/media/extractArtifact';
@@ -285,6 +283,26 @@ function refuseOutsideEngineInChat(input: OrchestratorInput, intent: IntentCateg
   };
 }
 
+/**
+ * ⚠️ CHAT MUSIC (Udio / MusicGen) IS OUTSIDE THE PROVIDER BOUNDARY — REFUSED ALWAYS (Music Studio v1, Phase 2), not only
+ * under MEDIA_GOOGLE_ONLY: its only engines are outside ones. The user is pointed to the Music tool (Google Lyria), and
+ * nothing is charged or sent to a provider.
+ */
+function refuseChatMusic(input: OrchestratorInput, intent: IntentCategory): ChatResponse {
+  const l = input.locale;
+  return {
+    success: false,
+    intent,
+    responseType: 'text',
+    message: l === 'en'
+      ? 'Music is made in the Music tool (Google Lyria). Open it from the sidebar — you were not charged.'
+      : l === 'ru'
+        ? 'Музыка создаётся в инструменте «Музыка» (Google Lyria). Откройте его в боковой панели — списания не было.'
+        : 'მუსიკა იქმნება მუსიკის ხელსაწყოში (Google Lyria). გახსენი გვერდითი პანელიდან — თანხა არ ჩამოგეჭრა.',
+    metadata: { provider: 'policy', code: 'unsupported' },
+  };
+}
+
 export async function orchestrate(
   input: OrchestratorInput,
   _baseUrl?: string,
@@ -390,9 +408,7 @@ export async function orchestrate(
   const detected = detectIntent(input.message, input.serviceContext);
 
   if (detected.intent === 'music_generation') {
-    return refuseAnonymousGeneration(input, detected.intent)
-      ?? refuseOutsideEngineInChat(input, detected.intent)
-      ?? handleMusicIntent(input, detected);
+    return refuseAnonymousGeneration(input, detected.intent) ?? refuseChatMusic(input, detected.intent);
   }
 
   if (DETERMINISTIC_INTENTS.has(detected.intent)) {
@@ -1159,161 +1175,6 @@ async function handleInteriorIntent(input: OrchestratorInput): Promise<ChatRespo
   }
 }
 
-async function handleMusicIntent(
-  input: OrchestratorInput,
-  detected: DetectedIntent,
-): Promise<ChatResponse> {
-  // PRE-RENDER balance gate — music_generation dispatches BEFORE the deterministic-intent gate
-  // (music isn't in DETERMINISTIC_INTENTS), so without this a 0-balance user gets a free paid track
-  // on /chat. Gate here at the TOP so it covers BOTH the Udio submit below AND the replicate
-  // delegation. Authed only; fail-open on a read miss. Mirrors handleDeterministicIntent's gate.
-  const gateCost = billableCreditCost(detected.intent);
-  if (input.userId && input.userId !== 'anonymous' && gateCost > 0 && !(await hasSufficientBalance(input.userId, gateCost))) {
-    return insufficientCreditsResponse(detected.intent, gateCost, input.locale);
-  }
-
-  const iterative = buildIterativePrompt({
-    sessionId: input.sessionId,
-    serviceContext: input.serviceContext || 'music',
-    message: input.message,
-    selectedOptions: input.selectedOptions,
-    imageUrl: input.imageUrl,
-  });
-  const opts = input.selectedOptions || {};
-  const provider = String(
-    opts.provider
-      || opts.music_provider
-      || opts.musicProvider
-      || (hasUdioApiKey() ? 'udio' : 'replicate'),
-  ).toLowerCase();
-
-  if (provider === 'replicate') {
-    return handleReplicateIntent(input, detected);
-  }
-
-  const lyricsMode = String(opts.lyrics_mode || opts.lyricsMode || '').toLowerCase();
-  const styleTags = parseOptionList(opts.style_tags || opts.styleTags || opts.tags);
-
-  // ⚠️ THIS IS THE MUSIC LANE THE CHAT ACTUALLY USES, AND IT WAS THE ONE STILL BROKEN. There are TWO:
-  // /api/ai/music serves the Music panel and was translated; this one serves a prompt TYPED INTO THE CHAT
-  // and was not. So "the song has nothing to do with what I asked" kept happening after the panel was
-  // fixed, and the code that was inspected each time was the other lane.
-  //
-  // It failed TWICE over, which is why the result was so far off:
-  //   1. Udio reads English. A Georgian brief arrived as noise and it composed from its priors.
-  //   2. buildEnforcedMusicStyle mirrors the user's words into the style anchor by matching ENGLISH
-  //      keyword lists (MUSIC_GENRE / MOOD / TEMPO / INSTRUMENT in outputEnforcement.ts). Georgian text
-  //      matches NOTHING, so `style` came back undefined and the one mechanism meant to stop a prompt
-  //      drifting into a generic bed was silently switched off — on exactly the prompts that needed it.
-  // Translating first fixes both: the provider can read the brief AND the mirroring can find the genre.
-  //
-  // LYRICS ARE NOT TRANSLATED — `opts.lyrics` is passed through untouched below. Those are the words to be
-  // SUNG; a brief asking for a song "ესპანურად" keeps that as an English instruction, so the singer is
-  // told which language to sing in rather than handed a translation of the user's own words.
-  // Dynamic import, matching handleReplicateIntent below — promptToEnglish is server-only and this
-  // module is reached from paths that must not pull it into a client bundle.
-  const { promptToEnglish } = await import('@/lib/ai/promptToEnglish');
-  const promptEn = await promptToEnglish(iterative.prompt, 'music');
-
-  // PHASE 52 TASK 5 — strict prompt mirroring. Force the genre/tempo/mood/
-  // instrumentation the user TYPED into the Udio style anchor (their words go
-  // first so the provider weights them highest), and honor an explicit
-  // "instrumental / no vocals" ask. This is what stops a "techno" prompt from
-  // drifting into a generic ambient bed. Any UI-selected style/genre/mood and
-  // tags are merged in AFTER the typed keywords, so nothing is lost.
-  const enforced = buildEnforcedMusicStyle(
-    promptEn,
-    [opts.style, opts.genre, opts.mood].filter(Boolean).join(', '),
-    styleTags,
-  );
-  const requestedInstrumental =
-    parseBooleanOption(opts.make_instrumental || opts.instrumental) || lyricsMode === 'instrumental';
-
-  try {
-    const started = await startUdioGeneration({
-      // The English brief — Udio cannot read the alphabet the user typed in. `opts.lyrics` on the next
-      // line stays in the user's own language ON PURPOSE: those are the words to be sung.
-      prompt: promptEn,
-      lyrics: opts.lyrics,
-      // `style` now carries the mirrored anchor (typed keywords ∪ UI tags); we
-      // intentionally omit the separate genre/mood/styleTags fields so they are
-      // not double-appended by the Udio body builder.
-      style: enforced.style,
-      title: opts.title,
-      model: opts.model || opts.variant,
-      makeInstrumental: requestedInstrumental || enforced.forceInstrumental,
-      callbackUrl: typeof input.metadata?.callback_url === 'string'
-        ? input.metadata.callback_url
-        : typeof input.metadata?.callbackUrl === 'string'
-          ? input.metadata.callbackUrl
-          : undefined,
-    });
-
-    const predictionId = toUdioPredictionId(started.workId);
-
-    return {
-      success: true,
-      intent: detected.intent,
-      responseType: 'audio',
-      message: startedMessage(detected.intent),
-      predictionId,
-      predictionStatus: 'processing',
-      assetType: 'audio',
-      metadata: {
-        provider: 'udio',
-        model: started.model,
-        workId: started.workId,
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : 'Udio generation failed';
-
-    // PHASE 57 — a billing/credit failure from Udio (e.g. "No credit",
-    // insufficient funds, quota) must NOT be a dead end: transparently fail
-    // over to the funded Replicate (Meta MusicGen) music model so the user
-    // still receives a track. Mirrors the image (NanoBanana→FLUX) and video
-    // (LTX→Zeroscope) failovers. A non-billing error still surfaces honestly
-    // so we never mask a real bug.
-    if (isProviderCreditError(errorMsg)) {
-      const fallback = await handleReplicateIntent(input, detected).catch(() => null);
-      if (fallback && fallback.success) {
-        return {
-          ...fallback,
-          metadata: {
-            ...fallback.metadata,
-            musicFallback: 'udio->replicate',
-            primaryProvider: 'udio',
-            primaryProviderError: errorMsg,
-          },
-        };
-      }
-    }
-
-    return {
-      success: false,
-      intent: detected.intent,
-      responseType: 'text',
-      message: errorMsg,
-      metadata: {
-        provider: 'udio',
-        confidence: detected.confidence,
-        iteration: iterative.iteration,
-      },
-    };
-  }
-}
-
-/**
- * PHASE 57 — true when a provider error message indicates a billing/credit/auth
- * failure (out of funds, quota, payment, unauthorized) rather than a
- * deterministic bad-request bug. Drives the music Udio→Replicate failover.
- */
-function isProviderCreditError(message: string): boolean {
-  return /no credit|insufficient|insufficient_funds|top.?up|quota|exceeded|payment|balance|out of credit|unauthor|forbidden|denied|\b402\b|\b429\b/i.test(message || '');
-}
-
 async function pollUdioTask(workId: string, predictionId: string): Promise<ChatResponse> {
   const status = await getUdioGenerationStatus(workId);
 
@@ -1783,10 +1644,6 @@ function mapResponseType(intent: IntentCategory): ChatResponse['responseType'] {
   }
 }
 
-function toUdioPredictionId(workId: string): string {
-  return `${UDIO_PREDICTION_PREFIX}${workId}`;
-}
-
 function extractUdioWorkId(predictionId: string): string | null {
   if (!predictionId.startsWith(UDIO_PREDICTION_PREFIX)) {
     return null;
@@ -1794,28 +1651,6 @@ function extractUdioWorkId(predictionId: string): string | null {
 
   const workId = predictionId.slice(UDIO_PREDICTION_PREFIX.length).trim();
   return workId || null;
-}
-
-function parseOptionList(value: string | undefined): string[] | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const items = value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-
-  return items.length > 0 ? items : undefined;
-}
-
-function parseBooleanOption(value: string | undefined): boolean {
-  if (!value) {
-    return false;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
 function intentToMediaKind(intent: IntentCategory): MediaKind {

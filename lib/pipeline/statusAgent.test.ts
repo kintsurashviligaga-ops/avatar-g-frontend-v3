@@ -157,7 +157,8 @@ describe('no row repeats the stale provider claims', () => {
     expect(music.available).toBe(false);
     expect(music.provider).toMatch(/^Lyria 3/);
     expect(music.note).toMatch(/Auto fails — LYRIA_ENABLED is off/);
-    expect(music.note).toMatch(/explicit pick only: ElevenLabs Music✅ Udio✅ MusicGen✅/);
+    // Music Studio v1: no other engine can be picked, whatever keys exist.
+    expect(music.note).toMatch(/Udio \/ ElevenLabs Music \/ MusicGen removed/);
   });
 
   it('an unknown GEMINI_TRANSPORT fails closed for the frames and Lyria without throwing', async () => {

@@ -1,0 +1,103 @@
+{
+  "checkedAt": "2026-10-14T12:39:09.421Z",
+  "env": "preview",
+  "commit": "c4c8792e0b2acfb348c9b99c76fc8b3429e6a402",
+  "approval": "GG-20261014-MUSIC-LYRIA-E2E-USD5",
+  "capUsd": 5,
+  "spentBeforeUsd": 0,
+  "usdPerClipReference": 0.04,
+  "results": [
+    {
+      "case": "A-instrumental",
+      "model": "lyria-3-clip-preview",
+      "location": "global",
+      "transport": "vertex",
+      "ok": true,
+      "dispatched": true,
+      "ms": 9992,
+      "status": 200,
+      "finishReason": "STOP",
+      "modelVersion": "lyria-3-clip-preview",
+      "textPart": "<instrumental>\nCaption: This is a calm and reflective instrumental piece in the Cinematic and Neoclassical genres, designed to evoke a serene yet wistful mood. The entire soundscape is built upon a continuous, high-fidelity stereo field recording of soft, steady rainfall, which acts as a gentle textural foundation and fills the high-frequency space. The harmonic and rhythmic core is provided by a grand piano (like a Steinway Model D), played softly with the sustain pedal held down (pianissimo), creating a wash of lush, legato major 7th and add9 chords that bleed into one another with a gentle, blooming decay. Floating elegantly over this lush piano bed is the lead instrument: a solo cello. The cello plays a slow, lyrical, and deeply emotional melody in its upper-middle register with long, connected bow strokes (legato) and expressive vibrato. The cello's performance should be deeply emotive and resonant, contrasting with the gentler piano chords. The production aesthetic is spacious and cinematic; both the piano and cello are drenched in a generous hall reverb (around 3-4 seconds decay time) to create a vast, immersive soundstage. The mix is dynamically balanced to emphasize the emotional power of the solo cello, ensuring it soars above the gentle wash of the piano and rain.\nMosic: 4.5\nBPM: 70.0",
+      "usage": {
+        "candidatesTokenCount": 533,
+        "totalTokenCount": 533,
+        "trafficType": "ON_DEMAND",
+        "candidatesTokensDetails": [
+          {
+            "modality": "AUDIO",
+            "tokenCount": 533
+          }
+        ]
+      },
+      "safety": null,
+      "promptFeedback": null,
+      "mime": "audio/mpeg",
+      "bytes": 746248,
+      "sha256": "09eaddb7207b3f5682c98990e971bb7a8410d6aa7c2139f578e1719a7fe08887",
+      "file": "A-instrumental.mp3"
+    },
+    {
+      "case": "B-vocal-en",
+      "model": "lyria-3-clip-preview",
+      "location": "global",
+      "transport": "vertex",
+      "ok": true,
+      "dispatched": true,
+      "ms": 8434,
+      "status": 200,
+      "finishReason": "STOP",
+      "modelVersion": "lyria-3-clip-preview",
+      "textPart": "[0.0:7.5] City lights are glowing on the river tonight\n[7.5:15.0] Every street is singing and my heart is light\n[15.0:22.5] Hold my hand and walk with me until the morning comes\n[22.5:30.0] We will dance like children to the beating of the drums\nCaption: This piece is a quintessential warm Acoustic Pop track, defined by its clean, polished production and layered instrumental textures that create a lush, joyful atmosphere. The foundation is provided by a brightly-strummed steel-string acoustic guitar (like a Taylor or Martin) playing open major chords, establishing both the harmonic context and the gentle rhythmic pulse. Layered underneath, a grand piano provides depth and harmonic richness with lush, sustained block chords, adding a feeling of warmth and fullness to the mid-range. A subtle, light rhythmic backing is introduced by a gentle, live drum kit featuring a simple beat with brushes on the snare, a soft kick drum, and a shaker providing a continuous eighth-note texture to create the requested 'beating of the drums' feel. For a touch of sparkle, a delicate, arpeggiated piano line plays higher-register notes that cascade over the main chords, evoking the twinkling 'city lights'. The entire mix is centered around a female lead vocal, delivered with a gentle, slightly breathy, and heartfelt tone. Her performance is full of warmth, with generous reverb applied to both the vocals and the arpeggiated piano to create a dreamy, spacious, and romantic soundscape.\nMosic: 4.5\nBPM: 96.0",
+      "usage": {
+        "candidatesTokenCount": 533,
+        "totalTokenCount": 533,
+        "trafficType": "ON_DEMAND",
+        "candidatesTokensDetails": [
+          {
+            "modality": "AUDIO",
+            "tokenCount": 533
+          }
+        ]
+      },
+      "safety": null,
+      "promptFeedback": null,
+      "mime": "audio/mpeg",
+      "bytes": 746248,
+      "sha256": "eba9504fd2c647b04efa9eafd14391ab5398b34deeb39c7e3b62d829575b2da9",
+      "file": "B-vocal-en.mp3"
+    },
+    {
+      "case": "C-vocal-ka-experimental",
+      "model": "lyria-3-clip-preview",
+      "location": "global",
+      "transport": "vertex",
+      "ok": true,
+      "dispatched": true,
+      "ms": 10135,
+      "status": 200,
+      "finishReason": "STOP",
+      "modelVersion": "lyria-3-clip-preview",
+      "textPart": "[0.0:5.0] თბილისის შუქი ღამეში ანთია\n[7.5:12.5] მტკვარი მღერის, გული ხარობს\n[15.0:20.0] ხელი მომეცი, ვიაროთ ერთად\n[22.5:27.5] დილამდე ვიცეკვოთ, ვიმღეროთ\nCaption: This track is a warm, modern Georgian Folk-Pop piece defined by its lush, cinematic atmosphere. The song's rhythmic and harmonic foundation is provided by a bright, cheerfully strummed Georgian panduri, playing rhythmic open chords that give the track its characteristic upbeat, folk energy. Layered underneath this is a lush, expansive string orchestra—violins, violas, and cellos—playing soaring legato pads that swell and fall with the chord changes, creating a cinematic, romantic soundscape. A subtle, modern pop beat with a soft kick drum on the downbeats and a gentle tambourine on the off-beats adds a contemporary rhythmic pulse without overpowering the traditional feel. In the background, a distant, wordless Georgian polyphonic female choir provides ethereal harmonic support, adding a distinctly national texture. The lead vocal is delivered by a warm, soulful female alto, sung in Georgian with heartfelt emotion and clear diction. The entire production is spacious, with generous reverb, evoking the feeling of a wide-open Tbilisi night.\nMosic: 4.5\nBPM: 90.0",
+      "usage": {
+        "candidatesTokenCount": 533,
+        "totalTokenCount": 533,
+        "trafficType": "ON_DEMAND",
+        "candidatesTokensDetails": [
+          {
+            "modality": "AUDIO",
+            "tokenCount": 533
+          }
+        ]
+      },
+      "safety": null,
+      "promptFeedback": null,
+      "mime": "audio/mpeg",
+      "bytes": 746248,
+      "sha256": "26d6b2937ac335ef447e9b443ed06ff9924034fd1422bd97008b3c2cc65d78d7",
+      "file": "C-vocal-ka-experimental.mp3"
+    }
+  ],
+  "dispatchedCalls": 3,
+  "plannedSpendUpperBoundUsd": 0.12
+}

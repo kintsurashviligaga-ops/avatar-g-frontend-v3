@@ -7,7 +7,7 @@
       "claude/final-integration-release-wt2y8s": false
     }
   },
-  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; node scripts/gcp/preview-inference-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
+  "buildCommand": "node scripts/gcp/preview-auth-check.cjs; NODE_OPTIONS='--max-old-space-size=4096' next build",
   "installCommand": "npm ci",
   "outputDirectory": ".next",
   "devCommand": "next dev -p 3000",
@@ -227,6 +227,10 @@
     },
     {
       "path": "/api/agent/media/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/music/studio/sweep",
       "schedule": "* * * * *"
     },
     {

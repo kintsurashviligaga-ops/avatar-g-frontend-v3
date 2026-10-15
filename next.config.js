@@ -143,6 +143,12 @@ const nextConfig = {
       // DAY-4 photo-to-music-video: multiplexes an uploaded image + the generated track into an MP4 via
       // ffmpeg-static — the binary must ride along in this lambda or the multiplex ENOENTs at runtime.
       '/api/music/video': ['./node_modules/ffmpeg-static/**'],
+      // Music Studio v1: ffmpeg QC of every Lyria track (the worker runs in the start, status and sweep functions) and
+      // the deterministic edits.
+      '/api/music/studio/jobs': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/jobs/[id]': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/sweep': ['./node_modules/ffmpeg-static/**'],
+      '/api/music/studio/edit': ['./node_modules/ffmpeg-static/**'],
       // Music voice-clone transcodes the uploaded voice to mp3 (+ loops short clips)
       // via ffmpeg-static before MiniMax — its binary must ride along in this lambda too.
       '/api/ai/music': ['./node_modules/ffmpeg-static/**'],

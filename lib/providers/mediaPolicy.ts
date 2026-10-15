@@ -77,13 +77,12 @@ export const GATED_ENTRIES: ReadonlyArray<{ file: string; when: string }> = [
   { file: 'app/api/heygen/presenter/route.ts', when: 'Avatar presenter (HeyGen) → refused' },
   { file: 'app/api/heygen/avatar/route.ts', when: 'HeyGen avatar video → refused' },
   { file: 'app/api/video/lipsync/route.ts', when: 'talking photo / film lip-sync (HeyGen, SadTalker, sync) → refused' },
-  { file: 'app/api/ai/music/route.ts', when: 'Udio / MusicGen picks, cover (MusicGen), sample voice (MiniMax), trained voice (RVC) → refused; Lyria and ElevenLabs Music run' },
-  { file: 'lib/ai/musicEnginesStatus.ts', when: 'the music picker shows Udio / MusicGen as off' },
+  // app/api/ai/music/route.ts and lib/ai/musicEnginesStatus.ts left this list: since Music Studio v1 (Phase 2) they refuse /
+  // show off every non-Google music engine ALWAYS, not only under this switch (lib/music/studio/boundary).
   { file: 'app/api/video/remix/route.ts', when: 'restyle / character / background / redub (NanoBanana, Kling, roop, sync) → refused; ffmpeg ops, voiceover and the Veo product ad run' },
   { file: 'app/api/motion-control/route.ts', when: 'Motion transfer (Kling) → refused' },
   { file: 'app/api/v2/model3d/create/route.ts', when: '3D (TRELLIS) → refused' },
   { file: 'app/api/ai/edit-photo/route.ts', when: 'photo editor (Replicate) → refused' },
-  { file: 'app/api/ai/edit-audio/route.ts', when: 'vocal isolation / splitter (Demucs) → refused; ffmpeg ops run' },
   { file: 'app/api/ai/upscale/route.ts', when: 'upscale (Replicate) → refused' },
   { file: 'lib/services/dubbing/dubbingPipeline.ts', when: 'dubbing keeps the ducked original bed instead of a Demucs split' },
   { file: 'app/api/replicate/image/route.ts', when: 'raw Replicate route → refused' },
