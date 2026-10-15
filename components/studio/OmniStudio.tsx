@@ -64,7 +64,7 @@ import type { Storyboard as DirectorStoryboard } from '@/lib/video/director/type
 import { VideoCreatePanel } from './create/VideoCreatePanel';
 import { VideoStage } from './create/VideoStage';
 import { useCreditsAvailable, useFreeFilmsRemaining, useVideoCapabilities } from './create/useVideoCreateData';
-import { freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
+import { filmGraphicsRuns, filmLipsyncRuns, freeSlotApplies, lipsyncAddOnCredits, lipsyncAddOnNote, musicVideoIntroSec, narrationCueApplies, veoSpeaksTypedLine, videoQuote, videoWaitSecs } from '@/lib/video/createPanel';
 import { FILM_MAX_SCENES, clipSecForSeconds, formatVideoDuration, sceneCountForSeconds } from '@/lib/video/duration';
 import { VIDEO_FPS, describeDurationBlock, describeDurationPlan, describeFinalCutRefusal, finalCutForAssemble, joinOverlapFor, panelSecondsAfterBlock, planFinalDuration, quantizeToFrames } from '@/lib/video/durationContract';
 import { approvalForRender, inferOrigin, renderScriptsFor, snapshotRevision, type RenderApprovalWire, type StoryboardRevision } from '@/lib/video/storyboard/revision';
@@ -221,6 +221,7 @@ import type { ImageResultActions } from '@/components/studio/create/ImageResultP
 import { useCreditsBalance } from '@/store/useCreditsBalance';
 import { IMG_ASPECTS, IMG_STYLES, type ImgAspect, type ImgQuality } from '@/lib/studio/imageCreate';
 import { deriveImageResults, latestNotice } from '@/lib/studio/imageResults';
+import { withFilmStyle } from '@/lib/studio/style';
 import { AUDIO_ACCEPT } from '@/lib/media/accept';
 import { saveMedia } from '@/lib/media/saveMedia';
 
@@ -3492,7 +3493,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
   const videoFreeFilms = useFreeFilmsRemaining(!guest && activeTool === 'video');
   // The lip-sync pass renderFilm runs after the film assembles (same condition as its `wantsLipsync`) is its own
   // /api/video/lipsync charge, taken when it starts and returned when it fails — named under both Generate buttons.
-  const filmLipsyncCredits = lipsyncAddOnCredits({ mode: videoMode, lipsyncOn: videoLipsync, hasDialogue: videoSpeech.trim().length > 0 });
+  const filmLipsyncCredits = lipsyncAddOnCredits({
+    mode: videoMode, lipsyncOn: videoLipsync, hasDialogue: videoSpeech.trim().length > 0,
+    veoSpeaks: veoSpeaksTypedLine({ speech: videoSpeech, sceneCount: sceneCountForSeconds(videoDuration), nativeAudio: veoPlan.nativeAudio }),
+  });
   // The persona in use — named on the chat composer's chip (Gemini shows the chosen Gem there). Same store as the
   // sidebar row and the switcher's persona row; ✕ on the chip returns to the default assistant.
   const activePersona = useActivePersona(locale);
@@ -3880,8 +3884,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       // composited into the montage) runs whenever Lip-Sync is toggled on (default true) —
       // no typed dialogue required. Documentary still needs typed dialogue/narration
       // (compositeDocumentary speaks videoSpeech via a talking photo).
+      // With Veo's sound on, Veo speaks the typed line in-clip, so a documentary needs no talking head (filmLipsyncRuns).
       const hasDialogue = videoSpeech.trim().length > 0;
-      const wantsLipsync = (isMusicVideo && videoLipsync) || (!isMusicVideo && hasDialogue);
+      const veoSpeaks = veoSpeaksTypedLine({
+        speech: videoSpeech,
+        sceneCount: storyboardScenes?.length || sceneScripts?.length || sceneCountForSeconds(videoDuration),
+        nativeAudio: veo.generateAudio,
+      });
+      const wantsLipsync = filmLipsyncRuns({ mode: isMusicVideo ? 'musicvideo' : 'documentary', lipsyncOn: videoLipsync, hasDialogue, veoSpeaks });
       lipStage.current = wantsLipsync ? 'queued' : 'skipped';
       // REAL GEORGIAN VOCALS — ElevenLabs Music can't sing Georgian, so for a Georgian
       // music video we build the song ourselves (Georgian rap on the cloned KA voice over a
@@ -4201,9 +4211,10 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         }
       }
 
-      // ── GRAPHICS AGENT — ALWAYS on graphicsInput (lip-synced if it ran, else base master).
-      // FIX 1: a lip-sync skip NEVER drops the graphics pass. Strictly fail-open. ──
-      if (graphicsInput && mine()) {
+      // ── GRAPHICS AGENT — a MUSIC VIDEO's overlay, on graphicsInput (lip-synced if it ran, else base master).
+      // FIX 1: a lip-sync skip NEVER drops the graphics pass. Strictly fail-open. Any other film keeps its clean master
+      // (filmGraphicsRuns: the concert overlay used to land on documentaries and adverts too). ──
+      if (graphicsInput && mine() && filmGraphicsRuns(isMusicVideo ? 'musicvideo' : 'documentary')) {
         try {
           const theme = /tbilisi|თბილის/i.test(filmPrompt) ? 'TBILISI'
             : /night|ღამ|neon|ნეონ/i.test(filmPrompt) ? (locale === 'ka' ? 'ღამის განწყობა' : locale === 'ru' ? 'НОЧНЫЕ ВАЙБЫ' : 'NIGHT VIBES')
@@ -6977,15 +6988,21 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         ...videoCharacterRefs,
         ...attachments.filter((a) => isImage(a.mimeType)).map((a) => a.dataUrl),
       ];
-      // A music video has no spoken narrator → never append the narration cue in that mode.
-      const wantNarration = videoMode === 'documentary' && (videoNarration || (videoMyVoiceNarration && hasTrainedVoice));
+      // A music video has no spoken narrator → never append the narration cue in that mode. Nor when Veo will say the
+      // typed "What the character says" line on screen: the cue would turn it into an off-screen voice (narrationCueApplies).
+      const wantNarration = narrationCueApplies({
+        mode: videoMode,
+        narrationOn: videoNarration,
+        myVoiceNarration: videoMyVoiceNarration && hasTrainedVoice,
+        characterLineOnVeo: veoSpeaksTypedLine({ speech: videoSpeech, sceneCount: sceneCountForSeconds(videoDuration), nativeAudio: veoPlan.nativeAudio }),
+      });
       // A file script wins; else the typed Master Script field IS the authoritative script.
       const scriptBlock = videoScript || videoMaster;
       // The typed prompt (or a sensible default when only a script/images were given).
       const baseText = text || (scriptBlock
         ? (locale === 'en' ? 'Make a cinematic film that follows the attached script.' : locale === 'ru' ? 'Сними фильм строго по приложенному сценарию.' : 'შექმენი კინო ზუსტად ატაჩ სკრიპტის მიხედვით.')
         : (locale === 'en' ? 'A cinematic film' : locale === 'ru' ? 'Кинематографичный фильм' : 'კინემატოგრაფიული ფილმი'));
-      const styledBase = videoStyle ? `${baseText}. Visual style: ${videoStyle.toLowerCase()}, cinematic.` : baseText;
+      const styledBase = withFilmStyle(baseText, videoStyle);
       // A music video's picked genre / light (MusicVideoLook) join the brief the way the retired Music Video director did it.
       const styledText = videoMode === 'musicvideo' && (mvLook.genre || mvLook.lighting)
         ? composeMusicVideoPrompt({ userPrompt: styledBase, genreId: mvLook.genre, cameraId: null, lightingId: mvLook.lighting, hasCharacter: refs.length > 0 })
@@ -7235,7 +7252,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     // turn stays text-only. Consumed at the top of streamChat.
     autoPlayReplyRef.current = viaVoice;
     await streamChat([...messages, userMsg]);
-  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
+  }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, videoDuration, veoPlan.nativeAudio, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
   // ── VIDEO REMIX — edit an uploaded video via /api/video/remix (one op at a time) ──
   const REMIX_OP_LABELS: Record<typeof remixOp, { ka: string; en: string; ru: string }> = {
