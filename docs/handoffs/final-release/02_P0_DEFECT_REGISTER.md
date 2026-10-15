@@ -6,7 +6,7 @@ not in Production until the release; OWNER-THREAD = belongs to another active th
 
 | ID | Sev | Area | Defect (evidence) | Status |
 |---|---|---|---|---|
-| FR-1 | P0 | Video assemble | Client-supplied `filmTokenId` has no owner check (app/api/video/assemble/route.ts:348); `mergeMaster` lets a new caller replace `payerUid` (lib/chat/filmStatusStore.ts:193); `recordCompletedFilm` upserts on the client id (lib/orchestrator/jobs.ts:352/356). Fixed in #64 (defects 47/48), never ported | OWNER-THREAD (Video Core; asked 17:18Z) |
+| FR-1 | P0 | Video assemble | Client-supplied `filmTokenId` has no owner check (app/api/video/assemble/route.ts:348); `mergeMaster` lets a new caller replace `payerUid` (lib/chat/filmStatusStore.ts:193); `recordCompletedFilm` upserts on the client id (lib/orchestrator/jobs.ts:352/356). Fixed in #64 (defects 47/48), never ported | OWNER-THREAD: Video Core accepted 17:57Z, verified on main b21506b, porting #64 commit 5d9b71f2 (fixes + tests) on its branch for its next deploy. This branch must not touch those three files. Release blocker until that deploy is in main |
 | FR-2 | P0 | Isolation | Vercel Preview uses the Production Supabase (same anon key entry for dev/preview/prod) | OPEN — BLOCKED_OWNER (isolated Supabase project) |
 | FR-3 | P0 | Provider boundary | `MEDIA_GOOGLE_ONLY` opt-in on main → outside engines reachable in Production | FIXED-ON-BRANCH (#67: default ON, reopen only with OUTSIDE_ENGINES_APPROVED) |
 | FR-4 | P0 | Provider boundary / spend | `/api/video/voice-narration` ran Replicate RVC with no charge and no boundary gate | FIXED-ON-BRANCH (refuseOutsideEngine; listed in GATED_ENTRIES) |
