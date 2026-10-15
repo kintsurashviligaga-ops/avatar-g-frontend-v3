@@ -1,4 +1,5 @@
 'use client';
+import { ReadAloudControls } from '@/components/voice/experience/ReadAloudControls';
 
 /**
  * OmniStudio (Service Hub — Card B). MyAvatar Smart Assistant (multimodal).
@@ -5895,7 +5896,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', queued.text);
     // Preserve the queued turn's voice intent so a dictated follow-up still auto-plays its reply (consumed
     // at the top of streamChat).
-    autoPlayReplyRef.current = queued.viaVoice;
+    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     // streamChat renders the user turn from its history arg (setMessages([...history, assistant])), so
     // no separate setMessages is needed here — that would only double-render the bubble.
     void streamChat([...messagesRef.current, userMsg]);
@@ -6486,7 +6487,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         // A phone's Create sheet covers the thread: close it so the answer is SEEN (the generate branches do the same).
         if (!isDesktop) setOptionsOpen(false);
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = viaVoice;
+        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         await streamChat([...messages, chatTurn]);
         return;
       }
@@ -6863,7 +6864,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
       setInput(''); setAttachments([]);
       inputSourceRef.current = 'text';
       persistChatTurn('user', asked, attachments);
-      autoPlayReplyRef.current = viaVoice;
+      autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
       setBusy(false);
       await streamChat([...messages, videoTurn]);
       return;
@@ -7256,7 +7257,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
     persistChatTurn('user', text, attachments); // mirror the user turn to the server (fail-soft; anonymous → no-op)
     // Arm auto-play ONLY for a voice-initiated turn — its reply will be spoken aloud at stream end; a typed
     // turn stays text-only. Consumed at the top of streamChat.
-    autoPlayReplyRef.current = viaVoice;
+    autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
     await streamChat([...messages, userMsg]);
   }, [inputSourceRef, stopDictationEcho, input, attachments, busy, messages, mode, locale, isDesktop, imgAspect, imgQuality, imgStyle, imgCount, imgNegative, runImageBatch, pickedImageTemplateId, pickedMusicTemplateId, musicGenre, musicInstrumental, musicLyrics, musicAudioMode, musicDuration, musicTempo, musicVoiceType, musicSliders, useMyVoice, hasTrainedVoice, videoOrientation, videoStyle, videoNarration, videoMyVoiceNarration, videoMode, mvLook, videoCharacterRefs, videoScriptDoc, videoMasterScript, videoDialogue, videoSpeech, lipMyVoice, lipGender, lipFormat, lipPreset, myTwinFace, createStoryboard, streamChat, persistChatTurn, notifyCredit, t.narrationCue, t.imageFailed, t.musicFailed, t.voiceMode, t.coverMode, t.generatingMyVoice, t.lipsyncNeedFiles, t.generatingLipsync, t.lipsyncFailed, t.remixRunning, t.remixFailed, t.remixNeedTrack, t.remixNeedCaption, agentMontageOn, startAgentMontage, agentAudioOn, startAgentAudio, agentAnalyzeOn, patchMsgById, runChatRemix, seedMontageWith]);
 
@@ -9082,7 +9083,7 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
         if (busy || genActiveRef.current) return false;
         clearComposer();
         persistChatTurn('user', text);
-        autoPlayReplyRef.current = viaVoice;
+        autoPlayReplyRef.current = false; // Dictation is text input; full reading requires an explicit click.
         void streamChat([...msgs, { role: 'user', text, inputMethod: viaVoice ? 'voice' : 'text' }]);
         return true;
       case 'redo':
@@ -9933,12 +9934,14 @@ export default function OmniStudio({ locale = 'ka', initialTool }: {
                         className={`${act} ${copiedIdx === i ? 'text-app-accent' : ''}`}>
                         {copiedIdx === i ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
                       </button>
+                      {process.env.NEXT_PUBLIC_VOICE_EXPERIENCE_V2 === '1' ? <ReadAloudControls text={m.text} locale={locale} /> : (
                       <button type="button" onClick={() => void speakMsg(m.text, i)} aria-label={readWord} title={readWord}
                         className={`${act} ${speakingIdx === i ? 'text-app-accent' : ''}`}>
                         {speakingIdx === i
                           ? (speakPhase === 'loading' ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <Square size={16} aria-hidden="true" />)
                           : <Volume2 size={18} aria-hidden="true" />}
                       </button>
+                      )}
                       {modelLabel && (
                         <span data-testid="reply-model" title={modelLabel}
                           className="ml-auto min-w-0 truncate pl-2 text-[12px] font-medium tabular-nums text-app-muted">

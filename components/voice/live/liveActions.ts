@@ -34,6 +34,7 @@
  * loop (POST /api/agent/run, asked for a short budget — LIVE_AGENT_BUDGET_MS / LIVE_AGENT_MAX_STEPS — so a voice call
  * never waits two minutes). The step spinner runs meanwhile; whatever comes back is web data, and the model is told so.
  */
+import { voiceNeedsUiConfirmation } from '@/lib/voice/experience/toolSafety';
 import { LIVE_AGENT_FILES_MAX, liveAttachedRefs } from '@/lib/voice/liveAttached';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -632,6 +633,10 @@ export function executeLiveToolCall(call: LiveToolCall, env: LiveActionEnv = bro
   const name = typeof call?.name === 'string' ? call.name : '';
   const id = typeof call?.id === 'string' ? call.id : '';
   const answer = (response: Record<string, unknown>): LiveFunctionResponse => ({ id, name, response });
+
+  if (voiceNeedsUiConfirmation({ id, name, args: call?.args })) {
+    return { response: answer({ ok: false, error: 'ui_confirmation_required', message: 'Review the quote and use its confirmation button. Nothing started.' }) };
+  }
 
   const v = validateLiveToolCall(name, call?.args);
   if (!v.ok) {
