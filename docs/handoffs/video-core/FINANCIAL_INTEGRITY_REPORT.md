@@ -61,7 +61,7 @@ CI on 979141f6, job "billing on real Postgres" (run 38721595510): `filmBilling.p
 | Google's bill for a failed operation | assumed $0 (Google bills generated seconds) | INFERENCE |
 | Debit on a real paid account in Production | Phase 5 runs as admin (owner's card 10:22Z "ადმინით"), so the debit is proven on real Postgres, not with money | NOT TESTED in T6 by the owner's choice |
 | Films on another engine | Production is Google-only for films; other engines are not recorded for R3-A | VERIFIED FACT (code) |
-| Every signed-in user can start a Veo film in Production today | after the Vertex switch their clips bill the Google Cloud project (budgets alert, no hard cap) | VERIFIED FACT (code: `providerRouter.ts` `refuseAnonymousGeneration` only); **OWNER ACTION REQUIRED** if this should be admin-only until the public opening |
+| Every signed-in user can start a Veo film in Production today | after the Vertex switch their clips bill the Google Cloud project; since PR #71 (2026-10-15) every Veo submit is refused once the day's reserved spend would pass `VEO_DAILY_LIMIT_USD` ($10 in Production, `lib/veo/dailyCap.ts`); the budgets still only alert | VERIFIED FACT (code: `providerRouter.ts` `refuseAnonymousGeneration` only); **OWNER ACTION REQUIRED** if this should be admin-only until the public opening |
 
 ## 4. Reconciliation (how to check the ledger after any film)
 
