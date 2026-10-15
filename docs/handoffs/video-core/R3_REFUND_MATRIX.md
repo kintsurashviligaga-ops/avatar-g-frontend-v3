@@ -1,7 +1,8 @@
 # Video Core v1.0 final hardening — Phase 4: R3, what a film's credits do in every outcome
 
-Status 2026-10-15: **review of the code on `claude/video-core-v1-6gh97e` (PR #69 head) — no policy, price or refund rule was
-changed.** Labels: PROVEN T1 = unit test, PROVEN PG = real Postgres 16 (`scripts/lease-isolation/run.sh`), INFERENCE = read
+Status 2026-10-15: review of the code on `claude/video-core-v1-6gh97e` (PR #69 head). No price was changed. **One refund
+rule was added on the owner's word (decision card 10:16:26Z, "კი, დაუბრუნე"): R3-A, §3 and §5.** Everything else is as it
+was. Labels: PROVEN T1 = unit test, PROVEN PG = real Postgres 16 (`scripts/lease-isolation/run.sh`), INFERENCE = read
 from code or Google's docs, not run. Nothing here was run with real money.
 
 ## მოკლედ
@@ -11,10 +12,11 @@ from code or Google's docs, not run. Nothing here was run with real money.
    ნაწილი → იმ სცენების წილი.
 3. აწყობის ან QC-ის ჩავარდნა: კლიპების ფასი რჩება (Google-მა ისინი უკვე დაარენდერა და გადაახდევინა), აწყობის თავიდან ცდა უფასოა.
    **ეს პოლიტიკა არ შემიცვლია.**
-4. **ხარვეზი (R3):** სცენა, რომელიც Google-მა მიიღო და მერე ჩააგდო (safety, შეცდომა), მომხმარებელს არ უბრუნდება — ფილმი
-   უფრო მოკლე აეწყობა, ფასი კი სრულია. Google ჩავარდნილ ოპერაციაზე, სავარაუდოდ, არაფერს გვახდევინებს (INFERENCE).
-5. ერთი რეკომენდაცია (§3): ასეთი სცენის წილი დავაბრუნოთ, მხოლოდ მაშინ, როცა სერვერი თავად ნახავს Google-თან, რომ ოპერაცია
-   ჩავარდა. ფასები არ იცვლება.
+4. **ხარვეზი (R3), დახურულია კოდში (R3-A):** სცენა, რომელიც Google-მა მიიღო და მერე ჩააგდო (safety, შეცდომა), ადრე არ
+   ბრუნდებოდა. Owner-მა აირჩია „კი, დაუბრუნე“ (2026-10-15 10:16Z). ახლა სერვერი Google-ს თავად ეკითხება იმ ოპერაციაზე,
+   რომელიც ფილმის დაწყებისას ჩაიწერა, და სცენის წილს ერთხელ აბრუნებს. Production-ში ჯერ არ არის (მიგრაცია 20261014a +
+   PR #69-ის deploy).
+5. ფასები არ იცვლება. Google ჩავარდნილ ოპერაციაზე, სავარაუდოდ, არაფერს გვახდევინებს (INFERENCE).
 
 ## 1. The matrix
 
@@ -24,7 +26,7 @@ from code or Google's docs, not run. Nothing here was run with real money.
 | 2 | Balance below the quote / the ledger refuses the debit | nothing | nothing dispatched; the start key is released | nothing | `filmUpfrontCharge.test.ts:169,179,363,373` | PROVEN T1 |
 | 3 | **Provider failure at dispatch, every scene** | the quote | refunded in full, once, `filmpay:<token>:refund`; a free slot is handed back; the start key is released | nothing (no job exists) | `filmUpfrontCharge.test.ts:205,259,380` | PROVEN T1 |
 | 4 | **Partial at dispatch** (some scenes refused) | the quote | each refused scene's share (`floor(quote / scenes)`) refunded once, `filmpay:<token>:refund:dispatch`; the film continues on the rest; the durable record holds the net | the accepted scenes | `filmUpfrontCharge.test.ts:215`; PG: "partial refund net 26" | PROVEN T1 + PG |
-| 5 | **Provider failure after dispatch** (a scene Google accepted, then failed: safety refusal, error, expiry) | the quote | **not refunded.** With ≥ 2 surviving scenes the studio stitches a shorter cut; with fewer the film fails | INFERENCE: a failed operation produces no video and is not billed (Google bills per generated second) | `filmUpfrontCharge.test.ts:234` pins it as deliberate; reason `lib/chat/filmComposite.ts:1190-1200` (a poll result arrives through a client-held token, so it cannot prove a failure) | **GAP → §3** |
+| 5 | **Provider failure after dispatch** (a scene Google accepted, then failed: safety refusal, error, a finished operation with no video) | the quote | **R3-A (§5):** that scene's share comes back once, on `:refund:scene:<n>`, when the server's own check of the operation it recorded finds Google's terminal failure. The studio still stitches the survivors (≥ 2) or the film fails. Before: not refunded | INFERENCE: a failed operation produces no video and is not billed (Google bills per generated second) | `lib/chat/filmSceneRefund.test.ts`, `lib/chat/filmPollSceneRefund.test.ts`, `filmUpfrontCharge.test.ts` (R3-A), `lib/chat/filmSceneRefund.pg.test.ts` | **BUILT** on the owner's word (10:16Z); PROVEN T1 + PG; not in Production |
 | 6 | **Render (stitch) failure** (ffmpeg, upload, dispatch) | the quote (no extra charge) | the stitch waiver is handed back (`settleWaiver(false)`), the saga compensates once; the clips stay paid; a retry is free while a waiver is left | every rendered scene | `lib/orchestrator/assembleQcGate.test.ts:104,194,206`; `lib/chat/filmBillingWaiver.test.ts:20` | PROVEN T1 |
 | 7 | **QC failure** (frames, duration, fps, resolution, audio) | the quote | as 6: nothing hosted, film recorded FAILED, waiver back, compensated once, retry free | every rendered scene | `assembleQcGate.test.ts:56,91,120,128,175` | PROVEN T1 |
 | 8 | **Timeout / crash** of a stitch | the quote | the waiver lease (660 s > the route's 600 s) lapses and the waiver comes back; a twin during a live stitch gets 409 | every rendered scene | `filmBilling.pg.test.ts` (failed / crash / expiry recovery; lease 660 s) | PROVEN PG |
@@ -34,18 +36,19 @@ from code or Google's docs, not run. Nothing here was run with real money.
 | 12 | Payment reuse (another user, another film) | their own price | billed as their own; the payer's waiver untouched | — | `filmBilling.test.ts:124,132`; PG payment reuse | PROVEN T1 + PG |
 | 13 | A refund that fails (ledger down) | — | never claimed as done; logged `REFUND FAILED … needs manual credit` | — | `filmUpfrontCharge.test.ts:226` | PROVEN T1; no automatic retry (§4) |
 
-Idempotency: every refund has its own ref (`:refund`, `:refund:dispatch`); `refund_credits` is idempotent per ref and
+Idempotency: every refund has its own ref (`:refund`, `:refund:dispatch`, `:refund:scene:<n>`); `refund_credits` is idempotent per ref and
 `refundDebitByRef` pays back at most the net debit under the ref (`lib/orchestrator/ledger.refundByRef.test.ts`, 15 tests).
 Price SSoT: `lib/credits/videoPricing.ts` (`VIDEO_CREDITS_PER_SEC = 25/8`, Fast ×1, Lite ×0.6, Standard ×3.3, music video ×1.4;
 1 credit = 0.10 ₾, `lib/credits/pricing.ts:50`) — unchanged by this branch.
 
-## 2. The policy as it stands (unchanged)
+## 2. The policy
 
-* What the server can prove it did not deliver is given back, once.
-* What Google rendered stays paid, even when the stitch or QC fails; the stitch can be retried for free.
-* An async provider failure is not given back, because today only the browser sees it.
+* What the server can prove it did not deliver is given back, once. (Unchanged.)
+* What Google rendered stays paid, even when the stitch or QC fails; the stitch can be retried for free. (Unchanged.)
+* An async provider failure used to stay paid, because only the browser saw it. **R3-A (owner's word 10:16Z):** the
+  server now checks it itself and gives the scene's share back (§5).
 
-## 3. One recommendation (needs the owner's word: it is a business choice)
+## 3. One recommendation (the owner chose it: "კი, დაუბრუნე", 2026-10-15 10:16:26Z; built as §5)
 
 **R3-A — give back a scene that Google itself failed, verified by the server.**
 
@@ -74,3 +77,22 @@ Option kept: **leave it as it is.** No work, and a user keeps paying the full qu
 * Row 13: a refund that fails is only logged. The lease queue already pays a recorded refund debt on its next sweep;
   films have no such debt record. Fix: record the debt next to the durable payment and pay it on the next read.
 * Row 9: a film's Stop is not tested as a money path (the long-form one is).
+
+## 5. R3-A as built (2026-10-15)
+
+* **Start** (`lib/chat/filmComposite.ts`): a paid film records, next to its durable payment, each QUEUED Veo scene's
+  operation and its share `floor(quote / scenes)` (`film_scenes`, in proposal 20261014a). A scene dead at dispatch is not
+  recorded: the dispatch refund already returned it. The shares never exceed what the film still holds (the SQL refuses).
+* **Poll** (`lib/chat/providerRouter.ts` → `lib/chat/filmSceneRefund.ts`): a clip that reads `failed` is only a hint. For
+  the signed-in user, the server asks Google about the operation **it recorded** (`pollVeoClip`). Only a finished
+  operation that returned an error, a safety refusal or no video counts (`finished: true`, added to
+  `lib/veo/vertexClient.ts finishedOperationOutcome`). Still running, 429/5xx, no config, a bad name or an unknown/expired
+  operation (Gemini 404) prove nothing: the scene stays open and is asked about again on a later poll.
+* **Settle** (`settle_film_scene`, one statement under the film's billing-row lock): `failed` → the share, capped by the
+  film's net debit, via `refund_credits` on `filmpay:<token>:refund:scene:<n>`; rendered → kept (stays paid). Each scene
+  settles once (20 parallel → 1 refund, PG). Another user naming the film settles nothing. Service role only.
+* **Told to the user**: the poll says `💳 N კრედიტი დაბრუნდა…` and returns `metadata.film.creditsGivenBack`.
+* **Not covered (unchanged)**: free films, scenes on another engine (Production is Google-only), a film nobody polls
+  again (it settles when it is next opened), Gemini 404 (an expired operation is not proof), long-form films (their own
+  per-scene refund, row 9).
+* **Before 20261014a is applied**: nothing is recorded or given back, exactly as before (fail-open in the old direction).

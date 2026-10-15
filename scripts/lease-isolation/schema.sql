@@ -139,5 +139,5 @@ revoke execute on function public.deduct_credits(uuid, integer, text), public.re
 
 -- The two test accounts the suites use (lib/agent/media/leaseIsolation.pg.test.ts, lib/agent/run/runIsolation.pg.test.ts).
 insert into auth.users (id) values ('0e000000-0000-4000-8000-00000000000a'), ('0e000000-0000-4000-8000-00000000000b');
--- The film billing suite's accounts (lib/chat/filmBilling.pg.test.ts): film_billing rows reference auth.users.
-insert into auth.users (id) select ('0e000000-0000-4000-8000-0000000f00' || lpad(to_hex(n), 2, '0'))::uuid from generate_series(1, 24) n;
+-- The film billing suites' accounts (lib/chat/filmBilling.pg.test.ts 1–24, filmSceneRefund.pg.test.ts 25–40): film_billing rows reference auth.users.
+insert into auth.users (id) select ('0e000000-0000-4000-8000-0000000f00' || lpad(to_hex(n), 2, '0'))::uuid from generate_series(1, 40) n;

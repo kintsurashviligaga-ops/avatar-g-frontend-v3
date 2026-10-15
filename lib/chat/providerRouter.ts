@@ -36,6 +36,7 @@ import { GOOGLE_ONLY_CODE, googleOnlyMessage, isMediaGoogleOnly } from '@/lib/pr
 import { claimIdempotencyKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { isFilmRef, decodeFilmRef, computeFilmUnion, type FilmTaskRef, type FilmLegRuntimeStatus } from './filmTaskRef';
 import { deriveFilmTokenId, buildFilmSnapshot, foldFilmSnapshot, getFilmStatus, putFilmStatus } from './filmStatusStore';
+import { settleFailedFilmScenes } from './filmSceneRefund';
 import { isFounderAuditCommand, isFounder, runFounderAudit, renderAuditAsMarkdown } from '@/lib/monetization/audit-engine';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -413,7 +414,7 @@ export async function pollOrchestrationTask(predictionId: string, sessionId?: st
   // matrix in lock-step. Checked FIRST: a `film:` token must never fall through
   // to the composite/udio single-leg pollers. (Film bills per-clip in its own pipeline.)
   if (isFilmRef(predictionId)) {
-    return pollFilmTask(predictionId, sessionId);
+    return pollFilmTask(predictionId, sessionId, userId);
   }
 
   // Composite (music + video + lyrics) — decode and poll each leg.
@@ -589,7 +590,7 @@ async function pollCompositeTask(predictionId: string, sessionId?: string): Prom
  */
 type FilmLegPollStatus = FilmLegRuntimeStatus;
 
-async function pollFilmTask(predictionId: string, sessionId?: string): Promise<ChatResponse> {
+async function pollFilmTask(predictionId: string, sessionId?: string, userId?: string): Promise<ChatResponse> {
   const ref = decodeFilmRef(predictionId);
   if (!ref) {
     return {
@@ -609,11 +610,10 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   const clipStates = await Promise.all(
     ref.clips.map(async (clip) => pollFilmClip(clip, effectiveSession)),
   );
-  // NOTE: refund-on-async-failure is NOT done here yet. A token-driven refund is unsafe (the film token is
-  // unsigned/forgeable AND the clip 'failed' verdict comes from polling a client-supplied taskRef — a mapped
-  // transient 429 also reads as 'failed'), so it would be a credit-farming exploit + an over-refund on
-  // recovery. The correct fix needs an HMAC-signed token + a server-authoritative per-dispatch render record
-  // gating the refund on a TERMINAL provider failure. Tracked as a dedicated secure task.
+  // ⚠️ NO REFUND IS EVER DECIDED FROM THIS TOKEN. It is unsigned (its task refs can be forged) and a mapped transient 429
+  // can read as 'failed'. A dead clip here is only a HINT: R3-A (lib/chat/filmSceneRefund, below) re-asks Google about the
+  // operation the film START recorded server-side for the signed-in user, and gives the scene's share back only on Google's
+  // terminal verdict.
 
   // ── Poll the audio leg (Udio) ───────────────────────────────────────────────
   let audioStatus: FilmLegPollStatus = ref.musicWorkId ? 'pending' : 'skipped';
@@ -645,6 +645,13 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
   // master, once the assemble route stamps it) via /api/video/status/[tokenId].
   // Best-effort + fail-open: a tracking write must never break the poll.
   const statusTokenId = deriveFilmTokenId({ sessionId: ref.sessionId, createdAt: ref.createdAt, seed: ref.seed });
+  // R3-A — a scene Google accepted and then failed: its share back, once, on the server's record and Google's own word.
+  const deadAfterDispatch = clipStates
+    .filter((c) => c.status === 'failed' && ref.clips.some((x) => x.ordinal === c.ordinal && x.taskRef))
+    .map((c) => c.ordinal);
+  const creditsGivenBack = deadAfterDispatch.length > 0
+    ? await settleFailedFilmScenes(userId, statusTokenId, deadAfterDispatch).catch(() => 0)
+    : 0;
   try {
     // ⚠️ FOLD, DON'T OVERWRITE: the snapshot knows the clips, not who paid or whether the master landed — a bare put here
     // erased the free-film waiver and the finished master on the very next tick (see foldFilmSnapshot).
@@ -673,6 +680,7 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
     `🎬 Film render: ${succeededClips}/${activeClips} clips ready`,
     // PARTIAL SALVAGE — surface that the film stitches with fewer scenes (1+ skipped).
     ...(union.salvaged ? [`⚠️ ${activeClips - succeededClips}/${activeClips} სცენა გამოტოვდა — ნაწილობრივი მონტაჟი`] : []),
+    ...(creditsGivenBack > 0 ? [`💳 ${creditsGivenBack} კრედიტი დაბრუნდა სცენისთვის, რომელიც Google-მა ვერ შექმნა`] : []),
     `🎵 Score: ${audioStatus}`,
     readyToStitch
       ? (union.salvaged ? `✂️ Editor ready — stitching ${succeededClips} survivors` : '✂️ Editor ready — stitching final cut')
@@ -729,6 +737,8 @@ async function pollFilmTask(predictionId: string, sessionId?: string): Promise<C
         readyToStitch,
         // PHASE 47 §1 — the unified status-tracker key for /api/video/status.
         statusTokenId,
+        // R3-A — credits given back by THIS poll for scenes Google failed (the client refreshes the balance on it).
+        ...(creditsGivenBack > 0 ? { creditsGivenBack } : {}),
       },
     },
   };

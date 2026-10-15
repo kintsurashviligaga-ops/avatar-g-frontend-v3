@@ -75,10 +75,14 @@ IDEM_PHASE=after node node_modules/.bin/jest lib/orchestrator/idempotencyStore.p
 # (no film_billing: the ledger + cache, a paid film without its cache STOPS), then with the proposal applied
 # (docs/handoffs/video-core/proposals/20261014a_film_billing.sql; NOT applied anywhere else — it waits for the owner's word).
 FILM_PHASE=before node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
+# Applied twice: the proposal must be re-runnable.
+psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_billing.sql
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -v ON_ERROR_STOP=1 -q -f docs/handoffs/video-core/proposals/20261014a_film_billing.sql
 psql -h 127.0.0.1 -p "$PG_PORT" -U postgres -q -c "notify pgrst, 'reload schema'"
 sleep 2
 FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmBilling.pg.test.ts --no-watchman --ci --forceExit
+# R3-A (the same proposal): a scene Google failed is given back once, capped, owner-bound, service role only.
+FILM_PHASE=after node node_modules/.bin/jest lib/chat/filmSceneRefund.pg.test.ts --no-watchman --ci --forceExit
 # Phase 3 (B3) preflight: the storyboard revision proposal (docs/handoffs/video-core/proposals/20261012a_storyboard_revisions.sql)
 # on the same database — applied twice (it must be re-runnable), checked, rolled back with its own footer, re-applied and
 # checked again. NOT applied anywhere else: it waits for the owner's word and for the code that would write it.

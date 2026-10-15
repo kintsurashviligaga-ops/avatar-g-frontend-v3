@@ -20,11 +20,27 @@
 --                        holder of the lease can settle it.
 --   record_film_billing — written by the film start; a 'paid' row must match a debit in the ledger under its ref.
 --
--- Written and read ONLY by service_role (RLS on, no policies, no grants to anon/authenticated). Additive only: one table,
--- three functions. Nothing existing is altered. Verified on a throwaway Postgres 16 + PostgREST
--- (scripts/lease-isolation/run.sh → lib/chat/filmBilling.pg.test.ts).
+-- R3-A (added 2026-10-15 on the owner's word, decision card 10:16Z "კი, დაუბრუნე"): a scene Google ACCEPTED and then
+-- failed (a safety refusal, an error, a finished operation with no video) is given back, once, on the server's own word.
+--   film_scenes          — written by the film start: each queued Veo scene's operation name and its share of the price
+--                          (floor(quote / scenes), the dispatch refund's share). Never taken from the client's token.
+--   record_film_scenes   — only for a recorded PAID film; the shares together never exceed what the film still holds.
+--   pending_film_scenes  — the scenes nobody has settled yet (the server re-asks Google about exactly these).
+--   settle_film_scene    — 'failed' (Google's terminal verdict, checked by the server) gives the share back under
+--                          `filmpay:<token>:refund:scene:<n>`, capped by the film's net debit; anything else keeps it.
+--                          Each scene settles once; a film's settlements serialise on its billing row.
+-- Delivered scenes, failed stitches and QC failures are unchanged (docs/handoffs/video-core/R3_REFUND_MATRIX.md).
 --
--- Rollback (the code then falls back to the ledger + Redis cache and STOPS SAFELY, never bills twice):
+-- Written and read ONLY by service_role (RLS on, no policies, no grants to anon/authenticated). Additive only: two tables,
+-- six functions. Nothing existing is altered. Verified on a throwaway Postgres 16 + PostgREST
+-- (scripts/lease-isolation/run.sh → lib/chat/filmBilling.pg.test.ts, lib/chat/filmSceneRefund.pg.test.ts).
+--
+-- Rollback (the code then falls back to the ledger + Redis cache and STOPS SAFELY, never bills twice; a failed scene is
+-- then simply not given back, as before R3-A):
+--   drop function public.settle_film_scene(uuid, text, integer, boolean);
+--   drop function public.pending_film_scenes(uuid, text);
+--   drop function public.record_film_scenes(uuid, text, jsonb);
+--   drop table public.film_scenes;
 --   drop function public.settle_film_waiver(uuid, text, text, boolean);
 --   drop function public.lease_film_waiver(uuid, text, text, integer);
 --   drop function public.record_film_billing(uuid, text, text, integer, text);
@@ -157,5 +173,141 @@ revoke execute on function public.settle_film_waiver(uuid, text, text, boolean) 
 grant execute on function public.record_film_billing(uuid, text, text, integer, text) to service_role;
 grant execute on function public.lease_film_waiver(uuid, text, text, integer) to service_role;
 grant execute on function public.settle_film_waiver(uuid, text, text, boolean) to service_role;
+
+-- ── R3-A: a scene Google failed, given back on the server's word ─────────────────────────────────────────────────────
+
+create table if not exists public.film_scenes (
+  user_id    uuid not null,
+  token_id   text not null,
+  ordinal    smallint not null check (ordinal between 0 and 63),
+  -- The Veo operation the start dispatched (Vertex `projects/…` or Gemini `models/…`): the only thing the server re-asks.
+  operation  text not null check (char_length(operation) between 1 and 512),
+  credits    integer not null check (credits >= 0),
+  state      text not null default 'queued' check (state in ('queued', 'kept', 'refunded')),
+  refunded   integer not null default 0 check (refunded >= 0 and refunded <= credits),
+  settled_at timestamptz,
+  created_at timestamptz not null default now(),
+  primary key (user_id, token_id, ordinal),
+  constraint film_scenes_film_fkey foreign key (user_id, token_id)
+    references public.film_billing (user_id, token_id) on delete cascade
+);
+
+alter table public.film_scenes enable row level security;
+revoke all on table public.film_scenes from public, anon, authenticated;
+grant select, insert, update, delete on table public.film_scenes to service_role;
+
+-- The number of scenes recorded now (a replay records nothing; the first record stands).
+create or replace function public.record_film_scenes(p_user uuid, p_token text, p_scenes jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  f public.film_billing%rowtype;
+  s jsonb;
+  n integer := 0;
+begin
+  if p_user is null or p_token is null or p_token !~ '^f[0-9a-f]{16}$' then
+    raise exception 'invalid_film_token' using errcode = '22023';
+  end if;
+  if p_scenes is null or jsonb_typeof(p_scenes) <> 'array' or jsonb_array_length(p_scenes) not between 1 and 64 then
+    raise exception 'invalid_scenes' using errcode = '22023';
+  end if;
+  select * into f from public.film_billing where user_id = p_user and token_id = p_token for update;
+  if not found or f.kind <> 'paid' or f.charge_ref is null then
+    raise exception 'film_not_paid' using errcode = 'P0001';
+  end if;
+
+  for s in select value from jsonb_array_elements(p_scenes) loop
+    if jsonb_typeof(s -> 'ordinal') <> 'number' or jsonb_typeof(s -> 'credits') <> 'number'
+       or jsonb_typeof(s -> 'operation') <> 'string' then
+      raise exception 'invalid_scenes' using errcode = '22023';
+    end if;
+    insert into public.film_scenes (user_id, token_id, ordinal, operation, credits)
+    values (p_user, p_token, (s ->> 'ordinal')::smallint, s ->> 'operation', (s ->> 'credits')::integer)
+    on conflict (user_id, token_id, ordinal) do nothing;
+    if found then
+      n := n + 1;
+    end if;
+  end loop;
+
+  -- The shares can never give back more than the film still holds after its dispatch refund.
+  if (select coalesce(sum(credits), 0) from public.film_scenes where user_id = p_user and token_id = p_token) > f.credits then
+    raise exception 'scene_credits_exceed_film' using errcode = 'P0001';
+  end if;
+  return n;
+end;
+$$;
+
+-- [{ordinal, operation}] of the scenes not settled yet, in order; [] when there are none (or no such film).
+create or replace function public.pending_film_scenes(p_user uuid, p_token text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('ordinal', s.ordinal, 'operation', s.operation) order by s.ordinal), '[]'::jsonb)
+    from public.film_scenes s
+   where s.user_id = p_user and s.token_id = p_token and s.state = 'queued';
+$$;
+
+-- The credits given back now: the scene's share (capped by what the film's charge still holds) when p_failed, else 0.
+-- 0 too when the scene is unknown or already settled — a scene settles exactly once.
+create or replace function public.settle_film_scene(p_user uuid, p_token text, p_ordinal integer, p_failed boolean)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  f public.film_billing%rowtype;
+  sc public.film_scenes%rowtype;
+  held integer;
+  amount integer := 0;
+begin
+  if p_user is null or p_token is null or p_ordinal is null or p_failed is null then
+    raise exception 'invalid_scene' using errcode = '22023';
+  end if;
+  -- Every settlement of one film serialises here, so two shares can never both read the same remaining balance.
+  select * into f from public.film_billing where user_id = p_user and token_id = p_token for update;
+  if not found or f.kind <> 'paid' or f.charge_ref is null then
+    return 0;
+  end if;
+  select * into sc from public.film_scenes
+   where user_id = p_user and token_id = p_token and ordinal = p_ordinal for update;
+  if not found or sc.state <> 'queued' then
+    return 0;
+  end if;
+
+  if p_failed then
+    -- What the film's charge still holds: its debit minus every credit-back taken under it (`<ref>:…`).
+    select coalesce(sum(-l.delta) filter (where l.delta < 0 and l.metadata ->> 'ref' = f.charge_ref), 0)
+         - coalesce(sum(l.delta) filter (where l.delta > 0
+                                           and left(l.metadata ->> 'ref', char_length(f.charge_ref) + 1) = f.charge_ref || ':'), 0)
+      into held
+      from public.credit_ledger l
+     where l.user_id = p_user
+       and (l.metadata ->> 'ref' = f.charge_ref or left(l.metadata ->> 'ref', char_length(f.charge_ref) + 1) = f.charge_ref || ':');
+    amount := greatest(0, least(sc.credits, coalesce(held, 0)));
+    if amount > 0 then
+      perform public.refund_credits(p_user, amount, f.charge_ref || ':refund:scene:' || p_ordinal);
+    end if;
+  end if;
+
+  update public.film_scenes
+     set state = case when p_failed then 'refunded' else 'kept' end, refunded = amount, settled_at = now()
+   where user_id = p_user and token_id = p_token and ordinal = p_ordinal;
+  return amount;
+end;
+$$;
+
+revoke execute on function public.record_film_scenes(uuid, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.pending_film_scenes(uuid, text) from public, anon, authenticated;
+revoke execute on function public.settle_film_scene(uuid, text, integer, boolean) from public, anon, authenticated;
+grant execute on function public.record_film_scenes(uuid, text, jsonb) to service_role;
+grant execute on function public.pending_film_scenes(uuid, text) to service_role;
+grant execute on function public.settle_film_scene(uuid, text, integer, boolean) to service_role;
 
 commit;

@@ -45,7 +45,8 @@ import { generateAnchorFrame } from '@/lib/pipeline/anchorFrame';
 import { ServiceManager } from './ServiceManager';
 import { encodeFilmRef } from './filmTaskRef';
 import { deriveFilmTokenId, recordFreeFilmWaiver, recordFilmPaid, getFilmStartReplay, recordFilmStartReplay } from './filmStatusStore';
-import { filmChargeRef as filmChargeRefFor, recordFilmBilling, filmStartKey } from './filmBilling';
+import { filmChargeRef as filmChargeRefFor, recordFilmBilling, recordFilmScenes, filmStartKey } from './filmBilling';
+import { filmSceneShares } from './filmSceneRefund';
 import { claimPaidStartKey, releaseIdempotencyKey } from '@/lib/orchestrator/idempotency';
 import { generateFilmVoiceover, generateDialogueVoiceover, generateDialogueStems, dialogueStemsViable, wantsCommentary, generateFilmSfx, type DialogueStem } from './filmVoiceover';
 import { parseMasterScript, masterDialogueTurns } from '@/lib/pipeline/script/masterScript';
@@ -942,6 +943,8 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
   // platform ~$5.76 of Veo and the customer 20 credits. `filmCharged` is what is currently held against this film (net of any
   // dispatch-time refund); the ref makes every debit/refund of it idempotent.
   let filmCharged = 0;
+  // The quote as taken, before any refund: every scene's share (dispatch refund and R3-A alike) is cut from it.
+  let filmQuoteTaken = 0;
   const filmChargeRef = filmChargeRefFor(filmTokenId);
   if (input.userId && input.userId !== 'anonymous') {
     // A founder/promo FREE film needs ZERO wallet balance, so it must bypass the
@@ -1004,6 +1007,7 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
           : chargeRefusedResponse('video_generation', filmQuote, 'error', input.locale);
       }
       filmCharged = filmQuote;
+      filmQuoteTaken = filmQuote;
     }
   }
 
@@ -1471,6 +1475,11 @@ export async function handleFilmComposite(input: OrchestratorInput): Promise<Cha
     // rebuilt from the ledger by /assemble), and the Redis marker is only the cache.
     await recordFilmBilling({ uid: input.userId, tokenId: filmTokenId, kind: 'paid', credits: filmCharged, ref: filmChargeRef }).catch(() => 'unavailable');
     await recordFilmPaid(filmTokenId, { uid: input.userId, credits: filmCharged, ref: filmChargeRef }).catch(() => {});
+    // R3-A: each queued Veo scene's operation and share, recorded SERVER-SIDE, so a scene Google fails later can be given
+    // back on the server's own word (lib/chat/filmSceneRefund) — never on the client-held token. Fail-open: no record = no
+    // async refund, as before.
+    const shares = filmSceneShares(clips, perSceneCredits(filmQuoteTaken, Math.max(1, plan.scenes.length)));
+    if (shares.length > 0) await recordFilmScenes(input.userId, filmTokenId, shares).catch(() => 'unavailable');
   }
 
   // The Editor (stitch) and Audio legs depend on the clips finishing first, so

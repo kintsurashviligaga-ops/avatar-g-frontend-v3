@@ -259,7 +259,7 @@ describe('pollGeminiVeo', () => {
     fetchMock.mockResolvedValueOnce(json(200, { done: true, error: { code: 3, message: 'Blocked by Responsible AI. Support codes: 29310472' } }));
     expect(await pollGeminiVeo(OP)).toMatchObject({ state: 'filtered', supportCodes: ['29310472'] });
     fetchMock.mockResolvedValueOnce(json(200, { done: true, error: { code: 13, message: 'Video generation failed' } }));
-    expect(await pollGeminiVeo(OP)).toStrictEqual({ state: 'failed', reason: 'Video generation failed', code: 13 });
+    expect(await pollGeminiVeo(OP)).toStrictEqual({ state: 'failed', reason: 'Video generation failed', code: 13, finished: true });
   });
 
   it('HTTP 404 → failed: the operation expired (2-day retention) or is unknown', async () => {

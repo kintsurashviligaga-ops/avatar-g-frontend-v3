@@ -77,6 +77,13 @@ jest.mock('../orchestrator/idempotency', () => ({
   releaseIdempotencyKey: (...a: unknown[]) => mockReleaseKey(...a),
 }));
 
+// R3-A: what the start records server-side for each queued Veo scene (the poll later settles it with Google).
+const mockRecordScenes = jest.fn();
+jest.mock('./filmBilling', () => ({
+  ...jest.requireActual('./filmBilling'),
+  recordFilmScenes: (...a: unknown[]) => mockRecordScenes(...a),
+}));
+
 import { filmStartRefused, handleFilmComposite } from './filmComposite';
 import { deriveFilmTokenId, getFilmPaid } from './filmStatusStore';
 import { decodeFilmRef } from './filmTaskRef';
@@ -84,6 +91,12 @@ import type { OrchestratorInput } from './providerRouter';
 
 const queued = (n: number) => ({ success: true, predictionId: `task-${n}`, predictionStatus: 'processing', metadata: { videoProvider: 'gemini-veo' } });
 const dead = { success: false, predictionStatus: 'failed', metadata: { veoFailure: { reason: 'safety', retryable: false } } };
+/** A clip queued on Veo, its task ref encoded the way ServiceManager encodes a 'gemini-veo' job. */
+const veoOp = (n: number) => `projects/p/locations/us-central1/publishers/google/models/veo-3.1-fast-generate-001/operations/op-${n}`;
+const queuedOnVeo = (n: number) => ({
+  ...queued(n),
+  predictionId: Buffer.from(JSON.stringify({ v: 1, provider: 'gemini-veo', providerTaskId: `${veoOp(n)}::16:9` })).toString('base64url'),
+});
 
 /** The studio's Veo plan as it travels on the wire (lib/veo/renderOptions.ts VeoRenderOptionsSchema). */
 const veo = (tier: 'standard' | 'fast' | 'lite') => ({
@@ -110,6 +123,7 @@ beforeEach(() => {
   mockBalance = 1000;
   mockDeduct.mockResolvedValue({ ok: true, balance: 900 });
   mockRefund.mockResolvedValue({ ok: true });
+  mockRecordScenes.mockResolvedValue('recorded');
   mockConsumeFree.mockResolvedValue(-1); // no free slot
   mockRestoreFree.mockResolvedValue(0);
   mockStartKeys.clear();
@@ -232,10 +246,37 @@ describe('refunds: only what this request proves it did not deliver', () => {
   });
 
   test('a clip that queues and dies LATER is not refunded here (a poll result is not proof — the token is client-held)', async () => {
-    // Nothing in this request can see a later failure; the charge stays whole.
+    // Nothing in this request can see a later failure; the charge stays whole. R3-A settles it from the poll, on the
+    // server's own record and Google's word (lib/chat/filmSceneRefund.test.ts).
     const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') }));
     expect(res.success).toBe(true);
     expect(mockRefund).not.toHaveBeenCalled();
+  });
+
+  test('R3-A: the start records each QUEUED Veo scene with its operation and its share; a scene dead at dispatch is not', async () => {
+    let n = 0;
+    mockExecute.mockImplementation(async () => (++n === 2 ? dead : queuedOnVeo(n)));
+    const res = await handleFilmComposite(input({ sceneCount: 4, veo: veo('fast') }));
+    expect(res.success).toBe(true);
+    expect((mockDeduct.mock.calls[0] as unknown[])[1]).toBe(100);
+    expect(mockRecordScenes).toHaveBeenCalledTimes(1);
+    const [uid, token, shares] = mockRecordScenes.mock.calls[0] as [string, string, Array<{ ordinal: number; operation: string; credits: number }>];
+    expect([uid, token]).toEqual(['user-1', statusTokenOf(res)]);
+    expect(shares.map((x) => x.credits)).toEqual([25, 25, 25]);
+    expect(shares.map((x) => x.operation)).toEqual([veoOp(1), veoOp(3), veoOp(4)]);
+    // the dispatch refund took the dead scene's share; the three recorded shares are exactly what the film still holds
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
+    expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(75);
+  });
+
+  test('R3-A: a free film and a clip on another engine record nothing', async () => {
+    const res = await handleFilmComposite(input({ sceneCount: 3, veo: veo('fast') })); // task refs that are not Veo jobs
+    expect(res.success).toBe(true);
+    expect(mockRecordScenes).not.toHaveBeenCalled();
+    mockConsumeFree.mockResolvedValue(0);
+    mockExecute.mockImplementation(async () => queuedOnVeo(9));
+    expect((await handleFilmComposite(input({ sceneCount: 1, veo: veo('fast') }))).success).toBe(true);
+    expect(mockRecordScenes).not.toHaveBeenCalled();
   });
 });
 

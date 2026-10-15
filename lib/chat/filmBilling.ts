@@ -29,7 +29,7 @@ export const FILM_WAIVER_LEASE_SEC = 660;
 /** lib/chat/filmStatusStore deriveFilmTokenId: 'f' + 16 hex. */
 export const FILM_TOKEN_RE = /^f[0-9a-f]{16}$/;
 
-/** The ledger ref of a film's up-front charge. Its refunds are `${ref}:refund` / `${ref}:refund:dispatch`. */
+/** The ledger ref of a film's up-front charge. Its refunds are `${ref}:refund` / `${ref}:refund:dispatch` / `${ref}:refund:scene:<n>`. */
 export function filmChargeRef(tokenId: string): string {
   return `filmpay:${tokenId}`;
 }
@@ -108,6 +108,35 @@ export async function leaseFilmWaiver(uid: string, tokenId: string, leaseId: str
 export async function settleFilmWaiver(uid: string, tokenId: string, leaseId: string, delivered: boolean): Promise<boolean> {
   const res = await call((c) => c.rpc('settle_film_waiver', { p_user: uid, p_token: tokenId, p_lease_id: leaseId, p_delivered: delivered }));
   return res.ok && res.data === true;
+}
+
+// ─── R3-A: a scene Google accepted and then failed, given back once on the server's own word ───────────────────────
+
+/** A queued Veo scene of a paid film as the start records it: the operation it dispatched and its share of the price. */
+export interface FilmSceneShare { ordinal: number; operation: string; credits: number }
+
+/** Written by the film start for a PAID film (its film_billing row must exist). The shares never exceed what it holds. */
+export async function recordFilmScenes(uid: string, tokenId: string, scenes: FilmSceneShare[]): Promise<'recorded' | 'unavailable'> {
+  if (!FILM_TOKEN_RE.test(tokenId) || scenes.length === 0) return 'unavailable';
+  const res = await call((c) => c.rpc('record_film_scenes', { p_user: uid, p_token: tokenId, p_scenes: scenes }));
+  return res.ok && typeof res.data === 'number' ? 'recorded' : 'unavailable';
+}
+
+/** The film's scenes nobody has settled yet, as the START recorded them; null when the store cannot answer. */
+export async function pendingFilmScenes(uid: string, tokenId: string): Promise<Array<{ ordinal: number; operation: string }> | null> {
+  if (!FILM_TOKEN_RE.test(tokenId)) return null;
+  const res = await call((c) => c.rpc('pending_film_scenes', { p_user: uid, p_token: tokenId }));
+  if (!res.ok || !Array.isArray(res.data)) return null;
+  return (res.data as Array<{ ordinal?: unknown; operation?: unknown }>)
+    .filter((r) => Number.isInteger(r?.ordinal) && typeof r?.operation === 'string')
+    .map((r) => ({ ordinal: r.ordinal as number, operation: r.operation as string }));
+}
+
+/** Settle one scene, once: `failed` gives its share back (capped by the film's net debit). Credits returned; null = no store. */
+export async function settleFilmScene(uid: string, tokenId: string, ordinal: number, failed: boolean): Promise<number | null> {
+  if (!FILM_TOKEN_RE.test(tokenId)) return null;
+  const res = await call((c) => c.rpc('settle_film_scene', { p_user: uid, p_token: tokenId, p_ordinal: ordinal, p_failed: failed }));
+  return res.ok && typeof res.data === 'number' ? res.data : null;
 }
 
 // ─── The film START: one approved press, at most one charge ────────────────────────────────────────────────────────
