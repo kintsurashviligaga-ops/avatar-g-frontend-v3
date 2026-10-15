@@ -205,7 +205,7 @@ describe('refunds whose callback never came (the bank, 2026-10-15: read refund s
   const touchedSweep = () =>
     mockLog.filter((c) => c.table === 'bog_orders' && c.op === 'update' && Object.keys(c.args[0] as object).join() === 'updated_at' && !c.filters.some((f) => f[1] === 'status'));
 
-  test('reads paid orders of the last 60 days, each at most once a day, least recently checked first, 20 a tick', async () => {
+  test('reads paid orders of the last 93 days (BOG refunds for 3 months), each at most once a day, least recently checked first, 20 a tick', async () => {
     const before = Date.now();
     await tick();
     const q = mockLog.find((c) => c.table === 'bog_orders' && c.op === 'select' && isRefundSweep(c));
@@ -218,8 +218,8 @@ describe('refunds whose callback never came (the bank, 2026-10-15: read refund s
       ]),
     );
     const at = (op: string, col: string) => Date.parse(String(q?.filters.find((f) => f[0] === op && f[1] === col)?.[2]));
-    expect(before - at('gt', 'credited_at')).toBeGreaterThanOrEqual(60 * 86_400_000 - 1_000);
-    expect(before - at('gt', 'credited_at')).toBeLessThan(60 * 86_400_000 + 5_000);
+    expect(before - at('gt', 'credited_at')).toBeGreaterThanOrEqual(93 * 86_400_000 - 1_000);
+    expect(before - at('gt', 'credited_at')).toBeLessThan(93 * 86_400_000 + 5_000);
     expect(before - at('lt', 'updated_at')).toBeGreaterThanOrEqual(86_400_000 - 1_000);
     expect(before - at('lt', 'updated_at')).toBeLessThan(86_400_000 + 5_000);
   });

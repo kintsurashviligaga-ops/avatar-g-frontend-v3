@@ -731,14 +731,14 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
     const { data: ledger } = await svc.from('credit_ledger').select('delta').eq('user_id', u);
     expect(ledger).toEqual([{ delta: 200 }]);
 
-    // A payment credited over 60 days ago is no longer read; a receipt that still says completed changes nothing.
+    // A payment credited over 93 days ago (past BOG's 3-month refund window) is no longer read; a receipt that still says completed changes nothing.
     const old = await startCheckout(u, { kind: 'topup', amountGel: 10 });
     const oldBogId = (await row(old.json.orderId)).bog_order_id;
     customerPays(oldBogId);
     await webhook.POST(signedCallback(receiptOf(bank.orders.get(oldBogId)!)));
     await svc
       .from('bog_orders')
-      .update({ credited_at: new Date(Date.now() - 61 * 86_400_000).toISOString(), updated_at: new Date(Date.now() - 2 * 86_400_000).toISOString() })
+      .update({ credited_at: new Date(Date.now() - 94 * 86_400_000).toISOString(), updated_at: new Date(Date.now() - 2 * 86_400_000).toISOString() })
       .eq('shop_order_id', old.json.orderId);
     bank.orders.get(oldBogId)!.status = 'refunded';
     bank.calls.length = 0;
