@@ -23,6 +23,7 @@ jest.mock('./gcs', () => ({
   signedReadUrl: jest.fn(),
 }));
 
+import { setVeoCapDepsForTests, type VeoSpendStore } from './dailyCap';
 import { createVeoClip, deliverableUrl, isGoogleOnly, pollVeoClip, transportOf, veoTransport, type CreateVeoClipInput } from './engine';
 import { signedReadUrl, uploadVeoInput, veoOutputPrefix, VeoGcsError } from './gcs';
 import { getVertexAccessToken, vertexConfig, vertexConfigProblems } from './vertexAuth';
@@ -58,7 +59,7 @@ const IMG_URL = 'https://cdn.example.com/frames/scene-1.png?X-Amz-Signature=SIGN
 const ENV_NAMES = [
   'VEO_TRANSPORT', 'GEMINI_API_KEY', 'GEMINI_API_KEYS', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GEMINI_VEO_ENABLED',
   'VEO_NATIVE_CAMERA_CONTROL', 'VIDEO_GOOGLE_ONLY', 'VEO_MODEL_STANDARD', 'VEO_MODEL_FAST', 'VEO_MODEL_LITE',
-  'GEMINI_VEO_MODEL', 'VEO_VERTEX_PERSON_GENERATION',
+  'GEMINI_VEO_MODEL', 'VEO_VERTEX_PERSON_GENERATION', 'VEO_DAILY_LIMIT_USD',
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
 const fetchMock = jest.fn();
@@ -340,6 +341,79 @@ describe('createVeoClip — Vertex', () => {
     const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
     expect(res.outcome).toMatchObject({ ok: false, reason: 'unavailable', retryable: true, status: 503 });
     expect(callsTo(VERTEX_SUBMIT)).toHaveLength(1);
+  });
+});
+
+// ── the daily Veo ceiling (dailyCap.ts) ─────────────────────────────────────────────────────────────────────────
+
+describe('createVeoClip — the daily Veo ceiling', () => {
+  let counter = 0;
+  let reachable = true;
+  const store: VeoSpendStore = {
+    exists: async () => (reachable ? counter > 0 : null),
+    seed: async () => (reachable ? false : null),
+    reserve: async (_d, micro, cap) => {
+      if (!reachable) return null;
+      if (counter + micro > cap) return { ok: false, totalMicro: counter };
+      counter += micro;
+      return { ok: true, totalMicro: counter };
+    },
+    release: async (_d, micro) => { counter = Math.max(0, counter - micro); return counter; },
+    read: async () => counter,
+  };
+  beforeEach(() => {
+    useVertex();
+    counter = 0;
+    reachable = true;
+    setVeoCapDepsForTests({ store, ledger: async () => 0, now: () => new Date('2026-10-15T12:00:00Z') });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+  });
+  afterEach(() => setVeoCapDepsForTests());
+
+  it('off (no VEO_DAILY_LIMIT_USD) → submits as before and reserves nothing', async () => {
+    routeFetch();
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(res.outcome.ok).toBe(true);
+    expect(counter).toBe(0);
+  });
+
+  it('reserves the clip at its exact price, then refuses the clip that would pass the figure WITHOUT calling Google', async () => {
+    process.env.VEO_DAILY_LIMIT_USD = '5';
+    routeFetch();
+    const first = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(first.outcome.ok).toBe(true);
+    expect(counter).toBe(3_200_000); // Standard, 8 s, 1080p, audio: 8 × $0.40
+    const second = await createVeoClip(input({ prompt: 'y', aspect: '16:9' }));
+    expect(second.outcome).toMatchObject({ ok: false, reason: 'quota', retryable: false });
+    expect(failed(second.outcome)).toMatchObject({ detail: expect.stringMatching(/^veo_daily_limit: today's Veo ceiling of \$5 is reached/) });
+    expect(callsTo(VERTEX_SUBMIT)).toHaveLength(1);
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it('a submit Google provably refused (503) gives the reservation back', async () => {
+    process.env.VEO_DAILY_LIMIT_USD = '5';
+    routeFetch({ vertex: () => Promise.resolve(json(503, { error: { code: 503, message: 'unavailable', status: 'UNAVAILABLE' } })) });
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(failed(res.outcome).reason).toBe('unavailable');
+    expect(counter).toBe(0);
+  });
+
+  it('an AMBIGUOUS submit keeps the reservation (the job may exist and bill)', async () => {
+    process.env.VEO_DAILY_LIMIT_USD = '5';
+    routeFetch({ vertex: () => Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError')) });
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(failed(res.outcome).reason).toBe('ambiguous');
+    expect(counter).toBe(3_200_000);
+  });
+
+  it('nothing countable (Redis down, ledger unreadable) → refused before Google, never a submit', async () => {
+    process.env.VEO_DAILY_LIMIT_USD = '50';
+    reachable = false;
+    setVeoCapDepsForTests({ store, ledger: async () => null });
+    routeFetch();
+    const res = await createVeoClip(input({ prompt: 'x', aspect: '16:9' }));
+    expect(res.outcome).toMatchObject({ ok: false, reason: 'quota', retryable: false, detail: expect.stringMatching(/^veo_cap_unreadable:/) });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

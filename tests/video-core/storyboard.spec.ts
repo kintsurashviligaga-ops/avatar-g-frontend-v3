@@ -120,3 +120,35 @@ test.describe('Video Core — storyboard approval and revision_mismatch', () => 
     await cancelStoryboard(page);
   });
 });
+
+test.describe('Video Core — a short film is one shorter clip everywhere it is shown', () => {
+  // Found in the paid Production run of 2026-10-15: a 4 s film rendered as ONE 4 s Veo clip (dispatch clipSec 4, a 4.01 s
+  // MP4, quoted 13 credits) while the board's scene tile and the Scenes & camera drawer both still said 8 s. The storyboard
+  // route plans on the 8 s grid (clipSec 8, as mocked here); the board narrows it to the picked length.
+  test('a 4 s pick: the board header, the scene tile and the Scenes & camera drawer all say 4 s, and the dispatch asks for 4 s', async ({ page, isMobile }) => {
+    const calls = await openStudio(page, { orchestrate: () => revisionMismatch() });
+    await page.waitForTimeout(ROUTE_CHECK_MS);
+    await openVideoTool(page, isMobile);
+    await page.getByTestId('video-prompt-input').fill(PROMPT);
+    await page.getByTestId('video-tile-length').click();
+    await expect(page.getByTestId('video-duration-sheet')).toBeVisible();
+    await page.getByTestId('video-preset-4').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('video-duration-sheet')).toBeHidden();
+
+    const advanced = page.getByTestId('video-disclosure-advanced').locator('button[aria-expanded]').first();
+    if ((await advanced.getAttribute('aria-expanded')) === 'false') await advanced.click();
+    await expect(page.getByTestId('veo-parameters').getByRole('button', { name: /Scenes & camera/ })).toContainText('1 × 4s');
+
+    await page.getByTestId('video-generate').click();
+    await waitForBoard(page, 'en', 1);
+    expect(calls.storyboard.filter((b) => b.planOnly).map((b) => b.sceneCount)).toEqual([1]);
+    await expect(page.getByText('4s · 1×4s', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('storyboard-scene-sec')).toHaveText(['⏳4s']);
+
+    await page.getByTestId('storyboard-generate').click();
+    await expect.poll(() => calls.orchestrate.length, { timeout: 20_000 }).toBe(1);
+    expect(calls.orchestrate[0]!.clipSec).toBe(4);
+    expect(calls.orchestrate[0]!.sceneCount).toBe(1);
+  });
+});

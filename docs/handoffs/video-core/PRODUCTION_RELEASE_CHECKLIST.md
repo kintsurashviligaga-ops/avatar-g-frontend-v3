@@ -1,5 +1,8 @@
 # Video Core v1.0: Production release checklist (PR #69)
 
+**State 2026-10-15 12:20Z: released.** PR #69 merged as b46bb44 and serving myavatar.ge; every gate below is DONE; the one
+paid test passed. Rollback point: Instant Rollback to `dpl_jQrS5XWa2xm7zVLAnAUizS4B6ToD` (3516a61).
+
 The ordered gates of this release, each with its owner, its proof and its state. A gate is ticked only with the evidence
 in its row. This release does **not** open Video Core to the public: films stay as they are in Production today (open to
 signed-in users, admin never billed), Video Core admin tools stay admin-only, BOG stays admin-only, prices are unchanged.
@@ -22,14 +25,14 @@ States: DONE · PENDING · BLOCKED · N/A.
 
 | # | Gate | Owner | Proof | State |
 |---|---|---|---|---|
-| P1 | CI green on the PR head: "verify" (typecheck, lint, Jest, build), Video Core E2E (billing on real Postgres + live E2E desktop and phone), E2E Preview Contract | Claude | GitHub check runs on the head commit | DONE on 979141f6 (all green, 11:01Z); re-run on the release head PENDING |
+| P1 | CI green on the PR head: "verify" (typecheck, lint, Jest, build), Video Core E2E (billing on real Postgres + live E2E desktop and phone), E2E Preview Contract | Claude | GitHub check runs on the head commit | DONE on 979141f6 (all green, 11:01Z) and on the release head df0c319c (verify 38728350710, billing on real Postgres, preview-e2e, live E2E desktop + phone: all green by 11:54:52Z) (VERIFIED FACT) |
 | P2 | GCP G1: the WIF provider also accepts this project's Production tokens (ids, not names) | Claude on the owner's Mac | `providers describe` shows `environment in ['preview', 'production']` | DONE 2026-10-15 ~11:01Z: provider ACTIVE, condition `… assertion.environment in ['preview', 'production']` (VERIFIED FACT) |
 | P3 | GCP G2: the Production subject may impersonate `myavatar-veo` (no key created) | Claude on the owner's Mac | `get-iam-policy` lists exactly the Preview and Production principals; `keys list --managed-by=user` empty | DONE 2026-10-15 ~11:02Z: exactly those two principals, 0 user-managed keys (VERIFIED FACT) |
 | P4 | Migration 20261014a preflight | in the script | the script refuses unless `credit_ledger` (jsonb metadata) and `refund_credits(uuid, integer, text)` exist and no film table or function does | DONE: passed in Production 2026-10-15 ~11:32Z (the transaction committed); drilled before on a throwaway Postgres (applies once, refused on a second run) |
 | P5 | Backup / recovery | Claude | the migration is additive (2 tables, 6 functions, nothing existing altered); recovery = its drop list, drilled (`ROLLBACK_AND_RECOVERY_PLAN.md` R4). Supabase's own backup list was not read from here | DONE (recovery); backup list NOT VERIFIED |
 | P6 | Migration 20261014a applied | Claude opens the SQL Editor; **GG presses Run** | the verify row: both tables, RLS on, 0 policies, 0 rows, 6 SECURITY DEFINER functions, tables and functions closed to anon/authenticated | DONE 2026-10-15 ~11:32Z: GG pressed Run; the verify row read from GG's screen: `true, true, true, true, 0, 0, 6, true, true` (VERIFIED FACT). An earlier press at ~11:26Z ran the old 20261013a file by mistake: identical to what Production already had (comment-stripped hash equal to the repo file), so nothing changed (INFERENCE from the SQL) |
 | P7 | The migration recorded in the repo | Claude | `supabase/migrations/20261014a_film_billing.sql`; schema-drift snapshot lists the six functions as Production's; harness path updated | DONE (this commit) |
-| P8 | V1: 8 Production env vars (plain, Production only), right before the merge | Claude (Vercel CLI on the owner's Mac) | `vercel env ls production` names them; `GEMINI_TRANSPORT` still absent | PENDING |
+| P8 | V1: 8 Production env vars (plain, Production only), right before the merge | Claude (Vercel CLI on the owner's Mac) | `vercel env ls production` names them; `GEMINI_TRANSPORT` still absent | DONE 2026-10-15 ~11:58–11:59Z: the 8 names listed for Production only, values not echoed; `GEMINI_TRANSPORT` absent (VERIFIED FACT) |
 | P9 | Rollback point written down | Claude | the deployment id serving myavatar.ge right before the merge | DONE: `dpl_jQrS5XWa2xm7zVLAnAUizS4B6ToD` (3516a61, PR #62), `vercel inspect myavatar.ge` ~11:08Z |
 
 Nobody presses Redeploy between P8 and the merge (a Redeploy would build the current Production commit with Vertex on).
@@ -38,19 +41,19 @@ Nobody presses Redeploy between P8 and the merge (a Redeploy would build the cur
 
 | # | Gate | Proof | State |
 |---|---|---|---|
-| M1 | PR #69 merged into main with a merge commit (no squash, no force push) | GitHub | PENDING |
-| M2 | Vercel builds Production from main | deployment READY, myavatar.ge aliased | PENDING |
-| M3 | Build log: `[gcp-auth-check] env=production … ok=true mode:wif token:ok bucket:ok sign:ok` (no model call; `preview-inference-check` skips Production builds) | Vercel build log | PENDING |
+| M1 | PR #69 merged into main with a merge commit (no squash, no force push) | GitHub | DONE ~12:00Z: merge commit **b46bb44** (VERIFIED FACT) |
+| M2 | Vercel builds Production from main | deployment READY, myavatar.ge aliased | DONE: `dpl_6AaKtWBNgxyvjZSv4eF48DdSdTE7`, created 12:00:38Z, READY; `vercel inspect myavatar.ge` points at it (VERIFIED FACT) |
+| M3 | Build log: `[gcp-auth-check] env=production … ok=true mode:wif token:ok bucket:ok sign:ok` (no model call; `preview-inference-check` skips Production builds) | Vercel build log | DONE 12:01:33Z: `[gcp-auth-check] env=production … ok=true mode:wif token:ok bucket:ok sign:ok`; `[gcp-inference-check] skipped: not a Vercel Preview build` (VERIFIED FACT) |
 
 ## 3. After the deploy (free, read-only, before any paid call)
 
 | # | Gate | Proof | State |
 |---|---|---|---|
-| V1 | `/api/health` names the merge commit | anonymous GET | PENDING |
-| V2 | `/api/video/engine` → `"transport":"vertex","audioToggle":true` | anonymous GET | PENDING |
-| V3 | BOG smoke workflow 9/9, `bog:false` for anonymous | GitHub Actions run | PENDING |
-| V4 | No new runtime error group for 15 minutes; crons answer 200 (the old `/api/app/worker/tick` service_jobs error is known and unrelated) | Vercel runtime errors / observability | PENDING |
-| V5 | Anonymous probes still refused: `/api/credits/balance` 401, `/api/tasks` 401, sweep without secret 403 | anonymous requests | PENDING |
+| V1 | `/api/health` names the merge commit | anonymous GET | DONE 12:05Z: commit b46bb44 (VERIFIED FACT) |
+| V2 | `/api/video/engine` → `"transport":"vertex","audioToggle":true` | anonymous GET | DONE: `{"transport":"vertex","googleOnly":true,"audioToggle":true,…}` (VERIFIED FACT) |
+| V3 | BOG smoke workflow 9/9, `bog:false` for anonymous | GitHub Actions run | DONE: run 38732005645 on b46bb44, success 12:05:25Z (VERIFIED FACT) |
+| V4 | No new runtime error group for 15 minutes; crons answer 200 (the old `/api/app/worker/tick` service_jobs error is known and unrelated) | Vercel runtime errors / observability | DONE 12:07Z and again over the paid run (12:09–12:16Z): one error group only, the old worker-tick service_jobs message (first seen 2026-10-02); warnings are the old optional-env notices (VERIFIED FACT) |
+| V5 | Anonymous probes still refused: `/api/credits/balance` 401, `/api/tasks` 401, sweep without secret 403 | anonymous requests | DONE: 401 · 401 · 403; `/api/video/director` → `enabled:false` (VERIFIED FACT) |
 
 Any red row here → Instant Rollback (`ROLLBACK_AND_RECOVERY_PLAN.md` R1), then report.
 
@@ -58,12 +61,12 @@ Any red row here → Instant Rollback (`ROLLBACK_AND_RECOVERY_PLAN.md` R1), then
 
 | # | Rule | State |
 |---|---|---|
-| L1 | Only after §3 is all green | PENDING |
-| L2 | One 4 s Veo 3.1 Fast 720p clip with audio, as admin, on Vertex (≈ $0.40; budget ≤ $5) | PENDING |
-| L3 | No retry and no second paid call on an unclear outcome; stop if any limit would be exceeded | rule |
-| L4 | No new BOG/Stripe payment, subscription, refund or top-up | rule |
-| L5 | Chain recorded end to end in `VIDEO_CORE_PAID_E2E_EVIDENCE.md`: auth → prompt + storyboard → quote → confirm → (admin: 0 credits) → Vertex op id → MP4 in storage → FFmpeg → QC → preview → download → Library → history → reconciliation | PENDING |
-| L6 | The free Volume check (defect 43) on a delivered clip | PENDING |
+| L1 | Only after §3 is all green | DONE (§3 green 12:07Z; the press was 12:13:28Z) |
+| L2 | One 4 s Veo 3.1 Fast 720p clip with audio, as admin, on Vertex (≈ $0.40; budget ≤ $5) | DONE: one Vertex operation (`veo-3.1-fast-generate-001`), a 4.01 s film with AAC sound, 0 credits (VERIFIED FACT); ≈ $0.40 (INFERENCE from the list price) |
+| L3 | No retry and no second paid call on an unclear outcome; stop if any limit would be exceeded | kept: one press, one dispatch, no retry |
+| L4 | No new BOG/Stripe payment, subscription, refund or top-up | kept |
+| L5 | Chain recorded end to end in `VIDEO_CORE_PAID_E2E_EVIDENCE.md`: auth → prompt + storyboard → quote → confirm → (admin: 0 credits) → Vertex op id → MP4 in storage → FFmpeg → QC → preview → download → Library → history → reconciliation | DONE: `VIDEO_CORE_PAID_E2E_EVIDENCE.md`, all 19 steps observed |
+| L6 | The free Volume check (defect 43) on a delivered clip | DONE: +6 dB asked, +6.0 dB measured, 0 credits, same 96 frames (VERIFIED FACT) |
 
 ## 5. Not in this release (public opening)
 

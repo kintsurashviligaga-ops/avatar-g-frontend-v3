@@ -1683,7 +1683,7 @@ function commitSceneOrder(prev: StoryboardState, ordered: StoryboardScene[]): St
  *   • When the frame lands it MORPHS in via a blur-up (blurred+scaled → sharp), so
  *     an agent's delivery glides in with no layout pop (fixed-aspect container).
  */
-function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
+function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, clipSec, structEnabled, onRegenScene, onEditScene, onView, onDelete, onMove, dragEnabled, dragActive, dragging, dragOver, onDragStartScene, onDragOverScene, onDropScene, onDragEndScene }: {
   s: StoryboardScene;
   t: (typeof COPY)[Lang];
   portrait: boolean;
@@ -1693,6 +1693,8 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
   /** P9 — this scene's position (0-based) and the board size, for move-bound checks. */
   index: number;
   total: number;
+  /** This board's clip length (the board header's): a 4 s or 6 s film is ONE shorter clip, never the 8 s default. */
+  clipSec: number;
   /** P9 — structural edits (move/delete) only once frames have settled (not streaming). */
   structEnabled: boolean;
   onRegenScene: (ordinal: number, baseImage?: string) => void;
@@ -1819,7 +1821,7 @@ function SceneTile({ s, t, portrait, pending, regenning, busy, index, total, str
         {/* VECTOR 3 — explicit frame index (#1, #2…) + per-clip duration tag. */}
         <span className="absolute left-1.5 top-1.5 z-20 flex items-center gap-1">
           <span className="rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">#{s.ordinal}</span>
-          <span className="rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/85">⏳{FILM_CLIP_SEC}s</span>
+          <span className="rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white/85" data-testid="storyboard-scene-sec">⏳{clipSec}s</span>
         </span>
         <button type="button" onClick={() => onRegenScene(s.ordinal)} disabled={busy} aria-label={t.sbReroll} title={t.sbReroll}
           className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-all duration-200 hover:bg-app-accent hover:text-app-bg active:scale-90 disabled:opacity-40 touch-manipulation before:absolute before:-inset-2 before:content-['']">
@@ -1983,6 +1985,7 @@ function StoryboardOverlay({ sb, t, locale: _locale, busy, price, free, lipsyncC
                 busy={busy || regenningOrdinal !== null}
                 index={i}
                 total={total}
+                clipSec={boardClipSec}
                 structEnabled={!streaming}
                 onRegenScene={onRegenScene}
                 onEditScene={onEditScene}

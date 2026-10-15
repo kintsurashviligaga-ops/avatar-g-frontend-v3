@@ -237,6 +237,18 @@ describe('refunds: only what this request proves it did not deliver', () => {
     expect((await getFilmPaid(statusTokenOf(res)))?.credits).toBe(50);
   });
 
+  test('the daily Veo ceiling refusing scene 2 (engine `quota`, not retryable) → that scene is refunded at dispatch and never re-posted', async () => {
+    const capped = { success: false, predictionStatus: 'failed', metadata: { veoFailure: { reason: 'quota', retryable: false } } };
+    let n = 0;
+    mockExecute.mockImplementation(async () => (++n === 2 ? capped : queued(n)));
+    const res = await handleFilmComposite(input({ sceneCount: 2, veo: veo('fast') }));
+    expect(res.success).toBe(true);
+    expect(mockExecute).toHaveBeenCalledTimes(2); // one dispatch per scene: a ceiling refusal is not retried
+    expect(mockRefund).toHaveBeenCalledTimes(1);
+    expect((mockRefund.mock.calls[0] as unknown[])[1]).toBe(25);
+    expect(String((mockRefund.mock.calls[0] as unknown[])[2])).toMatch(/:refund:dispatch$/);
+  });
+
   test('a failed refund is never claimed: the charge stays recorded as taken', async () => {
     mockExecute.mockResolvedValue(dead);
     mockRefund.mockResolvedValue({ ok: false, reason: 'error' });
