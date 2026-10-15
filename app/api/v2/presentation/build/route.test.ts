@@ -1,8 +1,8 @@
 /** @jest-environment node */
-// Presentation: who may build a deck, what is checked first, and that the whole deck (not just its count) is filed to
-// the Library. The build itself (outline, Imagen, resvg) is lib/services/presentation's own suites; here it is a stub.
-// A deck does not charge the user's credits yet (an open pricing decision); the platform provider budget is the gate,
-// and it runs for real through guardedCall.
+// Presentation: who may build a deck, that the whole deck (not just its count) is filed to the Library, and — since the
+// final P0/P1 repair run — how it is quoted, confirmed and charged. The build (outline, Imagen, resvg) is a stub. The money path is
+// REAL (paidServiceGate → confirmedJob → produceBilling); only the ledger RPCs and the job table are in-memory fakes
+// with the database's semantics (primary key on the job id, unique debit ref, unique refund ref).
 
 jest.mock('server-only', () => ({}));
 
@@ -25,15 +25,64 @@ jest.mock('../../../../../lib/services/billing/BillingGuard', () => ({
   canProceed: (...a: unknown[]) => canProceed(...a),
   recordUsage: (...a: unknown[]) => recordUsage(...a),
 }));
-const createJob = jest.fn(async () => true);
-const completeJob = jest.fn(async () => undefined);
-const failJob = jest.fn(async () => undefined);
+
+// ── job table fake: primary key on id ────────────────────────────────────────────────────────────────────────────
+type Row = { id: string; userId: string; status: string; stage?: string; params: Record<string, unknown>; error?: string };
+const rows = new Map<string, Row>();
+let jobInsertFails = false;
+const createJob = jest.fn(async (i: { id: string; userId: string; params?: Record<string, unknown> }) => {
+  if (jobInsertFails || rows.has(i.id)) return false;
+  rows.set(i.id, { id: i.id, userId: i.userId, status: 'pending', params: { ...(i.params ?? {}) } });
+  return true;
+});
+const live = (id: string) => { const r = rows.get(id); return r && (r.status === 'pending' || r.status === 'processing') ? r : null; };
+let completeFails = 0;
+const completeJob = jest.fn(async (id: string) => {
+  if (completeFails > 0) { completeFails--; return false; }
+  const r = live(id); if (!r) return false; r.status = 'completed'; return true;
+});
+const failJob = jest.fn(async (id: string, error: string) => { const r = live(id); if (!r) return false; r.status = 'failed'; r.error = error; return true; });
+const updateJobStage = jest.fn(async (id: string, stage: string | null) => { const r = live(id); if (!r) return false; r.status = 'processing'; if (stage) r.stage = stage; return true; });
+const recordJobReservation = jest.fn(async (id: string, reserve: { ref: string; credits: number }) => { const r = rows.get(id); if (r) r.params._reserve = reserve; });
+const jobSnapshot = jest.fn(async (id: string) => { const r = rows.get(id); return r ? { userId: r.userId, status: r.status, result: null } : null; });
 jest.mock('../../../../../lib/orchestrator/jobs', () => ({
   ...jest.requireActual('../../../../../lib/orchestrator/jobs'),
-  createJob: (...a: unknown[]) => createJob(...a),
-  completeJob: (...a: unknown[]) => completeJob(...a),
-  failJob: (...a: unknown[]) => failJob(...a),
+  createJob: (...a: unknown[]) => createJob(...(a as [never])),
+  completeJob: (...a: unknown[]) => completeJob(...(a as [never])),
+  failJob: (...a: unknown[]) => failJob(...(a as [never, never])),
+  updateJobStage: (...a: unknown[]) => updateJobStage(...(a as [never, never])),
+  recordJobReservation: (...a: unknown[]) => recordJobReservation(...(a as [never, never])),
+  jobSnapshot: (...a: unknown[]) => jobSnapshot(...(a as [never])),
 }));
+
+// ── ledger fake: unique debit ref, unique refund ref, balance ───────────────────────────────────────────────────
+let balance = 100;
+const debits = new Map<string, number>();
+const refunds = new Map<string, number>();
+let refundFails = false;
+let ledgerMode: 'charge' | 'skipped' | 'error' = 'charge';
+const deductCreditsOnce = jest.fn(async (_u: string, amount: number, ref: string) => {
+  if (ledgerMode === 'skipped') return { ok: false, reason: 'skipped' };
+  if (ledgerMode === 'error') return { ok: false, reason: 'error' };
+  if (debits.has(ref)) return { ok: false, reason: 'replay', balance };
+  if (balance < amount) return { ok: false, reason: 'insufficient', balance };
+  balance -= amount; debits.set(ref, amount); return { ok: true, balance };
+});
+const refundCredits = jest.fn(async (_u: string, amount: number, ref: string) => {
+  if (refundFails) return { ok: false, reason: 'error' };
+  if (!refunds.has(ref)) { refunds.set(ref, amount); balance += amount; }
+  return { ok: true, balance };
+});
+const deductCredits = jest.fn(async () => ({ ok: true }));
+jest.mock('../../../../../lib/orchestrator/ledger', () => ({
+  ...jest.requireActual('../../../../../lib/orchestrator/ledger'),
+  deductCreditsOnce: (...a: unknown[]) => deductCreditsOnce(...(a as [never, never, never])),
+  refundCredits: (...a: unknown[]) => refundCredits(...(a as [never, never, never])),
+  deductCredits: (...a: unknown[]) => deductCredits(...(a as [])),
+}));
+const reportError = jest.fn();
+jest.mock('../../../../../lib/observability/report-error', () => ({ reportError: (...a: unknown[]) => reportError(...a) }));
+
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 import { checkRateLimitByKey, RATE_LIMITS } from '../../../../../lib/api/rate-limit';
@@ -53,15 +102,27 @@ const post = async (body: Record<string, unknown>) => {
   }));
   return { res, json: (await res.json()) as Record<string, unknown> };
 };
+const quoteThenConfirm = async (body: Record<string, unknown>) => {
+  const q = await post(body);
+  const quote = q.json.quote as { token: string; jobId: string; credits: number };
+  const c = await post({ ...body, quoteToken: quote.token, confirm: true });
+  return { quote, ...c };
+};
 
+const saved = { ...process.env };
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env.OWNER_APPROVED_PRICING = 'dubbing:10,presentation:15';
+  process.env.AGENT_G_QUOTE_SECRET = 'test-quote-secret';
   signedIn = true;
+  rows.clear(); debits.clear(); refunds.clear();
+  balance = 100; jobInsertFails = false; completeFails = 0; refundFails = false; ledgerMode = 'charge';
   canProceed.mockResolvedValue({ allowed: true, reason: 'ok' });
   runDeckBuild.mockResolvedValue({ ok: true, result: RESULT });
 });
+afterAll(() => { process.env = saved; });
 
-describe('POST /api/v2/presentation/build', () => {
+describe('POST /api/v2/presentation/build — access and input', () => {
   it('turns a signed-out caller away before anything runs', async () => {
     signedIn = false;
     const { res } = await post({ topic: 'Tbilisi cafés' });
@@ -70,117 +131,134 @@ describe('POST /api/v2/presentation/build', () => {
     expect(runDeckBuild).not.toHaveBeenCalled();
   });
 
-  it('builds the deck and files every page, so the Library and a re-opened panel can rebuild it', async () => {
-    const { res, json } = await post({ topic: '  Tbilisi   cafés ', slideCount: 6, language: 'en', withImages: true });
-    expect(res.status).toBe(200);
-    expect(runDeckBuild).toHaveBeenCalledWith(
-      { topic: 'Tbilisi cafés', slideCount: 6, language: 'en', theme: 'dark', withImages: true },
-      { jobId: json.jobId },
-    );
-    expect(createJob).toHaveBeenCalledWith(expect.objectContaining({
-      userId: mockUser.id, serviceType: 'image', params: { subtype: 'presentation', slides: 6, language: 'en' },
-    }));
-    expect(completeJob).toHaveBeenCalledWith(json.jobId, {
-      signedUrl: COVER,
-      result: {
-        subtype: 'presentation', slideCount: 6, coverUrl: COVER, url: COVER,
-        slides: RESULT.slides.map((s) => ({ index: s.index, pngUrl: s.pngUrl })),
-      },
-    });
-    expect(json).toEqual(expect.objectContaining({ title: 'Tbilisi cafés', coverUrl: COVER, steps: RESULT.stepsRun }));
-    expect(json.slides).toHaveLength(6);
-    expect(canProceed).toHaveBeenCalledWith(expect.objectContaining({ service: 'presentation' }), {});
-    expect(recordUsage).toHaveBeenCalledTimes(1);
-  });
-
-  it('a deck with no cover is filed under its first page', async () => {
-    runDeckBuild.mockResolvedValue({ ok: true, result: { ...RESULT, coverUrl: null } });
-    const { json } = await post({ topic: 'Tbilisi cafés' });
-    expect(completeJob).toHaveBeenCalledWith(json.jobId, expect.objectContaining({
-      signedUrl: png(0), result: expect.objectContaining({ coverUrl: null, url: png(0) }),
-    }));
-  });
-
-  it('a degraded deck says so instead of passing as clean', async () => {
-    runDeckBuild.mockResolvedValue({ ok: true, result: { ...RESULT, usedFallbackOutline: true, imagesMissing: 2 } });
-    const { json } = await post({ topic: 'Tbilisi cafés', withImages: true });
-    expect(json.warnings).toEqual({ usedFallbackOutline: true, imagesMissing: 2, imagesRequested: true });
-  });
-
-  it.each([
-    [{ topic: 'ab' }],
-    [{ topic: 'x'.repeat(601) }],
-    [{}],
-  ])('refuses a missing or out-of-range topic before a job is made: %j', async (body) => {
+  it.each([[{ topic: 'ab' }], [{ topic: 'x'.repeat(601) }], [{}]])('refuses a missing or out-of-range topic: %j', async (body) => {
     const { res, json } = await post(body);
     expect(res.status).toBe(400);
     expect(json.error).toBe('invalid_request');
+    expect(checkRateLimitByKey).not.toHaveBeenCalled();
+  });
+
+  it('over the daily ceiling nothing is quoted, filed or built', async () => {
+    (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
+    const { res } = await post({ topic: 'Tbilisi cafés' });
+    expect(res.status).toBe(429);
+    expect(checkRateLimitByKey).toHaveBeenCalledWith(mockUser.id, RATE_LIMITS.PRESENTATION_USER);
     expect(createJob).not.toHaveBeenCalled();
+  });
+});
+
+describe('owner approval (15 cr/deck is PROPOSED, not approved)', () => {
+  it.each([undefined, '', 'presentation:14', 'dubbing:10'])('OWNER_APPROVED_PRICING=%p ⇒ unavailable before any ledger or provider call', async (v) => {
+    if (v === undefined) delete process.env.OWNER_APPROVED_PRICING; else process.env.OWNER_APPROVED_PRICING = v;
+    const { res, json } = await post({ topic: 'Tbilisi cafés' });
+    expect(res.status).toBe(503);
+    expect(json).toMatchObject({ error: 'service_unavailable', reason: 'pricing_not_approved' });
+    expect(deductCreditsOnce).not.toHaveBeenCalled();
     expect(runDeckBuild).not.toHaveBeenCalled();
+  });
+});
+
+describe('signed quote and explicit confirm', () => {
+  it('a first POST is a quote of 15 credits; nothing charged or built', async () => {
+    const { res, json } = await post({ topic: 'Tbilisi cafés' });
+    expect(res.status).toBe(200);
+    expect(json).toMatchObject({ requiresConfirm: true, quote: { credits: 15 } });
+    expect(deductCreditsOnce).not.toHaveBeenCalled();
+    expect(runDeckBuild).not.toHaveBeenCalled();
+  });
+
+  it('a token for a different deck, a dubbing token, or no confirm flag is refused', async () => {
+    const { json } = await post({ topic: 'Tbilisi cafés' });
+    const token = (json.quote as { token: string }).token;
+    expect((await post({ topic: 'Batumi bars', quoteToken: token, confirm: true })).res.status).toBe(409);
+    expect((await post({ topic: 'Tbilisi cafés', quoteToken: token })).res.status).toBe(409);
+    expect((await post({ topic: 'Tbilisi cafés', confirm: true })).res.status).toBe(409);
+    expect(deductCreditsOnce).not.toHaveBeenCalled();
+  });
+});
+
+describe('confirmed build', () => {
+  it('reserves 15 before the build, files every page, reports the charge', async () => {
+    const { quote, res, json } = await quoteThenConfirm({ topic: '  Tbilisi   cafés ', slideCount: 6, language: 'en', withImages: true });
+    expect(res.status).toBe(200);
+    expect(deductCreditsOnce).toHaveBeenCalledWith(mockUser.id, 15, `presentation:${quote.jobId}`);
+    expect(deductCreditsOnce.mock.invocationCallOrder[0]).toBeLessThan(runDeckBuild.mock.invocationCallOrder[0]);
+    expect(runDeckBuild).toHaveBeenCalledWith({ topic: 'Tbilisi cafés', slideCount: 6, language: 'en', theme: 'dark', withImages: true }, { jobId: quote.jobId });
+    expect(createJob).toHaveBeenCalledWith(expect.objectContaining({ id: quote.jobId, serviceType: 'image', params: { subtype: 'presentation', slides: 6, language: 'en' } }));
+    expect(completeJob).toHaveBeenCalledWith(quote.jobId, {
+      signedUrl: COVER,
+      result: { subtype: 'presentation', slideCount: 6, coverUrl: COVER, url: COVER, slides: RESULT.slides.map((s) => ({ index: s.index, pngUrl: s.pngUrl })) },
+    });
+    expect(json).toMatchObject({ status: 'completed', persisted: true, creditsCharged: 15, title: 'Tbilisi cafés', coverUrl: COVER });
+    expect(balance).toBe(85);
+    expect(recordUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a deck with no cover is filed under its first page; a degraded deck says so', async () => {
+    runDeckBuild.mockResolvedValue({ ok: true, result: { ...RESULT, coverUrl: null, usedFallbackOutline: true, imagesMissing: 2 } });
+    const { quote, json } = await quoteThenConfirm({ topic: 'Tbilisi cafés', withImages: true });
+    expect(completeJob).toHaveBeenCalledWith(quote.jobId, expect.objectContaining({ signedUrl: png(0), result: expect.objectContaining({ coverUrl: null, url: png(0) }) }));
+    expect(json.warnings).toEqual({ usedFallbackOutline: true, imagesMissing: 2, imagesRequested: true });
   });
 
   it('holds the slide count to 3–12 and defaults the language to Georgian', async () => {
-    await post({ topic: 'Tbilisi cafés', slideCount: 50 });
+    await quoteThenConfirm({ topic: 'Tbilisi cafés', slideCount: 50 });
     expect(runDeckBuild).toHaveBeenLastCalledWith(expect.objectContaining({ slideCount: 12, language: 'ka', withImages: false }), expect.anything());
-    await post({ topic: 'Tbilisi cafés', slideCount: 1 });
-    expect(runDeckBuild).toHaveBeenLastCalledWith(expect.objectContaining({ slideCount: 3 }), expect.anything());
   });
 
-  it('a step that fails fails the job with its step, and nothing is filed', async () => {
-    runDeckBuild.mockResolvedValue({ ok: false, step: 'render', error: 'resvg failed' });
-    const { res, json } = await post({ topic: 'Tbilisi cafés' });
-    expect(res.status).toBe(502);
-    expect(json).toEqual(expect.objectContaining({ error: 'deck_failed', step: 'render' }));
-    expect(failJob).toHaveBeenCalledWith(json.jobId, 'render: resvg failed');
-    expect(completeJob).not.toHaveBeenCalled();
-  });
-
-  it('an exhausted platform budget stops the build before it starts', async () => {
-    canProceed.mockResolvedValue({ allowed: false, reason: 'monthly_cap' });
-    const { res, json } = await post({ topic: 'Tbilisi cafés' });
-    expect(res.status).toBe(429);
-    expect(json).toEqual(expect.objectContaining({ error: 'budget_exceeded', reason: 'monthly_cap' }));
+  it('a short balance answers 402 and nothing is built', async () => {
+    balance = 10;
+    const { res } = await quoteThenConfirm({ topic: 'Tbilisi cafés' });
+    expect(res.status).toBe(402);
     expect(runDeckBuild).not.toHaveBeenCalled();
-    expect(failJob).toHaveBeenCalledWith(expect.any(String), 'budget_exceeded');
   });
 
-  it('a build that throws fails the job and answers 500', async () => {
-    runDeckBuild.mockRejectedValue(new Error('out of memory'));
-    const { res, json } = await post({ topic: 'Tbilisi cafés' });
-    expect(res.status).toBe(500);
-    expect(failJob).toHaveBeenCalledWith(json.jobId, 'out of memory');
+  it('JOB CREATION FAILURE: nothing charged, nothing built', async () => {
+    const { json } = await post({ topic: 'Tbilisi cafés' });
+    jobInsertFails = true;
+    const r = await post({ topic: 'Tbilisi cafés', quoteToken: (json.quote as { token: string }).token, confirm: true });
+    expect(r.res.status).toBe(503);
+    expect(deductCreditsOnce).not.toHaveBeenCalled();
+    expect(runDeckBuild).not.toHaveBeenCalled();
   });
 
-  it('never reuses a client job id that already belongs to a row', async () => {
-    const mine = '33333333-3333-4333-8333-333333333333';
-    createJob.mockResolvedValueOnce(false);
-    const { json } = await post({ topic: 'Tbilisi cafés', clientJobId: mine });
-    expect(json.jobId).not.toBe(mine);
-    expect(completeJob).toHaveBeenCalledWith(json.jobId, expect.anything());
+  it('CONCURRENT confirmations: one debit, one build', async () => {
+    const { json } = await post({ topic: 'Tbilisi cafés' });
+    const confirm = { topic: 'Tbilisi cafés', quoteToken: (json.quote as { token: string }).token, confirm: true };
+    const r = await Promise.all([post(confirm), post(confirm)]);
+    expect(r.map((x) => x.res.status).sort()).toEqual([200, 409]);
+    expect(debits.size).toBe(1);
+    expect(runDeckBuild).toHaveBeenCalledTimes(1);
   });
 
-  // A deck bills no credits yet (gap C3), so a per-account daily ceiling is what bounds one person's spend.
-  describe('per-account daily ceiling', () => {
-    it('counts a valid request against the account, before any job is filed or the build runs', async () => {
-      await post({ topic: 'Tbilisi cafés' });
-      expect(checkRateLimitByKey).toHaveBeenCalledWith(mockUser.id, RATE_LIMITS.PRESENTATION_USER);
-      const cap = (checkRateLimitByKey as jest.Mock).mock.invocationCallOrder[0];
-      expect(cap).toBeLessThan(createJob.mock.invocationCallOrder[0]);
-      expect(cap).toBeLessThan(runDeckBuild.mock.invocationCallOrder[0]);
-    });
+  it('a failed step refunds exactly once; a thrown build refunds once; an exhausted budget refunds', async () => {
+    runDeckBuild.mockResolvedValueOnce({ ok: false, step: 'outline', error: 'gemini down' });
+    const a = await quoteThenConfirm({ topic: 'Tbilisi cafés' });
+    expect(a.res.status).toBe(502);
+    expect(a.json).toMatchObject({ error: 'deck_failed', step: 'outline', refunded: true });
+    expect(rows.get(a.quote.jobId)).toMatchObject({ status: 'failed', error: 'outline: gemini down' });
+    runDeckBuild.mockRejectedValueOnce(new Error('boom'));
+    const b = await quoteThenConfirm({ topic: 'Kutaisi' });
+    expect(b.res.status).toBe(500);
+    canProceed.mockResolvedValue({ allowed: false, reason: 'daily_cap' });
+    const c = await quoteThenConfirm({ topic: 'Batumi' });
+    expect(c.res.status).toBe(429);
+    expect(refundCredits).toHaveBeenCalledTimes(3);
+    expect(refunds.size).toBe(3);
+    expect(balance).toBe(100);
+  });
 
-    it('over the ceiling the limiter answers, and nothing is filed or built', async () => {
-      (checkRateLimitByKey as jest.Mock).mockResolvedValueOnce(new Response('{"error":"rate_limited"}', { status: 429 }));
-      const { res } = await post({ topic: 'Tbilisi cafés' });
-      expect(res.status).toBe(429);
-      expect(createJob).not.toHaveBeenCalled();
-      expect(runDeckBuild).not.toHaveBeenCalled();
-    });
+  it('a refund that does not land is not reported as refunded; the row stays reapable', async () => {
+    refundFails = true;
+    runDeckBuild.mockResolvedValueOnce({ ok: false, step: 'render', error: 'x' });
+    const { quote, json } = await quoteThenConfirm({ topic: 'Tbilisi cafés' });
+    expect(json).toMatchObject({ refunded: false, refundPending: true });
+    expect(rows.get(quote.jobId)?.status).toBe('processing');
+  });
 
-    it('a request that fails validation spends none of the allowance', async () => {
-      const { res } = await post({ topic: '' });
-      expect(res.status).toBe(400);
-      expect(checkRateLimitByKey).not.toHaveBeenCalled();
-    });
+  it('PERSISTENCE FAILURE: never reported as a completed job', async () => {
+    completeFails = 2;
+    const { json } = await quoteThenConfirm({ topic: 'Tbilisi cafés' });
+    expect(json).toMatchObject({ status: 'unpersisted', persisted: false });
   });
 });

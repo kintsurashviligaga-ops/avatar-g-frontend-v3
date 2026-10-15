@@ -27,7 +27,9 @@ type Known =
   // `refunded: true` (see describeGenerationFailure).
   | 'generation_refunded'
   // MEDIA_GOOGLE_ONLY (lib/providers/mediaPolicy): a tool with no Google / ElevenLabs engine yet refuses before any charge.
-  | 'google_only';
+  | 'google_only'
+  // Final P0/P1 repair run: dubbing / decks stay off until the owner approves their price; the quote/confirm codes.
+  | 'pricing_not_approved' | 'duration_unmeasurable' | 'quote_invalid' | 'job_unavailable';
 
 const COPY: Record<ErrLang, Record<Known, string>> = {
   ka: {
@@ -49,6 +51,10 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'ბალანსის შემოწმება ვერ მოხერხდა. სცადე ცოტა ხანში — ზედმეტი თანხა არ ჩამოგეჭრება.',
     cannot_cancel: 'გენერაცია უკვე დაწყებულია და ვეღარ გაუქმდება. შედეგი მალე გამოჩნდება.',
     generation_refunded: 'გენერაცია ვერ შესრულდა — კრედიტები დაგიბრუნდათ.',
+    pricing_not_approved: 'ეს სერვისი ჯერ ხელმისაწვდომი არ არის — ფასი ჯერ დამტკიცებული არ არის. თანხა არ ჩამოგეჭრა.',
+    duration_unmeasurable: 'ვიდეოს ხანგრძლივობა ვერ წავიკითხეთ. სცადე სხვა ფაილით — თანხა არ ჩამოგეჭრა.',
+    quote_invalid: 'ფასი შეიცვალა ან ვადა გაუვიდა. ნახე ახალი ფასი და დაადასტურე ხელახლა — თანხა არ ჩამოგეჭრა.',
+    job_unavailable: 'სამუშაო ვერ ჩავწერეთ. სცადე ცოტა ხანში — თანხა არ ჩამოგეჭრა.',
     google_only: 'ეს ხელსაწყო დროებით შეჩერებულია, სანამ Google-ის ძრავაზე გადავა. თანხა არ ჩამოგეჭრა.',
   },
   en: {
@@ -70,6 +76,10 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'We could not check your balance. Try again shortly — you will not be overcharged.',
     cannot_cancel: 'The generation has already started and can no longer be canceled. The result will appear soon.',
     generation_refunded: 'Generation failed — your credits were refunded.',
+    pricing_not_approved: 'This service is not available yet — its price has not been approved. You were not charged.',
+    duration_unmeasurable: 'We could not read the length of this video. Try another file — you were not charged.',
+    quote_invalid: 'The price changed or the quote expired. Check the new price and confirm again — you were not charged.',
+    job_unavailable: 'We could not record the job. Try again shortly — you were not charged.',
     google_only: 'This tool is paused while it moves to Google’s engines. You were not charged.',
   },
   ru: {
@@ -91,6 +101,10 @@ const COPY: Record<ErrLang, Record<Known, string>> = {
     billing_unavailable: 'Не удалось проверить баланс. Попробуйте чуть позже — лишнего не спишем.',
     cannot_cancel: 'Генерация уже началась и не может быть отменена. Результат скоро появится.',
     generation_refunded: 'Не удалось сгенерировать — кредиты возвращены.',
+    pricing_not_approved: 'Сервис пока недоступен — цена ещё не утверждена. Списания не было.',
+    duration_unmeasurable: 'Не удалось определить длительность видео. Попробуйте другой файл — списания не было.',
+    quote_invalid: 'Цена изменилась или срок предложения истёк. Проверьте новую цену и подтвердите снова — списания не было.',
+    job_unavailable: 'Не удалось записать задачу. Повторите чуть позже — списания не было.',
     google_only: 'Этот инструмент временно приостановлен на время перехода на движки Google. Списания не было.',
   },
 };
@@ -112,6 +126,10 @@ const MATCHERS: ReadonlyArray<readonly [RegExp, Known]> = [
   [/^ledger_unavailable$/, 'billing_unavailable'],
   [/^cannot_cancel$/, 'cannot_cancel'],
   [/^google_only$/, 'google_only'],
+  [/^pricing_not_approved$/, 'pricing_not_approved'],
+  [/^duration_unmeasurable$/, 'duration_unmeasurable'],
+  [/^(quote_invalid|quote_price_changed)$/, 'quote_invalid'],
+  [/^job_unavailable$/, 'job_unavailable'],
   [/^not_configured$/, 'provider_not_configured'],
   // 'enough credit' is deliberately loose — providers write "do not have enough credits" as often
   // as "not enough". A false positive here is a slightly-wrong-but-actionable message; a miss is a

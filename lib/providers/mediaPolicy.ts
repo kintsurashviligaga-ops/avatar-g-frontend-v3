@@ -2,8 +2,11 @@
  * MEDIA_GOOGLE_ONLY — the switch that makes every user-facing media tool run on Google or ElevenLabs only
  * (PROJECT_MASTER R7, certification §L, owner action 9).
  *
- * OPT-IN, DEFAULT OFF. Until the owner turns it on, every tool keeps the engine it has today; turning it on is one env
- * var and a redeploy, and turning it off again is the rollback. VIDEO_GOOGLE_ONLY (lib/veo/policy) and AI_GOOGLE_ONLY
+ * OPT-OUT, DEFAULT ON (global E2E 2026-10-14, P1 provider boundary). It used to be opt-in, so an unset env — every
+ * Preview and Production today — sent paid jobs to HeyGen / Kling / NanoBanana / Replicate / Higgsfield / Udio, outside
+ * the Google + ElevenLabs boundary, with no owner decision behind it. Fail closed: only an explicit falsy value
+ * (MEDIA_GOOGLE_ONLY=0 | false | off | no) TOGETHER WITH an owner approval reference in OUTSIDE_ENGINES_APPROVED re-opens
+ * the outside engines (final repair run: a falsy flag alone is ignored); unsetting either is the rollback. VIDEO_GOOGLE_ONLY (lib/veo/policy) and AI_GOOGLE_ONLY
  * (lib/ai/google/policy) already hold video and text to Google, default ON; this covers what they never reached: image,
  * avatar, music extras, remix edits, motion, 3D, the photo / audio editors and the raw vendor routes.
  *
@@ -17,13 +20,14 @@
  * file really calls the guard — so the list is the switch's documentation and cannot drift from the code.
  */
 import { NextResponse } from 'next/server';
-import { isTruthyFlag } from '@/lib/env/flag';
+import { googleOnlySwitch } from '@/lib/env/providerBoundary';
 import { billingLocale } from '@/lib/api/billingCopy';
 
 export const GOOGLE_ONLY_CODE = 'google_only' as const;
 
 export function isMediaGoogleOnly(env: NodeJS.ProcessEnv = process.env): boolean {
-  return isTruthyFlag(env.MEDIA_GOOGLE_ONLY);
+  // A falsy value re-opens outside engines only with OUTSIDE_ENGINES_APPROVED on record (lib/env/providerBoundary).
+  return googleOnlySwitch(env.MEDIA_GOOGLE_ONLY, env);
 }
 
 const MESSAGE = {

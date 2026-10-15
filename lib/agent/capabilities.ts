@@ -165,8 +165,9 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   'voice.dubbing': c({
     id: 'voice.dubbing', serviceId: 'voice.dubbing', does: 'The user\'s video in another language',
     routes: ['/api/v2/dubbing/start'], engine: 'ElevenLabs Scribe + TTS, Gemini translation; Demucs on Replicate for the background',
+    // OFF until OWNER_APPROVED_PRICING names its price (proposed 10 cr per started minute, measured on the server).
     pricing: { key: null, charge: 'not-charged-yet' }, approval: 'panel-button', timeoutSec: 600, retry: 'none',
-    idempotency: 'job id reuse is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'PARTIAL',
+    idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null, artifact: 'video', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'text.write': c({
     id: 'text.write', serviceId: 'text.write', does: 'Articles, scripts, ad copy, posts, translation',
@@ -176,9 +177,10 @@ export const CAPABILITIES: Readonly<Record<CapabilityId, Capability>> = {
   }),
   'design.presentation': c({
     id: 'design.presentation', serviceId: 'design.presentation', does: 'Slides from a topic',
+    // OFF until OWNER_APPROVED_PRICING names its price (proposed 15 cr per deck).
     routes: ['/api/v2/presentation/build'], engine: 'Gemini outline + Imagen', pricing: { key: null, charge: 'not-charged-yet' },
-    approval: 'panel-button', timeoutSec: 300, retry: 'none', idempotency: 'one deck per press', cancel: 'none', qc: null,
-    artifact: 'file', library: 'filed', label: 'PARTIAL',
+    approval: 'panel-button', timeoutSec: 300, retry: 'none', idempotency: 'signed quote → one job id; a second confirm is refused', cancel: 'none', qc: null,
+    artifact: 'file', library: 'filed', label: 'BLOCKED_OWNER',
   }),
   'design.model3d': c({
     id: 'design.model3d', serviceId: 'design.model3d', does: 'A 3D model from text or a photo',
