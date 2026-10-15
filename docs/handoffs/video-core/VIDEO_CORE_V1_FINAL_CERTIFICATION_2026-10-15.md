@@ -198,3 +198,51 @@ merge, its own deployment becomes the newest and f498ee2's (`dpl_53tGzqum…`) t
 **CONDITIONAL GO** for Video Core v1.0 as released (signed-in users with credits, admin-only Agent G media lanes),
 on the three conditions at the top. **NO-GO** for calling Agent G's paid media lanes publicly launched until GG gives
 that word.
+
+## 17. Addendum: the ad film test (GG, 16:49Z)
+
+GG's ask of 16:49:10Z: fix everything, then make one 9:16 advert from GG's photo: an actor in a black T-shirt and black
+jacket on a black background presents the MyAvatar.ge chat (scene 1) and explains Agent G taking a spoken task and
+doing all of it (scene 2), in Georgian. That counted as GG's word for one paid run; GG's tap "კი, ერთხელ" at 19:47:34Z
+allowed one more after the fix below reached Production. The photo stays on GG's Mac and in the studio's own upload;
+it is not in GitHub or CI.
+
+### Fixes shipped (each: CI green, merge commit, Production verified with `/api/health`, engine `vertex`, `dailyCap: true`)
+
+| PR | main | Production | What |
+|---|---|---|---|
+| #73 | e1dbf30 | `dpl_4gYXPWEzruPweyCyonr6WXQT9X1o` | D-C1: no invented person in a storyboard without one (§12) |
+| #75 | b21506b | `dpl_2bSktQyb9CrcLZZxWTyZNCd82PBG` | A photo-led advert keeps the brief's scene, clothes and light (the photo locks the face only); with Veo's sound on the actor says the typed lines in-clip (no narrator cue, no HeyGen talking head, no +20 add-on); music-video graphics only for music videos (probably the cause of D-C3; INFERENCE); the style word once (D-C5) |
+| #76 | de15464 | `dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm` | Defects 47/48: a film id from the client cannot take over another account's film (403 `film_not_owned` before any charge); a brief naming clothes or a background re-stages the photo (the check's token budget was too small) |
+| #77 | 5517047 | `dpl_vKQqsez4BP8vRpi33HM8E3GGmBsR` (READY 20:46:39Z) | D-C6 below: the card names the scene Google declined, the rule and the code; the scenes that rendered are handed over; the server logs Google's reason |
+
+BOG read-only smoke after #77: run [38804987664](https://github.com/kintsurashviligaga-ops/avatar-g-frontend-v3/actions/runs/38804987664), success.
+Rollback now: Instant Rollback to `dpl_8qNq6QVjjM4sHy6assiYjPTD2KPm` (de15464); never a Redeploy of old code.
+
+### Run 1 (admin account, 19:29:11Z): no film
+
+PROVEN_PRODUCTION + PROVEN_REAL_PROVIDER. GG signed in as the admin account (admins are not charged film credits).
+The storyboard frames were black-on-black and not the raw photo. One press. Scene 1 rendered. Scene 2 came back from
+Vertex with `raiMediaFilteredCount: 1` and support code **15236754**, which Google files under "Celebrity" (the filter
+judged the face to look like a well-known person; scene 1 with the same face passed). Google states that blocked videos
+are not billed. Credits 892 → 892. The daily ceiling kept the scene's reservation (conservative). List price of the one
+rendered clip: 8 s × $0.12 ≈ $0.96 (INFERENCE; Google's bill not visible here).
+
+**D-C6 (fixed in #77).** The studio said "Video generation failed — the service may be busy" and showed nothing of
+scene 1. Cause: with `NEXT_PUBLIC_PARALLEL_CINEMA=1` (Production) the film runs as a queued job; the job's throw landed
+in the studio's own catch, which painted the generic line over the honest reason already on the card. A rendered scene
+of a failed film was also never shown. Now: the card reads, for example, "Google-მა სცენა 2 უარყო. მისმა ფილტრმა
+ადამიანი ცნობილ საჯარო პირს მიამსგავსა (კოდი 15236754)." (KA/EN/RU, ≤ 160 characters), and the rendered scenes are
+links under it. Tests: unit (`lib/veo/safetyCodes.test.ts`, `serviceManagerVeo.test.ts`, `filmPollSceneRefund.test.ts`,
+`filmStudioClient.test.ts`; 178 suites, 3,363 tests) and a browser test on desktop and phone with and without the
+queued mode; with the old throw restored the browser test fails showing exactly the Production card. PROVEN_MOCK.
+
+Not controllable by us: Google's likeness filter. Not built (would touch billing; a proposal, not a fix): an automatic
+retry of a declined scene, or re-rendering only the missing scene.
+
+### Run 2
+
+Pending: the runner on GG's Mac waits for GG's sign-in (window open from 20:46Z to 23:46Z). Result to follow here.
+
+Still open: D-C2 (light jump at the cut); an English brief with "speaks"/"dialogue" still routes typed lines to a
+narrator.
