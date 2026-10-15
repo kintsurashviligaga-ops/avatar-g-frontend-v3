@@ -19,7 +19,7 @@ export PGOPTIONS="-c client_min_messages=warning"
 
 echo "── SQL scenarios"
 url=$("$root/tests/sql/bog/build.sh" bog_scenarios)
-psql "$url" -q -f "$root/tests/sql/bog/10_scenarios.sql" 2>&1 | grep -E "ok  |FAIL|ERROR|ALL OK" | sed 's/^.*NOTICE:  //'
+psql "$url" -v ON_ERROR_STOP=1 -q -f "$root/tests/sql/bog/10_scenarios.sql" 2>&1 | grep -E "ok  |FAIL|ERROR|ALL OK" | sed 's/^.*NOTICE:  //'
 echo "── SQL concurrency"
 "$root/tests/sql/bog/20_concurrency.sh" "$("$root/tests/sql/bog/build.sh" bog_race)"
 

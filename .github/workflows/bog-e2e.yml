@@ -1,0 +1,137 @@
+# BOG payments — both end-to-end suites on the runner, never Production.
+#
+#   isolated  scripts/bog-e2e.sh: the route handlers and the money functions on a throwaway local Postgres 16 +
+#             PostgREST, BOG played by a fake that signs its callbacks with a throwaway key. No secret, no network.
+#   sandbox   scripts/bog-sandbox-e2e.sh: the same code and database against Bank of Georgia's REAL sandbox
+#             (api-sandbox.bog.ge), paid on BOG's own page by a headless Chromium with BOG's public test cards. It runs
+#             only when the repository holds the SANDBOX pair as Actions secrets BOG_SANDBOX_CLIENT_ID /
+#             BOG_SANDBOX_SECRET_KEY (Business Manager → Sandbox objects); without them the job says so and passes.
+#             The pair reaches only the step that runs the suite (not npm ci), and the suite refuses every host but
+#             BOG's two sandbox hosts and 127.0.0.1 — no live BOG, no Supabase, no Vercel, no myavatar.ge.
+#
+# Both databases live in a temp dir of this runner and die with it. No Production credential exists in this repository.
+name: BOG payments E2E
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/billing/**'
+      - 'app/api/billing/bog/**'
+      - 'app/api/cron/bog-billing/**'
+      - 'app/api/checkout/**'
+      - 'tests/sql/bog/**'
+      - 'supabase/migrations/*bog*'
+      - '__tests__/integration/bog*'
+      - 'scripts/bog-*'
+      - '.github/workflows/bog-e2e.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: bog-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# `shell: bash` runs steps with -eo pipefail, so a failure piped into `tee` still fails the step.
+defaults:
+  run:
+    shell: bash
+
+env:
+  POSTGREST_VERSION: v12.2.3
+  PG_BIN: /usr/lib/postgresql/16/bin
+
+jobs:
+  isolated:
+    name: isolated (local Postgres, fake BOG)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: PostgREST ${{ env.POSTGREST_VERSION }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/pgrst.tar.xz" \
+            "https://github.com/PostgREST/postgrest/releases/download/${POSTGREST_VERSION}/postgrest-${POSTGREST_VERSION}-linux-static-x64.tar.xz"
+          tar -xJf "$RUNNER_TEMP/pgrst.tar.xz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/postgrest" --version
+      - name: Postgres 16 (throwaway, this runner only)
+        run: |
+          d="$RUNNER_TEMP/pg"; mkdir -p "$d"
+          "$PG_BIN/initdb" -D "$d/data" -U postgres --auth=trust >/dev/null
+          "$PG_BIN/pg_ctl" -D "$d/data" -o "-p 54329 -k $d -c listen_addresses=127.0.0.1" -l "$d/pg.log" -w start
+      - name: SQL scenarios, concurrency, route-level E1–E21
+        run: |
+          PGURL=postgres://postgres@127.0.0.1:54329/postgres POSTGREST_BIN="$RUNNER_TEMP/postgrest" \
+            npm run test:bog-e2e 2>&1 | tee bog-e2e.txt
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bog-e2e-isolated
+          path: bog-e2e.txt
+          retention-days: 14
+
+  sandbox:
+    name: BOG sandbox (real api-sandbox.bog.ge, test cards)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Is the sandbox pair in this repository?
+        id: keys
+        env:
+          ID: ${{ secrets.BOG_SANDBOX_CLIENT_ID }}
+          SECRET: ${{ secrets.BOG_SANDBOX_SECRET_KEY }}
+        run: |
+          if [ -n "$ID" ] && [ -n "$SECRET" ]; then
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "::notice title=BOG sandbox E2E not run::Actions secrets BOG_SANDBOX_CLIENT_ID / BOG_SANDBOX_SECRET_KEY are not set (Business Manager → Sandbox objects). Nothing was tested against BOG's sandbox."
+          fi
+      - if: steps.keys.outputs.have == 'yes'
+        uses: actions/checkout@v4
+      - if: steps.keys.outputs.have == 'yes'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.keys.outputs.have == 'yes'
+        run: npm ci
+      - if: steps.keys.outputs.have == 'yes'
+        name: Chromium for playwright-core
+        run: npx playwright install --with-deps chromium
+      - if: steps.keys.outputs.have == 'yes'
+        name: PostgREST ${{ env.POSTGREST_VERSION }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/pgrst.tar.xz" \
+            "https://github.com/PostgREST/postgrest/releases/download/${POSTGREST_VERSION}/postgrest-${POSTGREST_VERSION}-linux-static-x64.tar.xz"
+          tar -xJf "$RUNNER_TEMP/pgrst.tar.xz" -C "$RUNNER_TEMP"
+      - if: steps.keys.outputs.have == 'yes'
+        name: Postgres 16 (throwaway, this runner only)
+        run: |
+          d="$RUNNER_TEMP/pg"; mkdir -p "$d"
+          "$PG_BIN/initdb" -D "$d/data" -U postgres --auth=trust >/dev/null
+          "$PG_BIN/pg_ctl" -D "$d/data" -o "-p 54329 -k $d -c listen_addresses=127.0.0.1" -l "$d/pg.log" -w start
+      - if: steps.keys.outputs.have == 'yes'
+        name: S1–S7 against BOG's sandbox
+        env:
+          BOG_SANDBOX_CLIENT_ID: ${{ secrets.BOG_SANDBOX_CLIENT_ID }}
+          BOG_SANDBOX_SECRET_KEY: ${{ secrets.BOG_SANDBOX_SECRET_KEY }}
+          BOG_SANDBOX_SHOTS_DIR: ${{ github.workspace }}/bog-sandbox-shots
+        run: |
+          PGURL=postgres://postgres@127.0.0.1:54329/postgres POSTGREST_BIN="$RUNNER_TEMP/postgrest" \
+            npm run test:bog-sandbox-e2e 2>&1 | tee bog-sandbox-e2e.txt
+      - if: ${{ !cancelled() && steps.keys.outputs.have == 'yes' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bog-e2e-sandbox
+          path: |
+            bog-sandbox-e2e.txt
+            bog-sandbox-shots/
+          retention-days: 14

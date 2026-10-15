@@ -65,3 +65,6 @@ vercel-project-inspect.txt
 
 # Written by scripts/gcp/preview-inference-check.cjs on a requested Preview build only
 /public/preview-checks/
+
+# BOG sandbox E2E screenshots (scripts/bog-sandbox-e2e.sh)
+/bog-sandbox-shots/

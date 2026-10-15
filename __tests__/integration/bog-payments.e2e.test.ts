@@ -7,14 +7,13 @@
  * functions in a real Postgres (tests/sql/bog — code-identical to Production's). Only two things are stand-ins:
  *   · BOG itself — a fake api.bog.ge below (OAuth, orders, saved cards, receipts, renewals) that signs its callbacks
  *     with a throwaway RSA key, exactly as BOG signs them (SHA256withRSA over the raw body, Callback-Signature);
- *   · Supabase's gateway — a 30-line proxy that maps /rest/v1 to a local PostgREST and answers /auth/v1/user for
+ *   · Supabase's gateway — bogE2eGateway.ts, a 30-line proxy that maps /rest/v1 to a local PostgREST and answers /auth/v1/user for
  *     test bearer tokens, so the routes' real auth path (Bearer → auth.getUser) runs.
  * No network, no credentials, no Production anything.
  */
-import http from 'node:http';
-import { createHmac, createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
-import type { AddressInfo } from 'node:net';
+import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { NextRequest } from 'next/server';
+import { hs256, startSupabaseGateway, type SupabaseGateway } from './bogE2eGateway';
 
 jest.mock('server-only', () => ({}));
 // @t3-oss/env-nextjs ships ESM only (jest cannot load it); the env it validates is plain process.env here.
@@ -150,40 +149,8 @@ function signedCallback(receipt: unknown, opts: { forge?: boolean } = {}) {
   return new NextRequest('http://localhost/api/billing/bog/webhook', { method: 'POST', body: raw, headers: { 'Callback-Signature': sig } });
 }
 
-// ─── Supabase gateway stand-in ───────────────────────────────────────────────────────────────────────────────
-const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64url');
-function hs256(payload: Record<string, unknown>) {
-  const head = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const body = b64url(JSON.stringify(payload));
-  return `${head}.${body}.${b64url(createHmac('sha256', JWT_SECRET ?? 'x').update(`${head}.${body}`).digest())}`;
-}
-let gateway: http.Server;
-async function startGateway(): Promise<string> {
-  gateway = http.createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const c of req) chunks.push(c as Buffer);
-    if (req.url?.startsWith('/auth/v1/user')) {
-      const tok = String(req.headers.authorization ?? '').replace(/^Bearer /, '');
-      const id = tok.startsWith('e2e-user-') ? tok.slice('e2e-user-'.length) : null;
-      res.writeHead(id ? 200 : 401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(id ? { id, aud: 'authenticated', role: 'authenticated', email: `${id}@test.local` } : { msg: 'invalid' }));
-      return;
-    }
-    const target = `${POSTGREST}${(req.url ?? '').replace(/^\/rest\/v1/, '')}`;
-    const headers: Record<string, string> = {};
-    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string' && !['host', 'content-length', 'connection'].includes(k)) headers[k] = v;
-    const up = await realFetch(target, { method: req.method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
-    const out = Buffer.from(await up.arrayBuffer());
-    const outHeaders: Record<string, string> = {};
-    up.headers.forEach((v, k) => {
-      if (!['content-encoding', 'transfer-encoding', 'content-length', 'connection'].includes(k)) outHeaders[k] = v;
-    });
-    res.writeHead(up.status, outHeaders);
-    res.end(out);
-  });
-  await new Promise<void>((r) => gateway.listen(0, '127.0.0.1', () => r()));
-  return `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
-}
+// ─── Supabase gateway stand-in (bogE2eGateway.ts) ──────────────────────────────────────────────────────────────
+let gateway: SupabaseGateway;
 
 const realFetch: typeof fetch = globalThis.fetch;
 
@@ -194,12 +161,13 @@ const CRON_SECRET = 'e2e-cron-secret';
 
 run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
   beforeAll(async () => {
-    const supabaseUrl = await startGateway();
+    gateway = await startSupabaseGateway(POSTGREST!, realFetch);
+    const supabaseUrl = gateway.url;
     Object.assign(process.env, {
       SUPABASE_URL: supabaseUrl,
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: hs256({ role: 'anon' }),
-      SUPABASE_SERVICE_ROLE_KEY: hs256({ role: 'service_role' }),
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: hs256(JWT_SECRET!, { role: 'anon' }),
+      SUPABASE_SERVICE_ROLE_KEY: hs256(JWT_SECRET!, { role: 'service_role' }),
       BOG_CLIENT_ID: 'e2e-client',
       BOG_SECRET_KEY: 'e2e-secret',
       BOG_ENV: 'sandbox',
@@ -229,7 +197,7 @@ run('BOG payments end to end (local Postgres + PostgREST, fake BOG)', () => {
   });
   afterAll(async () => {
     globalThis.fetch = realFetch;
-    await new Promise((r) => gateway.close(r));
+    await gateway.close();
   });
   beforeEach(() => {
     resetBank();
